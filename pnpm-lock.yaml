@@ -72,12 +72,21 @@ importers:
       '@moya/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@moya/data-access':
+        specifier: workspace:*
+        version: link:../../packages/data-access
       '@moya/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@moya/image':
+        specifier: workspace:*
+        version: link:../../packages/image
       '@moya/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@moya/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@moya/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -128,7 +137,11 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
 
-  packages/data-access: {}
+  packages/data-access:
+    dependencies:
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/design-tokens: {}
 
@@ -152,7 +165,20 @@ importers:
         specifier: ^19.2.0
         version: 19.2.8(react@19.2.8)
 
-  packages/search: {}
+  packages/search:
+    dependencies:
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      chinese-conv:
+        specifier: ^4.0.0
+        version: 4.0.0
+      fuse.js:
+        specifier: ^7.0.0
+        version: 7.5.0
+      pinyin-pro:
+        specifier: ^3.21.0
+        version: 3.28.2
 
   packages/ui:
     dependencies:

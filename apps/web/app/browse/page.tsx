@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SiteCard, FilterTag, FilterGroup, EmptyState } from '@moya/ui';
-import { mockRepository } from '@/lib/repository';
+import { mockRepository } from '@moya/data-access';
 import type { SiteSummary } from '@moya/contracts';
 import { Dynasty, Category, ScriptType } from '@moya/contracts';
 import { Grid3X3, Clock } from 'lucide-react';

@@ -11,8 +11,11 @@
   },
   "dependencies": {
     "@moya/contracts": "workspace:*",
+    "@moya/data-access": "workspace:*",
     "@moya/design-tokens": "workspace:*",
+    "@moya/image": "workspace:*",
     "@moya/logger": "workspace:*",
+    "@moya/search": "workspace:*",
     "@moya/ui": "workspace:*",
     "fuse.js": "^7.0.0",
     "pinyin-pro": "^3.21.0",

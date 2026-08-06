@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar, SiteCard, EmptyState } from '@moya/ui';
-import { mockRepository } from '@/lib/repository';
+import { mockRepository } from '@moya/data-access';
 import type { SiteSummary } from '@moya/contracts';
 import AppLayout from '@/app/AppLayout';
 

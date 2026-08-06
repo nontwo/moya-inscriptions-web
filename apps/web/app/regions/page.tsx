@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { SiteCard, EmptyState } from '@moya/ui';
-import { mockRepository } from '@/lib/repository';
+import { mockRepository } from '@moya/data-access';
 import type { Region, SiteSummary } from '@moya/contracts';
 import { MapPin, ChevronRight } from 'lucide-react';
 import AppLayout from '@/app/AppLayout';

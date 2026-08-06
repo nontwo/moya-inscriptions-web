@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ImageGallery, SiteCard, EmptyState } from '@moya/ui';
-import { mockRepository } from '@/lib/repository';
+import { mockRepository } from '@moya/data-access';
 import { downloadJSON, downloadCSV } from '@/lib/export';
 import type { SiteDetail } from '@moya/contracts';
 import { MapPin, Clock, Tag, Download, Share2, ExternalLink, ChevronLeft } from 'lucide-react';

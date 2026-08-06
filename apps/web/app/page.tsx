@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { SearchBar, SiteCard, useCountUp } from '@moya/ui';
-import { mockRepository } from '../lib/repository';
+import { mockRepository } from '@moya/data-access';
 import type { SiteSummary, PlatformStats } from '@moya/contracts';
 import { BookOpen, MapPin, Image, Compass, Clock, ScrollText, TrendingUp } from 'lucide-react';
 import AppLayout from './AppLayout';

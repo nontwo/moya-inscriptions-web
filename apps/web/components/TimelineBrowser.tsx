@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { mockRepository } from '../lib/repository';
+import { mockRepository } from '@moya/data-access';
 import type { Dynasty } from '@moya/contracts';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
