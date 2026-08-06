@@ -6,6 +6,21 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@moya/contracts": "workspace:*",
+    "@moya/data-access": "workspace:*",
+    "@moya/logger": "workspace:*",
+    "@moya/search": "workspace:*",
+    "@playwright/test": "^1.45.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "fake-indexeddb": "^6.0.0",
+    "fuse.js": "^7.0.0",
+    "pinyin-pro": "^3.21.0",
+    "chinese-conv": "^4.0.0",
+    "vitest": "^4.1.10"
   }
 }
