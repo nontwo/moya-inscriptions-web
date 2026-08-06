@@ -1,15 +1,110 @@
+@import "tailwindcss";
+
+/* ============================================================
+   摩崖碑刻数字平台 - 管理端全局样式
+   Tailwind CSS v4 + 宣纸色系主题
+   ============================================================ */
+
+@theme {
+  /* ---- 宣纸色系 ---- */
+  --color-rice-50: #fdfaf3;
+  --color-rice-100: #f5f0e8;
+  --color-rice-200: #e8e0d0;
+  --color-rice-300: #d4c9b5;
+  --color-rice-400: #b8a88e;
+  --color-rice-500: #9a8868;
+
+  /* ---- 朱砂色系 ---- */
+  --color-vermilion-50: #fef5f4;
+  --color-vermilion-100: #fde8e5;
+  --color-vermilion-200: #fbd0cb;
+  --color-vermilion-300: #f7aaa0;
+  --color-vermilion-400: #f07a6b;
+  --color-vermilion-500: #e54b3a;
+  --color-vermilion-600: #d13a2a;
+
+  /* ---- 墨色系 ---- */
+  --color-ink-50: #f8f7f6;
+  --color-ink-100: #f0eeec;
+  --color-ink-200: #d9d5d0;
+  --color-ink-300: #b5b0a8;
+  --color-ink-400: #8a8278;
+  --color-ink-500: #5c5650;
+  --color-ink-600: #2c2c2c;
+  --color-ink-700: #1a1a1a;
+
+  /* ---- 金色系 ---- */
+  --color-gold-50: #fdf9f0;
+  --color-gold-100: #faf0d7;
+  --color-gold-200: #f5e0ae;
+  --color-gold-300: #ecc76d;
+  --color-gold-400: #d4a43a;
+  --color-gold-500: #b88a1e;
+  --color-gold-600: #9a7010;
+
+  /* ---- 字体 ---- */
+  --font-serif: "Noto Serif CJK SC", "SimSun", serif;
+  --font-sans: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 基础重置 */
 * {
   box-sizing: border-box;
 }
 
 html {
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   margin: 0;
+  background-color: var(--color-rice-50);
+  color: var(--color-ink-600);
 }
 
-main {
-  padding: 1rem;
+/* 卡片样式 */
+.card-stone {
+  background: white;
+  border: 1px solid var(--color-rice-200);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* 按钮样式 */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-vermilion-500);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-primary:hover {
+  background: var(--color-vermilion-600);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--color-ink-500);
+  border: 1px solid var(--color-rice-200);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-ghost:hover {
+  background: var(--color-rice-50);
+  border-color: var(--color-rice-300);
 }
