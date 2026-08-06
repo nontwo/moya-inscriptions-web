@@ -1,5 +1,12 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  transpilePackages: [
+    "@moya/contracts",
+    "@moya/design-tokens",
+    "@moya/logger",
+    "@moya/ui",
+  ],
+};
 
 export default nextConfig;

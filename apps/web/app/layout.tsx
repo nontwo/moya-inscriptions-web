@@ -13,7 +13,7 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body className="font-sans">{children}</body>
     </html>
   );
 }

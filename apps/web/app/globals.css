@@ -1,15 +1,199 @@
-* {
-  box-sizing: border-box;
+@import "tailwindcss";
+
+/* ---- Theme: 古韵今风 —— 宣纸色系 + 朱砂红 + 墨色 ---- */
+
+@theme {
+  /* 宣纸色系 */
+  --color-rice-50: #FDFBF7;
+  --color-rice-100: #F5F0E8;
+  --color-rice-200: #EDE4D3;
+  --color-rice-300: #D9CCB2;
+  --color-rice-400: #C4B391;
+
+  /* 朱砂红 */
+  --color-vermilion-50: #FFF5F5;
+  --color-vermilion-100: #FEE2E5;
+  --color-vermilion-200: #FCA5B0;
+  --color-vermilion-300: #F8717D;
+  --color-vermilion-400: #E8485E;
+  --color-vermilion-500: #C41E3A;
+  --color-vermilion-600: #9B1628;
+  --color-vermilion-700: #7A0F1E;
+
+  /* 墨色 */
+  --color-ink-50: #F5F5F5;
+  --color-ink-100: #E8E8E8;
+  --color-ink-200: #D1D1D1;
+  --color-ink-300: #B0B0B0;
+  --color-ink-400: #8C8C8C;
+  --color-ink-500: #5C5C5C;
+  --color-ink-600: #2C2C2C;
+  --color-ink-700: #1A1A1A;
+
+  /* 金色 */
+  --color-gold-300: #D4A574;
+  --color-gold-400: #C4955A;
+  --color-gold-500: #B8860B;
+
+  /* 字体 */
+  --font-family-serif: 'Noto Serif CJK SC', 'STSong', 'SimSun', serif;
+  --font-family-sans: 'PingFang SC', 'Microsoft YaHei', 'system-ui', 'sans-serif';
+
+  /* 断点 */
+  --breakpoint-xs: 360px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1440px;
+
+  /* 动画 */
+  --animate-pulse-soft: pulseSoft 2s ease-in-out infinite;
+  --animate-float-up: floatUp 0.5s ease-out;
+  --animate-slide-in-right: slideInRight 0.3s ease-out;
+  --animate-slide-in-up: slideInUp 0.3s ease-out;
+  --animate-fade-in: fadeIn 0.5s ease-out;
 }
 
-html {
-  font-family: system-ui, sans-serif;
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
 }
 
-body {
-  margin: 0;
+@keyframes floatUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
-main {
-  padding: 1rem;
+@keyframes slideInRight {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes slideInUp {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* ---- Base ---- */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-rice-100);
+    color: var(--color-ink-600);
+    font-family: var(--font-family-sans);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background-color: var(--color-vermilion-200);
+    color: var(--color-ink-700);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-rice-300);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-rice-400);
+  }
+}
+
+/* ---- Components ---- */
+@layer components {
+  .paper-texture {
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, rgba(197, 165, 114, 0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(180, 150, 120, 0.02) 0%, transparent 50%);
+  }
+
+  .card-stone {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 12px rgba(44, 44, 44, 0.06), 0 1px 3px rgba(44, 44, 44, 0.04);
+    transition: all 0.3s ease;
+  }
+
+  .card-stone:hover {
+    box-shadow: 0 6px 24px rgba(44, 44, 44, 0.1), 0 2px 6px rgba(44, 44, 44, 0.06);
+  }
+
+  .btn-vermilion {
+    background: var(--color-vermilion-500);
+    color: white;
+    padding: 0.625rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-vermilion:hover {
+    background: var(--color-vermilion-600);
+  }
+
+  .btn-vermilion:active {
+    background: var(--color-vermilion-700);
+  }
+
+  .btn-outline {
+    border: 2px solid var(--color-vermilion-500);
+    color: var(--color-vermilion-500);
+    padding: 0.625rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-outline:hover {
+    background: var(--color-vermilion-50);
+  }
+
+  .btn-ghost {
+    color: var(--color-ink-500);
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-ghost:hover {
+    background: var(--color-rice-200);
+    color: var(--color-ink-700);
+  }
+
+  .divider-ink {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--color-rice-300), transparent);
+    margin: 2rem 0;
+  }
+
+  .quote-vermilion {
+    border-left: 4px solid var(--color-vermilion-500);
+    padding: 0.5rem 0 0.5rem 1rem;
+    font-style: italic;
+    color: var(--color-ink-500);
+  }
 }
