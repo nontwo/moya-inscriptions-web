@@ -1,0 +1,98 @@
+# Candidate inventory only. This file is intentionally non-executable.
+schemaVersion: "0.1"
+kind: CloudBaseCandidateDeployment
+
+metadata:
+  project: moya-inscriptions
+  provider: tencent-cloudbase
+  geography: mainland-china
+  createsResources: false
+
+environments:
+  development:
+    cloudbaseEnvironmentId: "<development-cloudbase-environment-id>"
+    region: "<mainland-region>"
+    dataClassification: synthetic-only
+    webDomain: "<cloudbase-development-default-domain>"
+    apiDomain: "<cloudbase-development-default-domain>"
+    assetDomain: "<cloudbase-development-storage-domain>"
+    objectStorageBucket: "<development-object-storage-bucket>"
+    releaseApproval: developer
+
+  testing:
+    cloudbaseEnvironmentId: "<testing-cloudbase-environment-id>"
+    region: "<same-mainland-region-as-production>"
+    dataClassification: synthetic-or-desensitized
+    webDomain: "<cloudbase-testing-default-domain>"
+    apiDomain: "<cloudbase-testing-default-domain>"
+    assetDomain: "<cloudbase-testing-storage-domain>"
+    objectStorageBucket: "<testing-object-storage-bucket>"
+    releaseApproval: qa-owner
+
+  production:
+    cloudbaseEnvironmentId: "<production-cloudbase-environment-id>"
+    region: "<mainland-region>"
+    dataClassification: production
+    webDomain: "<icp-filed-production-web-domain>"
+    apiDomain: "<icp-filed-production-api-domain>"
+    assetDomain: "<icp-filed-production-asset-domain>"
+    objectStorageBucket: "<production-object-storage-bucket>"
+    releaseApproval: release-owner
+
+components:
+  httpGateway:
+    providerCapability: cloudbase-http-gateway
+    httpsOnly: true
+    routes:
+      - path: /api/*
+        target: publicApi
+        cache: disabled
+      - path: /*
+        target: publicWeb
+        cache: static-assets-only
+
+  publicWeb:
+    sourcePath: apps/web
+    preferredTarget: cloudbase-static-hosting
+    fallbackTarget: cloudbase-run-container
+    buildCommand: pnpm --filter web build
+    artifact: "<immutable-web-artifact-for-git-sha>"
+    readiness: requires-static-export-or-container-definition
+
+  publicApi:
+    sourcePath: services/public-api
+    target: cloudbase-run-container
+    buildCommand: pnpm --filter @moya/public-api build
+    artifact: "<immutable-api-image-digest-for-git-sha>"
+    readiness: requires-http-entrypoint-and-container-definition
+    publicRoute: /api/*
+    directDatabaseAccessFromUi: false
+
+  objectStorage:
+    providerCapability: cloudbase-storage
+    publicAccess: read-only-for-approved-derived-assets
+    writeAccess: api-or-controlled-ingestion-only
+    addressModel: object-key
+    crossEnvironmentSharing: false
+
+  assetCdn:
+    providerCapability: cloudbase-storage-cdn
+    origin: objectStorage
+    publicBaseUrlVariable: PUBLIC_CDN_BASE_URL
+    immutableObjectKeys: true
+    cachePurgeOnRollback: only-if-a-mutable-key-was-overwritten
+
+runtimeEnvironment:
+  NODE_ENV: "<development-or-production>"
+  DATABASE_URL: "<inject-from-secret-management>"
+  OBJECT_STORAGE_BUCKET: "<environment-specific-bucket>"
+  OBJECT_STORAGE_REGION: "<environment-specific-mainland-region>"
+  PUBLIC_CDN_BASE_URL: "https://assets.example.invalid"
+  MAP_PROVIDER_KEY: "<optional-environment-specific-restricted-key>"
+
+releaseMetadata:
+  gitSha: "<full-git-commit-sha>"
+  webArtifactDigest: "<immutable-web-artifact-digest>"
+  apiImageDigest: "<immutable-api-image-digest>"
+  configurationRevision: "<reviewed-configuration-revision>"
+  previousKnownGoodRelease: "<release-id>"
