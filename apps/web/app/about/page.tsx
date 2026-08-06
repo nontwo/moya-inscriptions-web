@@ -1,13 +1,15 @@
 "use client";
 
-import { BookOpen, Shield, Users, Database } from 'lucide-react';
-import AppLayout from '@/app/AppLayout';
+import { BookOpen, Shield, Users, Database } from "lucide-react";
+import AppLayout from "@/app/AppLayout";
 
 export default function AboutPage() {
   return (
     <AppLayout>
       <div className="max-w-3xl mx-auto px-4 py-12">
-        <h1 className="font-serif text-3xl md:text-4xl text-ink-600 font-bold mb-4">关于平台</h1>
+        <h1 className="font-serif text-3xl md:text-4xl text-ink-600 font-bold mb-4">
+          关于平台
+        </h1>
         <p className="text-ink-400 text-lg mb-12 leading-relaxed">
           摩崖碑刻数字平台是一个面向公众的公益性数字化图志网站，
           致力于系统整理和展示中国各地的摩崖碑刻文化遗产。
@@ -37,7 +39,9 @@ export default function AboutPage() {
         </div>
 
         <div className="card-stone p-8 space-y-6">
-          <h2 className="font-serif text-xl text-ink-600 font-semibold">数据与著录方法</h2>
+          <h2 className="font-serif text-xl text-ink-600 font-semibold">
+            数据与著录方法
+          </h2>
           <div className="text-sm text-ink-500 leading-relaxed space-y-3">
             <p>
               <strong className="text-ink-600">点位定义：</strong>
@@ -70,7 +74,15 @@ export default function AboutPage() {
   );
 }
 
-function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+function FeatureCard({
+  icon,
+  title,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
   return (
     <div className="card-stone p-5">
       <div className="w-10 h-10 bg-vermilion-50 rounded-lg flex items-center justify-center text-vermilion-500 mb-3">

@@ -2,7 +2,7 @@
 // 日志收集器 - 环形缓冲区 + 观察者模式
 // ============================================================
 
-import type { LogEntry, LogLevel, LogContext } from '@moya/contracts';
+import type { LogEntry, LogLevel, LogContext } from "@moya/contracts";
 
 const MAX_BUFFER_SIZE = 500;
 
@@ -17,7 +17,7 @@ export class LogCollector {
   private idCounter = 0;
 
   /** 添加日志条目 */
-  push(entry: Omit<LogEntry, 'id' | 'timestamp'>): LogEntry {
+  push(entry: Omit<LogEntry, "id" | "timestamp">): LogEntry {
     const full: LogEntry = {
       ...entry,
       id: `log_${Date.now()}_${this.idCounter++}`,
@@ -31,7 +31,7 @@ export class LogCollector {
     this.buffer.push(full);
 
     // 更新错误计数
-    if (full.level === 'ERROR') {
+    if (full.level === "ERROR") {
       this.errorCount++;
       this.notifyErrorCount();
     }
@@ -40,13 +40,21 @@ export class LogCollector {
     this.notify(full);
 
     // 开发环境下同时输出到控制台
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      const style = full.level === 'ERROR' ? 'color:red;font-weight:bold'
-        : full.level === 'WARNING' ? 'color:orange'
-        : full.level === 'INFO' ? 'color:blue' : 'color:gray';
+    if (
+      typeof window !== "undefined" &&
+      window.location.hostname === "localhost"
+    ) {
+      const style =
+        full.level === "ERROR"
+          ? "color:red;font-weight:bold"
+          : full.level === "WARNING"
+            ? "color:orange"
+            : full.level === "INFO"
+              ? "color:blue"
+              : "color:gray";
       console.log(
         `%c[${full.level}] ${full.module}.${full.function}: ${full.message}`,
-        style
+        style,
       );
     }
 
@@ -78,12 +86,12 @@ export class LogCollector {
 
   /** 导出为 CSV */
   exportCSV(): string {
-    const header = '时间,级别,模块,函数,消息,路由,UA\n';
+    const header = "时间,级别,模块,函数,消息,路由,UA\n";
     const rows = this.buffer.map((e) => {
       const time = new Date(e.timestamp).toISOString();
       return `"${time}","${e.level}","${e.module}","${e.function}","${e.message}","${e.context.route}","${e.context.userAgent}"`;
     });
-    return '\uFEFF' + header + rows.join('\n');
+    return "\uFEFF" + header + rows.join("\n");
   }
 
   /** 订阅日志更新 */
@@ -108,4 +116,5 @@ export class LogCollector {
 }
 
 /** 全局单例 */
-export const logCollector = typeof window !== 'undefined' ? new LogCollector() : new LogCollector();
+export const logCollector =
+  typeof window !== "undefined" ? new LogCollector() : new LogCollector();

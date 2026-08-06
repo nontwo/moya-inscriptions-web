@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { SiteCard, EmptyState } from '@moya/ui';
-import { mockRepository } from '@moya/data-access';
-import type { Region, SiteSummary } from '@moya/contracts';
-import { MapPin, ChevronRight } from 'lucide-react';
-import AppLayout from '@/app/AppLayout';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { SiteCard, EmptyState } from "@moya/ui";
+import { mockRepository } from "@moya/data-access";
+import type { Region, SiteSummary } from "@moya/contracts";
+import { MapPin, ChevronRight } from "lucide-react";
+import AppLayout from "@/app/AppLayout";
 
 export default function RegionsPage() {
   const router = useRouter();
@@ -37,7 +37,12 @@ export default function RegionsPage() {
 
         {selectedProvince && (
           <div className="flex items-center gap-2 text-sm mb-6">
-            <button onClick={handleBack} className="text-vermilion-500 hover:text-vermilion-600 cursor-pointer">全部省份</button>
+            <button
+              onClick={handleBack}
+              className="text-vermilion-500 hover:text-vermilion-600 cursor-pointer"
+            >
+              全部省份
+            </button>
             <ChevronRight size={14} className="text-ink-300" />
             <span className="text-ink-500 font-medium">{selectedProvince}</span>
             <span className="text-ink-300">({provinceSites.length} 处)</span>
@@ -62,7 +67,9 @@ export default function RegionsPage() {
                     </span>
                   )}
                 </div>
-                <h3 className="font-medium text-ink-600 group-hover:text-vermilion-500 transition-colors">{r.name}</h3>
+                <h3 className="font-medium text-ink-600 group-hover:text-vermilion-500 transition-colors">
+                  {r.name}
+                </h3>
               </button>
             ))}
           </div>

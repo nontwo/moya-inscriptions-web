@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from "react";
 
 /** 响应式媒体查询 hook */
 export function useMediaQuery(query: string): boolean {
@@ -8,8 +8,8 @@ export function useMediaQuery(query: string): boolean {
     const mql = window.matchMedia(query);
     setMatches(mql.matches);
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
   }, [query]);
 
   return matches;
@@ -28,13 +28,17 @@ export function useDebounce<T>(value: T, delay: number): T {
 }
 
 /** 键盘快捷键 hook */
-export function useKeyboard(key: string, callback: () => void, deps: unknown[] = []) {
+export function useKeyboard(
+  key: string,
+  callback: () => void,
+  deps: unknown[] = [],
+) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === key) callback();
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [key, callback, ...deps]);
 }
 
@@ -63,7 +67,10 @@ export function useCountUp(target: number, duration: number = 1500) {
 }
 
 /** 元素可见性 hook（懒加载） */
-export function useInView(ref: React.RefObject<Element>, options?: IntersectionObserverInit) {
+export function useInView(
+  ref: React.RefObject<Element>,
+  options?: IntersectionObserverInit,
+) {
   const [inView, setInView] = useState(false);
 
   useEffect(() => {

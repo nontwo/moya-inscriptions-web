@@ -6,33 +6,34 @@
 
 /** 发布状态 */
 export const PublicationStatus = {
-  DRAFT: 'draft',
-  REVIEW: 'review',
-  PUBLISHED: 'published',
-  ARCHIVED: 'archived',
+  DRAFT: "draft",
+  REVIEW: "review",
+  PUBLISHED: "published",
+  ARCHIVED: "archived",
 } as const;
-export type PublicationStatus = (typeof PublicationStatus)[keyof typeof PublicationStatus];
+export type PublicationStatus =
+  (typeof PublicationStatus)[keyof typeof PublicationStatus];
 
 /** 朝代枚举（按时间顺序排列） */
 export const Dynasty = {
-  SHANG: '商',
-  ZHOU: '周',
-  QIN: '秦',
-  HAN: '汉',
-  THREE_KINGDOMS: '三国',
-  JIN: '晋',
-  NORTHERN_SOUTHERN: '南北朝',
-  SUI: '隋',
-  TANG: '唐',
-  FIVE_DYNASTIES: '五代',
-  SONG: '宋',
-  LIAO: '辽',
-  JIN_DYNASTY: '金',
-  YUAN: '元',
-  MING: '明',
-  QING: '清',
-  REPUBLIC: '民国',
-  MODERN: '现代',
+  SHANG: "商",
+  ZHOU: "周",
+  QIN: "秦",
+  HAN: "汉",
+  THREE_KINGDOMS: "三国",
+  JIN: "晋",
+  NORTHERN_SOUTHERN: "南北朝",
+  SUI: "隋",
+  TANG: "唐",
+  FIVE_DYNASTIES: "五代",
+  SONG: "宋",
+  LIAO: "辽",
+  JIN_DYNASTY: "金",
+  YUAN: "元",
+  MING: "明",
+  QING: "清",
+  REPUBLIC: "民国",
+  MODERN: "现代",
 } as const;
 export type Dynasty = (typeof Dynasty)[keyof typeof Dynasty];
 
@@ -82,84 +83,85 @@ export const DYNASTY_YEAR_RANGE: Record<Dynasty, [number, number]> = {
 
 /** 碑刻类型 */
 export const Category = {
-  CLIFF_INSCRIPTION: '摩崖题记',
-  STELE: '碑碣',
-  STATUE_INSCRIPTION: '造像题记',
-  EPITAPH: '墓志铭',
-  QUOTATION: '题名题记',
-  SUTRA: '刻经',
-  OTHER: '其他',
+  CLIFF_INSCRIPTION: "摩崖题记",
+  STELE: "碑碣",
+  STATUE_INSCRIPTION: "造像题记",
+  EPITAPH: "墓志铭",
+  QUOTATION: "题名题记",
+  SUTRA: "刻经",
+  OTHER: "其他",
 } as const;
 export type Category = (typeof Category)[keyof typeof Category];
 
 /** 书体 */
 export const ScriptType = {
-  SEAL: '篆书',
-  CLERICAL: '隶书',
-  REGULAR: '楷书',
-  RUNNING: '行书',
-  CURSIVE: '草书',
-  MIXED: '混合书体',
-  OTHER: '其他',
+  SEAL: "篆书",
+  CLERICAL: "隶书",
+  REGULAR: "楷书",
+  RUNNING: "行书",
+  CURSIVE: "草书",
+  MIXED: "混合书体",
+  OTHER: "其他",
 } as const;
 export type ScriptType = (typeof ScriptType)[keyof typeof ScriptType];
 
 /** 地区级别 */
 export const RegionLevel = {
-  PROVINCE: 'province',
-  CITY: 'city',
-  COUNTY: 'county',
+  PROVINCE: "province",
+  CITY: "city",
+  COUNTY: "county",
 } as const;
 export type RegionLevel = (typeof RegionLevel)[keyof typeof RegionLevel];
 
 /** 图片角色 */
 export const ImageRole = {
-  COVER: 'cover',
-  OVERVIEW: 'overview',
-  CONTEXT: 'context',
-  DETAIL: 'detail',
-  INSCRIPTION_DETAIL: 'inscription_detail',
-  REFERENCE: 'reference',
+  COVER: "cover",
+  OVERVIEW: "overview",
+  CONTEXT: "context",
+  DETAIL: "detail",
+  INSCRIPTION_DETAIL: "inscription_detail",
+  REFERENCE: "reference",
 } as const;
 export type ImageRole = (typeof ImageRole)[keyof typeof ImageRole];
 
 /** 参考来源类型 */
 export const ReferenceType = {
-  PAPER: '论文',
-  CATALOG: '图录',
-  CHRONICLE: '地方志',
-  WEB: '网页',
-  BOOK: '专著',
-  OTHER: '其他',
+  PAPER: "论文",
+  CATALOG: "图录",
+  CHRONICLE: "地方志",
+  WEB: "网页",
+  BOOK: "专著",
+  OTHER: "其他",
 } as const;
 export type ReferenceType = (typeof ReferenceType)[keyof typeof ReferenceType];
 
 /** 关系类型 */
 export const RelationType = {
-  WRITER: '撰文',
-  CALLIGRAPHER: '书丹',
-  ENGRAVER: '刻工',
-  MENTOR: '师生',
-  COLLEAGUE: '同僚',
-  PATRON: '出资',
-  SUPERVISOR: '监造',
-  RELATED: '相关',
+  WRITER: "撰文",
+  CALLIGRAPHER: "书丹",
+  ENGRAVER: "刻工",
+  MENTOR: "师生",
+  COLLEAGUE: "同僚",
+  PATRON: "出资",
+  SUPERVISOR: "监造",
+  RELATED: "相关",
 } as const;
 export type RelationType = (typeof RelationType)[keyof typeof RelationType];
 
 /** 日志级别 */
 export const LogLevel = {
-  DEBUG: 'DEBUG',
-  INFO: 'INFO',
-  WARNING: 'WARNING',
-  ERROR: 'ERROR',
+  DEBUG: "DEBUG",
+  INFO: "INFO",
+  WARNING: "WARNING",
+  ERROR: "ERROR",
 } as const;
 export type LogLevel = (typeof LogLevel)[keyof typeof LogLevel];
 
 /** 坐标系类型 */
 export const CoordinateSystem = {
-  WGS84: 'WGS84',
-  GCJ02: 'GCJ02',
-  BD09: 'BD09',
+  WGS84: "WGS84",
+  GCJ02: "GCJ02",
+  BD09: "BD09",
 } as const;
-export type CoordinateSystem = (typeof CoordinateSystem)[keyof typeof CoordinateSystem];
+export type CoordinateSystem =
+  (typeof CoordinateSystem)[keyof typeof CoordinateSystem];

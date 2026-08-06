@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from 'lucide-react';
-import type { ImageAsset } from '@moya/contracts';
+import { useState, useCallback } from "react";
+import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from "lucide-react";
+import type { ImageAsset } from "@moya/contracts";
 
 interface ImageGalleryProps {
   images: ImageAsset[];
@@ -11,10 +11,13 @@ export function ImageGallery({ images }: ImageGalleryProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [scale, setScale] = useState(1);
 
-  const goTo = useCallback((index: number) => {
-    setCurrentIndex((index + images.length) % images.length);
-    setScale(1);
-  }, [images.length]);
+  const goTo = useCallback(
+    (index: number) => {
+      setCurrentIndex((index + images.length) % images.length);
+      setScale(1);
+    },
+    [images.length],
+  );
 
   if (!images.length) {
     return (
@@ -33,7 +36,7 @@ export function ImageGallery({ images }: ImageGalleryProps) {
         <div className="aspect-[16/9] bg-rice-200 rounded-xl overflow-hidden relative group">
           <img
             src={current.displayKey}
-            alt={current.caption || ''}
+            alt={current.caption || ""}
             className="w-full h-full object-cover cursor-zoom-in"
             onClick={() => setLightboxOpen(true)}
           />
@@ -68,7 +71,9 @@ export function ImageGallery({ images }: ImageGalleryProps) {
 
         {/* 标题 */}
         {current.caption && (
-          <p className="mt-2 text-sm text-ink-400 text-center">{current.caption}</p>
+          <p className="mt-2 text-sm text-ink-400 text-center">
+            {current.caption}
+          </p>
         )}
       </div>
 
@@ -80,12 +85,14 @@ export function ImageGallery({ images }: ImageGalleryProps) {
               key={img.id}
               onClick={() => goTo(i)}
               className={`flex-shrink-0 w-16 h-12 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                i === currentIndex ? 'border-vermilion-500 opacity-100' : 'border-transparent opacity-60 hover:opacity-100'
+                i === currentIndex
+                  ? "border-vermilion-500 opacity-100"
+                  : "border-transparent opacity-60 hover:opacity-100"
               }`}
             >
               <img
                 src={img.thumbnailKey}
-                alt={img.caption || ''}
+                alt={img.caption || ""}
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
@@ -96,7 +103,10 @@ export function ImageGallery({ images }: ImageGalleryProps) {
 
       {/* 灯箱模式 */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={() => setLightboxOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+          onClick={() => setLightboxOpen(false)}
+        >
           <button
             onClick={() => setLightboxOpen(false)}
             className="absolute top-4 right-4 text-white/80 hover:text-white cursor-pointer z-10"
@@ -119,7 +129,7 @@ export function ImageGallery({ images }: ImageGalleryProps) {
 
           <img
             src={current.displayKey}
-            alt={current.caption || ''}
+            alt={current.caption || ""}
             className="max-w-[95vw] max-h-[95vh] object-contain transition-transform duration-200"
             style={{ transform: `scale(${scale})` }}
             onClick={(e) => e.stopPropagation()}
@@ -128,14 +138,20 @@ export function ImageGallery({ images }: ImageGalleryProps) {
           {images.length > 1 && (
             <>
               <button
-                onClick={(e) => { e.stopPropagation(); goTo(currentIndex - 1); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goTo(currentIndex - 1);
+                }}
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40
                            rounded-full flex items-center justify-center cursor-pointer"
               >
                 <ChevronLeft size={24} className="text-white" />
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); goTo(currentIndex + 1); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goTo(currentIndex + 1);
+                }}
                 className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/20 hover:bg-white/40
                            rounded-full flex items-center justify-center cursor-pointer"
               >

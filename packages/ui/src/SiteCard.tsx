@@ -1,8 +1,8 @@
 "use client";
 
-import type { SiteSummary } from '@moya/contracts';
-import Link from 'next/link';
-import { MapPin, Clock, Tag } from 'lucide-react';
+import type { SiteSummary } from "@moya/contracts";
+import Link from "next/link";
+import { MapPin, Clock, Tag } from "lucide-react";
 
 interface SiteCardProps {
   site: SiteSummary;
@@ -44,7 +44,8 @@ export function SiteCard({ site }: SiteCardProps) {
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-ink-400">
           <span className="flex items-center gap-1">
             <MapPin size={12} />
-            {site.region.province}{site.region.city}
+            {site.region.province}
+            {site.region.city}
           </span>
           <span className="flex items-center gap-1">
             <Clock size={12} />

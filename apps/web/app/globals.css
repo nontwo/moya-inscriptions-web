@@ -4,40 +4,41 @@
 
 @theme {
   /* 宣纸色系 */
-  --color-rice-50: #FDFBF7;
-  --color-rice-100: #F5F0E8;
-  --color-rice-200: #EDE4D3;
-  --color-rice-300: #D9CCB2;
-  --color-rice-400: #C4B391;
+  --color-rice-50: #fdfbf7;
+  --color-rice-100: #f5f0e8;
+  --color-rice-200: #ede4d3;
+  --color-rice-300: #d9ccb2;
+  --color-rice-400: #c4b391;
 
   /* 朱砂红 */
-  --color-vermilion-50: #FFF5F5;
-  --color-vermilion-100: #FEE2E5;
-  --color-vermilion-200: #FCA5B0;
-  --color-vermilion-300: #F8717D;
-  --color-vermilion-400: #E8485E;
-  --color-vermilion-500: #C41E3A;
-  --color-vermilion-600: #9B1628;
-  --color-vermilion-700: #7A0F1E;
+  --color-vermilion-50: #fff5f5;
+  --color-vermilion-100: #fee2e5;
+  --color-vermilion-200: #fca5b0;
+  --color-vermilion-300: #f8717d;
+  --color-vermilion-400: #e8485e;
+  --color-vermilion-500: #c41e3a;
+  --color-vermilion-600: #9b1628;
+  --color-vermilion-700: #7a0f1e;
 
   /* 墨色 */
-  --color-ink-50: #F5F5F5;
-  --color-ink-100: #E8E8E8;
-  --color-ink-200: #D1D1D1;
-  --color-ink-300: #B0B0B0;
-  --color-ink-400: #8C8C8C;
-  --color-ink-500: #5C5C5C;
-  --color-ink-600: #2C2C2C;
-  --color-ink-700: #1A1A1A;
+  --color-ink-50: #f5f5f5;
+  --color-ink-100: #e8e8e8;
+  --color-ink-200: #d1d1d1;
+  --color-ink-300: #b0b0b0;
+  --color-ink-400: #8c8c8c;
+  --color-ink-500: #5c5c5c;
+  --color-ink-600: #2c2c2c;
+  --color-ink-700: #1a1a1a;
 
   /* 金色 */
-  --color-gold-300: #D4A574;
-  --color-gold-400: #C4955A;
-  --color-gold-500: #B8860B;
+  --color-gold-300: #d4a574;
+  --color-gold-400: #c4955a;
+  --color-gold-500: #b8860b;
 
   /* 字体 */
-  --font-family-serif: 'Noto Serif CJK SC', 'STSong', 'SimSun', serif;
-  --font-family-sans: 'PingFang SC', 'Microsoft YaHei', 'system-ui', 'sans-serif';
+  --font-family-serif: "Noto Serif CJK SC", "STSong", "SimSun", serif;
+  --font-family-sans:
+    "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif";
 
   /* 断点 */
   --breakpoint-xs: 360px;
@@ -55,28 +56,53 @@
 }
 
 @keyframes pulseSoft {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.8; transform: scale(1.05); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes floatUp {
-  0% { opacity: 0; transform: translateY(20px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideInRight {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(0); }
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 
 @keyframes slideInUp {
-  0% { transform: translateY(100%); }
-  100% { transform: translateY(0); }
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 
 @keyframes fadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* ---- Base ---- */
@@ -122,20 +148,32 @@
 /* ---- Components ---- */
 @layer components {
   .paper-texture {
-    background-image: 
-      radial-gradient(ellipse at 20% 50%, rgba(197, 165, 114, 0.03) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 20%, rgba(180, 150, 120, 0.02) 0%, transparent 50%);
+    background-image:
+      radial-gradient(
+        ellipse at 20% 50%,
+        rgba(197, 165, 114, 0.03) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        rgba(180, 150, 120, 0.02) 0%,
+        transparent 50%
+      );
   }
 
   .card-stone {
     background: white;
     border-radius: 0.5rem;
-    box-shadow: 0 2px 12px rgba(44, 44, 44, 0.06), 0 1px 3px rgba(44, 44, 44, 0.04);
+    box-shadow:
+      0 2px 12px rgba(44, 44, 44, 0.06),
+      0 1px 3px rgba(44, 44, 44, 0.04);
     transition: all 0.3s ease;
   }
 
   .card-stone:hover {
-    box-shadow: 0 6px 24px rgba(44, 44, 44, 0.1), 0 2px 6px rgba(44, 44, 44, 0.06);
+    box-shadow:
+      0 6px 24px rgba(44, 44, 44, 0.1),
+      0 2px 6px rgba(44, 44, 44, 0.06);
   }
 
   .btn-vermilion {
@@ -186,7 +224,12 @@
 
   .divider-ink {
     height: 1px;
-    background: linear-gradient(to right, transparent, var(--color-rice-300), transparent);
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-rice-300),
+      transparent
+    );
     margin: 2rem 0;
   }
 

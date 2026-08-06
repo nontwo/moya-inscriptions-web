@@ -47,7 +47,11 @@ export function generateImageKey(
 /**
  * 生成占位图片 URL（开发期使用）
  */
-export function placeholderImage(text: string, width = 800, height = 600): string {
+export function placeholderImage(
+  text: string,
+  width = 800,
+  height = 600,
+): string {
   return `https://placehold.co/${width}x${height}/F5F0E8/2C2C2C?text=${encodeURIComponent(text)}`;
 }
 
@@ -55,12 +59,15 @@ export function placeholderImage(text: string, width = 800, height = 600): strin
  * 从 CDN key 推导完整 URL
  * 阶段 0：直接拼接；后续阶段：签名 URL / 图片处理管线
  */
-export function resolveImageUrl(key: string, options?: {
-  width?: number;
-  height?: number;
-  quality?: number;
-  format?: "webp" | "avif" | "jpeg";
-}): string {
+export function resolveImageUrl(
+  key: string,
+  options?: {
+    width?: number;
+    height?: number;
+    quality?: number;
+    format?: "webp" | "avif" | "jpeg";
+  },
+): string {
   const base = getDisplayUrl(key);
   if (!options) return base;
 

@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, X, Search } from 'lucide-react';
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Menu, X, Search } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: '首页', path: '/' },
-  { label: '分类浏览', path: '/browse' },
-  { label: '地区浏览', path: '/regions' },
-  { label: '关于', path: '/about' },
+  { label: "首页", path: "/" },
+  { label: "分类浏览", path: "/browse" },
+  { label: "地区浏览", path: "/regions" },
+  { label: "关于", path: "/about" },
 ];
 
 export function Header() {
@@ -37,8 +37,8 @@ export function Header() {
               href={item.path}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                 pathname === item.path
-                  ? 'bg-vermilion-50 text-vermilion-500'
-                  : 'text-ink-500 hover:bg-rice-200 hover:text-ink-700'
+                  ? "bg-vermilion-50 text-vermilion-500"
+                  : "text-ink-500 hover:bg-rice-200 hover:text-ink-700"
               }`}
             >
               {item.label}
@@ -57,7 +57,7 @@ export function Header() {
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="md:hidden p-2 text-ink-500 hover:text-ink-700 cursor-pointer"
-          aria-label={mobileOpen ? '关闭菜单' : '打开菜单'}
+          aria-label={mobileOpen ? "关闭菜单" : "打开菜单"}
         >
           {mobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -74,8 +74,8 @@ export function Header() {
                 onClick={() => setMobileOpen(false)}
                 className={`block px-4 py-3 rounded-lg text-base font-medium ${
                   pathname === item.path
-                    ? 'bg-vermilion-50 text-vermilion-500'
-                    : 'text-ink-500 hover:bg-rice-200'
+                    ? "bg-vermilion-50 text-vermilion-500"
+                    : "text-ink-500 hover:bg-rice-200"
                 }`}
               >
                 {item.label}

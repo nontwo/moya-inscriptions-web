@@ -3,12 +3,12 @@
 // 保留30天，使用 requestIdleCallback 异步写入
 // ============================================================
 
-import { openDB, type IDBPDatabase } from 'idb';
-import type { LogEntry } from '@moya/contracts';
-import { logCollector } from './LogCollector';
+import { openDB, type IDBPDatabase } from "idb";
+import type { LogEntry } from "@moya/contracts";
+import { logCollector } from "./LogCollector";
 
-const DB_NAME = 'moya_logs';
-const STORE_NAME = 'log_entries';
+const DB_NAME = "moya_logs";
+const STORE_NAME = "log_entries";
 const RETENTION_DAYS = 30;
 const DB_VERSION = 1;
 
@@ -18,9 +18,9 @@ function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('timestamp', 'timestamp');
-        store.createIndex('level', 'level');
+        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        store.createIndex("timestamp", "timestamp");
+        store.createIndex("level", "level");
       },
     });
   }
@@ -34,16 +34,20 @@ export async function persistLog(entry: LogEntry): Promise<void> {
     await db.put(STORE_NAME, entry);
   };
 
-  if (typeof requestIdleCallback !== 'undefined') {
+  if (typeof requestIdleCallback !== "undefined") {
     return new Promise<void>((resolve, reject) => {
       requestIdleCallback(
-        () => { writeToDB().then(resolve).catch(reject); },
-        { timeout: 2000 }
+        () => {
+          writeToDB().then(resolve).catch(reject);
+        },
+        { timeout: 2000 },
       );
     });
   } else {
     return new Promise<void>((resolve, reject) => {
-      setTimeout(() => { writeToDB().then(resolve).catch(reject); }, 0);
+      setTimeout(() => {
+        writeToDB().then(resolve).catch(reject);
+      }, 0);
     });
   }
 }
@@ -52,8 +56,8 @@ export async function persistLog(entry: LogEntry): Promise<void> {
 export async function cleanOldLogs(): Promise<void> {
   const db = await getDB();
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const index = tx.store.index('timestamp');
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const index = tx.store.index("timestamp");
   let cursor = await index.openCursor(IDBKeyRange.upperBound(cutoff));
   while (cursor) {
     cursor.delete();

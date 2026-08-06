@@ -14,7 +14,7 @@ import type {
   RelationType,
   LogLevel,
   CoordinateSystem,
-} from './enums';
+} from "./enums";
 
 // ============================================================
 // 地区
@@ -57,7 +57,7 @@ export interface GeoLocation {
   latitude: number;
   longitude: number;
   coordinateSystem: CoordinateSystem;
-  precision: 'exact' | 'approximate' | 'area';
+  precision: "exact" | "approximate" | "area";
   altitude?: number;
   address: string;
 }
@@ -230,10 +230,10 @@ export interface CalligraphyWorkDetail extends CalligraphyWorkSummary {
 
 export interface Relation {
   id: string;
-  fromType: 'calligrapher' | 'site' | 'work';
+  fromType: "calligrapher" | "site" | "work";
   fromId: string;
   fromName: string;
-  toType: 'calligrapher' | 'site' | 'work';
+  toType: "calligrapher" | "site" | "work";
   toId: string;
   toName: string;
   relationType: RelationType;
@@ -251,7 +251,7 @@ export interface GraphData {
 export interface GraphNode {
   id: string;
   label: string;
-  type: 'site' | 'calligrapher' | 'work';
+  type: "site" | "calligrapher" | "work";
   dynasty?: Dynasty;
   imageUrl?: string;
   group: string;
@@ -308,7 +308,7 @@ export interface SearchQuery {
   tags?: string[];
   page: number;
   pageSize: number;
-  sortBy?: 'title' | 'dynasty' | 'createdAt' | 'relevance';
+  sortBy?: "title" | "dynasty" | "createdAt" | "relevance";
 }
 
 export interface SearchResult {
@@ -322,7 +322,7 @@ export interface SearchResult {
 
 export interface SearchSuggestion {
   text: string;
-  type: 'correction' | 'suggestion' | 'pinyin' | 'related';
+  type: "correction" | "suggestion" | "pinyin" | "related";
 }
 
 // ============================================================
@@ -379,8 +379,21 @@ export interface ArchiveRepository {
   searchSites(query: SearchQuery): Promise<SearchResult>;
   getCalligrapher(id: string): Promise<CalligrapherDetail | null>;
   getCalligraphers(dynasty?: Dynasty): Promise<CalligrapherSummary[]>;
-  getRelations(entityId: string, entityType: 'calligrapher' | 'site' | 'work'): Promise<Relation[]>;
+  getRelations(
+    entityId: string,
+    entityType: "calligrapher" | "site" | "work",
+  ): Promise<Relation[]>;
   getGraphData(entityId?: string): Promise<GraphData>;
-  exportSites(format: 'csv' | 'json', query?: Partial<SearchQuery>): Promise<string>;
-  getDynastyTimeline(): Promise<{ dynasty: Dynasty; yearStart: number; yearEnd: number; siteCount: number }[]>;
+  exportSites(
+    format: "csv" | "json",
+    query?: Partial<SearchQuery>,
+  ): Promise<string>;
+  getDynastyTimeline(): Promise<
+    {
+      dynasty: Dynasty;
+      yearStart: number;
+      yearEnd: number;
+      siteCount: number;
+    }[]
+  >;
 }

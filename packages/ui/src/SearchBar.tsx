@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { useState } from "react";
+import { Search, X } from "lucide-react";
 
 interface SearchBarProps {
   value: string;
@@ -9,7 +9,13 @@ interface SearchBarProps {
   className?: string;
 }
 
-export function SearchBar({ value, onChange, onSubmit, placeholder, className = '' }: SearchBarProps) {
+export function SearchBar({
+  value,
+  onChange,
+  onSubmit,
+  placeholder,
+  className = "",
+}: SearchBarProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (value.trim()) onSubmit(value.trim());
@@ -26,7 +32,7 @@ export function SearchBar({ value, onChange, onSubmit, placeholder, className = 
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder || '搜索碑刻名称、地区、朝代...（支持拼音）'}
+          placeholder={placeholder || "搜索碑刻名称、地区、朝代...（支持拼音）"}
           className="w-full pl-12 pr-12 py-3.5 bg-white border-2 border-rice-300 rounded-xl
                      text-ink-600 placeholder:text-ink-300
                      focus:border-vermilion-500 focus:ring-4 focus:ring-vermilion-100
@@ -35,7 +41,7 @@ export function SearchBar({ value, onChange, onSubmit, placeholder, className = 
         {value && (
           <button
             type="button"
-            onClick={() => onChange('')}
+            onClick={() => onChange("")}
             className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-500 cursor-pointer"
           >
             <X size={18} />

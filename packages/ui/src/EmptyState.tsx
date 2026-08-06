@@ -1,4 +1,4 @@
-import { FileSearch } from 'lucide-react';
+import { FileSearch } from "lucide-react";
 
 interface EmptyStateProps {
   title?: string;
@@ -6,7 +6,11 @@ interface EmptyStateProps {
   action?: React.ReactNode;
 }
 
-export function EmptyState({ title = '暂无数据', description, action }: EmptyStateProps) {
+export function EmptyState({
+  title = "暂无数据",
+  description,
+  action,
+}: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
       <div className="w-20 h-20 bg-rice-200 rounded-full flex items-center justify-center mb-6">

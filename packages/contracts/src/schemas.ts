@@ -3,26 +3,89 @@
 // 用于数据导入、API 响应、Mock 数据验证
 // ============================================================
 
-import { z } from 'zod';
+import { z } from "zod";
 
 // 基础枚举 Schema
-export const publicationStatusSchema = z.enum(['draft', 'review', 'published', 'archived']);
-export const dynastySchema = z.enum(['商', '周', '秦', '汉', '三国', '晋', '南北朝', '隋', '唐', '五代', '宋', '辽', '金', '元', '明', '清', '民国', '现代']);
-export const categorySchema = z.enum(['摩崖题记', '碑碣', '造像题记', '墓志铭', '题名题记', '刻经', '其他']);
-export const scriptTypeSchema = z.enum(['篆书', '隶书', '楷书', '行书', '草书', '混合书体', '其他']);
-export const regionLevelSchema = z.enum(['province', 'city', 'county']);
-export const imageRoleSchema = z.enum(['cover', 'overview', 'context', 'detail', 'inscription_detail', 'reference']);
-export const referenceTypeSchema = z.enum(['论文', '图录', '地方志', '网页', '专著', '其他']);
-export const relationTypeSchema = z.enum(['撰文', '书丹', '刻工', '师生', '同僚', '出资', '监造', '相关']);
-export const coordinateSystemSchema = z.enum(['WGS84', 'GCJ02', 'BD09']);
-export const logLevelSchema = z.enum(['DEBUG', 'INFO', 'WARNING', 'ERROR']);
+export const publicationStatusSchema = z.enum([
+  "draft",
+  "review",
+  "published",
+  "archived",
+]);
+export const dynastySchema = z.enum([
+  "商",
+  "周",
+  "秦",
+  "汉",
+  "三国",
+  "晋",
+  "南北朝",
+  "隋",
+  "唐",
+  "五代",
+  "宋",
+  "辽",
+  "金",
+  "元",
+  "明",
+  "清",
+  "民国",
+  "现代",
+]);
+export const categorySchema = z.enum([
+  "摩崖题记",
+  "碑碣",
+  "造像题记",
+  "墓志铭",
+  "题名题记",
+  "刻经",
+  "其他",
+]);
+export const scriptTypeSchema = z.enum([
+  "篆书",
+  "隶书",
+  "楷书",
+  "行书",
+  "草书",
+  "混合书体",
+  "其他",
+]);
+export const regionLevelSchema = z.enum(["province", "city", "county"]);
+export const imageRoleSchema = z.enum([
+  "cover",
+  "overview",
+  "context",
+  "detail",
+  "inscription_detail",
+  "reference",
+]);
+export const referenceTypeSchema = z.enum([
+  "论文",
+  "图录",
+  "地方志",
+  "网页",
+  "专著",
+  "其他",
+]);
+export const relationTypeSchema = z.enum([
+  "撰文",
+  "书丹",
+  "刻工",
+  "师生",
+  "同僚",
+  "出资",
+  "监造",
+  "相关",
+]);
+export const coordinateSystemSchema = z.enum(["WGS84", "GCJ02", "BD09"]);
+export const logLevelSchema = z.enum(["DEBUG", "INFO", "WARNING", "ERROR"]);
 
 // 地理坐标
 export const geoLocationSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   coordinateSystem: coordinateSystemSchema,
-  precision: z.enum(['exact', 'approximate', 'area']),
+  precision: z.enum(["exact", "approximate", "area"]),
   altitude: z.number().optional(),
   address: z.string().min(1),
 });
@@ -67,17 +130,19 @@ export const imageAssetSchema = z.object({
   height: z.number().int().positive(),
   fileSize: z.number().int().positive(),
   format: z.string(),
-  exifData: z.object({
-    camera: z.string().optional(),
-    lens: z.string().optional(),
-    focalLength: z.string().optional(),
-    aperture: z.string().optional(),
-    shutterSpeed: z.string().optional(),
-    iso: z.number().optional(),
-    dateTaken: z.string().optional(),
-    gpsLatitude: z.number().optional(),
-    gpsLongitude: z.number().optional(),
-  }).optional(),
+  exifData: z
+    .object({
+      camera: z.string().optional(),
+      lens: z.string().optional(),
+      focalLength: z.string().optional(),
+      aperture: z.string().optional(),
+      shutterSpeed: z.string().optional(),
+      iso: z.number().optional(),
+      dateTaken: z.string().optional(),
+      gpsLatitude: z.number().optional(),
+      gpsLongitude: z.number().optional(),
+    })
+    .optional(),
   annotations: z.array(imageAnnotationSchema),
   publicationStatus: publicationStatusSchema,
   sha256: z.string().length(64),
@@ -151,16 +216,18 @@ export const siteDetailSchema = siteSummarySchema.extend({
   references: z.array(referenceSchema),
   relatedSites: z.array(siteSummarySchema),
   calligraphers: z.array(calligrapherSummarySchema),
-  calligraphyWorks: z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    scriptType: scriptTypeSchema,
-    style: z.string(),
-    dynasty: dynastySchema,
-    calligrapherName: z.string(),
-    currentLocation: z.string(),
-    siteId: z.string().optional(),
-  })),
+  calligraphyWorks: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      scriptType: scriptTypeSchema,
+      style: z.string(),
+      dynasty: dynastySchema,
+      calligrapherName: z.string(),
+      currentLocation: z.string(),
+      siteId: z.string().optional(),
+    }),
+  ),
   seoTitle: z.string(),
   seoDescription: z.string(),
   createdAt: z.string(),
@@ -180,7 +247,7 @@ export const searchQuerySchema = z.object({
   tags: z.array(z.string()).optional(),
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(100).default(20),
-  sortBy: z.enum(['title', 'dynasty', 'createdAt', 'relevance']).optional(),
+  sortBy: z.enum(["title", "dynasty", "createdAt", "relevance"]).optional(),
 });
 
 // 日志条目

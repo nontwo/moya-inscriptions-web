@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { SearchBar, SiteCard, EmptyState } from '@moya/ui';
-import { mockRepository } from '@moya/data-access';
-import type { SiteSummary } from '@moya/contracts';
-import AppLayout from '@/app/AppLayout';
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { SearchBar, SiteCard, EmptyState } from "@moya/ui";
+import { mockRepository } from "@moya/data-access";
+import type { SiteSummary } from "@moya/contracts";
+import AppLayout from "@/app/AppLayout";
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -13,12 +13,20 @@ function SearchContent() {
   const [results, setResults] = useState<SiteSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const query = searchParams.get('q') || '';
+  const query = searchParams.get("q") || "";
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); setTotal(0); return; }
+    if (!q.trim()) {
+      setResults([]);
+      setTotal(0);
+      return;
+    }
     setLoading(true);
-    const result = await mockRepository.searchSites({ keyword: q, page: 1, pageSize: 50 });
+    const result = await mockRepository.searchSites({
+      keyword: q,
+      page: 1,
+      pageSize: 50,
+    });
     setResults(result.results);
     setTotal(result.total);
     setLoading(false);
@@ -29,7 +37,7 @@ function SearchContent() {
   }, [query, doSearch]);
 
   const handleSearch = (q: string) => {
-    router.push(q ? `/search?q=${encodeURIComponent(q)}` : '/search');
+    router.push(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
   };
 
   return (
@@ -38,7 +46,9 @@ function SearchContent() {
         <div className="mb-8">
           <SearchBar
             value={query}
-            onChange={(v) => { if (!v) router.push('/search'); }}
+            onChange={(v) => {
+              if (!v) router.push("/search");
+            }}
             onSubmit={handleSearch}
           />
         </div>
@@ -46,8 +56,9 @@ function SearchContent() {
         {query && (
           <div className="mb-6">
             <p className="text-sm text-ink-400">
-              搜索 &quot;<span className="text-ink-600 font-medium">{query}</span>&quot;
-              {loading ? '...' : ` — 共找到 ${total} 个结果`}
+              搜索 &quot;
+              <span className="text-ink-600 font-medium">{query}</span>&quot;
+              {loading ? "..." : ` — 共找到 ${total} 个结果`}
             </p>
           </div>
         )}
@@ -83,7 +94,13 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="max-w-4xl mx-auto px-4 py-8"><div className="animate-pulse h-64 bg-rice-200 rounded" /></div>}>
+    <Suspense
+      fallback={
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="animate-pulse h-64 bg-rice-200 rounded" />
+        </div>
+      }
+    >
       <SearchContent />
     </Suspense>
   );
