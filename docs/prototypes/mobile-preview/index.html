@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>由艺移动预览</title>
+    <title>由艺交互预览</title>
     <script>
       try {
         const theme = localStorage.getItem("yoyi.theme-preference");
@@ -669,6 +669,9 @@
           data-bottom-navigation
           aria-label="主导航"
         >
+          <div class="app-nav-brand" aria-hidden="true">
+            <span class="yoyi-logo"></span>
+          </div>
           <button
             class="yoyi-navigation-entry is-active"
             data-primary-view="home"

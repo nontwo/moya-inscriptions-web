@@ -68,9 +68,17 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-feed-panel="nearby"]')?.hidden,
     ).toBe(true);
     expect(document.querySelector(".preview-hero")).toBeNull();
-    expect(document.querySelectorAll(".yoyi-logo")).toHaveLength(1);
+    expect(document.querySelectorAll(".yoyi-logo")).toHaveLength(2);
     expect(
-      document.querySelector(".yoyi-logo")?.closest("[data-loading-screen]"),
+      document.querySelector("[data-loading-screen] .yoyi-logo"),
+    ).toBeTruthy();
+    expect(
+      document.querySelector("[data-bottom-navigation] .yoyi-logo"),
+    ).toBeTruthy();
+    expect(
+      document
+        .querySelector("[data-bottom-navigation] .yoyi-logo")
+        ?.closest(".app-nav-brand"),
     ).toBeTruthy();
     expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(3);
     expect(
@@ -262,5 +270,22 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
     ).toBe(false);
     expect(homeScroll.scrollTop).toBe(120);
+  });
+
+  it("declares tablet and desktop responsive layout rules without new features", () => {
+    expect(previewCss).toContain("@media (min-width: 48rem)");
+    expect(previewCss).toContain("@media (min-width: 56rem)");
+    expect(previewCss).toContain("@media (min-width: 64rem)");
+    expect(previewCss).toContain("@media (min-width: 90rem)");
+    expect(previewCss).toContain("orientation: landscape");
+    expect(previewCss).toContain("var(--yoyi-container-content)");
+    expect(previewCss).toContain("var(--yoyi-container-reading)");
+    expect(previewCss).toContain(".app-nav-brand");
+    expect(html).toContain('data-primary-view="home"');
+    expect(html).toContain('data-primary-view="inscriptions"');
+    expect(html).toContain('data-primary-view="calligraphy"');
+    expect(html).toContain("yoyi.theme-preference");
+    expect(html).toContain("yoyi.home-feed-layout");
+    expect(html).not.toMatch(/关注|收藏|评论|登录|账号|地图/);
   });
 });

@@ -1254,6 +1254,47 @@
     width: 112px;
     height: 84px;
   }
+
+  .yoyi-mobile-bottom-navigation {
+    padding-inline: var(--yoyi-space-6);
+  }
+
+  .yoyi-search-header {
+    padding-block: var(--yoyi-space-6);
+  }
+
+  .yoyi-content-section {
+    padding-block: var(--yoyi-space-8);
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 55.99875rem) and (orientation: landscape) {
+  .yoyi-mobile-bottom-navigation {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 0;
+    width: calc(88px + env(safe-area-inset-left));
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(72px, auto);
+    align-content: start;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) var(--yoyi-space-2)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+    border-top: 0;
+    border-right: 1px solid var(--yoyi-color-border-subtle);
+    box-shadow: none;
+  }
+
+  .yoyi-mobile-bottom-navigation .yoyi-navigation-entry {
+    min-height: 72px;
+  }
+
+  .yoyi-page-container--with-bottom-navigation {
+    padding-bottom: var(--yoyi-space-7);
+    padding-left: calc(88px + env(safe-area-inset-left));
+  }
 }
 
 @media (min-width: 56rem) {
@@ -1268,16 +1309,50 @@
 
   .yoyi-page-container--with-bottom-navigation {
     padding-bottom: 0;
+    padding-left: 0;
+  }
+
+  .yoyi-desktop-navigation {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+    padding-inline: max(
+      var(--yoyi-space-7),
+      calc((100% - var(--yoyi-container-content)) / 2 + var(--yoyi-space-7))
+    );
+  }
+
+  .yoyi-desktop-navigation__items {
+    justify-content: flex-start;
+    gap: var(--yoyi-space-2);
   }
 
   .yoyi-masonry-grid {
     column-count: 4;
+  }
+
+  .yoyi-inscription-list {
+    margin-inline: auto;
+  }
+
+  .yoyi-search-header {
+    max-width: var(--yoyi-container-reading);
   }
 }
 
 @media (min-width: 90rem) {
   .yoyi-masonry-grid {
     column-count: 5;
+  }
+
+  .yoyi-desktop-brand-header {
+    padding-inline: max(
+      var(--yoyi-space-7),
+      calc((100% - var(--yoyi-container-content)) / 2 + var(--yoyi-space-7))
+    );
   }
 }
 
