@@ -1,0 +1,160 @@
+:root,
+:root[data-theme="light"],
+[data-theme="light"] {
+  color-scheme: light;
+  --yoyi-color-background-page: #f4f0e6;
+  --yoyi-color-background-surface: #f8f5ed;
+  --yoyi-color-background-elevated: #fcfaf5;
+  --yoyi-color-background-muted: #eae4d8;
+  --yoyi-color-background-inverse: #2a2824;
+  --yoyi-color-text-primary: #27241f;
+  --yoyi-color-text-secondary: #5f5a51;
+  --yoyi-color-text-tertiary: #716a5f;
+  --yoyi-color-text-disabled: #9b9488;
+  --yoyi-color-text-inverse: #f1ece2;
+  --yoyi-color-border-default: #c9c0b2;
+  --yoyi-color-border-subtle: #ded7ca;
+  --yoyi-color-border-strong: #9f9586;
+  --yoyi-color-ink-black: #27241f;
+  --yoyi-color-ink-gray: #696258;
+  --yoyi-color-paper-light: #f4f0e6;
+  --yoyi-color-paper-dark: #24231f;
+  --yoyi-color-seal-red: #b34a32;
+  --yoyi-color-seal-red-hover: #9e3e2a;
+  --yoyi-color-seal-red-pressed: #843322;
+  --yoyi-color-seal-red-muted: #e8d5cc;
+  --yoyi-color-focus-ring: #8a4935;
+  --yoyi-color-success: #426c55;
+  --yoyi-color-warning: #8a641f;
+  --yoyi-color-error: #9c4138;
+  --yoyi-color-info: #456c79;
+  --yoyi-color-overlay: rgba(31, 29, 25, 0.46);
+  --yoyi-shadow-subtle: 0 2px 12px rgba(53, 45, 34, 0.08);
+  --yoyi-shadow-dialog: 0 18px 48px rgba(53, 45, 34, 0.22);
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  color-scheme: dark;
+  --yoyi-color-background-page: #24231f;
+  --yoyi-color-background-surface: #2b2925;
+  --yoyi-color-background-elevated: #34312c;
+  --yoyi-color-background-muted: #38352f;
+  --yoyi-color-background-inverse: #f2eee5;
+  --yoyi-color-text-primary: #e7e1d6;
+  --yoyi-color-text-secondary: #bbb3a7;
+  --yoyi-color-text-tertiary: #91897d;
+  --yoyi-color-text-disabled: #6e6860;
+  --yoyi-color-text-inverse: #28241f;
+  --yoyi-color-border-default: #5a544c;
+  --yoyi-color-border-subtle: #403c36;
+  --yoyi-color-border-strong: #756d62;
+  --yoyi-color-ink-black: #27241f;
+  --yoyi-color-ink-gray: #a69e92;
+  --yoyi-color-paper-light: #f4f0e6;
+  --yoyi-color-paper-dark: #24231f;
+  --yoyi-color-seal-red: #ce6f54;
+  --yoyi-color-seal-red-hover: #d97d62;
+  --yoyi-color-seal-red-pressed: #b75c45;
+  --yoyi-color-seal-red-muted: #5a3a31;
+  --yoyi-color-focus-ring: #e08b70;
+  --yoyi-color-success: #75a687;
+  --yoyi-color-warning: #c69b52;
+  --yoyi-color-error: #d47769;
+  --yoyi-color-info: #7ba4b4;
+  --yoyi-color-overlay: rgba(10, 10, 9, 0.64);
+  --yoyi-shadow-subtle: 0 2px 16px rgba(0, 0, 0, 0.24);
+  --yoyi-shadow-dialog: 0 18px 56px rgba(0, 0, 0, 0.42);
+}
+
+:root {
+  --yoyi-font-interface:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --yoyi-duration-instant: 80ms;
+  --yoyi-duration-fast: 140ms;
+  --yoyi-duration-normal: 200ms;
+  --yoyi-duration-slow: 280ms;
+  --yoyi-duration-loading-logo: 720ms;
+  --yoyi-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --yoyi-easing-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --yoyi-easing-exit: cubic-bezier(0.4, 0, 1, 1);
+  --yoyi-space-0: 0;
+  --yoyi-space-1: 2px;
+  --yoyi-space-2: 4px;
+  --yoyi-space-3: 8px;
+  --yoyi-space-4: 12px;
+  --yoyi-space-5: 16px;
+  --yoyi-space-6: 20px;
+  --yoyi-space-7: 24px;
+  --yoyi-space-8: 32px;
+  --yoyi-space-9: 40px;
+  --yoyi-space-10: 48px;
+  --yoyi-space-11: 64px;
+  --yoyi-space-12: 80px;
+  --yoyi-radius-none: 0;
+  --yoyi-radius-xs: 2px;
+  --yoyi-radius-sm: 4px;
+  --yoyi-radius-md: 8px;
+  --yoyi-radius-lg: 12px;
+  --yoyi-radius-full: 999px;
+  --yoyi-container-content: 1200px;
+  --yoyi-container-reading: 760px;
+  --yoyi-type-display-size: 36px;
+  --yoyi-type-page-title-size: 28px;
+  --yoyi-type-section-title-size: 22px;
+  --yoyi-type-card-title-size: 16px;
+  --yoyi-type-list-title-size: 16px;
+  --yoyi-type-body-size: 16px;
+  --yoyi-type-body-small-size: 14px;
+  --yoyi-type-caption-size: 12px;
+  --yoyi-type-metadata-size: 12px;
+  --yoyi-type-label-size: 13px;
+  --yoyi-type-button-size: 15px;
+  --yoyi-type-navigation-size: 13px;
+  --yoyi-type-input-size: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --yoyi-color-background-page: #24231f;
+    --yoyi-color-background-surface: #2b2925;
+    --yoyi-color-background-elevated: #34312c;
+    --yoyi-color-background-muted: #38352f;
+    --yoyi-color-background-inverse: #f2eee5;
+    --yoyi-color-text-primary: #e7e1d6;
+    --yoyi-color-text-secondary: #bbb3a7;
+    --yoyi-color-text-tertiary: #91897d;
+    --yoyi-color-text-disabled: #6e6860;
+    --yoyi-color-text-inverse: #28241f;
+    --yoyi-color-border-default: #5a544c;
+    --yoyi-color-border-subtle: #403c36;
+    --yoyi-color-border-strong: #756d62;
+    --yoyi-color-ink-gray: #a69e92;
+    --yoyi-color-seal-red: #ce6f54;
+    --yoyi-color-seal-red-hover: #d97d62;
+    --yoyi-color-seal-red-pressed: #b75c45;
+    --yoyi-color-seal-red-muted: #5a3a31;
+    --yoyi-color-focus-ring: #e08b70;
+    --yoyi-color-success: #75a687;
+    --yoyi-color-warning: #c69b52;
+    --yoyi-color-error: #d47769;
+    --yoyi-color-info: #7ba4b4;
+    --yoyi-color-overlay: rgba(10, 10, 9, 0.64);
+    --yoyi-shadow-subtle: 0 2px 16px rgba(0, 0, 0, 0.24);
+    --yoyi-shadow-dialog: 0 18px 56px rgba(0, 0, 0, 0.42);
+  }
+}
+
+@media (min-width: 56rem) {
+  :root {
+    --yoyi-type-display-size: 52px;
+    --yoyi-type-page-title-size: 36px;
+    --yoyi-type-section-title-size: 26px;
+    --yoyi-type-card-title-size: 18px;
+    --yoyi-type-list-title-size: 17px;
+    --yoyi-type-metadata-size: 13px;
+    --yoyi-type-navigation-size: 14px;
+  }
+}

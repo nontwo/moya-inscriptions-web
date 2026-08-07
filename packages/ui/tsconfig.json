@@ -3,10 +3,12 @@
   "compilerOptions": {
     "declaration": true,
     "declarationMap": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": false,
     "outDir": "dist",
     "rootDir": "src",
     "sourceMap": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
