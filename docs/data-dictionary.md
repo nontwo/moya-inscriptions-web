@@ -14,8 +14,10 @@
 | `needsReview`                   | 是否需核对原文          | boolean  | 是   | 无法可靠识别时为 true             | `false`            |
 | `reviewNotes`                   | 原文复核说明            | string[] | 否   | 只记录源表识别问题                | `[]`               |
 
-`sourceId` 是当前稳定标识。同名或相似名称不代表重复；标准化数据必须通过
-`rawSource` 保留对完整源记录的追溯。
+`sourceId` 是稳定的来源记录标识。同名或相似名称不代表重复；标准化数据必须通过
+`rawSource` 保留对完整源记录的追溯。它不是未来平台实体的 `SiteId`。第一批
+`first-batch-NNNN` 必须永久保持为
+`SourceId`，平台实体与来源记录未来通过显式关系映射，不能依赖两个字符串相等。
 
 ## 2. 市县候选数据 `RegionEnrichment`
 
@@ -70,6 +72,12 @@
 | `createdAt` / `updatedAt`    | string              | 否   | 由持久化层未来生成，当前省略              |
 | `rawSource`                  | `SourceCatalogRow`  | 是   | 完整源行，不得覆盖                        |
 
+当前五条 T01 映射样例的 `HeritageRecord.id` 使用 `sourceId`
+是现有样例事实，不代表平台已经为 1658 条记录分配
+`SiteId`。T04.0 不改写这些样例、不生成 `SiteId`，也不建立 source-to-site
+mapping。`HeritageRecord` 属于内部 normalized/domain 模型，不得直接作为公共 API
+response。
+
 ## 4. 公共展示与 API 契约
 
 - `Region` 和 `HistoricalPeriod` 的规范化 ID、行政代码与起止年份均为可选字段。
@@ -79,12 +87,28 @@
   的坐标、尺寸、作者、保存状况和说明均可选；图片、参考文献和关联记录为空数组时有效。
 - `ImageAsset` 必须使用
   `objectKey`；缩略图、展示图和原图也使用对象键，不保存生产域名或 CDN URL。
-- `SiteSearchQuery` 的市县、类别和关键字均为可选过滤条件。
+- 当前 T01 `SiteSearchQuery` 的市县、类别和关键字均为可选过滤条件；T04.0 public
+  query 将按下述安全边界收窄。
 - `PaginationQuery`、`PaginatedResponse<T>`、`ApiSuccess<T>` 和 `ApiError`
   不包含数据库或云服务实现。
+
+T04.0 的 v1 public list/search contract 只冻结 province-level
+filtering，不公开 city/county
+filter。city/county、prefecture/county-level、行政区 code/type/version 和新的 verification 模型由 D01 完成 Region
+Contract Handoff 后再接入。
 
 ## 5. 数据边界
 
 当前 PDF 没有经纬度、详细地址、书体、作者、类别、图片、释文或说明。候选市县只能用于审核队列；在
 `verificationStatus=verified`、存在逐条 `evidenceUrls` 且设置了
 `selectedCandidateIndex` 之前，不得进入规范化应用字段。
+
+Region normalization、candidate/evidence verification 和冲突解决属于 D01
+ownership。T04.0 只保持现有地区结构和数据事实兼容，不把当前 0 verified、0
+selected 或 0 evidence URL 升级为长期领域规则。
+
+`source-catalog.json` 是 immutable raw-source
+baseline，必须长期保护其事实和文件 hash。`region-enrichment.json` 与
+`normalized-sample.json`
+是可由 D01 通过审核流程合法演进的派生数据；T04.0 只验证它们在本次契约迁移前后没有被意外修改，永久回归测试应验证状态机、provenance 和 public
+safety invariant，而不是固定当前验证数量。
