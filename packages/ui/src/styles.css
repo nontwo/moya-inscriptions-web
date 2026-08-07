@@ -724,10 +724,31 @@
   inset: 0;
 }
 
+.yoyi-loading-screen__brand {
+  display: grid;
+  justify-items: center;
+  gap: var(--yoyi-space-5);
+  padding-inline: var(--yoyi-space-6);
+  text-align: center;
+}
+
 .yoyi-loading-screen .yoyi-logo {
   width: clamp(88px, 22vw, 132px);
   animation: yoyi-logo-reveal var(--yoyi-duration-loading-logo)
     var(--yoyi-easing-emphasized) both;
+}
+
+.yoyi-loading-screen__motto {
+  margin: 0;
+  max-width: 20em;
+  color: var(--yoyi-color-text-secondary);
+  font-family: var(--yoyi-font-interface);
+  font-size: var(--yoyi-type-body-size);
+  font-weight: 400;
+  line-height: 1.75;
+  letter-spacing: 0.04em;
+  animation: yoyi-logo-reveal var(--yoyi-duration-loading-logo)
+    var(--yoyi-easing-emphasized) 120ms both;
 }
 
 :root[data-theme="dark"] .yoyi-loading-screen,

@@ -133,7 +133,12 @@ export function LoadingScreen({
       data-yoyi-ui="loading-screen"
       role="status"
     >
-      <YoyiLogo />
+      <div className="yoyi-loading-screen__brand">
+        <YoyiLogo />
+        <p className="yoyi-loading-screen__motto" lang="zh-CN">
+          志于道，据于德，依于仁，游于艺
+        </p>
+      </div>
       <span className="yoyi-visually-hidden">{label}</span>
     </div>
   );

@@ -16,7 +16,8 @@
 
 `Dialog`、`Drawer`、`Sheet` 都使用受控
 `open/onOpenChange`，共享 Esc、遮罩关闭、标题/描述关联和焦点恢复。`Tooltip`
-同时支持 hover 与键盘 focus。 `LoadingScreen` 默认延迟 160ms，避免短加载闪烁。
+同时支持 hover 与键盘 focus。 `LoadingScreen`
+默认延迟 160ms，避免短加载闪烁；延迟后显示正式 Logo 与文言「志于道，据于德，依于仁，游于艺」，进入主界面后不再显示 Logo。
 
 ## Tabs 与分类
 

@@ -73,6 +73,10 @@ describe("mobile application preview", () => {
       document.querySelector("[data-loading-screen] .yoyi-logo"),
     ).toBeTruthy();
     expect(
+      document.querySelector("[data-loading-screen] .app-loading__motto")
+        ?.textContent,
+    ).toContain("志于道，据于德，依于仁，游于艺");
+    expect(
       document.querySelector("[data-bottom-navigation] .yoyi-logo"),
     ).toBeTruthy();
     expect(
@@ -166,7 +170,7 @@ describe("mobile application preview", () => {
         document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
       ).toBe(true);
       document.querySelector<HTMLElement>("[data-settings-back]")?.click();
-      await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+      await new Promise((resolve) => dom.window.setTimeout(resolve, 50));
       expect(
         document.querySelector<HTMLElement>(`[data-view="${view}"]`)?.hidden,
       ).toBe(false);
@@ -262,7 +266,7 @@ describe("mobile application preview", () => {
     );
 
     document.querySelector<HTMLElement>("[data-detail-back]")?.click();
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 50));
     expect(
       document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
     ).toBe(false);

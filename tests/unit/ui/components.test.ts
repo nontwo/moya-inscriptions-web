@@ -270,6 +270,7 @@ describe("overlays and loading", () => {
     expect(screen.queryByRole("status")).toBeNull();
     act(() => vi.advanceTimersByTime(160));
     expect(screen.getByRole("status", { name: "由艺正在加载" })).toBeTruthy();
+    expect(screen.getByText("志于道，据于德，依于仁，游于艺")).toBeTruthy();
     vi.useRealTimers();
   });
 });
