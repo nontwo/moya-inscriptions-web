@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>由艺移动预览</title>
+    <script>
+      try {
+        const theme = localStorage.getItem("yoyi.theme-preference");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+        const layout = localStorage.getItem("yoyi.home-feed-layout");
+        document.documentElement.dataset.homeLayout =
+          layout === "single" ? "single" : "double";
+      } catch {
+        document.documentElement.dataset.homeLayout = "double";
+      }
+    </script>
+    <link
+      rel="stylesheet"
+      href="../../../packages/design-tokens/src/theme.css"
+    />
+    <link rel="stylesheet" href="../../../packages/ui/src/styles.css" />
+    <link rel="stylesheet" href="./preview.css" />
+  </head>
+  <body>
+    <div class="app-stage">
+      <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
+        <section class="app-view" data-view="home" aria-label="首页">
+          <header class="app-topbar app-topbar--home">
+            <span aria-hidden="true" class="app-topbar__spacer"></span>
+            <div
+              class="app-primary-tabs"
+              role="tablist"
+              aria-label="首页内容范围"
+            >
+              <button
+                class="app-primary-tab is-selected"
+                data-home-feed="discover"
+                role="tab"
+                aria-label="发现"
+                aria-selected="true"
+                type="button"
+              >
+                <span>发现</span>
+              </button>
+              <button
+                class="app-primary-tab"
+                data-home-feed="nearby"
+                role="tab"
+                aria-label="附近"
+                aria-selected="false"
+                type="button"
+              >
+                <span>附近</span>
+              </button>
+            </div>
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-open-settings
+              aria-label="打开设置"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="settings"
+                aria-hidden="true"
+              ></span>
+            </button>
+          </header>
+
+          <main class="app-scroll" data-scroll-view="home">
+            <div class="app-masonry" data-feed-panel="discover">
+              <button
+                class="app-card"
+                data-content-id="discover-cliff-gate"
+                data-open-detail
+                data-image="../../design-system/assets/demo/cliff-gate.svg"
+                data-title="山门北壁题记"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/cliff-gate.svg"
+                  alt="虚构山门摩崖图"
+                />
+                <span class="app-card__title">山门北壁题记</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="discover-ink"
+                data-open-detail
+                data-image="../../design-system/assets/demo/ink-album.svg"
+                data-title="纸上墨痕"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/ink-album.svg"
+                  alt="虚构墨迹册页图"
+                />
+                <span class="app-card__title">纸上墨痕</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="discover-stone"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stone-detail.svg"
+                data-title="龙门残字"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stone-detail.svg"
+                  alt="虚构石刻局部图"
+                />
+                <span class="app-card__title">龙门残字</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="discover-wall"
+                data-open-detail
+                data-image="../../design-system/assets/demo/discovery-stone.svg"
+                data-title="山崖旧刻"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/discovery-stone.svg"
+                  alt="虚构山崖旧刻图"
+                />
+                <span class="app-card__title">山崖旧刻</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="discover-album"
+                data-open-detail
+                data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                data-title="松窗手札"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                  alt="虚构书法手札图"
+                />
+                <span class="app-card__title">松窗手札</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="discover-stele"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stele-shadow.svg"
+                data-title="暮色碑影"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stele-shadow.svg"
+                  alt="虚构暮色石碑图"
+                />
+                <span class="app-card__title">暮色碑影</span>
+              </button>
+            </div>
+
+            <div class="app-masonry" data-feed-panel="nearby" hidden>
+              <button
+                class="app-card"
+                data-content-id="nearby-valley"
+                data-open-detail
+                data-image="../../design-system/assets/demo/valley-wall.svg"
+                data-title="城北石壁"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/valley-wall.svg"
+                  alt="虚构城北石壁图"
+                />
+                <span class="app-card__title">城北石壁</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="nearby-rubbing"
+                data-open-detail
+                data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                data-title="旧拓残片"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/rubbing-fragment.svg"
+                  alt="虚构旧拓残片图"
+                />
+                <span class="app-card__title">旧拓残片</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="nearby-gate"
+                data-open-detail
+                data-image="../../design-system/assets/demo/cliff-gate.svg"
+                data-title="溪谷题名"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/cliff-gate.svg"
+                  alt="虚构溪谷题名图"
+                />
+                <span class="app-card__title">溪谷题名</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="nearby-stele"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stele-shadow.svg"
+                data-title="西岭碑影"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stele-shadow.svg"
+                  alt="虚构西岭石碑图"
+                />
+                <span class="app-card__title">西岭碑影</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="nearby-sheet"
+                data-open-detail
+                data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                data-title="寺中藏帖"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                  alt="虚构寺中藏帖图"
+                />
+                <span class="app-card__title">寺中藏帖</span>
+              </button>
+              <button
+                class="app-card"
+                data-content-id="nearby-cliff"
+                data-open-detail
+                data-image="../../design-system/assets/demo/discovery-stone.svg"
+                data-title="近郊摩崖"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/discovery-stone.svg"
+                  alt="虚构近郊摩崖图"
+                />
+                <span class="app-card__title">近郊摩崖</span>
+              </button>
+            </div>
+          </main>
+        </section>
+
+        <section
+          class="app-view"
+          data-view="inscriptions"
+          aria-label="碑刻"
+          hidden
+        >
+          <header class="app-topbar app-topbar--search">
+            <label class="yoyi-search-input app-search">
+              <span class="yoyi-visually-hidden">搜索碑刻</span>
+              <span
+                class="yoyi-icon"
+                data-icon="search"
+                aria-hidden="true"
+              ></span>
+              <input
+                data-inscription-search
+                aria-label="搜索碑刻"
+                placeholder="搜索碑刻"
+                type="search"
+              />
+              <button
+                class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                data-search-clear
+                aria-label="清除搜索"
+                type="button"
+                hidden
+              >
+                <span
+                  class="yoyi-icon yoyi-icon--sm"
+                  data-icon="close"
+                  aria-hidden="true"
+                ></span>
+              </button>
+            </label>
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-open-settings
+              aria-label="打开设置"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="settings"
+                aria-hidden="true"
+              ></span>
+            </button>
+          </header>
+          <main class="app-scroll app-list" data-scroll-view="inscriptions">
+            <button
+              class="app-list-item"
+              data-search-text="云峰山题名"
+              data-content-id="inscription-yunfeng"
+              data-open-detail
+              data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+              data-title="云峰山题名"
+              type="button"
+            >
+              <img
+                src="../../design-system/assets/demo/rubbing-fragment.svg"
+                alt="虚构云峰山题名缩略图"
+              />
+              <span>云峰山题名</span>
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="next"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <button
+              class="app-list-item"
+              data-search-text="石门东侧残刻"
+              data-content-id="inscription-shimen"
+              data-open-detail
+              data-image="../../design-system/assets/demo/stone-detail.svg"
+              data-title="石门东侧残刻"
+              type="button"
+            >
+              <img
+                src="../../design-system/assets/demo/stone-detail.svg"
+                alt="虚构石门东侧残刻缩略图"
+              />
+              <span>石门东侧残刻</span>
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="next"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <button
+              class="app-list-item"
+              data-search-text="龙门北壁造像记"
+              data-content-id="inscription-longmen"
+              data-open-detail
+              data-image="../../design-system/assets/demo/cliff-gate.svg"
+              data-title="龙门北壁造像记"
+              type="button"
+            >
+              <img
+                src="../../design-system/assets/demo/cliff-gate.svg"
+                alt="虚构龙门北壁造像记缩略图"
+              />
+              <span>龙门北壁造像记</span>
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="next"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <button
+              class="app-list-item"
+              data-search-text="天柱山摩崖"
+              data-content-id="inscription-tianzhu"
+              data-open-detail
+              data-image="../../design-system/assets/demo/valley-wall.svg"
+              data-title="天柱山摩崖"
+              type="button"
+            >
+              <img
+                src="../../design-system/assets/demo/valley-wall.svg"
+                alt="虚构天柱山摩崖缩略图"
+              />
+              <span>天柱山摩崖</span>
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="next"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <button
+              class="app-list-item"
+              data-search-text="古道石刻"
+              data-content-id="inscription-road"
+              data-open-detail
+              data-image="../../design-system/assets/demo/stele-shadow.svg"
+              data-title="古道石刻"
+              type="button"
+            >
+              <img
+                src="../../design-system/assets/demo/stele-shadow.svg"
+                alt="虚构古道石刻缩略图"
+              />
+              <span>古道石刻</span>
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="next"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <p class="app-empty" data-search-empty role="status" hidden>
+              未找到碑刻
+            </p>
+          </main>
+        </section>
+
+        <section
+          class="app-view"
+          data-view="calligraphy"
+          aria-label="书帖"
+          hidden
+        >
+          <header class="app-topbar app-topbar--categories">
+            <div class="app-categories" role="tablist" aria-label="书帖分类">
+              <button
+                class="app-category is-selected"
+                data-calligraphy-category="all"
+                role="tab"
+                aria-selected="true"
+                type="button"
+              >
+                全部
+              </button>
+              <button
+                class="app-category"
+                data-calligraphy-category="ink"
+                role="tab"
+                aria-selected="false"
+                type="button"
+              >
+                墨迹
+              </button>
+              <button
+                class="app-category"
+                data-calligraphy-category="rubbing"
+                role="tab"
+                aria-selected="false"
+                type="button"
+              >
+                拓本
+              </button>
+            </div>
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-open-settings
+              aria-label="打开设置"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="settings"
+                aria-hidden="true"
+              ></span>
+            </button>
+          </header>
+          <main class="app-scroll" data-scroll-view="calligraphy">
+            <div class="app-masonry app-calligraphy-grid">
+              <button
+                class="app-card"
+                data-category="ink"
+                data-content-id="calligraphy-autumn"
+                data-open-detail
+                data-image="../../design-system/assets/demo/ink-album.svg"
+                data-title="秋山札"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/ink-album.svg"
+                  alt="虚构秋山札图"
+                />
+                <span class="app-card__title">秋山札</span>
+              </button>
+              <button
+                class="app-card"
+                data-category="ink"
+                data-content-id="calligraphy-pine"
+                data-open-detail
+                data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                data-title="松窗帖"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                  alt="虚构松窗帖图"
+                />
+                <span class="app-card__title">松窗帖</span>
+              </button>
+              <button
+                class="app-card"
+                data-category="rubbing"
+                data-content-id="calligraphy-preface"
+                data-open-detail
+                data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                data-title="集字圣教序"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/rubbing-fragment.svg"
+                  alt="虚构集字圣教序拓本图"
+                />
+                <span class="app-card__title">集字圣教序</span>
+              </button>
+              <button
+                class="app-card"
+                data-category="ink"
+                data-content-id="calligraphy-cursive"
+                data-open-detail
+                data-image="../../design-system/assets/demo/ink-album.svg"
+                data-title="草书残卷"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/ink-album.svg"
+                  alt="虚构草书残卷图"
+                />
+                <span class="app-card__title">草书残卷</span>
+              </button>
+              <button
+                class="app-card"
+                data-category="rubbing"
+                data-content-id="calligraphy-beihai"
+                data-open-detail
+                data-image="../../design-system/assets/demo/inscription-rubbing.svg"
+                data-title="北海刻帖"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/inscription-rubbing.svg"
+                  alt="虚构北海刻帖拓本图"
+                />
+                <span class="app-card__title">北海刻帖</span>
+              </button>
+              <button
+                class="app-card"
+                data-category="rubbing"
+                data-content-id="calligraphy-shimen"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stone-detail.svg"
+                data-title="石门铭拓片"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stone-detail.svg"
+                  alt="虚构石门铭拓片图"
+                />
+                <span class="app-card__title">石门铭拓片</span>
+              </button>
+            </div>
+          </main>
+        </section>
+
+        <section
+          class="app-view app-settings"
+          data-view="settings"
+          aria-label="设置"
+          hidden
+        >
+          <header class="app-topbar app-topbar--settings">
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-settings-back
+              aria-label="返回"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="back"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <h1 class="app-topbar__title">设置</h1>
+            <span aria-hidden="true" class="app-topbar__spacer"></span>
+          </header>
+          <main class="app-scroll app-settings__content">
+            <form class="app-settings__form">
+              <fieldset class="app-setting-group">
+                <legend>主题</legend>
+                <div class="app-setting-options app-setting-options--three">
+                  <label class="app-setting-option">
+                    <input
+                      data-theme-option
+                      name="theme"
+                      type="radio"
+                      value="system"
+                    />
+                    <span>跟随系统</span>
+                  </label>
+                  <label class="app-setting-option">
+                    <input
+                      data-theme-option
+                      name="theme"
+                      type="radio"
+                      value="light"
+                    />
+                    <span>浅色</span>
+                  </label>
+                  <label class="app-setting-option">
+                    <input
+                      data-theme-option
+                      name="theme"
+                      type="radio"
+                      value="dark"
+                    />
+                    <span>深色</span>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset class="app-setting-group">
+                <legend>首页展示</legend>
+                <div class="app-setting-options">
+                  <label class="app-setting-option">
+                    <input
+                      data-layout-option
+                      name="home-layout"
+                      type="radio"
+                      value="single"
+                    />
+                    <span>单列展示</span>
+                  </label>
+                  <label class="app-setting-option">
+                    <input
+                      data-layout-option
+                      name="home-layout"
+                      type="radio"
+                      value="double"
+                    />
+                    <span>双列展示</span>
+                  </label>
+                </div>
+              </fieldset>
+            </form>
+          </main>
+        </section>
+
+        <section
+          class="app-view app-detail"
+          data-view="detail"
+          aria-label="内容详情"
+          hidden
+        >
+          <header class="app-topbar app-topbar--detail">
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-detail-back
+              aria-label="返回"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="back"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true" class="app-topbar__spacer"></span>
+          </header>
+          <main
+            class="app-scroll app-detail__content"
+            data-scroll-view="detail"
+          >
+            <img
+              data-detail-image
+              src="../../design-system/assets/demo/cliff-gate.svg"
+              alt="虚构山门摩崖图"
+            />
+            <h1 data-detail-title></h1>
+          </main>
+        </section>
+
+        <nav
+          class="yoyi-mobile-bottom-navigation app-bottom-navigation"
+          data-bottom-navigation
+          aria-label="主导航"
+        >
+          <button
+            class="yoyi-navigation-entry is-active"
+            data-primary-view="home"
+            aria-current="page"
+            aria-label="首页"
+            type="button"
+          >
+            <span class="yoyi-icon" data-icon="home" aria-hidden="true"></span>
+            <span
+              class="yoyi-fixed-label"
+              data-label="nav-home"
+              aria-hidden="true"
+            ></span>
+          </button>
+          <button
+            class="yoyi-navigation-entry"
+            data-primary-view="inscriptions"
+            aria-label="碑刻"
+            type="button"
+          >
+            <span
+              class="yoyi-icon"
+              data-icon="inscriptions"
+              aria-hidden="true"
+            ></span>
+            <span
+              class="yoyi-fixed-label"
+              data-label="nav-inscriptions"
+              aria-hidden="true"
+            ></span>
+          </button>
+          <button
+            class="yoyi-navigation-entry"
+            data-primary-view="calligraphy"
+            aria-label="书帖"
+            type="button"
+          >
+            <span
+              class="yoyi-icon"
+              data-icon="calligraphy"
+              aria-hidden="true"
+            ></span>
+            <span
+              class="yoyi-fixed-label"
+              data-label="nav-calligraphy"
+              aria-hidden="true"
+            ></span>
+          </button>
+        </nav>
+
+        <div
+          class="app-loading yoyi-paper yoyi-paper--visible"
+          data-loading-screen
+          role="status"
+          aria-label="由艺正在加载"
+        >
+          <span class="yoyi-logo" aria-label="由艺" role="img"></span>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./preview.js"></script>
+  </body>
+</html>

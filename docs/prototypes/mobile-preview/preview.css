@@ -1,0 +1,446 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.app-stage {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+}
+
+.mobile-app {
+  position: relative;
+  width: min(100%, 430px);
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--yoyi-color-background-page);
+  isolation: isolate;
+}
+
+.app-view {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding-bottom: calc(68px + env(safe-area-inset-bottom));
+}
+
+.app-view.app-detail,
+.app-view.app-settings {
+  padding-bottom: 0;
+}
+
+.app-topbar {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  min-height: calc(52px + env(safe-area-inset-top));
+  align-items: end;
+  padding: env(safe-area-inset-top) 8px 0;
+  background: var(--yoyi-color-background-page);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.app-topbar--home,
+.app-topbar--detail,
+.app-topbar--settings {
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
+.app-topbar--search,
+.app-topbar--categories {
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 6px;
+}
+
+.app-topbar__spacer {
+  width: 44px;
+  height: 44px;
+}
+
+.app-topbar__title {
+  align-self: center;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 44px;
+  text-align: center;
+}
+
+.app-primary-tabs {
+  display: grid;
+  height: 52px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  justify-self: center;
+}
+
+.app-primary-tab {
+  position: relative;
+  display: grid;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 10px;
+  place-items: center;
+  color: var(--yoyi-color-text-tertiary);
+  background: transparent;
+  border: 0;
+  font-family: var(--yoyi-font-interface);
+  font-size: var(--yoyi-type-button-size);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-primary-tab::after {
+  position: absolute;
+  right: 18px;
+  bottom: 1px;
+  left: 18px;
+  height: 2px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: var(--yoyi-radius-full);
+  content: "";
+  opacity: 0;
+  transform: scaleX(0.5);
+  transition:
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-emphasized);
+}
+
+.app-primary-tab.is-selected {
+  color: var(--yoyi-color-text-primary);
+}
+
+.app-primary-tab.is-selected::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.app-scroll {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-scroll::-webkit-scrollbar,
+.app-categories::-webkit-scrollbar {
+  display: none;
+}
+
+.app-masonry {
+  padding: 8px;
+  column-count: 2;
+  column-gap: 8px;
+}
+
+[data-home-layout="single"] [data-view="home"] .app-masonry {
+  column-count: 1;
+}
+
+.app-card {
+  display: inline-grid;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 0;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
+  background: var(--yoyi-color-background-surface);
+  border: 0;
+  border-radius: var(--yoyi-radius-2);
+  break-inside: avoid;
+  cursor: pointer;
+  transition:
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.app-card:active {
+  transform: scale(0.985);
+}
+
+.app-card:focus-visible,
+.app-list-item:focus-visible,
+.app-primary-tab:focus-visible,
+.app-category:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 150px;
+  object-fit: cover;
+  background: var(--yoyi-color-background-muted);
+}
+
+.app-card__title {
+  display: block;
+  padding: 9px 10px 11px;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.app-search {
+  height: 44px;
+  margin-bottom: 4px;
+  background: var(--yoyi-color-background-surface);
+}
+
+.app-search input {
+  min-width: 0;
+}
+
+.app-list {
+  display: grid;
+  align-content: start;
+  padding: 4px 12px 16px;
+}
+
+.app-list-item {
+  display: grid;
+  min-height: 96px;
+  grid-template-columns: 96px minmax(0, 1fr) 24px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  cursor: pointer;
+}
+
+.app-list-item img {
+  width: 96px;
+  height: 76px;
+  object-fit: cover;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-2);
+}
+
+.app-list-item > span:nth-child(2) {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.app-list-item > .yoyi-icon {
+  color: var(--yoyi-color-text-tertiary);
+}
+
+.app-empty {
+  margin: 48px 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 14px;
+  text-align: center;
+}
+
+.app-categories {
+  display: flex;
+  min-width: 0;
+  height: 52px;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-category {
+  min-width: 60px;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.app-category.is-selected {
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+  font-weight: 600;
+}
+
+.app-calligraphy-grid .app-card[hidden] {
+  display: none;
+}
+
+.app-bottom-navigation {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  min-height: calc(68px + env(safe-area-inset-bottom));
+  padding: 4px 8px env(safe-area-inset-bottom);
+  background: var(--yoyi-color-background-elevated);
+}
+
+.app-bottom-navigation .yoyi-navigation-entry {
+  min-height: 60px;
+  gap: 1px;
+  padding: 2px;
+}
+
+.app-bottom-navigation .yoyi-fixed-label {
+  width: 44px;
+  height: 20px;
+}
+
+.app-bottom-navigation .yoyi-icon {
+  width: 23px;
+  height: 23px;
+}
+
+.app-settings__content {
+  padding: 16px 12px 28px;
+}
+
+.app-settings__form {
+  display: grid;
+  gap: 24px;
+}
+
+.app-setting-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.app-setting-group legend {
+  margin-bottom: 10px;
+  padding: 0 2px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.app-setting-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.app-setting-options--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.app-setting-option {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-4);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.app-setting-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--yoyi-color-seal-red);
+}
+
+.app-setting-option:has(input:checked) {
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-seal-red-muted);
+  border-color: var(--yoyi-color-seal-red);
+  font-weight: 600;
+}
+
+.app-setting-option:has(input:focus-visible) {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.app-detail__content {
+  padding: 8px 12px 28px;
+}
+
+.app-detail__content img {
+  display: block;
+  width: 100%;
+  max-height: calc(100dvh - 150px);
+  object-fit: contain;
+  background: var(--yoyi-color-background-surface);
+  border-radius: var(--yoyi-radius-2);
+}
+
+.app-detail__content h1 {
+  margin: 16px 2px 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.app-loading {
+  position: absolute;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background-color: var(--yoyi-color-background-page);
+}
+
+.app-loading .yoyi-logo {
+  width: 92px;
+  opacity: 0;
+  animation: yoyi-logo-reveal 560ms var(--yoyi-easing-emphasized) 160ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-card,
+  .app-primary-tab::after,
+  .app-loading .yoyi-logo {
+    transition-duration: 1ms;
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+    transform: none;
+  }
+}
