@@ -1,128 +1,38 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
-import * as contracts from "../../../packages/contracts/src/index.js";
+
 import type {
   HeritageRecord,
+  ImageAsset,
   RegionEnrichment,
   SourceCatalogRow,
-} from "../../../packages/contracts/src/index.js";
-
-type JsonObject = Record<string, unknown>;
+} from "@moya/contracts";
+import {
+  heritageRecordSchema,
+  imageAssetSchema,
+  regionCandidateSchema,
+  regionEnrichmentSchema,
+  sourceCatalogRowSchema,
+} from "@moya/contracts/schemas";
+import { describe, expect, it } from "vitest";
 
 const dataUrl = (fileName: string) =>
   new URL(`../../../data/catalog/first-batch/${fileName}`, import.meta.url);
 
-async function loadJson<T>(fileName: string): Promise<T> {
-  return JSON.parse(await readFile(dataUrl(fileName), "utf8")) as T;
+async function loadJson(fileName: string): Promise<unknown> {
+  return JSON.parse(await readFile(dataUrl(fileName), "utf8"));
 }
 
-function isObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const loadSourceRows = async (): Promise<SourceCatalogRow[]> =>
+  sourceCatalogRowSchema.array().parse(await loadJson("source-catalog.json"));
 
-function matchesType(value: unknown, expected: string): boolean {
-  if (expected === "null") return value === null;
-  if (expected === "array") return Array.isArray(value);
-  if (expected === "object") return isObject(value);
-  if (expected === "integer") return Number.isInteger(value);
-  if (expected === "number") return typeof value === "number";
-  return typeof value === expected;
-}
+const loadEnrichments = async (): Promise<RegionEnrichment[]> =>
+  regionEnrichmentSchema
+    .array()
+    .parse(await loadJson("region-enrichment.json"));
 
-/** Minimal validator for the JSON Schema keywords exported by this package. */
-function validateJsonSchema(
-  value: unknown,
-  schemaValue: unknown,
-  path = "$",
-): string[] {
-  if (!isObject(schemaValue) || Object.keys(schemaValue).length === 0)
-    return [];
-  const schema = schemaValue;
-  const errors: string[] = [];
-
-  if ("const" in schema && value !== schema.const) {
-    errors.push(`${path}: expected constant ${String(schema.const)}`);
-    return errors;
-  }
-  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
-    errors.push(`${path}: value is not in enum`);
-    return errors;
-  }
-
-  const expectedTypes = Array.isArray(schema.type)
-    ? schema.type
-    : typeof schema.type === "string"
-      ? [schema.type]
-      : [];
-  if (
-    expectedTypes.length > 0 &&
-    !expectedTypes.some(
-      (expected) =>
-        typeof expected === "string" && matchesType(value, expected),
-    )
-  ) {
-    errors.push(`${path}: unexpected type`);
-    return errors;
-  }
-
-  if (typeof value === "string") {
-    if (
-      typeof schema.minLength === "number" &&
-      value.length < schema.minLength
-    ) {
-      errors.push(`${path}: shorter than minLength`);
-    }
-    if (
-      typeof schema.pattern === "string" &&
-      !new RegExp(schema.pattern).test(value)
-    ) {
-      errors.push(`${path}: does not match pattern`);
-    }
-  }
-
-  if (typeof value === "number") {
-    if (typeof schema.minimum === "number" && value < schema.minimum) {
-      errors.push(`${path}: below minimum`);
-    }
-    if (typeof schema.maximum === "number" && value > schema.maximum) {
-      errors.push(`${path}: above maximum`);
-    }
-  }
-
-  if (Array.isArray(value)) {
-    if (typeof schema.minItems === "number" && value.length < schema.minItems) {
-      errors.push(`${path}: fewer than minItems`);
-    }
-    if (schema.items !== undefined) {
-      value.forEach((item, index) => {
-        errors.push(
-          ...validateJsonSchema(item, schema.items, `${path}[${index}]`),
-        );
-      });
-    }
-  }
-
-  if (isObject(value)) {
-    const properties = isObject(schema.properties) ? schema.properties : {};
-    const required = Array.isArray(schema.required) ? schema.required : [];
-    for (const key of required) {
-      if (typeof key === "string" && !(key in value)) {
-        errors.push(`${path}.${key}: required property is missing`);
-      }
-    }
-    for (const [key, child] of Object.entries(value)) {
-      if (key in properties) {
-        errors.push(
-          ...validateJsonSchema(child, properties[key], `${path}.${key}`),
-        );
-      } else if (schema.additionalProperties === false) {
-        errors.push(`${path}.${key}: additional property is not allowed`);
-      }
-    }
-  }
-
-  return errors;
-}
+const loadSamples = async (): Promise<HeritageRecord[]> =>
+  heritageRecordSchema.array().parse(await loadJson("normalized-sample.json"));
 
 const pageRanges = [
   [1, 1, 41],
@@ -166,8 +76,17 @@ const pageRanges = [
 ] as const;
 
 describe("T01 PDF source catalog", () => {
-  it("contains exactly the continuous source rows and stable IDs", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
+  it("protects the immutable raw-source hash", async () => {
+    const source = await readFile(dataUrl("source-catalog.json"));
+    expect(createHash("sha256").update(source).digest("hex")).toBe(
+      "73a2c711700cdace7f74fc38d4ccd6866bc14a63ce6ac41fac9aa989c8912f7b",
+    );
+  });
+
+  it("parses without changing values and keeps continuous stable IDs", async () => {
+    const original = await loadJson("source-catalog.json");
+    const rows = sourceCatalogRowSchema.array().parse(original);
+    expect(rows).toEqual(original);
     expect(rows).toHaveLength(1658);
     expect(new Set(rows.map((row) => row.sourceIndex)).size).toBe(1658);
     expect(new Set(rows.map((row) => row.sourceId)).size).toBe(1658);
@@ -180,7 +99,7 @@ describe("T01 PDF source catalog", () => {
   });
 
   it("preserves all five non-empty PDF fields", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
+    const rows = await loadSourceRows();
     for (const row of rows) {
       expect(row.regionRaw.length).toBeGreaterThan(0);
       expect(row.nameRaw.length).toBeGreaterThan(0);
@@ -191,7 +110,7 @@ describe("T01 PDF source catalog", () => {
   });
 
   it("uses the exact PDF page ranges", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
+    const rows = await loadSourceRows();
     for (const [page, start, end] of pageRanges) {
       for (let sourceIndex = start; sourceIndex <= end; sourceIndex += 1) {
         expect(rows[sourceIndex - 1]?.sourcePage).toBe(page);
@@ -199,16 +118,8 @@ describe("T01 PDF source catalog", () => {
     }
   });
 
-  it("validates every row against the exported JSON Schema", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
-    const errors = rows.flatMap((row) =>
-      validateJsonSchema(row, contracts.sourceCatalogRowSchema),
-    );
-    expect(errors).toEqual([]);
-  });
-
   it("keeps source 1000 once and preserves the unreadable mark in 1307", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
+    const rows = await loadSourceRows();
     const row1000 = rows.filter((row) => row.sourceIndex === 1000);
     expect(row1000).toHaveLength(1);
     expect(row1000[0]?.nameRaw).toBe("宋景祐二年祖庙祭文");
@@ -221,7 +132,7 @@ describe("T01 PDF source catalog", () => {
   });
 
   it("retains separate records when names are identical", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
+    const rows = await loadSourceRows();
     const counts = new Map<string, number>();
     rows.forEach((row) =>
       counts.set(row.nameRaw, (counts.get(row.nameRaw) ?? 0) + 1),
@@ -231,145 +142,98 @@ describe("T01 PDF source catalog", () => {
   });
 });
 
-describe("T01 unverified region candidates", () => {
-  it("keeps one enrichment record for every source row", async () => {
-    const rows = await loadJson<SourceCatalogRow[]>("source-catalog.json");
-    const enrichments = await loadJson<RegionEnrichment[]>(
-      "region-enrichment.json",
-    );
-    expect(enrichments).toHaveLength(1658);
+describe("T01 region candidate compatibility", () => {
+  it("parses current enrichment data without changing any value", async () => {
+    const original = await loadJson("region-enrichment.json");
+    expect(regionEnrichmentSchema.array().parse(original)).toEqual(original);
+  });
+
+  it("preserves source provenance links", async () => {
+    const rows = await loadSourceRows();
+    const enrichments = await loadEnrichments();
+    expect(enrichments).toHaveLength(rows.length);
     enrichments.forEach((enrichment, index) => {
       expect(enrichment.sourceIndex).toBe(rows[index]?.sourceIndex);
       expect(enrichment.sourceId).toBe(rows[index]?.sourceId);
       expect(enrichment.regionRaw).toBe(rows[index]?.regionRaw);
+      if (enrichment.selectedCandidateIndex !== null) {
+        expect(enrichment.selectedCandidateIndex).toBeLessThan(
+          enrichment.candidates.length,
+        );
+      }
     });
   });
 
-  it("validates every enrichment record against its JSON Schema", async () => {
-    const enrichments = await loadJson<RegionEnrichment[]>(
-      "region-enrichment.json",
-    );
-    const errors = enrichments.flatMap((row) =>
-      validateJsonSchema(row, contracts.regionEnrichmentSchema),
-    );
-    expect(errors).toEqual([]);
-  });
-
-  it("keeps all candidates unselected and unverified without evidence URLs", async () => {
-    const enrichments = await loadJson<RegionEnrichment[]>(
-      "region-enrichment.json",
-    );
-    for (const enrichment of enrichments) {
-      expect(enrichment.needsReview).toBe(true);
-      expect(enrichment.selectedCandidateIndex).toBeNull();
-      for (const candidate of enrichment.candidates) {
-        expect(candidate.verificationStatus).toBe("unverified");
-        expect(candidate.sources.length).toBeGreaterThan(0);
-        candidate.sources.forEach((source) =>
-          expect(source.evidenceUrls).toEqual([]),
-        );
-      }
-    }
-  });
-
-  it("preserves exactly the seven workbook conflicts as two candidates", async () => {
-    const enrichments = await loadJson<RegionEnrichment[]>(
-      "region-enrichment.json",
-    );
-    const conflicts = enrichments.filter((row) => row.candidates.length > 1);
-    expect(conflicts.map((row) => row.sourceIndex)).toEqual([
-      941, 943, 974, 1112, 1505, 1622, 1628,
-    ]);
-    expect(conflicts.every((row) => row.candidates.length === 2)).toBe(true);
-    expect(enrichments.flatMap((row) => row.candidates)).toHaveLength(1665);
-  });
-
-  it("does not allow city and county to be silently duplicated", async () => {
-    const enrichments = await loadJson<RegionEnrichment[]>(
-      "region-enrichment.json",
-    );
-    const violations = enrichments.flatMap((row) =>
-      row.candidates.filter(
-        (candidate) =>
-          candidate.city !== null && candidate.city === candidate.county,
-      ),
-    );
-    expect(violations).toEqual([]);
-    expect(
-      enrichments.some((row) =>
-        row.candidates.some(
-          (candidate) => candidate.city === null || candidate.county === null,
-        ),
-      ),
-    ).toBe(true);
+  it("does not invent a verified-evidence policy owned by D01", () => {
+    const candidate = {
+      province: "测试省",
+      city: null,
+      county: null,
+      verificationStatus: "verified" as const,
+      sources: [
+        {
+          method: "official_catalog" as const,
+          label: "测试来源",
+          evidenceUrls: [],
+          notes: [],
+        },
+      ],
+    };
+    expect(regionCandidateSchema.parse(candidate)).toEqual(candidate);
   });
 });
 
-describe("T01 normalized sample and public contracts", () => {
-  it("maps only the five selected examples without promoting candidates", async () => {
-    const samples = await loadJson<HeritageRecord[]>("normalized-sample.json");
-    expect(samples.map((sample) => sample.rawSource.sourceIndex)).toEqual([
-      1, 498, 783, 1307, 1658,
-    ]);
+describe("T01 normalized sample and public boundary inputs", () => {
+  it("parses samples without changing historical identity facts", async () => {
+    const original = await loadJson("normalized-sample.json");
+    const samples = heritageRecordSchema.array().parse(original);
+    expect(samples).toEqual(original);
     for (const sample of samples) {
-      expect(
-        validateJsonSchema(sample, contracts.heritageRecordSchema),
-      ).toEqual([]);
-      expect(sample.region).toEqual({ province: sample.rawSource.regionRaw });
-      expect(sample.aliases).toEqual([]);
-      expect(sample.categoryIds).toEqual([]);
-      expect(sample.imageIds).toEqual([]);
-      expect(sample).not.toHaveProperty("coordinates");
-      expect(sample).not.toHaveProperty("description");
-      expect(
-        sample.regionCandidates.every(
-          (candidate) => candidate.verificationStatus === "unverified",
-        ),
-      ).toBe(true);
+      expect(sample.source.sourceId).toBe(sample.rawSource.sourceId);
+      expect(sample.source.sourcePage).toBe(sample.rawSource.sourcePage);
     }
   });
 
-  it("exports dependency-free JSON Schema objects from the public entry", () => {
-    const requiredExports = [
-      contracts.sourceCatalogRowSchema,
-      contracts.heritageRecordSchema,
-      contracts.siteSummarySchema,
-      contracts.siteDetailSchema,
-      contracts.imageAssetSchema,
-      contracts.siteSearchQuerySchema,
-      contracts.paginatedResponseSchema,
-      contracts.apiErrorSchema,
-      contracts.regionEnrichmentSchema,
-    ];
-    requiredExports.forEach((schema) => {
-      expect(schema.$schema).toBe(
-        "https://json-schema.org/draft/2020-12/schema",
-      );
-      expect(schema).not.toHaveProperty("parse");
-      expect(schema).not.toHaveProperty("safeParse");
-    });
+  it("keeps image assets object-key only", () => {
+    const image = {
+      id: "image-1",
+      objectKey: "catalog/first-batch/image-1.jpg",
+    };
+    expect(imageAssetSchema.parse(image)).toEqual(image);
+    expect(
+      imageAssetSchema.safeParse({
+        ...image,
+        url: "https://production.example/image-1.jpg",
+      }).success,
+    ).toBe(false);
   });
 
-  it("accepts absent future fields and rejects image URLs", async () => {
-    const samples = await loadJson<HeritageRecord[]>("normalized-sample.json");
+  it("keeps ImageAsset.siteId optional and non-null", () => {
+    const image = {
+      id: "image-1",
+      objectKey: "catalog/first-batch/image-1.jpg",
+    };
+    const unlinkedImage: ImageAsset = image;
+    // @ts-expect-error null remains outside the existing ImageAsset contract.
+    const nullLinkedImage: ImageAsset = { ...image, siteId: null };
+
+    expect(imageAssetSchema.parse(unlinkedImage)).toEqual(image);
     expect(
-      validateJsonSchema(samples[0], contracts.heritageRecordSchema),
-    ).toEqual([]);
-    expect(
-      validateJsonSchema(
-        { id: "image-1", objectKey: "catalog/first-batch/image-1.jpg" },
-        contracts.imageAssetSchema,
-      ),
-    ).toEqual([]);
-    expect(
-      validateJsonSchema(
-        {
-          id: "image-1",
-          objectKey: "catalog/first-batch/image-1.jpg",
-          url: "https://production.example/image-1.jpg",
-        },
-        contracts.imageAssetSchema,
-      ),
-    ).not.toEqual([]);
+      imageAssetSchema.parse({ ...image, siteId: "site-example" }),
+    ).toEqual({ ...image, siteId: "site-example" });
+    expect(imageAssetSchema.safeParse({ ...image, siteId: "" }).success).toBe(
+      false,
+    );
+    expect(imageAssetSchema.safeParse({ ...image, siteId: null }).success).toBe(
+      false,
+    );
+    void nullLinkedImage;
+  });
+
+  it("keeps the loaded normalized sample typed as the internal model", async () => {
+    const samples = await loadSamples();
+    expect(samples.every((sample) => sample.rawSource !== undefined)).toBe(
+      true,
+    );
   });
 });

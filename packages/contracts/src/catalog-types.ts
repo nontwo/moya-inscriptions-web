@@ -1,236 +1,97 @@
-// T01 第一批名碑名刻文物名录公共数据契约。
+import type { z } from "zod";
 
-/** PDF 中一条源记录，五个 Raw 字段必须逐字保留。 */
-export interface SourceCatalogRow {
-  sourceIndex: number;
-  regionRaw: string;
-  nameRaw: string;
-  protectionOrCollectionUnitRaw: string;
-  periodRaw: string;
-  sourcePage: number;
-  sourceId: string;
-  needsReview: boolean;
-  reviewNotes?: string[];
-}
+import type {
+  catalogSourceSchema,
+  coordinatesSchema,
+  dataQualityFlagSchema,
+  dataStatusSchema,
+  heritageRecordSchema,
+  historicalPeriodSchema,
+  imageAssetSchema,
+  normalizedRegionSchema,
+  referenceSchema,
+  regionCandidateSchema,
+  regionCandidateSourceMethodSchema,
+  regionCandidateSourceSchema,
+  regionCandidateVerificationStatusSchema,
+  regionEnrichmentSchema,
+  regionSchema,
+  sourceCatalogRowSchema,
+} from "./catalog-schemas.js";
+import type {
+  firstBatchSourceIdSchema,
+  siteIdSchema,
+  sourceIdSchema,
+} from "./identity-schemas.js";
+import type {
+  categoryFacetSchema,
+  publicRegionSchema,
+  siteDetailSchema,
+  siteSummarySchema,
+} from "./public-schemas.js";
+import type {
+  paginationQuerySchema,
+  siteListQuerySchema,
+  siteListTransportQuerySchema,
+  siteSearchQuerySchema,
+  siteSearchTransportQuerySchema,
+} from "./query-schemas.js";
+import type {
+  apiErrorCodeSchema,
+  apiErrorSchema,
+  createApiSuccessSchema,
+  createPaginatedResponseSchema,
+  invalidQueryDetailsSchema,
+  invalidQueryIssueSchema,
+} from "./response-schemas.js";
 
-export type RegionCandidateSourceMethod =
-  | "unit_name_inference"
-  | "official_catalog"
-  | "academic_db"
-  | "local_chronicle"
-  | "web_search"
-  | "supplemental_workbook";
+export type SourceId = z.infer<typeof sourceIdSchema>;
+export type SiteId = z.infer<typeof siteIdSchema>;
+export type FirstBatchSourceId = z.infer<typeof firstBatchSourceIdSchema>;
 
-export type RegionCandidateVerificationStatus = "unverified" | "verified";
+export type SourceCatalogRow = z.infer<typeof sourceCatalogRowSchema>;
+export type RegionCandidateSourceMethod = z.infer<
+  typeof regionCandidateSourceMethodSchema
+>;
+export type RegionCandidateVerificationStatus = z.infer<
+  typeof regionCandidateVerificationStatusSchema
+>;
+export type RegionCandidateSource = z.infer<typeof regionCandidateSourceSchema>;
+export type RegionCandidate = z.infer<typeof regionCandidateSchema>;
+export type RegionEnrichment = z.infer<typeof regionEnrichmentSchema>;
+export type NormalizedRegion = z.infer<typeof normalizedRegionSchema>;
+export type Coordinates = z.infer<typeof coordinatesSchema>;
+export type CatalogSource = z.infer<typeof catalogSourceSchema>;
+export type DataStatus = z.infer<typeof dataStatusSchema>;
+export type DataQualityFlag = z.infer<typeof dataQualityFlagSchema>;
+export type HistoricalPeriod = z.infer<typeof historicalPeriodSchema>;
+export type HeritageRecord = z.infer<typeof heritageRecordSchema>;
+export type Region = z.infer<typeof regionSchema>;
+export type ImageAsset = z.infer<typeof imageAssetSchema>;
+export type Reference = z.infer<typeof referenceSchema>;
 
-/** 候选地区值的来源声明；没有 URL 时不得视为已核验。 */
-export interface RegionCandidateSource {
-  method: RegionCandidateSourceMethod;
-  label: string;
-  evidenceUrls: string[];
-  notes: string[];
-}
+export type SiteSummary = z.infer<typeof siteSummarySchema>;
+export type SiteDetail = z.infer<typeof siteDetailSchema>;
+export type PublicRegion = z.infer<typeof publicRegionSchema>;
+export type CategoryFacet = z.infer<typeof categoryFacetSchema>;
 
-/** 尚待核验的现代行政区候选。 */
-export interface RegionCandidate {
-  province: string;
-  city: string | null;
-  county: string | null;
-  verificationStatus: RegionCandidateVerificationStatus;
-  sources: RegionCandidateSource[];
-}
+export type PaginationQuery = z.output<typeof paginationQuerySchema>;
+export type SiteListTransportQuery = z.input<
+  typeof siteListTransportQuerySchema
+>;
+export type SiteSearchTransportQuery = z.input<
+  typeof siteSearchTransportQuerySchema
+>;
+export type SiteListQuery = z.output<typeof siteListQuerySchema>;
+export type SiteSearchQuery = z.output<typeof siteSearchQuerySchema>;
 
-/** 与 PDF 源记录关联的候选市县集合。 */
-export interface RegionEnrichment {
-  sourceId: string;
-  sourceIndex: number;
-  regionRaw: string;
-  candidates: RegionCandidate[];
-  selectedCandidateIndex: number | null;
-  needsReview: boolean;
-  reviewNotes: string[];
-}
-
-/** 应用层地区；未经核验的候选不得写入 city/county。 */
-export interface NormalizedRegion {
-  province: string;
-  city?: string | null;
-  county?: string | null;
-}
-
-export interface Coordinates {
-  latitude: number;
-  longitude: number;
-  coordinateSystem?: string;
-  precision?: "exact" | "approximate" | "area";
-}
-
-export interface CatalogSource {
-  datasetName: "第一批古代名碑名刻文物名录";
-  sourceFileName: string;
-  sourceFileSha256: string;
-  sourcePage: number;
-  sourceId: string;
-}
-
-export type DataStatus = "catalog-only" | "enriched" | "verified" | "published";
-
-export interface DataQualityFlag {
-  type:
-    | "needs_review"
-    | "uncertain_region"
-    | "uncertain_period"
-    | "uncertain_name"
-    | "text_unreadable";
-  description: string;
-  field?: string;
-}
-
-export interface HistoricalPeriod {
-  label: string;
-  normalizedName?: string;
-  yearStart?: number;
-  yearEnd?: number;
-}
-
-/** 可扩展应用记录；PDF 未提供的字段保持可选或空数组。 */
-export interface HeritageRecord {
-  id: string;
-  canonicalName: string;
-  aliases: string[];
-  region: NormalizedRegion;
-  regionCandidates: RegionCandidate[];
-  historicalPeriod: HistoricalPeriod;
-  protectionOrCollectionUnit: string;
-  source: CatalogSource;
-  dataStatus: DataStatus;
-  categoryIds: string[];
-  imageIds: string[];
-  coordinates?: Coordinates;
-  description?: string;
-  bibliography: string[];
-  createdAt?: string;
-  updatedAt?: string;
-  rawSource: SourceCatalogRow;
-}
-
-export interface Region {
-  name: string;
-  level: "province" | "city" | "county";
-  id?: string;
-  parentId?: string | null;
-  fullName?: string;
-  administrativeCode?: string;
-}
-
-export interface SiteSummary {
-  id: string;
-  title: string;
-  aliases: string[];
-  region: NormalizedRegion;
-  historicalPeriod: HistoricalPeriod;
-  dataStatus: DataStatus;
-  categoryIds: string[];
-  imageIds: string[];
-  siteCode?: string;
-  slug?: string;
-  summary?: string;
-  coverImageKey?: string;
-  coverThumbnailKey?: string;
-  tags?: string[];
-}
-
-export interface SiteDetail extends SiteSummary {
-  fullTitle?: string;
-  coordinates?: Coordinates;
-  address?: string;
-  dimensions?: string;
-  wordCount?: number;
-  calligrapher?: string;
-  engraver?: string;
-  inscriber?: string;
-  preservationStatus?: string;
-  description?: string;
-  researchNotes?: string;
-  images: ImageAsset[];
-  references: Reference[];
-  relatedSites: SiteSummary[];
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/** 图片只保存对象键，访问 URL 由图片服务派生。 */
-export interface ImageAsset {
-  id: string;
-  objectKey: string;
-  siteId?: string;
-  thumbnailKey?: string;
-  displayKey?: string;
-  originalKey?: string;
-  caption?: string;
-  description?: string;
-  imageType?: string;
-  sortOrder?: number;
-  width?: number;
-  height?: number;
-  fileSize?: number;
-  format?: string;
-  sha256?: string;
-}
-
-export interface Reference {
-  title: string;
-  id?: string;
-  author?: string;
-  year?: number;
-  sourceType?: string;
-  publisher?: string;
-  url?: string;
-  citationText?: string;
-  pages?: string;
-}
-
-export interface SiteSearchQuery {
-  keyword?: string;
-  period?: string;
-  categoryId?: string;
-  province?: string;
-  city?: string;
-  county?: string;
-  page?: number;
-  pageSize?: number;
-  sortBy?: "title" | "period" | "createdAt" | "relevance";
-}
-
-export interface PaginationQuery {
-  page: number;
-  pageSize: number;
-  sortBy?: string;
-  sortOrder?: "asc" | "desc";
-}
-
-export interface PaginatedResponse<T> {
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  data: T[];
-}
-
-export interface ApiSuccess<T> {
-  success: true;
-  data: T;
-  meta?: {
-    timestamp: string;
-    version: string;
-  };
-}
-
-export interface ApiError {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
+export type InvalidQueryIssue = z.infer<typeof invalidQueryIssueSchema>;
+export type InvalidQueryDetails = z.infer<typeof invalidQueryDetailsSchema>;
+export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
+export type ApiError = z.infer<typeof apiErrorSchema>;
+export type ApiSuccess<T> = z.infer<
+  ReturnType<typeof createApiSuccessSchema<z.ZodType<T>>>
+>;
+export type PaginatedResponse<T> = z.infer<
+  ReturnType<typeof createPaginatedResponseSchema<z.ZodType<T>>>
+>;

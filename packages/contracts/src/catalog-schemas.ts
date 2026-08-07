@@ -1,407 +1,185 @@
-// Dependency-free JSON Schema objects for the T01 public contracts.
+import { z } from "zod";
 
-const schemaVersion = "https://json-schema.org/draft/2020-12/schema";
-const sourceIdPattern = "^first-batch-[0-9]{4}$";
-const sha256Pattern = "^[0-9a-f]{64}$";
+import { firstBatchSourceIdSchema, siteIdSchema } from "./identity-schemas.js";
 
-const nullableStringSchema = { type: ["string", "null"] } as const;
+const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
-export const sourceCatalogRowSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "sourceIndex",
-    "regionRaw",
-    "nameRaw",
-    "protectionOrCollectionUnitRaw",
-    "periodRaw",
-    "sourcePage",
-    "sourceId",
-    "needsReview",
-  ],
-  properties: {
-    sourceIndex: { type: "integer", minimum: 1, maximum: 1658 },
-    regionRaw: { type: "string", minLength: 1 },
-    nameRaw: { type: "string", minLength: 1 },
-    protectionOrCollectionUnitRaw: { type: "string", minLength: 1 },
-    periodRaw: { type: "string", minLength: 1 },
-    sourcePage: { type: "integer", minimum: 1, maximum: 38 },
-    sourceId: { type: "string", pattern: sourceIdPattern },
-    needsReview: { type: "boolean" },
-    reviewNotes: { type: "array", items: { type: "string" } },
-  },
-} as const;
+/** PDF 中一条源记录，五个 Raw 字段必须逐字保留。 */
+export const sourceCatalogRowSchema = z.strictObject({
+  sourceIndex: z.number().int().min(1).max(1658),
+  regionRaw: z.string().min(1),
+  nameRaw: z.string().min(1),
+  protectionOrCollectionUnitRaw: z.string().min(1),
+  periodRaw: z.string().min(1),
+  sourcePage: z.number().int().min(1).max(38),
+  sourceId: firstBatchSourceIdSchema,
+  needsReview: z.boolean(),
+  reviewNotes: z.array(z.string()).optional(),
+});
 
-export const regionCandidateSourceSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["method", "label", "evidenceUrls", "notes"],
-  properties: {
-    method: {
-      enum: [
-        "unit_name_inference",
-        "official_catalog",
-        "academic_db",
-        "local_chronicle",
-        "web_search",
-        "supplemental_workbook",
-      ],
-    },
-    label: { type: "string", minLength: 1 },
-    evidenceUrls: { type: "array", items: { type: "string" } },
-    notes: { type: "array", items: { type: "string" } },
-  },
-} as const;
+export const regionCandidateSourceMethodSchema = z.enum([
+  "unit_name_inference",
+  "official_catalog",
+  "academic_db",
+  "local_chronicle",
+  "web_search",
+  "supplemental_workbook",
+]);
 
-export const regionCandidateSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["province", "city", "county", "verificationStatus", "sources"],
-  properties: {
-    province: { type: "string", minLength: 1 },
-    city: nullableStringSchema,
-    county: nullableStringSchema,
-    verificationStatus: { enum: ["unverified", "verified"] },
-    sources: {
-      type: "array",
-      minItems: 1,
-      items: regionCandidateSourceSchema,
-    },
-  },
-} as const;
+export const regionCandidateVerificationStatusSchema = z.enum([
+  "unverified",
+  "verified",
+]);
 
-export const regionEnrichmentSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "sourceId",
-    "sourceIndex",
-    "regionRaw",
-    "candidates",
-    "selectedCandidateIndex",
-    "needsReview",
-    "reviewNotes",
-  ],
-  properties: {
-    sourceId: { type: "string", pattern: sourceIdPattern },
-    sourceIndex: { type: "integer", minimum: 1, maximum: 1658 },
-    regionRaw: { type: "string", minLength: 1 },
-    candidates: {
-      type: "array",
-      minItems: 1,
-      items: regionCandidateSchema,
-    },
-    selectedCandidateIndex: { type: ["integer", "null"], minimum: 0 },
-    needsReview: { type: "boolean" },
-    reviewNotes: { type: "array", items: { type: "string" } },
-  },
-} as const;
+/** D01 owns future evidence semantics; T04.0 preserves the T01 wire shape only. */
+export const regionCandidateSourceSchema = z.strictObject({
+  method: regionCandidateSourceMethodSchema,
+  label: z.string().min(1),
+  evidenceUrls: z.array(z.string()),
+  notes: z.array(z.string()),
+});
 
-export const normalizedRegionSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["province"],
-  properties: {
-    province: { type: "string", minLength: 1 },
-    city: nullableStringSchema,
-    county: nullableStringSchema,
-  },
-} as const;
+/** D01 owns region redesign and verification policy. */
+export const regionCandidateSchema = z.strictObject({
+  province: z.string().min(1),
+  city: z.string().nullable(),
+  county: z.string().nullable(),
+  verificationStatus: regionCandidateVerificationStatusSchema,
+  sources: z.array(regionCandidateSourceSchema).min(1),
+});
 
-export const coordinatesSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["latitude", "longitude"],
-  properties: {
-    latitude: { type: "number", minimum: -90, maximum: 90 },
-    longitude: { type: "number", minimum: -180, maximum: 180 },
-    coordinateSystem: { type: "string" },
-    precision: { enum: ["exact", "approximate", "area"] },
-  },
-} as const;
+/** No candidate is selected or resolved by this contract migration. */
+export const regionEnrichmentSchema = z
+  .strictObject({
+    sourceId: firstBatchSourceIdSchema,
+    sourceIndex: z.number().int().min(1).max(1658),
+    regionRaw: z.string().min(1),
+    candidates: z.array(regionCandidateSchema).min(1),
+    selectedCandidateIndex: z.number().int().min(0).nullable(),
+    needsReview: z.boolean(),
+    reviewNotes: z.array(z.string()),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.selectedCandidateIndex !== null &&
+      value.selectedCandidateIndex >= value.candidates.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "selectedCandidateIndex must reference an existing candidate",
+        path: ["selectedCandidateIndex"],
+      });
+    }
+  });
 
-export const catalogSourceSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "datasetName",
-    "sourceFileName",
-    "sourceFileSha256",
-    "sourcePage",
-    "sourceId",
-  ],
-  properties: {
-    datasetName: { const: "第一批古代名碑名刻文物名录" },
-    sourceFileName: { type: "string", minLength: 1 },
-    sourceFileSha256: { type: "string", pattern: sha256Pattern },
-    sourcePage: { type: "integer", minimum: 1, maximum: 38 },
-    sourceId: { type: "string", pattern: sourceIdPattern },
-  },
-} as const;
+/** Current T01 normalized shape; D01 owns its future administrative model. */
+export const normalizedRegionSchema = z.strictObject({
+  province: z.string().min(1),
+  city: z.string().nullable().optional(),
+  county: z.string().nullable().optional(),
+});
 
-export const historicalPeriodSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["label"],
-  properties: {
-    label: { type: "string", minLength: 1 },
-    normalizedName: { type: "string" },
-    yearStart: { type: "number" },
-    yearEnd: { type: "number" },
-  },
-} as const;
+export const coordinatesSchema = z.strictObject({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  coordinateSystem: z.string().optional(),
+  precision: z.enum(["exact", "approximate", "area"]).optional(),
+});
 
-export const heritageRecordSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "id",
-    "canonicalName",
-    "aliases",
-    "region",
-    "regionCandidates",
-    "historicalPeriod",
-    "protectionOrCollectionUnit",
-    "source",
-    "dataStatus",
-    "categoryIds",
-    "imageIds",
-    "bibliography",
-    "rawSource",
-  ],
-  properties: {
-    id: { type: "string", minLength: 1 },
-    canonicalName: { type: "string", minLength: 1 },
-    aliases: { type: "array", items: { type: "string" } },
-    region: normalizedRegionSchema,
-    regionCandidates: { type: "array", items: regionCandidateSchema },
-    historicalPeriod: historicalPeriodSchema,
-    protectionOrCollectionUnit: { type: "string", minLength: 1 },
-    source: catalogSourceSchema,
-    dataStatus: {
-      enum: ["catalog-only", "enriched", "verified", "published"],
-    },
-    categoryIds: { type: "array", items: { type: "string" } },
-    imageIds: { type: "array", items: { type: "string" } },
-    coordinates: coordinatesSchema,
-    description: { type: "string" },
-    bibliography: { type: "array", items: { type: "string" } },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
-    rawSource: sourceCatalogRowSchema,
-  },
-} as const;
+export const catalogSourceSchema = z.strictObject({
+  datasetName: z.literal("第一批古代名碑名刻文物名录"),
+  sourceFileName: z.string().min(1),
+  sourceFileSha256: sha256Schema,
+  sourcePage: z.number().int().min(1).max(38),
+  sourceId: firstBatchSourceIdSchema,
+});
 
-export const regionSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["name", "level"],
-  properties: {
-    name: { type: "string", minLength: 1 },
-    level: { enum: ["province", "city", "county"] },
-    id: { type: "string" },
-    parentId: nullableStringSchema,
-    fullName: { type: "string" },
-    administrativeCode: { type: "string" },
-  },
-} as const;
+export const dataStatusSchema = z.enum([
+  "catalog-only",
+  "enriched",
+  "verified",
+  "published",
+]);
 
-export const dataQualityFlagSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["type", "description"],
-  properties: {
-    type: {
-      enum: [
-        "needs_review",
-        "uncertain_region",
-        "uncertain_period",
-        "uncertain_name",
-        "text_unreadable",
-      ],
-    },
-    description: { type: "string", minLength: 1 },
-    field: { type: "string" },
-  },
-} as const;
+export const dataQualityFlagSchema = z.strictObject({
+  type: z.enum([
+    "needs_review",
+    "uncertain_region",
+    "uncertain_period",
+    "uncertain_name",
+    "text_unreadable",
+  ]),
+  description: z.string().min(1),
+  field: z.string().optional(),
+});
 
-export const imageAssetSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["id", "objectKey"],
-  properties: {
-    id: { type: "string", minLength: 1 },
-    objectKey: { type: "string", minLength: 1 },
-    siteId: { type: "string" },
-    thumbnailKey: { type: "string" },
-    displayKey: { type: "string" },
-    originalKey: { type: "string" },
-    caption: { type: "string" },
-    description: { type: "string" },
-    imageType: { type: "string" },
-    sortOrder: { type: "integer", minimum: 0 },
-    width: { type: "integer", minimum: 1 },
-    height: { type: "integer", minimum: 1 },
-    fileSize: { type: "integer", minimum: 1 },
-    format: { type: "string" },
-    sha256: { type: "string", pattern: sha256Pattern },
-  },
-} as const;
+export const historicalPeriodSchema = z.strictObject({
+  label: z.string().min(1),
+  normalizedName: z.string().optional(),
+  yearStart: z.number().optional(),
+  yearEnd: z.number().optional(),
+});
 
-export const referenceSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["title"],
-  properties: {
-    title: { type: "string", minLength: 1 },
-    id: { type: "string" },
-    author: { type: "string" },
-    year: { type: "number" },
-    sourceType: { type: "string" },
-    publisher: { type: "string" },
-    url: { type: "string" },
-    citationText: { type: "string" },
-    pages: { type: "string" },
-  },
-} as const;
-
-const siteSummaryProperties = {
-  id: { type: "string", minLength: 1 },
-  title: { type: "string", minLength: 1 },
-  aliases: { type: "array", items: { type: "string" } },
+/** Internal normalized/domain model; it is not a public API DTO. */
+export const heritageRecordSchema = z.strictObject({
+  id: z.string().min(1),
+  canonicalName: z.string().min(1),
+  aliases: z.array(z.string()),
   region: normalizedRegionSchema,
+  regionCandidates: z.array(regionCandidateSchema),
   historicalPeriod: historicalPeriodSchema,
-  dataStatus: {
-    enum: ["catalog-only", "enriched", "verified", "published"],
-  },
-  categoryIds: { type: "array", items: { type: "string" } },
-  imageIds: { type: "array", items: { type: "string" } },
-  siteCode: { type: "string" },
-  slug: { type: "string" },
-  summary: { type: "string" },
-  coverImageKey: { type: "string" },
-  coverThumbnailKey: { type: "string" },
-  tags: { type: "array", items: { type: "string" } },
-} as const;
+  protectionOrCollectionUnit: z.string().min(1),
+  source: catalogSourceSchema,
+  dataStatus: dataStatusSchema,
+  categoryIds: z.array(z.string()),
+  imageIds: z.array(z.string()),
+  coordinates: coordinatesSchema.optional(),
+  description: z.string().optional(),
+  bibliography: z.array(z.string()),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  rawSource: sourceCatalogRowSchema,
+});
 
-const siteSummaryRequired = [
-  "id",
-  "title",
-  "aliases",
-  "region",
-  "historicalPeriod",
-  "dataStatus",
-  "categoryIds",
-  "imageIds",
-] as const;
+/** Current T01 shape only; D01 owns the future administrative model. */
+export const regionSchema = z.strictObject({
+  name: z.string().min(1),
+  level: z.enum(["province", "city", "county"]),
+  id: z.string().optional(),
+  parentId: z.string().nullable().optional(),
+  fullName: z.string().optional(),
+  administrativeCode: z.string().optional(),
+});
 
-export const siteSummarySchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: siteSummaryRequired,
-  properties: siteSummaryProperties,
-} as const;
+/** 图片只保存对象键，访问 URL 由图片服务派生。 */
+export const imageAssetSchema = z.strictObject({
+  id: z.string().min(1),
+  objectKey: z.string().min(1),
+  // T04.0 only brands this existing optional identifier. Ownership,
+  // cardinality and record relationships remain deferred to T05.
+  siteId: siteIdSchema.optional(),
+  thumbnailKey: z.string().optional(),
+  displayKey: z.string().optional(),
+  originalKey: z.string().optional(),
+  caption: z.string().optional(),
+  description: z.string().optional(),
+  imageType: z.string().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+  width: z.number().int().min(1).optional(),
+  height: z.number().int().min(1).optional(),
+  fileSize: z.number().int().min(1).optional(),
+  format: z.string().optional(),
+  sha256: sha256Schema.optional(),
+});
 
-export const siteDetailSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: [...siteSummaryRequired, "images", "references", "relatedSites"],
-  properties: {
-    ...siteSummaryProperties,
-    fullTitle: { type: "string" },
-    coordinates: coordinatesSchema,
-    address: { type: "string" },
-    dimensions: { type: "string" },
-    wordCount: { type: "integer", minimum: 0 },
-    calligrapher: { type: "string" },
-    engraver: { type: "string" },
-    inscriber: { type: "string" },
-    preservationStatus: { type: "string" },
-    description: { type: "string" },
-    researchNotes: { type: "string" },
-    images: { type: "array", items: imageAssetSchema },
-    references: { type: "array", items: referenceSchema },
-    relatedSites: { type: "array", items: siteSummarySchema },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
-  },
-} as const;
-
-export const siteSearchQuerySchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    keyword: { type: "string" },
-    period: { type: "string" },
-    categoryId: { type: "string" },
-    province: { type: "string" },
-    city: { type: "string" },
-    county: { type: "string" },
-    page: { type: "integer", minimum: 1 },
-    pageSize: { type: "integer", minimum: 1, maximum: 100 },
-    sortBy: { enum: ["title", "period", "createdAt", "relevance"] },
-  },
-} as const;
-
-export const paginationQuerySchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["page", "pageSize"],
-  properties: {
-    page: { type: "integer", minimum: 1 },
-    pageSize: { type: "integer", minimum: 1, maximum: 100 },
-    sortBy: { type: "string" },
-    sortOrder: { enum: ["asc", "desc"] },
-  },
-} as const;
-
-export const paginatedResponseSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["total", "page", "pageSize", "totalPages", "data"],
-  properties: {
-    total: { type: "integer", minimum: 0 },
-    page: { type: "integer", minimum: 1 },
-    pageSize: { type: "integer", minimum: 1 },
-    totalPages: { type: "integer", minimum: 0 },
-    data: { type: "array", items: {} },
-  },
-} as const;
-
-export const apiErrorSchema = {
-  $schema: schemaVersion,
-  type: "object",
-  additionalProperties: false,
-  required: ["success", "error"],
-  properties: {
-    success: { const: false },
-    error: {
-      type: "object",
-      additionalProperties: false,
-      required: ["code", "message"],
-      properties: {
-        code: { type: "string" },
-        message: { type: "string" },
-        details: {},
-      },
-    },
-  },
-} as const;
+export const referenceSchema = z.strictObject({
+  title: z.string().min(1),
+  id: z.string().optional(),
+  author: z.string().optional(),
+  year: z.number().optional(),
+  sourceType: z.string().optional(),
+  publisher: z.string().optional(),
+  url: z.string().optional(),
+  citationText: z.string().optional(),
+  pages: z.string().optional(),
+});
