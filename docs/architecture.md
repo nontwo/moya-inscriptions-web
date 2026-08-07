@@ -8,7 +8,7 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
 ## Layer responsibilities
 
 - `apps/web` 提供移动优先的公开页面，只负责页面组合和交互。
-- `apps/admin` 提供管理端界面边界，阶段 0 不含任何管理业务。
+- `apps/admin` 提供管理端界面边界，当前仍不含任何管理业务。
 - `services/public-api`
   承担未来公开 API 适配和服务编排，不把数据库细节暴露给 UI。
 - `packages/contracts` 是跨模块公共类型的唯一来源。
@@ -30,6 +30,14 @@ key 表示，对外 URL 由配置和适配器派生。不得硬编码生产域�
 
 所有公开界面从窄屏和触控场景开始设计，再渐进增强到更宽视口。公共组件和设计 token 由对应所有者统一维护。
 
-## Excluded from phase 0
+## Current implementation boundary
 
-阶段 0 明确不包含正式页面、搜索、地图、账号体系、互动与上传、图片处理、数据库 Schema 与连接、云存储、部署、管理端业务、正式 UI 系统或正式数据契约。
+第一批基础任务已完成，业务开发尚未开始：
+
+- T01 已建立可追溯源数据、未核验地区候选和正式公共契约。
+- T02 已建立设计 token、通用 UI、正式视觉资产和组件目录；手机交互探索被隔离为非生产原型。
+- T03 只提供 CloudBase 候选架构、示例变量和人工检查表，不创建云资源。
+- T04–T09 尚未实现数据库 Schema/Repository/API、图片管线、正式页面、浏览、搜索和详情。
+
+正式页面必须通过 `packages/data-access`
+的 Repository 抽象消费数据；在 T04 实现该抽象与持久化前，不得让 UI 直接读取 JSON 或 PostgreSQL。原型中的本地状态、Mock 内容和浏览器 history 不属于生产架构。
