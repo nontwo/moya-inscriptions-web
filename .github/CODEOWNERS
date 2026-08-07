@@ -1,0 +1,9 @@
+# Repository owner approval is required for every path.
+* @nontwo
+
+# Explicitly protected architecture and governance areas.
+/.github/ @nontwo
+/database/ @nontwo
+/packages/contracts/ @nontwo
+/infra/ @nontwo
+/docs/ @nontwo
