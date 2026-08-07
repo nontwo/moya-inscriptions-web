@@ -28,7 +28,7 @@ pnpm build
 ## Feature branches and pull requests
 
 从最新 `integration/mvp` 创建任务分支。分支名应包含任务性质和范围，例如
-`feat/contracts-v1`。提交应保持小而可审阅，并通过 Pull Request 合并到
+`feat/123-home-feed`。提交应保持小而可审阅，并通过 Pull Request 合并到
 `integration/mvp`；只有完整集成验证通过的版本才能进入 `main`。
 
 PR 必须填写任务编号、目标、允许路径、修改文件、测试结果、越界情况、风险和建议合并顺序。

@@ -1,14 +1,19 @@
 # 摩崖碑刻数字平台
 
-面向中国摩崖与石刻资料的移动优先数字档案。本仓库目前处于阶段 0，仅提供多人及多个 Codex
-Agent 并行开发所需的公共工程基础，不包含正式业务功能。
+面向中国摩崖与石刻资料的移动优先数字档案。第一批基础任务 T00–T03 已在
+`integration/mvp`
+完成集成：工程与治理基线、首批名录数据契约、正式设计系统、候选部署骨架和独立手机交互原型均已具备；正式业务页面、持久化与服务开发尚未开始。
+
+项目的唯一动态进度来源是 [当前项目状态](docs/project-status.md)。
 
 ## Monorepo 结构
 
 - `apps/web`：公开站点的最小 Next.js App Router 骨架。
 - `apps/admin`：管理端的最小 Next.js App Router 骨架。
 - `services/public-api`：不依赖数据库的 TypeScript 服务骨架。
-- `packages/*`：公共契约、UI、设计 token、数据访问、搜索和图片处理的职责边界。
+- `packages/contracts`：T01 已交付的公共类型与 JSON Schema。
+- `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
+- `packages/data-access`、`packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
 - `database/migrations`：未来数据库迁移的唯一入口。
 - `tests`：单元、集成、端到端测试和 fixture。
 - `docs`：架构、工作流、分支策略和模块所有权文档。
@@ -59,7 +64,7 @@ pnpm format:check
 cp .env.example .env.local
 ```
 
-阶段 0 的构建和测试不依赖数据库、对象存储、地图或其他外部服务。不得提交
+当前基础任务的构建和测试不依赖数据库、对象存储、地图或其他外部服务。不得提交
 `.env`、真实密钥或生产凭据。
 
 ## 分支与并行开发
@@ -71,6 +76,16 @@ push。每个 Agent 必须遵守
 [开发工作流](docs/development-workflow.md) 和
 [分支策略](docs/branching-strategy.md)。
 
+## 当前能力
+
+- 读取并验证 1658 条 PDF 源记录、1665 个未核验地区候选和 5 条规范化样例。
+- 从 `@moya/contracts` 使用 T01 公共类型与 Schema。
+- 从 `@moya/design-tokens`、`@moya/ui` 使用 T02 token、组件和正式视觉资产。
+- 通过静态服务器查看[组件目录](docs/design-system/README.md)和[非生产手机原型](docs/prototypes/mobile-preview/README.md)。
+- 使用 T03
+  CloudBase 候选架构与无密钥部署检查清单进行方案评估；它不是可直接部署的 IaC。
+
 ## 当前未实现
 
-正式首页、搜索与索引、地区与分类页面、碑刻详情、地图、登录与用户互动、上传、图片管线、数据库 Schema 与连接、云存储、部署和管理端业务均不属于阶段 0，尚未实现。
+正式 Web/Admin 仍是骨架。数据库 Schema、Repository、Public
+API、图片管线、正式首页、地区/分类浏览、搜索、碑刻详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现，对应 T04–T09。
