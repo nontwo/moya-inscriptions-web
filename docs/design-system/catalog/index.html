@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>由艺设计系统预览</title>
+    <link
+      rel="stylesheet"
+      href="../../../packages/design-tokens/src/theme.css"
+    />
+    <link rel="stylesheet" href="../../../packages/ui/src/styles.css" />
+    <link rel="stylesheet" href="./catalog.css" />
+  </head>
+  <body class="yoyi-paper">
+    <div class="preview-shell">
+      <header class="preview-toolbar">
+        <strong>由艺 · 设计系统</strong>
+        <div class="preview-toolbar__controls">
+          <label>
+            主题
+            <select class="yoyi-input" data-preview-theme>
+              <option value="system">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" data-preview-motion /> 减少动画
+          </label>
+        </div>
+      </header>
+
+      <div class="yoyi-responsive-navigation">
+        <nav
+          aria-label="桌面主导航预览"
+          class="yoyi-desktop-navigation"
+          data-yoyi-ui="desktop-navigation"
+        >
+          <a aria-label="由艺" class="yoyi-desktop-navigation__brand" href="#">
+            <span aria-label="由艺" class="yoyi-logo" role="img"></span>
+          </a>
+          <div class="yoyi-desktop-navigation__items">
+            <a class="yoyi-navigation-entry is-active" href="#">首页</a>
+            <a class="yoyi-navigation-entry" href="#inscriptions">碑刻</a>
+            <a class="yoyi-navigation-entry" href="#calligraphy">书帖</a>
+          </div>
+          <button class="yoyi-icon-button" aria-label="搜索" type="button">
+            <span
+              class="yoyi-icon"
+              data-icon="search"
+              aria-hidden="true"
+            ></span>
+          </button>
+        </nav>
+        <nav
+          aria-label="手机主导航预览"
+          class="yoyi-mobile-bottom-navigation"
+          data-yoyi-ui="mobile-bottom-navigation"
+        >
+          <a class="yoyi-navigation-entry is-active" href="#">
+            <span class="yoyi-icon" data-icon="home" aria-hidden="true"></span>
+            <span>首页</span>
+          </a>
+          <a class="yoyi-navigation-entry" href="#inscriptions">
+            <span
+              class="yoyi-icon"
+              data-icon="inscriptions"
+              aria-hidden="true"
+            ></span>
+            <span>碑刻</span>
+          </a>
+          <a class="yoyi-navigation-entry" href="#calligraphy">
+            <span
+              class="yoyi-icon"
+              data-icon="calligraphy"
+              aria-hidden="true"
+            ></span>
+            <span>书帖</span>
+          </a>
+        </nav>
+      </div>
+
+      <main class="preview-main">
+        <section class="preview-hero">
+          <span aria-label="由艺" class="yoyi-logo" role="img"></span>
+          <h1>当代、文雅、克制的金石阅读界面</h1>
+          <p>
+            浅暖纸张、灰黑深色纸张与印泥橙红共同构成长期阅读和大量图像浏览的基础。
+            本页全部内容为虚构设计样例。
+          </p>
+        </section>
+
+        <section class="preview-section" id="colors">
+          <h2>主题与语义色</h2>
+          <div class="preview-grid">
+            <div class="preview-theme-sample yoyi-paper" data-theme="light">
+              <h3>浅色纸张</h3>
+              <p>墨黑正文、低对比度边框与轻微纤维。</p>
+              <span class="yoyi-tag yoyi-tag--accent">印泥强调</span>
+            </div>
+            <div class="preview-theme-sample yoyi-paper" data-theme="dark">
+              <h3>深色纸张</h3>
+              <p>灰黑表面、柔和暖白正文与适配印泥。</p>
+              <span class="yoyi-tag yoyi-tag--accent">印泥强调</span>
+            </div>
+          </div>
+          <div class="preview-grid">
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-background-page)"
+            >
+              background-page
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-background-surface)"
+            >
+              background-surface
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-background-elevated)"
+            >
+              background-elevated
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-background-muted)"
+            >
+              background-muted
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-seal-red)"
+            >
+              seal-red
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-border-default)"
+            >
+              border-default
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-success)"
+            >
+              success
+            </div>
+            <div
+              class="preview-swatch"
+              style="--swatch: var(--yoyi-color-error)"
+            >
+              error
+            </div>
+          </div>
+        </section>
+
+        <section class="preview-section">
+          <h2>字体层级与固定字标</h2>
+          <div>
+            <div
+              style="font-size: var(--yoyi-type-display-size); font-weight: 600"
+            >
+              山河入刻，纸墨留真
+            </div>
+            <div
+              style="
+                font-size: var(--yoyi-type-page-title-size);
+                font-weight: 600;
+              "
+            >
+              页面标题 Page title
+            </div>
+            <div
+              style="
+                font-size: var(--yoyi-type-section-title-size);
+                font-weight: 600;
+              "
+            >
+              章节标题 Section
+            </div>
+            <p style="line-height: 1.75">
+              正文使用系统字体栈。中文、英文和 2026 数字保持清晰协调的基线。
+            </p>
+          </div>
+          <div class="preview-row">
+            <div class="preview-label-item">
+              <span
+                class="yoyi-fixed-label"
+                data-label="nav-home"
+                aria-label="首页"
+                role="img"
+              ></span
+              ><span>首页</span>
+            </div>
+            <div class="preview-label-item">
+              <span
+                class="yoyi-fixed-label"
+                data-label="nav-inscriptions"
+                aria-label="碑刻"
+                role="img"
+              ></span
+              ><span>碑刻</span>
+            </div>
+            <div class="preview-label-item">
+              <span
+                class="yoyi-fixed-label"
+                data-label="nav-calligraphy"
+                aria-label="书帖"
+                role="img"
+              ></span
+              ><span>书帖</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="preview-section">
+          <h2>图标系统</h2>
+          <div class="preview-row">
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="home"></span>home
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="inscriptions"></span
+              >inscriptions
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="calligraphy"></span>calligraphy
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="search"></span>search
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="back"></span>back
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="menu"></span>menu
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="close"></span>close
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="filter"></span>filter
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="category"></span>category
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="location"></span>location
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="nearby"></span>nearby
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="image"></span>image
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="loading"></span>loading
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="error"></span>error
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="empty"></span>empty
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="previous"></span>previous
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="next"></span>next
+            </div>
+            <div class="preview-icon-item">
+              <span class="yoyi-icon" data-icon="settings"></span>settings
+            </div>
+          </div>
+        </section>
+
+        <section class="preview-section">
+          <h2>基础控件</h2>
+          <div class="preview-row">
+            <button class="yoyi-button" type="button">主要操作</button>
+            <button class="yoyi-button yoyi-button--secondary" type="button">
+              次要操作
+            </button>
+            <button class="yoyi-button yoyi-button--quiet" type="button">
+              安静操作
+            </button>
+            <button class="yoyi-button" disabled type="button">不可用</button>
+            <button
+              class="yoyi-icon-button yoyi-icon-button--outlined"
+              aria-label="筛选"
+              type="button"
+            >
+              <span class="yoyi-icon" data-icon="filter"></span>
+            </button>
+            <span class="yoyi-tag">金石</span>
+            <span class="yoyi-tag yoyi-tag--accent">重点</span>
+            <span class="yoyi-badge yoyi-badge--info">新释</span>
+          </div>
+          <div class="preview-form">
+            <input
+              class="yoyi-input"
+              aria-label="标题"
+              placeholder="输入标题"
+            />
+            <label class="yoyi-search-input"
+              ><span class="yoyi-icon" data-icon="search"></span
+              ><input
+                type="search"
+                aria-label="搜索"
+                placeholder="搜索碑刻、书帖或地点"
+            /></label>
+            <textarea
+              class="yoyi-textarea"
+              aria-label="说明"
+              placeholder="输入说明"
+            ></textarea>
+            <span
+              class="yoyi-skeleton"
+              style="width: 100%; height: 72px"
+              role="status"
+              aria-label="内容加载中"
+            ></span>
+          </div>
+        </section>
+
+        <section class="preview-section">
+          <h2>发现 / 附近与书帖分类</h2>
+          <div
+            class="yoyi-tabs yoyi-discover-nearby-tabs"
+            role="tablist"
+            aria-label="首页内容范围"
+          >
+            <button
+              class="yoyi-tab-item is-selected"
+              role="tab"
+              aria-selected="true"
+            >
+              发现
+            </button>
+            <button class="yoyi-tab-item" role="tab" aria-selected="false">
+              <span class="yoyi-icon yoyi-icon--sm" data-icon="nearby"></span
+              >附近
+            </button>
+          </div>
+          <div
+            class="yoyi-tabs yoyi-calligraphy-category-tabs"
+            role="tablist"
+            aria-label="书帖分类"
+          >
+            <button
+              class="yoyi-tab-item is-selected"
+              role="tab"
+              aria-selected="true"
+            >
+              全部
+            </button>
+            <button class="yoyi-tab-item" role="tab" aria-selected="false">
+              墨迹
+            </button>
+            <button class="yoyi-tab-item" role="tab" aria-selected="false">
+              拓本
+            </button>
+          </div>
+        </section>
+
+        <section class="preview-section">
+          <h2>首页信息流</h2>
+          <div class="yoyi-masonry-grid yoyi-masonry-grid--compact">
+            <article class="yoyi-card yoyi-image-card yoyi-discovery-card">
+              <div
+                class="yoyi-image-card__media yoyi-image-card__media--portrait"
+              >
+                <img
+                  src="../assets/demo/discovery-stone.svg"
+                  alt="虚构山崖刻石演示图"
+                />
+              </div>
+              <div class="yoyi-image-card__body">
+                <h3 class="yoyi-image-card__title">山门北壁题记</h3>
+                <div class="yoyi-image-card__metadata">北朝 · 虚构条目</div>
+              </div>
+            </article>
+            <article class="yoyi-card yoyi-image-card yoyi-discovery-card">
+              <div
+                class="yoyi-image-card__media yoyi-image-card__media--square"
+              >
+                <img
+                  src="../assets/demo/calligraphy-sheet.svg"
+                  alt="虚构书法演示图"
+                />
+              </div>
+              <div class="yoyi-image-card__body">
+                <h3 class="yoyi-image-card__title">纸上墨痕札记</h3>
+                <div class="yoyi-image-card__metadata">书帖专题 · 虚构条目</div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="preview-section" id="inscriptions">
+          <h2>碑刻列表</h2>
+          <ul class="yoyi-inscription-list">
+            <li class="yoyi-list-item yoyi-inscription-list-item">
+              <div class="yoyi-list-item__leading">
+                <img
+                  src="../assets/demo/inscription-rubbing.svg"
+                  alt="虚构拓片缩略图"
+                />
+              </div>
+              <div class="yoyi-list-item__body">
+                <div class="yoyi-list-item__title">云峰山题名</div>
+                <div class="yoyi-list-item__description">
+                  崖壁题名 · 释文待校
+                </div>
+                <div class="yoyi-list-item__metadata">虚构地点 · 虚构年代</div>
+              </div>
+              <span class="yoyi-icon" data-icon="next"></span>
+            </li>
+            <li class="yoyi-list-item yoyi-inscription-list-item">
+              <div class="yoyi-list-item__leading">
+                <img
+                  src="../assets/demo/discovery-stone.svg"
+                  alt="虚构碑刻缩略图"
+                />
+              </div>
+              <div class="yoyi-list-item__body">
+                <div class="yoyi-list-item__title">石门东侧残刻</div>
+                <div class="yoyi-list-item__description">
+                  摩崖刻石 · 三行残文
+                </div>
+                <div class="yoyi-list-item__metadata">虚构地点 · 虚构年代</div>
+              </div>
+              <span class="yoyi-icon" data-icon="next"></span>
+            </li>
+          </ul>
+        </section>
+
+        <section class="preview-section" id="calligraphy">
+          <h2>书帖卡片</h2>
+          <div
+            class="yoyi-responsive-grid yoyi-calligraphy-grid yoyi-responsive-grid--compact"
+          >
+            <article class="yoyi-card yoyi-image-card yoyi-calligraphy-card">
+              <div
+                class="yoyi-image-card__media yoyi-image-card__media--portrait"
+              >
+                <img
+                  src="../assets/demo/calligraphy-sheet.svg"
+                  alt="虚构墨迹册页"
+                />
+              </div>
+              <div class="yoyi-image-card__body">
+                <h3 class="yoyi-image-card__title">秋山札</h3>
+                <div class="yoyi-image-card__metadata">
+                  <span class="yoyi-badge">墨迹</span>虚构作品
+                </div>
+              </div>
+            </article>
+            <article class="yoyi-card yoyi-image-card yoyi-calligraphy-card">
+              <div
+                class="yoyi-image-card__media yoyi-image-card__media--portrait"
+              >
+                <img
+                  src="../assets/demo/inscription-rubbing.svg"
+                  alt="虚构刻帖拓本"
+                />
+              </div>
+              <div class="yoyi-image-card__body">
+                <h3 class="yoyi-image-card__title">松窗刻帖</h3>
+                <div class="yoyi-image-card__metadata">
+                  <span class="yoyi-badge">拓本</span>虚构作品
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="preview-section">
+          <h2>反馈、浮层与加载</h2>
+          <div class="preview-row">
+            <button
+              class="yoyi-button yoyi-button--secondary"
+              data-open-dialog="preview-dialog"
+              type="button"
+            >
+              Dialog
+            </button>
+            <button
+              class="yoyi-button yoyi-button--secondary"
+              data-open-dialog="preview-drawer"
+              type="button"
+            >
+              Drawer
+            </button>
+            <button
+              class="yoyi-button yoyi-button--secondary"
+              data-open-dialog="preview-sheet"
+              type="button"
+            >
+              Sheet
+            </button>
+            <button class="yoyi-button" data-show-loading type="button">
+              LoadingScreen
+            </button>
+            <span
+              class="yoyi-tooltip"
+              tabindex="0"
+              aria-describedby="tooltip-demo"
+              >悬停或聚焦<span
+                class="yoyi-tooltip__bubble"
+                id="tooltip-demo"
+                role="tooltip"
+                >一条克制的提示</span
+              ></span
+            >
+          </div>
+          <div class="preview-grid">
+            <div class="yoyi-state yoyi-state--empty">
+              <span class="yoyi-icon yoyi-icon--lg" data-icon="empty"></span>
+              <h2>暂无内容</h2>
+              <p>调整分类后再试。</p>
+            </div>
+            <div class="yoyi-state yoyi-state--error" role="alert">
+              <span class="yoyi-icon yoyi-icon--lg" data-icon="error"></span>
+              <h2>加载失败</h2>
+              <p>请稍后重试。</p>
+            </div>
+            <div class="preview-loading-card">
+              <span aria-label="由艺" class="yoyi-logo" role="img"></span>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div
+      class="yoyi-loading-screen preview-full-loading"
+      role="status"
+      aria-label="由艺正在加载"
+      hidden
+    >
+      <span aria-label="由艺" class="yoyi-logo" role="img"></span>
+    </div>
+
+    <dialog
+      class="yoyi-overlay-panel yoyi-overlay-panel--dialog"
+      id="preview-dialog"
+      aria-labelledby="dialog-title"
+    >
+      <div class="yoyi-overlay-panel__surface">
+        <header class="yoyi-overlay-panel__header">
+          <div>
+            <h2 id="dialog-title">查看释文</h2>
+            <p>虚构内容，仅演示 Dialog。</p>
+          </div>
+          <button
+            class="yoyi-icon-button"
+            aria-label="关闭"
+            data-close-dialog
+            type="button"
+          >
+            <span class="yoyi-icon" data-icon="close"></span>
+          </button>
+        </header>
+        <div class="yoyi-overlay-panel__content">
+          释文内容区域保持适宜阅读宽度。
+        </div>
+      </div>
+    </dialog>
+    <dialog
+      class="yoyi-overlay-panel yoyi-overlay-panel--drawer yoyi-overlay-panel--end"
+      id="preview-drawer"
+      aria-labelledby="drawer-title"
+    >
+      <div class="yoyi-overlay-panel__surface">
+        <header class="yoyi-overlay-panel__header">
+          <h2 id="drawer-title">筛选</h2>
+          <button
+            class="yoyi-icon-button"
+            aria-label="关闭"
+            data-close-dialog
+            type="button"
+          >
+            <span class="yoyi-icon" data-icon="close"></span>
+          </button>
+        </header>
+        <div class="yoyi-overlay-panel__content">
+          朝代、书体等筛选以后由业务页面配置。
+        </div>
+      </div>
+    </dialog>
+    <dialog
+      class="yoyi-overlay-panel yoyi-overlay-panel--sheet"
+      id="preview-sheet"
+      aria-labelledby="sheet-title"
+    >
+      <div class="yoyi-overlay-panel__surface">
+        <header class="yoyi-overlay-panel__header">
+          <h2 id="sheet-title">选择分类</h2>
+          <button
+            class="yoyi-icon-button"
+            aria-label="关闭"
+            data-close-dialog
+            type="button"
+          >
+            <span class="yoyi-icon" data-icon="close"></span>
+          </button>
+        </header>
+        <div class="yoyi-overlay-panel__content">适合手机端的底部 Sheet。</div>
+      </div>
+    </dialog>
+
+    <script type="module" src="./catalog.js"></script>
+  </body>
+</html>

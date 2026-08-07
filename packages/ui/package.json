@@ -4,12 +4,24 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./styles.css": "./src/styles.css",
+    "./assets/*": "./src/assets/*"
+  },
+  "sideEffects": [
+    "./src/styles.css"
+  ],
+  "dependencies": {
+    "@moya/design-tokens": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=19.2.8 <20",
+    "react-dom": ">=19.2.8 <20"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

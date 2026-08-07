@@ -1,3 +1,27 @@
 # `@moya/ui`
 
-公共 UI 组件入口，由 T02 负责。阶段 0 不建立正式组件库或视觉样式。
+“由艺”公共 React UI 组件、导航、内容展示和 SVG 资产。
+
+应用入口加载一次 token 和组件样式：
+
+```css
+@import "@moya/design-tokens/theme.css";
+@import "@moya/ui/styles.css";
+```
+
+```tsx
+import {
+  DiscoveryCard,
+  MobileBottomNavigation,
+  ThemeCycleButton,
+  type NavigationItem,
+} from "@moya/ui";
+```
+
+组件不绑定路由、API、数据库或业务契约。图片 URL 必须由消费端从对象 key 派生后再传入
+`UiImage.src`。分类和导航均由配置数组驱动。底部固定导航项可通过 `labelMark`
+显示用户提供的透明图片字标；真实 `label`
+始终保留为无障碍名称。其他标签默认使用系统字体文本。
+
+`DesktopTopNavigation` 的品牌链接必须由调用方通过 `brandHref`
+显式传入；未传入时只显示品牌，不推断应用路由。包内仅包含正式品牌、图标、字标和纹理资产，不携带虚构藏品图或完整应用状态。
