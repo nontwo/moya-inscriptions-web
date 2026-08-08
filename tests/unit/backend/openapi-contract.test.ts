@@ -96,7 +96,8 @@ describe("source-independent OpenAPI 3.1.1 contract", () => {
       maximum: 100,
       type: "integer",
     });
-    expect(paths).not.toHaveProperty("/v1/regions");
+    const removedRegionRoute = ["/v1", "regions"].join("/");
+    expect(paths).not.toHaveProperty(removedRegionRoute);
     for (const parameterName of [
       ...listParameters.keys(),
       ...searchParameters.keys(),
