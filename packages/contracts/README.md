@@ -23,9 +23,11 @@ schema 是事实来源，TypeScript 类型从 schema 推导，JSON Schema Draft
 - 从 runtime schemas 派生的 JSON Schema。
 
 地区边界在本次迁移中保持 T01 语义等价。`PublicRegion`
-只是当前 v1 的 province-only safety projection；长期
-`NormalizedRegion`、city/county 模型和 `RegionFacet` 等待 D01.1 Contract Change
-Request，不在本 Commit 冻结。
+只是当前 v1 的 province-only safety projection；长期 `NormalizedRegion`
+与 city/county 模型由 D01 独立接入。D01.1 已批准的行政区、verification、evidence
+responsibility 与稳定 reference 语义属于 internal/ingestion/review
+contract，不自动进入 public DTO/OpenAPI。当前 public `RegionFacet`
+只包含 province/count；lower-level filter 等待 D01.2 pilot。
 
 源数据与限制见
 [`data/catalog/first-batch/`](../../data/catalog/first-batch/README.md) 和

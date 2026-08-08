@@ -66,10 +66,12 @@ schema。需要 JSON Schema 的调用方必须改用 `@moya/contracts/json-schem
 
 - Identity：`SiteId`、`SourceId`、`FirstBatchSourceId` 及对应 schemas。
 - Public DTO：provisional province-only `PublicRegion`、`CategoryFacet`
-  及对应 schemas。
+  及对应 schemas；Commit 3 新增 province-only `RegionFacet`。
 - Query：`SiteListTransportQuery`、`SiteSearchTransportQuery`、`SiteListQuery`、transport/normalized
   schemas 与 parse functions。
 - Response：`ApiErrorCode`、`InvalidQueryDetails`、`createApiSuccessSchema`、`createPaginatedResponseSchema`。
+- HTTP response contracts：`HealthResponse`、`SitePage` 及 site/facet success
+  envelope schemas；全部仍由 Zod 推导。
 - JSON Schema：全部使用 `*JsonSchema` 名称，从 Zod 派生。
 
 ## Removed exports
@@ -86,8 +88,8 @@ type；是否允许未关联 asset、asset/site 的 ownership 和一对一、一
 
 ## D01.1 deferred region decisions
 
-本 Commit 不导出 `RegionFacet`，也不冻结 city/county、facet hierarchy 或长期
+`RegionFacet` 只表达 province/count，不冻结 city/county、facet hierarchy 或长期
 `NormalizedRegion`。`PublicRegion` 只是当前 v1 防止未核验 lower-level
 region 进入 public DTO 的 province-only safety
-projection，不替代 D01.1 的长期地区模型。相关契约等待 D01.1 Contract Change
-Request 审核后再接入。
+projection，不替代 D01.1 已批准的 internal 地区模型；D01 internal
+contract 将在独立接入任务中落地，且不自动进入 public DTO/OpenAPI。

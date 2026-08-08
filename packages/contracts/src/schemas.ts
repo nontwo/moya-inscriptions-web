@@ -22,9 +22,16 @@ export {
   sourceIdSchema,
 } from "./identity-schemas.js";
 export {
+  categoryFacetListSuccessSchema,
   categoryFacetSchema,
+  healthResponseSchema,
   publicRegionSchema,
+  regionFacetListSuccessSchema,
+  regionFacetSchema,
+  siteDetailSuccessSchema,
   siteDetailSchema,
+  sitePageSchema,
+  sitePageSuccessSchema,
   siteSummarySchema,
 } from "./public-schemas.js";
 export {

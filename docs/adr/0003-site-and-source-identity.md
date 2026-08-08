@@ -49,6 +49,21 @@ Region normalization/verification 属于独立 D01 任务：
 - T04.0 不读取、依赖或修改 D01
   worktree；D01 在 T04.0 合并前不得并行修改 contracts、data-access 或 public-api。
 
+D01.1 Contract Change
+Request 已由 owner 审核通过。T04 后续 internal/ingestion/review
+contract 接入必须吸收：
+
+- `AdministrativeLevel`、`AdministrativeDivisionType`、`RegionVerificationStatus`、
+  `RegionAssignmentBasis` 与 `EvidenceResponsibility`；
+- stable division/version identity 与 administrative-as-of 语义；
+- stable candidate、provenance、placement-decision 和 administrative-decision
+  reference boundaries。
+
+这些是 internal contract，不自动进入 public
+DTO/OpenAPI。T04.0 不实现行政区 reference dataset、evidence storage、review
+workflow 或数据库结构；公开 API 继续只允许 province
+filter，city/county/prefecture/county-level filter 等待 D01.2 pilot 后再决定。
+
 ## 原始与派生数据回归策略
 
 - `source-catalog.json` 是 immutable raw-source

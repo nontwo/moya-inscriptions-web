@@ -1,0 +1,1779 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "INVALID_QUERY",
+                  "SITE_NOT_FOUND",
+                  "SERVICE_UNAVAILABLE",
+                  "INTERNAL_ERROR"
+                ],
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": false,
+                "properties": {
+                  "issues": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "message": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": ["field", "message"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": ["issues"],
+                "type": "object"
+              },
+              "message": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "requestId": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "requestId"],
+            "type": "object"
+          },
+          "success": {
+            "const": false,
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "error"],
+        "type": "object"
+      },
+      "CategoryFacet": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "label", "count"],
+        "type": "object"
+      },
+      "CategoryFacetListSuccess": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "label": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["id", "label", "count"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "timestamp": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["timestamp", "version"],
+            "type": "object"
+          },
+          "success": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "data"],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "ok",
+            "type": "string"
+          }
+        },
+        "required": ["status"],
+        "type": "object"
+      },
+      "RegionFacet": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "province": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["province", "count"],
+        "type": "object"
+      },
+      "RegionFacetListSuccess": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "province": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["province", "count"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "timestamp": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["timestamp", "version"],
+            "type": "object"
+          },
+          "success": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "data"],
+        "type": "object"
+      },
+      "SiteDetail": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "calligrapher": {
+            "type": "string"
+          },
+          "categoryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "coordinates": {
+            "additionalProperties": false,
+            "properties": {
+              "coordinateSystem": {
+                "type": "string"
+              },
+              "latitude": {
+                "maximum": 90,
+                "minimum": -90,
+                "type": "number"
+              },
+              "longitude": {
+                "maximum": 180,
+                "minimum": -180,
+                "type": "number"
+              },
+              "precision": {
+                "enum": ["exact", "approximate", "area"],
+                "type": "string"
+              }
+            },
+            "required": ["latitude", "longitude"],
+            "type": "object"
+          },
+          "coverImageKey": {
+            "type": "string"
+          },
+          "coverThumbnailKey": {
+            "type": "string"
+          },
+          "dataStatus": {
+            "enum": ["catalog-only", "enriched", "verified", "published"],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "dimensions": {
+            "type": "string"
+          },
+          "engraver": {
+            "type": "string"
+          },
+          "fullTitle": {
+            "type": "string"
+          },
+          "historicalPeriod": {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "normalizedName": {
+                "type": "string"
+              },
+              "yearEnd": {
+                "type": "number"
+              },
+              "yearStart": {
+                "type": "number"
+              }
+            },
+            "required": ["label"],
+            "type": "object"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "imageIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "images": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "caption": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "displayKey": {
+                  "type": "string"
+                },
+                "fileSize": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "imageType": {
+                  "type": "string"
+                },
+                "objectKey": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "originalKey": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "siteId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sortOrder": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "thumbnailKey": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": ["id", "objectKey"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "inscriber": {
+            "type": "string"
+          },
+          "preservationStatus": {
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "author": {
+                  "type": "string"
+                },
+                "citationText": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "pages": {
+                  "type": "string"
+                },
+                "publisher": {
+                  "type": "string"
+                },
+                "sourceType": {
+                  "type": "string"
+                },
+                "title": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "year": {
+                  "type": "number"
+                }
+              },
+              "required": ["title"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "region": {
+            "additionalProperties": false,
+            "properties": {
+              "province": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["province"],
+            "type": "object"
+          },
+          "relatedSites": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "aliases": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "categoryIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "coverImageKey": {
+                  "type": "string"
+                },
+                "coverThumbnailKey": {
+                  "type": "string"
+                },
+                "dataStatus": {
+                  "enum": ["catalog-only", "enriched", "verified", "published"],
+                  "type": "string"
+                },
+                "historicalPeriod": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "normalizedName": {
+                      "type": "string"
+                    },
+                    "yearEnd": {
+                      "type": "number"
+                    },
+                    "yearStart": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["label"],
+                  "type": "object"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "imageIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "region": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "province": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": ["province"],
+                  "type": "object"
+                },
+                "siteCode": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "aliases",
+                "region",
+                "historicalPeriod",
+                "dataStatus",
+                "categoryIds",
+                "imageIds"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "researchNotes": {
+            "type": "string"
+          },
+          "siteCode": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "wordCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "aliases",
+          "region",
+          "historicalPeriod",
+          "dataStatus",
+          "categoryIds",
+          "imageIds",
+          "images",
+          "references",
+          "relatedSites"
+        ],
+        "type": "object"
+      },
+      "SiteDetailSuccess": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "aliases": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "calligrapher": {
+                "type": "string"
+              },
+              "categoryIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "coordinates": {
+                "additionalProperties": false,
+                "properties": {
+                  "coordinateSystem": {
+                    "type": "string"
+                  },
+                  "latitude": {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                  },
+                  "precision": {
+                    "enum": ["exact", "approximate", "area"],
+                    "type": "string"
+                  }
+                },
+                "required": ["latitude", "longitude"],
+                "type": "object"
+              },
+              "coverImageKey": {
+                "type": "string"
+              },
+              "coverThumbnailKey": {
+                "type": "string"
+              },
+              "dataStatus": {
+                "enum": ["catalog-only", "enriched", "verified", "published"],
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "dimensions": {
+                "type": "string"
+              },
+              "engraver": {
+                "type": "string"
+              },
+              "fullTitle": {
+                "type": "string"
+              },
+              "historicalPeriod": {
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "normalizedName": {
+                    "type": "string"
+                  },
+                  "yearEnd": {
+                    "type": "number"
+                  },
+                  "yearStart": {
+                    "type": "number"
+                  }
+                },
+                "required": ["label"],
+                "type": "object"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "imageIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "images": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "caption": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "displayKey": {
+                      "type": "string"
+                    },
+                    "fileSize": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "height": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "imageType": {
+                      "type": "string"
+                    },
+                    "objectKey": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "originalKey": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "siteId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sortOrder": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "thumbnailKey": {
+                      "type": "string"
+                    },
+                    "width": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["id", "objectKey"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "inscriber": {
+                "type": "string"
+              },
+              "preservationStatus": {
+                "type": "string"
+              },
+              "references": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "author": {
+                      "type": "string"
+                    },
+                    "citationText": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "pages": {
+                      "type": "string"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
+                    "sourceType": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["title"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "region": {
+                "additionalProperties": false,
+                "properties": {
+                  "province": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": ["province"],
+                "type": "object"
+              },
+              "relatedSites": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "categoryIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "coverImageKey": {
+                      "type": "string"
+                    },
+                    "coverThumbnailKey": {
+                      "type": "string"
+                    },
+                    "dataStatus": {
+                      "enum": [
+                        "catalog-only",
+                        "enriched",
+                        "verified",
+                        "published"
+                      ],
+                      "type": "string"
+                    },
+                    "historicalPeriod": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "label": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "normalizedName": {
+                          "type": "string"
+                        },
+                        "yearEnd": {
+                          "type": "number"
+                        },
+                        "yearStart": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["label"],
+                      "type": "object"
+                    },
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "imageIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "region": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "province": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": ["province"],
+                      "type": "object"
+                    },
+                    "siteCode": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "aliases",
+                    "region",
+                    "historicalPeriod",
+                    "dataStatus",
+                    "categoryIds",
+                    "imageIds"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "researchNotes": {
+                "type": "string"
+              },
+              "siteCode": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "wordCount": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "aliases",
+              "region",
+              "historicalPeriod",
+              "dataStatus",
+              "categoryIds",
+              "imageIds",
+              "images",
+              "references",
+              "relatedSites"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "timestamp": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["timestamp", "version"],
+            "type": "object"
+          },
+          "success": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "data"],
+        "type": "object"
+      },
+      "SiteId": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Platform entity identity with an opaque non-empty wire value.",
+        "minLength": 1,
+        "type": "string"
+      },
+      "SitePage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "aliases": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "categoryIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "coverImageKey": {
+                  "type": "string"
+                },
+                "coverThumbnailKey": {
+                  "type": "string"
+                },
+                "dataStatus": {
+                  "enum": ["catalog-only", "enriched", "verified", "published"],
+                  "type": "string"
+                },
+                "historicalPeriod": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "normalizedName": {
+                      "type": "string"
+                    },
+                    "yearEnd": {
+                      "type": "number"
+                    },
+                    "yearStart": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["label"],
+                  "type": "object"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "imageIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "region": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "province": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": ["province"],
+                  "type": "object"
+                },
+                "siteCode": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "aliases",
+                "region",
+                "historicalPeriod",
+                "dataStatus",
+                "categoryIds",
+                "imageIds"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "page": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "pageSize": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalPages": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": ["total", "page", "pageSize", "totalPages", "items"],
+        "type": "object"
+      },
+      "SitePageSuccess": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "items": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "categoryIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "coverImageKey": {
+                      "type": "string"
+                    },
+                    "coverThumbnailKey": {
+                      "type": "string"
+                    },
+                    "dataStatus": {
+                      "enum": [
+                        "catalog-only",
+                        "enriched",
+                        "verified",
+                        "published"
+                      ],
+                      "type": "string"
+                    },
+                    "historicalPeriod": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "label": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "normalizedName": {
+                          "type": "string"
+                        },
+                        "yearEnd": {
+                          "type": "number"
+                        },
+                        "yearStart": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["label"],
+                      "type": "object"
+                    },
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "imageIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "region": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "province": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": ["province"],
+                      "type": "object"
+                    },
+                    "siteCode": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "aliases",
+                    "region",
+                    "historicalPeriod",
+                    "dataStatus",
+                    "categoryIds",
+                    "imageIds"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "page": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "pageSize": {
+                "maximum": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "total": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "totalPages": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": ["total", "page", "pageSize", "totalPages", "items"],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "timestamp": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["timestamp", "version"],
+            "type": "object"
+          },
+          "success": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "data"],
+        "type": "object"
+      },
+      "SiteSummary": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "categoryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "coverImageKey": {
+            "type": "string"
+          },
+          "coverThumbnailKey": {
+            "type": "string"
+          },
+          "dataStatus": {
+            "enum": ["catalog-only", "enriched", "verified", "published"],
+            "type": "string"
+          },
+          "historicalPeriod": {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "normalizedName": {
+                "type": "string"
+              },
+              "yearEnd": {
+                "type": "number"
+              },
+              "yearStart": {
+                "type": "number"
+              }
+            },
+            "required": ["label"],
+            "type": "object"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "imageIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "region": {
+            "additionalProperties": false,
+            "properties": {
+              "province": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["province"],
+            "type": "object"
+          },
+          "siteCode": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "aliases",
+          "region",
+          "historicalPeriod",
+          "dataStatus",
+          "categoryIds",
+          "imageIds"
+        ],
+        "type": "object"
+      },
+      "SourceId": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Provenance/source-record identity with an opaque non-empty wire value; it is not a SiteId.",
+        "minLength": 1,
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "description": "Operational health is unversioned. Public catalog contracts use /v1; backward-compatible optional capabilities may be added within v1, while breaking changes require /v2.",
+    "title": "摩崖碑刻数字平台 Public API",
+    "version": "1.0.0"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "openapi": "3.1.1",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service is operational."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "Operational health"
+      }
+    },
+    "/v1/categories": {
+      "get": {
+        "operationId": "listCategoryFacets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryFacetListSuccess"
+                }
+              }
+            },
+            "description": "Public category facets; an empty data array is valid."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "List approved public category facets"
+      }
+    },
+    "/v1/regions": {
+      "get": {
+        "operationId": "listRegionFacets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionFacetListSuccess"
+                }
+              }
+            },
+            "description": "Province-level public facets."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "List province-level public region facets"
+      }
+    },
+    "/v1/search": {
+      "get": {
+        "operationId": "searchSites",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "province",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "categoryId",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "enum": ["relevance", "title", "period"],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitePageSuccess"
+                }
+              }
+            },
+            "description": "A page of matching public sites."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query; error code INVALID_QUERY."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "Search public inscription sites"
+      }
+    },
+    "/v1/sites": {
+      "get": {
+        "operationId": "listSites",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "province",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "categoryId",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "enum": ["title", "period"],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitePageSuccess"
+                }
+              }
+            },
+            "description": "A page of public sites."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query; error code INVALID_QUERY."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "List public inscription sites"
+      }
+    },
+    "/v1/sites/{id}": {
+      "get": {
+        "operationId": "getSiteById",
+        "parameters": [
+          {
+            "description": "Platform SiteId; never a SourceId alias.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SiteId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDetailSuccess"
+                }
+              }
+            },
+            "description": "The requested public site."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Site not found; error code SITE_NOT_FOUND."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "Get one public inscription site"
+      }
+    }
+  }
+}

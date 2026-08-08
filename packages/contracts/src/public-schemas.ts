@@ -8,6 +8,10 @@ import {
   referenceSchema,
 } from "./catalog-schemas.js";
 import { siteIdSchema } from "./identity-schemas.js";
+import {
+  createApiSuccessSchema,
+  createPaginatedResponseSchema,
+} from "./response-schemas.js";
 
 /** Provisional v1 safety projection, not a long-term administrative model. */
 export const publicRegionSchema = z.strictObject({
@@ -55,3 +59,24 @@ export const categoryFacetSchema = z.strictObject({
   label: z.string().min(1),
   count: z.number().int().min(0),
 });
+
+/** Province-only public facet; D01 administrative identity stays internal. */
+export const regionFacetSchema = z.strictObject({
+  province: z.string().min(1),
+  count: z.number().int().min(0),
+});
+
+/** Operational success response; failures use the public ApiError contract. */
+export const healthResponseSchema = z.strictObject({
+  status: z.literal("ok"),
+});
+
+export const sitePageSchema = createPaginatedResponseSchema(siteSummarySchema);
+export const sitePageSuccessSchema = createApiSuccessSchema(sitePageSchema);
+export const siteDetailSuccessSchema = createApiSuccessSchema(siteDetailSchema);
+export const regionFacetListSuccessSchema = createApiSuccessSchema(
+  z.array(regionFacetSchema),
+);
+export const categoryFacetListSuccessSchema = createApiSuccessSchema(
+  z.array(categoryFacetSchema),
+);

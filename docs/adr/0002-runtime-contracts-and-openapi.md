@@ -76,6 +76,7 @@ T04.0 不选择或安装 Router。公开 DTO 不暴露内部审核字段，也�
 ## 地区过滤边界
 
 当前 v1 list/search query 只冻结已经允许公开的 province-level
-filter，不包含 city/county public filters。lower-level region
-filter 在 D01 完成 Region Contract Handoff 后、T04.4 正式 HTTP
-API 实现前重新评估。
+filter，不包含 city/county public filters。lower-level region filter 在 D01.2
+pilot 后、T04.4 正式 HTTP
+API 实现前重新评估。D01.1 已批准的 internal 行政区与证据语义不自动进入 public
+DTO/OpenAPI。

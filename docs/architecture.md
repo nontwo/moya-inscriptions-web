@@ -58,10 +58,17 @@ verification 和冲突解决由独立 D01 任务负责。T04.0 只对已有
 `RegionCandidate`、`RegionEnrichment` 和 `NormalizedRegion`
 进行语义等价的 contract 迁移，不重新设计 city/county 模型。
 
-在 D01 完成 Region Contract Handoff 并接入最新 `integration/mvp`
-前，公开 list/search 只允许 province-level filtering。未核验的 lower-level
+D01.1 已批准 internal 行政区与证据语义，包括 administrative
+level/type/status/basis、evidence responsibility、stable division/version
+identity、administrative-as-of 与稳定的 candidate/provenance/decision reference
+boundaries。这些边界由后续 internal
+contract 接入，不自动公开，也不在 T04.0 实现 reference dataset、evidence
+storage、review workflow 或数据库结构。
+
+公开 list/search 继续只允许 province-level filtering。未核验的 lower-level
 region 数据不得进入公共 DTO 或 API，`RegionFacet`
-也只表达当前允许公开的最小 facet。
+只包含 province/count。city/county、prefecture/county-level filter 等待 D01.2
+pilot 后再决定。
 
 ## Interface principle
 

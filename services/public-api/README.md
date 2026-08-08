@@ -1,6 +1,14 @@
 # Public API service
 
-公开 API 的无数据库 TypeScript 骨架，计划由 T04 实现。当前仅导出等价于
-`GET /health`
-返回值的纯函数；尚无 HTTP 服务器、Repository、数据库适配器或正式查询接口。T04 必须复用
-`@moya/contracts`，不得在服务内重定义公共类型。
+公开 API 的无数据库 contract package。当前提供：
+
+- OpenAPI 3.1.1 document builder；
+- `pnpm --filter @moya/public-api generate:openapi`
+  单一确定性 artifact 生成入口；
+- 与 `GET /health` 成功 contract 一致的纯函数。
+
+`openapi/openapi.json` 是生成文件，不得人工修改。Component data schemas 来自
+`@moya/contracts/json-schema`，path/status/parameter placement 由本包定义。
+
+本包仍没有 HTTP Router、listen/server、handler、Repository
+implementation、数据库、SQL 或数据导入。

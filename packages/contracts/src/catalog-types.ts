@@ -24,9 +24,16 @@ import type {
   sourceIdSchema,
 } from "./identity-schemas.js";
 import type {
+  categoryFacetListSuccessSchema,
   categoryFacetSchema,
+  healthResponseSchema,
   publicRegionSchema,
+  regionFacetListSuccessSchema,
+  regionFacetSchema,
+  siteDetailSuccessSchema,
   siteDetailSchema,
+  sitePageSchema,
+  sitePageSuccessSchema,
   siteSummarySchema,
 } from "./public-schemas.js";
 import type {
@@ -74,6 +81,17 @@ export type SiteSummary = z.infer<typeof siteSummarySchema>;
 export type SiteDetail = z.infer<typeof siteDetailSchema>;
 export type PublicRegion = z.infer<typeof publicRegionSchema>;
 export type CategoryFacet = z.infer<typeof categoryFacetSchema>;
+export type RegionFacet = z.infer<typeof regionFacetSchema>;
+export type HealthResponse = z.infer<typeof healthResponseSchema>;
+export type SitePage = z.infer<typeof sitePageSchema>;
+export type SitePageSuccess = z.infer<typeof sitePageSuccessSchema>;
+export type SiteDetailSuccess = z.infer<typeof siteDetailSuccessSchema>;
+export type RegionFacetListSuccess = z.infer<
+  typeof regionFacetListSuccessSchema
+>;
+export type CategoryFacetListSuccess = z.infer<
+  typeof categoryFacetListSuccessSchema
+>;
 
 export type PaginationQuery = z.output<typeof paginationQuerySchema>;
 export type SiteListTransportQuery = z.input<

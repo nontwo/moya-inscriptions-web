@@ -21,9 +21,16 @@ import {
   sourceIdSchema,
 } from "./identity-schemas.js";
 import {
+  categoryFacetListSuccessSchema,
   categoryFacetSchema,
+  healthResponseSchema,
   publicRegionSchema,
+  regionFacetListSuccessSchema,
+  regionFacetSchema,
+  siteDetailSuccessSchema,
   siteDetailSchema,
+  sitePageSchema,
+  sitePageSuccessSchema,
   siteSummarySchema,
 } from "./public-schemas.js";
 import {
@@ -66,6 +73,19 @@ export const siteSummaryJsonSchema = toJsonSchema(siteSummarySchema);
 export const siteDetailJsonSchema = toJsonSchema(siteDetailSchema);
 export const publicRegionJsonSchema = toJsonSchema(publicRegionSchema);
 export const categoryFacetJsonSchema = toJsonSchema(categoryFacetSchema);
+export const regionFacetJsonSchema = toJsonSchema(regionFacetSchema);
+export const healthResponseJsonSchema = toJsonSchema(healthResponseSchema);
+export const sitePageJsonSchema = toJsonSchema(sitePageSchema);
+export const sitePageSuccessJsonSchema = toJsonSchema(sitePageSuccessSchema);
+export const siteDetailSuccessJsonSchema = toJsonSchema(
+  siteDetailSuccessSchema,
+);
+export const regionFacetListSuccessJsonSchema = toJsonSchema(
+  regionFacetListSuccessSchema,
+);
+export const categoryFacetListSuccessJsonSchema = toJsonSchema(
+  categoryFacetListSuccessSchema,
+);
 export const paginationQueryJsonSchema = toJsonSchema(paginationQuerySchema);
 export const siteListTransportQueryJsonSchema = toJsonSchema(
   siteListTransportQuerySchema,
