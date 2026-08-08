@@ -3,10 +3,18 @@ import { z } from "zod";
 import {
   archiveItemDetailSchema,
   archiveItemIdSchema,
+  archiveItemListQuerySchema,
   archiveItemLifecycleStatusSchema,
+  archiveItemPageSchema,
   archiveItemRecordSchema,
+  archiveItemSearchQuerySchema,
   archiveItemSummarySchema,
+  apiErrorCodeSchema,
+  apiErrorSchema,
+  categoryFacetListSchema,
+  categoryFacetSchema,
   coordinatesSchema,
+  healthResponseSchema,
   historicalPeriodSchema,
   imageAssetSchema,
   publicLocationSchema,
@@ -34,3 +42,17 @@ export const archiveItemSummaryJsonSchema = toJsonSchema(
 export const archiveItemDetailJsonSchema = toJsonSchema(
   archiveItemDetailSchema,
 );
+export const archiveItemListQueryJsonSchema = toJsonSchema(
+  archiveItemListQuerySchema,
+);
+export const archiveItemSearchQueryJsonSchema = toJsonSchema(
+  archiveItemSearchQuerySchema,
+);
+export const archiveItemPageJsonSchema = toJsonSchema(archiveItemPageSchema);
+export const categoryFacetJsonSchema = toJsonSchema(categoryFacetSchema);
+export const categoryFacetListJsonSchema = toJsonSchema(
+  categoryFacetListSchema,
+);
+export const healthResponseJsonSchema = toJsonSchema(healthResponseSchema);
+export const apiErrorCodeJsonSchema = toJsonSchema(apiErrorCodeSchema);
+export const apiErrorJsonSchema = toJsonSchema(apiErrorSchema);

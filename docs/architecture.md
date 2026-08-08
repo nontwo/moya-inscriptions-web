@@ -26,6 +26,44 @@ UI 组件不得直接查询 PostgreSQL。公开页面必须通过 `packages/data
 图片在契约和数据层中使用 object
 key 表示，对外 URL 由配置和适配器派生。不得硬编码生产域名、CDN 地址、存储桶或密钥。
 
+后端采用 Modular Monolith。正式数据调用链固定为：
+
+```text
+Web / Admin presentation
+→ HTTP API 或 server-side application boundary
+→ application handler
+→ ArchiveItemRepository port
+→ infrastructure adapter
+→ PostgreSQL
+```
+
+当前只实现到公共 contract 和 Repository port。`packages/data-access`
+不得依赖 PostgreSQL driver、SQL、HTTP、runtime
+schema、数据文件或环境变量；具体 adapter、handler、Router 和数据库均留给后续 T04 阶段。
+
+公共契约采用以下单向事实链：
+
+```text
+Zod 4 runtime schema
+→ inferred TypeScript type
+→ JSON Schema Draft 2020-12
+→ OpenAPI 3.1.1 components
+```
+
+contracts 根入口与 `./types` 只提供类型；runtime schema 和 JSON
+Schema 必须从显式子路径导入。Web、Admin、共享 UI 和 Client
+Component 不得直接导入 Repository、runtime schema、数据库或数据文件；Client
+Component 只能 type-import 公开 DTO/API 类型。
+
+T04 v2 的公开路由边界只有
+`GET /health`、`GET /v1/items`、`GET /v1/items/{id}`、`GET /v1/search` 和
+`GET /v1/categories`。公共响应只包含 `ArchiveItemSummary`、`ArchiveItemDetail`
+及其公开分页/分类结构，不包含内部生命周期、审核或删除状态。
+
+地区规范化、行政区证据和审核流程不属于 T01/T04
+v2。未来如需这些能力，必须以新的独立任务建立 internal
+contract、数据源和审核流程；不得恢复旧 D01 pilot。
+
 ## Interface principle
 
 所有公开界面从窄屏和触控场景开始设计，再渐进增强到更宽视口。公共组件和设计 token 由对应所有者统一维护。
@@ -38,7 +76,10 @@ key 表示，对外 URL 由配置和适配器派生。不得硬编码生产域�
 - 新 T01 只建立来源无关的档案模型、公共 DTO 和 runtime schema。
 - T02 已建立设计 token、通用 UI、正式视觉资产和组件目录；手机交互探索被隔离为非生产原型。
 - T03 只提供 CloudBase 候选架构、示例变量和人工检查表，不创建云资源。
-- T04–T09 尚未实现数据库 Schema/Repository/API、图片管线、正式页面、浏览、搜索和详情。
+- T04 v2 已建立 `ArchiveItemRepository` port、只读 OpenAPI
+  contract 和架构守卫，但未实现 Router、handler、adapter、数据库或真实数据。
+- T05–T09 尚未实现图片管线、正式页面、浏览、搜索和详情。
 
 正式页面必须通过 `packages/data-access`
-的 Repository 抽象消费数据；在 T04 实现该抽象与持久化前，不得让 UI 直接读取数据文件或 PostgreSQL。原型中的本地状态、Mock 内容和浏览器 history 不属于生产架构。
+的 Repository 抽象间接消费数据；UI 不得直接读取 Repository、数据文件或 PostgreSQL。原型中的本地状态、Mock 内容和浏览器 history 不属于生产架构。已接受的边界记录在
+[`docs/adr/`](adr/README.md)。
