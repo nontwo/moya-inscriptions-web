@@ -6,18 +6,13 @@ import type {
   ArchiveItemListQuery,
   ArchiveItemListTransportQuery,
   ArchiveItemPage,
-  ArchiveItemSearchQuery,
-  ArchiveItemSearchTransportQuery,
   ArchiveItemSummary,
-  CategoryFacet,
 } from "@moya/contracts";
 import {
   archiveItemDetailSchema,
   archiveItemIdSchema,
-  archiveItemListQuerySchema,
+  archiveItemListQueryParserSchema,
   archiveItemPageSchema,
-  archiveItemSearchQuerySchema,
-  categoryFacetSchema,
 } from "@moya/contracts/schemas";
 import { describe, expect, it } from "vitest";
 
@@ -30,18 +25,13 @@ type Equal<Left, Right> =
 
 const assertNormalizedInputs = (
   repository: ArchiveItemRepository,
-  listQuery: ArchiveItemListQuery,
-  listTransportQuery: ArchiveItemListTransportQuery,
-  searchQuery: ArchiveItemSearchQuery,
-  searchTransportQuery: ArchiveItemSearchTransportQuery,
+  query: ArchiveItemListQuery,
+  transportQuery: ArchiveItemListTransportQuery,
 ) => {
-  void repository.listItems(listQuery);
-  void repository.searchItems(searchQuery);
+  void repository.listItems(query);
 
-  // @ts-expect-error Repository inputs are normalized, not transport values.
-  void repository.listItems(listTransportQuery);
-  // @ts-expect-error Repository inputs are normalized, not transport values.
-  void repository.searchItems(searchTransportQuery);
+  // @ts-expect-error Repository inputs are normalized, not HTTP strings.
+  void repository.listItems(transportQuery);
 };
 
 void assertNormalizedInputs;
@@ -53,22 +43,18 @@ const missingId = archiveItemIdSchema.parse("archive-example-missing");
 const details: ArchiveItemDetail[] = [
   {
     id: firstId,
-    title: "虚构档案甲",
+    title: "虚构碑刻甲",
     aliases: [],
-    historicalPeriod: { label: "虚构年代甲" },
-    categoryIds: ["fictional-category"],
-    images: [],
-    references: [],
-    relatedItemIds: [],
+    periodLabel: "虚构年代甲",
+    provinceLabel: "虚构省份甲",
+    protectionOrCollectionUnitLabel: "虚构保护单位甲",
+    sources: [{ label: "虚构公开名录甲" }],
   },
   {
     id: secondId,
-    title: "虚构档案乙",
+    title: "虚构碑刻乙",
     aliases: [],
-    categoryIds: [],
-    images: [],
-    references: [],
-    relatedItemIds: [],
+    sources: [],
   },
 ];
 
@@ -76,10 +62,18 @@ const toSummary = (detail: ArchiveItemDetail): ArchiveItemSummary => ({
   id: detail.id,
   title: detail.title,
   aliases: detail.aliases,
-  categoryIds: detail.categoryIds,
-  ...(detail.historicalPeriod === undefined
+  ...(detail.summary === undefined ? {} : { summary: detail.summary }),
+  ...(detail.periodLabel === undefined
     ? {}
-    : { historicalPeriod: detail.historicalPeriod }),
+    : { periodLabel: detail.periodLabel }),
+  ...(detail.provinceLabel === undefined
+    ? {}
+    : { provinceLabel: detail.provinceLabel }),
+  ...(detail.protectionOrCollectionUnitLabel === undefined
+    ? {}
+    : {
+        protectionOrCollectionUnitLabel: detail.protectionOrCollectionUnitLabel,
+      }),
 });
 
 const paginate = (
@@ -96,47 +90,21 @@ const paginate = (
 
 class FictionalArchiveItemRepository implements ArchiveItemRepository {
   async listItems(query: ArchiveItemListQuery): Promise<ArchiveItemPage> {
-    const matching = details.filter(
-      (item) =>
-        (query.categoryId === undefined ||
-          item.categoryIds.includes(query.categoryId)) &&
-        (query.period === undefined ||
-          item.historicalPeriod?.label === query.period),
-    );
     return Promise.resolve(
-      paginate(matching.map(toSummary), query.page, query.pageSize),
+      paginate(details.map(toSummary), query.page, query.pageSize),
     );
   }
 
   async getItemById(id: ArchiveItemId): Promise<ArchiveItemDetail | null> {
     return Promise.resolve(details.find((item) => item.id === id) ?? null);
   }
-
-  async searchItems(query: ArchiveItemSearchQuery): Promise<ArchiveItemPage> {
-    const matching = details.filter((item) =>
-      item.title.includes(query.keyword),
-    );
-    return Promise.resolve(
-      paginate(matching.map(toSummary), query.page, query.pageSize),
-    );
-  }
-
-  async listCategoryFacets(): Promise<CategoryFacet[]> {
-    return Promise.resolve([
-      { id: "fictional-category", label: "虚构分类", count: 1 },
-    ]);
-  }
 }
 
-describe("ArchiveItemRepository port", () => {
-  it("uses the exact normalized public contract types", () => {
+describe("temporary ArchiveItemRepository port", () => {
+  it("uses exact normalized public contract types", () => {
     const listInput: Equal<
       Parameters<ArchiveItemRepository["listItems"]>[0],
       ArchiveItemListQuery
-    > = true;
-    const searchInput: Equal<
-      Parameters<ArchiveItemRepository["searchItems"]>[0],
-      ArchiveItemSearchQuery
     > = true;
     const idInput: Equal<
       Parameters<ArchiveItemRepository["getItemById"]>[0],
@@ -151,68 +119,68 @@ describe("ArchiveItemRepository port", () => {
       ArchiveItemDetail | null
     > = true;
 
-    expect([listInput, searchInput, idInput, listOutput, detailOutput]).toEqual(
-      [true, true, true, true, true],
-    );
+    expect([listInput, idInput, listOutput, detailOutput]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
   });
 
   it("has a types-only runtime surface", () => {
     expect(Object.keys(dataAccessRuntime)).toEqual([]);
   });
 
-  it("normalizes transport query values before repository use", () => {
+  it("normalizes HTTP query strings before Reader use", () => {
     expect(
-      archiveItemListQuerySchema.parse({ page: "2", pageSize: "5" }),
-    ).toEqual({
-      page: 2,
-      pageSize: 5,
-      sortBy: "title",
-      sortOrder: "asc",
-    });
-    expect(archiveItemSearchQuerySchema.parse({ keyword: "档案" })).toEqual({
-      keyword: "档案",
-      page: 1,
-      pageSize: 20,
-      sortBy: "relevance",
-      sortOrder: "asc",
-    });
+      archiveItemListQueryParserSchema.parse({ page: "2", pageSize: "5" }),
+    ).toEqual({ page: 2, pageSize: 5 });
   });
 
-  it("returns only schema-valid public DTOs", async () => {
+  it("returns schema-valid deterministic pages and null for a missing item", async () => {
     const repository = new FictionalArchiveItemRepository();
-    const page = await repository.listItems(
-      archiveItemListQuerySchema.parse({}),
+    const firstPage = await repository.listItems(
+      archiveItemListQueryParserSchema.parse({ page: "1", pageSize: "1" }),
     );
-    const detail = await repository.getItemById(firstId);
-    const facets = await repository.listCategoryFacets();
+    const outOfRange = await repository.listItems(
+      archiveItemListQueryParserSchema.parse({ page: "3", pageSize: "1" }),
+    );
 
-    expect(archiveItemPageSchema.parse(page)).toEqual(page);
-    expect(archiveItemDetailSchema.parse(detail)).toEqual(detail);
-    expect(facets.map((facet) => categoryFacetSchema.parse(facet))).toEqual(
-      facets,
-    );
+    expect(archiveItemPageSchema.parse(firstPage)).toEqual(firstPage);
+    expect(firstPage.items).toHaveLength(1);
+    expect(outOfRange).toMatchObject({
+      items: [],
+      total: 2,
+      page: 3,
+      pageSize: 1,
+      totalPages: 2,
+    });
     await expect(repository.getItemById(missingId)).resolves.toBeNull();
+    expect(
+      archiveItemDetailSchema.parse(await repository.getItemById(firstId)),
+    ).toEqual(details[0]);
   });
 
-  it("keeps internal state out of serialized repository results", async () => {
+  it("keeps deferred internal and feature state out of results", async () => {
     const repository = new FictionalArchiveItemRepository();
-    const result = JSON.stringify({
-      page: await repository.listItems(archiveItemListQuerySchema.parse({})),
-      detail: await repository.getItemById(firstId),
+    const serialized = JSON.stringify({
+      page: await repository.listItems(
+        archiveItemListQueryParserSchema.parse({}),
+      ),
+      detail: await repository.getItemById(secondId),
     });
-    const forbiddenFields = [
-      ["life", "cycleStatus"],
-      ["created", "At"],
-      ["updated", "At"],
-      ["trashed", "At"],
-      ["raw", "Source"],
-      ["source", "Index"],
-      ["region", "Candidates"],
-      ["review", "Evidence"],
-    ].map((parts) => parts.join(""));
 
-    for (const field of forbiddenFields) {
-      expect(result).not.toContain(`"${field}"`);
+    for (const field of [
+      "lifecycleStatus",
+      "createdAt",
+      "updatedAt",
+      "rawSource",
+      "objectKey",
+      "images",
+      "relatedItemIds",
+      "categoryIds",
+    ]) {
+      expect(serialized).not.toContain(`"${field}"`);
     }
   });
 });

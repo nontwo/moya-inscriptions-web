@@ -18,10 +18,12 @@
                 "type": "string"
               },
               "message": {
+                "maxLength": 500,
                 "minLength": 1,
                 "type": "string"
               },
               "requestId": {
+                "maxLength": 200,
                 "minLength": 1,
                 "type": "string"
               }
@@ -45,56 +47,10 @@
             },
             "type": "array"
           },
-          "categoryIds": {
-            "items": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "coordinates": {
-            "additionalProperties": false,
-            "properties": {
-              "latitude": {
-                "maximum": 90,
-                "minimum": -90,
-                "type": "number"
-              },
-              "longitude": {
-                "maximum": 180,
-                "minimum": -180,
-                "type": "number"
-              }
-            },
-            "required": ["latitude", "longitude"],
-            "type": "object"
-          },
-          "coverImageKey": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "pattern": "^(?![a-z][a-z0-9+.-]*:)(?!\\/)\\S+$",
-            "type": "string"
-          },
           "description": {
+            "maxLength": 20000,
             "minLength": 1,
             "type": "string"
-          },
-          "historicalPeriod": {
-            "additionalProperties": false,
-            "properties": {
-              "label": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "sortKey": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": ["label"],
-            "type": "object"
           },
           "id": {
             "maxLength": 128,
@@ -102,77 +58,32 @@
             "pattern": "^\\S+$",
             "type": "string"
           },
-          "images": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "alt": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "caption": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "id": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "objectKey": {
-                  "maxLength": 1024,
-                  "minLength": 1,
-                  "pattern": "^(?![a-z][a-z0-9+.-]*:)(?!\\/)\\S+$",
-                  "type": "string"
-                },
-                "sortOrder": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "thumbnailObjectKey": {
-                  "maxLength": 1024,
-                  "minLength": 1,
-                  "pattern": "^(?![a-z][a-z0-9+.-]*:)(?!\\/)\\S+$",
-                  "type": "string"
-                }
-              },
-              "required": ["id", "objectKey", "alt", "sortOrder"],
-              "type": "object"
-            },
-            "type": "array"
+          "periodLabel": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
           },
-          "location": {
-            "additionalProperties": false,
-            "properties": {
-              "displayName": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "locality": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "province": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": ["displayName"],
-            "type": "object"
+          "protectionOrCollectionUnitLabel": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
           },
-          "references": {
+          "provinceLabel": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sources": {
             "items": {
               "additionalProperties": false,
               "properties": {
                 "citation": {
+                  "maxLength": 2000,
                   "minLength": 1,
                   "type": "string"
                 },
-                "id": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "title": {
+                "label": {
+                  "maxLength": 500,
                   "minLength": 1,
                   "type": "string"
                 },
@@ -181,21 +92,13 @@
                   "type": "string"
                 }
               },
-              "required": ["title"],
+              "required": ["label"],
               "type": "object"
             },
             "type": "array"
           },
-          "relatedItemIds": {
-            "items": {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^\\S+$",
-              "type": "string"
-            },
-            "type": "array"
-          },
           "summary": {
+            "maxLength": 2000,
             "minLength": 1,
             "type": "string"
           },
@@ -205,15 +108,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title",
-          "aliases",
-          "categoryIds",
-          "images",
-          "references",
-          "relatedItemIds"
-        ],
+        "required": ["id", "title", "aliases", "sources"],
         "type": "object"
       },
       "ArchiveItemId": {
@@ -239,62 +134,29 @@
                   },
                   "type": "array"
                 },
-                "categoryIds": {
-                  "items": {
-                    "maxLength": 128,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "coverImageKey": {
-                  "maxLength": 1024,
-                  "minLength": 1,
-                  "pattern": "^(?![a-z][a-z0-9+.-]*:)(?!\\/)\\S+$",
-                  "type": "string"
-                },
-                "historicalPeriod": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "label": {
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "sortKey": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": ["label"],
-                  "type": "object"
-                },
                 "id": {
                   "maxLength": 128,
                   "minLength": 1,
                   "pattern": "^\\S+$",
                   "type": "string"
                 },
-                "location": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "displayName": {
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "locality": {
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "province": {
-                      "minLength": 1,
-                      "type": "string"
-                    }
-                  },
-                  "required": ["displayName"],
-                  "type": "object"
+                "periodLabel": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "protectionOrCollectionUnitLabel": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "provinceLabel": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
                 },
                 "summary": {
+                  "maxLength": 2000,
                   "minLength": 1,
                   "type": "string"
                 },
@@ -304,7 +166,7 @@
                   "type": "string"
                 }
               },
-              "required": ["id", "title", "aliases", "categoryIds"],
+              "required": ["id", "title", "aliases"],
               "type": "object"
             },
             "type": "array"
@@ -345,62 +207,29 @@
             },
             "type": "array"
           },
-          "categoryIds": {
-            "items": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "coverImageKey": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "pattern": "^(?![a-z][a-z0-9+.-]*:)(?!\\/)\\S+$",
-            "type": "string"
-          },
-          "historicalPeriod": {
-            "additionalProperties": false,
-            "properties": {
-              "label": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "sortKey": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": ["label"],
-            "type": "object"
-          },
           "id": {
             "maxLength": 128,
             "minLength": 1,
             "pattern": "^\\S+$",
             "type": "string"
           },
-          "location": {
-            "additionalProperties": false,
-            "properties": {
-              "displayName": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "locality": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "province": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": ["displayName"],
-            "type": "object"
+          "periodLabel": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "protectionOrCollectionUnitLabel": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "provinceLabel": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
           },
           "summary": {
+            "maxLength": 2000,
             "minLength": 1,
             "type": "string"
           },
@@ -410,57 +239,8 @@
             "type": "string"
           }
         },
-        "required": ["id", "title", "aliases", "categoryIds"],
+        "required": ["id", "title", "aliases"],
         "type": "object"
-      },
-      "CategoryFacet": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "count": {
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "id": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
-          },
-          "label": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": ["id", "label", "count"],
-        "type": "object"
-      },
-      "CategoryFacetList": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "count": {
-              "maximum": 9007199254740991,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "id": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            },
-            "label": {
-              "maxLength": 200,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          "required": ["id", "label", "count"],
-          "type": "object"
-        },
-        "type": "array"
       },
       "HealthResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -473,11 +253,33 @@
         },
         "required": ["status"],
         "type": "object"
+      },
+      "PublicSourceCitation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": ["label"],
+        "type": "object"
       }
     }
   },
   "info": {
-    "description": "Source-independent, read-only access to publicly visible archive items. Operational health is unversioned; public archive contracts use /v1.",
+    "description": "Inscription-first, read-only access to public archive items. Operational health is unversioned; public archive contracts use /v1.",
     "title": "摩崖碑刻数字平台 Public API",
     "version": "1.0.0"
   },
@@ -496,7 +298,7 @@
                 }
               }
             },
-            "description": "Service is operational."
+            "description": "Service is ready."
           },
           "503": {
             "content": {
@@ -509,71 +311,13 @@
             "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
           }
         },
-        "summary": "Operational health"
-      }
-    },
-    "/v1/categories": {
-      "get": {
-        "operationId": "listCategoryFacets",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CategoryFacetList"
-                }
-              }
-            },
-            "description": "Public category facets."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Internal service error; error code INTERNAL_ERROR."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
-          }
-        },
-        "summary": "List public category facets"
+        "summary": "Operational readiness"
       }
     },
     "/v1/items": {
       "get": {
         "operationId": "listItems",
         "parameters": [
-          {
-            "in": "query",
-            "name": "categoryId",
-            "required": false,
-            "schema": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "period",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
           {
             "in": "query",
             "name": "page",
@@ -594,26 +338,6 @@
               "maximum": 100,
               "minimum": 1,
               "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sortBy",
-            "required": false,
-            "schema": {
-              "default": "title",
-              "enum": ["title", "period"],
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sortOrder",
-            "required": false,
-            "schema": {
-              "default": "asc",
-              "enum": ["asc", "desc"],
-              "type": "string"
             }
           }
         ],
@@ -719,128 +443,6 @@
           }
         },
         "summary": "Get one public archive item"
-      }
-    },
-    "/v1/search": {
-      "get": {
-        "operationId": "searchItems",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "keyword",
-            "required": true,
-            "schema": {
-              "maxLength": 200,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "categoryId",
-            "required": false,
-            "schema": {
-              "maxLength": 128,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "period",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "maximum": 9007199254740991,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "pageSize",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sortBy",
-            "required": false,
-            "schema": {
-              "default": "relevance",
-              "enum": ["relevance", "title", "period"],
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sortOrder",
-            "required": false,
-            "schema": {
-              "default": "asc",
-              "enum": ["asc", "desc"],
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ArchiveItemPage"
-                }
-              }
-            },
-            "description": "A page of matching public items."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Invalid query; error code INVALID_QUERY."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Internal service error; error code INTERNAL_ERROR."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
-          }
-        },
-        "summary": "Search public archive items"
       }
     }
   }

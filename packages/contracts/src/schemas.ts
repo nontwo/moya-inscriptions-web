@@ -1,158 +1,131 @@
 import { z } from "zod";
 
+const exactTextSchema = (maximum: number) =>
+  z
+    .string()
+    .min(1)
+    .max(maximum)
+    .refine((value) => value === value.trim(), {
+      message: "Leading or trailing whitespace is not allowed",
+    });
+
 export const archiveItemIdSchema = z
   .string()
-  .trim()
   .min(1)
   .max(128)
   .regex(/^\S+$/)
   .brand<"ArchiveItemId">();
 
-export const archiveItemLifecycleStatusSchema = z.enum([
-  "draft",
-  "published",
-  "unpublished",
-  "trashed",
-]);
+const titleSchema = exactTextSchema(500);
+const aliasSchema = exactTextSchema(500);
+const summarySchema = exactTextSchema(2_000);
+const displayLabelSchema = exactTextSchema(500);
 
-export const historicalPeriodSchema = z.strictObject({
-  label: z.string().trim().min(1),
-  sortKey: z.number().int().optional(),
-});
-
-export const coordinatesSchema = z.strictObject({
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-});
-
-export const publicLocationSchema = z.strictObject({
-  displayName: z.string().trim().min(1),
-  province: z.string().trim().min(1).optional(),
-  locality: z.string().trim().min(1).optional(),
-});
-
-export const objectKeySchema = z
-  .string()
-  .min(1)
-  .max(1024)
-  .regex(/^(?![a-z][a-z0-9+.-]*:)(?!\/)\S+$/i, {
-    message: "Expected an object key, not a URL or absolute path",
-  });
-
-export const imageAssetSchema = z.strictObject({
-  id: z.string().trim().min(1),
-  objectKey: objectKeySchema,
-  thumbnailObjectKey: objectKeySchema.optional(),
-  alt: z.string().trim().min(1),
-  caption: z.string().trim().min(1).optional(),
-  sortOrder: z.number().int().min(0),
-});
-
-export const referenceSchema = z.strictObject({
-  id: z.string().trim().min(1).optional(),
-  title: z.string().trim().min(1),
-  citation: z.string().trim().min(1).optional(),
+export const publicSourceCitationSchema = z.strictObject({
+  label: displayLabelSchema,
+  citation: exactTextSchema(2_000).optional(),
   url: z.url().optional(),
 });
-
-const titleSchema = z.string().trim().min(1).max(500);
-const aliasSchema = z.string().trim().min(1).max(500);
-const categoryIdSchema = z.string().trim().min(1).max(128);
-const isoDateTimeSchema = z.iso.datetime({ offset: true });
-
-export const archiveItemRecordSchema = z
-  .strictObject({
-    id: archiveItemIdSchema,
-    title: titleSchema,
-    aliases: z.array(aliasSchema),
-    lifecycleStatus: archiveItemLifecycleStatusSchema,
-    location: publicLocationSchema.optional(),
-    historicalPeriod: historicalPeriodSchema.optional(),
-    coordinates: coordinatesSchema.optional(),
-    categoryIds: z.array(categoryIdSchema),
-    imageIds: z.array(z.string().trim().min(1).max(128)),
-    summary: z.string().trim().min(1).optional(),
-    description: z.string().trim().min(1).optional(),
-    createdAt: isoDateTimeSchema,
-    updatedAt: isoDateTimeSchema,
-    trashedAt: isoDateTimeSchema.optional(),
-  })
-  .superRefine((record, context) => {
-    const isTrashed = record.lifecycleStatus === "trashed";
-    if (isTrashed && record.trashedAt === undefined) {
-      context.addIssue({
-        code: "custom",
-        path: ["trashedAt"],
-        message: "trashedAt is required when lifecycleStatus is trashed",
-      });
-    }
-    if (!isTrashed && record.trashedAt !== undefined) {
-      context.addIssue({
-        code: "custom",
-        path: ["trashedAt"],
-        message: "trashedAt is only allowed when lifecycleStatus is trashed",
-      });
-    }
-  });
 
 export const archiveItemSummarySchema = z.strictObject({
   id: archiveItemIdSchema,
   title: titleSchema,
   aliases: z.array(aliasSchema),
-  location: publicLocationSchema.optional(),
-  historicalPeriod: historicalPeriodSchema.optional(),
-  categoryIds: z.array(categoryIdSchema),
-  summary: z.string().trim().min(1).optional(),
-  coverImageKey: objectKeySchema.optional(),
+  summary: summarySchema.optional(),
+  periodLabel: exactTextSchema(200).optional(),
+  provinceLabel: exactTextSchema(200).optional(),
+  protectionOrCollectionUnitLabel: displayLabelSchema.optional(),
 });
 
 export const archiveItemDetailSchema = z.strictObject({
   ...archiveItemSummarySchema.shape,
-  coordinates: coordinatesSchema.optional(),
-  description: z.string().trim().min(1).optional(),
-  images: z.array(imageAssetSchema),
-  references: z.array(referenceSchema),
-  relatedItemIds: z.array(archiveItemIdSchema),
+  description: exactTextSchema(20_000).optional(),
+  sources: z.array(publicSourceCitationSchema),
 });
 
-const pageSchema = z.coerce.number().int().min(1).default(1);
-const pageSizeSchema = z.coerce.number().int().min(1).max(100).default(20);
-const sortOrderSchema = z.enum(["asc", "desc"]).default("asc");
+const positiveIntegerStringSchema = z
+  .string()
+  .max(16)
+  .regex(/^[1-9]\d*$/);
+
+export const archiveItemListTransportQuerySchema = z.strictObject({
+  page: positiveIntegerStringSchema.optional(),
+  pageSize: positiveIntegerStringSchema.optional(),
+});
 
 export const archiveItemListQuerySchema = z.strictObject({
-  categoryId: categoryIdSchema.optional(),
-  period: z.string().trim().min(1).max(200).optional(),
-  page: pageSchema,
-  pageSize: pageSizeSchema,
-  sortBy: z.enum(["title", "period"]).default("title"),
-  sortOrder: sortOrderSchema,
+  page: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
+  pageSize: z.number().int().min(1).max(100).default(20),
 });
 
-export const archiveItemSearchQuerySchema = z.strictObject({
-  keyword: z.string().trim().min(1).max(200),
-  categoryId: categoryIdSchema.optional(),
-  period: z.string().trim().min(1).max(200).optional(),
-  page: pageSchema,
-  pageSize: pageSizeSchema,
-  sortBy: z.enum(["relevance", "title", "period"]).default("relevance"),
-  sortOrder: sortOrderSchema,
+const normalizeArchiveItemListQuery = ({
+  page,
+  pageSize,
+}: z.infer<typeof archiveItemListTransportQuerySchema>) => ({
+  page: page === undefined ? 1 : Number(page),
+  pageSize: pageSize === undefined ? 20 : Number(pageSize),
 });
 
-export const archiveItemPageSchema = z.strictObject({
-  items: z.array(archiveItemSummarySchema),
-  total: z.number().int().min(0),
-  page: z.number().int().min(1),
-  pageSize: z.number().int().min(1).max(100),
-  totalPages: z.number().int().min(0),
-});
+export const archiveItemListQueryParserSchema =
+  archiveItemListTransportQuerySchema
+    .superRefine((query, context) => {
+      const result = archiveItemListQuerySchema.safeParse(
+        normalizeArchiveItemListQuery(query),
+      );
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          context.addIssue({
+            code: "custom",
+            path: issue.path,
+            message: issue.message,
+          });
+        }
+      }
+    })
+    .transform(normalizeArchiveItemListQuery);
 
-export const categoryFacetSchema = z.strictObject({
-  id: categoryIdSchema,
-  label: z.string().trim().min(1).max(200),
-  count: z.number().int().min(0),
-});
+export const archiveItemPageSchema = z
+  .strictObject({
+    items: z.array(archiveItemSummarySchema),
+    total: z.number().int().min(0),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1).max(100),
+    totalPages: z.number().int().min(0),
+  })
+  .superRefine((result, context) => {
+    const expectedTotalPages =
+      result.total === 0 ? 0 : Math.ceil(result.total / result.pageSize);
 
-export const categoryFacetListSchema = z.array(categoryFacetSchema);
+    if (result.totalPages !== expectedTotalPages) {
+      context.addIssue({
+        code: "custom",
+        path: ["totalPages"],
+        message:
+          "totalPages must equal ceil(total / pageSize), or 0 when empty",
+      });
+    }
+    if (result.items.length > result.pageSize) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "items cannot exceed pageSize",
+      });
+    }
+    if (result.items.length > result.total) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "items cannot exceed total",
+      });
+    }
+    if (result.page > expectedTotalPages && result.items.length !== 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "an out-of-range page must have no items",
+      });
+    }
+  });
 
 export const healthResponseSchema = z.strictObject({
   status: z.literal("ok"),
@@ -168,7 +141,7 @@ export const apiErrorCodeSchema = z.enum([
 export const apiErrorSchema = z.strictObject({
   error: z.strictObject({
     code: apiErrorCodeSchema,
-    message: z.string().trim().min(1),
-    requestId: z.string().trim().min(1),
+    message: exactTextSchema(500),
+    requestId: exactTextSchema(200),
   }),
 });

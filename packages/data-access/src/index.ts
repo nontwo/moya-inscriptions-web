@@ -3,8 +3,6 @@ import type {
   ArchiveItemId,
   ArchiveItemListQuery,
   ArchiveItemPage,
-  ArchiveItemSearchQuery,
-  CategoryFacet,
 } from "@moya/contracts";
 
 /**
@@ -18,8 +16,4 @@ export interface ArchiveItemRepository {
   listItems(query: ArchiveItemListQuery): Promise<ArchiveItemPage>;
 
   getItemById(id: ArchiveItemId): Promise<ArchiveItemDetail | null>;
-
-  searchItems(query: ArchiveItemSearchQuery): Promise<ArchiveItemPage>;
-
-  listCategoryFacets(): Promise<CategoryFacet[]>;
 }
