@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import * as dataAccessRuntime from "@moya/data-access";
 import type { CatalogRepository } from "@moya/data-access";
@@ -45,6 +47,25 @@ const assertRepositoryTypeRelations = (
 
 void assertRepositoryTypeRelations;
 
+const collectFiles = async (
+  directory: string,
+  accept: (file: string) => boolean,
+): Promise<string[]> => {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectFiles(target, accept)));
+    } else if (accept(target)) {
+      files.push(target);
+    }
+  }
+
+  return files.sort();
+};
+
 describe("CatalogRepository port", () => {
   it("uses the exact normalized contract types", () => {
     const listInputIsExact: Equal<
@@ -78,22 +99,32 @@ describe("CatalogRepository port", () => {
   });
 
   it("has an empty runtime surface and no infrastructure types", async () => {
-    const source = await readFile(
-      new URL("../../../packages/data-access/src/index.ts", import.meta.url),
-      "utf8",
+    const packageRoot = fileURLToPath(
+      new URL("../../../packages/data-access/", import.meta.url),
     );
-    const declaration = await readFile(
-      new URL("../../../packages/data-access/dist/index.d.ts", import.meta.url),
-      "utf8",
-    );
+    const files = [
+      ...(await collectFiles(path.join(packageRoot, "src"), (file) =>
+        /\.[cm]?tsx?$/.test(file),
+      )),
+      ...(await collectFiles(
+        path.join(packageRoot, "dist"),
+        (file) => file.endsWith(".d.ts") || file.endsWith(".js"),
+      )),
+    ];
+    const publicSurface = (
+      await Promise.all(files.map((file) => readFile(file, "utf8")))
+    ).join("\n");
     const manifest = JSON.parse(
-      await readFile(
-        new URL("../../../packages/data-access/package.json", import.meta.url),
-        "utf8",
-      ),
+      await readFile(path.join(packageRoot, "package.json"), "utf8"),
     ) as { dependencies?: Record<string, string>; sideEffects?: boolean };
-    const publicSurface = `${source}\n${declaration}`;
 
+    expect(files.map((file) => path.relative(packageRoot, file))).toEqual(
+      expect.arrayContaining([
+        "dist/index.d.ts",
+        "dist/index.js",
+        "src/index.ts",
+      ]),
+    );
     expect(Object.keys(dataAccessRuntime)).toEqual([]);
     expect(manifest.dependencies).toEqual({
       "@moya/contracts": "workspace:*",
@@ -101,8 +132,29 @@ describe("CatalogRepository port", () => {
     expect(manifest.sideEffects).toBe(false);
     expect(publicSurface).not.toMatch(/from ["'](?:pg|hono)["']/i);
     expect(publicSurface).not.toMatch(
-      /\b(?:Pool|PoolClient|QueryResult|Request|Response)\b/,
+      /\b(?:DatabaseClient|Hono|Pool|PoolClient|QueryConfig|QueryResult|Request|Response)\b/,
     );
     expect(publicSurface).not.toMatch(/DATABASE_URL|data\/catalog|\.sql\b/i);
+    expect(publicSurface).not.toMatch(
+      /\b(?:DELETE\s+FROM|INSERT\s+INTO|SELECT\s+.+\s+FROM|UPDATE\s+.+\s+SET)\b/i,
+    );
+    expect(files.map((file) => path.relative(packageRoot, file))).not.toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/(?:database|postgres|sql)/i),
+      ]),
+    );
+    const importSpecifiers = [
+      ...publicSurface.matchAll(/from\s+["']([^"']+)["']/g),
+    ].map((match) => match[1]);
+    expect(importSpecifiers).toContain("@moya/contracts");
+    expect(
+      importSpecifiers
+        .filter((specifier) => specifier?.startsWith("@moya/"))
+        .every(
+          (specifier) =>
+            specifier === "@moya/contracts" ||
+            specifier?.startsWith("@moya/contracts/") === true,
+        ),
+    ).toBe(true);
   });
 });

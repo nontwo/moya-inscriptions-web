@@ -186,6 +186,8 @@ describe("OpenAPI 3.1.1 contract", () => {
       "selectedCandidateIndex",
       "needsReview",
       "reviewNotes",
+      "internalEvidence",
+      "auditMetadata",
     ]) {
       expect(serializedComponents).not.toContain(internalName);
     }
@@ -231,5 +233,6 @@ describe("OpenAPI 3.1.1 contract", () => {
     const regenerated = serializeOpenApiDocument();
 
     expect(JSON.parse(regenerated)).toEqual(JSON.parse(committedArtifact));
+    expect(serializeOpenApiDocument()).toBe(regenerated);
   });
 });

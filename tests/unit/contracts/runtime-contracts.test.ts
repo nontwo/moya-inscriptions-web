@@ -148,6 +148,8 @@ describe("public DTO boundary", () => {
     "regionCandidates",
     "candidate",
     "evidence",
+    "internalEvidence",
+    "auditMetadata",
     "selectedCandidateIndex",
     "reviewNotes",
     "needsReview",
@@ -214,7 +216,13 @@ describe("transport and normalized query contracts", () => {
     expect(() => parseSiteListQuery({ county: "西湖区" })).toThrow();
     expect(() => parseSiteListQuery({ sortBy: "createdAt" })).toThrow();
     expect(() => parseSiteListQuery({ page: "0" })).toThrow();
+    expect(() => parseSiteListQuery({ page: "-1" })).toThrow();
     expect(() => parseSiteListQuery({ page: "1.5" })).toThrow();
+    expect(() => parseSiteListQuery({ page: "NaN" })).toThrow();
+    expect(() => parseSiteListQuery({ pageSize: "0" })).toThrow();
+    expect(() => parseSiteListQuery({ pageSize: "-1" })).toThrow();
+    expect(() => parseSiteListQuery({ pageSize: "1.5" })).toThrow();
+    expect(() => parseSiteListQuery({ pageSize: "many" })).toThrow();
     expect(() => parseSiteListQuery({ pageSize: "101" })).toThrow();
   });
 
@@ -272,6 +280,21 @@ describe("pagination and response contracts", () => {
         items: [],
       }).success,
     ).toBe(false);
+    expect(
+      pageSchema.parse({
+        total: 10,
+        page: 99,
+        pageSize: 3,
+        totalPages: 4,
+        items: [],
+      }),
+    ).toEqual({
+      total: 10,
+      page: 99,
+      pageSize: 3,
+      totalPages: 4,
+      items: [],
+    });
   });
 
   it("keeps success envelopes schema-derived", () => {
@@ -383,6 +406,10 @@ describe("package and JSON Schema boundaries", () => {
       new URL("../../../packages/contracts/dist/index.js", import.meta.url),
       "utf8",
     );
+    const rootDeclaration = await readFile(
+      new URL("../../../packages/contracts/dist/index.d.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(packageManifest.sideEffects).toBe(false);
     expect(packageManifest.exports).toEqual({
@@ -410,5 +437,9 @@ describe("package and JSON Schema boundaries", () => {
     expect(rootRuntimeStatements).toEqual(["export {};"]);
     expect(rootBundle).not.toMatch(/^import\s/m);
     expect(rootBundle).not.toContain("zod");
+    expect(rootDeclaration).not.toMatch(
+      /from ["'].+\/(?:schemas|json-schema)(?:\.js)?["']/,
+    );
+    expect(rootDeclaration).not.toMatch(/^export\s+\{(?!\s*type\b)/m);
   });
 });
