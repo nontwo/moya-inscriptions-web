@@ -107,12 +107,12 @@ describe("frontend and browser boundaries", () => {
     expect(clientBoundaryViolations(file, allowed)).toEqual([]);
   });
 
-  it("detects Repository, runtime schema, database and data-file access", () => {
+  it("detects Reader, runtime schema, database and data-file access", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
     const forbidden = `
       "use client";
       import { archiveItemSummarySchema } from "@moya/contracts/schemas";
-      import type { ArchiveItemRepository } from "@moya/data-access";
+      import type { ArchiveCatalogReader } from "@moya/data-access";
       import { Pool } from "pg";
       const records = new URL("../../data/records.json", import.meta.url);
     `;

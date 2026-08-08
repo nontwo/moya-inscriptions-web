@@ -1,5 +1,5 @@
 import * as dataAccessRuntime from "@moya/data-access";
-import type { ArchiveItemRepository } from "@moya/data-access";
+import type { ArchiveCatalogReader } from "@moya/data-access";
 import type {
   ArchiveItemDetail,
   ArchiveItemId,
@@ -24,14 +24,14 @@ type Equal<Left, Right> =
     : false;
 
 const assertNormalizedInputs = (
-  repository: ArchiveItemRepository,
+  reader: ArchiveCatalogReader,
   query: ArchiveItemListQuery,
   transportQuery: ArchiveItemListTransportQuery,
 ) => {
-  void repository.listItems(query);
+  void reader.listItems(query);
 
-  // @ts-expect-error Repository inputs are normalized, not HTTP strings.
-  void repository.listItems(transportQuery);
+  // @ts-expect-error Reader inputs are normalized, not HTTP strings.
+  void reader.listItems(transportQuery);
 };
 
 void assertNormalizedInputs;
@@ -88,7 +88,7 @@ const paginate = (
   totalPages: items.length === 0 ? 0 : Math.ceil(items.length / pageSize),
 });
 
-class FictionalArchiveItemRepository implements ArchiveItemRepository {
+class FictionalArchiveCatalogReader implements ArchiveCatalogReader {
   async listItems(query: ArchiveItemListQuery): Promise<ArchiveItemPage> {
     return Promise.resolve(
       paginate(details.map(toSummary), query.page, query.pageSize),
@@ -100,22 +100,22 @@ class FictionalArchiveItemRepository implements ArchiveItemRepository {
   }
 }
 
-describe("temporary ArchiveItemRepository port", () => {
+describe("ArchiveCatalogReader port", () => {
   it("uses exact normalized public contract types", () => {
     const listInput: Equal<
-      Parameters<ArchiveItemRepository["listItems"]>[0],
+      Parameters<ArchiveCatalogReader["listItems"]>[0],
       ArchiveItemListQuery
     > = true;
     const idInput: Equal<
-      Parameters<ArchiveItemRepository["getItemById"]>[0],
+      Parameters<ArchiveCatalogReader["getItemById"]>[0],
       ArchiveItemId
     > = true;
     const listOutput: Equal<
-      Awaited<ReturnType<ArchiveItemRepository["listItems"]>>,
+      Awaited<ReturnType<ArchiveCatalogReader["listItems"]>>,
       ArchiveItemPage
     > = true;
     const detailOutput: Equal<
-      Awaited<ReturnType<ArchiveItemRepository["getItemById"]>>,
+      Awaited<ReturnType<ArchiveCatalogReader["getItemById"]>>,
       ArchiveItemDetail | null
     > = true;
 
@@ -138,11 +138,11 @@ describe("temporary ArchiveItemRepository port", () => {
   });
 
   it("returns schema-valid deterministic pages and null for a missing item", async () => {
-    const repository = new FictionalArchiveItemRepository();
-    const firstPage = await repository.listItems(
+    const reader = new FictionalArchiveCatalogReader();
+    const firstPage = await reader.listItems(
       archiveItemListQueryParserSchema.parse({ page: "1", pageSize: "1" }),
     );
-    const outOfRange = await repository.listItems(
+    const outOfRange = await reader.listItems(
       archiveItemListQueryParserSchema.parse({ page: "3", pageSize: "1" }),
     );
 
@@ -155,19 +155,17 @@ describe("temporary ArchiveItemRepository port", () => {
       pageSize: 1,
       totalPages: 2,
     });
-    await expect(repository.getItemById(missingId)).resolves.toBeNull();
+    await expect(reader.getItemById(missingId)).resolves.toBeNull();
     expect(
-      archiveItemDetailSchema.parse(await repository.getItemById(firstId)),
+      archiveItemDetailSchema.parse(await reader.getItemById(firstId)),
     ).toEqual(details[0]);
   });
 
   it("keeps deferred internal and feature state out of results", async () => {
-    const repository = new FictionalArchiveItemRepository();
+    const reader = new FictionalArchiveCatalogReader();
     const serialized = JSON.stringify({
-      page: await repository.listItems(
-        archiveItemListQueryParserSchema.parse({}),
-      ),
-      detail: await repository.getItemById(secondId),
+      page: await reader.listItems(archiveItemListQueryParserSchema.parse({})),
+      detail: await reader.getItemById(secondId),
     });
 
     for (const field of [
