@@ -7,13 +7,28 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./schemas": {
+      "types": "./src/schemas.ts",
+      "import": "./dist/schemas.js"
+    },
+    "./json-schema": {
+      "types": "./src/json-schema.ts",
+      "import": "./dist/json-schema.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
   }
 }

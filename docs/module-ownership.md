@@ -21,7 +21,7 @@
 
 | 路径                               | 任务 | 状态   |
 | ---------------------------------- | ---- | ------ |
-| `packages/contracts/**`            | T01  | 待重建 |
+| `packages/contracts/**`            | T01  | 已重建 |
 | `packages/design-tokens/**`        | T02  | 已完成 |
 | `packages/ui/**`                   | T02  | 已完成 |
 | `docs/design-system/**`            | T02  | 已完成 |
