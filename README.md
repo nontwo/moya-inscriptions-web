@@ -1,8 +1,7 @@
 # 摩崖碑刻数字平台
 
-面向中国摩崖与石刻资料的移动优先数字档案。第一批基础任务 T00–T03 已在
-`integration/mvp`
-完成集成：工程与治理基线、首批名录数据契约、正式设计系统、候选部署骨架和独立手机交互原型均已具备；正式业务页面、持久化与服务开发尚未开始。
+面向中国摩崖与石刻资料的移动优先数字档案。`integration/mvp`
+当前包含工程与治理基线、正式设计系统、候选部署骨架和独立手机交互原型；旧 T01 数据方案已撤回并安全归档，新的来源无关平台契约等待独立任务重建。正式业务页面、持久化与服务开发尚未开始。
 
 项目的唯一动态进度来源是 [当前项目状态](docs/project-status.md)。
 
@@ -11,7 +10,7 @@
 - `apps/web`：公开站点的最小 Next.js App Router 骨架。
 - `apps/admin`：管理端的最小 Next.js App Router 骨架。
 - `services/public-api`：不依赖数据库的 TypeScript 服务骨架。
-- `packages/contracts`：T01 已交付的公共类型与 JSON Schema。
+- `packages/contracts`：跨模块公共契约入口，当前等待来源无关的 T01 重建。
 - `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
 - `packages/data-access`、`packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
 - `database/migrations`：未来数据库迁移的唯一入口。
@@ -78,8 +77,6 @@ push。每个 Agent 必须遵守
 
 ## 当前能力
 
-- 读取并验证 1658 条 PDF 源记录、1665 个未核验地区候选和 5 条规范化样例。
-- 从 `@moya/contracts` 使用 T01 公共类型与 Schema。
 - 从 `@moya/design-tokens`、`@moya/ui` 使用 T02 token、组件和正式视觉资产。
 - 通过静态服务器查看[组件目录](docs/design-system/README.md)和[非生产手机原型](docs/prototypes/mobile-preview/README.md)。
 - 使用 T03
@@ -87,5 +84,5 @@ push。每个 Agent 必须遵守
 
 ## 当前未实现
 
-正式 Web/Admin 仍是骨架。数据库 Schema、Repository、Public
-API、图片管线、正式首页、地区/分类浏览、搜索、碑刻详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现，对应 T04–T09。
+正式 Web/Admin 仍是骨架。来源无关平台契约、数据库 Schema、Repository、Public
+API、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。
