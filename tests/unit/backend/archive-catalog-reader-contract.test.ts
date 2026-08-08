@@ -16,6 +16,8 @@ import {
 } from "@moya/contracts/schemas";
 import { describe, expect, it } from "vitest";
 
+import { archiveCatalogReaderContractSuite } from "./archive-catalog-reader-contract-suite.js";
+
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends <
     Value,
@@ -99,6 +101,14 @@ class FictionalArchiveCatalogReader implements ArchiveCatalogReader {
     return Promise.resolve(details.find((item) => item.id === id) ?? null);
   }
 }
+
+archiveCatalogReaderContractSuite({
+  name: "fictional in-memory reader",
+  createReader: () => new FictionalArchiveCatalogReader(),
+  emptySourcesItemId: secondId,
+  expectedListTotal: 2,
+  missingItemId: missingId,
+});
 
 describe("ArchiveCatalogReader port", () => {
   it("uses exact normalized public contract types", () => {

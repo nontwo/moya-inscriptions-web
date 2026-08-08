@@ -159,8 +159,40 @@ export const hasUseClientDirective = (source: string): boolean =>
     source,
   );
 
-const stringLiterals = (source: string): string[] =>
-  [...source.matchAll(/(["'])([^"'\n]+)\1/g)].map((match) => match[2] ?? "");
+const stringLiterals = (source: string): string[] => [
+  ...[...source.matchAll(/(["'])([^"'\n]+)\1/g)].map((match) => match[2] ?? ""),
+  ...[...source.matchAll(/`([^`$\n]+)`/g)].map((match) => match[1] ?? ""),
+];
+
+const nonJsonDataExtension =
+  /\.(?:csv|jsonl|ndjson|parquet|pdf|sql|tsv|xls|xlsx)$/i;
+const jsonExtension = /\.json$/i;
+const datasetPathSegment =
+  /(?:^|\/)(?:catalog|data|dataset|datasets|fixture|fixtures)(?:\/|$)/i;
+const datasetFileName =
+  /(?:^|\/)(?:archive[-_]?items?|catalog|records?|dataset|dump|export|seed)(?:[-_.][^/]*)?\.(?:csv|json|jsonl|ndjson|parquet|pdf|sql|tsv|xls|xlsx)$/i;
+
+const normalizedReference = (reference: string): string =>
+  reference.replaceAll("\\", "/");
+
+const isGeneralDataFileReference = (reference: string): boolean => {
+  const normalized = normalizedReference(reference);
+  return (
+    nonJsonDataExtension.test(normalized) ||
+    (jsonExtension.test(normalized) &&
+      (datasetPathSegment.test(normalized) || datasetFileName.test(normalized)))
+  );
+};
+
+const isRuntimeDatasetReference = (reference: string): boolean => {
+  const normalized = normalizedReference(reference);
+  const hasKnownDataExtension =
+    nonJsonDataExtension.test(normalized) || jsonExtension.test(normalized);
+  return (
+    hasKnownDataExtension &&
+    (datasetPathSegment.test(normalized) || datasetFileName.test(normalized))
+  );
+};
 
 export const dataFileReferences = (
   filePath: string,
@@ -169,16 +201,11 @@ export const dataFileReferences = (
   const violations: string[] = [];
 
   for (const literal of stringLiterals(source)) {
-    const normalized = literal.replaceAll("\\", "/");
-    const hasDataSegment = /(?:^|\/)data(?:\/|$)/.test(normalized);
-    const hasDataExtension = /\.(?:csv|json|pdf|sql|tsv|xls|xlsx)$/i.test(
-      normalized,
-    );
-    if (hasDataSegment || hasDataExtension) violations.push(literal);
+    if (isGeneralDataFileReference(literal)) violations.push(literal);
 
     if (literal.startsWith(".")) {
       const resolved = path.resolve(path.dirname(filePath), literal);
-      if (resolved.split(path.sep).includes("data")) violations.push(literal);
+      if (isGeneralDataFileReference(resolved)) violations.push(literal);
     }
   }
 
@@ -186,7 +213,37 @@ export const dataFileReferences = (
     /\b(?:path\.)?(?:join|resolve)\s*\(([^)]*)\)/g,
   )) {
     const combined = stringLiterals(call[1] ?? "").join("/");
-    if (/(?:^|\/)data(?:\/|$)/.test(combined)) violations.push(combined);
+    if (isGeneralDataFileReference(combined)) violations.push(combined);
+  }
+
+  return [...new Set(violations)];
+};
+
+/**
+ * Finds likely archive-dataset coupling in formal runtime source without
+ * treating small configuration, localization or design-token JSON as a
+ * database substitute.
+ */
+export const runtimeDatasetReferences = (
+  filePath: string,
+  source: string,
+): string[] => {
+  const violations: string[] = [];
+
+  for (const literal of stringLiterals(source)) {
+    if (isRuntimeDatasetReference(literal)) violations.push(literal);
+
+    if (literal.startsWith(".")) {
+      const resolved = path.resolve(path.dirname(filePath), literal);
+      if (isRuntimeDatasetReference(resolved)) violations.push(literal);
+    }
+  }
+
+  for (const call of source.matchAll(
+    /\b(?:path\.)?(?:join|resolve)\s*\(([^)]*)\)/g,
+  )) {
+    const combined = stringLiterals(call[1] ?? "").join("/");
+    if (isRuntimeDatasetReference(combined)) violations.push(combined);
   }
 
   return [...new Set(violations)];
@@ -220,7 +277,7 @@ const allowedClientContractTypes = new Set([
   "ArchiveItemId",
   "ArchiveItemPage",
   "ArchiveItemSummary",
-  "CategoryFacet",
+  "PublicSourceCitation",
 ]);
 
 const clientContractTypeViolations = (source: string): string[] => {

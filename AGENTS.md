@@ -20,7 +20,8 @@ inscriptions.
 2. Shared data types may only be defined in packages/contracts.
 3. Shared colors, spacing and typography may only be defined in
    packages/design-tokens.
-4. Public pages must use the repository abstraction in packages/data-access.
+4. Public pages must use the HTTP API or a server-side application boundary;
+   they must not import query ports from packages/data-access directly.
 5. Images must be represented by object keys and derived URLs.
 6. Do not hard-code production domains, API keys or CDN addresses.
 7. All public interfaces must be mobile-first.

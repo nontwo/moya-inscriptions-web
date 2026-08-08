@@ -12,6 +12,7 @@ import {
   frontendBoundaryViolations,
   isPathInside,
   repositoryRoot,
+  runtimeDatasetReferences,
   workspacePackageName,
 } from "./workspace-scanner.js";
 
@@ -187,5 +188,63 @@ describe("import scanner coverage", () => {
         typeOnly: false,
       },
     ]);
+  });
+});
+
+describe("formal runtime dataset boundary", () => {
+  it("detects direct imports and filesystem construction for archive datasets", () => {
+    const file = path.join(
+      repositoryRoot,
+      "services",
+      "public-api",
+      "src",
+      "example.ts",
+    );
+    const forbidden = `
+      import records from "../../../data/archive-items.json";
+      const imported = readFile("../datasets/catalog.jsonl");
+      const resolved = path.resolve(root, "fixtures", "records.csv");
+      const located = new URL("../catalog/archive-records.json", import.meta.url);
+    `;
+
+    expect(runtimeDatasetReferences(file, forbidden)).toEqual(
+      expect.arrayContaining([
+        "../../../data/archive-items.json",
+        "../datasets/catalog.jsonl",
+        "fixtures/records.csv",
+        "../catalog/archive-records.json",
+      ]),
+    );
+  });
+
+  it("allows small configuration, localization and design-token JSON", () => {
+    const file = path.join(repositoryRoot, "apps", "web", "src", "example.ts");
+    const allowed = `
+      import navigation from "./config/navigation.json";
+      import chinese from "./locales/zh-CN.json";
+      import colors from "@moya/design-tokens/colors.json";
+    `;
+
+    expect(runtimeDatasetReferences(file, allowed)).toEqual([]);
+  });
+
+  it("keeps all formal runtime workspaces independent of repository datasets", async () => {
+    const workspaces = await discoverWorkspaces();
+    const violations: string[] = [];
+
+    for (const workspace of workspaces.filter(
+      ({ manifest }) => manifest.name !== "@moya/tests",
+    )) {
+      for (const file of workspace.sourceFiles) {
+        const source = await readFile(file, "utf8");
+        for (const reference of runtimeDatasetReferences(file, source)) {
+          violations.push(
+            `${path.relative(repositoryRoot, file)}: ${reference}`,
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 });
