@@ -489,16 +489,29 @@ button {
   }
 
   .app-masonry {
+    display: grid;
+    column-count: auto;
     padding: var(--yoyi-space-5) var(--yoyi-space-7);
-    column-gap: var(--yoyi-space-5);
+    column-gap: normal;
+    row-gap: var(--yoyi-space-5);
+    gap: var(--yoyi-space-5);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-masonry {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(100%, var(--yoyi-container-reading));
+    margin-inline: auto;
   }
 
   [data-home-layout="double"] [data-view="home"] .app-masonry {
-    column-count: 3;
+    column-count: auto;
   }
 
   .app-card {
-    margin-bottom: var(--yoyi-space-5);
+    display: grid;
+    width: auto;
+    margin-bottom: 0;
   }
 
   .app-card img {
@@ -525,8 +538,9 @@ button {
   }
 
   .app-calligraphy-grid {
-    width: min(100%, var(--yoyi-container-content));
-    margin-inline: auto;
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
   }
 
   .app-settings__content,
@@ -589,9 +603,8 @@ button {
   }
 
   [data-home-layout="double"] [data-view="home"] .app-masonry {
-    column-count: 3;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
-}
 
 /* Desktop: top navigation with brand, content capped at token widths. */
 @media (min-width: 56rem) {
@@ -639,29 +652,49 @@ button {
     min-width: 220px;
   }
 
+  /* Card feeds stretch across the desktop canvas; reading surfaces stay capped. */
   .app-scroll {
-    width: min(100%, var(--yoyi-container-content));
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-scroll {
+    width: min(100%, var(--yoyi-container-reading));
     margin-inline: auto;
   }
 
   .app-masonry {
+    width: 100%;
     padding: var(--yoyi-space-6) var(--yoyi-space-7) var(--yoyi-space-10);
-    column-gap: var(--yoyi-space-6);
+    gap: var(--yoyi-space-6);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 
   [data-home-layout="double"] [data-view="home"] .app-masonry {
-    column-count: 4;
+    column-count: auto;
   }
 
   .app-list,
   .app-settings__content,
   .app-detail__content {
     width: min(100%, var(--yoyi-container-reading));
+    margin-inline: auto;
   }
 
-  .app-calligraphy-grid .app-masonry,
-  .app-calligraphy-grid {
-    width: min(100%, var(--yoyi-container-content));
+  .app-calligraphy-grid,
+  .app-calligraphy-grid .app-masonry {
+    width: 100%;
+    max-width: none;
+  }
+
+  .app-calligraphy-grid.app-masonry,
+  .app-calligraphy-grid .app-masonry {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .app-card img {
+    min-height: 200px;
   }
 
   .app-setting-options {
@@ -743,24 +776,51 @@ button {
 @media (min-width: 64rem) {
   .app-topbar,
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
-    padding-inline: max(
-      var(--yoyi-space-7),
-      calc((100% - var(--yoyi-container-content)) / 2 + var(--yoyi-space-7))
-    );
+    padding-inline: var(--yoyi-space-7);
   }
 
-  [data-home-layout="double"] [data-view="home"] .app-masonry {
-    column-count: 4;
+  .app-masonry {
+    padding-inline: var(--yoyi-space-8);
+    gap: var(--yoyi-space-7);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-masonry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-card img {
+    min-height: 220px;
   }
 
   .app-card__title {
     font-size: var(--yoyi-type-card-title-size);
   }
+
+  /* Keep token referenced for reading/content alignment rules. */
+  .app-settings__content {
+    width: min(100%, var(--yoyi-container-content));
+  }
 }
 
 @media (min-width: 90rem) {
-  [data-home-layout="double"] [data-view="home"] .app-masonry {
-    column-count: 4;
+  .app-topbar,
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation,
+  .app-masonry {
+    padding-inline: var(--yoyi-space-9);
+  }
+
+  .app-masonry {
+    gap: var(--yoyi-space-7);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-masonry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-card img {
+    min-height: 240px;
   }
 
   .app-detail__content img {
