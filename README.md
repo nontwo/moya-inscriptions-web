@@ -1,7 +1,7 @@
 # 摩崖碑刻数字平台
 
 面向中国摩崖与石刻资料的移动优先数字档案。`integration/mvp`
-当前包含工程与治理基线、来源无关平台契约、正式设计系统、候选部署骨架和独立手机交互原型；旧数据方案已撤回并安全归档。正式业务页面、持久化与服务开发尚未开始。
+当前包含工程与治理基线、来源无关平台契约、只读后端 contract、正式设计系统、候选部署骨架和独立手机交互原型；旧数据方案已撤回并安全归档。正式业务页面、持久化和 HTTP 服务尚未开始。
 
 项目的唯一动态进度来源是 [当前项目状态](docs/project-status.md)。
 
@@ -9,10 +9,12 @@
 
 - `apps/web`：公开站点的最小 Next.js App Router 骨架。
 - `apps/admin`：管理端的最小 Next.js App Router 骨架。
-- `services/public-api`：不依赖数据库的 TypeScript 服务骨架。
+- `services/public-api`：不依赖数据库的只读 OpenAPI contract；当前不启动 HTTP
+  server。
 - `packages/contracts`：来源无关的档案领域类型、Public DTO 与 runtime schema。
 - `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
-- `packages/data-access`、`packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
+- `packages/data-access`：只读 `ArchiveItemRepository` port；尚无实现。
+- `packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
 - `database/migrations`：未来数据库迁移的唯一入口。
 - `tests`：单元、集成、端到端测试和 fixture。
 - `docs`：架构、工作流、分支策略和模块所有权文档。
@@ -81,8 +83,10 @@ push。每个 Agent 必须遵守
 - 通过静态服务器查看[组件目录](docs/design-system/README.md)和[非生产手机原型](docs/prototypes/mobile-preview/README.md)。
 - 使用 T03
   CloudBase 候选架构与无密钥部署检查清单进行方案评估；它不是可直接部署的 IaC。
+- 从 `@moya/data-access` 使用来源无关的 Repository port，并依据生成的 OpenAPI
+  3.1.1 artifact 开发后续 transport/adapter。
 
 ## 当前未实现
 
-正式 Web/Admin 仍是骨架。来源无关平台契约、数据库 Schema、Repository、Public
-API、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。
+正式 Web/Admin 仍是骨架。Repository 实现、数据库 Schema、HTTP
+server/handler、Importer、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。

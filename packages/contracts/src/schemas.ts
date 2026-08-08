@@ -114,3 +114,61 @@ export const archiveItemDetailSchema = z.strictObject({
   references: z.array(referenceSchema),
   relatedItemIds: z.array(archiveItemIdSchema),
 });
+
+const pageSchema = z.coerce.number().int().min(1).default(1);
+const pageSizeSchema = z.coerce.number().int().min(1).max(100).default(20);
+const sortOrderSchema = z.enum(["asc", "desc"]).default("asc");
+
+export const archiveItemListQuerySchema = z.strictObject({
+  categoryId: categoryIdSchema.optional(),
+  period: z.string().trim().min(1).max(200).optional(),
+  page: pageSchema,
+  pageSize: pageSizeSchema,
+  sortBy: z.enum(["title", "period"]).default("title"),
+  sortOrder: sortOrderSchema,
+});
+
+export const archiveItemSearchQuerySchema = z.strictObject({
+  keyword: z.string().trim().min(1).max(200),
+  categoryId: categoryIdSchema.optional(),
+  period: z.string().trim().min(1).max(200).optional(),
+  page: pageSchema,
+  pageSize: pageSizeSchema,
+  sortBy: z.enum(["relevance", "title", "period"]).default("relevance"),
+  sortOrder: sortOrderSchema,
+});
+
+export const archiveItemPageSchema = z.strictObject({
+  items: z.array(archiveItemSummarySchema),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1).max(100),
+  totalPages: z.number().int().min(0),
+});
+
+export const categoryFacetSchema = z.strictObject({
+  id: categoryIdSchema,
+  label: z.string().trim().min(1).max(200),
+  count: z.number().int().min(0),
+});
+
+export const categoryFacetListSchema = z.array(categoryFacetSchema);
+
+export const healthResponseSchema = z.strictObject({
+  status: z.literal("ok"),
+});
+
+export const apiErrorCodeSchema = z.enum([
+  "INVALID_QUERY",
+  "ITEM_NOT_FOUND",
+  "SERVICE_UNAVAILABLE",
+  "INTERNAL_ERROR",
+]);
+
+export const apiErrorSchema = z.strictObject({
+  error: z.strictObject({
+    code: apiErrorCodeSchema,
+    message: z.string().trim().min(1),
+    requestId: z.string().trim().min(1),
+  }),
+});

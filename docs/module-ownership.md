@@ -19,29 +19,29 @@
 
 ## MVP task ownership
 
-| 路径                               | 任务 | 状态   |
-| ---------------------------------- | ---- | ------ |
-| `packages/contracts/**`            | T01  | 已重建 |
-| `packages/design-tokens/**`        | T02  | 已完成 |
-| `packages/ui/**`                   | T02  | 已完成 |
-| `docs/design-system/**`            | T02  | 已完成 |
-| `infra/**`                         | T03  | 已完成 |
-| `docs/deployment/**`               | T03  | 已完成 |
-| `database/**`                      | T04  | 待开发 |
-| `services/public-api/**`           | T04  | 待开发 |
-| `packages/data-access/**`          | T04  | 待开发 |
-| `scripts/**`                       | T05  | 待开发 |
-| `packages/image/**`                | T05  | 待开发 |
-| `apps/web/app/layout.tsx`          | T06  | 待开发 |
-| `apps/web/app/page.tsx`            | T06  | 待开发 |
-| `apps/web/features/home/**`        | T06  | 待开发 |
-| `apps/web/app/regions/**`          | T07  | 待开发 |
-| `apps/web/app/categories/**`       | T07  | 待开发 |
-| `apps/web/features/browse/**`      | T07  | 待开发 |
-| `apps/web/app/search/**`           | T08  | 待开发 |
-| `apps/web/features/search/**`      | T08  | 待开发 |
-| `apps/web/app/items/**`            | T09  | 待开发 |
-| `apps/web/features/item-detail/**` | T09  | 待开发 |
+| 路径                               | 任务 | 状态            |
+| ---------------------------------- | ---- | --------------- |
+| `packages/contracts/**`            | T01  | 已重建          |
+| `packages/design-tokens/**`        | T02  | 已完成          |
+| `packages/ui/**`                   | T02  | 已完成          |
+| `docs/design-system/**`            | T02  | 已完成          |
+| `infra/**`                         | T03  | 已完成          |
+| `docs/deployment/**`               | T03  | 已完成          |
+| `database/**`                      | T04  | 尚无迁移        |
+| `services/public-api/**`           | T04  | contract 已建立 |
+| `packages/data-access/**`          | T04  | port 已建立     |
+| `scripts/**`                       | T05  | 待开发          |
+| `packages/image/**`                | T05  | 待开发          |
+| `apps/web/app/layout.tsx`          | T06  | 待开发          |
+| `apps/web/app/page.tsx`            | T06  | 待开发          |
+| `apps/web/features/home/**`        | T06  | 待开发          |
+| `apps/web/app/regions/**`          | T07  | 待开发          |
+| `apps/web/app/categories/**`       | T07  | 待开发          |
+| `apps/web/features/browse/**`      | T07  | 待开发          |
+| `apps/web/app/search/**`           | T08  | 待开发          |
+| `apps/web/features/search/**`      | T08  | 待开发          |
+| `apps/web/app/items/**`            | T09  | 待开发          |
+| `apps/web/features/item-detail/**` | T09  | 待开发          |
 
 `docs/prototypes/mobile-preview/**`
 是已归档的非生产原型，只能用于交互参考；任何正式页面实现都必须在对应 T06–T09 任务中重新接入 Repository、真实契约和图片适配器。
