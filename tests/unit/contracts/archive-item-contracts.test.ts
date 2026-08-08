@@ -13,6 +13,7 @@ import {
 import {
   archiveItemDetailSchema,
   archiveItemIdSchema,
+  archiveItemPageSchema,
   archiveItemRecordSchema,
   archiveItemSummarySchema,
   imageAssetSchema,
@@ -143,5 +144,47 @@ describe("source-independent archive item contracts", () => {
 
   it("keeps the package root types-only at runtime", async () => {
     expect(Object.keys(await import("@moya/contracts"))).toEqual([]);
+  });
+
+  it("enforces self-consistent page metadata", () => {
+    const validPage = {
+      items: [minimalSummary],
+      total: 2,
+      page: 1,
+      pageSize: 1,
+      totalPages: 2,
+    };
+
+    expect(archiveItemPageSchema.parse(validPage)).toEqual(validPage);
+    expect(
+      archiveItemPageSchema.safeParse({ ...validPage, totalPages: 1 }).success,
+    ).toBe(false);
+    expect(
+      archiveItemPageSchema.safeParse({
+        ...validPage,
+        items: [minimalSummary, minimalSummary],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts empty totals and rejects items on an out-of-range page", () => {
+    const emptyPage = {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+    };
+
+    expect(archiveItemPageSchema.parse(emptyPage)).toEqual(emptyPage);
+    expect(
+      archiveItemPageSchema.safeParse({
+        items: [minimalSummary],
+        total: 1,
+        page: 2,
+        pageSize: 1,
+        totalPages: 1,
+      }).success,
+    ).toBe(false);
   });
 });

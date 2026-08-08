@@ -21,6 +21,8 @@ import {
 } from "@moya/contracts/schemas";
 import { describe, expect, it } from "vitest";
 
+import { archiveItemRepositoryContractSuite } from "./archive-item-repository-contract-suite.js";
+
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends <
     Value,
@@ -128,6 +130,17 @@ class FictionalArchiveItemRepository implements ArchiveItemRepository {
   }
 }
 
+archiveItemRepositoryContractSuite({
+  name: "fictional in-memory adapter",
+  createRepository: () => new FictionalArchiveItemRepository(),
+  emptyCollectionsItemId: secondId,
+  expectedFacets: [{ id: "fictional-category", label: "虚构分类", count: 1 }],
+  expectedListTotal: 2,
+  expectedSearchTotal: 2,
+  missingItemId: missingId,
+  searchKeyword: "档案",
+});
+
 describe("ArchiveItemRepository port", () => {
   it("uses the exact normalized public contract types", () => {
     const listInput: Equal<
@@ -178,7 +191,7 @@ describe("ArchiveItemRepository port", () => {
     });
   });
 
-  it("returns only schema-valid public DTOs", async () => {
+  it("keeps direct port smoke coverage for schema-valid public DTOs", async () => {
     const repository = new FictionalArchiveItemRepository();
     const page = await repository.listItems(
       archiveItemListQuerySchema.parse({}),

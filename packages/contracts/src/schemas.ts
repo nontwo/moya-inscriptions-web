@@ -138,13 +138,48 @@ export const archiveItemSearchQuerySchema = z.strictObject({
   sortOrder: sortOrderSchema,
 });
 
-export const archiveItemPageSchema = z.strictObject({
-  items: z.array(archiveItemSummarySchema),
-  total: z.number().int().min(0),
-  page: z.number().int().min(1),
-  pageSize: z.number().int().min(1).max(100),
-  totalPages: z.number().int().min(0),
-});
+export const archiveItemPageSchema = z
+  .strictObject({
+    items: z.array(archiveItemSummarySchema),
+    total: z.number().int().min(0),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1).max(100),
+    totalPages: z.number().int().min(0),
+  })
+  .superRefine((result, context) => {
+    const expectedTotalPages =
+      result.total === 0 ? 0 : Math.ceil(result.total / result.pageSize);
+
+    if (result.totalPages !== expectedTotalPages) {
+      context.addIssue({
+        code: "custom",
+        path: ["totalPages"],
+        message:
+          "totalPages must equal ceil(total / pageSize), or 0 when empty",
+      });
+    }
+    if (result.items.length > result.pageSize) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "items cannot exceed pageSize",
+      });
+    }
+    if (result.items.length > result.total) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "items cannot exceed total",
+      });
+    }
+    if (result.page > expectedTotalPages && result.items.length !== 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "an out-of-range page must have no items",
+      });
+    }
+  });
 
 export const categoryFacetSchema = z.strictObject({
   id: categoryIdSchema,
