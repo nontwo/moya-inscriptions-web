@@ -1,3 +1,13 @@
 # `@moya/data-access`
 
-公开页面的数据仓储抽象入口，计划由 T04 实现。当前包仍为空边界：没有 Repository 接口、数据库适配器、JSON 直读或查询实现。正式 Web 页面在该抽象完成前不得直接访问 PostgreSQL 或源数据文件。
+公开页面的数据仓储抽象入口。当前只定义只读的 `ArchiveItemRepository` port：
+
+- `listItems`
+- `getItemById`
+- `searchItems`
+- `listCategoryFacets`
+
+Repository 接收规范化查询并只返回 `@moya/contracts` 的 Public
+DTO。实现必须过滤非公开记录，但本包不包含实现、PostgreSQL/SQL、HTTP、runtime
+schema、环境变量、数据文件读取或导入逻辑。未找到档案时返回
+`null`，由未来的 application/transport adapter 映射为 HTTP 404。

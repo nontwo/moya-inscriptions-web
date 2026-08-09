@@ -1,1 +1,22 @@
-export {};
+export type {
+  ApiError,
+  ApiErrorCode,
+  ArchiveItemDetail,
+  ArchiveItemId,
+  ArchiveItemListQuery,
+  ArchiveItemListTransportQuery,
+  ArchiveItemLifecycleStatus,
+  ArchiveItemPage,
+  ArchiveItemRecord,
+  ArchiveItemSearchQuery,
+  ArchiveItemSearchTransportQuery,
+  ArchiveItemSummary,
+  CategoryFacet,
+  CategoryFacetList,
+  Coordinates,
+  HealthResponse,
+  HistoricalPeriod,
+  ImageAsset,
+  PublicLocation,
+  Reference,
+} from "./types.js";

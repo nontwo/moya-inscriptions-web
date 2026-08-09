@@ -50,6 +50,21 @@ const installMatchMedia = (
   }) as typeof window.matchMedia;
 };
 
+const clickAndWaitForHistory = async (
+  window: Window & typeof globalThis,
+  target: HTMLElement,
+) => {
+  const popstate = new Promise<void>((resolve) => {
+    window.addEventListener("popstate", () => resolve(), { once: true });
+  });
+
+  target.click();
+  await popstate;
+  await new Promise<void>((resolve) =>
+    window.requestAnimationFrame(() => resolve()),
+  );
+};
+
 const renderPreview = (
   preferences: Record<string, string> = {},
   { desktopSplit = false }: { desktopSplit?: boolean } = {},
@@ -195,8 +210,11 @@ describe("mobile application preview", () => {
       expect(
         document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
       ).toBe(true);
-      document.querySelector<HTMLElement>("[data-settings-back]")?.click();
-      await new Promise((resolve) => dom.window.setTimeout(resolve, 50));
+      const backButton = document.querySelector<HTMLElement>(
+        "[data-settings-back]",
+      );
+      if (!backButton) throw new Error("settings back button not found");
+      await clickAndWaitForHistory(dom.window, backButton);
       expect(
         document.querySelector<HTMLElement>(`[data-view="${view}"]`)?.hidden,
       ).toBe(false);
@@ -291,8 +309,10 @@ describe("mobile application preview", () => {
       "山门北壁题记",
     );
 
-    document.querySelector<HTMLElement>("[data-detail-back]")?.click();
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 50));
+    const backButton =
+      document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!backButton) throw new Error("detail back button not found");
+    await clickAndWaitForHistory(dom.window, backButton);
     expect(
       document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
     ).toBe(false);
@@ -394,7 +414,9 @@ describe("mobile application preview", () => {
         ?.classList.contains("is-selected"),
     ).toBe(true);
 
-    document.querySelector<HTMLElement>('[data-preview-tab="catalog"]')?.click();
+    document
+      .querySelector<HTMLElement>('[data-preview-tab="catalog"]')
+      ?.click();
     expect(
       document.querySelector<HTMLElement>('[data-preview-panel="catalog"]')
         ?.hidden,

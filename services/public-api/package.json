@@ -7,13 +7,17 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "generate:openapi": "pnpm build && node scripts/generate-openapi.mjs && pnpm exec prettier --write openapi/openapi.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@moya/contracts": "workspace:*"
   }
 }
