@@ -1,13 +1,7 @@
 # `@moya/contracts`
 
-公共数据类型、接口和 dependency-free JSON Schema 的唯一来源。T01 已交付：
+跨模块公共类型和 runtime
+schema 的唯一来源。旧的来源绑定契约已经撤回，本包当前恢复为空入口；新的 T01 将只定义来源无关的档案领域类型、Public
+DTO 和生命周期。
 
-- 1658 条 PDF 源记录使用的 `SourceCatalogRow`；
-- 未核验地区候选与证据边界；
-- `HeritageRecord`、`SiteSummary`、`SiteDetail`、图片 object
-  key、搜索与分页/API 契约；
-- 与公共类型对应的 19 个 JSON Schema。
-
-源数据与限制见
-[`data/catalog/first-batch/`](../../data/catalog/first-batch/README.md) 和
-[`docs/data-dictionary.md`](../../docs/data-dictionary.md)。后续模块只能从本包导入共享类型，不得本地重定义。
+后续模块不得在功能目录本地重定义共享类型，也不得把真实数据集、审核候选或来源记录放入本包。
