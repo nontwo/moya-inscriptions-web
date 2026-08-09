@@ -54,12 +54,26 @@ describe("inscription-first public archive contracts", () => {
     );
   });
 
-  it("keeps unapproved internal, media, relation and lower-region fields out of public DTOs", () => {
+  it("keeps T04.0 Archive DTOs free of internal and not-yet-defined Media fields", () => {
     for (const field of [
       "lifecycleStatus",
       "rawSource",
+      "sourcePath",
+      "importBatch",
+      "reviewStatus",
+      "moderation",
       "reviewNotes",
+      "internalNotes",
+      "deletedAt",
+      "evidence",
+      "databaseId",
+      "ormMetadata",
+      "media",
+      "src",
       "objectKey",
+      "bucket",
+      "storageProvider",
+      "providerMetadata",
       "images",
       "relatedItemIds",
       "coordinates",

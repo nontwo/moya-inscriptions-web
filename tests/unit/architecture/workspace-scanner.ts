@@ -30,6 +30,9 @@ export interface WorkspaceManifest {
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  moyaArchitecture?: {
+    rawSourceAccess?: "controlled-importer";
+  };
 }
 
 export interface WorkspaceInfo {
@@ -153,6 +156,42 @@ export const declaredDependencies = (
   ...manifest.optionalDependencies,
   ...manifest.peerDependencies,
 });
+
+/**
+ * T04.0 authorizes no importer. T05 must add a reviewed package name here and
+ * the matching manifest capability; neither key is sufficient on its own.
+ */
+export const authorizedRawSourceImporterPackageNames: ReadonlySet<string> =
+  new Set();
+
+const permanentFrontendWorkspaceNames = new Set(["web", "admin", "@moya/ui"]);
+const browserRuntimeDependencies = new Set(["next", "react-dom"]);
+
+export const isFrontendWorkspace = (workspace: WorkspaceInfo): boolean => {
+  const dependencies = declaredDependencies(workspace.manifest);
+  const knownFrontendRoots = [
+    path.join(repositoryRoot, "apps", "web"),
+    path.join(repositoryRoot, "apps", "admin"),
+    path.join(repositoryRoot, "packages", "ui"),
+  ];
+
+  return (
+    permanentFrontendWorkspaceNames.has(workspace.manifest.name) ||
+    knownFrontendRoots.some((root) => isPathInside(root, workspace.root)) ||
+    [...browserRuntimeDependencies].some(
+      (dependency) => dependencies[dependency] !== undefined,
+    )
+  );
+};
+
+export const isRawSourceAccessAuthorized = (
+  workspace: WorkspaceInfo,
+  approvedPackageNames: ReadonlySet<string> = authorizedRawSourceImporterPackageNames,
+): boolean =>
+  !isFrontendWorkspace(workspace) &&
+  approvedPackageNames.has(workspace.manifest.name) &&
+  workspace.manifest.moyaArchitecture?.rawSourceAccess ===
+    "controlled-importer";
 
 export const hasUseClientDirective = (source: string): boolean =>
   /^(?:\uFEFF|\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*(["'])use client\1\s*;/.test(
@@ -374,6 +413,19 @@ export const frontendBoundaryViolations = (
 
   for (const reference of dataFileReferences(filePath, source)) {
     violations.push(`${reference} is a direct data-file reference`);
+  }
+
+  if (/\bPUBLIC_CDN_BASE_URL\b/.test(source)) {
+    violations.push(
+      "PUBLIC_CDN_BASE_URL is a deprecated frontend URL-composition convention",
+    );
+  }
+  if (
+    /(?:\bobjectKey\s*\+|\+\s*objectKey\b|\$\{[^}]*\bobjectKey\b[^}]*\})/.test(
+      source,
+    )
+  ) {
+    violations.push("Frontend code cannot compose a URL from objectKey");
   }
 
   return [...new Set(violations)];

@@ -16,7 +16,7 @@
 | T01      | 已重建     | 来源无关的公开档案 DTO 与 runtime schema                  |
 | T02      | 已完成     | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试  |
 | T03      | 已完成     | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档 |
-| T04.0-R  | 边界已收缩 | ArchiveCatalogReader、三路由 OpenAPI、架构守卫            |
+| T04.0-R  | 等待审核   | 过渡 ArchiveCatalogReader、三路由 OpenAPI、架构守卫       |
 | 手机原型 | 已隔离保存 | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片     |
 | T05–T09  | 未开始     | 图片管线、正式 Web 浏览/搜索/详情                         |
 
@@ -26,7 +26,7 @@
 - 使用 `@moya/design-tokens` 与 `@moya/ui` 开发后续正式界面。
 - 在本地静态服务器查看组件目录和手机交互原型。
 - 依据 T03 文档评估 CloudBase 方案，但不能据此直接创建或发布生产资源。
-- 使用来源无关的 `ArchiveCatalogReader` port，并确定性生成/验证三路由OpenAPI
+- 审查来源无关的过渡 `ArchiveCatalogReader` port，并确定性生成/验证三路由OpenAPI
   3.1.1 artifact。
 
 当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Public API 仍没有 HTTP
@@ -83,9 +83,8 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. T04 后续阶段：先验证 PostgreSQL/Migration 方案，再建立 application
-   handler、Reader adapter、数据库迁移和正式 HTTP
-   server；真实数据导入必须另立任务。
+1. T04.1：重新冻结 CatalogRecord、CatalogReadRepository、Catalog application
+   port 物理位置和正式 Catalog 路由，再验证 PostgreSQL/Migration 方案；真实数据导入必须另立任务。
 2. T05：建立 object key 驱动的图片适配与处理管线，以及经批准的自动化脚本。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 

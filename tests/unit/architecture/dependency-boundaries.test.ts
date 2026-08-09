@@ -5,16 +5,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   clientBoundaryViolations,
+  authorizedRawSourceImporterPackageNames,
   declaredDependencies,
   discoverWorkspaces,
   extractModuleReferences,
   findOwningWorkspace,
   frontendBoundaryViolations,
   isPathInside,
+  isRawSourceAccessAuthorized,
   repositoryRoot,
   runtimeDatasetReferences,
   workspacePackageName,
 } from "./workspace-scanner.js";
+
+import type { WorkspaceInfo } from "./workspace-scanner.js";
 
 describe("workspace dependency boundaries", () => {
   it("declares every imported workspace dependency", async () => {
@@ -128,6 +132,40 @@ describe("frontend and browser boundaries", () => {
     );
   });
 
+  it("allows Public DTO type imports but rejects backend runtime imports in all frontend code", () => {
+    const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
+    const source = `
+      import type { ArchiveItemDetail } from "@moya/contracts";
+      import type { ArchiveCatalogReader } from "@moya/data-access";
+      import { openApiDocument } from "@moya/public-api";
+      import { handler } from "../../services/public-api/src/handler";
+    `;
+
+    expect(frontendBoundaryViolations(file, source)).toEqual(
+      expect.arrayContaining([
+        "@moya/data-access crosses the frontend boundary",
+        "@moya/public-api crosses the frontend boundary",
+        "../../services/public-api/src/handler crosses the frontend boundary",
+      ]),
+    );
+    expect(frontendBoundaryViolations(file, source)).not.toContain(
+      "@moya/contracts crosses the frontend boundary",
+    );
+  });
+
+  it("rejects deprecated CDN-base and object-key URL composition", () => {
+    const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
+    const source =
+      "const baseUrl = process.env.PUBLIC_CDN_BASE_URL;\nconst src = `${baseUrl}/${objectKey}`;";
+
+    expect(frontendBoundaryViolations(file, source)).toEqual(
+      expect.arrayContaining([
+        "PUBLIC_CDN_BASE_URL is a deprecated frontend URL-composition convention",
+        "Frontend code cannot compose a URL from objectKey",
+      ]),
+    );
+  });
+
   it("rejects internal contract types in Client Components", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
     const source = `"use client";\nimport type { ArchiveItemRecord } from "@moya/contracts";`;
@@ -192,6 +230,31 @@ describe("import scanner coverage", () => {
 });
 
 describe("formal runtime dataset boundary", () => {
+  const workspace = (
+    name: string,
+    options: {
+      capability?: "controlled-importer";
+      dependencies?: Record<string, string>;
+      root?: string;
+    } = {},
+  ): WorkspaceInfo => ({
+    manifest: {
+      name,
+      ...(options.dependencies === undefined
+        ? {}
+        : { dependencies: options.dependencies }),
+      ...(options.capability === undefined
+        ? {}
+        : {
+            moyaArchitecture: {
+              rawSourceAccess: options.capability,
+            },
+          }),
+    },
+    root: options.root ?? path.join(repositoryRoot, "future-workspaces", name),
+    sourceFiles: [],
+  });
+
   it("detects direct imports and filesystem construction for archive datasets", () => {
     const file = path.join(
       repositoryRoot,
@@ -228,13 +291,69 @@ describe("formal runtime dataset boundary", () => {
     expect(runtimeDatasetReferences(file, allowed)).toEqual([]);
   });
 
-  it("keeps all formal runtime workspaces independent of repository datasets", async () => {
+  it("requires architecture allowlist and manifest capability together", () => {
+    const approved = new Set(["@moya/catalog-importer"]);
+    const importer = workspace("@moya/catalog-importer", {
+      capability: "controlled-importer",
+    });
+
+    expect(isRawSourceAccessAuthorized(importer, approved)).toBe(true);
+    expect(
+      isRawSourceAccessAuthorized(
+        workspace("@moya/catalog-importer"),
+        approved,
+      ),
+    ).toBe(false);
+    expect(
+      isRawSourceAccessAuthorized(
+        workspace("@moya/unapproved-importer", {
+          capability: "controlled-importer",
+        }),
+        approved,
+      ),
+    ).toBe(false);
+  });
+
+  it("permanently denies frontend workspaces even with both importer keys", () => {
+    for (const frontend of [
+      workspace("web", {
+        capability: "controlled-importer",
+        root: path.join(repositoryRoot, "apps", "web"),
+      }),
+      workspace("admin", {
+        capability: "controlled-importer",
+        root: path.join(repositoryRoot, "apps", "admin"),
+      }),
+      workspace("@moya/ui", {
+        capability: "controlled-importer",
+        root: path.join(repositoryRoot, "packages", "ui"),
+      }),
+      workspace("future-browser", {
+        capability: "controlled-importer",
+        dependencies: { "react-dom": "19.2.8" },
+      }),
+    ]) {
+      expect(
+        isRawSourceAccessAuthorized(
+          frontend,
+          new Set([frontend.manifest.name]),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("authorizes no raw-source importer in T04.0", () => {
+    expect([...authorizedRawSourceImporterPackageNames]).toEqual([]);
+  });
+
+  it("keeps unapproved runtime workspaces independent of repository datasets", async () => {
     const workspaces = await discoverWorkspaces();
     const violations: string[] = [];
 
     for (const workspace of workspaces.filter(
       ({ manifest }) => manifest.name !== "@moya/tests",
     )) {
+      if (isRawSourceAccessAuthorized(workspace)) continue;
       for (const file of workspace.sourceFiles) {
         const source = await readFile(file, "utf8");
         for (const reference of runtimeDatasetReferences(file, source)) {

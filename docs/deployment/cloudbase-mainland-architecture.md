@@ -20,11 +20,12 @@ CloudBase HTTP 网关（原 HTTP 访问服务）
                            ├──> PostgreSQL（仅服务端访问）
                            └──> 对象存储写入/签名访问
 
-Web 中的图片 URL
-    └── PUBLIC_CDN_BASE_URL + object key
-            │ HTTPS
-            ▼
-        资源 CDN ──缓存未命中──> CloudBase 云存储/COS
+API 内部 object key
+    └── backend StorageUrlResolver
+            └── runtime public/signed URL
+                    │ HTTPS
+                    ▼
+                Web ──> 资源 CDN ──缓存未命中──> CloudBase 云存储/COS
 ```
 
 CloudBase 的 HTTP 网关可把同一入口的不同路径关联到静态托管、云函数或云托管资源；默认域名只用于开发测试，生产应绑定已备案的自定义域名。云存储底层使用对象存储并集成 CDN。参考 CloudBase 官方的
@@ -36,7 +37,8 @@ CloudBase 的 HTTP 网关可把同一入口的不同路径关联到静态托管�
 
 ### Web
 
-- 面向公开用户，只通过 Repository/API 边界读取业务数据，不直接连接 PostgreSQL。
+- 面向公开用户，只通过 HTTP API 读取业务数据，不导入 Repository、Reader、backend
+  application 或 service runtime implementation，也不直接连接 PostgreSQL。
 - 优先评估 CloudBase 静态网站托管；只有构建产物为纯静态文件时才采用该模式。
 - 如果页面需要 Next.js
   SSR、服务端路由或运行时渲染，改用云托管容器，不为了部署而在本任务中修改应用代码。
@@ -53,9 +55,11 @@ CloudBase 的 HTTP 网关可把同一入口的不同路径关联到静态托管�
 
 ### 对象存储与 CDN
 
-- 数据契约仅保存 object key，不保存硬编码完整 URL。
+- Object key、bucket 和 provider
+  internals 仅保存在后端内部模型，不进入 Frontend。
 - API 或受控导入流程负责写入；公开派生图可只读，原图、待审核内容和私有内容保持私有。
-- Web 使用现有 `PUBLIC_CDN_BASE_URL` 与 object key 派生 HTTPS URL。
+- Backend `StorageUrlResolver` 生成 public/signed runtime URL，未来通过
+  `PublicMediaDTO.src` 交给 Web。Web 不得获得 object key 或自行拼接 CDN URL。
 - 每个环境使用独立存储桶或 CloudBase 环境内独立存储空间，禁止跨环境共享写权限。
 - 资源使用内容哈希或版本化 object
   key，并设置长缓存；元数据变更产生新 key，避免覆盖后 CDN 继续返回旧内容。CloudBase 官方说明了
@@ -103,9 +107,11 @@ CloudBase 环境是资源隔离单元；不同环境的计算、数据、存储�
 
 ## 配置与密钥
 
-仓库只保存变量名称和无效占位值。沿用现有公共变量
-`PUBLIC_CDN_BASE_URL`，不另造同义变量，也不把存储凭据暴露为 `NEXT_PUBLIC_*`
-或其他浏览器变量。
+仓库只保存变量名称和无效占位值。现有 `PUBLIC_CDN_BASE_URL` 是 legacy/deprecated
+frontend
+convention；本任务保留示例配置但禁止 Web/浏览器消费，也不把它指定为未来 Resolver 的正式配置名。T05 实现 backend
+`StorageUrlResolver` 时再迁移到经审核的backend-only
+configuration。存储凭据不得暴露为 `NEXT_PUBLIC_*` 或其他浏览器变量。
 
 | 变量                    | 作用域             | 值来源               |
 | ----------------------- | ------------------ | -------------------- |
@@ -113,7 +119,7 @@ CloudBase 环境是资源隔离单元；不同环境的计算、数据、存储�
 | `DATABASE_URL`          | API 服务端         | 密钥管理/运行时注入  |
 | `OBJECT_STORAGE_BUCKET` | API 服务端         | 环境配置             |
 | `OBJECT_STORAGE_REGION` | API 服务端         | 环境配置             |
-| `PUBLIC_CDN_BASE_URL`   | Web 公开配置       | 环境配置，HTTPS URL  |
+| `PUBLIC_CDN_BASE_URL`   | Legacy，占位待迁移 | 不得由 Frontend 消费 |
 | `MAP_PROVIDER_KEY`      | 按后续地图方案确定 | 受限密钥或服务端注入 |
 
 CloudBase 云托管的环境变量与服务版本绑定；平台配置会覆盖容器内同名默认值。正式敏感值只能在平台密钥/环境配置中维护，不能写入镜像、构建日志或 Git。参考官方

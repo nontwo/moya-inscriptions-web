@@ -101,4 +101,28 @@ describe("data-access source and declaration surface", () => {
     });
     expect(manifest.sideEffects).toBe(false);
   });
+
+  it("keeps ArchiveCatalogReader strictly read-only", async () => {
+    const declaration = await readFile(
+      path.join(dataAccessRoot, "dist", "index.d.ts"),
+      "utf8",
+    );
+
+    expect(declaration).toContain("interface ArchiveCatalogReader");
+    expect(declaration).toContain("listItems(");
+    expect(declaration).toContain("getItemById(");
+    for (const mutation of [
+      "create",
+      "update",
+      "delete",
+      "publish",
+      "approve",
+      "withdraw",
+      "save",
+    ]) {
+      expect(declaration).not.toMatch(
+        new RegExp(`\\b${mutation}[A-Z_a-z0-9]*\\s*\\(`),
+      );
+    }
+  });
 });

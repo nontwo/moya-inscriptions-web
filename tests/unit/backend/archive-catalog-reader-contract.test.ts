@@ -112,6 +112,10 @@ archiveCatalogReaderContractSuite({
 
 describe("ArchiveCatalogReader port", () => {
   it("uses exact normalized public contract types", () => {
+    const exactReadOnlySurface: Equal<
+      keyof ArchiveCatalogReader,
+      "getItemById" | "listItems"
+    > = true;
     const listInput: Equal<
       Parameters<ArchiveCatalogReader["listItems"]>[0],
       ArchiveItemListQuery
@@ -129,12 +133,13 @@ describe("ArchiveCatalogReader port", () => {
       ArchiveItemDetail | null
     > = true;
 
-    expect([listInput, idInput, listOutput, detailOutput]).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
+    expect([
+      exactReadOnlySurface,
+      listInput,
+      idInput,
+      listOutput,
+      detailOutput,
+    ]).toEqual([true, true, true, true, true]);
   });
 
   it("has a types-only runtime surface", () => {
