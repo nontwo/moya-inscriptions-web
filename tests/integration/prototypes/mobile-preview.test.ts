@@ -28,7 +28,32 @@ const previewCss = await readFile(new URL("preview.css", previewRoot), "utf8");
 
 const openWindows: Window[] = [];
 
-const renderPreview = (preferences: Record<string, string> = {}) => {
+const installMatchMedia = (
+  window: Window,
+  { desktopSplit = false }: { desktopSplit?: boolean } = {},
+) => {
+  window.matchMedia = ((query: string) => {
+    const media = String(query);
+    const matches = desktopSplit && media.includes("56rem");
+    return {
+      matches,
+      media,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    };
+  }) as typeof window.matchMedia;
+};
+
+const renderPreview = (
+  preferences: Record<string, string> = {},
+  { desktopSplit = false }: { desktopSplit?: boolean } = {},
+) => {
   const withoutExternalScript = html.replace(
     /<script type="module" src="\.\/preview\.js"><\/script>/,
     "",
@@ -39,6 +64,7 @@ const renderPreview = (preferences: Record<string, string> = {}) => {
     url: "http://localhost/docs/prototypes/mobile-preview/",
   });
   openWindows.push(dom.window);
+  installMatchMedia(dom.window, { desktopSplit });
   for (const [key, value] of Object.entries(preferences)) {
     dom.window.localStorage.setItem(key, value);
   }
@@ -285,11 +311,101 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain("var(--yoyi-container-content)");
     expect(previewCss).toContain("var(--yoyi-container-reading)");
     expect(previewCss).toContain(".app-nav-brand");
-    expect(html).toContain('data-primary-view="home"');
+    expect(previewCss).toContain("column-width:");
+    expect(previewCss).toContain("auto-fit");
+    expect(previewCss).toContain('[data-view="inscriptions"] .app-list');
+    expect(previewCss).toContain(".app-inscriptions-layout");
+    expect(previewCss).toContain(".app-inscriptions-preview");
+    expect(previewCss).toContain(".app-shell-only");
+    expect(previewCss).toContain('[data-view="home"] .app-masonry');
+    expect(previewCss).toContain("minmax(clamp(9rem, 11vw, 12.5rem), 1fr)");
+    expect(previewCss).toContain("auto-fill");
+    expect(previewCss).toContain("calc(164px + env(safe-area-inset-left))");
+    expect(previewCss).toContain("min-height: 58px");
+    expect(previewCss).toContain("border-width: 9px 0 9px 10px");
+    expect(previewCss).toContain(".app-primary-tabs");
+    expect(previewCss).toContain("min-width: 280px");
+    expect(previewCss).toContain(
+      ".app-bottom-navigation .yoyi-navigation-entry.is-active",
+    );
+    expect(previewCss).toContain("var(--yoyi-color-seal-red)");
+    expect(html).toContain("app-inscriptions-layout");
+    expect(html).toContain("data-inscription-preview");
+    expect(html).toContain("app-card__meta");
+    expect(html).toContain('data-shell="list-head"');
+    expect(html).toContain('data-shell="pagination"');
+    expect(html).toContain('data-preview-tab="intro"');
+    expect(html).toContain("data-shell-control");
     expect(html).toContain('data-primary-view="inscriptions"');
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
-    expect(html).not.toMatch(/关注|收藏|评论|登录|账号|地图/);
+    expect(html).toContain("收藏");
+    expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
+  });
+
+  it("keeps inscriptions list visible beside preview on desktop split", () => {
+    const dom = renderPreview({}, { desktopSplit: true });
+    const document = dom.window.document;
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview]")?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview-empty]")
+        ?.hidden,
+    ).toBe(false);
+
+    document
+      .querySelector<HTMLElement>(
+        '[data-view="inscriptions"] [data-content-id="inscription-yunfeng"]',
+      )
+      ?.click();
+
+    expect(
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview-content]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-inscription-preview-title]")?.textContent,
+    ).toBe("云峰山题名");
+    expect(
+      document.querySelector("[data-inscription-preview-meta]")?.textContent,
+    ).toContain("北魏");
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview-featured]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document
+        .querySelector(
+          '[data-view="inscriptions"] [data-content-id="inscription-yunfeng"]',
+        )
+        ?.classList.contains("is-selected"),
+    ).toBe(true);
+
+    document.querySelector<HTMLElement>('[data-preview-tab="catalog"]')?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-preview-panel="catalog"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-preview-panel="intro"]')
+        ?.hidden,
+    ).toBe(true);
+
+    document
+      .querySelector<HTMLElement>("[data-inscription-preview-back]")
+      ?.click();
   });
 });

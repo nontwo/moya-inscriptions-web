@@ -5,12 +5,35 @@ const detailImage = document.querySelector("[data-detail-image]");
 const detailTitle = document.querySelector("[data-detail-title]");
 const searchInput = document.querySelector("[data-inscription-search]");
 const searchClear = document.querySelector("[data-search-clear]");
+const inscriptionPreview = document.querySelector("[data-inscription-preview]");
+const inscriptionPreviewImage = document.querySelector(
+  "[data-inscription-preview-image]",
+);
+const inscriptionPreviewTitle = document.querySelector(
+  "[data-inscription-preview-title]",
+);
+const inscriptionPreviewEmpty = document.querySelector(
+  "[data-inscription-preview-empty]",
+);
+const inscriptionPreviewContent = document.querySelector(
+  "[data-inscription-preview-content]",
+);
+const inscriptionPreviewMeta = document.querySelector(
+  "[data-inscription-preview-meta]",
+);
+const inscriptionPreviewFeatured = document.querySelector(
+  "[data-inscription-preview-featured]",
+);
+const inscriptionPreviewSummary = document.querySelector(
+  "[data-inscription-preview-summary]",
+);
 
 const themePreferenceKey = "yoyi.theme-preference";
 const homeLayoutKey = "yoyi.home-feed-layout";
 const themePreferences = ["system", "light", "dark"];
 const homeLayouts = ["single", "double"];
 const primaryViews = ["home", "inscriptions", "calligraphy"];
+const desktopSplitQuery = window.matchMedia("(min-width: 56rem)");
 
 const scrollPositions = {
   home: 0,
@@ -44,6 +67,11 @@ let themePreference = readStoredPreference(
   "system",
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
+let inscriptionsSplitOpen = false;
+
+function usesInscriptionsSplit() {
+  return desktopSplitQuery.matches && primaryView === "inscriptions";
+}
 
 function currentScrollElement() {
   return document.querySelector(`[data-scroll-view="${primaryView}"]`);
@@ -65,11 +93,101 @@ function restoreScrollPosition(view) {
   });
 }
 
+function clearInscriptionSelection() {
+  document
+    .querySelectorAll("[data-view='inscriptions'] [data-open-detail]")
+    .forEach((item) => {
+      item.classList.remove("is-selected");
+      item.removeAttribute("aria-current");
+    });
+}
+
+function setInscriptionSelection(trigger) {
+  clearInscriptionSelection();
+  if (!trigger) return;
+  trigger.classList.add("is-selected");
+  trigger.setAttribute("aria-current", "true");
+}
+
+function setPreviewTab(tabId) {
+  document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
+    const selected = tab.dataset.previewTab === tabId;
+    tab.classList.toggle("is-selected", selected);
+    tab.setAttribute("aria-selected", String(selected));
+  });
+  document.querySelectorAll("[data-preview-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.previewPanel !== tabId;
+  });
+}
+
+function showPreviewEmpty() {
+  if (inscriptionPreviewEmpty) inscriptionPreviewEmpty.hidden = false;
+  if (inscriptionPreviewContent) inscriptionPreviewContent.hidden = true;
+}
+
+function showPreviewContent() {
+  if (inscriptionPreviewEmpty) inscriptionPreviewEmpty.hidden = true;
+  if (inscriptionPreviewContent) inscriptionPreviewContent.hidden = false;
+}
+
+function syncDesktopPreviewPane() {
+  if (!inscriptionPreview) return;
+  if (desktopSplitQuery.matches && primaryView === "inscriptions") {
+    inscriptionPreview.hidden = false;
+    if (!inscriptionsSplitOpen) showPreviewEmpty();
+  } else if (!inscriptionsSplitOpen) {
+    inscriptionPreview.hidden = true;
+    showPreviewEmpty();
+  }
+}
+
+function fillDetailContent(trigger) {
+  const image = trigger.dataset.image;
+  const title = trigger.dataset.title;
+  const alt = trigger.querySelector("img")?.alt ?? "";
+  const meta = [trigger.dataset.meta, trigger.dataset.location]
+    .filter(Boolean)
+    .join(" · ");
+  const summary = trigger.dataset.summary ?? "";
+  const featured = trigger.dataset.featured === "true";
+
+  detailImage.src = image;
+  detailImage.alt = alt;
+  detailTitle.textContent = title;
+  inscriptionPreviewImage.src = image;
+  inscriptionPreviewImage.alt = alt;
+  inscriptionPreviewTitle.textContent = title;
+  if (inscriptionPreviewMeta) inscriptionPreviewMeta.textContent = meta;
+  if (inscriptionPreviewSummary) {
+    inscriptionPreviewSummary.textContent = summary;
+  }
+  if (inscriptionPreviewFeatured) {
+    inscriptionPreviewFeatured.hidden = !featured;
+  }
+  setPreviewTab("intro");
+  showPreviewContent();
+}
+
+function closeInscriptionsSplit() {
+  inscriptionsSplitOpen = false;
+  app.removeAttribute("data-inscriptions-split");
+  clearInscriptionSelection();
+  showPreviewEmpty();
+  syncDesktopPreviewPane();
+}
+
 function showView(view) {
+  if (view !== "detail" && view !== "inscriptions") {
+    closeInscriptionsSplit();
+  }
+  if (view === "inscriptions" && !inscriptionsSplitOpen) {
+    closeInscriptionsSplit();
+  }
   document.querySelectorAll("[data-view]").forEach((panel) => {
     panel.hidden = panel.dataset.view !== view;
   });
   bottomNavigation.hidden = !primaryViews.includes(view);
+  if (view === "inscriptions") syncDesktopPreviewPane();
 }
 
 function updateBottomNavigation() {
@@ -83,6 +201,7 @@ function updateBottomNavigation() {
 
 function selectPrimaryView(view, { updateHistory = true } = {}) {
   saveScrollPosition();
+  closeInscriptionsSplit();
   primaryView = view;
   showView(view);
   updateBottomNavigation();
@@ -151,6 +270,7 @@ function applyHomeFeedLayout(value, { persist = true } = {}) {
 
 function openSettings({ updateHistory = true } = {}) {
   saveScrollPosition();
+  closeInscriptionsSplit();
   showView("settings");
   if (updateHistory) {
     history.pushState(
@@ -168,11 +288,23 @@ function closeSettings() {
 
 function openDetail(trigger, { updateHistory = true } = {}) {
   saveScrollPosition();
-  detailImage.src = trigger.dataset.image;
-  detailImage.alt = trigger.querySelector("img")?.alt ?? "";
-  detailTitle.textContent = trigger.dataset.title;
-  showView("detail");
-  document.querySelector('[data-scroll-view="detail"]').scrollTop = 0;
+  fillDetailContent(trigger);
+
+  if (usesInscriptionsSplit()) {
+    inscriptionsSplitOpen = true;
+    app.dataset.inscriptionsSplit = "true";
+    setInscriptionSelection(trigger);
+    if (inscriptionPreview) inscriptionPreview.hidden = false;
+    document.querySelectorAll("[data-view]").forEach((panel) => {
+      panel.hidden = panel.dataset.view !== "inscriptions";
+    });
+    bottomNavigation.hidden = false;
+  } else {
+    closeInscriptionsSplit();
+    showView("detail");
+    document.querySelector('[data-scroll-view="detail"]').scrollTop = 0;
+  }
+
   if (updateHistory) {
     history.pushState(
       {
@@ -188,7 +320,10 @@ function openDetail(trigger, { updateHistory = true } = {}) {
 
 function closeDetail() {
   if (history.state?.kind === "detail") history.back();
-  else selectPrimaryView(primaryView);
+  else {
+    closeInscriptionsSplit();
+    selectPrimaryView(primaryView);
+  }
 }
 
 document.querySelectorAll("[data-primary-view]").forEach((button) => {
@@ -241,6 +376,20 @@ document
   .querySelector("[data-detail-back]")
   .addEventListener("click", closeDetail);
 
+document
+  .querySelector("[data-inscription-preview-back]")
+  ?.addEventListener("click", closeDetail);
+
+document.querySelectorAll("[data-shell-control]").forEach((control) => {
+  control.addEventListener("click", (event) => {
+    event.preventDefault();
+  });
+});
+
+document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
+  tab.addEventListener("click", () => setPreviewTab(tab.dataset.previewTab));
+});
+
 searchInput.addEventListener("input", (event) => {
   filterInscriptions(event.currentTarget.value);
 });
@@ -254,6 +403,7 @@ searchClear.addEventListener("click", () => {
 window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (state?.kind === "settings") {
+    closeInscriptionsSplit();
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
     updateBottomNavigation();
     showView("settings");
@@ -268,6 +418,7 @@ window.addEventListener("popstate", (event) => {
     if (trigger) openDetail(trigger, { updateHistory: false });
     return;
   }
+  closeInscriptionsSplit();
   if (state?.kind === "primary" && primaryViews.includes(state.view)) {
     primaryView = state.view;
   }
@@ -276,12 +427,38 @@ window.addEventListener("popstate", (event) => {
   restoreScrollPosition(primaryView);
 });
 
+desktopSplitQuery.addEventListener("change", () => {
+  if (!desktopSplitQuery.matches && inscriptionsSplitOpen) {
+    const selected = document.querySelector(
+      "[data-view='inscriptions'] [data-open-detail].is-selected",
+    );
+    closeInscriptionsSplit();
+    if (selected && history.state?.kind === "detail") {
+      showView("detail");
+      fillDetailContent(selected);
+    }
+    return;
+  }
+  syncDesktopPreviewPane();
+  if (
+    desktopSplitQuery.matches &&
+    primaryView === "inscriptions" &&
+    history.state?.kind === "detail"
+  ) {
+    const trigger = document.querySelector(
+      `[data-content-id="${history.state.contentId}"]`,
+    );
+    if (trigger) openDetail(trigger, { updateHistory: false });
+  }
+});
+
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
 selectHomeFeed(homeFeed);
 selectCalligraphyCategory(calligraphyCategory);
 filterInscriptions("");
 applyThemePreference(themePreference, { persist: false });
 applyHomeFeedLayout(homeFeedLayout, { persist: false });
+showPreviewEmpty();
 
 window.setTimeout(() => {
   document.querySelector("[data-loading-screen]").hidden = true;

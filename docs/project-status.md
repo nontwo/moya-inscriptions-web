@@ -73,6 +73,7 @@ python3 -m http.server 4173
 
 - 组件目录：`http://localhost:4173/docs/design-system/catalog/`
 - 手机原型：`http://localhost:4173/docs/prototypes/mobile-preview/`
+- 外部对照站点：[类似网站参考清单](references/similar-sites.md)
 
 手机原型只用于直观检查导航与交互，不是 `apps/web` 的正式实现。
 
