@@ -11,10 +11,14 @@
 - `apps/admin`：管理端的最小 Next.js App Router 骨架。
 - `services/public-api`：不依赖数据库的只读 OpenAPI contract；当前不启动 HTTP
   server。
+- `services/api`：backend-only Catalog application boundary，包含 normalized
+  query、read projections、`CatalogQueryPort`、transport parser 与 Public
+  Contract mapper；当前没有 handler、adapter 或数据库实现。
 - `packages/contracts`：来源无关的 Public DTO、transport query 与 runtime
   schema。
 - `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
-- `packages/data-access`：只读 `ArchiveCatalogReader` query port；尚无实现。
+- `packages/data-access`：只读 `ArchiveCatalogReader` compatibility
+  port；尚无实现。
 - `packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
 - `database/migrations`：未来数据库迁移的唯一入口。
 - `tests`：单元、集成、端到端测试和 fixture。
@@ -84,11 +88,13 @@ push。每个 Agent 必须遵守
 - 通过静态服务器查看[组件目录](docs/design-system/README.md)和[非生产手机原型](docs/prototypes/mobile-preview/README.md)。
 - 使用 T03
   CloudBase 候选架构与无密钥部署检查清单进行方案评估；它不是可直接部署的 IaC。
-- 从 `@moya/data-access` 使用只读
-  `ArchiveCatalogReader`，并依据生成的三路由 OpenAPI 3.1.1
-  artifact 开发后续 transport/adapter。
+- 从 `@moya/contracts` 使用 canonical Catalog Public Contract，并在backend从
+  `@moya/api` 使用 normalized list query、internal read projections、
+  `CatalogQueryPort` 和显式Public mapper。
+- 继续依据生成的三路由OpenAPI 3.1.1 artifact维护T04.0-R `/v1/items`
+  compatibility contract。
 
 ## 当前未实现
 
-正式 Web/Admin 仍是骨架。Reader 实现、数据库 Schema、HTTP
+正式 Web/Admin 仍是骨架。Query Port/Reader实现、数据库 Schema、HTTP
 server/handler、Importer、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。

@@ -1,13 +1,13 @@
 # ADR 0004：Catalog Contract Design Freeze
 
 - 状态：Accepted
-- Implementation status：Not started
+- Implementation status：Phase 1 implemented（T04.1-D）
 - 日期：2026-08-10
 - 范围：T04.1 Catalog 领域语言、身份、Public Contract、Query Port 与迁移边界
 - Evidence
   baseline：[`T04.1 Catalog Contract Audit`](../audits/T04.1-catalog-contract-audit.md)
-- 与既有 ADR 的关系：细化 ADR 0003 的 T04.1 前瞻方向；不改变 ADR
-  0003 对当前 T04.0-R 实现的描述
+- 与既有 ADR 的关系：细化 ADR 0003 的 T04.1 前瞻方向；不改变 ADR 0003 对T04.0-R
+  compatibility implementation的描述
 
 ## 背景
 
@@ -29,7 +29,9 @@ T04.1-A 对 merged baseline
   consumer 状态无法由源码验证。
 
 本 ADR 把已冻结 Owner
-Decisions 和 Audit 事实转化为后续实现可直接遵循的架构设计。它本身不实现任何 contract、port、route、schema、guard 或 migration。
+Decisions 和 Audit事实转化为实现可直接遵循的架构设计。T04.1-D现已实现Phase 1
+contract、port、mapper和guard；route、database、HTTP runtime及Phase 2–4
+migration仍未实现。
 
 ## 决策
 
@@ -61,10 +63,11 @@ SourceId = provenance / source-record identity only
 future SiteId = physical site / monument / location identity only
 ```
 
-当前 `ArchiveItemId` 继续作为现有 contract compatibility identity。它与未来
-`CatalogId` 指向同一种平台内容实体身份，但本阶段不决定或实现 TypeScript
-alias、schema alias、wire migration 或全局 rename。`ArchiveItemId` 不得与
-`SourceId` 互换。
+当前 `ArchiveItemId` 继续作为现有 contract compatibility
+identity。T04.1-D将TypeScript `ArchiveItemId`实现为 `CatalogId`
+alias；两个runtime schema保持相同wire-validation semantics，但不要求Zod或JSON
+Schema对象引用及文档metadata相同。 `ArchiveItemId`不得与
+`SourceId`互换，也没有执行全局rename。
 
 T04.1 不建立 `SiteId`。如果未来建立 Site
 domain，必须由独立任务定义其 identity、record、API 和与 Catalog 的关系。
@@ -180,8 +183,12 @@ List page 固定包含：
 
 HTTP transport 与 normalized application input 保持分离：
 
-- `CatalogListTransportQuery`：可选的正整数字符串 `page`、`pageSize`；
-- `CatalogListQuery`：规范化后的整数 `page`、`pageSize`。
+- `CatalogListTransportQuery`：位于 `@moya/contracts`，使用可选的正整数字符串
+  `page`、`pageSize`；
+- `CatalogListQuery`：只位于 `@moya/api` application layer，使用规范化后的整数
+  `page`、`pageSize`；
+- transport validation/normalization位于独立backend transport
+  boundary，application layer不解析transport输入。
 
 T04.1 list
 contract 不加入 sort、taxonomy、region、category、keyword 或其他 filter。
@@ -348,13 +355,13 @@ modification，并增加或调整 guard 以确保：
 - objectKey/storage details 通过 contract shape 和 import
   guard 双重隔离，不能只依赖 URL composition token scan。
 
-这些 guard 是后续 implementation acceptance criteria，不在本 design-only ADR
-task 中实现。
+这些guard已在T04.1-D通过ESLint和architecture/contract tests实现。
 
 ## Compatibility and migration plan
 
 ### Phase 1 — Canonical Catalog contracts
 
+- **Implementation status：Completed in T04.1-D.**
 - 新增 `CatalogId`、`CatalogKind`、`CatalogRecord`、internal projections、
   `CatalogQueryPort`、Public Contract 和 mapper；
 - 保留当前 Archive public symbols、Reader 和 `/v1/items`；
@@ -391,9 +398,6 @@ task 中实现。
 以下内容不由本 ADR 冻结：
 
 - `CatalogId` wire generation/storage format；
-- `ArchiveItemId` 的具体 TypeScript/Zod alias 实现；
-- internal type 和 Query Port 的最终文件路径；
-- mapper 函数名、class/function 形式和 dependency injection 机制；
 - SourceRecord、Site/location、subtype extension 的 persistence
   schema 与 cardinality；
 - chronology normalization、uncertainty、evidence 和 historical dating model；
@@ -428,5 +432,4 @@ Catalog entity、CatalogId、CatalogKind、Search ownership、Site deferral、Ho
 Feed deferral、canonical route 和 suffix-free Public Contract
 naming 均已冻结。本 ADR 未发现新的领域级架构冲突。
 
-**No additional Owner decision is required before T04.1 implementation
-planning.**
+**No additional Owner decision was required for T04.1 Phase 1 implementation.**
