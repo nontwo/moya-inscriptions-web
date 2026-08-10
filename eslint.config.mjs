@@ -34,6 +34,7 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            "@moya/api",
             "@moya/data-access",
             "@moya/public-api",
             "hono",
@@ -44,6 +45,7 @@ export default tseslint.config(
             {
               group: [
                 "@moya/data-access/*",
+                "@moya/api/*",
                 "@moya/public-api/*",
                 "**/apps/**",
                 "**/database/**",
@@ -69,6 +71,7 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            "@moya/api",
             "@moya/contracts/json-schema",
             "@moya/contracts/schemas",
             "@moya/public-api",
@@ -80,6 +83,7 @@ export default tseslint.config(
             {
               group: [
                 "@moya/public-api/*",
+                "@moya/api/*",
                 "**/apps/**",
                 "**/data/**",
                 "**/database/**",
@@ -103,6 +107,7 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            "@moya/api",
             "@moya/contracts/json-schema",
             "@moya/contracts/schemas",
             "@moya/data-access",
@@ -114,6 +119,7 @@ export default tseslint.config(
             {
               group: [
                 "@moya/data-access/*",
+                "@moya/api/*",
                 "@moya/public-api/*",
                 "**/data/**",
                 "**/database/**",
@@ -141,6 +147,7 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            "@moya/api",
             "@moya/contracts",
             "@moya/data-access",
             "@moya/public-api",
@@ -151,6 +158,7 @@ export default tseslint.config(
             {
               group: [
                 "@moya/contracts/*",
+                "@moya/api/*",
                 "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/data/**",
@@ -172,12 +180,128 @@ export default tseslint.config(
       "no-restricted-imports": [
         "error",
         {
-          paths: ["@moya/data-access", "node-pg-migrate", "pg"],
+          paths: ["@moya/api", "@moya/data-access", "node-pg-migrate", "pg"],
           patterns: [
             {
-              group: ["@moya/data-access/*", "**/data/**", "**/database/**"],
+              group: [
+                "@moya/api/*",
+                "@moya/data-access/*",
+                "**/data/**",
+                "**/database/**",
+              ],
               message:
                 "The public API contract package cannot depend on persistence or data files.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["services/api/src/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "Request",
+          message: "Catalog application has no HTTP runtime.",
+        },
+        {
+          name: "Response",
+          message: "Catalog application has no HTTP runtime.",
+        },
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/data-access",
+            "@moya/public-api",
+            "hono",
+            "node-pg-migrate",
+            "pg",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/data-access/*",
+                "@moya/public-api/*",
+                "**/apps/**",
+                "**/data/**",
+                "**/database/**",
+                "**/infra/**",
+              ],
+              message:
+                "Catalog application cannot depend on frontend, transport services, data files, persistence, or infrastructure.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["services/api/src/modules/**/application/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/data-access",
+            "@moya/public-api",
+            "hono",
+            "node-pg-migrate",
+            "pg",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/data-access/*",
+                "@moya/public-api/*",
+                "**/apps/**",
+                "**/data/**",
+                "**/database/**",
+                "**/infra/**",
+                "**/transport/**",
+              ],
+              message:
+                "Application code cannot depend on transport, frontend, data files, persistence, or infrastructure.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["services/api/src/modules/**/application/**/*.{ts,tsx,mts,cts}"],
+    ignores: [
+      "services/api/src/modules/**/application/mappers/**/*.{ts,tsx,mts,cts}",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/data-access",
+            "@moya/public-api",
+            "@moya/contracts/json-schema",
+            "@moya/contracts/schemas",
+            "hono",
+            "node-pg-migrate",
+            "pg",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/data-access/*",
+                "@moya/public-api/*",
+                "**/apps/**",
+                "**/data/**",
+                "**/database/**",
+                "**/infra/**",
+                "**/transport/**",
+              ],
+              message:
+                "Application code cannot depend on runtime transport contracts, transport modules, data files, persistence, or infrastructure.",
             },
           ],
         },

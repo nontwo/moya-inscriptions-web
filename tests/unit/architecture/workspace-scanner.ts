@@ -289,6 +289,7 @@ export const runtimeDatasetReferences = (
 };
 
 const serverOnlyPackages = [
+  "@moya/api",
   "@moya/contracts/json-schema",
   "@moya/contracts/schemas",
   "@moya/data-access",
@@ -316,6 +317,12 @@ const allowedClientContractTypes = new Set([
   "ArchiveItemId",
   "ArchiveItemPage",
   "ArchiveItemSummary",
+  "CatalogDetail",
+  "CatalogId",
+  "CatalogKind",
+  "CatalogListTransportQuery",
+  "CatalogPage",
+  "CatalogSummary",
   "PublicSourceCitation",
 ]);
 
