@@ -1,4 +1,5 @@
 import {
+  createBackendApplication,
   createBackendServer,
   parseRuntimeConfig,
   startServer,
@@ -41,7 +42,10 @@ const installShutdownHandlers = (server: Server): void => {
 
 const main = async (): Promise<void> => {
   const config = parseRuntimeConfig(process.env);
-  const server = createBackendServer();
+  const requestListener = createBackendApplication({
+    nodeEnv: config.nodeEnv,
+  });
+  const server = createBackendServer(requestListener);
   const address = await startServer(server, config);
 
   installShutdownHandlers(server);

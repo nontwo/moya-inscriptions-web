@@ -126,6 +126,12 @@ importers:
 
   services/backend-runtime:
     dependencies:
+      '@moya/api':
+        specifier: workspace:*
+        version: link:../api
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@moya/public-api':
         specifier: workspace:*
         version: link:../public-api

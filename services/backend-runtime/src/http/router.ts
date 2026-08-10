@@ -1,7 +1,13 @@
 import type { RequestListener } from "node:http";
 
+import {
+  handleCatalogDetail,
+  handleCatalogList,
+} from "../catalog/catalog-handler.js";
 import { healthHandler } from "../health/health-handler.js";
 import { sendJson } from "./json-response.js";
+
+import type { CatalogQueryPort } from "@moya/api";
 
 const sendRouteError = (
   response: Parameters<RequestListener>[1],
@@ -16,19 +22,50 @@ const sendRouteError = (
   );
 };
 
-export const createRouter = (): RequestListener => (request, response) => {
-  const pathname = new URL(request.url ?? "/", "http://backend-runtime.local")
-    .pathname;
+export interface RouterDependencies {
+  readonly catalogQueryPort: CatalogQueryPort;
+}
 
-  if (pathname !== "/health") {
+export const createRouter =
+  ({ catalogQueryPort }: RouterDependencies): RequestListener =>
+  (request, response) => {
+    const pathname = new URL(request.url ?? "/", "http://backend-runtime.local")
+      .pathname;
+
+    if (pathname === "/health") {
+      if (request.method !== "GET") {
+        sendRouteError(response, 405, "Method Not Allowed");
+        return;
+      }
+
+      healthHandler(request, response);
+      return;
+    }
+
+    if (pathname === "/v1/catalog") {
+      if (request.method !== "GET") {
+        sendRouteError(response, 405, "Method Not Allowed");
+        return;
+      }
+
+      void handleCatalogList(request, response, catalogQueryPort);
+      return;
+    }
+
+    const detailRoute = /^\/v1\/catalog\/([^/]+)$/.exec(pathname);
+    if (detailRoute !== null) {
+      if (request.method !== "GET") {
+        sendRouteError(response, 405, "Method Not Allowed");
+        return;
+      }
+
+      void handleCatalogDetail(
+        detailRoute[1] ?? "",
+        response,
+        catalogQueryPort,
+      );
+      return;
+    }
+
     sendRouteError(response, 404, "Not Found");
-    return;
-  }
-
-  if (request.method !== "GET") {
-    sendRouteError(response, 405, "Method Not Allowed");
-    return;
-  }
-
-  healthHandler(request, response);
-};
+  };

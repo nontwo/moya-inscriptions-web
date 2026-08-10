@@ -103,6 +103,8 @@ describe("workspace dependency boundaries", () => {
     expect(moyaDependencies("@moya/contracts")).toEqual([]);
     expect(moyaDependencies("@moya/api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/backend-runtime")).toEqual([
+      "@moya/api",
+      "@moya/contracts",
       "@moya/public-api",
     ]);
     expect(moyaDependencies("@moya/data-access")).toEqual([]);

@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  createBackendApplication,
   createBackendServer,
   parseRuntimeConfig,
   startServer,
@@ -13,7 +14,11 @@ import type { RequestListener, Server } from "node:http";
 
 const servers = new Set<Server>();
 
-const startTestServer = async (requestListener?: RequestListener) => {
+const startTestServer = async (
+  requestListener: RequestListener = createBackendApplication({
+    nodeEnv: "test",
+  }),
+) => {
   const server = createBackendServer(requestListener);
   servers.add(server);
   const address = await startServer(server, {
@@ -100,7 +105,7 @@ describe("HTTP runtime", () => {
     });
   });
 
-  it.each(["/missing", "/health/", "/v1/catalog"])(
+  it.each(["/missing", "/health/"])(
     "returns a JSON 404 for unknown route %s",
     async (path) => {
       const { baseUrl } = await startTestServer();

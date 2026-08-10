@@ -21,8 +21,9 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T04.1-D   | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards |
 | T04.2     | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes    |
 | T05.0     | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown    |
+| T05.1     | 已实现         | Catalog list/detail HTTP boundary与development/test fixture     |
 | 手机原型  | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片           |
-| T05.1–T09 | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                               |
+| T05.2–T09 | 未开始         | production数据能力、图片管线、正式 Web 浏览/搜索/详情           |
 
 ## 当前能做什么
 
@@ -35,12 +36,13 @@ migration；`main`继续保留稳定的T00/治理基线。
   parser与显式mapper。
 - 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
   artifact。
-- 启动`@moya/backend-runtime`的真实Node.js
-  listener，并通过`GET /health`验证Server、Router、Handler和JSON response链路。
+- 启动`@moya/backend-runtime`的真实Node.js listener，并通过health与Catalog
+  list/detail验证Server、Router、Handler、T04 Query boundary和JSON
+  response链路。
 
-当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Public API 只有health
-HTTP handler；Catalog Query
-Port只有contract而没有实现。数据库 Schema、真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
+当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
+HTTP只使用三个条目的 development/test fixture。production Catalog
+adapter、数据库 Schema、真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
 
 ## 数据状态
 
@@ -74,6 +76,8 @@ pnpm dev
 pnpm --filter @moya/backend-runtime build
 HOST=127.0.0.1 PORT=3001 NODE_ENV=development pnpm --filter @moya/backend-runtime start
 curl -i http://127.0.0.1:3001/health
+curl -i 'http://127.0.0.1:3001/v1/catalog?page=1&pageSize=2'
+curl -i http://127.0.0.1:3001/v1/catalog/fixture-catalog-001
 ```
 
 启动静态预览：
@@ -101,8 +105,8 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. Owner审核并集成T05.0 Backend HTTP Runtime。
-2. 经独立任务批准后再开始T05.1图片适配、处理管线与自动化脚本。
+1. Owner审核并集成T05.1 Catalog HTTP Boundary。
+2. 经独立任务批准后再开始T05.2或图片适配、处理管线与自动化脚本。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。

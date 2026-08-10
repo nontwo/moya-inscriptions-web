@@ -27,27 +27,37 @@ const collectTypeScriptFiles = async (directory: string): Promise<string[]> => {
 };
 
 describe("@moya/backend-runtime package boundary", () => {
-  it("has only the approved internal runtime dependency", async () => {
+  it("has only the approved internal runtime dependencies", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(runtimeRoot, "package.json"), "utf8"),
     ) as { dependencies?: Record<string, string> };
 
     expect(manifest.dependencies).toEqual({
+      "@moya/api": "workspace:*",
+      "@moya/contracts": "workspace:*",
       "@moya/public-api": "workspace:*",
     });
   });
 
   it("exposes only runtime composition and lifecycle values", async () => {
     expect(Object.keys(await import("@moya/backend-runtime")).sort()).toEqual([
+      "createBackendApplication",
       "createBackendServer",
+      "createDevelopmentCatalogFixtureQueryPort",
       "parseRuntimeConfig",
       "startServer",
       "stopServer",
     ]);
   });
 
-  it("keeps runtime workspace imports pointed toward the public API contract", async () => {
+  it("keeps runtime workspace imports on the approved application and contract roots", async () => {
     const violations: string[] = [];
+    const approvedImports = new Set([
+      "@moya/api",
+      "@moya/contracts",
+      "@moya/contracts/schemas",
+      "@moya/public-api",
+    ]);
     const sourceFiles = await collectTypeScriptFiles(
       path.join(runtimeRoot, "src"),
     );
@@ -57,7 +67,7 @@ describe("@moya/backend-runtime package boundary", () => {
       for (const reference of extractModuleReferences(source)) {
         if (
           reference.specifier.startsWith("@moya/") &&
-          reference.specifier !== "@moya/public-api"
+          !approvedImports.has(reference.specifier)
         ) {
           violations.push(
             `${path.relative(repositoryRoot, file)} imports ${reference.specifier}`,

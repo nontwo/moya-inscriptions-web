@@ -1,7 +1,5 @@
 import { createServer } from "node:http";
 
-import { createRouter } from "./http/router.js";
-
 import type { RequestListener, Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -30,7 +28,7 @@ const assertInternalListenOptions = ({
 };
 
 export const createBackendServer = (
-  requestListener: RequestListener = createRouter(),
+  requestListener: RequestListener,
 ): Server => {
   const server = createServer(requestListener);
   server.on("request", (_request, response) => {

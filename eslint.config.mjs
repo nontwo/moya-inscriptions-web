@@ -219,9 +219,7 @@ export default tseslint.config(
         "error",
         {
           paths: [
-            "@moya/api",
             "@moya/contracts/json-schema",
-            "@moya/contracts/schemas",
             "@moya/data-access",
             "hono",
             "node-pg-migrate",
@@ -238,7 +236,7 @@ export default tseslint.config(
                 "**/infra/**",
               ],
               message:
-                "The T05.0 HTTP runtime cannot depend on application, frontend, data, persistence, or infrastructure implementations.",
+                "The HTTP runtime may use only application package roots and runtime contracts, not deep application modules, frontend, data, persistence, or infrastructure implementations.",
             },
           ],
         },
