@@ -13,6 +13,10 @@ body {
   color: var(--yoyi-color-text-primary);
   background: var(--yoyi-color-background-page);
   font-family: var(--yoyi-font-interface);
+  /* Prototype-only: calligraphy wall scale (2 ≈ 2×; set 3 to try 3×). */
+  --app-calligraphy-scale: 2;
+  --app-motto-font:
+    "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "Noto Serif SC", serif;
 }
 
 button,
@@ -67,15 +71,27 @@ button {
   border-bottom: 1px solid var(--yoyi-color-border-subtle);
 }
 
-.app-topbar--home,
+.app-topbar--home {
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: end;
+}
+
+.app-topbar--home .app-primary-tabs {
+  justify-self: center;
+}
+
 .app-topbar--detail,
 .app-topbar--settings {
   grid-template-columns: 44px minmax(0, 1fr) 44px;
 }
 
-.app-topbar--search,
-.app-topbar--categories {
+.app-topbar--search {
   grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 6px;
+}
+
+.app-topbar--categories {
+  grid-template-columns: auto minmax(0, 1fr) 44px;
   gap: 6px;
 }
 
@@ -93,12 +109,28 @@ button {
   text-align: center;
 }
 
+.app-home-motto {
+  display: none;
+  margin: 0;
+  color: var(--yoyi-color-text-primary);
+  font-family: var(--app-motto-font);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .app-primary-tabs {
   display: grid;
   height: 52px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
   justify-self: center;
+  min-width: min(100%, 240px);
 }
 
 .app-primary-tab {
@@ -232,6 +264,132 @@ button {
   line-height: 1.4;
 }
 
+/* OWNER: pc-desktop — topics feed (visible all breakpoints; denser on desktop) */
+.app-topics {
+  padding: 8px;
+}
+
+.app-topics__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.app-topic-card {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
+  background: var(--yoyi-color-background-surface);
+  border: 0;
+  border-radius: var(--yoyi-radius-2);
+  cursor: pointer;
+}
+
+.app-topic-card:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-topic-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--yoyi-color-background-muted);
+}
+
+.app-topic-card__body {
+  display: grid;
+  gap: 6px;
+  padding: 12px 12px 14px;
+}
+
+.app-topic-card__badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  padding: 0 8px;
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+  border-radius: var(--yoyi-radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-topic-card__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.app-topic-card__blurb {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.app-topic-column__content {
+  width: min(100%, 760px);
+  margin-inline: auto;
+  padding: 16px 16px 48px;
+}
+
+.app-topic-block {
+  margin: 0 0 20px;
+}
+
+.app-topic-block--lead,
+.app-topic-block--rich-text {
+  color: var(--yoyi-color-text-primary);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.app-topic-block--quote {
+  margin: 24px 0;
+  padding: 12px 0 12px 14px;
+  color: var(--yoyi-color-text-secondary);
+  border-left: 3px solid var(--yoyi-color-seal-red);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.app-topic-block img {
+  display: block;
+  width: 100%;
+  border-radius: var(--yoyi-radius-sm);
+  background: var(--yoyi-color-background-muted);
+}
+
+.app-topic-block__caption {
+  margin: 8px 0 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.app-topic-video {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border: 1px dashed var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-sm);
+  font-size: 14px;
+}
+
+.app-topic-video video {
+  display: none;
+}
+
 .app-search {
   height: 44px;
   margin-bottom: 4px;
@@ -323,31 +481,57 @@ button {
 }
 
 .app-categories {
-  display: flex;
-  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: min(100%, 240px);
   height: 52px;
-  gap: 4px;
-  align-items: center;
-  overflow-x: auto;
-  scrollbar-width: none;
+  gap: 0;
+  align-items: stretch;
+  overflow: visible;
 }
 
 .app-category {
-  min-width: 60px;
+  position: relative;
+  display: grid;
+  min-width: 72px;
   min-height: 44px;
-  padding: 0 12px;
-  color: var(--yoyi-color-text-secondary);
+  padding: 0 10px;
+  place-items: center;
+  color: var(--yoyi-color-text-tertiary);
   background: transparent;
   border: 0;
-  border-radius: var(--yoyi-radius-full);
-  font-size: 14px;
+  border-radius: 0;
+  font-family: var(--yoyi-font-interface);
+  font-size: var(--yoyi-type-button-size);
+  font-weight: 600;
   cursor: pointer;
 }
 
+.app-category::after {
+  position: absolute;
+  right: 18px;
+  bottom: 1px;
+  left: 18px;
+  height: 2px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: var(--yoyi-radius-full);
+  content: "";
+  opacity: 0;
+  transform: scaleX(0.5);
+  transition:
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-emphasized);
+}
+
 .app-category.is-selected {
-  color: var(--yoyi-color-seal-red);
-  background: var(--yoyi-color-seal-red-muted);
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
   font-weight: 600;
+}
+
+.app-category.is-selected::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .app-calligraphy-grid .app-card[hidden] {
@@ -507,13 +691,13 @@ button {
 
 .app-loading__motto {
   margin: 0;
-  max-width: 20em;
-  color: var(--yoyi-color-text-secondary);
-  font-family: var(--yoyi-font-interface);
-  font-size: var(--yoyi-type-body-size);
-  font-weight: 400;
+  max-width: 22em;
+  color: var(--yoyi-color-text-primary);
+  font-family: var(--app-motto-font);
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+  font-weight: 700;
   line-height: 1.75;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.24em;
   opacity: 0;
   animation: yoyi-logo-reveal 560ms var(--yoyi-easing-emphasized) 280ms both;
 }
@@ -533,10 +717,13 @@ button {
     padding-inline: var(--yoyi-space-5);
   }
 
-  .app-topbar--home,
   .app-topbar--detail,
   .app-topbar--settings {
     grid-template-columns: 48px minmax(0, 1fr) 48px;
+  }
+
+  .app-topbar--home {
+    grid-template-columns: minmax(0, 1fr) 48px;
   }
 
   .app-masonry {
@@ -631,6 +818,7 @@ button {
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
+    position: fixed;
     top: 0;
     right: auto;
     bottom: 0;
@@ -641,12 +829,14 @@ button {
     grid-auto-rows: minmax(72px, auto);
     align-content: start;
     justify-items: stretch;
-    min-height: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
     padding: env(safe-area-inset-top) 4px env(safe-area-inset-bottom)
       env(safe-area-inset-left);
     border-top: 0;
     border-right: 1px solid var(--yoyi-color-border-subtle);
     box-shadow: none;
+    z-index: 30;
   }
 
   .app-bottom-navigation .yoyi-navigation-entry {
@@ -704,14 +894,50 @@ button {
     align-items: center;
   }
 
+  /* OWNER: pc-desktop — motto between tabs and settings */
   .app-topbar--home {
-    grid-template-columns: 52px minmax(0, 1fr) 52px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--yoyi-space-4);
+    align-items: center;
   }
 
-  .app-topbar--search,
-  .app-topbar--categories {
+  .app-home-motto {
+    display: block;
+    justify-self: center;
+    max-width: 100%;
+    color: var(--yoyi-color-text-primary);
+    font-family: var(--app-motto-font);
+    font-size: clamp(1.75rem, 2.2vw, 2.125rem);
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    line-height: 1.3;
+  }
+
+  .app-topbar--search {
     grid-template-columns: minmax(0, 1fr) 52px;
     gap: var(--yoyi-space-4);
+  }
+
+  .app-topbar--categories {
+    grid-template-columns: auto minmax(12rem, 1fr) 52px;
+    gap: var(--yoyi-space-4);
+  }
+
+  .app-topics {
+    padding: var(--yoyi-space-5) var(--yoyi-space-6) var(--yoyi-space-10);
+  }
+
+  .app-topics__grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--yoyi-space-5);
+  }
+
+  .app-topic-column__content {
+    padding: var(--yoyi-space-6) var(--yoyi-space-6) var(--yoyi-space-10);
+  }
+
+  .app-view.app-topic-column {
+    padding-left: 0;
   }
 
   .app-topbar .yoyi-icon-button--md {
@@ -750,26 +976,45 @@ button {
   }
 
   .app-categories {
-    height: 60px;
-    gap: var(--yoyi-space-2);
+    justify-self: start;
+    min-width: 280px;
+    height: 64px;
   }
 
   .app-category {
-    min-width: 76px;
-    min-height: 48px;
-    padding: 0 18px;
-    font-size: 1rem;
+    min-width: 96px;
+    min-height: 52px;
+    padding: 0 16px;
+    font-size: 1.125rem;
+  }
+
+  .app-category::after {
+    right: 22px;
+    left: 22px;
+    bottom: 2px;
+    height: 3px;
+  }
+
+  .app-search--calligraphy {
+    height: 52px;
+    align-self: center;
+  }
+
+  /* Phone-only layout preference; desktop always multi-column gallery. */
+  [data-setting-group="home-layout"] {
+    display: none;
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-scroll {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
   }
 
   .app-scroll {
     width: 100%;
     max-width: none;
     margin-inline: 0;
-  }
-
-  [data-home-layout="single"] [data-view="home"] .app-scroll {
-    width: min(100%, var(--yoyi-container-reading));
-    margin-inline: auto;
   }
 
   .app-masonry {
@@ -784,19 +1029,14 @@ button {
   }
 
   /* Variant A: home gallery — larger cards, 3–4 columns, image-forward */
-  [data-view="home"] .app-masonry {
+  [data-view="home"] .app-masonry,
+  [data-home-layout="single"] [data-view="home"] .app-masonry,
+  [data-home-layout="double"] [data-view="home"] .app-masonry {
     gap: var(--yoyi-space-6);
     padding: var(--yoyi-space-6) var(--yoyi-space-6) var(--yoyi-space-10);
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  }
-
-  [data-home-layout="single"] [data-view="home"] .app-masonry {
-    grid-template-columns: minmax(0, 1fr);
-    width: min(100%, var(--yoyi-container-reading));
-    margin-inline: auto;
-  }
-
-  [data-home-layout="double"] [data-view="home"] .app-masonry {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
 
@@ -1199,7 +1439,7 @@ button {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  /* Variant C: calligraphy rubbing wall — fluid columns scale with viewport/zoom */
+  /* Variant C: calligraphy wall — scale via --app-calligraphy-scale */
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry,
   .app-calligraphy-grid .app-masonry {
@@ -1207,11 +1447,18 @@ button {
     max-width: none;
     display: grid;
     column-width: auto;
-    gap: clamp(0.75rem, 1.2vw, 1.25rem);
+    gap: calc(0.75rem * var(--app-calligraphy-scale));
     padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
     grid-template-columns: repeat(
       auto-fill,
-      minmax(clamp(9rem, 11vw, 12.5rem), 1fr)
+      minmax(
+        clamp(
+          calc(9rem * var(--app-calligraphy-scale)),
+          calc(11vw * var(--app-calligraphy-scale)),
+          calc(12.5rem * var(--app-calligraphy-scale))
+        ),
+        1fr
+      )
     );
   }
 
@@ -1233,13 +1480,13 @@ button {
   }
 
   .app-calligraphy-grid .app-card__title {
-    font-size: clamp(0.75rem, 1.1vw, 0.875rem);
+    font-size: calc(0.75rem * var(--app-calligraphy-scale));
     font-weight: 600;
     line-height: 1.35;
   }
 
   .app-calligraphy-grid .app-card__meta {
-    font-size: clamp(0.625rem, 0.9vw, 0.75rem);
+    font-size: calc(0.625rem * var(--app-calligraphy-scale));
   }
 
   .app-setting-options {
@@ -1271,6 +1518,7 @@ button {
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
+    position: fixed;
     top: 0;
     right: auto;
     bottom: 0;
@@ -1282,6 +1530,7 @@ button {
     gap: var(--yoyi-space-3);
     width: calc(164px + env(safe-area-inset-left));
     max-width: none;
+    height: 100dvh;
     min-height: 100dvh;
     padding: env(safe-area-inset-top) var(--yoyi-space-3)
       calc(var(--yoyi-space-6) + env(safe-area-inset-bottom))
@@ -1292,6 +1541,7 @@ button {
       color-mix(in srgb, var(--yoyi-color-seal-red) 28%, transparent);
     box-shadow: none;
     overflow: visible;
+    z-index: 30;
   }
 
   .app-bottom-navigation .yoyi-navigation-entry {
@@ -1371,13 +1621,13 @@ button {
   }
 
   .app-categories {
-    height: 64px;
+    min-width: 300px;
+    height: 68px;
   }
 
   .app-category {
-    min-height: 52px;
-    padding: 0 20px;
-    font-size: 1.0625rem;
+    min-width: 104px;
+    font-size: 1.1875rem;
   }
 
   .app-masonry {
@@ -1387,14 +1637,11 @@ button {
   }
 
   [data-view="home"] .app-masonry,
-  [data-home-layout="double"] [data-view="home"] .app-masonry {
+  [data-home-layout="double"] [data-view="home"] .app-masonry,
+  [data-home-layout="single"] [data-view="home"] .app-masonry {
     gap: var(--yoyi-space-7);
     padding-inline: var(--yoyi-space-7);
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
-
-  [data-home-layout="single"] [data-view="home"] .app-masonry {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   [data-view="home"] .app-card img {
@@ -1404,7 +1651,7 @@ button {
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry {
     padding-inline: clamp(1.25rem, 2.2vw, 2rem);
-    gap: clamp(0.75rem, 1.2vw, 1.25rem);
+    gap: calc(0.75rem * var(--app-calligraphy-scale));
   }
 
   .app-card img {
@@ -1476,14 +1723,16 @@ button {
   }
 
   [data-view="home"] .app-masonry,
-  [data-home-layout="double"] [data-view="home"] .app-masonry {
+  [data-home-layout="double"] [data-view="home"] .app-masonry,
+  [data-home-layout="single"] [data-view="home"] .app-masonry {
     gap: var(--yoyi-space-7);
     padding-inline: var(--yoyi-space-8);
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
 
-  [data-home-layout="single"] [data-view="home"] .app-masonry {
-    grid-template-columns: minmax(0, 1fr);
+  .app-calligraphy-grid,
+  .app-calligraphy-grid.app-masonry {
+    padding-inline: clamp(1.5rem, 2.5vw, 2.25rem);
   }
 
   [data-view="home"] .app-card img {
@@ -1530,6 +1779,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .app-card,
   .app-primary-tab::after,
+  .app-category::after,
   .app-loading .yoyi-logo,
   .app-loading__motto {
     transition-duration: 1ms;

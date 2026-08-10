@@ -29,7 +29,6 @@
       <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
         <section class="app-view" data-view="home" aria-label="首页">
           <header class="app-topbar app-topbar--home">
-            <span aria-hidden="true" class="app-topbar__spacer"></span>
             <div
               class="app-primary-tabs"
               role="tablist"
@@ -55,7 +54,20 @@
               >
                 <span>附近</span>
               </button>
+              <button
+                class="app-primary-tab"
+                data-home-feed="topics"
+                role="tab"
+                aria-label="专题"
+                aria-selected="false"
+                type="button"
+              >
+                <span>专题</span>
+              </button>
             </div>
+            <p class="app-home-motto" aria-hidden="true">
+              志于道，据于德，依于仁，游于艺
+            </p>
             <button
               class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
               data-open-settings
@@ -244,6 +256,17 @@
                 <span class="app-card__title">近郊摩崖</span>
               </button>
             </div>
+
+            <!-- TOPICS_PLACEHOLDER_START data-placeholder="topics-v1" -->
+            <div
+              class="app-topics"
+              data-feed-panel="topics"
+              data-placeholder="topics-v1"
+              hidden
+            >
+              <div class="app-topics__grid" data-topics-grid></div>
+            </div>
+            <!-- TOPICS_PLACEHOLDER_END -->
           </main>
         </section>
 
@@ -784,6 +807,34 @@
                 拓本
               </button>
             </div>
+            <!-- Prototype-only local filter shell; not T08 SearchDocument. -->
+            <label class="yoyi-search-input app-search app-search--calligraphy">
+              <span class="yoyi-visually-hidden">筛选书帖</span>
+              <span
+                class="yoyi-icon"
+                data-icon="search"
+                aria-hidden="true"
+              ></span>
+              <input
+                data-calligraphy-filter
+                aria-label="筛选书帖"
+                placeholder="筛选书帖"
+                type="search"
+              />
+              <button
+                class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                data-calligraphy-filter-clear
+                aria-label="清除筛选"
+                type="button"
+                hidden
+              >
+                <span
+                  class="yoyi-icon yoyi-icon--sm"
+                  data-icon="close"
+                  aria-hidden="true"
+                ></span>
+              </button>
+            </label>
             <button
               class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
               data-open-settings
@@ -802,6 +853,7 @@
               <button
                 class="app-card"
                 data-category="ink"
+                data-calligraphy-filter-text="秋山札 宋 行书"
                 data-content-id="calligraphy-autumn"
                 data-open-detail
                 data-image="../../design-system/assets/demo/ink-album.svg"
@@ -820,6 +872,7 @@
               <button
                 class="app-card"
                 data-category="ink"
+                data-calligraphy-filter-text="松窗帖 明 楷书"
                 data-content-id="calligraphy-pine"
                 data-open-detail
                 data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
@@ -838,6 +891,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="集字圣教序 唐 行书"
                 data-content-id="calligraphy-preface"
                 data-open-detail
                 data-image="../../design-system/assets/demo/rubbing-fragment.svg"
@@ -856,6 +910,7 @@
               <button
                 class="app-card"
                 data-category="ink"
+                data-calligraphy-filter-text="草书残卷 唐 草书"
                 data-content-id="calligraphy-cursive"
                 data-open-detail
                 data-image="../../design-system/assets/demo/ink-album.svg"
@@ -874,6 +929,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="北海刻帖 唐 楷书"
                 data-content-id="calligraphy-beihai"
                 data-open-detail
                 data-image="../../design-system/assets/demo/inscription-rubbing.svg"
@@ -892,6 +948,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="石门铭拓片 北魏 魏碑"
                 data-content-id="calligraphy-shimen"
                 data-open-detail
                 data-image="../../design-system/assets/demo/stone-detail.svg"
@@ -910,6 +967,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="曹全碑拓 东汉 隶书"
                 data-content-id="calligraphy-caoquan"
                 data-open-detail
                 data-image="../../design-system/assets/demo/stele-shadow.svg"
@@ -928,6 +986,7 @@
               <button
                 class="app-card"
                 data-category="ink"
+                data-calligraphy-filter-text="兰亭临本 晋 行书"
                 data-content-id="calligraphy-lanting"
                 data-open-detail
                 data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
@@ -946,6 +1005,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="龙门二十品 北魏 魏碑"
                 data-content-id="calligraphy-yizijue"
                 data-open-detail
                 data-image="../../design-system/assets/demo/cliff-gate.svg"
@@ -964,6 +1024,7 @@
               <button
                 class="app-card"
                 data-category="ink"
+                data-calligraphy-filter-text="寒山诗札 唐 行草"
                 data-content-id="calligraphy-hanshan"
                 data-open-detail
                 data-image="../../design-system/assets/demo/ink-album.svg"
@@ -982,6 +1043,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="颜勤礼碑 唐 楷书"
                 data-content-id="calligraphy-yanqinli"
                 data-open-detail
                 data-image="../../design-system/assets/demo/inscription-rubbing.svg"
@@ -1000,6 +1062,7 @@
               <button
                 class="app-card"
                 data-category="rubbing"
+                data-calligraphy-filter-text="华山庙碑 东汉 隶书"
                 data-content-id="calligraphy-huashan"
                 data-open-detail
                 data-image="../../design-system/assets/demo/valley-wall.svg"
@@ -1016,6 +1079,9 @@
                 </span>
               </button>
             </div>
+            <p class="app-empty" data-calligraphy-filter-empty hidden>
+              没有符合筛选的书帖
+            </p>
           </main>
         </section>
 
@@ -1075,8 +1141,11 @@
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="app-setting-group">
-                <legend>首页展示</legend>
+              <fieldset
+                class="app-setting-group"
+                data-setting-group="home-layout"
+              >
+                <legend>首页展示（仅手机）</legend>
                 <div class="app-setting-options">
                   <label class="app-setting-option">
                     <input
@@ -1136,6 +1205,38 @@
             <h1 data-detail-title></h1>
           </main>
         </section>
+
+        <!-- TOPICS_PLACEHOLDER_START topic-column -->
+        <section
+          class="app-view app-topic-column"
+          data-view="topic-column"
+          data-placeholder="topics-v1"
+          aria-label="专题专栏"
+          hidden
+        >
+          <header class="app-topbar app-topbar--detail">
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-topic-back
+              aria-label="返回专题"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="back"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <h1 class="app-topbar__title" data-topic-column-heading>专题</h1>
+            <span aria-hidden="true" class="app-topbar__spacer"></span>
+          </header>
+          <main
+            class="app-scroll app-topic-column__content"
+            data-scroll-view="topic-column"
+            data-topic-column-body
+          ></main>
+        </section>
+        <!-- TOPICS_PLACEHOLDER_END -->
 
         <nav
           class="yoyi-mobile-bottom-navigation app-bottom-navigation"
@@ -1211,6 +1312,7 @@
       </div>
     </div>
 
-    <script type="module" src="./preview.js"></script>
+    <script src="./fixtures/topics.placeholder.js"></script>
+    <script src="./preview.js"></script>
   </body>
 </html>

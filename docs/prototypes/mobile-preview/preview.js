@@ -1,3 +1,16 @@
+/**
+ * Prototype shell only (docs/prototypes/mobile-preview).
+ * Not Catalog/Search production code. Not T06–T08 acceptance.
+ * Topics come from YOYI_TOPICS_PLACEHOLDER (IIFE fixture); do not redeclare
+ * topicCards/getTopicById in this classic script scope.
+ */
+
+const topicsFixture = globalThis.YOYI_TOPICS_PLACEHOLDER;
+const editorialTopics = topicsFixture?.topicCards ?? [];
+const findEditorialTopic =
+  topicsFixture?.getTopicById ??
+  ((id) => editorialTopics.find((topic) => topic.id === id) ?? null);
+
 const root = document.documentElement;
 const app = document.querySelector("[data-mobile-app]");
 const bottomNavigation = document.querySelector("[data-bottom-navigation]");
@@ -5,6 +18,15 @@ const detailImage = document.querySelector("[data-detail-image]");
 const detailTitle = document.querySelector("[data-detail-title]");
 const searchInput = document.querySelector("[data-inscription-search]");
 const searchClear = document.querySelector("[data-search-clear]");
+const calligraphyFilterInput = document.querySelector(
+  "[data-calligraphy-filter]",
+);
+const calligraphyFilterClear = document.querySelector(
+  "[data-calligraphy-filter-clear]",
+);
+const calligraphyFilterEmpty = document.querySelector(
+  "[data-calligraphy-filter-empty]",
+);
 const inscriptionPreview = document.querySelector("[data-inscription-preview]");
 const inscriptionPreviewImage = document.querySelector(
   "[data-inscription-preview-image]",
@@ -26,6 +48,11 @@ const inscriptionPreviewFeatured = document.querySelector(
 );
 const inscriptionPreviewSummary = document.querySelector(
   "[data-inscription-preview-summary]",
+);
+const topicsGrid = document.querySelector("[data-topics-grid]");
+const topicColumnBody = document.querySelector("[data-topic-column-body]");
+const topicColumnHeading = document.querySelector(
+  "[data-topic-column-heading]",
 );
 
 const themePreferenceKey = "yoyi.theme-preference";
@@ -61,6 +88,7 @@ function persistPreference(key, value) {
 let primaryView = "home";
 let homeFeed = "discover";
 let calligraphyCategory = "all";
+let calligraphyFilterQuery = "";
 let themePreference = readStoredPreference(
   themePreferenceKey,
   themePreferences,
@@ -177,7 +205,7 @@ function closeInscriptionsSplit() {
 }
 
 function showView(view) {
-  if (view !== "detail" && view !== "inscriptions") {
+  if (view !== "detail" && view !== "inscriptions" && view !== "topic-column") {
     closeInscriptionsSplit();
   }
   if (view === "inscriptions" && !inscriptionsSplitOpen) {
@@ -188,6 +216,116 @@ function showView(view) {
   });
   bottomNavigation.hidden = !primaryViews.includes(view);
   if (view === "inscriptions") syncDesktopPreviewPane();
+}
+
+function renderTopicsFeed() {
+  if (!topicsGrid) return;
+  topicsGrid.replaceChildren();
+  editorialTopics.forEach((topic) => {
+    if (topic.kind !== "editorialTopic") return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "app-topic-card";
+    button.dataset.openTopic = topic.id;
+    button.dataset.kind = topic.kind;
+    button.dataset.contentId = topic.id;
+    button.innerHTML = `
+      <img src="${topic.cover}" alt="${topic.coverAlt}" />
+      <span class="app-topic-card__body">
+        <span class="app-topic-card__badge">专题/策展</span>
+        <span class="app-topic-card__title">${topic.title}</span>
+        <span class="app-topic-card__blurb">${topic.blurb}</span>
+      </span>
+    `;
+    button.addEventListener("click", () => openTopicColumn(topic.id));
+    topicsGrid.append(button);
+  });
+}
+
+function renderTopicBlock(block) {
+  const wrap = document.createElement("section");
+  wrap.className = `app-topic-block app-topic-block--${block.type}`;
+  if (block.type === "lead" || block.type === "rich-text") {
+    const p = document.createElement("p");
+    p.textContent = block.text ?? "";
+    wrap.append(p);
+    return wrap;
+  }
+  if (block.type === "quote") {
+    const q = document.createElement("blockquote");
+    q.textContent = block.text ?? "";
+    wrap.append(q);
+    return wrap;
+  }
+  if (block.type === "image") {
+    const img = document.createElement("img");
+    img.src = block.src ?? "";
+    img.alt = block.alt ?? "";
+    wrap.append(img);
+    if (block.caption) {
+      const caption = document.createElement("p");
+      caption.className = "app-topic-block__caption";
+      caption.textContent = block.caption;
+      wrap.append(caption);
+    }
+    return wrap;
+  }
+  if (block.type === "video") {
+    const placeholder = document.createElement("div");
+    placeholder.className = "app-topic-video";
+    placeholder.setAttribute("role", "img");
+    placeholder.setAttribute("aria-label", block.caption ?? "视频占位");
+    placeholder.textContent = block.caption ?? "视频占位";
+    const video = document.createElement("video");
+    video.preload = "none";
+    video.controls = false;
+    video.setAttribute("playsinline", "");
+    placeholder.append(video);
+    wrap.append(placeholder);
+    return wrap;
+  }
+  return wrap;
+}
+
+function openTopicColumn(topicId, { updateHistory = true } = {}) {
+  const topic = findEditorialTopic(topicId);
+  if (!topic || topic.kind !== "editorialTopic") return;
+  saveScrollPosition();
+  if (topicColumnHeading) topicColumnHeading.textContent = topic.title;
+  if (topicColumnBody) {
+    topicColumnBody.replaceChildren();
+    const title = document.createElement("h1");
+    title.textContent = topic.title;
+    topicColumnBody.append(title);
+    const badge = document.createElement("p");
+    badge.className = "app-topic-card__badge";
+    badge.textContent = "专题/策展";
+    topicColumnBody.append(badge);
+    topic.blocks.forEach((block) => {
+      topicColumnBody.append(renderTopicBlock(block));
+    });
+    topicColumnBody.scrollTop = 0;
+  }
+  showView("topic-column");
+  if (updateHistory) {
+    history.pushState(
+      { kind: "topic", topicId: topic.id, sourceView: "home" },
+      "",
+      `#topic-${topic.id}`,
+    );
+  }
+}
+
+function closeTopicColumn() {
+  if (history.state?.kind === "topic") history.back();
+  else {
+    primaryView = "home";
+    homeFeed = "topics";
+    selectHomeFeed("topics");
+    showView("home");
+    updateBottomNavigation();
+    restoreScrollPosition("home");
+  }
 }
 
 function updateBottomNavigation() {
@@ -223,6 +361,38 @@ function selectHomeFeed(value) {
   });
 }
 
+function matchesCalligraphyCard(card, category, normalizedQuery) {
+  const categoryOk = category === "all" || card.dataset.category === category;
+  if (!categoryOk) return false;
+  if (!normalizedQuery) return true;
+  const haystack = (card.dataset.calligraphyFilterText ?? "").toLocaleLowerCase(
+    "zh-CN",
+  );
+  return haystack.includes(normalizedQuery);
+}
+
+function filterCalligraphy() {
+  const normalizedQuery = calligraphyFilterQuery
+    .trim()
+    .toLocaleLowerCase("zh-CN");
+  let visibleCount = 0;
+  document.querySelectorAll("[data-category]").forEach((card) => {
+    const matches = matchesCalligraphyCard(
+      card,
+      calligraphyCategory,
+      normalizedQuery,
+    );
+    card.hidden = !matches;
+    if (matches) visibleCount += 1;
+  });
+  if (calligraphyFilterEmpty) {
+    calligraphyFilterEmpty.hidden = visibleCount > 0;
+  }
+  if (calligraphyFilterClear) {
+    calligraphyFilterClear.hidden = normalizedQuery.length === 0;
+  }
+}
+
 function selectCalligraphyCategory(value) {
   calligraphyCategory = value;
   document.querySelectorAll("[data-calligraphy-category]").forEach((button) => {
@@ -230,9 +400,7 @@ function selectCalligraphyCategory(value) {
     button.classList.toggle("is-selected", selected);
     button.setAttribute("aria-selected", String(selected));
   });
-  document.querySelectorAll("[data-category]").forEach((card) => {
-    card.hidden = value !== "all" && card.dataset.category !== value;
-  });
+  filterCalligraphy();
 }
 
 function filterInscriptions(query) {
@@ -380,6 +548,10 @@ document
   .querySelector("[data-inscription-preview-back]")
   ?.addEventListener("click", closeDetail);
 
+document
+  .querySelector("[data-topic-back]")
+  ?.addEventListener("click", closeTopicColumn);
+
 document.querySelectorAll("[data-shell-control]").forEach((control) => {
   control.addEventListener("click", (event) => {
     event.preventDefault();
@@ -400,6 +572,18 @@ searchClear.addEventListener("click", () => {
   searchInput.focus();
 });
 
+calligraphyFilterInput?.addEventListener("input", (event) => {
+  calligraphyFilterQuery = event.currentTarget.value;
+  filterCalligraphy();
+});
+
+calligraphyFilterClear?.addEventListener("click", () => {
+  if (calligraphyFilterInput) calligraphyFilterInput.value = "";
+  calligraphyFilterQuery = "";
+  filterCalligraphy();
+  calligraphyFilterInput?.focus();
+});
+
 window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (state?.kind === "settings") {
@@ -407,6 +591,14 @@ window.addEventListener("popstate", (event) => {
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
     updateBottomNavigation();
     showView("settings");
+    return;
+  }
+  if (state?.kind === "topic") {
+    primaryView = "home";
+    homeFeed = "topics";
+    selectHomeFeed("topics");
+    updateBottomNavigation();
+    openTopicColumn(state.topicId, { updateHistory: false });
     return;
   }
   if (state?.kind === "detail") {
@@ -422,6 +614,7 @@ window.addEventListener("popstate", (event) => {
   if (state?.kind === "primary" && primaryViews.includes(state.view)) {
     primaryView = state.view;
   }
+  if (primaryView === "home") selectHomeFeed(homeFeed);
   showView(primaryView);
   updateBottomNavigation();
   restoreScrollPosition(primaryView);
@@ -453,6 +646,7 @@ desktopSplitQuery.addEventListener("change", () => {
 });
 
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
+renderTopicsFeed();
 selectHomeFeed(homeFeed);
 selectCalligraphyCategory(calligraphyCategory);
 filterInscriptions("");
