@@ -290,6 +290,7 @@ export const runtimeDatasetReferences = (
 
 const serverOnlyPackages = [
   "@moya/api",
+  "@moya/backend-runtime",
   "@moya/contracts/json-schema",
   "@moya/contracts/schemas",
   "@moya/data-access",

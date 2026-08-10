@@ -1,7 +1,9 @@
 # 摩崖碑刻数字平台
 
 面向中国摩崖与石刻资料的移动优先数字档案。`integration/mvp`
-当前包含工程与治理基线、碑刻 MVP 优先的公开契约、只读后端 contract、正式设计系统、候选部署骨架和独立手机交互原型；旧数据方案已撤回并安全归档。正式业务页面、持久化和 HTTP 服务尚未开始。
+当前包含工程与治理基线、碑刻 MVP 优先的公开契约、最小健康检查 HTTP
+runtime、正式设计系统、候选部署骨架和独立手机交互原型；旧数据方案已撤回并安全归档。正式业务页面、Catalog
+HTTP handler 和持久化尚未开始。
 
 项目的唯一动态进度来源是 [当前项目状态](docs/project-status.md)。
 
@@ -11,6 +13,8 @@
 - `apps/admin`：管理端的最小 Next.js App Router 骨架。
 - `services/public-api`：不依赖数据库的只读 OpenAPI contract；当前不启动 HTTP
   server。
+- `services/backend-runtime`：T05.0 Node.js HTTP listener、router、JSON
+  response、runtime config 与 graceful shutdown；当前只实现 `GET /health`。
 - `services/api`：backend-only Catalog application boundary，包含 normalized
   query、read projections、`CatalogQueryPort`、transport parser 与 Public
   Contract mapper；当前没有 handler、adapter 或数据库实现。
@@ -92,8 +96,10 @@ push。每个 Agent 必须遵守
   `CatalogQueryPort` 和显式Public mapper。
 - 依据生成的OpenAPI 3.1.1 artifact维护`/v1/catalog` list/detail canonical
   contract。
+- 通过 `@moya/backend-runtime` 启动真实 HTTP listener，并请求 `GET /health`
+  验证最小后端运行链路。
 
 ## 当前未实现
 
-正式 Web/Admin 仍是骨架。Query Port实现、数据库 Schema、HTTP
-server/handler、Importer、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。
+正式 Web/Admin 仍是骨架。Catalog Query Port实现、Catalog HTTP
+handler、数据库Schema、Importer、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。

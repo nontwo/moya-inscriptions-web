@@ -102,6 +102,9 @@ describe("workspace dependency boundaries", () => {
 
     expect(moyaDependencies("@moya/contracts")).toEqual([]);
     expect(moyaDependencies("@moya/api")).toEqual(["@moya/contracts"]);
+    expect(moyaDependencies("@moya/backend-runtime")).toEqual([
+      "@moya/public-api",
+    ]);
     expect(moyaDependencies("@moya/data-access")).toEqual([]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/ui")).toEqual(["@moya/design-tokens"]);
@@ -152,6 +155,7 @@ describe("frontend and browser boundaries", () => {
     const source = `
       import type { CatalogDetail } from "@moya/contracts";
       import type { CatalogQueryPort } from "@moya/api";
+      import { createBackendServer } from "@moya/backend-runtime";
       import "${retainedDataAccessPackage}";
       import { openApiDocument } from "@moya/public-api";
       import { handler } from "../../services/public-api/src/handler";
@@ -160,6 +164,7 @@ describe("frontend and browser boundaries", () => {
     expect(frontendBoundaryViolations(file, source)).toEqual(
       expect.arrayContaining([
         "@moya/api crosses the frontend boundary",
+        "@moya/backend-runtime crosses the frontend boundary",
         `${retainedDataAccessPackage} crosses the frontend boundary`,
         "@moya/public-api crosses the frontend boundary",
         "../../services/public-api/src/handler crosses the frontend boundary",

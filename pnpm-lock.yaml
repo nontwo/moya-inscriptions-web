@@ -124,6 +124,16 @@ importers:
         specifier: workspace:*
         version: link:../../packages/contracts
 
+  services/backend-runtime:
+    dependencies:
+      '@moya/public-api':
+        specifier: workspace:*
+        version: link:../public-api
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
   services/public-api:
     dependencies:
       '@moya/contracts':
@@ -135,6 +145,9 @@ importers:
       '@moya/api':
         specifier: workspace:*
         version: link:../services/api
+      '@moya/backend-runtime':
+        specifier: workspace:*
+        version: link:../services/backend-runtime
       '@moya/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
