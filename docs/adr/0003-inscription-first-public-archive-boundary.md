@@ -5,6 +5,10 @@
 - 范围：T04.0-R 公开契约、只读 Query Port 和 OpenAPI
 - 取代：ADR 0002 中的搜索、分类、图片与五路由边界
 
+> T04.2 implementation notice：本ADR保留T04.0-R的原始历史术语和事实。Archive
+> compatibility contract、Reader和`/v1/items`已由ADR 0004及T04.2 canonical
+> migration取代；下文不再作为当前接口说明。
+
 ## 背景
 
 T04 v2 在没有数据库、HTTP

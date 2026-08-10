@@ -4,6 +4,10 @@
 - 日期：2026-08-09
 - 范围：T04.0-R 及后续后端实现
 
+> T04.2 implementation notice：本ADR中的Modular
+> Monolith与依赖方向原则继续有效；下文`ArchiveCatalogReader`相关内容保留为T04.0-R历史事实。当前canonical
+> read abstraction为ADR 0004定义的`CatalogQueryPort`。
+
 ## 背景
 
 项目当前是单一 TypeScript pnpm

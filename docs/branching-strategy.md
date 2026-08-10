@@ -21,6 +21,8 @@ main
 | T02     | 完成       | Design tokens、公共 UI、组件目录、视觉资产     |
 | T03     | 完成       | CloudBase 候选架构与无密钥部署文档             |
 | T04.0-R | 已收缩边界 | ArchiveCatalogReader、三路由 OpenAPI、架构守卫 |
+| T04.1-D | 完成       | Catalog contracts、Query Port、mapper与guards  |
+| T04.2   | 完成       | Catalog canonical migration与OpenAPI routes    |
 | 原型    | 归档       | `docs/prototypes/mobile-preview/` 非生产原型   |
 | T05–T09 | 待开发     | 图片、正式 Web 浏览/搜索/详情                  |
 

@@ -1,13 +1,18 @@
 # ADR 0004：Catalog Contract Design Freeze
 
 - 状态：Accepted
-- Implementation status：Phase 1 implemented（T04.1-D）
+- Implementation status：Canonical migration implemented（T04.1-D + T04.2）
 - 日期：2026-08-10
 - 范围：T04.1 Catalog 领域语言、身份、Public Contract、Query Port 与迁移边界
 - Evidence
   baseline：[`T04.1 Catalog Contract Audit`](../audits/T04.1-catalog-contract-audit.md)
 - 与既有 ADR 的关系：细化 ADR 0003 的 T04.1 前瞻方向；不改变 ADR 0003 对T04.0-R
   compatibility implementation的描述
+
+> T04.2 implementation notice：本ADR的canonical
+> Catalog决定现已完成contract、identity、Query Port与public route
+> migration。下文描述T04.1阶段状态、Archive
+> compatibility和分阶段迁移的段落保留为当时的历史计划与事实。
 
 ## 背景
 
@@ -392,6 +397,23 @@ modification，并增加或调整 guard 以确保：
 - 删除过渡测试/文档，不保留无期限 alias 或双路由。
 
 每个 phase 必须是独立、可审查、可验证的任务。不得把四个 phase 合并为一次全局 rename 或巨型重构。
+
+## T04.2 implementation record
+
+Owner批准T04.2作为独立、可审查的canonical migration任务，完成剩余Archive
+terminology、identity、public contract、route和compatibility cleanup：
+
+- active contract只保留`CatalogId`、`CatalogKind`、Catalog Public DTO和
+  `CatalogListTransportQuery`；
+- canonical public routes为`GET /v1/catalog`和
+  `GET /v1/catalog/{catalogId}`，不保留`/v1/items`双路由；
+- backend read abstraction只保留application-owned `CatalogQueryPort`；
+- `packages/data-access`按批准范围保留为空backend workspace，不在本任务删除；
+- repository-external consumer仍标记为`externally unverified`。
+
+本实现不加入HTTP runtime、persistence
+adapter、database、`SourceId`或`SiteId`，也不改变本ADR的deferred domain
+decisions。
 
 ## Deferred decisions
 

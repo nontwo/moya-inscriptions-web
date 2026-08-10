@@ -17,8 +17,7 @@
 - `packages/contracts`：来源无关的 Public DTO、transport query 与 runtime
   schema。
 - `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
-- `packages/data-access`：只读 `ArchiveCatalogReader` compatibility
-  port；尚无实现。
+- `packages/data-access`：T04.2保留的空backend workspace；当前无port或实现。
 - `packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
 - `database/migrations`：未来数据库迁移的唯一入口。
 - `tests`：单元、集成、端到端测试和 fixture。
@@ -91,10 +90,10 @@ push。每个 Agent 必须遵守
 - 从 `@moya/contracts` 使用 canonical Catalog Public Contract，并在backend从
   `@moya/api` 使用 normalized list query、internal read projections、
   `CatalogQueryPort` 和显式Public mapper。
-- 继续依据生成的三路由OpenAPI 3.1.1 artifact维护T04.0-R `/v1/items`
-  compatibility contract。
+- 依据生成的OpenAPI 3.1.1 artifact维护`/v1/catalog` list/detail canonical
+  contract。
 
 ## 当前未实现
 
-正式 Web/Admin 仍是骨架。Query Port/Reader实现、数据库 Schema、HTTP
+正式 Web/Admin 仍是骨架。Query Port实现、数据库 Schema、HTTP
 server/handler、Importer、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。

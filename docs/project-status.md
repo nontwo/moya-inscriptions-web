@@ -8,7 +8,8 @@
 
 `integration/mvp`
 当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立手机交互原型之上完成T04.1
-Catalog Contract Phase 1；`main`继续保留稳定的T00/治理基线。
+Catalog Contract Phase 1及T04.2 canonical
+migration；`main`继续保留稳定的T00/治理基线。
 
 | 任务     | 状态           | 当前成果                                                        |
 | -------- | -------------- | --------------------------------------------------------------- |
@@ -18,6 +19,7 @@ Catalog Contract Phase 1；`main`继续保留稳定的T00/治理基线。
 | T03      | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档       |
 | T04.0-R  | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫             |
 | T04.1-D  | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards |
+| T04.2    | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes    |
 | 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片           |
 | T05–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                               |
 
@@ -30,11 +32,12 @@ Catalog Contract Phase 1；`main`继续保留稳定的T00/治理基线。
 - 使用canonical `CatalogId`、三值 `CatalogKind`和suffix-free Catalog Public
   Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
   parser与显式mapper。
-- 审查来源无关的兼容 `ArchiveCatalogReader` port，并确定性生成/验证三路由OpenAPI
-  3.1.1 artifact；当前artifact保持zero diff。
+- 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
+  artifact。
 
 当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Public API 仍没有 HTTP
-server/handler；Reader 只有 port 而没有实现。数据库 Schema、真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
+server/handler；Catalog Query
+Port只有contract而没有实现。数据库 Schema、真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
 
 ## 数据状态
 
@@ -42,9 +45,8 @@ server/handler；Reader 只有 port 而没有实现。数据库 Schema、真实�
 
 ## 测试与可运行入口
 
-当前测试覆盖工程 fixture、来源无关T01/T04 Archive兼容契约、T04.1 Catalog
-contracts/application boundary、Reader port、OpenAPI、架构边界、T02
-token/资产/组件和手机原型交互。
+当前测试覆盖工程fixture、Catalog contracts/application boundary、Query
+Port、OpenAPI、架构边界、T02 token/资产/组件和手机原型交互。
 
 标准命令：
 
@@ -88,8 +90,7 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. 审核并集成T04.1 Phase 1；Phase 2 Archive terminology migration、Phase 3 route
-   migration和Phase 4 compatibility cleanup必须继续作为独立任务，不能自动开始。
+1. 审核并集成T04.2 Catalog canonical migration。
 2. T05：建立 object key 驱动的图片适配与处理管线，以及经批准的自动化脚本。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 
