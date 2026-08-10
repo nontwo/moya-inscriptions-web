@@ -99,6 +99,7 @@ describe("workspace dependency boundaries", () => {
         .sort();
 
     expect(moyaDependencies("@moya/contracts")).toEqual([]);
+    expect(moyaDependencies("@moya/api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/data-access")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/ui")).toEqual(["@moya/design-tokens"]);
@@ -108,7 +109,18 @@ describe("workspace dependency boundaries", () => {
 describe("frontend and browser boundaries", () => {
   it("allows Client Components to type-import public DTOs", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
-    const allowed = `"use client";\nimport type { ArchiveItemSummary } from "@moya/contracts";`;
+    const allowed = `
+      "use client";
+      import type {
+        ArchiveItemSummary,
+        CatalogDetail,
+        CatalogId,
+        CatalogKind,
+        CatalogListTransportQuery,
+        CatalogPage,
+        CatalogSummary
+      } from "@moya/contracts";
+    `;
     expect(clientBoundaryViolations(file, allowed)).toEqual([]);
   });
 
@@ -117,6 +129,7 @@ describe("frontend and browser boundaries", () => {
     const forbidden = `
       "use client";
       import { archiveItemSummarySchema } from "@moya/contracts/schemas";
+      import type { CatalogListQuery, CatalogQueryPort } from "@moya/api";
       import type { ArchiveCatalogReader } from "@moya/data-access";
       import { Pool } from "pg";
       const records = new URL("../../data/records.json", import.meta.url);
@@ -125,6 +138,7 @@ describe("frontend and browser boundaries", () => {
     expect(clientBoundaryViolations(file, forbidden)).toEqual(
       expect.arrayContaining([
         "@moya/contracts/schemas is server/runtime-only",
+        "@moya/api is server/runtime-only",
         "@moya/data-access is server/runtime-only",
         "pg is server/runtime-only",
         "../../data/records.json is a direct data-file reference",
@@ -136,6 +150,7 @@ describe("frontend and browser boundaries", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
     const source = `
       import type { ArchiveItemDetail } from "@moya/contracts";
+      import type { CatalogQueryPort } from "@moya/api";
       import type { ArchiveCatalogReader } from "@moya/data-access";
       import { openApiDocument } from "@moya/public-api";
       import { handler } from "../../services/public-api/src/handler";
@@ -143,6 +158,7 @@ describe("frontend and browser boundaries", () => {
 
     expect(frontendBoundaryViolations(file, source)).toEqual(
       expect.arrayContaining([
+        "@moya/api crosses the frontend boundary",
         "@moya/data-access crosses the frontend boundary",
         "@moya/public-api crosses the frontend boundary",
         "../../services/public-api/src/handler crosses the frontend boundary",
@@ -172,6 +188,15 @@ describe("frontend and browser boundaries", () => {
 
     expect(clientBoundaryViolations(file, source)).toContain(
       "ArchiveItemRecord is not an approved public DTO type",
+    );
+  });
+
+  it("rejects normalized Catalog application queries from Public Contracts", () => {
+    const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
+    const source = `"use client";\nimport type { CatalogListQuery } from "@moya/contracts";`;
+
+    expect(clientBoundaryViolations(file, source)).toContain(
+      "CatalogListQuery is not an approved public DTO type",
     );
   });
 

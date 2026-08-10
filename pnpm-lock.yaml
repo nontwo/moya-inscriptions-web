@@ -122,6 +122,12 @@ importers:
         specifier: '>=19.2.8 <20'
         version: 19.2.8(react@19.2.8)
 
+  services/api:
+    dependencies:
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+
   services/public-api:
     dependencies:
       '@moya/contracts':
@@ -130,6 +136,9 @@ importers:
 
   tests:
     devDependencies:
+      '@moya/api':
+        specifier: workspace:*
+        version: link:../services/api
       '@moya/contracts':
         specifier: workspace:*
         version: link:../packages/contracts

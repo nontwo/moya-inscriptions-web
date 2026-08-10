@@ -7,6 +7,12 @@ export type {
   ArchiveItemListTransportQuery,
   ArchiveItemPage,
   ArchiveItemSummary,
+  CatalogDetail,
+  CatalogId,
+  CatalogKind,
+  CatalogListTransportQuery,
+  CatalogPage,
+  CatalogSummary,
   HealthResponse,
   PublicSourceCitation,
 } from "./types.js";
