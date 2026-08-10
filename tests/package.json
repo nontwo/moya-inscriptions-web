@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@moya/api": "workspace:*",
     "@moya/contracts": "workspace:*",
     "@moya/data-access": "workspace:*",
     "@moya/design-tokens": "workspace:*",
