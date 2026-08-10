@@ -11,6 +11,9 @@ import type {
  * Implementations must exclude every item that is not publicly visible and
  * must return only public DTOs. Transport parsing, persistence models and
  * infrastructure details stay outside this package.
+ *
+ * @deprecated T04.0-R compatibility port. New Catalog reads use the
+ * application-owned CatalogQueryPort. Removal belongs to Phase 4.
  */
 export interface ArchiveCatalogReader {
   listItems(query: ArchiveItemListQuery): Promise<ArchiveItemPage>;

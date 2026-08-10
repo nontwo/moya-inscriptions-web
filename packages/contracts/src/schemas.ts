@@ -13,6 +13,11 @@ const platformContentIdSchema = () =>
   z.string().min(1).max(128).regex(/^\S+$/).brand<"CatalogId">();
 
 export const catalogIdSchema = platformContentIdSchema();
+
+/**
+ * @deprecated T04.0-R compatibility name. Use catalogIdSchema for new work.
+ * Removal belongs to the approved Phase 4 compatibility cleanup.
+ */
 export const archiveItemIdSchema = platformContentIdSchema();
 
 export const catalogKindSchema = z.enum([
@@ -47,6 +52,9 @@ export const catalogDetailSchema = z.strictObject({
   sourceCitations: z.array(publicSourceCitationSchema),
 });
 
+/**
+ * @deprecated T04.0-R /v1/items compatibility schema. New work uses Catalog.
+ */
 export const archiveItemSummarySchema = z.strictObject({
   id: archiveItemIdSchema,
   title: titleSchema,
@@ -57,6 +65,9 @@ export const archiveItemSummarySchema = z.strictObject({
   protectionOrCollectionUnitLabel: displayLabelSchema.optional(),
 });
 
+/**
+ * @deprecated T04.0-R /v1/items compatibility schema. New work uses Catalog.
+ */
 export const archiveItemDetailSchema = z.strictObject({
   ...archiveItemSummarySchema.shape,
   description: exactTextSchema(20_000).optional(),
@@ -83,11 +94,13 @@ export const catalogListTransportQuerySchema = z.strictObject({
   pageSize: catalogPageSizeStringSchema.optional(),
 });
 
+/** @deprecated T04.0-R /v1/items compatibility transport schema. */
 export const archiveItemListTransportQuerySchema = z.strictObject({
   page: positiveIntegerStringSchema.optional(),
   pageSize: positiveIntegerStringSchema.optional(),
 });
 
+/** @deprecated T04.0-R Reader compatibility application schema. */
 export const archiveItemListQuerySchema = z.strictObject({
   page: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
   pageSize: z.number().int().min(1).max(100).default(20),
@@ -101,6 +114,7 @@ const normalizeArchiveItemListQuery = ({
   pageSize: pageSize === undefined ? 20 : Number(pageSize),
 });
 
+/** @deprecated T04.0-R Reader compatibility parser. */
 export const archiveItemListQueryParserSchema =
   archiveItemListTransportQuerySchema
     .superRefine((query, context) => {
@@ -119,6 +133,7 @@ export const archiveItemListQueryParserSchema =
     })
     .transform(normalizeArchiveItemListQuery);
 
+/** @deprecated T04.0-R /v1/items compatibility page schema. */
 export const archiveItemPageSchema = z
   .strictObject({
     items: z.array(archiveItemSummarySchema),
