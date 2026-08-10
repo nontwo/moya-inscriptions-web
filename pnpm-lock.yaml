@@ -98,11 +98,7 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
-  packages/data-access:
-    dependencies:
-      '@moya/contracts':
-        specifier: workspace:*
-        version: link:../contracts
+  packages/data-access: {}
 
   packages/design-tokens: {}
 
@@ -142,9 +138,6 @@ importers:
       '@moya/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
-      '@moya/data-access':
-        specifier: workspace:*
-        version: link:../packages/data-access
       '@moya/design-tokens':
         specifier: workspace:*
         version: link:../packages/design-tokens
