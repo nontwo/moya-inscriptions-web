@@ -9,12 +9,17 @@ const exactTextSchema = (maximum: number) =>
       message: "Leading or trailing whitespace is not allowed",
     });
 
-export const archiveItemIdSchema = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^\S+$/)
-  .brand<"ArchiveItemId">();
+const platformContentIdSchema = () =>
+  z.string().min(1).max(128).regex(/^\S+$/).brand<"CatalogId">();
+
+export const catalogIdSchema = platformContentIdSchema();
+export const archiveItemIdSchema = platformContentIdSchema();
+
+export const catalogKindSchema = z.enum([
+  "inscription",
+  "cliff_inscription",
+  "calligraphy",
+]);
 
 const titleSchema = exactTextSchema(500);
 const aliasSchema = exactTextSchema(500);

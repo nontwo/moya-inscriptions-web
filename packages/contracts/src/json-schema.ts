@@ -9,6 +9,8 @@ import {
   archiveItemListTransportQuerySchema,
   archiveItemPageSchema,
   archiveItemSummarySchema,
+  catalogIdSchema,
+  catalogKindSchema,
   healthResponseSchema,
   publicSourceCitationSchema,
 } from "./schemas.js";
@@ -17,6 +19,8 @@ const toJsonSchema = (schema: z.ZodType) =>
   z.toJSONSchema(schema, { target: "draft-2020-12" });
 
 export const archiveItemIdJsonSchema = toJsonSchema(archiveItemIdSchema);
+export const catalogIdJsonSchema = toJsonSchema(catalogIdSchema);
+export const catalogKindJsonSchema = toJsonSchema(catalogKindSchema);
 export const publicSourceCitationJsonSchema = toJsonSchema(
   publicSourceCitationSchema,
 );

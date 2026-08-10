@@ -7,6 +7,8 @@ export type {
   ArchiveItemListTransportQuery,
   ArchiveItemPage,
   ArchiveItemSummary,
+  CatalogId,
+  CatalogKind,
   HealthResponse,
   PublicSourceCitation,
 } from "./types.js";

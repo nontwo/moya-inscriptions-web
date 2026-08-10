@@ -4,16 +4,19 @@ import type {
   apiErrorCodeSchema,
   apiErrorSchema,
   archiveItemDetailSchema,
-  archiveItemIdSchema,
   archiveItemListQuerySchema,
   archiveItemListTransportQuerySchema,
   archiveItemPageSchema,
   archiveItemSummarySchema,
+  catalogIdSchema,
+  catalogKindSchema,
   healthResponseSchema,
   publicSourceCitationSchema,
 } from "./schemas.js";
 
-export type ArchiveItemId = z.infer<typeof archiveItemIdSchema>;
+export type CatalogId = z.infer<typeof catalogIdSchema>;
+export type ArchiveItemId = CatalogId;
+export type CatalogKind = z.infer<typeof catalogKindSchema>;
 export type PublicSourceCitation = z.infer<typeof publicSourceCitationSchema>;
 export type ArchiveItemSummary = z.infer<typeof archiveItemSummarySchema>;
 export type ArchiveItemDetail = z.infer<typeof archiveItemDetailSchema>;
