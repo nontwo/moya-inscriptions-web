@@ -138,6 +138,9 @@ importers:
       '@moya/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
+      '@moya/data-access':
+        specifier: workspace:*
+        version: link:../packages/data-access
       '@moya/design-tokens':
         specifier: workspace:*
         version: link:../packages/design-tokens
