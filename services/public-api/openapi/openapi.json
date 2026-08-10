@@ -35,7 +35,7 @@
         "required": ["error"],
         "type": "object"
       },
-      "ArchiveItemDetail": {
+      "CatalogDetail": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -58,22 +58,16 @@
             "pattern": "^\\S+$",
             "type": "string"
           },
+          "kind": {
+            "enum": ["inscription", "cliff_inscription", "calligraphy"],
+            "type": "string"
+          },
           "periodLabel": {
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
           },
-          "protectionOrCollectionUnitLabel": {
-            "maxLength": 500,
-            "minLength": 1,
-            "type": "string"
-          },
-          "provinceLabel": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "sources": {
+          "sourceCitations": {
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -108,17 +102,22 @@
             "type": "string"
           }
         },
-        "required": ["id", "title", "aliases", "sources"],
+        "required": ["id", "kind", "title", "aliases", "sourceCitations"],
         "type": "object"
       },
-      "ArchiveItemId": {
+      "CatalogId": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "maxLength": 128,
         "minLength": 1,
         "pattern": "^\\S+$",
         "type": "string"
       },
-      "ArchiveItemPage": {
+      "CatalogKind": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": ["inscription", "cliff_inscription", "calligraphy"],
+        "type": "string"
+      },
+      "CatalogPage": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -140,17 +139,11 @@
                   "pattern": "^\\S+$",
                   "type": "string"
                 },
+                "kind": {
+                  "enum": ["inscription", "cliff_inscription", "calligraphy"],
+                  "type": "string"
+                },
                 "periodLabel": {
-                  "maxLength": 200,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "protectionOrCollectionUnitLabel": {
-                  "maxLength": 500,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "provinceLabel": {
                   "maxLength": 200,
                   "minLength": 1,
                   "type": "string"
@@ -166,7 +159,7 @@
                   "type": "string"
                 }
               },
-              "required": ["id", "title", "aliases"],
+              "required": ["id", "kind", "title", "aliases"],
               "type": "object"
             },
             "type": "array"
@@ -195,7 +188,7 @@
         "required": ["items", "total", "page", "pageSize", "totalPages"],
         "type": "object"
       },
-      "ArchiveItemSummary": {
+      "CatalogSummary": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -213,17 +206,11 @@
             "pattern": "^\\S+$",
             "type": "string"
           },
+          "kind": {
+            "enum": ["inscription", "cliff_inscription", "calligraphy"],
+            "type": "string"
+          },
           "periodLabel": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "protectionOrCollectionUnitLabel": {
-            "maxLength": 500,
-            "minLength": 1,
-            "type": "string"
-          },
-          "provinceLabel": {
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
@@ -239,7 +226,7 @@
             "type": "string"
           }
         },
-        "required": ["id", "title", "aliases"],
+        "required": ["id", "kind", "title", "aliases"],
         "type": "object"
       },
       "HealthResponse": {
@@ -279,7 +266,7 @@
     }
   },
   "info": {
-    "description": "Inscription-first, read-only access to public archive items. Operational health is unversioned; public archive contracts use /v1.",
+    "description": "Inscription-first, read-only access to the public Catalog. Operational health is unversioned; public Catalog contracts use /v1.",
     "title": "摩崖碑刻数字平台 Public API",
     "version": "1.0.0"
   },
@@ -314,19 +301,18 @@
         "summary": "Operational readiness"
       }
     },
-    "/v1/items": {
+    "/v1/catalog": {
       "get": {
-        "operationId": "listItems",
+        "operationId": "listCatalog",
         "parameters": [
           {
             "in": "query",
             "name": "page",
             "required": false,
             "schema": {
-              "default": 1,
-              "maximum": 9007199254740991,
-              "minimum": 1,
-              "type": "integer"
+              "maxLength": 16,
+              "pattern": "^[1-9]\\d*$",
+              "type": "string"
             }
           },
           {
@@ -334,10 +320,9 @@
             "name": "pageSize",
             "required": false,
             "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1,
-              "type": "integer"
+              "maxLength": 16,
+              "pattern": "^[1-9]\\d*$",
+              "type": "string"
             }
           }
         ],
@@ -346,11 +331,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ArchiveItemPage"
+                  "$ref": "#/components/schemas/CatalogPage"
                 }
               }
             },
-            "description": "A page of public archive items."
+            "description": "A page of public Catalog entries."
           },
           "400": {
             "content": {
@@ -383,20 +368,20 @@
             "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
           }
         },
-        "summary": "List public archive items"
+        "summary": "List public Catalog entries"
       }
     },
-    "/v1/items/{id}": {
+    "/v1/catalog/{catalogId}": {
       "get": {
-        "operationId": "getItemById",
+        "operationId": "getCatalogById",
         "parameters": [
           {
-            "description": "Opaque platform ArchiveItemId.",
+            "description": "Opaque platform CatalogId.",
             "in": "path",
-            "name": "id",
+            "name": "catalogId",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/ArchiveItemId"
+              "$ref": "#/components/schemas/CatalogId"
             }
           }
         ],
@@ -405,11 +390,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ArchiveItemDetail"
+                  "$ref": "#/components/schemas/CatalogDetail"
                 }
               }
             },
-            "description": "The requested public item."
+            "description": "The requested public Catalog entry."
           },
           "404": {
             "content": {
@@ -419,7 +404,7 @@
                 }
               }
             },
-            "description": "Archive item not found; error code ITEM_NOT_FOUND."
+            "description": "Catalog entry not found; error code ITEM_NOT_FOUND."
           },
           "500": {
             "content": {
@@ -442,7 +427,7 @@
             "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
           }
         },
-        "summary": "Get one public archive item"
+        "summary": "Get one public Catalog entry"
       }
     }
   }

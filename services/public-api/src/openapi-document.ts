@@ -1,11 +1,12 @@
 import type { ApiErrorCode } from "@moya/contracts";
 import {
   apiErrorJsonSchema,
-  archiveItemDetailJsonSchema,
-  archiveItemIdJsonSchema,
-  archiveItemListQueryJsonSchema,
-  archiveItemPageJsonSchema,
-  archiveItemSummaryJsonSchema,
+  catalogDetailJsonSchema,
+  catalogIdJsonSchema,
+  catalogKindJsonSchema,
+  catalogListTransportQueryJsonSchema,
+  catalogPageJsonSchema,
+  catalogSummaryJsonSchema,
   healthResponseJsonSchema,
   publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
@@ -44,7 +45,10 @@ const apiErrorResponse = (description: string, code: ApiErrorCode) =>
   jsonResponse(`${description}; error code ${code}.`, "ApiError");
 
 const listQueryParameters = ["page", "pageSize"].map((name) =>
-  queryParameter(name, schemaProperty(archiveItemListQueryJsonSchema, name)),
+  queryParameter(
+    name,
+    schemaProperty(catalogListTransportQueryJsonSchema, name),
+  ),
 );
 
 export const openApiDocument: JsonObject = {
@@ -54,7 +58,7 @@ export const openApiDocument: JsonObject = {
     title: "摩崖碑刻数字平台 Public API",
     version: "1.0.0",
     description:
-      "Inscription-first, read-only access to public archive items. Operational health is unversioned; public archive contracts use /v1.",
+      "Inscription-first, read-only access to the public Catalog. Operational health is unversioned; public Catalog contracts use /v1.",
   },
   paths: {
     "/health": {
@@ -70,15 +74,15 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
-    "/v1/items": {
+    "/v1/catalog": {
       get: {
-        operationId: "listItems",
-        summary: "List public archive items",
+        operationId: "listCatalog",
+        summary: "List public Catalog entries",
         parameters: listQueryParameters,
         responses: {
           "200": jsonResponse(
-            "A page of public archive items.",
-            "ArchiveItemPage",
+            "A page of public Catalog entries.",
+            "CatalogPage",
           ),
           "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
           "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
@@ -89,25 +93,25 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
-    "/v1/items/{id}": {
+    "/v1/catalog/{catalogId}": {
       get: {
-        operationId: "getItemById",
-        summary: "Get one public archive item",
+        operationId: "getCatalogById",
+        summary: "Get one public Catalog entry",
         parameters: [
           {
-            name: "id",
+            name: "catalogId",
             in: "path",
             required: true,
-            description: "Opaque platform ArchiveItemId.",
-            schema: { $ref: "#/components/schemas/ArchiveItemId" },
+            description: "Opaque platform CatalogId.",
+            schema: { $ref: "#/components/schemas/CatalogId" },
           },
         ],
         responses: {
           "200": jsonResponse(
-            "The requested public item.",
-            "ArchiveItemDetail",
+            "The requested public Catalog entry.",
+            "CatalogDetail",
           ),
-          "404": apiErrorResponse("Archive item not found", "ITEM_NOT_FOUND"),
+          "404": apiErrorResponse("Catalog entry not found", "ITEM_NOT_FOUND"),
           "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
           "503": apiErrorResponse(
             "Service is temporarily unavailable",
@@ -119,11 +123,12 @@ export const openApiDocument: JsonObject = {
   },
   components: {
     schemas: {
-      ArchiveItemId: archiveItemIdJsonSchema,
+      CatalogId: catalogIdJsonSchema,
+      CatalogKind: catalogKindJsonSchema,
       PublicSourceCitation: publicSourceCitationJsonSchema,
-      ArchiveItemSummary: archiveItemSummaryJsonSchema,
-      ArchiveItemDetail: archiveItemDetailJsonSchema,
-      ArchiveItemPage: archiveItemPageJsonSchema,
+      CatalogSummary: catalogSummaryJsonSchema,
+      CatalogDetail: catalogDetailJsonSchema,
+      CatalogPage: catalogPageJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     },
