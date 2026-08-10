@@ -1,12 +1,6 @@
 export type {
   ApiError,
   ApiErrorCode,
-  ArchiveItemDetail,
-  ArchiveItemId,
-  ArchiveItemListQuery,
-  ArchiveItemListTransportQuery,
-  ArchiveItemPage,
-  ArchiveItemSummary,
   CatalogDetail,
   CatalogId,
   CatalogKind,
