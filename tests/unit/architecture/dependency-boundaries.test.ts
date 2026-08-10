@@ -20,6 +20,8 @@ import {
 
 import type { WorkspaceInfo } from "./workspace-scanner.js";
 
+const retainedDataAccessPackage = ["@moya", "data-access"].join("/");
+
 describe("workspace dependency boundaries", () => {
   it("declares every imported workspace dependency", async () => {
     const workspaces = await discoverWorkspaces();
@@ -100,7 +102,7 @@ describe("workspace dependency boundaries", () => {
 
     expect(moyaDependencies("@moya/contracts")).toEqual([]);
     expect(moyaDependencies("@moya/api")).toEqual(["@moya/contracts"]);
-    expect(moyaDependencies("@moya/data-access")).toEqual(["@moya/contracts"]);
+    expect(moyaDependencies("@moya/data-access")).toEqual([]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/ui")).toEqual(["@moya/design-tokens"]);
   });
@@ -112,7 +114,6 @@ describe("frontend and browser boundaries", () => {
     const allowed = `
       "use client";
       import type {
-        ArchiveItemSummary,
         CatalogDetail,
         CatalogId,
         CatalogKind,
@@ -128,9 +129,9 @@ describe("frontend and browser boundaries", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
     const forbidden = `
       "use client";
-      import { archiveItemSummarySchema } from "@moya/contracts/schemas";
+      import { catalogSummarySchema } from "@moya/contracts/schemas";
       import type { CatalogListQuery, CatalogQueryPort } from "@moya/api";
-      import type { ArchiveCatalogReader } from "@moya/data-access";
+      import "${retainedDataAccessPackage}";
       import { Pool } from "pg";
       const records = new URL("../../data/records.json", import.meta.url);
     `;
@@ -139,7 +140,7 @@ describe("frontend and browser boundaries", () => {
       expect.arrayContaining([
         "@moya/contracts/schemas is server/runtime-only",
         "@moya/api is server/runtime-only",
-        "@moya/data-access is server/runtime-only",
+        `${retainedDataAccessPackage} is server/runtime-only`,
         "pg is server/runtime-only",
         "../../data/records.json is a direct data-file reference",
       ]),
@@ -149,9 +150,9 @@ describe("frontend and browser boundaries", () => {
   it("allows Public DTO type imports but rejects backend runtime imports in all frontend code", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
     const source = `
-      import type { ArchiveItemDetail } from "@moya/contracts";
+      import type { CatalogDetail } from "@moya/contracts";
       import type { CatalogQueryPort } from "@moya/api";
-      import type { ArchiveCatalogReader } from "@moya/data-access";
+      import "${retainedDataAccessPackage}";
       import { openApiDocument } from "@moya/public-api";
       import { handler } from "../../services/public-api/src/handler";
     `;
@@ -159,7 +160,7 @@ describe("frontend and browser boundaries", () => {
     expect(frontendBoundaryViolations(file, source)).toEqual(
       expect.arrayContaining([
         "@moya/api crosses the frontend boundary",
-        "@moya/data-access crosses the frontend boundary",
+        `${retainedDataAccessPackage} crosses the frontend boundary`,
         "@moya/public-api crosses the frontend boundary",
         "../../services/public-api/src/handler crosses the frontend boundary",
       ]),
@@ -184,10 +185,10 @@ describe("frontend and browser boundaries", () => {
 
   it("rejects internal contract types in Client Components", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
-    const source = `"use client";\nimport type { ArchiveItemRecord } from "@moya/contracts";`;
+    const source = `"use client";\nimport type { CatalogRecord } from "@moya/contracts";`;
 
     expect(clientBoundaryViolations(file, source)).toContain(
-      "ArchiveItemRecord is not an approved public DTO type",
+      "CatalogRecord is not an approved public DTO type",
     );
   });
 
@@ -230,8 +231,8 @@ describe("import scanner coverage", () => {
   it("recognizes static, export-from and literal dynamic imports", () => {
     expect(
       extractModuleReferences(`
-        import type { ArchiveItemSummary } from "@moya/contracts";
-        export { archiveItemSummarySchema } from "@moya/contracts/schemas";
+        import type { CatalogSummary } from "@moya/contracts";
+        export { catalogSummarySchema } from "@moya/contracts/schemas";
         const runtime = import("@moya/public-api");
       `),
     ).toEqual([

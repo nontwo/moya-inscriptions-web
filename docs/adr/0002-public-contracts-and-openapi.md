@@ -9,6 +9,9 @@
 > 本 ADR 保留为 T04 v2 的历史记录。搜索、分类、图片和五路由边界已由
 > [ADR 0003](0003-inscription-first-public-archive-boundary.md)
 > 取代，不再是当前实施依据。
+>
+> T04.2进一步完成Catalog canonical
+> migration；下文Archive路径与contract仍按原样保留为当时的历史决策，不代表当前公开API。
 
 公共契约遵循单向生成链：
 

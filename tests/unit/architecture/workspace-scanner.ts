@@ -313,10 +313,6 @@ const isForbiddenServerReference = (specifier: string): boolean => {
 };
 
 const allowedClientContractTypes = new Set([
-  "ArchiveItemDetail",
-  "ArchiveItemId",
-  "ArchiveItemPage",
-  "ArchiveItemSummary",
   "CatalogDetail",
   "CatalogId",
   "CatalogKind",

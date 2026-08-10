@@ -1,16 +1,13 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type {
-  ArchiveItemId,
   CatalogDetail,
-  CatalogId,
   CatalogKind,
   CatalogListTransportQuery,
   CatalogPage,
   CatalogSummary,
 } from "@moya/contracts";
 import {
-  archiveItemIdJsonSchema,
   catalogDetailJsonSchema,
   catalogIdJsonSchema,
   catalogKindJsonSchema,
@@ -19,7 +16,6 @@ import {
   catalogSummaryJsonSchema,
 } from "@moya/contracts/json-schema";
 import {
-  archiveItemIdSchema,
   catalogDetailSchema,
   catalogIdSchema,
   catalogKindSchema,
@@ -29,12 +25,7 @@ import {
 } from "@moya/contracts/schemas";
 
 describe("canonical Catalog identity", () => {
-  it("keeps ArchiveItemId as the same TypeScript identity", () => {
-    expectTypeOf<ArchiveItemId>().toEqualTypeOf<CatalogId>();
-    expectTypeOf<CatalogId>().toEqualTypeOf<ArchiveItemId>();
-  });
-
-  it("keeps Catalog and Archive validation semantics equivalent", () => {
+  it("keeps CatalogId opaque and source-format-independent", () => {
     const valid = [
       "catalog-001",
       "platform-item-any-format",
@@ -42,16 +33,6 @@ describe("canonical Catalog identity", () => {
       "x".repeat(128),
     ];
     const invalid = ["", " ", "catalog item", "catalog\nitem", "x".repeat(129)];
-
-    for (const candidate of [...valid, ...invalid]) {
-      const catalogResult = catalogIdSchema.safeParse(candidate);
-      const archiveResult = archiveItemIdSchema.safeParse(candidate);
-
-      expect(archiveResult.success).toBe(catalogResult.success);
-      if (catalogResult.success && archiveResult.success) {
-        expect(archiveResult.data).toBe(catalogResult.data);
-      }
-    }
 
     for (const candidate of valid) {
       expect(catalogIdSchema.safeParse(candidate).success).toBe(true);
@@ -61,15 +42,9 @@ describe("canonical Catalog identity", () => {
     }
   });
 
-  it("generates both JSON Schema exports without requiring metadata identity", () => {
+  it("exports the canonical CatalogId JSON Schema", () => {
     expect(catalogIdJsonSchema).toMatchObject({
       $schema: "https://json-schema.org/draft/2020-12/schema",
-      type: "string",
-      minLength: 1,
-      maxLength: 128,
-      pattern: "^\\S+$",
-    });
-    expect(archiveItemIdJsonSchema).toMatchObject({
       type: "string",
       minLength: 1,
       maxLength: 128,
