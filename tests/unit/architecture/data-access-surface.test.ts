@@ -88,7 +88,7 @@ describe("data-access source and declaration surface", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps the package manifest limited to the contracts dependency", async () => {
+  it("keeps the retained workspace dependency-free", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(dataAccessRoot, "package.json"), "utf8"),
     ) as {
@@ -96,33 +96,18 @@ describe("data-access source and declaration surface", () => {
       sideEffects?: boolean;
     };
 
-    expect(manifest.dependencies).toEqual({
-      "@moya/contracts": "workspace:*",
-    });
+    expect(manifest.dependencies ?? {}).toEqual({});
     expect(manifest.sideEffects).toBe(false);
   });
 
-  it("keeps ArchiveCatalogReader strictly read-only", async () => {
+  it("keeps the retained workspace export surface empty", async () => {
     const declaration = await readFile(
       path.join(dataAccessRoot, "dist", "index.d.ts"),
       "utf8",
     );
 
-    expect(declaration).toContain("interface ArchiveCatalogReader");
-    expect(declaration).toContain("listItems(");
-    expect(declaration).toContain("getItemById(");
-    for (const mutation of [
-      "create",
-      "update",
-      "delete",
-      "publish",
-      "approve",
-      "withdraw",
-      "save",
-    ]) {
-      expect(declaration).not.toMatch(
-        new RegExp(`\\b${mutation}[A-Z_a-z0-9]*\\s*\\(`),
-      );
-    }
+    expect(declaration).toMatch(/^export \{\};/);
+    expect(declaration).not.toContain("ArchiveCatalogReader");
+    expect(declaration).not.toContain("CatalogQueryPort");
   });
 });

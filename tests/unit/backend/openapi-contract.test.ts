@@ -2,10 +2,12 @@ import { readFile } from "node:fs/promises";
 
 import {
   apiErrorJsonSchema,
-  archiveItemDetailJsonSchema,
-  archiveItemIdJsonSchema,
-  archiveItemPageJsonSchema,
-  archiveItemSummaryJsonSchema,
+  catalogDetailJsonSchema,
+  catalogIdJsonSchema,
+  catalogKindJsonSchema,
+  catalogListTransportQueryJsonSchema,
+  catalogPageJsonSchema,
+  catalogSummaryJsonSchema,
   healthResponseJsonSchema,
   publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
@@ -27,13 +29,17 @@ const parameterMapFor = (path: string): Map<string, JsonObject> =>
   );
 const responseDescription = (path: string, status: string): string =>
   String(asObject(asObject(getOperation(path).responses)[status]).description);
+const schemaProperty = (schema: unknown, propertyName: string): JsonObject =>
+  asObject(asObject(asObject(schema).properties)[propertyName]);
 
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
   it("contains exactly the three approved read-only routes", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(Object.keys(paths).sort()).toEqual(
-      ["/health", "/v1/items", "/v1/items/{id}"].sort(),
+      ["/health", "/v1/catalog", "/v1/catalog/{catalogId}"].sort(),
     );
+    expect(paths).not.toHaveProperty("/v1/items");
+    expect(paths).not.toHaveProperty("/v1/items/{id}");
 
     for (const pathItem of Object.values(paths)) {
       expect(Object.keys(asObject(pathItem))).toEqual(["get"]);
@@ -43,49 +49,53 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       Object.keys(asObject(getOperation("/health").responses)).sort(),
     ).toEqual(["200", "503"]);
     expect(
-      Object.keys(asObject(getOperation("/v1/items").responses)).sort(),
+      Object.keys(asObject(getOperation("/v1/catalog").responses)).sort(),
     ).toEqual(["200", "400", "500", "503"]);
     expect(
-      Object.keys(asObject(getOperation("/v1/items/{id}").responses)).sort(),
+      Object.keys(
+        asObject(getOperation("/v1/catalog/{catalogId}").responses),
+      ).sort(),
     ).toEqual(["200", "404", "500", "503"]);
+    expect(getOperation("/v1/catalog").operationId).toBe("listCatalog");
+    expect(getOperation("/v1/catalog/{catalogId}").operationId).toBe(
+      "getCatalogById",
+    );
   });
 
   it("exposes only bounded page parameters without speculative filters or sorting", () => {
-    const listParameters = parameterMapFor("/v1/items");
+    const listParameters = parameterMapFor("/v1/catalog");
 
     expect([...listParameters.keys()]).toEqual(["page", "pageSize"]);
-    expect(asObject(listParameters.get("page")?.schema)).toMatchObject({
-      default: 1,
-      minimum: 1,
-      type: "integer",
-    });
-    expect(asObject(listParameters.get("pageSize")?.schema)).toMatchObject({
-      default: 20,
-      minimum: 1,
-      maximum: 100,
-      type: "integer",
-    });
+    expect(asObject(listParameters.get("page")?.schema)).toEqual(
+      schemaProperty(catalogListTransportQueryJsonSchema, "page"),
+    );
+    expect(asObject(listParameters.get("pageSize")?.schema)).toEqual(
+      schemaProperty(catalogListTransportQueryJsonSchema, "pageSize"),
+    );
     expect(paths).not.toHaveProperty("/v1/search");
     expect(paths).not.toHaveProperty("/v1/categories");
   });
 
-  it("uses the opaque ArchiveItemId for item lookup", () => {
-    const idParameter = parameterMapFor("/v1/items/{id}").get("id");
+  it("uses the opaque CatalogId for Catalog lookup", () => {
+    const idParameter = parameterMapFor("/v1/catalog/{catalogId}").get(
+      "catalogId",
+    );
     expect(idParameter).toMatchObject({
       in: "path",
       required: true,
-      schema: { $ref: "#/components/schemas/ArchiveItemId" },
+      schema: { $ref: "#/components/schemas/CatalogId" },
     });
-    expect(schemas.ArchiveItemId).toEqual(archiveItemIdJsonSchema);
+    expect(schemas.CatalogId).toEqual(catalogIdJsonSchema);
   });
 
   it("uses only contract-derived public components", () => {
     expect(schemas).toEqual({
-      ArchiveItemId: archiveItemIdJsonSchema,
+      CatalogId: catalogIdJsonSchema,
+      CatalogKind: catalogKindJsonSchema,
       PublicSourceCitation: publicSourceCitationJsonSchema,
-      ArchiveItemSummary: archiveItemSummaryJsonSchema,
-      ArchiveItemDetail: archiveItemDetailJsonSchema,
-      ArchiveItemPage: archiveItemPageJsonSchema,
+      CatalogSummary: catalogSummaryJsonSchema,
+      CatalogDetail: catalogDetailJsonSchema,
+      CatalogPage: catalogPageJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     });
@@ -109,14 +119,18 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
   });
 
   it("uses stable public error codes", () => {
-    expect(responseDescription("/v1/items", "400")).toContain("INVALID_QUERY");
-    expect(responseDescription("/v1/items/{id}", "404")).toContain(
+    expect(responseDescription("/v1/catalog", "400")).toContain(
+      "INVALID_QUERY",
+    );
+    expect(responseDescription("/v1/catalog/{catalogId}", "404")).toContain(
       "ITEM_NOT_FOUND",
     );
     expect(responseDescription("/health", "503")).toContain(
       "SERVICE_UNAVAILABLE",
     );
-    expect(responseDescription("/v1/items", "500")).toContain("INTERNAL_ERROR");
+    expect(responseDescription("/v1/catalog", "500")).toContain(
+      "INTERNAL_ERROR",
+    );
   });
 
   it("regenerates an object equal to the committed artifact", async () => {

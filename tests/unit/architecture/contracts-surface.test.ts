@@ -16,12 +16,6 @@ describe("contracts package surface", () => {
     const approved = [
       "ApiError",
       "ApiErrorCode",
-      "ArchiveItemDetail",
-      "ArchiveItemId",
-      "ArchiveItemListQuery",
-      "ArchiveItemListTransportQuery",
-      "ArchiveItemPage",
-      "ArchiveItemSummary",
       "CatalogDetail",
       "CatalogId",
       "CatalogKind",
@@ -43,6 +37,12 @@ describe("contracts package surface", () => {
     expect(exported).toEqual(approved.sort());
 
     for (const removed of [
+      "ArchiveItemDetail",
+      "ArchiveItemId",
+      "ArchiveItemListQuery",
+      "ArchiveItemListTransportQuery",
+      "ArchiveItemPage",
+      "ArchiveItemSummary",
       "ArchiveItemRecord",
       "ArchiveItemLifecycleStatus",
       "ArchiveItemSearchQuery",
