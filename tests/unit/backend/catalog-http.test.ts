@@ -219,6 +219,25 @@ describe("Catalog detail HTTP boundary", () => {
     },
   );
 
+  it("keeps frozen detail semantics when an unknown query parameter is present", async () => {
+    const { baseUrl } = await startCatalogServer();
+    const existingResponse = await fetch(
+      `${baseUrl}/v1/catalog/fixture-catalog-001?foo=bar`,
+    );
+    const missingResponse = await fetch(
+      `${baseUrl}/v1/catalog/fixture-catalog-999?foo=bar`,
+    );
+
+    expect(existingResponse.status).toBe(200);
+    expect(
+      catalogDetailSchema.parse(await existingResponse.json()),
+    ).toMatchObject({
+      id: "fixture-catalog-001",
+      title: "九成宫醴泉铭",
+    });
+    await parseApiError(missingResponse, 404, "ITEM_NOT_FOUND");
+  });
+
   it("does not leak private fixture representation fields", async () => {
     const { baseUrl } = await startCatalogServer();
     const response = await fetch(`${baseUrl}/v1/catalog/fixture-catalog-001`);
