@@ -1288,7 +1288,8 @@ button {
       calc(var(--yoyi-space-3) + env(safe-area-inset-left));
     background: var(--yoyi-color-background-page);
     border-top: 0;
-    border-right: 1px solid color-mix(in srgb, var(--yoyi-color-seal-red) 28%, transparent);
+    border-right: 1px solid
+      color-mix(in srgb, var(--yoyi-color-seal-red) 28%, transparent);
     box-shadow: none;
     overflow: visible;
   }

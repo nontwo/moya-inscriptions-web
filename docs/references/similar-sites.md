@@ -7,24 +7,24 @@
 
 ## 一、题材相近（石刻 / 碑帖 / 书法档案）
 
-| 网站 | 链接 | 可参考点 |
-| --- | --- | --- |
-| 中华石刻数据库 | https://inscription.ancientbooks.cn/docShike/ | 石刻专题库、拓片与录文对照、检索；偏学术 |
-| 中国金石总录 | http://www.ch5000.net.cn/jsk_sy.aspx | 大规模金石拓片 + 叙录；机构向（多为机构访问） |
-| 哈佛大学 Chinese Rubbings（瀑布流视图） | https://curiosity.lib.harvard.edu/chinese-rubbings-collection/catalog?view=masonry | 拓片图片库 + masonry 浏览，PC 填屏可直接对照 |
-| 台北故宫数字典藏（法帖） | https://digitalarchive.npm.gov.tw/ | 法帖 / 拓本高清详情页、释文；书帖详情体验 |
-| 浯溪 / 摩崖石刻数字博物馆 | 湖南祁阳浯溪碑林相关文旅与数字展陈报道 | 摩崖专题数字化、知识图谱与展示叙事（偏展陈） |
+| 网站                                    | 链接                                                                               | 可参考点                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------- |
+| 中华石刻数据库                          | https://inscription.ancientbooks.cn/docShike/                                      | 石刻专题库、拓片与录文对照、检索；偏学术      |
+| 中国金石总录                            | http://www.ch5000.net.cn/jsk_sy.aspx                                               | 大规模金石拓片 + 叙录；机构向（多为机构访问） |
+| 哈佛大学 Chinese Rubbings（瀑布流视图） | https://curiosity.lib.harvard.edu/chinese-rubbings-collection/catalog?view=masonry | 拓片图片库 + masonry 浏览，PC 填屏可直接对照  |
+| 台北故宫数字典藏（法帖）                | https://digitalarchive.npm.gov.tw/                                                 | 法帖 / 拓本高清详情页、释文；书帖详情体验     |
+| 浯溪 / 摩崖石刻数字博物馆               | 湖南祁阳浯溪碑林相关文旅与数字展陈报道                                             | 摩崖专题数字化、知识图谱与展示叙事（偏展陈）  |
 
 ## 二、交互形态相近（侧栏 + 密瀑布流）
 
 PC 原型已朝此方向演进，可继续对照：
 
-| 网站 | 链接 | 可参考点 |
-| --- | --- | --- |
-| 小红书网页版 | https://www.xiaohongshu.com/explore | 左侧导航 + 主区多列卡片铺满 |
-| 站酷 | https://www.zcool.com.cn/ | 设计作品瀑布流、窄边距、多列自适应 |
-| Pinterest | https://www.pinterest.com/ | 经典不定高瀑布流填宽 |
-| Artsy | https://www.artsy.net/ | 艺术作品网格 / 详情，偏艺术品浏览气质 |
+| 网站         | 链接                                | 可参考点                              |
+| ------------ | ----------------------------------- | ------------------------------------- |
+| 小红书网页版 | https://www.xiaohongshu.com/explore | 左侧导航 + 主区多列卡片铺满           |
+| 站酷         | https://www.zcool.com.cn/           | 设计作品瀑布流、窄边距、多列自适应    |
+| Pinterest    | https://www.pinterest.com/          | 经典不定高瀑布流填宽                  |
+| Artsy        | https://www.artsy.net/              | 艺术作品网格 / 详情，偏艺术品浏览气质 |
 
 ## 三、对「由艺」最有用的对照
 
@@ -35,11 +35,12 @@ PC 原型已朝此方向演进，可继续对照：
 
 ## 四、使用建议
 
-| 设计议题 | 优先打开 |
-| --- | --- |
-| PC 卡片密度与填宽 | 小红书、站酷、哈佛 Rubbings masonry |
-| 碑刻检索与分类结构 | 中华石刻数据库 |
-| 详情页气质 | 台北故宫数字典藏 |
-| 摩崖专题叙事 | 浯溪数字博物馆相关资料 |
+| 设计议题           | 优先打开                            |
+| ------------------ | ----------------------------------- |
+| PC 卡片密度与填宽  | 小红书、站酷、哈佛 Rubbings masonry |
+| 碑刻检索与分类结构 | 中华石刻数据库                      |
+| 详情页气质         | 台北故宫数字典藏                    |
+| 摩崖专题叙事       | 浯溪数字博物馆相关资料              |
 
-本地交互原型：`docs/prototypes/mobile-preview/`（`python -m http.server 4173` 后打开对应路径）。
+本地交互原型：`docs/prototypes/mobile-preview/`（`python -m http.server 4173`
+后打开对应路径）。
