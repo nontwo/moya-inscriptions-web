@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@moya/api": "workspace:*",
+    "@moya/backend-runtime": "workspace:*",
     "@moya/contracts": "workspace:*",
     "@moya/data-access": "workspace:*",
     "@moya/design-tokens": "workspace:*",
