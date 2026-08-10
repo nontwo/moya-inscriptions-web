@@ -32,6 +32,21 @@ export const publicSourceCitationSchema = z.strictObject({
   url: z.url().optional(),
 });
 
+export const catalogSummarySchema = z.strictObject({
+  id: catalogIdSchema,
+  kind: catalogKindSchema,
+  title: titleSchema,
+  aliases: z.array(aliasSchema),
+  summary: summarySchema.optional(),
+  periodLabel: exactTextSchema(200).optional(),
+});
+
+export const catalogDetailSchema = z.strictObject({
+  ...catalogSummarySchema.shape,
+  description: exactTextSchema(20_000).optional(),
+  sourceCitations: z.array(publicSourceCitationSchema),
+});
+
 export const archiveItemSummarySchema = z.strictObject({
   id: archiveItemIdSchema,
   title: titleSchema,
@@ -52,6 +67,21 @@ const positiveIntegerStringSchema = z
   .string()
   .max(16)
   .regex(/^[1-9]\d*$/);
+
+const safePositiveIntegerStringSchema = positiveIntegerStringSchema.refine(
+  (value) => Number.isSafeInteger(Number(value)),
+  { message: "Value must be a safe positive integer" },
+);
+
+const catalogPageSizeStringSchema = safePositiveIntegerStringSchema.refine(
+  (value) => Number(value) <= 100,
+  { message: "pageSize must be less than or equal to 100" },
+);
+
+export const catalogListTransportQuerySchema = z.strictObject({
+  page: safePositiveIntegerStringSchema.optional(),
+  pageSize: catalogPageSizeStringSchema.optional(),
+});
 
 export const archiveItemListTransportQuerySchema = z.strictObject({
   page: positiveIntegerStringSchema.optional(),
@@ -92,6 +122,49 @@ export const archiveItemListQueryParserSchema =
 export const archiveItemPageSchema = z
   .strictObject({
     items: z.array(archiveItemSummarySchema),
+    total: z.number().int().min(0),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1).max(100),
+    totalPages: z.number().int().min(0),
+  })
+  .superRefine((result, context) => {
+    const expectedTotalPages =
+      result.total === 0 ? 0 : Math.ceil(result.total / result.pageSize);
+
+    if (result.totalPages !== expectedTotalPages) {
+      context.addIssue({
+        code: "custom",
+        path: ["totalPages"],
+        message:
+          "totalPages must equal ceil(total / pageSize), or 0 when empty",
+      });
+    }
+    if (result.items.length > result.pageSize) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "items cannot exceed pageSize",
+      });
+    }
+    if (result.items.length > result.total) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "items cannot exceed total",
+      });
+    }
+    if (result.page > expectedTotalPages && result.items.length !== 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "an out-of-range page must have no items",
+      });
+    }
+  });
+
+export const catalogPageSchema = z
+  .strictObject({
+    items: z.array(catalogSummarySchema),
     total: z.number().int().min(0),
     page: z.number().int().min(1),
     pageSize: z.number().int().min(1).max(100),

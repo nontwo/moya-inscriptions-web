@@ -9,8 +9,12 @@ import {
   archiveItemListTransportQuerySchema,
   archiveItemPageSchema,
   archiveItemSummarySchema,
+  catalogDetailSchema,
   catalogIdSchema,
   catalogKindSchema,
+  catalogListTransportQuerySchema,
+  catalogPageSchema,
+  catalogSummarySchema,
   healthResponseSchema,
   publicSourceCitationSchema,
 } from "./schemas.js";
@@ -21,6 +25,12 @@ const toJsonSchema = (schema: z.ZodType) =>
 export const archiveItemIdJsonSchema = toJsonSchema(archiveItemIdSchema);
 export const catalogIdJsonSchema = toJsonSchema(catalogIdSchema);
 export const catalogKindJsonSchema = toJsonSchema(catalogKindSchema);
+export const catalogSummaryJsonSchema = toJsonSchema(catalogSummarySchema);
+export const catalogDetailJsonSchema = toJsonSchema(catalogDetailSchema);
+export const catalogListTransportQueryJsonSchema = toJsonSchema(
+  catalogListTransportQuerySchema,
+);
+export const catalogPageJsonSchema = toJsonSchema(catalogPageSchema);
 export const publicSourceCitationJsonSchema = toJsonSchema(
   publicSourceCitationSchema,
 );
