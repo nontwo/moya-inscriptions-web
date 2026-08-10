@@ -62,8 +62,8 @@ export default tseslint.config(
     rules: {
       "no-restricted-globals": [
         "error",
-        { name: "Request", message: "Repository ports do not know HTTP." },
-        { name: "Response", message: "Repository ports do not know HTTP." },
+        { name: "Request", message: "Reader ports do not know HTTP." },
+        { name: "Response", message: "Reader ports do not know HTTP." },
       ],
       "no-restricted-imports": [
         "error",
@@ -86,7 +86,7 @@ export default tseslint.config(
                 "**/services/**",
               ],
               message:
-                "Repository ports cannot depend on HTTP, applications, data files, or infrastructure.",
+                "Reader ports cannot depend on HTTP, applications, data files, or infrastructure.",
             },
           ],
         },
@@ -127,7 +127,7 @@ export default tseslint.config(
                 "**/*.xlsx",
               ],
               message:
-                "Frontend code cannot access Repository, runtime contracts, data files, or server infrastructure.",
+                "Frontend code cannot access Reader ports, runtime contracts, data files, or server infrastructure.",
             },
           ],
         },

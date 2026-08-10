@@ -6,9 +6,8 @@ import {
   archiveItemIdJsonSchema,
   archiveItemPageJsonSchema,
   archiveItemSummaryJsonSchema,
-  categoryFacetListJsonSchema,
-  categoryFacetJsonSchema,
   healthResponseJsonSchema,
+  publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
 import { openApiDocument, serializeOpenApiDocument } from "@moya/public-api";
 import { describe, expect, it } from "vitest";
@@ -29,17 +28,11 @@ const parameterMapFor = (path: string): Map<string, JsonObject> =>
 const responseDescription = (path: string, status: string): string =>
   String(asObject(asObject(getOperation(path).responses)[status]).description);
 
-describe("source-independent OpenAPI 3.1.1 contract", () => {
-  it("contains exactly the five approved read-only routes", () => {
+describe("inscription-first OpenAPI 3.1.1 contract", () => {
+  it("contains exactly the three approved read-only routes", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(Object.keys(paths).sort()).toEqual(
-      [
-        "/health",
-        "/v1/categories",
-        "/v1/items",
-        "/v1/items/{id}",
-        "/v1/search",
-      ].sort(),
+      ["/health", "/v1/items", "/v1/items/{id}"].sort(),
     );
 
     for (const pathItem of Object.values(paths)) {
@@ -55,36 +48,12 @@ describe("source-independent OpenAPI 3.1.1 contract", () => {
     expect(
       Object.keys(asObject(getOperation("/v1/items/{id}").responses)).sort(),
     ).toEqual(["200", "404", "500", "503"]);
-    expect(
-      Object.keys(asObject(getOperation("/v1/search").responses)).sort(),
-    ).toEqual(["200", "400", "500", "503"]);
-    expect(
-      Object.keys(asObject(getOperation("/v1/categories").responses)).sort(),
-    ).toEqual(["200", "500", "503"]);
   });
 
-  it("derives bounded query parameters without a region API", () => {
+  it("exposes only bounded page parameters without speculative filters or sorting", () => {
     const listParameters = parameterMapFor("/v1/items");
-    const searchParameters = parameterMapFor("/v1/search");
 
-    expect([...listParameters.keys()]).toEqual([
-      "categoryId",
-      "period",
-      "page",
-      "pageSize",
-      "sortBy",
-      "sortOrder",
-    ]);
-    expect([...searchParameters.keys()]).toEqual([
-      "keyword",
-      "categoryId",
-      "period",
-      "page",
-      "pageSize",
-      "sortBy",
-      "sortOrder",
-    ]);
-    expect(searchParameters.get("keyword")?.required).toBe(true);
+    expect([...listParameters.keys()]).toEqual(["page", "pageSize"]);
     expect(asObject(listParameters.get("page")?.schema)).toMatchObject({
       default: 1,
       minimum: 1,
@@ -96,14 +65,8 @@ describe("source-independent OpenAPI 3.1.1 contract", () => {
       maximum: 100,
       type: "integer",
     });
-    const removedRegionRoute = ["/v1", "regions"].join("/");
-    expect(paths).not.toHaveProperty(removedRegionRoute);
-    for (const parameterName of [
-      ...listParameters.keys(),
-      ...searchParameters.keys(),
-    ]) {
-      expect(["city", "county", "province"]).not.toContain(parameterName);
-    }
+    expect(paths).not.toHaveProperty("/v1/search");
+    expect(paths).not.toHaveProperty("/v1/categories");
   });
 
   it("uses the opaque ArchiveItemId for item lookup", () => {
@@ -119,28 +82,29 @@ describe("source-independent OpenAPI 3.1.1 contract", () => {
   it("uses only contract-derived public components", () => {
     expect(schemas).toEqual({
       ArchiveItemId: archiveItemIdJsonSchema,
+      PublicSourceCitation: publicSourceCitationJsonSchema,
       ArchiveItemSummary: archiveItemSummaryJsonSchema,
       ArchiveItemDetail: archiveItemDetailJsonSchema,
       ArchiveItemPage: archiveItemPageJsonSchema,
-      CategoryFacet: categoryFacetJsonSchema,
-      CategoryFacetList: categoryFacetListJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     });
 
-    const serialized = JSON.stringify({ paths, schemas });
-    const internalTerms = [
-      ["raw", "Source"],
-      ["candidate"],
-      ["evidence"],
-      ["review"],
-      ["trash"],
-      ["life", "cycleStatus"],
-      ["created", "At"],
-      ["updated", "At"],
-    ].map((parts) => parts.join(""));
-    for (const term of internalTerms) {
-      expect(serialized.toLowerCase()).not.toContain(term.toLowerCase());
+    const serialized = JSON.stringify({ paths, schemas }).toLowerCase();
+    for (const term of [
+      "rawsource",
+      "candidate",
+      "evidence",
+      "review",
+      "lifecycle",
+      "objectkey",
+      "images",
+      "relateditem",
+      "categoryids",
+      "city",
+      "county",
+    ]) {
+      expect(serialized).not.toContain(term);
     }
   });
 

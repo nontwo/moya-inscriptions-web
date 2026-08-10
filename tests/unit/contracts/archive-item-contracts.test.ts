@@ -2,136 +2,194 @@ import { describe, expect, it } from "vitest";
 
 import type {
   ArchiveItemDetail,
-  ArchiveItemRecord,
   ArchiveItemSummary,
+  PublicSourceCitation,
 } from "@moya/contracts";
 import {
   archiveItemDetailJsonSchema,
-  archiveItemRecordJsonSchema,
   archiveItemSummaryJsonSchema,
+  publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
 import {
   archiveItemDetailSchema,
   archiveItemIdSchema,
-  archiveItemRecordSchema,
+  archiveItemListQueryParserSchema,
+  archiveItemListQuerySchema,
+  archiveItemListTransportQuerySchema,
+  archiveItemPageSchema,
   archiveItemSummarySchema,
-  imageAssetSchema,
+  publicSourceCitationSchema,
 } from "@moya/contracts/schemas";
 
 const archiveItemId = archiveItemIdSchema.parse("archive-example-001");
-const timestamp = "2026-08-08T12:00:00Z";
-
-const minimalRecord: ArchiveItemRecord = {
-  id: archiveItemId,
-  title: "虚构档案甲",
-  aliases: [],
-  lifecycleStatus: "draft",
-  categoryIds: [],
-  imageIds: [],
-  createdAt: timestamp,
-  updatedAt: timestamp,
-};
 
 const minimalSummary: ArchiveItemSummary = {
   id: archiveItemId,
-  title: "虚构档案甲",
+  title: "虚构碑刻甲",
   aliases: [],
-  categoryIds: [],
 };
 
-const minimalDetail: ArchiveItemDetail = {
+const sourceCitation: PublicSourceCitation = {
+  label: "虚构公开名录",
+  citation: "第 1 页",
+  url: "https://example.com/catalogue",
+};
+
+const detailedItem: ArchiveItemDetail = {
   ...minimalSummary,
-  images: [],
-  references: [],
-  relatedItemIds: [],
+  periodLabel: "唐",
+  provinceLabel: "陕西省",
+  protectionOrCollectionUnitLabel: "虚构保护单位",
+  sources: [sourceCitation],
 };
 
-describe("source-independent archive item contracts", () => {
-  it("accepts a manually created record without source, location or media", () => {
-    expect(archiveItemRecordSchema.parse(minimalRecord)).toEqual(minimalRecord);
+describe("inscription-first public archive contracts", () => {
+  it("represents the first-batch public display facts without internal source state", () => {
     expect(archiveItemSummarySchema.parse(minimalSummary)).toEqual(
       minimalSummary,
     );
-    expect(archiveItemDetailSchema.parse(minimalDetail)).toEqual(minimalDetail);
+    expect(archiveItemDetailSchema.parse(detailedItem)).toEqual(detailedItem);
+    expect(publicSourceCitationSchema.parse(sourceCitation)).toEqual(
+      sourceCitation,
+    );
   });
 
-  it("requires a trash timestamp and never models automatic purging", () => {
-    expect(
-      archiveItemRecordSchema.safeParse({
-        ...minimalRecord,
-        lifecycleStatus: "trashed",
-      }).success,
-    ).toBe(false);
-
-    expect(
-      archiveItemRecordSchema.safeParse({
-        ...minimalRecord,
-        lifecycleStatus: "trashed",
-        trashedAt: timestamp,
-      }).success,
-    ).toBe(true);
-
-    const purgeField = ["purge", "At"].join("");
-    expect(
-      archiveItemRecordSchema.safeParse({
-        ...minimalRecord,
-        [purgeField]: timestamp,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("keeps lifecycle and internal legacy fields out of public DTOs", () => {
-    expect(
-      archiveItemSummarySchema.safeParse({
-        ...minimalSummary,
-        lifecycleStatus: "published",
-      }).success,
-    ).toBe(false);
-
-    const internalFields = [
-      ["raw", "Source"],
-      ["source", "Index"],
-      ["region", "Candidates"],
-      ["review", "Evidence"],
-    ].map((parts) => parts.join(""));
-
-    for (const internalField of internalFields) {
+  it("keeps T04.0 Archive DTOs free of internal and not-yet-defined Media fields", () => {
+    for (const field of [
+      "lifecycleStatus",
+      "rawSource",
+      "sourcePath",
+      "importBatch",
+      "reviewStatus",
+      "moderation",
+      "reviewNotes",
+      "internalNotes",
+      "deletedAt",
+      "evidence",
+      "databaseId",
+      "ormMetadata",
+      "media",
+      "src",
+      "objectKey",
+      "bucket",
+      "storageProvider",
+      "providerMetadata",
+      "images",
+      "relatedItemIds",
+      "coordinates",
+      "city",
+      "county",
+      "categoryIds",
+    ]) {
       expect(
         archiveItemDetailSchema.safeParse({
-          ...minimalDetail,
-          [internalField]: {},
+          ...detailedItem,
+          [field]: field === "images" ? [] : "forbidden",
         }).success,
       ).toBe(false);
     }
   });
 
-  it("uses object keys instead of image URLs or absolute paths", () => {
-    const validImage = {
-      id: "image-example-001",
-      objectKey: "archive/example/image.webp",
-      alt: "虚构档案图片",
-      sortOrder: 0,
-    };
-    expect(imageAssetSchema.parse(validImage)).toEqual(validImage);
+  it("validates DTO text without silently trimming or transforming it", () => {
+    expect(archiveItemSummarySchema.parse(minimalSummary)).toEqual(
+      minimalSummary,
+    );
     expect(
-      imageAssetSchema.safeParse({
-        ...validImage,
-        objectKey: "https://cdn.example.com/image.webp",
+      archiveItemSummarySchema.safeParse({
+        ...minimalSummary,
+        title: " 虚构碑刻甲 ",
       }).success,
     ).toBe(false);
     expect(
-      imageAssetSchema.safeParse({
-        ...validImage,
-        objectKey: "/absolute/image.webp",
+      publicSourceCitationSchema.safeParse({
+        label: " ",
       }).success,
     ).toBe(false);
   });
 
+  it("keeps ArchiveItemId opaque and independent of source-record patterns", () => {
+    expect(archiveItemIdSchema.parse("platform-item-any-format")).toBe(
+      "platform-item-any-format",
+    );
+    expect(archiveItemIdSchema.safeParse("first batch 0001").success).toBe(
+      false,
+    );
+  });
+
+  it("separates HTTP query strings from normalized Reader inputs", () => {
+    expect(
+      archiveItemListTransportQuerySchema.parse({
+        page: "2",
+        pageSize: "5",
+      }),
+    ).toEqual({ page: "2", pageSize: "5" });
+    expect(
+      archiveItemListQueryParserSchema.parse({ page: "2", pageSize: "5" }),
+    ).toEqual({ page: 2, pageSize: 5 });
+    expect(archiveItemListQueryParserSchema.parse({})).toEqual({
+      page: 1,
+      pageSize: 20,
+    });
+    expect(
+      archiveItemListQuerySchema.safeParse({ page: "2", pageSize: "5" })
+        .success,
+    ).toBe(false);
+    for (const invalid of [
+      { page: "0" },
+      { page: "01" },
+      { page: "1.5" },
+      { pageSize: "101" },
+    ]) {
+      expect(archiveItemListQueryParserSchema.safeParse(invalid).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("enforces self-consistent page metadata and empty out-of-range pages", () => {
+    const validPage = {
+      items: [minimalSummary],
+      total: 2,
+      page: 1,
+      pageSize: 1,
+      totalPages: 2,
+    };
+
+    expect(archiveItemPageSchema.parse(validPage)).toEqual(validPage);
+    expect(
+      archiveItemPageSchema.safeParse({ ...validPage, totalPages: 1 }).success,
+    ).toBe(false);
+    expect(
+      archiveItemPageSchema.safeParse({
+        items: [minimalSummary],
+        total: 1,
+        page: 2,
+        pageSize: 1,
+        totalPages: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      archiveItemPageSchema.parse({
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        totalPages: 0,
+      }),
+    ).toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+    });
+  });
+
   it("exports strict JSON Schema projections", () => {
     for (const schema of [
-      archiveItemRecordJsonSchema,
       archiveItemSummaryJsonSchema,
       archiveItemDetailJsonSchema,
+      publicSourceCitationJsonSchema,
     ]) {
       expect(schema).toMatchObject({
         $schema: "https://json-schema.org/draft/2020-12/schema",

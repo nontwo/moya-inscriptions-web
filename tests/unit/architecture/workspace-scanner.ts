@@ -30,6 +30,9 @@ export interface WorkspaceManifest {
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  moyaArchitecture?: {
+    rawSourceAccess?: "controlled-importer";
+  };
 }
 
 export interface WorkspaceInfo {
@@ -154,13 +157,81 @@ export const declaredDependencies = (
   ...manifest.peerDependencies,
 });
 
+/**
+ * T04.0 authorizes no importer. T05 must add a reviewed package name here and
+ * the matching manifest capability; neither key is sufficient on its own.
+ */
+export const authorizedRawSourceImporterPackageNames: ReadonlySet<string> =
+  new Set();
+
+const permanentFrontendWorkspaceNames = new Set(["web", "admin", "@moya/ui"]);
+const browserRuntimeDependencies = new Set(["next", "react-dom"]);
+
+export const isFrontendWorkspace = (workspace: WorkspaceInfo): boolean => {
+  const dependencies = declaredDependencies(workspace.manifest);
+  const knownFrontendRoots = [
+    path.join(repositoryRoot, "apps", "web"),
+    path.join(repositoryRoot, "apps", "admin"),
+    path.join(repositoryRoot, "packages", "ui"),
+  ];
+
+  return (
+    permanentFrontendWorkspaceNames.has(workspace.manifest.name) ||
+    knownFrontendRoots.some((root) => isPathInside(root, workspace.root)) ||
+    [...browserRuntimeDependencies].some(
+      (dependency) => dependencies[dependency] !== undefined,
+    )
+  );
+};
+
+export const isRawSourceAccessAuthorized = (
+  workspace: WorkspaceInfo,
+  approvedPackageNames: ReadonlySet<string> = authorizedRawSourceImporterPackageNames,
+): boolean =>
+  !isFrontendWorkspace(workspace) &&
+  approvedPackageNames.has(workspace.manifest.name) &&
+  workspace.manifest.moyaArchitecture?.rawSourceAccess ===
+    "controlled-importer";
+
 export const hasUseClientDirective = (source: string): boolean =>
   /^(?:\uFEFF|\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*(["'])use client\1\s*;/.test(
     source,
   );
 
-const stringLiterals = (source: string): string[] =>
-  [...source.matchAll(/(["'])([^"'\n]+)\1/g)].map((match) => match[2] ?? "");
+const stringLiterals = (source: string): string[] => [
+  ...[...source.matchAll(/(["'])([^"'\n]+)\1/g)].map((match) => match[2] ?? ""),
+  ...[...source.matchAll(/`([^`$\n]+)`/g)].map((match) => match[1] ?? ""),
+];
+
+const nonJsonDataExtension =
+  /\.(?:csv|jsonl|ndjson|parquet|pdf|sql|tsv|xls|xlsx)$/i;
+const jsonExtension = /\.json$/i;
+const datasetPathSegment =
+  /(?:^|\/)(?:catalog|data|dataset|datasets|fixture|fixtures)(?:\/|$)/i;
+const datasetFileName =
+  /(?:^|\/)(?:archive[-_]?items?|catalog|records?|dataset|dump|export|seed)(?:[-_.][^/]*)?\.(?:csv|json|jsonl|ndjson|parquet|pdf|sql|tsv|xls|xlsx)$/i;
+
+const normalizedReference = (reference: string): string =>
+  reference.replaceAll("\\", "/");
+
+const isGeneralDataFileReference = (reference: string): boolean => {
+  const normalized = normalizedReference(reference);
+  return (
+    nonJsonDataExtension.test(normalized) ||
+    (jsonExtension.test(normalized) &&
+      (datasetPathSegment.test(normalized) || datasetFileName.test(normalized)))
+  );
+};
+
+const isRuntimeDatasetReference = (reference: string): boolean => {
+  const normalized = normalizedReference(reference);
+  const hasKnownDataExtension =
+    nonJsonDataExtension.test(normalized) || jsonExtension.test(normalized);
+  return (
+    hasKnownDataExtension &&
+    (datasetPathSegment.test(normalized) || datasetFileName.test(normalized))
+  );
+};
 
 export const dataFileReferences = (
   filePath: string,
@@ -169,16 +240,11 @@ export const dataFileReferences = (
   const violations: string[] = [];
 
   for (const literal of stringLiterals(source)) {
-    const normalized = literal.replaceAll("\\", "/");
-    const hasDataSegment = /(?:^|\/)data(?:\/|$)/.test(normalized);
-    const hasDataExtension = /\.(?:csv|json|pdf|sql|tsv|xls|xlsx)$/i.test(
-      normalized,
-    );
-    if (hasDataSegment || hasDataExtension) violations.push(literal);
+    if (isGeneralDataFileReference(literal)) violations.push(literal);
 
     if (literal.startsWith(".")) {
       const resolved = path.resolve(path.dirname(filePath), literal);
-      if (resolved.split(path.sep).includes("data")) violations.push(literal);
+      if (isGeneralDataFileReference(resolved)) violations.push(literal);
     }
   }
 
@@ -186,7 +252,37 @@ export const dataFileReferences = (
     /\b(?:path\.)?(?:join|resolve)\s*\(([^)]*)\)/g,
   )) {
     const combined = stringLiterals(call[1] ?? "").join("/");
-    if (/(?:^|\/)data(?:\/|$)/.test(combined)) violations.push(combined);
+    if (isGeneralDataFileReference(combined)) violations.push(combined);
+  }
+
+  return [...new Set(violations)];
+};
+
+/**
+ * Finds likely archive-dataset coupling in formal runtime source without
+ * treating small configuration, localization or design-token JSON as a
+ * database substitute.
+ */
+export const runtimeDatasetReferences = (
+  filePath: string,
+  source: string,
+): string[] => {
+  const violations: string[] = [];
+
+  for (const literal of stringLiterals(source)) {
+    if (isRuntimeDatasetReference(literal)) violations.push(literal);
+
+    if (literal.startsWith(".")) {
+      const resolved = path.resolve(path.dirname(filePath), literal);
+      if (isRuntimeDatasetReference(resolved)) violations.push(literal);
+    }
+  }
+
+  for (const call of source.matchAll(
+    /\b(?:path\.)?(?:join|resolve)\s*\(([^)]*)\)/g,
+  )) {
+    const combined = stringLiterals(call[1] ?? "").join("/");
+    if (isRuntimeDatasetReference(combined)) violations.push(combined);
   }
 
   return [...new Set(violations)];
@@ -220,7 +316,7 @@ const allowedClientContractTypes = new Set([
   "ArchiveItemId",
   "ArchiveItemPage",
   "ArchiveItemSummary",
-  "CategoryFacet",
+  "PublicSourceCitation",
 ]);
 
 const clientContractTypeViolations = (source: string): string[] => {
@@ -317,6 +413,19 @@ export const frontendBoundaryViolations = (
 
   for (const reference of dataFileReferences(filePath, source)) {
     violations.push(`${reference} is a direct data-file reference`);
+  }
+
+  if (/\bPUBLIC_CDN_BASE_URL\b/.test(source)) {
+    violations.push(
+      "PUBLIC_CDN_BASE_URL is a deprecated frontend URL-composition convention",
+    );
+  }
+  if (
+    /(?:\bobjectKey\s*\+|\+\s*objectKey\b|\$\{[^}]*\bobjectKey\b[^}]*\})/.test(
+      source,
+    )
+  ) {
+    violations.push("Frontend code cannot compose a URL from objectKey");
   }
 
   return [...new Set(violations)];
