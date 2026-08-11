@@ -81,3 +81,6 @@ python -m http.server 4173 --bind 127.0.0.1
 PC 布局与题材参考见 [类似网站参考清单](../../references/similar-sites.md)
 （哈佛 Rubbings
 masonry、中华石刻数据库、小红书 / 站酷等；专题气质可对照 Europeana 主题浏览）。
+
+<!-- ci: nudge 2026-08-11T17:10:25.5758899+08:00 -->
+
