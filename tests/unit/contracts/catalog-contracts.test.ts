@@ -54,17 +54,19 @@ describe("canonical Catalog identity", () => {
 });
 
 describe("CatalogKind", () => {
-  it("accepts exactly the three frozen values", () => {
-    const kinds: CatalogKind[] = [
-      "inscription",
-      "cliff_inscription",
-      "calligraphy",
-    ];
+  it("accepts exactly the two stable top-level values", () => {
+    const kinds: CatalogKind[] = ["inscription", "calligraphy"];
 
     for (const kind of kinds) {
       expect(catalogKindSchema.parse(kind)).toBe(kind);
     }
-    for (const kind of ["seal", "painting", "sculpture", "video"]) {
+    for (const kind of [
+      "cliff_inscription",
+      "seal",
+      "painting",
+      "sculpture",
+      "video",
+    ]) {
       expect(catalogKindSchema.safeParse(kind).success).toBe(false);
     }
 
@@ -80,7 +82,7 @@ const catalogId = catalogIdSchema.parse("catalog-example-001");
 
 const catalogSummary: CatalogSummary = {
   id: catalogId,
-  kind: "cliff_inscription",
+  kind: "inscription",
   title: "虚构摩崖甲",
   aliases: ["虚构别名"],
   summary: "公开摘要",

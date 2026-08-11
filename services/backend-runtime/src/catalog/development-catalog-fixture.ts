@@ -66,11 +66,11 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
   {
     record: {
       id: fixtureId("fixture-catalog-003"),
-      kind: "cliff_inscription",
+      kind: "inscription",
       title: "泰山经石峪金刚经",
       aliases: ["经石峪摩崖刻经"],
       summary: "T05.1 开发测试夹具中的摩崖刻经条目。",
-      description: "仅用于覆盖现有 CatalogKind 与越界分页行为。",
+      description: "仅用于覆盖 inscription CatalogKind 与越界分页行为。",
       periodLabel: "北齐",
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],

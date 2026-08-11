@@ -136,5 +136,14 @@ describe("Catalog public-contract mapper", () => {
         aliases: [],
       }),
     ).toThrow();
+
+    expect(() =>
+      mapCatalogSummary({
+        id,
+        kind: "cliff_inscription",
+        title: "虚构退役分类条目",
+        aliases: [],
+      } as never),
+    ).toThrow();
   });
 });

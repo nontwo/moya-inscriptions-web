@@ -20,9 +20,10 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T04.0-R  | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫               |
 | T04.1-D  | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards   |
 | T04.2    | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes      |
+| T04.3    | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration    |
 | T05.0    | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown      |
 | T05.1    | 已实现         | Catalog list/detail HTTP boundary与development/test fixture       |
-| T05.2    | 本分支已实现   | PostgreSQL read schema、adapter、显式迁移与production composition |
+| T05.2    | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition |
 | 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片             |
 | T06–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                 |
 
@@ -32,7 +33,7 @@ migration；`main`继续保留稳定的T00/治理基线。
 - 使用 `@moya/design-tokens` 与 `@moya/ui` 开发后续正式界面。
 - 在本地静态服务器查看组件目录和手机交互原型。
 - 依据 T03 文档评估 CloudBase 方案，但不能据此直接创建或发布生产资源。
-- 使用canonical `CatalogId`、三值 `CatalogKind`和suffix-free Catalog Public
+- 使用canonical `CatalogId`、两值 `CatalogKind`和suffix-free Catalog Public
   Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
   parser与显式mapper。
 - 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1

@@ -140,16 +140,24 @@ describe("migration manifest", () => {
 
   it("rejects a changed applied migration source", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "moya-migration-"));
-    const required = requiredMigrations[0];
-    if (required === undefined) throw new Error("Required migration missing");
-    const original = await readFile(
-      path.join(migrationsDirectory, required.filename),
-      "utf8",
-    );
-    await writeFile(
-      path.join(directory, required.filename),
-      `${original}\n-- forbidden mutation\n`,
-      "utf8",
+    const changedMigration = requiredMigrations[0];
+    if (changedMigration === undefined) {
+      throw new Error("Required migration missing");
+    }
+    await Promise.all(
+      requiredMigrations.map(async (required) => {
+        const original = await readFile(
+          path.join(migrationsDirectory, required.filename),
+          "utf8",
+        );
+        await writeFile(
+          path.join(directory, required.filename),
+          required === changedMigration
+            ? `${original}\n-- forbidden mutation\n`
+            : original,
+          "utf8",
+        );
+      }),
     );
 
     await expect(readMigrationFiles(directory)).rejects.toThrow(
