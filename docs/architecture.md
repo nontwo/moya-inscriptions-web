@@ -54,9 +54,11 @@ convention，不是未来 Resolver 已批准的配置名。不得硬编码生产
 Public transport input
 → backend Catalog transport parser
 → normalized CatalogListQuery
+→ CatalogReadService
 → CatalogQueryPort
 → internal read projection
 → explicit Public Contract mapper
+→ strict Public DTO
 ```
 
 T05.1以小型deterministic development/test adapter实现现有Query
@@ -64,7 +66,9 @@ Port；它不是production persistence或正式数据集。T05.2的private Postg
 adapter实现同一port，并由独立production root显式注入，不修改T04
 contract。`CatalogListTransportQuery`属于Public Contract；normalized
 `CatalogListQuery`只属于application layer。Transport parser位于独立backend
-transport boundary，application不得反向依赖transport。
+transport boundary，application不得反向依赖transport。T05.3的
+`CatalogReadService`负责port orchestration与Public
+mapping，handler不得直接操作projection或SQL。
 
 `packages/data-access`不再承载兼容Reader，且不得建立第二套Catalog
 port。该workspace保持dependency-free，不得依赖PostgreSQL
@@ -91,7 +95,7 @@ Component 只能 type-import 公开 DTO/API 类型。
 
 T05.1 runtime已把三条冻结route接入Router。未知路径返回JSON
 404；已知路径的不允许方法返回JSON 405与`Allow: GET`。Catalog Public
-response必须经过application mapper；fixture private
+response必须经过`CatalogReadService`和application mapper；fixture private
 metadata不得进入HTTP。PostgreSQL row同样先由adapter-private
 mapper投影为既有internal read projection，再经过application Public mapper；SQL
 row、citation evidence、driver error和连接信息不得越过HTTP privacy boundary。
@@ -114,7 +118,14 @@ expand/contract策略。
 
 Production中的`GET /health`是DB-aware readiness：数据库不可用返回既有
 `SERVICE_UNAVAILABLE` 503。它未经新的deployment decision不得同时用作process
-liveness probe。
+liveness probe。Health是独立unversioned operational endpoint，不经过Catalog
+service、DTO或Port。
+
+所有当前HTTP endpoint执行strict query policy：未声明、重复或非法query参数返回
+`INVALID_QUERY`。Catalog list只增加optional `kind` filter，并由transport
+schema、application
+query和adapter共同限制为`inscription | calligraphy`；过滤发生在fixture或PostgreSQL
+adapter，不发生在Frontend、Router或handler。
 
 地区规范化、行政区证据和审核流程不属于 T01/T04.0-R。未来如需这些能力，必须以新的独立任务建立 internal
 contract、数据源和审核流程；不得恢复旧 D01 pilot。

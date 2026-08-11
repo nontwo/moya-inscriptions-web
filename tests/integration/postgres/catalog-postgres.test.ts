@@ -411,6 +411,16 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     const first = await fetch(`${baseUrl}/v1/catalog?page=1&pageSize=2`);
     const second = await fetch(`${baseUrl}/v1/catalog?page=2&pageSize=2`);
     const beyond = await fetch(`${baseUrl}/v1/catalog?page=100&pageSize=2`);
+    const inscriptions = await fetch(
+      `${baseUrl}/v1/catalog?kind=inscription&page=1&pageSize=1`,
+    );
+    const secondInscription = await fetch(
+      `${baseUrl}/v1/catalog?kind=inscription&page=2&pageSize=1`,
+    );
+    const calligraphy = await fetch(`${baseUrl}/v1/catalog?kind=calligraphy`);
+    const retiredKind = await fetch(
+      `${baseUrl}/v1/catalog?kind=cliff_inscription`,
+    );
     const detail = await fetch(`${baseUrl}/v1/catalog/test-catalog-001`);
 
     expect(catalogPageSchema.parse(await first.json())).toMatchObject({
@@ -432,6 +442,27 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       total: 3,
       totalPages: 2,
     });
+    expect(catalogPageSchema.parse(await inscriptions.json())).toMatchObject({
+      items: [{ id: "test-catalog-002", kind: "inscription" }],
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(
+      catalogPageSchema
+        .parse(await secondInscription.json())
+        .items.map(({ id }) => id),
+    ).toEqual(["test-catalog-003"]);
+    expect(catalogPageSchema.parse(await calligraphy.json())).toMatchObject({
+      items: [{ id: "test-catalog-001", kind: "calligraphy" }],
+      total: 1,
+      totalPages: 1,
+    });
+    expect(retiredKind.status).toBe(400);
+    expect(apiErrorSchema.parse(await retiredKind.json()).error.code).toBe(
+      "INVALID_QUERY",
+    );
     expect(catalogDetailSchema.parse(await detail.json())).toMatchObject({
       id: "test-catalog-001",
       aliases: ["First alias", "Second alias"],

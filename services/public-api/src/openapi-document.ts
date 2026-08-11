@@ -44,7 +44,7 @@ const jsonResponse = (description: string, schemaName: string) => ({
 const apiErrorResponse = (description: string, code: ApiErrorCode) =>
   jsonResponse(`${description}; error code ${code}.`, "ApiError");
 
-const listQueryParameters = ["page", "pageSize"].map((name) =>
+const listQueryParameters = ["kind", "page", "pageSize"].map((name) =>
   queryParameter(
     name,
     schemaProperty(catalogListTransportQueryJsonSchema, name),
@@ -65,8 +65,11 @@ export const openApiDocument: JsonObject = {
       get: {
         operationId: "getHealth",
         summary: "Operational readiness",
+        description:
+          "Unversioned operational endpoint. Query parameters are not accepted.",
         responses: {
           "200": jsonResponse("Service is ready.", "HealthResponse"),
+          "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
           "503": apiErrorResponse(
             "Service is temporarily unavailable",
             "SERVICE_UNAVAILABLE",
@@ -78,6 +81,8 @@ export const openApiDocument: JsonObject = {
       get: {
         operationId: "listCatalog",
         summary: "List public Catalog entries",
+        description:
+          "Only kind, page, and pageSize are accepted. Unknown, duplicate, or invalid query parameters return INVALID_QUERY.",
         parameters: listQueryParameters,
         responses: {
           "200": jsonResponse(
@@ -97,6 +102,7 @@ export const openApiDocument: JsonObject = {
       get: {
         operationId: "getCatalogById",
         summary: "Get one public Catalog entry",
+        description: "Catalog detail lookup accepts no query parameters.",
         parameters: [
           {
             name: "catalogId",
@@ -111,6 +117,7 @@ export const openApiDocument: JsonObject = {
             "The requested public Catalog entry.",
             "CatalogDetail",
           ),
+          "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
           "404": apiErrorResponse("Catalog entry not found", "ITEM_NOT_FOUND"),
           "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
           "503": apiErrorResponse(

@@ -24,6 +24,7 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T05.0    | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown      |
 | T05.1    | 已实现         | Catalog list/detail HTTP boundary与development/test fixture       |
 | T05.2    | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition |
+| T05.3    | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService       |
 | 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片             |
 | T06–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                 |
 
@@ -35,12 +36,12 @@ migration；`main`继续保留稳定的T00/治理基线。
 - 依据 T03 文档评估 CloudBase 方案，但不能据此直接创建或发布生产资源。
 - 使用canonical `CatalogId`、两值 `CatalogKind`和suffix-free Catalog Public
   Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
-  parser与显式mapper。
+  parser、`CatalogReadService`与显式mapper。
 - 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
-  artifact。
+  artifact；全部route拒绝未声明、重复或非法query。
 - 启动`@moya/backend-runtime`的真实Node.js listener，并通过health与Catalog
-  list/detail验证Server、Router、Handler、T04 Query boundary和JSON
-  response链路。
+  list/detail验证Server、Router、Handler、CatalogReadService、Query Port和JSON
+  response链路；list支持optional `kind=inscription|calligraphy`。
 - 显式执行Catalog read model
   migration，并通过`@moya/catalog-postgres`查询空库或后续受控写入的数据；production
   composition在listener前只读验证PostgreSQL 18 major与required migration
@@ -56,7 +57,9 @@ HTTP在development/test缺省使用三个条目的fixture；production已有空�
 ## 测试与可运行入口
 
 当前测试覆盖工程fixture、Backend HTTP runtime、Catalog contracts/application
-boundary、Query Port、OpenAPI、架构边界、T02 token/资产/组件和手机原型交互。
+service、Query Port、strict query、Kind filtering、OpenAPI、架构边界、T02
+token/资产/组件和手机原型交互。真实PostgreSQL HTTP integration以CI中的PostgreSQL
+18.4 clean service为权威验证环境；本机不要求安装PostgreSQL或Docker。
 
 标准命令：
 
@@ -83,6 +86,8 @@ pnpm --filter @moya/backend-runtime build
 HOST=127.0.0.1 PORT=3001 NODE_ENV=development pnpm --filter @moya/backend-runtime start
 curl -i http://127.0.0.1:3001/health
 curl -i 'http://127.0.0.1:3001/v1/catalog?page=1&pageSize=2'
+curl -i 'http://127.0.0.1:3001/v1/catalog?kind=inscription'
+curl -i 'http://127.0.0.1:3001/v1/catalog?kind=calligraphy'
 curl -i http://127.0.0.1:3001/v1/catalog/fixture-catalog-001
 ```
 
@@ -129,7 +134,7 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. Owner审核T05.2 Production Catalog Persistence Foundation。
+1. Owner审核T05.3 HTTP Runtime与长期数据治理冻结。
 2. 经独立checkpoint批准后再开始1658条正式数据的controlled import。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 

@@ -8,6 +8,7 @@ export {
   CatalogQueryUnavailableError,
   isCatalogQueryUnavailableError,
 } from "./modules/catalog/application/errors/catalog-query-unavailable-error.js";
+export { CatalogReadService } from "./modules/catalog/application/services/catalog-read-service.js";
 
 export type { CatalogQueryPort } from "./modules/catalog/application/ports/catalog-query-port.js";
 export type { CatalogListQuery } from "./modules/catalog/application/queries/catalog-list-query.js";

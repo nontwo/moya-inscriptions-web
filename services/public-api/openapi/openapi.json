@@ -275,6 +275,7 @@
   "paths": {
     "/health": {
       "get": {
+        "description": "Unversioned operational endpoint. Query parameters are not accepted.",
         "operationId": "getHealth",
         "responses": {
           "200": {
@@ -286,6 +287,16 @@
               }
             },
             "description": "Service is ready."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query; error code INVALID_QUERY."
           },
           "503": {
             "content": {
@@ -303,8 +314,18 @@
     },
     "/v1/catalog": {
       "get": {
+        "description": "Only kind, page, and pageSize are accepted. Unknown, duplicate, or invalid query parameters return INVALID_QUERY.",
         "operationId": "listCatalog",
         "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "enum": ["inscription", "calligraphy"],
+              "type": "string"
+            }
+          },
           {
             "in": "query",
             "name": "page",
@@ -373,6 +394,7 @@
     },
     "/v1/catalog/{catalogId}": {
       "get": {
+        "description": "Catalog detail lookup accepts no query parameters.",
         "operationId": "getCatalogById",
         "parameters": [
           {
@@ -395,6 +417,16 @@
               }
             },
             "description": "The requested public Catalog entry."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query; error code INVALID_QUERY."
           },
           "404": {
             "content": {

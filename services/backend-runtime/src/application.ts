@@ -1,6 +1,8 @@
 import { createDevelopmentCatalogFixtureQueryPort } from "./catalog/development-catalog-fixture.js";
 import { createRouter } from "./http/router.js";
 
+import { CatalogReadService } from "@moya/api";
+
 import type { CatalogQueryPort } from "@moya/api";
 import type { NodeEnvironment } from "./config.js";
 import type { HealthReadinessCheck } from "./health/health-handler.js";
@@ -29,9 +31,11 @@ const resolveCatalogQueryPort = ({
 /** Composes the HTTP listener before any TCP listener is created. */
 export const createBackendApplication = (
   options: BackendApplicationOptions,
-): RequestListener =>
-  createRouter({
-    catalogQueryPort: resolveCatalogQueryPort(options),
+): RequestListener => {
+  const catalogQueryPort = resolveCatalogQueryPort(options);
+  return createRouter({
+    catalogReadService: new CatalogReadService(catalogQueryPort),
     healthReadinessCheck:
       options.healthReadinessCheck ?? (async (): Promise<void> => undefined),
   });
+};

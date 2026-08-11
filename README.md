@@ -101,11 +101,12 @@ push。每个 Agent 必须遵守
   CloudBase 候选架构与无密钥部署检查清单进行方案评估；它不是可直接部署的 IaC。
 - 从 `@moya/contracts` 使用 canonical Catalog Public Contract，并在backend从
   `@moya/api` 使用 normalized list query、internal read projections、
-  `CatalogQueryPort` 和显式Public mapper。
+  `CatalogReadService`、`CatalogQueryPort` 和显式Public mapper。
 - 依据生成的OpenAPI 3.1.1 artifact维护`/v1/catalog` list/detail canonical
-  contract。
+  contract；list支持optional两值`kind`，所有route执行strict query policy。
 - 通过 `@moya/backend-runtime` 启动真实HTTP listener，并请求`GET /health`、
-  `GET /v1/catalog`与Catalog detail验证T04 contract的HTTP boundary。
+  `GET /v1/catalog`与Catalog detail验证CatalogReadService、Query Port和Public
+  DTO boundary。
 - 通过`@moya/catalog-postgres`把application-owned
   `CatalogQueryPort`接到PostgreSQL read
   model；通过独立migration命令应用schema，再由

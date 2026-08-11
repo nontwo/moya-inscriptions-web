@@ -58,9 +58,13 @@ const catalogPageSizeStringSchema = safePositiveIntegerStringSchema.refine(
 );
 
 export const catalogListTransportQuerySchema = z.strictObject({
+  kind: catalogKindSchema.optional(),
   page: safePositiveIntegerStringSchema.optional(),
   pageSize: catalogPageSizeStringSchema.optional(),
 });
+
+/** Strict transport boundary for endpoints that declare no query parameters. */
+export const noQueryTransportSchema = z.strictObject({});
 
 export const catalogPageSchema = z
   .strictObject({

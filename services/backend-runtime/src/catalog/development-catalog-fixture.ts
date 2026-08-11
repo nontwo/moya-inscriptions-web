@@ -111,13 +111,17 @@ const toDetailProjection = (
 /** Creates the non-production Catalog adapter used only by development/tests. */
 export const createDevelopmentCatalogFixtureQueryPort =
   (): CatalogQueryPort => ({
-    async list({ page, pageSize }) {
-      const total = developmentFixture.length;
+    async list({ kind, page, pageSize }) {
+      const filteredFixture =
+        kind === undefined
+          ? developmentFixture
+          : developmentFixture.filter(({ record }) => record.kind === kind);
+      const total = filteredFixture.length;
       const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
       const offset = (page - 1) * pageSize;
 
       return {
-        items: developmentFixture
+        items: filteredFixture
           .slice(offset, offset + pageSize)
           .map(toListProjection),
         total,

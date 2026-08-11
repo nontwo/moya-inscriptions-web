@@ -106,6 +106,26 @@ describe("development Catalog fixture adapter", () => {
       totalPages: 2,
     });
   });
+
+  it("filters by kind inside the fixture adapter before pagination", async () => {
+    const port = createDevelopmentCatalogFixtureQueryPort();
+
+    await expect(
+      port.list({ kind: "calligraphy", page: 1, pageSize: 20 }),
+    ).resolves.toMatchObject({
+      items: [{ kind: "calligraphy", title: "九成宫醴泉铭" }],
+      total: 1,
+      totalPages: 1,
+    });
+    await expect(
+      port.list({ kind: "inscription", page: 1, pageSize: 1 }),
+    ).resolves.toMatchObject({
+      items: [{ kind: "inscription", title: "好太王碑" }],
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+    });
+  });
 });
 
 describe("Catalog list HTTP boundary", () => {
@@ -159,6 +179,23 @@ describe("Catalog list HTTP boundary", () => {
     });
   });
 
+  it.each([
+    ["calligraphy", ["九成宫醴泉铭"], 1],
+    ["inscription", ["好太王碑", "泰山经石峪金刚经"], 2],
+  ] as const)(
+    "filters the HTTP list by kind=%s through the injected Port",
+    async (kind, expectedTitles, expectedTotal) => {
+      const { baseUrl } = await startCatalogServer();
+      const response = await fetch(`${baseUrl}/v1/catalog?kind=${kind}`);
+      const page = catalogPageSchema.parse(await response.json());
+
+      expect(response.status).toBe(200);
+      expect(page.items.map(({ title }) => title)).toEqual(expectedTitles);
+      expect(page.total).toBe(expectedTotal);
+      expect(page.items.every((item) => item.kind === kind)).toBe(true);
+    },
+  );
+
   it("returns 200 with an empty frozen page for an empty collection", async () => {
     const emptyPort: CatalogQueryPort = {
       async list({ page, pageSize }) {
@@ -188,6 +225,8 @@ describe("Catalog list HTTP boundary", () => {
     "page=1.5",
     "pageSize=0",
     "pageSize=101",
+    "kind=cliff_inscription",
+    "kind=inscription&kind=calligraphy",
     "keyword=碑",
     "provicne=陕西省",
     "page=1&page=2",
@@ -225,7 +264,7 @@ describe("Catalog detail HTTP boundary", () => {
     },
   );
 
-  it("keeps frozen detail semantics when an unknown query parameter is present", async () => {
+  it("rejects unknown detail query parameters before the Catalog lookup", async () => {
     const { baseUrl } = await startCatalogServer();
     const existingResponse = await fetch(
       `${baseUrl}/v1/catalog/fixture-catalog-001?foo=bar`,
@@ -234,14 +273,8 @@ describe("Catalog detail HTTP boundary", () => {
       `${baseUrl}/v1/catalog/fixture-catalog-999?foo=bar`,
     );
 
-    expect(existingResponse.status).toBe(200);
-    expect(
-      catalogDetailSchema.parse(await existingResponse.json()),
-    ).toMatchObject({
-      id: "fixture-catalog-001",
-      title: "九成宫醴泉铭",
-    });
-    await parseApiError(missingResponse, 404, "ITEM_NOT_FOUND");
+    await parseApiError(existingResponse, 400, "INVALID_QUERY");
+    await parseApiError(missingResponse, 400, "INVALID_QUERY");
   });
 
   it("does not leak private fixture representation fields", async () => {
@@ -256,6 +289,10 @@ describe("Catalog detail HTTP boundary", () => {
     expect(serialized).not.toContain("rawSourceExcerpt");
     expect(serialized).not.toContain("verificationNote");
     expect(serialized).not.toContain("objectKey");
+    expect(serialized).not.toContain("ownerDecision");
+    expect(serialized).not.toContain("migrationMetadata");
+    expect(serialized).not.toContain("internalRightsNotes");
+    expect(serialized).not.toContain("storagePath");
   });
 });
 

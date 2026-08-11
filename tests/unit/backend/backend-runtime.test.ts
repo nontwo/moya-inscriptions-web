@@ -8,7 +8,7 @@ import {
   startServer,
   stopServer,
 } from "@moya/backend-runtime";
-import { healthResponseSchema } from "@moya/contracts/schemas";
+import { apiErrorSchema, healthResponseSchema } from "@moya/contracts/schemas";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { RequestListener, Server } from "node:http";
@@ -93,7 +93,7 @@ describe("runtime configuration", () => {
 describe("HTTP runtime", () => {
   it("starts on an OS-assigned internal test port and serves health JSON", async () => {
     const { baseUrl } = await startTestServer();
-    const response = await fetch(`${baseUrl}/health?probe=readiness`);
+    const response = await fetch(`${baseUrl}/health`);
     const text = await response.text();
 
     expect(response.status).toBe(200);
@@ -105,6 +105,27 @@ describe("HTTP runtime", () => {
       status: "ok",
     });
   });
+
+  it.each(["probe=readiness", "probe=one&probe=two"])(
+    "rejects undeclared or duplicate operational query input: %s",
+    async (query) => {
+      let readinessChecks = 0;
+      const { baseUrl } = await startTestServer(
+        createBackendApplication({
+          nodeEnv: "test",
+          healthReadinessCheck: async () => {
+            readinessChecks += 1;
+          },
+        }),
+      );
+      const response = await fetch(`${baseUrl}/health?${query}`);
+      const error = apiErrorSchema.parse(await response.json());
+
+      expect(response.status).toBe(400);
+      expect(error.error.code).toBe("INVALID_QUERY");
+      expect(readinessChecks).toBe(0);
+    },
+  );
 
   it("returns the frozen SERVICE_UNAVAILABLE envelope when readiness fails", async () => {
     const { baseUrl } = await startTestServer(

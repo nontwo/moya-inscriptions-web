@@ -1,7 +1,7 @@
 # ADR 0006：长期数据治理与 Runtime Source of Truth
 
 - 状态：Accepted
-- Implementation status：Governance frozen；T05.3 HTTP enforcement in progress
+- Implementation status：Governance frozen；T05.3 HTTP enforcement implemented
 - 日期：2026-08-11
 - 范围：Catalog 长期数据治理、未来写入边界与 Public Read HTTP runtime
 - 关联：延续 ADR 0001 的依赖方向、ADR 0004 的 Catalog identity/Public DTO
