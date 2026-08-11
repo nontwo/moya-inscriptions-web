@@ -125,6 +125,40 @@ package，并同时声明
 `moyaArchitecture.rawSourceAccess = "controlled-importer"`，才可获得例外；Frontend
 workspace 永久不得授权。T04.0-R 当前 allowlist 为空。
 
+## Long-term data governance
+
+PostgreSQL 是 production runtime 的 canonical source of
+truth。XLSX 是 Owner/Editor working format，CSV/canonical rows 是 canonical bulk
+interchange/import boundary；完整 production
+workbook 默认不进入代码 Git。Frontend、HTTP
+runtime 与 application 不得读取 XLSX、CSV、fixture 或 raw source 作为 production
+database。
+
+未来写入路径固定为：
+
+```text
+Owner XLSX / CSV
+→ canonical rows
+→ shared validation
+→ duplicate candidates
+→ diff / dry-run
+→ Owner review and approval
+→ PostgreSQL
+
+Admin CMS
+→ Admin API
+→ same core domain validation
+→ PostgreSQL
+```
+
+`CatalogId`、`SourceId`和未来`SiteId`保持独立；多个SourceRecord可以对应同一Catalog
+Entity，但不得自动destructive merge。Raw provenance、evidence与publication
+decision必须可追溯，Owner publication authority不等同于absolute factual truth。
+
+Official Catalog与UGC是硬边界。User Submission必须经moderation与明确publication
+decision后才能关联或创建Catalog Entity。详细治理决定见
+[`ADR 0006`](adr/0006-long-term-data-governance-and-runtime-source.md)。
+
 ## Interface principle
 
 所有公开界面从窄屏和触控场景开始设计，再渐进增强到更宽视口。公共组件和设计 token 由对应所有者统一维护。
