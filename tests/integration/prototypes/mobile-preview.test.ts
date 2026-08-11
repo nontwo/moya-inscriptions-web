@@ -32,13 +32,29 @@ const previewCss = await readFile(new URL("preview.css", previewRoot), "utf8");
 
 const openWindows: Window[] = [];
 
+type PreviewPlatform = "pc" | "tablet" | "phone";
+
 const installMatchMedia = (
   window: Window,
-  { desktopSplit = false }: { desktopSplit?: boolean } = {},
+  {
+    platform = "pc",
+    desktopSplit,
+  }: { platform?: PreviewPlatform; desktopSplit?: boolean } = {},
 ) => {
+  const resolvedPlatform: PreviewPlatform =
+    desktopSplit === true
+      ? "pc"
+      : desktopSplit === false && platform === "pc"
+        ? "phone"
+        : platform;
+
   window.matchMedia = ((query: string) => {
     const media = String(query);
-    const matches = desktopSplit && media.includes("56rem");
+    const matches = media.includes("56rem")
+      ? resolvedPlatform === "pc"
+      : media.includes("48rem")
+        ? resolvedPlatform === "pc" || resolvedPlatform === "tablet"
+        : false;
     return {
       matches,
       media,
@@ -71,7 +87,10 @@ const clickAndWaitForHistory = async (
 
 const renderPreview = (
   preferences: Record<string, string> = {},
-  { desktopSplit = false }: { desktopSplit?: boolean } = {},
+  {
+    platform = "pc",
+    desktopSplit,
+  }: { platform?: PreviewPlatform; desktopSplit?: boolean } = {},
 ) => {
   const withoutExternalScript = html
     .replace(
@@ -85,7 +104,7 @@ const renderPreview = (
     url: "http://localhost/docs/prototypes/mobile-preview/",
   });
   openWindows.push(dom.window);
-  installMatchMedia(dom.window, { desktopSplit });
+  installMatchMedia(dom.window, { platform, desktopSplit });
   for (const [key, value] of Object.entries(preferences)) {
     dom.window.localStorage.setItem(key, value);
   }
@@ -275,7 +294,7 @@ describe("mobile application preview", () => {
     }
   });
 
-  it("persists explicit theme and home feed layout choices", () => {
+  it("persists explicit theme choices", () => {
     const dom = renderPreview();
     const document = dom.window.document;
     document.querySelector<HTMLElement>("[data-open-settings]")?.click();
@@ -283,25 +302,13 @@ describe("mobile application preview", () => {
     const dark = document.querySelector<HTMLInputElement>(
       '[data-theme-option][value="dark"]',
     );
-    const single = document.querySelector<HTMLInputElement>(
-      '[data-layout-option][value="single"]',
-    );
-    if (!dark || !single) throw new Error("settings options not found");
+    if (!dark) throw new Error("theme options not found");
     dark.checked = true;
     dark.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-    single.checked = true;
-    single.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
 
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(document.documentElement.dataset.homeLayout).toBe("single");
     expect(dom.window.localStorage.getItem("yoyi.theme-preference")).toBe(
       "dark",
-    );
-    expect(dom.window.localStorage.getItem("yoyi.home-feed-layout")).toBe(
-      "single",
-    );
-    expect(previewCss).toContain(
-      '[data-home-layout="single"] [data-view="home"] .app-masonry',
     );
 
     const system = document.querySelector<HTMLInputElement>(
@@ -314,6 +321,29 @@ describe("mobile application preview", () => {
     expect(dom.window.localStorage.getItem("yoyi.theme-preference")).toBe(
       "system",
     );
+  });
+
+  it("gates phone and tablet while keeping the PC shell on desktop", () => {
+    const phone = renderPreview({}, { platform: "phone" });
+    expect(phone.window.document.documentElement.dataset.platform).toBe(
+      "phone",
+    );
+    expect(
+      phone.window.document.querySelector("[data-platform-gate]"),
+    ).toBeTruthy();
+    expect(previewCss).toContain('html[data-platform="phone"] .mobile-app');
+    expect(previewCss).toContain('html[data-platform="tablet"] .mobile-app');
+
+    const tablet = renderPreview({}, { platform: "tablet" });
+    expect(tablet.window.document.documentElement.dataset.platform).toBe(
+      "tablet",
+    );
+
+    const pc = renderPreview({}, { platform: "pc" });
+    expect(pc.window.document.documentElement.dataset.platform).toBe("pc");
+    expect(
+      pc.window.document.querySelector<HTMLElement>("[data-mobile-app]"),
+    ).toBeTruthy();
   });
 
   it("restores valid preferences and falls back from invalid stored values", () => {
@@ -376,12 +406,15 @@ describe("mobile application preview", () => {
     expect(homeScroll.scrollTop).toBe(120);
   });
 
-  it("declares tablet and desktop responsive layout rules without new features", () => {
-    expect(previewCss).toContain("@media (min-width: 48rem)");
+  it("declares PC responsive layout rules and platform gate without phone/tablet shells", () => {
+    expect(previewCss).not.toContain("@media (min-width: 48rem)");
+    expect(previewCss).not.toContain("orientation: landscape");
     expect(previewCss).toContain("@media (min-width: 56rem)");
     expect(previewCss).toContain("@media (min-width: 64rem)");
     expect(previewCss).toContain("@media (min-width: 90rem)");
-    expect(previewCss).toContain("orientation: landscape");
+    expect(previewCss).toContain('html[data-platform="phone"]');
+    expect(previewCss).toContain('html[data-platform="tablet"]');
+    expect(previewCss).toContain('html[data-platform="pc"]');
     expect(previewCss).toContain("var(--yoyi-container-content)");
     expect(previewCss).toContain("var(--yoyi-container-reading)");
     expect(previewCss).toContain(".app-nav-brand");
@@ -392,12 +425,6 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain(".app-inscriptions-preview");
     expect(previewCss).toContain(".app-shell-only");
     expect(previewCss).toContain('[data-view="home"] .app-masonry');
-    expect(previewCss).toContain(
-      "minmax(clamp(9rem, 11vw, 12.5rem), 1fr)".replace(
-        "minmax(clamp(9rem, 11vw, 12.5rem), 1fr)",
-        "--app-calligraphy-scale",
-      ),
-    );
     expect(previewCss).toContain("--app-calligraphy-scale");
     expect(previewCss).toContain("--app-feed-col-min");
     expect(previewCss).toContain("--app-feed-gap");
@@ -414,6 +441,7 @@ describe("mobile application preview", () => {
       ".app-bottom-navigation .yoyi-navigation-entry.is-active",
     );
     expect(previewCss).toContain("var(--yoyi-color-seal-red)");
+    expect(html).toContain("data-platform-gate");
     expect(html).toContain("app-inscriptions-layout");
     expect(html).toContain("data-inscription-preview");
     expect(html).toContain("app-card__meta");
@@ -425,6 +453,7 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
+    expect(html).not.toContain("data-layout-option");
     expect(html).toContain('data-home-feed="topics"');
     expect(html).toContain("app-home-motto");
     expect(html).toContain('data-placeholder="topics-v1"');

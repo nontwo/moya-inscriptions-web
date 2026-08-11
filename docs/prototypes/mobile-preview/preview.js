@@ -61,12 +61,23 @@ const themePreferences = ["system", "light", "dark"];
 const homeLayouts = ["single", "double"];
 const primaryViews = ["home", "inscriptions", "calligraphy"];
 const desktopSplitQuery = window.matchMedia("(min-width: 56rem)");
+const tabletQuery = window.matchMedia("(min-width: 48rem)");
 
 const scrollPositions = {
   home: 0,
   inscriptions: 0,
   calligraphy: 0,
 };
+
+function syncPlatformAttribute() {
+  if (desktopSplitQuery.matches) {
+    root.dataset.platform = "pc";
+  } else if (tabletQuery.matches) {
+    root.dataset.platform = "tablet";
+  } else {
+    root.dataset.platform = "phone";
+  }
+}
 
 function readStoredPreference(key, validValues, fallback) {
   try {
@@ -620,7 +631,8 @@ window.addEventListener("popstate", (event) => {
   restoreScrollPosition(primaryView);
 });
 
-desktopSplitQuery.addEventListener("change", () => {
+function onPlatformQueryChange() {
+  syncPlatformAttribute();
   if (!desktopSplitQuery.matches && inscriptionsSplitOpen) {
     const selected = document.querySelector(
       "[data-view='inscriptions'] [data-open-detail].is-selected",
@@ -643,7 +655,11 @@ desktopSplitQuery.addEventListener("change", () => {
     );
     if (trigger) openDetail(trigger, { updateHistory: false });
   }
-});
+}
+
+desktopSplitQuery.addEventListener("change", onPlatformQueryChange);
+tabletQuery.addEventListener("change", onPlatformQueryChange);
+syncPlatformAttribute();
 
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
 renderTopicsFeed();
