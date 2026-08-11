@@ -129,6 +129,11 @@ describe("Catalog list HTTP boundary", () => {
       "好太王碑",
       "泰山经石峪金刚经",
     ]);
+    expect(page.items.map(({ kind }) => kind)).toEqual([
+      "calligraphy",
+      "inscription",
+      "inscription",
+    ]);
   });
 
   it("returns the requested subsequent page and an empty valid beyond-range page", async () => {

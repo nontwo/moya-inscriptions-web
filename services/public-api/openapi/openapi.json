@@ -59,7 +59,7 @@
             "type": "string"
           },
           "kind": {
-            "enum": ["inscription", "cliff_inscription", "calligraphy"],
+            "enum": ["inscription", "calligraphy"],
             "type": "string"
           },
           "periodLabel": {
@@ -114,7 +114,7 @@
       },
       "CatalogKind": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "enum": ["inscription", "cliff_inscription", "calligraphy"],
+        "enum": ["inscription", "calligraphy"],
         "type": "string"
       },
       "CatalogPage": {
@@ -140,7 +140,7 @@
                   "type": "string"
                 },
                 "kind": {
-                  "enum": ["inscription", "cliff_inscription", "calligraphy"],
+                  "enum": ["inscription", "calligraphy"],
                   "type": "string"
                 },
                 "periodLabel": {
@@ -207,7 +207,7 @@
             "type": "string"
           },
           "kind": {
-            "enum": ["inscription", "cliff_inscription", "calligraphy"],
+            "enum": ["inscription", "calligraphy"],
             "type": "string"
           },
           "periodLabel": {

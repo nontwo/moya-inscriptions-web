@@ -99,6 +99,10 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     });
+    expect(schemas.CatalogKind).toMatchObject({
+      enum: ["inscription", "calligraphy"],
+      type: "string",
+    });
 
     const serialized = JSON.stringify({ paths, schemas }).toLowerCase();
     for (const term of [

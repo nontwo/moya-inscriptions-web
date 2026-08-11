@@ -1,6 +1,6 @@
 # ADR 0004：Catalog Contract Design Freeze
 
-- 状态：Accepted
+- 状态：Partially superseded by ADR 0005
 - Implementation status：Canonical migration implemented（T04.1-D + T04.2）
 - 日期：2026-08-10
 - 范围：T04.1 Catalog 领域语言、身份、Public Contract、Query Port 与迁移边界
@@ -13,6 +13,10 @@
 > Catalog决定现已完成contract、identity、Query Port与public route
 > migration。下文描述T04.1阶段状态、Archive
 > compatibility和分阶段迁移的段落保留为当时的历史计划与事实。
+
+> T04.3 supersession notice：本ADR第1、3、4节中将`cliff_inscription`
+> 作为一级`CatalogKind`的历史决定已由[ADR 0005](0005-catalog-kind-top-level-evolution.md)
+> 取代。历史三值文本保留作为决策演进证据，不代表当前active contract。
 
 ## 背景
 

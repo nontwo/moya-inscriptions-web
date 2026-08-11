@@ -14,11 +14,7 @@ const platformContentIdSchema = () =>
 
 export const catalogIdSchema = platformContentIdSchema();
 
-export const catalogKindSchema = z.enum([
-  "inscription",
-  "cliff_inscription",
-  "calligraphy",
-]);
+export const catalogKindSchema = z.enum(["inscription", "calligraphy"]);
 
 const titleSchema = exactTextSchema(500);
 const aliasSchema = exactTextSchema(500);

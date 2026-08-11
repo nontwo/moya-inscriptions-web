@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -85,7 +86,7 @@ const insertFixture = async (): Promise<void> => {
     ],
     [
       "test-catalog-003",
-      "cliff_inscription",
+      "inscription",
       "Test Cliff Inscription",
       "Third summary",
       null,
@@ -142,14 +143,51 @@ afterAll(async () => {
 });
 
 describe.sequential("PostgreSQL Catalog HTTP integration", () => {
+  it("applies the full migration set once on a fresh schema", async () => {
+    const schema = "t043_fresh_catalog_kind";
+    await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await pool.query(`CREATE SCHEMA ${schema}`);
+    const isolatedUrl = new URL(testDatabaseUrl);
+    isolatedUrl.searchParams.set("options", `-c search_path=${schema}`);
+    const freshPool = createPostgresPool(
+      parsePostgresConfig({ DATABASE_URL: isolatedUrl.toString() }),
+    );
+
+    try {
+      expect(await runMigrations(freshPool, migrationsDirectory)).toEqual(
+        requiredMigrations.map(({ migrationId }) => migrationId),
+      );
+      expect(await runMigrations(freshPool, migrationsDirectory)).toEqual([]);
+      await expect(
+        verifyRequiredMigrationLedger(freshPool),
+      ).resolves.toBeUndefined();
+
+      const constraint = await freshPool.query(
+        `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+         WHERE conrelid = 'catalog_entries'::regclass
+           AND conname = 'catalog_entries_kind_valid'`,
+      );
+      expect(constraint.rows).toHaveLength(1);
+      expect(String(constraint.rows[0]?.definition)).toContain("inscription");
+      expect(String(constraint.rows[0]?.definition)).toContain("calligraphy");
+      expect(String(constraint.rows[0]?.definition)).not.toContain(
+        "cliff_inscription",
+      );
+    } finally {
+      await closePostgresPool(freshPool);
+      await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    }
+  });
+
   it("has an immutable applied migration and an empty first-class database", async () => {
     expect(await runMigrations(pool, migrationsDirectory)).toEqual([]);
-    const migration = requiredMigrations[0];
     const ledger = await pool.query(
       `SELECT migration_id, filename, checksum
        FROM schema_migrations
-       WHERE migration_id = $1`,
-      [migration?.migrationId],
+       WHERE migration_id = ANY($1::text[])
+       ORDER BY migration_id`,
+      [requiredMigrations.map(({ migrationId }) => migrationId)],
     );
     const tables = await pool.query(
       `SELECT table_name
@@ -188,13 +226,14 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     );
     const healthResponse = await fetch(`${baseUrl}/health`);
 
-    expect(ledger.rows).toEqual([
-      {
-        migration_id: migration?.migrationId,
-        filename: migration?.filename,
-        checksum: migration?.checksum,
-      },
-    ]);
+    expect(ledger.rows).toEqual(
+      requiredMigrations.map(({ migrationId, filename, checksum }) => ({
+        migration_id: migrationId,
+        filename,
+        checksum,
+      })),
+    );
+    await expect(verifyRequiredMigrationLedger(pool)).resolves.toBeUndefined();
     expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
       "catalog_aliases",
       "catalog_entries",
@@ -235,6 +274,135 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     expect(healthResponseSchema.parse(await healthResponse.json())).toEqual({
       status: "ok",
     });
+  });
+
+  it("rejects the retired top-level CatalogKind at the database boundary", async () => {
+    await expect(
+      pool.query(
+        `INSERT INTO catalog_entries (catalog_id, kind, title)
+         VALUES ($1, $2, $3)`,
+        [
+          "test-catalog-retired-kind",
+          "cliff_inscription",
+          "Retired kind fixture",
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    const result = await pool.query(
+      `SELECT COUNT(*)::integer AS count
+       FROM catalog_entries
+       WHERE catalog_id = $1`,
+      ["test-catalog-retired-kind"],
+    );
+    expect(result.rows).toEqual([{ count: 0 }]);
+  });
+
+  it("rolls back the kind evolution before replacing the legacy constraint", async () => {
+    const schema = "t043_legacy_catalog_kind";
+    await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await pool.query(`CREATE SCHEMA ${schema}`);
+    const isolatedUrl = new URL(testDatabaseUrl);
+    isolatedUrl.searchParams.set("options", `-c search_path=${schema}`);
+    const legacyPool = createPostgresPool(
+      parsePostgresConfig({ DATABASE_URL: isolatedUrl.toString() }),
+    );
+
+    try {
+      const legacyMigration = requiredMigrations[0];
+      const evolutionMigration = requiredMigrations[1];
+      if (legacyMigration === undefined || evolutionMigration === undefined) {
+        throw new Error("T05.2 and T04.3 migrations are required");
+      }
+      const legacySql = await readFile(
+        path.join(migrationsDirectory, legacyMigration.filename),
+        "utf8",
+      );
+      await legacyPool.query(legacySql);
+      await legacyPool.query(`
+        CREATE TABLE schema_migrations (
+          migration_id VARCHAR(14) PRIMARY KEY,
+          filename TEXT NOT NULL UNIQUE,
+          checksum VARCHAR(64) NOT NULL,
+          applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT schema_migrations_id_valid CHECK (
+            migration_id ~ '^[0-9]{14}$'
+          ),
+          CONSTRAINT schema_migrations_checksum_valid CHECK (
+            checksum ~ '^[0-9a-f]{64}$'
+          )
+        )
+      `);
+      await legacyPool.query(
+        `INSERT INTO schema_migrations (migration_id, filename, checksum)
+         VALUES ($1, $2, $3)`,
+        [
+          legacyMigration.migrationId,
+          legacyMigration.filename,
+          legacyMigration.checksum,
+        ],
+      );
+      const legacyRow = {
+        catalog_id: "legacy-cliff-inscription",
+        kind: "cliff_inscription",
+        title: "Legacy row must remain unchanged",
+        summary: "Legacy summary",
+        description: "Legacy description",
+        period_label: "Legacy period",
+      };
+      await legacyPool.query(
+        `INSERT INTO catalog_entries
+           (catalog_id, kind, title, summary, description, period_label)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        Object.values(legacyRow),
+      );
+      const constraintBefore = await legacyPool.query(
+        `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+         WHERE conrelid = 'catalog_entries'::regclass
+           AND conname = 'catalog_entries_kind_valid'`,
+      );
+
+      await expect(
+        runMigrations(legacyPool, migrationsDirectory),
+      ).rejects.toThrow(`Migration ${evolutionMigration.migrationId} failed`);
+
+      const [row, constraint, ledger] = await Promise.all([
+        legacyPool.query(
+          `SELECT catalog_id, kind, title, summary, description, period_label
+           FROM catalog_entries
+           WHERE catalog_id = $1`,
+          [legacyRow.catalog_id],
+        ),
+        legacyPool.query(
+          `SELECT pg_get_constraintdef(oid) AS definition
+           FROM pg_constraint
+           WHERE conrelid = 'catalog_entries'::regclass
+             AND conname = 'catalog_entries_kind_valid'`,
+        ),
+        legacyPool.query(
+          `SELECT migration_id, filename, checksum
+           FROM schema_migrations
+           ORDER BY migration_id`,
+        ),
+      ]);
+
+      expect(row.rows).toEqual([legacyRow]);
+      expect(constraint.rows).toEqual(constraintBefore.rows);
+      expect(String(constraint.rows[0]?.definition)).toContain(
+        "cliff_inscription",
+      );
+      expect(ledger.rows).toEqual([
+        {
+          migration_id: legacyMigration.migrationId,
+          filename: legacyMigration.filename,
+          checksum: legacyMigration.checksum,
+        },
+      ]);
+    } finally {
+      await closePostgresPool(legacyPool);
+      await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    }
   });
 
   it("serves seeded list, detail, ordering and frozen pagination semantics", async () => {
