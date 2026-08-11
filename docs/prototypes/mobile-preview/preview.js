@@ -109,8 +109,7 @@ let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let inscriptionsSplitOpen = false;
 
 function usesInscriptionsSplit() {
-  // PC widths reuse tablet-landscape shell; no inscriptions master-detail split.
-  return false;
+  return desktopSplitQuery.matches && primaryView === "inscriptions";
 }
 
 function currentScrollElement() {
@@ -172,7 +171,10 @@ function showPreviewContent() {
 
 function syncDesktopPreviewPane() {
   if (!inscriptionPreview) return;
-  if (!inscriptionsSplitOpen) {
+  if (desktopSplitQuery.matches && primaryView === "inscriptions") {
+    inscriptionPreview.hidden = false;
+    if (!inscriptionsSplitOpen) showPreviewEmpty();
+  } else if (!inscriptionsSplitOpen) {
     inscriptionPreview.hidden = true;
     showPreviewEmpty();
   }
@@ -643,6 +645,16 @@ function onPlatformQueryChange() {
     return;
   }
   syncDesktopPreviewPane();
+  if (
+    desktopSplitQuery.matches &&
+    primaryView === "inscriptions" &&
+    history.state?.kind === "detail"
+  ) {
+    const trigger = document.querySelector(
+      `[data-content-id="${history.state.contentId}"]`,
+    );
+    if (trigger) openDetail(trigger, { updateHistory: false });
+  }
 }
 
 desktopSplitQuery.addEventListener("change", onPlatformQueryChange);

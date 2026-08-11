@@ -13,8 +13,16 @@
         const layout = localStorage.getItem("yoyi.home-feed-layout");
         document.documentElement.dataset.homeLayout =
           layout === "single" ? "single" : "double";
+        const isPc = window.matchMedia("(min-width: 56rem)").matches;
+        const isTablet = window.matchMedia("(min-width: 48rem)").matches;
+        document.documentElement.dataset.platform = isPc
+          ? "pc"
+          : isTablet
+            ? "tablet"
+            : "phone";
       } catch {
         document.documentElement.dataset.homeLayout = "double";
+        document.documentElement.dataset.platform = "pc";
       }
     </script>
     <link
@@ -26,6 +34,13 @@
   </head>
   <body>
     <div class="app-stage">
+      <aside class="app-platform-gate" data-platform-gate>
+        <h1>PC 原型预览</h1>
+        <p>
+          本交互原型仅适配电脑视口（宽度 ≥
+          896px）。请使用电脑打开；手机与平板壳已从此预览移除。
+        </p>
+      </aside>
       <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
         <section class="app-view" data-view="home" aria-label="首页">
           <header class="app-topbar app-topbar--home">
@@ -1138,32 +1153,6 @@
                       value="dark"
                     />
                     <span>深色</span>
-                  </label>
-                </div>
-              </fieldset>
-              <fieldset
-                class="app-setting-group"
-                data-setting-group="home-layout"
-              >
-                <legend>首页展示（仅手机）</legend>
-                <div class="app-setting-options">
-                  <label class="app-setting-option">
-                    <input
-                      data-layout-option
-                      name="home-layout"
-                      type="radio"
-                      value="single"
-                    />
-                    <span>单列展示</span>
-                  </label>
-                  <label class="app-setting-option">
-                    <input
-                      data-layout-option
-                      name="home-layout"
-                      type="radio"
-                      value="double"
-                    />
-                    <span>双列展示</span>
                   </label>
                 </div>
               </fieldset>

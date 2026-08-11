@@ -32,14 +32,32 @@ const previewCss = await readFile(new URL("preview.css", previewRoot), "utf8");
 
 const openWindows: Window[] = [];
 
+type PreviewPlatform = "pc" | "tablet" | "phone";
+
+type PreviewMatchMediaOptions = {
+  platform?: PreviewPlatform;
+  desktopSplit?: boolean;
+};
+
 const installMatchMedia = (
   window: Window,
-  { desktopSplit = false }: { desktopSplit?: boolean } = {},
+  options: PreviewMatchMediaOptions = {},
 ) => {
+  const platform = options.platform ?? "pc";
+  const resolvedPlatform: PreviewPlatform =
+    options.desktopSplit === true
+      ? "pc"
+      : options.desktopSplit === false && platform === "pc"
+        ? "phone"
+        : platform;
+
   window.matchMedia = ((query: string) => {
     const media = String(query);
-    const matches =
-      desktopSplit && (media.includes("56rem") || media.includes("48rem"));
+    const matches = media.includes("56rem")
+      ? resolvedPlatform === "pc"
+      : media.includes("48rem")
+        ? resolvedPlatform === "pc" || resolvedPlatform === "tablet"
+        : false;
     return {
       matches,
       media,
@@ -72,7 +90,7 @@ const clickAndWaitForHistory = async (
 
 const renderPreview = (
   preferences: Record<string, string> = {},
-  { desktopSplit = false }: { desktopSplit?: boolean } = {},
+  options: PreviewMatchMediaOptions = {},
 ) => {
   const withoutExternalScript = html
     .replace(
@@ -86,7 +104,12 @@ const renderPreview = (
     url: "http://localhost/docs/prototypes/mobile-preview/",
   });
   openWindows.push(dom.window);
-  installMatchMedia(dom.window, { desktopSplit });
+  installMatchMedia(dom.window, {
+    platform: options.platform ?? "pc",
+    ...(options.desktopSplit === undefined
+      ? {}
+      : { desktopSplit: options.desktopSplit }),
+  });
   for (const [key, value] of Object.entries(preferences)) {
     dom.window.localStorage.setItem(key, value);
   }
@@ -276,7 +299,7 @@ describe("mobile application preview", () => {
     }
   });
 
-  it("persists explicit theme and home feed layout choices", () => {
+  it("persists explicit theme choices", () => {
     const dom = renderPreview();
     const document = dom.window.document;
     document.querySelector<HTMLElement>("[data-open-settings]")?.click();
@@ -284,25 +307,13 @@ describe("mobile application preview", () => {
     const dark = document.querySelector<HTMLInputElement>(
       '[data-theme-option][value="dark"]',
     );
-    const single = document.querySelector<HTMLInputElement>(
-      '[data-layout-option][value="single"]',
-    );
-    if (!dark || !single) throw new Error("settings options not found");
+    if (!dark) throw new Error("theme options not found");
     dark.checked = true;
     dark.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-    single.checked = true;
-    single.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
 
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(document.documentElement.dataset.homeLayout).toBe("single");
     expect(dom.window.localStorage.getItem("yoyi.theme-preference")).toBe(
       "dark",
-    );
-    expect(dom.window.localStorage.getItem("yoyi.home-feed-layout")).toBe(
-      "single",
-    );
-    expect(previewCss).toContain(
-      '[data-home-layout="single"] [data-view="home"] .app-masonry',
     );
 
     const system = document.querySelector<HTMLInputElement>(
@@ -315,6 +326,29 @@ describe("mobile application preview", () => {
     expect(dom.window.localStorage.getItem("yoyi.theme-preference")).toBe(
       "system",
     );
+  });
+
+  it("gates phone and tablet while keeping the PC shell on desktop", () => {
+    const phone = renderPreview({}, { platform: "phone" });
+    expect(phone.window.document.documentElement.dataset.platform).toBe(
+      "phone",
+    );
+    expect(
+      phone.window.document.querySelector("[data-platform-gate]"),
+    ).toBeTruthy();
+    expect(previewCss).toContain('html[data-platform="phone"] .mobile-app');
+    expect(previewCss).toContain('html[data-platform="tablet"] .mobile-app');
+
+    const tablet = renderPreview({}, { platform: "tablet" });
+    expect(tablet.window.document.documentElement.dataset.platform).toBe(
+      "tablet",
+    );
+
+    const pc = renderPreview({}, { platform: "pc" });
+    expect(pc.window.document.documentElement.dataset.platform).toBe("pc");
+    expect(
+      pc.window.document.querySelector<HTMLElement>("[data-mobile-app]"),
+    ).toBeTruthy();
   });
 
   it("restores valid preferences and falls back from invalid stored values", () => {
@@ -377,19 +411,21 @@ describe("mobile application preview", () => {
     expect(homeScroll.scrollTop).toBe(120);
   });
 
-  it("declares tablet and desktop responsive layout rules without new features", () => {
-    expect(previewCss).toContain("@media (min-width: 48rem)");
+  it("declares PC responsive layout rules and platform gate without phone/tablet shells", () => {
+    expect(previewCss).not.toContain("@media (min-width: 48rem)");
+    expect(previewCss).not.toContain("orientation: landscape");
     expect(previewCss).toContain("@media (min-width: 56rem)");
-    expect(previewCss).not.toContain("@media (min-width: 64rem)");
-    expect(previewCss).not.toContain("@media (min-width: 90rem)");
-    expect(previewCss).toContain(
-      "/* PC (>=56rem): copy tablet-landscape rail only",
-    );
-    expect(previewCss).toContain("orientation: landscape");
+    expect(previewCss).toContain("@media (min-width: 64rem)");
+    expect(previewCss).toContain("@media (min-width: 90rem)");
+    expect(previewCss).toContain('html[data-platform="phone"]');
+    expect(previewCss).toContain('html[data-platform="tablet"]');
+    expect(previewCss).toContain('html[data-platform="pc"]');
+    expect(previewCss).toContain("var(--yoyi-container-content)");
     expect(previewCss).toContain("var(--yoyi-container-reading)");
     expect(previewCss).toContain(".app-nav-brand");
     expect(previewCss).toContain("column-width:");
     expect(previewCss).toContain("auto-fit");
+    expect(previewCss).toContain('[data-view="inscriptions"] .app-list');
     expect(previewCss).toContain(".app-inscriptions-layout");
     expect(previewCss).toContain(".app-inscriptions-preview");
     expect(previewCss).toContain(".app-shell-only");
@@ -399,9 +435,18 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain("--app-feed-gap");
     expect(previewCss).toContain("--app-motto-font");
     expect(previewCss).toContain("position: fixed");
-    expect(previewCss).toContain("calc(88px + env(safe-area-inset-left))");
+    expect(previewCss).toContain('[data-setting-group="home-layout"]');
+    expect(previewCss).toContain("auto-fill");
+    expect(previewCss).toContain("calc(164px + env(safe-area-inset-left))");
+    expect(previewCss).toContain("min-height: 58px");
+    expect(previewCss).toContain("border-width: 9px 0 9px 10px");
     expect(previewCss).toContain(".app-primary-tabs");
+    expect(previewCss).toContain("min-width: 280px");
+    expect(previewCss).toContain(
+      ".app-bottom-navigation .yoyi-navigation-entry.is-active",
+    );
     expect(previewCss).toContain("var(--yoyi-color-seal-red)");
+    expect(html).toContain("data-platform-gate");
     expect(html).toContain("app-inscriptions-layout");
     expect(html).toContain("data-inscription-preview");
     expect(html).toContain("app-card__meta");
@@ -413,11 +458,11 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
+    expect(html).not.toContain("data-layout-option");
     expect(html).toContain('data-home-feed="topics"');
     expect(html).toContain("app-home-motto");
     expect(html).toContain('data-placeholder="topics-v1"');
     expect(html).toContain('data-view="topic-column"');
-    expect(html).toContain('data-setting-group="home-layout"');
     expect(previewCss).toContain(".app-home-motto");
     expect(previewCss).toContain(".app-topics__grid");
     expect(html).toContain("收藏");
@@ -451,11 +496,9 @@ describe("mobile application preview", () => {
     document.querySelector<HTMLElement>("[data-topic-back]")?.click();
   });
 
-  it("marks pc platform and opens inscriptions detail without split", () => {
+  it("keeps inscriptions list visible beside preview on desktop split", () => {
     const dom = renderPreview({}, { desktopSplit: true });
     const document = dom.window.document;
-
-    expect(document.documentElement.dataset.platform).toBe("pc");
 
     document
       .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
@@ -463,7 +506,11 @@ describe("mobile application preview", () => {
 
     expect(
       document.querySelector<HTMLElement>("[data-inscription-preview]")?.hidden,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview-empty]")
+        ?.hidden,
+    ).toBe(false);
 
     document
       .querySelector<HTMLElement>(
@@ -472,13 +519,47 @@ describe("mobile application preview", () => {
       ?.click();
 
     expect(
-      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
     ).toBe(false);
     expect(
-      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
-    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
-      "云峰山题名",
-    );
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview-content]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-inscription-preview-title]")?.textContent,
+    ).toBe("云峰山题名");
+    expect(
+      document.querySelector("[data-inscription-preview-meta]")?.textContent,
+    ).toContain("北魏");
+    expect(
+      document.querySelector<HTMLElement>("[data-inscription-preview-featured]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document
+        .querySelector(
+          '[data-view="inscriptions"] [data-content-id="inscription-yunfeng"]',
+        )
+        ?.classList.contains("is-selected"),
+    ).toBe(true);
+
+    document
+      .querySelector<HTMLElement>('[data-preview-tab="catalog"]')
+      ?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-preview-panel="catalog"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-preview-panel="intro"]')
+        ?.hidden,
+    ).toBe(true);
+
+    document
+      .querySelector<HTMLElement>("[data-inscription-preview-back]")
+      ?.click();
   });
 });
