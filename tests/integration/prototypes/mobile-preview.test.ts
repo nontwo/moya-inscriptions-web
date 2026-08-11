@@ -399,6 +399,8 @@ describe("mobile application preview", () => {
       ),
     );
     expect(previewCss).toContain("--app-calligraphy-scale");
+    expect(previewCss).toContain("--app-feed-col-min");
+    expect(previewCss).toContain("--app-feed-gap");
     expect(previewCss).toContain("--app-motto-font");
     expect(previewCss).toContain("position: fixed");
     expect(previewCss).toContain('[data-setting-group="home-layout"]');

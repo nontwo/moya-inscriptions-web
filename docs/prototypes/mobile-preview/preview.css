@@ -13,8 +13,13 @@ body {
   color: var(--yoyi-color-text-primary);
   background: var(--yoyi-color-background-page);
   font-family: var(--yoyi-font-interface);
-  /* Prototype-only: calligraphy wall scale (2 ≈ 2×; set 3 to try 3×). */
+  /* Prototype-only: shared feed/calligraphy card scale (2 ≈ 2×; set 3 to try 3×). */
   --app-calligraphy-scale: 2;
+  --app-feed-col-min: calc(9rem * var(--app-calligraphy-scale));
+  --app-feed-col-fluid: calc(11vw * var(--app-calligraphy-scale));
+  --app-feed-col-max: calc(12.5rem * var(--app-calligraphy-scale));
+  --app-feed-gap: calc(0.75rem * var(--app-calligraphy-scale));
+  --app-feed-title-size: calc(0.75rem * var(--app-calligraphy-scale));
   --app-motto-font:
     "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "Noto Serif SC", serif;
 }
@@ -924,12 +929,26 @@ button {
   }
 
   .app-topics {
-    padding: var(--yoyi-space-5) var(--yoyi-space-6) var(--yoyi-space-10);
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
   }
 
   .app-topics__grid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--yoyi-space-5);
+    gap: var(--app-feed-gap);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
+  }
+
+  .app-topic-card__title {
+    font-size: var(--app-feed-title-size);
   }
 
   .app-topic-column__content {
@@ -1028,16 +1047,28 @@ button {
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
 
-  /* Variant A: home gallery — larger cards, 3–4 columns, image-forward */
+  /* Home discover/nearby + topics share calligraphy feed cell size */
   [data-view="home"] .app-masonry,
   [data-home-layout="single"] [data-view="home"] .app-masonry,
   [data-home-layout="double"] [data-view="home"] .app-masonry {
-    gap: var(--yoyi-space-6);
-    padding: var(--yoyi-space-6) var(--yoyi-space-6) var(--yoyi-space-10);
+    display: grid;
     width: 100%;
     max-width: none;
     margin-inline: 0;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    column-width: auto;
+    gap: var(--app-feed-gap);
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
   }
 
   [data-view="home"] .app-card {
@@ -1046,17 +1077,18 @@ button {
   }
 
   [data-view="home"] .app-card img {
-    min-height: 280px;
+    min-height: 0;
     aspect-ratio: 3 / 4;
     object-fit: cover;
     border-radius: var(--yoyi-radius-sm);
   }
 
   [data-view="home"] .app-card__title {
-    padding: var(--yoyi-space-3) 2px 0;
+    padding: var(--yoyi-space-2) 2px 0;
     text-align: center;
-    font-size: var(--yoyi-type-body-size);
-    font-weight: 500;
+    font-size: var(--app-feed-title-size);
+    font-weight: 600;
+    line-height: 1.35;
   }
 
   .app-card {
@@ -1439,7 +1471,7 @@ button {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  /* Variant C: calligraphy wall — scale via --app-calligraphy-scale */
+  /* Feed wall — home + calligraphy share --app-feed-* vars */
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry,
   .app-calligraphy-grid .app-masonry {
@@ -1447,15 +1479,15 @@ button {
     max-width: none;
     display: grid;
     column-width: auto;
-    gap: calc(0.75rem * var(--app-calligraphy-scale));
+    gap: var(--app-feed-gap);
     padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
     grid-template-columns: repeat(
       auto-fill,
       minmax(
         clamp(
-          calc(9rem * var(--app-calligraphy-scale)),
-          calc(11vw * var(--app-calligraphy-scale)),
-          calc(12.5rem * var(--app-calligraphy-scale))
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
         ),
         1fr
       )
@@ -1480,7 +1512,7 @@ button {
   }
 
   .app-calligraphy-grid .app-card__title {
-    font-size: calc(0.75rem * var(--app-calligraphy-scale));
+    font-size: var(--app-feed-title-size);
     font-weight: 600;
     line-height: 1.35;
   }
@@ -1638,20 +1670,23 @@ button {
 
   [data-view="home"] .app-masonry,
   [data-home-layout="double"] [data-view="home"] .app-masonry,
-  [data-home-layout="single"] [data-view="home"] .app-masonry {
-    gap: var(--yoyi-space-7);
-    padding-inline: var(--yoyi-space-7);
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
-
-  [data-view="home"] .app-card img {
-    min-height: 320px;
-  }
-
+  [data-home-layout="single"] [data-view="home"] .app-masonry,
+  .app-topics__grid,
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry {
     padding-inline: clamp(1.25rem, 2.2vw, 2rem);
-    gap: calc(0.75rem * var(--app-calligraphy-scale));
+    gap: var(--app-feed-gap);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
   }
 
   .app-card img {
@@ -1662,8 +1697,10 @@ button {
     font-size: var(--yoyi-type-card-title-size);
   }
 
-  [data-view="home"] .app-card__title {
-    font-size: var(--yoyi-type-body-size);
+  [data-view="home"] .app-card__title,
+  .app-topic-card__title,
+  .app-calligraphy-grid .app-card__title {
+    font-size: var(--app-feed-title-size);
   }
 
   [data-view="inscriptions"] .app-topbar--search {
@@ -1724,25 +1761,23 @@ button {
 
   [data-view="home"] .app-masonry,
   [data-home-layout="double"] [data-view="home"] .app-masonry,
-  [data-home-layout="single"] [data-view="home"] .app-masonry {
-    gap: var(--yoyi-space-7);
-    padding-inline: var(--yoyi-space-8);
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  }
-
-  .app-calligraphy-grid,
-  .app-calligraphy-grid.app-masonry {
-    padding-inline: clamp(1.5rem, 2.5vw, 2.25rem);
-  }
-
-  [data-view="home"] .app-card img {
-    min-height: 360px;
-  }
-
+  [data-home-layout="single"] [data-view="home"] .app-masonry,
+  .app-topics__grid,
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry {
     padding-inline: clamp(1.5rem, 2.5vw, 2.5rem);
-    gap: clamp(0.75rem, 1.2vw, 1.25rem);
+    gap: var(--app-feed-gap);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
   }
 
   .app-card img {
