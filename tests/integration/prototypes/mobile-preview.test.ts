@@ -34,17 +34,20 @@ const openWindows: Window[] = [];
 
 type PreviewPlatform = "pc" | "tablet" | "phone";
 
+type PreviewMatchMediaOptions = {
+  platform?: PreviewPlatform;
+  desktopSplit?: boolean;
+};
+
 const installMatchMedia = (
   window: Window,
-  {
-    platform = "pc",
-    desktopSplit,
-  }: { platform?: PreviewPlatform; desktopSplit?: boolean } = {},
+  options: PreviewMatchMediaOptions = {},
 ) => {
+  const platform = options.platform ?? "pc";
   const resolvedPlatform: PreviewPlatform =
-    desktopSplit === true
+    options.desktopSplit === true
       ? "pc"
-      : desktopSplit === false && platform === "pc"
+      : options.desktopSplit === false && platform === "pc"
         ? "phone"
         : platform;
 
@@ -87,10 +90,7 @@ const clickAndWaitForHistory = async (
 
 const renderPreview = (
   preferences: Record<string, string> = {},
-  {
-    platform = "pc",
-    desktopSplit,
-  }: { platform?: PreviewPlatform; desktopSplit?: boolean } = {},
+  options: PreviewMatchMediaOptions = {},
 ) => {
   const withoutExternalScript = html
     .replace(
@@ -104,7 +104,12 @@ const renderPreview = (
     url: "http://localhost/docs/prototypes/mobile-preview/",
   });
   openWindows.push(dom.window);
-  installMatchMedia(dom.window, { platform, desktopSplit });
+  installMatchMedia(dom.window, {
+    platform: options.platform ?? "pc",
+    ...(options.desktopSplit === undefined
+      ? {}
+      : { desktopSplit: options.desktopSplit }),
+  });
   for (const [key, value] of Object.entries(preferences)) {
     dom.window.localStorage.setItem(key, value);
   }
