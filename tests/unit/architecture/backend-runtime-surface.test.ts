@@ -44,7 +44,9 @@ describe("@moya/backend-runtime package boundary", () => {
       "createBackendApplication",
       "createBackendServer",
       "createDevelopmentCatalogFixtureQueryPort",
+      "installProcessShutdownHandlers",
       "parseRuntimeConfig",
+      "startBackendProcess",
       "startServer",
       "stopServer",
     ]);
@@ -92,7 +94,11 @@ describe("@moya/backend-runtime package boundary", () => {
       for (const file of await collectTypeScriptFiles(root)) {
         const source = await readFile(file, "utf8");
         for (const reference of extractModuleReferences(source)) {
-          if (reference.specifier === "@moya/backend-runtime") {
+          if (
+            reference.specifier === "@moya/backend-runtime" ||
+            reference.specifier === "@moya/backend-production" ||
+            reference.specifier === "@moya/catalog-postgres"
+          ) {
             violations.push(path.relative(repositoryRoot, file));
           }
         }

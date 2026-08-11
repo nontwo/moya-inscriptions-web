@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_DB: moya_test
+      POSTGRES_PASSWORD: moya_test_password
+      POSTGRES_USER: moya_test
+    ports:
+      - "54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moya_test -d moya_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

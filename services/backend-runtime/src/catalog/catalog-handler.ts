@@ -1,4 +1,5 @@
 import {
+  isCatalogQueryUnavailableError,
   mapCatalogDetail,
   mapCatalogPage,
   parseCatalogListQuery,
@@ -50,7 +51,15 @@ export const handleCatalogList = async (
   try {
     const projection = await catalogQueryPort.list(query);
     sendJson(response, 200, mapCatalogPage(projection));
-  } catch {
+  } catch (error) {
+    if (isCatalogQueryUnavailableError(error)) {
+      sendApiError(
+        response,
+        "SERVICE_UNAVAILABLE",
+        "Service temporarily unavailable",
+      );
+      return;
+    }
     sendApiError(response, "INTERNAL_ERROR", "Internal server error");
   }
 };
@@ -82,7 +91,15 @@ export const handleCatalogDetail = async (
     }
 
     sendJson(response, 200, mapCatalogDetail(projection));
-  } catch {
+  } catch (error) {
+    if (isCatalogQueryUnavailableError(error)) {
+      sendApiError(
+        response,
+        "SERVICE_UNAVAILABLE",
+        "Service temporarily unavailable",
+      );
+      return;
+    }
     sendApiError(response, "INTERNAL_ERROR", "Internal server error");
   }
 };

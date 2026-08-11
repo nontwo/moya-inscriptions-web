@@ -66,6 +66,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://moya_test:moya_test_password@127.0.0.1:5432/moya_test
+      TEST_DATABASE_URL: postgresql://moya_test:moya_test_password@127.0.0.1:5432/moya_test
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: moya_test
+          POSTGRES_PASSWORD: moya_test_password
+          POSTGRES_USER: moya_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moya_test -d moya_test" --health-interval
+          2s --health-timeout 3s --health-retries 20
 
     steps:
       - name: Check out repository
@@ -82,6 +97,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build database integration dependencies
+        run: pnpm --filter @moya/backend-production... build
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: PostgreSQL integration tests
+        run: pnpm test:postgres
 
       - name: Test
         run: pnpm test

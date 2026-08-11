@@ -11,6 +11,7 @@ import {
   catalogIdSchema,
   catalogPageSchema,
 } from "@moya/contracts/schemas";
+import { CatalogQueryUnavailableError } from "@moya/api";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { CatalogDetailProjection, CatalogQueryPort } from "@moya/api";
@@ -315,6 +316,27 @@ describe("Catalog composition and transport errors", () => {
     for (const path of ["/v1/catalog", "/v1/catalog/fixture-catalog-001"]) {
       const response = await fetch(`${baseUrl}${path}`);
       const error = await parseApiError(response, 500, "INTERNAL_ERROR");
+
+      expect(JSON.stringify(error)).not.toContain(secret);
+    }
+  });
+
+  it("maps classified Catalog availability failures to safe SERVICE_UNAVAILABLE JSON", async () => {
+    const secret = "postgresql://secret@private-host/catalog";
+    const unavailablePort: CatalogQueryPort = {
+      async list() {
+        throw new CatalogQueryUnavailableError({ cause: new Error(secret) });
+      },
+      async getById() {
+        throw new CatalogQueryUnavailableError({ cause: new Error(secret) });
+      },
+    };
+    const { baseUrl } = await startCatalogServer({
+      catalogQueryPort: unavailablePort,
+    });
+    for (const path of ["/v1/catalog", "/v1/catalog/fixture-catalog-001"]) {
+      const response = await fetch(`${baseUrl}${path}`);
+      const error = await parseApiError(response, 503, "SERVICE_UNAVAILABLE");
 
       expect(JSON.stringify(error)).not.toContain(secret);
     }

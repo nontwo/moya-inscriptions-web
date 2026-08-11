@@ -102,10 +102,18 @@ describe("workspace dependency boundaries", () => {
 
     expect(moyaDependencies("@moya/contracts")).toEqual([]);
     expect(moyaDependencies("@moya/api")).toEqual(["@moya/contracts"]);
+    expect(moyaDependencies("@moya/backend-production")).toEqual([
+      "@moya/backend-runtime",
+      "@moya/catalog-postgres",
+    ]);
     expect(moyaDependencies("@moya/backend-runtime")).toEqual([
       "@moya/api",
       "@moya/contracts",
       "@moya/public-api",
+    ]);
+    expect(moyaDependencies("@moya/catalog-postgres")).toEqual([
+      "@moya/api",
+      "@moya/contracts",
     ]);
     expect(moyaDependencies("@moya/data-access")).toEqual([]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
@@ -136,8 +144,11 @@ describe("frontend and browser boundaries", () => {
       "use client";
       import { catalogSummarySchema } from "@moya/contracts/schemas";
       import type { CatalogListQuery, CatalogQueryPort } from "@moya/api";
+      import { startProductionBackend } from "@moya/backend-production";
+      import { createPostgresPool } from "@moya/catalog-postgres";
       import "${retainedDataAccessPackage}";
       import { Pool } from "pg";
+      import migration from "../../../database/migrations/example.sql";
       const records = new URL("../../data/records.json", import.meta.url);
     `;
 
@@ -145,8 +156,11 @@ describe("frontend and browser boundaries", () => {
       expect.arrayContaining([
         "@moya/contracts/schemas is server/runtime-only",
         "@moya/api is server/runtime-only",
+        "@moya/backend-production is server/runtime-only",
+        "@moya/catalog-postgres is server/runtime-only",
         `${retainedDataAccessPackage} is server/runtime-only`,
         "pg is server/runtime-only",
+        "../../../database/migrations/example.sql is server/runtime-only",
         "../../data/records.json is a direct data-file reference",
       ]),
     );
@@ -158,6 +172,8 @@ describe("frontend and browser boundaries", () => {
       import type { CatalogDetail } from "@moya/contracts";
       import type { CatalogQueryPort } from "@moya/api";
       import { createBackendServer } from "@moya/backend-runtime";
+      import { startProductionBackend } from "@moya/backend-production";
+      import { createPostgresPool } from "@moya/catalog-postgres";
       import "${retainedDataAccessPackage}";
       import { openApiDocument } from "@moya/public-api";
       import { handler } from "../../services/public-api/src/handler";
@@ -166,7 +182,9 @@ describe("frontend and browser boundaries", () => {
     expect(frontendBoundaryViolations(file, source)).toEqual(
       expect.arrayContaining([
         "@moya/api crosses the frontend boundary",
+        "@moya/backend-production crosses the frontend boundary",
         "@moya/backend-runtime crosses the frontend boundary",
+        "@moya/catalog-postgres crosses the frontend boundary",
         `${retainedDataAccessPackage} crosses the frontend boundary`,
         "@moya/public-api crosses the frontend boundary",
         "../../services/public-api/src/handler crosses the frontend boundary",

@@ -1,11 +1,13 @@
 # `@moya/backend-runtime`
 
-T05.0/T05.1 的 Node.js HTTP runtime。当前负责：
+T05 的 Node.js HTTP runtime。当前负责：
 
 - 验证 `HOST`、`PORT` 和 `NODE_ENV`；
 - 启动与关闭 HTTP listener；
 - 把请求路由到 handler，并通过统一 JSON responder 返回结果；
 - 实现 `GET /health`、`GET /v1/catalog` 和 `GET /v1/catalog/{catalogId}`。
+- 接受可选async readiness check，并提供可复用、幂等的process
+  lifecycle；shutdown先停止HTTP listener并等待在途请求，再清理注入的resource。
 
 Catalog handler 通过 `@moya/api` 已冻结的 parser、mapper 和
 `CatalogQueryPort`工作。development/test缺省使用三个条目的确定性内存fixture；它只用于HTTP
@@ -22,8 +24,13 @@ development 和 test 默认使用 `HOST=127.0.0.1`、`PORT=3001`；环境变量�
 `startServer` 接口使用 port 0 请求 OS 分配临时端口。
 
 显式注入的`catalogQueryPort`在所有环境中优先。未注入时只有development/test可使用fixture；production
-composition会在listener创建前失败。本阶段没有production Catalog
-adapter、数据库、对象存储、媒体、搜索、认证或Frontend集成。
+composition会在listener创建前失败。T05.2 production root显式注入PostgreSQL
+adapter和DB-aware readiness；runtime本身不依赖driver、migration或production
+composition。对象存储、媒体、搜索、认证或Frontend集成仍未实现。
+
+缺省development/test
+health不依赖外部资源。production注入的`/health`语义是readiness；DB不可用时返回既有`SERVICE_UNAVAILABLE`
+503。它不是process liveness probe。
 
 ## 启动
 

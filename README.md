@@ -2,8 +2,9 @@
 
 面向中国摩崖与石刻资料的移动优先数字档案。`integration/mvp`
 当前包含工程与治理基线、碑刻 MVP 优先的公开契约、Catalog 只读 HTTP
-boundary、正式设计系统、候选部署骨架和独立手机交互原型；旧数据方案已撤回并安全归档。正式业务页面和production
-Catalog persistence尚未开始。
+boundary、PostgreSQL Catalog persistence
+foundation、正式设计系统、候选部署骨架和独立手机交互原型；旧数据方案已撤回并安全归档。正式业务页面、正式数据导入和production
+deployment尚未开始。
 
 项目的唯一动态进度来源是 [当前项目状态](docs/project-status.md)。
 
@@ -16,6 +17,10 @@ Catalog persistence尚未开始。
 - `services/backend-runtime`：T05.0/T05.1 Node.js HTTP listener、router、JSON
   response、runtime config、graceful shutdown与Catalog list/detail
   handler；development/test使用小型确定性fixture。
+- `services/catalog-postgres`：T05.2 private PostgreSQL 18 read
+  adapter、显式migration runner与readiness validation；不拥有Public contract。
+- `services/backend-production`：只组合HTTP runtime与PostgreSQL
+  adapter的production entrypoint；启动时只读验证migration ledger，不自动迁移。
 - `services/api`：backend-only Catalog application boundary，包含 normalized
   query、read projections、`CatalogQueryPort`、transport parser 与 Public
   Contract mapper；当前没有 HTTP runtime 或数据库实现。
@@ -24,7 +29,8 @@ Catalog persistence尚未开始。
 - `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
 - `packages/data-access`：T04.2保留的空backend workspace；当前无port或实现。
 - `packages/search`、`packages/image`：后续任务的职责边界，目前尚未实现业务能力。
-- `database/migrations`：未来数据库迁移的唯一入口。
+- `database/migrations`：数据库迁移的唯一入口；当前包含无数据的Catalog read
+  model foundation。
 - `tests`：单元、集成、端到端测试和 fixture。
 - `docs`：架构、工作流、分支策略和模块所有权文档。
 - `infra`、`scripts`：未来基础设施与自动化脚本入口。
@@ -62,6 +68,7 @@ pnpm build
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:postgres
 pnpm format
 pnpm format:check
 ```
@@ -74,8 +81,8 @@ pnpm format:check
 cp .env.example .env.local
 ```
 
-当前基础任务的构建和测试不依赖数据库、对象存储、地图或其他外部服务。不得提交
-`.env`、真实密钥或生产凭据。
+普通`pnpm test`不依赖数据库；`pnpm test:postgres`需要已经显式迁移的PostgreSQL
+18.4 test instance。不得提交`.env`、真实密钥或生产凭据。
 
 ## 分支与并行开发
 
@@ -99,8 +106,12 @@ push。每个 Agent 必须遵守
   contract。
 - 通过 `@moya/backend-runtime` 启动真实HTTP listener，并请求`GET /health`、
   `GET /v1/catalog`与Catalog detail验证T04 contract的HTTP boundary。
+- 通过`@moya/catalog-postgres`把application-owned
+  `CatalogQueryPort`接到PostgreSQL read
+  model；通过独立migration命令应用schema，再由
+  `@moya/backend-production`只读验证连接、PostgreSQL major与required
+  ledger后启动listener。
 
 ## 当前未实现
 
-正式 Web/Admin 仍是骨架。production Catalog Query Port
-adapter、数据库Schema、1658条正式数据Importer、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。
+正式 Web/Admin 仍是骨架。1658条正式数据Importer与production数据、图片管线、正式首页、地区/分类浏览、搜索、档案详情、地图、登录、互动、上传、生产云资源和正式部署尚未实现。

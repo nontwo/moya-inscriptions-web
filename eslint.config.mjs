@@ -219,6 +219,8 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            "@moya/backend-production",
+            "@moya/catalog-postgres",
             "@moya/contracts/json-schema",
             "@moya/data-access",
             "hono",
@@ -261,7 +263,9 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            "@moya/backend-production",
             "@moya/backend-runtime",
+            "@moya/catalog-postgres",
             "@moya/data-access",
             "@moya/public-api",
             "hono",
@@ -354,6 +358,68 @@ export default tseslint.config(
               ],
               message:
                 "Application code cannot depend on runtime transport contracts, transport modules, data files, persistence, or infrastructure.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["services/catalog-postgres/src/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/backend-production",
+            "@moya/backend-runtime",
+            "@moya/data-access",
+            "@moya/public-api",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/backend-production/*",
+                "@moya/backend-runtime/*",
+                "@moya/data-access/*",
+                "@moya/public-api/*",
+                "**/apps/**",
+                "**/data/**",
+              ],
+              message:
+                "The PostgreSQL adapter cannot depend on transport, frontend, retained data-access, Public API composition, or data files.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["services/backend-production/src/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/api",
+            "@moya/contracts",
+            "@moya/data-access",
+            "@moya/public-api",
+            "pg",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/api/*",
+                "@moya/contracts/*",
+                "@moya/data-access/*",
+                "@moya/public-api/*",
+                "**/apps/**",
+                "**/data/**",
+                "**/database/**",
+              ],
+              message:
+                "The production composition root may depend only on the HTTP runtime and PostgreSQL adapter package roots.",
             },
           ],
         },
