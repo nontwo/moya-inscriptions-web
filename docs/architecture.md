@@ -11,10 +11,15 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
 - `apps/admin` 提供管理端界面边界，当前仍不含任何管理业务。
 - `services/public-api` 拥有公开 OpenAPI contract 与无副作用的 health contract
   helper，不启动 listener。
-- `services/backend-runtime` 是T05.0/T05.1 HTTP transport/runtime
+- `services/backend-runtime` 是T05 HTTP transport/runtime
   boundary，负责启动Node.js listener、runtime config、router、handler、JSON
   response与graceful shutdown；当前实现health与Catalog list/detail HTTP
   boundary。
+- `services/catalog-postgres` 是private PostgreSQL infrastructure
+  adapter，依赖application-owned port、internal projections、contracts与`pg`
+  driver，不定义HTTP或Public contract。
+- `services/backend-production` 是production composition
+  root，只组合runtime与PostgreSQL adapter，并管理pool lifecycle。
 - `services/api` 是backend-only Modular Monolith application
   boundary，当前拥有Catalog normalized query、internal read projections、
   `CatalogQueryPort`、transport parser和Public Contract
@@ -55,8 +60,9 @@ Public transport input
 ```
 
 T05.1以小型deterministic development/test adapter实现现有Query
-Port；它不是production persistence或正式数据集。当前没有production
-adapter或PostgreSQL。`CatalogListTransportQuery`属于Public Contract；normalized
+Port；它不是production persistence或正式数据集。T05.2的private PostgreSQL
+adapter实现同一port，并由独立production root显式注入，不修改T04
+contract。`CatalogListTransportQuery`属于Public Contract；normalized
 `CatalogListQuery`只属于application layer。Transport parser位于独立backend
 transport boundary，application不得反向依赖transport。
 
@@ -85,7 +91,30 @@ Component 只能 type-import 公开 DTO/API 类型。
 
 T05.1 runtime已把三条冻结route接入Router。未知路径返回JSON
 404；已知路径的不允许方法返回JSON 405与`Allow: GET`。Catalog Public
-response必须经过application mapper；fixture private metadata不得进入HTTP。
+response必须经过application mapper；fixture private
+metadata不得进入HTTP。PostgreSQL row同样先由adapter-private
+mapper投影为既有internal read projection，再经过application Public mapper；SQL
+row、citation evidence、driver error和连接信息不得越过HTTP privacy boundary。
+
+Production migration与startup是两个独立阶段：
+
+```text
+explicit migration command
+→ verify success
+→ production startup read-only ledger validation
+→ HTTP listener
+```
+
+普通backend startup绝不执行DDL或创建migration
+ledger。当前兼容与测试基线固定为PostgreSQL 18.4；minor
+upgrade必须以显式infrastructure maintenance
+change同步更新Compose、CI和兼容文档。未知的更新ledger
+row可以存在，但不证明旧binary可安全rollback；未来变更必须遵循经审核的backward-compatible
+expand/contract策略。
+
+Production中的`GET /health`是DB-aware readiness：数据库不可用返回既有
+`SERVICE_UNAVAILABLE` 503。它未经新的deployment decision不得同时用作process
+liveness probe。
 
 地区规范化、行政区证据和审核流程不属于 T01/T04.0-R。未来如需这些能力，必须以新的独立任务建立 internal
 contract、数据源和审核流程；不得恢复旧 D01 pilot。
@@ -118,7 +147,9 @@ workspace 永久不得授权。T04.0-R 当前 allowlist 为空。
   list/detail组成；T05.1已接通真实Router、handler、application
   boundary与确定性fixture adapter。
 - T05.1 fixture不是production
-  persistence或1658条正式数据导入；数据库、图片管线以及T05.2/T06–T09能力尚未实现。
+  persistence或1658条正式数据导入；T05.2只建立空PostgreSQL read
+  schema、adapter、migration/readiness lifecycle与production
+  composition。正式数据导入、图片管线以及T06–T09能力尚未实现。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service
 implementation、数据文件或 PostgreSQL。Frontend 可以 type-import

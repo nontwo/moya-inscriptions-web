@@ -4,6 +4,7 @@ import {
   createBackendApplication,
   createBackendServer,
   parseRuntimeConfig,
+  startBackendProcess,
   startServer,
   stopServer,
 } from "@moya/backend-runtime";
@@ -105,6 +106,25 @@ describe("HTTP runtime", () => {
     });
   });
 
+  it("returns the frozen SERVICE_UNAVAILABLE envelope when readiness fails", async () => {
+    const { baseUrl } = await startTestServer(
+      createBackendApplication({
+        nodeEnv: "test",
+        healthReadinessCheck: async () => {
+          throw new Error("postgresql://secret@private-host/catalog");
+        },
+      }),
+    );
+    const response = await fetch(`${baseUrl}/health`);
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({
+      error: { code: "SERVICE_UNAVAILABLE" },
+    });
+    expect(JSON.stringify(body)).not.toContain("private-host");
+  });
+
   it.each(["/missing", "/health/"])(
     "returns a JSON 404 for unknown route %s",
     async (path) => {
@@ -169,5 +189,43 @@ describe("HTTP runtime", () => {
 
     expect(shutdownFinished).toBe(true);
     expect(server.listening).toBe(false);
+  });
+
+  it("closes resources once after HTTP shutdown", async () => {
+    let closeCount = 0;
+    let listeningDuringCleanup: boolean | undefined;
+    const serverDuringCleanup: { current?: Server } = {};
+    const processHandle = await startBackendProcess({
+      closeResources: async () => {
+        closeCount += 1;
+        listeningDuringCleanup = serverDuringCleanup.current?.listening;
+      },
+      listen: { host: "127.0.0.1", port: 0 },
+      requestListener: (_request, response) => {
+        response.end("ok");
+      },
+    });
+    serverDuringCleanup.current = processHandle.server;
+    servers.add(processHandle.server);
+
+    await Promise.all([processHandle.shutdown(), processHandle.shutdown()]);
+
+    expect(processHandle.server.listening).toBe(false);
+    expect(listeningDuringCleanup).toBe(false);
+    expect(closeCount).toBe(1);
+  });
+
+  it("closes resources when listener startup validation fails", async () => {
+    let closeCount = 0;
+    await expect(
+      startBackendProcess({
+        closeResources: async () => {
+          closeCount += 1;
+        },
+        listen: { host: "", port: 0 },
+        requestListener: (_request, response) => response.end(),
+      }),
+    ).rejects.toThrow("Listen host");
+    expect(closeCount).toBe(1);
   });
 });

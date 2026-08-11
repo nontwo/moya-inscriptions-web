@@ -3,11 +3,13 @@ import { createRouter } from "./http/router.js";
 
 import type { CatalogQueryPort } from "@moya/api";
 import type { NodeEnvironment } from "./config.js";
+import type { HealthReadinessCheck } from "./health/health-handler.js";
 import type { RequestListener } from "node:http";
 
 export interface BackendApplicationOptions {
   readonly nodeEnv: NodeEnvironment;
   readonly catalogQueryPort?: CatalogQueryPort;
+  readonly healthReadinessCheck?: HealthReadinessCheck;
 }
 
 const resolveCatalogQueryPort = ({
@@ -28,4 +30,8 @@ const resolveCatalogQueryPort = ({
 export const createBackendApplication = (
   options: BackendApplicationOptions,
 ): RequestListener =>
-  createRouter({ catalogQueryPort: resolveCatalogQueryPort(options) });
+  createRouter({
+    catalogQueryPort: resolveCatalogQueryPort(options),
+    healthReadinessCheck:
+      options.healthReadinessCheck ?? (async (): Promise<void> => undefined),
+  });
