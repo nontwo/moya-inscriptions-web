@@ -11,9 +11,11 @@
   "scripts": {
     "dev": "turbo run dev --filter=web --filter=admin",
     "build": "turbo run build",
+    "db:migrate": "pnpm --filter @moya/catalog-postgres migrate",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:postgres": "pnpm --filter @moya/tests test:postgres",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

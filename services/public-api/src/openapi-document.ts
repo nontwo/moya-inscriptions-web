@@ -1,15 +1,14 @@
 import type { ApiErrorCode } from "@moya/contracts";
 import {
   apiErrorJsonSchema,
-  archiveItemDetailJsonSchema,
-  archiveItemIdJsonSchema,
-  archiveItemListQueryJsonSchema,
-  archiveItemPageJsonSchema,
-  archiveItemSearchQueryJsonSchema,
-  archiveItemSummaryJsonSchema,
-  categoryFacetListJsonSchema,
-  categoryFacetJsonSchema,
+  catalogDetailJsonSchema,
+  catalogIdJsonSchema,
+  catalogKindJsonSchema,
+  catalogListTransportQueryJsonSchema,
+  catalogPageJsonSchema,
+  catalogSummaryJsonSchema,
   healthResponseJsonSchema,
+  publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
 
 type JsonObject = Record<string, unknown>;
@@ -26,14 +25,10 @@ const schemaProperty = (schema: unknown, propertyName: string): JsonObject => {
   return asJsonObject(property);
 };
 
-const queryParameter = (
-  name: string,
-  schema: JsonObject,
-  required = false,
-) => ({
+const queryParameter = (name: string, schema: JsonObject) => ({
   name,
   in: "query",
-  required,
+  required: false,
   schema,
 });
 
@@ -49,31 +44,12 @@ const jsonResponse = (description: string, schemaName: string) => ({
 const apiErrorResponse = (description: string, code: ApiErrorCode) =>
   jsonResponse(`${description}; error code ${code}.`, "ApiError");
 
-const listQueryParameters = [
-  "categoryId",
-  "period",
-  "page",
-  "pageSize",
-  "sortBy",
-  "sortOrder",
-].map((name) =>
-  queryParameter(name, schemaProperty(archiveItemListQueryJsonSchema, name)),
-);
-
-const searchQueryParameters = [
+const listQueryParameters = ["page", "pageSize"].map((name) =>
   queryParameter(
-    "keyword",
-    schemaProperty(archiveItemSearchQueryJsonSchema, "keyword"),
-    true,
+    name,
+    schemaProperty(catalogListTransportQueryJsonSchema, name),
   ),
-  ...["categoryId", "period", "page", "pageSize", "sortBy", "sortOrder"].map(
-    (name) =>
-      queryParameter(
-        name,
-        schemaProperty(archiveItemSearchQueryJsonSchema, name),
-      ),
-  ),
-];
+);
 
 export const openApiDocument: JsonObject = {
   openapi: "3.1.1",
@@ -82,15 +58,15 @@ export const openApiDocument: JsonObject = {
     title: "摩崖碑刻数字平台 Public API",
     version: "1.0.0",
     description:
-      "Source-independent, read-only access to publicly visible archive items. Operational health is unversioned; public archive contracts use /v1.",
+      "Inscription-first, read-only access to the public Catalog. Operational health is unversioned; public Catalog contracts use /v1.",
   },
   paths: {
     "/health": {
       get: {
         operationId: "getHealth",
-        summary: "Operational health",
+        summary: "Operational readiness",
         responses: {
-          "200": jsonResponse("Service is operational.", "HealthResponse"),
+          "200": jsonResponse("Service is ready.", "HealthResponse"),
           "503": apiErrorResponse(
             "Service is temporarily unavailable",
             "SERVICE_UNAVAILABLE",
@@ -98,15 +74,15 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
-    "/v1/items": {
+    "/v1/catalog": {
       get: {
-        operationId: "listItems",
-        summary: "List public archive items",
+        operationId: "listCatalog",
+        summary: "List public Catalog entries",
         parameters: listQueryParameters,
         responses: {
           "200": jsonResponse(
-            "A page of public archive items.",
-            "ArchiveItemPage",
+            "A page of public Catalog entries.",
+            "CatalogPage",
           ),
           "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
           "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
@@ -117,58 +93,25 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
-    "/v1/items/{id}": {
+    "/v1/catalog/{catalogId}": {
       get: {
-        operationId: "getItemById",
-        summary: "Get one public archive item",
+        operationId: "getCatalogById",
+        summary: "Get one public Catalog entry",
         parameters: [
           {
-            name: "id",
+            name: "catalogId",
             in: "path",
             required: true,
-            description: "Opaque platform ArchiveItemId.",
-            schema: { $ref: "#/components/schemas/ArchiveItemId" },
+            description: "Opaque platform CatalogId.",
+            schema: { $ref: "#/components/schemas/CatalogId" },
           },
         ],
         responses: {
           "200": jsonResponse(
-            "The requested public item.",
-            "ArchiveItemDetail",
+            "The requested public Catalog entry.",
+            "CatalogDetail",
           ),
-          "404": apiErrorResponse("Archive item not found", "ITEM_NOT_FOUND"),
-          "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
-          "503": apiErrorResponse(
-            "Service is temporarily unavailable",
-            "SERVICE_UNAVAILABLE",
-          ),
-        },
-      },
-    },
-    "/v1/search": {
-      get: {
-        operationId: "searchItems",
-        summary: "Search public archive items",
-        parameters: searchQueryParameters,
-        responses: {
-          "200": jsonResponse(
-            "A page of matching public items.",
-            "ArchiveItemPage",
-          ),
-          "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
-          "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
-          "503": apiErrorResponse(
-            "Service is temporarily unavailable",
-            "SERVICE_UNAVAILABLE",
-          ),
-        },
-      },
-    },
-    "/v1/categories": {
-      get: {
-        operationId: "listCategoryFacets",
-        summary: "List public category facets",
-        responses: {
-          "200": jsonResponse("Public category facets.", "CategoryFacetList"),
+          "404": apiErrorResponse("Catalog entry not found", "ITEM_NOT_FOUND"),
           "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
           "503": apiErrorResponse(
             "Service is temporarily unavailable",
@@ -180,12 +123,12 @@ export const openApiDocument: JsonObject = {
   },
   components: {
     schemas: {
-      ArchiveItemId: archiveItemIdJsonSchema,
-      ArchiveItemSummary: archiveItemSummaryJsonSchema,
-      ArchiveItemDetail: archiveItemDetailJsonSchema,
-      ArchiveItemPage: archiveItemPageJsonSchema,
-      CategoryFacet: categoryFacetJsonSchema,
-      CategoryFacetList: categoryFacetListJsonSchema,
+      CatalogId: catalogIdJsonSchema,
+      CatalogKind: catalogKindJsonSchema,
+      PublicSourceCitation: publicSourceCitationJsonSchema,
+      CatalogSummary: catalogSummaryJsonSchema,
+      CatalogDetail: catalogDetailJsonSchema,
+      CatalogPage: catalogPageJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     },

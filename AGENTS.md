@@ -20,8 +20,13 @@ inscriptions.
 2. Shared data types may only be defined in packages/contracts.
 3. Shared colors, spacing and typography may only be defined in
    packages/design-tokens.
-4. Public pages must use the repository abstraction in packages/data-access.
-5. Images must be represented by object keys and derived URLs.
+4. Public Web, Admin, SSR and Server Components must obtain business data
+   through the HTTP API. They may type-import Public DTOs from
+   packages/contracts, but must not import query ports, API/service runtime
+   implementations or backend application modules directly.
+5. Object keys and storage details are backend-only. Frontend code receives
+   resolved public or signed runtime URLs through future Public Media DTOs and
+   must not compose CDN URLs from object keys.
 6. Do not hard-code production domains, API keys or CDN addresses.
 7. All public interfaces must be mobile-first.
 8. Do not modify files outside the paths assigned in the task prompt.
@@ -29,6 +34,10 @@ inscriptions.
 10. Database changes must use migrations.
 11. Never commit secrets, tokens or real environment credentials.
 12. Do not redefine contracts locally inside feature modules.
+13. Runtime workspaces must not read raw source datasets unless a backend
+    importer has both explicit architecture allowlist approval and the
+    controlled-importer manifest capability. Frontend workspaces can never be
+    granted this capability.
 
 ## Completion requirements
 

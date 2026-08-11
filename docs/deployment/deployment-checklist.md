@@ -23,7 +23,8 @@
       `pnpm test`、`pnpm build` 和 `git diff --check`。
 - [ ] 使用测试环境验证与生产完全相同的 Web 产物和 API 镜像 digest。
 - [ ] 核对环境 ID、地域、域名、路由和存储桶，确认没有跨环境引用。
-- [ ] 核对 `PUBLIC_CDN_BASE_URL` 使用 HTTPS，且 object key 派生结果正确。
+- [ ] 核对图片 URL 由 backend resolver 生成，Frontend 产物不读取 legacy
+      `PUBLIC_CDN_BASE_URL`，也不包含 object key/bucket/provider internals。
 - [ ] 通过密钥管理/运行时注入核对敏感配置；发布包、镜像和日志不含明文密钥。
 - [ ] 数据库迁移（如有）已评审为向前/向后兼容，并有独立备份与恢复步骤。
 - [ ] 记录当前已知良好版本、配置修订、路由和流量比例作为回滚目标。
@@ -45,7 +46,8 @@
 - [ ] Web 首页、核心公开页面和移动窄屏入口返回预期状态码，无混合内容。
 - [ ] API 健康检查、只读接口、鉴权失败和限频行为符合预期。
 - [ ] Web 不直接访问数据库；浏览器产物不包含 `DATABASE_URL` 或云 API 密钥。
-- [ ] 图片 URL 由 `PUBLIC_CDN_BASE_URL` 与 object key 派生，CDN 命中和回源正常。
+- [ ] Public Media 响应只包含 backend resolver 生成的 public/signed runtime
+      URL；Frontend 未自行拼接 object key，CDN 命中和回源正常。
 - [ ] HTTPS 证书链、SNI、重定向、DNS/CNAME 和各域名安全头符合评审结果。
 - [ ] 日志中可关联发布版本且没有凭据、连接串或个人敏感信息泄漏。
 - [ ] 错误率、P95/P99 延迟、5xx、实例重启、数据库连接和 CDN 回源无异常。
