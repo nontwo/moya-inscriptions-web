@@ -11,9 +11,10 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
 - `apps/admin` 提供管理端界面边界，当前仍不含任何管理业务。
 - `services/public-api` 拥有公开 OpenAPI contract 与无副作用的 health contract
   helper，不启动 listener。
-- `services/backend-runtime` 是T05.0 HTTP transport/runtime
+- `services/backend-runtime` 是T05.0/T05.1 HTTP transport/runtime
   boundary，负责启动Node.js listener、runtime config、router、handler、JSON
-  response与graceful shutdown；当前只实现`GET /health`。
+  response与graceful shutdown；当前实现health与Catalog list/detail HTTP
+  boundary。
 - `services/api` 是backend-only Modular Monolith application
   boundary，当前拥有Catalog normalized query、internal read projections、
   `CatalogQueryPort`、transport parser和Public Contract
@@ -53,7 +54,8 @@ Public transport input
 → explicit Public Contract mapper
 ```
 
-当前没有Catalog HTTP handler、Query Port implementation、infrastructure
+T05.1以小型deterministic development/test adapter实现现有Query
+Port；它不是production persistence或正式数据集。当前没有production
 adapter或PostgreSQL。`CatalogListTransportQuery`属于Public Contract；normalized
 `CatalogListQuery`只属于application layer。Transport parser位于独立backend
 transport boundary，application不得反向依赖transport。
@@ -81,9 +83,9 @@ Component 只能 type-import 公开 DTO/API 类型。
 `GET /v1/catalog/{catalogId}`。公共响应使用`CatalogSummary`、`CatalogDetail`
 和`CatalogPage`，不包含内部生命周期、审核、删除、图片、关系或下级地区状态。搜索、分类和图片由T08、T07和T05分别引入。
 
-T05.0
-runtime只实现其中的`GET /health`。Catalog路径仍是冻结的contract，尚未接入Router；未知路径返回JSON
-404，`/health`的不允许方法返回JSON 405。
+T05.1 runtime已把三条冻结route接入Router。未知路径返回JSON
+404；已知路径的不允许方法返回JSON 405与`Allow: GET`。Catalog Public
+response必须经过application mapper；fixture private metadata不得进入HTTP。
 
 地区规范化、行政区证据和审核流程不属于 T01/T04.0-R。未来如需这些能力，必须以新的独立任务建立 internal
 contract、数据源和审核流程；不得恢复旧 D01 pilot。
@@ -113,10 +115,10 @@ workspace 永久不得授权。T04.0-R 当前 allowlist 为空。
 - T02 已建立设计 token、通用 UI、正式视觉资产和组件目录；手机交互探索被隔离为非生产原型。
 - T03 只提供 CloudBase 候选架构、示例变量和人工检查表，不创建云资源。
 - 三路由只读OpenAPI当前由`/health`与Catalog
-  list/detail组成；T05.0已为`/health`建立真实Router、handler与listener，Catalog
-  handler、adapter、数据库和真实数据仍未实现。
-- T05.0 已建立最小Backend HTTP
-  Runtime；T05.1及T06–T09的图片管线、正式页面、浏览、搜索和详情尚未实现。
+  list/detail组成；T05.1已接通真实Router、handler、application
+  boundary与确定性fixture adapter。
+- T05.1 fixture不是production
+  persistence或1658条正式数据导入；数据库、图片管线以及T05.2/T06–T09能力尚未实现。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service
 implementation、数据文件或 PostgreSQL。Frontend 可以 type-import
