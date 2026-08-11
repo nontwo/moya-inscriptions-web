@@ -24,6 +24,10 @@ const previewRoot = new URL(
 );
 const html = await readFile(new URL("index.html", previewRoot), "utf8");
 const script = await readFile(new URL("preview.js", previewRoot), "utf8");
+const topicsFixture = await readFile(
+  new URL("fixtures/topics.placeholder.js", previewRoot),
+  "utf8",
+);
 const previewCss = await readFile(new URL("preview.css", previewRoot), "utf8");
 
 const openWindows: Window[] = [];
@@ -34,7 +38,8 @@ const installMatchMedia = (
 ) => {
   window.matchMedia = ((query: string) => {
     const media = String(query);
-    const matches = desktopSplit && media.includes("56rem");
+    const matches =
+      desktopSplit && (media.includes("56rem") || media.includes("48rem"));
     return {
       matches,
       media,
@@ -69,10 +74,12 @@ const renderPreview = (
   preferences: Record<string, string> = {},
   { desktopSplit = false }: { desktopSplit?: boolean } = {},
 ) => {
-  const withoutExternalScript = html.replace(
-    /<script type="module" src="\.\/preview\.js"><\/script>/,
-    "",
-  );
+  const withoutExternalScript = html
+    .replace(
+      /<script src="\.\/fixtures\/topics\.placeholder\.js"><\/script>/,
+      "",
+    )
+    .replace(/<script(?: type="module")? src="\.\/preview\.js"><\/script>/, "");
   const dom = new JSDOM(withoutExternalScript, {
     pretendToBeVisual: true,
     runScripts: "outside-only",
@@ -83,6 +90,7 @@ const renderPreview = (
   for (const [key, value] of Object.entries(preferences)) {
     dom.window.localStorage.setItem(key, value);
   }
+  dom.window.eval(topicsFixture);
   dom.window.eval(script);
   return dom;
 };
@@ -134,9 +142,18 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.textContent,
     ).toContain("附近");
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="topics"]')
+        ?.textContent,
+    ).toContain("专题");
+    expect(document.querySelector(".app-home-motto")?.textContent).toContain(
+      "志于道，据于德，依于仁，游于艺",
+    );
+    expect(document.querySelectorAll("[data-open-topic]")).toHaveLength(3);
     expect(document.querySelector('[data-label="tab-discover"]')).toBeNull();
     expect(document.querySelector('[data-label="tab-nearby"]')).toBeNull();
     expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(3);
+    expect(document.querySelector("[data-calligraphy-filter]")).toBeTruthy();
     expect(document.querySelector("[data-theme-cycle]")).toBeNull();
     expect(
       document.querySelector<HTMLElement>('[data-view="settings"]')?.hidden,
@@ -190,6 +207,44 @@ describe("mobile application preview", () => {
     ];
     expect(inkCards.every((card) => card.hidden)).toBe(true);
     expect(rubbingCards.every((card) => !card.hidden)).toBe(true);
+
+    const calligraphyFilter = document.querySelector<HTMLInputElement>(
+      "[data-calligraphy-filter]",
+    );
+    if (!calligraphyFilter) throw new Error("calligraphy filter not found");
+    calligraphyFilter.value = "不存在的书帖";
+    calligraphyFilter.dispatchEvent(
+      new dom.window.Event("input", { bubbles: true }),
+    );
+    expect(
+      document.querySelector<HTMLElement>("[data-calligraphy-filter-empty]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          "[data-view='calligraphy'] [data-category]",
+        ),
+      ].every((card) => card.hidden),
+    ).toBe(true);
+
+    document
+      .querySelector<HTMLElement>('[data-calligraphy-category="all"]')
+      ?.click();
+    calligraphyFilter.value = "兰亭";
+    calligraphyFilter.dispatchEvent(
+      new dom.window.Event("input", { bubbles: true }),
+    );
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-content-id="calligraphy-lanting"]',
+      )?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-content-id="calligraphy-yanqinli"]',
+      )?.hidden,
+    ).toBe(true);
   });
 
   it("opens settings from every primary view and returns to its source", async () => {
@@ -325,29 +380,27 @@ describe("mobile application preview", () => {
   it("declares tablet and desktop responsive layout rules without new features", () => {
     expect(previewCss).toContain("@media (min-width: 48rem)");
     expect(previewCss).toContain("@media (min-width: 56rem)");
-    expect(previewCss).toContain("@media (min-width: 64rem)");
-    expect(previewCss).toContain("@media (min-width: 90rem)");
+    expect(previewCss).not.toContain("@media (min-width: 64rem)");
+    expect(previewCss).not.toContain("@media (min-width: 90rem)");
+    expect(previewCss).toContain(
+      "/* PC (>=56rem): copy tablet-landscape rail only",
+    );
     expect(previewCss).toContain("orientation: landscape");
-    expect(previewCss).toContain("var(--yoyi-container-content)");
     expect(previewCss).toContain("var(--yoyi-container-reading)");
     expect(previewCss).toContain(".app-nav-brand");
     expect(previewCss).toContain("column-width:");
     expect(previewCss).toContain("auto-fit");
-    expect(previewCss).toContain('[data-view="inscriptions"] .app-list');
     expect(previewCss).toContain(".app-inscriptions-layout");
     expect(previewCss).toContain(".app-inscriptions-preview");
     expect(previewCss).toContain(".app-shell-only");
     expect(previewCss).toContain('[data-view="home"] .app-masonry');
-    expect(previewCss).toContain("minmax(clamp(9rem, 11vw, 12.5rem), 1fr)");
-    expect(previewCss).toContain("auto-fill");
-    expect(previewCss).toContain("calc(164px + env(safe-area-inset-left))");
-    expect(previewCss).toContain("min-height: 58px");
-    expect(previewCss).toContain("border-width: 9px 0 9px 10px");
+    expect(previewCss).toContain("--app-calligraphy-scale");
+    expect(previewCss).toContain("--app-feed-col-min");
+    expect(previewCss).toContain("--app-feed-gap");
+    expect(previewCss).toContain("--app-motto-font");
+    expect(previewCss).toContain("position: fixed");
+    expect(previewCss).toContain("calc(88px + env(safe-area-inset-left))");
     expect(previewCss).toContain(".app-primary-tabs");
-    expect(previewCss).toContain("min-width: 280px");
-    expect(previewCss).toContain(
-      ".app-bottom-navigation .yoyi-navigation-entry.is-active",
-    );
     expect(previewCss).toContain("var(--yoyi-color-seal-red)");
     expect(html).toContain("app-inscriptions-layout");
     expect(html).toContain("data-inscription-preview");
@@ -360,13 +413,49 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
+    expect(html).toContain('data-home-feed="topics"');
+    expect(html).toContain("app-home-motto");
+    expect(html).toContain('data-placeholder="topics-v1"');
+    expect(html).toContain('data-view="topic-column"');
+    expect(html).toContain('data-setting-group="home-layout"');
+    expect(previewCss).toContain(".app-home-motto");
+    expect(previewCss).toContain(".app-topics__grid");
     expect(html).toContain("收藏");
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
   });
 
-  it("keeps inscriptions list visible beside preview on desktop split", () => {
+  it("opens an editorial topic column from the topics feed", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+
+    document.querySelector<HTMLElement>('[data-home-feed="topics"]')?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="topics"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-open-topic]")?.getAttribute("data-kind"),
+    ).toBe("editorialTopic");
+
+    document.querySelector<HTMLElement>("[data-open-topic]")?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="topic-column"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector("[data-topic-column-body]")?.textContent,
+    ).toContain("专题/策展");
+    expect(document.querySelector(".app-topic-video")).toBeTruthy();
+
+    document.querySelector<HTMLElement>("[data-topic-back]")?.click();
+  });
+
+  it("marks pc platform and opens inscriptions detail without split", () => {
     const dom = renderPreview({}, { desktopSplit: true });
     const document = dom.window.document;
+
+    expect(document.documentElement.dataset.platform).toBe("pc");
 
     document
       .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
@@ -374,11 +463,7 @@ describe("mobile application preview", () => {
 
     expect(
       document.querySelector<HTMLElement>("[data-inscription-preview]")?.hidden,
-    ).toBe(false);
-    expect(
-      document.querySelector<HTMLElement>("[data-inscription-preview-empty]")
-        ?.hidden,
-    ).toBe(false);
+    ).toBe(true);
 
     document
       .querySelector<HTMLElement>(
@@ -387,47 +472,13 @@ describe("mobile application preview", () => {
       ?.click();
 
     expect(
-      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
-    ).toBe(false);
-    expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
-    ).toBe(true);
-    expect(
-      document.querySelector<HTMLElement>("[data-inscription-preview-content]")
-        ?.hidden,
     ).toBe(false);
     expect(
-      document.querySelector("[data-inscription-preview-title]")?.textContent,
-    ).toBe("云峰山题名");
-    expect(
-      document.querySelector("[data-inscription-preview-meta]")?.textContent,
-    ).toContain("北魏");
-    expect(
-      document.querySelector<HTMLElement>("[data-inscription-preview-featured]")
-        ?.hidden,
-    ).toBe(false);
-    expect(
-      document
-        .querySelector(
-          '[data-view="inscriptions"] [data-content-id="inscription-yunfeng"]',
-        )
-        ?.classList.contains("is-selected"),
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
     ).toBe(true);
-
-    document
-      .querySelector<HTMLElement>('[data-preview-tab="catalog"]')
-      ?.click();
-    expect(
-      document.querySelector<HTMLElement>('[data-preview-panel="catalog"]')
-        ?.hidden,
-    ).toBe(false);
-    expect(
-      document.querySelector<HTMLElement>('[data-preview-panel="intro"]')
-        ?.hidden,
-    ).toBe(true);
-
-    document
-      .querySelector<HTMLElement>("[data-inscription-preview-back]")
-      ?.click();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "云峰山题名",
+    );
   });
 });
