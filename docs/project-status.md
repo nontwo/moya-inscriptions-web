@@ -1,23 +1,32 @@
 # 当前项目状态
 
-> 最后更新：2026-08-08（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
+> 最后更新：2026-08-11（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
 
 ## 阶段结论
 
 工程、设计与部署方案基线已经建立，业务开发尚未开始。旧 T01 把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
 
-`integration/mvp` 当前集成 T00、重建后的 T01、T02、T03、T04
-v2 后端边界和独立手机交互原型；`main` 继续保留稳定的 T00/治理基线。
+`integration/mvp`
+当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立手机交互原型之上完成T04.1
+Catalog Contract Phase 1及T04.2 canonical
+migration；`main`继续保留稳定的T00/治理基线。
 
-| 任务     | 状态       | 当前成果                                                  |
-| -------- | ---------- | --------------------------------------------------------- |
-| T00      | 已完成     | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理 |
-| T01      | 已重建     | 来源无关的档案领域类型、Public DTO 与生命周期契约         |
-| T02      | 已完成     | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试  |
-| T03      | 已完成     | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档 |
-| T04 v2   | 边界已建立 | ArchiveItem Repository port、只读 OpenAPI、架构守卫       |
-| 手机原型 | 已隔离保存 | 非生产交互参考；不连接 Repository、数据库、搜索或生产图片 |
-| T05–T09  | 未开始     | 图片管线、正式 Web 浏览/搜索/详情                         |
+| 任务     | 状态           | 当前成果                                                          |
+| -------- | -------------- | ----------------------------------------------------------------- |
+| T00      | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理         |
+| T01      | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                          |
+| T02      | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试          |
+| T03      | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档         |
+| T04.0-R  | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫               |
+| T04.1-D  | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards   |
+| T04.2    | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes      |
+| T04.3    | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration    |
+| T05.0    | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown      |
+| T05.1    | 已实现         | Catalog list/detail HTTP boundary与development/test fixture       |
+| T05.2    | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition |
+| T05.3    | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService       |
+| 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片             |
+| T06–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                 |
 
 ## 当前能做什么
 
@@ -25,11 +34,21 @@ v2 后端边界和独立手机交互原型；`main` 继续保留稳定的 T00/�
 - 使用 `@moya/design-tokens` 与 `@moya/ui` 开发后续正式界面。
 - 在本地静态服务器查看组件目录和手机交互原型。
 - 依据 T03 文档评估 CloudBase 方案，但不能据此直接创建或发布生产资源。
-- 使用来源无关的 `ArchiveItemRepository` port，并确定性生成/验证只读 OpenAPI
-  3.1.1 artifact。
+- 使用canonical `CatalogId`、两值 `CatalogKind`和suffix-free Catalog Public
+  Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
+  parser、`CatalogReadService`与显式mapper。
+- 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
+  artifact；全部route拒绝未声明、重复或非法query。
+- 启动`@moya/backend-runtime`的真实Node.js listener，并通过health与Catalog
+  list/detail验证Server、Router、Handler、CatalogReadService、Query Port和JSON
+  response链路；list支持optional `kind=inscription|calligraphy`。
+- 显式执行Catalog read model
+  migration，并通过`@moya/catalog-postgres`查询空库或后续受控写入的数据；production
+  composition在listener前只读验证PostgreSQL 18 major与required migration
+  ledger。
 
-当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Public API 仍没有 HTTP
-server/handler；Repository 只有 port 而没有实现。数据库 Schema、真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
+当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
+HTTP在development/test缺省使用三个条目的fixture；production已有空数据库foundation与adapter，但真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
 
 ## 数据状态
 
@@ -37,8 +56,10 @@ server/handler；Repository 只有 port 而没有实现。数据库 Schema、真
 
 ## 测试与可运行入口
 
-当前测试覆盖工程 fixture、来源无关 T01/T04 契约、Repository
-port、OpenAPI、架构边界、T02 token/资产/组件和手机原型交互。
+当前测试覆盖工程fixture、Backend HTTP runtime、Catalog contracts/application
+service、Query Port、strict query、Kind filtering、OpenAPI、架构边界、T02
+token/资产/组件和手机原型交互。真实PostgreSQL HTTP integration以CI中的PostgreSQL
+18.4 clean service为权威验证环境；本机不要求安装PostgreSQL或Docker。
 
 标准命令：
 
@@ -48,6 +69,7 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:postgres
 pnpm build
 ```
 
@@ -56,6 +78,36 @@ pnpm build
 ```sh
 pnpm dev
 ```
+
+启动最小Backend HTTP runtime：
+
+```sh
+pnpm --filter @moya/backend-runtime build
+HOST=127.0.0.1 PORT=3001 NODE_ENV=development pnpm --filter @moya/backend-runtime start
+curl -i http://127.0.0.1:3001/health
+curl -i 'http://127.0.0.1:3001/v1/catalog?page=1&pageSize=2'
+curl -i 'http://127.0.0.1:3001/v1/catalog?kind=inscription'
+curl -i 'http://127.0.0.1:3001/v1/catalog?kind=calligraphy'
+curl -i http://127.0.0.1:3001/v1/catalog/fixture-catalog-001
+```
+
+PostgreSQL foundation的migration与production startup必须分步执行：
+
+```sh
+docker compose -f compose.postgres.yml up -d
+pnpm --filter @moya/catalog-postgres build
+DATABASE_URL='postgresql://moya_test:moya_test@127.0.0.1:54329/moya_test' \
+  pnpm --filter @moya/catalog-postgres migrate
+DATABASE_URL='postgresql://moya_test:moya_test@127.0.0.1:54329/moya_test' \
+  pnpm test:postgres
+pnpm --filter @moya/backend-production build
+NODE_ENV=production HOST=127.0.0.1 PORT=3001 \
+  DATABASE_URL='postgresql://moya_test:moya_test@127.0.0.1:54329/moya_test' \
+  pnpm --filter @moya/backend-production start
+```
+
+Compose与CI均固定测试官方`postgres:18.4-alpine`。`/health`在production代表DB-aware
+readiness，不是未经决策即可复用的process liveness probe。
 
 启动静态预览：
 
@@ -83,9 +135,8 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. T04 后续阶段：建立 application handler、Repository
-   adapter、数据库迁移和正式 HTTP server；真实数据导入必须另立任务。
-2. T05：建立 object key 驱动的图片适配与处理管线，以及经批准的自动化脚本。
+1. Owner审核T05.3 HTTP Runtime与长期数据治理冻结。
+2. 经独立checkpoint批准后再开始1658条正式数据的controlled import。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。

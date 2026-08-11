@@ -1,13 +1,12 @@
 # `@moya/data-access`
 
-公开页面的数据仓储抽象入口。当前只定义只读的 `ArchiveItemRepository` port：
+T04.2按Owner批准的最小清理策略保留的空backend workspace。T04.0-R的临时Archive
+Reader已作为historical compatibility
+artifact删除；本包当前不导出port、repository、adapter或runtime实现，也不依赖`@moya/contracts`。
 
-- `listItems`
-- `getItemById`
-- `searchItems`
-- `listCategoryFacets`
+Canonical Catalog read abstraction由`@moya/api` application boundary拥有，名称为
+`CatalogQueryPort`。不得在本包建立第二套Catalog
+port，也不得加入PostgreSQL/SQL、HTTP、runtime
+schema、环境变量、数据文件读取、Importer或mutation。
 
-Repository 接收规范化查询并只返回 `@moya/contracts` 的 Public
-DTO。实现必须过滤非公开记录，但本包不包含实现、PostgreSQL/SQL、HTTP、runtime
-schema、环境变量、数据文件读取或导入逻辑。未找到档案时返回
-`null`，由未来的 application/transport adapter 映射为 HTTP 404。
+Frontend不得依赖本包。未来若要为本workspace赋予新职责或删除整个workspace，必须由独立任务重新审查；T04.2不删除本workspace。

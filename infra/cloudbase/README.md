@@ -12,8 +12,9 @@
 1. 先复制示例文件到受控的部署配置仓库或密钥管理流程中，再替换尖括号占位符。
 2. 不得把 CloudBase 环境 ID、数据库连接串、云 API 密钥或真实域名提交到本仓库。
 3. `DATABASE_URL`、对象存储访问凭据等服务端敏感值必须通过部署平台的密钥注入能力提供。
-4. `PUBLIC_CDN_BASE_URL` 只保存公开资源的 HTTPS 基础 URL；应用通过 object
-   key 派生完整 URL。
+4. `PUBLIC_CDN_BASE_URL` 是保留在示例中的 legacy/deprecated frontend
+   convention，不得由 Web/浏览器消费，也不是未来 Resolver 的正式配置名。T05 应以 backend-only 配置和
+   `StorageUrlResolver` 生成 runtime URL；Frontend 不得获得 object key。
 5. 本骨架不包含 CloudBase
    CLI 登录、资源开通、套餐购买、备案、证书申请或部署命令。
 

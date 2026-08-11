@@ -61,7 +61,9 @@
 
 ## 对象存储与 CDN 回滚
 
-1. 应用回滚只恢复 `PUBLIC_CDN_BASE_URL`/版本清单的上一映射，不删除对象。
+1. 应用回滚只恢复 backend
+   StorageUrlResolver 配置/版本清单的上一映射，不删除对象；legacy
+   `PUBLIC_CDN_BASE_URL` 不得重新暴露给 Frontend。
 2. 使用不可变 object key 时，旧页面自然引用旧对象，无需刷新全站缓存。
 3. 若错误覆盖了可变 key，先恢复正确对象版本，再精准刷新该路径并验证各节点。
 4. 发现越权公开时，先收紧存储权限和 CDN 访问，再进行缓存失效与事件调查。

@@ -9,7 +9,9 @@
    `InscriptionList`，不复用首页瀑布流。
 6. 书帖使用配置驱动的
    `CalligraphyCategoryTabs`、`CalligraphyCard/Grid`；URL 参数同步属于页面层。
-7. 数据层保留对象 key，页面通过 image/CDN 服务派生 URL 后传给 `UiImage`。
+7. Object key 只留在后端；页面接收未来 `PublicMediaDTO.src` 中由 backend
+   `StorageUrlResolver` 生成的 public/signed runtime URL，再传给
+   `UiImage`。页面不得自行拼接 CDN URL。
 8. 用户显式主题偏好由应用在首屏前写入 `data-theme`；`system`
    对应移除属性。持久化与账号同步属于应用层，公共 UI 包不得直接访问浏览器存储。
 9. 首页单/双列是展示偏好，只作用于发现和附近的信息流，不改变碑刻列表或书帖卡片。
