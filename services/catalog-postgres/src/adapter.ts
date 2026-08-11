@@ -77,17 +77,19 @@ export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
   constructor(private readonly pool: Pool) {}
 
   async list({
+    kind,
     page,
     pageSize,
   }: CatalogListQuery): Promise<CatalogListPageProjection> {
     return withReadTransaction(this.pool, async (client) => {
       const countResult = await client.query<CatalogCountRow>(
         countCatalogEntriesSql,
+        [kind ?? null],
       );
       const total = parseCatalogCount(countResult.rows[0]?.total);
       const entriesResult = await client.query<CatalogEntryRow>(
         listCatalogEntriesSql,
-        [pageSize, catalogPageOffset(page, pageSize).toString()],
+        [kind ?? null, pageSize, catalogPageOffset(page, pageSize).toString()],
       );
       const catalogIds = entriesResult.rows.map((row) =>
         String(row.catalog_id),

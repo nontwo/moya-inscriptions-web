@@ -47,7 +47,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
 
     expect(
       Object.keys(asObject(getOperation("/health").responses)).sort(),
-    ).toEqual(["200", "503"]);
+    ).toEqual(["200", "400", "503"]);
     expect(
       Object.keys(asObject(getOperation("/v1/catalog").responses)).sort(),
     ).toEqual(["200", "400", "500", "503"]);
@@ -55,17 +55,20 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       Object.keys(
         asObject(getOperation("/v1/catalog/{catalogId}").responses),
       ).sort(),
-    ).toEqual(["200", "404", "500", "503"]);
+    ).toEqual(["200", "400", "404", "500", "503"]);
     expect(getOperation("/v1/catalog").operationId).toBe("listCatalog");
     expect(getOperation("/v1/catalog/{catalogId}").operationId).toBe(
       "getCatalogById",
     );
   });
 
-  it("exposes only bounded page parameters without speculative filters or sorting", () => {
+  it("exposes only the approved kind and bounded page parameters", () => {
     const listParameters = parameterMapFor("/v1/catalog");
 
-    expect([...listParameters.keys()]).toEqual(["page", "pageSize"]);
+    expect([...listParameters.keys()]).toEqual(["kind", "page", "pageSize"]);
+    expect(asObject(listParameters.get("kind")?.schema)).toEqual(
+      schemaProperty(catalogListTransportQueryJsonSchema, "kind"),
+    );
     expect(asObject(listParameters.get("page")?.schema)).toEqual(
       schemaProperty(catalogListTransportQueryJsonSchema, "page"),
     );
@@ -74,6 +77,15 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     );
     expect(paths).not.toHaveProperty("/v1/search");
     expect(paths).not.toHaveProperty("/v1/categories");
+  });
+
+  it("declares strict-query errors for endpoints without query parameters", () => {
+    expect(parametersFor("/health")).toEqual([]);
+    expect(parametersFor("/v1/catalog/{catalogId}")).toHaveLength(1);
+    expect(responseDescription("/health", "400")).toContain("INVALID_QUERY");
+    expect(responseDescription("/v1/catalog/{catalogId}", "400")).toContain(
+      "INVALID_QUERY",
+    );
   });
 
   it("uses the opaque CatalogId for Catalog lookup", () => {

@@ -1,13 +1,15 @@
 export const countCatalogEntriesSql = `
   SELECT COUNT(*)::text AS total
   FROM catalog_entries
+  WHERE ($1::text IS NULL OR kind = $1::text)
 `;
 
 export const listCatalogEntriesSql = `
   SELECT catalog_id, kind, title, summary, period_label
   FROM catalog_entries
+  WHERE ($1::text IS NULL OR kind = $1::text)
   ORDER BY catalog_id ASC
-  LIMIT $1::integer OFFSET $2::bigint
+  LIMIT $2::integer OFFSET $3::bigint
 `;
 
 export const findCatalogEntrySql = `

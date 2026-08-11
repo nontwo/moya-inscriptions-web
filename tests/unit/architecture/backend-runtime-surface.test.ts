@@ -81,6 +81,28 @@ describe("@moya/backend-runtime package boundary", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps SQL and PostgreSQL implementation details out of the HTTP runtime", async () => {
+    const forbidden = [
+      /\bDATABASE_URL\b/,
+      /\b(?:Pool|PoolClient|QueryResult)\b/,
+      /\b(?:SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+.+\s+SET|DELETE\s+FROM)\b/i,
+    ];
+    const violations: string[] = [];
+
+    for (const file of await collectTypeScriptFiles(
+      path.join(runtimeRoot, "src"),
+    )) {
+      const source = await readFile(file, "utf8");
+      for (const pattern of forbidden) {
+        if (pattern.test(source)) {
+          violations.push(path.relative(repositoryRoot, file));
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps lower and contract boundaries independent of the runtime", async () => {
     const guardedRoots = [
       path.join(repositoryRoot, "packages", "contracts", "src"),

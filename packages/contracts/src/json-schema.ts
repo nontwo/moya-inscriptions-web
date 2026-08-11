@@ -10,6 +10,7 @@ import {
   catalogPageSchema,
   catalogSummarySchema,
   healthResponseSchema,
+  noQueryTransportSchema,
   publicSourceCitationSchema,
 } from "./schemas.js";
 
@@ -23,6 +24,7 @@ export const catalogDetailJsonSchema = toJsonSchema(catalogDetailSchema);
 export const catalogListTransportQueryJsonSchema = toJsonSchema(
   catalogListTransportQuerySchema,
 );
+export const noQueryTransportJsonSchema = toJsonSchema(noQueryTransportSchema);
 export const catalogPageJsonSchema = toJsonSchema(catalogPageSchema);
 export const publicSourceCitationJsonSchema = toJsonSchema(
   publicSourceCitationSchema,

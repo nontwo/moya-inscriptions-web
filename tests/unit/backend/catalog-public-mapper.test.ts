@@ -19,7 +19,9 @@ const internalListItem = {
   periodLabel: "宋",
   sourceId: "source-internal-001",
   evidence: { reviewedBy: "internal" },
+  ownerDecision: { accepted: true, decidedBy: "owner" },
   objectKey: "private/catalog-mapper-001.tif",
+  migrationMetadata: { migrationId: "internal" },
 };
 
 const internalDetail = {
@@ -34,6 +36,8 @@ const internalDetail = {
       sourceId: "source-internal-001",
       verificationState: "approved",
       internalNotes: "not public",
+      internalRightsNotes: "private rights note",
+      storagePath: "/private/storage/path",
     },
   ],
 };
@@ -80,10 +84,14 @@ describe("Catalog public-contract mapper", () => {
     for (const internalField of [
       "sourceId",
       "evidence",
+      "ownerDecision",
       "objectKey",
+      "migrationMetadata",
       "rawSource",
       "verificationState",
       "internalNotes",
+      "internalRightsNotes",
+      "storagePath",
     ]) {
       expect(serialized).not.toContain(internalField);
     }

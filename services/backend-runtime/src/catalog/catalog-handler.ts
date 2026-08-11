@@ -1,42 +1,23 @@
 import {
   isCatalogQueryUnavailableError,
-  mapCatalogDetail,
-  mapCatalogPage,
   parseCatalogListQuery,
 } from "@moya/api";
-import { catalogIdSchema } from "@moya/contracts/schemas";
+import {
+  catalogIdSchema,
+  noQueryTransportSchema,
+} from "@moya/contracts/schemas";
 
 import { sendApiError } from "../http/api-error-response.js";
 import { sendJson } from "../http/json-response.js";
+import { collectTransportQuery } from "../http/transport-query.js";
 
-import type { CatalogListQuery, CatalogQueryPort } from "@moya/api";
+import type { CatalogListQuery, CatalogReadService } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
-
-type TransportQueryValue = string | readonly string[];
-
-const collectTransportQuery = (
-  searchParams: URLSearchParams,
-): Record<string, TransportQueryValue> => {
-  const query: Record<string, TransportQueryValue> = {};
-
-  for (const [key, value] of searchParams) {
-    const existing = query[key];
-    if (existing === undefined) {
-      query[key] = value;
-    } else if (typeof existing === "string") {
-      query[key] = [existing, value];
-    } else {
-      query[key] = [...existing, value];
-    }
-  }
-
-  return query;
-};
 
 export const handleCatalogList = async (
   request: IncomingMessage,
   response: ServerResponse,
-  catalogQueryPort: CatalogQueryPort,
+  catalogReadService: CatalogReadService,
 ): Promise<void> => {
   const url = new URL(request.url ?? "/", "http://backend-runtime.local");
 
@@ -49,8 +30,7 @@ export const handleCatalogList = async (
   }
 
   try {
-    const projection = await catalogQueryPort.list(query);
-    sendJson(response, 200, mapCatalogPage(projection));
+    sendJson(response, 200, await catalogReadService.list(query));
   } catch (error) {
     if (isCatalogQueryUnavailableError(error)) {
       sendApiError(
@@ -65,10 +45,19 @@ export const handleCatalogList = async (
 };
 
 export const handleCatalogDetail = async (
+  request: IncomingMessage,
   encodedCatalogId: string,
   response: ServerResponse,
-  catalogQueryPort: CatalogQueryPort,
+  catalogReadService: CatalogReadService,
 ): Promise<void> => {
+  const url = new URL(request.url ?? "/", "http://backend-runtime.local");
+  try {
+    noQueryTransportSchema.parse(collectTransportQuery(url.searchParams));
+  } catch {
+    sendApiError(response, "INVALID_QUERY", "Invalid catalog query");
+    return;
+  }
+
   let decodedCatalogId: string;
   try {
     decodedCatalogId = decodeURIComponent(encodedCatalogId);
@@ -84,13 +73,13 @@ export const handleCatalogDetail = async (
   }
 
   try {
-    const projection = await catalogQueryPort.getById(catalogId.data);
-    if (projection === null) {
+    const detail = await catalogReadService.getById(catalogId.data);
+    if (detail === null) {
       sendApiError(response, "ITEM_NOT_FOUND", "Catalog item not found");
       return;
     }
 
-    sendJson(response, 200, mapCatalogDetail(projection));
+    sendJson(response, 200, detail);
   } catch (error) {
     if (isCatalogQueryUnavailableError(error)) {
       sendApiError(

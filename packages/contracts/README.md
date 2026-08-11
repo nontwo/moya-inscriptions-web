@@ -4,7 +4,7 @@
 schema 的唯一来源。本包只定义碑刻 MVP 当前已批准的 Public DTO、transport
 query、分页和安全错误，不保存或导入真实数据。
 
-`CatalogId`、三值 `CatalogKind`、`CatalogSummary`、`CatalogDetail`、
+`CatalogId`、两值 `CatalogKind`、`CatalogSummary`、`CatalogDetail`、
 `CatalogPage`和`CatalogListTransportQuery`是canonical Public
 Contract。T04.2已删除T04.0-R的Archive compatibility
 exports；新代码只使用Catalog语言。
@@ -17,8 +17,10 @@ exports；新代码只使用Catalog语言。
   `PublicMediaDTO.src` 可以承载由后端解析的 public/signed runtime URL，但 object
   key、bucket 和 provider internals 永不进入 Frontend contract。
 - `CatalogListTransportQuery` 是本包唯一的Catalog list transport
-  query，只表达并验证query-string输入。Normalized number形式的
-  `CatalogListQuery` 属于 `@moya/api` application layer，不从本包导出。
+  query，只表达并验证optional `kind`、`page`和`pageSize` query-string输入。
+  `noQueryTransportSchema`为不声明query参数的endpoint执行strict
+  validation。Normalized number形式的 `CatalogListQuery` 属于 `@moya/api`
+  application layer，不从本包导出。
 - transport到application的解析与规范化位于backend transport
   boundary，不在contracts或application layer内执行。
 - 当前只保留基础list/detail需要的Catalog契约；搜索、分类、图片、Site、Feed和内部生命周期由后续负责任务引入。

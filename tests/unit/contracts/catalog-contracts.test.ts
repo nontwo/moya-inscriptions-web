@@ -14,6 +14,7 @@ import {
   catalogListTransportQueryJsonSchema,
   catalogPageJsonSchema,
   catalogSummaryJsonSchema,
+  noQueryTransportJsonSchema,
 } from "@moya/contracts/json-schema";
 import {
   catalogDetailSchema,
@@ -22,6 +23,7 @@ import {
   catalogListTransportQuerySchema,
   catalogPageSchema,
   catalogSummarySchema,
+  noQueryTransportSchema,
 } from "@moya/contracts/schemas";
 
 describe("canonical Catalog identity", () => {
@@ -115,10 +117,14 @@ describe("Catalog public contracts", () => {
       "evidence",
       "verificationState",
       "humanDecision",
+      "ownerDecision",
       "workflowNotes",
       "adminNotes",
       "objectKey",
+      "storagePath",
       "storageProvider",
+      "internalRightsNotes",
+      "migrationMetadata",
     ]) {
       expect(
         catalogDetailSchema.safeParse({
@@ -143,6 +149,7 @@ describe("Catalog public contracts", () => {
 
   it("keeps transport query values as validated strings", () => {
     const query: CatalogListTransportQuery = {
+      kind: "calligraphy",
       page: "2",
       pageSize: "25",
     };
@@ -155,6 +162,8 @@ describe("Catalog public contracts", () => {
       { page: "1.5" },
       { page: "9007199254740992" },
       { pageSize: "101" },
+      { kind: "cliff_inscription" },
+      { kind: ["inscription", "calligraphy"] },
       { pageSize: 20 },
       { keyword: "碑" },
     ]) {
@@ -162,6 +171,18 @@ describe("Catalog public contracts", () => {
         false,
       );
     }
+  });
+
+  it("rejects every query key for endpoints that declare no query", () => {
+    expect(noQueryTransportSchema.parse({})).toEqual({});
+    expect(
+      noQueryTransportSchema.safeParse({ probe: "readiness" }).success,
+    ).toBe(false);
+    expect(noQueryTransportJsonSchema).toMatchObject({
+      additionalProperties: false,
+      properties: {},
+      type: "object",
+    });
   });
 
   it("uses the existing self-consistent pagination model", () => {
@@ -210,5 +231,10 @@ describe("Catalog public contracts", () => {
         additionalProperties: false,
       });
     }
+    expect(catalogListTransportQueryJsonSchema).toMatchObject({
+      properties: {
+        kind: { enum: ["inscription", "calligraphy"], type: "string" },
+      },
+    });
   });
 });

@@ -7,7 +7,7 @@ import {
 import { healthHandler } from "../health/health-handler.js";
 import { sendJson } from "./json-response.js";
 
-import type { CatalogQueryPort } from "@moya/api";
+import type { CatalogReadService } from "@moya/api";
 import type { HealthReadinessCheck } from "../health/health-handler.js";
 
 const sendRouteError = (
@@ -24,13 +24,13 @@ const sendRouteError = (
 };
 
 export interface RouterDependencies {
-  readonly catalogQueryPort: CatalogQueryPort;
+  readonly catalogReadService: CatalogReadService;
   readonly healthReadinessCheck: HealthReadinessCheck;
 }
 
 export const createRouter =
   ({
-    catalogQueryPort,
+    catalogReadService,
     healthReadinessCheck,
   }: RouterDependencies): RequestListener =>
   (request, response) => {
@@ -53,7 +53,7 @@ export const createRouter =
         return;
       }
 
-      void handleCatalogList(request, response, catalogQueryPort);
+      void handleCatalogList(request, response, catalogReadService);
       return;
     }
 
@@ -65,9 +65,10 @@ export const createRouter =
       }
 
       void handleCatalogDetail(
+        request,
         detailRoute[1] ?? "",
         response,
-        catalogQueryPort,
+        catalogReadService,
       );
       return;
     }
