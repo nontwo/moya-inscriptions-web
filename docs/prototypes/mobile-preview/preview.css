@@ -49,6 +49,10 @@
   display: none;
 }
 
+.app-bottom-navigation.yoyi-mobile-bottom-navigation {
+  display: grid;
+}
+
 @media (orientation: portrait) {
   .app-topbar--categories {
     min-height: calc(108px + env(safe-area-inset-top));
@@ -94,7 +98,7 @@
   }
 }
 
-/* Phone landscape borrows the tablet landscape shell without changing platform. */
+/* Physical phones keep the bottom Tab Bar in either orientation. */
 @media (orientation: landscape) and (min-width: 35.5rem) {
   .app-stage {
     place-items: stretch;
@@ -105,48 +109,28 @@
     max-width: none;
   }
 
-  .app-view {
-    padding-bottom: 0;
-    padding-left: calc(88px + env(safe-area-inset-left));
-  }
-
-  .app-view.app-detail,
-  .app-view.app-settings {
-    padding-left: 0;
-  }
-
-  .mobile-app:has([data-bottom-navigation][hidden]) .app-view {
-    padding-left: 0;
-  }
-
   .app-topbar {
     padding-inline: var(--yoyi-space-4);
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
     position: fixed;
-    top: 0;
+    top: auto;
     right: auto;
-    bottom: 0;
-    left: 0;
-    width: calc(88px + env(safe-area-inset-left));
+    bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
+    left: 50%;
+    width: min(calc(100% - var(--yoyi-space-7)), 520px);
     display: grid;
-    grid-template-columns: 1fr;
-    grid-auto-rows: minmax(72px, auto);
-    align-content: start;
-    justify-items: stretch;
-    height: 100dvh;
-    min-height: 100dvh;
-    padding: env(safe-area-inset-top) 4px env(safe-area-inset-bottom)
-      env(safe-area-inset-left);
-    border-top: 0;
-    border-right: 1px solid var(--yoyi-color-border-subtle);
-    box-shadow: none;
-    z-index: 30;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    height: auto;
+    min-height: 60px;
+    padding: var(--yoyi-space-2);
+    transform: translate3d(-50%, 0, 0);
   }
 
-  .app-bottom-navigation .yoyi-navigation-entry {
-    min-height: 72px;
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
+    width: 92px;
+    grid-template-columns: 1fr;
   }
 
   .app-masonry {

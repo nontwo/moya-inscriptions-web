@@ -425,14 +425,6 @@ button {
   min-width: 0;
 }
 
-.app-list-item__meta,
-.app-list-item__location {
-  color: var(--yoyi-color-text-secondary);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
-}
-
 .app-shell-only {
   display: none !important;
 }
@@ -457,10 +449,6 @@ button {
 .app-inscriptions-layout {
   display: block;
   min-height: 0;
-}
-
-.app-inscriptions-preview {
-  display: none;
 }
 
 .app-categories {
@@ -522,16 +510,7 @@ button {
 }
 
 .app-bottom-navigation {
-  position: absolute;
-  z-index: 20;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  min-height: calc(68px + env(safe-area-inset-bottom));
-  padding: 4px 8px env(safe-area-inset-bottom);
-  background: var(--yoyi-color-background-elevated);
+  z-index: var(--yoyi-z-index-navigation);
 }
 
 .app-nav-brand {

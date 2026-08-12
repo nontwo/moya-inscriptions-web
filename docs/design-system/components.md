@@ -35,6 +35,12 @@
 `brandHref` 显式传入；省略时 Logo 不产生链接，组件不会擅自选择 `/`
 或其他路由。内容容器遵循1200px / 760px token，不因宽屏新增导航入口或业务字段。
 
+`MobileBottomNavigation` 与 `ResponsiveNavigation` 提供兼容的
+`minimizeBehavior="never|on-scroll-down"` 和可选
+`scrollContainerRef`。手机可在向下滚动时收拢为当前栏目胶囊；平板与 PC 使用
+`never`。滚动策略由导航或应用壳统一管理，页面不得重复注册显隐 listener。主导航是 Functional
+Glass regular 的唯一当前消费者；选中项使用印泥 tint，不叠加第二层 Glass。
+
 `ThemeCycleButton` 是受控图标按钮，接收 `ThemePreference` 与
 `onValueChange`，按 system、light、dark 顺序循环；主题属性仍由消费端设置。该组件为公共 API 兼容保留，移动预览改用设置页中的明确单选项。
 
@@ -47,3 +53,5 @@
 这些类型都是 UI 展示类型，不代表 `packages/contracts` 中的业务模型。其中
 `UiImage.src` 只是渲染边界属性：正式应用必须先由图片适配器根据 object
 key 派生 URL，再把结果传给组件。
+
+内容卡片、碑刻图片与专题内容不得默认使用 Functional Glass。

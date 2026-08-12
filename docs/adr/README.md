@@ -8,6 +8,7 @@
 | [0004](0004-catalog-contract-design-freeze.md)               | Partially superseded | Catalog Contract；三值Kind为历史决定       |
 | [0005](0005-catalog-kind-top-level-evolution.md)             | Accepted             | 两值一级CatalogKind；退役cliff_inscription |
 | [0006](0006-long-term-data-governance-and-runtime-source.md) | Accepted             | 长期数据治理、runtime source与写入边界     |
+| [0007](0007-yoyi-progressive-web-glass.md)                   | Accepted             | Progressive Web Glass 与语义导航边界       |
 
 ADR 记录已经接受的架构决定；每份 ADR 必须单独声明 implementation status。
 `Accepted` 表示决策已冻结，不自动表示代码已经实现；implementation

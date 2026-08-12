@@ -30,12 +30,20 @@ describe("UI styles and architecture", () => {
     expect(css).toContain("@media (min-width: 90rem)");
     expect(css).toContain("orientation: landscape");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain("@media (prefers-reduced-transparency: reduce)");
+    expect(css).toContain("(prefers-contrast: more)");
     expect(css).toContain('[data-motion="reduced"]');
     expect(css).toContain("paper-dark-subtle.svg");
     expect(css).toContain("var(--yoyi-container-content)");
     expect(css).toContain("mask-image: var(--yoyi-label-image)");
     expect(css).toContain("-webkit-mask-image: var(--yoyi-label-image)");
     expect(css).toContain("background-color: currentcolor");
+    expect(css).toContain(".yoyi-functional-glass");
+    expect(css).toContain(
+      "backdrop-filter: blur(var(--yoyi-blur-glass-regular))",
+    );
+    expect(css).toContain("var(--yoyi-material-glass-fallback-background)");
+    expect(css).toContain(".yoyi-mobile-bottom-navigation.is-minimized");
     expect(css).not.toContain("opacity: 0.68");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });

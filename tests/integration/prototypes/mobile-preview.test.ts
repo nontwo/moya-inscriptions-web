@@ -181,7 +181,10 @@ const renderPreview = (
       /<script src="\.\/fixtures\/topics\.placeholder\.js"><\/script>/,
       "",
     )
-    .replace(/<script(?: type="module")? src="\.\/preview\.js"><\/script>/, "");
+    .replace(
+      /<script(?: type="module")? src="\.\/preview\.js(?:\?[^"]*)?"><\/script>/,
+      "",
+    );
   const dom = new JSDOM(withoutExternalScript, {
     pretendToBeVisual: true,
     runScripts: "outside-only",
@@ -401,6 +404,16 @@ describe("mobile application preview", () => {
         ?.closest(".app-nav-brand"),
     ).toBeTruthy();
     expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(3);
+    expect(
+      document
+        .querySelector("[data-bottom-navigation]")
+        ?.classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
+    expect(
+      document
+        .querySelector("[data-bottom-navigation]")
+        ?.getAttribute("data-minimize-behavior"),
+    ).toBe("on-scroll-down");
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.textContent,
@@ -1484,7 +1497,7 @@ describe("mobile application preview", () => {
     expect(sharedStylesheet?.media).toBe("");
     expect(sharedCss).toContain(".app-nav-brand");
     expect(sharedCss).toContain(".app-inscriptions-layout");
-    expect(sharedCss).toContain(".app-inscriptions-preview");
+    expect(sharedCss).not.toContain(".app-inscriptions-preview");
     expect(sharedCss).toContain("--app-calligraphy-scale");
     expect(sharedCss).toContain("--app-motto-font");
     expect(sharedCss).not.toContain("prefers-reduced-motion");
@@ -1494,17 +1507,16 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain("min-width: 35.5rem");
     expect(previewCss).toContain('"categories settings"');
     expect(previewCss).toContain('"search search"');
-    expect(previewCss).toContain("calc(88px + env(safe-area-inset-left))");
+    expect(previewCss).not.toContain("calc(88px + env(safe-area-inset-left))");
+    expect(previewCss).toContain("bottom: max(var(--yoyi-space-3)");
     expect(tabletCss).toContain("@media (min-width: 48rem)");
-    expect(tabletCss).toContain("@media (min-width: 56rem)");
+    expect(tabletCss).not.toContain("@media (min-width: 56rem)");
     expect(tabletCss).not.toContain("@media (min-width: 64rem)");
     expect(tabletCss).not.toContain("@media (min-width: 90rem)");
     expect(pcCss).toContain("@media (min-width: 56rem)");
     expect(pcCss).toContain("@media (min-width: 64rem)");
     expect(pcCss).toContain("@media (min-width: 90rem)");
-    expect(tabletCss).toContain(
-      "/* PC (>=56rem): copy tablet-landscape rail only",
-    );
+    expect(tabletCss).toContain("persistent floating functional rail");
     expect(tabletCss).toContain("orientation: landscape");
     expect(tabletCss).toContain("calc(88px + env(safe-area-inset-left))");
     expect(pcCss).toContain("calc(164px + env(safe-area-inset-left))");
@@ -1553,12 +1565,12 @@ describe("mobile application preview", () => {
       expect(effectiveCss).not.toContain("overscroll-behavior-y: contain");
     }
     expect(html).toContain("app-inscriptions-layout");
-    expect(html).toContain("data-inscription-preview");
+    expect(html).not.toContain("data-inscription-preview");
     expect(html).toContain("app-card__meta");
-    expect(html).toContain('data-shell="list-head"');
-    expect(html).toContain('data-shell="pagination"');
-    expect(html).toContain('data-preview-tab="intro"');
-    expect(html).toContain("data-shell-control");
+    expect(html).not.toContain('data-shell="list-head"');
+    expect(html).not.toContain('data-shell="pagination"');
+    expect(html).not.toContain("data-preview-tab");
+    expect(html).not.toContain("data-shell-control");
     expect(html).toContain('data-primary-view="inscriptions"');
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain("yoyi.theme-preference");
@@ -1569,7 +1581,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-view="topic-column"');
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
-    expect(html).toContain('href="./preview.shared.css"');
+    expect(html).toContain(
+      'href="./preview.shared.css?v=20260813-glass-final"',
+    );
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
     expect(html).toContain('data-platform-stylesheet="tablet"');
@@ -1578,7 +1592,7 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(script).not.toMatch(/addEventListener\(["'](?:wheel|touchmove)["']/);
     expect(sharedCss).toContain(".app-topics__grid");
-    expect(html).toContain("收藏");
+    expect(html).not.toMatch(/收藏|下载|分享|著录|拓片信息|相关碑刻/);
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
   });
 
@@ -1637,7 +1651,7 @@ describe("mobile application preview", () => {
     document.querySelector<HTMLElement>("[data-topic-back]")?.click();
   });
 
-  it("keeps inscriptions beside the preview in the PC shell", () => {
+  it("uses the same full-screen inscription detail in the PC shell", () => {
     const dom = renderPreview(
       {},
       {
@@ -1655,10 +1669,6 @@ describe("mobile application preview", () => {
       .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
       ?.click();
 
-    expect(
-      document.querySelector<HTMLElement>("[data-inscription-preview]")?.hidden,
-    ).toBe(false);
-
     document
       .querySelector<HTMLElement>(
         '[data-view="inscriptions"] [data-content-id="inscription-yunfeng"]',
@@ -1667,19 +1677,17 @@ describe("mobile application preview", () => {
 
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
-    ).toBe(false);
+    ).toBe(true);
     expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
       "云峰山题名",
     );
-    expect(
-      document.querySelector("[data-inscription-preview-title]")?.textContent,
-    ).toBe("云峰山题名");
+    expect(document.querySelector("[data-inscription-preview]")).toBeNull();
   });
 
-  it("moves an open inscription detail across the 896px shell boundary", () => {
+  it("keeps an open inscription detail across the 896px shell boundary", () => {
     const dom = renderPreview(
       {},
       {
@@ -1707,18 +1715,67 @@ describe("mobile application preview", () => {
     setViewportWidth(dom, 896);
     expect(document.documentElement.dataset.platform).toBe("pc");
     expect(
-      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(false);
-    expect(
-      document.querySelector<HTMLElement>("[data-inscription-preview-content]")
-        ?.hidden,
-    ).toBe(false);
+    expect(document.querySelector("[data-inscription-preview]")).toBeNull();
 
     setViewportWidth(dom, 895);
     expect(document.documentElement.dataset.platform).toBe("tablet");
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(false);
+  });
+
+  it("minimizes only a physical phone Tab Bar on vertical content scroll", () => {
+    const phone = renderPreview({}, { viewportWidth: 844 });
+    const phoneDocument = phone.window.document;
+    const navigation = phoneDocument.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const discover = phoneDocument.querySelector<HTMLElement>(
+      '[data-scroll-key="home:discover"]',
+    );
+    if (!navigation || !discover) throw new Error("phone navigation missing");
+
+    discover.scrollTop = 13;
+    discover.dispatchEvent(new phone.window.Event("scroll"));
+    expect(navigation.dataset.minimized).toBe("true");
+
+    discover.scrollTop = 4;
+    discover.dispatchEvent(new phone.window.Event("scroll"));
+    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+    expect(navigation.dataset.minimizeBehavior).toBe("on-scroll-down");
+
+    discover.scrollTop = 20;
+    discover.dispatchEvent(new phone.window.Event("scroll"));
+    phoneDocument
+      .querySelector<HTMLElement>('[data-primary-view="home"]')
+      ?.click();
+    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+
+    const tablet = renderPreview(
+      {},
+      {
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportWidth: 834,
+      },
+    );
+    const tabletDiscover = tablet.window.document.querySelector<HTMLElement>(
+      '[data-scroll-key="home:discover"]',
+    );
+    tabletDiscover!.scrollTop = 40;
+    tabletDiscover!.dispatchEvent(new tablet.window.Event("scroll"));
+    expect(
+      tablet.window.document
+        .querySelector("[data-bottom-navigation]")
+        ?.hasAttribute("data-minimized"),
+    ).toBe(false);
+    expect(
+      tablet.window.document.querySelector<HTMLElement>(
+        "[data-bottom-navigation]",
+      )?.dataset.minimizeBehavior,
+    ).toBe("never");
   });
 
   it("transfers scroll position between nested and document scroll owners", async () => {

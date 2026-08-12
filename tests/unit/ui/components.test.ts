@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /// <reference lib="dom" />
 
-import { createElement, useState } from "react";
+import { createElement, useRef, useState } from "react";
 import {
   act,
   cleanup,
@@ -112,6 +112,56 @@ describe("public controls", () => {
         .getByRole("link", { name: "碑刻" })
         .querySelector('[data-label="nav-inscriptions"]'),
     ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("navigation")
+        .classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
+  });
+
+  it("minimizes phone navigation on downward scroll and restores it", () => {
+    function NavigationHarness() {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+      return createElement(
+        "div",
+        null,
+        createElement("div", {
+          "data-testid": "scroll-container",
+          ref: scrollContainerRef,
+        }),
+        createElement(MobileBottomNavigation, {
+          activeId: "home",
+          items: [
+            { id: "home", label: "首页", icon: "home" },
+            {
+              id: "inscriptions",
+              label: "碑刻",
+              icon: "inscriptions",
+            },
+            { id: "calligraphy", label: "书帖", icon: "calligraphy" },
+          ],
+          minimizeBehavior: "on-scroll-down",
+          scrollContainerRef,
+        }),
+      );
+    }
+
+    render(createElement(NavigationHarness));
+    const navigation = screen.getByRole("navigation");
+    const scrollContainer = screen.getByTestId("scroll-container");
+
+    scrollContainer.scrollTop = 13;
+    fireEvent.scroll(scrollContainer);
+    expect(navigation.getAttribute("data-minimized")).toBe("true");
+
+    scrollContainer.scrollTop = 4;
+    fireEvent.scroll(scrollContainer);
+    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+
+    scrollContainer.scrollTop = 20;
+    fireEvent.scroll(scrollContainer);
+    fireEvent.click(screen.getByRole("button", { name: "首页" }));
+    expect(navigation.hasAttribute("data-minimized")).toBe(false);
   });
 
   it("only creates a desktop brand link when the caller supplies one", () => {

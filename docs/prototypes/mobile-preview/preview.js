@@ -26,28 +26,6 @@ const calligraphyFilterInput = document.querySelector(
 const calligraphyFilterClear = document.querySelector(
   "[data-calligraphy-filter-clear]",
 );
-const inscriptionPreview = document.querySelector("[data-inscription-preview]");
-const inscriptionPreviewImage = document.querySelector(
-  "[data-inscription-preview-image]",
-);
-const inscriptionPreviewTitle = document.querySelector(
-  "[data-inscription-preview-title]",
-);
-const inscriptionPreviewEmpty = document.querySelector(
-  "[data-inscription-preview-empty]",
-);
-const inscriptionPreviewContent = document.querySelector(
-  "[data-inscription-preview-content]",
-);
-const inscriptionPreviewMeta = document.querySelector(
-  "[data-inscription-preview-meta]",
-);
-const inscriptionPreviewFeatured = document.querySelector(
-  "[data-inscription-preview-featured]",
-);
-const inscriptionPreviewSummary = document.querySelector(
-  "[data-inscription-preview-summary]",
-);
 const topicsGrid = document.querySelector("[data-topics-grid]");
 const topicColumnBody = document.querySelector("[data-topic-column-body]");
 const topicColumnHeading = document.querySelector(
@@ -93,7 +71,12 @@ const scrollPositions = {
 };
 
 function syncPlatformAttribute() {
-  if (platformRuntime) return platformRuntime.sync().platform;
+  if (platformRuntime) {
+    const { deviceClass, platform } = platformRuntime.sync();
+    bottomNavigation.dataset.minimizeBehavior =
+      deviceClass === "phone" ? "on-scroll-down" : "never";
+    return platform;
+  }
   const platform =
     window.innerWidth < 768
       ? "phone"
@@ -102,6 +85,7 @@ function syncPlatformAttribute() {
         : "pc";
   root.dataset.deviceClass = "desktop";
   root.dataset.platform = platform;
+  bottomNavigation.dataset.minimizeBehavior = "never";
   return platform;
 }
 
@@ -132,17 +116,16 @@ let themePreference = readStoredPreference(
   "system",
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
-let inscriptionsSplitOpen = false;
 let activePagerGesture = null;
 let pagerViewportSyncAnimationId = 0;
 let pagerViewportSyncFramesElapsed = 0;
 let pagerViewportStableFrames = 0;
 let pagerViewportPreviousWidths = [];
 let pagerResizeObserver = null;
-
-function usesInscriptionsSplit() {
-  return root.dataset.platform === "pc" && primaryView === "inscriptions";
-}
+let navigationMinimized = false;
+let navigationLastScrollTop = 0;
+let navigationDirection = "";
+let navigationDirectionalTravel = 0;
 
 function scrollKeyForView(view) {
   if (view === "home") return `home:${homeFeed}`;
@@ -206,101 +189,22 @@ function onBeforePlatformQueryChange(event) {
   }
 }
 
-function clearInscriptionSelection() {
-  document
-    .querySelectorAll("[data-view='inscriptions'] [data-open-detail]")
-    .forEach((item) => {
-      item.classList.remove("is-selected");
-      item.removeAttribute("aria-current");
-    });
-}
-
-function setInscriptionSelection(trigger) {
-  clearInscriptionSelection();
-  if (!trigger) return;
-  trigger.classList.add("is-selected");
-  trigger.setAttribute("aria-current", "true");
-}
-
-function setPreviewTab(tabId) {
-  document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
-    const selected = tab.dataset.previewTab === tabId;
-    tab.classList.toggle("is-selected", selected);
-    tab.setAttribute("aria-selected", String(selected));
-  });
-  document.querySelectorAll("[data-preview-panel]").forEach((panel) => {
-    panel.hidden = panel.dataset.previewPanel !== tabId;
-  });
-}
-
-function showPreviewEmpty() {
-  if (inscriptionPreviewEmpty) inscriptionPreviewEmpty.hidden = false;
-  if (inscriptionPreviewContent) inscriptionPreviewContent.hidden = true;
-}
-
-function showPreviewContent() {
-  if (inscriptionPreviewEmpty) inscriptionPreviewEmpty.hidden = true;
-  if (inscriptionPreviewContent) inscriptionPreviewContent.hidden = false;
-}
-
-function syncDesktopPreviewPane() {
-  if (!inscriptionPreview) return;
-  if (root.dataset.platform === "pc" && primaryView === "inscriptions") {
-    inscriptionPreview.hidden = false;
-    if (!inscriptionsSplitOpen) showPreviewEmpty();
-  } else if (!inscriptionsSplitOpen) {
-    inscriptionPreview.hidden = true;
-    showPreviewEmpty();
-  }
-}
-
 function fillDetailContent(trigger) {
   const image = trigger.dataset.image;
   const title = trigger.dataset.title;
   const alt = trigger.querySelector("img")?.alt ?? "";
-  const meta = [trigger.dataset.meta, trigger.dataset.location]
-    .filter(Boolean)
-    .join(" · ");
-  const summary = trigger.dataset.summary ?? "";
-  const featured = trigger.dataset.featured === "true";
 
   detailImage.src = image;
   detailImage.alt = alt;
   detailTitle.textContent = title;
-  inscriptionPreviewImage.src = image;
-  inscriptionPreviewImage.alt = alt;
-  inscriptionPreviewTitle.textContent = title;
-  if (inscriptionPreviewMeta) inscriptionPreviewMeta.textContent = meta;
-  if (inscriptionPreviewSummary) {
-    inscriptionPreviewSummary.textContent = summary;
-  }
-  if (inscriptionPreviewFeatured) {
-    inscriptionPreviewFeatured.hidden = !featured;
-  }
-  setPreviewTab("intro");
-  showPreviewContent();
-}
-
-function closeInscriptionsSplit() {
-  inscriptionsSplitOpen = false;
-  app.removeAttribute("data-inscriptions-split");
-  clearInscriptionSelection();
-  showPreviewEmpty();
-  syncDesktopPreviewPane();
 }
 
 function showView(view) {
-  if (view !== "detail" && view !== "inscriptions" && view !== "topic-column") {
-    closeInscriptionsSplit();
-  }
-  if (view === "inscriptions" && !inscriptionsSplitOpen) {
-    closeInscriptionsSplit();
-  }
   document.querySelectorAll("[data-view]").forEach((panel) => {
     panel.hidden = panel.dataset.view !== view;
   });
   bottomNavigation.hidden = !primaryViews.includes(view);
-  if (view === "inscriptions") syncDesktopPreviewPane();
+  if (!primaryViews.includes(view)) setNavigationMinimized(false);
 }
 
 function renderSupplementalHomeCards() {
@@ -448,13 +352,70 @@ function updateBottomNavigation() {
   });
 }
 
+function phoneNavigationCanMinimize() {
+  return (
+    root.dataset.deviceClass === "phone" &&
+    root.dataset.platform === "phone" &&
+    primaryViews.includes(primaryView) &&
+    !bottomNavigation.hidden
+  );
+}
+
+function setNavigationMinimized(minimized) {
+  navigationMinimized = phoneNavigationCanMinimize() && minimized;
+  bottomNavigation.classList.toggle("is-minimized", navigationMinimized);
+  if (navigationMinimized) bottomNavigation.dataset.minimized = "true";
+  else bottomNavigation.removeAttribute("data-minimized");
+}
+
+function resetNavigationScrollTracking({ expand = true } = {}) {
+  const scrollElement = currentScrollElement();
+  navigationLastScrollTop = scrollElement?.scrollTop ?? 0;
+  navigationDirection = "";
+  navigationDirectionalTravel = 0;
+  if (expand || !phoneNavigationCanMinimize()) setNavigationMinimized(false);
+}
+
+function onNavigationScroll(event) {
+  if (!phoneNavigationCanMinimize()) {
+    setNavigationMinimized(false);
+    return;
+  }
+  const scrollElement = currentScrollElement();
+  if (!scrollElement || event.target !== scrollElement) return;
+  const scrollTop = scrollElement.scrollTop;
+  const delta = scrollTop - navigationLastScrollTop;
+  navigationLastScrollTop = scrollTop;
+
+  if (scrollTop <= 8) {
+    resetNavigationScrollTracking();
+    return;
+  }
+  if (delta === 0) return;
+
+  const direction = delta > 0 ? "down" : "up";
+  if (direction !== navigationDirection) {
+    navigationDirection = direction;
+    navigationDirectionalTravel = 0;
+  }
+  navigationDirectionalTravel += Math.abs(delta);
+
+  if (direction === "down" && navigationDirectionalTravel >= 12) {
+    setNavigationMinimized(true);
+    navigationDirectionalTravel = 0;
+  } else if (direction === "up" && navigationDirectionalTravel >= 8) {
+    setNavigationMinimized(false);
+    navigationDirectionalTravel = 0;
+  }
+}
+
 function selectPrimaryView(view, { updateHistory = true } = {}) {
   saveScrollPosition();
-  closeInscriptionsSplit();
   primaryView = view;
   showView(view);
   updateBottomNavigation();
   restoreScrollPosition(view);
+  resetNavigationScrollTracking();
   if (updateHistory) {
     history.replaceState({ kind: "primary", view }, "", location.pathname);
   }
@@ -928,7 +889,6 @@ function applyHomeFeedLayout(value, { persist = true } = {}) {
 
 function openSettings({ updateHistory = true } = {}) {
   saveScrollPosition();
-  closeInscriptionsSplit();
   showView("settings");
   if (updateHistory) {
     history.pushState(
@@ -947,21 +907,8 @@ function closeSettings() {
 function openDetail(trigger, { updateHistory = true } = {}) {
   saveScrollPosition();
   fillDetailContent(trigger);
-
-  if (usesInscriptionsSplit()) {
-    inscriptionsSplitOpen = true;
-    app.dataset.inscriptionsSplit = "true";
-    setInscriptionSelection(trigger);
-    if (inscriptionPreview) inscriptionPreview.hidden = false;
-    document.querySelectorAll("[data-view]").forEach((panel) => {
-      panel.hidden = panel.dataset.view !== "inscriptions";
-    });
-    bottomNavigation.hidden = false;
-  } else {
-    closeInscriptionsSplit();
-    showView("detail");
-    document.querySelector('[data-scroll-view="detail"]').scrollTop = 0;
-  }
+  showView("detail");
+  document.querySelector('[data-scroll-view="detail"]').scrollTop = 0;
 
   if (updateHistory) {
     history.pushState(
@@ -978,10 +925,7 @@ function openDetail(trigger, { updateHistory = true } = {}) {
 
 function closeDetail() {
   if (history.state?.kind === "detail") history.back();
-  else {
-    closeInscriptionsSplit();
-    selectPrimaryView(primaryView);
-  }
+  else selectPrimaryView(primaryView);
 }
 
 function findContentTrigger(contentId) {
@@ -1012,9 +956,18 @@ function bindCheckedOptions(selector, apply) {
   });
 }
 
-bindClicks("[data-primary-view]", (button) =>
-  selectPrimaryView(button.dataset.primaryView),
-);
+bindClicks("[data-primary-view]", (button) => {
+  if (
+    navigationMinimized &&
+    button.dataset.primaryView === primaryView &&
+    button.classList.contains("is-active")
+  ) {
+    setNavigationMinimized(false);
+    resetNavigationScrollTracking({ expand: false });
+    return;
+  }
+  selectPrimaryView(button.dataset.primaryView);
+});
 bindClicks("[data-home-feed]", (button) =>
   selectHomeFeed(button.dataset.homeFeed, { animate: true }),
 );
@@ -1057,22 +1010,8 @@ document
   .addEventListener("click", closeDetail);
 
 document
-  .querySelector("[data-inscription-preview-back]")
-  ?.addEventListener("click", closeDetail);
-
-document
   .querySelector("[data-topic-back]")
   ?.addEventListener("click", closeTopicColumn);
-
-document.querySelectorAll("[data-shell-control]").forEach((control) => {
-  control.addEventListener("click", (event) => {
-    event.preventDefault();
-  });
-});
-
-bindClicks("[data-preview-tab]", (tab) =>
-  setPreviewTab(tab.dataset.previewTab),
-);
 
 searchInput.addEventListener("input", (event) => {
   filterInscriptions(event.currentTarget.value);
@@ -1099,7 +1038,6 @@ calligraphyFilterClear?.addEventListener("click", () => {
 window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (state?.kind === "settings") {
-    closeInscriptionsSplit();
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
     updateBottomNavigation();
     showView("settings");
@@ -1120,7 +1058,6 @@ window.addEventListener("popstate", (event) => {
     if (trigger) openDetail(trigger, { updateHistory: false });
     return;
   }
-  closeInscriptionsSplit();
   if (state?.kind === "primary" && primaryViews.includes(state.view)) {
     primaryView = state.view;
   }
@@ -1134,27 +1071,7 @@ function onPlatformQueryChange() {
   syncPlatformAttribute();
   cancelActivePagerGesture({ animate: false });
   syncAllPagers();
-  if (root.dataset.platform !== "pc" && inscriptionsSplitOpen) {
-    const selected = document.querySelector(
-      "[data-view='inscriptions'] [data-open-detail].is-selected",
-    );
-    closeInscriptionsSplit();
-    if (selected && history.state?.kind === "detail") {
-      showView("detail");
-      fillDetailContent(selected);
-    }
-    restoreScrollPosition(primaryView);
-    return;
-  }
-  syncDesktopPreviewPane();
-  if (
-    root.dataset.platform === "pc" &&
-    primaryView === "inscriptions" &&
-    history.state?.kind === "detail"
-  ) {
-    const trigger = findContentTrigger(history.state.contentId);
-    if (trigger) openDetail(trigger, { updateHistory: false });
-  }
+  resetNavigationScrollTracking();
   restoreScrollPosition(primaryView);
 }
 
@@ -1218,6 +1135,7 @@ function observePagerSizes() {
 window.addEventListener("resize", onPagerViewportChange);
 window.addEventListener("orientationchange", onPagerViewportChange);
 window.visualViewport?.addEventListener("resize", onPagerViewportChange);
+document.addEventListener("scroll", onNavigationScroll, true);
 document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
   scrollElement.addEventListener(
     "scroll",
@@ -1261,7 +1179,7 @@ selectCalligraphyCategory(calligraphyCategory);
 filterInscriptions("");
 applyThemePreference(themePreference, { persist: false });
 applyHomeFeedLayout(homeFeedLayout, { persist: false });
-showPreviewEmpty();
+resetNavigationScrollTracking();
 
 window.setTimeout(() => {
   document.querySelector("[data-loading-screen]").hidden = true;
