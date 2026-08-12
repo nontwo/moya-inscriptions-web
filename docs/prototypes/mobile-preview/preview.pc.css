@@ -216,6 +216,15 @@ html[data-platform="pc"] .app-platform-gate {
   -webkit-overflow-scrolling: touch;
 }
 
+.app-pager__track,
+.app-pager__page {
+  height: auto;
+}
+
+.app-pager__page {
+  overflow: visible;
+}
+
 .app-scroll::-webkit-scrollbar,
 .app-categories::-webkit-scrollbar {
   display: none;

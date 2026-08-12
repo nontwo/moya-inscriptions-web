@@ -2,6 +2,10 @@
   const root = global.document.documentElement;
   const PHONE_MAX = 768;
   const PC_MIN = 896;
+  const viewportMeta = global.document.querySelector('meta[name="viewport"]');
+  const scalableViewportContent =
+    viewportMeta?.getAttribute("content") ??
+    "width=device-width, initial-scale=1";
   const phonePattern = /iPhone|iPod|Windows Phone|IEMobile|Opera Mini|Mobile/i;
   const tabletPattern = /iPad|Tablet|PlayBook|Silk|Kindle/i;
 
@@ -40,6 +44,17 @@
       });
   }
 
+  function syncViewportZoom(deviceClass = root.dataset.deviceClass) {
+    if (!viewportMeta) return;
+    const touchDevice = deviceClass === "phone" || deviceClass === "tablet";
+    viewportMeta.setAttribute(
+      "content",
+      touchDevice
+        ? `${scalableViewportContent}, minimum-scale=1, maximum-scale=1, user-scalable=no`
+        : scalableViewportContent,
+    );
+  }
+
   function sync(options = {}) {
     const deviceClass = detectDeviceClass(
       options.navigatorLike ?? global.navigator,
@@ -60,6 +75,7 @@
 
     root.dataset.deviceClass = deviceClass;
     root.dataset.platform = platform;
+    syncViewportZoom(deviceClass);
     syncStyles(platform);
 
     if (previousPlatform && previousPlatform !== platform) {
@@ -77,6 +93,7 @@
     resolvePlatform,
     sync,
     syncStyles,
+    syncViewportZoom,
   });
 
   sync();

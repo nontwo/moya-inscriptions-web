@@ -181,11 +181,25 @@ const swipe = (
     clientY: start.y,
     pointerType,
   });
+  dispatchPointer(window, target, "pointermove", {
+    clientX: end.x,
+    clientY: end.y,
+    pointerType,
+  });
   dispatchPointer(window, target, "pointerup", {
     clientX: end.x,
     clientY: end.y,
     pointerType,
   });
+};
+
+const pagerTranslateX = (track: HTMLElement) => {
+  const match = track.style.transform.match(
+    /translate3d\((-?[\d.]+)px, 0(?:px)?, 0(?:px)?\)/,
+  );
+  if (!match)
+    throw new Error(`unexpected pager transform: ${track.style.transform}`);
+  return Number(match[1]);
 };
 
 const waitForAnimationFrames = async (window: Window, count: number) => {
@@ -221,7 +235,15 @@ describe("mobile application preview", () => {
     ).toBe(false);
     expect(
       document.querySelector<HTMLElement>('[data-feed-panel="nearby"]')?.hidden,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      document
+        .querySelector<HTMLElement>('[data-feed-panel="nearby"]')
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="viewport"]')?.content,
+    ).toContain("user-scalable=no");
     expect(document.querySelector(".preview-hero")).toBeNull();
     expect(document.querySelectorAll(".yoyi-logo")).toHaveLength(2);
     expect(
@@ -303,14 +325,20 @@ describe("mobile application preview", () => {
     document
       .querySelector<HTMLElement>('[data-calligraphy-category="rubbing"]')
       ?.click();
-    const inkCards = [
-      ...document.querySelectorAll<HTMLElement>('[data-category="ink"]'),
-    ];
-    const rubbingCards = [
-      ...document.querySelectorAll<HTMLElement>('[data-category="rubbing"]'),
-    ];
-    expect(inkCards.every((card) => card.hidden)).toBe(true);
-    expect(rubbingCards.every((card) => !card.hidden)).toBe(true);
+    const activeRubbingPage = document.querySelector<HTMLElement>(
+      '[data-pager="calligraphy"] [data-pager-page="rubbing"]',
+    );
+    expect(activeRubbingPage?.getAttribute("aria-hidden")).toBe("false");
+    expect(
+      [
+        ...(activeRubbingPage?.querySelectorAll<HTMLElement>(
+          '[data-category="rubbing"]',
+        ) ?? []),
+      ].every((card) => !card.hidden),
+    ).toBe(true);
+    expect(
+      activeRubbingPage?.querySelector('[data-category="ink"]'),
+    ).toBeNull();
 
     const calligraphyFilter = document.querySelector<HTMLInputElement>(
       "[data-calligraphy-filter]",
@@ -351,40 +379,93 @@ describe("mobile application preview", () => {
     ).toBe(true);
   });
 
-  it("switches home feeds with bounded touch swipes and suppresses the card click", () => {
+  it("follows the finger and settles home pages at the 50 percent boundary", () => {
     const dom = renderPreview();
     const document = dom.window.document;
     const homeScroll = document.querySelector<HTMLElement>(
       '[data-scroll-view="home"]',
     );
+    const homeTrack =
+      homeScroll?.querySelector<HTMLElement>("[data-pager-track]");
     const discoverCard = document.querySelector<HTMLElement>(
       '[data-content-id="discover-cliff-gate"]',
     );
-    if (!homeScroll || !discoverCard)
+    if (!homeScroll || !homeTrack || !discoverCard) {
       throw new Error("home swipe surface missing");
+    }
 
-    swipe(dom.window, discoverCard, { x: 260, y: 160 }, { x: 160, y: 165 });
+    dispatchPointer(dom.window, discoverCard, "pointerdown", {
+      clientX: 300,
+      clientY: 160,
+    });
+    dispatchPointer(dom.window, discoverCard, "pointermove", {
+      clientX: 202.5,
+      clientY: 162,
+    });
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-97.5);
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="discover"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="nearby"]')?.hidden,
+    ).toBe(false);
+    dispatchPointer(dom.window, discoverCard, "pointerup", {
+      clientX: 202.5,
+      clientY: 162,
+    });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 108.9, y: 160 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 105, y: 160 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 101.1, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
     ).toContain("is-selected");
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-390);
     discoverCard.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
 
-    swipe(dom.window, homeScroll, { x: 260, y: 160 }, { x: 160, y: 160 });
+    swipe(dom.window, homeScroll, { x: 390, y: 160 }, { x: 0, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.classList,
     ).toContain("is-selected");
-    swipe(dom.window, homeScroll, { x: 260, y: 160 }, { x: 160, y: 160 });
+    dispatchPointer(dom.window, homeScroll, "pointerdown", {
+      clientX: 300,
+      clientY: 160,
+    });
+    dispatchPointer(dom.window, homeScroll, "pointermove", {
+      clientX: 100,
+      clientY: 160,
+    });
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-830);
+    dispatchPointer(dom.window, homeScroll, "pointerup", {
+      clientX: 100,
+      clientY: 160,
+    });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.classList,
     ).toContain("is-selected");
 
-    swipe(dom.window, homeScroll, { x: 160, y: 160 }, { x: 260, y: 160 });
+    swipe(dom.window, homeScroll, { x: 0, y: 160 }, { x: 390, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
@@ -398,49 +479,65 @@ describe("mobile application preview", () => {
       .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
       ?.click();
     const calligraphyScroll = document.querySelector<HTMLElement>(
-      '[data-scroll-view="calligraphy"]',
+      '[data-scroll-key="calligraphy:all"]',
     );
     const calligraphyFilter = document.querySelector<HTMLInputElement>(
       "[data-calligraphy-filter]",
     );
-    if (!calligraphyScroll || !calligraphyFilter) {
+    const allPage = document.querySelector<HTMLElement>(
+      '[data-scroll-key="calligraphy:all"]',
+    );
+    const inkPage = document.querySelector<HTMLElement>(
+      '[data-scroll-key="calligraphy:ink"]',
+    );
+    const rubbingPage = document.querySelector<HTMLElement>(
+      '[data-scroll-key="calligraphy:rubbing"]',
+    );
+    if (
+      !calligraphyScroll ||
+      !calligraphyFilter ||
+      !allPage ||
+      !inkPage ||
+      !rubbingPage
+    ) {
       throw new Error("calligraphy swipe surface missing");
     }
     calligraphyFilter.value = "唐";
     calligraphyFilter.dispatchEvent(
       new dom.window.Event("input", { bubbles: true }),
     );
-    calligraphyScroll.scrollTop = 96;
+    allPage.scrollTop = 96;
+    allPage.dispatchEvent(new dom.window.Event("scroll"));
 
-    swipe(
-      dom.window,
-      calligraphyScroll,
-      { x: 250, y: 180 },
-      { x: 150, y: 185 },
-    );
+    swipe(dom.window, calligraphyScroll, { x: 300, y: 180 }, { x: 90, y: 185 });
     expect(
       document.querySelector<HTMLElement>('[data-calligraphy-category="ink"]')
         ?.classList,
     ).toContain("is-selected");
     expect(calligraphyFilter.value).toBe("唐");
-    expect(calligraphyScroll.scrollTop).toBe(96);
+    expect(allPage.scrollTop).toBe(96);
+    expect(inkPage.getAttribute("aria-hidden")).toBe("false");
     expect(
-      [
-        ...document.querySelectorAll<HTMLElement>('[data-category="rubbing"]'),
-      ].every((card) => card.hidden),
+      [...inkPage.querySelectorAll<HTMLElement>("[data-category]")].every(
+        (card) => card.dataset.category === "ink",
+      ),
     ).toBe(true);
+    inkPage.scrollTop = 42;
+    inkPage.dispatchEvent(new dom.window.Event("scroll"));
 
-    swipe(
-      dom.window,
-      calligraphyScroll,
-      { x: 250, y: 180 },
-      { x: 150, y: 185 },
-    );
+    swipe(dom.window, calligraphyScroll, { x: 300, y: 180 }, { x: 90, y: 185 });
     expect(
       document.querySelector<HTMLElement>(
         '[data-calligraphy-category="rubbing"]',
       )?.classList,
     ).toContain("is-selected");
+    swipe(dom.window, calligraphyScroll, { x: 90, y: 180 }, { x: 300, y: 185 });
+    expect(
+      document.querySelector<HTMLElement>('[data-calligraphy-category="ink"]')
+        ?.classList,
+    ).toContain("is-selected");
+    expect(inkPage.scrollTop).toBe(42);
+    expect(rubbingPage.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("ignores short, vertical, multi-touch, mouse, and PC swipe gestures", () => {
@@ -529,7 +626,7 @@ describe("mobile application preview", () => {
     );
     if (!homeScroll) throw new Error("tablet home surface missing");
 
-    swipe(dom.window, homeScroll, { x: 500, y: 220 }, { x: 400, y: 225 });
+    swipe(dom.window, homeScroll, { x: 700, y: 220 }, { x: 200, y: 225 });
     expect(document.documentElement.dataset.platform).toBe("tablet");
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
@@ -537,7 +634,7 @@ describe("mobile application preview", () => {
     ).toContain("is-selected");
   });
 
-  it("temporarily resets phone scale after orientation without losing state", async () => {
+  it("keeps phone zoom disabled and preserves pager state after orientation", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
     document
@@ -549,37 +646,28 @@ describe("mobile application preview", () => {
     const calligraphyFilter = document.querySelector<HTMLInputElement>(
       "[data-calligraphy-filter]",
     );
-    const calligraphyScroll = document.querySelector<HTMLElement>(
-      '[data-scroll-view="calligraphy"]',
+    const rubbingPage = document.querySelector<HTMLElement>(
+      '[data-scroll-key="calligraphy:rubbing"]',
     );
     const viewportMeta = document.querySelector<HTMLMetaElement>(
       'meta[name="viewport"]',
     );
-    if (!calligraphyFilter || !calligraphyScroll || !viewportMeta) {
+    if (!calligraphyFilter || !rubbingPage || !viewportMeta) {
       throw new Error("orientation test fixture missing");
     }
     calligraphyFilter.value = "北海";
     calligraphyFilter.dispatchEvent(
       new dom.window.Event("input", { bubbles: true }),
     );
-    calligraphyScroll.scrollTop = 144;
-    calligraphyScroll.dispatchEvent(new dom.window.Event("scroll"));
-    const viewportContents: string[] = [];
-    const observer = new dom.window.MutationObserver(() => {
-      viewportContents.push(viewportMeta.content);
-    });
-    observer.observe(viewportMeta, { attributes: true });
+    rubbingPage.scrollTop = 144;
+    rubbingPage.dispatchEvent(new dom.window.Event("scroll"));
 
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
     await waitForAnimationFrames(dom.window, 3);
-    observer.disconnect();
 
-    expect(
-      viewportContents.some((content) =>
-        content.includes("minimum-scale=1, maximum-scale=1"),
-      ),
-    ).toBe(true);
-    expect(viewportMeta.content).toBe("width=device-width, initial-scale=1");
+    expect(viewportMeta.content).toContain(
+      "minimum-scale=1, maximum-scale=1, user-scalable=no",
+    );
     expect(
       document.querySelector<HTMLElement>('[data-view="calligraphy"]')?.hidden,
     ).toBe(false);
@@ -589,10 +677,10 @@ describe("mobile application preview", () => {
       )?.classList,
     ).toContain("is-selected");
     expect(calligraphyFilter.value).toBe("北海");
-    expect(calligraphyScroll.scrollTop).toBe(144);
+    expect(rubbingPage.scrollTop).toBe(144);
   });
 
-  it("does not reset the viewport scale for tablet orientation changes", async () => {
+  it("keeps tablet zoom disabled across orientation changes", async () => {
     const dom = renderPreview(
       {},
       {
@@ -605,21 +693,15 @@ describe("mobile application preview", () => {
       'meta[name="viewport"]',
     );
     if (!viewportMeta) throw new Error("viewport meta missing");
-    const viewportContents: string[] = [];
-    const observer = new dom.window.MutationObserver(() => {
-      viewportContents.push(viewportMeta.content);
-    });
-    observer.observe(viewportMeta, { attributes: true });
-
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
     await waitForAnimationFrames(dom.window, 3);
-    observer.disconnect();
 
     expect(dom.window.document.documentElement.dataset.deviceClass).toBe(
       "tablet",
     );
-    expect(viewportContents).toHaveLength(0);
-    expect(viewportMeta.content).toBe("width=device-width, initial-scale=1");
+    expect(viewportMeta.content).toContain(
+      "minimum-scale=1, maximum-scale=1, user-scalable=no",
+    );
   });
 
   it("opens settings from every primary view and returns to its source", async () => {
@@ -873,13 +955,18 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("min-height: 58px");
     expect(pcCss).toContain("border-width: 9px 0 9px 10px");
     expect(pcCss).not.toContain("opacity: 0.88");
-    expect(previewCss).toContain("touch-action: manipulation");
-    expect(tabletCss).toContain("touch-action: manipulation");
-    expect(pcCss).not.toContain("touch-action: manipulation");
+    expect(previewCss).toContain("touch-action: pan-x pan-y");
+    expect(tabletCss).toContain("touch-action: pan-x pan-y");
+    expect(previewCss).not.toContain("pinch-zoom;");
+    expect(tabletCss).not.toContain("pinch-zoom;");
+    expect(pcCss).toContain("pinch-zoom");
     expect(html).toContain(
       '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     );
     expect(html).not.toMatch(/user-scalable|maximum-scale|minimum-scale/);
+    expect(devicePlatformScript).toContain("user-scalable=no");
+    expect(html).toContain('data-pager="home"');
+    expect(html).toContain('data-pager="calligraphy"');
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(tabletCss).toContain("var(--yoyi-container-reading)");
     expect(pcCss).toContain("var(--yoyi-container-reading)");
@@ -1076,7 +1163,7 @@ describe("mobile application preview", () => {
       .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
       ?.click();
     const calligraphyScroll = document.querySelector<HTMLElement>(
-      '[data-scroll-view="calligraphy"]',
+      '[data-scroll-key="calligraphy:all"]',
     );
     if (!calligraphyScroll) throw new Error("calligraphy scroll not found");
     calligraphyScroll.scrollTop = 260;

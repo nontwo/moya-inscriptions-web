@@ -24,9 +24,6 @@ const calligraphyFilterInput = document.querySelector(
 const calligraphyFilterClear = document.querySelector(
   "[data-calligraphy-filter-clear]",
 );
-const calligraphyFilterEmpty = document.querySelector(
-  "[data-calligraphy-filter-empty]",
-);
 const inscriptionPreview = document.querySelector("[data-inscription-preview]");
 const inscriptionPreviewImage = document.querySelector(
   "[data-inscription-preview-image]",
@@ -63,18 +60,20 @@ const primaryViews = ["home", "inscriptions", "calligraphy"];
 const homeFeeds = ["discover", "nearby", "topics"];
 const calligraphyCategories = ["all", "ink", "rubbing"];
 const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
-const viewportMeta = document.querySelector('meta[name="viewport"]');
-const scalableViewportContent =
-  viewportMeta?.getAttribute("content") ??
-  "width=device-width, initial-scale=1";
-const swipeMinimumDistance = 48;
-const swipeAxisRatio = 1.25;
+const pagerAxisLockDistance = 8;
+const pagerEdgeResistance = 0.25;
+const pagerSettleDuration = 220;
 const swipeClickSuppressionWindow = 400;
+const pagerControllers = new Map();
 
 const scrollPositions = {
-  home: 0,
+  "home:discover": 0,
+  "home:nearby": 0,
+  "home:topics": 0,
   inscriptions: 0,
-  calligraphy: 0,
+  "calligraphy:all": 0,
+  "calligraphy:ink": 0,
+  "calligraphy:rubbing": 0,
 };
 
 function syncPlatformAttribute() {
@@ -118,16 +117,28 @@ let themePreference = readStoredPreference(
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let inscriptionsSplitOpen = false;
-let activeSwipe = null;
-let viewportResetSequence = 0;
+let activePagerGesture = null;
 
 function usesInscriptionsSplit() {
   return root.dataset.platform === "pc" && primaryView === "inscriptions";
 }
 
-function scrollElementFor(view, platform = root.dataset.platform) {
+function scrollKeyForView(view) {
+  if (view === "home") return `home:${homeFeed}`;
+  if (view === "calligraphy") return `calligraphy:${calligraphyCategory}`;
+  return view;
+}
+
+function scrollElementFor(
+  view,
+  platform = root.dataset.platform,
+  scrollKey = scrollKeyForView(view),
+) {
   if (platform === "pc" && view !== "inscriptions") {
     return document.scrollingElement ?? document.documentElement;
+  }
+  if (view === "home" || view === "calligraphy") {
+    return document.querySelector(`[data-scroll-key="${scrollKey}"]`);
   }
   return document.querySelector(`[data-scroll-view="${view}"]`);
 }
@@ -137,34 +148,43 @@ function currentScrollElement() {
 }
 
 function saveScrollPosition() {
+  const scrollKey = scrollKeyForView(primaryView);
   const scrollElement = currentScrollElement();
-  if (scrollElement && primaryView in scrollPositions) {
-    scrollPositions[primaryView] = scrollElement.scrollTop;
+  if (scrollElement && scrollKey in scrollPositions) {
+    scrollPositions[scrollKey] = scrollElement.scrollTop;
   }
 }
 
 function restoreScrollPosition(view) {
+  const scrollKey = scrollKeyForView(view);
   requestAnimationFrame(() => {
-    const scrollElement = scrollElementFor(view);
-    if (scrollElement) scrollElement.scrollTop = scrollPositions[view] ?? 0;
+    const scrollElement = scrollElementFor(
+      view,
+      root.dataset.platform,
+      scrollKey,
+    );
+    if (scrollElement)
+      scrollElement.scrollTop = scrollPositions[scrollKey] ?? 0;
   });
 }
 
-function rememberScrollPosition(view, scrollTop) {
-  if (view in scrollPositions) scrollPositions[view] = scrollTop;
+function rememberScrollPosition(scrollKey, scrollTop) {
+  if (scrollKey in scrollPositions) scrollPositions[scrollKey] = scrollTop;
 }
 
 function onBeforePlatformQueryChange(event) {
-  if (!(primaryView in scrollPositions)) return;
+  const scrollKey = scrollKeyForView(primaryView);
+  if (!(scrollKey in scrollPositions)) return;
   const scrollElement = scrollElementFor(
     primaryView,
     event.detail?.previousPlatform,
+    scrollKey,
   );
   if (
     scrollElement &&
-    (scrollElement.scrollTop > 0 || scrollPositions[primaryView] === 0)
+    (scrollElement.scrollTop > 0 || scrollPositions[scrollKey] === 0)
   ) {
-    rememberScrollPosition(primaryView, scrollElement.scrollTop);
+    rememberScrollPosition(scrollKey, scrollElement.scrollTop);
   }
 }
 
@@ -396,21 +416,7 @@ function selectPrimaryView(view, { updateHistory = true } = {}) {
   }
 }
 
-function selectHomeFeed(value) {
-  homeFeed = value;
-  document.querySelectorAll("[data-home-feed]").forEach((button) => {
-    const selected = button.dataset.homeFeed === value;
-    button.classList.toggle("is-selected", selected);
-    button.setAttribute("aria-selected", String(selected));
-  });
-  document.querySelectorAll("[data-feed-panel]").forEach((panel) => {
-    panel.hidden = panel.dataset.feedPanel !== value;
-  });
-}
-
-function matchesCalligraphyCard(card, category, normalizedQuery) {
-  const categoryOk = category === "all" || card.dataset.category === category;
-  if (!categoryOk) return false;
+function matchesCalligraphyCard(card, normalizedQuery) {
   if (!normalizedQuery) return true;
   const haystack = (card.dataset.calligraphyFilterText ?? "").toLocaleLowerCase(
     "zh-CN",
@@ -422,25 +428,162 @@ function filterCalligraphy() {
   const normalizedQuery = calligraphyFilterQuery
     .trim()
     .toLocaleLowerCase("zh-CN");
-  let visibleCount = 0;
-  document.querySelectorAll("[data-category]").forEach((card) => {
-    const matches = matchesCalligraphyCard(
-      card,
-      calligraphyCategory,
-      normalizedQuery,
-    );
-    card.hidden = !matches;
-    if (matches) visibleCount += 1;
-  });
-  if (calligraphyFilterEmpty) {
-    calligraphyFilterEmpty.hidden = visibleCount > 0;
-  }
+  document
+    .querySelectorAll('[data-pager="calligraphy"] [data-pager-page]')
+    .forEach((page) => {
+      let visibleCount = 0;
+      page.querySelectorAll("[data-category]").forEach((card) => {
+        const matches = matchesCalligraphyCard(card, normalizedQuery);
+        card.hidden = !matches;
+        if (matches) visibleCount += 1;
+      });
+      const empty = page.querySelector("[data-calligraphy-filter-empty]");
+      if (empty) empty.hidden = visibleCount > 0;
+    });
   if (calligraphyFilterClear) {
     calligraphyFilterClear.hidden = normalizedQuery.length === 0;
   }
 }
 
-function selectCalligraphyCategory(value) {
+function touchPagerEnabled() {
+  const touchDevice =
+    root.dataset.deviceClass === "phone" ||
+    root.dataset.deviceClass === "tablet";
+  const touchPlatform =
+    root.dataset.platform === "phone" || root.dataset.platform === "tablet";
+  return touchDevice && touchPlatform;
+}
+
+function pagerWidth(controller) {
+  return (
+    controller.surface.getBoundingClientRect().width ||
+    controller.surface.clientWidth ||
+    window.innerWidth ||
+    1
+  );
+}
+
+function setPagerOffset(controller, offset) {
+  controller.track.style.transform = `translate3d(${offset}px, 0, 0)`;
+}
+
+function setPagerPageState(controller, activeIndex, touchMode) {
+  controller.pages.forEach((page, index) => {
+    const selected = index === activeIndex;
+    page.hidden = touchMode ? false : !selected;
+    page.setAttribute("aria-hidden", String(!selected));
+    if (selected) page.removeAttribute("inert");
+    else page.setAttribute("inert", "");
+  });
+}
+
+function finishPagerSettling(controller) {
+  controller.track.classList.remove("is-settling");
+  if (controller.settleTimer) window.clearTimeout(controller.settleTimer);
+  controller.settleTimer = 0;
+}
+
+function syncPager(controller, { animate = false } = {}) {
+  const activeIndex = controller.values.indexOf(controller.current());
+  const touchMode = touchPagerEnabled();
+  finishPagerSettling(controller);
+  controller.track.classList.remove("is-dragging");
+  setPagerPageState(controller, activeIndex, touchMode);
+  if (!touchMode) {
+    controller.track.style.removeProperty("transform");
+    return;
+  }
+  if (animate) {
+    controller.track.classList.add("is-settling");
+    controller.settleTimer = window.setTimeout(
+      () => finishPagerSettling(controller),
+      pagerSettleDuration,
+    );
+  }
+  setPagerOffset(controller, -activeIndex * pagerWidth(controller));
+}
+
+function syncAllPagers(options) {
+  pagerControllers.forEach((controller) => syncPager(controller, options));
+}
+
+function prepareCalligraphyPages() {
+  const track = document.querySelector(
+    '[data-pager="calligraphy"] [data-pager-track]',
+  );
+  const allPage = track?.querySelector('[data-pager-page="all"]');
+  if (!track || !allPage || track.querySelector('[data-pager-page="ink"]')) {
+    return;
+  }
+  for (const category of calligraphyCategories.slice(1)) {
+    const page = allPage.cloneNode(true);
+    page.dataset.pagerPage = category;
+    page.dataset.scrollKey = `calligraphy:${category}`;
+    page.querySelectorAll("[data-category]").forEach((card) => {
+      if (card.dataset.category !== category) card.remove();
+    });
+    page.querySelector("[data-calligraphy-filter-empty]").hidden = true;
+    track.append(page);
+  }
+}
+
+function preparePager(id, values, current, select) {
+  const surface = document.querySelector(`[data-pager="${id}"]`);
+  const track = surface?.querySelector("[data-pager-track]");
+  if (!surface || !track) return;
+  const pages = values.map((value) =>
+    track.querySelector(`[data-pager-page="${value}"]`),
+  );
+  if (pages.some((page) => !page)) return;
+  const controller = {
+    current,
+    id,
+    pages,
+    select,
+    settleTimer: 0,
+    surface,
+    track,
+    values,
+  };
+  pagerControllers.set(id, controller);
+  syncPager(controller);
+}
+
+function preparePagers() {
+  prepareCalligraphyPages();
+  preparePager("home", homeFeeds, () => homeFeed, selectHomeFeed);
+  preparePager(
+    "calligraphy",
+    calligraphyCategories,
+    () => calligraphyCategory,
+    selectCalligraphyCategory,
+  );
+}
+
+function selectHomeFeed(value, { animate = false } = {}) {
+  if (!homeFeeds.includes(value)) return;
+  const changed = homeFeed !== value;
+  if (changed && primaryView === "home") saveScrollPosition();
+  homeFeed = value;
+  document.querySelectorAll("[data-home-feed]").forEach((button) => {
+    const selected = button.dataset.homeFeed === value;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+  const controller = pagerControllers.get("home");
+  if (controller) syncPager(controller, { animate });
+  else {
+    document.querySelectorAll("[data-feed-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.feedPanel !== value;
+    });
+  }
+  if (changed && primaryView === "home") restoreScrollPosition("home");
+}
+
+function selectCalligraphyCategory(value, { animate = false } = {}) {
+  if (!calligraphyCategories.includes(value)) return;
+  const changed = calligraphyCategory !== value;
+  if (changed && primaryView === "calligraphy") saveScrollPosition();
   calligraphyCategory = value;
   document.querySelectorAll("[data-calligraphy-category]").forEach((button) => {
     const selected = button.dataset.calligraphyCategory === value;
@@ -448,84 +591,101 @@ function selectCalligraphyCategory(value) {
     button.setAttribute("aria-selected", String(selected));
   });
   filterCalligraphy();
-}
-
-function touchSwipeEnabled() {
-  return (
-    root.dataset.platform === "phone" || root.dataset.platform === "tablet"
-  );
-}
-
-function swipeOptionsFor(scrollView) {
-  if (scrollView === "home") {
-    return {
-      current: () => homeFeed,
-      options: homeFeeds,
-      select: selectHomeFeed,
-    };
+  const controller = pagerControllers.get("calligraphy");
+  if (controller) syncPager(controller, { animate });
+  if (changed && primaryView === "calligraphy") {
+    restoreScrollPosition("calligraphy");
   }
-  if (scrollView === "calligraphy") {
-    return {
-      current: () => calligraphyCategory,
-      options: calligraphyCategories,
-      select: selectCalligraphyCategory,
-    };
-  }
-  return null;
 }
 
-function beginSwipe(event, surface) {
-  if (!touchSwipeEnabled() || event.pointerType !== "touch") return;
-  if (!event.isPrimary || activeSwipe) {
-    activeSwipe = null;
+function cancelActivePagerGesture({ animate = true } = {}) {
+  if (!activePagerGesture) return;
+  const { controller } = activePagerGesture;
+  activePagerGesture = null;
+  syncPager(controller, { animate });
+}
+
+function beginPagerGesture(event, controller) {
+  if (!touchPagerEnabled() || event.pointerType !== "touch") return;
+  if (!event.isPrimary || activePagerGesture) {
+    cancelActivePagerGesture();
     return;
   }
-  activeSwipe = {
+  finishPagerSettling(controller);
+  activePagerGesture = {
+    axis: null,
+    controller,
+    dragX: 0,
     pointerId: event.pointerId,
+    startIndex: controller.values.indexOf(controller.current()),
     startX: event.clientX,
     startY: event.clientY,
-    surface,
+    width: pagerWidth(controller),
   };
 }
 
-function cancelSwipe(event) {
-  if (activeSwipe?.pointerId === event.pointerId || !event.isPrimary) {
-    activeSwipe = null;
+function movePagerGesture(event) {
+  const gesture = activePagerGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return;
+  if (!event.isPrimary) {
+    cancelActivePagerGesture();
+    return;
   }
+  const deltaX = event.clientX - gesture.startX;
+  const deltaY = event.clientY - gesture.startY;
+  if (!gesture.axis) {
+    if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < pagerAxisLockDistance) {
+      return;
+    }
+    if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+      activePagerGesture = null;
+      return;
+    }
+    gesture.axis = "horizontal";
+    gesture.controller.track.classList.add("is-dragging");
+  }
+  event.preventDefault();
+  let dragX = Math.max(-gesture.width, Math.min(gesture.width, deltaX));
+  const atFirst = gesture.startIndex === 0 && dragX > 0;
+  const atLast =
+    gesture.startIndex === gesture.controller.values.length - 1 && dragX < 0;
+  if (atFirst || atLast) dragX *= pagerEdgeResistance;
+  gesture.dragX = dragX;
+  setPagerOffset(
+    gesture.controller,
+    -gesture.startIndex * gesture.width + dragX,
+  );
 }
 
-function completeSwipe(event, surface) {
+function completePagerGesture(event) {
+  const gesture = activePagerGesture;
   if (
-    !activeSwipe ||
-    activeSwipe.pointerId !== event.pointerId ||
-    activeSwipe.surface !== surface
+    !gesture ||
+    gesture.pointerId !== event.pointerId ||
+    event.pointerType !== "touch"
   ) {
     return;
   }
-
-  const { startX, startY } = activeSwipe;
-  activeSwipe = null;
-  if (!touchSwipeEnabled() || event.pointerType !== "touch") return;
-
-  const deltaX = event.clientX - startX;
-  const deltaY = event.clientY - startY;
-  if (
-    Math.abs(deltaX) < swipeMinimumDistance ||
-    Math.abs(deltaX) < Math.abs(deltaY) * swipeAxisRatio
-  ) {
-    return;
-  }
-
-  const swipeOptions = swipeOptionsFor(surface.dataset.scrollView);
-  if (!swipeOptions) return;
-  const currentIndex = swipeOptions.options.indexOf(swipeOptions.current());
-  const nextIndex = currentIndex + (deltaX < 0 ? 1 : -1);
-  surface.dataset.suppressSwipeClickUntil = String(
+  activePagerGesture = null;
+  if (gesture.axis !== "horizontal") return;
+  gesture.controller.track.classList.remove("is-dragging");
+  gesture.controller.surface.dataset.suppressSwipeClickUntil = String(
     performance.now() + swipeClickSuppressionWindow,
   );
-  if (nextIndex >= 0 && nextIndex < swipeOptions.options.length) {
-    swipeOptions.select(swipeOptions.options[nextIndex]);
+  const direction = gesture.dragX < 0 ? 1 : -1;
+  const destinationIndex = gesture.startIndex + direction;
+  const destinationVisible = Math.abs(gesture.dragX) / gesture.width > 0.5;
+  if (
+    destinationVisible &&
+    destinationIndex >= 0 &&
+    destinationIndex < gesture.controller.values.length
+  ) {
+    gesture.controller.select(gesture.controller.values[destinationIndex], {
+      animate: true,
+    });
+    return;
   }
+  syncPager(gesture.controller, { animate: true });
 }
 
 function suppressSwipeClick(event, surface) {
@@ -534,25 +694,6 @@ function suppressSwipeClick(event, surface) {
   delete surface.dataset.suppressSwipeClickUntil;
   event.preventDefault();
   event.stopImmediatePropagation();
-}
-
-function resetPhoneViewportScale() {
-  if (root.dataset.deviceClass !== "phone" || !viewportMeta) return;
-  saveScrollPosition();
-  const resetSequence = ++viewportResetSequence;
-  requestAnimationFrame(() => {
-    if (resetSequence !== viewportResetSequence) return;
-    viewportMeta.setAttribute(
-      "content",
-      `${scalableViewportContent}, minimum-scale=1, maximum-scale=1`,
-    );
-    requestAnimationFrame(() => {
-      if (resetSequence !== viewportResetSequence) return;
-      viewportMeta.setAttribute("content", scalableViewportContent);
-      syncPlatformAttribute();
-      restoreScrollPosition(primaryView);
-    });
-  });
 }
 
 function filterInscriptions(query) {
@@ -646,6 +787,18 @@ function closeDetail() {
   }
 }
 
+function findContentTrigger(contentId) {
+  const activePagerPage = document.querySelector(
+    `[data-view="${primaryView}"] [data-pager-page][aria-hidden="false"]`,
+  );
+  return (
+    activePagerPage?.querySelector(`[data-content-id="${contentId}"]`) ??
+    document.querySelector(`[data-content-id="${contentId}"]`)
+  );
+}
+
+preparePagers();
+
 document.querySelectorAll("[data-primary-view]").forEach((button) => {
   button.addEventListener("click", () => {
     selectPrimaryView(button.dataset.primaryView);
@@ -654,36 +807,35 @@ document.querySelectorAll("[data-primary-view]").forEach((button) => {
 
 document.querySelectorAll("[data-home-feed]").forEach((button) => {
   button.addEventListener("click", () =>
-    selectHomeFeed(button.dataset.homeFeed),
+    selectHomeFeed(button.dataset.homeFeed, { animate: true }),
   );
 });
 
 document.querySelectorAll("[data-calligraphy-category]").forEach((button) => {
   button.addEventListener("click", () =>
-    selectCalligraphyCategory(button.dataset.calligraphyCategory),
+    selectCalligraphyCategory(button.dataset.calligraphyCategory, {
+      animate: true,
+    }),
   );
 });
 
-document
-  .querySelectorAll(
-    '[data-scroll-view="home"], [data-scroll-view="calligraphy"]',
-  )
-  .forEach((surface) => {
-    surface.addEventListener("pointerdown", (event) =>
-      beginSwipe(event, surface),
-    );
-    surface.addEventListener("pointerup", (event) =>
-      completeSwipe(event, surface),
-    );
-    surface.addEventListener("pointercancel", cancelSwipe);
-    surface.addEventListener(
-      "click",
-      (event) => suppressSwipeClick(event, surface),
-      {
-        capture: true,
-      },
-    );
+pagerControllers.forEach((controller) => {
+  controller.surface.addEventListener("pointerdown", (event) =>
+    beginPagerGesture(event, controller),
+  );
+  controller.surface.addEventListener("pointermove", movePagerGesture, {
+    passive: false,
   });
+  controller.surface.addEventListener("pointerup", completePagerGesture);
+  controller.surface.addEventListener("pointercancel", () =>
+    cancelActivePagerGesture(),
+  );
+  controller.surface.addEventListener(
+    "click",
+    (event) => suppressSwipeClick(event, controller.surface),
+    { capture: true },
+  );
+});
 
 document.querySelectorAll("[data-open-settings]").forEach((button) => {
   button.addEventListener("click", () => openSettings());
@@ -777,9 +929,7 @@ window.addEventListener("popstate", (event) => {
   if (state?.kind === "detail") {
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
     updateBottomNavigation();
-    const trigger = document.querySelector(
-      `[data-content-id="${state.contentId}"]`,
-    );
+    const trigger = findContentTrigger(state.contentId);
     if (trigger) openDetail(trigger, { updateHistory: false });
     return;
   }
@@ -795,6 +945,8 @@ window.addEventListener("popstate", (event) => {
 
 function onPlatformQueryChange() {
   syncPlatformAttribute();
+  cancelActivePagerGesture({ animate: false });
+  syncAllPagers();
   if (root.dataset.platform !== "pc" && inscriptionsSplitOpen) {
     const selected = document.querySelector(
       "[data-view='inscriptions'] [data-open-detail].is-selected",
@@ -813,9 +965,7 @@ function onPlatformQueryChange() {
     primaryView === "inscriptions" &&
     history.state?.kind === "detail"
   ) {
-    const trigger = document.querySelector(
-      `[data-content-id="${history.state.contentId}"]`,
-    );
+    const trigger = findContentTrigger(history.state.contentId);
     if (trigger) openDetail(trigger, { updateHistory: false });
   }
   restoreScrollPosition(primaryView);
@@ -826,17 +976,19 @@ window.addEventListener(
   onBeforePlatformQueryChange,
 );
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
-window.addEventListener("orientationchange", resetPhoneViewportScale);
-document.querySelectorAll("[data-scroll-view]").forEach((scrollElement) => {
+function onPagerViewportChange() {
+  cancelActivePagerGesture({ animate: false });
+  requestAnimationFrame(() => syncAllPagers());
+}
+window.addEventListener("resize", onPagerViewportChange);
+window.addEventListener("orientationchange", onPagerViewportChange);
+document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
   scrollElement.addEventListener(
     "scroll",
     () => {
-      if (
-        root.dataset.platform !== "pc" ||
-        scrollElement.dataset.scrollView === "inscriptions"
-      ) {
+      if (root.dataset.platform !== "pc") {
         rememberScrollPosition(
-          scrollElement.dataset.scrollView,
+          scrollElement.dataset.scrollKey,
           scrollElement.scrollTop,
         );
       }
@@ -844,12 +996,20 @@ document.querySelectorAll("[data-scroll-view]").forEach((scrollElement) => {
     { passive: true },
   );
 });
+document
+  .querySelector('[data-scroll-view="inscriptions"]')
+  ?.addEventListener(
+    "scroll",
+    (event) =>
+      rememberScrollPosition("inscriptions", event.currentTarget.scrollTop),
+    { passive: true },
+  );
 window.addEventListener(
   "scroll",
   () => {
     if (root.dataset.platform === "pc" && primaryView !== "inscriptions") {
       rememberScrollPosition(
-        primaryView,
+        scrollKeyForView(primaryView),
         (document.scrollingElement ?? document.documentElement).scrollTop,
       );
     }

@@ -50,7 +50,11 @@ button {
   overflow: hidden;
   background-color: var(--yoyi-color-background-page);
   isolation: isolate;
-  touch-action: manipulation;
+}
+
+[data-device-class="phone"] .mobile-app,
+[data-device-class="tablet"] .mobile-app {
+  touch-action: pan-x pan-y;
 }
 
 .app-view {
@@ -171,8 +175,52 @@ button {
   overflow-y: auto;
   overscroll-behavior-y: auto;
   scrollbar-width: none;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+.app-scroll.app-pager {
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.app-pager__track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.app-pager__track.is-dragging {
+  user-select: none;
+}
+
+.app-pager__track.is-settling {
+  transition: transform 220ms var(--yoyi-easing-emphasized);
+}
+
+.app-pager__page {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 0 0 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-pager__page::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-pager__track.is-settling {
+    transition-duration: 0s;
+  }
 }
 
 .app-scroll::-webkit-scrollbar,
