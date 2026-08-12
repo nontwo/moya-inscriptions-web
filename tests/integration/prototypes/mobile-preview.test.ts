@@ -32,6 +32,10 @@ const topicsFixture = await readFile(
   new URL("fixtures/topics.placeholder.js", previewRoot),
   "utf8",
 );
+const sharedCss = await readFile(
+  new URL("preview.shared.css", previewRoot),
+  "utf8",
+);
 const previewCss = await readFile(new URL("preview.css", previewRoot), "utf8");
 const tabletCss = await readFile(
   new URL("preview.tablet.css", previewRoot),
@@ -51,6 +55,58 @@ const ipadDesktopUserAgent =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Safari/605.1.15";
 const desktopUserAgent =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/130 Safari/537.36";
+
+const topLevelCssChunks = (source: string) => {
+  const chunks: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let inComment = false;
+  let quote = "";
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+
+    if (inComment) {
+      if (character === "*" && next === "/") {
+        inComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (!quote && character === "/" && next === "*") {
+      inComment = true;
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      if (character === "\\") {
+        index += 1;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        chunks.push(source.slice(start, index + 1).trim());
+        start = index + 1;
+      }
+    }
+  }
+
+  return chunks;
+};
+
+const normalizeCssChunk = (chunk: string) =>
+  chunk.replace(/^(?:\/\*[\s\S]*?\*\/\s*)+/, "").trim();
 
 type DeviceOptions = {
   maxTouchPoints?: number;
@@ -1243,6 +1299,18 @@ describe("mobile application preview", () => {
   });
 
   it("isolates phone, tablet, and PC rules behind platform stylesheets", () => {
+    const dom = renderPreview();
+    const sharedStylesheet = dom.window.document.querySelector<HTMLLinkElement>(
+      "[data-shared-stylesheet]",
+    );
+
+    expect(sharedStylesheet?.media).toBe("");
+    expect(sharedCss).toContain(".app-nav-brand");
+    expect(sharedCss).toContain(".app-inscriptions-layout");
+    expect(sharedCss).toContain(".app-inscriptions-preview");
+    expect(sharedCss).toContain("--app-calligraphy-scale");
+    expect(sharedCss).toContain("--app-motto-font");
+    expect(sharedCss).not.toContain("prefers-reduced-motion");
     expect(previewCss).not.toContain("@media (min-width: 48rem)");
     expect(previewCss).toContain("orientation: portrait");
     expect(previewCss).toContain("orientation: landscape");
@@ -1287,21 +1355,25 @@ describe("mobile application preview", () => {
     expect(tabletCss).toMatch(
       /\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-5\)/,
     );
-    expect(previewCss).toMatch(
+    expect(sharedCss).toMatch(
       /\.app-topics__grid\s*\{[^}]*grid-template-columns: 1fr/,
     );
     expect(previewCss).toMatch(
       /@media \(orientation: landscape\) \{[\s\S]*?\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
     );
+    const sharedRules = new Set(
+      topLevelCssChunks(sharedCss).map(normalizeCssChunk),
+    );
     for (const css of [previewCss, tabletCss, pcCss]) {
-      expect(css).toContain(".app-nav-brand");
-      expect(css).toContain(".app-inscriptions-layout");
-      expect(css).toContain(".app-inscriptions-preview");
-      expect(css).toContain("--app-calligraphy-scale");
-      expect(css).toContain("--app-motto-font");
-      expect(css).toContain("overscroll-behavior-y: auto");
-      expect(css).toContain("touch-action: pan-y");
-      expect(css).not.toContain("overscroll-behavior-y: contain");
+      const effectiveCss = `${sharedCss}\n${css}`;
+      const duplicatedSharedRules = topLevelCssChunks(css)
+        .map(normalizeCssChunk)
+        .filter((chunk) => sharedRules.has(chunk));
+      expect(duplicatedSharedRules).toEqual([]);
+      expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+      expect(effectiveCss).toContain("overscroll-behavior-y: auto");
+      expect(effectiveCss).toContain("touch-action: pan-y");
+      expect(effectiveCss).not.toContain("overscroll-behavior-y: contain");
     }
     expect(html).toContain("app-inscriptions-layout");
     expect(html).toContain("data-inscription-preview");
@@ -1320,13 +1392,15 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-view="topic-column"');
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
+    expect(html).toContain('href="./preview.shared.css"');
+    expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
     expect(html).toContain('data-platform-stylesheet="tablet"');
     expect(html).toContain('data-platform-stylesheet="pc"');
     expect(html).not.toContain("data-platform-gate");
     expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(script).not.toMatch(/addEventListener\(["'](?:wheel|touchmove)["']/);
-    expect(previewCss).toContain(".app-topics__grid");
+    expect(sharedCss).toContain(".app-topics__grid");
     expect(html).toContain("收藏");
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
   });

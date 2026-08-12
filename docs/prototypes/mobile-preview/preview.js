@@ -963,25 +963,31 @@ function findContentTrigger(contentId) {
 
 preparePagers();
 
-document.querySelectorAll("[data-primary-view]").forEach((button) => {
-  button.addEventListener("click", () => {
-    selectPrimaryView(button.dataset.primaryView);
+function bindClicks(selector, handler) {
+  document.querySelectorAll(selector).forEach((element) => {
+    element.addEventListener("click", () => handler(element));
   });
-});
+}
 
-document.querySelectorAll("[data-home-feed]").forEach((button) => {
-  button.addEventListener("click", () =>
-    selectHomeFeed(button.dataset.homeFeed, { animate: true }),
-  );
-});
+function bindCheckedOptions(selector, apply) {
+  document.querySelectorAll(selector).forEach((option) => {
+    option.addEventListener("change", (event) => {
+      if (event.currentTarget.checked) apply(event.currentTarget.value);
+    });
+  });
+}
 
-document.querySelectorAll("[data-calligraphy-category]").forEach((button) => {
-  button.addEventListener("click", () =>
-    selectCalligraphyCategory(button.dataset.calligraphyCategory, {
-      animate: true,
-    }),
-  );
-});
+bindClicks("[data-primary-view]", (button) =>
+  selectPrimaryView(button.dataset.primaryView),
+);
+bindClicks("[data-home-feed]", (button) =>
+  selectHomeFeed(button.dataset.homeFeed, { animate: true }),
+);
+bindClicks("[data-calligraphy-category]", (button) =>
+  selectCalligraphyCategory(button.dataset.calligraphyCategory, {
+    animate: true,
+  }),
+);
 
 pagerControllers.forEach((controller) => {
   controller.surface.addEventListener("pointerdown", (event) =>
@@ -1001,33 +1007,15 @@ pagerControllers.forEach((controller) => {
   );
 });
 
-document.querySelectorAll("[data-open-settings]").forEach((button) => {
-  button.addEventListener("click", () => openSettings());
-});
+bindClicks("[data-open-settings]", () => openSettings());
 
 document
   .querySelector("[data-settings-back]")
   .addEventListener("click", closeSettings);
 
-document.querySelectorAll("[data-theme-option]").forEach((option) => {
-  option.addEventListener("change", (event) => {
-    if (event.currentTarget.checked) {
-      applyThemePreference(event.currentTarget.value);
-    }
-  });
-});
-
-document.querySelectorAll("[data-layout-option]").forEach((option) => {
-  option.addEventListener("change", (event) => {
-    if (event.currentTarget.checked) {
-      applyHomeFeedLayout(event.currentTarget.value);
-    }
-  });
-});
-
-document.querySelectorAll("[data-open-detail]").forEach((trigger) => {
-  trigger.addEventListener("click", () => openDetail(trigger));
-});
+bindCheckedOptions("[data-theme-option]", applyThemePreference);
+bindCheckedOptions("[data-layout-option]", applyHomeFeedLayout);
+bindClicks("[data-open-detail]", openDetail);
 
 document
   .querySelector("[data-detail-back]")
@@ -1047,9 +1035,9 @@ document.querySelectorAll("[data-shell-control]").forEach((control) => {
   });
 });
 
-document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
-  tab.addEventListener("click", () => setPreviewTab(tab.dataset.previewTab));
-});
+bindClicks("[data-preview-tab]", (tab) =>
+  setPreviewTab(tab.dataset.previewTab),
+);
 
 searchInput.addEventListener("input", (event) => {
   filterInscriptions(event.currentTarget.value);
