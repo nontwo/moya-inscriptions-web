@@ -25,10 +25,14 @@ describe("UI styles and architecture", () => {
   it("includes responsive, safe-area, theme, and reduced-motion rules", async () => {
     const css = await readFile(new URL("styles.css", uiRoot), "utf8");
     expect(css).toContain("env(safe-area-inset-bottom)");
+    expect(css).toContain("@media (min-width: 48rem)");
     expect(css).toContain("@media (min-width: 56rem)");
+    expect(css).toContain("@media (min-width: 90rem)");
+    expect(css).toContain("orientation: landscape");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain('[data-motion="reduced"]');
     expect(css).toContain("paper-dark-subtle.svg");
+    expect(css).toContain("var(--yoyi-container-content)");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 

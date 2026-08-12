@@ -16,7 +16,8 @@
 
 `Dialog`、`Drawer`、`Sheet` 都使用受控
 `open/onOpenChange`，共享 Esc、遮罩关闭、标题/描述关联和焦点恢复。`Tooltip`
-同时支持 hover 与键盘 focus。 `LoadingScreen` 默认延迟 160ms，避免短加载闪烁。
+同时支持 hover 与键盘 focus。 `LoadingScreen`
+默认延迟 160ms，避免短加载闪烁；延迟后显示正式 Logo 与文言「志于道，据于德，依于仁，游于艺」，进入主界面后不再显示 Logo。
 
 ## Tabs 与分类
 
@@ -30,8 +31,9 @@
 `NavigationItem` 包含 id、label、可选 labelMark/href/icon/disabled；`TabOption`
 同样支持可选
 `labelMark`。存在字标时，真实文字仍作为交互元素的无障碍名称，视觉层显示对应透明 PNG；该能力只用于首页、碑刻、书帖三个底部固定导航项。顶部标签默认显示系统字体文本。组件不导入任何路由库。`ResponsiveNavigation`
-在 896px 以下显示底栏，以上显示带 Logo 和搜索入口的顶部导航。桌面品牌链接由调用方通过
-`brandHref` 显式传入；省略时 Logo 不产生链接，组件不会擅自选择 `/` 或其他路由。
+在 896px 以下显示底栏（平板横屏可由布局层将同一批入口改为侧轨），以上显示带 Logo 和搜索入口的顶部导航。桌面品牌链接由调用方通过
+`brandHref` 显式传入；省略时 Logo 不产生链接，组件不会擅自选择 `/`
+或其他路由。内容容器遵循1200px / 760px token，不因宽屏新增导航入口或业务字段。
 
 `ThemeCycleButton` 是受控图标按钮，接收 `ThemePreference` 与
 `onValueChange`，按 system、light、dark 顺序循环；主题属性仍由消费端设置。该组件为公共 API 兼容保留，移动预览改用设置页中的明确单选项。

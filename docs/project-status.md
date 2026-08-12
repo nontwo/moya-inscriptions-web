@@ -11,28 +11,28 @@
 Catalog Contract Phase 1及T04.2 canonical
 migration；`main`继续保留稳定的T00/治理基线。
 
-| 任务     | 状态           | 当前成果                                                          |
-| -------- | -------------- | ----------------------------------------------------------------- |
-| T00      | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理         |
-| T01      | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                          |
-| T02      | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试          |
-| T03      | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档         |
-| T04.0-R  | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫               |
-| T04.1-D  | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards   |
-| T04.2    | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes      |
-| T04.3    | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration    |
-| T05.0    | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown      |
-| T05.1    | 已实现         | Catalog list/detail HTTP boundary与development/test fixture       |
-| T05.2    | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition |
-| T05.3    | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService       |
-| 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片             |
-| T06–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                 |
+| 任务       | 状态           | 当前成果                                                          |
+| ---------- | -------------- | ----------------------------------------------------------------- |
+| T00        | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理         |
+| T01        | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                          |
+| T02        | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试          |
+| T03        | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档         |
+| T04.0-R    | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫               |
+| T04.1-D    | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards   |
+| T04.2      | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes      |
+| T04.3      | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration    |
+| T05.0      | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown      |
+| T05.1      | 已实现         | Catalog list/detail HTTP boundary与development/test fixture       |
+| T05.2      | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition |
+| T05.3      | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService       |
+| 响应式原型 | 已隔离保存     | 同一 URL 自动选择手机、平板或 PC 壳；不连接 Reader、数据库或搜索  |
+| T06–T09    | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                 |
 
 ## 当前能做什么
 
 - 安装、lint、类型检查、测试和构建完整 Monorepo。
 - 使用 `@moya/design-tokens` 与 `@moya/ui` 开发后续正式界面。
-- 在本地静态服务器查看组件目录和手机交互原型。
+- 在本地静态服务器查看组件目录和设备自适应交互原型。
 - 依据 T03 文档评估 CloudBase 方案，但不能据此直接创建或发布生产资源。
 - 使用canonical `CatalogId`、两值 `CatalogKind`和suffix-free Catalog Public
   Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
@@ -58,8 +58,9 @@ HTTP在development/test缺省使用三个条目的fixture；production已有空�
 
 当前测试覆盖工程fixture、Backend HTTP runtime、Catalog contracts/application
 service、Query Port、strict query、Kind filtering、OpenAPI、架构边界、T02
-token/资产/组件和手机原型交互。真实PostgreSQL HTTP integration以CI中的PostgreSQL
-18.4 clean service为权威验证环境；本机不要求安装PostgreSQL或Docker。
+token/资产/组件和设备自适应原型交互。真实PostgreSQL HTTP
+integration以CI中的PostgreSQL 18.4 clean
+service为权威验证环境；本机不要求安装PostgreSQL或Docker。
 
 标准命令：
 
@@ -112,13 +113,14 @@ readiness，不是未经决策即可复用的process liveness probe。
 启动静态预览：
 
 ```sh
-python3 -m http.server 4173
+python3 -m http.server 4175 --bind 0.0.0.0
 ```
 
-- 组件目录：`http://localhost:4173/docs/design-system/catalog/`
-- 手机原型：`http://localhost:4173/docs/prototypes/mobile-preview/`
+- 组件目录：`http://localhost:4175/docs/design-system/catalog/`
+- 响应式原型：`http://localhost:4175/docs/prototypes/mobile-preview/`
+- 外部对照站点：[类似网站参考清单](references/similar-sites.md)
 
-手机原型只用于直观检查导航与交互，不是 `apps/web` 的正式实现。
+响应式原型只用于直观检查导航与交互，不是 `apps/web` 的正式实现。
 
 ## 分支与 GitHub 限制
 
