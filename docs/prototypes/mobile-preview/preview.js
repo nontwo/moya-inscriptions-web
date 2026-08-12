@@ -12,65 +12,39 @@ const findEditorialTopic =
   ((id) => editorialTopics.find((topic) => topic.id === id) ?? null);
 
 const root = document.documentElement;
-const app = document.querySelector("[data-mobile-app]");
-const bottomNavigation = document.querySelector("[data-bottom-navigation]");
-const detailImage = document.querySelector("[data-detail-image]");
-const detailTitle = document.querySelector("[data-detail-title]");
-const searchInput = document.querySelector("[data-inscription-search]");
-const searchClear = document.querySelector("[data-search-clear]");
+const compactApp = document.querySelector("[data-mobile-app]");
+const desktopApp = document.querySelector("[data-desktop-app]");
+const shellRoots = [...document.querySelectorAll("[data-shell-root]")];
 const calligraphyFilterInput = document.querySelector(
   "[data-calligraphy-filter]",
 );
 const calligraphyFilterClear = document.querySelector(
   "[data-calligraphy-filter-clear]",
 );
-const calligraphyFilterEmpty = document.querySelector(
-  "[data-calligraphy-filter-empty]",
-);
-const inscriptionPreview = document.querySelector("[data-inscription-preview]");
-const inscriptionPreviewImage = document.querySelector(
-  "[data-inscription-preview-image]",
-);
-const inscriptionPreviewTitle = document.querySelector(
-  "[data-inscription-preview-title]",
-);
-const inscriptionPreviewEmpty = document.querySelector(
-  "[data-inscription-preview-empty]",
-);
-const inscriptionPreviewContent = document.querySelector(
-  "[data-inscription-preview-content]",
-);
-const inscriptionPreviewMeta = document.querySelector(
-  "[data-inscription-preview-meta]",
-);
-const inscriptionPreviewFeatured = document.querySelector(
-  "[data-inscription-preview-featured]",
-);
-const inscriptionPreviewSummary = document.querySelector(
-  "[data-inscription-preview-summary]",
-);
 const topicsGrid = document.querySelector("[data-topics-grid]");
 const topicColumnBody = document.querySelector("[data-topic-column-body]");
 const topicColumnHeading = document.querySelector(
   "[data-topic-column-heading]",
 );
+const desktopShellQuery = window.matchMedia("(min-width: 64rem)");
+const desktopPlatformQuery = window.matchMedia("(min-width: 56rem)");
+const tabletQuery = window.matchMedia("(min-width: 48rem)");
 
 const themePreferenceKey = "yoyi.theme-preference";
 const homeLayoutKey = "yoyi.home-feed-layout";
 const themePreferences = ["system", "light", "dark"];
 const homeLayouts = ["single", "double"];
 const primaryViews = ["home", "inscriptions", "calligraphy"];
-const desktopSplitQuery = window.matchMedia("(min-width: 56rem)");
-const tabletQuery = window.matchMedia("(min-width: 48rem)");
 
 const scrollPositions = {
   home: 0,
   inscriptions: 0,
   calligraphy: 0,
+  detail: 0,
 };
 
 function syncPlatformAttribute() {
-  if (desktopSplitQuery.matches) {
+  if (desktopPlatformQuery.matches) {
     root.dataset.platform = "pc";
   } else if (tabletQuery.matches) {
     root.dataset.platform = "tablet";
@@ -97,136 +71,66 @@ function persistPreference(key, value) {
 }
 
 let primaryView = "home";
+let currentView = "home";
 let homeFeed = "discover";
 let calligraphyCategory = "all";
 let calligraphyFilterQuery = "";
+let inscriptionQuery = "";
+let activeShellName = desktopShellQuery.matches ? "desktop" : "compact";
 let themePreference = readStoredPreference(
   themePreferenceKey,
   themePreferences,
   "system",
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
-let inscriptionsSplitOpen = false;
 
-function usesInscriptionsSplit() {
-  return desktopSplitQuery.matches && primaryView === "inscriptions";
+function getShell(name = activeShellName) {
+  return document.querySelector(`[data-shell-root="${name}"]`);
 }
 
-function currentScrollElement() {
-  return document.querySelector(`[data-scroll-view="${primaryView}"]`);
+function setShellAccessibility() {
+  shellRoots.forEach((shell) => {
+    const inactive = shell.dataset.shellRoot !== activeShellName;
+    shell.setAttribute("aria-hidden", String(inactive));
+    if (inactive) shell.setAttribute("inert", "");
+    else shell.removeAttribute("inert");
+  });
+  root.dataset.activeShell = activeShellName;
 }
 
-function saveScrollPosition() {
-  const scrollElement = currentScrollElement();
-  if (scrollElement && primaryView in scrollPositions) {
-    scrollPositions[primaryView] = scrollElement.scrollTop;
+function currentScrollElement(shellName = activeShellName) {
+  return getShell(shellName)?.querySelector(
+    `[data-scroll-view="${currentView}"]`,
+  );
+}
+
+function saveScrollPosition(shellName = activeShellName) {
+  const scrollElement = currentScrollElement(shellName);
+  if (scrollElement && currentView in scrollPositions) {
+    scrollPositions[currentView] = scrollElement.scrollTop;
   }
 }
 
 function restoreScrollPosition(view) {
   requestAnimationFrame(() => {
-    const scrollElement = document.querySelector(
-      `[data-scroll-view="${view}"]`,
-    );
-    if (scrollElement) scrollElement.scrollTop = scrollPositions[view] ?? 0;
-  });
-}
-
-function clearInscriptionSelection() {
-  document
-    .querySelectorAll("[data-view='inscriptions'] [data-open-detail]")
-    .forEach((item) => {
-      item.classList.remove("is-selected");
-      item.removeAttribute("aria-current");
+    shellRoots.forEach((shell) => {
+      const scrollElement = shell.querySelector(`[data-scroll-view="${view}"]`);
+      if (scrollElement) scrollElement.scrollTop = scrollPositions[view] ?? 0;
     });
-}
-
-function setInscriptionSelection(trigger) {
-  clearInscriptionSelection();
-  if (!trigger) return;
-  trigger.classList.add("is-selected");
-  trigger.setAttribute("aria-current", "true");
-}
-
-function setPreviewTab(tabId) {
-  document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
-    const selected = tab.dataset.previewTab === tabId;
-    tab.classList.toggle("is-selected", selected);
-    tab.setAttribute("aria-selected", String(selected));
   });
-  document.querySelectorAll("[data-preview-panel]").forEach((panel) => {
-    panel.hidden = panel.dataset.previewPanel !== tabId;
-  });
-}
-
-function showPreviewEmpty() {
-  if (inscriptionPreviewEmpty) inscriptionPreviewEmpty.hidden = false;
-  if (inscriptionPreviewContent) inscriptionPreviewContent.hidden = true;
-}
-
-function showPreviewContent() {
-  if (inscriptionPreviewEmpty) inscriptionPreviewEmpty.hidden = true;
-  if (inscriptionPreviewContent) inscriptionPreviewContent.hidden = false;
-}
-
-function syncDesktopPreviewPane() {
-  if (!inscriptionPreview) return;
-  if (desktopSplitQuery.matches && primaryView === "inscriptions") {
-    inscriptionPreview.hidden = false;
-    if (!inscriptionsSplitOpen) showPreviewEmpty();
-  } else if (!inscriptionsSplitOpen) {
-    inscriptionPreview.hidden = true;
-    showPreviewEmpty();
-  }
-}
-
-function fillDetailContent(trigger) {
-  const image = trigger.dataset.image;
-  const title = trigger.dataset.title;
-  const alt = trigger.querySelector("img")?.alt ?? "";
-  const meta = [trigger.dataset.meta, trigger.dataset.location]
-    .filter(Boolean)
-    .join(" · ");
-  const summary = trigger.dataset.summary ?? "";
-  const featured = trigger.dataset.featured === "true";
-
-  detailImage.src = image;
-  detailImage.alt = alt;
-  detailTitle.textContent = title;
-  inscriptionPreviewImage.src = image;
-  inscriptionPreviewImage.alt = alt;
-  inscriptionPreviewTitle.textContent = title;
-  if (inscriptionPreviewMeta) inscriptionPreviewMeta.textContent = meta;
-  if (inscriptionPreviewSummary) {
-    inscriptionPreviewSummary.textContent = summary;
-  }
-  if (inscriptionPreviewFeatured) {
-    inscriptionPreviewFeatured.hidden = !featured;
-  }
-  setPreviewTab("intro");
-  showPreviewContent();
-}
-
-function closeInscriptionsSplit() {
-  inscriptionsSplitOpen = false;
-  app.removeAttribute("data-inscriptions-split");
-  clearInscriptionSelection();
-  showPreviewEmpty();
-  syncDesktopPreviewPane();
 }
 
 function showView(view) {
-  if (view !== "detail" && view !== "inscriptions" && view !== "topic-column") {
-    closeInscriptionsSplit();
-  }
-  if (view === "inscriptions" && !inscriptionsSplitOpen) {
-    closeInscriptionsSplit();
-  }
+  const shellHasView = getShell()?.querySelector(`[data-view="${view}"]`);
+  currentView = shellHasView ? view : primaryView;
   document.querySelectorAll("[data-view]").forEach((panel) => {
-    panel.hidden = panel.dataset.view !== view;
+    panel.hidden = panel.dataset.view !== currentView;
   });
-  bottomNavigation.hidden = !primaryViews.includes(view);
-  if (view === "inscriptions") syncDesktopPreviewPane();
+  document
+    .querySelectorAll("[data-bottom-navigation]")
+    .forEach((navigation) => {
+      navigation.hidden = !primaryViews.includes(currentView);
+    });
 }
 
 function renderTopicsFeed() {
@@ -334,12 +238,12 @@ function closeTopicColumn() {
     homeFeed = "topics";
     selectHomeFeed("topics");
     showView("home");
-    updateBottomNavigation();
+    updatePrimaryNavigation();
     restoreScrollPosition("home");
   }
 }
 
-function updateBottomNavigation() {
+function updatePrimaryNavigation() {
   document.querySelectorAll("[data-primary-view]").forEach((button) => {
     const selected = button.dataset.primaryView === primaryView;
     button.classList.toggle("is-active", selected);
@@ -349,11 +253,11 @@ function updateBottomNavigation() {
 }
 
 function selectPrimaryView(view, { updateHistory = true } = {}) {
+  if (!primaryViews.includes(view)) return;
   saveScrollPosition();
-  closeInscriptionsSplit();
   primaryView = view;
   showView(view);
-  updateBottomNavigation();
+  updatePrimaryNavigation();
   restoreScrollPosition(view);
   if (updateHistory) {
     history.replaceState({ kind: "primary", view }, "", location.pathname);
@@ -386,19 +290,26 @@ function filterCalligraphy() {
   const normalizedQuery = calligraphyFilterQuery
     .trim()
     .toLocaleLowerCase("zh-CN");
-  let visibleCount = 0;
-  document.querySelectorAll("[data-category]").forEach((card) => {
-    const matches = matchesCalligraphyCard(
-      card,
-      calligraphyCategory,
-      normalizedQuery,
-    );
-    card.hidden = !matches;
-    if (matches) visibleCount += 1;
+  shellRoots.forEach((shell) => {
+    const shellQuery =
+      shell.dataset.shellRoot === "compact" ? normalizedQuery : "";
+    const cards = [...shell.querySelectorAll("[data-category]")];
+    let visibleCount = 0;
+    cards.forEach((card) => {
+      const matches = matchesCalligraphyCard(
+        card,
+        calligraphyCategory,
+        shellQuery,
+      );
+      card.hidden = !matches;
+      if (matches) visibleCount += 1;
+    });
+    shell
+      .querySelectorAll("[data-calligraphy-filter-empty]")
+      .forEach((empty) => {
+        empty.hidden = cards.length === 0 || visibleCount > 0;
+      });
   });
-  if (calligraphyFilterEmpty) {
-    calligraphyFilterEmpty.hidden = visibleCount > 0;
-  }
   if (calligraphyFilterClear) {
     calligraphyFilterClear.hidden = normalizedQuery.length === 0;
   }
@@ -414,18 +325,34 @@ function selectCalligraphyCategory(value) {
   filterCalligraphy();
 }
 
+function setSearchValues(query) {
+  inscriptionQuery = query;
+  document.querySelectorAll("[data-inscription-search]").forEach((input) => {
+    if (input.value !== query) input.value = query;
+  });
+  document.querySelectorAll("[data-search-clear]").forEach((button) => {
+    button.hidden = query.trim().length === 0;
+  });
+}
+
 function filterInscriptions(query) {
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
-  let visibleCount = 0;
-  document.querySelectorAll("[data-search-text]").forEach((item) => {
-    const matches = item.dataset.searchText
-      .toLocaleLowerCase("zh-CN")
-      .includes(normalizedQuery);
-    item.hidden = !matches;
-    if (matches) visibleCount += 1;
+  setSearchValues(query);
+
+  shellRoots.forEach((shell) => {
+    const items = [...shell.querySelectorAll("[data-search-text]")];
+    let visibleCount = 0;
+    items.forEach((item) => {
+      const matches = item.dataset.searchText
+        .toLocaleLowerCase("zh-CN")
+        .includes(normalizedQuery);
+      item.hidden = !matches;
+      if (matches) visibleCount += 1;
+    });
+    shell.querySelectorAll("[data-search-empty]").forEach((empty) => {
+      empty.hidden = items.length === 0 || visibleCount > 0;
+    });
   });
-  document.querySelector("[data-search-empty]").hidden = visibleCount > 0;
-  searchClear.hidden = normalizedQuery.length === 0;
 }
 
 function applyThemePreference(value, { persist = true } = {}) {
@@ -449,7 +376,6 @@ function applyHomeFeedLayout(value, { persist = true } = {}) {
 
 function openSettings({ updateHistory = true } = {}) {
   saveScrollPosition();
-  closeInscriptionsSplit();
   showView("settings");
   if (updateHistory) {
     history.pushState(
@@ -465,25 +391,32 @@ function closeSettings() {
   else selectPrimaryView(primaryView);
 }
 
+function fillDetailContent(trigger) {
+  const image = trigger.dataset.image;
+  const title = trigger.dataset.title;
+  const alt = trigger.querySelector("img")?.alt ?? "";
+  const meta = [trigger.dataset.meta, trigger.dataset.location]
+    .filter(Boolean)
+    .join(" · ");
+
+  document.querySelectorAll("[data-detail-image]").forEach((detailImage) => {
+    detailImage.src = image;
+    detailImage.alt = alt;
+  });
+  document.querySelectorAll("[data-detail-title]").forEach((detailTitle) => {
+    detailTitle.textContent = title;
+  });
+  document.querySelectorAll("[data-detail-meta]").forEach((detailMeta) => {
+    detailMeta.textContent = meta;
+  });
+}
+
 function openDetail(trigger, { updateHistory = true } = {}) {
   saveScrollPosition();
   fillDetailContent(trigger);
-
-  if (usesInscriptionsSplit()) {
-    inscriptionsSplitOpen = true;
-    app.dataset.inscriptionsSplit = "true";
-    setInscriptionSelection(trigger);
-    if (inscriptionPreview) inscriptionPreview.hidden = false;
-    document.querySelectorAll("[data-view]").forEach((panel) => {
-      panel.hidden = panel.dataset.view !== "inscriptions";
-    });
-    bottomNavigation.hidden = false;
-  } else {
-    closeInscriptionsSplit();
-    showView("detail");
-    document.querySelector('[data-scroll-view="detail"]').scrollTop = 0;
-  }
-
+  showView("detail");
+  scrollPositions.detail = 0;
+  restoreScrollPosition("detail");
   if (updateHistory) {
     history.pushState(
       {
@@ -499,16 +432,50 @@ function openDetail(trigger, { updateHistory = true } = {}) {
 
 function closeDetail() {
   if (history.state?.kind === "detail") history.back();
-  else {
-    closeInscriptionsSplit();
-    selectPrimaryView(primaryView);
-  }
+  else selectPrimaryView(primaryView);
+}
+
+function focusActiveSearch() {
+  selectPrimaryView("inscriptions");
+  requestAnimationFrame(() => {
+    getShell()
+      ?.querySelector('[data-view="inscriptions"] [data-inscription-search]')
+      ?.focus();
+  });
+}
+
+function showTemporaryStatus(label) {
+  document.querySelectorAll("[data-temporary-status]").forEach((status) => {
+    status.hidden = false;
+    status.textContent = `${label}：原型暂未实现`;
+  });
+}
+
+function setPreviewTab(tabId) {
+  document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
+    const selected = tab.dataset.previewTab === tabId;
+    tab.classList.toggle("is-selected", selected);
+    tab.setAttribute("aria-selected", String(selected));
+  });
+  document.querySelectorAll("[data-preview-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.previewPanel !== tabId;
+  });
 }
 
 document.querySelectorAll("[data-primary-view]").forEach((button) => {
   button.addEventListener("click", () => {
     selectPrimaryView(button.dataset.primaryView);
   });
+});
+
+document.querySelectorAll("[data-go-primary-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    selectPrimaryView(button.dataset.goPrimaryView);
+  });
+});
+
+document.querySelectorAll("[data-focus-search]").forEach((button) => {
+  button.addEventListener("click", focusActiveSearch);
 });
 
 document.querySelectorAll("[data-home-feed]").forEach((button) => {
@@ -527,9 +494,9 @@ document.querySelectorAll("[data-open-settings]").forEach((button) => {
   button.addEventListener("click", () => openSettings());
 });
 
-document
-  .querySelector("[data-settings-back]")
-  .addEventListener("click", closeSettings);
+document.querySelectorAll("[data-settings-back]").forEach((button) => {
+  button.addEventListener("click", closeSettings);
+});
 
 document.querySelectorAll("[data-theme-option]").forEach((option) => {
   option.addEventListener("change", (event) => {
@@ -551,36 +518,55 @@ document.querySelectorAll("[data-open-detail]").forEach((trigger) => {
   trigger.addEventListener("click", () => openDetail(trigger));
 });
 
-document
-  .querySelector("[data-detail-back]")
-  .addEventListener("click", closeDetail);
+document.querySelectorAll("[data-detail-back]").forEach((button) => {
+  button.addEventListener("click", closeDetail);
+});
 
-document
-  .querySelector("[data-inscription-preview-back]")
-  ?.addEventListener("click", closeDetail);
+document.querySelectorAll("[data-search-clear]").forEach((button) => {
+  button.addEventListener("click", () => {
+    filterInscriptions("");
+    button
+      .closest(".yoyi-search-input")
+      ?.querySelector("[data-inscription-search]")
+      ?.focus();
+  });
+});
+
+document.querySelectorAll("[data-inscription-search]").forEach((input) => {
+  input.addEventListener("input", (event) => {
+    filterInscriptions(event.currentTarget.value);
+  });
+});
+
+document.querySelectorAll("[data-desktop-hero-search]").forEach((form) => {
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    focusActiveSearch();
+  });
+});
+
+document.querySelectorAll("[data-quick-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    showTemporaryStatus(button.dataset.quickAction);
+  });
+});
+
+document.querySelectorAll("[data-temporary-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    showTemporaryStatus(button.dataset.temporaryAction);
+  });
+});
 
 document
   .querySelector("[data-topic-back]")
   ?.addEventListener("click", closeTopicColumn);
 
 document.querySelectorAll("[data-shell-control]").forEach((control) => {
-  control.addEventListener("click", (event) => {
-    event.preventDefault();
-  });
+  control.addEventListener("click", (event) => event.preventDefault());
 });
 
 document.querySelectorAll("[data-preview-tab]").forEach((tab) => {
   tab.addEventListener("click", () => setPreviewTab(tab.dataset.previewTab));
-});
-
-searchInput.addEventListener("input", (event) => {
-  filterInscriptions(event.currentTarget.value);
-});
-
-searchClear.addEventListener("click", () => {
-  searchInput.value = "";
-  filterInscriptions("");
-  searchInput.focus();
 });
 
 calligraphyFilterInput?.addEventListener("input", (event) => {
@@ -598,9 +584,8 @@ calligraphyFilterClear?.addEventListener("click", () => {
 window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (state?.kind === "settings") {
-    closeInscriptionsSplit();
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
-    updateBottomNavigation();
+    updatePrimaryNavigation();
     showView("settings");
     return;
   }
@@ -608,69 +593,63 @@ window.addEventListener("popstate", (event) => {
     primaryView = "home";
     homeFeed = "topics";
     selectHomeFeed("topics");
-    updateBottomNavigation();
+    updatePrimaryNavigation();
     openTopicColumn(state.topicId, { updateHistory: false });
     return;
   }
   if (state?.kind === "detail") {
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
-    updateBottomNavigation();
+    updatePrimaryNavigation();
     const trigger = document.querySelector(
       `[data-content-id="${state.contentId}"]`,
     );
     if (trigger) openDetail(trigger, { updateHistory: false });
     return;
   }
-  closeInscriptionsSplit();
   if (state?.kind === "primary" && primaryViews.includes(state.view)) {
     primaryView = state.view;
   }
   if (primaryView === "home") selectHomeFeed(homeFeed);
   showView(primaryView);
-  updateBottomNavigation();
+  updatePrimaryNavigation();
   restoreScrollPosition(primaryView);
 });
 
 function onPlatformQueryChange() {
   syncPlatformAttribute();
-  if (!desktopSplitQuery.matches && inscriptionsSplitOpen) {
-    const selected = document.querySelector(
-      "[data-view='inscriptions'] [data-open-detail].is-selected",
-    );
-    closeInscriptionsSplit();
-    if (selected && history.state?.kind === "detail") {
-      showView("detail");
-      fillDetailContent(selected);
-    }
-    return;
-  }
-  syncDesktopPreviewPane();
-  if (
-    desktopSplitQuery.matches &&
-    primaryView === "inscriptions" &&
-    history.state?.kind === "detail"
-  ) {
-    const trigger = document.querySelector(
-      `[data-content-id="${history.state.contentId}"]`,
-    );
-    if (trigger) openDetail(trigger, { updateHistory: false });
-  }
 }
 
-desktopSplitQuery.addEventListener("change", onPlatformQueryChange);
+desktopPlatformQuery.addEventListener("change", onPlatformQueryChange);
 tabletQuery.addEventListener("change", onPlatformQueryChange);
-syncPlatformAttribute();
+desktopShellQuery.addEventListener("change", (event) => {
+  saveScrollPosition(activeShellName);
+  activeShellName = event.matches ? "desktop" : "compact";
+  setShellAccessibility();
+  showView(currentView);
+  updatePrimaryNavigation();
+  filterInscriptions(inscriptionQuery);
+  selectHomeFeed(homeFeed);
+  selectCalligraphyCategory(calligraphyCategory);
+  restoreScrollPosition(currentView);
+});
 
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
+syncPlatformAttribute();
+setShellAccessibility();
+showView("home");
+updatePrimaryNavigation();
 renderTopicsFeed();
 selectHomeFeed(homeFeed);
 selectCalligraphyCategory(calligraphyCategory);
 filterInscriptions("");
 applyThemePreference(themePreference, { persist: false });
 applyHomeFeedLayout(homeFeedLayout, { persist: false });
-showPreviewEmpty();
+setPreviewTab("intro");
 
 window.setTimeout(() => {
-  document.querySelector("[data-loading-screen]").hidden = true;
-  app.dataset.ready = "true";
+  document.querySelectorAll("[data-loading-screen]").forEach((screen) => {
+    screen.hidden = true;
+  });
+  if (compactApp) compactApp.dataset.ready = "true";
+  if (desktopApp) desktopApp.dataset.ready = "true";
 }, 720);

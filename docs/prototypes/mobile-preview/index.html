@@ -13,16 +13,8 @@
         const layout = localStorage.getItem("yoyi.home-feed-layout");
         document.documentElement.dataset.homeLayout =
           layout === "single" ? "single" : "double";
-        const isPc = window.matchMedia("(min-width: 56rem)").matches;
-        const isTablet = window.matchMedia("(min-width: 48rem)").matches;
-        document.documentElement.dataset.platform = isPc
-          ? "pc"
-          : isTablet
-            ? "tablet"
-            : "phone";
       } catch {
         document.documentElement.dataset.homeLayout = "double";
-        document.documentElement.dataset.platform = "pc";
       }
     </script>
     <link
@@ -34,14 +26,12 @@
   </head>
   <body>
     <div class="app-stage">
-      <aside class="app-platform-gate" data-platform-gate>
-        <h1>PC 原型预览</h1>
-        <p>
-          本交互原型仅适配电脑视口（宽度 ≥
-          896px）。请使用电脑打开；手机与平板壳已从此预览移除。
-        </p>
-      </aside>
-      <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
+      <div
+        class="mobile-app yoyi-paper yoyi-paper--visible"
+        data-mobile-app
+        data-shell-root="compact"
+        aria-hidden="false"
+      >
         <section class="app-view" data-view="home" aria-label="首页">
           <header class="app-topbar app-topbar--home">
             <div
@@ -1156,6 +1146,32 @@
                   </label>
                 </div>
               </fieldset>
+              <fieldset
+                class="app-setting-group"
+                data-setting-group="home-layout"
+              >
+                <legend>首页展示（仅手机）</legend>
+                <div class="app-setting-options">
+                  <label class="app-setting-option">
+                    <input
+                      data-layout-option
+                      name="home-layout"
+                      type="radio"
+                      value="single"
+                    />
+                    <span>单列展示</span>
+                  </label>
+                  <label class="app-setting-option">
+                    <input
+                      data-layout-option
+                      name="home-layout"
+                      type="radio"
+                      value="double"
+                    />
+                    <span>双列展示</span>
+                  </label>
+                </div>
+              </fieldset>
             </form>
           </main>
         </section>
@@ -1298,6 +1314,740 @@
             </p>
           </div>
         </div>
+      </div>
+
+      <div
+        class="desktop-app yoyi-paper yoyi-paper--visible"
+        data-desktop-app
+        data-shell-root="desktop"
+        aria-hidden="true"
+        inert
+      >
+        <header class="desktop-header">
+          <button
+            class="desktop-brand"
+            data-primary-view="home"
+            type="button"
+            aria-label="由艺首页"
+          >
+            <span class="desktop-brand__seal" aria-hidden="true">艺</span>
+            <span class="desktop-brand__name">由艺</span>
+            <span class="desktop-brand__descriptor">摩崖碑刻数字档案</span>
+          </button>
+          <nav class="desktop-navigation" aria-label="桌面主导航">
+            <button
+              class="desktop-navigation__entry is-active"
+              data-primary-view="home"
+              aria-current="page"
+              type="button"
+            >
+              首页
+            </button>
+            <button
+              class="desktop-navigation__entry"
+              data-primary-view="inscriptions"
+              type="button"
+            >
+              碑刻
+            </button>
+            <button
+              class="desktop-navigation__entry"
+              data-primary-view="calligraphy"
+              type="button"
+            >
+              书帖
+            </button>
+            <button
+              class="desktop-navigation__entry desktop-navigation__entry--search"
+              data-focus-search
+              type="button"
+            >
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="search"
+                aria-hidden="true"
+              ></span>
+              搜索
+            </button>
+            <button
+              class="desktop-navigation__entry desktop-navigation__entry--settings"
+              data-open-settings
+              type="button"
+            >
+              <span
+                class="yoyi-icon yoyi-icon--sm"
+                data-icon="settings"
+                aria-hidden="true"
+              ></span>
+              设置
+            </button>
+          </nav>
+        </header>
+
+        <section
+          class="desktop-view desktop-home"
+          data-view="home"
+          aria-label="桌面首页"
+        >
+          <main class="desktop-scroll" data-scroll-view="home">
+            <section class="desktop-hero" aria-labelledby="desktop-hero-title">
+              <div class="desktop-hero__ink" aria-hidden="true"></div>
+              <div class="desktop-hero__content">
+                <p class="desktop-eyebrow">中国摩崖与碑刻数字档案</p>
+                <h1 id="desktop-hero-title">由艺</h1>
+                <p class="desktop-hero__lead">
+                  探索中华摩崖碑刻文化遗产，让千年石刻在数字世界焕发新生。
+                </p>
+                <form class="desktop-hero__search" data-desktop-hero-search>
+                  <label class="yoyi-search-input">
+                    <span
+                      class="yoyi-icon"
+                      data-icon="search"
+                      aria-hidden="true"
+                    ></span>
+                    <input
+                      data-inscription-search
+                      aria-label="搜索碑刻名称、地区或朝代"
+                      placeholder="搜索碑刻名称、地区、朝代……"
+                      type="search"
+                    />
+                    <button
+                      class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                      data-search-clear
+                      aria-label="清除搜索"
+                      type="button"
+                      hidden
+                    >
+                      <span
+                        class="yoyi-icon yoyi-icon--sm"
+                        data-icon="close"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                  </label>
+                  <button
+                    class="desktop-button desktop-button--primary"
+                    type="submit"
+                  >
+                    搜索档案
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            <section
+              class="desktop-stats"
+              aria-labelledby="desktop-stats-title"
+            >
+              <div
+                class="desktop-section-heading desktop-section-heading--compact"
+              >
+                <div>
+                  <p class="desktop-eyebrow">档案概览</p>
+                  <h2 id="desktop-stats-title">数字化进度</h2>
+                </div>
+                <span class="desktop-prototype-badge">原型数据</span>
+              </div>
+              <div class="desktop-stats__grid">
+                <article class="desktop-stat-card">
+                  <span class="desktop-stat-card__icon" aria-hidden="true"
+                    >碑</span
+                  >
+                  <strong data-prototype-stat="inscriptions">8</strong>
+                  <span>收录碑刻</span>
+                </article>
+                <article class="desktop-stat-card">
+                  <span class="desktop-stat-card__icon" aria-hidden="true"
+                    >域</span
+                  >
+                  <strong data-prototype-stat="provinces">6</strong>
+                  <span>覆盖省份</span>
+                </article>
+                <article class="desktop-stat-card">
+                  <span class="desktop-stat-card__icon" aria-hidden="true"
+                    >拓</span
+                  >
+                  <strong data-prototype-stat="images">8</strong>
+                  <span>精选图片</span>
+                </article>
+              </div>
+            </section>
+
+            <section
+              class="desktop-quick"
+              aria-labelledby="desktop-quick-title"
+            >
+              <div class="desktop-section-heading">
+                <div>
+                  <p class="desktop-eyebrow">循迹入门</p>
+                  <h2 id="desktop-quick-title">快捷浏览</h2>
+                </div>
+                <p>依朝代、地域与书体进入石刻世界</p>
+              </div>
+              <div class="desktop-quick__grid">
+                <button data-quick-action="朝代浏览" type="button">
+                  <span aria-hidden="true">代</span>
+                  <strong>朝代浏览</strong>
+                  <small>循历史次序寻访</small>
+                </button>
+                <button data-quick-action="地区浏览" type="button">
+                  <span aria-hidden="true">地</span>
+                  <strong>地区浏览</strong>
+                  <small>按山川地域检索</small>
+                </button>
+                <button data-quick-action="书体分类" type="button">
+                  <span aria-hidden="true">书</span>
+                  <strong>书体分类</strong>
+                  <small>辨篆隶楷行草</small>
+                </button>
+                <button data-quick-action="时间轴" type="button">
+                  <span aria-hidden="true">年</span>
+                  <strong>时间轴</strong>
+                  <small>纵览千年遗珍</small>
+                </button>
+              </div>
+              <p
+                class="desktop-temporary-status"
+                data-temporary-status
+                role="status"
+                aria-live="polite"
+                hidden
+              ></p>
+            </section>
+
+            <section
+              class="desktop-featured"
+              aria-labelledby="desktop-featured-title"
+            >
+              <div class="desktop-section-heading">
+                <div>
+                  <p class="desktop-eyebrow">策展选集</p>
+                  <h2 id="desktop-featured-title">精选碑刻</h2>
+                </div>
+                <button
+                  class="desktop-text-button"
+                  data-go-primary-view="inscriptions"
+                  type="button"
+                >
+                  浏览全部
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+              <div class="desktop-featured__grid">
+                <button
+                  class="desktop-featured-card desktop-featured-card--wide"
+                  data-content-id="inscription-yunfeng"
+                  data-open-detail
+                  data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                  data-title="云峰山题名"
+                  data-meta="北魏 · 楷书 · 竖刻"
+                  data-location="山东云峰山"
+                  type="button"
+                >
+                  <img
+                    src="../../design-system/assets/demo/rubbing-fragment.svg"
+                    alt="虚构云峰山题名图"
+                  />
+                  <span
+                    ><strong>云峰山题名</strong><small>北魏 · 山东</small></span
+                  >
+                </button>
+                <button
+                  class="desktop-featured-card"
+                  data-content-id="inscription-shimen"
+                  data-open-detail
+                  data-image="../../design-system/assets/demo/stone-detail.svg"
+                  data-title="石门东侧残刻"
+                  data-meta="东汉 · 隶书 · 残刻"
+                  data-location="汉中石门"
+                  type="button"
+                >
+                  <img
+                    src="../../design-system/assets/demo/stone-detail.svg"
+                    alt="虚构石门东侧残刻图"
+                  />
+                  <span
+                    ><strong>石门东侧残刻</strong
+                    ><small>东汉 · 汉中</small></span
+                  >
+                </button>
+                <button
+                  class="desktop-featured-card"
+                  data-content-id="inscription-longmen"
+                  data-open-detail
+                  data-image="../../design-system/assets/demo/cliff-gate.svg"
+                  data-title="龙门北壁造像记"
+                  data-meta="北魏 · 魏碑 · 造像记"
+                  data-location="洛阳龙门"
+                  type="button"
+                >
+                  <img
+                    src="../../design-system/assets/demo/cliff-gate.svg"
+                    alt="虚构龙门北壁造像记图"
+                  />
+                  <span
+                    ><strong>龙门北壁造像记</strong
+                    ><small>北魏 · 洛阳</small></span
+                  >
+                </button>
+                <button
+                  class="desktop-featured-card desktop-featured-card--wide"
+                  data-content-id="inscription-tianzhu"
+                  data-open-detail
+                  data-image="../../design-system/assets/demo/valley-wall.svg"
+                  data-title="天柱山摩崖"
+                  data-meta="唐代 · 行书 · 摩崖"
+                  data-location="安徽天柱山"
+                  type="button"
+                >
+                  <img
+                    src="../../design-system/assets/demo/valley-wall.svg"
+                    alt="虚构天柱山摩崖图"
+                  />
+                  <span
+                    ><strong>天柱山摩崖</strong><small>唐代 · 安徽</small></span
+                  >
+                </button>
+              </div>
+            </section>
+
+            <section class="desktop-cta" aria-labelledby="desktop-cta-title">
+              <div>
+                <p class="desktop-eyebrow">开放协作</p>
+                <h2 id="desktop-cta-title">参与共建</h2>
+                <p>
+                  欢迎研究者、地方文博机构与爱好者共同补充碑刻资料，让散落山川的文字被长期看见。
+                </p>
+              </div>
+              <button
+                class="desktop-button desktop-button--outline"
+                data-temporary-action="参与共建"
+                type="button"
+              >
+                了解更多
+              </button>
+            </section>
+
+            <footer class="desktop-footer">
+              <div class="desktop-footer__brand">
+                <span class="desktop-brand__seal" aria-hidden="true">艺</span>
+                <div>
+                  <strong>由艺</strong><span>摩崖碑刻数字档案原型</span>
+                </div>
+              </div>
+              <p>本页内容与统计均为交互原型演示，不代表真实著录。</p>
+              <p>© 2026 由艺 · 仅供设计与研发审核</p>
+            </footer>
+          </main>
+        </section>
+
+        <section
+          class="desktop-view desktop-collection"
+          data-view="inscriptions"
+          aria-label="桌面碑刻"
+          hidden
+        >
+          <main
+            class="desktop-scroll desktop-page"
+            data-scroll-view="inscriptions"
+          >
+            <div class="desktop-page-heading">
+              <div>
+                <p class="desktop-eyebrow">数字档案</p>
+                <h1>碑刻</h1>
+                <p>浏览五条虚构演示著录，校验搜索、详情与历史返回。</p>
+              </div>
+              <label class="yoyi-search-input desktop-page-search">
+                <span
+                  class="yoyi-icon"
+                  data-icon="search"
+                  aria-hidden="true"
+                ></span>
+                <input
+                  data-inscription-search
+                  aria-label="搜索碑刻"
+                  placeholder="搜索碑刻、朝代、地区"
+                  type="search"
+                />
+                <button
+                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                  data-search-clear
+                  aria-label="清除搜索"
+                  type="button"
+                  hidden
+                >
+                  <span
+                    class="yoyi-icon yoyi-icon--sm"
+                    data-icon="close"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+              </label>
+            </div>
+            <div class="desktop-archive-list">
+              <button
+                class="desktop-archive-row"
+                data-search-text="云峰山题名 北魏 楷书 山东云峰山"
+                data-content-id="inscription-yunfeng"
+                data-open-detail
+                data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                data-title="云峰山题名"
+                data-meta="北魏 · 楷书 · 竖刻"
+                data-location="山东云峰山"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/rubbing-fragment.svg"
+                  alt="虚构云峰山题名缩略图"
+                />
+                <span
+                  ><strong>云峰山题名</strong
+                  ><small>北魏 · 楷书 · 山东云峰山</small></span
+                >
+                <span aria-hidden="true">查看 →</span>
+              </button>
+              <button
+                class="desktop-archive-row"
+                data-search-text="石门东侧残刻 东汉 隶书 汉中石门"
+                data-content-id="inscription-shimen"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stone-detail.svg"
+                data-title="石门东侧残刻"
+                data-meta="东汉 · 隶书 · 残刻"
+                data-location="汉中石门"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stone-detail.svg"
+                  alt="虚构石门东侧残刻缩略图"
+                />
+                <span
+                  ><strong>石门东侧残刻</strong
+                  ><small>东汉 · 隶书 · 汉中石门</small></span
+                >
+                <span aria-hidden="true">查看 →</span>
+              </button>
+              <button
+                class="desktop-archive-row"
+                data-search-text="龙门北壁造像记 北魏 魏碑 洛阳龙门"
+                data-content-id="inscription-longmen"
+                data-open-detail
+                data-image="../../design-system/assets/demo/cliff-gate.svg"
+                data-title="龙门北壁造像记"
+                data-meta="北魏 · 魏碑 · 造像记"
+                data-location="洛阳龙门"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/cliff-gate.svg"
+                  alt="虚构龙门北壁造像记缩略图"
+                />
+                <span
+                  ><strong>龙门北壁造像记</strong
+                  ><small>北魏 · 魏碑 · 洛阳龙门</small></span
+                >
+                <span aria-hidden="true">查看 →</span>
+              </button>
+              <button
+                class="desktop-archive-row"
+                data-search-text="天柱山摩崖 唐代 行书 安徽天柱山"
+                data-content-id="inscription-tianzhu"
+                data-open-detail
+                data-image="../../design-system/assets/demo/valley-wall.svg"
+                data-title="天柱山摩崖"
+                data-meta="唐代 · 行书 · 摩崖"
+                data-location="安徽天柱山"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/valley-wall.svg"
+                  alt="虚构天柱山摩崖缩略图"
+                />
+                <span
+                  ><strong>天柱山摩崖</strong
+                  ><small>唐代 · 行书 · 安徽天柱山</small></span
+                >
+                <span aria-hidden="true">查看 →</span>
+              </button>
+              <button
+                class="desktop-archive-row"
+                data-search-text="古道石刻 宋代 楷书 浙东古道"
+                data-content-id="inscription-road"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stele-shadow.svg"
+                data-title="古道石刻"
+                data-meta="宋代 · 楷书 · 路碑"
+                data-location="浙东古道"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stele-shadow.svg"
+                  alt="虚构古道石刻缩略图"
+                />
+                <span
+                  ><strong>古道石刻</strong
+                  ><small>宋代 · 楷书 · 浙东古道</small></span
+                >
+                <span aria-hidden="true">查看 →</span>
+              </button>
+              <p class="desktop-empty" data-search-empty role="status" hidden>
+                未找到碑刻
+              </p>
+            </div>
+          </main>
+        </section>
+
+        <section
+          class="desktop-view desktop-collection"
+          data-view="calligraphy"
+          aria-label="桌面书帖"
+          hidden
+        >
+          <main
+            class="desktop-scroll desktop-page"
+            data-scroll-view="calligraphy"
+          >
+            <div class="desktop-page-heading">
+              <div>
+                <p class="desktop-eyebrow">墨拓选集</p>
+                <h1>书帖</h1>
+                <p>在墨迹与拓本之间切换，状态与平板端同步。</p>
+              </div>
+              <div
+                class="desktop-categories"
+                role="tablist"
+                aria-label="书帖分类"
+              >
+                <button
+                  class="is-selected"
+                  data-calligraphy-category="all"
+                  role="tab"
+                  aria-selected="true"
+                  type="button"
+                >
+                  全部
+                </button>
+                <button
+                  data-calligraphy-category="ink"
+                  role="tab"
+                  aria-selected="false"
+                  type="button"
+                >
+                  墨迹
+                </button>
+                <button
+                  data-calligraphy-category="rubbing"
+                  role="tab"
+                  aria-selected="false"
+                  type="button"
+                >
+                  拓本
+                </button>
+              </div>
+            </div>
+            <div class="desktop-calligraphy-grid">
+              <button
+                class="desktop-calligraphy-card"
+                data-category="ink"
+                data-content-id="calligraphy-autumn"
+                data-open-detail
+                data-image="../../design-system/assets/demo/ink-album.svg"
+                data-title="秋山札"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/ink-album.svg"
+                  alt="虚构秋山札图"
+                /><span><strong>秋山札</strong><small>宋 · 行书</small></span>
+              </button>
+              <button
+                class="desktop-calligraphy-card"
+                data-category="ink"
+                data-content-id="calligraphy-pine"
+                data-open-detail
+                data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                data-title="松窗帖"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                  alt="虚构松窗帖图"
+                /><span><strong>松窗帖</strong><small>明 · 楷书</small></span>
+              </button>
+              <button
+                class="desktop-calligraphy-card"
+                data-category="rubbing"
+                data-content-id="calligraphy-preface"
+                data-open-detail
+                data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                data-title="集字圣教序"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/rubbing-fragment.svg"
+                  alt="虚构集字圣教序拓本图"
+                /><span
+                  ><strong>集字圣教序</strong><small>唐 · 行书</small></span
+                >
+              </button>
+              <button
+                class="desktop-calligraphy-card"
+                data-category="ink"
+                data-content-id="calligraphy-cursive"
+                data-open-detail
+                data-image="../../design-system/assets/demo/ink-album.svg"
+                data-title="草书残卷"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/ink-album.svg"
+                  alt="虚构草书残卷图"
+                /><span><strong>草书残卷</strong><small>唐 · 草书</small></span>
+              </button>
+              <button
+                class="desktop-calligraphy-card"
+                data-category="rubbing"
+                data-content-id="calligraphy-beihai"
+                data-open-detail
+                data-image="../../design-system/assets/demo/inscription-rubbing.svg"
+                data-title="北海刻帖"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/inscription-rubbing.svg"
+                  alt="虚构北海刻帖拓本图"
+                /><span><strong>北海刻帖</strong><small>唐 · 楷书</small></span>
+              </button>
+              <button
+                class="desktop-calligraphy-card"
+                data-category="rubbing"
+                data-content-id="calligraphy-shimen"
+                data-open-detail
+                data-image="../../design-system/assets/demo/stone-detail.svg"
+                data-title="石门铭拓片"
+                type="button"
+              >
+                <img
+                  src="../../design-system/assets/demo/stone-detail.svg"
+                  alt="虚构石门铭拓片图"
+                /><span
+                  ><strong>石门铭拓片</strong><small>北魏 · 魏碑</small></span
+                >
+              </button>
+            </div>
+          </main>
+        </section>
+
+        <section
+          class="desktop-view desktop-settings"
+          data-view="settings"
+          aria-label="桌面设置"
+          hidden
+        >
+          <main class="desktop-scroll desktop-page desktop-page--narrow">
+            <button class="desktop-back" data-settings-back type="button">
+              ← 返回
+            </button>
+            <div class="desktop-page-heading">
+              <div>
+                <p class="desktop-eyebrow">显示偏好</p>
+                <h1>设置</h1>
+              </div>
+            </div>
+            <form class="desktop-settings-form">
+              <fieldset class="app-setting-group">
+                <legend>主题</legend>
+                <div class="app-setting-options app-setting-options--three">
+                  <label class="app-setting-option"
+                    ><input
+                      data-theme-option
+                      name="desktop-theme"
+                      type="radio"
+                      value="system"
+                    /><span>跟随系统</span></label
+                  >
+                  <label class="app-setting-option"
+                    ><input
+                      data-theme-option
+                      name="desktop-theme"
+                      type="radio"
+                      value="light"
+                    /><span>浅色</span></label
+                  >
+                  <label class="app-setting-option"
+                    ><input
+                      data-theme-option
+                      name="desktop-theme"
+                      type="radio"
+                      value="dark"
+                    /><span>深色</span></label
+                  >
+                </div>
+              </fieldset>
+              <fieldset class="app-setting-group">
+                <legend>首页展示</legend>
+                <div class="app-setting-options">
+                  <label class="app-setting-option"
+                    ><input
+                      data-layout-option
+                      name="desktop-home-layout"
+                      type="radio"
+                      value="single"
+                    /><span>单列展示</span></label
+                  >
+                  <label class="app-setting-option"
+                    ><input
+                      data-layout-option
+                      name="desktop-home-layout"
+                      type="radio"
+                      value="double"
+                    /><span>双列展示</span></label
+                  >
+                </div>
+              </fieldset>
+            </form>
+          </main>
+        </section>
+
+        <section
+          class="desktop-view desktop-detail"
+          data-view="detail"
+          aria-label="桌面内容详情"
+          hidden
+        >
+          <main
+            class="desktop-scroll desktop-page desktop-page--detail"
+            data-scroll-view="detail"
+          >
+            <button class="desktop-back" data-detail-back type="button">
+              ← 返回
+            </button>
+            <div class="desktop-detail__layout">
+              <figure>
+                <img
+                  data-detail-image
+                  src="../../design-system/assets/demo/cliff-gate.svg"
+                  alt="虚构山门摩崖图"
+                />
+              </figure>
+              <div class="desktop-detail__copy">
+                <p class="desktop-eyebrow">档案详情 · 原型数据</p>
+                <h1 data-detail-title></h1>
+                <p data-detail-meta></p>
+                <p>
+                  此条目用于验证桌面与平板视觉壳共享详情内容、浏览器历史和滚动状态。
+                </p>
+                <button
+                  class="desktop-button desktop-button--outline"
+                  data-go-primary-view="inscriptions"
+                  type="button"
+                >
+                  返回碑刻目录
+                </button>
+              </div>
+            </div>
+          </main>
+        </section>
       </div>
     </div>
 
