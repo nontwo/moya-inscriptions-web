@@ -1194,6 +1194,15 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(tabletCss).toContain("var(--yoyi-container-reading)");
     expect(pcCss).toContain("var(--yoyi-container-reading)");
+    expect(tabletCss).toMatch(
+      /@media \(min-width: 48rem\) \{[\s\S]*?\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
+    );
+    expect(tabletCss).toMatch(
+      /\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-5\)/,
+    );
+    expect(previewCss).not.toMatch(
+      /\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2/,
+    );
     for (const css of [previewCss, tabletCss, pcCss]) {
       expect(css).toContain(".app-nav-brand");
       expect(css).toContain(".app-inscriptions-layout");
