@@ -144,6 +144,7 @@ type PointerOptions = {
   isPrimary?: boolean;
   pointerId?: number;
   pointerType?: string;
+  timeStamp?: number;
 };
 
 const dispatchPointer = (
@@ -156,6 +157,7 @@ const dispatchPointer = (
     isPrimary = true,
     pointerId = 1,
     pointerType = "touch",
+    timeStamp,
   }: PointerOptions,
 ) => {
   const event = new window.Event(type, { bubbles: true, cancelable: true });
@@ -166,6 +168,12 @@ const dispatchPointer = (
     pointerId,
     pointerType,
   });
+  if (timeStamp !== undefined) {
+    Object.defineProperty(event, "timeStamp", {
+      configurable: true,
+      value: timeStamp,
+    });
+  }
   target.dispatchEvent(event);
 };
 
@@ -175,21 +183,26 @@ const swipe = (
   start: { x: number; y: number },
   end: { x: number; y: number },
   pointerType = "touch",
+  durationMs = 400,
 ) => {
+  const startTime = 1_000;
   dispatchPointer(window, target, "pointerdown", {
     clientX: start.x,
     clientY: start.y,
     pointerType,
+    timeStamp: startTime,
   });
   dispatchPointer(window, target, "pointermove", {
     clientX: end.x,
     clientY: end.y,
     pointerType,
+    timeStamp: startTime + durationMs * 0.8,
   });
   dispatchPointer(window, target, "pointerup", {
     clientX: end.x,
     clientY: end.y,
     pointerType,
+    timeStamp: startTime + durationMs,
   });
 };
 
@@ -208,6 +221,50 @@ const waitForAnimationFrames = async (window: Window, count: number) => {
       window.requestAnimationFrame(() => resolve()),
     );
   }
+};
+
+const installControlledAnimationFrames = (
+  window: Window & typeof globalThis,
+) => {
+  let nextId = 1;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => {
+      const id = nextId;
+      nextId += 1;
+      callbacks.set(id, callback);
+      return id;
+    },
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    value: (id: number) => callbacks.delete(id),
+  });
+
+  const step = (timestamp: number) => {
+    const current = [...callbacks.values()];
+    callbacks.clear();
+    current.forEach((callback) => callback(timestamp));
+  };
+
+  const runUntilIdle = (frameDurationMs: number, maximumTimeMs = 2_000) => {
+    let timestamp = 0;
+    while (callbacks.size > 0 && timestamp <= maximumTimeMs) {
+      step(timestamp);
+      timestamp += frameDurationMs;
+    }
+    if (callbacks.size > 0) {
+      throw new Error(`animation still running after ${maximumTimeMs}ms`);
+    }
+    return Math.max(0, timestamp - frameDurationMs);
+  };
+
+  return {
+    pending: () => callbacks.size,
+    runUntilIdle,
+    step,
+  };
 };
 
 const activePlatformStyles = (document: Document) =>
@@ -379,7 +436,7 @@ describe("mobile application preview", () => {
     ).toBe(true);
   });
 
-  it("follows the finger and settles home pages at the 50 percent boundary", () => {
+  it("follows the finger and settles home pages at the 50 percent boundary", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
     const homeScroll = document.querySelector<HTMLElement>(
@@ -397,10 +454,12 @@ describe("mobile application preview", () => {
     dispatchPointer(dom.window, discoverCard, "pointerdown", {
       clientX: 300,
       clientY: 160,
+      timeStamp: 1_000,
     });
     dispatchPointer(dom.window, discoverCard, "pointermove", {
       clientX: 202.5,
       clientY: 162,
+      timeStamp: 1_320,
     });
     expect(pagerTranslateX(homeTrack)).toBeCloseTo(-97.5);
     expect(
@@ -413,57 +472,67 @@ describe("mobile application preview", () => {
     dispatchPointer(dom.window, discoverCard, "pointerup", {
       clientX: 202.5,
       clientY: 162,
+      timeStamp: 1_400,
     });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
+    await waitForAnimationFrames(dom.window, 40);
 
     swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 108.9, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
+    await waitForAnimationFrames(dom.window, 40);
 
     swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 105, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
+    await waitForAnimationFrames(dom.window, 40);
 
     swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 101.1, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
     ).toContain("is-selected");
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-390);
     discoverCard.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
+    await waitForAnimationFrames(dom.window, 40);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-390);
 
     swipe(dom.window, homeScroll, { x: 390, y: 160 }, { x: 0, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.classList,
     ).toContain("is-selected");
+    await waitForAnimationFrames(dom.window, 40);
     dispatchPointer(dom.window, homeScroll, "pointerdown", {
       clientX: 300,
       clientY: 160,
+      timeStamp: 2_000,
     });
     dispatchPointer(dom.window, homeScroll, "pointermove", {
       clientX: 100,
       clientY: 160,
+      timeStamp: 2_320,
     });
     expect(pagerTranslateX(homeTrack)).toBeCloseTo(-830);
     dispatchPointer(dom.window, homeScroll, "pointerup", {
       clientX: 100,
       clientY: 160,
+      timeStamp: 2_400,
     });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.classList,
     ).toContain("is-selected");
+    await waitForAnimationFrames(dom.window, 40);
 
     swipe(dom.window, homeScroll, { x: 0, y: 160 }, { x: 390, y: 160 });
     expect(
@@ -472,7 +541,160 @@ describe("mobile application preview", () => {
     ).toContain("is-selected");
   });
 
-  it("switches calligraphy categories without losing search or scroll state", () => {
+  it("uses smoothed release velocity for light flicks and caps extreme input", () => {
+    const slowDom = renderPreview();
+    const slowSurface = slowDom.window.document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    if (!slowSurface) throw new Error("slow swipe surface missing");
+    swipe(
+      slowDom.window,
+      slowSurface,
+      { x: 300, y: 160 },
+      { x: 183, y: 160 },
+      "touch",
+      500,
+    );
+    expect(
+      slowDom.window.document.querySelector<HTMLElement>(
+        '[data-home-feed="discover"]',
+      )?.classList,
+    ).toContain("is-selected");
+
+    const fastDom = renderPreview();
+    const fastSurface = fastDom.window.document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    const fastTrack =
+      fastSurface?.querySelector<HTMLElement>("[data-pager-track]");
+    if (!fastSurface || !fastTrack) {
+      throw new Error("fast swipe surface missing");
+    }
+    const frames = installControlledAnimationFrames(fastDom.window);
+    swipe(
+      fastDom.window,
+      fastSurface,
+      { x: 300, y: 160 },
+      { x: 183, y: 160 },
+      "touch",
+      1,
+    );
+    expect(
+      fastDom.window.document.querySelector<HTMLElement>(
+        '[data-home-feed="nearby"]',
+      )?.classList,
+    ).toContain("is-selected");
+    expect(frames.pending()).toBeGreaterThan(0);
+    frames.step(0);
+    expect(pagerTranslateX(fastTrack)).toBeLessThan(-117);
+    expect(pagerTranslateX(fastTrack)).toBeGreaterThan(-180);
+
+    const edgeDom = renderPreview();
+    const edgeSurface = edgeDom.window.document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    if (!edgeSurface) throw new Error("edge swipe surface missing");
+    swipe(
+      edgeDom.window,
+      edgeSurface,
+      { x: 180, y: 160 },
+      { x: 230, y: 160 },
+      "touch",
+      1,
+    );
+    expect(
+      edgeDom.window.document.querySelector<HTMLElement>(
+        '[data-home-feed="discover"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("lets a new touch catch an in-flight spring without a position jump", () => {
+    const dom = renderPreview();
+    const surface = dom.window.document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    const track = surface?.querySelector<HTMLElement>("[data-pager-track]");
+    if (!surface || !track) throw new Error("home pager missing");
+    const frames = installControlledAnimationFrames(dom.window);
+
+    swipe(dom.window, surface, { x: 300, y: 160 }, { x: 101.1, y: 160 });
+    frames.step(0);
+    frames.step(1000 / 60);
+    const caughtOffset = pagerTranslateX(track);
+    expect(frames.pending()).toBe(1);
+
+    dispatchPointer(dom.window, surface, "pointerdown", {
+      clientX: 200,
+      clientY: 160,
+      timeStamp: 2_000,
+    });
+    expect(frames.pending()).toBe(0);
+    expect(pagerTranslateX(track)).toBeCloseTo(caughtOffset);
+    dispatchPointer(dom.window, surface, "pointermove", {
+      clientX: 220,
+      clientY: 160,
+      timeStamp: 2_080,
+    });
+    expect(pagerTranslateX(track)).toBeCloseTo(caughtOffset + 20);
+    dispatchPointer(dom.window, surface, "pointermove", {
+      clientX: 300,
+      clientY: 160,
+      timeStamp: 2_500,
+    });
+    dispatchPointer(dom.window, surface, "pointerup", {
+      clientX: 300,
+      clientY: 160,
+      timeStamp: 2_600,
+    });
+    expect(
+      dom.window.document.querySelector<HTMLElement>(
+        '[data-home-feed="discover"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("converges consistently at 60Hz, 120Hz, and after long frames", () => {
+    const settleAtCadence = (frameDurationMs: number) => {
+      const dom = renderPreview();
+      const surface = dom.window.document.querySelector<HTMLElement>(
+        '[data-scroll-view="home"]',
+      );
+      const track = surface?.querySelector<HTMLElement>("[data-pager-track]");
+      if (!surface || !track) throw new Error("home pager missing");
+      const frames = installControlledAnimationFrames(dom.window);
+      swipe(dom.window, surface, { x: 300, y: 160 }, { x: 101.1, y: 160 });
+      const settledAt = frames.runUntilIdle(frameDurationMs);
+      expect(pagerTranslateX(track)).toBeCloseTo(-390);
+      expect(track.classList).not.toContain("is-settling");
+      return settledAt;
+    };
+
+    expect(settleAtCadence(1000 / 60)).toBeLessThanOrEqual(520 + 1000 / 60);
+    expect(settleAtCadence(1000 / 120)).toBeLessThanOrEqual(520 + 1000 / 120);
+    expect(settleAtCadence(120)).toBeLessThanOrEqual(640);
+  });
+
+  it("snaps immediately when reduced motion is requested", () => {
+    const dom = renderPreview();
+    Object.defineProperty(dom.window, "matchMedia", {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === "(prefers-reduced-motion: reduce)",
+      }),
+    });
+    const surface = dom.window.document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    const track = surface?.querySelector<HTMLElement>("[data-pager-track]");
+    if (!surface || !track) throw new Error("home pager missing");
+
+    swipe(dom.window, surface, { x: 300, y: 160 }, { x: 101.1, y: 160 });
+    expect(pagerTranslateX(track)).toBeCloseTo(-390);
+    expect(track.classList).not.toContain("is-settling");
+  });
+
+  it("switches calligraphy categories without losing search or scroll state", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
     document
@@ -522,6 +744,7 @@ describe("mobile application preview", () => {
         (card) => card.dataset.category === "ink",
       ),
     ).toBe(true);
+    await waitForAnimationFrames(dom.window, 40);
     inkPage.scrollTop = 42;
     inkPage.dispatchEvent(new dom.window.Event("scroll"));
 
@@ -531,6 +754,7 @@ describe("mobile application preview", () => {
         '[data-calligraphy-category="rubbing"]',
       )?.classList,
     ).toContain("is-selected");
+    await waitForAnimationFrames(dom.window, 40);
     swipe(dom.window, calligraphyScroll, { x: 90, y: 180 }, { x: 300, y: 185 });
     expect(
       document.querySelector<HTMLElement>('[data-calligraphy-category="ink"]')

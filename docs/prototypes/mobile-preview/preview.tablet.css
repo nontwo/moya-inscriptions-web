@@ -196,10 +196,6 @@ button {
   user-select: none;
 }
 
-.app-pager__track.is-settling {
-  transition: transform 220ms var(--yoyi-easing-emphasized);
-}
-
 .app-pager__page {
   width: 100%;
   min-width: 0;
@@ -215,12 +211,6 @@ button {
 
 .app-pager__page::-webkit-scrollbar {
   display: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-pager__track.is-settling {
-    transition-duration: 0s;
-  }
 }
 
 .app-scroll::-webkit-scrollbar,

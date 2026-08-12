@@ -62,7 +62,18 @@ const calligraphyCategories = ["all", "ink", "rubbing"];
 const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
 const pagerAxisLockDistance = 8;
 const pagerEdgeResistance = 0.25;
-const pagerSettleDuration = 220;
+const pagerSpringMass = 1;
+const pagerSpringStiffness = 360;
+const pagerSpringDamping = 38;
+const pagerSpringStepSeconds = 0.008;
+const pagerSpringMaxFrameSeconds = 0.032;
+const pagerSpringPositionTolerance = 0.5;
+const pagerSpringVelocityTolerance = 10;
+const pagerSpringMaxDurationSeconds = 0.52;
+const pagerVelocityWindowMs = 100;
+const pagerFlickMinimumVelocity = 0.45;
+const pagerFlickMinimumDistanceRatio = 0.12;
+const pagerMaximumVelocity = 2.4;
 const swipeClickSuppressionWindow = 400;
 const pagerControllers = new Map();
 
@@ -464,6 +475,7 @@ function pagerWidth(controller) {
 }
 
 function setPagerOffset(controller, offset) {
+  controller.currentOffset = offset;
   controller.track.style.transform = `translate3d(${offset}px, 0, 0)`;
 }
 
@@ -477,30 +489,93 @@ function setPagerPageState(controller, activeIndex, touchMode) {
   });
 }
 
-function finishPagerSettling(controller) {
+function cancelPagerSpring(controller) {
+  if (controller.animationId) {
+    window.cancelAnimationFrame(controller.animationId);
+  }
+  controller.animationId = 0;
   controller.track.classList.remove("is-settling");
-  if (controller.settleTimer) window.clearTimeout(controller.settleTimer);
-  controller.settleTimer = 0;
 }
 
-function syncPager(controller, { animate = false } = {}) {
+function prefersReducedPagerMotion() {
+  return Boolean(
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+  );
+}
+
+function startPagerSpring(controller, targetOffset, initialVelocity = 0) {
+  cancelPagerSpring(controller);
+  if (prefersReducedPagerMotion()) {
+    setPagerOffset(controller, targetOffset);
+    return;
+  }
+
+  let position = controller.currentOffset ?? targetOffset;
+  let velocity =
+    Math.max(
+      -pagerMaximumVelocity,
+      Math.min(pagerMaximumVelocity, initialVelocity),
+    ) * 1000;
+  let elapsedSeconds = 0;
+  let previousTimestamp = null;
+  controller.track.classList.add("is-settling");
+
+  const advanceSpring = (timestamp) => {
+    const rawFrameSeconds =
+      previousTimestamp === null
+        ? 1 / 60
+        : (timestamp - previousTimestamp) / 1000;
+    previousTimestamp = timestamp;
+    elapsedSeconds += Math.max(0, rawFrameSeconds);
+    let frameSeconds = Math.min(
+      pagerSpringMaxFrameSeconds,
+      Math.max(0, rawFrameSeconds),
+    );
+
+    while (frameSeconds > 0) {
+      const stepSeconds = Math.min(pagerSpringStepSeconds, frameSeconds);
+      const displacement = position - targetOffset;
+      const acceleration =
+        (-pagerSpringStiffness * displacement - pagerSpringDamping * velocity) /
+        pagerSpringMass;
+      velocity += acceleration * stepSeconds;
+      position += velocity * stepSeconds;
+      frameSeconds -= stepSeconds;
+    }
+    setPagerOffset(controller, position);
+
+    const settled =
+      Math.abs(position - targetOffset) <= pagerSpringPositionTolerance &&
+      Math.abs(velocity) <= pagerSpringVelocityTolerance;
+    if (settled || elapsedSeconds >= pagerSpringMaxDurationSeconds) {
+      setPagerOffset(controller, targetOffset);
+      controller.animationId = 0;
+      controller.track.classList.remove("is-settling");
+      return;
+    }
+    controller.animationId = window.requestAnimationFrame(advanceSpring);
+  };
+
+  controller.animationId = window.requestAnimationFrame(advanceSpring);
+}
+
+function syncPager(controller, { animate = false, velocity = 0 } = {}) {
   const activeIndex = controller.values.indexOf(controller.current());
   const touchMode = touchPagerEnabled();
-  finishPagerSettling(controller);
+  cancelPagerSpring(controller);
   controller.track.classList.remove("is-dragging");
   setPagerPageState(controller, activeIndex, touchMode);
   if (!touchMode) {
+    controller.currentOffset = -activeIndex * pagerWidth(controller);
     controller.track.style.removeProperty("transform");
     return;
   }
+  const targetOffset = -activeIndex * pagerWidth(controller);
   if (animate) {
-    controller.track.classList.add("is-settling");
-    controller.settleTimer = window.setTimeout(
-      () => finishPagerSettling(controller),
-      pagerSettleDuration,
-    );
+    startPagerSpring(controller, targetOffset, velocity);
+    return;
   }
-  setPagerOffset(controller, -activeIndex * pagerWidth(controller));
+  setPagerOffset(controller, targetOffset);
 }
 
 function syncAllPagers(options) {
@@ -536,11 +611,12 @@ function preparePager(id, values, current, select) {
   );
   if (pages.some((page) => !page)) return;
   const controller = {
+    animationId: 0,
+    currentOffset: 0,
     current,
     id,
     pages,
     select,
-    settleTimer: 0,
     surface,
     track,
     values,
@@ -560,7 +636,7 @@ function preparePagers() {
   );
 }
 
-function selectHomeFeed(value, { animate = false } = {}) {
+function selectHomeFeed(value, { animate = false, velocity = 0 } = {}) {
   if (!homeFeeds.includes(value)) return;
   const changed = homeFeed !== value;
   if (changed && primaryView === "home") saveScrollPosition();
@@ -571,7 +647,7 @@ function selectHomeFeed(value, { animate = false } = {}) {
     button.setAttribute("aria-selected", String(selected));
   });
   const controller = pagerControllers.get("home");
-  if (controller) syncPager(controller, { animate });
+  if (controller) syncPager(controller, { animate, velocity });
   else {
     document.querySelectorAll("[data-feed-panel]").forEach((panel) => {
       panel.hidden = panel.dataset.feedPanel !== value;
@@ -580,7 +656,10 @@ function selectHomeFeed(value, { animate = false } = {}) {
   if (changed && primaryView === "home") restoreScrollPosition("home");
 }
 
-function selectCalligraphyCategory(value, { animate = false } = {}) {
+function selectCalligraphyCategory(
+  value,
+  { animate = false, velocity = 0 } = {},
+) {
   if (!calligraphyCategories.includes(value)) return;
   const changed = calligraphyCategory !== value;
   if (changed && primaryView === "calligraphy") saveScrollPosition();
@@ -592,7 +671,7 @@ function selectCalligraphyCategory(value, { animate = false } = {}) {
   });
   filterCalligraphy();
   const controller = pagerControllers.get("calligraphy");
-  if (controller) syncPager(controller, { animate });
+  if (controller) syncPager(controller, { animate, velocity });
   if (changed && primaryView === "calligraphy") {
     restoreScrollPosition("calligraphy");
   }
@@ -600,9 +679,57 @@ function selectCalligraphyCategory(value, { animate = false } = {}) {
 
 function cancelActivePagerGesture({ animate = true } = {}) {
   if (!activePagerGesture) return;
-  const { controller } = activePagerGesture;
+  const { controller, pointerId } = activePagerGesture;
+  try {
+    if (controller.surface.hasPointerCapture?.(pointerId)) {
+      controller.surface.releasePointerCapture(pointerId);
+    }
+  } catch {
+    // Pointer capture can disappear when the browser cancels the gesture.
+  }
   activePagerGesture = null;
   syncPager(controller, { animate });
+}
+
+function pagerEventTime(event) {
+  return Number.isFinite(event.timeStamp) ? event.timeStamp : performance.now();
+}
+
+function addPagerVelocitySample(gesture, event) {
+  const time = pagerEventTime(event);
+  gesture.samples.push({ time, x: event.clientX });
+  const minimumTime = time - pagerVelocityWindowMs;
+  while (gesture.samples.length > 2 && gesture.samples[1].time < minimumTime) {
+    gesture.samples.shift();
+  }
+}
+
+function pagerReleaseVelocity(gesture, event) {
+  addPagerVelocitySample(gesture, event);
+  const samples = gesture.samples;
+  const latestTime = samples.at(-1)?.time ?? 0;
+  const windowStart = latestTime - pagerVelocityWindowMs;
+  let weightedVelocity = 0;
+  let totalWeight = 0;
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    const segmentDuration = current.time - previous.time;
+    if (segmentDuration <= 0 || current.time <= windowStart) continue;
+    const elapsed = current.time - Math.max(previous.time, windowStart);
+    const recency = Math.max(
+      0.15,
+      1 - (latestTime - current.time) / pagerVelocityWindowMs,
+    );
+    const weight = elapsed * recency;
+    weightedVelocity += ((current.x - previous.x) / segmentDuration) * weight;
+    totalWeight += weight;
+  }
+  if (totalWeight === 0) return 0;
+  return Math.max(
+    -pagerMaximumVelocity,
+    Math.min(pagerMaximumVelocity, weightedVelocity / totalWeight),
+  );
 }
 
 function beginPagerGesture(event, controller) {
@@ -611,16 +738,21 @@ function beginPagerGesture(event, controller) {
     cancelActivePagerGesture();
     return;
   }
-  finishPagerSettling(controller);
+  cancelPagerSpring(controller);
+  const width = pagerWidth(controller);
   activePagerGesture = {
     axis: null,
     controller,
     dragX: 0,
     pointerId: event.pointerId,
     startIndex: controller.values.indexOf(controller.current()),
+    startOffset:
+      controller.currentOffset ??
+      -controller.values.indexOf(controller.current()) * width,
     startX: event.clientX,
     startY: event.clientY,
-    width: pagerWidth(controller),
+    samples: [{ time: pagerEventTime(event), x: event.clientX }],
+    width,
   };
 }
 
@@ -643,18 +775,22 @@ function movePagerGesture(event) {
     }
     gesture.axis = "horizontal";
     gesture.controller.track.classList.add("is-dragging");
+    try {
+      gesture.controller.surface.setPointerCapture?.(gesture.pointerId);
+    } catch {
+      // Some embedded browsers expose pointer capture before fully supporting it.
+    }
   }
   event.preventDefault();
-  let dragX = Math.max(-gesture.width, Math.min(gesture.width, deltaX));
-  const atFirst = gesture.startIndex === 0 && dragX > 0;
-  const atLast =
-    gesture.startIndex === gesture.controller.values.length - 1 && dragX < 0;
-  if (atFirst || atLast) dragX *= pagerEdgeResistance;
-  gesture.dragX = dragX;
-  setPagerOffset(
-    gesture.controller,
-    -gesture.startIndex * gesture.width + dragX,
-  );
+  addPagerVelocitySample(gesture, event);
+  const minimumOffset = -(gesture.controller.values.length - 1) * gesture.width;
+  let offset = gesture.startOffset + deltaX;
+  if (offset > 0) offset *= pagerEdgeResistance;
+  if (offset < minimumOffset) {
+    offset = minimumOffset + (offset - minimumOffset) * pagerEdgeResistance;
+  }
+  gesture.dragX = offset - gesture.startOffset;
+  setPagerOffset(gesture.controller, offset);
 }
 
 function completePagerGesture(event) {
@@ -668,24 +804,49 @@ function completePagerGesture(event) {
   }
   activePagerGesture = null;
   if (gesture.axis !== "horizontal") return;
+  try {
+    if (gesture.controller.surface.hasPointerCapture?.(gesture.pointerId)) {
+      gesture.controller.surface.releasePointerCapture(gesture.pointerId);
+    }
+  } catch {
+    // The capture may already be released after leaving the browsing context.
+  }
   gesture.controller.track.classList.remove("is-dragging");
   gesture.controller.surface.dataset.suppressSwipeClickUntil = String(
     performance.now() + swipeClickSuppressionWindow,
   );
-  const direction = gesture.dragX < 0 ? 1 : -1;
-  const destinationIndex = gesture.startIndex + direction;
-  const destinationVisible = Math.abs(gesture.dragX) / gesture.width > 0.5;
-  if (
-    destinationVisible &&
-    destinationIndex >= 0 &&
-    destinationIndex < gesture.controller.values.length
-  ) {
+  const velocity = pagerReleaseVelocity(gesture, event);
+  const distanceRatio = Math.abs(gesture.dragX) / gesture.width;
+  const flick =
+    distanceRatio >= pagerFlickMinimumDistanceRatio &&
+    Math.abs(velocity) >= pagerFlickMinimumVelocity &&
+    Math.sign(velocity) === Math.sign(gesture.dragX);
+  const lastIndex = gesture.controller.values.length - 1;
+  const visualPosition = Math.max(
+    0,
+    Math.min(lastIndex, -gesture.controller.currentOffset / gesture.width),
+  );
+  const lowerIndex = Math.floor(visualPosition);
+  const visibleFraction = visualPosition - lowerIndex;
+  let destinationIndex;
+  if (flick && velocity < 0) {
+    destinationIndex = Math.min(lastIndex, Math.ceil(visualPosition - 1e-6));
+  } else if (flick && velocity > 0) {
+    destinationIndex = Math.max(0, Math.floor(visualPosition + 1e-6));
+  } else if (Math.abs(visibleFraction - 0.5) <= 1e-6) {
+    destinationIndex = gesture.startIndex;
+  } else {
+    destinationIndex =
+      visibleFraction > 0.5 ? Math.min(lastIndex, lowerIndex + 1) : lowerIndex;
+  }
+  if (destinationIndex !== gesture.startIndex) {
     gesture.controller.select(gesture.controller.values[destinationIndex], {
       animate: true,
+      velocity,
     });
     return;
   }
-  syncPager(gesture.controller, { animate: true });
+  syncPager(gesture.controller, { animate: true, velocity });
 }
 
 function suppressSwipeClick(event, surface) {
