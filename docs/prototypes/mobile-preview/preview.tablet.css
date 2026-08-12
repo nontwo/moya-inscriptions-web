@@ -50,6 +50,7 @@ button {
   overflow: hidden;
   background-color: var(--yoyi-color-background-page);
   isolation: isolate;
+  touch-action: manipulation;
 }
 
 .app-view {

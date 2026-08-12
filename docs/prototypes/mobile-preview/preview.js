@@ -60,7 +60,16 @@ const homeLayoutKey = "yoyi.home-feed-layout";
 const themePreferences = ["system", "light", "dark"];
 const homeLayouts = ["single", "double"];
 const primaryViews = ["home", "inscriptions", "calligraphy"];
+const homeFeeds = ["discover", "nearby", "topics"];
+const calligraphyCategories = ["all", "ink", "rubbing"];
 const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
+const viewportMeta = document.querySelector('meta[name="viewport"]');
+const scalableViewportContent =
+  viewportMeta?.getAttribute("content") ??
+  "width=device-width, initial-scale=1";
+const swipeMinimumDistance = 48;
+const swipeAxisRatio = 1.25;
+const swipeClickSuppressionWindow = 400;
 
 const scrollPositions = {
   home: 0,
@@ -109,6 +118,8 @@ let themePreference = readStoredPreference(
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let inscriptionsSplitOpen = false;
+let activeSwipe = null;
+let viewportResetSequence = 0;
 
 function usesInscriptionsSplit() {
   return root.dataset.platform === "pc" && primaryView === "inscriptions";
@@ -439,6 +450,111 @@ function selectCalligraphyCategory(value) {
   filterCalligraphy();
 }
 
+function touchSwipeEnabled() {
+  return (
+    root.dataset.platform === "phone" || root.dataset.platform === "tablet"
+  );
+}
+
+function swipeOptionsFor(scrollView) {
+  if (scrollView === "home") {
+    return {
+      current: () => homeFeed,
+      options: homeFeeds,
+      select: selectHomeFeed,
+    };
+  }
+  if (scrollView === "calligraphy") {
+    return {
+      current: () => calligraphyCategory,
+      options: calligraphyCategories,
+      select: selectCalligraphyCategory,
+    };
+  }
+  return null;
+}
+
+function beginSwipe(event, surface) {
+  if (!touchSwipeEnabled() || event.pointerType !== "touch") return;
+  if (!event.isPrimary || activeSwipe) {
+    activeSwipe = null;
+    return;
+  }
+  activeSwipe = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    surface,
+  };
+}
+
+function cancelSwipe(event) {
+  if (activeSwipe?.pointerId === event.pointerId || !event.isPrimary) {
+    activeSwipe = null;
+  }
+}
+
+function completeSwipe(event, surface) {
+  if (
+    !activeSwipe ||
+    activeSwipe.pointerId !== event.pointerId ||
+    activeSwipe.surface !== surface
+  ) {
+    return;
+  }
+
+  const { startX, startY } = activeSwipe;
+  activeSwipe = null;
+  if (!touchSwipeEnabled() || event.pointerType !== "touch") return;
+
+  const deltaX = event.clientX - startX;
+  const deltaY = event.clientY - startY;
+  if (
+    Math.abs(deltaX) < swipeMinimumDistance ||
+    Math.abs(deltaX) < Math.abs(deltaY) * swipeAxisRatio
+  ) {
+    return;
+  }
+
+  const swipeOptions = swipeOptionsFor(surface.dataset.scrollView);
+  if (!swipeOptions) return;
+  const currentIndex = swipeOptions.options.indexOf(swipeOptions.current());
+  const nextIndex = currentIndex + (deltaX < 0 ? 1 : -1);
+  surface.dataset.suppressSwipeClickUntil = String(
+    performance.now() + swipeClickSuppressionWindow,
+  );
+  if (nextIndex >= 0 && nextIndex < swipeOptions.options.length) {
+    swipeOptions.select(swipeOptions.options[nextIndex]);
+  }
+}
+
+function suppressSwipeClick(event, surface) {
+  const suppressUntil = Number(surface.dataset.suppressSwipeClickUntil ?? 0);
+  if (performance.now() > suppressUntil) return;
+  delete surface.dataset.suppressSwipeClickUntil;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function resetPhoneViewportScale() {
+  if (root.dataset.deviceClass !== "phone" || !viewportMeta) return;
+  saveScrollPosition();
+  const resetSequence = ++viewportResetSequence;
+  requestAnimationFrame(() => {
+    if (resetSequence !== viewportResetSequence) return;
+    viewportMeta.setAttribute(
+      "content",
+      `${scalableViewportContent}, minimum-scale=1, maximum-scale=1`,
+    );
+    requestAnimationFrame(() => {
+      if (resetSequence !== viewportResetSequence) return;
+      viewportMeta.setAttribute("content", scalableViewportContent);
+      syncPlatformAttribute();
+      restoreScrollPosition(primaryView);
+    });
+  });
+}
+
 function filterInscriptions(query) {
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
   let visibleCount = 0;
@@ -547,6 +663,27 @@ document.querySelectorAll("[data-calligraphy-category]").forEach((button) => {
     selectCalligraphyCategory(button.dataset.calligraphyCategory),
   );
 });
+
+document
+  .querySelectorAll(
+    '[data-scroll-view="home"], [data-scroll-view="calligraphy"]',
+  )
+  .forEach((surface) => {
+    surface.addEventListener("pointerdown", (event) =>
+      beginSwipe(event, surface),
+    );
+    surface.addEventListener("pointerup", (event) =>
+      completeSwipe(event, surface),
+    );
+    surface.addEventListener("pointercancel", cancelSwipe);
+    surface.addEventListener(
+      "click",
+      (event) => suppressSwipeClick(event, surface),
+      {
+        capture: true,
+      },
+    );
+  });
 
 document.querySelectorAll("[data-open-settings]").forEach((button) => {
   button.addEventListener("click", () => openSettings());
@@ -689,6 +826,7 @@ window.addEventListener(
   onBeforePlatformQueryChange,
 );
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
+window.addEventListener("orientationchange", resetPhoneViewportScale);
 document.querySelectorAll("[data-scroll-view]").forEach((scrollElement) => {
   scrollElement.addEventListener(
     "scroll",

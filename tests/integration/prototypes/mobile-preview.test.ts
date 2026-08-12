@@ -138,6 +138,64 @@ const setViewportWidth = (dom: PreviewDom, viewportWidth: number) => {
   dom.window.dispatchEvent(new dom.window.Event("resize"));
 };
 
+type PointerOptions = {
+  clientX: number;
+  clientY: number;
+  isPrimary?: boolean;
+  pointerId?: number;
+  pointerType?: string;
+};
+
+const dispatchPointer = (
+  window: Window & typeof globalThis,
+  target: Element,
+  type: string,
+  {
+    clientX,
+    clientY,
+    isPrimary = true,
+    pointerId = 1,
+    pointerType = "touch",
+  }: PointerOptions,
+) => {
+  const event = new window.Event(type, { bubbles: true, cancelable: true });
+  Object.assign(event, {
+    clientX,
+    clientY,
+    isPrimary,
+    pointerId,
+    pointerType,
+  });
+  target.dispatchEvent(event);
+};
+
+const swipe = (
+  window: Window & typeof globalThis,
+  target: Element,
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  pointerType = "touch",
+) => {
+  dispatchPointer(window, target, "pointerdown", {
+    clientX: start.x,
+    clientY: start.y,
+    pointerType,
+  });
+  dispatchPointer(window, target, "pointerup", {
+    clientX: end.x,
+    clientY: end.y,
+    pointerType,
+  });
+};
+
+const waitForAnimationFrames = async (window: Window, count: number) => {
+  for (let index = 0; index < count; index += 1) {
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve()),
+    );
+  }
+};
+
 const activePlatformStyles = (document: Document) =>
   [...document.querySelectorAll<HTMLLinkElement>("[data-platform-stylesheet]")]
     .filter((link) => link.media === "all")
@@ -291,6 +349,277 @@ describe("mobile application preview", () => {
         '[data-content-id="calligraphy-yanqinli"]',
       )?.hidden,
     ).toBe(true);
+  });
+
+  it("switches home feeds with bounded touch swipes and suppresses the card click", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const homeScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    const discoverCard = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    if (!homeScroll || !discoverCard)
+      throw new Error("home swipe surface missing");
+
+    swipe(dom.window, discoverCard, { x: 260, y: 160 }, { x: 160, y: 165 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+    discoverCard.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+
+    swipe(dom.window, homeScroll, { x: 260, y: 160 }, { x: 160, y: 160 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="topics"]')
+        ?.classList,
+    ).toContain("is-selected");
+    swipe(dom.window, homeScroll, { x: 260, y: 160 }, { x: 160, y: 160 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="topics"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    swipe(dom.window, homeScroll, { x: 160, y: 160 }, { x: 260, y: 160 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("switches calligraphy categories without losing search or scroll state", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    const calligraphyScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="calligraphy"]',
+    );
+    const calligraphyFilter = document.querySelector<HTMLInputElement>(
+      "[data-calligraphy-filter]",
+    );
+    if (!calligraphyScroll || !calligraphyFilter) {
+      throw new Error("calligraphy swipe surface missing");
+    }
+    calligraphyFilter.value = "唐";
+    calligraphyFilter.dispatchEvent(
+      new dom.window.Event("input", { bubbles: true }),
+    );
+    calligraphyScroll.scrollTop = 96;
+
+    swipe(
+      dom.window,
+      calligraphyScroll,
+      { x: 250, y: 180 },
+      { x: 150, y: 185 },
+    );
+    expect(
+      document.querySelector<HTMLElement>('[data-calligraphy-category="ink"]')
+        ?.classList,
+    ).toContain("is-selected");
+    expect(calligraphyFilter.value).toBe("唐");
+    expect(calligraphyScroll.scrollTop).toBe(96);
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>('[data-category="rubbing"]'),
+      ].every((card) => card.hidden),
+    ).toBe(true);
+
+    swipe(
+      dom.window,
+      calligraphyScroll,
+      { x: 250, y: 180 },
+      { x: 150, y: 185 },
+    );
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-calligraphy-category="rubbing"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("ignores short, vertical, multi-touch, mouse, and PC swipe gestures", () => {
+    const dom = renderPreview();
+    const homeScroll = dom.window.document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    if (!homeScroll) throw new Error("home swipe surface missing");
+
+    swipe(dom.window, homeScroll, { x: 250, y: 160 }, { x: 220, y: 160 });
+    swipe(dom.window, homeScroll, { x: 250, y: 100 }, { x: 190, y: 210 });
+    swipe(
+      dom.window,
+      homeScroll,
+      { x: 250, y: 160 },
+      { x: 150, y: 160 },
+      "mouse",
+    );
+    dispatchPointer(dom.window, homeScroll, "pointerdown", {
+      clientX: 250,
+      clientY: 160,
+      pointerId: 1,
+    });
+    dispatchPointer(dom.window, homeScroll, "pointerdown", {
+      clientX: 240,
+      clientY: 160,
+      isPrimary: false,
+      pointerId: 2,
+    });
+    dispatchPointer(dom.window, homeScroll, "pointerup", {
+      clientX: 140,
+      clientY: 160,
+      isPrimary: false,
+      pointerId: 2,
+    });
+    dispatchPointer(dom.window, homeScroll, "pointerup", {
+      clientX: 150,
+      clientY: 160,
+      pointerId: 1,
+    });
+    expect(
+      dom.window.document.querySelector<HTMLElement>(
+        '[data-home-feed="discover"]',
+      )?.classList,
+    ).toContain("is-selected");
+
+    const desktopDom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const desktopHomeScroll =
+      desktopDom.window.document.querySelector<HTMLElement>(
+        '[data-scroll-view="home"]',
+      );
+    if (!desktopHomeScroll) throw new Error("desktop home surface missing");
+    swipe(
+      desktopDom.window,
+      desktopHomeScroll,
+      { x: 250, y: 160 },
+      { x: 150, y: 160 },
+    );
+    expect(
+      desktopDom.window.document.querySelector<HTMLElement>(
+        '[data-home-feed="discover"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("enables category swipes for a physical tablet", () => {
+    const dom = renderPreview(
+      {},
+      {
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportWidth: 834,
+      },
+    );
+    const document = dom.window.document;
+    const homeScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    if (!homeScroll) throw new Error("tablet home surface missing");
+
+    swipe(dom.window, homeScroll, { x: 500, y: 220 }, { x: 400, y: 225 });
+    expect(document.documentElement.dataset.platform).toBe("tablet");
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("temporarily resets phone scale after orientation without losing state", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    document
+      .querySelector<HTMLElement>('[data-calligraphy-category="rubbing"]')
+      ?.click();
+    const calligraphyFilter = document.querySelector<HTMLInputElement>(
+      "[data-calligraphy-filter]",
+    );
+    const calligraphyScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="calligraphy"]',
+    );
+    const viewportMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="viewport"]',
+    );
+    if (!calligraphyFilter || !calligraphyScroll || !viewportMeta) {
+      throw new Error("orientation test fixture missing");
+    }
+    calligraphyFilter.value = "北海";
+    calligraphyFilter.dispatchEvent(
+      new dom.window.Event("input", { bubbles: true }),
+    );
+    calligraphyScroll.scrollTop = 144;
+    calligraphyScroll.dispatchEvent(new dom.window.Event("scroll"));
+    const viewportContents: string[] = [];
+    const observer = new dom.window.MutationObserver(() => {
+      viewportContents.push(viewportMeta.content);
+    });
+    observer.observe(viewportMeta, { attributes: true });
+
+    dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+    await waitForAnimationFrames(dom.window, 3);
+    observer.disconnect();
+
+    expect(
+      viewportContents.some((content) =>
+        content.includes("minimum-scale=1, maximum-scale=1"),
+      ),
+    ).toBe(true);
+    expect(viewportMeta.content).toBe("width=device-width, initial-scale=1");
+    expect(
+      document.querySelector<HTMLElement>('[data-view="calligraphy"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-calligraphy-category="rubbing"]',
+      )?.classList,
+    ).toContain("is-selected");
+    expect(calligraphyFilter.value).toBe("北海");
+    expect(calligraphyScroll.scrollTop).toBe(144);
+  });
+
+  it("does not reset the viewport scale for tablet orientation changes", async () => {
+    const dom = renderPreview(
+      {},
+      {
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportWidth: 834,
+      },
+    );
+    const viewportMeta = dom.window.document.querySelector<HTMLMetaElement>(
+      'meta[name="viewport"]',
+    );
+    if (!viewportMeta) throw new Error("viewport meta missing");
+    const viewportContents: string[] = [];
+    const observer = new dom.window.MutationObserver(() => {
+      viewportContents.push(viewportMeta.content);
+    });
+    observer.observe(viewportMeta, { attributes: true });
+
+    dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+    await waitForAnimationFrames(dom.window, 3);
+    observer.disconnect();
+
+    expect(dom.window.document.documentElement.dataset.deviceClass).toBe(
+      "tablet",
+    );
+    expect(viewportContents).toHaveLength(0);
+    expect(viewportMeta.content).toBe("width=device-width, initial-scale=1");
   });
 
   it("opens settings from every primary view and returns to its source", async () => {
@@ -544,6 +873,13 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("min-height: 58px");
     expect(pcCss).toContain("border-width: 9px 0 9px 10px");
     expect(pcCss).not.toContain("opacity: 0.88");
+    expect(previewCss).toContain("touch-action: manipulation");
+    expect(tabletCss).toContain("touch-action: manipulation");
+    expect(pcCss).not.toContain("touch-action: manipulation");
+    expect(html).toContain(
+      '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+    );
+    expect(html).not.toMatch(/user-scalable|maximum-scale|minimum-scale/);
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(tabletCss).toContain("var(--yoyi-container-reading)");
     expect(pcCss).toContain("var(--yoyi-container-reading)");
