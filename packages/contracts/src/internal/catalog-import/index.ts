@@ -43,6 +43,11 @@ export {
   CATALOG_IMPORT_WORKBOOK_SPEC,
 } from "./specification.js";
 export {
+  CATALOG_IMPORT_PRESENTATION_REQUIREDNESS,
+  CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
+  CATALOG_IMPORT_XLSX_LAYOUT_VERSION,
+} from "./workbook-layout.js";
+export {
   aliasImportTableRowSchema,
   canonicalizeAliasImportTableRow,
   canonicalizeCatalogImportTableRow,
