@@ -6,11 +6,13 @@ import {
   CATALOG_IMPORT_ALIAS_HEADERS,
   CATALOG_IMPORT_CATALOG_HEADERS,
   CATALOG_IMPORT_CONTRACT_VERSION,
+  CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS,
   CATALOG_IMPORT_PROVENANCE_HEADERS,
   CATALOG_IMPORT_SHEET_NAMES,
   CATALOG_IMPORT_WORKBOOK_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_VERSION,
+  formatCatalogImportPresentationHeader,
 } from "@moya/contracts/internal/catalog-import";
 import { describe, expect, it } from "vitest";
 
@@ -166,7 +168,10 @@ describe("safe Catalog Import workbook template", () => {
       for (const [columnIndex, field] of sheetLayout.fields.entries()) {
         const columnLetter = String.fromCharCode(65 + columnIndex);
         expect(cellValue(worksheet, `${columnLetter}1`, sharedStrings)).toBe(
-          field.presentationHeader,
+          formatCatalogImportPresentationHeader(
+            field.presentationHeader,
+            field.requiredness,
+          ),
         );
         expect(cellValue(worksheet, `${columnLetter}2`, sharedStrings)).toBe(
           field.machineHeader,
@@ -279,20 +284,65 @@ describe("safe Catalog Import workbook template", () => {
     expect(cellValue(instructions, "A61", sharedStrings)).toBe(
       "D. Advanced persistence / approval / hash notes",
     );
-    expect(cellValue(instructions, "A120", sharedStrings)).toBe(
+    expect(instructions).toContain('<dimension ref="A1:F70"/>');
+    expect(cellValue(instructions, "A68", sharedStrings)).toBe(
       "Technical Metadata",
     );
-    expect(cellValue(instructions, "A121", sharedStrings)).toBe(
+    expect(cellValue(instructions, "A69", sharedStrings)).toBe(
       "workbookLayoutVersion",
     );
-    expect(cellValue(instructions, "B121", sharedStrings)).toBe(
+    expect(cellValue(instructions, "B69", sharedStrings)).toBe(
       CATALOG_IMPORT_XLSX_LAYOUT_VERSION,
     );
-    expect(cellValue(instructions, "A122", sharedStrings)).toBe(
+    expect(cellValue(instructions, "A70", sharedStrings)).toBe(
       "importContractVersion",
     );
-    expect(cellValue(instructions, "B122", sharedStrings)).toBe(
+    expect(cellValue(instructions, "B70", sharedStrings)).toBe(
       CATALOG_IMPORT_CONTRACT_VERSION,
+    );
+    expect(
+      ["A26", "B26", "C26", "D26", "E26", "F26"].map((address) =>
+        cellValue(instructions, address, sharedStrings),
+      ),
+    ).toEqual([
+      "Sheet",
+      "中文名称",
+      "Machine header",
+      "Requiredness",
+      "如何填写",
+      "示例",
+    ]);
+    expect(cellValue(instructions, "B27", sharedStrings)).toBe("批次内关联 ID");
+    expect(cellValue(instructions, "D27", sharedStrings)).toBe(
+      CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS.REQUIRED,
+    );
+    expect(cellValue(instructions, "F27", sharedStrings)).toBe(
+      "synthetic-item-001",
+    );
+    expect(cellValue(instructions, "B29", sharedStrings)).toBe("平台目录 ID");
+    expect(cellValue(instructions, "D29", sharedStrings)).toBe(
+      CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS.UPDATE_ONLY,
+    );
+    expect(cellValue(instructions, "F36", sharedStrings)).toBe(
+      "福建省（synthetic）",
+    );
+    expect(cellValue(instructions, "F38", sharedStrings)).toBe(
+      "泉州市（synthetic）",
+    );
+    expect(cellValue(instructions, "F40", sharedStrings)).toBe(
+      "洛江区（synthetic）",
+    );
+    expect(cellValue(instructions, "F42", sharedStrings)).toBe(
+      "万安某处（synthetic）",
+    );
+    expect(cellValue(instructions, "F44", sharedStrings)).toBe(
+      "某文物管理机构（synthetic）",
+    );
+    expect(cellValue(instructions, "D49", sharedStrings)).toBe(
+      CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS.CHILD_ROW_REQUIRED,
+    );
+    expect(cellValue(instructions, "F56", sharedStrings)).toBe(
+      "https://example.invalid",
     );
     const literalText = sharedStrings.join("\n");
     for (const evidence of [

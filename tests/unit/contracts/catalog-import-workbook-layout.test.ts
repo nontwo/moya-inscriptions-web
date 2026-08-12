@@ -8,12 +8,14 @@ import {
   CATALOG_IMPORT_CONTRACT_VERSION,
   CATALOG_IMPORT_CSV_SPEC,
   CATALOG_IMPORT_PROVENANCE_HEADERS,
+  CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS,
   CATALOG_IMPORT_WORKBOOK_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_VERSION,
   canonicalizeAliasImportTableRow,
   canonicalizeCatalogImportTableRow,
   canonicalizeProvenanceImportTableRow,
+  formatCatalogImportPresentationHeader,
   serializeCanonicalCatalogImportEnvelope,
 } from "@moya/contracts/internal/catalog-import";
 import { describe, expect, it } from "vitest";
@@ -61,15 +63,15 @@ describe("Catalog Import XLSX layout authority", () => {
       },
       instructions: {
         metadata: {
-          sectionCell: "A120",
+          sectionCell: "A68",
           workbookLayoutVersion: {
-            keyCell: "A121",
-            valueCell: "B121",
+            keyCell: "A69",
+            valueCell: "B69",
             value: "catalog-import-xlsx/v1",
           },
           importContractVersion: {
-            keyCell: "A122",
-            valueCell: "B122",
+            keyCell: "A70",
+            valueCell: "B70",
             value: CATALOG_IMPORT_CONTRACT_VERSION,
           },
         },
@@ -105,6 +107,73 @@ describe("Catalog Import XLSX layout authority", () => {
         (field) => field.machineHeader,
       ),
     ).toEqual(CATALOG_IMPORT_PROVENANCE_HEADERS);
+  });
+
+  it("derives concise visible requiredness and synthetic examples from the layout authority", () => {
+    expect(CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS).toEqual({
+      REQUIRED: "必填",
+      OPTIONAL: "选填",
+      UPDATE_ONLY: "更新时填",
+      CHILD_ROW_REQUIRED: "子表行必填",
+    });
+    const allowedMachineExamples = new Set<string>([
+      ...CATALOG_IMPORT_WORKBOOK_SPEC.allowedValues.catalogKind,
+      ...CATALOG_IMPORT_WORKBOOK_SPEC.allowedValues.fieldState,
+      ...CATALOG_IMPORT_WORKBOOK_SPEC.allowedValues.descriptionState,
+      ...CATALOG_IMPORT_WORKBOOK_SPEC.allowedValues.aliasType,
+    ]);
+    const expectedCatalogHeaders = {
+      catalogImportId: "批次内关联 ID【必填】",
+      sourceId: "来源 ID【必填】",
+      catalogId: "平台目录 ID【更新时填】",
+      title: "题名【必填】",
+      catalogKind: "类别【必填】",
+      ownerNote: "内部备注",
+    };
+    const fieldGroups = [
+      CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets["01_Catalog"].fields,
+      CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets["02_Aliases"].fields,
+      CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets["03_Provenance"].fields,
+    ] as const;
+    const catalogFields =
+      CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets["01_Catalog"].fields;
+    for (const field of catalogFields) {
+      const visibleHeader = formatCatalogImportPresentationHeader(
+        field.presentationHeader,
+        field.requiredness,
+      );
+      const expected =
+        expectedCatalogHeaders[
+          field.machineHeader as keyof typeof expectedCatalogHeaders
+        ];
+      if (expected !== undefined) expect(visibleHeader).toBe(expected);
+      if (field.requiredness === "OPTIONAL") {
+        expect(visibleHeader).not.toContain("【必填】");
+        expect(visibleHeader).not.toContain("【更新时填】");
+      }
+    }
+    for (const fields of fieldGroups) {
+      for (const field of fields) {
+        const visibleHeader = formatCatalogImportPresentationHeader(
+          field.presentationHeader,
+          field.requiredness,
+        );
+        if (
+          field.requiredness === "REQUIRED" ||
+          field.requiredness === "CHILD_ROW_REQUIRED"
+        ) {
+          expect(visibleHeader).toMatch(/【必填】$/);
+        }
+        if (field.requiredness === "UPDATE_ONLY") {
+          expect(visibleHeader).toMatch(/【更新时填】$/);
+        }
+        expect(field.example).not.toBe("");
+        expect(
+          /synthetic|合成|example\.invalid/.test(field.example) ||
+            allowedMachineExamples.has(field.example),
+        ).toBe(true);
+      }
+    }
   });
 
   it("binds Catalog required/optional/update-only labels to canonicalization", () => {

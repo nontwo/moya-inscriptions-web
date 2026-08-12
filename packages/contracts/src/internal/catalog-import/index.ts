@@ -44,8 +44,10 @@ export {
 } from "./specification.js";
 export {
   CATALOG_IMPORT_PRESENTATION_REQUIREDNESS,
+  CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS,
   CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_VERSION,
+  formatCatalogImportPresentationHeader,
 } from "./workbook-layout.js";
 export {
   aliasImportTableRowSchema,

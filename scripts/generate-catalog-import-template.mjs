@@ -10,7 +10,11 @@ import { fileURLToPath } from "node:url";
 
 import ExcelJS from "exceljs";
 
-import { CATALOG_IMPORT_XLSX_LAYOUT_SPEC } from "../packages/contracts/dist/internal/catalog-import/index.js";
+import {
+  CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS,
+  CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
+  formatCatalogImportPresentationHeader,
+} from "../packages/contracts/dist/internal/catalog-import/index.js";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -141,8 +145,11 @@ const addDataSheet = (workbook, name, sheetLayout, syntheticRow) => {
   worksheet.columns = sheetLayout.fields.map((field) => ({
     width: field.width,
   }));
-  worksheet.getRow(1).values = sheetLayout.fields.map(
-    (field) => field.presentationHeader,
+  worksheet.getRow(1).values = sheetLayout.fields.map((field) =>
+    formatCatalogImportPresentationHeader(
+      field.presentationHeader,
+      field.requiredness,
+    ),
   );
   const tableRows = [sheetLayout.fields.map(() => null)];
   if (syntheticRow !== undefined) tableRows.push(syntheticRow);
@@ -289,12 +296,13 @@ const addInstructionsSheet = (workbook) => {
   addSectionHeading(worksheet, 25, "C. Field Guide");
   worksheet.getRow(26).values = [
     "Sheet",
-    "中文列名",
+    "中文名称",
     "Machine header",
     "Requiredness",
-    "说明",
+    "如何填写",
+    "示例",
   ];
-  for (let column = 1; column <= 5; column += 1) {
+  for (let column = 1; column <= 6; column += 1) {
     const cell = worksheet.getCell(26, column);
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
     cell.fill = {
@@ -317,11 +325,12 @@ const addInstructionsSheet = (workbook) => {
         sheetName,
         field.presentationHeader,
         field.machineHeader,
-        field.requiredness,
+        CATALOG_IMPORT_PRESENTATION_REQUIREDNESS_LABELS[field.requiredness],
         field.guidance,
+        field.example,
       ];
       worksheet.getRow(guideRow).height = 32;
-      for (let column = 1; column <= 5; column += 1) {
+      for (let column = 1; column <= 6; column += 1) {
         const cell = worksheet.getCell(guideRow, column);
         cell.alignment = { wrapText: true, vertical: "top" };
         cell.border = {
@@ -376,7 +385,12 @@ const addInstructionsSheet = (workbook) => {
     metadata.importContractVersion.key;
   worksheet.getCell(metadata.importContractVersion.valueCell).value =
     metadata.importContractVersion.value;
-  for (const address of ["A121", "B121", "A122", "B122"]) {
+  for (const address of [
+    metadata.workbookLayoutVersion.keyCell,
+    metadata.workbookLayoutVersion.valueCell,
+    metadata.importContractVersion.keyCell,
+    metadata.importContractVersion.valueCell,
+  ]) {
     const cell = worksheet.getCell(address);
     cell.numFmt = "@";
     cell.border = {
