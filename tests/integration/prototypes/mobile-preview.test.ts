@@ -28,6 +28,10 @@ const devicePlatformScript = await readFile(
   "utf8",
 );
 const script = await readFile(new URL("preview.js", previewRoot), "utf8");
+const homeFeedFixture = await readFile(
+  new URL("fixtures/home-feed.placeholder.js", previewRoot),
+  "utf8",
+);
 const topicsFixture = await readFile(
   new URL("fixtures/topics.placeholder.js", previewRoot),
   "utf8",
@@ -165,9 +169,14 @@ const clickAndWaitForHistory = async (
 const renderPreview = (
   preferences: Record<string, string> = {},
   deviceOptions: DeviceOptions = {},
+  prepareWindow?: (window: Window & typeof globalThis) => void,
 ) => {
   const withoutExternalScript = html
     .replace(/<script src="\.\/device-platform\.js"><\/script>/, "")
+    .replace(
+      /<script src="\.\/fixtures\/home-feed\.placeholder\.js"><\/script>/,
+      "",
+    )
     .replace(
       /<script src="\.\/fixtures\/topics\.placeholder\.js"><\/script>/,
       "",
@@ -180,10 +189,12 @@ const renderPreview = (
   });
   openWindows.push(dom.window);
   installDeviceEnvironment(dom.window, deviceOptions);
+  prepareWindow?.(dom.window);
   for (const [key, value] of Object.entries(preferences)) {
     dom.window.localStorage.setItem(key, value);
   }
   dom.window.eval(devicePlatformScript);
+  dom.window.eval(homeFeedFixture);
   dom.window.eval(topicsFixture);
   dom.window.eval(script);
   return dom;
@@ -403,7 +414,38 @@ describe("mobile application preview", () => {
         ?.textContent,
     ).toContain("专题");
     expect(document.querySelector(".app-home-motto")).toBeNull();
-    expect(document.querySelectorAll("[data-open-topic]")).toHaveLength(3);
+    expect(
+      document.querySelectorAll(
+        '[data-feed-panel="discover"] [data-open-detail]',
+      ),
+    ).toHaveLength(12);
+    expect(
+      document.querySelectorAll(
+        '[data-feed-panel="nearby"] [data-open-detail]',
+      ),
+    ).toHaveLength(12);
+    for (const feed of ["discover", "nearby"]) {
+      const page = document.querySelector<HTMLElement>(
+        `[data-feed-panel="${feed}"]`,
+      );
+      expect(page?.classList.contains("app-masonry")).toBe(false);
+      expect(
+        page?.querySelector(`:scope > [data-feed-grid="${feed}"]`),
+      ).toBeTruthy();
+    }
+    expect(document.querySelectorAll("[data-open-topic]")).toHaveLength(8);
+    const topicRecords = (
+      dom.window as unknown as {
+        YOYI_TOPICS_PLACEHOLDER: { topicCards: Array<{ blocks: unknown[] }> };
+      }
+    ).YOYI_TOPICS_PLACEHOLDER.topicCards;
+    expect(topicRecords.every((topic) => topic.blocks.length >= 4)).toBe(true);
+    const contentIds = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-pager="home"] [data-content-id]',
+      ),
+    ].map((element) => element.dataset.contentId);
+    expect(new Set(contentIds).size).toBe(contentIds.length);
     expect(document.querySelector('[data-label="tab-discover"]')).toBeNull();
     expect(document.querySelector('[data-label="tab-nearby"]')).toBeNull();
     expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(3);
@@ -415,6 +457,66 @@ describe("mobile application preview", () => {
     expect(html.indexOf("yoyi.theme-preference")).toBeLessThan(
       html.indexOf("theme.css"),
     );
+  });
+
+  it("opens every supplemental home card with the existing detail behavior", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const supplementalCards = (
+      dom.window as unknown as {
+        YOYI_HOME_FEED_PLACEHOLDER: {
+          feedCards: Record<string, Array<{ id: string; title: string }>>;
+        };
+      }
+    ).YOYI_HOME_FEED_PLACEHOLDER.feedCards;
+
+    Object.values(supplementalCards)
+      .flat()
+      .forEach((card) => {
+        document
+          .querySelector<HTMLElement>(`[data-content-id="${card.id}"]`)
+          ?.click();
+        expect(
+          document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+        ).toBe(false);
+        expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+          card.title,
+        );
+      });
+  });
+
+  it("keeps immediate vertical scrolling on first feed and topic entry", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const feedCases = [
+      { feed: "discover", scrollTop: 54 },
+      { feed: "nearby", scrollTop: 96 },
+      { feed: "topics", scrollTop: 138 },
+    ];
+
+    for (const { feed, scrollTop } of feedCases) {
+      document
+        .querySelector<HTMLElement>(`[data-home-feed="${feed}"]`)
+        ?.click();
+      const page = document.querySelector<HTMLElement>(
+        `[data-feed-panel="${feed}"]`,
+      );
+      if (!page) throw new Error(`${feed} page missing`);
+      page.scrollTop = scrollTop;
+      page.dispatchEvent(new dom.window.Event("scroll"));
+      await waitForAnimationFrames(dom.window, 2);
+      expect(page.scrollTop).toBe(scrollTop);
+    }
+
+    document.querySelector<HTMLElement>("[data-open-topic]")?.click();
+    const topicBody = document.querySelector<HTMLElement>(
+      "[data-topic-column-body]",
+    );
+    if (!topicBody) throw new Error("topic body missing");
+    topicBody.scrollTop = 72;
+    topicBody.dispatchEvent(new dom.window.Event("scroll"));
+    await waitForAnimationFrames(dom.window, 2);
+    expect(topicBody.scrollTop).toBe(72);
   });
 
   it("switches top-level views, filters search, and filters calligraphy cards", () => {
@@ -948,57 +1050,132 @@ describe("mobile application preview", () => {
     ];
 
     for (const deviceCase of deviceCases) {
-      const dom = renderPreview(
-        {},
-        {
-          mobile: deviceCase.mobile,
-          userAgent: deviceCase.userAgent,
-          viewportWidth: deviceCase.startWidth,
-        },
-      );
-      const document = dom.window.document;
-      const topicsPage = document.querySelector<HTMLElement>(
-        '[data-feed-panel="topics"]',
-      );
-      const homeTrack = document.querySelector<HTMLElement>(
-        '[data-pager="home"] [data-pager-track]',
-      );
-      if (!topicsPage || !homeTrack) {
-        throw new Error(`${deviceCase.name} topics fixture missing`);
+      for (const delayedWidthFrame of [1, 8, 20]) {
+        let resizeCallback: ResizeObserverCallback | undefined;
+        const dom = renderPreview(
+          {},
+          {
+            mobile: deviceCase.mobile,
+            userAgent: deviceCase.userAgent,
+            viewportWidth: deviceCase.startWidth,
+          },
+          (window) => {
+            Object.defineProperty(window, "matchMedia", {
+              configurable: true,
+              value: () => ({ matches: true }),
+            });
+            Object.defineProperty(window, "ResizeObserver", {
+              configurable: true,
+              value: class {
+                constructor(callback: ResizeObserverCallback) {
+                  resizeCallback = callback;
+                }
+
+                observe() {}
+              },
+            });
+          },
+        );
+        const document = dom.window.document;
+        const topicsPage = document.querySelector<HTMLElement>(
+          '[data-feed-panel="topics"]',
+        );
+        const homeTrack = document.querySelector<HTMLElement>(
+          '[data-pager="home"] [data-pager-track]',
+        );
+        if (!topicsPage || !homeTrack || !resizeCallback) {
+          throw new Error(`${deviceCase.name} topics fixture missing`);
+        }
+
+        document
+          .querySelector<HTMLElement>('[data-home-feed="topics"]')
+          ?.click();
+        topicsPage.scrollTop = 126;
+        topicsPage.dispatchEvent(new dom.window.Event("scroll"));
+        expect(pagerTranslateX(homeTrack)).toBeCloseTo(
+          -2 * deviceCase.startWidth,
+        );
+
+        const frames = installControlledAnimationFrames(dom.window);
+        dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+        dom.window.dispatchEvent(new dom.window.Event("resize"));
+        dom.window.visualViewport?.dispatchEvent(
+          new dom.window.Event("resize"),
+        );
+        expect(frames.pending()).toBe(1);
+
+        for (let frame = 0; frame < 60; frame += 1) {
+          if (frame === delayedWidthFrame) {
+            setViewportWidthWithoutEvent(dom, deviceCase.targetWidth);
+            resizeCallback([], {} as ResizeObserver);
+          }
+          if (frames.pending() > 0) frames.step((frame * 1000) / 60);
+          if (frame > delayedWidthFrame && frames.pending() === 0) break;
+        }
+
+        expect(frames.pending()).toBe(0);
+        expect(pagerTranslateX(homeTrack)).toBeCloseTo(
+          -2 * deviceCase.targetWidth,
+        );
+        expect(topicsPage.hidden).toBe(false);
+        expect(topicsPage.getAttribute("aria-hidden")).toBe("false");
+        expect(topicsPage.scrollTop).toBe(126);
+        expect(
+          document.querySelector<HTMLElement>('[data-home-feed="topics"]')
+            ?.classList,
+        ).toContain("is-selected");
       }
-
-      document.querySelector<HTMLElement>('[data-home-feed="topics"]')?.click();
-      await waitForAnimationFrames(dom.window, 40);
-      topicsPage.scrollTop = 126;
-      topicsPage.dispatchEvent(new dom.window.Event("scroll"));
-      expect(pagerTranslateX(homeTrack)).toBeCloseTo(
-        -2 * deviceCase.startWidth,
-      );
-
-      const frames = installControlledAnimationFrames(dom.window);
-      dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
-      dom.window.dispatchEvent(new dom.window.Event("resize"));
-      dom.window.visualViewport?.dispatchEvent(new dom.window.Event("resize"));
-      expect(frames.pending()).toBe(1);
-
-      frames.step(0);
-      setViewportWidthWithoutEvent(dom, deviceCase.targetWidth);
-      for (let frame = 1; frame < 6; frame += 1) {
-        frames.step((frame * 1000) / 60);
-      }
-
-      expect(frames.pending()).toBe(0);
-      expect(pagerTranslateX(homeTrack)).toBeCloseTo(
-        -2 * deviceCase.targetWidth,
-      );
-      expect(topicsPage.hidden).toBe(false);
-      expect(topicsPage.getAttribute("aria-hidden")).toBe("false");
-      expect(topicsPage.scrollTop).toBe(126);
-      expect(
-        document.querySelector<HTMLElement>('[data-home-feed="topics"]')
-          ?.classList,
-      ).toContain("is-selected");
     }
+  });
+
+  it("realigns again when ResizeObserver reports a late pager width", () => {
+    let resizeCallback: ResizeObserverCallback | undefined;
+    const observedElements: Element[] = [];
+    const dom = renderPreview(
+      {},
+      { mobile: true, userAgent: phoneUserAgent, viewportWidth: 844 },
+      (window) => {
+        Object.defineProperty(window, "matchMedia", {
+          configurable: true,
+          value: () => ({ matches: true }),
+        });
+        Object.defineProperty(window, "ResizeObserver", {
+          configurable: true,
+          value: class {
+            constructor(callback: ResizeObserverCallback) {
+              resizeCallback = callback;
+            }
+
+            observe(element: Element) {
+              observedElements.push(element);
+            }
+          },
+        });
+      },
+    );
+    const document = dom.window.document;
+    const homeTrack = document.querySelector<HTMLElement>(
+      '[data-pager="home"] [data-pager-track]',
+    );
+    if (!homeTrack || !resizeCallback) {
+      throw new Error("ResizeObserver pager fixture missing");
+    }
+    document.querySelector<HTMLElement>('[data-home-feed="topics"]')?.click();
+    const frames = installControlledAnimationFrames(dom.window);
+
+    dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+    frames.runUntilIdle(1000 / 60);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-2 * 844);
+
+    setViewportWidthWithoutEvent(dom, 390);
+    resizeCallback([], {} as ResizeObserver);
+    frames.runUntilIdle(1000 / 60);
+
+    expect(observedElements).toHaveLength(2);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-2 * 390);
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="topics"]')?.hidden,
+    ).toBe(false);
   });
 
   it("keeps phone zoom disabled and preserves pager state after orientation", async () => {

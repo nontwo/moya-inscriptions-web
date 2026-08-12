@@ -10,6 +10,8 @@ const editorialTopics = topicsFixture?.topicCards ?? [];
 const findEditorialTopic =
   topicsFixture?.getTopicById ??
   ((id) => editorialTopics.find((topic) => topic.id === id) ?? null);
+const homeFeedFixture = globalThis.YOYI_HOME_FEED_PLACEHOLDER;
+const supplementalHomeCards = homeFeedFixture?.feedCards ?? {};
 
 const root = document.documentElement;
 const app = document.querySelector("[data-mobile-app]");
@@ -74,7 +76,9 @@ const pagerVelocityWindowMs = 100;
 const pagerFlickMinimumVelocity = 0.45;
 const pagerFlickMinimumDistanceRatio = 0.12;
 const pagerMaximumVelocity = 2.4;
-const pagerViewportSyncFrameLimit = 6;
+const pagerViewportStableFrameTarget = 3;
+const pagerViewportSyncMaxFrames = 60;
+const pagerViewportWidthTolerance = 0.5;
 const swipeClickSuppressionWindow = 400;
 const pagerControllers = new Map();
 
@@ -131,7 +135,10 @@ let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let inscriptionsSplitOpen = false;
 let activePagerGesture = null;
 let pagerViewportSyncAnimationId = 0;
-let pagerViewportSyncFramesRemaining = 0;
+let pagerViewportSyncFramesElapsed = 0;
+let pagerViewportStableFrames = 0;
+let pagerViewportPreviousWidths = [];
+let pagerResizeObserver = null;
 
 function usesInscriptionsSplit() {
   return root.dataset.platform === "pc" && primaryView === "inscriptions";
@@ -171,15 +178,12 @@ function saveScrollPosition() {
 
 function restoreScrollPosition(view) {
   const scrollKey = scrollKeyForView(view);
-  requestAnimationFrame(() => {
-    const scrollElement = scrollElementFor(
-      view,
-      root.dataset.platform,
-      scrollKey,
-    );
-    if (scrollElement)
-      scrollElement.scrollTop = scrollPositions[scrollKey] ?? 0;
-  });
+  const scrollElement = scrollElementFor(
+    view,
+    root.dataset.platform,
+    scrollKey,
+  );
+  if (scrollElement) scrollElement.scrollTop = scrollPositions[scrollKey] ?? 0;
 }
 
 function rememberScrollPosition(scrollKey, scrollTop) {
@@ -297,6 +301,32 @@ function showView(view) {
   });
   bottomNavigation.hidden = !primaryViews.includes(view);
   if (view === "inscriptions") syncDesktopPreviewPane();
+}
+
+function renderSupplementalHomeCards() {
+  for (const feed of ["discover", "nearby"]) {
+    const panel = document.querySelector(`[data-feed-grid="${feed}"]`);
+    const cards = supplementalHomeCards[feed] ?? [];
+    if (!panel || !Array.isArray(cards)) continue;
+    cards.forEach((card) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "app-card";
+      button.dataset.contentId = card.id;
+      button.dataset.openDetail = "";
+      button.dataset.image = card.image;
+      button.dataset.title = card.title;
+
+      const image = document.createElement("img");
+      image.src = card.image;
+      image.alt = card.alt;
+      const title = document.createElement("span");
+      title.className = "app-card__title";
+      title.textContent = card.title;
+      button.append(image, title);
+      panel.append(button);
+    });
+  }
 }
 
 function renderTopicsFeed() {
@@ -469,12 +499,14 @@ function touchPagerEnabled() {
 }
 
 function pagerWidth(controller) {
-  return (
+  const measuredWidth =
     controller.surface.getBoundingClientRect().width ||
     controller.surface.clientWidth ||
-    window.innerWidth ||
-    1
-  );
+    window.innerWidth;
+  if (Number.isFinite(measuredWidth) && measuredWidth > 0) {
+    controller.lastWidth = measuredWidth;
+  }
+  return controller.lastWidth || 1;
 }
 
 function setPagerOffset(controller, offset) {
@@ -622,6 +654,7 @@ function preparePager(id, values, current, select) {
     select,
     surface,
     track,
+    lastWidth: 0,
     values,
   };
   pagerControllers.set(id, controller);
@@ -961,7 +994,9 @@ function findContentTrigger(contentId) {
   );
 }
 
+renderSupplementalHomeCards();
 preparePagers();
+observePagerSizes();
 
 function bindClicks(selector, handler) {
   document.querySelectorAll(selector).forEach((element) => {
@@ -1129,16 +1164,36 @@ window.addEventListener(
 );
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
 function onPagerViewportChange() {
+  saveScrollPosition();
   cancelActivePagerGesture({ animate: false });
   pagerControllers.forEach((controller) => cancelPagerSpring(controller));
-  pagerViewportSyncFramesRemaining = pagerViewportSyncFrameLimit;
+  pagerViewportSyncFramesElapsed = 0;
+  pagerViewportStableFrames = 0;
+  pagerViewportPreviousWidths = [];
   if (pagerViewportSyncAnimationId) return;
 
   const syncUntilViewportSettles = () => {
+    const widths = [...pagerControllers.values()].map((controller) =>
+      pagerWidth(controller),
+    );
     syncAllPagers();
-    pagerViewportSyncFramesRemaining -= 1;
-    if (pagerViewportSyncFramesRemaining <= 0) {
+    const stable =
+      widths.length === pagerViewportPreviousWidths.length &&
+      widths.every(
+        (width, index) =>
+          Math.abs(width - pagerViewportPreviousWidths[index]) <=
+          pagerViewportWidthTolerance,
+      );
+    pagerViewportStableFrames = stable ? pagerViewportStableFrames + 1 : 0;
+    pagerViewportPreviousWidths = widths;
+    pagerViewportSyncFramesElapsed += 1;
+    const dimensionsSettled =
+      pagerViewportStableFrames >= pagerViewportStableFrameTarget;
+    const reachedLimit =
+      pagerViewportSyncFramesElapsed >= pagerViewportSyncMaxFrames;
+    if (dimensionsSettled || reachedLimit) {
       pagerViewportSyncAnimationId = 0;
+      restoreScrollPosition(primaryView);
       return;
     }
     pagerViewportSyncAnimationId = requestAnimationFrame(
@@ -1149,6 +1204,16 @@ function onPagerViewportChange() {
   pagerViewportSyncAnimationId = requestAnimationFrame(
     syncUntilViewportSettles,
   );
+}
+
+function observePagerSizes() {
+  if (typeof window.ResizeObserver !== "function") return;
+  pagerResizeObserver = new window.ResizeObserver(() => {
+    onPagerViewportChange();
+  });
+  pagerControllers.forEach((controller) => {
+    pagerResizeObserver.observe(controller.surface);
+  });
 }
 window.addEventListener("resize", onPagerViewportChange);
 window.addEventListener("orientationchange", onPagerViewportChange);

@@ -25,7 +25,8 @@
 
 手机竖屏使用底部导航，横屏在保持手机平台身份的同时复用 88px 平板左侧轨和全宽内容布局。平板 768–895px 竖屏使用底部导航，横屏使用 88px 左侧轨；宽屏平板继续使用紧凑左侧轨。PC 从 896px 起使用固定放大侧栏、宽屏卡片密度及碑刻主从栏，并在 1024px、1440px 继续放大。PC 首页顶栏不显示加载页格言。
 
-运行时监听窗口缩放和方向变化，只切换样式表及壳层行为，不刷新页面。打开的碑刻详情在跨越 896px 时会在全屏详情和 PC 主从栏之间转换。
+运行时监听窗口缩放、方向、visual
+viewport 与分页容器尺寸变化，在真实宽度稳定后重新对齐分页轨道，不刷新页面。打开的碑刻详情在跨越 896px 时会在全屏详情和 PC 主从栏之间转换。
 
 ## 样式隔离
 
@@ -45,7 +46,8 @@ mask 跟随当前按钮颜色，避免浅色或深色主题出现灰色像素。
 
 ## 专题占位
 
-`fixtures/topics.placeholder.js`、`data-placeholder="topics-v1"`、专题 feed 和专栏 view 属于可删除占位。正式 T06 应以
+`fixtures/home-feed.placeholder.js`
+为发现和附近补充长列表测试卡片；`fixtures/topics.placeholder.js`、`data-placeholder="topics-v1"`、专题 feed 和专栏 view 属于可删除占位。正式 T06 应以
 `EditorialCollection` API 替换，不得把 Mock 当生产数据。
 
 ## 本地与局域网查看
