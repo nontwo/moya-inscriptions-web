@@ -143,6 +143,7 @@ describe("frontend and browser boundaries", () => {
     const forbidden = `
       "use client";
       import { catalogSummarySchema } from "@moya/contracts/schemas";
+      import { canonicalCatalogImportEnvelopeSchema } from "@moya/contracts/internal/catalog-import";
       import type { CatalogListQuery, CatalogQueryPort } from "@moya/api";
       import { startProductionBackend } from "@moya/backend-production";
       import { createPostgresPool } from "@moya/catalog-postgres";
@@ -155,6 +156,7 @@ describe("frontend and browser boundaries", () => {
     expect(clientBoundaryViolations(file, forbidden)).toEqual(
       expect.arrayContaining([
         "@moya/contracts/schemas is server/runtime-only",
+        "@moya/contracts/internal/catalog-import is server/runtime-only",
         "@moya/api is server/runtime-only",
         "@moya/backend-production is server/runtime-only",
         "@moya/catalog-postgres is server/runtime-only",
@@ -340,6 +342,30 @@ describe("formal runtime dataset boundary", () => {
     `;
 
     expect(runtimeDatasetReferences(file, allowed)).toEqual([]);
+  });
+
+  it("allows fixed interchange filenames only in the internal import specification", () => {
+    const specification = path.join(
+      repositoryRoot,
+      "packages",
+      "contracts",
+      "src",
+      "internal",
+      "catalog-import",
+      "specification.ts",
+    );
+    expect(
+      runtimeDatasetReferences(
+        specification,
+        'export const files = ["00_manifest.csv", "catalog.csv", "aliases.csv", "provenance.csv"];',
+      ),
+    ).toEqual([]);
+    expect(
+      runtimeDatasetReferences(
+        path.join(repositoryRoot, "services", "api", "src", "example.ts"),
+        'readFile("catalog.csv");',
+      ),
+    ).toEqual(["catalog.csv"]);
   });
 
   it("requires architecture allowlist and manifest capability together", () => {

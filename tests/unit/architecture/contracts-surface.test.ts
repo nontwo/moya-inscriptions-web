@@ -80,8 +80,36 @@ describe("contracts package surface", () => {
     };
 
     expect(Object.keys(manifest.exports ?? {}).sort()).toEqual(
-      [".", "./json-schema", "./schemas", "./types"].sort(),
+      [
+        ".",
+        "./internal/catalog-import",
+        "./json-schema",
+        "./schemas",
+        "./types",
+      ].sort(),
     );
     expect(manifest.sideEffects).toBe(false);
+  });
+
+  it("keeps Catalog Import contracts on the explicit internal subpath", async () => {
+    const publicDeclaration = await readFile(
+      path.join(contractsRoot, "dist", "index.d.ts"),
+      "utf8",
+    );
+    const importDeclaration = await readFile(
+      path.join(
+        contractsRoot,
+        "dist",
+        "internal",
+        "catalog-import",
+        "index.d.ts",
+      ),
+      "utf8",
+    );
+
+    expect(publicDeclaration).not.toContain("CanonicalCatalogImportRow");
+    expect(publicDeclaration).not.toContain("SourceId");
+    expect(importDeclaration).toContain("CATALOG_IMPORT_CONTRACT_VERSION");
+    expect(importDeclaration).toContain("CanonicalCatalogImportEnvelope");
   });
 });
