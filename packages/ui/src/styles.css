@@ -192,10 +192,16 @@
   flex: 0 0 auto;
   width: 60px;
   aspect-ratio: 11 / 5;
-  background-image: var(--yoyi-label-image);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
+  color: inherit;
+  background-color: currentcolor;
+  -webkit-mask-image: var(--yoyi-label-image);
+  mask-image: var(--yoyi-label-image);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .yoyi-fixed-label[data-label="nav-home"] {
@@ -208,6 +214,16 @@
 
 .yoyi-fixed-label[data-label="nav-calligraphy"] {
   --yoyi-label-image: url("./assets/labels/nav-calligraphy.png");
+}
+
+@supports not ((mask-image: url("")) or (-webkit-mask-image: url(""))) {
+  .yoyi-fixed-label {
+    background-color: transparent;
+    background-image: var(--yoyi-label-image);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+  }
 }
 
 .yoyi-button,
@@ -1107,24 +1123,18 @@
   flex-direction: column;
   gap: 2px;
   padding: 0 var(--yoyi-space-2);
+  color: var(--yoyi-color-text-primary);
   font-size: 12px;
 }
 
 .yoyi-mobile-bottom-navigation .yoyi-fixed-label {
   width: 44px;
   height: 20px;
-  opacity: 0.68;
-  transition: opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+  opacity: 1;
 }
 
 .yoyi-mobile-bottom-navigation .yoyi-navigation-entry.is-active {
   color: var(--yoyi-color-seal-red);
-}
-
-.yoyi-mobile-bottom-navigation
-  .yoyi-navigation-entry.is-active
-  .yoyi-fixed-label {
-  opacity: 1;
 }
 
 .yoyi-mobile-top-bar {

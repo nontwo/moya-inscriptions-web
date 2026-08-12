@@ -114,21 +114,6 @@ button {
   text-align: center;
 }
 
-.app-home-motto {
-  display: none;
-  margin: 0;
-  color: var(--yoyi-color-text-primary);
-  font-family: var(--app-motto-font);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.4;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .app-primary-tabs {
   display: grid;
   height: 52px;
@@ -183,8 +168,9 @@ button {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
   scrollbar-width: none;
+  touch-action: pan-y pinch-zoom;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -583,6 +569,141 @@ button {
   height: 23px;
 }
 
+@media (orientation: portrait) {
+  .app-topbar--categories {
+    min-height: calc(108px + env(safe-area-inset-top));
+    grid-template-areas:
+      "categories settings"
+      "search search";
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-rows: 52px 44px;
+    gap: 4px 6px;
+    padding-bottom: 8px;
+  }
+
+  .app-topbar--categories .app-categories {
+    grid-area: categories;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-topbar--categories .app-category {
+    min-width: 0;
+  }
+
+  .app-topbar--categories .app-search--calligraphy {
+    grid-area: search;
+    width: 100%;
+    height: 44px;
+    margin-bottom: 0;
+  }
+
+  .app-topbar--categories > [data-open-settings] {
+    grid-area: settings;
+  }
+}
+
+/* Phone landscape borrows the tablet landscape shell without changing platform. */
+@media (orientation: landscape) and (min-width: 35.5rem) {
+  .app-stage {
+    place-items: stretch;
+  }
+
+  .mobile-app {
+    width: 100%;
+    max-width: none;
+  }
+
+  .app-view {
+    padding-bottom: 0;
+    padding-left: calc(88px + env(safe-area-inset-left));
+  }
+
+  .app-view.app-detail,
+  .app-view.app-settings {
+    padding-left: 0;
+  }
+
+  .mobile-app:has([data-bottom-navigation][hidden]) .app-view {
+    padding-left: 0;
+  }
+
+  .app-topbar {
+    padding-inline: var(--yoyi-space-4);
+  }
+
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation {
+    position: fixed;
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 0;
+    width: calc(88px + env(safe-area-inset-left));
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(72px, auto);
+    align-content: start;
+    justify-items: stretch;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) 4px env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    border-top: 0;
+    border-right: 1px solid var(--yoyi-color-border-subtle);
+    box-shadow: none;
+    z-index: 30;
+  }
+
+  .app-bottom-navigation .yoyi-navigation-entry {
+    min-height: 72px;
+  }
+
+  .app-masonry {
+    display: grid;
+    width: 100%;
+    column-count: auto;
+    column-width: auto;
+    padding: var(--yoyi-space-4);
+    gap: var(--yoyi-space-3);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-masonry {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(100%, var(--yoyi-container-reading));
+    margin-inline: auto;
+  }
+
+  [data-home-layout="double"] [data-view="home"] .app-masonry {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .app-card {
+    display: grid;
+    width: auto;
+    margin: 0;
+  }
+
+  .app-card img {
+    min-height: 160px;
+  }
+
+  .app-list {
+    width: min(100%, var(--yoyi-container-reading));
+    margin-inline: auto;
+    padding: var(--yoyi-space-3) var(--yoyi-space-5) var(--yoyi-space-6);
+  }
+
+  .app-list-item {
+    grid-template-columns: 112px minmax(0, 1fr) 24px;
+  }
+
+  .app-list-item img {
+    width: 112px;
+    height: 84px;
+  }
+}
+
 .app-settings__content {
   padding: 16px 12px 28px;
 }
@@ -705,6 +826,19 @@ button {
   letter-spacing: 0.24em;
   opacity: 0;
   animation: yoyi-logo-reveal 560ms var(--yoyi-easing-emphasized) 280ms both;
+}
+
+@media (orientation: landscape) and (min-width: 35.5rem) {
+  .app-settings__content,
+  .app-detail__content {
+    width: min(100%, var(--yoyi-container-reading));
+    margin-inline: auto;
+    padding: var(--yoyi-space-5) var(--yoyi-space-6) var(--yoyi-space-8);
+  }
+
+  .app-detail__content img {
+    max-height: min(70dvh, 720px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

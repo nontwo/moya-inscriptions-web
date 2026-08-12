@@ -194,9 +194,7 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.textContent,
     ).toContain("专题");
-    expect(document.querySelector(".app-home-motto")?.textContent).toContain(
-      "志于道，据于德，依于仁，游于艺",
-    );
+    expect(document.querySelector(".app-home-motto")).toBeNull();
     expect(document.querySelectorAll("[data-open-topic]")).toHaveLength(3);
     expect(document.querySelector('[data-label="tab-discover"]')).toBeNull();
     expect(document.querySelector('[data-label="tab-nearby"]')).toBeNull();
@@ -524,6 +522,12 @@ describe("mobile application preview", () => {
 
   it("isolates phone, tablet, and PC rules behind platform stylesheets", () => {
     expect(previewCss).not.toContain("@media (min-width: 48rem)");
+    expect(previewCss).toContain("orientation: portrait");
+    expect(previewCss).toContain("orientation: landscape");
+    expect(previewCss).toContain("min-width: 35.5rem");
+    expect(previewCss).toContain('"categories settings"');
+    expect(previewCss).toContain('"search search"');
+    expect(previewCss).toContain("calc(88px + env(safe-area-inset-left))");
     expect(tabletCss).toContain("@media (min-width: 48rem)");
     expect(tabletCss).toContain("@media (min-width: 56rem)");
     expect(tabletCss).not.toContain("@media (min-width: 64rem)");
@@ -539,6 +543,7 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("calc(164px + env(safe-area-inset-left))");
     expect(pcCss).toContain("min-height: 58px");
     expect(pcCss).toContain("border-width: 9px 0 9px 10px");
+    expect(pcCss).not.toContain("opacity: 0.88");
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(tabletCss).toContain("var(--yoyi-container-reading)");
     expect(pcCss).toContain("var(--yoyi-container-reading)");
@@ -548,6 +553,9 @@ describe("mobile application preview", () => {
       expect(css).toContain(".app-inscriptions-preview");
       expect(css).toContain("--app-calligraphy-scale");
       expect(css).toContain("--app-motto-font");
+      expect(css).toContain("overscroll-behavior-y: auto");
+      expect(css).toContain("touch-action: pan-y");
+      expect(css).not.toContain("overscroll-behavior-y: contain");
     }
     expect(html).toContain("app-inscriptions-layout");
     expect(html).toContain("data-inscription-preview");
@@ -561,7 +569,7 @@ describe("mobile application preview", () => {
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
     expect(html).toContain('data-home-feed="topics"');
-    expect(html).toContain("app-home-motto");
+    expect(html).not.toContain("app-home-motto");
     expect(html).toContain('data-placeholder="topics-v1"');
     expect(html).toContain('data-view="topic-column"');
     expect(html).toContain('data-setting-group="home-layout"');
@@ -570,10 +578,39 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-platform-stylesheet="tablet"');
     expect(html).toContain('data-platform-stylesheet="pc"');
     expect(html).not.toContain("data-platform-gate");
-    expect(previewCss).toContain(".app-home-motto");
+    expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(script).not.toMatch(/addEventListener\(["'](?:wheel|touchmove)["']/);
     expect(previewCss).toContain(".app-topics__grid");
     expect(html).toContain("收藏");
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
+  });
+
+  it("keeps search fields accessible without decorative magnifiers", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const inscriptionSearch = document.querySelector<HTMLInputElement>(
+      "[data-inscription-search]",
+    );
+    const calligraphySearch = document.querySelector<HTMLInputElement>(
+      "[data-calligraphy-filter]",
+    );
+
+    expect(inscriptionSearch?.getAttribute("aria-label")).toBe("搜索碑刻");
+    expect(calligraphySearch?.getAttribute("aria-label")).toBe("筛选书帖");
+    expect(
+      inscriptionSearch
+        ?.closest(".app-search")
+        ?.querySelector('[data-icon="search"]'),
+    ).toBeNull();
+    expect(
+      calligraphySearch
+        ?.closest(".app-search")
+        ?.querySelector('[data-icon="search"]'),
+    ).toBeNull();
+    expect(document.querySelectorAll("[data-search-clear]")).toHaveLength(1);
+    expect(
+      document.querySelectorAll("[data-calligraphy-filter-clear]"),
+    ).toHaveLength(1);
   });
 
   it("opens an editorial topic column from the topics feed", () => {
@@ -685,5 +722,44 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(false);
+  });
+
+  it("transfers scroll position between nested and document scroll owners", async () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 895,
+      },
+    );
+    const document = dom.window.document;
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    const calligraphyScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="calligraphy"]',
+    );
+    if (!calligraphyScroll) throw new Error("calligraphy scroll not found");
+    calligraphyScroll.scrollTop = 260;
+    calligraphyScroll.dispatchEvent(new dom.window.Event("scroll"));
+
+    setViewportWidth(dom, 896);
+    await new Promise<void>((resolve) =>
+      dom.window.requestAnimationFrame(() => resolve()),
+    );
+    expect(document.documentElement.dataset.platform).toBe("pc");
+    expect(document.documentElement.scrollTop).toBe(260);
+
+    document.documentElement.scrollTop = 140;
+    dom.window.dispatchEvent(new dom.window.Event("scroll"));
+    setViewportWidth(dom, 895);
+    await new Promise<void>((resolve) =>
+      dom.window.requestAnimationFrame(() => resolve()),
+    );
+    expect(document.documentElement.dataset.platform).toBe("tablet");
+    expect(calligraphyScroll.scrollTop).toBe(140);
   });
 });

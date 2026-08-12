@@ -49,6 +49,15 @@
       options.viewportWidth ?? global.innerWidth,
     );
     const previousPlatform = root.dataset.platform;
+
+    if (previousPlatform && previousPlatform !== platform) {
+      global.dispatchEvent(
+        new global.CustomEvent("yoyi:beforeplatformchange", {
+          detail: { deviceClass, platform, previousPlatform },
+        }),
+      );
+    }
+
     root.dataset.deviceClass = deviceClass;
     root.dataset.platform = platform;
     syncStyles(platform);

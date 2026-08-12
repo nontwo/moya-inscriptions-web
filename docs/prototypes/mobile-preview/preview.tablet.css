@@ -114,21 +114,6 @@ button {
   text-align: center;
 }
 
-.app-home-motto {
-  display: none;
-  margin: 0;
-  color: var(--yoyi-color-text-primary);
-  font-family: var(--app-motto-font);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.4;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .app-primary-tabs {
   display: grid;
   height: 52px;
@@ -183,8 +168,9 @@ button {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
   scrollbar-width: none;
+  touch-action: pan-y pinch-zoom;
   -webkit-overflow-scrolling: touch;
 }
 

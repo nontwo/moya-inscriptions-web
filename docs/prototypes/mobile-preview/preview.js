@@ -114,8 +114,15 @@ function usesInscriptionsSplit() {
   return root.dataset.platform === "pc" && primaryView === "inscriptions";
 }
 
+function scrollElementFor(view, platform = root.dataset.platform) {
+  if (platform === "pc" && view !== "inscriptions") {
+    return document.scrollingElement ?? document.documentElement;
+  }
+  return document.querySelector(`[data-scroll-view="${view}"]`);
+}
+
 function currentScrollElement() {
-  return document.querySelector(`[data-scroll-view="${primaryView}"]`);
+  return scrollElementFor(primaryView);
 }
 
 function saveScrollPosition() {
@@ -127,11 +134,27 @@ function saveScrollPosition() {
 
 function restoreScrollPosition(view) {
   requestAnimationFrame(() => {
-    const scrollElement = document.querySelector(
-      `[data-scroll-view="${view}"]`,
-    );
+    const scrollElement = scrollElementFor(view);
     if (scrollElement) scrollElement.scrollTop = scrollPositions[view] ?? 0;
   });
+}
+
+function rememberScrollPosition(view, scrollTop) {
+  if (view in scrollPositions) scrollPositions[view] = scrollTop;
+}
+
+function onBeforePlatformQueryChange(event) {
+  if (!(primaryView in scrollPositions)) return;
+  const scrollElement = scrollElementFor(
+    primaryView,
+    event.detail?.previousPlatform,
+  );
+  if (
+    scrollElement &&
+    (scrollElement.scrollTop > 0 || scrollPositions[primaryView] === 0)
+  ) {
+    rememberScrollPosition(primaryView, scrollElement.scrollTop);
+  }
 }
 
 function clearInscriptionSelection() {
@@ -644,6 +667,7 @@ function onPlatformQueryChange() {
       showView("detail");
       fillDetailContent(selected);
     }
+    restoreScrollPosition(primaryView);
     return;
   }
   syncDesktopPreviewPane();
@@ -657,9 +681,43 @@ function onPlatformQueryChange() {
     );
     if (trigger) openDetail(trigger, { updateHistory: false });
   }
+  restoreScrollPosition(primaryView);
 }
 
+window.addEventListener(
+  "yoyi:beforeplatformchange",
+  onBeforePlatformQueryChange,
+);
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
+document.querySelectorAll("[data-scroll-view]").forEach((scrollElement) => {
+  scrollElement.addEventListener(
+    "scroll",
+    () => {
+      if (
+        root.dataset.platform !== "pc" ||
+        scrollElement.dataset.scrollView === "inscriptions"
+      ) {
+        rememberScrollPosition(
+          scrollElement.dataset.scrollView,
+          scrollElement.scrollTop,
+        );
+      }
+    },
+    { passive: true },
+  );
+});
+window.addEventListener(
+  "scroll",
+  () => {
+    if (root.dataset.platform === "pc" && primaryView !== "inscriptions") {
+      rememberScrollPosition(
+        primaryView,
+        (document.scrollingElement ?? document.documentElement).scrollTop,
+      );
+    }
+  },
+  { passive: true },
+);
 syncPlatformAttribute();
 
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
