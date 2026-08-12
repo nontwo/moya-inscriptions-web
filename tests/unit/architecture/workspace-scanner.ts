@@ -233,6 +233,21 @@ const isRuntimeDatasetReference = (reference: string): boolean => {
   );
 };
 
+const catalogImportContractFileNames = new Set([
+  "00_manifest.csv",
+  "catalog.csv",
+  "aliases.csv",
+  "provenance.csv",
+]);
+
+const isCatalogImportContractMetadata = (
+  filePath: string,
+  reference: string,
+): boolean =>
+  normalizedReference(filePath).endsWith(
+    "/packages/contracts/src/internal/catalog-import/specification.ts",
+  ) && catalogImportContractFileNames.has(normalizedReference(reference));
+
 export const dataFileReferences = (
   filePath: string,
   source: string,
@@ -270,6 +285,7 @@ export const runtimeDatasetReferences = (
   const violations: string[] = [];
 
   for (const literal of stringLiterals(source)) {
+    if (isCatalogImportContractMetadata(filePath, literal)) continue;
     if (isRuntimeDatasetReference(literal)) violations.push(literal);
 
     if (literal.startsWith(".")) {
@@ -294,6 +310,7 @@ const serverOnlyPackages = [
   "@moya/backend-runtime",
   "@moya/catalog-postgres",
   "@moya/contracts/json-schema",
+  "@moya/contracts/internal",
   "@moya/contracts/schemas",
   "@moya/data-access",
   "@moya/public-api",

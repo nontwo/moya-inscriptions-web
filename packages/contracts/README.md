@@ -12,6 +12,9 @@ exports；新代码只使用Catalog语言。
 - 根入口和 `@moya/contracts/types` 只导出 TypeScript 类型。
 - `@moya/contracts/schemas` 提供固定版本的 Zod runtime schema。
 - `@moya/contracts/json-schema` 提供 Draft 2020-12 JSON Schema。
+- `@moya/contracts/internal/catalog-import` 提供versioned、server-only的Catalog
+  Import canonical rows、workbook/CSV specification、dry-run与batch
+  contract；它不是Public DTO入口，Frontend与Public API不得导入。
 - Catalog
   DTO不暴露内部生命周期、原始来源、审核、持久化、Media/storage或关系字段。未来
   `PublicMediaDTO.src` 可以承载由后端解析的 public/signed runtime URL，但 object
@@ -25,4 +28,6 @@ exports；新代码只使用Catalog语言。
   boundary，不在contracts或application layer内执行。
 - 当前只保留基础list/detail需要的Catalog契约；搜索、分类、图片、Site、Feed和内部生命周期由后续负责任务引入。
 
-后续模块不得在功能目录本地重定义共享类型，也不得把数据集、审核候选或来源记录放入本包。
+后续模块不得在功能目录本地重定义共享类型，也不得把数据集、审核候选或来源记录放入本包。T05.4-A只冻结Import
+Contract与安全空白template；本包不读取XLSX/CSV、不访问数据库、不执行diff/apply，也不授权任何runtime
+workspace读取raw production dataset。

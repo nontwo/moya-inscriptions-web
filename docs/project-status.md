@@ -1,6 +1,6 @@
 # 当前项目状态
 
-> 最后更新：2026-08-11（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
+> 最后更新：2026-08-12（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
 
 ## 阶段结论
 
@@ -11,22 +11,23 @@
 Catalog Contract Phase 1及T04.2 canonical
 migration；`main`继续保留稳定的T00/治理基线。
 
-| 任务     | 状态           | 当前成果                                                          |
-| -------- | -------------- | ----------------------------------------------------------------- |
-| T00      | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理         |
-| T01      | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                          |
-| T02      | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试          |
-| T03      | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档         |
-| T04.0-R  | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫               |
-| T04.1-D  | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards   |
-| T04.2    | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes      |
-| T04.3    | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration    |
-| T05.0    | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown      |
-| T05.1    | 已实现         | Catalog list/detail HTTP boundary与development/test fixture       |
-| T05.2    | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition |
-| T05.3    | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService       |
-| 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片             |
-| T06–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                 |
+| 任务     | 状态           | 当前成果                                                             |
+| -------- | -------------- | -------------------------------------------------------------------- |
+| T00      | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理            |
+| T01      | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                             |
+| T02      | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试             |
+| T03      | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档            |
+| T04.0-R  | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫                  |
+| T04.1-D  | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards      |
+| T04.2    | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes         |
+| T04.3    | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration       |
+| T05.0    | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown         |
+| T05.1    | 已实现         | Catalog list/detail HTTP boundary与development/test fixture          |
+| T05.2    | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition    |
+| T05.3    | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService          |
+| T05.4-A  | Owner 已批准   | versioned Import Contract、Owner Workbook/CSV spec与安全空白template |
+| 手机原型 | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片                |
+| T06–T09  | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                    |
 
 ## 当前能做什么
 
@@ -49,6 +50,11 @@ migration；`main`继续保留稳定的T00/治理基线。
 
 当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
 HTTP在development/test缺省使用三个条目的fixture；production已有空数据库foundation与adapter，但真实数据、Importer、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
+
+T05.4-A只冻结`catalog-import/v1` internal canonical
+rows、null/identity/approval安全规则、workbook/CSV contract与Import Batch
+model。它没有parser、diff/apply或migration；任何deferred field、aliasType或raw
+provenance仍会阻断未来apply，禁止silent loss。
 
 ## 数据状态
 
@@ -134,8 +140,9 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. Owner审核T05.3 HTTP Runtime与长期数据治理冻结。
-2. 经独立checkpoint批准后再开始1658条正式数据的controlled import。
+1. 按既定Owner/PR流程提交已批准的T05.4-A logical commit。
+2. 经独立checkpoint解决batch audit、deferred fields、aliasType与provenance
+   persistence后，再实现dry-run/apply；不得直接导入1658条正式数据。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。
