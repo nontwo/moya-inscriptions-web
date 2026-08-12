@@ -74,6 +74,7 @@ const pagerVelocityWindowMs = 100;
 const pagerFlickMinimumVelocity = 0.45;
 const pagerFlickMinimumDistanceRatio = 0.12;
 const pagerMaximumVelocity = 2.4;
+const pagerViewportSyncFrameLimit = 6;
 const swipeClickSuppressionWindow = 400;
 const pagerControllers = new Map();
 
@@ -129,6 +130,8 @@ let themePreference = readStoredPreference(
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let inscriptionsSplitOpen = false;
 let activePagerGesture = null;
+let pagerViewportSyncAnimationId = 0;
+let pagerViewportSyncFramesRemaining = 0;
 
 function usesInscriptionsSplit() {
   return root.dataset.platform === "pc" && primaryView === "inscriptions";
@@ -1139,10 +1142,29 @@ window.addEventListener(
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
 function onPagerViewportChange() {
   cancelActivePagerGesture({ animate: false });
-  requestAnimationFrame(() => syncAllPagers());
+  pagerControllers.forEach((controller) => cancelPagerSpring(controller));
+  pagerViewportSyncFramesRemaining = pagerViewportSyncFrameLimit;
+  if (pagerViewportSyncAnimationId) return;
+
+  const syncUntilViewportSettles = () => {
+    syncAllPagers();
+    pagerViewportSyncFramesRemaining -= 1;
+    if (pagerViewportSyncFramesRemaining <= 0) {
+      pagerViewportSyncAnimationId = 0;
+      return;
+    }
+    pagerViewportSyncAnimationId = requestAnimationFrame(
+      syncUntilViewportSettles,
+    );
+  };
+
+  pagerViewportSyncAnimationId = requestAnimationFrame(
+    syncUntilViewportSettles,
+  );
 }
 window.addEventListener("resize", onPagerViewportChange);
 window.addEventListener("orientationchange", onPagerViewportChange);
+window.visualViewport?.addEventListener("resize", onPagerViewportChange);
 document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
   scrollElement.addEventListener(
     "scroll",

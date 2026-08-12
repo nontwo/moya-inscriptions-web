@@ -85,6 +85,10 @@ const installDeviceEnvironment = (
     configurable: true,
     value: { mobile },
   });
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: new window.EventTarget(),
+  });
 };
 
 const clickAndWaitForHistory = async (
@@ -136,6 +140,17 @@ const setViewportWidth = (dom: PreviewDom, viewportWidth: number) => {
     writable: true,
   });
   dom.window.dispatchEvent(new dom.window.Event("resize"));
+};
+
+const setViewportWidthWithoutEvent = (
+  dom: PreviewDom,
+  viewportWidth: number,
+) => {
+  Object.defineProperty(dom.window, "innerWidth", {
+    configurable: true,
+    value: viewportWidth,
+    writable: true,
+  });
 };
 
 type PointerOptions = {
@@ -858,6 +873,78 @@ describe("mobile application preview", () => {
     ).toContain("is-selected");
   });
 
+  it("realigns topics after delayed phone and tablet rotation widths", async () => {
+    const deviceCases = [
+      {
+        mobile: true,
+        name: "phone",
+        startWidth: 844,
+        targetWidth: 390,
+        userAgent: phoneUserAgent,
+      },
+      {
+        mobile: false,
+        name: "tablet",
+        startWidth: 1024,
+        targetWidth: 768,
+        userAgent: tabletUserAgent,
+      },
+    ];
+
+    for (const deviceCase of deviceCases) {
+      const dom = renderPreview(
+        {},
+        {
+          mobile: deviceCase.mobile,
+          userAgent: deviceCase.userAgent,
+          viewportWidth: deviceCase.startWidth,
+        },
+      );
+      const document = dom.window.document;
+      const topicsPage = document.querySelector<HTMLElement>(
+        '[data-feed-panel="topics"]',
+      );
+      const homeTrack = document.querySelector<HTMLElement>(
+        '[data-pager="home"] [data-pager-track]',
+      );
+      if (!topicsPage || !homeTrack) {
+        throw new Error(`${deviceCase.name} topics fixture missing`);
+      }
+
+      document.querySelector<HTMLElement>('[data-home-feed="topics"]')?.click();
+      await waitForAnimationFrames(dom.window, 40);
+      topicsPage.scrollTop = 126;
+      topicsPage.dispatchEvent(new dom.window.Event("scroll"));
+      expect(pagerTranslateX(homeTrack)).toBeCloseTo(
+        -2 * deviceCase.startWidth,
+      );
+
+      const frames = installControlledAnimationFrames(dom.window);
+      dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+      dom.window.dispatchEvent(new dom.window.Event("resize"));
+      dom.window.visualViewport?.dispatchEvent(new dom.window.Event("resize"));
+      expect(frames.pending()).toBe(1);
+
+      frames.step(0);
+      setViewportWidthWithoutEvent(dom, deviceCase.targetWidth);
+      for (let frame = 1; frame < 6; frame += 1) {
+        frames.step((frame * 1000) / 60);
+      }
+
+      expect(frames.pending()).toBe(0);
+      expect(pagerTranslateX(homeTrack)).toBeCloseTo(
+        -2 * deviceCase.targetWidth,
+      );
+      expect(topicsPage.hidden).toBe(false);
+      expect(topicsPage.getAttribute("aria-hidden")).toBe("false");
+      expect(topicsPage.scrollTop).toBe(126);
+      expect(
+        document.querySelector<HTMLElement>('[data-home-feed="topics"]')
+          ?.classList,
+      ).toContain("is-selected");
+    }
+  });
+
   it("keeps phone zoom disabled and preserves pager state after orientation", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
@@ -887,7 +974,7 @@ describe("mobile application preview", () => {
     rubbingPage.dispatchEvent(new dom.window.Event("scroll"));
 
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
-    await waitForAnimationFrames(dom.window, 3);
+    await waitForAnimationFrames(dom.window, 7);
 
     expect(viewportMeta.content).toContain(
       "minimum-scale=1, maximum-scale=1, user-scalable=no",
@@ -918,7 +1005,7 @@ describe("mobile application preview", () => {
     );
     if (!viewportMeta) throw new Error("viewport meta missing");
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
-    await waitForAnimationFrames(dom.window, 3);
+    await waitForAnimationFrames(dom.window, 7);
 
     expect(dom.window.document.documentElement.dataset.deviceClass).toBe(
       "tablet",
@@ -1200,8 +1287,11 @@ describe("mobile application preview", () => {
     expect(tabletCss).toMatch(
       /\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-5\)/,
     );
-    expect(previewCss).not.toMatch(
-      /\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2/,
+    expect(previewCss).toMatch(
+      /\.app-topics__grid\s*\{[^}]*grid-template-columns: 1fr/,
+    );
+    expect(previewCss).toMatch(
+      /@media \(orientation: landscape\) \{[\s\S]*?\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
     );
     for (const css of [previewCss, tabletCss, pcCss]) {
       expect(css).toContain(".app-nav-brand");

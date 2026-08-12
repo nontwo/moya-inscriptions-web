@@ -642,6 +642,17 @@ button {
   }
 }
 
+@media (orientation: landscape) {
+  .app-topics {
+    padding: var(--yoyi-space-4);
+  }
+
+  .app-topics__grid {
+    gap: var(--yoyi-space-3);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Phone landscape borrows the tablet landscape shell without changing platform. */
 @media (orientation: landscape) and (min-width: 35.5rem) {
   .app-stage {
