@@ -65,6 +65,7 @@ html[data-platform="pc"] .app-platform-gate {
 @media (min-width: 56rem) {
   body {
     overflow: auto;
+    --app-calligraphy-scale: 1;
   }
 
   .app-stage {

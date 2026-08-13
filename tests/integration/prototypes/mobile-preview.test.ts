@@ -291,6 +291,25 @@ const swipe = (
   });
 };
 
+const dispatchWheel = (
+  window: Window & typeof globalThis,
+  target: Element,
+  {
+    deltaX = 0,
+    deltaY = 0,
+    ctrlKey = false,
+  }: { deltaX?: number; deltaY?: number; ctrlKey?: boolean },
+) => {
+  const event = new window.WheelEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    ctrlKey,
+    deltaX,
+    deltaY,
+  });
+  target.dispatchEvent(event);
+};
+
 const pagerTranslateX = (track: HTMLElement) => {
   const match = track.style.transform.match(
     /translate3d\((-?[\d.]+)px, 0(?:px)?, 0(?:px)?\)/,
@@ -1021,6 +1040,58 @@ describe("mobile application preview", () => {
     ).toContain("is-selected");
   });
 
+  it("switches PC home and calligraphy pages with horizontal wheel pans", () => {
+    const desktopDom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const document = desktopDom.window.document;
+    const homeScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    if (!homeScroll) throw new Error("desktop home surface missing");
+    expect(document.documentElement.dataset.platform).toBe("pc");
+
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 120, deltaY: 0 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 0, deltaY: 160 });
+    dispatchWheel(desktopDom.window, homeScroll, {
+      ctrlKey: true,
+      deltaX: 160,
+      deltaY: 0,
+    });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    const calligraphyScroll = document.querySelector<HTMLElement>(
+      '[data-pager="calligraphy"]',
+    );
+    if (!calligraphyScroll) throw new Error("desktop calligraphy surface missing");
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 120,
+      deltaY: 0,
+    });
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-calligraphy-category="ink"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
   it("enables category swipes for a physical tablet", () => {
     const dom = renderPreview(
       {},
@@ -1592,7 +1663,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-platform-stylesheet="pc"');
     expect(html).not.toContain("data-platform-gate");
     expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
-    expect(script).not.toMatch(/addEventListener\(["'](?:wheel|touchmove)["']/);
+    expect(pcCss).toContain("--app-calligraphy-scale: 1");
+    expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
+    expect(script).not.toMatch(/addEventListener\(\s*["']touchmove["']/);
     expect(sharedCss).toContain(".app-topics__grid");
     expect(html).not.toMatch(/收藏|下载|分享|著录|拓片信息|相关碑刻/);
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);

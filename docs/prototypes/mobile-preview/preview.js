@@ -58,6 +58,8 @@ const pagerViewportStableFrameTarget = 3;
 const pagerViewportSyncMaxFrames = 60;
 const pagerViewportWidthTolerance = 0.5;
 const swipeClickSuppressionWindow = 400;
+const pagerWheelPageThreshold = 80;
+const pagerWheelIdleMs = 120;
 const pagerControllers = new Map();
 
 const scrollPositions = {
@@ -117,6 +119,10 @@ let themePreference = readStoredPreference(
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let activePagerGesture = null;
+let pagerWheelAccumulatedX = 0;
+let pagerWheelLocked = false;
+let pagerWheelIdleTimer = 0;
+let pagerWheelController = null;
 let pagerViewportSyncAnimationId = 0;
 let pagerViewportSyncFramesElapsed = 0;
 let pagerViewportStableFrames = 0;
@@ -457,6 +463,61 @@ function touchPagerEnabled() {
   const touchPlatform =
     root.dataset.platform === "phone" || root.dataset.platform === "tablet";
   return touchDevice && touchPlatform;
+}
+
+function pcWheelPagerEnabled() {
+  return root.dataset.platform === "pc";
+}
+
+function resetPagerWheelGesture() {
+  pagerWheelAccumulatedX = 0;
+  pagerWheelLocked = false;
+  pagerWheelController = null;
+  if (pagerWheelIdleTimer) {
+    window.clearTimeout(pagerWheelIdleTimer);
+    pagerWheelIdleTimer = 0;
+  }
+}
+
+function schedulePagerWheelIdleReset() {
+  if (pagerWheelIdleTimer) {
+    window.clearTimeout(pagerWheelIdleTimer);
+  }
+  pagerWheelIdleTimer = window.setTimeout(() => {
+    resetPagerWheelGesture();
+  }, pagerWheelIdleMs);
+}
+
+function handlePagerWheel(event, controller) {
+  if (!pcWheelPagerEnabled() || event.ctrlKey) return;
+  if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+
+  event.preventDefault();
+
+  if (pagerWheelController && pagerWheelController !== controller) {
+    resetPagerWheelGesture();
+  }
+  pagerWheelController = controller;
+
+  if (pagerWheelLocked) {
+    schedulePagerWheelIdleReset();
+    return;
+  }
+
+  pagerWheelAccumulatedX += event.deltaX;
+  if (Math.abs(pagerWheelAccumulatedX) < pagerWheelPageThreshold) {
+    schedulePagerWheelIdleReset();
+    return;
+  }
+
+  const currentIndex = controller.values.indexOf(controller.current());
+  const nextIndex = currentIndex + (pagerWheelAccumulatedX > 0 ? 1 : -1);
+  if (nextIndex >= 0 && nextIndex < controller.values.length) {
+    controller.select(controller.values[nextIndex], { animate: true });
+  }
+  pagerWheelLocked = true;
+  pagerWheelAccumulatedX = 0;
+  schedulePagerWheelIdleReset();
 }
 
 function pagerWidth(controller) {
@@ -992,6 +1053,11 @@ pagerControllers.forEach((controller) => {
     "click",
     (event) => suppressSwipeClick(event, controller.surface),
     { capture: true },
+  );
+  controller.surface.addEventListener(
+    "wheel",
+    (event) => handlePagerWheel(event, controller),
+    { passive: false },
   );
 });
 
