@@ -171,6 +171,11 @@ button {
   overscroll-behavior-x: none;
 }
 
+.app-pager__page.is-pager-culled {
+  content-visibility: hidden;
+  pointer-events: none;
+}
+
 .app-scroll::-webkit-scrollbar,
 .app-categories::-webkit-scrollbar {
   display: none;

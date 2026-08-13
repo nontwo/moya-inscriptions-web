@@ -298,12 +298,19 @@ const dispatchWheel = (
     deltaX = 0,
     deltaY = 0,
     ctrlKey = false,
-  }: { deltaX?: number; deltaY?: number; ctrlKey?: boolean },
+    deltaMode = 0,
+  }: {
+    deltaX?: number;
+    deltaY?: number;
+    ctrlKey?: boolean;
+    deltaMode?: number;
+  },
 ) => {
   const event = new window.WheelEvent("wheel", {
     bubbles: true,
     cancelable: true,
     ctrlKey,
+    deltaMode,
     deltaX,
     deltaY,
   });
@@ -675,6 +682,10 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>('[data-feed-panel="nearby"]')?.hidden,
     ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="topics"]')
+        ?.classList,
+    ).toContain("is-pager-culled");
     dispatchPointer(dom.window, discoverCard, "pointerup", {
       clientX: 202.5,
       clientY: 162,
@@ -876,9 +887,9 @@ describe("mobile application preview", () => {
       return settledAt;
     };
 
-    expect(settleAtCadence(1000 / 60)).toBeLessThanOrEqual(520 + 1000 / 60);
-    expect(settleAtCadence(1000 / 120)).toBeLessThanOrEqual(520 + 1000 / 120);
-    expect(settleAtCadence(120)).toBeLessThanOrEqual(640);
+    expect(settleAtCadence(1000 / 60)).toBeLessThanOrEqual(420 + 1000 / 60);
+    expect(settleAtCadence(1000 / 120)).toBeLessThanOrEqual(420 + 1000 / 120);
+    expect(settleAtCadence(120)).toBeLessThanOrEqual(540);
   });
 
   it("snaps immediately when reduced motion is requested", () => {
@@ -1062,11 +1073,18 @@ describe("mobile application preview", () => {
 
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
     expect(homeScroll.classList).toContain("is-pager-following");
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-36, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="nearby"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="topics"]')
+        ?.classList,
+    ).toContain("is-pager-culled");
 
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 0, deltaY: 160 });
     dispatchWheel(desktopDom.window, homeScroll, {
@@ -1074,13 +1092,13 @@ describe("mobile application preview", () => {
       deltaX: 160,
       deltaY: 0,
     });
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-36, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
 
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 600, deltaY: 0 });
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 1200, deltaY: 0 });
     await new Promise<void>((resolve) => {
       desktopDom.window.setTimeout(() => resolve(), 60);
     });
@@ -1099,7 +1117,7 @@ describe("mobile application preview", () => {
     );
     if (!calligraphyScroll) throw new Error("desktop calligraphy surface missing");
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 600,
+      deltaX: 1200,
       deltaY: 0,
     });
     await new Promise<void>((resolve) => {
@@ -1131,9 +1149,9 @@ describe("mobile application preview", () => {
       homeScroll?.querySelector<HTMLElement>("[data-pager-track]");
     if (!homeScroll || !homeTrack) throw new Error("desktop home surface missing");
 
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 800, deltaY: 0 });
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 500, deltaY: 0 });
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 200, deltaY: 0 });
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-700, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-585, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
@@ -1144,11 +1162,11 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
     ).toContain("is-selected");
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-700, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-585, 0);
 
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 40, deltaY: 0 });
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 20, deltaY: 0 });
-    expect(pagerTranslateX(homeTrack)).not.toBeCloseTo(-760, 0);
+    expect(pagerTranslateX(homeTrack)).not.toBeCloseTo(-612, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
@@ -1169,11 +1187,11 @@ describe("mobile application preview", () => {
       throw new Error("desktop calligraphy surface missing");
     }
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 500,
+      deltaX: 800,
       deltaY: 0,
     });
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 200,
+      deltaX: 500,
       deltaY: 0,
     });
     dispatchWheel(desktopDom.window, calligraphyScroll, {
@@ -1189,7 +1207,7 @@ describe("mobile application preview", () => {
       deltaX: 40,
       deltaY: 0,
     });
-    expect(pagerTranslateX(calligraphyTrack)).toBeCloseTo(-700, 0);
+    expect(pagerTranslateX(calligraphyTrack)).toBeCloseTo(-585, 0);
     await waitForAnimationFrames(desktopDom.window, 40);
     expect(
       document.querySelector<HTMLElement>(
@@ -1772,6 +1790,7 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain("--app-calligraphy-scale");
     expect(sharedCss).toContain("--app-motto-font");
     expect(sharedCss).toContain("overscroll-behavior-x: none");
+    expect(sharedCss).toContain(".app-pager__page.is-pager-culled");
     expect(sharedCss).not.toContain("prefers-reduced-motion");
     expect(previewCss).not.toContain("@media (min-width: 48rem)");
     expect(previewCss).toContain("orientation: portrait");
@@ -1857,7 +1876,7 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260814-block-history-swipe"',
+      'href="./preview.shared.css?v=20260814-smooth-pager"',
     );
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
@@ -1867,6 +1886,7 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(pcCss).toContain("--app-calligraphy-scale: 1");
     expect(pcCss).toContain(".app-scroll.app-pager.is-pager-following");
+    expect(pcCss).toContain("contain: layout paint");
     expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
     expect(script).not.toMatch(/addEventListener\(\s*["']touchmove["']/);
     expect(sharedCss).toContain(".app-topics__grid");

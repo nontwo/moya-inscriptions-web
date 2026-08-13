@@ -516,6 +516,7 @@ html[data-platform="pc"] .app-platform-gate {
     min-width: 0;
     height: auto;
     overflow: visible;
+    contain: layout paint;
   }
 }
 

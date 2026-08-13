@@ -43,13 +43,13 @@ const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
 const pagerAxisLockDistance = 8;
 const pagerEdgeResistance = 0.25;
 const pagerSpringMass = 1;
-const pagerSpringStiffness = 360;
-const pagerSpringDamping = 38;
+const pagerSpringStiffness = 420;
+const pagerSpringDamping = 41;
 const pagerSpringStepSeconds = 0.008;
 const pagerSpringMaxFrameSeconds = 0.032;
 const pagerSpringPositionTolerance = 0.5;
 const pagerSpringVelocityTolerance = 10;
-const pagerSpringMaxDurationSeconds = 0.52;
+const pagerSpringMaxDurationSeconds = 0.42;
 const pagerVelocityWindowMs = 100;
 const pagerFlickMinimumVelocity = 0.45;
 const pagerFlickMinimumDistanceRatio = 0.12;
@@ -58,10 +58,12 @@ const pagerViewportStableFrameTarget = 3;
 const pagerViewportSyncMaxFrames = 60;
 const pagerViewportWidthTolerance = 0.5;
 const swipeClickSuppressionWindow = 400;
-const pagerWheelIdleMs = 48;
-const pagerWheelInertiaMinEvents = 3;
+const pagerWheelIdleMs = 24;
+const pagerWheelInertiaMinEvents = 2;
 const pagerWheelInertiaPeakRatio = 0.45;
 const pagerWheelIgnoreMs = 400;
+const pagerWheelPixelGain = 0.45;
+const pagerWheelLinePixels = 16;
 const pagerControllers = new Map();
 
 const scrollPositions = {
@@ -514,6 +516,13 @@ function shouldIgnorePcWheel(controller) {
   );
 }
 
+function pagerWheelDeltaX(event, pageWidth) {
+  let deltaX = event.deltaX;
+  if (event.deltaMode === 1) deltaX *= pagerWheelLinePixels;
+  if (event.deltaMode === 2) deltaX *= pageWidth || 1;
+  return deltaX * pagerWheelPixelGain;
+}
+
 function isPcWheelInertia(deltas) {
   if (deltas.length < pagerWheelInertiaMinEvents) return false;
   const recent = deltas.slice(-pagerWheelInertiaMinEvents);
@@ -578,13 +587,14 @@ function handlePagerWheel(event, controller) {
   }
 
   const gesture = activeWheelGesture;
-  if (isPcWheelInertia([...gesture.deltas, event.deltaX])) {
+  const deltaX = pagerWheelDeltaX(event, gesture.width);
+  if (isPcWheelInertia([...gesture.deltas, deltaX])) {
     completePcWheelGesture();
     return;
   }
 
-  gesture.deltas.push(event.deltaX);
-  gesture.accumulatedX += event.deltaX;
+  gesture.deltas.push(deltaX);
+  gesture.accumulatedX += deltaX;
   addPagerSample(gesture, pagerEventTime(event), -gesture.accumulatedX);
   const minimumOffset = -(gesture.controller.values.length - 1) * gesture.width;
   let offset = gesture.startOffset - gesture.accumulatedX;
@@ -613,10 +623,17 @@ function setPagerOffset(controller, offset) {
   controller.track.style.transform = `translate3d(${offset}px, 0, 0)`;
 }
 
-function setPagerPageState(controller, activeIndex, touchMode) {
+function setPagerPageState(controller, activeIndex, windowed) {
   controller.pages.forEach((page, index) => {
     const selected = index === activeIndex;
-    page.hidden = touchMode ? false : !selected;
+    const inWindow = Math.abs(index - activeIndex) <= 1;
+    if (windowed) {
+      page.hidden = false;
+      page.classList.toggle("is-pager-culled", !inWindow);
+    } else {
+      page.hidden = !selected;
+      page.classList.remove("is-pager-culled");
+    }
     page.setAttribute("aria-hidden", String(!selected));
     if (selected) page.removeAttribute("inert");
     else page.setAttribute("inert", "");
