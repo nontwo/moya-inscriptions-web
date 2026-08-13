@@ -44,8 +44,15 @@ describe("UI styles and architecture", () => {
     );
     expect(css).toContain("var(--yoyi-material-glass-fallback-background)");
     expect(css).toContain(".yoyi-mobile-bottom-navigation.is-minimized");
+    expect(css).toContain(
+      ".yoyi-mobile-bottom-navigation.yoyi-functional-glass.is-minimized",
+    );
+    expect(css).toContain("min-height: 44px");
     expect(css).toContain(".yoyi-nav-bubble");
     expect(css).toContain("touch-action: none");
+    expect(css).not.toMatch(
+      /\.is-minimized \.yoyi-nav-bubble,\s*\.yoyi-mobile-bottom-navigation\.is-minimized \.yoyi-navigation-entry \{\s*opacity:\s*0/,
+    );
     expect(css).not.toMatch(
       /html\[data-platform="pc"\]\s*\.yoyi-mobile-bottom-navigation\.yoyi-functional-glass\s*\{[^}]*backdrop-filter:\s*none/s,
     );

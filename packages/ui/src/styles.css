@@ -1234,7 +1234,7 @@ html[data-theme="dark"]
   }
 }
 
-.yoyi-mobile-bottom-navigation.is-minimized {
+.yoyi-mobile-bottom-navigation.yoyi-functional-glass.is-minimized {
   width: 44px;
   min-width: 44px;
   height: 44px;
@@ -1247,9 +1247,24 @@ html[data-theme="dark"]
 }
 
 .yoyi-mobile-bottom-navigation.is-minimized .yoyi-nav-bubble,
-.yoyi-mobile-bottom-navigation.is-minimized .yoyi-navigation-entry {
-  opacity: 0;
+.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-navigation-entry:not(.is-active) {
+  display: none;
+}
+
+.yoyi-mobile-bottom-navigation.is-minimized .yoyi-navigation-entry.is-active {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  gap: 0;
+  color: var(--yoyi-color-seal-red);
   pointer-events: none;
+}
+
+.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-navigation-entry.is-active
+  .yoyi-fixed-label {
+  display: none;
 }
 
 .yoyi-mobile-top-bar {

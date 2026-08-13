@@ -552,6 +552,20 @@ button {
   height: 23px;
 }
 
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-navigation-entry.is-active {
+  min-height: 44px;
+  padding: 0;
+}
+
 .app-settings__content {
   padding: 16px 12px 28px;
 }

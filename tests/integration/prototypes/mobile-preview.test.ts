@@ -1929,7 +1929,7 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260814-liquid-glass-nav"',
+      'href="./preview.shared.css?v=20260814-min-circle-icon"',
     );
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
@@ -1959,6 +1959,8 @@ describe("mobile application preview", () => {
 
     expect(inscriptionSearch?.getAttribute("aria-label")).toBe("搜索碑刻");
     expect(calligraphySearch?.getAttribute("aria-label")).toBe("筛选书帖");
+    expect(calligraphySearch?.getAttribute("placeholder")).not.toBe("筛选书帖");
+    expect(html).not.toContain('placeholder="筛选书帖"');
     expect(
       inscriptionSearch
         ?.closest(".app-search")
