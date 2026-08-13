@@ -487,16 +487,41 @@ function onNavigationScroll(event) {
   scheduleNavigationExpand();
 }
 
+const navPointerMoveOptions = { passive: false };
+
+function bindNavPointerTracking() {
+  window.addEventListener("pointermove", onNavPointerMove, navPointerMoveOptions);
+  window.addEventListener("pointerup", endNavPointer);
+  window.addEventListener("pointercancel", endNavPointer);
+}
+
+function unbindNavPointerTracking() {
+  window.removeEventListener(
+    "pointermove",
+    onNavPointerMove,
+    navPointerMoveOptions,
+  );
+  window.removeEventListener("pointerup", endNavPointer);
+  window.removeEventListener("pointercancel", endNavPointer);
+}
+
 function onNavPointerDown(event) {
   if (navigationMinimized || !event.isPrimary) return;
   if (prefersReducedNavMotion()) return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
+  event.preventDefault();
+  if (navDragging) unbindNavPointerTracking();
   navPointerId = event.pointerId;
   navDragging = true;
   navDidPan = false;
   navPointerStartX = event.clientX;
   bottomNavigation.classList.add("is-dragging-nav");
-  bottomNavigation.setPointerCapture?.(event.pointerId);
+  try {
+    bottomNavigation.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Some Android browsers expose pointer capture before fully supporting it.
+  }
+  bindNavPointerTracking();
   const nearest = nearestNavEntry(event.clientX);
   navigationEntries().forEach((entry) =>
     entry.classList.toggle("is-nav-hot", entry === nearest),
@@ -506,7 +531,10 @@ function onNavPointerDown(event) {
 
 function onNavPointerMove(event) {
   if (!navDragging || event.pointerId !== navPointerId) return;
-  if (Math.abs(event.clientX - navPointerStartX) > 8) navDidPan = true;
+  if (Math.abs(event.clientX - navPointerStartX) > 8) {
+    navDidPan = true;
+    event.preventDefault();
+  }
   const nearest = nearestNavEntry(event.clientX);
   navigationEntries().forEach((entry) =>
     entry.classList.toggle("is-nav-hot", entry === nearest),
@@ -518,6 +546,7 @@ function endNavPointer(event) {
   if (!navDragging || event.pointerId !== navPointerId) return;
   navDragging = false;
   navPointerId = null;
+  unbindNavPointerTracking();
   bottomNavigation.classList.remove("is-dragging-nav");
   const nearest = nearestNavEntry(event.clientX);
   navigationEntries().forEach((entry) => entry.classList.remove("is-nav-hot"));
@@ -1270,10 +1299,9 @@ bindClicks("[data-primary-view]", (button) => {
   }
   selectPrimaryView(button.dataset.primaryView);
 });
-bottomNavigation.addEventListener("pointerdown", onNavPointerDown);
-bottomNavigation.addEventListener("pointermove", onNavPointerMove);
-bottomNavigation.addEventListener("pointerup", endNavPointer);
-bottomNavigation.addEventListener("pointercancel", endNavPointer);
+bottomNavigation.addEventListener("pointerdown", onNavPointerDown, {
+  passive: false,
+});
 bottomNavigation.addEventListener("click", onNavClickCapture, true);
 bindClicks("[data-home-feed]", (button) =>
   selectHomeFeed(button.dataset.homeFeed, { animate: true }),

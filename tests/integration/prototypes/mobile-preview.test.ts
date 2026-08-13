@@ -2117,7 +2117,11 @@ describe("mobile application preview", () => {
     expect(navigation.hasAttribute("data-minimized")).toBe(false);
 
     layoutBottomNav(navigation);
-    swipe(phone.window, navigation, { x: 50, y: 730 }, { x: 150, y: 730 });
+    const homeTab = navigation.querySelector<HTMLElement>(
+      '[data-primary-view="home"]',
+    );
+    if (!homeTab) throw new Error("home tab missing");
+    swipe(phone.window, homeTab, { x: 50, y: 730 }, { x: 150, y: 730 });
     expect(
       phoneDocument.querySelector<HTMLElement>('[data-view="inscriptions"]')
         ?.hidden,

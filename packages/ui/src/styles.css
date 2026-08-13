@@ -1152,7 +1152,7 @@ html[data-platform="pc"]
   padding: var(--yoyi-space-2);
   overflow: hidden;
   border-radius: calc(var(--yoyi-radius-full) / 2);
-  touch-action: pan-x;
+  touch-action: none;
   transform: translate3d(-50%, 0, 0);
   transition:
     width var(--yoyi-duration-normal) var(--yoyi-easing-standard),
@@ -1196,6 +1196,7 @@ html[data-platform="pc"]
   color: var(--yoyi-color-text-primary);
   background: transparent;
   font-size: 12px;
+  touch-action: none;
   transition:
     color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
     transform var(--yoyi-duration-fast) var(--yoyi-easing-standard);
