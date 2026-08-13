@@ -335,6 +335,46 @@ const waitForAnimationFrames = async (window: Window, count: number) => {
   }
 };
 
+const waitMs = (window: Window, ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const layoutBottomNav = (navigation: HTMLElement) => {
+  const box = (
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): DOMRect =>
+    ({
+      x: left,
+      y: top,
+      top,
+      left,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      toJSON() {
+        return this;
+      },
+    }) as DOMRect;
+
+  Object.defineProperty(navigation, "getBoundingClientRect", {
+    configurable: true,
+    value: () => box(0, 700, 300, 60),
+  });
+  [...navigation.querySelectorAll<HTMLElement>("[data-primary-view]")].forEach(
+    (entry, index) => {
+      Object.defineProperty(entry, "getBoundingClientRect", {
+        configurable: true,
+        value: () => box(index * 100, 704, 100, 52),
+      });
+    },
+  );
+};
+
 const installControlledAnimationFrames = (
   window: Window & typeof globalThis,
 ) => {
@@ -440,7 +480,7 @@ describe("mobile application preview", () => {
       document
         .querySelector("[data-bottom-navigation]")
         ?.getAttribute("data-minimize-behavior"),
-    ).toBe("on-scroll-down");
+    ).toBe("on-scroll");
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.textContent,
@@ -1791,6 +1831,7 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain("overscroll-behavior-x: none");
     expect(sharedCss).toContain(".app-pager__page.is-pager-culled");
     expect(sharedCss).not.toContain("prefers-reduced-motion");
+    expect(sharedCss).not.toMatch(/backdrop-filter\s*:/i);
     expect(previewCss).not.toContain("@media (min-width: 48rem)");
     expect(previewCss).toContain("orientation: portrait");
     expect(previewCss).toContain("orientation: landscape");
@@ -1806,10 +1847,21 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("@media (min-width: 56rem)");
     expect(pcCss).toContain("@media (min-width: 64rem)");
     expect(pcCss).toContain("@media (min-width: 90rem)");
-    expect(tabletCss).toContain("persistent floating functional rail");
+    expect(tabletCss).toContain("floating glass capsule at the bottom");
     expect(tabletCss).toContain("orientation: landscape");
-    expect(tabletCss).toContain("calc(88px + env(safe-area-inset-left))");
-    expect(pcCss).toContain("padding-bottom: calc(68px + env(safe-area-inset-bottom))");
+    expect(tabletCss).not.toContain("calc(88px + env(safe-area-inset-left))");
+    expect(pcCss).toContain(
+      "scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom))",
+    );
+    expect(sharedCss).toContain(
+      "scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom))",
+    );
+    expect(sharedCss).not.toContain(
+      "padding-bottom: calc(68px + env(safe-area-inset-bottom))",
+    );
+    expect(pcCss).not.toContain(
+      "padding-bottom: calc(68px + env(safe-area-inset-bottom))",
+    );
     expect(pcCss).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
     expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
@@ -1852,6 +1904,7 @@ describe("mobile application preview", () => {
         .filter((chunk) => sharedRules.has(chunk));
       expect(duplicatedSharedRules).toEqual([]);
       expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+      expect(css).not.toMatch(/backdrop-filter\s*:/i);
       expect(effectiveCss).toContain("overscroll-behavior-y: auto");
       expect(effectiveCss).toContain("overscroll-behavior-x: none");
       expect(effectiveCss).toContain("touch-action: pan-y");
@@ -1866,6 +1919,7 @@ describe("mobile application preview", () => {
     expect(html).not.toContain("data-shell-control");
     expect(html).toContain('data-primary-view="inscriptions"');
     expect(html).toContain('data-primary-view="calligraphy"');
+    expect(html).toContain("yoyi-nav-bubble");
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
     expect(html).toContain('data-home-feed="topics"');
@@ -1875,7 +1929,7 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260814-smooth-pager"',
+      'href="./preview.shared.css?v=20260814-liquid-glass-nav"',
     );
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
@@ -2023,7 +2077,7 @@ describe("mobile application preview", () => {
     ).toBe(false);
   });
 
-  it("minimizes only a physical phone Tab Bar on vertical content scroll", () => {
+  it("minimizes the glass tab bar on vertical scroll and restores it after idle", async () => {
     const phone = renderPreview({}, { viewportWidth: 844 });
     const phoneDocument = phone.window.document;
     const navigation = phoneDocument.querySelector<HTMLElement>(
@@ -2034,21 +2088,51 @@ describe("mobile application preview", () => {
     );
     if (!navigation || !discover) throw new Error("phone navigation missing");
 
+    expect(navigation.querySelector(".yoyi-nav-bubble")).toBeTruthy();
+    expect(navigation.dataset.minimizeBehavior).toBe("on-scroll");
+
     discover.scrollTop = 13;
     discover.dispatchEvent(new phone.window.Event("scroll"));
     expect(navigation.dataset.minimized).toBe("true");
+    expect(navigation.classList.contains("is-minimized")).toBe(true);
+    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(3);
 
     discover.scrollTop = 4;
     discover.dispatchEvent(new phone.window.Event("scroll"));
     expect(navigation.hasAttribute("data-minimized")).toBe(false);
-    expect(navigation.dataset.minimizeBehavior).toBe("on-scroll-down");
 
     discover.scrollTop = 20;
     discover.dispatchEvent(new phone.window.Event("scroll"));
-    phoneDocument
-      .querySelector<HTMLElement>('[data-primary-view="home"]')
-      ?.click();
+    expect(navigation.dataset.minimized).toBe("true");
+    navigation.click();
     expect(navigation.hasAttribute("data-minimized")).toBe(false);
+
+    discover.scrollTop = 40;
+    discover.dispatchEvent(new phone.window.Event("scroll"));
+    expect(navigation.dataset.minimized).toBe("true");
+    discover.scrollTop = 28;
+    discover.dispatchEvent(new phone.window.Event("scroll"));
+    expect(navigation.dataset.minimized).toBe("true");
+    await waitMs(phone.window, 450);
+    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+
+    layoutBottomNav(navigation);
+    swipe(phone.window, navigation, { x: 50, y: 730 }, { x: 150, y: 730 });
+    expect(
+      phoneDocument.querySelector<HTMLElement>('[data-view="inscriptions"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      navigation
+        .querySelector('[data-primary-view="inscriptions"]')
+        ?.classList.contains("is-active"),
+    ).toBe(true);
+
+    swipe(phone.window, navigation, { x: 150, y: 730 }, { x: 250, y: 730 });
+    expect(
+      phoneDocument.querySelector<HTMLElement>('[data-view="calligraphy"]')
+        ?.hidden,
+    ).toBe(false);
 
     const tablet = renderPreview(
       {},
@@ -2058,21 +2142,44 @@ describe("mobile application preview", () => {
         viewportWidth: 834,
       },
     );
+    const tabletNav = tablet.window.document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
     const tabletDiscover = tablet.window.document.querySelector<HTMLElement>(
       '[data-scroll-key="home:discover"]',
     );
-    tabletDiscover!.scrollTop = 40;
-    tabletDiscover!.dispatchEvent(new tablet.window.Event("scroll"));
-    expect(
-      tablet.window.document
-        .querySelector("[data-bottom-navigation]")
-        ?.hasAttribute("data-minimized"),
-    ).toBe(false);
-    expect(
-      tablet.window.document.querySelector<HTMLElement>(
-        "[data-bottom-navigation]",
-      )?.dataset.minimizeBehavior,
-    ).toBe("never");
+    if (!tabletNav || !tabletDiscover) {
+      throw new Error("tablet navigation missing");
+    }
+    expect(tabletNav.dataset.minimizeBehavior).toBe("on-scroll");
+    tabletDiscover.scrollTop = 40;
+    tabletDiscover.dispatchEvent(new tablet.window.Event("scroll"));
+    expect(tabletNav.dataset.minimized).toBe("true");
+    await waitMs(tablet.window, 450);
+    expect(tabletNav.hasAttribute("data-minimized")).toBe(false);
+
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const pcNav = pc.window.document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    if (!pcNav) throw new Error("pc navigation missing");
+    expect(pcNav.dataset.minimizeBehavior).toBe("on-scroll");
+    const pcScroller =
+      pc.window.document.scrollingElement ?? pc.window.document.documentElement;
+    pcScroller.scrollTop = 40;
+    pcScroller.dispatchEvent(new pc.window.Event("scroll"));
+    pc.window.document.dispatchEvent(new pc.window.Event("scroll"));
+    expect(pcNav.dataset.minimized).toBe("true");
+    await waitMs(pc.window, 450);
+    expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
 
   it("transfers scroll position between nested and document scroll owners", async () => {

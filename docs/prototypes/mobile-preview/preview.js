@@ -79,9 +79,8 @@ const scrollPositions = {
 
 function syncPlatformAttribute() {
   if (platformRuntime) {
-    const { deviceClass, platform } = platformRuntime.sync();
-    bottomNavigation.dataset.minimizeBehavior =
-      deviceClass === "phone" ? "on-scroll-down" : "never";
+    const { platform } = platformRuntime.sync();
+    bottomNavigation.dataset.minimizeBehavior = "on-scroll";
     return platform;
   }
   const platform =
@@ -92,7 +91,7 @@ function syncPlatformAttribute() {
         : "pc";
   root.dataset.deviceClass = "desktop";
   root.dataset.platform = platform;
-  bottomNavigation.dataset.minimizeBehavior = "never";
+  bottomNavigation.dataset.minimizeBehavior = "on-scroll";
   return platform;
 }
 
@@ -133,8 +132,14 @@ let pagerViewportPreviousWidths = [];
 let pagerResizeObserver = null;
 let navigationMinimized = false;
 let navigationLastScrollTop = 0;
-let navigationDirection = "";
-let navigationDirectionalTravel = 0;
+let navigationIdleTimer = 0;
+const navigationIdleMs = 400;
+const navBubble = bottomNavigation.querySelector(".yoyi-nav-bubble");
+let navPointerId = null;
+let navDragging = false;
+let navPointerStartX = 0;
+let navDidPan = false;
+let navIgnoreClick = false;
 
 function scrollKeyForView(view) {
   if (view === "home") return `home:${homeFeed}`;
@@ -359,39 +364,115 @@ function updateBottomNavigation() {
     if (selected) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   });
+  syncNavBubbleToActive();
 }
 
-function phoneNavigationCanMinimize() {
-  return (
-    root.dataset.deviceClass === "phone" &&
-    root.dataset.platform === "phone" &&
-    primaryViews.includes(primaryView) &&
-    !bottomNavigation.hidden
+function navigationCanMinimize() {
+  return primaryViews.includes(primaryView) && !bottomNavigation.hidden;
+}
+
+function prefersReducedNavMotion() {
+  return Boolean(
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
   );
 }
 
+function navigationEntries() {
+  return [...bottomNavigation.querySelectorAll("[data-primary-view]")];
+}
+
+function positionNavBubble(entry, scale = 1) {
+  if (!navBubble || !entry) return;
+  const navRect = bottomNavigation.getBoundingClientRect();
+  const entryRect = entry.getBoundingClientRect();
+  if (entryRect.width <= 0 || entryRect.height <= 0) return;
+  const x = entryRect.left - navRect.left;
+  const y = entryRect.top - navRect.top;
+  navBubble.style.width = `${entryRect.width}px`;
+  navBubble.style.height = `${entryRect.height}px`;
+  navBubble.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+}
+
+function syncNavBubbleToActive() {
+  navigationEntries().forEach((entry) => entry.classList.remove("is-nav-hot"));
+  const active = bottomNavigation.querySelector("[data-primary-view].is-active");
+  if (active && !navigationMinimized) positionNavBubble(active);
+}
+
+function nearestNavEntry(clientX) {
+  const entries = navigationEntries();
+  let nearest = entries[0];
+  let best = Infinity;
+  for (const entry of entries) {
+    const rect = entry.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    const distance = Math.abs(clientX - center);
+    if (distance < best) {
+      best = distance;
+      nearest = entry;
+    }
+  }
+  return nearest;
+}
+
+function clearNavigationIdleTimer() {
+  if (!navigationIdleTimer) return;
+  window.clearTimeout(navigationIdleTimer);
+  navigationIdleTimer = 0;
+}
+
+function scheduleNavigationExpand() {
+  clearNavigationIdleTimer();
+  navigationIdleTimer = window.setTimeout(() => {
+    navigationIdleTimer = 0;
+    setNavigationMinimized(false);
+  }, navigationIdleMs);
+}
+
 function setNavigationMinimized(minimized) {
-  navigationMinimized = phoneNavigationCanMinimize() && minimized;
+  navigationMinimized = navigationCanMinimize() && minimized;
   bottomNavigation.classList.toggle("is-minimized", navigationMinimized);
   if (navigationMinimized) bottomNavigation.dataset.minimized = "true";
-  else bottomNavigation.removeAttribute("data-minimized");
+  else {
+    bottomNavigation.removeAttribute("data-minimized");
+    clearNavigationIdleTimer();
+    syncNavBubbleToActive();
+  }
 }
 
 function resetNavigationScrollTracking({ expand = true } = {}) {
   const scrollElement = currentScrollElement();
   navigationLastScrollTop = scrollElement?.scrollTop ?? 0;
-  navigationDirection = "";
-  navigationDirectionalTravel = 0;
-  if (expand || !phoneNavigationCanMinimize()) setNavigationMinimized(false);
+  if (expand || !navigationCanMinimize()) setNavigationMinimized(false);
+}
+
+function isNavigationScrollTarget(event, scrollElement) {
+  if (!scrollElement) return false;
+  const target = event.target;
+  if (target === scrollElement) return true;
+  const documentScroll = document.scrollingElement ?? document.documentElement;
+  if (
+    scrollElement === documentScroll ||
+    scrollElement === document.documentElement ||
+    scrollElement === document.body
+  ) {
+    return (
+      target === document ||
+      target === document.documentElement ||
+      target === document.body ||
+      target === documentScroll
+    );
+  }
+  return false;
 }
 
 function onNavigationScroll(event) {
-  if (!phoneNavigationCanMinimize()) {
+  if (!navigationCanMinimize()) {
     setNavigationMinimized(false);
     return;
   }
   const scrollElement = currentScrollElement();
-  if (!scrollElement || event.target !== scrollElement) return;
+  if (!isNavigationScrollTarget(event, scrollElement)) return;
   const scrollTop = scrollElement.scrollTop;
   const delta = scrollTop - navigationLastScrollTop;
   navigationLastScrollTop = scrollTop;
@@ -402,20 +483,61 @@ function onNavigationScroll(event) {
   }
   if (delta === 0) return;
 
-  const direction = delta > 0 ? "down" : "up";
-  if (direction !== navigationDirection) {
-    navigationDirection = direction;
-    navigationDirectionalTravel = 0;
-  }
-  navigationDirectionalTravel += Math.abs(delta);
+  setNavigationMinimized(true);
+  scheduleNavigationExpand();
+}
 
-  if (direction === "down" && navigationDirectionalTravel >= 12) {
-    setNavigationMinimized(true);
-    navigationDirectionalTravel = 0;
-  } else if (direction === "up" && navigationDirectionalTravel >= 8) {
+function onNavPointerDown(event) {
+  if (navigationMinimized || !event.isPrimary) return;
+  if (prefersReducedNavMotion()) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  navPointerId = event.pointerId;
+  navDragging = true;
+  navDidPan = false;
+  navPointerStartX = event.clientX;
+  bottomNavigation.classList.add("is-dragging-nav");
+  bottomNavigation.setPointerCapture?.(event.pointerId);
+  const nearest = nearestNavEntry(event.clientX);
+  navigationEntries().forEach((entry) =>
+    entry.classList.toggle("is-nav-hot", entry === nearest),
+  );
+  positionNavBubble(nearest, 1.12);
+}
+
+function onNavPointerMove(event) {
+  if (!navDragging || event.pointerId !== navPointerId) return;
+  if (Math.abs(event.clientX - navPointerStartX) > 8) navDidPan = true;
+  const nearest = nearestNavEntry(event.clientX);
+  navigationEntries().forEach((entry) =>
+    entry.classList.toggle("is-nav-hot", entry === nearest),
+  );
+  positionNavBubble(nearest, 1.12);
+}
+
+function endNavPointer(event) {
+  if (!navDragging || event.pointerId !== navPointerId) return;
+  navDragging = false;
+  navPointerId = null;
+  bottomNavigation.classList.remove("is-dragging-nav");
+  const nearest = nearestNavEntry(event.clientX);
+  navigationEntries().forEach((entry) => entry.classList.remove("is-nav-hot"));
+  const view = nearest?.dataset.primaryView;
+  if (navDidPan) navIgnoreClick = true;
+  if (view && view !== primaryView) selectPrimaryView(view);
+  else syncNavBubbleToActive();
+}
+
+function onNavClickCapture(event) {
+  if (navigationMinimized) {
+    event.preventDefault();
+    event.stopPropagation();
     setNavigationMinimized(false);
-    navigationDirectionalTravel = 0;
+    return;
   }
+  if (!navIgnoreClick) return;
+  event.preventDefault();
+  event.stopPropagation();
+  navIgnoreClick = false;
 }
 
 function selectPrimaryView(view, { updateHistory = true } = {}) {
@@ -1148,6 +1270,11 @@ bindClicks("[data-primary-view]", (button) => {
   }
   selectPrimaryView(button.dataset.primaryView);
 });
+bottomNavigation.addEventListener("pointerdown", onNavPointerDown);
+bottomNavigation.addEventListener("pointermove", onNavPointerMove);
+bottomNavigation.addEventListener("pointerup", endNavPointer);
+bottomNavigation.addEventListener("pointercancel", endNavPointer);
+bottomNavigation.addEventListener("click", onNavClickCapture, true);
 bindClicks("[data-home-feed]", (button) =>
   selectHomeFeed(button.dataset.homeFeed, { animate: true }),
 );

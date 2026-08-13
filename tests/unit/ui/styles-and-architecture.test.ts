@@ -44,6 +44,10 @@ describe("UI styles and architecture", () => {
     );
     expect(css).toContain("var(--yoyi-material-glass-fallback-background)");
     expect(css).toContain(".yoyi-mobile-bottom-navigation.is-minimized");
+    expect(css).toContain(".yoyi-nav-bubble");
+    expect(css).not.toMatch(
+      /html\[data-platform="pc"\]\s*\.yoyi-mobile-bottom-navigation\.yoyi-functional-glass\s*\{[^}]*backdrop-filter:\s*none/s,
+    );
     expect(css).not.toContain("opacity: 0.68");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });

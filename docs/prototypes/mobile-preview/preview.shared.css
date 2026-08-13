@@ -60,7 +60,7 @@ button {
   inset: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .app-view.app-detail,
@@ -167,8 +167,10 @@ button {
   transform: scaleX(1);
 }
 
-.app-scroll {
+.app-scroll,
+.app-pager__page {
   overscroll-behavior-x: none;
+  scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom));
 }
 
 .app-pager__page.is-pager-culled {

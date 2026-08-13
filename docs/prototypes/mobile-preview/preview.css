@@ -128,11 +128,6 @@
     transform: translate3d(-50%, 0, 0);
   }
 
-  .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
-    width: 92px;
-    grid-template-columns: 1fr;
-  }
-
   .app-masonry {
     display: grid;
     width: 100%;
