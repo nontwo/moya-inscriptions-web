@@ -1073,7 +1073,7 @@ describe("mobile application preview", () => {
 
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
     expect(homeScroll.classList).toContain("is-pager-following");
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-36, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
@@ -1092,13 +1092,13 @@ describe("mobile application preview", () => {
       deltaX: 160,
       deltaY: 0,
     });
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-36, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
 
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 1200, deltaY: 0 });
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 600, deltaY: 0 });
     await new Promise<void>((resolve) => {
       desktopDom.window.setTimeout(() => resolve(), 60);
     });
@@ -1117,7 +1117,7 @@ describe("mobile application preview", () => {
     );
     if (!calligraphyScroll) throw new Error("desktop calligraphy surface missing");
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 1200,
+      deltaX: 600,
       deltaY: 0,
     });
     await new Promise<void>((resolve) => {
@@ -1149,24 +1149,23 @@ describe("mobile application preview", () => {
       homeScroll?.querySelector<HTMLElement>("[data-pager-track]");
     if (!homeScroll || !homeTrack) throw new Error("desktop home surface missing");
 
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 800, deltaY: 0 });
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 500, deltaY: 0 });
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-585, 0);
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 200, deltaY: 0 });
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-700, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
 
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 8, deltaY: 0 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
     ).toContain("is-selected");
-    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-585, 0);
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-700, 0);
 
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 40, deltaY: 0 });
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 20, deltaY: 0 });
-    expect(pagerTranslateX(homeTrack)).not.toBeCloseTo(-612, 0);
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 4, deltaY: 0 });
+    expect(pagerTranslateX(homeTrack)).not.toBeCloseTo(-704, 0);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
@@ -1187,15 +1186,15 @@ describe("mobile application preview", () => {
       throw new Error("desktop calligraphy surface missing");
     }
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 800,
-      deltaY: 0,
-    });
-    dispatchWheel(desktopDom.window, calligraphyScroll, {
       deltaX: 500,
       deltaY: 0,
     });
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 80,
+      deltaX: 200,
+      deltaY: 0,
+    });
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 8,
       deltaY: 0,
     });
     expect(
@@ -1204,10 +1203,10 @@ describe("mobile application preview", () => {
       )?.classList,
     ).toContain("is-selected");
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 40,
+      deltaX: 4,
       deltaY: 0,
     });
-    expect(pagerTranslateX(calligraphyTrack)).toBeCloseTo(-585, 0);
+    expect(pagerTranslateX(calligraphyTrack)).toBeCloseTo(-700, 0);
     await waitForAnimationFrames(desktopDom.window, 40);
     expect(
       document.querySelector<HTMLElement>(

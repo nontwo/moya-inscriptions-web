@@ -61,8 +61,9 @@ const swipeClickSuppressionWindow = 400;
 const pagerWheelIdleMs = 24;
 const pagerWheelInertiaMinEvents = 2;
 const pagerWheelInertiaPeakRatio = 0.45;
-const pagerWheelIgnoreMs = 400;
-const pagerWheelPixelGain = 0.45;
+const pagerWheelInertiaMaxDelta = 12;
+const pagerWheelIgnoreMs = 160;
+const pagerWheelPixelGain = 1;
 const pagerWheelLinePixels = 16;
 const pagerControllers = new Map();
 
@@ -535,7 +536,11 @@ function isPcWheelInertia(deltas) {
     if (magnitudes[index] >= magnitudes[index - 1]) return false;
   }
   const peak = Math.max(...deltas.map((delta) => Math.abs(delta)));
-  return magnitudes.at(-1) <= peak * pagerWheelInertiaPeakRatio;
+  const latest = magnitudes.at(-1);
+  return (
+    latest <= pagerWheelInertiaMaxDelta &&
+    latest <= peak * pagerWheelInertiaPeakRatio
+  );
 }
 
 function completePcWheelGesture() {
