@@ -1519,9 +1519,11 @@ describe("mobile application preview", () => {
     expect(tabletCss).toContain("persistent floating functional rail");
     expect(tabletCss).toContain("orientation: landscape");
     expect(tabletCss).toContain("calc(88px + env(safe-area-inset-left))");
-    expect(pcCss).toContain("calc(164px + env(safe-area-inset-left))");
-    expect(pcCss).toContain("min-height: 58px");
-    expect(pcCss).toContain("border-width: 9px 0 9px 10px");
+    expect(pcCss).toContain("padding-bottom: calc(68px + env(safe-area-inset-bottom))");
+    expect(pcCss).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
+    expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
+    expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
+    expect(pcCss).not.toContain("border-width: 9px 0 9px 10px");
     expect(pcCss).not.toContain("opacity: 0.88");
     expect(previewCss).toContain("touch-action: pan-x pan-y");
     expect(tabletCss).toContain("touch-action: pan-x pan-y");

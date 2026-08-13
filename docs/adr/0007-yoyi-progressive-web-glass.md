@@ -37,8 +37,9 @@ surface; reduced motion removes animated state changes.
 
 Phone navigation remains a bottom Tab Bar in both orientations and may minimize
 on downward content scrolling. Tablet portrait uses a persistent bottom bar;
-tablet landscape uses a persistent floating left rail. PC retains its desktop
-navigation layout. These placements share the same three semantic
+tablet landscape uses a persistent floating left rail. PC uses a persistent
+bottom Tab Bar like tablet portrait, without the brand logo and without
+phone-style minimizing. These placements share the same three semantic
 destinations: 首页、碑刻、书帖.
 
 Web and any future SwiftUI client share material and component semantics, not
