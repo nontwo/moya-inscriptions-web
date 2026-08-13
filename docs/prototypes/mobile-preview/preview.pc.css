@@ -494,6 +494,29 @@ html[data-platform="pc"] .app-platform-gate {
   .app-loading {
     position: fixed;
   }
+
+  .app-scroll.app-pager.is-pager-following {
+    overflow: hidden;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__track {
+    display: flex;
+    width: 100%;
+    height: auto;
+    will-change: transform;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__track.is-dragging {
+    user-select: none;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__page {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    overflow: visible;
+  }
 }
 
 @media (min-width: 56rem) {

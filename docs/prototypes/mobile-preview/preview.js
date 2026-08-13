@@ -58,7 +58,6 @@ const pagerViewportStableFrameTarget = 3;
 const pagerViewportSyncMaxFrames = 60;
 const pagerViewportWidthTolerance = 0.5;
 const swipeClickSuppressionWindow = 400;
-const pagerWheelPageThreshold = 80;
 const pagerWheelIdleMs = 120;
 const pagerControllers = new Map();
 
@@ -119,10 +118,8 @@ let themePreference = readStoredPreference(
 );
 let homeFeedLayout = readStoredPreference(homeLayoutKey, homeLayouts, "double");
 let activePagerGesture = null;
-let pagerWheelAccumulatedX = 0;
-let pagerWheelLocked = false;
+let activeWheelGesture = null;
 let pagerWheelIdleTimer = 0;
-let pagerWheelController = null;
 let pagerViewportSyncAnimationId = 0;
 let pagerViewportSyncFramesElapsed = 0;
 let pagerViewportStableFrames = 0;
@@ -469,22 +466,45 @@ function pcWheelPagerEnabled() {
   return root.dataset.platform === "pc";
 }
 
-function resetPagerWheelGesture() {
-  pagerWheelAccumulatedX = 0;
-  pagerWheelLocked = false;
-  pagerWheelController = null;
-  if (pagerWheelIdleTimer) {
-    window.clearTimeout(pagerWheelIdleTimer);
-    pagerWheelIdleTimer = 0;
-  }
+function isPagerFollowing(controller) {
+  return controller.surface.classList.contains("is-pager-following");
 }
 
-function schedulePagerWheelIdleReset() {
-  if (pagerWheelIdleTimer) {
-    window.clearTimeout(pagerWheelIdleTimer);
-  }
+function beginPcPagerFollow(controller) {
+  if (isPagerFollowing(controller)) return;
+  const activeIndex = controller.values.indexOf(controller.current());
+  controller.surface.classList.add("is-pager-following");
+  setPagerPageState(controller, activeIndex, true);
+  setPagerOffset(controller, -activeIndex * pagerWidth(controller));
+}
+
+function endPcPagerFollow(controller) {
+  controller.surface.classList.remove("is-pager-following");
+  controller.track.classList.remove("is-dragging");
+  syncPager(controller);
+}
+
+function clearPagerWheelIdleTimer() {
+  if (!pagerWheelIdleTimer) return;
+  window.clearTimeout(pagerWheelIdleTimer);
+  pagerWheelIdleTimer = 0;
+}
+
+function completePcWheelGesture() {
+  const gesture = activeWheelGesture;
+  if (!gesture) return;
+  activeWheelGesture = null;
+  clearPagerWheelIdleTimer();
+  gesture.controller.track.classList.remove("is-dragging");
+  addPagerSample(gesture, performance.now(), -gesture.accumulatedX);
+  settlePagerFromGesture(gesture, pagerVelocityFromSamples(gesture));
+}
+
+function schedulePcWheelSettle() {
+  clearPagerWheelIdleTimer();
   pagerWheelIdleTimer = window.setTimeout(() => {
-    resetPagerWheelGesture();
+    pagerWheelIdleTimer = 0;
+    completePcWheelGesture();
   }, pagerWheelIdleMs);
 }
 
@@ -494,30 +514,40 @@ function handlePagerWheel(event, controller) {
 
   event.preventDefault();
 
-  if (pagerWheelController && pagerWheelController !== controller) {
-    resetPagerWheelGesture();
-  }
-  pagerWheelController = controller;
-
-  if (pagerWheelLocked) {
-    schedulePagerWheelIdleReset();
-    return;
+  if (activeWheelGesture && activeWheelGesture.controller !== controller) {
+    completePcWheelGesture();
   }
 
-  pagerWheelAccumulatedX += event.deltaX;
-  if (Math.abs(pagerWheelAccumulatedX) < pagerWheelPageThreshold) {
-    schedulePagerWheelIdleReset();
-    return;
+  if (!activeWheelGesture) {
+    cancelPagerSpring(controller);
+    beginPcPagerFollow(controller);
+    const width = pagerWidth(controller);
+    const startIndex = controller.values.indexOf(controller.current());
+    activeWheelGesture = {
+      accumulatedX: 0,
+      axis: "horizontal",
+      controller,
+      dragX: 0,
+      startIndex,
+      startOffset: controller.currentOffset ?? -startIndex * width,
+      samples: [{ time: pagerEventTime(event), x: 0 }],
+      width,
+    };
+    controller.track.classList.add("is-dragging");
   }
 
-  const currentIndex = controller.values.indexOf(controller.current());
-  const nextIndex = currentIndex + (pagerWheelAccumulatedX > 0 ? 1 : -1);
-  if (nextIndex >= 0 && nextIndex < controller.values.length) {
-    controller.select(controller.values[nextIndex], { animate: true });
+  const gesture = activeWheelGesture;
+  gesture.accumulatedX += event.deltaX;
+  addPagerSample(gesture, pagerEventTime(event), -gesture.accumulatedX);
+  const minimumOffset = -(gesture.controller.values.length - 1) * gesture.width;
+  let offset = gesture.startOffset - gesture.accumulatedX;
+  if (offset > 0) offset *= pagerEdgeResistance;
+  if (offset < minimumOffset) {
+    offset = minimumOffset + (offset - minimumOffset) * pagerEdgeResistance;
   }
-  pagerWheelLocked = true;
-  pagerWheelAccumulatedX = 0;
-  schedulePagerWheelIdleReset();
+  gesture.dragX = offset - gesture.startOffset;
+  setPagerOffset(gesture.controller, offset);
+  schedulePcWheelSettle();
 }
 
 function pagerWidth(controller) {
@@ -560,10 +590,19 @@ function prefersReducedPagerMotion() {
   );
 }
 
+function concludePagerSpring(controller) {
+  controller.animationId = 0;
+  controller.track.classList.remove("is-settling");
+  if (!touchPagerEnabled() && isPagerFollowing(controller)) {
+    endPcPagerFollow(controller);
+  }
+}
+
 function startPagerSpring(controller, targetOffset, initialVelocity = 0) {
   cancelPagerSpring(controller);
   if (prefersReducedPagerMotion()) {
     setPagerOffset(controller, targetOffset);
+    concludePagerSpring(controller);
     return;
   }
 
@@ -606,8 +645,7 @@ function startPagerSpring(controller, targetOffset, initialVelocity = 0) {
       Math.abs(velocity) <= pagerSpringVelocityTolerance;
     if (settled || elapsedSeconds >= pagerSpringMaxDurationSeconds) {
       setPagerOffset(controller, targetOffset);
-      controller.animationId = 0;
-      controller.track.classList.remove("is-settling");
+      concludePagerSpring(controller);
       return;
     }
     controller.animationId = window.requestAnimationFrame(advanceSpring);
@@ -619,10 +657,11 @@ function startPagerSpring(controller, targetOffset, initialVelocity = 0) {
 function syncPager(controller, { animate = false, velocity = 0 } = {}) {
   const activeIndex = controller.values.indexOf(controller.current());
   const touchMode = touchPagerEnabled();
+  const following = isPagerFollowing(controller);
   cancelPagerSpring(controller);
   controller.track.classList.remove("is-dragging");
-  setPagerPageState(controller, activeIndex, touchMode);
-  if (!touchMode) {
+  setPagerPageState(controller, activeIndex, touchMode || following);
+  if (!touchMode && !following) {
     controller.currentOffset = -activeIndex * pagerWidth(controller);
     controller.track.style.removeProperty("transform");
     return;
@@ -753,17 +792,19 @@ function pagerEventTime(event) {
   return Number.isFinite(event.timeStamp) ? event.timeStamp : performance.now();
 }
 
-function addPagerVelocitySample(gesture, event) {
-  const time = pagerEventTime(event);
-  gesture.samples.push({ time, x: event.clientX });
+function addPagerSample(gesture, time, x) {
+  gesture.samples.push({ time, x });
   const minimumTime = time - pagerVelocityWindowMs;
   while (gesture.samples.length > 2 && gesture.samples[1].time < minimumTime) {
     gesture.samples.shift();
   }
 }
 
-function pagerReleaseVelocity(gesture, event) {
-  addPagerVelocitySample(gesture, event);
+function addPagerVelocitySample(gesture, event) {
+  addPagerSample(gesture, pagerEventTime(event), event.clientX);
+}
+
+function pagerVelocityFromSamples(gesture) {
   const samples = gesture.samples;
   const latestTime = samples.at(-1)?.time ?? 0;
   const windowStart = latestTime - pagerVelocityWindowMs;
@@ -788,6 +829,11 @@ function pagerReleaseVelocity(gesture, event) {
     -pagerMaximumVelocity,
     Math.min(pagerMaximumVelocity, weightedVelocity / totalWeight),
   );
+}
+
+function pagerReleaseVelocity(gesture, event) {
+  addPagerVelocitySample(gesture, event);
+  return pagerVelocityFromSamples(gesture);
 }
 
 function beginPagerGesture(event, controller) {
@@ -851,29 +897,7 @@ function movePagerGesture(event) {
   setPagerOffset(gesture.controller, offset);
 }
 
-function completePagerGesture(event) {
-  const gesture = activePagerGesture;
-  if (
-    !gesture ||
-    gesture.pointerId !== event.pointerId ||
-    event.pointerType !== "touch"
-  ) {
-    return;
-  }
-  activePagerGesture = null;
-  if (gesture.axis !== "horizontal") return;
-  try {
-    if (gesture.controller.surface.hasPointerCapture?.(gesture.pointerId)) {
-      gesture.controller.surface.releasePointerCapture(gesture.pointerId);
-    }
-  } catch {
-    // The capture may already be released after leaving the browsing context.
-  }
-  gesture.controller.track.classList.remove("is-dragging");
-  gesture.controller.surface.dataset.suppressSwipeClickUntil = String(
-    performance.now() + swipeClickSuppressionWindow,
-  );
-  const velocity = pagerReleaseVelocity(gesture, event);
+function settlePagerFromGesture(gesture, velocity) {
   const distanceRatio = Math.abs(gesture.dragX) / gesture.width;
   const flick =
     distanceRatio >= pagerFlickMinimumDistanceRatio &&
@@ -905,6 +929,31 @@ function completePagerGesture(event) {
     return;
   }
   syncPager(gesture.controller, { animate: true, velocity });
+}
+
+function completePagerGesture(event) {
+  const gesture = activePagerGesture;
+  if (
+    !gesture ||
+    gesture.pointerId !== event.pointerId ||
+    event.pointerType !== "touch"
+  ) {
+    return;
+  }
+  activePagerGesture = null;
+  if (gesture.axis !== "horizontal") return;
+  try {
+    if (gesture.controller.surface.hasPointerCapture?.(gesture.pointerId)) {
+      gesture.controller.surface.releasePointerCapture(gesture.pointerId);
+    }
+  } catch {
+    // The capture may already be released after leaving the browsing context.
+  }
+  gesture.controller.track.classList.remove("is-dragging");
+  gesture.controller.surface.dataset.suppressSwipeClickUntil = String(
+    performance.now() + swipeClickSuppressionWindow,
+  );
+  settlePagerFromGesture(gesture, pagerReleaseVelocity(gesture, event));
 }
 
 function suppressSwipeClick(event, surface) {

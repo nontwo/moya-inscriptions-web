@@ -1040,7 +1040,7 @@ describe("mobile application preview", () => {
     ).toContain("is-selected");
   });
 
-  it("switches PC home and calligraphy pages with horizontal wheel pans", () => {
+  it("follows PC home and calligraphy pages with horizontal wheel pans", async () => {
     const desktopDom = renderPreview(
       {},
       {
@@ -1054,12 +1054,16 @@ describe("mobile application preview", () => {
     const homeScroll = document.querySelector<HTMLElement>(
       '[data-scroll-view="home"]',
     );
-    if (!homeScroll) throw new Error("desktop home surface missing");
+    const homeTrack =
+      homeScroll?.querySelector<HTMLElement>("[data-pager-track]");
+    if (!homeScroll || !homeTrack) throw new Error("desktop home surface missing");
     expect(document.documentElement.dataset.platform).toBe("pc");
 
-    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 120, deltaY: 0 });
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
+    expect(homeScroll.classList).toContain("is-pager-following");
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
     expect(
-      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
 
@@ -1069,10 +1073,22 @@ describe("mobile application preview", () => {
       deltaX: 160,
       deltaY: 0,
     });
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 600, deltaY: 0 });
+    await new Promise<void>((resolve) => {
+      desktopDom.window.setTimeout(() => resolve(), 150);
+    });
+    await waitForAnimationFrames(desktopDom.window, 40);
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
         ?.classList,
     ).toContain("is-selected");
+    expect(homeScroll.classList).not.toContain("is-pager-following");
 
     document
       .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
@@ -1082,9 +1098,13 @@ describe("mobile application preview", () => {
     );
     if (!calligraphyScroll) throw new Error("desktop calligraphy surface missing");
     dispatchWheel(desktopDom.window, calligraphyScroll, {
-      deltaX: 120,
+      deltaX: 600,
       deltaY: 0,
     });
+    await new Promise<void>((resolve) => {
+      desktopDom.window.setTimeout(() => resolve(), 150);
+    });
+    await waitForAnimationFrames(desktopDom.window, 40);
     expect(
       document.querySelector<HTMLElement>(
         '[data-calligraphy-category="ink"]',
@@ -1664,6 +1684,7 @@ describe("mobile application preview", () => {
     expect(html).not.toContain("data-platform-gate");
     expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(pcCss).toContain("--app-calligraphy-scale: 1");
+    expect(pcCss).toContain(".app-scroll.app-pager.is-pager-following");
     expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
     expect(script).not.toMatch(/addEventListener\(\s*["']touchmove["']/);
     expect(sharedCss).toContain(".app-topics__grid");
