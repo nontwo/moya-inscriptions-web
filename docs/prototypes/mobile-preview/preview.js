@@ -58,7 +58,10 @@ const pagerViewportStableFrameTarget = 3;
 const pagerViewportSyncMaxFrames = 60;
 const pagerViewportWidthTolerance = 0.5;
 const swipeClickSuppressionWindow = 400;
-const pagerWheelIdleMs = 120;
+const pagerWheelIdleMs = 48;
+const pagerWheelInertiaMinEvents = 3;
+const pagerWheelInertiaPeakRatio = 0.45;
+const pagerWheelIgnoreMs = 400;
 const pagerControllers = new Map();
 
 const scrollPositions = {
@@ -490,11 +493,35 @@ function clearPagerWheelIdleTimer() {
   pagerWheelIdleTimer = 0;
 }
 
+function shouldIgnorePcWheel(controller) {
+  return (
+    performance.now() < (controller.wheelIgnoreUntil ?? 0) ||
+    Boolean(controller.animationId) ||
+    controller.track.classList.contains("is-settling")
+  );
+}
+
+function isPcWheelInertia(deltas) {
+  if (deltas.length < pagerWheelInertiaMinEvents) return false;
+  const recent = deltas.slice(-pagerWheelInertiaMinEvents);
+  const sign = Math.sign(recent[0]);
+  if (sign === 0 || recent.some((delta) => Math.sign(delta) !== sign)) {
+    return false;
+  }
+  const magnitudes = recent.map((delta) => Math.abs(delta));
+  for (let index = 1; index < magnitudes.length; index += 1) {
+    if (magnitudes[index] >= magnitudes[index - 1]) return false;
+  }
+  const peak = Math.max(...deltas.map((delta) => Math.abs(delta)));
+  return magnitudes.at(-1) <= peak * pagerWheelInertiaPeakRatio;
+}
+
 function completePcWheelGesture() {
   const gesture = activeWheelGesture;
   if (!gesture) return;
   activeWheelGesture = null;
   clearPagerWheelIdleTimer();
+  gesture.controller.wheelIgnoreUntil = performance.now() + pagerWheelIgnoreMs;
   gesture.controller.track.classList.remove("is-dragging");
   addPagerSample(gesture, performance.now(), -gesture.accumulatedX);
   settlePagerFromGesture(gesture, pagerVelocityFromSamples(gesture));
@@ -513,6 +540,7 @@ function handlePagerWheel(event, controller) {
   if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
 
   event.preventDefault();
+  if (shouldIgnorePcWheel(controller)) return;
 
   if (activeWheelGesture && activeWheelGesture.controller !== controller) {
     completePcWheelGesture();
@@ -527,6 +555,7 @@ function handlePagerWheel(event, controller) {
       accumulatedX: 0,
       axis: "horizontal",
       controller,
+      deltas: [],
       dragX: 0,
       startIndex,
       startOffset: controller.currentOffset ?? -startIndex * width,
@@ -537,6 +566,12 @@ function handlePagerWheel(event, controller) {
   }
 
   const gesture = activeWheelGesture;
+  if (isPcWheelInertia([...gesture.deltas, event.deltaX])) {
+    completePcWheelGesture();
+    return;
+  }
+
+  gesture.deltas.push(event.deltaX);
   gesture.accumulatedX += event.deltaX;
   addPagerSample(gesture, pagerEventTime(event), -gesture.accumulatedX);
   const minimumOffset = -(gesture.controller.values.length - 1) * gesture.width;
@@ -717,6 +752,7 @@ function preparePager(id, values, current, select) {
     track,
     lastWidth: 0,
     values,
+    wheelIgnoreUntil: 0,
   };
   pagerControllers.set(id, controller);
   syncPager(controller);

@@ -1081,7 +1081,7 @@ describe("mobile application preview", () => {
 
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 600, deltaY: 0 });
     await new Promise<void>((resolve) => {
-      desktopDom.window.setTimeout(() => resolve(), 150);
+      desktopDom.window.setTimeout(() => resolve(), 60);
     });
     await waitForAnimationFrames(desktopDom.window, 40);
     expect(
@@ -1102,8 +1102,93 @@ describe("mobile application preview", () => {
       deltaY: 0,
     });
     await new Promise<void>((resolve) => {
-      desktopDom.window.setTimeout(() => resolve(), 150);
+      desktopDom.window.setTimeout(() => resolve(), 60);
     });
+    await waitForAnimationFrames(desktopDom.window, 40);
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-calligraphy-category="ink"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
+  it("settles PC trackpad inertia immediately without waiting for idle", async () => {
+    const desktopDom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const document = desktopDom.window.document;
+    const homeScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    const homeTrack =
+      homeScroll?.querySelector<HTMLElement>("[data-pager-track]");
+    if (!homeScroll || !homeTrack) throw new Error("desktop home surface missing");
+
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 500, deltaY: 0 });
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 200, deltaY: 0 });
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-700, 0);
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+    expect(pagerTranslateX(homeTrack)).toBeCloseTo(-700, 0);
+
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 40, deltaY: 0 });
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 20, deltaY: 0 });
+    expect(pagerTranslateX(homeTrack)).not.toBeCloseTo(-760, 0);
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    await waitForAnimationFrames(desktopDom.window, 40);
+    expect(homeScroll.classList).not.toContain("is-pager-following");
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    const calligraphyScroll = document.querySelector<HTMLElement>(
+      '[data-pager="calligraphy"]',
+    );
+    const calligraphyTrack =
+      calligraphyScroll?.querySelector<HTMLElement>("[data-pager-track]");
+    if (!calligraphyScroll || !calligraphyTrack) {
+      throw new Error("desktop calligraphy surface missing");
+    }
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 500,
+      deltaY: 0,
+    });
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 200,
+      deltaY: 0,
+    });
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 80,
+      deltaY: 0,
+    });
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-calligraphy-category="ink"]',
+      )?.classList,
+    ).toContain("is-selected");
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 40,
+      deltaY: 0,
+    });
+    expect(pagerTranslateX(calligraphyTrack)).toBeCloseTo(-700, 0);
     await waitForAnimationFrames(desktopDom.window, 40);
     expect(
       document.querySelector<HTMLElement>(
