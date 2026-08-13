@@ -8,6 +8,7 @@ html,
 body {
   min-height: 100%;
   margin: 0;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -164,6 +165,10 @@ button {
 .app-primary-tab.is-selected::after {
   opacity: 1;
   transform: scaleX(1);
+}
+
+.app-scroll {
+  overscroll-behavior-x: none;
 }
 
 .app-scroll::-webkit-scrollbar,

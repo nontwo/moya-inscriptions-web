@@ -469,6 +469,19 @@ function pcWheelPagerEnabled() {
   return root.dataset.platform === "pc";
 }
 
+function isPcHorizontalWheel(event) {
+  return (
+    pcWheelPagerEnabled() &&
+    !event.ctrlKey &&
+    Math.abs(event.deltaX) > Math.abs(event.deltaY)
+  );
+}
+
+function preventPcHistorySwipe(event) {
+  if (!isPcHorizontalWheel(event)) return;
+  event.preventDefault();
+}
+
 function isPagerFollowing(controller) {
   return controller.surface.classList.contains("is-pager-following");
 }
@@ -536,8 +549,7 @@ function schedulePcWheelSettle() {
 }
 
 function handlePagerWheel(event, controller) {
-  if (!pcWheelPagerEnabled() || event.ctrlKey) return;
-  if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+  if (!isPcHorizontalWheel(event)) return;
 
   event.preventDefault();
   if (shouldIgnorePcWheel(controller)) return;
@@ -1144,6 +1156,11 @@ pagerControllers.forEach((controller) => {
     (event) => handlePagerWheel(event, controller),
     { passive: false },
   );
+});
+
+window.addEventListener("wheel", preventPcHistorySwipe, {
+  capture: true,
+  passive: false,
 });
 
 bindClicks("[data-open-settings]", () => openSettings());

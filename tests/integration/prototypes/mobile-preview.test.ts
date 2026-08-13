@@ -308,6 +308,7 @@ const dispatchWheel = (
     deltaY,
   });
   target.dispatchEvent(event);
+  return event;
 };
 
 const pagerTranslateX = (track: HTMLElement) => {
@@ -1197,6 +1198,100 @@ describe("mobile application preview", () => {
     ).toContain("is-selected");
   });
 
+  it("does not reopen inscription detail from horizontal PC wheel after back", async () => {
+    const desktopDom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const document = desktopDom.window.document;
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    document
+      .querySelector<HTMLElement>(
+        '[data-view="inscriptions"] [data-content-id="inscription-road"]',
+      )
+      ?.click();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "古道石刻",
+    );
+
+    const backButton =
+      document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!backButton) throw new Error("detail back button not found");
+    await clickAndWaitForHistory(desktopDom.window, backButton);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')
+        ?.hidden,
+    ).toBe(false);
+
+    const inscriptionsScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="inscriptions"]',
+    );
+    if (!inscriptionsScroll) throw new Error("inscriptions scroll missing");
+    const inscriptionsWheel = dispatchWheel(
+      desktopDom.window,
+      inscriptionsScroll,
+      { deltaX: 240, deltaY: 0 },
+    );
+    expect(inscriptionsWheel.defaultPrevented).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-primary-view="home"]')
+        ?.classList,
+    ).not.toContain("is-active");
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="home"]')
+      ?.click();
+    const homeScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="home"]',
+    );
+    if (!homeScroll) throw new Error("home scroll missing");
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.classList,
+    ).toContain("is-selected");
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    const calligraphyScroll = document.querySelector<HTMLElement>(
+      '[data-pager="calligraphy"]',
+    );
+    if (!calligraphyScroll) throw new Error("calligraphy scroll missing");
+    dispatchWheel(desktopDom.window, calligraphyScroll, {
+      deltaX: 80,
+      deltaY: 0,
+    });
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-calligraphy-category="all"]',
+      )?.classList,
+    ).toContain("is-selected");
+  });
+
   it("enables category swipes for a physical tablet", () => {
     const dom = renderPreview(
       {},
@@ -1676,6 +1771,7 @@ describe("mobile application preview", () => {
     expect(sharedCss).not.toContain(".app-inscriptions-preview");
     expect(sharedCss).toContain("--app-calligraphy-scale");
     expect(sharedCss).toContain("--app-motto-font");
+    expect(sharedCss).toContain("overscroll-behavior-x: none");
     expect(sharedCss).not.toContain("prefers-reduced-motion");
     expect(previewCss).not.toContain("@media (min-width: 48rem)");
     expect(previewCss).toContain("orientation: portrait");
@@ -1739,6 +1835,7 @@ describe("mobile application preview", () => {
       expect(duplicatedSharedRules).toEqual([]);
       expect(css).toContain("@media (prefers-reduced-motion: reduce)");
       expect(effectiveCss).toContain("overscroll-behavior-y: auto");
+      expect(effectiveCss).toContain("overscroll-behavior-x: none");
       expect(effectiveCss).toContain("touch-action: pan-y");
       expect(effectiveCss).not.toContain("overscroll-behavior-y: contain");
     }
@@ -1760,7 +1857,7 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260813-glass-final"',
+      'href="./preview.shared.css?v=20260814-block-history-swipe"',
     );
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
