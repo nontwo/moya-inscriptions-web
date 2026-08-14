@@ -355,11 +355,15 @@ describe("safe Catalog Import workbook template", () => {
       "洛江区",
       "万安某处",
       "某文物管理机构",
-      "ALIAS_TYPE_STORAGE_REQUIRED",
-      "PROVENANCE_STORAGE_REQUIRED",
+      "每条 01_Catalog 在 Apply 时都需要一条",
+      "supplied ownerNote 不会静默丢弃",
+      "alias collection UPDATE",
+      "Research evidence",
     ]) {
       expect(literalText).toContain(evidence);
     }
+    expect(literalText).not.toContain("ALIAS_TYPE_STORAGE_REQUIRED");
+    expect(literalText).not.toContain("PROVENANCE_STORAGE_REQUIRED");
   });
 
   it("contains no production rows, hidden payloads, active content or secrets", async () => {

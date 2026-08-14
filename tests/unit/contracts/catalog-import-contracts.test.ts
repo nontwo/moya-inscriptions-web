@@ -9,6 +9,7 @@ import {
   CATALOG_IMPORT_PROVENANCE_HEADERS,
   CATALOG_IMPORT_SHEET_NAMES,
   aliasImportTableRowSchema,
+  applyBlockerCodeSchema,
   canonicalCatalogImportEnvelopeJsonSchema,
   canonicalCatalogImportEnvelopeSchema,
   canonicalizeAliasImportTableRow,
@@ -142,6 +143,22 @@ describe("Catalog Import contract version and tabular boundary", () => {
         objectKey: "secret",
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects research evidence and Owner research state at the strict boundary", () => {
+    for (const excluded of [
+      { researchEvidence: "external evidence" },
+      { ownerResearchState: "approved" },
+      { researchRecord: { sqliteId: 1 } },
+    ]) {
+      expect(
+        canonicalCatalogImportEnvelopeSchema.safeParse(
+          envelope({
+            catalogRows: [{ ...canonicalCatalogRow(), ...excluded }],
+          }),
+        ).success,
+      ).toBe(false);
+    }
   });
 });
 
@@ -364,6 +381,21 @@ describe("Canonical serialization and hashes", () => {
         )
         .digest("hex"),
     ).not.toBe(hash);
+    const withoutOwnerNote =
+      serializeCanonicalCatalogImportEnvelope(envelope());
+    const withOwnerNote = serializeCanonicalCatalogImportEnvelope(
+      envelope({
+        catalogRows: [
+          canonicalCatalogRow({ ownerNote: "Owner-only review note" }),
+        ],
+      }),
+    );
+    expect(withOwnerNote).toContain('"ownerNote":"Owner-only review note"');
+    expect(
+      createHash("sha256").update(withOwnerNote, "utf8").digest("hex"),
+    ).not.toBe(
+      createHash("sha256").update(withoutOwnerNote, "utf8").digest("hex"),
+    );
     expect(() =>
       serializeCanonicalCatalogImportEnvelope(
         envelope({
@@ -588,71 +620,82 @@ describe("Dry-run, persistence blockers and approval", () => {
     ).toBe(false);
   });
 
-  it("makes deferred, alias-type and provenance gaps explicit apply blockers", () => {
-    const cases = [
-      {
-        blocker: "DEFERRED_FIELD_NOT_PRESERVED",
-        field: "dynasty",
-        persistenceDisposition: "DEFERRED_PERSISTENCE",
-      },
-      {
-        blocker: "ALIAS_TYPE_STORAGE_REQUIRED",
-        field: "aliasType",
-        persistenceDisposition: "DEFERRED_PERSISTENCE",
-      },
-      {
-        blocker: "PROVENANCE_STORAGE_REQUIRED",
-        field: "sourceTypeRaw",
-        persistenceDisposition: "RAW_ONLY",
-      },
-    ] as const;
-    for (const { blocker, field, persistenceDisposition } of cases) {
-      const blockerFinding = {
+  it("matches the current persistence capability and safely retires stale blockers", () => {
+    const supportedNow = Object.entries(CATALOG_IMPORT_FIELD_POLICY)
+      .filter(([, policy]) => policy.persistence === "SUPPORTED_NOW")
+      .map(([field]) => field)
+      .sort();
+    const rawOnly = Object.entries(CATALOG_IMPORT_FIELD_POLICY)
+      .filter(([, policy]) => policy.persistence === "RAW_ONLY")
+      .map(([field]) => field)
+      .sort();
+
+    expect(supportedNow).toEqual(
+      [
+        "sourceId",
+        "catalogId",
+        "title",
+        "catalogKind",
+        "dynasty",
+        "dateText",
+        "province",
+        "prefecture",
+        "county",
+        "currentLocation",
+        "currentCustodian",
+        "description",
+        "alias",
+        "aliasType",
+        "sourceTitle",
+        "sourceTypeRaw",
+        "sourceUrl",
+        "sourceNote",
+      ].sort(),
+    );
+    expect(rawOnly).toEqual(["catalogImportId", "ownerNote"]);
+    for (const retired of [
+      "ALIAS_TYPE_STORAGE_REQUIRED",
+      "PROVENANCE_STORAGE_REQUIRED",
+    ]) {
+      expect(applyBlockerCodeSchema.safeParse(retired).success).toBe(false);
+    }
+  });
+
+  it("accepts supported alias and provenance findings without storage blockers", () => {
+    for (const field of ["aliasType", "sourceTypeRaw"] as const) {
+      const finding = {
         ...criticalFinding,
         findingId: `finding-${field}`,
         field,
-        persistenceDisposition,
-        applyBlocker: blocker,
+        persistenceDisposition: "SUPPORTED_NOW",
+        applyBlocker: undefined,
       };
+      expect(dryRunFindingSchema.safeParse(finding).success).toBe(true);
       expect(
-        catalogImportDryRunSchema.safeParse(
-          dryRun({
-            state: "FAILED",
-            findings: [blockerFinding],
-            applyBlockers: [blocker],
-            applyReady: false,
-          }),
-        ).success,
+        catalogImportDryRunSchema.safeParse(dryRun({ findings: [finding] }))
+          .success,
       ).toBe(true);
-      expect(
-        catalogImportDryRunSchema.safeParse(
-          dryRun({
-            findings: [blockerFinding],
-            applyBlockers: [blocker],
-            applyReady: true,
-          }),
-        ).success,
-      ).toBe(false);
-      expect(
-        catalogImportDryRunSchema.safeParse(
-          dryRun({
-            state: "FAILED",
-            findings: [blockerFinding],
-            applyBlockers: [],
-            applyReady: false,
-          }),
-        ).success,
-      ).toBe(false);
     }
-    expect(CATALOG_IMPORT_FIELD_POLICY.dynasty.persistence).toBe(
-      "DEFERRED_PERSISTENCE",
-    );
-    expect(CATALOG_IMPORT_FIELD_POLICY.aliasType.persistence).toBe(
-      "DEFERRED_PERSISTENCE",
-    );
-    expect(CATALOG_IMPORT_FIELD_POLICY.sourceTypeRaw.persistence).toBe(
-      "RAW_ONLY",
-    );
+  });
+
+  it("requires the generic preservation blocker for RAW_ONLY findings", () => {
+    const ownerNoteFinding = {
+      ...criticalFinding,
+      category: "ERROR",
+      field: "ownerNote",
+      persistenceDisposition: "RAW_ONLY",
+      applyBlocker: "DEFERRED_FIELD_NOT_PRESERVED",
+      approvable: false,
+      requiresFieldApproval: false,
+      message: "ownerNote cannot be silently discarded by apply",
+    } as const;
+    expect(dryRunFindingSchema.safeParse(ownerNoteFinding).success).toBe(true);
+    expect(
+      dryRunFindingSchema.safeParse({
+        ...ownerNoteFinding,
+        applyBlocker: undefined,
+      }).success,
+    ).toBe(false);
   });
 
   it("binds approval to version, canonical input hash and dry-run hash", () => {

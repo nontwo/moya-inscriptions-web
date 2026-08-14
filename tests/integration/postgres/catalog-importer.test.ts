@@ -54,6 +54,8 @@ const writeBundle = async (input?: {
   readonly description?: string;
   readonly descriptionState?: "VALUE" | "UNSUPPLIED" | "CLEAR";
   readonly alias?: boolean;
+  readonly aliasValue?: string;
+  readonly aliasType?: "alternate" | "historical";
   readonly ownerNote?: string;
 }) => {
   const description = input?.description ?? "测试说明";
@@ -95,7 +97,7 @@ const writeBundle = async (input?: {
       path.join(bundleDirectory, "aliases.csv"),
       input?.alias === false
         ? "catalogImportId,alias,aliasType\n"
-        : "catalogImportId,alias,aliasType\nitem-000001,测试旧称,historical\n",
+        : `catalogImportId,alias,aliasType\nitem-000001,${input?.aliasValue ?? "测试旧称"},${input?.aliasType ?? "historical"}\n`,
     ),
     writeFile(
       path.join(bundleDirectory, "provenance.csv"),
@@ -251,6 +253,51 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     });
     expect(replay).toMatchObject({ status: "ALREADY_APPLIED", created: 1 });
     expect(first.catalogIdMap[0]?.catalogId).not.toContain("src_test_p5_001");
+    const persisted = await readImporterDatabaseState();
+    expect(persisted.entries).toHaveLength(1);
+    expect(persisted.entries[0]).toMatchObject({
+      catalog_id: "catalog-platform-test-001",
+      kind: "inscription",
+      title: "测试碑刻",
+      dynasty: "唐",
+      dynasty_state: "VALUE",
+      date_text: null,
+      date_text_state: "UNSUPPLIED",
+      description: "测试说明",
+      description_state: "VALUE",
+    });
+    expect(persisted.aliases).toEqual([
+      expect.objectContaining({
+        catalog_id: "catalog-platform-test-001",
+        alias: "测试旧称",
+        alias_type: "historical",
+      }),
+    ]);
+    expect(persisted.sources).toEqual([
+      expect.objectContaining({
+        source_id: "src_test_p5_001",
+        catalog_id: "catalog-platform-test-001",
+        source_title: "测试碑刻",
+        source_type_raw: "official-test",
+        source_url: "https://example.invalid/source",
+      }),
+    ]);
+    expect(persisted.operations).toEqual([
+      expect.objectContaining({
+        operation_id: "p5-applied",
+        status: "APPLIED",
+        canonical_input_sha256: first.canonicalInputSha256,
+      }),
+    ]);
+    expect(persisted.operationItems).toEqual([
+      expect.objectContaining({
+        operation_id: "p5-applied",
+        catalog_import_id: "item-000001",
+        source_id: "src_test_p5_001",
+        catalog_id: "catalog-platform-test-001",
+        result: "CREATED",
+      }),
+    ]);
   });
 
   it("updates the same CatalogId through the importer and preserves identity", async () => {
@@ -297,6 +344,31 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     expect(persisted.rows).toEqual([
       { catalog_id: "catalog-platform-test-001", title: "测试碑刻修订" },
     ]);
+  });
+
+  it("keeps supported alias storage separate from undefined alias update semantics", async () => {
+    const seed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const seedDryRun = await createCatalogImportDryRun(
+      pool,
+      seed,
+      "2026-08-15T00:00:02.010Z",
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(seed, seedDryRun, "p5-alias-update-seed"),
+    );
+    const before = await readImporterDatabaseState();
+
+    await writeBundle({
+      catalogId: "catalog-platform-test-001",
+      aliasValue: "测试新别名",
+      aliasType: "alternate",
+    });
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    await expect(
+      createCatalogImportDryRun(pool, parsed, "2026-08-15T00:00:02.020Z"),
+    ).rejects.toThrow("does not define alias merge/replace semantics");
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
   });
 
   it("fails closed on supplied ownerNote for CREATE before any persistence mutation", async () => {
