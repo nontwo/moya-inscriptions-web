@@ -157,12 +157,9 @@ export const declaredDependencies = (
   ...manifest.peerDependencies,
 });
 
-/**
- * T04.0 authorizes no importer. T05 must add a reviewed package name here and
- * the matching manifest capability; neither key is sufficient on its own.
- */
+/** Both the reviewed package name and matching manifest capability are required. */
 export const authorizedRawSourceImporterPackageNames: ReadonlySet<string> =
-  new Set();
+  new Set(["@moya/catalog-importer"]);
 
 const permanentFrontendWorkspaceNames = new Set(["web", "admin", "@moya/ui"]);
 const browserRuntimeDependencies = new Set(["next", "react-dom"]);

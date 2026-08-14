@@ -115,6 +115,9 @@ describe("workspace dependency boundaries", () => {
       "@moya/api",
       "@moya/contracts",
     ]);
+    expect(moyaDependencies("@moya/catalog-importer")).toEqual([
+      "@moya/contracts",
+    ]);
     expect(moyaDependencies("@moya/data-access")).toEqual([]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/ui")).toEqual(["@moya/design-tokens"]);
@@ -419,8 +422,15 @@ describe("formal runtime dataset boundary", () => {
     }
   });
 
-  it("authorizes no raw-source importer in T04.0", () => {
-    expect([...authorizedRawSourceImporterPackageNames]).toEqual([]);
+  it("authorizes exactly the controlled Catalog importer", async () => {
+    expect([...authorizedRawSourceImporterPackageNames]).toEqual([
+      "@moya/catalog-importer",
+    ]);
+    const workspaces = await discoverWorkspaces();
+    const authorized = workspaces
+      .filter((candidate) => isRawSourceAccessAuthorized(candidate))
+      .map(({ manifest }) => manifest.name);
+    expect(authorized).toEqual(["@moya/catalog-importer"]);
   });
 
   it("keeps unapproved runtime workspaces independent of repository datasets", async () => {

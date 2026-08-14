@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "catalog-import:validate-xlsx": "node dist/xlsx-validation-cli.js",
     "p5:api-audit": "node dist/api-audit-cli.js",
     "p5:apply-validation": "node dist/validation-apply-cli.js",
     "p5:validate": "node dist/validation-cli.js",
@@ -22,10 +23,17 @@
   },
   "dependencies": {
     "@moya/contracts": "workspace:*",
-    "pg": "8.22.0"
+    "exceljs": "4.4.0",
+    "pg": "8.22.0",
+    "saxes": "5.0.1",
+    "yauzl": "3.4.0"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
-    "@types/pg": "8.20.0"
+    "@types/pg": "8.20.0",
+    "@types/yauzl": "3.4.0"
+  },
+  "moyaArchitecture": {
+    "rawSourceAccess": "controlled-importer"
   }
 }

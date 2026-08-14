@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import {
   applyCatalogImport,
   createCatalogImportDryRun,
   parseCatalogImportCsvBundle,
+  parseCatalogImportXlsxFile,
 } from "@moya/catalog-importer";
 import { prepareProductionBackend } from "@moya/backend-production";
 import { startBackendProcess } from "@moya/backend-runtime";
@@ -17,7 +18,13 @@ import {
   runMigrations,
 } from "@moya/catalog-postgres";
 import { catalogIdSchema } from "@moya/contracts/schemas";
-import { dryRunFindingIdSchema } from "@moya/contracts/internal/catalog-import";
+import {
+  CATALOG_IMPORT_ALIAS_HEADERS,
+  CATALOG_IMPORT_CATALOG_HEADERS,
+  CATALOG_IMPORT_PROVENANCE_HEADERS,
+  dryRunFindingIdSchema,
+} from "@moya/contracts/internal/catalog-import";
+import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { CatalogImportDryRun } from "@moya/contracts/internal/catalog-import";
@@ -44,6 +51,7 @@ const pool = createPostgresPool(
   parsePostgresConfig({ DATABASE_URL: isolatedUrl.toString() }),
 );
 let bundleDirectory = "";
+let xlsxDirectory = "";
 
 const catalogHeaders =
   "catalogImportId,sourceId,catalogId,title,catalogKind,dynasty,dynastyState,dateText,dateTextState,province,provinceState,prefecture,prefectureState,county,countyState,currentLocation,currentLocationState,currentCustodian,currentCustodianState,description,descriptionState,ownerNote";
@@ -104,6 +112,87 @@ const writeBundle = async (input?: {
       "catalogImportId,sourceId,sourceTitle,sourceTypeRaw,sourceUrl,sourceNote\nitem-000001,src_test_p5_001,测试碑刻,official-test,https://example.invalid/source,\n",
     ),
   ]);
+};
+
+const writeXlsxWorkbook = async (input?: {
+  readonly catalogId?: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly descriptionState?: "VALUE" | "UNSUPPLIED" | "CLEAR";
+  readonly alias?: boolean;
+  readonly aliasValue?: string;
+  readonly aliasType?: "alternate" | "historical";
+  readonly ownerNote?: string;
+}): Promise<string> => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(
+    Uint8Array.from(
+      await readFile(
+        path.join(
+          repositoryRoot,
+          "docs/catalog-import/catalog-import-v1-template.xlsx",
+        ),
+      ),
+    ).buffer,
+    { ignoreNodes: ["dataValidations"] },
+  );
+  const catalog = {
+    catalogImportId: "item-000001",
+    sourceId: "src_test_p5_001",
+    catalogId: input?.catalogId ?? "",
+    title: input?.title ?? "测试碑刻",
+    catalogKind: "inscription",
+    dynasty: "唐",
+    dynastyState: "VALUE",
+    dateText: "",
+    dateTextState: "",
+    province: "",
+    provinceState: "",
+    prefecture: "",
+    prefectureState: "",
+    county: "",
+    countyState: "",
+    currentLocation: "",
+    currentLocationState: "",
+    currentCustodian: "",
+    currentCustodianState: "",
+    description: input?.description ?? "测试说明",
+    descriptionState: input?.descriptionState ?? "VALUE",
+    ownerNote: input?.ownerNote ?? "",
+  };
+  const alias = {
+    catalogImportId: "item-000001",
+    alias: input?.aliasValue ?? "测试旧称",
+    aliasType: input?.aliasType ?? "historical",
+  };
+  const provenance = {
+    catalogImportId: "item-000001",
+    sourceId: "src_test_p5_001",
+    sourceTitle: "测试碑刻",
+    sourceTypeRaw: "official-test",
+    sourceUrl: "https://example.invalid/source",
+    sourceNote: "",
+  };
+  for (const [sheetName, headers, rows] of [
+    ["01_Catalog", CATALOG_IMPORT_CATALOG_HEADERS, [catalog]],
+    [
+      "02_Aliases",
+      CATALOG_IMPORT_ALIAS_HEADERS,
+      input?.alias === false ? [] : [alias],
+    ],
+    ["03_Provenance", CATALOG_IMPORT_PROVENANCE_HEADERS, [provenance]],
+  ] as const) {
+    const worksheet = workbook.getWorksheet(sheetName)!;
+    for (const [rowIndex, row] of rows.entries()) {
+      for (const [columnIndex, header] of headers.entries()) {
+        worksheet.getCell(rowIndex + 3, columnIndex + 1).value =
+          row[header as keyof typeof row];
+      }
+    }
+  }
+  const destination = path.join(xlsxDirectory, "synthetic-import.xlsx");
+  await workbook.xlsx.writeFile(destination);
+  return destination;
 };
 
 const fakeAllocator = (
@@ -189,6 +278,7 @@ beforeAll(async () => {
   await administrationPool.query(`CREATE SCHEMA ${schema}`);
   await runMigrations(pool, migrationsDirectory);
   bundleDirectory = await mkdtemp(path.join(tmpdir(), "moya-p5-import-"));
+  xlsxDirectory = await mkdtemp(path.join(tmpdir(), "moya-xlsx-import-"));
 });
 
 beforeEach(async () => {
@@ -203,9 +293,156 @@ afterAll(async () => {
   await administrationPool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await closePostgresPool(administrationPool);
   await rm(bundleDirectory, { recursive: true, force: true });
+  await rm(xlsxDirectory, { recursive: true, force: true });
 });
 
 describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
+  it("converges CSV and XLSX through the same dry-run, apply, and PostgreSQL state", async () => {
+    const csv = await parseCatalogImportCsvBundle(bundleDirectory);
+    const xlsx = await parseCatalogImportXlsxFile(await writeXlsxWorkbook());
+    expect(xlsx.envelope).toEqual(csv.envelope);
+    expect(xlsx.canonicalInputSha256).toBe(csv.canonicalInputSha256);
+
+    const completedAt = "2026-08-15T00:00:00.000Z";
+    const csvDryRun = await createCatalogImportDryRun(pool, csv, completedAt);
+    const xlsxDryRun = await createCatalogImportDryRun(pool, xlsx, completedAt);
+    expect(xlsxDryRun).toEqual(csvDryRun);
+    await applyCatalogImport(
+      pool,
+      applyInput(csv, csvDryRun, "cross-format-csv"),
+    );
+    const csvState = await readImporterDatabaseState();
+    const csvSemanticState = {
+      entries: csvState.entries,
+      aliases: csvState.aliases,
+      sources: csvState.sources,
+    };
+
+    await pool.query(
+      "TRUNCATE catalog_import_operations, catalog_entries CASCADE",
+    );
+    const freshXlsxDryRun = await createCatalogImportDryRun(
+      pool,
+      xlsx,
+      completedAt,
+    );
+    expect(freshXlsxDryRun.dryRunResultSha256).toBe(
+      csvDryRun.dryRunResultSha256,
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(xlsx, freshXlsxDryRun, "cross-format-xlsx"),
+    );
+    const xlsxState = await readImporterDatabaseState();
+    expect({
+      entries: xlsxState.entries,
+      aliases: xlsxState.aliases,
+      sources: xlsxState.sources,
+    }).toEqual(csvSemanticState);
+  });
+
+  it("keeps XLSX ownerNote fail-closed for CREATE and UPDATE with zero mutation", async () => {
+    const create = await parseCatalogImportXlsxFile(
+      await writeXlsxWorkbook({ ownerNote: "仅供 Owner 审核" }),
+    );
+    const createDryRun = await createCatalogImportDryRun(
+      pool,
+      create,
+      "2026-08-15T00:00:00.100Z",
+    );
+    expect(createDryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      applyBlockers: ["DEFERRED_FIELD_NOT_PRESERVED"],
+      findings: [
+        {
+          field: "ownerNote",
+          persistenceDisposition: "RAW_ONLY",
+          applyBlocker: "DEFERRED_FIELD_NOT_PRESERVED",
+        },
+      ],
+    });
+    const beforeCreate = await readImporterDatabaseState();
+    let allocations = 0;
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(create, createDryRun, "xlsx-owner-note-create"),
+        catalogIdAllocator: {
+          allocateCatalogId: () => {
+            allocations += 1;
+            return "catalog-never-allocated";
+          },
+        },
+      }),
+    ).rejects.toThrow("Import dry-run is not apply-ready");
+    expect(allocations).toBe(0);
+    await expect(readImporterDatabaseState()).resolves.toEqual(beforeCreate);
+
+    await writeBundle({ alias: false });
+    const seed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const seedDryRun = await createCatalogImportDryRun(
+      pool,
+      seed,
+      "2026-08-15T00:00:00.200Z",
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(seed, seedDryRun, "xlsx-owner-note-seed"),
+    );
+    const beforeUpdate = await readImporterDatabaseState();
+    const update = await parseCatalogImportXlsxFile(
+      await writeXlsxWorkbook({
+        catalogId: "catalog-platform-test-001",
+        alias: false,
+        ownerNote: "仅供 Owner 审核",
+      }),
+    );
+    const updateDryRun = await createCatalogImportDryRun(
+      pool,
+      update,
+      "2026-08-15T00:00:00.300Z",
+    );
+    expect(updateDryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      applyBlockers: ["DEFERRED_FIELD_NOT_PRESERVED"],
+      findings: [{ field: "ownerNote" }],
+    });
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(update, updateDryRun, "xlsx-owner-note-update"),
+        authorization: authorization(updateDryRun, [], "PRODUCTION"),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("Import dry-run is not apply-ready");
+    await expect(readImporterDatabaseState()).resolves.toEqual(beforeUpdate);
+  });
+
+  it("keeps XLSX alias collection UPDATE fail-closed before mutation", async () => {
+    const seed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const seedDryRun = await createCatalogImportDryRun(
+      pool,
+      seed,
+      "2026-08-15T00:00:00.400Z",
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(seed, seedDryRun, "xlsx-alias-seed"),
+    );
+    const before = await readImporterDatabaseState();
+    const update = await parseCatalogImportXlsxFile(
+      await writeXlsxWorkbook({
+        catalogId: "catalog-platform-test-001",
+        aliasValue: "测试新别名",
+        aliasType: "alternate",
+      }),
+    );
+    await expect(
+      createCatalogImportDryRun(pool, update, "2026-08-15T00:00:00.500Z"),
+    ).rejects.toThrow("does not define alias merge/replace semantics");
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
+  });
+
   it("requires a caller allocator, rolls back atomically, applies, and replays", async () => {
     const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
     const dryRun = await createCatalogImportDryRun(
@@ -617,6 +854,53 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
       }),
     ).rejects.toThrow("Validation-only authorization is not accepted");
     expect(allocations).toBe(0);
+  });
+
+  it("rejects stale dry-runs and operation IDs reused with different hashes", async () => {
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const dryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:05.050Z",
+    );
+    await pool.query(
+      "INSERT INTO catalog_entries(catalog_id, kind, title) VALUES ($1, $2, $3)",
+      ["catalog-concurrent", "inscription", "测试碑刻"],
+    );
+    await expect(
+      applyCatalogImport(pool, applyInput(parsed, dryRun, "p5-stale-dry-run")),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        "SELECT COUNT(*)::integer AS count FROM catalog_import_operations",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+
+    await pool.query("TRUNCATE catalog_entries CASCADE");
+    const freshDryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:05.060Z",
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(parsed, freshDryRun, "p5-operation-reuse"),
+    );
+    await writeBundle({ title: "测试碑刻修订" });
+    const changed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const changedDryRun = await createCatalogImportDryRun(
+      pool,
+      changed,
+      "2026-08-15T00:00:05.070Z",
+    );
+    const beforeReuse = await readImporterDatabaseState();
+    await expect(
+      applyCatalogImport(
+        pool,
+        applyInput(changed, changedDryRun, "p5-operation-reuse"),
+      ),
+    ).rejects.toThrow("operation identity was reused with different hashes");
+    await expect(readImporterDatabaseState()).resolves.toEqual(beforeReuse);
   });
 
   it("rejects scalar factual VALUE tampering before allocation or mutation", async () => {

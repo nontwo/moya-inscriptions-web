@@ -12,24 +12,25 @@ infrastructure已经实现；正式Web/Admin、真实数据接入和其余产品
 Catalog Contract Phase 1及T04.2 canonical
 migration；`main`继续保留稳定的T00/治理基线。
 
-| 任务      | 状态           | 当前成果                                                             |
-| --------- | -------------- | -------------------------------------------------------------------- |
-| T00       | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理            |
-| T01       | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                             |
-| T02       | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试             |
-| T03       | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档            |
-| T04.0-R   | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫                  |
-| T04.1-D   | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards      |
-| T04.2     | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes         |
-| T04.3     | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration       |
-| T05.0     | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown         |
-| T05.1     | 已实现         | Catalog list/detail HTTP boundary与development/test fixture          |
-| T05.2     | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition    |
-| T05.3     | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService          |
-| T05.4-A   | Owner 已批准   | versioned Import Contract、Owner Workbook/CSV spec与安全空白template |
-| T05.4-A.2 | 本分支对齐中   | current persistence policy、Owner guidance与workbook reconciliation  |
-| 手机原型  | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片                |
-| T06–T09   | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                    |
+| 任务      | 状态           | 当前成果                                                                 |
+| --------- | -------------- | ------------------------------------------------------------------------ |
+| T00       | 已完成         | pnpm/Turborepo Monorepo、Web/Admin/API 骨架、CI、协作治理                |
+| T01       | 已重建         | 来源无关的公开档案 DTO 与 runtime schema                                 |
+| T02       | 已完成         | Design tokens、公共 UI、正式视觉资产、组件目录与单元测试                 |
+| T03       | 已完成         | CloudBase 中国大陆候选架构、无密钥示例和人工检查/回滚文档                |
+| T04.0-R   | 已完成         | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫                      |
+| T04.1-D   | Phase 1 已实现 | Catalog contracts、Query Port、read projections、mapper与guards          |
+| T04.2     | 已实现         | Catalog-only contracts、Query Port和canonical OpenAPI routes             |
+| T04.3     | 本分支已实现   | 两值一级CatalogKind与append-only PostgreSQL contract migration           |
+| T05.0     | 已实现         | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown             |
+| T05.1     | 已实现         | Catalog list/detail HTTP boundary与development/test fixture              |
+| T05.2     | 已实现         | PostgreSQL read schema、adapter、显式迁移与production composition        |
+| T05.3     | 本分支已实现   | 长期数据治理、strict query、Kind filter与CatalogReadService              |
+| T05.4-A   | Owner 已批准   | versioned Import Contract、Owner Workbook/CSV spec与安全空白template     |
+| T05.4-A.2 | 已完成并合并   | current persistence policy、Owner guidance与workbook reconciliation      |
+| T05.4-B   | 本分支已实现   | bounded XLSX parser、CSV/XLSX convergence、diagnostics与raw-source guard |
+| 手机原型  | 已隔离保存     | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片                    |
+| T06–T09   | 未开始         | 图片管线、正式 Web 浏览/搜索/详情                                        |
 
 ## 当前能做什么
 
@@ -50,14 +51,13 @@ migration；`main`继续保留稳定的T00/治理基线。
   composition在listener前只读验证PostgreSQL 18 major与required migration
   ledger。
 - 使用`@moya/catalog-importer`解析strict `catalog-import/v1` CSV
-  bundle，执行PostgreSQL-backed dry-run，并在独立hash-bound
-  authorization下transactionally
+  bundle或`catalog-import-xlsx/v1` workbook，执行PostgreSQL-backed
+  dry-run，并在独立hash-bound authorization下transactionally
   apply；facts/states、description、alias/aliasType、SourceId/provenance和operation
   audit均可持久化。
 
 当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
-HTTP在development/test缺省使用三个条目的fixture；真实数据导入、XLSX
-parser、Importer Admin
+HTTP在development/test缺省使用三个条目的fixture；真实数据导入、Importer Admin
 UI、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
 
 T05.4-A/A.1历史checkpoint冻结了`catalog-import/v1` internal canonical
@@ -154,11 +154,8 @@ python3 -m http.server 4173
 
 ## 下一步
 
-1. 完成T05.4-A.2 current policy/documentation/workbook reconciliation，并经Owner
-   review。
-2. 另行完成T05.4-B的XLSX parser、CSV/XLSX
-   convergence、diagnostics、安全边界与controlled-importer authorization
-   hardening；不得直接导入1658条正式数据。
+1. Owner review并merge T05.4-B；不得直接导入1658条正式数据。
+2. 后续单独决定Importer Admin、真实数据导入与publication workflow。
 3. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。

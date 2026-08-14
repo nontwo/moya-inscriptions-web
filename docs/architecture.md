@@ -21,9 +21,9 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
 - `services/backend-production` 是production composition
   root，只组合runtime与PostgreSQL adapter，并管理pool lifecycle。
 - `services/catalog-importer` 是private server-only `catalog-import/v1`
-  boundary，负责strict CSV parse、canonical validation、PostgreSQL-backed
-  dry-run与transactional apply；它不定义Public API，也不读取external research
-  project或SQLite。
+  boundary，负责bounded XLSX / strict CSV parse、shared canonical
+  validation、PostgreSQL-backed dry-run与transactional apply；它不定义Public
+  API，也不读取external research project或SQLite。
 - `services/api` 是backend-only Modular Monolith application
   boundary，当前拥有Catalog normalized query、internal read projections、
   `CatalogQueryPort`、transport parser和Public Contract
@@ -138,7 +138,9 @@ Raw source 默认不得被任何 runtime
 workspace 读取。只有经架构 allowlist 明确批准的 backend importer
 package，并同时声明
 `moyaArchitecture.rawSourceAccess = "controlled-importer"`，才可获得例外；Frontend
-workspace 永久不得授权。T04.0-R 当前 allowlist 为空。
+workspace 永久不得授权。当前 allowlist 精确且仅包含
+`@moya/catalog-importer`，能力范围只覆盖caller显式提供的 `catalog-import/v1` CSV
+bundle与`catalog-import-xlsx/v1` workbook。
 
 ## Long-term data governance
 
@@ -205,8 +207,9 @@ import/apply基础已完成；正式产品业务仍未完成：
   authorization及transactional/idempotent apply。
 - Supplied `ownerNote`当前在所有apply路径共享的pre-write decision处fail
   closed；alias storage已经支持，但undefined collection replace/merge/delete
-  update semantics仍fail closed。XLSX parser、Admin
-  workflow、真实数据导入、图片管线以及T06–T09能力尚未实现。
+  update semantics仍fail closed。T05.4-B在本分支实现bounded XLSX
+  parser、CSV/XLSX convergence、structured diagnostics与唯一controlled-importer
+  authorization；Admin workflow、真实数据导入、图片管线以及T06–T09能力尚未实现。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service
 implementation、数据文件或 PostgreSQL。Frontend 可以 type-import
