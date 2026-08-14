@@ -20,6 +20,10 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
   driver，不定义HTTP或Public contract。
 - `services/backend-production` 是production composition
   root，只组合runtime与PostgreSQL adapter，并管理pool lifecycle。
+- `services/catalog-importer` 是private server-only `catalog-import/v1`
+  boundary，负责strict CSV parse、canonical validation、PostgreSQL-backed
+  dry-run与transactional apply；它不定义Public API，也不读取external research
+  project或SQLite。
 - `services/api` 是backend-only Modular Monolith application
   boundary，当前拥有Catalog normalized query、internal read projections、
   `CatalogQueryPort`、transport parser和Public Contract
@@ -145,7 +149,7 @@ workbook 默认不进入代码 Git。Frontend、HTTP
 runtime 与 application 不得读取 XLSX、CSV、fixture 或 raw source 作为 production
 database。
 
-未来写入路径固定为：
+已批准写入路径固定为：
 
 ```text
 Owner XLSX / CSV
@@ -176,7 +180,8 @@ decision后才能关联或创建Catalog Entity。详细治理决定见
 
 ## Current implementation boundary
 
-工程和设计基础已完成，业务开发尚未开始：
+工程、设计、Catalog read runtime与受控CSV
+import/apply基础已完成；正式产品业务仍未完成：
 
 - 旧 T01 数据方案已经撤回；应用仓库不保存真实数据集或审核候选。
 - T01/T04.0-R的来源无关过渡契约已由T04.2 canonical migration取代。
@@ -192,9 +197,16 @@ decision后才能关联或创建Catalog Entity。详细治理决定见
   list/detail组成；T05.1已接通真实Router、handler、application
   boundary与确定性fixture adapter。
 - T05.1 fixture不是production
-  persistence或1658条正式数据导入；T05.2只建立空PostgreSQL read
-  schema、adapter、migration/readiness lifecycle与production
-  composition。正式数据导入、图片管线以及T06–T09能力尚未实现。
+  persistence或1658条正式数据导入；T05.2建立PostgreSQL read
+  schema、adapter、migration/readiness lifecycle与production composition。
+- 后续批准的Catalog import persistence pipeline增加facts/states、description
+  state、aliasType、internal SourceId/provenance和durable operation
+  audit，并实现strict CSV parse、dry-run、hash-bound
+  authorization及transactional/idempotent apply。
+- Supplied `ownerNote`当前在所有apply路径共享的pre-write decision处fail
+  closed；alias storage已经支持，但undefined collection replace/merge/delete
+  update semantics仍fail closed。XLSX parser、Admin
+  workflow、真实数据导入、图片管线以及T06–T09能力尚未实现。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service
 implementation、数据文件或 PostgreSQL。Frontend 可以 type-import

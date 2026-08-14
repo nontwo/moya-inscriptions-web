@@ -287,7 +287,7 @@ const addInstructionsSheet = (workbook) => {
     "State：事实字段使用 VALUE / UNSUPPLIED / UNKNOWN / NOT_APPLICABLE / CLEAR；description 仅使用 VALUE / UNSUPPLIED / CLEAR。state 为 UNKNOWN、NOT_APPLICABLE 或 CLEAR 时，value 必须为空。",
     "Location：province / prefecture / county 是行政区；currentLocation 是具体地点或遗址；currentCustodian 是当前管理或保管机构。",
     "纯 synthetic 示例：province=福建省，prefecture=泉州市，county=洛江区，currentLocation=万安某处，currentCustodian=某文物管理机构。该示例不是 production data。",
-    "SourceId mirroring：03_Provenance 可在相同 catalogImportId 下镜像主表 sourceId 以扩展同一 SourceRecord metadata；重复 pair 或跨 Catalog 绑定冲突会失败。",
+    "SourceId persistence：每条 01_Catalog 在 Apply 时都需要一条相同 catalogImportId + sourceId 的 03_Provenance 主来源行；可另加其他来源。重复 pair 或跨 Catalog 绑定冲突会失败。",
   ];
   identityGuidance.forEach((line, index) =>
     addInstructionLine(worksheet, 18 + index, line),
@@ -355,8 +355,9 @@ const addInstructionsSheet = (workbook) => {
     "D. Advanced persistence / approval / hash notes",
   );
   const advanced = [
-    "当前 Apply 有硬性 persistence-gap gate：temporal/region/location/custodian、aliasType、SourceRecord/provenance 与 durable Import Batch audit 未闭合前不得无损 Apply。Approval 不能授权 silent loss。",
-    "Alias row 受 ALIAS_TYPE_STORAGE_REQUIRED 阻断；raw provenance 受 PROVENANCE_STORAGE_REQUIRED 阻断。不得部分写入或用 audit preservation 冒充 domain persistence。",
+    "当前 Apply 已支持：title / CatalogKind、事实字段 value/state、description、alias / aliasType、SourceId / provenance metadata，以及 durable Import Batch audit。",
+    "仍然 fail closed：supplied ownerNote 不会静默丢弃；alias collection UPDATE 的 replace / merge / delete semantics 尚未定义。",
+    "Research evidence、Owner research decisions/state 与 external ResearchRecord / SQLite state 不属于 catalog-import/v1。",
     "Identity conflict 始终不可 approval；Level A/B critical changes 需要 field-level approval；每个 CLEAR 都需要 field-level approval。",
     "Approval 绑定 importContractVersion、canonicalInputSha256、dryRunResultSha256。canonicalInputSha256 由 validated canonical rows 按稳定业务键排序后计算；单纯重排 workbook rows 不改变 semantic hash。sourceArtifactSha256 只承担文件级审计。",
     "本 template 不包含 parser、diff、dry-run runtime、apply、database write、migration、Admin、publication、media 或 production data。",

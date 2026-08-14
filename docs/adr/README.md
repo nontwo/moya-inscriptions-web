@@ -16,6 +16,8 @@ status仍由每份ADR独立声明。ADR 0001–0003中的Archive术语保留为�
 migration已由T04.1-D与T04.2实现，其中三值CatalogKind决定由ADR
 0005取代。PostgreSQL read foundation与HTTP runtime已由T05.0–T05.2实现。
 
-Importer、Admin CRUD、地区审核和真实数据接入尚未实现。ADR
+受控`catalog-import/v1` CSV validation/dry-run/apply与PostgreSQL
+persistence已经实现；XLSX parser、Importer Admin
+CRUD、地区审核和真实数据接入尚未实现。ADR
 0002 保留为历史记录，其中的搜索、分类和图片公开边界已由 ADR 0003 取代。ADR
 0006 冻结这些未来能力必须遵守的数据权威、identity、provenance、publication 与写入治理边界，不代表提前实现相应 subsystem。

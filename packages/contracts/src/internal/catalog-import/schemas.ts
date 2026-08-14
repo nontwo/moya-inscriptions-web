@@ -252,8 +252,6 @@ export const applyBlockerCodeSchema = z.enum([
   "IDENTITY_CONFLICT",
   "VALIDATION_ERROR",
   "DEFERRED_FIELD_NOT_PRESERVED",
-  "ALIAS_TYPE_STORAGE_REQUIRED",
-  "PROVENANCE_STORAGE_REQUIRED",
   "DUPLICATE_CANDIDATE_UNRESOLVED",
   "APPROVAL_REQUIRED",
   "APPROVAL_HASH_MISMATCH",
@@ -356,43 +354,13 @@ export const dryRunFindingSchema = z
     if (
       finding.persistenceDisposition !== undefined &&
       finding.persistenceDisposition !== "SUPPORTED_NOW" &&
-      ["ADD", "UPDATE", "CRITICAL_CHANGE", "ORDINARY_CHANGE"].includes(
-        finding.category,
-      ) &&
-      ![
-        "DEFERRED_FIELD_NOT_PRESERVED",
-        "ALIAS_TYPE_STORAGE_REQUIRED",
-        "PROVENANCE_STORAGE_REQUIRED",
-      ].includes(finding.applyBlocker ?? "")
+      finding.applyBlocker !== "DEFERRED_FIELD_NOT_PRESERVED"
     ) {
       context.addIssue({
         code: "custom",
         path: ["applyBlocker"],
         message:
           "Deferred and raw changes require an explicit persistence blocker",
-      });
-    }
-    if (
-      (finding.field === "alias" || finding.field === "aliasType") &&
-      finding.applyBlocker !== "ALIAS_TYPE_STORAGE_REQUIRED"
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["applyBlocker"],
-        message: "Alias changes require the aliasType persistence blocker",
-      });
-    }
-    if (
-      finding.field !== undefined &&
-      ["sourceTitle", "sourceTypeRaw", "sourceUrl", "sourceNote"].includes(
-        finding.field,
-      ) &&
-      finding.applyBlocker !== "PROVENANCE_STORAGE_REQUIRED"
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["applyBlocker"],
-        message: "Provenance changes require dedicated SourceRecord storage",
       });
     }
   });
@@ -467,8 +435,6 @@ export const catalogImportDryRunSchema = z
     for (const blocker of [
       "IDENTITY_CONFLICT",
       "DEFERRED_FIELD_NOT_PRESERVED",
-      "ALIAS_TYPE_STORAGE_REQUIRED",
-      "PROVENANCE_STORAGE_REQUIRED",
     ] as const) {
       if (
         blockers.has(blocker) &&

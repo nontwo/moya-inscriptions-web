@@ -252,7 +252,8 @@ const catalogFields = [
     machineHeader: CATALOG_IMPORT_CATALOG_HEADERS[21],
     presentationHeader: "内部备注",
     requiredness: "OPTIONAL",
-    guidance: "仅供 Owner 审核；不发布，不提供 destructive state。",
+    guidance:
+      "仅供 Owner 审核；不发布。当前 supplied ownerNote 会 fail closed，不发生 Apply 写入。",
     example: "纯合成内部备注",
     width: 36,
     wrap: true,
