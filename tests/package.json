@@ -12,6 +12,7 @@
   "devDependencies": {
     "@moya/api": "workspace:*",
     "@moya/backend-runtime": "workspace:*",
+    "@moya/catalog-importer": "workspace:*",
     "@moya/backend-production": "workspace:*",
     "@moya/catalog-postgres": "workspace:*",
     "@moya/contracts": "workspace:*",

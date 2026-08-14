@@ -156,6 +156,22 @@ importers:
         specifier: 24.13.3
         version: 24.13.3
 
+  services/catalog-importer:
+    dependencies:
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      pg:
+        specifier: 8.22.0
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
+
   services/catalog-postgres:
     dependencies:
       '@moya/api':
@@ -192,6 +208,9 @@ importers:
       '@moya/backend-runtime':
         specifier: workspace:*
         version: link:../services/backend-runtime
+      '@moya/catalog-importer':
+        specifier: workspace:*
+        version: link:../services/catalog-importer
       '@moya/catalog-postgres':
         specifier: workspace:*
         version: link:../services/catalog-postgres
