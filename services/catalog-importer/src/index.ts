@@ -328,6 +328,27 @@ const findingId = (sourceId: string, field: string, operation: string) =>
     `finding-${textSha256(`${sourceId}\0${field}\0${operation}`).slice(0, 32)}`,
   );
 
+const ownerNotePersistenceFinding = (
+  row: CanonicalRow,
+): CatalogImportDryRun["findings"][number] | undefined =>
+  row.ownerNote === undefined
+    ? undefined
+    : {
+        findingId: findingId(String(row.sourceId), "ownerNote", "SET"),
+        catalogImportId: row.catalogImportId,
+        sourceId: row.sourceId,
+        ...(row.catalogId === undefined ? {} : { catalogId: row.catalogId }),
+        category: "ERROR",
+        field: "ownerNote",
+        protectionLevel: "LEVEL_C",
+        persistenceDisposition: "RAW_ONLY",
+        applyBlocker: "DEFERRED_FIELD_NOT_PRESERVED",
+        operation: "SET",
+        approvable: false,
+        requiresFieldApproval: false,
+        message: "ownerNote cannot be silently discarded by apply",
+      };
+
 const sameField = (
   incoming: CanonicalField,
   existing: { readonly state: string; readonly value: string | null },
@@ -463,28 +484,37 @@ export const createCatalogImportDryRun = async (
       continue;
     }
 
-    if (targetId !== undefined) {
-      const target = catalogMap.get(targetId);
-      if (target === undefined) {
-        conflict += 1;
-        findings.push({
-          findingId: findingId(sourceId, "catalogId", "not-found"),
-          catalogImportId: row.catalogImportId,
-          sourceId: row.sourceId,
-          catalogId: row.catalogId,
-          category: "IDENTITY_CONFLICT",
-          field: "catalogId",
-          identityConflictReason: "CATALOG_ID_NOT_FOUND",
-          applyBlocker: "IDENTITY_CONFLICT",
-          approvable: false,
-          requiresFieldApproval: false,
-          message: "The supplied CatalogId update target does not exist",
-        });
-        continue;
-      }
+    const target =
+      targetId === undefined ? undefined : catalogMap.get(targetId);
+    if (targetId !== undefined && target === undefined) {
+      conflict += 1;
+      findings.push({
+        findingId: findingId(sourceId, "catalogId", "not-found"),
+        catalogImportId: row.catalogImportId,
+        sourceId: row.sourceId,
+        catalogId: row.catalogId,
+        category: "IDENTITY_CONFLICT",
+        field: "catalogId",
+        identityConflictReason: "CATALOG_ID_NOT_FOUND",
+        applyBlocker: "IDENTITY_CONFLICT",
+        approvable: false,
+        requiresFieldApproval: false,
+        message: "The supplied CatalogId update target does not exist",
+      });
+      continue;
+    }
+
+    const ownerNoteFinding = ownerNotePersistenceFinding(row);
+    if (ownerNoteFinding !== undefined) {
+      error += 1;
+      findings.push(ownerNoteFinding);
+      continue;
+    }
+
+    if (target !== undefined) {
       assertDefinedAliasUpdate(
         importId,
-        targetId,
+        target.catalog_id,
         canonical.envelope.aliasRows,
         aliases.rows,
       );
@@ -632,24 +662,6 @@ export const createCatalogImportDryRun = async (
         requiresFieldApproval: true,
         message: `The create input explicitly requests destructive CLEAR semantics for ${field}`,
       });
-    }
-    if (row.ownerNote !== undefined) {
-      error += 1;
-      findings.push({
-        findingId: findingId(sourceId, "ownerNote", "SET"),
-        catalogImportId: row.catalogImportId,
-        sourceId: row.sourceId,
-        category: "ERROR",
-        field: "ownerNote",
-        protectionLevel: "LEVEL_C",
-        persistenceDisposition: "RAW_ONLY",
-        applyBlocker: "DEFERRED_FIELD_NOT_PRESERVED",
-        operation: "SET",
-        approvable: false,
-        requiresFieldApproval: false,
-        message: "ownerNote cannot be silently discarded by apply",
-      });
-      continue;
     }
     add += 1;
   }
