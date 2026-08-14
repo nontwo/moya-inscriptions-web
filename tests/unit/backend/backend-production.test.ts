@@ -1,4 +1,7 @@
-import { prepareProductionBackend } from "@moya/backend-production";
+import {
+  platformCatalogIdAllocator,
+  prepareProductionBackend,
+} from "@moya/backend-production";
 import { describe, expect, it } from "vitest";
 
 const productionEnvironment = {
@@ -8,6 +11,16 @@ const productionEnvironment = {
 } as const;
 
 describe("production backend composition", () => {
+  it("allocates platform-owned CatalogIds without SourceId input", () => {
+    const first = platformCatalogIdAllocator.allocateCatalogId();
+    const second = platformCatalogIdAllocator.allocateCatalogId();
+
+    expect(first).toMatch(
+      /^catalog-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(second).not.toBe(first);
+  });
+
   it("requires production mode before database initialization", async () => {
     await expect(
       prepareProductionBackend({

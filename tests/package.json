@@ -6,12 +6,13 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude integration/postgres/**",
+    "test": "vitest run --exclude 'integration/postgres/**'",
     "test:postgres": "vitest run integration/postgres"
   },
   "devDependencies": {
     "@moya/api": "workspace:*",
     "@moya/backend-runtime": "workspace:*",
+    "@moya/catalog-importer": "workspace:*",
     "@moya/backend-production": "workspace:*",
     "@moya/catalog-postgres": "workspace:*",
     "@moya/contracts": "workspace:*",

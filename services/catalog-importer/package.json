@@ -1,0 +1,31 @@
+{
+  "name": "@moya/catalog-importer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "p5:api-audit": "node dist/api-audit-cli.js",
+    "p5:apply-validation": "node dist/validation-apply-cli.js",
+    "p5:validate": "node dist/validation-cli.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@moya/contracts": "workspace:*",
+    "pg": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@types/pg": "8.20.0"
+  }
+}
