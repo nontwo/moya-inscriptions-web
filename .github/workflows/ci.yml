@@ -99,7 +99,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build database integration dependencies
-        run: pnpm --filter @moya/backend-production... build
+        run: >-
+          pnpm --filter @moya/backend-production... --filter
+          @moya/catalog-importer... build
 
       - name: Apply database migrations
         run: pnpm db:migrate
