@@ -871,6 +871,7 @@ export const applyCatalogImport = async (
     completedAt: _suppliedCompletedAt,
     ...suppliedDryRunBody
   } = suppliedDryRun;
+  void _suppliedCompletedAt;
   if (hashCatalogImportDryRun(suppliedDryRunBody) !== suppliedDryRunHash) {
     throw new Error("Supplied dry-run result hash is invalid");
   }
