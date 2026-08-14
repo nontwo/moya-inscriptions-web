@@ -54,6 +54,7 @@ const writeBundle = async (input?: {
   readonly description?: string;
   readonly descriptionState?: "VALUE" | "UNSUPPLIED" | "CLEAR";
   readonly alias?: boolean;
+  readonly ownerNote?: string;
 }) => {
   const description = input?.description ?? "测试说明";
   const descriptionState = input?.descriptionState ?? "VALUE";
@@ -79,7 +80,7 @@ const writeBundle = async (input?: {
     "",
     description,
     descriptionState,
-    "",
+    input?.ownerNote ?? "",
   ].join(",");
   await Promise.all([
     writeFile(
@@ -296,6 +297,105 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     expect(persisted.rows).toEqual([
       { catalog_id: "catalog-platform-test-001", title: "测试碑刻修订" },
     ]);
+  });
+
+  it("fails closed on supplied ownerNote for CREATE before any persistence mutation", async () => {
+    await writeBundle({ ownerNote: "仅供 Owner 审核" });
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const dryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:02.100Z",
+    );
+    expect(dryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      applyBlockers: ["DEFERRED_FIELD_NOT_PRESERVED"],
+      resultCounts: { add: 0, update: 0, unchanged: 0, error: 1 },
+      findings: [
+        {
+          field: "ownerNote",
+          category: "ERROR",
+          persistenceDisposition: "RAW_ONLY",
+          applyBlocker: "DEFERRED_FIELD_NOT_PRESERVED",
+          approvable: false,
+          requiresFieldApproval: false,
+          operation: "SET",
+          message: "ownerNote cannot be silently discarded by apply",
+        },
+      ],
+    });
+
+    const before = await readImporterDatabaseState();
+    let allocations = 0;
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(parsed, dryRun, "p5-owner-note-create"),
+        catalogIdAllocator: {
+          allocateCatalogId: () => {
+            allocations += 1;
+            return "catalog-never-allocated";
+          },
+        },
+      }),
+    ).rejects.toThrow("Import dry-run is not apply-ready");
+    expect(allocations).toBe(0);
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
+  });
+
+  it("fails closed on supplied ownerNote for UPDATE before any persistence mutation", async () => {
+    await writeBundle({ alias: false });
+    const seed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const seedDryRun = await createCatalogImportDryRun(
+      pool,
+      seed,
+      "2026-08-15T00:00:02.200Z",
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(seed, seedDryRun, "p5-owner-note-update-seed"),
+    );
+    const before = await readImporterDatabaseState();
+
+    await writeBundle({
+      catalogId: "catalog-platform-test-001",
+      alias: false,
+      ownerNote: "仅供 Owner 审核",
+    });
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const dryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:02.300Z",
+    );
+    expect(dryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      applyBlockers: ["DEFERRED_FIELD_NOT_PRESERVED"],
+      resultCounts: { add: 0, update: 0, unchanged: 0, error: 1 },
+      findings: [
+        {
+          catalogId: "catalog-platform-test-001",
+          field: "ownerNote",
+          category: "ERROR",
+          persistenceDisposition: "RAW_ONLY",
+          applyBlocker: "DEFERRED_FIELD_NOT_PRESERVED",
+          approvable: false,
+          requiresFieldApproval: false,
+          operation: "SET",
+          message: "ownerNote cannot be silently discarded by apply",
+        },
+      ],
+    });
+
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(parsed, dryRun, "p5-owner-note-update"),
+        authorization: authorization(dryRun, [], "PRODUCTION"),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("Import dry-run is not apply-ready");
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
   });
 
   it("surfaces CLEAR and requires its exact field approval", async () => {
