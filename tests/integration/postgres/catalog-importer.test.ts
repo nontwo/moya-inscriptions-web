@@ -159,6 +159,28 @@ const applyInput = (
   ...overrides,
 });
 
+const readImporterDatabaseState = async () => {
+  const [entries, aliases, sources, operations, operationItems] =
+    await Promise.all([
+      pool.query("SELECT * FROM catalog_entries ORDER BY catalog_id"),
+      pool.query("SELECT * FROM catalog_aliases ORDER BY catalog_id, position"),
+      pool.query("SELECT * FROM catalog_import_sources ORDER BY source_id"),
+      pool.query(
+        "SELECT * FROM catalog_import_operations ORDER BY operation_id",
+      ),
+      pool.query(
+        "SELECT * FROM catalog_import_operation_items ORDER BY operation_id, catalog_import_id",
+      ),
+    ]);
+  return {
+    entries: entries.rows,
+    aliases: aliases.rows,
+    sources: sources.rows,
+    operations: operations.rows,
+    operationItems: operationItems.rows,
+  };
+};
+
 beforeAll(async () => {
   await administrationPool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await administrationPool.query(`CREATE SCHEMA ${schema}`);
@@ -423,6 +445,143 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
       }),
     ).rejects.toThrow("Validation-only authorization is not accepted");
     expect(allocations).toBe(0);
+  });
+
+  it("rejects scalar factual VALUE tampering before allocation or mutation", async () => {
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const dryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:05.100Z",
+    );
+    const before = await readImporterDatabaseState();
+    let allocations = 0;
+    const allocator: CatalogIdAllocator = {
+      allocateCatalogId: () => {
+        allocations += 1;
+        return "catalog-never-allocated";
+      },
+    };
+    const factualValueTampered = {
+      ...parsed,
+      envelope: {
+        ...parsed.envelope,
+        catalogRows: parsed.envelope.catalogRows.map((row) => ({
+          ...row,
+          description: {
+            state: "VALUE" as const,
+            value: "篡改后的事实值",
+          },
+        })),
+      },
+    };
+
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(
+          factualValueTampered,
+          dryRun,
+          "p5-tampered-factual-value",
+        ),
+        authorization: authorization(dryRun, [], "PRODUCTION"),
+        catalogIdAllocator: allocator,
+      }),
+    ).rejects.toThrow("metadata does not match its envelope");
+    expect(allocations).toBe(0);
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
+  });
+
+  it("rejects a standalone canonical input hash mismatch before allocation or mutation", async () => {
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const dryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:05.200Z",
+    );
+    const before = await readImporterDatabaseState();
+    let allocations = 0;
+    const allocator: CatalogIdAllocator = {
+      allocateCatalogId: () => {
+        allocations += 1;
+        return "catalog-never-allocated";
+      },
+    };
+    const canonicalHashMismatched = {
+      ...parsed,
+      canonicalInputSha256:
+        "0000000000000000000000000000000000000000000000000000000000000000",
+    };
+
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(
+          canonicalHashMismatched,
+          dryRun,
+          "p5-canonical-hash-mismatch",
+        ),
+        authorization: authorization(dryRun, [], "PRODUCTION"),
+        catalogIdAllocator: allocator,
+      }),
+    ).rejects.toThrow("metadata does not match its envelope");
+    expect(allocations).toBe(0);
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
+  });
+
+  it("rejects an unknown finding approval before allocation or mutation", async () => {
+    await writeBundle({ alias: false });
+    const seed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const seedDryRun = await createCatalogImportDryRun(
+      pool,
+      seed,
+      "2026-08-15T00:00:05.300Z",
+    );
+    await applyCatalogImport(
+      pool,
+      applyInput(seed, seedDryRun, "p5-unknown-finding-seed"),
+    );
+    await writeBundle({
+      catalogId: "catalog-platform-test-001",
+      description: "",
+      descriptionState: "CLEAR",
+      alias: false,
+    });
+    const parsed = await parseCatalogImportCsvBundle(bundleDirectory);
+    const dryRun = await createCatalogImportDryRun(
+      pool,
+      parsed,
+      "2026-08-15T00:00:05.400Z",
+    );
+    const legitimateFinding = String(dryRun.findings[0]?.findingId);
+    const unknownFinding = "finding-well-formed-but-absent";
+    expect(dryRun.findings).toEqual([
+      expect.objectContaining({
+        findingId: legitimateFinding,
+        operation: "CLEAR",
+        requiresFieldApproval: true,
+      }),
+    ]);
+    const before = await readImporterDatabaseState();
+    let allocations = 0;
+    const allocator: CatalogIdAllocator = {
+      allocateCatalogId: () => {
+        allocations += 1;
+        return "catalog-never-allocated";
+      },
+    };
+
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(parsed, dryRun, "p5-unknown-finding-approval"),
+        authorization: authorization(
+          dryRun,
+          [legitimateFinding, unknownFinding],
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: allocator,
+      }),
+    ).rejects.toThrow("unknown or non-approvable finding");
+    expect(allocations).toBe(0);
+    await expect(readImporterDatabaseState()).resolves.toEqual(before);
   });
 
   it("rejects malformed CSV and unsupported kinds before dry-run", async () => {
