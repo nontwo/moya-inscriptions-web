@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "p5:api-audit": "node dist/api-audit-cli.js",
+    "p5:apply-validation": "node dist/validation-apply-cli.js",
     "p5:validate": "node dist/validation-cli.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
