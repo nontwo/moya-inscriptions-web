@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude integration/postgres/**",
+    "test": "vitest run --exclude 'integration/postgres/**'",
     "test:postgres": "vitest run integration/postgres"
   },
   "devDependencies": {
