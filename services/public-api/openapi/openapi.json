@@ -87,8 +87,16 @@
                   "type": "string"
                 },
                 "src": {
-                  "format": "uri",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                      "type": "string"
+                    }
+                  ]
                 },
                 "width": {
                   "exclusiveMinimum": 0,
@@ -130,8 +138,16 @@
                 "type": "string"
               },
               "src": {
-                "format": "uri",
-                "type": "string"
+                "allOf": [
+                  {
+                    "format": "uri",
+                    "type": "string"
+                  },
+                  {
+                    "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                    "type": "string"
+                  }
+                ]
               },
               "width": {
                 "exclusiveMinimum": 0,
@@ -254,8 +270,16 @@
                       "type": "string"
                     },
                     "src": {
-                      "format": "uri",
-                      "type": "string"
+                      "allOf": [
+                        {
+                          "format": "uri",
+                          "type": "string"
+                        },
+                        {
+                          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "width": {
                       "exclusiveMinimum": 0,
@@ -357,8 +381,16 @@
                 "type": "string"
               },
               "src": {
-                "format": "uri",
-                "type": "string"
+                "allOf": [
+                  {
+                    "format": "uri",
+                    "type": "string"
+                  },
+                  {
+                    "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                    "type": "string"
+                  }
+                ]
               },
               "width": {
                 "exclusiveMinimum": 0,
@@ -427,8 +459,16 @@
             "type": "string"
           },
           "src": {
-            "format": "uri",
-            "type": "string"
+            "allOf": [
+              {
+                "format": "uri",
+                "type": "string"
+              },
+              {
+                "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                "type": "string"
+              }
+            ]
           },
           "width": {
             "exclusiveMinimum": 0,

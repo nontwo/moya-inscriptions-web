@@ -100,6 +100,12 @@ describe("Catalog Media public identity and contract", () => {
     };
 
     expect(publicMediaSchema.parse(media)).toEqual(media);
+    expect(
+      publicMediaSchema.parse({
+        ...media,
+        src: "http://localhost:3000/media/example.jpg",
+      }).src,
+    ).toBe("http://localhost:3000/media/example.jpg");
     expectTypeOf<MediaId>().not.toEqualTypeOf<CatalogId>();
     expect(mediaIdSchema.safeParse("media id").success).toBe(false);
     expect(mediaIdJsonSchema).toMatchObject({
@@ -110,9 +116,39 @@ describe("Catalog Media public identity and contract", () => {
     });
     expect(publicMediaJsonSchema).toMatchObject({
       additionalProperties: false,
+      properties: {
+        src: {
+          allOf: [
+            { format: "uri", type: "string" },
+            {
+              pattern: "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+              type: "string",
+            },
+          ],
+        },
+      },
       type: "object",
       required: ["id", "kind", "src", "alt", "width", "height"],
     });
+  });
+
+  it.each([
+    "mailto:noreply@example.com",
+    "file:///tmp/media.jpg",
+    "data:image/png;base64,iVBORw0KGgo=",
+    "javascript:alert('media')",
+    "ftp://example.com/media.jpg",
+  ])("rejects non-Web Media src scheme: %s", (src) => {
+    expect(
+      publicMediaSchema.safeParse({
+        id: mediaIdSchema.parse("media-invalid-protocol"),
+        kind: "image",
+        src,
+        alt: "无效协议测试图",
+        width: 800,
+        height: 600,
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects invalid display metadata and every storage-private field", () => {

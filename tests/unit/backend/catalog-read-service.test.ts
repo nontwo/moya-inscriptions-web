@@ -183,7 +183,7 @@ describe("CatalogReadService", () => {
     ]);
   });
 
-  it("classifies resolver exceptions and missing or invalid results", async () => {
+  it("classifies resolver exceptions and missing, malformed, or non-Web URL results", async () => {
     const media = {
       id: mediaIdSchema.parse("media-service-failure"),
       position: 0,
@@ -231,6 +231,11 @@ describe("CatalogReadService", () => {
       {
         async resolveMany() {
           return new Map([[media.id, "not-a-url"]]);
+        },
+      },
+      {
+        async resolveMany() {
+          return new Map([[media.id, "ftp://storage.invalid/media.jpg"]]);
         },
       },
     ] satisfies StorageUrlResolver[]) {

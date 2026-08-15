@@ -21,11 +21,14 @@ const aliasSchema = exactTextSchema(500);
 const summarySchema = exactTextSchema(2_000);
 const displayLabelSchema = exactTextSchema(500);
 const mediaAltSchema = exactTextSchema(2_000);
+const httpOrHttpsUrlSchema = z
+  .url({ protocol: /^https?$/ })
+  .and(z.string().regex(/^[Hh][Tt][Tt][Pp][Ss]?:\/\//));
 
 export const publicMediaSchema = z.strictObject({
   id: mediaIdSchema,
   kind: z.literal("image"),
-  src: z.url(),
+  src: httpOrHttpsUrlSchema,
   alt: mediaAltSchema,
   width: z.number().int().positive(),
   height: z.number().int().positive(),
