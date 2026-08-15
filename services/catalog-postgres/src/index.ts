@@ -20,7 +20,10 @@ export {
   mapAliasRows,
   mapCatalogDetailRow,
   mapCatalogEntryRow,
+  mapCatalogMediaRow,
+  mapCatalogMediaRows,
   mapCitationRows,
+  mapRepresentativeMediaRows,
 } from "./row-mapper.js";
 
 export type { PostgresConfig, PostgresEnvironment } from "./config.js";
@@ -31,4 +34,5 @@ export type {
   CatalogAliasRow,
   CatalogCitationRow,
   CatalogEntryRow,
+  CatalogMediaRow,
 } from "./row-mapper.js";

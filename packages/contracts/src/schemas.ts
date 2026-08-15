@@ -9,10 +9,10 @@ const exactTextSchema = (maximum: number) =>
       message: "Leading or trailing whitespace is not allowed",
     });
 
-const platformContentIdSchema = () =>
-  z.string().min(1).max(128).regex(/^\S+$/).brand<"CatalogId">();
+const platformIdentitySchema = () => z.string().min(1).max(128).regex(/^\S+$/);
 
-export const catalogIdSchema = platformContentIdSchema();
+export const catalogIdSchema = platformIdentitySchema().brand<"CatalogId">();
+export const mediaIdSchema = platformIdentitySchema().brand<"MediaId">();
 
 export const catalogKindSchema = z.enum(["inscription", "calligraphy"]);
 
@@ -20,6 +20,16 @@ const titleSchema = exactTextSchema(500);
 const aliasSchema = exactTextSchema(500);
 const summarySchema = exactTextSchema(2_000);
 const displayLabelSchema = exactTextSchema(500);
+const mediaAltSchema = exactTextSchema(2_000);
+
+export const publicMediaSchema = z.strictObject({
+  id: mediaIdSchema,
+  kind: z.literal("image"),
+  src: z.url(),
+  alt: mediaAltSchema,
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+});
 
 export const publicSourceCitationSchema = z.strictObject({
   label: displayLabelSchema,
@@ -34,12 +44,14 @@ export const catalogSummarySchema = z.strictObject({
   aliases: z.array(aliasSchema),
   summary: summarySchema.optional(),
   periodLabel: exactTextSchema(200).optional(),
+  representativeMedia: publicMediaSchema.optional(),
 });
 
 export const catalogDetailSchema = z.strictObject({
   ...catalogSummarySchema.shape,
   description: exactTextSchema(20_000).optional(),
   sourceCitations: z.array(publicSourceCitationSchema),
+  media: z.array(publicMediaSchema),
 });
 
 const positiveIntegerStringSchema = z

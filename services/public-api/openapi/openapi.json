@@ -62,10 +62,85 @@
             "enum": ["inscription", "calligraphy"],
             "type": "string"
           },
+          "media": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "alt": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "height": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^\\S+$",
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "image",
+                  "type": "string"
+                },
+                "src": {
+                  "format": "uri",
+                  "type": "string"
+                },
+                "width": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": ["id", "kind", "src", "alt", "width", "height"],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "periodLabel": {
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
+          },
+          "representativeMedia": {
+            "additionalProperties": false,
+            "properties": {
+              "alt": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^\\S+$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "image",
+                "type": "string"
+              },
+              "src": {
+                "format": "uri",
+                "type": "string"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": ["id", "kind", "src", "alt", "width", "height"],
+            "type": "object"
           },
           "sourceCitations": {
             "items": {
@@ -102,7 +177,14 @@
             "type": "string"
           }
         },
-        "required": ["id", "kind", "title", "aliases", "sourceCitations"],
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "aliases",
+          "sourceCitations",
+          "media"
+        ],
         "type": "object"
       },
       "CatalogId": {
@@ -147,6 +229,42 @@
                   "maxLength": 200,
                   "minLength": 1,
                   "type": "string"
+                },
+                "representativeMedia": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "alt": {
+                      "maxLength": 2000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "height": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^\\S+$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "image",
+                      "type": "string"
+                    },
+                    "src": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "width": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["id", "kind", "src", "alt", "width", "height"],
+                  "type": "object"
                 },
                 "summary": {
                   "maxLength": 2000,
@@ -215,6 +333,42 @@
             "minLength": 1,
             "type": "string"
           },
+          "representativeMedia": {
+            "additionalProperties": false,
+            "properties": {
+              "alt": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^\\S+$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "image",
+                "type": "string"
+              },
+              "src": {
+                "format": "uri",
+                "type": "string"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": ["id", "kind", "src", "alt", "width", "height"],
+            "type": "object"
+          },
           "summary": {
             "maxLength": 2000,
             "minLength": 1,
@@ -239,6 +393,50 @@
           }
         },
         "required": ["status"],
+        "type": "object"
+      },
+      "MediaId": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^\\S+$",
+        "type": "string"
+      },
+      "PublicMedia": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "alt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "height": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "image",
+            "type": "string"
+          },
+          "src": {
+            "format": "uri",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": ["id", "kind", "src", "alt", "width", "height"],
         "type": "object"
       },
       "PublicSourceCitation": {

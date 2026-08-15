@@ -23,6 +23,8 @@ describe("contracts package surface", () => {
       "CatalogPage",
       "CatalogSummary",
       "HealthResponse",
+      "MediaId",
+      "PublicMedia",
       "PublicSourceCitation",
     ];
     const exportBlock = declaration.match(

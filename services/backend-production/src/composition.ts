@@ -11,6 +11,7 @@ import {
   parsePostgresConfig,
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
+import { UnconfiguredStorageUrlResolver } from "@moya/image";
 
 import type {
   BackendProcessHandle,
@@ -56,6 +57,7 @@ export const prepareProductionBackend = async (
     requestListener: createBackendApplication({
       nodeEnv: runtimeConfig.nodeEnv,
       catalogQueryPort,
+      storageUrlResolver: new UnconfiguredStorageUrlResolver(),
       healthReadinessCheck: readinessCheck,
     }),
     closeResources: async () => closePostgresPool(pool),

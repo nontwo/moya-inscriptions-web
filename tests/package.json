@@ -18,6 +18,7 @@
     "@moya/contracts": "workspace:*",
     "@moya/data-access": "workspace:*",
     "@moya/design-tokens": "workspace:*",
+    "@moya/image": "workspace:*",
     "@moya/public-api": "workspace:*",
     "@moya/ui": "workspace:*",
     "@testing-library/dom": "10.4.1",

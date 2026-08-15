@@ -1,5 +1,14 @@
 # `@moya/image`
 
-图片 object
-key 与派生 URL 相关能力的边界，计划由 T05 实现。当前包尚无压缩、转换、上传、对象存储连接或 URL 适配器；公共契约只能保存 object
-key，T02 的 `UiImage.src` 只接受应用层已派生的渲染 URL。
+Backend-only storage URL resolution implementations for the application-owned
+`StorageUrlResolver` port.
+
+- `MappedStorageUrlResolver` provides deterministic explicit mappings for tests
+  and development fixtures.
+- `UnconfiguredStorageUrlResolver` represents production before a real storage
+  provider is configured; it never fabricates URLs.
+- HTTP status classification remains in backend transport.
+
+This package does not upload, transform, ingest, or inspect images. It does not
+contain provider credentials, production domains, bucket configuration, or
+frontend URL composition.

@@ -43,8 +43,10 @@ describe("@moya/api server-only surface", () => {
     });
     expect(manifest.sideEffects).toBe(false);
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
+      "CatalogMediaResolutionError",
       "CatalogQueryUnavailableError",
       "CatalogReadService",
+      "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
       "mapCatalogDetail",
       "mapCatalogPage",

@@ -310,6 +310,7 @@ const serverOnlyPackages = [
   "@moya/contracts/internal",
   "@moya/contracts/schemas",
   "@moya/data-access",
+  "@moya/image",
   "@moya/public-api",
   "node-pg-migrate",
   "pg",
@@ -336,6 +337,8 @@ const allowedClientContractTypes = new Set([
   "CatalogListTransportQuery",
   "CatalogPage",
   "CatalogSummary",
+  "MediaId",
+  "PublicMedia",
   "PublicSourceCitation",
 ]);
 
@@ -441,11 +444,20 @@ export const frontendBoundaryViolations = (
     );
   }
   if (
-    /(?:\bobjectKey\s*\+|\+\s*objectKey\b|\$\{[^}]*\bobjectKey\b[^}]*\})/.test(
+    /(?:\b(?:objectKey|object_key)\s*\+|\+\s*(?:objectKey|object_key)\b|\$\{[^}]*\b(?:objectKey|object_key)\b[^}]*\})/.test(
       source,
     )
   ) {
     violations.push("Frontend code cannot compose a URL from objectKey");
+  }
+  if (
+    /\b(?:STORAGE_PROVIDER|STORAGE_BUCKET|ASSET_CDN_BASE_URL|PRIVATE_CDN_BASE_URL)\b/.test(
+      source,
+    )
+  ) {
+    violations.push(
+      "Frontend code cannot use private storage-provider or CDN configuration",
+    );
   }
 
   return [...new Set(violations)];

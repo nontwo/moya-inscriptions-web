@@ -10,11 +10,15 @@ import type {
   catalogPageSchema,
   catalogSummarySchema,
   healthResponseSchema,
+  mediaIdSchema,
+  publicMediaSchema,
   publicSourceCitationSchema,
 } from "./schemas.js";
 
 export type CatalogId = z.infer<typeof catalogIdSchema>;
 export type CatalogKind = z.infer<typeof catalogKindSchema>;
+export type MediaId = z.infer<typeof mediaIdSchema>;
+export type PublicMedia = z.infer<typeof publicMediaSchema>;
 export type PublicSourceCitation = z.infer<typeof publicSourceCitationSchema>;
 export type CatalogSummary = z.infer<typeof catalogSummarySchema>;
 export type CatalogDetail = z.infer<typeof catalogDetailSchema>;

@@ -6,18 +6,23 @@ import {
   listCatalogAliasesSql,
   listCatalogCitationsSql,
   listCatalogEntriesSql,
+  listCatalogMediaSql,
+  listRepresentativeCatalogMediaSql,
 } from "./queries.js";
 import {
   mapAliasRows,
   mapCatalogDetailRow,
   mapCatalogEntryRow,
+  mapCatalogMediaRows,
   mapCitationRows,
+  mapRepresentativeMediaRows,
 } from "./row-mapper.js";
 
 import type {
   CatalogAliasRow,
   CatalogCitationRow,
   CatalogEntryRow,
+  CatalogMediaRow,
 } from "./row-mapper.js";
 import type {
   CatalogListPageProjection,
@@ -94,17 +99,32 @@ export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
       const catalogIds = entriesResult.rows.map((row) =>
         String(row.catalog_id),
       );
-      const aliasesResult =
+      const [aliasesResult, representativeMediaResult] =
         catalogIds.length === 0
-          ? { rows: [] as CatalogAliasRow[] }
-          : await client.query<CatalogAliasRow>(listCatalogAliasesSql, [
-              catalogIds,
+          ? [
+              { rows: [] as CatalogAliasRow[] },
+              { rows: [] as CatalogMediaRow[] },
+            ]
+          : await Promise.all([
+              client.query<CatalogAliasRow>(listCatalogAliasesSql, [
+                catalogIds,
+              ]),
+              client.query<CatalogMediaRow>(listRepresentativeCatalogMediaSql, [
+                catalogIds,
+              ]),
             ]);
       const aliases = mapAliasRows(aliasesResult.rows);
+      const representativeMedia = mapRepresentativeMediaRows(
+        representativeMediaResult.rows,
+      );
 
       return {
         items: entriesResult.rows.map((row) =>
-          mapCatalogEntryRow(row, aliases.get(String(row.catalog_id)) ?? []),
+          mapCatalogEntryRow(
+            row,
+            aliases.get(String(row.catalog_id)) ?? [],
+            representativeMedia.get(String(row.catalog_id)),
+          ),
         ),
         total,
         page,
@@ -123,9 +143,10 @@ export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
       const entry = entryResult.rows[0];
       if (entry === undefined) return null;
 
-      const [aliasesResult, citationsResult] = await Promise.all([
+      const [aliasesResult, citationsResult, mediaResult] = await Promise.all([
         client.query<CatalogAliasRow>(listCatalogAliasesSql, [[id]]),
         client.query<CatalogCitationRow>(listCatalogCitationsSql, [id]),
+        client.query<CatalogMediaRow>(listCatalogMediaSql, [id]),
       ]);
       const aliases = mapAliasRows(aliasesResult.rows);
 
@@ -133,6 +154,7 @@ export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
         entry,
         aliases.get(id) ?? [],
         mapCitationRows(citationsResult.rows),
+        mapCatalogMediaRows(mediaResult.rows),
       );
     });
   }

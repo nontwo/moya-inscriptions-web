@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type {
   CatalogDetail,
+  CatalogId,
   CatalogKind,
   CatalogListTransportQuery,
   CatalogPage,
   CatalogSummary,
+  MediaId,
+  PublicMedia,
 } from "@moya/contracts";
 import {
   catalogDetailJsonSchema,
@@ -14,7 +17,9 @@ import {
   catalogListTransportQueryJsonSchema,
   catalogPageJsonSchema,
   catalogSummaryJsonSchema,
+  mediaIdJsonSchema,
   noQueryTransportJsonSchema,
+  publicMediaJsonSchema,
 } from "@moya/contracts/json-schema";
 import {
   catalogDetailSchema,
@@ -23,7 +28,9 @@ import {
   catalogListTransportQuerySchema,
   catalogPageSchema,
   catalogSummarySchema,
+  mediaIdSchema,
   noQueryTransportSchema,
+  publicMediaSchema,
 } from "@moya/contracts/schemas";
 
 describe("canonical Catalog identity", () => {
@@ -80,7 +87,70 @@ describe("CatalogKind", () => {
   });
 });
 
+describe("Catalog Media public identity and contract", () => {
+  it("keeps MediaId distinct and validates the approved strict shape", () => {
+    const id: MediaId = mediaIdSchema.parse("media-example-001");
+    const media: PublicMedia = {
+      id,
+      kind: "image",
+      src: "https://media.example.invalid/example.jpg",
+      alt: "虚构碑刻图像",
+      width: 1_200,
+      height: 1_600,
+    };
+
+    expect(publicMediaSchema.parse(media)).toEqual(media);
+    expectTypeOf<MediaId>().not.toEqualTypeOf<CatalogId>();
+    expect(mediaIdSchema.safeParse("media id").success).toBe(false);
+    expect(mediaIdJsonSchema).toMatchObject({
+      type: "string",
+      minLength: 1,
+      maxLength: 128,
+      pattern: "^\\S+$",
+    });
+    expect(publicMediaJsonSchema).toMatchObject({
+      additionalProperties: false,
+      type: "object",
+      required: ["id", "kind", "src", "alt", "width", "height"],
+    });
+  });
+
+  it("rejects invalid display metadata and every storage-private field", () => {
+    const valid = {
+      id: mediaIdSchema.parse("media-example-002"),
+      kind: "image",
+      src: "https://media.example.invalid/example-002.jpg",
+      alt: "有效替代文字",
+      width: 800,
+      height: 600,
+    };
+
+    for (const invalid of [
+      { ...valid, src: "not-a-url" },
+      { ...valid, alt: "" },
+      { ...valid, alt: " padded " },
+      { ...valid, width: 0 },
+      { ...valid, height: -1 },
+      { ...valid, kind: "video" },
+      { ...valid, objectKey: "private/example.jpg" },
+      { ...valid, bucket: "private" },
+      { ...valid, storageProvider: "provider" },
+      { ...valid, resolverConfiguration: "private" },
+    ]) {
+      expect(publicMediaSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+});
+
 const catalogId = catalogIdSchema.parse("catalog-example-001");
+const publicRepresentativeMedia: PublicMedia = {
+  id: mediaIdSchema.parse("media-example-representative"),
+  kind: "image",
+  src: "https://media.example.invalid/representative.jpg",
+  alt: "虚构摩崖甲代表图",
+  width: 1_600,
+  height: 1_200,
+};
 
 const catalogSummary: CatalogSummary = {
   id: catalogId,
@@ -89,6 +159,7 @@ const catalogSummary: CatalogSummary = {
   aliases: ["虚构别名"],
   summary: "公开摘要",
   periodLabel: "唐",
+  representativeMedia: publicRepresentativeMedia,
 };
 
 const catalogDetail: CatalogDetail = {
@@ -101,12 +172,28 @@ const catalogDetail: CatalogDetail = {
       url: "https://example.com/catalogue",
     },
   ],
+  media: [publicRepresentativeMedia],
 };
 
 describe("Catalog public contracts", () => {
   it("accepts the frozen summary and detail fields", () => {
     expect(catalogSummarySchema.parse(catalogSummary)).toEqual(catalogSummary);
     expect(catalogDetailSchema.parse(catalogDetail)).toEqual(catalogDetail);
+  });
+
+  it("keeps Media optional on summaries and an empty Gallery valid on details", () => {
+    const mediaLessSummary = { ...catalogSummary };
+    delete mediaLessSummary.representativeMedia;
+    const mediaLessDetail: CatalogDetail = {
+      ...mediaLessSummary,
+      sourceCitations: [],
+      media: [],
+    };
+
+    expect(catalogSummarySchema.parse(mediaLessSummary)).toEqual(
+      mediaLessSummary,
+    );
+    expect(catalogDetailSchema.parse(mediaLessDetail)).toEqual(mediaLessDetail);
   });
 
   it("rejects internal-only fields under the strict public policy", () => {
@@ -222,6 +309,7 @@ describe("Catalog public contracts", () => {
     for (const schema of [
       catalogSummaryJsonSchema,
       catalogDetailJsonSchema,
+      publicMediaJsonSchema,
       catalogListTransportQueryJsonSchema,
       catalogPageJsonSchema,
     ]) {
