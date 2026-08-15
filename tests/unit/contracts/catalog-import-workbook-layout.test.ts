@@ -322,7 +322,7 @@ describe("Catalog Import XLSX layout authority", () => {
     );
   });
 
-  it("keeps the layout internal and the workbook library dev-only", async () => {
+  it("keeps the layout internal and gives ExcelJS only the approved importer runtime boundary", async () => {
     const repositoryRoot = path.resolve(
       path.dirname(new URL(import.meta.url).pathname),
       "../../..",
@@ -335,14 +335,27 @@ describe("Catalog Import XLSX layout authority", () => {
     };
     expect(rootManifest.devDependencies?.exceljs).toBe("4.4.0");
     expect(rootManifest.dependencies?.exceljs).toBeUndefined();
+    const importerManifest = JSON.parse(
+      await readFile(
+        path.join(repositoryRoot, "services/catalog-importer/package.json"),
+        "utf8",
+      ),
+    ) as {
+      dependencies?: Record<string, string>;
+      moyaArchitecture?: { rawSourceAccess?: string };
+    };
+    expect(importerManifest.dependencies?.exceljs).toBe("4.4.0");
+    expect(importerManifest.moyaArchitecture?.rawSourceAccess).toBe(
+      "controlled-importer",
+    );
 
     const publicRoot = await readFile(
       path.join(repositoryRoot, "packages/contracts/src/index.ts"),
       "utf8",
     );
     expect(publicRoot).not.toContain("CATALOG_IMPORT_XLSX_LAYOUT");
+    const references = [];
     for (const root of ["apps", "services", "packages"] as const) {
-      const references = [];
       for (const file of await collectSourceFiles(
         path.join(repositoryRoot, root),
       )) {
@@ -350,7 +363,9 @@ describe("Catalog Import XLSX layout authority", () => {
           references.push(path.relative(repositoryRoot, file));
         }
       }
-      expect(references).toEqual([]);
     }
+    expect(references).toEqual([
+      "services/catalog-importer/src/parsing/xlsx.ts",
+    ]);
   });
 });

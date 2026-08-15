@@ -1,23 +1,12 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
-  CATALOG_IMPORT_ALIAS_HEADERS,
-  CATALOG_IMPORT_CATALOG_HEADERS,
   CATALOG_IMPORT_CONTRACT_VERSION,
-  CATALOG_IMPORT_CSV_SPEC,
-  CATALOG_IMPORT_MANIFEST_HEADERS,
-  CATALOG_IMPORT_PROVENANCE_HEADERS,
   canonicalCatalogImportEnvelopeSchema,
-  canonicalizeAliasImportTableRow,
-  canonicalizeCatalogImportTableRow,
-  canonicalizeProvenanceImportTableRow,
   catalogImportDryRunSchema,
   dryRunFindingIdSchema,
   duplicateCandidateSchema,
   importApprovalSchema,
-  parseCatalogImportManifestTableRow,
   serializeCanonicalCatalogImportEnvelope,
   sha256Schema,
 } from "@moya/contracts/internal/catalog-import";
@@ -27,6 +16,31 @@ import type {
   ImportApproval,
 } from "@moya/contracts/internal/catalog-import";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { ParsedCatalogImportBundle } from "./parsing/canonical-bundle.js";
+
+export {
+  CATALOG_IMPORT_DIAGNOSTIC_CODES,
+  CatalogImportDiagnosticError,
+  sortCatalogImportDiagnostics,
+} from "./diagnostics.js";
+export {
+  CATALOG_IMPORT_CSV_LIMITS,
+  parseCatalogImportCsvBundle,
+} from "./parsing/csv.js";
+export { CATALOG_IMPORT_XLSX_LIMITS } from "./parsing/ooxml-preflight.js";
+export {
+  parseCatalogImportXlsxFile,
+  parseCatalogImportXlsxWorkbook,
+  preflightCatalogImportXlsxWorkbook,
+} from "./parsing/xlsx.js";
+
+export type {
+  CatalogImportDiagnostic,
+  CatalogImportDiagnosticCategory,
+  CatalogImportDiagnosticCode,
+} from "./diagnostics.js";
+export type { ParsedCatalogImportBundle } from "./parsing/canonical-bundle.js";
+export type { CatalogImportXlsxPreflightResult } from "./parsing/xlsx.js";
 
 const textSha256 = (value: string) =>
   createHash("sha256").update(value, "utf8").digest("hex");
@@ -43,172 +57,6 @@ const stableJson = (value: unknown): string => {
 
 export const hashApproval = (approval: ImportApproval): string =>
   textSha256(stableJson(importApprovalSchema.parse(approval)));
-
-const parseCsv = (input: string): string[][] => {
-  const text = input.startsWith("\uFEFF") ? input.slice(1) : input;
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  let afterQuote = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (quoted) {
-      if (character === '"') {
-        if (text[index + 1] === '"') {
-          cell += '"';
-          index += 1;
-        } else {
-          quoted = false;
-          afterQuote = true;
-        }
-      } else {
-        cell += character;
-      }
-      continue;
-    }
-    if (
-      afterQuote &&
-      character !== "," &&
-      character !== "\n" &&
-      character !== "\r"
-    ) {
-      throw new Error("Unexpected character after a quoted CSV field");
-    }
-    if (character === '"') {
-      if (cell !== "" || afterQuote) throw new Error("Malformed CSV quote");
-      quoted = true;
-      continue;
-    }
-    if (character === ",") {
-      row.push(cell);
-      cell = "";
-      afterQuote = false;
-      continue;
-    }
-    if (character === "\r") {
-      if (text[index + 1] !== "\n") throw new Error("Bare CR is not valid CSV");
-      index += 1;
-    }
-    if (character === "\n" || character === "\r") {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-      afterQuote = false;
-      continue;
-    }
-    cell += character;
-  }
-  if (quoted) throw new Error("Unterminated quoted CSV field");
-  if (cell !== "" || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows;
-};
-
-const tableObjects = (
-  input: string,
-  expectedHeaders: readonly string[],
-  filename: string,
-): Record<string, string>[] => {
-  const rows = parseCsv(input);
-  const headers = rows[0];
-  if (headers === undefined) throw new Error(`${filename} is empty`);
-  if (new Set(headers).size !== headers.length) {
-    throw new Error(`${filename} contains duplicate headers`);
-  }
-  if (
-    headers.length !== expectedHeaders.length ||
-    headers.some((header, index) => header !== expectedHeaders[index])
-  ) {
-    throw new Error(`${filename} headers do not match catalog-import/v1`);
-  }
-  return rows.slice(1).map((values, rowIndex) => {
-    if (values.length !== headers.length) {
-      throw new Error(
-        `${filename} row ${rowIndex + 2} has the wrong cell count`,
-      );
-    }
-    return Object.fromEntries(
-      headers.map((header, index) => [header, values[index] ?? ""]),
-    );
-  });
-};
-
-export interface ParsedCatalogImportBundle {
-  readonly envelope: CanonicalCatalogImportEnvelope;
-  readonly canonicalJson: string;
-  readonly canonicalInputSha256: string;
-  readonly rowCounts: {
-    readonly catalog: number;
-    readonly aliases: number;
-    readonly provenance: number;
-  };
-}
-
-export const parseCatalogImportCsvBundle = async (
-  directory: string,
-): Promise<ParsedCatalogImportBundle> => {
-  const [manifestFilename, catalogFilename, aliasFilename, provenanceFilename] =
-    Object.keys(CATALOG_IMPORT_CSV_SPEC.files);
-  if (
-    manifestFilename === undefined ||
-    catalogFilename === undefined ||
-    aliasFilename === undefined ||
-    provenanceFilename === undefined
-  ) {
-    throw new Error("catalog-import/v1 CSV specification is incomplete");
-  }
-  const [manifestText, catalogText, aliasText, provenanceText] =
-    await Promise.all([
-      readFile(join(directory, manifestFilename), "utf8"),
-      readFile(join(directory, catalogFilename), "utf8"),
-      readFile(join(directory, aliasFilename), "utf8"),
-      readFile(join(directory, provenanceFilename), "utf8"),
-    ]);
-  const manifest = tableObjects(
-    manifestText,
-    CATALOG_IMPORT_MANIFEST_HEADERS,
-    manifestFilename,
-  );
-  if (manifest.length !== 1)
-    throw new Error(`${manifestFilename} requires one row`);
-  parseCatalogImportManifestTableRow(manifest[0]);
-  const catalogRows = tableObjects(
-    catalogText,
-    CATALOG_IMPORT_CATALOG_HEADERS,
-    catalogFilename,
-  ).map(canonicalizeCatalogImportTableRow);
-  const aliasRows = tableObjects(
-    aliasText,
-    CATALOG_IMPORT_ALIAS_HEADERS,
-    aliasFilename,
-  ).map(canonicalizeAliasImportTableRow);
-  const provenanceRows = tableObjects(
-    provenanceText,
-    CATALOG_IMPORT_PROVENANCE_HEADERS,
-    provenanceFilename,
-  ).map(canonicalizeProvenanceImportTableRow);
-  const envelope = canonicalCatalogImportEnvelopeSchema.parse({
-    importContractVersion: CATALOG_IMPORT_CONTRACT_VERSION,
-    catalogRows,
-    aliasRows,
-    provenanceRows,
-  });
-  const canonicalJson = serializeCanonicalCatalogImportEnvelope(envelope);
-  return {
-    envelope,
-    canonicalJson,
-    canonicalInputSha256: textSha256(canonicalJson),
-    rowCounts: {
-      catalog: catalogRows.length,
-      aliases: aliasRows.length,
-      provenance: provenanceRows.length,
-    },
-  };
-};
 
 interface QueryPort {
   query<T extends QueryResultRow = QueryResultRow>(

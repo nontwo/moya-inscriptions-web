@@ -30,4 +30,56 @@ describe("catalog importer remediation boundaries", () => {
     expect(core).not.toContain("catalog-${");
     expect(validationHarness).toContain("validation-catalog-");
   });
+
+  it("keeps the XLSX operational entry dry-run only", async () => {
+    const source = await readFile(
+      importerSource("xlsx-validation-cli.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("parseCatalogImportXlsxFile");
+    expect(source).toContain("createCatalogImportDryRun");
+    expect(source).toContain("applied: false");
+    expect(source).not.toContain("applyCatalogImport");
+    expect(source).not.toContain("importApprovalSchema");
+  });
+
+  it("does not couple the controlled importer to Owner paths or research storage", async () => {
+    for (const file of [
+      "index.ts",
+      "diagnostics.ts",
+      "xlsx-validation-cli.ts",
+      path.join("parsing", "csv.ts"),
+      path.join("parsing", "xlsx.ts"),
+      path.join("parsing", "ooxml-preflight.ts"),
+    ]) {
+      const source = await readFile(importerSource(file), "utf8");
+      for (const forbidden of [
+        "Documents/Yoyi",
+        "moya-catalog-research",
+        "ResearchRecord",
+        "sqlite",
+        "1658",
+      ]) {
+        expect(source).not.toContain(forbidden);
+      }
+    }
+  });
+
+  it("keeps XLSX parsing and authorization internals out of public/frontend packages", async () => {
+    const guardedFiles = [
+      path.join(repositoryRoot, "packages/contracts/src/index.ts"),
+      path.join(repositoryRoot, "services/public-api/src/index.ts"),
+      path.join(repositoryRoot, "apps/web/app/page.tsx"),
+      path.join(repositoryRoot, "apps/admin/app/page.tsx"),
+      path.join(repositoryRoot, "packages/ui/src/index.ts"),
+    ];
+    for (const file of guardedFiles) {
+      const source = await readFile(file, "utf8");
+      expect(source).not.toContain("@moya/catalog-importer");
+      expect(source).not.toContain("parseCatalogImportXlsx");
+      expect(source).not.toContain("ownerNote");
+      expect(source).not.toContain("sourceArtifactSha256");
+    }
+  });
 });
