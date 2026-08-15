@@ -9,9 +9,10 @@ import/apply
 infrastructure已经完成。PILOT-IMPORT-01已在独立disposable验证环境中完成28条真实审核Catalog记录的端到端验证（apply、replay与Public
 API readback）。MEDIA-01也已完成并合并，建立Catalog Media identity、PostgreSQL
 persistence、representative/gallery read projection、backend-owned
-StorageUrlResolver与strict PublicMedia boundary，并通过merged-head CI与PostgreSQL
-18.4验证。当前尚未执行正式/production Catalog数据导入，也尚未接入production
-storage provider/CDN或真实Media ingestion；应用仓库本身仍不包含任何真实数据集，正式Web/Admin产品能力也尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
+StorageUrlResolver与strict PublicMedia boundary，并通过merged-head
+CI与PostgreSQL 18.4验证。当前尚未执行正式/production
+Catalog数据导入，也尚未接入production storage provider/CDN或真实Media
+ingestion；应用仓库本身仍不包含任何真实数据集，正式Web/Admin产品能力也尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
 
 `integration/mvp`
 当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立手机交互原型之上完成T04.1
@@ -39,7 +40,12 @@ migration；`main`继续保留稳定的T00/治理基线。
 | 手机原型        | 已隔离保存                    | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片                                                                                                                     |
 | T06–T09         | 未开始                        | 图片管线、正式 Web 浏览/搜索/详情                                                                                                                                         |
 
-MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media foundation现已包含`MediaId`/strict `PublicMedia`、`catalog_media`、explicit representative semantics、ordered gallery、batched `StorageUrlResolver`与安全503边界；merged-head CI与PostgreSQL 18.4均通过。Production storage/CDN、真实Media ingestion、derivatives和Media management仍属于后续独立任务。
+MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media
+foundation现已包含`MediaId`/strict `PublicMedia`、`catalog_media`、explicit
+representative semantics、ordered gallery、batched
+`StorageUrlResolver`与安全503边界；merged-head CI与PostgreSQL
+18.4均通过。Production storage/CDN、真实Media ingestion、derivatives和Media
+management仍属于后续独立任务。
 
 ## 当前能做什么
 
@@ -51,9 +57,13 @@ MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media foundation现已�
   Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
   parser、`CatalogReadService`与显式mapper。
 - 使用独立`MediaId`和strict `PublicMedia { id, kind, src, alt, width, height }`
-  表达Catalog公开图片；PostgreSQL `catalog_media`保存backend-only `object_key`、排序和代表图语义，Catalog list只读取representative Media，detail读取ordered gallery。
+  表达Catalog公开图片；PostgreSQL `catalog_media`保存backend-only
+  `object_key`、排序和代表图语义，Catalog list只读取representative
+  Media，detail读取ordered gallery。
 - 由backend-owned `StorageUrlResolver`批量把private object key解析为HTTP(S)
-  runtime URL；frontend不接触object key、bucket、provider、credentials或resolver配置。当前production resolver为显式unconfigured/fail-closed状态，Media-less Catalog仍正常读取。
+  runtime URL；frontend不接触object
+  key、bucket、provider、credentials或resolver配置。当前production
+  resolver为显式unconfigured/fail-closed状态，Media-less Catalog仍正常读取。
 - 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
   artifact；全部route拒绝未声明、重复或非法query。
 - 启动`@moya/backend-runtime`的真实Node.js listener，并通过health与Catalog
@@ -76,7 +86,8 @@ MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media foundation现已�
 当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
 HTTP在development/test缺省使用三个条目的fixture；PILOT-IMPORT-01已完成28条真实记录的验证性导入，但正式/production
 Catalog数据导入、Importer Admin UI、production storage provider/CDN、真实Media
-ingestion与upload/management workflow、搜索实现、登录、地图、互动、上传、生产环境和正式部署都尚未完成；应用仓库本身仍不包含任何真实Catalog数据集或真实Media资产。
+ingestion与upload/management
+workflow、搜索实现、登录、地图、互动、上传、生产环境和正式部署都尚未完成；应用仓库本身仍不包含任何真实Catalog数据集或真实Media资产。
 
 T05.4-A/A.1历史checkpoint冻结了`catalog-import/v1` internal canonical
 rows、null/identity/approval安全规则、workbook/CSV contract与Import Batch
@@ -88,12 +99,14 @@ closed。二者都不得发生silent loss。
 
 ## 数据状态
 
-应用仓库当前不保存真实档案数据集、地区候选或审核证据。旧 T01/D01 资产已经过 SHA-256 验证并迁移到 owner 持有的本地 AES-256 加密归档，不得作为前端资产或运行时数据重新引入。PILOT-IMPORT-01使用的28条真实审核记录（workbook与验证证据）同样只保存在 owner 持有的本地目录，未进入应用仓库；验证所用PostgreSQL环境为一次性disposable实例，验证后已销毁，不构成production数据集。MEDIA-01只使用synthetic/test Media验证数据模型和读取链路，没有导入真实图片或配置production object storage。
+应用仓库当前不保存真实档案数据集、地区候选或审核证据。旧 T01/D01 资产已经过 SHA-256 验证并迁移到 owner 持有的本地 AES-256 加密归档，不得作为前端资产或运行时数据重新引入。PILOT-IMPORT-01使用的28条真实审核记录（workbook与验证证据）同样只保存在 owner 持有的本地目录，未进入应用仓库；验证所用PostgreSQL环境为一次性disposable实例，验证后已销毁，不构成production数据集。MEDIA-01只使用synthetic/test
+Media验证数据模型和读取链路，没有导入真实图片或配置production object storage。
 
 ## 测试与可运行入口
 
 当前测试覆盖工程fixture、Backend HTTP runtime、Catalog contracts/application
-service、Query Port、strict query、Kind filtering、OpenAPI、Catalog Media contracts/persistence/resolver与private-storage边界、T02
+service、Query Port、strict query、Kind filtering、OpenAPI、Catalog Media
+contracts/persistence/resolver与private-storage边界、T02
 token/资产/组件、手机原型交互以及Catalog import的PostgreSQL
 dry-run/apply/persistence invariants。真实PostgreSQL
 integration以CI中的PostgreSQL 18.4 clean
@@ -176,9 +189,10 @@ python3 -m http.server 4173
    infrastructure已通过T05.4-B与PILOT-IMPORT-01验证；除非未来真实数据暴露genuine
    blocker，否则不再扩展Importer实现。
 2. MEDIA-01 Catalog Media foundation已完成并通过merged-head验证；production
-   storage provider/CDN、真实Media ingestion、derivatives和Media management均作为后续独立任务，不在MEDIA-01继续扩展。
-3. 后续单独决定Importer Admin、正式/production Catalog数据导入（含1658条正式数据）与publication
-   workflow。
+   storage provider/CDN、真实Media ingestion、derivatives和Media
+   management均作为后续独立任务，不在MEDIA-01继续扩展。
+3. 后续单独决定Importer Admin、正式/production
+   Catalog数据导入（含1658条正式数据）与publication workflow。
 4. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。
