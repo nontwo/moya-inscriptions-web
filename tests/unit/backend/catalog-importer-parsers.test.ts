@@ -28,6 +28,7 @@ const templatePath = path.join(
   "docs/catalog-import/catalog-import-v1-template.xlsx",
 );
 const temporaryDirectories: string[] = [];
+const realisticCatalogRowCount = 1_658;
 
 afterEach(async () => {
   await Promise.all(
@@ -353,6 +354,83 @@ describe("catalog-import/v1 CSV/XLSX convergence", () => {
     );
     expect(parsed.rowCounts).toEqual({ catalog: 1, aliases: 1, provenance: 1 });
     expect(parsed.envelope.catalogRows[0]?.catalogImportId).toBe("item-z");
+  });
+
+  it("accepts a realistic 1,658-row synthetic workbook within every OOXML resource bound", async () => {
+    const syntheticCatalogRows = Array.from(
+      { length: realisticCatalogRowCount },
+      (_, index) => {
+        const serial = String(index + 1).padStart(4, "0");
+        return {
+          catalogImportId: `synthetic-large-${serial}`,
+          sourceId: `synthetic-source-${serial}`,
+          catalogId: "",
+          title: `合成容量测试条目 ${serial}`,
+          catalogKind: index % 2 === 0 ? "inscription" : "calligraphy",
+          dynasty: "",
+          dynastyState: "UNSUPPLIED",
+          dateText: "",
+          dateTextState: "UNKNOWN",
+          province: "",
+          provinceState: "UNSUPPLIED",
+          prefecture: "",
+          prefectureState: "UNSUPPLIED",
+          county: "",
+          countyState: "UNSUPPLIED",
+          currentLocation: "",
+          currentLocationState: "UNKNOWN",
+          currentCustodian: "",
+          currentCustodianState: "UNSUPPLIED",
+          description: `仅用于自动化回归的合成说明 ${serial}`,
+          descriptionState: "VALUE",
+          ownerNote: "",
+        };
+      },
+    );
+    const syntheticProvenanceRows = syntheticCatalogRows.map(
+      ({ catalogImportId, sourceId }, index) => {
+        const serial = String(index + 1).padStart(4, "0");
+        return {
+          catalogImportId,
+          sourceId,
+          sourceTitle: `合成容量测试来源 ${serial}`,
+          sourceTypeRaw: "synthetic-capacity-regression",
+          sourceUrl: `https://example.invalid/synthetic-capacity/${serial}`,
+          sourceNote: "synthetic-only",
+        };
+      },
+    );
+    const bytes = await workbookBytes(
+      await validWorkbook({
+        catalog: syntheticCatalogRows,
+        aliases: [],
+        provenance: syntheticProvenanceRows,
+      }),
+    );
+    expect(CATALOG_IMPORT_XLSX_LIMITS.maximumCompressionRatio).toBe(200);
+    const preflight = await preflightCatalogImportXlsxWorkbook(bytes);
+    expect(preflight.compressedBytes).toBeLessThan(
+      CATALOG_IMPORT_XLSX_LIMITS.maximumCompressedBytes,
+    );
+    expect(preflight.expandedBytes).toBeLessThan(
+      CATALOG_IMPORT_XLSX_LIMITS.maximumExpandedBytes,
+    );
+    expect(preflight.entryCount).toBeLessThan(
+      CATALOG_IMPORT_XLSX_LIMITS.maximumEntries,
+    );
+
+    const parsed = await parseCatalogImportXlsxWorkbook(bytes);
+    expect(parsed.rowCounts).toEqual({
+      catalog: realisticCatalogRowCount,
+      aliases: 0,
+      provenance: realisticCatalogRowCount,
+    });
+    expect(parsed.envelope.catalogRows[0]?.sourceId).toBe(
+      "synthetic-source-0001",
+    );
+    expect(parsed.envelope.catalogRows.at(-1)?.sourceId).toBe(
+      "synthetic-source-1658",
+    );
   });
 
   it("keeps formatting, row order, and ZIP metadata outside the canonical hash", async () => {
