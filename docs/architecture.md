@@ -19,14 +19,15 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
   adapter，依赖application-owned port、internal projections、contracts与`pg`
   driver，不定义HTTP或Public contract。
 - `services/backend-production` 是production composition
-  root，只组合runtime与PostgreSQL adapter，并管理pool lifecycle。
+  root，只组合runtime、PostgreSQL adapter与显式unconfigured storage
+  resolver，并管理pool lifecycle。
 - `services/catalog-importer` 是private server-only `catalog-import/v1`
   boundary，负责bounded XLSX / strict CSV parse、shared canonical
   validation、PostgreSQL-backed dry-run与transactional apply；它不定义Public
   API，也不读取external research project或SQLite。
 - `services/api` 是backend-only Modular Monolith application
   boundary，当前拥有Catalog normalized query、internal read projections、
-  `CatalogQueryPort`、transport parser和Public Contract
+  `CatalogQueryPort`、`StorageUrlResolver`、transport parser和Public Contract
   mapper，但没有HTTP或persistence runtime。
 - `packages/contracts` 是共享 HTTP boundary 的 Public DTO、Public Query、Public
   Error、Public ID 和 runtime
@@ -34,7 +35,9 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
 - `packages/ui` 和 `packages/design-tokens` 分别承载共享组件与视觉 token。
 - `packages/data-access`是T04.2按最小清理策略保留的空backend
   workspace，当前不导出port、repository或adapter。
-- `packages/search` 和 `packages/image` 隔离搜索与图片能力。
+- `packages/search`隔离搜索能力；server-only
+  `packages/image`实现显式mapped和unconfigured storage URL resolver，不拥有HTTP
+  status policy。
 - `database/migrations` 是数据库结构变更的唯一入口。
 
 ## Data boundaries
@@ -46,8 +49,8 @@ application 或 service runtime implementation。Frontend 可以使用 `import t
 从 `packages/contracts` 获取 Public
 DTO/API 类型。业务模块不得本地重复定义公共契约。
 
-Object key、bucket 和 provider 细节只存在于后端。未来由 backend
-`StorageUrlResolver` 生成 public/signed runtime URL，并通过 `PublicMediaDTO.src`
+Object key、bucket 和 provider 细节只存在于后端。backend
+`StorageUrlResolver`批量生成 public/signed runtime URL，并通过 `PublicMedia.src`
 交给 Frontend；Frontend 不得自行拼接 CDN URL。`PUBLIC_CDN_BASE_URL`
 是 legacy/deprecated frontend
 convention，不是未来 Resolver 已批准的配置名。不得硬编码生产域名、CDN 地址、存储桶或密钥。

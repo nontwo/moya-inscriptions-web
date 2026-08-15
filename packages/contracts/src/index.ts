@@ -8,5 +8,7 @@ export type {
   CatalogPage,
   CatalogSummary,
   HealthResponse,
+  MediaId,
+  PublicMedia,
   PublicSourceCitation,
 } from "./types.js";

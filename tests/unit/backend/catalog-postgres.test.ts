@@ -10,7 +10,10 @@ import {
   mapAliasRows,
   mapCatalogDetailRow,
   mapCatalogEntryRow,
+  mapCatalogMediaRow,
+  mapCatalogMediaRows,
   mapCitationRows,
+  mapRepresentativeMediaRows,
   parseCatalogCount,
   parsePostgresConfig,
   readMigrationFiles,
@@ -114,6 +117,55 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
         mapCatalogDetailRow(row, aliases.get(row.catalog_id) ?? [], citations),
       ),
     ).not.toContain("raw_source");
+  });
+
+  it("maps ordered Media projections and explicit representatives only", () => {
+    const rows = [
+      {
+        media_id: "media-postgres-gallery",
+        catalog_id: "test-catalog-001",
+        position: 0,
+        is_representative: false,
+        kind: "image",
+        alt_text: "图集图",
+        width: 800,
+        height: 1_200,
+        object_key: "private/gallery.jpg",
+        storage_provider: "must remain private",
+      },
+      {
+        media_id: "media-postgres-representative",
+        catalog_id: "test-catalog-001",
+        position: 2,
+        is_representative: true,
+        kind: "image",
+        alt_text: "代表图",
+        width: 1_600,
+        height: 1_200,
+        object_key: "private/representative.jpg",
+      },
+    ];
+
+    const media = mapCatalogMediaRows(rows);
+    const representatives = mapRepresentativeMediaRows([rows[1]!]);
+
+    expect(media.map(({ id, position }) => ({ id, position }))).toEqual([
+      { id: "media-postgres-gallery", position: 0 },
+      { id: "media-postgres-representative", position: 2 },
+    ]);
+    expect(representatives.get("test-catalog-001")?.id).toBe(
+      "media-postgres-representative",
+    );
+    expect(JSON.stringify(media)).not.toContain("storage_provider");
+    expect(() => mapCatalogMediaRow({ ...rows[0]!, width: 0 })).toThrow(
+      "width",
+    );
+    expect(() =>
+      mapRepresentativeMediaRows([
+        { ...rows[0]!, is_representative: true },
+        rows[1]!,
+      ]),
+    ).toThrow("multiplicity");
   });
 
   it("accepts only safe PostgreSQL count strings", () => {

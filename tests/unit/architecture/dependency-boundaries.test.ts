@@ -105,10 +105,12 @@ describe("workspace dependency boundaries", () => {
     expect(moyaDependencies("@moya/backend-production")).toEqual([
       "@moya/backend-runtime",
       "@moya/catalog-postgres",
+      "@moya/image",
     ]);
     expect(moyaDependencies("@moya/backend-runtime")).toEqual([
       "@moya/api",
       "@moya/contracts",
+      "@moya/image",
       "@moya/public-api",
     ]);
     expect(moyaDependencies("@moya/catalog-postgres")).toEqual([
@@ -119,6 +121,10 @@ describe("workspace dependency boundaries", () => {
       "@moya/contracts",
     ]);
     expect(moyaDependencies("@moya/data-access")).toEqual([]);
+    expect(moyaDependencies("@moya/image")).toEqual([
+      "@moya/api",
+      "@moya/contracts",
+    ]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/ui")).toEqual(["@moya/design-tokens"]);
   });
@@ -135,7 +141,9 @@ describe("frontend and browser boundaries", () => {
         CatalogKind,
         CatalogListTransportQuery,
         CatalogPage,
-        CatalogSummary
+        CatalogSummary,
+        MediaId,
+        PublicMedia
       } from "@moya/contracts";
     `;
     expect(clientBoundaryViolations(file, allowed)).toEqual([]);
@@ -150,6 +158,7 @@ describe("frontend and browser boundaries", () => {
       import type { CatalogListQuery, CatalogQueryPort } from "@moya/api";
       import { startProductionBackend } from "@moya/backend-production";
       import { createPostgresPool } from "@moya/catalog-postgres";
+      import { MappedStorageUrlResolver } from "@moya/image";
       import "${retainedDataAccessPackage}";
       import { Pool } from "pg";
       import migration from "../../../database/migrations/example.sql";
@@ -163,6 +172,7 @@ describe("frontend and browser boundaries", () => {
         "@moya/api is server/runtime-only",
         "@moya/backend-production is server/runtime-only",
         "@moya/catalog-postgres is server/runtime-only",
+        "@moya/image is server/runtime-only",
         `${retainedDataAccessPackage} is server/runtime-only`,
         "pg is server/runtime-only",
         "../../../database/migrations/example.sql is server/runtime-only",
@@ -179,6 +189,7 @@ describe("frontend and browser boundaries", () => {
       import { createBackendServer } from "@moya/backend-runtime";
       import { startProductionBackend } from "@moya/backend-production";
       import { createPostgresPool } from "@moya/catalog-postgres";
+      import { MappedStorageUrlResolver } from "@moya/image";
       import "${retainedDataAccessPackage}";
       import { openApiDocument } from "@moya/public-api";
       import { handler } from "../../services/public-api/src/handler";
@@ -190,6 +201,7 @@ describe("frontend and browser boundaries", () => {
         "@moya/backend-production crosses the frontend boundary",
         "@moya/backend-runtime crosses the frontend boundary",
         "@moya/catalog-postgres crosses the frontend boundary",
+        "@moya/image crosses the frontend boundary",
         `${retainedDataAccessPackage} crosses the frontend boundary`,
         "@moya/public-api crosses the frontend boundary",
         "../../services/public-api/src/handler crosses the frontend boundary",
@@ -209,6 +221,23 @@ describe("frontend and browser boundaries", () => {
       expect.arrayContaining([
         "PUBLIC_CDN_BASE_URL is a deprecated frontend URL-composition convention",
         "Frontend code cannot compose a URL from objectKey",
+      ]),
+    );
+  });
+
+  it("rejects snake-case object keys and private provider/CDN configuration", () => {
+    const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
+    const source = `
+      const src = \`https://assets.invalid/\${object_key}\`;
+      const provider = STORAGE_PROVIDER;
+      const bucket = STORAGE_BUCKET;
+      const base = ASSET_CDN_BASE_URL;
+    `;
+
+    expect(frontendBoundaryViolations(file, source)).toEqual(
+      expect.arrayContaining([
+        "Frontend code cannot compose a URL from objectKey",
+        "Frontend code cannot use private storage-provider or CDN configuration",
       ]),
     );
   });

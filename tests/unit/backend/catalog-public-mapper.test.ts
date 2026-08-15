@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { mapCatalogDetail, mapCatalogPage, mapCatalogSummary } from "@moya/api";
+import {
+  CatalogMediaResolutionError,
+  mapCatalogDetail,
+  mapCatalogPage,
+  mapCatalogSummary,
+} from "@moya/api";
 import {
   catalogDetailSchema,
   catalogIdSchema,
   catalogPageSchema,
   catalogSummarySchema,
+  mediaIdSchema,
 } from "@moya/contracts/schemas";
 
 const id = catalogIdSchema.parse("catalog-mapper-001");
@@ -40,6 +46,31 @@ const internalDetail = {
       storagePath: "/private/storage/path",
     },
   ],
+  media: [],
+};
+
+const representativeMedia = {
+  id: mediaIdSchema.parse("media-mapper-representative"),
+  position: 2,
+  isRepresentative: true,
+  kind: "image" as const,
+  alt: "虚构代表图",
+  width: 1_600,
+  height: 1_200,
+  objectKey: "private/catalog-mapper-representative.tif",
+  bucket: "must-not-leak",
+  provider: "must-not-leak",
+};
+
+const galleryMedia = {
+  id: mediaIdSchema.parse("media-mapper-gallery"),
+  position: 0,
+  isRepresentative: false,
+  kind: "image" as const,
+  alt: "虚构图集图",
+  width: 800,
+  height: 1_200,
+  objectKey: "private/catalog-mapper-gallery.tif",
 };
 
 describe("Catalog public-contract mapper", () => {
@@ -70,6 +101,7 @@ describe("Catalog public-contract mapper", () => {
       summary: "公开摘要",
       periodLabel: "宋",
       description: "公开详情",
+      media: [],
       sourceCitations: [
         {
           label: "虚构公开名录",
@@ -119,6 +151,54 @@ describe("Catalog public-contract mapper", () => {
     expect(page).not.toBe(pageProjection);
     expect(page.items[0]).not.toBe(internalListItem);
     expect(catalogPageSchema.parse(page)).toEqual(page);
+  });
+
+  it("maps resolved Media without leaking storage facts or inferring representative order", () => {
+    const projection = {
+      ...internalDetail,
+      representativeMedia,
+      media: [galleryMedia, representativeMedia],
+    };
+    const resolved = new Map([
+      [
+        representativeMedia.id,
+        "https://media.example.invalid/representative.jpg",
+      ],
+      [galleryMedia.id, "https://media.example.invalid/gallery.jpg"],
+    ]);
+
+    const detail = mapCatalogDetail(projection, resolved);
+
+    expect(detail.representativeMedia?.id).toBe(representativeMedia.id);
+    expect(detail.media.map(({ id }) => id)).toEqual([
+      galleryMedia.id,
+      representativeMedia.id,
+    ]);
+    const serialized = JSON.stringify(detail);
+    for (const privateField of [
+      "position",
+      "isRepresentative",
+      "objectKey",
+      "bucket",
+      "provider",
+      "private/catalog",
+    ]) {
+      expect(serialized).not.toContain(privateField);
+    }
+  });
+
+  it("fails closed for missing or invalid resolved Media URLs", () => {
+    const projection = { ...internalListItem, representativeMedia };
+
+    expect(() => mapCatalogSummary(projection, new Map())).toThrow(
+      CatalogMediaResolutionError,
+    );
+    expect(() =>
+      mapCatalogSummary(
+        projection,
+        new Map([[representativeMedia.id, "not-a-url"]]),
+      ),
+    ).toThrow(CatalogMediaResolutionError);
   });
 
   it("omits absent optional fields and rejects invalid public values", () => {

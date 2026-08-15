@@ -31,3 +31,20 @@ export const listCatalogCitationsSql = `
   WHERE catalog_id = $1
   ORDER BY position ASC
 `;
+
+export const listRepresentativeCatalogMediaSql = `
+  SELECT media_id, catalog_id, position, is_representative, kind,
+         alt_text, width, height, object_key
+  FROM catalog_media
+  WHERE catalog_id = ANY($1::text[])
+    AND is_representative
+  ORDER BY catalog_id ASC
+`;
+
+export const listCatalogMediaSql = `
+  SELECT media_id, catalog_id, position, is_representative, kind,
+         alt_text, width, height, object_key
+  FROM catalog_media
+  WHERE catalog_id = $1
+  ORDER BY position ASC
+`;

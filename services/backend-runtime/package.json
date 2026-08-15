@@ -20,6 +20,7 @@
   "dependencies": {
     "@moya/api": "workspace:*",
     "@moya/contracts": "workspace:*",
+    "@moya/image": "workspace:*",
     "@moya/public-api": "workspace:*"
   },
   "devDependencies": {

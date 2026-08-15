@@ -9,6 +9,8 @@ import {
   catalogPageJsonSchema,
   catalogSummaryJsonSchema,
   healthResponseJsonSchema,
+  mediaIdJsonSchema,
+  publicMediaJsonSchema,
   publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
 import { openApiDocument, serializeOpenApiDocument } from "@moya/public-api";
@@ -104,6 +106,8 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     expect(schemas).toEqual({
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
+      MediaId: mediaIdJsonSchema,
+      PublicMedia: publicMediaJsonSchema,
       PublicSourceCitation: publicSourceCitationJsonSchema,
       CatalogSummary: catalogSummaryJsonSchema,
       CatalogDetail: catalogDetailJsonSchema,
@@ -115,6 +119,19 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       enum: ["inscription", "calligraphy"],
       type: "string",
     });
+    expect(schemas.PublicMedia).toMatchObject({
+      properties: {
+        src: {
+          allOf: [
+            { format: "uri", type: "string" },
+            {
+              pattern: "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+              type: "string",
+            },
+          ],
+        },
+      },
+    });
 
     const serialized = JSON.stringify({ paths, schemas }).toLowerCase();
     for (const term of [
@@ -124,6 +141,11 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "review",
       "lifecycle",
       "objectkey",
+      "object_key",
+      "bucket",
+      "storageprovider",
+      "storage_provider",
+      "resolverconfiguration",
       "images",
       "relateditem",
       "categoryids",

@@ -10,7 +10,9 @@ import {
   catalogPageSchema,
   catalogSummarySchema,
   healthResponseSchema,
+  mediaIdSchema,
   noQueryTransportSchema,
+  publicMediaSchema,
   publicSourceCitationSchema,
 } from "./schemas.js";
 
@@ -19,6 +21,8 @@ const toJsonSchema = (schema: z.ZodType) =>
 
 export const catalogIdJsonSchema = toJsonSchema(catalogIdSchema);
 export const catalogKindJsonSchema = toJsonSchema(catalogKindSchema);
+export const mediaIdJsonSchema = toJsonSchema(mediaIdSchema);
+export const publicMediaJsonSchema = toJsonSchema(publicMediaSchema);
 export const catalogSummaryJsonSchema = toJsonSchema(catalogSummarySchema);
 export const catalogDetailJsonSchema = toJsonSchema(catalogDetailSchema);
 export const catalogListTransportQueryJsonSchema = toJsonSchema(

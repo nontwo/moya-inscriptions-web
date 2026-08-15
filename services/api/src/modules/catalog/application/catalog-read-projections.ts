@@ -1,4 +1,15 @@
-import type { CatalogId, CatalogKind } from "@moya/contracts";
+import type { CatalogId, CatalogKind, MediaId } from "@moya/contracts";
+
+export interface CatalogMediaProjection {
+  readonly id: MediaId;
+  readonly position: number;
+  readonly isRepresentative: boolean;
+  readonly kind: "image";
+  readonly alt: string;
+  readonly width: number;
+  readonly height: number;
+  readonly objectKey: string;
+}
 
 export interface CatalogListItemProjection {
   readonly id: CatalogId;
@@ -7,6 +18,7 @@ export interface CatalogListItemProjection {
   readonly aliases: readonly string[];
   readonly summary?: string;
   readonly periodLabel?: string;
+  readonly representativeMedia?: CatalogMediaProjection;
 }
 
 export interface CatalogSourceCitationProjection {
@@ -18,6 +30,7 @@ export interface CatalogSourceCitationProjection {
 export interface CatalogDetailProjection extends CatalogListItemProjection {
   readonly description?: string;
   readonly sourceCitations: readonly CatalogSourceCitationProjection[];
+  readonly media: readonly CatalogMediaProjection[];
 }
 
 export interface CatalogListPageProjection {

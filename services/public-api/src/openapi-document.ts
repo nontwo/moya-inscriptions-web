@@ -8,6 +8,8 @@ import {
   catalogPageJsonSchema,
   catalogSummaryJsonSchema,
   healthResponseJsonSchema,
+  mediaIdJsonSchema,
+  publicMediaJsonSchema,
   publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
 
@@ -132,6 +134,8 @@ export const openApiDocument: JsonObject = {
     schemas: {
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
+      MediaId: mediaIdJsonSchema,
+      PublicMedia: publicMediaJsonSchema,
       PublicSourceCitation: publicSourceCitationJsonSchema,
       CatalogSummary: catalogSummaryJsonSchema,
       CatalogDetail: catalogDetailJsonSchema,

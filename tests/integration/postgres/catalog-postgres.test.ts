@@ -22,9 +22,15 @@ import {
   catalogDetailSchema,
   catalogPageSchema,
   healthResponseSchema,
+  mediaIdSchema,
 } from "@moya/contracts/schemas";
+import {
+  MappedStorageUrlResolver,
+  UnconfiguredStorageUrlResolver,
+} from "@moya/image";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import type { StorageUrlResolver } from "@moya/api";
 import type { BackendProcessHandle } from "@moya/backend-runtime";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -41,12 +47,13 @@ const processes = new Set<BackendProcessHandle>();
 
 const resetCatalog = async (): Promise<void> => {
   await pool.query(
-    "TRUNCATE catalog_source_citations, catalog_aliases, catalog_entries CASCADE",
+    "TRUNCATE catalog_media, catalog_source_citations, catalog_aliases, catalog_entries CASCADE",
   );
 };
 
 const startHttp = async (
   queryPool = pool,
+  storageUrlResolver: StorageUrlResolver = new UnconfiguredStorageUrlResolver(),
 ): Promise<{
   readonly baseUrl: string;
   readonly handle: BackendProcessHandle;
@@ -56,6 +63,7 @@ const startHttp = async (
     requestListener: createBackendApplication({
       nodeEnv: "production",
       catalogQueryPort: new PostgresCatalogQueryAdapter(queryPool),
+      storageUrlResolver,
       healthReadinessCheck: async () => checkPostgresReadiness(queryPool),
     }),
   });
@@ -123,6 +131,47 @@ const insertFixture = async (): Promise<void> => {
   );
 };
 
+interface MediaFixture {
+  readonly mediaId: string;
+  readonly catalogId?: string;
+  readonly position: number;
+  readonly isRepresentative: boolean;
+  readonly kind?: string;
+  readonly alt?: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly objectKey?: string;
+}
+
+const insertMediaFixture = async ({
+  mediaId,
+  catalogId = "test-catalog-001",
+  position,
+  isRepresentative,
+  kind = "image",
+  alt = "Synthetic Catalog Media",
+  width = 1_200,
+  height = 1_600,
+  objectKey = `private/${mediaId}.jpg`,
+}: MediaFixture) =>
+  pool.query(
+    `INSERT INTO catalog_media
+       (media_id, catalog_id, position, is_representative, kind,
+        alt_text, width, height, object_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      mediaId,
+      catalogId,
+      position,
+      isRepresentative,
+      kind,
+      alt,
+      width,
+      height,
+      objectKey,
+    ],
+  );
+
 beforeAll(async () => {
   await runMigrations(pool, migrationsDirectory);
   await resetCatalog();
@@ -143,6 +192,11 @@ afterAll(async () => {
 });
 
 describe.sequential("PostgreSQL Catalog HTTP integration", () => {
+  it("runs the required PostgreSQL 18.4 server", async () => {
+    const version = await pool.query("SHOW server_version");
+    expect(String(version.rows[0]?.server_version)).toMatch(/^18\.4(?:\D|$)/);
+  });
+
   it("applies the full migration set once on a fresh schema", async () => {
     const schema = "t043_fresh_catalog_kind";
     await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
@@ -195,7 +249,14 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
        WHERE table_schema = 'public'
          AND table_name = ANY($1::text[])
        ORDER BY table_name`,
-      [["catalog_aliases", "catalog_entries", "catalog_source_citations"]],
+      [
+        [
+          "catalog_aliases",
+          "catalog_entries",
+          "catalog_media",
+          "catalog_source_citations",
+        ],
+      ],
     );
     const constraints = await pool.query(
       `SELECT constraint_name
@@ -203,7 +264,14 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
        WHERE table_schema = 'public'
          AND table_name = ANY($1::text[])
        ORDER BY constraint_name`,
-      [["catalog_aliases", "catalog_entries", "catalog_source_citations"]],
+      [
+        [
+          "catalog_aliases",
+          "catalog_entries",
+          "catalog_media",
+          "catalog_source_citations",
+        ],
+      ],
     );
     const indexes = await pool.query(
       `SELECT indexname
@@ -211,12 +279,27 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
        WHERE schemaname = 'public'
          AND tablename = ANY($1::text[])
        ORDER BY indexname`,
-      [["catalog_aliases", "catalog_entries", "catalog_source_citations"]],
+      [
+        [
+          "catalog_aliases",
+          "catalog_entries",
+          "catalog_media",
+          "catalog_source_citations",
+        ],
+      ],
+    );
+    const mediaColumns = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'catalog_media'
+       ORDER BY ordinal_position`,
     );
     const counts = await pool.query(
       `SELECT
          (SELECT COUNT(*)::integer FROM catalog_entries) AS entries,
          (SELECT COUNT(*)::integer FROM catalog_aliases) AS aliases,
+         (SELECT COUNT(*)::integer FROM catalog_media) AS media,
          (SELECT COUNT(*)::integer FROM catalog_source_citations) AS citations`,
     );
     const { baseUrl } = await startHttp();
@@ -237,6 +320,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
       "catalog_aliases",
       "catalog_entries",
+      "catalog_media",
       "catalog_source_citations",
     ]);
     expect(
@@ -248,6 +332,16 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
         "catalog_entries_catalog_id_valid",
         "catalog_entries_kind_valid",
         "catalog_entries_pkey",
+        "catalog_media_catalog_id_fkey",
+        "catalog_media_catalog_position_unique",
+        "catalog_media_alt_text_valid",
+        "catalog_media_height_valid",
+        "catalog_media_kind_valid",
+        "catalog_media_media_id_valid",
+        "catalog_media_object_key_valid",
+        "catalog_media_pkey",
+        "catalog_media_position_valid",
+        "catalog_media_width_valid",
         "catalog_source_citations_catalog_id_fkey",
         "catalog_source_citations_pkey",
       ]),
@@ -255,9 +349,25 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     expect(indexes.rows.map(({ indexname }) => indexname)).toEqual([
       "catalog_aliases_pkey",
       "catalog_entries_pkey",
+      "catalog_media_catalog_position_unique",
+      "catalog_media_one_representative_per_catalog",
+      "catalog_media_pkey",
       "catalog_source_citations_pkey",
     ]);
-    expect(counts.rows).toEqual([{ aliases: 0, citations: 0, entries: 0 }]);
+    expect(mediaColumns.rows.map(({ column_name }) => column_name)).toEqual([
+      "media_id",
+      "catalog_id",
+      "position",
+      "is_representative",
+      "kind",
+      "alt_text",
+      "width",
+      "height",
+      "object_key",
+    ]);
+    expect(counts.rows).toEqual([
+      { aliases: 0, citations: 0, entries: 0, media: 0 },
+    ]);
     expect(listResponse.status).toBe(200);
     expect(catalogPageSchema.parse(await listResponse.json())).toEqual({
       items: [],
@@ -296,6 +406,159 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       ["test-catalog-retired-kind"],
     );
     expect(result.rows).toEqual([{ count: 0 }]);
+  });
+
+  it("persists Catalog Media and enforces every database invariant", async () => {
+    await insertFixture();
+    await insertMediaFixture({
+      mediaId: "media-db-gallery",
+      position: 0,
+      isRepresentative: false,
+    });
+    await insertMediaFixture({
+      mediaId: "media-db-representative",
+      position: 1,
+      isRepresentative: true,
+      alt: "Synthetic representative Media",
+      width: 1_600,
+      height: 1_200,
+    });
+
+    const persisted = await pool.query(
+      `SELECT media_id, catalog_id, position, is_representative, kind,
+              alt_text, width, height, object_key
+       FROM catalog_media
+       WHERE catalog_id = $1
+       ORDER BY position`,
+      ["test-catalog-001"],
+    );
+    expect(persisted.rows).toEqual([
+      {
+        media_id: "media-db-gallery",
+        catalog_id: "test-catalog-001",
+        position: 0,
+        is_representative: false,
+        kind: "image",
+        alt_text: "Synthetic Catalog Media",
+        width: 1_200,
+        height: 1_600,
+        object_key: "private/media-db-gallery.jpg",
+      },
+      {
+        media_id: "media-db-representative",
+        catalog_id: "test-catalog-001",
+        position: 1,
+        is_representative: true,
+        kind: "image",
+        alt_text: "Synthetic representative Media",
+        width: 1_600,
+        height: 1_200,
+        object_key: "private/media-db-representative.jpg",
+      },
+    ]);
+
+    const rejected = [
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-fk",
+          catalogId: "missing-catalog",
+          position: 0,
+          isRepresentative: false,
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-duplicate-position",
+          position: 0,
+          isRepresentative: false,
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-negative-position",
+          position: -1,
+          isRepresentative: false,
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-second-representative",
+          position: 2,
+          isRepresentative: true,
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-zero-width",
+          position: 3,
+          isRepresentative: false,
+          width: 0,
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-zero-height",
+          position: 4,
+          isRepresentative: false,
+          height: 0,
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-video",
+          position: 5,
+          isRepresentative: false,
+          kind: "video",
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-empty-alt",
+          position: 6,
+          isRepresentative: false,
+          alt: "",
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-padded-alt",
+          position: 7,
+          isRepresentative: false,
+          alt: " padded ",
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "media-db-empty-key",
+          position: 8,
+          isRepresentative: false,
+          objectKey: "",
+        }),
+      () =>
+        insertMediaFixture({
+          mediaId: "invalid media id",
+          position: 9,
+          isRepresentative: false,
+        }),
+    ];
+    const expectedCodes = [
+      "23503",
+      "23505",
+      "23514",
+      "23505",
+      "23514",
+      "23514",
+      "23514",
+      "23514",
+      "23514",
+      "23514",
+      "23514",
+    ];
+    for (const [index, insertion] of rejected.entries()) {
+      await expect(insertion()).rejects.toMatchObject({
+        code: expectedCodes[index],
+      });
+    }
+
+    await pool.query("DELETE FROM catalog_entries WHERE catalog_id = $1", [
+      "test-catalog-001",
+    ]);
+    const afterDelete = await pool.query(
+      "SELECT COUNT(*)::integer AS count FROM catalog_media WHERE catalog_id = $1",
+      ["test-catalog-001"],
+    );
+    expect(afterDelete.rows).toEqual([{ count: 0 }]);
   });
 
   it("rolls back the kind evolution before replacing the legacy constraint", async () => {
@@ -477,6 +740,150 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     });
   });
 
+  it("loads only representative Media for list and the full ordered Gallery for detail", async () => {
+    await insertFixture();
+    for (const media of [
+      {
+        mediaId: "media-http-gallery-zero",
+        position: 0,
+        isRepresentative: false,
+      },
+      {
+        mediaId: "media-http-gallery-one",
+        position: 1,
+        isRepresentative: false,
+      },
+      {
+        mediaId: "media-http-representative",
+        position: 2,
+        isRepresentative: true,
+      },
+    ] as const) {
+      await insertMediaFixture(media);
+    }
+
+    const locatorBatches: string[][] = [];
+    const mappedResolver = new MappedStorageUrlResolver(
+      new Map([
+        [
+          "private/media-http-gallery-zero.jpg",
+          "https://media.example.invalid/gallery-zero.jpg",
+        ],
+        [
+          "private/media-http-gallery-one.jpg",
+          "https://media.example.invalid/gallery-one.jpg",
+        ],
+        [
+          "private/media-http-representative.jpg",
+          "https://media.example.invalid/representative.jpg",
+        ],
+      ]),
+    );
+    const resolver: StorageUrlResolver = {
+      async resolveMany(locators) {
+        locatorBatches.push(locators.map(({ mediaId }) => String(mediaId)));
+        return mappedResolver.resolveMany(locators);
+      },
+    };
+    const { baseUrl } = await startHttp(pool, resolver);
+
+    const listResponse = await fetch(`${baseUrl}/v1/catalog`);
+    const list = catalogPageSchema.parse(await listResponse.json());
+    expect(listResponse.status).toBe(200);
+    expect(locatorBatches).toEqual([["media-http-representative"]]);
+    expect(list.items[0]?.representativeMedia).toMatchObject({
+      id: mediaIdSchema.parse("media-http-representative"),
+      src: "https://media.example.invalid/representative.jpg",
+    });
+    expect(list.items[0]).not.toHaveProperty("media");
+    expect(JSON.stringify(list)).not.toContain("objectKey");
+    expect(JSON.stringify(list)).not.toContain("private/media-http");
+
+    locatorBatches.length = 0;
+    const detailResponse = await fetch(
+      `${baseUrl}/v1/catalog/test-catalog-001`,
+    );
+    const detail = catalogDetailSchema.parse(await detailResponse.json());
+    expect(detailResponse.status).toBe(200);
+    expect(locatorBatches).toEqual([
+      [
+        "media-http-gallery-zero",
+        "media-http-gallery-one",
+        "media-http-representative",
+      ],
+    ]);
+    expect(detail.media.map(({ id }) => id)).toEqual([
+      "media-http-gallery-zero",
+      "media-http-gallery-one",
+      "media-http-representative",
+    ]);
+    expect(detail.representativeMedia?.id).toBe("media-http-representative");
+    expect(JSON.stringify(detail)).not.toContain("objectKey");
+    expect(JSON.stringify(detail)).not.toContain("private/media-http");
+  });
+
+  it("keeps a Gallery without representative Media as an explicit valid state", async () => {
+    await insertFixture();
+    await insertMediaFixture({
+      mediaId: "media-http-gallery-only",
+      position: 0,
+      isRepresentative: false,
+    });
+    let resolverCalls = 0;
+    const resolver: StorageUrlResolver = {
+      async resolveMany(locators) {
+        resolverCalls += 1;
+        return new MappedStorageUrlResolver(
+          new Map([
+            [
+              "private/media-http-gallery-only.jpg",
+              "https://media.example.invalid/gallery-only.jpg",
+            ],
+          ]),
+        ).resolveMany(locators);
+      },
+    };
+    const { baseUrl } = await startHttp(pool, resolver);
+
+    const listResponse = await fetch(`${baseUrl}/v1/catalog`);
+    const list = catalogPageSchema.parse(await listResponse.json());
+    expect(listResponse.status).toBe(200);
+    expect(list.items[0]).not.toHaveProperty("representativeMedia");
+    expect(resolverCalls).toBe(0);
+
+    const detailResponse = await fetch(
+      `${baseUrl}/v1/catalog/test-catalog-001`,
+    );
+    const detail = catalogDetailSchema.parse(await detailResponse.json());
+    expect(detailResponse.status).toBe(200);
+    expect(detail).not.toHaveProperty("representativeMedia");
+    expect(detail.media.map(({ id }) => id)).toEqual([
+      "media-http-gallery-only",
+    ]);
+    expect(resolverCalls).toBe(1);
+  });
+
+  it("fails Media reads closed when required resolver output is missing", async () => {
+    await insertFixture();
+    await insertMediaFixture({
+      mediaId: "media-http-unresolved",
+      position: 0,
+      isRepresentative: true,
+    });
+    const { baseUrl } = await startHttp(
+      pool,
+      new UnconfiguredStorageUrlResolver(),
+    );
+
+    for (const path of ["/v1/catalog", "/v1/catalog/test-catalog-001"]) {
+      const response = await fetch(`${baseUrl}${path}`);
+      const error = apiErrorSchema.parse(await response.json());
+      expect(response.status).toBe(503);
+      expect(error.error.code).toBe("SERVICE_UNAVAILABLE");
+      expect(JSON.stringify(error)).not.toContain("private/media-http");
+    }
+  });
+
   it("does not serialize an adapter-private database column", async () => {
     await pool.query(
       "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS test_private_metadata TEXT",
@@ -500,14 +907,27 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
   });
 
   it("accepts newer unknown ledger rows without claiming rollback safety", async () => {
-    await pool.query(
-      `INSERT INTO schema_migrations
-         (migration_id, filename, checksum)
-       VALUES ($1, $2, $3)`,
-      ["99991231235959", "99991231235959_future_expand.sql", "0".repeat(64)],
-    );
+    const futureMigrationId = "99991231235959";
+    await pool.query("DELETE FROM schema_migrations WHERE migration_id = $1", [
+      futureMigrationId,
+    ]);
+    try {
+      await pool.query(
+        `INSERT INTO schema_migrations
+           (migration_id, filename, checksum)
+         VALUES ($1, $2, $3)`,
+        [futureMigrationId, "99991231235959_future_expand.sql", "0".repeat(64)],
+      );
 
-    await expect(verifyRequiredMigrationLedger(pool)).resolves.toBeUndefined();
+      await expect(
+        verifyRequiredMigrationLedger(pool),
+      ).resolves.toBeUndefined();
+    } finally {
+      await pool.query(
+        "DELETE FROM schema_migrations WHERE migration_id = $1",
+        [futureMigrationId],
+      );
+    }
   });
 
   it("fails production startup on an unmigrated schema without creating its ledger", async () => {
@@ -558,6 +978,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
   });
 
   it("composes production only after read-only migration validation and closes its pool", async () => {
+    await insertFixture();
     const prepared = await prepareProductionBackend({
       DATABASE_URL: testDatabaseUrl,
       HOST: "127.0.0.1",
@@ -570,11 +991,22 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       requestListener: prepared.requestListener,
     });
     processes.add(handle);
-    const response = await fetch(
-      `http://${handle.address.address}:${handle.address.port}/health`,
-    );
+    const baseUrl = `http://${handle.address.address}:${handle.address.port}`;
+    const [response, listResponse, detailResponse] = await Promise.all([
+      fetch(`${baseUrl}/health`),
+      fetch(`${baseUrl}/v1/catalog`),
+      fetch(`${baseUrl}/v1/catalog/test-catalog-001`),
+    ]);
 
     expect(response.status).toBe(200);
+    expect(listResponse.status).toBe(200);
+    expect(detailResponse.status).toBe(200);
+    expect(
+      catalogPageSchema.parse(await listResponse.json()).items,
+    ).toHaveLength(3);
+    expect(
+      catalogDetailSchema.parse(await detailResponse.json()),
+    ).toMatchObject({ media: [] });
     await handle.shutdown();
     processes.delete(handle);
     await expect(prepared.readinessCheck()).rejects.toThrow();

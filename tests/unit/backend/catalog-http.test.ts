@@ -10,11 +10,17 @@ import {
   catalogDetailSchema,
   catalogIdSchema,
   catalogPageSchema,
+  mediaIdSchema,
 } from "@moya/contracts/schemas";
 import { CatalogQueryUnavailableError } from "@moya/api";
+import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { CatalogDetailProjection, CatalogQueryPort } from "@moya/api";
+import type {
+  CatalogDetailProjection,
+  CatalogQueryPort,
+  StorageUrlResolver,
+} from "@moya/api";
 import type { ApiErrorCode, CatalogId } from "@moya/contracts";
 import type { NodeEnvironment } from "@moya/backend-runtime";
 import type { Server } from "node:http";
@@ -25,6 +31,7 @@ const startCatalogServer = async (
   options: {
     readonly nodeEnv?: NodeEnvironment;
     readonly catalogQueryPort?: CatalogQueryPort;
+    readonly storageUrlResolver?: StorageUrlResolver;
   } = {},
 ) => {
   const applicationOptions = {
@@ -32,6 +39,11 @@ const startCatalogServer = async (
     ...(options.catalogQueryPort === undefined
       ? {}
       : { catalogQueryPort: options.catalogQueryPort }),
+    ...(options.storageUrlResolver === undefined
+      ? options.nodeEnv === "production"
+        ? { storageUrlResolver: new UnconfiguredStorageUrlResolver() }
+        : {}
+      : { storageUrlResolver: options.storageUrlResolver }),
   };
   const server = createBackendServer(
     createBackendApplication(applicationOptions),
@@ -154,6 +166,7 @@ describe("Catalog list HTTP boundary", () => {
       "inscription",
       "inscription",
     ]);
+    expect(page.items[0]?.representativeMedia?.id).toBe("fixture-media-002");
   });
 
   it("returns the requested subsequent page and an empty valid beyond-range page", async () => {
@@ -251,6 +264,8 @@ describe("Catalog detail HTTP boundary", () => {
       id: "fixture-catalog-001",
       kind: "calligraphy",
       title: "九成宫醴泉铭",
+      representativeMedia: { id: "fixture-media-002" },
+      media: [{ id: "fixture-media-001" }, { id: "fixture-media-002" }],
     });
   });
 
@@ -304,6 +319,7 @@ describe("Catalog composition and transport errors", () => {
     title: "Explicitly injected Catalog port",
     aliases: [],
     sourceCitations: [],
+    media: [],
   };
   const injectedPort: CatalogQueryPort = {
     async list({ page, pageSize }) {
@@ -340,6 +356,104 @@ describe("Catalog composition and transport errors", () => {
     expect(() => createBackendApplication({ nodeEnv: "production" })).toThrow(
       "CatalogQueryPort",
     );
+  });
+
+  it("requires an explicit production resolver after the Catalog port", () => {
+    expect(() =>
+      createBackendApplication({
+        nodeEnv: "production",
+        catalogQueryPort: injectedPort,
+      }),
+    ).toThrow("StorageUrlResolver");
+  });
+
+  it("serves Media-less list and detail without invoking a failing resolver", async () => {
+    let resolverCalls = 0;
+    const resolver: StorageUrlResolver = {
+      async resolveMany() {
+        resolverCalls += 1;
+        throw new Error("must not be called");
+      },
+    };
+    const { baseUrl } = await startCatalogServer({
+      catalogQueryPort: injectedPort,
+      storageUrlResolver: resolver,
+    });
+
+    const [list, detail] = await Promise.all([
+      fetch(`${baseUrl}/v1/catalog`),
+      fetch(`${baseUrl}/v1/catalog/${injectedId}`),
+    ]);
+
+    expect(list.status).toBe(200);
+    expect(detail.status).toBe(200);
+    expect(
+      catalogPageSchema.parse(await list.json()).items[0],
+    ).not.toHaveProperty("representativeMedia");
+    expect(catalogDetailSchema.parse(await detail.json())).toMatchObject({
+      media: [],
+    });
+    expect(resolverCalls).toBe(0);
+  });
+
+  it("returns safe SERVICE_UNAVAILABLE only when Media requires resolution", async () => {
+    const mediaId = mediaIdSchema.parse("media-http-unresolved");
+    const mediaPort: CatalogQueryPort = {
+      async list({ page, pageSize }) {
+        return {
+          items: [
+            {
+              id: injectedId,
+              kind: "inscription",
+              title: "Unresolved Media",
+              aliases: [],
+              representativeMedia: {
+                id: mediaId,
+                position: 0,
+                isRepresentative: true,
+                kind: "image",
+                alt: "未解析测试图",
+                width: 800,
+                height: 600,
+                objectKey: "private/unresolved.jpg",
+              },
+            },
+          ],
+          total: 1,
+          page,
+          pageSize,
+          totalPages: 1,
+        };
+      },
+      async getById() {
+        return null;
+      },
+    };
+    const resolvers = [
+      new UnconfiguredStorageUrlResolver(),
+      {
+        async resolveMany() {
+          throw new Error("private resolver exception");
+        },
+      },
+      {
+        async resolveMany() {
+          return new Map([[mediaId, "not-a-url"]]);
+        },
+      },
+    ] satisfies StorageUrlResolver[];
+
+    for (const storageUrlResolver of resolvers) {
+      const { baseUrl } = await startCatalogServer({
+        catalogQueryPort: mediaPort,
+        storageUrlResolver,
+      });
+      const response = await fetch(`${baseUrl}/v1/catalog`);
+      const error = await parseApiError(response, 503, "SERVICE_UNAVAILABLE");
+
+      expect(JSON.stringify(error)).not.toContain("private");
+      expect(JSON.stringify(error)).not.toContain("not-a-url");
+    }
   });
 
   it("maps unexpected list and detail port exceptions to safe INTERNAL_ERROR JSON", async () => {

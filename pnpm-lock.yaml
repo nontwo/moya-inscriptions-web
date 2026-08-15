@@ -105,7 +105,14 @@ importers:
 
   packages/design-tokens: {}
 
-  packages/image: {}
+  packages/image:
+    dependencies:
+      '@moya/api':
+        specifier: workspace:*
+        version: link:../../services/api
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/search: {}
 
@@ -135,6 +142,9 @@ importers:
       '@moya/catalog-postgres':
         specifier: workspace:*
         version: link:../catalog-postgres
+      '@moya/image':
+        specifier: workspace:*
+        version: link:../../packages/image
     devDependencies:
       '@types/node':
         specifier: 24.13.3
@@ -148,6 +158,9 @@ importers:
       '@moya/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@moya/image':
+        specifier: workspace:*
+        version: link:../../packages/image
       '@moya/public-api':
         specifier: workspace:*
         version: link:../public-api
@@ -235,6 +248,9 @@ importers:
       '@moya/design-tokens':
         specifier: workspace:*
         version: link:../packages/design-tokens
+      '@moya/image':
+        specifier: workspace:*
+        version: link:../packages/image
       '@moya/public-api':
         specifier: workspace:*
         version: link:../services/public-api

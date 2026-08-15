@@ -34,6 +34,7 @@ describe("@moya/backend-production composition boundary", () => {
     expect(manifest.dependencies).toEqual({
       "@moya/backend-runtime": "workspace:*",
       "@moya/catalog-postgres": "workspace:*",
+      "@moya/image": "workspace:*",
     });
   });
 
@@ -41,6 +42,7 @@ describe("@moya/backend-production composition boundary", () => {
     const approved = new Set([
       "@moya/backend-runtime",
       "@moya/catalog-postgres",
+      "@moya/image",
     ]);
     const violations: string[] = [];
     for (const file of await collectTypeScript(

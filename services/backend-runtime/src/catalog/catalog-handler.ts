@@ -1,4 +1,5 @@
 import {
+  isCatalogMediaResolutionError,
   isCatalogQueryUnavailableError,
   parseCatalogListQuery,
 } from "@moya/api";
@@ -32,7 +33,10 @@ export const handleCatalogList = async (
   try {
     sendJson(response, 200, await catalogReadService.list(query));
   } catch (error) {
-    if (isCatalogQueryUnavailableError(error)) {
+    if (
+      isCatalogQueryUnavailableError(error) ||
+      isCatalogMediaResolutionError(error)
+    ) {
       sendApiError(
         response,
         "SERVICE_UNAVAILABLE",
@@ -81,7 +85,10 @@ export const handleCatalogDetail = async (
 
     sendJson(response, 200, detail);
   } catch (error) {
-    if (isCatalogQueryUnavailableError(error)) {
+    if (
+      isCatalogQueryUnavailableError(error) ||
+      isCatalogMediaResolutionError(error)
+    ) {
       sendApiError(
         response,
         "SERVICE_UNAVAILABLE",

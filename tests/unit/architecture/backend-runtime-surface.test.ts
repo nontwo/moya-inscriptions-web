@@ -35,6 +35,7 @@ describe("@moya/backend-runtime package boundary", () => {
     expect(manifest.dependencies).toEqual({
       "@moya/api": "workspace:*",
       "@moya/contracts": "workspace:*",
+      "@moya/image": "workspace:*",
       "@moya/public-api": "workspace:*",
     });
   });
@@ -58,6 +59,7 @@ describe("@moya/backend-runtime package boundary", () => {
       "@moya/api",
       "@moya/contracts",
       "@moya/contracts/schemas",
+      "@moya/image",
       "@moya/public-api",
     ]);
     const sourceFiles = await collectTypeScriptFiles(

@@ -1,8 +1,9 @@
-import { catalogIdSchema } from "@moya/contracts/schemas";
+import { catalogIdSchema, mediaIdSchema } from "@moya/contracts/schemas";
 
 import type {
   CatalogDetailProjection,
   CatalogListItemProjection,
+  CatalogMediaProjection,
   CatalogQueryPort,
   CatalogRecord,
   CatalogSourceCitationProjection,
@@ -10,6 +11,7 @@ import type {
 
 interface DevelopmentFixtureEntry {
   readonly record: CatalogRecord;
+  readonly media: readonly CatalogMediaProjection[];
   readonly sourceCitations: readonly CatalogSourceCitationProjection[];
   /** Deliberately private fixture state used to verify the projection boundary. */
   readonly privateFixtureMetadata: {
@@ -20,6 +22,19 @@ interface DevelopmentFixtureEntry {
 }
 
 const fixtureId = (value: string) => catalogIdSchema.parse(value);
+const fixtureMediaId = (value: string) => mediaIdSchema.parse(value);
+
+export const developmentMediaUrlsByObjectKey: ReadonlyMap<string, string> =
+  new Map([
+    [
+      "fixtures/catalog/fixture-catalog-001/gallery-detail.jpg",
+      "https://media.example.invalid/fixture-catalog-001/gallery-detail.jpg",
+    ],
+    [
+      "fixtures/catalog/fixture-catalog-001/representative.jpg",
+      "https://media.example.invalid/fixture-catalog-001/representative.jpg",
+    ],
+  ]);
 
 /**
  * TEST / DEVELOPMENT FIXTURE ONLY.
@@ -40,6 +55,28 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
       periodLabel: "唐",
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],
+    media: [
+      {
+        id: fixtureMediaId("fixture-media-001"),
+        position: 0,
+        isRepresentative: false,
+        kind: "image",
+        alt: "九成宫醴泉铭局部测试图",
+        width: 1_200,
+        height: 1_600,
+        objectKey: "fixtures/catalog/fixture-catalog-001/gallery-detail.jpg",
+      },
+      {
+        id: fixtureMediaId("fixture-media-002"),
+        position: 1,
+        isRepresentative: true,
+        kind: "image",
+        alt: "九成宫醴泉铭代表测试图",
+        width: 1_600,
+        height: 1_200,
+        objectKey: "fixtures/catalog/fixture-catalog-001/representative.jpg",
+      },
+    ],
     privateFixtureMetadata: {
       internalSourceId: "fixture-source-001",
       rawSourceExcerpt: "fixture-only raw source",
@@ -57,6 +94,7 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
       periodLabel: "东晋",
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],
+    media: [],
     privateFixtureMetadata: {
       internalSourceId: "fixture-source-002",
       rawSourceExcerpt: "fixture-only raw source",
@@ -74,6 +112,7 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
       periodLabel: "北齐",
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],
+    media: [],
     privateFixtureMetadata: {
       internalSourceId: "fixture-source-003",
       rawSourceExcerpt: "fixture-only raw source",
@@ -84,6 +123,7 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
 
 const toListProjection = ({
   record,
+  media,
 }: DevelopmentFixtureEntry): CatalogListItemProjection =>
   ({
     id: record.id,
@@ -94,6 +134,14 @@ const toListProjection = ({
     ...(record.periodLabel === undefined
       ? {}
       : { periodLabel: record.periodLabel }),
+    ...(() => {
+      const representativeMedia = media.find(
+        ({ isRepresentative }) => isRepresentative,
+      );
+      return representativeMedia === undefined
+        ? {}
+        : { representativeMedia: { ...representativeMedia } };
+    })(),
   }) satisfies CatalogListItemProjection;
 
 const toDetailProjection = (
@@ -102,6 +150,7 @@ const toDetailProjection = (
   return {
     ...toListProjection(entry),
     sourceCitations: entry.sourceCitations.map((citation) => ({ ...citation })),
+    media: entry.media.map((media) => ({ ...media })),
     ...(entry.record.description === undefined
       ? {}
       : { description: entry.record.description }),
