@@ -4,8 +4,11 @@
 
 ## 阶段结论
 
-工程、设计与部署方案基线已经建立，Catalog read runtime与受控CSV import/apply
-infrastructure已经实现；正式Web/Admin、真实数据接入和其余产品能力尚未开始。旧 T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
+工程、设计与部署方案基线已经建立，Catalog read runtime与安全CSV/XLSX
+import/apply
+infrastructure已经完成。PILOT-IMPORT-01已在独立disposable验证环境中完成28条真实审核Catalog记录的端到端验证（apply、replay与Public
+API readback），但尚未执行正式/production
+Catalog数据导入，应用仓库本身仍不包含任何真实数据集；正式Web/Admin产品能力也尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
 
 `integration/mvp`
 当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立手机交互原型之上完成T04.1
@@ -21,12 +24,12 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T04.0-R         | 已完成                        | 兼容 ArchiveCatalogReader、三路由 OpenAPI、架构守卫                                                                                                                       |
 | T04.1-D         | Phase 1 已实现                | Catalog contracts、Query Port、read projections、mapper与guards                                                                                                           |
 | T04.2           | 已实现                        | Catalog-only contracts、Query Port和canonical OpenAPI routes                                                                                                              |
-| T04.3           | 本分支已实现                  | 两值一级CatalogKind与append-only PostgreSQL contract migration                                                                                                            |
+| T04.3           | 已完成并合并                  | 两值一级CatalogKind与append-only PostgreSQL contract migration                                                                                                            |
 | T05.0           | 已实现                        | 最小HTTP runtime、`GET /health`、配置验证与graceful shutdown                                                                                                              |
 | T05.1           | 已实现                        | Catalog list/detail HTTP boundary与development/test fixture                                                                                                               |
 | T05.2           | 已实现                        | PostgreSQL read schema、adapter、显式迁移与production composition                                                                                                         |
-| T05.3           | 本分支已实现                  | 长期数据治理、strict query、Kind filter与CatalogReadService                                                                                                               |
-| T05.4-A         | Owner 已批准                  | versioned Import Contract、Owner Workbook/CSV spec与安全空白template                                                                                                      |
+| T05.3           | 已完成并合并                  | 长期数据治理、strict query、Kind filter与CatalogReadService                                                                                                               |
+| T05.4-A         | 已完成并合并                  | versioned Import Contract、Owner Workbook/CSV spec与安全空白template（Owner已批准）                                                                                       |
 | T05.4-A.2       | 已完成并合并                  | current persistence policy、Owner guidance与workbook reconciliation                                                                                                       |
 | T05.4-B         | 已完成并合并（CLOSED / PASS） | 安全 CSV/XLSX import infrastructure 已完成：bounded XLSX parser、CSV/XLSX convergence、diagnostics与raw-source guard                                                      |
 | PILOT-IMPORT-01 | 已完成（CLOSED / PASS）       | 28条真实审核 Catalog 记录在独立 disposable PostgreSQL 18.4 验证环境完成 transactional apply、idempotent replay与Public API readback；验证库已销毁，应用仓库未导入正式数据 |
@@ -62,8 +65,9 @@ migration；`main`继续保留稳定的T00/治理基线。
   18.4验证环境完成并已在证据收集后销毁，未写入production或本仓库数据。
 
 当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
-HTTP在development/test缺省使用三个条目的fixture；真实数据导入、Importer Admin
-UI、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在。
+HTTP在development/test缺省使用三个条目的fixture；PILOT-IMPORT-01已完成28条真实记录的验证性导入，但正式/production
+Catalog数据导入、Importer Admin
+UI、搜索实现、图片管线、登录、地图、互动、上传、生产环境和正式部署都不存在；应用仓库本身仍不包含任何真实Catalog数据集。
 
 T05.4-A/A.1历史checkpoint冻结了`catalog-import/v1` internal canonical
 rows、null/identity/approval安全规则、workbook/CSV contract与Import Batch
