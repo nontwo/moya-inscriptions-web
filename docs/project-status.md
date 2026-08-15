@@ -36,9 +36,10 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T05.4-A.2       | 已完成并合并                  | current persistence policy、Owner guidance与workbook reconciliation                                                                                                       |
 | T05.4-B         | 已完成并合并（CLOSED / PASS） | 安全 CSV/XLSX import infrastructure 已完成：bounded XLSX parser、CSV/XLSX convergence、diagnostics与raw-source guard                                                      |
 | PILOT-IMPORT-01 | 已完成（CLOSED / PASS）       | 28条真实审核 Catalog 记录在独立 disposable PostgreSQL 18.4 验证环境完成 transactional apply、idempotent replay与Public API readback；验证库已销毁，应用仓库未导入正式数据 |
-| MEDIA-01        | 已完成并合并（CLOSED / PASS） | Catalog Media foundation：`MediaId`/strict `PublicMedia`、`catalog_media`、explicit representative semantics、ordered gallery、batched `StorageUrlResolver`与安全503边界；merged-head CI/PostgreSQL 18.4通过 |
 | 手机原型        | 已隔离保存                    | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片                                                                                                                     |
-| T06–T09         | 未开始                        | 正式 Web 首页、浏览、搜索和档案详情                                                                                                                                       |
+| T06–T09         | 未开始                        | 图片管线、正式 Web 浏览/搜索/详情                                                                                                                                         |
+
+MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media foundation现已包含`MediaId`/strict `PublicMedia`、`catalog_media`、explicit representative semantics、ordered gallery、batched `StorageUrlResolver`与安全503边界；merged-head CI与PostgreSQL 18.4均通过。Production storage/CDN、真实Media ingestion、derivatives和Media management仍属于后续独立任务。
 
 ## 当前能做什么
 
