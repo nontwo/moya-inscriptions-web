@@ -19,7 +19,7 @@
     "generate:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs",
     "check:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --check",
     "format": "prettier --write .",
-    "format:check": "prettier --write docs/project-status.md && git diff -- docs/project-status.md && exit 1"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
