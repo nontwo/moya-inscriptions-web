@@ -197,7 +197,9 @@
   .app-primary-tab::after,
   .app-category::after,
   .app-loading .yoyi-logo,
-  .app-loading__motto {
+  .app-loading__motto,
+  .app-detail__info-panel,
+  .app-detail__media-frame img {
     transition-duration: 1ms;
     animation-duration: 1ms;
     animation-delay: 0ms;

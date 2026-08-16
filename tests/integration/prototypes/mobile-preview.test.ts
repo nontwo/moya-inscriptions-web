@@ -1958,7 +1958,7 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260814-min-circle-icon"',
+      'href="./preview.shared.css?v=20260816-detail-panel"',
     );
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
@@ -2293,6 +2293,18 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
     ).toBe(true);
+    const infoPanel = document.querySelector("[data-detail-info-panel]");
+    expect(
+      infoPanel?.contains(document.querySelector("[data-detail-title]")),
+    ).toBe(true);
+    expect(
+      infoPanel?.contains(document.querySelector("[data-detail-facts-list]")),
+    ).toBe(true);
+    expect(
+      infoPanel?.contains(
+        document.querySelector("[data-detail-description-text]"),
+      ),
+    ).toBe(false);
 
     document.querySelector<HTMLElement>("[data-detail-back]")?.click();
   });
@@ -2373,6 +2385,21 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
     ).toBe("1 / 4");
+    document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
+    expect(
+      document.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("2 / 4");
+    document
+      .querySelector<HTMLElement>('[data-detail-gallery-item="0"]')
+      ?.click();
+    expect(
+      document.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1 / 4");
+    expect(
+      document
+        .querySelector('[data-detail-gallery-item="0"]')
+        ?.classList.contains("is-current"),
+    ).toBe(true);
     document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,

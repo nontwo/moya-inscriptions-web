@@ -389,13 +389,25 @@ function applyDetailMedia() {
   if (detailImage) {
     detailImage.hidden = !item;
     if (item) {
+      const previousSrc = detailImage.getAttribute("src");
       detailImage.alt = item.alt ?? "";
       detailImage.width = item.width ?? 0;
       detailImage.height = item.height ?? 0;
       detailImage.style.aspectRatio =
         item.width && item.height ? `${item.width} / ${item.height}` : "";
+      if (previousSrc && previousSrc !== item.src) {
+        detailImage.classList.add("is-switching");
+        detailImage.addEventListener(
+          "load",
+          () => detailImage.classList.remove("is-switching"),
+          { once: true },
+        );
+      } else {
+        detailImage.classList.remove("is-switching");
+      }
       detailImage.src = item.src;
     } else {
+      detailImage.classList.remove("is-switching");
       detailImage.removeAttribute("src");
       detailImage.alt = "";
     }
