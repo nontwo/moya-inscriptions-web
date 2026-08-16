@@ -15,7 +15,7 @@ Catalog数据导入，也尚未接入production storage provider/CDN或真实Med
 ingestion；应用仓库本身仍不包含任何真实数据集，正式Web/Admin产品能力也尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
 
 `integration/mvp`
-当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立手机交互原型之上完成T04.1
+当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立响应式产品原型之上完成T04.1
 Catalog Contract Phase 1及T04.2 canonical
 migration；`main`继续保留稳定的T00/治理基线。
 
@@ -37,7 +37,7 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T05.4-A.2       | 已完成并合并                  | current persistence policy、Owner guidance与workbook reconciliation                                                                                                       |
 | T05.4-B         | 已完成并合并（CLOSED / PASS） | 安全 CSV/XLSX import infrastructure 已完成：bounded XLSX parser、CSV/XLSX convergence、diagnostics与raw-source guard                                                      |
 | PILOT-IMPORT-01 | 已完成（CLOSED / PASS）       | 28条真实审核 Catalog 记录在独立 disposable PostgreSQL 18.4 验证环境完成 transactional apply、idempotent replay与Public API readback；验证库已销毁，应用仓库未导入正式数据 |
-| 手机原型        | 已隔离保存                    | 非生产交互参考；不连接 Reader、数据库、搜索或生产图片                                                                                                                     |
+| 响应式产品原型  | 非生产参考（持续演进）        | 同一 URL 验证手机、平板和 PC 壳层；不连接 Reader、数据库、搜索或生产图片                                                                                                  |
 | T06–T09         | 未开始                        | 图片管线、正式 Web 浏览/搜索/详情                                                                                                                                         |
 
 MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media
@@ -51,7 +51,7 @@ management仍属于后续独立任务。
 
 - 安装、lint、类型检查、测试和构建完整 Monorepo。
 - 使用 `@moya/design-tokens` 与 `@moya/ui` 开发后续正式界面。
-- 在本地静态服务器查看组件目录和手机交互原型。
+- 在本地静态服务器查看组件目录和响应式产品原型。
 - 依据 T03 文档评估 CloudBase 方案，但不能据此直接创建或发布生产资源。
 - 使用canonical `CatalogId`、两值 `CatalogKind`和suffix-free Catalog Public
   Contracts，并在backend使用 `CatalogQueryPort`、internal projections、transport
@@ -107,7 +107,7 @@ Media验证数据模型和读取链路，没有导入真实图片或配置produc
 当前测试覆盖工程fixture、Backend HTTP runtime、Catalog contracts/application
 service、Query Port、strict query、Kind filtering、OpenAPI、Catalog Media
 contracts/persistence/resolver与private-storage边界、T02
-token/资产/组件、手机原型交互以及Catalog import的PostgreSQL
+token/资产/组件、响应式原型交互以及Catalog import的PostgreSQL
 dry-run/apply/persistence invariants。真实PostgreSQL
 integration以CI中的PostgreSQL 18.4 clean
 service为权威验证环境；本机不要求安装PostgreSQL或Docker。
@@ -163,13 +163,13 @@ readiness，不是未经决策即可复用的process liveness probe。
 启动静态预览：
 
 ```sh
-python3 -m http.server 4173
+python3 -m http.server 4175 --bind 0.0.0.0
 ```
 
-- 组件目录：`http://localhost:4173/docs/design-system/catalog/`
-- 手机原型：`http://localhost:4173/docs/prototypes/mobile-preview/`
+- 组件目录：`http://localhost:4175/docs/design-system/catalog/`
+- 响应式产品原型：`http://localhost:4175/docs/prototypes/mobile-preview/`
 
-手机原型只用于直观检查导航与交互，不是 `apps/web` 的正式实现。
+响应式产品原型只用于直观检查导航与交互，不是 `apps/web` 的正式实现。
 
 ## 分支与 GitHub 限制
 

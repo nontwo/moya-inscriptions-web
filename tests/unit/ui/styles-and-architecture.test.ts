@@ -25,10 +25,38 @@ describe("UI styles and architecture", () => {
   it("includes responsive, safe-area, theme, and reduced-motion rules", async () => {
     const css = await readFile(new URL("styles.css", uiRoot), "utf8");
     expect(css).toContain("env(safe-area-inset-bottom)");
+    expect(css).toContain("@media (min-width: 48rem)");
     expect(css).toContain("@media (min-width: 56rem)");
+    expect(css).toContain("@media (min-width: 90rem)");
+    expect(css).toContain("orientation: landscape");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain("@media (prefers-reduced-transparency: reduce)");
+    expect(css).toContain("(prefers-contrast: more)");
     expect(css).toContain('[data-motion="reduced"]');
     expect(css).toContain("paper-dark-subtle.svg");
+    expect(css).toContain("var(--yoyi-container-content)");
+    expect(css).toContain("mask-image: var(--yoyi-label-image)");
+    expect(css).toContain("-webkit-mask-image: var(--yoyi-label-image)");
+    expect(css).toContain("background-color: currentcolor");
+    expect(css).toContain(".yoyi-functional-glass");
+    expect(css).toContain(
+      "backdrop-filter: blur(var(--yoyi-blur-glass-regular))",
+    );
+    expect(css).toContain("var(--yoyi-material-glass-fallback-background)");
+    expect(css).toContain(".yoyi-mobile-bottom-navigation.is-minimized");
+    expect(css).toContain(
+      ".yoyi-mobile-bottom-navigation.yoyi-functional-glass.is-minimized",
+    );
+    expect(css).toContain("min-height: 44px");
+    expect(css).toContain(".yoyi-nav-bubble");
+    expect(css).toContain("touch-action: none");
+    expect(css).not.toMatch(
+      /\.is-minimized \.yoyi-nav-bubble,\s*\.yoyi-mobile-bottom-navigation\.is-minimized \.yoyi-navigation-entry \{\s*opacity:\s*0/,
+    );
+    expect(css).not.toMatch(
+      /html\[data-platform="pc"\]\s*\.yoyi-mobile-bottom-navigation\.yoyi-functional-glass\s*\{[^}]*backdrop-filter:\s*none/s,
+    );
+    expect(css).not.toContain("opacity: 0.68");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 

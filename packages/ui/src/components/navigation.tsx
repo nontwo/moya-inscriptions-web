@@ -1,4 +1,12 @@
-import type { FormEvent, HTMLAttributes, ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type HTMLAttributes,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import type { ThemePreference } from "@moya/design-tokens";
 
@@ -16,10 +24,12 @@ type NavigationItemsProps = {
 function NavigationEntry({
   item,
   active,
+  onActivate,
   onNavigate,
 }: {
   item: NavigationItem;
   active: boolean;
+  onActivate?: ((item: NavigationItem) => boolean) | undefined;
   onNavigate?: ((item: NavigationItem) => void) | undefined;
 }) {
   const content = (
@@ -55,6 +65,10 @@ function NavigationEntry({
             event.preventDefault();
             return;
           }
+          if (onActivate?.(item)) {
+            event.preventDefault();
+            return;
+          }
           onNavigate?.(item);
         }}
         tabIndex={item.disabled ? -1 : undefined}
@@ -68,7 +82,11 @@ function NavigationEntry({
     <button
       {...shared}
       disabled={item.disabled}
-      onClick={() => onNavigate?.(item)}
+      onClick={() => {
+        if (!onActivate?.(item)) {
+          onNavigate?.(item);
+        }
+      }}
       type="button"
     >
       {content}
@@ -207,6 +225,8 @@ export function DesktopTopNavigation({
 export type MobileBottomNavigationProps = HTMLAttributes<HTMLElement> &
   NavigationItemsProps & {
     label?: string | undefined;
+    minimizeBehavior?: "never" | "on-scroll-down" | undefined;
+    scrollContainerRef?: RefObject<HTMLElement | null> | undefined;
   };
 
 export function MobileBottomNavigation({
@@ -214,14 +234,87 @@ export function MobileBottomNavigation({
   activeId,
   onNavigate,
   label = "主导航",
+  minimizeBehavior = "never",
+  scrollContainerRef,
   className,
   ...props
 }: MobileBottomNavigationProps) {
+  const [minimized, setMinimized] = useState(false);
+  const minimizedRef = useRef(false);
+
+  useEffect(() => {
+    minimizedRef.current = minimized;
+  }, [minimized]);
+
+  useEffect(() => {
+    if (minimizeBehavior === "never") {
+      setMinimized(false);
+      return undefined;
+    }
+
+    const scrollContainer = scrollContainerRef?.current;
+    const eventTarget: HTMLElement | Window = scrollContainer ?? window;
+    const readScrollTop = () =>
+      scrollContainer
+        ? scrollContainer.scrollTop
+        : Math.max(window.scrollY, document.documentElement.scrollTop);
+    let lastScrollTop = readScrollTop();
+    let downwardTravel = 0;
+    let upwardTravel = 0;
+
+    const handleScroll = () => {
+      const scrollTop = readScrollTop();
+      const delta = scrollTop - lastScrollTop;
+      lastScrollTop = scrollTop;
+
+      if (scrollTop <= 8) {
+        downwardTravel = 0;
+        upwardTravel = 0;
+        setMinimized(false);
+        return;
+      }
+
+      if (delta > 0) {
+        downwardTravel += delta;
+        upwardTravel = 0;
+        if (!minimizedRef.current && downwardTravel >= 12) {
+          downwardTravel = 0;
+          setMinimized(true);
+        }
+      } else if (delta < 0) {
+        upwardTravel -= delta;
+        downwardTravel = 0;
+        if (minimizedRef.current && upwardTravel >= 8) {
+          upwardTravel = 0;
+          setMinimized(false);
+        }
+      }
+    };
+
+    eventTarget.addEventListener("scroll", handleScroll, { passive: true });
+    return () => eventTarget.removeEventListener("scroll", handleScroll);
+  }, [minimizeBehavior, scrollContainerRef]);
+
+  const handleActivate = (item: NavigationItem) => {
+    if (minimized && item.id === activeId) {
+      setMinimized(false);
+      return true;
+    }
+    return false;
+  };
+
   return (
     <nav
       {...props}
       aria-label={label}
-      className={cx("yoyi-mobile-bottom-navigation", className)}
+      className={cx(
+        "yoyi-mobile-bottom-navigation",
+        "yoyi-functional-glass",
+        minimized && "is-minimized",
+        className,
+      )}
+      data-minimize-behavior={minimizeBehavior}
+      data-minimized={minimized || undefined}
       data-yoyi-ui="mobile-bottom-navigation"
     >
       {items.map((item) => (
@@ -229,6 +322,7 @@ export function MobileBottomNavigation({
           active={item.id === activeId}
           item={item}
           key={item.id}
+          onActivate={handleActivate}
           onNavigate={onNavigate}
         />
       ))}
@@ -244,6 +338,8 @@ export type ResponsiveNavigationProps = NavigationItemsProps & {
   brandHref?: string | undefined;
   searchLabel?: string | undefined;
   onSearch?: (() => void) | undefined;
+  minimizeBehavior?: "never" | "on-scroll-down" | undefined;
+  scrollContainerRef?: RefObject<HTMLElement | null> | undefined;
   className?: string | undefined;
 };
 
@@ -258,6 +354,8 @@ export function ResponsiveNavigation({
   brandHref,
   searchLabel,
   onSearch,
+  minimizeBehavior,
+  scrollContainerRef,
   className,
 }: ResponsiveNavigationProps) {
   return (
@@ -279,7 +377,9 @@ export function ResponsiveNavigation({
         activeId={activeId}
         items={mobileItems}
         label={mobileLabel}
+        minimizeBehavior={minimizeBehavior}
         onNavigate={onNavigate}
+        scrollContainerRef={scrollContainerRef}
       />
     </div>
   );
