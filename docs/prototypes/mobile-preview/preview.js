@@ -12,12 +12,43 @@ const findEditorialTopic =
   ((id) => editorialTopics.find((topic) => topic.id === id) ?? null);
 const homeFeedFixture = globalThis.YOYI_HOME_FEED_PLACEHOLDER;
 const supplementalHomeCards = homeFeedFixture?.feedCards ?? {};
+const catalogDetailRecords =
+  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER?.records ?? {};
 
 const root = document.documentElement;
 const app = document.querySelector("[data-mobile-app]");
 const bottomNavigation = document.querySelector("[data-bottom-navigation]");
+const detailView = document.querySelector("[data-view='detail']");
 const detailImage = document.querySelector("[data-detail-image]");
 const detailTitle = document.querySelector("[data-detail-title]");
+const detailKindPeriod = document.querySelector("[data-detail-kind-period]");
+const detailAliases = document.querySelector("[data-detail-aliases]");
+const detailAliasesText = document.querySelector("[data-detail-aliases-text]");
+const detailSummary = document.querySelector("[data-detail-summary]");
+const detailSummaryText = document.querySelector("[data-detail-summary-text]");
+const detailFacts = document.querySelector("[data-detail-facts]");
+const detailFactsList = document.querySelector("[data-detail-facts-list]");
+const detailDescription = document.querySelector("[data-detail-description]");
+const detailDescriptionText = document.querySelector(
+  "[data-detail-description-text]",
+);
+const detailGallery = document.querySelector("[data-detail-gallery]");
+const detailGalleryList = document.querySelector("[data-detail-gallery-list]");
+const detailSources = document.querySelector("[data-detail-sources]");
+const detailSourcesList = document.querySelector("[data-detail-sources-list]");
+const detailMediaOpen = document.querySelector("[data-detail-media-open]");
+const detailMediaFallback = document.querySelector(
+  "[data-detail-media-fallback]",
+);
+const detailMediaError = document.querySelector("[data-detail-media-error]");
+const detailMediaIndex = document.querySelector("[data-detail-media-index]");
+const detailMediaPrev = document.querySelector("[data-detail-media-prev]");
+const detailMediaNext = document.querySelector("[data-detail-media-next]");
+const detailFocus = document.querySelector("[data-detail-focus]");
+const detailFocusImage = document.querySelector("[data-detail-focus-image]");
+const detailFocusIndex = document.querySelector("[data-detail-focus-index]");
+const detailFocusPrev = document.querySelector("[data-detail-focus-prev]");
+const detailFocusNext = document.querySelector("[data-detail-focus-next]");
 const searchInput = document.querySelector("[data-inscription-search]");
 const searchClear = document.querySelector("[data-search-clear]");
 const calligraphyFilterInput = document.querySelector(
@@ -140,6 +171,12 @@ let navDragging = false;
 let navPointerStartX = 0;
 let navDidPan = false;
 let navIgnoreClick = false;
+let detailContentId = "";
+let detailRecord = null;
+let detailMediaItems = [];
+let detailMediaIndexValue = 0;
+let detailMediaFailed = false;
+let detailFocusOpen = false;
 
 function scrollKeyForView(view) {
   if (view === "home") return `home:${homeFeed}`;
@@ -203,14 +240,336 @@ function onBeforePlatformQueryChange(event) {
   }
 }
 
-function fillDetailContent(trigger) {
-  const image = trigger.dataset.image;
-  const title = trigger.dataset.title;
-  const alt = trigger.querySelector("img")?.alt ?? "";
+function isLandscapeViewport() {
+  return window.innerWidth > window.innerHeight;
+}
 
-  detailImage.src = image;
-  detailImage.alt = alt;
-  detailTitle.textContent = title;
+function detailCompositionForPlatform(
+  platform = root.dataset.platform,
+  landscape = isLandscapeViewport(),
+) {
+  if (platform === "phone") return landscape ? "compact-stacked" : "stacked";
+  if (platform === "tablet")
+    return landscape ? "compact-split" : "wide-stacked";
+  return "expanded-split";
+}
+
+function updateDetailComposition() {
+  if (!detailView) return;
+  detailView.dataset.detailComposition = detailCompositionForPlatform();
+}
+
+function catalogKindLabel(kind) {
+  return kind === "calligraphy" ? "书帖" : "碑刻";
+}
+
+function regionLabel(facts) {
+  if (!facts) return "";
+  return [facts.province, facts.prefecture, facts.county]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function detailMediaList(record) {
+  const media = Array.isArray(record?.media) ? record.media : [];
+  if (media.length > 0) return media;
+  if (record?.representativeMedia) return [record.representativeMedia];
+  return [];
+}
+
+function fallbackCatalogRecord(contentId, trigger) {
+  const title = trigger?.dataset.title ?? "";
+  const image = trigger?.dataset.image ?? "";
+  const alt = trigger?.querySelector("img")?.alt ?? title;
+  const kind = trigger?.closest('[data-view="calligraphy"]')
+    ? "calligraphy"
+    : "inscription";
+  const item = image
+    ? {
+        alt,
+        height: 900,
+        id: `${contentId}-media`,
+        kind: "image",
+        src: image,
+        width: 1200,
+      }
+    : null;
+  return {
+    aliases: [],
+    id: contentId,
+    kind,
+    media: item ? [item] : [],
+    representativeMedia: item ?? undefined,
+    sourceCitations: [],
+    title,
+  };
+}
+
+function resolveCatalogRecord(contentId, trigger) {
+  const record = catalogDetailRecords[contentId];
+  if (record) return record;
+  if (trigger) return fallbackCatalogRecord(contentId, trigger);
+  return { id: contentId, lifecycle: "not-found" };
+}
+
+function showDetailPanel(name) {
+  detailView?.querySelectorAll("[data-detail-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.detailPanel !== name;
+  });
+  if (detailView) detailView.dataset.detailState = name;
+}
+
+function setHidden(element, hidden) {
+  if (element) element.hidden = hidden;
+}
+
+function appendFact(label, value) {
+  if (!value || !detailFactsList) return;
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const definition = document.createElement("dd");
+  definition.textContent = value;
+  detailFactsList.append(term, definition);
+}
+
+function renderDetailFacts(record) {
+  if (!detailFacts || !detailFactsList) return;
+  detailFactsList.replaceChildren();
+  const facts = record.prototypeFacts;
+  appendFact("朝代", facts?.dynasty);
+  appendFact("年代", facts?.dateText);
+  appendFact("地区", regionLabel(facts));
+  appendFact("现址", facts?.currentLocation);
+  appendFact("保管 / 现藏单位", facts?.currentCustodian);
+  setHidden(detailFacts, detailFactsList.children.length === 0);
+}
+
+function renderDetailSources(record) {
+  if (!detailSources || !detailSourcesList) return;
+  detailSourcesList.replaceChildren();
+  const citations = Array.isArray(record.sourceCitations)
+    ? record.sourceCitations
+    : [];
+  citations.forEach((citation) => {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "app-detail__source-label";
+    label.textContent = citation.label;
+    item.append(label);
+    if (citation.citation) {
+      const text = document.createElement("span");
+      text.className = "app-detail__source-citation";
+      text.textContent = citation.citation;
+      item.append(text);
+    }
+    if (citation.url) {
+      const link = document.createElement("a");
+      link.className = "app-detail__source-link";
+      link.href = citation.url;
+      link.rel = "noreferrer";
+      link.target = "_blank";
+      link.textContent = "查看来源";
+      item.append(link);
+    }
+    detailSourcesList.append(item);
+  });
+  setHidden(detailSources, citations.length === 0);
+}
+
+function currentDetailMedia() {
+  return detailMediaItems[detailMediaIndexValue] ?? null;
+}
+
+function applyDetailMedia() {
+  const item = currentDetailMedia();
+  const total = detailMediaItems.length;
+  detailMediaFailed = false;
+  setHidden(detailMediaFallback, total > 0);
+  setHidden(detailMediaError, true);
+  if (detailImage) {
+    detailImage.hidden = !item;
+    if (item) {
+      detailImage.alt = item.alt ?? "";
+      detailImage.width = item.width ?? 0;
+      detailImage.height = item.height ?? 0;
+      detailImage.style.aspectRatio =
+        item.width && item.height ? `${item.width} / ${item.height}` : "";
+      detailImage.src = item.src;
+    } else {
+      detailImage.removeAttribute("src");
+      detailImage.alt = "";
+    }
+  }
+  if (detailMediaOpen) {
+    detailMediaOpen.disabled = !item;
+    detailMediaOpen.setAttribute("aria-label", item ? "查看图像" : "暂无图像");
+  }
+  if (detailMediaIndex) {
+    detailMediaIndex.hidden = total === 0;
+    detailMediaIndex.textContent =
+      total > 0 ? `${detailMediaIndexValue + 1} / ${total}` : "";
+  }
+  const showNav = total > 1;
+  setHidden(detailMediaPrev, !showNav);
+  setHidden(detailMediaNext, !showNav);
+  if (detailGalleryList) {
+    detailGalleryList
+      .querySelectorAll("[data-detail-gallery-item]")
+      .forEach((button, index) => {
+        const current = index === detailMediaIndexValue;
+        button.classList.toggle("is-current", current);
+        if (current) button.setAttribute("aria-current", "true");
+        else button.removeAttribute("aria-current");
+      });
+  }
+  if (detailFocusOpen) applyFocusMedia();
+}
+
+function renderDetailGallery(items) {
+  if (!detailGallery || !detailGalleryList) return;
+  detailGalleryList.replaceChildren();
+  items.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "app-detail__gallery-item";
+    button.dataset.detailGalleryItem = String(index);
+    button.setAttribute("aria-label", `查看第 ${index + 1} 张图像`);
+    const image = document.createElement("img");
+    image.alt = item.alt ?? "";
+    image.src = item.src;
+    button.append(image);
+    detailGalleryList.append(button);
+  });
+  setHidden(detailGallery, items.length <= 1);
+}
+
+function renderLoadedDetail(record) {
+  showDetailPanel("loaded");
+  if (detailTitle) detailTitle.textContent = record.title ?? "";
+  const kindLine = [catalogKindLabel(record.kind), record.periodLabel]
+    .filter(Boolean)
+    .join(" · ");
+  if (detailKindPeriod) detailKindPeriod.textContent = kindLine;
+  const aliases = Array.isArray(record.aliases)
+    ? record.aliases.filter(Boolean)
+    : [];
+  if (detailAliasesText) detailAliasesText.textContent = aliases.join(" · ");
+  setHidden(detailAliases, aliases.length === 0);
+  if (detailSummaryText) detailSummaryText.textContent = record.summary ?? "";
+  setHidden(detailSummary, !record.summary);
+  renderDetailFacts(record);
+  if (detailDescriptionText) {
+    detailDescriptionText.textContent = record.description ?? "";
+  }
+  setHidden(detailDescription, !record.description);
+  renderDetailSources(record);
+  renderDetailGallery(detailMediaItems);
+  applyDetailMedia();
+}
+
+function renderCatalogDetail(record) {
+  const lifecycle = record?.lifecycle;
+  if (lifecycle === "loading") {
+    showDetailPanel("loading");
+    return;
+  }
+  if (lifecycle === "not-found") {
+    showDetailPanel("not-found");
+    return;
+  }
+  if (lifecycle === "unavailable") {
+    showDetailPanel("unavailable");
+    return;
+  }
+  if (lifecycle === "error") {
+    showDetailPanel("error");
+    return;
+  }
+  renderLoadedDetail(record);
+}
+
+function rememberDetailHistory(contentId, { replace = false } = {}) {
+  const state = {
+    contentId,
+    kind: "detail",
+    mediaIndex: detailMediaIndexValue,
+    sourceView: primaryView,
+  };
+  const url = `#detail-${contentId}`;
+  if (replace) history.replaceState(state, "", url);
+  else history.pushState(state, "", url);
+}
+
+function applyFocusMedia() {
+  const item = currentDetailMedia();
+  if (!detailFocusImage || !item) return;
+  detailFocusImage.alt = item.alt ?? "";
+  detailFocusImage.src = item.src;
+  if (detailFocusIndex) {
+    detailFocusIndex.textContent = `${detailMediaIndexValue + 1} / ${detailMediaItems.length}`;
+  }
+  const showNav = detailMediaItems.length > 1;
+  setHidden(detailFocusPrev, !showNav);
+  setHidden(detailFocusNext, !showNav);
+}
+
+function closeMediaFocus() {
+  detailFocusOpen = false;
+  setHidden(detailFocus, true);
+}
+
+function openMediaFocus() {
+  if (!currentDetailMedia() || detailMediaFailed) return;
+  detailFocusOpen = true;
+  applyFocusMedia();
+  setHidden(detailFocus, false);
+  document.querySelector("[data-detail-focus-close]")?.focus();
+}
+
+function stepDetailMedia(step) {
+  if (detailMediaItems.length <= 1) return;
+  detailMediaIndexValue =
+    (detailMediaIndexValue + step + detailMediaItems.length) %
+    detailMediaItems.length;
+  applyDetailMedia();
+  if (history.state?.kind === "detail") {
+    rememberDetailHistory(detailContentId, { replace: true });
+  }
+}
+
+function onDetailImageError() {
+  if (!currentDetailMedia()) return;
+  detailMediaFailed = true;
+  if (detailImage) detailImage.hidden = true;
+  setHidden(detailMediaError, false);
+  setHidden(detailMediaFallback, true);
+}
+
+function openDetailById(
+  contentId,
+  { mediaIndex = 0, trigger = null, updateHistory = true } = {},
+) {
+  saveScrollPosition();
+  closeMediaFocus();
+  detailContentId = contentId;
+  detailRecord = resolveCatalogRecord(contentId, trigger);
+  detailMediaItems = detailMediaList(detailRecord);
+  detailMediaIndexValue = Math.max(
+    0,
+    Math.min(mediaIndex, Math.max(detailMediaItems.length - 1, 0)),
+  );
+  updateDetailComposition();
+  renderCatalogDetail(detailRecord);
+  showView("detail");
+  const detailScroll = document.querySelector('[data-scroll-view="detail"]');
+  if (detailScroll) detailScroll.scrollTop = 0;
+  if (updateHistory) rememberDetailHistory(contentId);
+}
+
+function openDetail(trigger, options = {}) {
+  const contentId = trigger?.dataset.contentId;
+  if (!contentId) return;
+  openDetailById(contentId, { ...options, trigger });
 }
 
 function showView(view) {
@@ -1241,28 +1600,19 @@ function closeSettings() {
   else selectPrimaryView(primaryView);
 }
 
-function openDetail(trigger, { updateHistory = true } = {}) {
-  saveScrollPosition();
-  fillDetailContent(trigger);
-  showView("detail");
-  document.querySelector('[data-scroll-view="detail"]').scrollTop = 0;
-
-  if (updateHistory) {
-    history.pushState(
-      {
-        kind: "detail",
-        contentId: trigger.dataset.contentId,
-        sourceView: primaryView,
-      },
-      "",
-      `#detail-${trigger.dataset.contentId}`,
-    );
-  }
-}
-
 function closeDetail() {
+  closeMediaFocus();
   if (history.state?.kind === "detail") history.back();
   else selectPrimaryView(primaryView);
+}
+
+function retryDetail() {
+  if (!detailContentId) return;
+  openDetailById(detailContentId, {
+    mediaIndex: detailMediaIndexValue,
+    trigger: findContentTrigger(detailContentId),
+    updateHistory: false,
+  });
 }
 
 function findContentTrigger(contentId) {
@@ -1360,6 +1710,52 @@ document
   .querySelector("[data-detail-back]")
   .addEventListener("click", closeDetail);
 
+document.querySelectorAll("[data-detail-message-back]").forEach((button) => {
+  button.addEventListener("click", closeDetail);
+});
+document.querySelectorAll("[data-detail-retry]").forEach((button) => {
+  button.addEventListener("click", retryDetail);
+});
+detailImage?.addEventListener("error", onDetailImageError);
+detailMediaOpen?.addEventListener("click", openMediaFocus);
+detailMediaPrev?.addEventListener("click", () => stepDetailMedia(-1));
+detailMediaNext?.addEventListener("click", () => stepDetailMedia(1));
+detailGalleryList?.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-detail-gallery-item]");
+  if (!item) return;
+  const index = Number(item.dataset.detailGalleryItem);
+  if (!Number.isInteger(index)) return;
+  detailMediaIndexValue = index;
+  applyDetailMedia();
+  if (history.state?.kind === "detail") {
+    rememberDetailHistory(detailContentId, { replace: true });
+  }
+});
+document
+  .querySelector("[data-detail-focus-close]")
+  ?.addEventListener("click", closeMediaFocus);
+detailFocusPrev?.addEventListener("click", () => stepDetailMedia(-1));
+detailFocusNext?.addEventListener("click", () => stepDetailMedia(1));
+window.addEventListener("keydown", (event) => {
+  if (detailView?.hidden) return;
+  if (event.key === "Escape") {
+    if (detailFocusOpen) {
+      event.preventDefault();
+      closeMediaFocus();
+    }
+    return;
+  }
+  if (!detailFocusOpen || detailMediaItems.length <= 1) return;
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    stepDetailMedia(-1);
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    stepDetailMedia(1);
+  }
+});
+
 document
   .querySelector("[data-topic-back]")
   ?.addEventListener("click", closeTopicColumn);
@@ -1386,6 +1782,16 @@ calligraphyFilterClear?.addEventListener("click", () => {
   calligraphyFilterInput?.focus();
 });
 
+window.addEventListener("hashchange", () => {
+  if (!location.hash.startsWith("#detail-")) return;
+  const contentId = decodeURIComponent(location.hash.slice("#detail-".length));
+  if (!detailView?.hidden && detailContentId === contentId) return;
+  openDetailById(contentId, {
+    trigger: findContentTrigger(contentId),
+    updateHistory: false,
+  });
+});
+
 window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (state?.kind === "settings") {
@@ -1406,7 +1812,11 @@ window.addEventListener("popstate", (event) => {
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
     updateBottomNavigation();
     const trigger = findContentTrigger(state.contentId);
-    if (trigger) openDetail(trigger, { updateHistory: false });
+    openDetailById(state.contentId, {
+      mediaIndex: state.mediaIndex ?? 0,
+      trigger,
+      updateHistory: false,
+    });
     return;
   }
   if (state?.kind === "primary" && primaryViews.includes(state.view)) {
@@ -1420,10 +1830,12 @@ window.addEventListener("popstate", (event) => {
 
 function onPlatformQueryChange() {
   syncPlatformAttribute();
+  updateDetailComposition();
   cancelActivePagerGesture({ animate: false });
   syncAllPagers();
   resetNavigationScrollTracking();
-  restoreScrollPosition(primaryView);
+  const detailOpen = detailView && !detailView.hidden;
+  if (!detailOpen) restoreScrollPosition(primaryView);
 }
 
 window.addEventListener(
@@ -1433,6 +1845,7 @@ window.addEventListener(
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
 function onPagerViewportChange() {
   saveScrollPosition();
+  updateDetailComposition();
   cancelActivePagerGesture({ animate: false });
   pagerControllers.forEach((controller) => cancelPagerSpring(controller));
   pagerViewportSyncFramesElapsed = 0;
@@ -1522,7 +1935,9 @@ window.addEventListener(
   { passive: true },
 );
 syncPlatformAttribute();
+updateDetailComposition();
 
+const bootHash = location.hash;
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
 renderTopicsFeed();
 selectHomeFeed(homeFeed);
@@ -1531,6 +1946,15 @@ filterInscriptions("");
 applyThemePreference(themePreference, { persist: false });
 applyHomeFeedLayout(homeFeedLayout, { persist: false });
 resetNavigationScrollTracking();
+
+const bootDetailId = bootHash.startsWith("#detail-")
+  ? decodeURIComponent(bootHash.slice("#detail-".length))
+  : "";
+if (bootDetailId) {
+  openDetailById(bootDetailId, {
+    trigger: findContentTrigger(bootDetailId),
+  });
+}
 
 window.setTimeout(() => {
   document.querySelector("[data-loading-screen]").hidden = true;

@@ -175,15 +175,20 @@
 }
 
 @media (orientation: landscape) and (min-width: 35.5rem) {
-  .app-settings__content,
-  .app-detail__content {
+  .app-settings__content {
     width: min(100%, var(--yoyi-container-reading));
     margin-inline: auto;
     padding: var(--yoyi-space-5) var(--yoyi-space-6) var(--yoyi-space-8);
   }
 
-  .app-detail__content img {
-    max-height: min(70dvh, 720px);
+  .app-detail__content {
+    width: min(100%, var(--yoyi-container-content));
+    margin-inline: auto;
+    padding: var(--yoyi-space-5) var(--yoyi-space-6) var(--yoyi-space-8);
+  }
+
+  .app-detail__reading {
+    width: min(100%, var(--yoyi-container-reading));
   }
 }
 

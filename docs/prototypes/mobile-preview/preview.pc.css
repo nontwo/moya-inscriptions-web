@@ -306,10 +306,18 @@ html {
     min-height: 200px;
   }
 
-  .app-settings__content,
-  .app-detail__content {
+  .app-settings__content {
     width: min(100%, var(--yoyi-container-reading));
     margin-inline: auto;
+  }
+
+  .app-detail__content {
+    width: min(100%, var(--yoyi-container-content));
+    margin-inline: auto;
+  }
+
+  .app-detail__reading {
+    width: min(100%, var(--yoyi-container-reading));
   }
 
   [data-view="inscriptions"] .app-topbar--search {
@@ -684,7 +692,7 @@ html {
     height: 132px;
   }
 
-  .app-detail__content img {
+  .app-detail__media-frame img {
     max-height: min(75dvh, 820px);
   }
 }

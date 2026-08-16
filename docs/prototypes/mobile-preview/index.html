@@ -891,7 +891,8 @@
         <section
           class="app-view app-detail"
           data-view="detail"
-          aria-label="内容详情"
+          data-detail-composition="stacked"
+          aria-label="资料详情"
           hidden
         >
           <header class="app-topbar app-topbar--detail">
@@ -914,13 +915,226 @@
             class="app-scroll app-detail__content"
             data-scroll-view="detail"
           >
-            <img
-              data-detail-image
-              src="../../design-system/assets/demo/cliff-gate.svg"
-              alt="虚构山门摩崖图"
-            />
-            <h1 data-detail-title></h1>
+            <div
+              class="app-detail-skeleton"
+              data-detail-panel="loading"
+              role="status"
+              aria-label="正在加载资料"
+              hidden
+            >
+              <div class="app-detail-skeleton__media"></div>
+              <div class="app-detail-skeleton__title"></div>
+              <div class="app-detail-skeleton__line"></div>
+              <div class="app-detail-skeleton__line"></div>
+              <div class="app-detail-skeleton__line"></div>
+            </div>
+
+            <div data-detail-panel="loaded" hidden>
+              <div class="app-detail__hero">
+                <div class="app-detail__media" data-detail-media>
+                  <button
+                    class="app-detail__media-frame"
+                    data-detail-media-open
+                    type="button"
+                    aria-label="查看图像"
+                  >
+                    <img
+                      data-detail-image
+                      src="../../design-system/assets/demo/cliff-gate.svg"
+                      alt=""
+                    />
+                    <span
+                      class="app-detail__media-fallback"
+                      data-detail-media-fallback
+                      hidden
+                    >
+                      暂无图像
+                    </span>
+                    <span
+                      class="app-detail__media-error"
+                      data-detail-media-error
+                      hidden
+                    >
+                      图像暂时无法加载
+                    </span>
+                  </button>
+                  <div class="app-detail__media-controls">
+                    <button
+                      class="app-detail__media-nav"
+                      data-detail-media-prev
+                      type="button"
+                      aria-label="上一张图像"
+                      hidden
+                    >
+                      上一张
+                    </button>
+                    <p class="app-detail__media-index" data-detail-media-index>
+                      1 / 1
+                    </p>
+                    <button
+                      class="app-detail__media-nav"
+                      data-detail-media-next
+                      type="button"
+                      aria-label="下一张图像"
+                      hidden
+                    >
+                      下一张
+                    </button>
+                  </div>
+                </div>
+                <div class="app-detail__identity">
+                  <h1 data-detail-title></h1>
+                  <p
+                    class="app-detail__kind-period"
+                    data-detail-kind-period
+                  ></p>
+                  <div class="app-detail__aliases" data-detail-aliases hidden>
+                    <p class="app-detail__aliases-label">又名</p>
+                    <p data-detail-aliases-text></p>
+                  </div>
+                  <section
+                    class="app-detail__section"
+                    data-detail-summary
+                    hidden
+                  >
+                    <h2>简介</h2>
+                    <p data-detail-summary-text></p>
+                  </section>
+                  <section class="app-detail__section" data-detail-facts hidden>
+                    <h2>基本资料</h2>
+                    <dl class="app-detail__facts" data-detail-facts-list></dl>
+                  </section>
+                </div>
+              </div>
+              <section
+                class="app-detail__section app-detail__reading"
+                data-detail-description
+                hidden
+              >
+                <h2>说明</h2>
+                <p data-detail-description-text></p>
+              </section>
+              <section class="app-detail__section" data-detail-gallery hidden>
+                <h2>图像</h2>
+                <div class="app-detail__gallery" data-detail-gallery-list></div>
+              </section>
+              <section
+                class="app-detail__section app-detail__reading"
+                data-detail-sources
+                hidden
+              >
+                <h2>资料来源</h2>
+                <ul class="app-detail__sources" data-detail-sources-list></ul>
+              </section>
+            </div>
+
+            <div
+              class="app-detail-message"
+              data-detail-panel="not-found"
+              role="status"
+              hidden
+            >
+              <h1>未找到这项资料</h1>
+              <p>这项资料可能不存在，或已无法访问。</p>
+              <button
+                class="app-detail-message__action"
+                data-detail-message-back
+                type="button"
+              >
+                返回上一页
+              </button>
+            </div>
+
+            <div
+              class="app-detail-message"
+              data-detail-panel="unavailable"
+              role="status"
+              hidden
+            >
+              <h1>暂时无法加载资料</h1>
+              <div class="app-detail-message__actions">
+                <button
+                  class="app-detail-message__action"
+                  data-detail-retry
+                  type="button"
+                >
+                  重试
+                </button>
+                <button
+                  class="app-detail-message__action"
+                  data-detail-message-back
+                  type="button"
+                >
+                  返回
+                </button>
+              </div>
+            </div>
+
+            <div
+              class="app-detail-message"
+              data-detail-panel="error"
+              role="alert"
+              hidden
+            >
+              <h1>暂时无法显示此页面</h1>
+              <div class="app-detail-message__actions">
+                <button
+                  class="app-detail-message__action"
+                  data-detail-retry
+                  type="button"
+                >
+                  重试
+                </button>
+                <button
+                  class="app-detail-message__action"
+                  data-detail-message-back
+                  type="button"
+                >
+                  返回
+                </button>
+              </div>
+            </div>
           </main>
+
+          <div
+            class="app-detail-focus"
+            data-detail-focus
+            hidden
+            role="dialog"
+            aria-modal="true"
+            aria-label="图像查看"
+          >
+            <button
+              class="app-detail-focus__close"
+              data-detail-focus-close
+              type="button"
+              aria-label="关闭图像"
+            >
+              关闭
+            </button>
+            <p class="app-detail-focus__index" data-detail-focus-index></p>
+            <img
+              class="app-detail-focus__image"
+              data-detail-focus-image
+              alt=""
+            />
+            <button
+              class="app-detail-focus__nav app-detail-focus__nav--prev"
+              data-detail-focus-prev
+              type="button"
+              aria-label="上一张图像"
+            >
+              上一张
+            </button>
+            <button
+              class="app-detail-focus__nav app-detail-focus__nav--next"
+              data-detail-focus-next
+              type="button"
+              aria-label="下一张图像"
+            >
+              下一张
+            </button>
+          </div>
         </section>
 
         <!-- TOPICS_PLACEHOLDER_START topic-column -->
@@ -1033,6 +1247,7 @@
 
     <script src="./fixtures/home-feed.placeholder.js"></script>
     <script src="./fixtures/topics.placeholder.js"></script>
-    <script src="./preview.js?v=20260814-android-nav-swipe"></script>
+    <script src="./fixtures/catalog-detail.placeholder.js"></script>
+    <script src="./preview.js?v=20260816-catalog-detail-2"></script>
   </body>
 </html>

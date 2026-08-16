@@ -27,7 +27,9 @@
 时只响应点击。上下滑动内容时底栏收成约 44px 小圆，圆内只显示当前栏目的印章红图标、没有文字；滚动停止约 400ms 后展开，点圆也可展开。首页与书帖使用更密卡片，约在一屏内露出三行；1024px、1440px 不再放大这两处卡片。Mac 触控板双指左右在首页栏目（发现/附近/专题）和书帖分类（全部/墨迹/拓本）上按像素 1:1 跟手滑动；松手后按触控同样立刻弹簧回正，不把触控板惯性当成继续拖页。横向滑动不触发浏览器前进后退；PC 碑刻不响应左右滑。布局与 document 滚动不变。PC 首页顶栏不显示加载页格言。
 
 运行时监听窗口缩放、方向、visual
-viewport 与分页容器尺寸变化，在真实宽度稳定后重新对齐分页轨道，不刷新页面。三端碑刻使用相同的列表、搜索、全屏“图片 + 标题”详情和 history 返回结构；跨越 896px 时已打开详情保持原状态。
+viewport 与分页容器尺寸变化，在真实宽度稳定后重新对齐分页轨道，不刷新页面。三端碑刻 / 书帖 / 首页进入同一套 Catalog
+Detail：返回隐藏主导航、保留来源滚动，并在 895 /
+896 与方向变化时保持当前条目与选中图像。详情不再只是“图片 + 标题”。
 
 ## 样式隔离
 
@@ -51,6 +53,25 @@ mask 跟随当前按钮颜色，避免浅色或深色主题出现灰色像素。
 `fixtures/home-feed.placeholder.js`
 为发现和附近补充长列表测试卡片；`fixtures/topics.placeholder.js`、`data-placeholder="topics-v1"`、专题 feed 和专栏 view 属于可删除占位。未来正式内容模型与 API 另行决定；这些 Mock 不得当作生产数据，也不构成 T06–T09
 requirement。
+
+`fixtures/catalog-detail.placeholder.js`
+为详情原型提供紧凑代表条目。字段名对齐 Public `CatalogDetail`；嵌套
+`prototypeFacts` 只用于版式核验，不是 Public API。本地 demo 图路径不是生产 Media
+URL。
+
+详情状态可通过 hash 直接打开：
+
+- `#detail-discover-cliff-gate` 丰富碑刻
+- `#detail-inscription-shimen` 稀疏
+- `#detail-inscription-road` 无图像
+- `#detail-inscription-yunfeng` 多图
+- `#detail-inscription-tianzhu` 极高图像
+- `#detail-calligraphy-autumn` 书帖
+- `#detail-inscription-longmen` 长说明 / 多来源
+- `#detail-d08-loading` 骨架屏
+- `#detail-d09-not-found` 未找到
+- `#detail-d10-unavailable` 暂时无法加载
+- `#detail-d10-error` 页面错误
 
 ## 本地与局域网查看
 
