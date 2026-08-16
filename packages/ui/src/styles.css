@@ -192,10 +192,16 @@
   flex: 0 0 auto;
   width: 60px;
   aspect-ratio: 11 / 5;
-  background-image: var(--yoyi-label-image);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
+  color: inherit;
+  background-color: currentcolor;
+  -webkit-mask-image: var(--yoyi-label-image);
+  mask-image: var(--yoyi-label-image);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .yoyi-fixed-label[data-label="nav-home"] {
@@ -208,6 +214,16 @@
 
 .yoyi-fixed-label[data-label="nav-calligraphy"] {
   --yoyi-label-image: url("./assets/labels/nav-calligraphy.png");
+}
+
+@supports not ((mask-image: url("")) or (-webkit-mask-image: url(""))) {
+  .yoyi-fixed-label {
+    background-color: transparent;
+    background-image: var(--yoyi-label-image);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+  }
 }
 
 .yoyi-button,
@@ -724,10 +740,31 @@
   inset: 0;
 }
 
+.yoyi-loading-screen__brand {
+  display: grid;
+  justify-items: center;
+  gap: var(--yoyi-space-5);
+  padding-inline: var(--yoyi-space-6);
+  text-align: center;
+}
+
 .yoyi-loading-screen .yoyi-logo {
   width: clamp(88px, 22vw, 132px);
   animation: yoyi-logo-reveal var(--yoyi-duration-loading-logo)
     var(--yoyi-easing-emphasized) both;
+}
+
+.yoyi-loading-screen__motto {
+  margin: 0;
+  max-width: 20em;
+  color: var(--yoyi-color-text-secondary);
+  font-family: var(--yoyi-font-interface);
+  font-size: var(--yoyi-type-body-size);
+  font-weight: 400;
+  line-height: 1.75;
+  letter-spacing: 0.04em;
+  animation: yoyi-logo-reveal var(--yoyi-duration-loading-logo)
+    var(--yoyi-easing-emphasized) 120ms both;
 }
 
 :root[data-theme="dark"] .yoyi-loading-screen,
@@ -1066,44 +1103,168 @@
   content: "";
 }
 
+/* Internal material primitive: semantic controls opt in; content never does. */
+.yoyi-functional-glass {
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--yoyi-material-glass-fallback-background);
+  border: 1px solid var(--yoyi-material-glass-border);
+  box-shadow: var(--yoyi-material-glass-shadow);
+}
+
+.yoyi-functional-glass::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: var(--yoyi-material-glass-highlight);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .yoyi-functional-glass {
+    background: var(--yoyi-material-glass-regular-background);
+    -webkit-backdrop-filter: blur(var(--yoyi-blur-glass-regular))
+      saturate(var(--yoyi-material-glass-saturation));
+    backdrop-filter: blur(var(--yoyi-blur-glass-regular))
+      saturate(var(--yoyi-material-glass-saturation));
+  }
+}
+
+html[data-platform="pc"]
+  .yoyi-mobile-bottom-navigation.yoyi-functional-glass::before {
+  display: none;
+}
+
 .yoyi-mobile-bottom-navigation {
   position: fixed;
-  z-index: 30;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  z-index: var(--yoyi-z-index-navigation);
+  right: auto;
+  bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
+  left: 50%;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  min-height: calc(64px + env(safe-area-inset-bottom));
-  padding: var(--yoyi-space-2) var(--yoyi-space-3) env(safe-area-inset-bottom);
-  background: var(--yoyi-color-background-elevated);
-  border-top: 1px solid var(--yoyi-color-border-subtle);
-  box-shadow: var(--yoyi-shadow-subtle);
+  width: min(calc(100% - var(--yoyi-space-7)), 520px);
+  min-height: 60px;
+  padding: var(--yoyi-space-2);
+  overflow: hidden;
+  border-radius: calc(var(--yoyi-radius-full) / 2);
+  touch-action: none;
+  transform: translate3d(-50%, 0, 0);
+  transition:
+    width var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    height var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    min-height var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    padding var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    border-radius var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+
+.yoyi-nav-bubble {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-material-glass-prominent-background);
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  transform-origin: center center;
+  transition:
+    width var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    height var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.yoyi-mobile-bottom-navigation.is-dragging-nav .yoyi-nav-bubble {
+  transition: none;
 }
 
 .yoyi-mobile-bottom-navigation .yoyi-navigation-entry {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   flex-direction: column;
   gap: 2px;
   padding: 0 var(--yoyi-space-2);
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
   font-size: 12px;
+  touch-action: none;
+  transition:
+    color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
 .yoyi-mobile-bottom-navigation .yoyi-fixed-label {
   width: 44px;
   height: 20px;
-  opacity: 0.68;
-  transition: opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+  opacity: 1;
 }
 
 .yoyi-mobile-bottom-navigation .yoyi-navigation-entry.is-active {
   color: var(--yoyi-color-seal-red);
+  background: transparent;
+  box-shadow: none;
 }
 
-.yoyi-mobile-bottom-navigation
+.yoyi-mobile-bottom-navigation .yoyi-navigation-entry.is-nav-hot {
+  transform: scale(1.08);
+}
+
+html[data-theme="dark"]
+  .yoyi-mobile-bottom-navigation
   .yoyi-navigation-entry.is-active
   .yoyi-fixed-label {
-  opacity: 1;
+  color: var(--yoyi-color-text-primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"])
+    .yoyi-mobile-bottom-navigation
+    .yoyi-navigation-entry.is-active
+    .yoyi-fixed-label {
+    color: var(--yoyi-color-text-primary);
+  }
+}
+
+.yoyi-mobile-bottom-navigation.yoyi-functional-glass.is-minimized {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--yoyi-radius-full);
+  grid-template-columns: 1fr;
+  touch-action: manipulation;
+}
+
+.yoyi-mobile-bottom-navigation.is-minimized .yoyi-nav-bubble,
+.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-navigation-entry:not(.is-active) {
+  display: none;
+}
+
+.yoyi-mobile-bottom-navigation.is-minimized .yoyi-navigation-entry.is-active {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  gap: 0;
+  color: var(--yoyi-color-seal-red);
+  pointer-events: none;
+}
+
+.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-navigation-entry.is-active
+  .yoyi-fixed-label {
+  display: none;
 }
 
 .yoyi-mobile-top-bar {
@@ -1254,6 +1415,47 @@
     width: 112px;
     height: 84px;
   }
+
+  .yoyi-mobile-bottom-navigation {
+    padding-inline: var(--yoyi-space-6);
+  }
+
+  .yoyi-search-header {
+    padding-block: var(--yoyi-space-6);
+  }
+
+  .yoyi-content-section {
+    padding-block: var(--yoyi-space-8);
+  }
+}
+
+@media (min-width: 48rem) and (orientation: landscape) {
+  html[data-platform="tablet"] .yoyi-mobile-bottom-navigation {
+    top: max(var(--yoyi-space-4), env(safe-area-inset-top));
+    right: auto;
+    bottom: auto;
+    left: max(var(--yoyi-space-4), env(safe-area-inset-left));
+    width: 72px;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(64px, auto);
+    align-content: start;
+    min-height: 0;
+    padding: var(--yoyi-space-2);
+    border-radius: var(--yoyi-radius-full);
+    transform: none;
+  }
+
+  html[data-platform="tablet"]
+    .yoyi-mobile-bottom-navigation
+    .yoyi-navigation-entry {
+    min-height: 64px;
+  }
+
+  html[data-platform="tablet"] .yoyi-page-container--with-bottom-navigation {
+    padding-bottom: var(--yoyi-space-7);
+    padding-left: calc(88px + env(safe-area-inset-left));
+  }
 }
 
 @media (min-width: 56rem) {
@@ -1268,16 +1470,50 @@
 
   .yoyi-page-container--with-bottom-navigation {
     padding-bottom: 0;
+    padding-left: 0;
+  }
+
+  .yoyi-desktop-navigation {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+    padding-inline: max(
+      var(--yoyi-space-7),
+      calc((100% - var(--yoyi-container-content)) / 2 + var(--yoyi-space-7))
+    );
+  }
+
+  .yoyi-desktop-navigation__items {
+    justify-content: flex-start;
+    gap: var(--yoyi-space-2);
   }
 
   .yoyi-masonry-grid {
     column-count: 4;
+  }
+
+  .yoyi-inscription-list {
+    margin-inline: auto;
+  }
+
+  .yoyi-search-header {
+    max-width: var(--yoyi-container-reading);
   }
 }
 
 @media (min-width: 90rem) {
   .yoyi-masonry-grid {
     column-count: 5;
+  }
+
+  .yoyi-desktop-brand-header {
+    padding-inline: max(
+      var(--yoyi-space-7),
+      calc((100% - var(--yoyi-container-content)) / 2 + var(--yoyi-space-7))
+    );
   }
 }
 
@@ -1324,5 +1560,18 @@
   .yoyi-tab-item::after,
   .yoyi-loading-screen .yoyi-logo {
     transform: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .yoyi-functional-glass {
+    background: var(--yoyi-surface-elevated);
+    border-color: var(--yoyi-material-glass-border-strong);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .yoyi-functional-glass::before {
+    display: none;
   }
 }

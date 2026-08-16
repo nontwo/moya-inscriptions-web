@@ -1,0 +1,703 @@
+/* Platform overrides; shared rules live in preview.shared.css. */
+
+/* Platform gate: phone/tablet only — must not alter >=56rem PC rules. */
+.app-platform-gate {
+  display: none;
+  box-sizing: border-box;
+  width: min(100%, 28rem);
+  margin: auto;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-2);
+}
+
+.app-platform-gate h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.app-platform-gate p {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+html[data-platform="phone"] .app-platform-gate,
+html[data-platform="tablet"] .app-platform-gate {
+  display: grid;
+  gap: 0.5rem;
+}
+
+html[data-platform="phone"] .mobile-app,
+html[data-platform="tablet"] .mobile-app {
+  display: none !important;
+}
+
+html[data-platform="pc"] .app-platform-gate {
+  display: none !important;
+}
+
+html {
+  scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+.app-scroll {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  scrollbar-width: none;
+  touch-action: pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-pager__track,
+.app-pager__page {
+  height: auto;
+}
+
+.app-pager__page {
+  overflow: visible;
+}
+
+/* Desktop: persistent bottom Tab Bar + dense full-width waterfall. */
+@media (min-width: 56rem) {
+  body {
+    overflow: auto;
+    --app-calligraphy-scale: 1;
+  }
+
+  .app-stage {
+    place-items: stretch;
+  }
+
+  .mobile-app {
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    height: auto;
+    overflow: visible;
+  }
+
+  .app-view {
+    position: relative;
+    inset: auto;
+    min-height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-top: 0;
+    padding-left: 0;
+  }
+
+  .app-view.app-detail,
+  .app-view.app-settings {
+    padding-top: 0;
+    padding-left: 0;
+    padding-bottom: 0;
+  }
+
+  .mobile-app:has([data-bottom-navigation][hidden]) .app-view {
+    padding-left: 0;
+    padding-bottom: 0;
+  }
+
+  .app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    min-height: calc(68px + env(safe-area-inset-top));
+    padding-inline: var(--yoyi-space-5);
+    align-items: center;
+  }
+
+  .app-topbar--home {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--yoyi-space-4);
+    align-items: center;
+  }
+
+  .app-topbar--search {
+    grid-template-columns: minmax(0, 1fr) 52px;
+    gap: var(--yoyi-space-4);
+  }
+
+  .app-topbar--categories {
+    grid-template-columns: auto minmax(12rem, 1fr) 52px;
+    gap: var(--yoyi-space-4);
+  }
+
+  .app-topics {
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+  }
+
+  .app-topics__grid {
+    gap: var(--app-feed-gap);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
+  }
+
+  .app-topic-card__title {
+    font-size: var(--app-feed-title-size);
+  }
+
+  .app-topic-column__content {
+    padding: var(--yoyi-space-6) var(--yoyi-space-6) var(--yoyi-space-10);
+  }
+
+  .app-view.app-topic-column {
+    padding-left: 0;
+  }
+
+  .app-topbar .yoyi-icon-button--md {
+    width: 52px;
+    height: 52px;
+  }
+
+  .app-topbar .yoyi-icon-button--md .yoyi-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .app-primary-tabs {
+    justify-self: start;
+    min-width: 280px;
+    height: 64px;
+  }
+
+  .app-primary-tab {
+    min-width: 96px;
+    min-height: 52px;
+    padding: 0 16px;
+    font-size: 1.125rem;
+  }
+
+  .app-primary-tab::after {
+    right: 22px;
+    left: 22px;
+    bottom: 2px;
+    height: 3px;
+  }
+
+  .app-topbar--categories {
+    align-items: center;
+    min-height: calc(68px + env(safe-area-inset-top));
+  }
+
+  .app-categories {
+    justify-self: start;
+    min-width: 280px;
+    height: 64px;
+  }
+
+  .app-category {
+    min-width: 96px;
+    min-height: 52px;
+    padding: 0 16px;
+    font-size: 1.125rem;
+  }
+
+  .app-category::after {
+    right: 22px;
+    left: 22px;
+    bottom: 2px;
+    height: 3px;
+  }
+
+  .app-search--calligraphy {
+    height: 52px;
+    align-self: center;
+  }
+
+  /* Phone-only layout preference; desktop always multi-column gallery. */
+  [data-setting-group="home-layout"] {
+    display: none;
+  }
+
+  [data-home-layout="single"] [data-view="home"] .app-scroll {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+  }
+
+  .app-scroll {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    overflow-y: visible;
+    overscroll-behavior-y: auto;
+  }
+
+  .app-masonry {
+    display: grid;
+    width: 100%;
+    max-width: none;
+    padding: var(--yoyi-space-5) var(--yoyi-space-5) var(--yoyi-space-10);
+    column-count: auto;
+    column-width: auto;
+    gap: var(--yoyi-space-5);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  /* Home discover/nearby + topics share calligraphy feed cell size */
+  [data-view="home"] .app-masonry,
+  [data-home-layout="single"] [data-view="home"] .app-masonry,
+  [data-home-layout="double"] [data-view="home"] .app-masonry {
+    display: grid;
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    column-width: auto;
+    gap: var(--app-feed-gap);
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
+  }
+
+  [data-view="home"] .app-card {
+    background: transparent;
+    border-radius: 0;
+  }
+
+  [data-view="home"] .app-card img {
+    min-height: 0;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    border-radius: var(--yoyi-radius-sm);
+  }
+
+  [data-view="home"] .app-card__title {
+    padding: var(--yoyi-space-2) 2px 0;
+    text-align: center;
+    font-size: var(--app-feed-title-size);
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .app-card {
+    display: grid;
+    width: auto;
+    margin: 0;
+  }
+
+  .app-card img {
+    min-height: 200px;
+  }
+
+  .app-settings__content,
+  .app-detail__content {
+    width: min(100%, var(--yoyi-container-reading));
+    margin-inline: auto;
+  }
+
+  [data-view="inscriptions"] .app-topbar--search {
+    grid-template-columns: minmax(0, 1fr) 56px;
+    gap: var(--yoyi-space-4);
+    align-items: center;
+    min-height: calc(72px + env(safe-area-inset-top));
+    padding-block: var(--yoyi-space-3) var(--yoyi-space-2);
+  }
+
+  [data-view="inscriptions"] .app-search {
+    width: 100%;
+    height: 56px;
+    margin-bottom: 0;
+    font-size: 1.0625rem;
+  }
+
+  [data-view="inscriptions"] .app-search input {
+    font-size: 1.0625rem;
+  }
+
+  [data-view="inscriptions"] .app-topbar--search .yoyi-icon-button--md {
+    width: 56px;
+    height: 56px;
+  }
+
+  [data-view="inscriptions"] .app-list {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    padding: var(--yoyi-space-4) var(--yoyi-space-5) var(--yoyi-space-10);
+    gap: 0;
+  }
+
+  [data-view="inscriptions"] .app-list-item {
+    min-height: 120px;
+    grid-template-columns: 140px minmax(0, 1fr) 28px;
+    gap: var(--yoyi-space-5);
+    padding: var(--yoyi-space-4) 0;
+  }
+
+  [data-view="inscriptions"] .app-list-item img {
+    width: 140px;
+    height: 104px;
+    border-radius: var(--yoyi-radius-sm);
+  }
+
+  [data-view="inscriptions"] .app-list-item > span:nth-child(2),
+  [data-view="inscriptions"] .app-list-item__title {
+    font-size: var(--yoyi-type-list-title-size);
+    line-height: 1.45;
+  }
+
+  [data-view="inscriptions"] .app-empty {
+    padding: var(--yoyi-space-10) var(--yoyi-space-5);
+    font-size: var(--yoyi-type-body-size);
+  }
+
+  .app-inscriptions-layout {
+    display: block;
+    min-height: 0;
+  }
+
+  .app-inscriptions-list-pane {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  /* Feed wall — home + calligraphy share --app-feed-* vars */
+  .app-calligraphy-grid,
+  .app-calligraphy-grid.app-masonry,
+  .app-calligraphy-grid .app-masonry {
+    width: 100%;
+    max-width: none;
+    display: grid;
+    column-width: auto;
+    gap: var(--app-feed-gap);
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
+  }
+
+  .app-calligraphy-grid .app-card {
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .app-calligraphy-grid .app-card img {
+    min-height: 0;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: var(--yoyi-radius-sm);
+  }
+
+  .app-calligraphy-grid .app-card__caption {
+    padding: var(--yoyi-space-2) 2px 0;
+    text-align: left;
+  }
+
+  .app-calligraphy-grid .app-card__title {
+    font-size: var(--app-feed-title-size);
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .app-calligraphy-grid .app-card__meta {
+    font-size: calc(0.625rem * var(--app-calligraphy-scale));
+  }
+
+  .app-setting-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--yoyi-space-4);
+  }
+
+  .app-setting-options--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .app-setting-option {
+    min-height: 56px;
+    font-size: var(--yoyi-type-body-small-size);
+  }
+
+  .app-nav-brand {
+    display: none;
+  }
+
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation {
+    position: fixed;
+    top: auto;
+    right: auto;
+    bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
+    left: 50%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    justify-content: initial;
+    gap: 0;
+    width: min(calc(100% - var(--yoyi-space-7)), 520px);
+    max-width: none;
+    height: auto;
+    min-height: 60px;
+    padding: var(--yoyi-space-2);
+    overflow: hidden;
+    z-index: 30;
+    border-top: 0;
+    border-right: 0;
+    border-radius: calc(var(--yoyi-radius-full) / 2);
+    transform: translate3d(-50%, 0, 0);
+  }
+
+  .app-bottom-navigation .yoyi-navigation-entry {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    min-height: 60px;
+    gap: 2px;
+    padding: 0 var(--yoyi-space-2);
+    border-radius: var(--yoyi-radius-full);
+    color: var(--yoyi-color-text-primary);
+    background: transparent;
+  }
+
+  .app-bottom-navigation .yoyi-navigation-entry.is-active {
+    color: var(--yoyi-color-seal-red);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .app-bottom-navigation .yoyi-navigation-entry.is-active::after {
+    content: none;
+  }
+
+  .app-loading {
+    position: fixed;
+  }
+
+  .app-scroll.app-pager.is-pager-following {
+    overflow: hidden;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__track {
+    display: flex;
+    width: 100%;
+    height: auto;
+    will-change: transform;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__track.is-dragging {
+    user-select: none;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__page {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    overflow: visible;
+    contain: layout paint;
+  }
+}
+
+@media (min-width: 56rem) {
+  [data-setting-group="home-layout"] {
+    display: none;
+  }
+}
+
+@media (min-width: 64rem) {
+  .app-topbar {
+    padding-inline: var(--yoyi-space-6);
+    min-height: calc(72px + env(safe-area-inset-top));
+  }
+
+  .app-primary-tabs {
+    min-width: 300px;
+    height: 68px;
+  }
+
+  .app-primary-tab {
+    min-width: 104px;
+    font-size: 1.1875rem;
+  }
+
+  .app-categories {
+    min-width: 300px;
+    height: 68px;
+  }
+
+  .app-category {
+    min-width: 104px;
+    font-size: 1.1875rem;
+  }
+
+  .app-masonry {
+    padding-inline: var(--yoyi-space-6);
+    gap: var(--yoyi-space-6);
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  [data-view="home"] .app-masonry,
+  [data-home-layout="double"] [data-view="home"] .app-masonry,
+  [data-home-layout="single"] [data-view="home"] .app-masonry,
+  .app-topics__grid,
+  .app-calligraphy-grid,
+  .app-calligraphy-grid.app-masonry {
+    padding-inline: clamp(1.25rem, 2.2vw, 2rem);
+    gap: var(--app-feed-gap);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
+  }
+
+  .app-card img {
+    min-height: 220px;
+  }
+
+  .app-card__title {
+    font-size: var(--yoyi-type-card-title-size);
+  }
+
+  [data-view="home"] .app-card__title,
+  .app-topic-card__title,
+  .app-calligraphy-grid .app-card__title {
+    font-size: var(--app-feed-title-size);
+  }
+
+  [data-view="inscriptions"] .app-topbar--search {
+    min-height: calc(76px + env(safe-area-inset-top));
+    padding-inline: var(--yoyi-space-6);
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+
+  [data-view="inscriptions"] .app-search {
+    height: 60px;
+  }
+
+  [data-view="inscriptions"] .app-list {
+    padding-inline: var(--yoyi-space-6);
+  }
+
+  [data-view="inscriptions"] .app-list-item {
+    min-height: 128px;
+    grid-template-columns: 160px minmax(0, 1fr) 32px;
+    gap: var(--yoyi-space-6);
+    padding: var(--yoyi-space-5) 0;
+  }
+
+  [data-view="inscriptions"] .app-list-item img {
+    width: 160px;
+    height: 120px;
+  }
+
+  [data-view="inscriptions"] .app-list-item > span:nth-child(2),
+  [data-view="inscriptions"] .app-list-item__title {
+    font-size: var(--yoyi-type-card-title-size);
+  }
+
+  /* Keep token referenced for reading/content alignment rules. */
+  .app-settings__content {
+    width: min(100%, var(--yoyi-container-content));
+  }
+}
+
+@media (min-width: 90rem) {
+  .app-masonry {
+    padding-inline: var(--yoyi-space-7);
+    gap: var(--yoyi-space-6);
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+
+  [data-view="home"] .app-masonry,
+  [data-home-layout="double"] [data-view="home"] .app-masonry,
+  [data-home-layout="single"] [data-view="home"] .app-masonry,
+  .app-topics__grid,
+  .app-calligraphy-grid,
+  .app-calligraphy-grid.app-masonry {
+    padding-inline: clamp(1.5rem, 2.5vw, 2.5rem);
+    gap: var(--app-feed-gap);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(
+        clamp(
+          var(--app-feed-col-min),
+          var(--app-feed-col-fluid),
+          var(--app-feed-col-max)
+        ),
+        1fr
+      )
+    );
+  }
+
+  .app-card img {
+    min-height: 240px;
+  }
+
+  [data-view="inscriptions"] .app-topbar--search {
+    padding-inline: var(--yoyi-space-7);
+  }
+
+  [data-view="inscriptions"] .app-list {
+    padding-inline: var(--yoyi-space-7);
+  }
+
+  [data-view="inscriptions"] .app-list-item {
+    min-height: 136px;
+    grid-template-columns: 176px minmax(0, 1fr) 32px;
+  }
+
+  [data-view="inscriptions"] .app-list-item img {
+    width: 176px;
+    height: 132px;
+  }
+
+  .app-detail__content img {
+    max-height: min(75dvh, 820px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-card,
+  .app-primary-tab::after,
+  .app-category::after,
+  .app-loading .yoyi-logo,
+  .app-loading__motto {
+    transition-duration: 1ms;
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+    transform: none;
+  }
+}

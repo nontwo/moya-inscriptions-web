@@ -33,8 +33,8 @@ python3 -m http.server 4173
 打开 `http://localhost:4173/docs/design-system/catalog/`
 查看 token、正式视觉资产和公共组件目录。该目录只展示组件，不承担完整应用状态、路由或业务数据。
 
-交互式手机界面不属于公共设计系统。已保存的探索性实现位于
-[`docs/prototypes/mobile-preview/`](../prototypes/mobile-preview/README.md)，并明确作为非生产原型隔离。
+交互式界面原型不属于公共设计系统。已保存的探索性实现位于
+[`docs/prototypes/mobile-preview/`](../prototypes/mobile-preview/README.md)，覆盖手机、平板与桌面响应式呈现，并明确作为非生产原型隔离。
 
 进一步阅读：
 

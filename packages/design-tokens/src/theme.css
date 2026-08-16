@@ -31,6 +31,22 @@
   --yoyi-color-overlay: rgba(31, 29, 25, 0.46);
   --yoyi-shadow-subtle: 0 2px 12px rgba(53, 45, 34, 0.08);
   --yoyi-shadow-dialog: 0 18px 48px rgba(53, 45, 34, 0.22);
+  --yoyi-surface-content: var(--yoyi-color-background-page);
+  --yoyi-surface-paper: var(--yoyi-color-background-surface);
+  --yoyi-surface-elevated: var(--yoyi-color-background-elevated);
+  --yoyi-material-glass-subtle-background: rgba(252, 250, 245, 0.7);
+  --yoyi-material-glass-regular-background: rgba(252, 250, 245, 0.82);
+  --yoyi-material-glass-prominent-background: rgba(252, 250, 245, 0.92);
+  --yoyi-material-glass-fallback-background: rgba(252, 250, 245, 0.97);
+  --yoyi-material-glass-border: rgba(255, 255, 255, 0.72);
+  --yoyi-material-glass-border-strong: var(--yoyi-color-border-strong);
+  --yoyi-material-glass-highlight: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.58),
+    rgba(255, 255, 255, 0.12) 52%,
+    rgba(255, 255, 255, 0.24)
+  );
+  --yoyi-material-glass-shadow: 0 10px 32px rgba(53, 45, 34, 0.18);
 }
 
 :root[data-theme="dark"],
@@ -65,6 +81,22 @@
   --yoyi-color-overlay: rgba(10, 10, 9, 0.64);
   --yoyi-shadow-subtle: 0 2px 16px rgba(0, 0, 0, 0.24);
   --yoyi-shadow-dialog: 0 18px 56px rgba(0, 0, 0, 0.42);
+  --yoyi-surface-content: var(--yoyi-color-background-page);
+  --yoyi-surface-paper: var(--yoyi-color-background-surface);
+  --yoyi-surface-elevated: var(--yoyi-color-background-elevated);
+  --yoyi-material-glass-subtle-background: rgba(43, 41, 37, 0.72);
+  --yoyi-material-glass-regular-background: rgba(43, 41, 37, 0.84);
+  --yoyi-material-glass-prominent-background: rgba(43, 41, 37, 0.94);
+  --yoyi-material-glass-fallback-background: rgba(43, 41, 37, 0.98);
+  --yoyi-material-glass-border: rgba(255, 255, 255, 0.14);
+  --yoyi-material-glass-border-strong: var(--yoyi-color-border-strong);
+  --yoyi-material-glass-highlight: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.03) 52%,
+    rgba(255, 255, 255, 0.08)
+  );
+  --yoyi-material-glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
 }
 
 :root {
@@ -113,6 +145,17 @@
   --yoyi-type-button-size: 15px;
   --yoyi-type-navigation-size: 13px;
   --yoyi-type-input-size: 16px;
+  --yoyi-blur-glass-subtle: 12px;
+  --yoyi-blur-glass-regular: 20px;
+  --yoyi-blur-glass-prominent: 28px;
+  --yoyi-opacity-glass-subtle: 0.7;
+  --yoyi-opacity-glass-regular: 0.82;
+  --yoyi-opacity-glass-prominent: 0.92;
+  --yoyi-material-glass-saturation: 1.16;
+  --yoyi-z-index-content: 0;
+  --yoyi-z-index-sticky: 20;
+  --yoyi-z-index-navigation: 30;
+  --yoyi-z-index-overlay: 100;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -144,6 +187,22 @@
     --yoyi-color-overlay: rgba(10, 10, 9, 0.64);
     --yoyi-shadow-subtle: 0 2px 16px rgba(0, 0, 0, 0.24);
     --yoyi-shadow-dialog: 0 18px 56px rgba(0, 0, 0, 0.42);
+    --yoyi-surface-content: var(--yoyi-color-background-page);
+    --yoyi-surface-paper: var(--yoyi-color-background-surface);
+    --yoyi-surface-elevated: var(--yoyi-color-background-elevated);
+    --yoyi-material-glass-subtle-background: rgba(43, 41, 37, 0.72);
+    --yoyi-material-glass-regular-background: rgba(43, 41, 37, 0.84);
+    --yoyi-material-glass-prominent-background: rgba(43, 41, 37, 0.94);
+    --yoyi-material-glass-fallback-background: rgba(43, 41, 37, 0.98);
+    --yoyi-material-glass-border: rgba(255, 255, 255, 0.14);
+    --yoyi-material-glass-border-strong: var(--yoyi-color-border-strong);
+    --yoyi-material-glass-highlight: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12),
+      rgba(255, 255, 255, 0.03) 52%,
+      rgba(255, 255, 255, 0.08)
+    );
+    --yoyi-material-glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
   }
 }
 
