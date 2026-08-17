@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 type PreviewDom = {
   window: Window & typeof globalThis;
@@ -325,6 +325,26 @@ const swipe = (
   });
 };
 
+const tap = (
+  window: Window & typeof globalThis,
+  target: Element,
+  point: { x: number; y: number },
+  pointerType = "mouse",
+) => {
+  dispatchPointer(window, target, "pointerdown", {
+    clientX: point.x,
+    clientY: point.y,
+    pointerType,
+    timeStamp: 1_000,
+  });
+  dispatchPointer(window, target, "pointerup", {
+    clientX: point.x,
+    clientY: point.y,
+    pointerType,
+    timeStamp: 1_020,
+  });
+};
+
 const dispatchWheel = (
   window: Window & typeof globalThis,
   target: Element,
@@ -405,6 +425,22 @@ const layoutBottomNav = (navigation: HTMLElement) => {
         configurable: true,
         value: () => box(index * 100, 704, 100, 52),
       });
+      Object.defineProperty(entry, "offsetLeft", {
+        configurable: true,
+        get: () => index * 100,
+      });
+      Object.defineProperty(entry, "offsetTop", {
+        configurable: true,
+        get: () => 4,
+      });
+      Object.defineProperty(entry, "offsetWidth", {
+        configurable: true,
+        get: () => 100,
+      });
+      Object.defineProperty(entry, "offsetHeight", {
+        configurable: true,
+        get: () => 52,
+      });
     },
   );
 };
@@ -459,6 +495,7 @@ const activePlatformStyles = (document: Document) =>
     .map((link) => link.dataset.platformStylesheet);
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const window of openWindows.splice(0)) window.close();
 });
 
@@ -1647,45 +1684,317 @@ describe("mobile application preview", () => {
     }
   });
 
+  it("opens the QA log from settings, records detail, and returns through settings", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    document
+      .querySelector<HTMLElement>('[data-content-id="discover-cliff-gate"]')
+      ?.click();
+    const detailBack =
+      document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!detailBack) throw new Error("detail back missing");
+    await clickAndWaitForHistory(dom.window, detailBack);
+    document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+    document.querySelector<HTMLElement>("[data-open-qa-log]")?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="qa-log"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
+    ).toBe(true);
+    expect(document.querySelector("[data-qa-log-list]")?.textContent).toContain(
+      "山门北壁题记",
+    );
+
+    document.querySelector<HTMLElement>("[data-qa-log-clear]")?.click();
+    expect(document.querySelector("[data-qa-log-list]")?.children).toHaveLength(
+      0,
+    );
+
+    const logBack = document.querySelector<HTMLElement>("[data-qa-log-back]");
+    if (!logBack) throw new Error("qa log back missing");
+    await clickAndWaitForHistory(dom.window, logBack);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="settings"]')?.hidden,
+    ).toBe(false);
+
+    const settingsBack = document.querySelector<HTMLElement>(
+      "[data-settings-back]",
+    );
+    if (!settingsBack) throw new Error("settings back missing");
+    await clickAndWaitForHistory(dom.window, settingsBack);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
+    ).toBe(false);
+  });
+
+  it("copies the current QA log from settings and the log page", async () => {
+    const writes: string[] = [];
+    const dom = renderPreview({}, {}, (window) => {
+      Object.defineProperty(window.navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            writes.push(text);
+          },
+        },
+      });
+    });
+    const document = dom.window.document;
+    document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+    const settingsCopy = document.querySelector<HTMLButtonElement>(
+      '[data-setting-group="qa-log"] [data-qa-log-copy]',
+    );
+    const logCopy = document.querySelector<HTMLButtonElement>(
+      '[data-view="qa-log"] [data-qa-log-copy]',
+    );
+    if (!settingsCopy || !logCopy) throw new Error("qa log copy missing");
+
+    expect(settingsCopy.textContent?.trim()).toBe("复制日志");
+    settingsCopy.click();
+    await waitMs(dom.window, 0);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/\d{2}:\d{2}:\d{2} \[boot]/);
+    expect(writes[0]).toContain("[settings] 打开设置");
+    expect(settingsCopy.textContent).toBe("已复制");
+    expect(logCopy.textContent).toBe("已复制");
+
+    document.querySelector<HTMLElement>("[data-open-qa-log]")?.click();
+    logCopy.click();
+    await waitMs(dom.window, 0);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toContain("[settings] 打开设置");
+    expect(logCopy.textContent).toBe("已复制");
+
+    document.querySelector<HTMLElement>("[data-qa-log-clear]")?.click();
+    logCopy.click();
+    await waitMs(dom.window, 0);
+    expect(writes).toHaveLength(2);
+    expect(logCopy.textContent).toBe("暂无记录");
+    expect(settingsCopy.textContent).toBe("暂无记录");
+  });
+
   it("persists explicit theme and home feed layout choices", () => {
     const dom = renderPreview();
     const document = dom.window.document;
     document.querySelector<HTMLElement>("[data-open-settings]")?.click();
 
-    const dark = document.querySelector<HTMLInputElement>(
-      '[data-theme-option][value="dark"]',
+    const themeToggle = document.querySelector<HTMLButtonElement>(
+      "[data-theme-toggle]",
     );
-    const single = document.querySelector<HTMLInputElement>(
-      '[data-layout-option][value="single"]',
+    const layoutToggle = document.querySelector<HTMLButtonElement>(
+      "[data-layout-toggle]",
     );
-    if (!dark || !single) throw new Error("settings options not found");
-    dark.checked = true;
-    dark.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-    single.checked = true;
-    single.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    if (!themeToggle || !layoutToggle) {
+      throw new Error("settings toggles not found");
+    }
+
+    expect(themeToggle.getAttribute("aria-label")).toBe(
+      "切换主题：当前跟随系统",
+    );
+    expect(
+      themeToggle.querySelector("[data-icon]")?.getAttribute("data-icon"),
+    ).toBe("theme-system");
+    themeToggle.click();
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(themeToggle.dataset.themeMode).toBe("light");
+    expect(
+      themeToggle.querySelector("[data-icon]")?.getAttribute("data-icon"),
+    ).toBe("theme-light");
+    expect(themeToggle.getAttribute("aria-label")).toBe(
+      "切换主题：当前浅色模式",
+    );
+    themeToggle.click();
+    layoutToggle.click();
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.homeLayout).toBe("single");
+    expect(themeToggle.dataset.themeMode).toBe("dark");
+    expect(layoutToggle.dataset.layoutMode).toBe("single");
+    expect(
+      themeToggle.querySelector("[data-icon]")?.getAttribute("data-icon"),
+    ).toBe("theme-dark");
+    expect(
+      layoutToggle.querySelector("[data-icon]")?.getAttribute("data-icon"),
+    ).toBe("layout-single");
+    expect(layoutToggle.getAttribute("aria-label")).toBe("切换布局：当前单列");
     expect(dom.window.localStorage.getItem("yoyi.theme-preference")).toBe(
       "dark",
     );
     expect(dom.window.localStorage.getItem("yoyi.home-feed-layout")).toBe(
       "single",
     );
-    expect(previewCss).toContain(
-      '[data-home-layout="single"] [data-view="home"] .app-masonry',
-    );
+    expect(script).toContain("function intendedMasonryColumns");
+    expect(script).toContain("function recalculateLayout");
+    expect(script).toContain('layout === "single"');
 
-    const system = document.querySelector<HTMLInputElement>(
-      '[data-theme-option][value="system"]',
-    );
-    if (!system) throw new Error("system theme option not found");
-    system.checked = true;
-    system.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    themeToggle.click();
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    expect(themeToggle.dataset.themeMode).toBe("system");
+    expect(
+      themeToggle.querySelector("[data-icon]")?.getAttribute("data-icon"),
+    ).toBe("theme-system");
+    expect(themeToggle.getAttribute("aria-label")).toBe(
+      "切换主题：当前跟随系统",
+    );
     expect(dom.window.localStorage.getItem("yoyi.theme-preference")).toBe(
       "system",
     );
+  });
+
+  it("keeps one layout mode across topics and calligraphy categories", () => {
+    const masonryColumns = (document: Document, selector: string) =>
+      document.querySelector<HTMLElement>(selector)?.dataset.masonryColumns;
+
+    const assertSharedLayout = (
+      document: Document,
+      mode: "single" | "double",
+    ) => {
+      const columns = mode === "single" ? "1" : "2";
+      expect(document.documentElement.dataset.homeLayout).toBe(mode);
+      expect(masonryColumns(document, '[data-feed-grid="discover"]')).toBe(
+        columns,
+      );
+      expect(masonryColumns(document, '[data-feed-grid="nearby"]')).toBe(
+        columns,
+      );
+      expect(masonryColumns(document, "[data-topics-grid]")).toBe(columns);
+      expect(
+        masonryColumns(document, '[data-view="inscriptions"] .app-masonry'),
+      ).toBe(columns);
+      expect(document.querySelector("[data-topics-grid]")?.className).toContain(
+        "app-topics__grid",
+      );
+      expect(
+        document
+          .querySelector('[data-view="inscriptions"] .app-list')
+          ?.classList.contains("app-masonry"),
+      ).toBe(true);
+      for (const category of ["all", "ink", "rubbing"] as const) {
+        expect(
+          masonryColumns(
+            document,
+            `[data-pager-page="${category}"] .app-calligraphy-grid`,
+          ),
+        ).toBe(columns);
+      }
+    };
+
+    const applyLayoutAcrossLists = (
+      document: Document,
+      window: Window & typeof globalThis,
+    ) => {
+      assertSharedLayout(document, "double");
+      document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+      document.querySelector<HTMLElement>("[data-layout-toggle]")?.click();
+      expect(document.documentElement.dataset.homeLayout).toBe("single");
+      const qaLog = JSON.parse(
+        window.sessionStorage.getItem("yoyi.qa-log") ?? "[]",
+      ) as Array<{ message?: string; type?: string }>;
+      const layoutLog = qaLog.find((entry) => entry.type === "layout");
+      expect(layoutLog?.message).toContain("device=");
+      expect(layoutLog?.message).toContain("orientation=");
+      expect(layoutLog?.message).toContain("page=");
+      expect(layoutLog?.message).toContain("section=");
+      expect(layoutLog?.message).toContain("mode=single");
+      expect(layoutLog?.message).toContain("columns=1");
+      document
+        .querySelector<HTMLElement>('[data-primary-view="home"]')
+        ?.click();
+      document
+        .querySelector<HTMLElement>('[data-home-feed="discover"]')
+        ?.click();
+      assertSharedLayout(document, "single");
+      document.querySelector<HTMLElement>('[data-home-feed="nearby"]')?.click();
+      assertSharedLayout(document, "single");
+      document.querySelector<HTMLElement>('[data-home-feed="topics"]')?.click();
+      assertSharedLayout(document, "single");
+      document
+        .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+        ?.click();
+      assertSharedLayout(document, "single");
+      document
+        .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+        ?.click();
+      for (const category of ["all", "ink", "rubbing"] as const) {
+        document
+          .querySelector<HTMLElement>(
+            `[data-calligraphy-category="${category}"]`,
+          )
+          ?.click();
+        assertSharedLayout(document, "single");
+      }
+      document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+      document.querySelector<HTMLElement>("[data-layout-toggle]")?.click();
+      document
+        .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+        ?.click();
+      assertSharedLayout(document, "double");
+      expect(window.localStorage.getItem("yoyi.home-feed-layout")).toBe(
+        "double",
+      );
+    };
+
+    const phone = renderPreview();
+    applyLayoutAcrossLists(phone.window.document, phone.window);
+
+    const tablet = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportHeight: 1024,
+        viewportWidth: 768,
+      },
+    );
+    applyLayoutAcrossLists(tablet.window.document, tablet.window);
+    setViewportSize(tablet, 1024, 768);
+    expect(tablet.window.document.documentElement.dataset.platform).toBe(
+      "tablet",
+    );
+    assertSharedLayout(tablet.window.document, "double");
+
+    const tabletLandscape = renderPreview(
+      { "yoyi.home-feed-layout": "single" },
+      {
+        maxTouchPoints: 5,
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportHeight: 768,
+        viewportWidth: 1024,
+      },
+    );
+    expect(
+      tabletLandscape.window.document.documentElement.dataset.homeLayout,
+    ).toBe("single");
+    expect(
+      tabletLandscape.window.document.documentElement.dataset.platform,
+    ).toBe("tablet");
+    assertSharedLayout(tabletLandscape.window.document, "single");
+    setViewportSize(tabletLandscape, 768, 1024);
+    assertSharedLayout(tabletLandscape.window.document, "single");
+
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 900,
+        viewportWidth: 1440,
+      },
+    );
+    expect(pc.window.document.documentElement.dataset.platform).toBe("pc");
+    expect(
+      Number(masonryColumns(pc.window.document, '[data-feed-grid="discover"]')),
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      masonryColumns(
+        pc.window.document,
+        '[data-view="inscriptions"] .app-masonry',
+      ),
+    ).toBe("1");
   });
 
   it("combines UA detection with viewport caps for phone, tablet, and desktop", () => {
@@ -1795,10 +2104,20 @@ describe("mobile application preview", () => {
       "single",
     );
     expect(
-      stored.window.document.querySelector<HTMLInputElement>(
-        '[data-theme-option][value="dark"]',
-      )?.checked,
-    ).toBe(true);
+      stored.window.document.querySelector<HTMLButtonElement>(
+        "[data-theme-toggle]",
+      )?.dataset.themeMode,
+    ).toBe("dark");
+    expect(
+      stored.window.document
+        .querySelector("[data-theme-toggle] [data-icon]")
+        ?.getAttribute("data-icon"),
+    ).toBe("theme-dark");
+    expect(
+      stored.window.document.querySelector<HTMLButtonElement>(
+        "[data-layout-toggle]",
+      )?.dataset.layoutMode,
+    ).toBe("single");
 
     const invalid = renderPreview({
       "yoyi.home-feed-layout": "three",
@@ -1878,6 +2197,15 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("@media (min-width: 90rem)");
     expect(tabletCss).toContain("floating glass capsule at the bottom");
     expect(tabletCss).toContain("orientation: landscape");
+    expect(tabletCss).toContain("--app-bottom-nav-max-width: 480px");
+    expect(tabletCss).toContain(
+      ".app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized)",
+    );
+    expect(tabletCss).toMatch(
+      /orientation: landscape[\s\S]*\.is-minimized\s*\{[^}]*width: 44px/,
+    );
+    expect(sharedCss).toContain("--app-bottom-nav-max-width: 520px");
+    expect(sharedCss).toContain("100vw - (var(--app-bottom-nav-side-gap) * 2)");
     expect(tabletCss).not.toContain("calc(88px + env(safe-area-inset-left))");
     expect(pcCss).toContain(
       "scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom))",
@@ -1909,19 +2237,49 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-pager="home"');
     expect(html).toContain('data-pager="calligraphy"');
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
+    expect(html).toContain("data-theme-toggle");
+    expect(html).toContain("data-layout-toggle");
+    expect(html).not.toContain("data-theme-option");
+    expect(html).not.toContain("data-layout-option");
+    expect(html).not.toContain("单列展示");
+    expect(html).not.toContain("浅色模式");
+    expect(sharedCss).toContain(".app-setting-toggles");
+    expect(sharedCss).not.toContain(".app-setting-option");
     expect(tabletCss).toContain("var(--yoyi-container-reading)");
     expect(pcCss).toContain("var(--yoyi-container-reading)");
     expect(tabletCss).toMatch(
-      /@media \(min-width: 48rem\) \{[\s\S]*?\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
-    );
-    expect(tabletCss).toMatch(
       /\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-5\)/,
     );
+    expect(sharedCss).toContain("--app-content-radius");
+    expect(sharedCss).toContain("--app-masonry-gap");
+    expect(sharedCss).toContain("--app-elevation-content");
+    expect(sharedCss).toContain("--app-elevation-content-hover");
+    expect(sharedCss).toContain("--app-elevation-panel");
+    expect(sharedCss).toContain("box-shadow: var(--app-elevation-content)");
+    expect(sharedCss).toContain("box-shadow: var(--app-elevation-panel)");
+    expect(sharedCss).not.toMatch(/\.app-card img \{[^}]*box-shadow:/);
+    expect(pcCss).toContain("box-shadow: var(--app-elevation-content-hover)");
+    expect(pcCss).toContain("translateY(-2px)");
     expect(sharedCss).toMatch(
-      /\.app-topics__grid\s*\{[^}]*grid-template-columns: 1fr/,
+      /\.app-masonry,\s*\.app-topics__grid\s*\{[\s\S]*?position:\s*relative/,
     );
+    expect(sharedCss).toMatch(/\.app-card img \{[^}]*height: auto/);
+    expect(sharedCss).toMatch(
+      /\.app-card img \{[^}]*border-radius: var\(--app-content-radius\)/,
+    );
+    expect(sharedCss).not.toMatch(/\.app-card img \{[^}]*object-fit: cover/);
+    expect(sharedCss).not.toMatch(/\.app-card img \{[^}]*min-height:/);
+    expect(script).toContain("function keepSummaryTokens");
+    expect(script).toContain("function renderDetailKindPeriod");
+    expect(script).toContain("function layoutMasonry");
+    expect(script).toContain("function intendedMasonryColumns");
+    expect(script).toContain("function recalculateLayout");
+    expect(script).toContain("Math.min(...heights)");
+    expect(script).toContain('querySelectorAll(".app-masonry")');
+    expect(pcCss).not.toContain("aspect-ratio: 3 / 4");
+    expect(pcCss).not.toContain("aspect-ratio: 1 / 1");
     expect(previewCss).toMatch(
-      /@media \(orientation: landscape\) \{[\s\S]*?\.app-topics__grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
+      /@media \(orientation: landscape\) \{[\s\S]*?\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-4\)/,
     );
     const sharedRules = new Set(
       topLevelCssChunks(sharedCss).map(normalizeCssChunk),
@@ -1952,14 +2310,14 @@ describe("mobile application preview", () => {
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
     expect(html).toContain('data-home-feed="topics"');
+    expect(html).toContain("app-masonry app-topics__grid");
+    expect(html).toContain("app-list app-masonry");
     expect(html).not.toContain("app-home-motto");
     expect(html).toContain('data-placeholder="topics-v1"');
     expect(html).toContain('data-view="topic-column"');
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
-    expect(html).toContain(
-      'href="./preview.shared.css?v=20260816-detail-panel"',
-    );
+    expect(html).toContain('href="./preview.shared.css?v=20260817-elevation"');
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
     expect(html).toContain('data-platform-stylesheet="tablet"');
@@ -1974,6 +2332,73 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain(".app-topics__grid");
     expect(html).not.toMatch(/收藏|下载|分享|著录|拓片信息|相关碑刻/);
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
+    expect(html).not.toContain("<h2>图像</h2>");
+    expect(html).not.toContain("data-detail-gallery");
+    expect(html).toContain("data-detail-focus-stage");
+    expect(html).toContain("data-detail-media-track");
+    expect(html).toContain("data-detail-focus-track");
+    expect(html).toContain("data-detail-media-dots");
+    expect(html).toContain("data-detail-focus-dots");
+    expect(html).not.toContain("data-detail-focus-close");
+    expect(html).not.toContain("app-detail-focus__close");
+    expect(html).not.toMatch(/>\s*关闭\s*</);
+    expect(sharedCss).not.toContain(".app-detail-focus__close");
+    expect(sharedCss).toContain(".app-detail__media.is-pager-visible");
+    expect(sharedCss).toContain(".app-detail-focus.is-pager-visible");
+    expect(sharedCss).toContain("--carousel-x");
+    expect(sharedCss).toContain("--image-swipe-duration");
+    expect(sharedCss).toContain("--image-swipe-easing");
+    expect(script).toContain("carouselSettleMs = 220");
+    expect(script).toContain("focusPagerHideMs = 2000");
+    expect(script).toContain("function lockCarouselAxis");
+    expect(script).toContain("carouselDirectionRatio");
+    expect(script).toContain("handleImageCarouselWheel");
+    expect(html).not.toMatch(/>\s*上一张\s*</);
+    expect(html).not.toMatch(/>\s*下一张\s*</);
+    expect(sharedCss).not.toContain(".app-detail__gallery");
+    expect(sharedCss).not.toContain(".app-detail__media-controls");
+    expect(sharedCss).toContain(".app-detail__media-dots");
+    expect(sharedCss).toContain(".app-detail__media-counter");
+    expect(sharedCss).not.toContain("margin-top: -16px");
+    expect(sharedCss).not.toContain("margin-top: -8px");
+    expect(sharedCss).toMatch(/\.app-detail-focus \{[^}]*touch-action: none/);
+    expect(sharedCss).toMatch(/\.app-detail-focus \{[^}]*position: absolute/);
+    expect(sharedCss).toContain("scale(var(--focus-scale, 1))");
+    expect(pcCss).toMatch(/\.app-detail-focus \{[^}]*position: fixed/);
+    expect(pcCss).toMatch(/\.app-detail-focus \{[^}]*height: 100dvh/);
+    expect(pcCss).toMatch(
+      /\.app-detail-focus__image \{[^}]*object-fit: contain/,
+    );
+    expect(tabletCss).not.toMatch(/\.app-detail-focus \{[^}]*position: fixed/);
+    expect(previewCss).not.toMatch(/\.app-detail-focus \{[^}]*position: fixed/);
+    expect(sharedCss).toMatch(
+      /\.app-detail__media \{[^}]*flex-direction: column/,
+    );
+    expect(sharedCss).toContain(
+      '[data-detail-composition="stacked"] .app-detail__hero',
+    );
+    expect(sharedCss).toContain("gap: var(--yoyi-space-8)");
+    expect(sharedCss).not.toMatch(
+      /\.app-detail__media-dots \{[^}]*position:\s*absolute/,
+    );
+    expect(sharedCss).toMatch(
+      /\.yoyi-icon-button\.app-setting-toggle \{[^}]*min-width: 56px/,
+    );
+    expect(sharedCss).toMatch(
+      /\.yoyi-icon-button\.app-setting-toggle \{[^}]*padding-inline: var\(--yoyi-space-5\)/,
+    );
+    expect(sharedCss).toMatch(
+      /@media \(max-width: 360px\) \{[\s\S]*?\.app-setting-toggles \{[^}]*gap: var\(--yoyi-space-3\)/,
+    );
+    expect(tabletCss).toMatch(
+      /\.yoyi-icon-button\.app-setting-toggle \{[^}]*min-width: 60px/,
+    );
+    expect(pcCss).toMatch(
+      /\.yoyi-icon-button\.app-setting-toggle \{[^}]*min-width: 48px/,
+    );
+    expect(pcCss).toMatch(
+      /\.yoyi-icon-button\.app-setting-toggle \{[^}]*min-height: 40px/,
+    );
   });
 
   it("keeps search fields accessible without decorative magnifiers", () => {
@@ -2217,6 +2642,103 @@ describe("mobile application preview", () => {
     expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
 
+  it("repositions the nav bubble after the tab bar finishes expanding", async () => {
+    const phone = renderPreview({}, { viewportWidth: 844 });
+    const document = phone.window.document;
+    const navigation = document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const discover = document.querySelector<HTMLElement>(
+      '[data-scroll-key="home:discover"]',
+    );
+    const bubble = navigation?.querySelector<HTMLElement>(".yoyi-nav-bubble");
+    if (!navigation || !discover || !bubble) {
+      throw new Error("phone navigation bubble missing");
+    }
+
+    layoutBottomNav(navigation);
+    discover.scrollTop = 40;
+    discover.dispatchEvent(new phone.window.Event("scroll"));
+    expect(navigation.dataset.minimized).toBe("true");
+    expect(bubble.style.transform).toBe("");
+    expect(bubble.style.width).toBe("");
+
+    await waitMs(phone.window, 450);
+    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+    expect(navigation.dataset.bubblePending).toBe("true");
+    expect(bubble.style.transform).toBe("");
+
+    const transition = new phone.window.Event("transitionend");
+    Object.defineProperty(transition, "propertyName", {
+      configurable: true,
+      value: "width",
+    });
+    navigation.dispatchEvent(transition);
+
+    expect(navigation.hasAttribute("data-bubble-pending")).toBe(false);
+    const homeTab = navigation.querySelector<HTMLElement>(
+      '[data-primary-view="home"]',
+    );
+    if (!homeTab) throw new Error("home tab missing");
+    expect(bubble.parentElement).toBe(homeTab);
+    expect(bubble.style.width).toBe("");
+    expect(bubble.style.height).toBe("");
+    expect(bubble.style.transform).toBe("");
+  });
+
+  it("anchors the nav bubble to the triggering tab and reanchors on switch", () => {
+    const phone = renderPreview({}, { viewportWidth: 844 });
+    const document = phone.window.document;
+    const navigation = document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const bubble = navigation?.querySelector<HTMLElement>(".yoyi-nav-bubble");
+    const homeTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="home"]',
+    );
+    const inscriptionsTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="inscriptions"]',
+    );
+    const calligraphyTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="calligraphy"]',
+    );
+    if (
+      !navigation ||
+      !bubble ||
+      !homeTab ||
+      !inscriptionsTab ||
+      !calligraphyTab
+    ) {
+      throw new Error("navigation tabs missing");
+    }
+
+    expect(bubble.parentElement).toBe(homeTab);
+
+    inscriptionsTab.click();
+    expect(bubble.parentElement).toBe(inscriptionsTab);
+    expect(bubble.style.transform).toBe("");
+
+    calligraphyTab.click();
+    expect(bubble.parentElement).toBe(calligraphyTab);
+
+    homeTab.click();
+    expect(bubble.parentElement).toBe(homeTab);
+
+    phone.window.dispatchEvent(new phone.window.Event("resize"));
+    expect(bubble.parentElement).toBe(homeTab);
+  });
+
+  it("uses a muted paper fill and visible border for the selected nav bubble", () => {
+    expect(sharedCss).toMatch(
+      /\.app-bottom-navigation \.yoyi-nav-bubble\s*\{[^}]*background: var\(--yoyi-color-background-muted\)/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-bottom-navigation \.yoyi-nav-bubble\s*\{[^}]*border: 1px solid var\(--yoyi-color-border-default\)/,
+    );
+    expect(script).toContain("nearestNavEntry");
+    expect(script).toContain("positionNavBubble(nearest, 1.12)");
+  });
+
   it("transfers scroll position between nested and document scroll owners", async () => {
     const dom = renderPreview(
       {},
@@ -2268,7 +2790,10 @@ describe("mobile application preview", () => {
     );
     expect(
       document.querySelector("[data-detail-kind-period]")?.textContent,
-    ).toBe("碑刻 · 唐 / 开元年间");
+    ).toBe("碑刻");
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-kind-period]")?.hidden,
+    ).toBe(false);
     expect(
       document.querySelector("[data-detail-aliases-text]")?.textContent,
     ).toContain("山门题名");
@@ -2279,6 +2804,9 @@ describe("mobile application preview", () => {
       document.querySelector("[data-detail-facts-list]")?.textContent,
     ).toContain("开元八年");
     expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("唐");
+    expect(
       document.querySelector("[data-detail-description-text]")?.textContent,
     ).toContain("多图");
     expect(
@@ -2286,10 +2814,8 @@ describe("mobile application preview", () => {
     ).toContain("虚构金石录");
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1 / 3");
-    expect(
-      document.querySelector<HTMLElement>("[data-detail-gallery]")?.hidden,
-    ).toBe(false);
+    ).toBe("1/3");
+    expect(document.querySelector("[data-detail-gallery]")).toBeNull();
     expect(
       document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
     ).toBe(true);
@@ -2307,6 +2833,101 @@ describe("mobile application preview", () => {
     ).toBe(false);
 
     document.querySelector<HTMLElement>("[data-detail-back]")?.click();
+  });
+
+  it("drops identity tokens that already appear in catalog facts", () => {
+    const openDetail = (document: Document, contentId: string) => {
+      document
+        .querySelector<HTMLElement>(`[data-content-id="${contentId}"]`)
+        ?.click();
+    };
+
+    const phone = renderPreview();
+    const document = phone.window.document;
+    openDetail(document, "discover-cliff-gate");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("碑刻");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).not.toContain("唐");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).not.toContain("开元");
+    expect(
+      document.querySelector("[data-detail-aliases-text]")?.textContent,
+    ).toBe("山门题名 · 北壁旧刻");
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("唐");
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("开元八年");
+
+    document.querySelector<HTMLElement>("[data-detail-back]")?.click();
+    document
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    openDetail(document, "calligraphy-autumn");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("书帖");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).not.toContain("宋");
+    expect(
+      document.querySelector("[data-detail-aliases-text]")?.textContent,
+    ).toContain("秋山手札");
+
+    document.querySelector<HTMLElement>("[data-detail-back]")?.click();
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    openDetail(document, "inscription-yunfeng");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("碑刻 · 北魏");
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-facts]")?.hidden,
+    ).toBe(true);
+
+    document.querySelector<HTMLElement>("[data-detail-back]")?.click();
+    openDetail(document, "inscription-tianzhu");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("碑刻 · 唐");
+
+    const tablet = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportHeight: 1024,
+        viewportWidth: 768,
+      },
+    );
+    openDetail(tablet.window.document, "discover-cliff-gate");
+    expect(
+      tablet.window.document.querySelector("[data-detail-kind-period]")
+        ?.textContent,
+    ).toBe("碑刻");
+
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 900,
+        viewportWidth: 1440,
+      },
+    );
+    openDetail(pc.window.document, "discover-cliff-gate");
+    expect(
+      pc.window.document.querySelector("[data-detail-kind-period]")
+        ?.textContent,
+    ).toBe("碑刻");
   });
 
   it("omits optional catalog sections for sparse and no-media details", async () => {
@@ -2332,14 +2953,15 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>("[data-detail-facts]")?.hidden,
     ).toBe(true);
     expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("碑刻");
+    expect(
       document.querySelector<HTMLElement>("[data-detail-description]")?.hidden,
     ).toBe(true);
     expect(
       document.querySelector<HTMLElement>("[data-detail-sources]")?.hidden,
     ).toBe(true);
-    expect(
-      document.querySelector<HTMLElement>("[data-detail-gallery]")?.hidden,
-    ).toBe(true);
+    expect(document.querySelector("[data-detail-gallery]")).toBeNull();
 
     const backButton =
       document.querySelector<HTMLElement>("[data-detail-back]");
@@ -2363,7 +2985,7 @@ describe("mobile application preview", () => {
     ).toBe(false);
   });
 
-  it("switches gallery media, opens focus, and keeps selection across 896px", () => {
+  it("switches detail media, opens focus, and keeps selection across 896px", () => {
     const dom = renderPreview(
       {},
       {
@@ -2384,26 +3006,29 @@ describe("mobile application preview", () => {
 
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1 / 4");
+    ).toBe("1/4");
+    expect(document.querySelector("[data-detail-gallery]")).toBeNull();
+    expect(
+      document.querySelectorAll("[data-detail-media-dots] [data-media-index]")
+        .length,
+    ).toBe(4);
     document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2 / 4");
-    document
-      .querySelector<HTMLElement>('[data-detail-gallery-item="0"]')
-      ?.click();
-    expect(
-      document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1 / 4");
+    ).toBe("2/4");
     expect(
       document
-        .querySelector('[data-detail-gallery-item="0"]')
-        ?.classList.contains("is-current"),
-    ).toBe(true);
+        .querySelector("[data-detail-media-dots] .is-active")
+        ?.getAttribute("data-media-index"),
+    ).toBe("1");
+    document.querySelector<HTMLElement>("[data-detail-media-prev]")?.click();
+    expect(
+      document.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/4");
     document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2 / 4");
+    ).toBe("2/4");
     document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
     expect(
       document.querySelector<HTMLElement>("[data-detail-focus]")?.hidden,
@@ -2411,7 +3036,16 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector("[data-detail-focus-index]")?.textContent,
     ).toBe("2 / 4");
-    document.querySelector<HTMLElement>("[data-detail-focus-close]")?.click();
+    expect(
+      document
+        .querySelector<HTMLElement>("[data-detail-focus]")
+        ?.classList.contains("is-pager-visible"),
+    ).toBe(false);
+    const focusImage = document.querySelector<HTMLElement>(
+      "[data-detail-focus-image]",
+    );
+    if (!focusImage) throw new Error("focus image missing");
+    tap(dom.window, focusImage, { x: 180, y: 180 }, "mouse");
     expect(
       document.querySelector<HTMLElement>("[data-detail-focus]")?.hidden,
     ).toBe(true);
@@ -2423,7 +3057,494 @@ describe("mobile application preview", () => {
     ).toBe(false);
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("2/4");
+  });
+
+  it("pages detail media with swipe, dots, and arrow keys", () => {
+    const phone = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: true,
+        userAgent: phoneUserAgent,
+        viewportHeight: 844,
+        viewportWidth: 390,
+      },
+    );
+    const phoneDocument = phone.window.document;
+    phoneDocument
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    phoneDocument
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    expect(
+      phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/4");
+    const frame = phoneDocument.querySelector<HTMLElement>(
+      "[data-detail-media-open]",
+    );
+    if (!frame) throw new Error("media frame missing");
+    swipe(
+      phone.window,
+      frame,
+      { x: 280, y: 180 },
+      { x: 40, y: 180 },
+      "touch",
+      180,
+    );
+    expect(
+      phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("2/4");
+    expect(
+      phoneDocument
+        .querySelector("[data-detail-media]")
+        ?.classList.contains("is-pager-visible"),
+    ).toBe(true);
+    phoneDocument
+      .querySelector<HTMLElement>(
+        "[data-detail-media-dots] [data-media-index='0']",
+      )
+      ?.click();
+    expect(
+      phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/4");
+
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 900,
+        viewportWidth: 1280,
+      },
+    );
+    const pcDocument = pc.window.document;
+    pcDocument
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    pcDocument
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    pc.window.dispatchEvent(
+      new pc.window.KeyboardEvent("keydown", { key: "ArrowRight" }),
+    );
+    expect(
+      pcDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("2/4");
+    pcDocument.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+    const focus = pcDocument.querySelector<HTMLElement>("[data-detail-focus]");
+    const stage = pcDocument.querySelector<HTMLElement>(
+      "[data-detail-focus-stage]",
+    );
+    if (!focus || !stage) throw new Error("focus viewer missing");
+    expect(focus.hidden).toBe(false);
+    swipe(
+      pc.window,
+      stage,
+      { x: 280, y: 180 },
+      { x: 40, y: 180 },
+      "mouse",
+      180,
+    );
+    expect(
+      pcDocument.querySelector("[data-detail-focus-index]")?.textContent,
+    ).toBe("3 / 4");
+    expect(focus.hidden).toBe(false);
+    expect(focus.classList.contains("is-pager-visible")).toBe(true);
+  });
+
+  it("locks image swipe direction and commits Mac trackpad paging once", async () => {
+    const phone = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: true,
+        userAgent: phoneUserAgent,
+        viewportHeight: 844,
+        viewportWidth: 390,
+      },
+    );
+    const phoneDocument = phone.window.document;
+    phoneDocument
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    phoneDocument
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    const frame = phoneDocument.querySelector<HTMLElement>(
+      "[data-detail-media-open]",
+    );
+    if (!frame) throw new Error("media frame missing");
+    swipe(
+      phone.window,
+      frame,
+      { x: 180, y: 80 },
+      { x: 190, y: 260 },
+      "touch",
+      180,
+    );
+    expect(
+      phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/4");
+
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 900,
+        viewportWidth: 1280,
+      },
+    );
+    const pcDocument = pc.window.document;
+    pcDocument
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    pcDocument
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    const stage = pcDocument.querySelector<HTMLElement>(
+      ".app-detail__media-stage",
+    );
+    if (!stage) throw new Error("media stage missing");
+    dispatchWheel(pc.window, stage, { deltaX: 0, deltaY: 160 });
+    expect(
+      pcDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/4");
+    dispatchWheel(pc.window, stage, { deltaX: 80, deltaY: 0 });
+    dispatchWheel(pc.window, stage, { deltaX: 500, deltaY: 0 });
+    dispatchWheel(pc.window, stage, { deltaX: 400, deltaY: 0 });
+    await new Promise<void>((resolve) => {
+      pc.window.setTimeout(() => resolve(), 60);
+    });
+    expect(
+      pcDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("2/4");
+    dispatchWheel(pc.window, stage, { deltaX: 500, deltaY: 0 });
+    expect(
+      pcDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("2/4");
+    await new Promise<void>((resolve) => {
+      pc.window.setTimeout(() => resolve(), 220);
+    });
+    dispatchWheel(pc.window, stage, { deltaX: 600, deltaY: 0 });
+    await new Promise<void>((resolve) => {
+      pc.window.setTimeout(() => resolve(), 60);
+    });
+    expect(
+      pcDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("3/4");
+  });
+
+  it("shows the phone focus page hint while swiping and keeps the last page", () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: true,
+        userAgent: phoneUserAgent,
+        viewportHeight: 844,
+        viewportWidth: 390,
+      },
+    );
+    const window = dom.window;
+    const document = window.document;
+    const hideCallbacks: Array<() => void> = [];
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const nativeClearTimeout = window.clearTimeout.bind(window);
+    window.setTimeout = ((
+      handler: TimerHandler,
+      delay?: number,
+      ...args: unknown[]
+    ) => {
+      if (delay === 2000 && typeof handler === "function") {
+        const callback = handler as (...fnArgs: unknown[]) => void;
+        hideCallbacks.splice(0, hideCallbacks.length, () => callback(...args));
+        return -1;
+      }
+      return nativeSetTimeout(handler, delay, ...args);
+    }) as typeof window.setTimeout;
+    window.clearTimeout = ((id?: number) => {
+      if (id === -1) {
+        hideCallbacks.length = 0;
+        return;
+      }
+      nativeClearTimeout(id);
+    }) as typeof window.clearTimeout;
+
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    document
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+
+    const focus = document.querySelector<HTMLElement>("[data-detail-focus]");
+    const stage = document.querySelector<HTMLElement>(
+      "[data-detail-focus-stage]",
+    );
+    if (!focus || !stage) throw new Error("focus viewer missing");
+    expect(focus.classList.contains("is-pager-visible")).toBe(false);
+    expect(
+      document.querySelector("[data-detail-focus-index]")?.textContent,
+    ).toBe("1 / 4");
+
+    swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
+    expect(
+      document.querySelector("[data-detail-focus-index]")?.textContent,
     ).toBe("2 / 4");
+    expect(focus.classList.contains("is-pager-visible")).toBe(true);
+    hideCallbacks.at(-1)?.();
+    expect(focus.classList.contains("is-pager-visible")).toBe(false);
+    swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
+    swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
+    expect(
+      document.querySelector("[data-detail-focus-index]")?.textContent,
+    ).toBe("4 / 4");
+    swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
+    expect(
+      document.querySelector("[data-detail-focus-index]")?.textContent,
+    ).toBe("4 / 4");
+    expect(focus.classList.contains("is-pager-visible")).toBe(true);
+    const image = document.querySelector<HTMLElement>(
+      "[data-detail-focus-image]",
+    );
+    if (!image) throw new Error("focus image missing");
+    tap(window, image, { x: 180, y: 180 }, "touch");
+    expect(focus.hidden).toBe(true);
+  });
+
+  it("zooms the focus image without transforming the page", () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 900,
+        viewportWidth: 1280,
+      },
+    );
+    const { document } = dom.window;
+    const detailScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="detail"]',
+    );
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    document
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    if (detailScroll) detailScroll.scrollTop = 120;
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+
+    const focus = document.querySelector<HTMLElement>("[data-detail-focus]");
+    const image = document.querySelector<HTMLElement>(
+      "[data-detail-focus-image]",
+    );
+    const app = document.querySelector<HTMLElement>("[data-mobile-app]");
+    const detail = document.querySelector<HTMLElement>('[data-view="detail"]');
+    if (!focus || !image) throw new Error("focus viewer missing");
+    expect(focus.classList.contains("is-pager-visible")).toBe(false);
+
+    const wheel = new dom.window.WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 200,
+      clientY: 180,
+      ctrlKey: true,
+      deltaMode: 0,
+      deltaX: 0,
+      deltaY: -120,
+    });
+    expect(focus.dispatchEvent(wheel)).toBe(false);
+    expect(
+      Number(image.style.getPropertyValue("--focus-scale")),
+    ).toBeGreaterThan(1);
+    expect(app?.style.transform).toBe("");
+    expect(detail?.style.transform).toBe("");
+    expect(document.documentElement.style.transform).toBe("");
+    expect(document.body.style.transform).toBe("");
+
+    document.querySelector<HTMLElement>("[data-detail-focus-next]")?.click();
+    expect(Number(image.style.getPropertyValue("--focus-scale"))).toBe(1);
+    expect(
+      document.querySelector("[data-detail-focus-index]")?.textContent,
+    ).toBe("2 / 4");
+    expect(focus.classList.contains("is-pager-visible")).toBe(true);
+
+    tap(dom.window, image, { x: 200, y: 180 }, "mouse");
+    expect(focus.hidden).toBe(true);
+    expect(Number(image.style.getPropertyValue("--focus-scale"))).toBe(1);
+    expect(detailScroll?.scrollTop).toBe(120);
+
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+    expect(focus.hidden).toBe(false);
+    dom.window.dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", { key: "Escape" }),
+    );
+    expect(focus.hidden).toBe(true);
+  });
+
+  it("fits a tall PC focus image inside the viewport without cropping", () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 827,
+        viewportWidth: 1512,
+      },
+    );
+    const { document } = dom.window;
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    document
+      .querySelector<HTMLElement>('[data-content-id="inscription-yunfeng"]')
+      ?.click();
+    expect(
+      document
+        .querySelector('[data-view="detail"]')
+        ?.getAttribute("data-detail-composition"),
+    ).toBe("expanded-split");
+
+    const stage = document.querySelector<HTMLElement>(
+      "[data-detail-focus-stage]",
+    );
+    const image = document.querySelector<HTMLImageElement>(
+      "[data-detail-focus-image]",
+    );
+    if (!stage || !image) throw new Error("focus viewer missing");
+
+    const available = { width: 1448, height: 719 };
+    stage.getBoundingClientRect = () =>
+      ({
+        x: 32,
+        y: 76,
+        left: 32,
+        top: 76,
+        width: available.width,
+        height: available.height,
+        right: 32 + available.width,
+        bottom: 76 + available.height,
+        toJSON() {
+          return this;
+        },
+      }) as DOMRect;
+    Object.defineProperty(image, "naturalWidth", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(image, "naturalHeight", {
+      configurable: true,
+      value: 3000,
+    });
+
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+    image.dispatchEvent(new dom.window.Event("load"));
+
+    const width = Number.parseFloat(image.style.width);
+    const height = Number.parseFloat(image.style.height);
+    expect(width).toBeGreaterThan(0);
+    expect(height).toBeGreaterThan(0);
+    expect(width).toBeLessThanOrEqual(available.width);
+    expect(height).toBeLessThanOrEqual(available.height);
+    expect(width / height).toBeCloseTo(1000 / 3000, 5);
+    expect(
+      Math.max(width / available.width, height / available.height),
+    ).toBeCloseTo(1, 5);
+    expect(Number(image.style.getPropertyValue("--focus-scale") || "1")).toBe(
+      1,
+    );
+
+    Object.defineProperty(image, "naturalWidth", {
+      configurable: true,
+      value: 360,
+    });
+    Object.defineProperty(image, "naturalHeight", {
+      configurable: true,
+      value: 520,
+    });
+    image.dispatchEvent(new dom.window.Event("load"));
+    const smallWidth = Number.parseFloat(image.style.width);
+    const smallHeight = Number.parseFloat(image.style.height);
+    expect(smallWidth).toBeGreaterThan(360);
+    expect(smallHeight).toBeGreaterThan(520);
+    expect(smallWidth).toBeLessThanOrEqual(available.width);
+    expect(smallHeight).toBeLessThanOrEqual(available.height);
+    expect(smallWidth / smallHeight).toBeCloseTo(360 / 520, 5);
+    expect(
+      Math.max(smallWidth / available.width, smallHeight / available.height),
+    ).toBeCloseTo(1, 5);
+
+    tap(dom.window, image, { x: 200, y: 180 }, "mouse");
+    expect(image.style.width).toBe("");
+    expect(image.style.height).toBe("");
+  });
+
+  it("fits the focus image to the phone viewport", () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: true,
+        userAgent: phoneUserAgent,
+        viewportHeight: 844,
+        viewportWidth: 390,
+      },
+    );
+    const { document } = dom.window;
+    document
+      .querySelector<HTMLElement>('[data-content-id="discover-cliff-gate"]')
+      ?.click();
+    const stage = document.querySelector<HTMLElement>(
+      "[data-detail-focus-stage]",
+    );
+    const image = document.querySelector<HTMLImageElement>(
+      "[data-detail-focus-image]",
+    );
+    if (!stage || !image) throw new Error("focus image missing");
+    const available = { width: 366, height: 720 };
+    stage.getBoundingClientRect = () =>
+      ({
+        x: 12,
+        y: 56,
+        left: 12,
+        top: 56,
+        width: available.width,
+        height: available.height,
+        right: 12 + available.width,
+        bottom: 56 + available.height,
+        toJSON() {
+          return this;
+        },
+      }) as DOMRect;
+    Object.defineProperty(image, "naturalWidth", {
+      configurable: true,
+      value: 360,
+    });
+    Object.defineProperty(image, "naturalHeight", {
+      configurable: true,
+      value: 520,
+    });
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+    image.dispatchEvent(new dom.window.Event("load"));
+    const width = Number.parseFloat(image.style.width);
+    const height = Number.parseFloat(image.style.height);
+    expect(width).toBeGreaterThan(360);
+    expect(height).toBeGreaterThan(520);
+    expect(width).toBeLessThanOrEqual(available.width);
+    expect(height).toBeLessThanOrEqual(available.height);
+    expect(width / height).toBeCloseTo(360 / 520, 5);
+    expect(
+      Math.max(width / available.width, height / available.height),
+    ).toBeCloseTo(1, 5);
   });
 
   it("shows media-level image failure without replacing the catalog page", () => {

@@ -32,10 +32,9 @@ const detailDescription = document.querySelector("[data-detail-description]");
 const detailDescriptionText = document.querySelector(
   "[data-detail-description-text]",
 );
-const detailGallery = document.querySelector("[data-detail-gallery]");
-const detailGalleryList = document.querySelector("[data-detail-gallery-list]");
 const detailSources = document.querySelector("[data-detail-sources]");
 const detailSourcesList = document.querySelector("[data-detail-sources-list]");
+const detailMedia = document.querySelector("[data-detail-media]");
 const detailMediaOpen = document.querySelector("[data-detail-media-open]");
 const detailMediaFallback = document.querySelector(
   "[data-detail-media-fallback]",
@@ -44,11 +43,25 @@ const detailMediaError = document.querySelector("[data-detail-media-error]");
 const detailMediaIndex = document.querySelector("[data-detail-media-index]");
 const detailMediaPrev = document.querySelector("[data-detail-media-prev]");
 const detailMediaNext = document.querySelector("[data-detail-media-next]");
+const detailMediaDots = document.querySelector("[data-detail-media-dots]");
+const detailMediaStage = document.querySelector(".app-detail__media-stage");
+const detailMediaTrack = document.querySelector("[data-detail-media-track]");
+const detailPrevImage = document.querySelector(
+  "[data-detail-media-prev-image]",
+);
+const detailNextImage = document.querySelector(
+  "[data-detail-media-next-image]",
+);
 const detailFocus = document.querySelector("[data-detail-focus]");
+const detailFocusStage = document.querySelector("[data-detail-focus-stage]");
+const detailFocusTrack = document.querySelector("[data-detail-focus-track]");
 const detailFocusImage = document.querySelector("[data-detail-focus-image]");
+const focusPrevImage = document.querySelector("[data-detail-focus-prev-image]");
+const focusNextImage = document.querySelector("[data-detail-focus-next-image]");
 const detailFocusIndex = document.querySelector("[data-detail-focus-index]");
 const detailFocusPrev = document.querySelector("[data-detail-focus-prev]");
 const detailFocusNext = document.querySelector("[data-detail-focus-next]");
+const detailFocusDots = document.querySelector("[data-detail-focus-dots]");
 const searchInput = document.querySelector("[data-inscription-search]");
 const searchClear = document.querySelector("[data-search-clear]");
 const calligraphyFilterInput = document.querySelector(
@@ -65,8 +78,22 @@ const topicColumnHeading = document.querySelector(
 
 const themePreferenceKey = "yoyi.theme-preference";
 const homeLayoutKey = "yoyi.home-feed-layout";
-const themePreferences = ["system", "light", "dark"];
+const qaLogKey = "yoyi.qa-log";
+const qaLogLimit = 200;
+const qaLogCopyLabel = "复制日志";
+const qaLogCopyStatusMs = 1500;
+const themeModeOrder = ["light", "dark", "system"];
+const themePreferences = themeModeOrder;
 const homeLayouts = ["single", "double"];
+const themeModeLabels = {
+  light: "浅色模式",
+  dark: "深色模式",
+  system: "跟随系统",
+};
+const layoutModeLabels = {
+  single: "单列",
+  double: "双列",
+};
 const primaryViews = ["home", "inscriptions", "calligraphy"];
 const homeFeeds = ["discover", "nearby", "topics"];
 const calligraphyCategories = ["all", "ink", "rubbing"];
@@ -143,6 +170,177 @@ function persistPreference(key, value) {
   }
 }
 
+function nextCycledValue(values, current) {
+  const index = values.indexOf(current);
+  return values[(index + 1) % values.length];
+}
+
+function syncThemeToggle() {
+  const button = document.querySelector("[data-theme-toggle]");
+  if (!button) return;
+  const icon = button.querySelector("[data-icon]");
+  if (icon) icon.dataset.icon = `theme-${themePreference}`;
+  button.dataset.themeMode = themePreference;
+  button.setAttribute(
+    "aria-label",
+    `切换主题：当前${themeModeLabels[themePreference]}`,
+  );
+  button.title = themeModeLabels[themePreference];
+}
+
+function syncLayoutToggle() {
+  const button = document.querySelector("[data-layout-toggle]");
+  if (!button) return;
+  const icon = button.querySelector("[data-icon]");
+  if (icon) icon.dataset.icon = `layout-${homeFeedLayout}`;
+  button.dataset.layoutMode = homeFeedLayout;
+  button.setAttribute(
+    "aria-label",
+    `切换布局：当前${layoutModeLabels[homeFeedLayout]}`,
+  );
+  button.title = layoutModeLabels[homeFeedLayout];
+}
+
+function formatQaTime(date = new Date()) {
+  return date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function loadQaLog() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(qaLogKey) ?? "[]");
+    return Array.isArray(parsed) ? parsed.slice(0, qaLogLimit) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistQaLog() {
+  try {
+    window.sessionStorage.setItem(qaLogKey, JSON.stringify(qaLogEntries));
+  } catch {
+    // Browser privacy settings can disable storage; the current session still works.
+  }
+}
+
+function primaryViewLabel(view) {
+  if (view === "inscriptions") return "碑刻";
+  if (view === "calligraphy") return "书帖";
+  return "首页";
+}
+
+function logQaEvent(type, message) {
+  qaLogEntries.unshift({
+    message: String(message ?? ""),
+    time: formatQaTime(),
+    type,
+  });
+  if (qaLogEntries.length > qaLogLimit) qaLogEntries.length = qaLogLimit;
+  persistQaLog();
+  const logView = document.querySelector('[data-view="qa-log"]');
+  if (logView && !logView.hidden) renderQaLog();
+}
+
+function renderQaLog() {
+  const list = document.querySelector("[data-qa-log-list]");
+  const empty = document.querySelector("[data-qa-log-empty]");
+  if (!list) return;
+  list.replaceChildren();
+  qaLogEntries.forEach((entry) => {
+    const item = document.createElement("li");
+    item.className = "app-qa-log__item";
+    const time = document.createElement("span");
+    time.className = "app-qa-log__time";
+    time.textContent = entry.time;
+    const kind = document.createElement("span");
+    kind.className = "app-qa-log__type";
+    kind.textContent = entry.type;
+    const text = document.createElement("span");
+    text.className = "app-qa-log__message";
+    text.textContent = entry.message;
+    item.append(time, kind, text);
+    list.append(item);
+  });
+  if (empty) empty.hidden = qaLogEntries.length > 0;
+}
+
+function clearQaLog() {
+  qaLogEntries = [];
+  persistQaLog();
+  renderQaLog();
+}
+
+function qaLogCopyButtons() {
+  return [...document.querySelectorAll("[data-qa-log-copy]")];
+}
+
+function setQaLogCopyStatus(label) {
+  qaLogCopyButtons().forEach((button) => {
+    button.textContent = label;
+  });
+  if (qaLogCopyStatusTimer) window.clearTimeout(qaLogCopyStatusTimer);
+  qaLogCopyStatusTimer = window.setTimeout(() => {
+    qaLogCopyStatusTimer = 0;
+    qaLogCopyButtons().forEach((button) => {
+      button.textContent = qaLogCopyLabel;
+    });
+  }, qaLogCopyStatusMs);
+}
+
+function formatQaLogText() {
+  return qaLogEntries
+    .map((entry) => `${entry.time} [${entry.type}] ${entry.message}`)
+    .join("\n");
+}
+
+function copyQaLogWithExecCommand(text) {
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.top = "0";
+  field.style.left = "0";
+  field.style.opacity = "0";
+  document.body.append(field);
+  field.focus();
+  field.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    field.remove();
+  }
+  return copied;
+}
+
+async function copyQaLog() {
+  if (qaLogEntries.length === 0) {
+    setQaLogCopyStatus("暂无记录");
+    return;
+  }
+  const text = formatQaLogText();
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      setQaLogCopyStatus("已复制");
+      return;
+    }
+  } catch {
+    // HTTP and blocked clipboard fall through to execCommand.
+  }
+  try {
+    if (copyQaLogWithExecCommand(text)) {
+      setQaLogCopyStatus("已复制");
+      return;
+    }
+  } catch {
+    // Clipboard can be blocked; the on-screen list remains available.
+  }
+  setQaLogCopyStatus("复制失败");
+}
+
+let qaLogEntries = loadQaLog();
+let qaLogCopyStatusTimer = 0;
+
 let primaryView = "home";
 let homeFeed = "discover";
 let calligraphyCategory = "all";
@@ -161,10 +359,13 @@ let pagerViewportSyncFramesElapsed = 0;
 let pagerViewportStableFrames = 0;
 let pagerViewportPreviousWidths = [];
 let pagerResizeObserver = null;
+let masonryLayoutFrame = 0;
 let navigationMinimized = false;
 let navigationLastScrollTop = 0;
 let navigationIdleTimer = 0;
+let navigationBubbleExpandTimer = 0;
 const navigationIdleMs = 400;
+const navigationExpandMs = 200;
 const navBubble = bottomNavigation.querySelector(".yoyi-nav-bubble");
 let navPointerId = null;
 let navDragging = false;
@@ -177,6 +378,40 @@ let detailMediaItems = [];
 let detailMediaIndexValue = 0;
 let detailMediaFailed = false;
 let detailFocusOpen = false;
+let focusScale = 1;
+let focusX = 0;
+let focusY = 0;
+let focusScrollTop = 0;
+let focusPointers = new Map();
+let focusPinch = null;
+let focusPan = null;
+let focusDidPan = false;
+let focusDidPinch = false;
+let focusWindowScroll = 0;
+let focusBodyOverflow = "";
+const focusMinScale = 1;
+const focusTapSlop = 10;
+const focusPadPc = 32;
+const focusPadPhone = 12;
+const focusChromeTop = 0;
+const focusChromeBottomPc = 24;
+const mediaSwipeDistance = 48;
+const carouselSettleMs = 220;
+const carouselRubber = 0.32;
+const carouselFling = 0.55;
+const carouselAxisLockDistance = 10;
+const carouselDirectionRatio = 1.25;
+const carouselWheelIdleMs = 24;
+const carouselWheelIgnoreMs = 180;
+const focusPagerHideMs = 2000;
+let mediaSwipe = null;
+let mediaSwipeSuppressClick = false;
+let focusPagerTimer = 0;
+let carouselFrame = 0;
+let pendingCarouselX = null;
+let carouselWheel = null;
+let carouselWheelIdleTimer = 0;
+let carouselWheelIgnoreUntil = 0;
 
 function scrollKeyForView(view) {
   if (view === "home") return `home:${homeFeed}`;
@@ -268,6 +503,78 @@ function regionLabel(facts) {
   return [facts.province, facts.prefecture, facts.county]
     .filter(Boolean)
     .join(" · ");
+}
+
+function splitDetailTokens(value) {
+  return String(value ?? "")
+    .split(/[·•、/|,;；]+|\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizeDetailToken(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function commonPrefixLength(left, right) {
+  const limit = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < limit && left[index] === right[index]) index += 1;
+  return index;
+}
+
+function isYearLikeToken(value) {
+  return /年/.test(value);
+}
+
+function tokensOverlap(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.length >= 2 && right.length >= 2) {
+    if (left.includes(right) || right.includes(left)) return true;
+  }
+  if (isYearLikeToken(left) && isYearLikeToken(right)) {
+    return commonPrefixLength(left, right) >= 2;
+  }
+  return false;
+}
+
+function renderedFactTokens() {
+  if (!detailFactsList) return [];
+  return [...detailFactsList.querySelectorAll("dd")].flatMap((node) =>
+    splitDetailTokens(node.textContent).map(normalizeDetailToken),
+  );
+}
+
+function keepSummaryTokens(tokens, factTokens) {
+  return tokens.filter(
+    (token) =>
+      !factTokens.some((fact) =>
+        tokensOverlap(normalizeDetailToken(token), fact),
+      ),
+  );
+}
+
+function renderDetailKindPeriod(record) {
+  const tokens = [
+    catalogKindLabel(record.kind),
+    ...splitDetailTokens(record.periodLabel),
+  ].filter(Boolean);
+  const kept = keepSummaryTokens(tokens, renderedFactTokens());
+  if (!detailKindPeriod) return;
+  detailKindPeriod.textContent = kept.join(" · ");
+  setHidden(detailKindPeriod, kept.length === 0);
+}
+
+function renderDetailAliases(record) {
+  const aliases = Array.isArray(record.aliases)
+    ? record.aliases.filter(Boolean)
+    : [];
+  const kept = keepSummaryTokens(aliases, renderedFactTokens());
+  if (detailAliasesText) detailAliasesText.textContent = kept.join(" · ");
+  setHidden(detailAliases, kept.length === 0);
 }
 
 function detailMediaList(record) {
@@ -389,22 +696,11 @@ function applyDetailMedia() {
   if (detailImage) {
     detailImage.hidden = !item;
     if (item) {
-      const previousSrc = detailImage.getAttribute("src");
       detailImage.alt = item.alt ?? "";
       detailImage.width = item.width ?? 0;
       detailImage.height = item.height ?? 0;
       detailImage.style.aspectRatio =
         item.width && item.height ? `${item.width} / ${item.height}` : "";
-      if (previousSrc && previousSrc !== item.src) {
-        detailImage.classList.add("is-switching");
-        detailImage.addEventListener(
-          "load",
-          () => detailImage.classList.remove("is-switching"),
-          { once: true },
-        );
-      } else {
-        detailImage.classList.remove("is-switching");
-      }
       detailImage.src = item.src;
     } else {
       detailImage.classList.remove("is-switching");
@@ -416,66 +712,23 @@ function applyDetailMedia() {
     detailMediaOpen.disabled = !item;
     detailMediaOpen.setAttribute("aria-label", item ? "查看图像" : "暂无图像");
   }
-  if (detailMediaIndex) {
-    detailMediaIndex.hidden = total === 0;
-    detailMediaIndex.textContent =
-      total > 0 ? `${detailMediaIndexValue + 1} / ${total}` : "";
-  }
-  const showNav = total > 1;
-  setHidden(detailMediaPrev, !showNav);
-  setHidden(detailMediaNext, !showNav);
-  if (detailGalleryList) {
-    detailGalleryList
-      .querySelectorAll("[data-detail-gallery-item]")
-      .forEach((button, index) => {
-        const current = index === detailMediaIndexValue;
-        button.classList.toggle("is-current", current);
-        if (current) button.setAttribute("aria-current", "true");
-        else button.removeAttribute("aria-current");
-      });
-  }
+  syncMediaPager();
   if (detailFocusOpen) applyFocusMedia();
-}
-
-function renderDetailGallery(items) {
-  if (!detailGallery || !detailGalleryList) return;
-  detailGalleryList.replaceChildren();
-  items.forEach((item, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "app-detail__gallery-item";
-    button.dataset.detailGalleryItem = String(index);
-    button.setAttribute("aria-label", `查看第 ${index + 1} 张图像`);
-    const image = document.createElement("img");
-    image.alt = item.alt ?? "";
-    image.src = item.src;
-    button.append(image);
-    detailGalleryList.append(button);
-  });
-  setHidden(detailGallery, items.length <= 1);
 }
 
 function renderLoadedDetail(record) {
   showDetailPanel("loaded");
   if (detailTitle) detailTitle.textContent = record.title ?? "";
-  const kindLine = [catalogKindLabel(record.kind), record.periodLabel]
-    .filter(Boolean)
-    .join(" · ");
-  if (detailKindPeriod) detailKindPeriod.textContent = kindLine;
-  const aliases = Array.isArray(record.aliases)
-    ? record.aliases.filter(Boolean)
-    : [];
-  if (detailAliasesText) detailAliasesText.textContent = aliases.join(" · ");
-  setHidden(detailAliases, aliases.length === 0);
   if (detailSummaryText) detailSummaryText.textContent = record.summary ?? "";
   setHidden(detailSummary, !record.summary);
   renderDetailFacts(record);
+  renderDetailKindPeriod(record);
+  renderDetailAliases(record);
   if (detailDescriptionText) {
     detailDescriptionText.textContent = record.description ?? "";
   }
   setHidden(detailDescription, !record.description);
   renderDetailSources(record);
-  renderDetailGallery(detailMediaItems);
   applyDetailMedia();
 }
 
@@ -512,41 +765,880 @@ function rememberDetailHistory(contentId, { replace = false } = {}) {
   else history.pushState(state, "", url);
 }
 
+function renderMediaDots(container, total, index) {
+  if (!container) return;
+  if (total <= 1) {
+    container.replaceChildren();
+    setHidden(container, true);
+    return;
+  }
+  setHidden(container, false);
+  const count = Math.min(total, 5);
+  if (container.childElementCount !== count) {
+    container.replaceChildren();
+    for (let i = 0; i < count; i += 1) {
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "app-detail__media-dot";
+      dot.dataset.mediaIndex = String(i);
+      container.append(dot);
+    }
+  }
+  [...container.children].forEach((dot, i) => {
+    const active = i === index;
+    dot.classList.toggle("is-active", active);
+    dot.setAttribute("aria-label", `第 ${i + 1} 张`);
+    dot.setAttribute("aria-current", active ? "true" : "false");
+  });
+}
+
+function syncMediaPager() {
+  const total = detailMediaItems.length;
+  const index = detailMediaIndexValue;
+  const showPager = total > 1;
+  if (detailMediaIndex) {
+    detailMediaIndex.hidden = total <= 1;
+    detailMediaIndex.textContent = total > 0 ? `${index + 1}/${total}` : "";
+  }
+  if (detailFocusIndex) {
+    detailFocusIndex.hidden = total <= 1;
+    detailFocusIndex.textContent = total > 0 ? `${index + 1} / ${total}` : "";
+  }
+  renderMediaDots(detailMediaDots, total, index);
+  renderMediaDots(detailFocusDots, isPcFocusPlatform() ? total : 0, index);
+  setHidden(detailMediaPrev, !showPager);
+  setHidden(detailMediaNext, !showPager);
+  setHidden(detailFocusPrev, !(showPager && isPcFocusPlatform()));
+  setHidden(detailFocusNext, !(showPager && isPcFocusPlatform()));
+  syncCarouselSlides();
+}
+
+function applySlideImage(img, item) {
+  if (!img) return;
+  if (!item) {
+    img.hidden = true;
+    img.removeAttribute("src");
+    img.alt = "";
+    return;
+  }
+  img.hidden = false;
+  img.alt = item.alt ?? "";
+  img.width = item.width ?? 0;
+  img.height = item.height ?? 0;
+  if (img.getAttribute("src") !== item.src) img.src = item.src;
+}
+
+function syncCarouselSlides() {
+  const prev = detailMediaItems[detailMediaIndexValue - 1] ?? null;
+  const next = detailMediaItems[detailMediaIndexValue + 1] ?? null;
+  applySlideImage(detailPrevImage, prev);
+  applySlideImage(detailNextImage, next);
+  applySlideImage(focusPrevImage, prev);
+  applySlideImage(focusNextImage, next);
+}
+
 function applyFocusMedia() {
   const item = currentDetailMedia();
   if (!detailFocusImage || !item) return;
+  resetFocusTransform();
   detailFocusImage.alt = item.alt ?? "";
   detailFocusImage.src = item.src;
-  if (detailFocusIndex) {
-    detailFocusIndex.textContent = `${detailMediaIndexValue + 1} / ${detailMediaItems.length}`;
+  syncMediaPager();
+}
+
+function isPcFocusPlatform() {
+  return root.dataset.platform === "pc";
+}
+
+function pagerHost() {
+  return detailFocusOpen ? detailFocus : detailMedia;
+}
+
+function clearFocusPagerTimer() {
+  if (!focusPagerTimer) return;
+  window.clearTimeout(focusPagerTimer);
+  focusPagerTimer = 0;
+}
+
+function revealFocusPager() {
+  const host = pagerHost();
+  if (!host) return;
+  host.classList.add("is-pager-visible");
+  clearFocusPagerTimer();
+}
+
+function scheduleFocusPagerHide() {
+  const host = pagerHost();
+  if (!host) return;
+  clearFocusPagerTimer();
+  focusPagerTimer = window.setTimeout(() => {
+    host.classList.remove("is-pager-visible");
+    focusPagerTimer = 0;
+  }, focusPagerHideMs);
+}
+
+function showFocusPager() {
+  revealFocusPager();
+  scheduleFocusPagerHide();
+}
+
+function hideFocusPager() {
+  clearFocusPagerTimer();
+  detailFocus?.classList.remove("is-pager-visible");
+  detailMedia?.classList.remove("is-pager-visible");
+}
+
+function carouselWidth(viewport) {
+  const rect = viewport?.getBoundingClientRect();
+  return Math.max(
+    1,
+    viewport?.clientWidth || rect?.width || window.innerWidth || 320,
+  );
+}
+
+function flushCarouselFrame() {
+  if (carouselFrame) {
+    window.cancelAnimationFrame(carouselFrame);
+    carouselFrame = 0;
   }
-  const showNav = detailMediaItems.length > 1;
-  setHidden(detailFocusPrev, !showNav);
-  setHidden(detailFocusNext, !showNav);
+  if (!pendingCarouselX) return;
+  const { track, x } = pendingCarouselX;
+  pendingCarouselX = null;
+  track.classList.add("is-dragging");
+  track.classList.remove("is-settling");
+  track.style.setProperty("--carousel-x", `${x}px`);
+}
+
+function setCarouselX(track, x, settle) {
+  if (!track) return;
+  if (settle) {
+    flushCarouselFrame();
+    track.classList.remove("is-dragging");
+    track.classList.add("is-settling");
+    track.style.setProperty("--carousel-x", `${x}px`);
+    return;
+  }
+  pendingCarouselX = { track, x };
+  if (carouselFrame) return;
+  carouselFrame = window.requestAnimationFrame(flushCarouselFrame);
+}
+
+function resetCarouselX(track) {
+  pendingCarouselX = null;
+  flushCarouselFrame();
+  if (!track) return;
+  track.classList.remove("is-dragging", "is-settling");
+  track.style.setProperty("--carousel-x", "0px");
+}
+
+function rubberCarouselX(dx, atStart, atEnd) {
+  if ((dx > 0 && atStart) || (dx < 0 && atEnd)) return dx * carouselRubber;
+  return dx;
+}
+
+function lockCarouselAxis(dx, dy) {
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  if (Math.max(adx, ady) < carouselAxisLockDistance) return null;
+  if (adx > ady * carouselDirectionRatio) return "horizontal";
+  if (ady > adx * carouselDirectionRatio) return "vertical";
+  return null;
+}
+
+function shouldCommitCarousel(dx, dy, dt, width, atStart, atEnd, velocity) {
+  if (Math.abs(dx) <= Math.abs(dy)) return false;
+  const goingNext = dx < 0;
+  if (goingNext && atEnd) return false;
+  if (!goingNext && atStart) return false;
+  const distance = Math.max(mediaSwipeDistance, width * 0.18);
+  const speed = Number.isFinite(velocity) ? velocity : dx / Math.max(16, dt);
+  return Math.abs(dx) >= distance || Math.abs(speed) >= carouselFling;
+}
+
+function finishCarouselPage(dx, width, track) {
+  const goingNext = dx < 0;
+  const stepped = goToDetailMedia(
+    detailMediaIndexValue + (goingNext ? 1 : -1),
+    {
+      dragX: dx,
+      fromCarousel: true,
+      track,
+      width,
+    },
+  );
+  if (stepped) return true;
+  setCarouselX(track, 0, true);
+  return false;
+}
+
+function focusPanBounds() {
+  const fit = focusFitSize();
+  return {
+    maxX: Math.max(0, (fit.width * focusScale - fit.stageWidth) / 2),
+  };
+}
+
+function focusStageRect() {
+  const rect = detailFocusStage?.getBoundingClientRect();
+  if (detailFocusStage && rect && rect.width > 0 && rect.height > 0) {
+    const styles = window.getComputedStyle(detailFocusStage);
+    const padLeft = parseFloat(styles.paddingLeft) || 0;
+    const padRight = parseFloat(styles.paddingRight) || 0;
+    const padTop = parseFloat(styles.paddingTop) || 0;
+    const padBottom = parseFloat(styles.paddingBottom) || 0;
+    return {
+      left: rect.left + padLeft,
+      top: rect.top + padTop,
+      width: Math.max(1, rect.width - padLeft - padRight),
+      height: Math.max(1, rect.height - padTop - padBottom),
+    };
+  }
+  const pad = isPcFocusPlatform() ? focusPadPc : focusPadPhone;
+  const bottomChrome = isPcFocusPlatform() ? focusChromeBottomPc : 0;
+  return {
+    left: pad,
+    top: pad + focusChromeTop,
+    width: Math.max(1, (window.innerWidth || 1) - pad * 2),
+    height: Math.max(
+      1,
+      (window.innerHeight || 1) - pad * 2 - focusChromeTop - bottomChrome,
+    ),
+  };
+}
+
+function focusFitSize() {
+  const stage = focusStageRect();
+  const naturalWidth = detailFocusImage?.naturalWidth || 1;
+  const naturalHeight = detailFocusImage?.naturalHeight || 1;
+  const ratio = Math.min(
+    stage.width / naturalWidth,
+    stage.height / naturalHeight,
+  );
+  return {
+    width: naturalWidth * ratio,
+    height: naturalHeight * ratio,
+    stageWidth: stage.width,
+    stageHeight: stage.height,
+    maxScale: Math.min(8, Math.max(4, naturalWidth / (naturalWidth * ratio))),
+  };
+}
+
+function clearFocusImageLayout() {
+  [detailFocusImage, focusPrevImage, focusNextImage].forEach((img) => {
+    if (!img) return;
+    img.style.removeProperty("width");
+    img.style.removeProperty("height");
+    img.style.removeProperty("max-width");
+    img.style.removeProperty("max-height");
+  });
+}
+
+function layoutFocusImage() {
+  if (!detailFocusImage || !detailFocusOpen) return;
+  const naturalWidth = detailFocusImage.naturalWidth;
+  const naturalHeight = detailFocusImage.naturalHeight;
+  if (!naturalWidth || !naturalHeight) return;
+  const fit = focusFitSize();
+  detailFocusImage.style.width = `${fit.width}px`;
+  detailFocusImage.style.height = `${fit.height}px`;
+  detailFocusImage.style.maxWidth = "none";
+  detailFocusImage.style.maxHeight = "none";
+  [focusPrevImage, focusNextImage].forEach((img) => {
+    if (!img) return;
+    img.style.width = "auto";
+    img.style.height = "auto";
+    img.style.maxWidth = `${fit.width}px`;
+    img.style.maxHeight = `${fit.height}px`;
+  });
+}
+
+function syncFocusPageLock(lock) {
+  if (!isPcFocusPlatform()) return;
+  if (lock) {
+    focusBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return;
+  }
+  document.body.style.overflow = focusBodyOverflow;
+  focusBodyOverflow = "";
+}
+
+function applyFocusTransform() {
+  if (!detailFocusImage) return;
+  detailFocusImage.style.setProperty("--focus-scale", String(focusScale));
+  detailFocusImage.style.setProperty("--focus-x", `${focusX}px`);
+  detailFocusImage.style.setProperty("--focus-y", `${focusY}px`);
+  detailFocus?.classList.toggle("is-zoomed", focusScale > 1.05);
+}
+
+function clampFocusPan() {
+  const fit = focusFitSize();
+  const displayWidth = fit.width * focusScale;
+  const displayHeight = fit.height * focusScale;
+  const maxX = Math.max(0, (displayWidth - fit.stageWidth) / 2);
+  const maxY = Math.max(0, (displayHeight - fit.stageHeight) / 2);
+  focusX = Math.min(maxX, Math.max(-maxX, focusX));
+  focusY = Math.min(maxY, Math.max(-maxY, focusY));
+}
+
+function resetFocusTransform() {
+  focusScale = focusMinScale;
+  focusX = 0;
+  focusY = 0;
+  focusPointers = new Map();
+  focusPinch = null;
+  focusPan = null;
+  focusDidPan = false;
+  focusDidPinch = false;
+  detailFocus?.classList.remove("is-panning");
+  applyFocusTransform();
+  layoutFocusImage();
+}
+
+function zoomFocusAt(clientX, clientY, nextScale) {
+  const stage = focusStageRect();
+  const fit = focusFitSize();
+  const scale = Math.min(fit.maxScale, Math.max(focusMinScale, nextScale));
+  const originX = clientX - stage.left - stage.width / 2;
+  const originY = clientY - stage.top - stage.height / 2;
+  const imageX = (originX - focusX) / focusScale;
+  const imageY = (originY - focusY) / focusScale;
+  focusScale = scale;
+  focusX = originX - imageX * focusScale;
+  focusY = originY - imageY * focusScale;
+  clampFocusPan();
+  applyFocusTransform();
 }
 
 function closeMediaFocus() {
+  const wasOpen = detailFocusOpen;
   detailFocusOpen = false;
+  resetFocusTransform();
+  clearFocusImageLayout();
   setHidden(detailFocus, true);
+  hideFocusPager();
+  cancelCarouselWheel();
+  resetCarouselX(detailFocusTrack);
+  if (wasOpen) syncFocusPageLock(false);
+  const detailScroll = document.querySelector('[data-scroll-view="detail"]');
+  if (detailScroll && wasOpen) detailScroll.scrollTop = focusScrollTop;
+  if (wasOpen && isPcFocusPlatform()) {
+    window.scrollTo(0, focusWindowScroll);
+  }
+  if (wasOpen) logQaEvent("focus", "关闭图像查看");
 }
 
 function openMediaFocus() {
   if (!currentDetailMedia() || detailMediaFailed) return;
+  const detailScroll = document.querySelector('[data-scroll-view="detail"]');
+  focusScrollTop = detailScroll?.scrollTop ?? 0;
+  focusWindowScroll =
+    window.scrollY ||
+    document.scrollingElement?.scrollTop ||
+    document.documentElement.scrollTop ||
+    0;
   detailFocusOpen = true;
+  hideFocusPager();
+  cancelCarouselWheel();
+  resetCarouselX(detailFocusTrack);
   applyFocusMedia();
   setHidden(detailFocus, false);
-  document.querySelector("[data-detail-focus-close]")?.focus();
+  syncFocusPageLock(true);
+  layoutFocusImage();
+  requestAnimationFrame(() => {
+    if (!detailFocusOpen) return;
+    layoutFocusImage();
+    clampFocusPan();
+    applyFocusTransform();
+  });
+  detailFocus?.focus();
+  logQaEvent("focus", "打开图像查看");
 }
 
-function stepDetailMedia(step) {
-  if (detailMediaItems.length <= 1) return;
-  detailMediaIndexValue =
-    (detailMediaIndexValue + step + detailMediaItems.length) %
-    detailMediaItems.length;
+function focusPointerList() {
+  return Array.from(focusPointers.values());
+}
+
+function onFocusPointerDown(event) {
+  if (!detailFocusOpen) return;
+  if (
+    event.target.closest(".app-detail-focus__edge, .app-detail-focus__dots")
+  ) {
+    return;
+  }
+  event.preventDefault();
+  resetCarouselX(detailFocusTrack);
+  focusPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  detailFocusStage?.setPointerCapture?.(event.pointerId);
+  const points = focusPointerList();
+  if (points.length >= 2) {
+    const [first, second] = points;
+    focusDidPinch = true;
+    focusPinch = {
+      distance: Math.hypot(first.x - second.x, first.y - second.y) || 1,
+      scale: focusScale,
+      x: (first.x + second.x) / 2,
+      y: (first.y + second.y) / 2,
+    };
+    focusPan = null;
+    return;
+  }
+  const atStart = detailMediaIndexValue <= 0;
+  const atEnd = detailMediaIndexValue >= detailMediaItems.length - 1;
+  focusPan = {
+    x: event.clientX,
+    y: event.clientY,
+    originX: focusX,
+    originY: focusY,
+    atLeft: focusX >= focusPanBounds().maxX - 1,
+    atRight: focusX <= -focusPanBounds().maxX + 1,
+    atStart,
+    atEnd,
+    axis: null,
+    time: event.timeStamp || Date.now(),
+    lastX: event.clientX,
+    lastTime: event.timeStamp || Date.now(),
+    didCarousel: false,
+    carouselX: 0,
+  };
+  focusDidPan = false;
+}
+
+function onFocusPointerMove(event) {
+  if (!detailFocusOpen || !focusPointers.has(event.pointerId)) return;
+  event.preventDefault();
+  focusPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const points = focusPointerList();
+  if (focusPinch && points.length >= 2) {
+    const [first, second] = points;
+    const distance = Math.hypot(first.x - second.x, first.y - second.y) || 1;
+    const midpointX = (first.x + second.x) / 2;
+    const midpointY = (first.y + second.y) / 2;
+    zoomFocusAt(
+      midpointX,
+      midpointY,
+      focusScale * (distance / focusPinch.distance),
+    );
+    focusPinch.distance = distance;
+    focusPinch.scale = focusScale;
+    focusDidPan = true;
+    return;
+  }
+  if (!focusPan || points.length !== 1) return;
+  const dx = event.clientX - focusPan.x;
+  const dy = event.clientY - focusPan.y;
+  focusPan.lastX = event.clientX;
+  focusPan.lastTime = event.timeStamp || Date.now();
+  if (Math.hypot(dx, dy) > focusTapSlop) {
+    focusDidPan = true;
+    detailFocus?.classList.add("is-panning");
+  }
+  const zoomed = focusScale > 1.05;
+  if (!focusPan.axis) {
+    if (zoomed) {
+      const axis = lockCarouselAxis(dx, dy);
+      const canPageFromZoom =
+        axis === "horizontal" &&
+        ((dx < 0 && focusPan.atRight) || (dx > 0 && focusPan.atLeft));
+      if (canPageFromZoom) focusPan.axis = "horizontal";
+      else if (Math.hypot(dx, dy) > focusTapSlop) focusPan.axis = "pan";
+    } else {
+      focusPan.axis = lockCarouselAxis(dx, dy);
+    }
+    if (!focusPan.axis) return;
+  }
+  if (focusPan.axis === "vertical") return;
+  if (focusPan.axis === "horizontal" || focusPan.didCarousel) {
+    focusPan.didCarousel = true;
+    focusPan.carouselX = rubberCarouselX(dx, focusPan.atStart, focusPan.atEnd);
+    setCarouselX(detailFocusTrack, focusPan.carouselX, false);
+    revealFocusPager();
+    if (zoomed) {
+      focusX = dx < 0 ? -focusPanBounds().maxX : focusPanBounds().maxX;
+      applyFocusTransform();
+    }
+    return;
+  }
+  if (!zoomed) return;
+  focusX = focusPan.originX + dx;
+  focusY = focusPan.originY + dy;
+  clampFocusPan();
+  applyFocusTransform();
+  const bounds = focusPanBounds();
+  const atLeft = focusX >= bounds.maxX - 0.5;
+  const atRight = focusX <= -bounds.maxX + 0.5;
+  if (
+    lockCarouselAxis(dx, dy) === "horizontal" &&
+    ((dx < 0 && atRight) || (dx > 0 && atLeft))
+  ) {
+    focusPan.axis = "horizontal";
+    const unclampedX = focusPan.originX + dx;
+    const extra = unclampedX - focusX;
+    focusPan.didCarousel = true;
+    focusPan.carouselX = rubberCarouselX(
+      extra,
+      focusPan.atStart,
+      focusPan.atEnd,
+    );
+    setCarouselX(detailFocusTrack, focusPan.carouselX, false);
+    revealFocusPager();
+  }
+}
+
+function tryFocusSwipePage(point, start) {
+  if (!point || !start || detailMediaItems.length <= 1) return false;
+  flushCarouselFrame();
+  const dx = start.didCarousel ? start.carouselX : point.x - start.x;
+  const dy = point.y - start.y;
+  const dt = (point.timeStamp || Date.now()) - start.time;
+  const recentDt =
+    (point.timeStamp || Date.now()) - (start.lastTime || start.time);
+  const recentVelocity =
+    (point.x - (start.lastX ?? start.x)) / Math.max(16, recentDt);
+  const width = carouselWidth(detailFocusStage);
+  const atStart = start.atStart;
+  const atEnd = start.atEnd;
+  if (focusScale > 1.05 && !start.didCarousel) {
+    const goingNext = dx < 0;
+    if (goingNext && !start.atRight) return false;
+    if (!goingNext && !start.atLeft) return false;
+  }
+  if (start.axis === "vertical" || start.axis === "pan") {
+    if (!start.didCarousel) return false;
+  }
+  if (
+    !shouldCommitCarousel(
+      dx,
+      dy,
+      dt,
+      width,
+      atStart,
+      atEnd,
+      recentDt < 80 ? recentVelocity : undefined,
+    )
+  ) {
+    if (start.didCarousel) setCarouselX(detailFocusTrack, 0, true);
+    return false;
+  }
+  showFocusPager();
+  return finishCarouselPage(dx, width, detailFocusTrack);
+}
+
+function onFocusPointerUp(event) {
+  if (!detailFocusOpen || !focusPointers.has(event.pointerId)) return;
+  const point = focusPointers.get(event.pointerId);
+  if (point) point.timeStamp = event.timeStamp || Date.now();
+  const swipeStart = focusPan;
+  const didPinch = focusDidPinch;
+  focusPointers.delete(event.pointerId);
+  detailFocusStage?.releasePointerCapture?.(event.pointerId);
+  if (focusPointers.size < 2) focusPinch = null;
+  if (focusPointers.size !== 0) return;
+  focusPan = null;
+  detailFocus?.classList.remove("is-panning");
+  focusDidPinch = false;
+  if (didPinch) {
+    resetCarouselX(detailFocusTrack);
+    return;
+  }
+  if (tryFocusSwipePage(point, swipeStart)) return;
+  const moved =
+    point && swipeStart
+      ? Math.hypot(point.x - swipeStart.x, point.y - swipeStart.y)
+      : 0;
+  if (focusDidPan || moved > focusTapSlop) {
+    if (detailFocus?.classList.contains("is-pager-visible")) {
+      scheduleFocusPagerHide();
+    }
+    return;
+  }
+  closeMediaFocus();
+}
+
+function isCarouselMouseZoom(event) {
+  return (
+    event.ctrlKey ||
+    event.metaKey ||
+    event.deltaMode !== 0 ||
+    (Math.abs(event.deltaY) >= 40 && Math.abs(event.deltaX) < 1)
+  );
+}
+
+function carouselWheelDeltaX(event, width) {
+  let deltaX = event.deltaX;
+  if (event.deltaMode === 1) deltaX *= pagerWheelLinePixels;
+  if (event.deltaMode === 2) deltaX *= width || 1;
+  return deltaX;
+}
+
+function clearCarouselWheelIdleTimer() {
+  if (!carouselWheelIdleTimer) return;
+  window.clearTimeout(carouselWheelIdleTimer);
+  carouselWheelIdleTimer = 0;
+}
+
+function cancelCarouselWheel() {
+  carouselWheel = null;
+  clearCarouselWheelIdleTimer();
+}
+
+function completeCarouselWheel() {
+  const gesture = carouselWheel;
+  carouselWheel = null;
+  clearCarouselWheelIdleTimer();
+  if (!gesture) return;
+  carouselWheelIgnoreUntil = performance.now() + carouselWheelIgnoreMs;
+  flushCarouselFrame();
+  const dx = gesture.carouselX;
+  const dt = performance.now() - gesture.time;
+  const width = gesture.width;
+  if (
+    shouldCommitCarousel(
+      dx,
+      0,
+      dt,
+      width,
+      gesture.atStart,
+      gesture.atEnd,
+      dx / Math.max(16, dt),
+    )
+  ) {
+    finishCarouselPage(dx, width, gesture.track);
+  } else {
+    setCarouselX(gesture.track, 0, true);
+  }
+  showFocusPager();
+}
+
+function scheduleCarouselWheelSettle() {
+  clearCarouselWheelIdleTimer();
+  carouselWheelIdleTimer = window.setTimeout(() => {
+    carouselWheelIdleTimer = 0;
+    completeCarouselWheel();
+  }, carouselWheelIdleMs);
+}
+
+function handleImageCarouselWheel(event, track, viewport) {
+  if (detailMediaItems.length <= 1 || !track) return false;
+  const width = carouselWidth(viewport);
+  const deltaX = carouselWheelDeltaX(event, width);
+  const adx = Math.abs(deltaX);
+  const ady = Math.abs(event.deltaY);
+  const horizontal = adx > ady * carouselDirectionRatio;
+  if (!horizontal) {
+    if (carouselWheel) completeCarouselWheel();
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (performance.now() < carouselWheelIgnoreUntil) return true;
+  if (!carouselWheel) {
+    carouselWheel = {
+      accumulatedX: 0,
+      atEnd: detailMediaIndexValue >= detailMediaItems.length - 1,
+      atStart: detailMediaIndexValue <= 0,
+      carouselX: 0,
+      deltas: [],
+      time: performance.now(),
+      track,
+      width,
+    };
+  }
+  const gesture = carouselWheel;
+  if (isPcWheelInertia([...gesture.deltas, deltaX])) {
+    completeCarouselWheel();
+    return true;
+  }
+  gesture.deltas.push(deltaX);
+  gesture.accumulatedX += deltaX;
+  gesture.carouselX = rubberCarouselX(
+    -gesture.accumulatedX,
+    gesture.atStart,
+    gesture.atEnd,
+  );
+  setCarouselX(gesture.track, gesture.carouselX, false);
+  revealFocusPager();
+  scheduleCarouselWheelSettle();
+  return true;
+}
+
+function onFocusWheel(event) {
+  if (!detailFocusOpen) return;
+  const pinchZoom = event.ctrlKey || event.metaKey;
+  const mouseWheel = isCarouselMouseZoom(event);
+  if (pinchZoom || mouseWheel) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (carouselWheel) completeCarouselWheel();
+    const factor = pinchZoom
+      ? Math.exp(-event.deltaY * 0.01)
+      : event.deltaY < 0
+        ? 1.08
+        : 1 / 1.08;
+    zoomFocusAt(event.clientX, event.clientY, focusScale * factor);
+    return;
+  }
+  if (focusScale > 1.05 && !carouselWheel) {
+    const bounds = focusPanBounds();
+    const atLeft = focusX >= bounds.maxX - 1;
+    const atRight = focusX <= -bounds.maxX + 1;
+    const towardNext = event.deltaX > 0;
+    const atEdge = towardNext ? atRight : atLeft;
+    const horizontal =
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) * carouselDirectionRatio;
+    if (!horizontal || !atEdge) {
+      event.preventDefault();
+      event.stopPropagation();
+      focusX -= event.deltaX;
+      focusY -= event.deltaY;
+      clampFocusPan();
+      applyFocusTransform();
+      return;
+    }
+  }
+  if (handleImageCarouselWheel(event, detailFocusTrack, detailFocusStage)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function onDetailMediaWheel(event) {
+  if (detailFocusOpen) return;
+  handleImageCarouselWheel(
+    event,
+    detailMediaTrack,
+    detailMediaOpen || detailMediaStage,
+  );
+}
+
+function goToDetailMedia(index, options = {}) {
+  const total = detailMediaItems.length;
+  if (total <= 1) return false;
+  const nextIndex = Math.min(total - 1, Math.max(0, index));
+  if (nextIndex === detailMediaIndexValue) return false;
+  detailMediaIndexValue = nextIndex;
+  const track =
+    options.track || (detailFocusOpen ? detailFocusTrack : detailMediaTrack);
+  if (options.fromCarousel && options.width) {
+    const goingNext = options.dragX < 0;
+    setCarouselX(
+      track,
+      options.dragX + (goingNext ? options.width : -options.width),
+      false,
+    );
+    flushCarouselFrame();
+  } else {
+    resetCarouselX(detailMediaTrack);
+    resetCarouselX(detailFocusTrack);
+  }
   applyDetailMedia();
+  if (options.fromCarousel && options.width) {
+    window.requestAnimationFrame(() => setCarouselX(track, 0, true));
+  }
+  showFocusPager();
+  logQaEvent("media", `切图 ${detailMediaIndexValue + 1}/${total}`);
   if (history.state?.kind === "detail") {
     rememberDetailHistory(detailContentId, { replace: true });
   }
+  return true;
+}
+
+function stepDetailMedia(step) {
+  goToDetailMedia(detailMediaIndexValue + step);
+}
+
+function onMediaDotClick(event) {
+  const button = event.target.closest("[data-media-index]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const nextIndex = Number(button.dataset.mediaIndex);
+  if (!Number.isInteger(nextIndex) || nextIndex === detailMediaIndexValue) {
+    return;
+  }
+  goToDetailMedia(nextIndex);
+}
+
+function onDetailMediaPointerDown(event) {
+  if (detailFocusOpen || detailMediaItems.length <= 1) return;
+  if (
+    event.target.closest("[data-detail-media-dots], .app-detail__media-edge")
+  ) {
+    return;
+  }
+  resetCarouselX(detailMediaTrack);
+  mediaSwipe = {
+    id: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    time: event.timeStamp || Date.now(),
+    lastX: event.clientX,
+    lastTime: event.timeStamp || Date.now(),
+    axis: null,
+    paged: false,
+    carouselX: 0,
+    atStart: detailMediaIndexValue <= 0,
+    atEnd: detailMediaIndexValue >= detailMediaItems.length - 1,
+  };
+}
+
+function onDetailMediaPointerMove(event) {
+  if (!mediaSwipe || event.pointerId !== mediaSwipe.id) return;
+  const dx = event.clientX - mediaSwipe.x;
+  const dy = event.clientY - mediaSwipe.y;
+  mediaSwipe.lastX = event.clientX;
+  mediaSwipe.lastTime = event.timeStamp || Date.now();
+  if (!mediaSwipe.axis) {
+    const axis = lockCarouselAxis(dx, dy);
+    if (!axis) return;
+    mediaSwipe.axis = axis;
+    if (axis !== "horizontal") return;
+    detailMediaStage?.setPointerCapture?.(event.pointerId);
+    if (detailMediaStage) detailMediaStage.style.touchAction = "none";
+  }
+  if (mediaSwipe.axis !== "horizontal") return;
+  event.preventDefault();
+  mediaSwipe.carouselX = rubberCarouselX(
+    dx,
+    mediaSwipe.atStart,
+    mediaSwipe.atEnd,
+  );
+  setCarouselX(detailMediaTrack, mediaSwipe.carouselX, false);
+  revealFocusPager();
+}
+
+function onDetailMediaPointerUp(event) {
+  if (!mediaSwipe || event.pointerId !== mediaSwipe.id) return;
+  flushCarouselFrame();
+  const dx = mediaSwipe.carouselX || event.clientX - mediaSwipe.x;
+  const dy = event.clientY - mediaSwipe.y;
+  const dt = (event.timeStamp || Date.now()) - mediaSwipe.time;
+  const recentDt = (event.timeStamp || Date.now()) - mediaSwipe.lastTime;
+  const recentVelocity =
+    (event.clientX - mediaSwipe.lastX) / Math.max(16, recentDt);
+  const width = carouselWidth(detailMediaOpen || detailMediaStage);
+  const dragged = mediaSwipe.axis === "horizontal";
+  if (detailMediaStage) detailMediaStage.style.touchAction = "";
+  if (
+    dragged &&
+    shouldCommitCarousel(
+      dx,
+      dy,
+      dt,
+      width,
+      mediaSwipe.atStart,
+      mediaSwipe.atEnd,
+      recentDt < 80 ? recentVelocity : undefined,
+    )
+  ) {
+    mediaSwipe.paged = finishCarouselPage(dx, width, detailMediaTrack);
+  } else if (dragged) {
+    setCarouselX(detailMediaTrack, 0, true);
+  }
+  if (mediaSwipe.paged || dragged) mediaSwipeSuppressClick = true;
+  if (dragged) showFocusPager();
+  mediaSwipe = null;
 }
 
 function onDetailImageError() {
@@ -555,6 +1647,7 @@ function onDetailImageError() {
   if (detailImage) detailImage.hidden = true;
   setHidden(detailMediaError, false);
   setHidden(detailMediaFallback, true);
+  logQaEvent("media", "图像暂时无法加载");
 }
 
 function openDetailById(
@@ -576,6 +1669,10 @@ function openDetailById(
   const detailScroll = document.querySelector('[data-scroll-view="detail"]');
   if (detailScroll) detailScroll.scrollTop = 0;
   if (updateHistory) rememberDetailHistory(contentId);
+  logQaEvent(
+    "detail",
+    `打开 ${detailRecord?.title || contentId}（${contentId}）`,
+  );
 }
 
 function openDetail(trigger, options = {}) {
@@ -585,11 +1682,15 @@ function openDetail(trigger, options = {}) {
 }
 
 function showView(view) {
+  if (view !== "detail") closeMediaFocus();
   document.querySelectorAll("[data-view]").forEach((panel) => {
     panel.hidden = panel.dataset.view !== view;
   });
   bottomNavigation.hidden = !primaryViews.includes(view);
   if (!primaryViews.includes(view)) setNavigationMinimized(false);
+  if (view === "home" || view === "calligraphy" || view === "inscriptions") {
+    recalculateLayout();
+  }
 }
 
 function renderSupplementalHomeCards() {
@@ -616,6 +1717,7 @@ function renderSupplementalHomeCards() {
       panel.append(button);
     });
   }
+  recalculateLayout();
 }
 
 function renderTopicsFeed() {
@@ -640,6 +1742,7 @@ function renderTopicsFeed() {
     button.addEventListener("click", () => openTopicColumn(topic.id));
     topicsGrid.append(button);
   });
+  recalculateLayout();
 }
 
 function renderTopicBlock(block) {
@@ -752,16 +1855,79 @@ function navigationEntries() {
   return [...bottomNavigation.querySelectorAll("[data-primary-view]")];
 }
 
+function clearNavBubbleInlineStyle() {
+  if (!navBubble) return;
+  navBubble.style.width = "";
+  navBubble.style.height = "";
+  navBubble.style.transform = "";
+}
+
+function attachNavBubbleToEntry(entry) {
+  if (!navBubble || !entry) return;
+  clearNavBubbleInlineStyle();
+  if (navBubble.parentElement !== entry) entry.prepend(navBubble);
+}
+
+function releaseNavBubbleToNav() {
+  if (!navBubble) return;
+  if (navBubble.parentElement === bottomNavigation) return;
+  bottomNavigation.prepend(navBubble);
+}
+
 function positionNavBubble(entry, scale = 1) {
   if (!navBubble || !entry) return;
-  const navRect = bottomNavigation.getBoundingClientRect();
-  const entryRect = entry.getBoundingClientRect();
-  if (entryRect.width <= 0 || entryRect.height <= 0) return;
-  const x = entryRect.left - navRect.left;
-  const y = entryRect.top - navRect.top;
-  navBubble.style.width = `${entryRect.width}px`;
-  navBubble.style.height = `${entryRect.height}px`;
+  if (scale === 1 && !bottomNavigation.classList.contains("is-dragging-nav")) {
+    attachNavBubbleToEntry(entry);
+    return;
+  }
+  releaseNavBubbleToNav();
+  const width = entry.offsetWidth;
+  const height = entry.offsetHeight;
+  if (width <= 0 || height <= 0) return;
+  const x = entry.offsetLeft;
+  const y = entry.offsetTop;
+  navBubble.style.width = `${width}px`;
+  navBubble.style.height = `${height}px`;
   navBubble.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+}
+
+function cancelPendingNavBubbleSync() {
+  if (navigationBubbleExpandTimer) {
+    window.clearTimeout(navigationBubbleExpandTimer);
+    navigationBubbleExpandTimer = 0;
+  }
+  bottomNavigation.removeEventListener(
+    "transitionend",
+    onNavExpandTransitionEnd,
+  );
+  bottomNavigation.removeAttribute("data-bubble-pending");
+}
+
+function onNavExpandTransitionEnd(event) {
+  if (event.target !== bottomNavigation) return;
+  if (event.propertyName !== "width" && event.propertyName !== "padding") {
+    return;
+  }
+  finishPendingNavBubbleSync();
+}
+
+function finishPendingNavBubbleSync() {
+  cancelPendingNavBubbleSync();
+  if (!navigationMinimized) syncNavBubbleToActive();
+}
+
+function scheduleNavBubbleSyncAfterExpand() {
+  cancelPendingNavBubbleSync();
+  if (prefersReducedNavMotion()) {
+    syncNavBubbleToActive();
+    return;
+  }
+  bottomNavigation.dataset.bubblePending = "true";
+  bottomNavigation.addEventListener("transitionend", onNavExpandTransitionEnd);
+  navigationBubbleExpandTimer = window.setTimeout(() => {
+    navigationBubbleExpandTimer = 0;
+    finishPendingNavBubbleSync();
+  }, navigationExpandMs);
 }
 
 function syncNavBubbleToActive() {
@@ -769,7 +1935,13 @@ function syncNavBubbleToActive() {
   const active = bottomNavigation.querySelector(
     "[data-primary-view].is-active",
   );
-  if (active && !navigationMinimized) positionNavBubble(active);
+  if (
+    active &&
+    !navigationMinimized &&
+    !bottomNavigation.hasAttribute("data-bubble-pending")
+  ) {
+    positionNavBubble(active);
+  }
 }
 
 function nearestNavEntry(clientX) {
@@ -803,14 +1975,20 @@ function scheduleNavigationExpand() {
 }
 
 function setNavigationMinimized(minimized) {
-  navigationMinimized = navigationCanMinimize() && minimized;
+  const nextMinimized = navigationCanMinimize() && minimized;
+  const wasMinimized = navigationMinimized;
+  navigationMinimized = nextMinimized;
   bottomNavigation.classList.toggle("is-minimized", navigationMinimized);
-  if (navigationMinimized) bottomNavigation.dataset.minimized = "true";
-  else {
-    bottomNavigation.removeAttribute("data-minimized");
-    clearNavigationIdleTimer();
-    syncNavBubbleToActive();
+  if (navigationMinimized) {
+    bottomNavigation.dataset.minimized = "true";
+    cancelPendingNavBubbleSync();
+    clearNavBubbleInlineStyle();
+    return;
   }
+  bottomNavigation.removeAttribute("data-minimized");
+  clearNavigationIdleTimer();
+  if (wasMinimized) scheduleNavBubbleSyncAfterExpand();
+  else syncNavBubbleToActive();
 }
 
 function resetNavigationScrollTracking({ expand = true } = {}) {
@@ -886,6 +2064,7 @@ function onNavPointerDown(event) {
   if (navigationMinimized || !event.isPrimary) return;
   if (prefersReducedNavMotion()) return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
+  cancelPendingNavBubbleSync();
   event.preventDefault();
   if (navDragging) unbindNavPointerTracking();
   navPointerId = event.pointerId;
@@ -947,6 +2126,7 @@ function onNavClickCapture(event) {
 }
 
 function selectPrimaryView(view, { updateHistory = true } = {}) {
+  const previous = primaryView;
   saveScrollPosition();
   primaryView = view;
   showView(view);
@@ -955,6 +2135,9 @@ function selectPrimaryView(view, { updateHistory = true } = {}) {
   resetNavigationScrollTracking();
   if (updateHistory) {
     history.replaceState({ kind: "primary", view }, "", location.pathname);
+  }
+  if (previous !== view) {
+    logQaEvent("nav", `切换到${primaryViewLabel(view)}`);
   }
 }
 
@@ -985,6 +2168,182 @@ function filterCalligraphy() {
   if (calligraphyFilterClear) {
     calligraphyFilterClear.hidden = normalizedQuery.length === 0;
   }
+  recalculateLayout();
+}
+
+function masonryGapPx(container) {
+  const raw = window
+    .getComputedStyle(container)
+    .getPropertyValue("--app-masonry-gap");
+  const gap = Number.parseFloat(raw);
+  return Number.isFinite(gap) ? gap : 8;
+}
+
+function masonryViewHidden(container) {
+  return Boolean(container.closest("[data-view][hidden]"));
+}
+
+function masonryMeasureWidth(container) {
+  if (container.clientWidth >= 32) return container.clientWidth;
+  const page = container.closest(".app-pager__page, [data-scroll-view]");
+  if (page && page.clientWidth >= 32) return page.clientWidth;
+  const pager = container.closest("[data-pager], [data-view]");
+  if (pager && pager.clientWidth >= 32) return pager.clientWidth;
+  return container.clientWidth;
+}
+
+function intendedMasonryColumns(container) {
+  const platform = root.dataset.platform;
+  const layout = root.dataset.homeLayout || "double";
+  if (platform === "pc") {
+    if (container.classList.contains("app-list")) return 1;
+    const width = Math.max(0, masonryMeasureWidth(container));
+    const gap = masonryGapPx(container);
+    const minCard = 220;
+    if (width < 32) return 3;
+    return Math.max(
+      3,
+      Math.min(6, Math.floor((width + gap) / (minCard + gap))),
+    );
+  }
+  return layout === "single" ? 1 : 2;
+}
+
+function syncMasonryColumnHints() {
+  document.querySelectorAll(".app-masonry").forEach((container) => {
+    container.dataset.masonryColumns = String(
+      intendedMasonryColumns(container),
+    );
+  });
+}
+
+function masonryItems(container) {
+  return [...container.children].filter(
+    (item) => !item.hidden && !item.classList.contains("app-empty"),
+  );
+}
+
+function clearMasonryItemStyles(container) {
+  masonryItems(container).forEach((item) => {
+    item.style.removeProperty("position");
+    item.style.removeProperty("width");
+    item.style.removeProperty("left");
+    item.style.removeProperty("top");
+    item.style.removeProperty("margin");
+  });
+  container.style.removeProperty("height");
+}
+
+function layoutMasonry(container) {
+  if (!container || masonryViewHidden(container)) return;
+  const columns = intendedMasonryColumns(container);
+  container.dataset.masonryColumns = String(columns);
+  if (
+    root.dataset.platform === "pc" &&
+    container.classList.contains("app-list")
+  ) {
+    clearMasonryItemStyles(container);
+    return;
+  }
+  const styles = window.getComputedStyle(container);
+  const padLeft = Number.parseFloat(styles.paddingLeft) || 0;
+  const padRight = Number.parseFloat(styles.paddingRight) || 0;
+  const padTop = Number.parseFloat(styles.paddingTop) || 0;
+  const padBottom = Number.parseFloat(styles.paddingBottom) || 0;
+  const outerWidth = masonryMeasureWidth(container);
+  const innerWidth = outerWidth - padLeft - padRight;
+  if (innerWidth < 32) return;
+  const items = masonryItems(container);
+  if (items.length === 0) {
+    clearMasonryItemStyles(container);
+    return;
+  }
+  const gap = masonryGapPx(container);
+  const colWidth = (innerWidth - gap * Math.max(0, columns - 1)) / columns;
+  const heights = Array.from({ length: columns }, () => 0);
+  items.forEach((item) => {
+    item.style.position = "absolute";
+    item.style.width = `${colWidth}px`;
+    item.style.margin = "0";
+    const col = heights.indexOf(Math.min(...heights));
+    const x = padLeft + col * (colWidth + gap);
+    const y = padTop + heights[col];
+    item.style.left = `${x}px`;
+    item.style.top = `${y}px`;
+    heights[col] += item.offsetHeight + gap;
+  });
+  const tallest = Math.max(0, ...heights);
+  const contentHeight =
+    tallest > 0 ? tallest - gap + padTop + padBottom : padTop + padBottom;
+  container.style.height = `${Math.max(0, contentHeight)}px`;
+}
+
+function bindMasonryImages(container) {
+  container.querySelectorAll("img").forEach((img) => {
+    if (img.dataset.masonryBound === "true") return;
+    img.dataset.masonryBound = "true";
+    const relayout = () => layoutMasonry(container);
+    img.addEventListener("load", relayout);
+    img.addEventListener("error", relayout);
+  });
+}
+
+function layoutAllMasonry() {
+  document.querySelectorAll(".app-masonry").forEach((container) => {
+    bindMasonryImages(container);
+    layoutMasonry(container);
+  });
+}
+
+function scheduleMasonryLayout() {
+  if (masonryLayoutFrame) return;
+  masonryLayoutFrame = window.requestAnimationFrame(() => {
+    layoutAllMasonry();
+    masonryLayoutFrame = window.requestAnimationFrame(() => {
+      masonryLayoutFrame = 0;
+      layoutAllMasonry();
+    });
+  });
+}
+
+function layoutOrientation() {
+  return window.innerWidth > window.innerHeight ? "landscape" : "portrait";
+}
+
+function activeMasonryContainer() {
+  if (primaryView === "home") {
+    return homeFeed === "topics"
+      ? topicsGrid
+      : document.querySelector(`[data-feed-grid="${homeFeed}"]`);
+  }
+  if (primaryView === "calligraphy") {
+    return document.querySelector(
+      `[data-pager-page="${calligraphyCategory}"] .app-masonry`,
+    );
+  }
+  return document.querySelector('[data-view="inscriptions"] .app-masonry');
+}
+
+function layoutContextLabel() {
+  const page = primaryView;
+  const section =
+    page === "home"
+      ? homeFeed
+      : page === "calligraphy"
+        ? calligraphyCategory
+        : "all";
+  const container = activeMasonryContainer();
+  const columns = container
+    ? intendedMasonryColumns(container)
+    : homeFeedLayout === "single"
+      ? 1
+      : 2;
+  return `device=${root.dataset.platform} orientation=${layoutOrientation()} page=${page} section=${section} mode=${homeFeedLayout} columns=${columns}`;
+}
+
+function recalculateLayout() {
+  syncMasonryColumnHints();
+  scheduleMasonryLayout();
 }
 
 function touchPagerEnabled() {
@@ -1349,6 +2708,11 @@ function selectHomeFeed(value, { animate = false, velocity = 0 } = {}) {
     });
   }
   if (changed && primaryView === "home") restoreScrollPosition("home");
+  if (changed) {
+    const labels = { discover: "发现", nearby: "附近", topics: "专题" };
+    logQaEvent("home", `首页栏目 ${labels[value] ?? value}`);
+  }
+  recalculateLayout();
 }
 
 function selectCalligraphyCategory(
@@ -1370,6 +2734,11 @@ function selectCalligraphyCategory(
   if (changed && primaryView === "calligraphy") {
     restoreScrollPosition("calligraphy");
   }
+  if (changed) {
+    const labels = { all: "全部", ink: "墨迹", rubbing: "拓本" };
+    logQaEvent("calligraphy", `书帖分类 ${labels[value] ?? value}`);
+  }
+  recalculateLayout();
 }
 
 function cancelActivePagerGesture({ animate = true } = {}) {
@@ -1574,30 +2943,46 @@ function filterInscriptions(query) {
   });
   document.querySelector("[data-search-empty]").hidden = visibleCount > 0;
   searchClear.hidden = normalizedQuery.length === 0;
+  recalculateLayout();
 }
 
 function applyThemePreference(value, { persist = true } = {}) {
   themePreference = themePreferences.includes(value) ? value : "system";
   if (themePreference === "system") root.removeAttribute("data-theme");
   else root.dataset.theme = themePreference;
-  document.querySelectorAll("[data-theme-option]").forEach((option) => {
-    option.checked = option.value === themePreference;
-  });
+  syncThemeToggle();
   if (persist) persistPreference(themePreferenceKey, themePreference);
+  if (persist) {
+    logQaEvent(
+      "theme",
+      `主题 ${themeModeLabels[themePreference] ?? themePreference}`,
+    );
+  }
 }
 
 function applyHomeFeedLayout(value, { persist = true } = {}) {
   homeFeedLayout = homeLayouts.includes(value) ? value : "double";
   root.dataset.homeLayout = homeFeedLayout;
-  document.querySelectorAll("[data-layout-option]").forEach((option) => {
-    option.checked = option.value === homeFeedLayout;
-  });
+  syncLayoutToggle();
+  recalculateLayout();
   if (persist) persistPreference(homeLayoutKey, homeFeedLayout);
+  if (persist) {
+    logQaEvent("layout", layoutContextLabel());
+  }
+}
+
+function cycleThemePreference() {
+  applyThemePreference(nextCycledValue(themeModeOrder, themePreference));
+}
+
+function cycleHomeFeedLayout() {
+  applyHomeFeedLayout(nextCycledValue(homeLayouts, homeFeedLayout));
 }
 
 function openSettings({ updateHistory = true } = {}) {
   saveScrollPosition();
   showView("settings");
+  logQaEvent("settings", "打开设置");
   if (updateHistory) {
     history.pushState(
       { kind: "settings", sourceView: primaryView },
@@ -1612,8 +2997,30 @@ function closeSettings() {
   else selectPrimaryView(primaryView);
 }
 
+function openQaLog({ updateHistory = true } = {}) {
+  renderQaLog();
+  showView("qa-log");
+  logQaEvent("log", "打开调试日志");
+  if (updateHistory) {
+    const sourceView =
+      history.state?.kind === "settings" || history.state?.kind === "qa-log"
+        ? history.state.sourceView
+        : primaryView;
+    history.pushState({ kind: "qa-log", sourceView }, "", "#settings-log");
+  }
+}
+
+function closeQaLog() {
+  if (history.state?.kind === "qa-log") history.back();
+  else openSettings({ updateHistory: false });
+}
+
 function closeDetail() {
   closeMediaFocus();
+  logQaEvent(
+    "detail",
+    `关闭 ${detailRecord?.title || detailContentId || "详情"}`,
+  );
   if (history.state?.kind === "detail") history.back();
   else selectPrimaryView(primaryView);
 }
@@ -1644,14 +3051,6 @@ observePagerSizes();
 function bindClicks(selector, handler) {
   document.querySelectorAll(selector).forEach((element) => {
     element.addEventListener("click", () => handler(element));
-  });
-}
-
-function bindCheckedOptions(selector, apply) {
-  document.querySelectorAll(selector).forEach((option) => {
-    option.addEventListener("change", (event) => {
-      if (event.currentTarget.checked) apply(event.currentTarget.value);
-    });
   });
 }
 
@@ -1709,13 +3108,23 @@ window.addEventListener("wheel", preventPcHistorySwipe, {
 });
 
 bindClicks("[data-open-settings]", () => openSettings());
+bindClicks("[data-open-qa-log]", () => openQaLog());
 
 document
   .querySelector("[data-settings-back]")
   .addEventListener("click", closeSettings);
+document
+  .querySelector("[data-qa-log-back]")
+  ?.addEventListener("click", closeQaLog);
+document
+  .querySelector("[data-qa-log-clear]")
+  ?.addEventListener("click", clearQaLog);
+bindClicks("[data-qa-log-copy]", () => {
+  copyQaLog();
+});
 
-bindCheckedOptions("[data-theme-option]", applyThemePreference);
-bindCheckedOptions("[data-layout-option]", applyHomeFeedLayout);
+bindClicks("[data-theme-toggle]", cycleThemePreference);
+bindClicks("[data-layout-toggle]", cycleHomeFeedLayout);
 bindClicks("[data-open-detail]", openDetail);
 
 document
@@ -1729,25 +3138,77 @@ document.querySelectorAll("[data-detail-retry]").forEach((button) => {
   button.addEventListener("click", retryDetail);
 });
 detailImage?.addEventListener("error", onDetailImageError);
-detailMediaOpen?.addEventListener("click", openMediaFocus);
+const hideBrokenSlide = (img) => {
+  if (!img) return;
+  img.hidden = true;
+};
+detailPrevImage?.addEventListener("error", () =>
+  hideBrokenSlide(detailPrevImage),
+);
+detailNextImage?.addEventListener("error", () =>
+  hideBrokenSlide(detailNextImage),
+);
+focusPrevImage?.addEventListener("error", () =>
+  hideBrokenSlide(focusPrevImage),
+);
+focusNextImage?.addEventListener("error", () =>
+  hideBrokenSlide(focusNextImage),
+);
+detailMediaOpen?.addEventListener("click", (event) => {
+  if (mediaSwipeSuppressClick) {
+    event.preventDefault();
+    mediaSwipeSuppressClick = false;
+    return;
+  }
+  openMediaFocus();
+});
 detailMediaPrev?.addEventListener("click", () => stepDetailMedia(-1));
 detailMediaNext?.addEventListener("click", () => stepDetailMedia(1));
-detailGalleryList?.addEventListener("click", (event) => {
-  const item = event.target.closest("[data-detail-gallery-item]");
-  if (!item) return;
-  const index = Number(item.dataset.detailGalleryItem);
-  if (!Number.isInteger(index)) return;
-  detailMediaIndexValue = index;
-  applyDetailMedia();
-  if (history.state?.kind === "detail") {
-    rememberDetailHistory(detailContentId, { replace: true });
-  }
+detailMediaDots?.addEventListener("click", onMediaDotClick);
+detailMediaStage?.addEventListener("pointerdown", onDetailMediaPointerDown);
+detailMediaStage?.addEventListener("pointermove", onDetailMediaPointerMove, {
+  passive: false,
 });
-document
-  .querySelector("[data-detail-focus-close]")
-  ?.addEventListener("click", closeMediaFocus);
+detailMediaStage?.addEventListener("pointerup", onDetailMediaPointerUp);
+detailMediaStage?.addEventListener("pointercancel", onDetailMediaPointerUp);
+detailMediaStage?.addEventListener("wheel", onDetailMediaWheel, {
+  passive: false,
+});
 detailFocusPrev?.addEventListener("click", () => stepDetailMedia(-1));
 detailFocusNext?.addEventListener("click", () => stepDetailMedia(1));
+detailFocusDots?.addEventListener("click", onMediaDotClick);
+detailFocusStage?.addEventListener("pointerdown", onFocusPointerDown);
+detailFocusStage?.addEventListener("pointermove", onFocusPointerMove, {
+  passive: false,
+});
+detailFocusStage?.addEventListener("pointerup", onFocusPointerUp);
+detailFocusStage?.addEventListener("pointercancel", onFocusPointerUp);
+detailFocus?.addEventListener("wheel", onFocusWheel, { passive: false });
+detailFocus?.addEventListener(
+  "gesturestart",
+  (event) => {
+    if (!detailFocusOpen) return;
+    event.preventDefault();
+  },
+  { passive: false },
+);
+detailFocus?.addEventListener(
+  "gesturechange",
+  (event) => {
+    if (!detailFocusOpen) return;
+    event.preventDefault();
+  },
+  { passive: false },
+);
+detailFocusImage?.addEventListener("dragstart", (event) => {
+  event.preventDefault();
+});
+detailFocusImage?.addEventListener("load", () => {
+  if (!detailFocusOpen) return;
+  layoutFocusImage();
+  clampFocusPan();
+  applyFocusTransform();
+});
 window.addEventListener("keydown", (event) => {
   if (detailView?.hidden) return;
   if (event.key === "Escape") {
@@ -1757,7 +3218,8 @@ window.addEventListener("keydown", (event) => {
     }
     return;
   }
-  if (!detailFocusOpen || detailMediaItems.length <= 1) return;
+  if (event.target.closest?.("input, textarea")) return;
+  if (detailMediaItems.length <= 1) return;
   if (event.key === "ArrowLeft") {
     event.preventDefault();
     stepDetailMedia(-1);
@@ -1805,7 +3267,19 @@ window.addEventListener("hashchange", () => {
 });
 
 window.addEventListener("popstate", (event) => {
+  if (detailFocusOpen) {
+    closeMediaFocus();
+    if (detailContentId) rememberDetailHistory(detailContentId);
+    return;
+  }
   const state = event.state;
+  if (state?.kind === "qa-log") {
+    if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
+    updateBottomNavigation();
+    renderQaLog();
+    showView("qa-log");
+    return;
+  }
   if (state?.kind === "settings") {
     if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
     updateBottomNavigation();
@@ -1841,6 +3315,8 @@ window.addEventListener("popstate", (event) => {
 });
 
 function onPlatformQueryChange() {
+  const previousPlatform = root.dataset.platform;
+  const previousComposition = detailView?.dataset.detailComposition;
   syncPlatformAttribute();
   updateDetailComposition();
   cancelActivePagerGesture({ animate: false });
@@ -1848,6 +3324,17 @@ function onPlatformQueryChange() {
   resetNavigationScrollTracking();
   const detailOpen = detailView && !detailView.hidden;
   if (!detailOpen) restoreScrollPosition(primaryView);
+  if (detailFocusOpen) resetFocusTransform();
+  recalculateLayout();
+  if (
+    root.dataset.platform !== previousPlatform ||
+    detailView?.dataset.detailComposition !== previousComposition
+  ) {
+    logQaEvent(
+      "platform",
+      `${root.dataset.platform} ${detailView?.dataset.detailComposition ?? ""} ${window.innerWidth}×${window.innerHeight}`,
+    );
+  }
 }
 
 window.addEventListener(
@@ -1855,9 +3342,15 @@ window.addEventListener(
   onBeforePlatformQueryChange,
 );
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
+function onNavGeometryChange() {
+  if (navDragging || navigationMinimized) return;
+  syncNavBubbleToActive();
+}
+
 function onPagerViewportChange() {
   saveScrollPosition();
   updateDetailComposition();
+  onNavGeometryChange();
   cancelActivePagerGesture({ animate: false });
   pagerControllers.forEach((controller) => cancelPagerSpring(controller));
   pagerViewportSyncFramesElapsed = 0;
@@ -1887,6 +3380,18 @@ function onPagerViewportChange() {
     if (dimensionsSettled || reachedLimit) {
       pagerViewportSyncAnimationId = 0;
       restoreScrollPosition(primaryView);
+      onNavGeometryChange();
+      recalculateLayout();
+      if (detailFocusOpen) {
+        resetFocusTransform();
+        resetCarouselX(detailFocusTrack);
+        layoutFocusImage();
+        const detailScroll = document.querySelector(
+          '[data-scroll-view="detail"]',
+        );
+        if (detailScroll) detailScroll.scrollTop = focusScrollTop;
+        if (isPcFocusPlatform()) window.scrollTo(0, focusWindowScroll);
+      }
       return;
     }
     pagerViewportSyncAnimationId = requestAnimationFrame(
@@ -1948,6 +3453,10 @@ window.addEventListener(
 );
 syncPlatformAttribute();
 updateDetailComposition();
+logQaEvent(
+  "boot",
+  `${root.dataset.platform} ${detailView?.dataset.detailComposition ?? ""} ${window.innerWidth}×${window.innerHeight}`,
+);
 
 const bootHash = location.hash;
 history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
@@ -1957,12 +3466,23 @@ selectCalligraphyCategory(calligraphyCategory);
 filterInscriptions("");
 applyThemePreference(themePreference, { persist: false });
 applyHomeFeedLayout(homeFeedLayout, { persist: false });
+window
+  .matchMedia?.("(prefers-color-scheme: dark)")
+  ?.addEventListener?.("change", (event) => {
+    if (themePreference !== "system") return;
+    logQaEvent("theme", `系统主题 ${event.matches ? "深色" : "浅色"}`);
+  });
 resetNavigationScrollTracking();
 
 const bootDetailId = bootHash.startsWith("#detail-")
   ? decodeURIComponent(bootHash.slice("#detail-".length))
   : "";
-if (bootDetailId) {
+if (bootHash === "#settings-log") {
+  openSettings();
+  openQaLog();
+} else if (bootHash === "#settings") {
+  openSettings();
+} else if (bootDetailId) {
   openDetailById(bootDetailId, {
     trigger: findContentTrigger(bootDetailId),
   });

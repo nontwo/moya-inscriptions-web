@@ -24,28 +24,28 @@
     />
     <link
       rel="stylesheet"
-      href="../../../packages/ui/src/styles.css?v=20260814-min-circle-icon"
+      href="../../../packages/ui/src/styles.css?v=20260817-elevation"
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260816-detail-panel"
+      href="./preview.shared.css?v=20260817-elevation"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260816-detail-panel"
+      href="./preview.css?v=20260817-elevation"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260816-detail-panel"
+      href="./preview.tablet.css?v=20260817-elevation"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260816-detail-panel"
+      href="./preview.pc.css?v=20260817-elevation"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -312,7 +312,10 @@
                 data-scroll-key="home:topics"
                 hidden
               >
-                <div class="app-topics__grid" data-topics-grid></div>
+                <div
+                  class="app-masonry app-topics__grid"
+                  data-topics-grid
+                ></div>
               </div>
               <!-- TOPICS_PLACEHOLDER_END -->
             </div>
@@ -363,120 +366,122 @@
           </header>
           <div class="app-inscriptions-layout">
             <div class="app-inscriptions-list-pane">
-              <main class="app-scroll app-list" data-scroll-view="inscriptions">
-                <button
-                  class="app-list-item"
-                  data-search-text="云峰山题名 北魏 楷书 山东云峰山"
-                  data-content-id="inscription-yunfeng"
-                  data-open-detail
-                  data-image="../../design-system/assets/demo/rubbing-fragment.svg"
-                  data-title="云峰山题名"
-                  type="button"
-                >
-                  <img
-                    src="../../design-system/assets/demo/rubbing-fragment.svg"
-                    alt="虚构云峰山题名缩略图"
-                  />
-                  <span class="app-list-item__body">
-                    <span class="app-list-item__title">云峰山题名</span>
-                  </span>
-                  <span
-                    class="yoyi-icon yoyi-icon--sm"
-                    data-icon="next"
-                    aria-hidden="true"
-                  ></span>
-                </button>
-                <button
-                  class="app-list-item"
-                  data-search-text="石门东侧残刻 东汉 隶书 汉中石门"
-                  data-content-id="inscription-shimen"
-                  data-open-detail
-                  data-image="../../design-system/assets/demo/stone-detail.svg"
-                  data-title="石门东侧残刻"
-                  type="button"
-                >
-                  <img
-                    src="../../design-system/assets/demo/stone-detail.svg"
-                    alt="虚构石门东侧残刻缩略图"
-                  />
-                  <span class="app-list-item__body">
-                    <span class="app-list-item__title">石门东侧残刻</span>
-                  </span>
-                  <span
-                    class="yoyi-icon yoyi-icon--sm"
-                    data-icon="next"
-                    aria-hidden="true"
-                  ></span>
-                </button>
-                <button
-                  class="app-list-item"
-                  data-search-text="龙门北壁造像记 北魏 魏碑 洛阳龙门"
-                  data-content-id="inscription-longmen"
-                  data-open-detail
-                  data-image="../../design-system/assets/demo/cliff-gate.svg"
-                  data-title="龙门北壁造像记"
-                  type="button"
-                >
-                  <img
-                    src="../../design-system/assets/demo/cliff-gate.svg"
-                    alt="虚构龙门北壁造像记缩略图"
-                  />
-                  <span class="app-list-item__body">
-                    <span class="app-list-item__title">龙门北壁造像记</span>
-                  </span>
-                  <span
-                    class="yoyi-icon yoyi-icon--sm"
-                    data-icon="next"
-                    aria-hidden="true"
-                  ></span>
-                </button>
-                <button
-                  class="app-list-item"
-                  data-search-text="天柱山摩崖 唐代 行书 安徽天柱山"
-                  data-content-id="inscription-tianzhu"
-                  data-open-detail
-                  data-image="../../design-system/assets/demo/valley-wall.svg"
-                  data-title="天柱山摩崖"
-                  type="button"
-                >
-                  <img
-                    src="../../design-system/assets/demo/valley-wall.svg"
-                    alt="虚构天柱山摩崖缩略图"
-                  />
-                  <span class="app-list-item__body">
-                    <span class="app-list-item__title">天柱山摩崖</span>
-                  </span>
-                  <span
-                    class="yoyi-icon yoyi-icon--sm"
-                    data-icon="next"
-                    aria-hidden="true"
-                  ></span>
-                </button>
-                <button
-                  class="app-list-item"
-                  data-search-text="古道石刻 宋代 楷书 浙东古道"
-                  data-content-id="inscription-road"
-                  data-open-detail
-                  data-image="../../design-system/assets/demo/stele-shadow.svg"
-                  data-title="古道石刻"
-                  type="button"
-                >
-                  <img
-                    src="../../design-system/assets/demo/stele-shadow.svg"
-                    alt="虚构古道石刻缩略图"
-                  />
-                  <span class="app-list-item__body">
-                    <span class="app-list-item__title">古道石刻</span>
-                  </span>
-                  <span
-                    class="yoyi-icon yoyi-icon--sm"
-                    data-icon="next"
-                    aria-hidden="true"
-                  ></span>
-                </button>
-                <p class="app-empty" data-search-empty role="status" hidden>
-                  未找到碑刻
-                </p>
+              <main class="app-scroll" data-scroll-view="inscriptions">
+                <div class="app-list app-masonry">
+                  <button
+                    class="app-list-item"
+                    data-search-text="云峰山题名 北魏 楷书 山东云峰山"
+                    data-content-id="inscription-yunfeng"
+                    data-open-detail
+                    data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                    data-title="云峰山题名"
+                    type="button"
+                  >
+                    <img
+                      src="../../design-system/assets/demo/rubbing-fragment.svg"
+                      alt="虚构云峰山题名缩略图"
+                    />
+                    <span class="app-list-item__body">
+                      <span class="app-list-item__title">云峰山题名</span>
+                    </span>
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="next"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-list-item"
+                    data-search-text="石门东侧残刻 东汉 隶书 汉中石门"
+                    data-content-id="inscription-shimen"
+                    data-open-detail
+                    data-image="../../design-system/assets/demo/stone-detail.svg"
+                    data-title="石门东侧残刻"
+                    type="button"
+                  >
+                    <img
+                      src="../../design-system/assets/demo/stone-detail.svg"
+                      alt="虚构石门东侧残刻缩略图"
+                    />
+                    <span class="app-list-item__body">
+                      <span class="app-list-item__title">石门东侧残刻</span>
+                    </span>
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="next"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-list-item"
+                    data-search-text="龙门北壁造像记 北魏 魏碑 洛阳龙门"
+                    data-content-id="inscription-longmen"
+                    data-open-detail
+                    data-image="../../design-system/assets/demo/cliff-gate.svg"
+                    data-title="龙门北壁造像记"
+                    type="button"
+                  >
+                    <img
+                      src="../../design-system/assets/demo/cliff-gate.svg"
+                      alt="虚构龙门北壁造像记缩略图"
+                    />
+                    <span class="app-list-item__body">
+                      <span class="app-list-item__title">龙门北壁造像记</span>
+                    </span>
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="next"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-list-item"
+                    data-search-text="天柱山摩崖 唐代 行书 安徽天柱山"
+                    data-content-id="inscription-tianzhu"
+                    data-open-detail
+                    data-image="../../design-system/assets/demo/valley-wall.svg"
+                    data-title="天柱山摩崖"
+                    type="button"
+                  >
+                    <img
+                      src="../../design-system/assets/demo/valley-wall.svg"
+                      alt="虚构天柱山摩崖缩略图"
+                    />
+                    <span class="app-list-item__body">
+                      <span class="app-list-item__title">天柱山摩崖</span>
+                    </span>
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="next"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-list-item"
+                    data-search-text="古道石刻 宋代 楷书 浙东古道"
+                    data-content-id="inscription-road"
+                    data-open-detail
+                    data-image="../../design-system/assets/demo/stele-shadow.svg"
+                    data-title="古道石刻"
+                    type="button"
+                  >
+                    <img
+                      src="../../design-system/assets/demo/stele-shadow.svg"
+                      alt="虚构古道石刻缩略图"
+                    />
+                    <span class="app-list-item__body">
+                      <span class="app-list-item__title">古道石刻</span>
+                    </span>
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="next"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <p class="app-empty" data-search-empty role="status" hidden>
+                    未找到碑刻
+                  </p>
+                </div>
               </main>
             </div>
           </div>
@@ -827,64 +832,99 @@
           <main class="app-scroll app-settings__content">
             <form class="app-settings__form">
               <fieldset class="app-setting-group">
-                <legend>主题</legend>
-                <div class="app-setting-options app-setting-options--three">
-                  <label class="app-setting-option">
-                    <input
-                      data-theme-option
-                      name="theme"
-                      type="radio"
-                      value="system"
-                    />
-                    <span>跟随系统</span>
-                  </label>
-                  <label class="app-setting-option">
-                    <input
-                      data-theme-option
-                      name="theme"
-                      type="radio"
-                      value="light"
-                    />
-                    <span>浅色</span>
-                  </label>
-                  <label class="app-setting-option">
-                    <input
-                      data-theme-option
-                      name="theme"
-                      type="radio"
-                      value="dark"
-                    />
-                    <span>深色</span>
-                  </label>
+                <legend class="yoyi-visually-hidden">显示</legend>
+                <div class="app-setting-toggles">
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md app-setting-toggle"
+                    data-theme-toggle
+                    data-theme-mode="system"
+                    type="button"
+                    title="跟随系统"
+                    aria-label="切换主题：当前跟随系统"
+                  >
+                    <span
+                      class="yoyi-icon"
+                      data-icon="theme-system"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md app-setting-toggle"
+                    data-layout-toggle
+                    data-layout-mode="double"
+                    data-setting-group="home-layout"
+                    type="button"
+                    title="双列"
+                    aria-label="切换布局：当前双列"
+                  >
+                    <span
+                      class="yoyi-icon"
+                      data-icon="layout-double"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
                 </div>
               </fieldset>
-              <fieldset
-                class="app-setting-group"
-                data-setting-group="home-layout"
-              >
-                <legend>首页展示（仅手机）</legend>
-                <div class="app-setting-options">
-                  <label class="app-setting-option">
-                    <input
-                      data-layout-option
-                      name="home-layout"
-                      type="radio"
-                      value="single"
-                    />
-                    <span>单列展示</span>
-                  </label>
-                  <label class="app-setting-option">
-                    <input
-                      data-layout-option
-                      name="home-layout"
-                      type="radio"
-                      value="double"
-                    />
-                    <span>双列展示</span>
-                  </label>
+              <fieldset class="app-setting-group" data-setting-group="qa-log">
+                <legend>调试</legend>
+                <div class="app-qa-log__toolbar">
+                  <button
+                    class="app-setting-action"
+                    data-open-qa-log
+                    type="button"
+                  >
+                    查看调试日志
+                  </button>
+                  <button
+                    class="app-setting-action"
+                    data-qa-log-copy
+                    type="button"
+                  >
+                    复制日志
+                  </button>
                 </div>
               </fieldset>
             </form>
+          </main>
+        </section>
+
+        <section
+          class="app-view app-settings app-qa-log"
+          data-view="qa-log"
+          aria-label="调试日志"
+          hidden
+        >
+          <header class="app-topbar app-topbar--settings">
+            <button
+              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+              data-qa-log-back
+              aria-label="返回设置"
+              type="button"
+            >
+              <span
+                class="yoyi-icon"
+                data-icon="back"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <h1 class="app-topbar__title">调试日志</h1>
+            <span aria-hidden="true" class="app-topbar__spacer"></span>
+          </header>
+          <main class="app-scroll app-settings__content">
+            <div class="app-qa-log__toolbar">
+              <button class="app-setting-action" data-qa-log-copy type="button">
+                复制日志
+              </button>
+              <button
+                class="app-setting-action"
+                data-qa-log-clear
+                type="button"
+              >
+                清空
+              </button>
+            </div>
+            <p class="app-qa-log__empty" data-qa-log-empty hidden>暂无记录</p>
+            <ol class="app-qa-log__list" data-qa-log-list></ol>
           </main>
         </section>
 
@@ -932,55 +972,84 @@
             <div data-detail-panel="loaded" hidden>
               <div class="app-detail__hero">
                 <div class="app-detail__media" data-detail-media>
-                  <button
-                    class="app-detail__media-frame"
-                    data-detail-media-open
-                    type="button"
-                    aria-label="查看图像"
-                  >
-                    <img
-                      data-detail-image
-                      src="../../design-system/assets/demo/cliff-gate.svg"
-                      alt=""
-                    />
-                    <span
-                      class="app-detail__media-fallback"
-                      data-detail-media-fallback
-                      hidden
-                    >
-                      暂无图像
-                    </span>
-                    <span
-                      class="app-detail__media-error"
-                      data-detail-media-error
-                      hidden
-                    >
-                      图像暂时无法加载
-                    </span>
-                  </button>
-                  <div class="app-detail__media-controls">
+                  <div class="app-detail__media-stage">
                     <button
-                      class="app-detail__media-nav"
+                      class="app-detail__media-frame"
+                      data-detail-media-open
+                      type="button"
+                      aria-label="查看图像"
+                    >
+                      <div
+                        class="app-detail__media-track"
+                        data-detail-media-track
+                      >
+                        <div class="app-detail__media-slide">
+                          <img
+                            data-detail-media-prev-image
+                            alt=""
+                            draggable="false"
+                            hidden
+                          />
+                        </div>
+                        <div class="app-detail__media-slide is-current">
+                          <img
+                            data-detail-image
+                            src="../../design-system/assets/demo/cliff-gate.svg"
+                            alt=""
+                            draggable="false"
+                          />
+                        </div>
+                        <div class="app-detail__media-slide">
+                          <img
+                            data-detail-media-next-image
+                            alt=""
+                            draggable="false"
+                            hidden
+                          />
+                        </div>
+                      </div>
+                      <span
+                        class="app-detail__media-fallback"
+                        data-detail-media-fallback
+                        hidden
+                      >
+                        暂无图像
+                      </span>
+                      <span
+                        class="app-detail__media-error"
+                        data-detail-media-error
+                        hidden
+                      >
+                        图像暂时无法加载
+                      </span>
+                      <span
+                        class="app-detail__media-counter"
+                        data-detail-media-index
+                        hidden
+                      ></span>
+                    </button>
+                    <button
+                      class="app-detail__media-edge app-detail__media-edge--prev"
                       data-detail-media-prev
                       type="button"
                       aria-label="上一张图像"
                       hidden
-                    >
-                      上一张
-                    </button>
-                    <p class="app-detail__media-index" data-detail-media-index>
-                      1 / 1
-                    </p>
+                    ></button>
                     <button
-                      class="app-detail__media-nav"
+                      class="app-detail__media-edge app-detail__media-edge--next"
                       data-detail-media-next
                       type="button"
                       aria-label="下一张图像"
                       hidden
-                    >
-                      下一张
-                    </button>
+                    ></button>
                   </div>
+                  <div
+                    class="app-detail__media-dots"
+                    data-detail-media-dots
+                    hidden
+                    role="tablist"
+                    aria-label="图像分页"
+                  ></div>
                 </div>
                 <div
                   class="app-detail__identity app-detail__info-panel"
@@ -1016,10 +1085,6 @@
               >
                 <h2>说明</h2>
                 <p data-detail-description-text></p>
-              </section>
-              <section class="app-detail__section" data-detail-gallery hidden>
-                <h2>图像</h2>
-                <div class="app-detail__gallery" data-detail-gallery-list></div>
               </section>
               <section
                 class="app-detail__section app-detail__reading"
@@ -1106,37 +1171,64 @@
             role="dialog"
             aria-modal="true"
             aria-label="图像查看"
+            tabindex="-1"
           >
-            <button
-              class="app-detail-focus__close"
-              data-detail-focus-close
-              type="button"
-              aria-label="关闭图像"
-            >
-              关闭
-            </button>
-            <p class="app-detail-focus__index" data-detail-focus-index></p>
-            <img
-              class="app-detail-focus__image"
-              data-detail-focus-image
-              alt=""
-            />
-            <button
-              class="app-detail-focus__nav app-detail-focus__nav--prev"
-              data-detail-focus-prev
-              type="button"
-              aria-label="上一张图像"
-            >
-              上一张
-            </button>
-            <button
-              class="app-detail-focus__nav app-detail-focus__nav--next"
-              data-detail-focus-next
-              type="button"
-              aria-label="下一张图像"
-            >
-              下一张
-            </button>
+            <div class="app-detail-focus__stage" data-detail-focus-stage>
+              <div class="app-detail-focus__track" data-detail-focus-track>
+                <div class="app-detail-focus__slide">
+                  <img
+                    class="app-detail-focus__peer"
+                    data-detail-focus-prev-image
+                    alt=""
+                    draggable="false"
+                    hidden
+                  />
+                </div>
+                <div class="app-detail-focus__slide is-current">
+                  <img
+                    class="app-detail-focus__image"
+                    data-detail-focus-image
+                    alt=""
+                    draggable="false"
+                  />
+                </div>
+                <div class="app-detail-focus__slide">
+                  <img
+                    class="app-detail-focus__peer"
+                    data-detail-focus-next-image
+                    alt=""
+                    draggable="false"
+                    hidden
+                  />
+                </div>
+              </div>
+              <span
+                class="app-detail-focus__counter"
+                data-detail-focus-index
+                hidden
+              ></span>
+              <button
+                class="app-detail-focus__edge app-detail-focus__edge--prev"
+                data-detail-focus-prev
+                type="button"
+                aria-label="上一张图像"
+                hidden
+              ></button>
+              <button
+                class="app-detail-focus__edge app-detail-focus__edge--next"
+                data-detail-focus-next
+                type="button"
+                aria-label="下一张图像"
+                hidden
+              ></button>
+            </div>
+            <div
+              class="app-detail-focus__dots"
+              data-detail-focus-dots
+              hidden
+              role="tablist"
+              aria-label="图像分页"
+            ></div>
           </div>
         </section>
 
@@ -1251,6 +1343,6 @@
     <script src="./fixtures/home-feed.placeholder.js"></script>
     <script src="./fixtures/topics.placeholder.js"></script>
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
-    <script src="./preview.js?v=20260816-detail-panel"></script>
+    <script src="./preview.js?v=20260817-dedupe"></script>
   </body>
 </html>
