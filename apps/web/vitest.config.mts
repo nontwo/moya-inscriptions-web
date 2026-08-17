@@ -8,6 +8,11 @@ const serverOnlyShimPath = decodeURIComponent(
 );
 
 export default defineConfig({
+  oxc: {
+    jsx: {
+      runtime: "automatic",
+    },
+  },
   resolve: {
     alias: {
       "@moya/contracts/schemas": contractSchemasPath,

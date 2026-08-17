@@ -1,9 +1,9 @@
 import "server-only";
 
-import { fetchCatalogPage } from "./catalog-list.js";
+import { fetchCatalogPage } from "./catalog-list";
 
 import type { CatalogListTransportQuery } from "@moya/contracts";
-import type { CatalogPageTransportResult } from "./catalog-list.js";
+import type { CatalogPageTransportResult } from "./catalog-list";
 
 const publicApiBaseUrlVariable = "MOYA_PUBLIC_API_BASE_URL" as const;
 
