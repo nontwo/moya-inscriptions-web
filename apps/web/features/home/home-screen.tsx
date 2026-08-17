@@ -31,7 +31,6 @@ const CatalogItem = ({ item }: { item: CatalogSummary }) => (
 const PopulatedCatalog = ({ page }: { page: CatalogPage }) => (
   <section aria-labelledby="catalog-heading">
     <h2 id="catalog-heading">公开档案</h2>
-    <p>共 {page.total} 条</p>
     <ul>
       {page.items.map((item) => (
         <CatalogItem key={item.id} item={item} />

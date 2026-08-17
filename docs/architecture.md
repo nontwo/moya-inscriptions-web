@@ -210,9 +210,15 @@ import/apply基础已完成；正式产品业务仍未完成：
   authorization及transactional/idempotent apply。
 - Supplied `ownerNote`当前在所有apply路径共享的pre-write decision处fail
   closed；alias storage已经支持，但undefined collection replace/merge/delete
-  update semantics仍fail closed。T05.4-B在本分支实现bounded XLSX
-  parser、CSV/XLSX convergence、structured diagnostics与唯一controlled-importer
-  authorization；Admin workflow、真实数据导入、图片管线以及T06–T09能力尚未实现。
+  update semantics仍fail closed。T05.4-B已实现bounded XLSX parser、CSV/XLSX
+  convergence、structured diagnostics与唯一controlled-importer authorization。
+- MEDIA-01已建立Catalog Media persistence、representative/gallery read
+  projection与backend-owned runtime URL resolution boundary；production
+  storage/CDN和真实Media ingestion仍不在当前实现内。
+- T06-A已建立Web server-side Public HTTP data boundary；T06-B.1已实现formal
+  request-time Home orchestration与可替换semantic presentation
+  seam。T06-B.2最终视觉composition以及T07–T09仍是后续工作。
+- Importer Admin workflow与正式/production Catalog数据导入仍不在当前实现内。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service
 implementation、数据文件或 PostgreSQL。Frontend 可以 type-import

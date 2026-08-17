@@ -12,7 +12,9 @@ persistence、representative/gallery read projection、backend-owned
 StorageUrlResolver与strict PublicMedia boundary，并通过merged-head
 CI与PostgreSQL 18.4验证。当前尚未执行正式/production
 Catalog数据导入，也尚未接入production storage provider/CDN或真实Media
-ingestion；应用仓库本身仍不包含任何真实数据集，正式Web/Admin产品能力也尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
+ingestion；应用仓库本身仍不包含任何真实数据集。正式Home已推进到T06-B.1
+request-time orchestration与semantic presentation
+seam，最终视觉composition和Admin产品能力尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
 
 `integration/mvp`
 当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立响应式产品原型之上完成T04.1
@@ -92,7 +94,8 @@ management仍属于后续独立任务。
   Public API readback的完整链路；apply与replay均在独立disposable PostgreSQL
   18.4验证环境完成并已在证据收集后销毁，未写入production或本仓库数据。
 
-当前不能把项目视为可上线产品：正式 Web/Admin 仍是骨架，Catalog
+当前不能把项目视为可上线产品：formal Home当前只完成B.1数据编排与最小semantic
+presentation，最终T02视觉integration与Admin产品仍未完成。Catalog
 HTTP在development/test缺省使用三个条目的fixture；PILOT-IMPORT-01已完成28条真实记录的验证性导入，但正式/production
 Catalog数据导入、Importer Admin UI、production storage provider/CDN、真实Media
 ingestion与upload/management
@@ -110,6 +113,11 @@ closed。二者都不得发生silent loss。
 
 应用仓库当前不保存真实档案数据集、地区候选或审核证据。旧 T01/D01 资产已经过 SHA-256 验证并迁移到 owner 持有的本地 AES-256 加密归档，不得作为前端资产或运行时数据重新引入。PILOT-IMPORT-01使用的28条真实审核记录（workbook与验证证据）同样只保存在 owner 持有的本地目录，未进入应用仓库；验证所用PostgreSQL环境为一次性disposable实例，验证后已销毁，不构成production数据集。MEDIA-01只使用synthetic/test
 Media验证数据模型和读取链路，没有导入真实图片或配置production object storage。
+
+需要用28条P5真实记录进行本地UI验证时，只能通过fresh disposable PostgreSQL 18.4
+validation session、现有importer、PostgreSQL-backed backend与formal
+Web完成；session结束后必须销毁数据库与临时输出。该流程不建立persistent Local
+Pilot、seed或第二数据路径。
 
 ## 测试与可运行入口
 
@@ -134,7 +142,7 @@ pnpm test:postgres
 pnpm build
 ```
 
-启动骨架应用：
+启动应用：
 
 ```sh
 pnpm dev

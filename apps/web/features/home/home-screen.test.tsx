@@ -55,6 +55,20 @@ describe("HomeScreen", () => {
     expect(markup).not.toContain("<a ");
   });
 
+  it("keeps the Catalog total out of presentation", () => {
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        state={{
+          state: "populated",
+          page: page([catalogItem()], 987_654),
+        }}
+      />,
+    );
+
+    expect(markup).toContain("云峰山刻石");
+    expect(markup).not.toContain("987654");
+  });
+
   it("renders a semantic no-media fallback", () => {
     const markup = renderToStaticMarkup(
       <HomeScreen
