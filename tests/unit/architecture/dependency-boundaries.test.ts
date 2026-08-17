@@ -379,6 +379,87 @@ describe("frontend and browser boundaries", () => {
     );
   });
 
+  it("allows only connection from next/server in the non-client root Home page", () => {
+    const homePage = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "app",
+      "page.tsx",
+    );
+    const otherPage = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "app",
+      "catalog",
+      "page.tsx",
+    );
+
+    expect(
+      frontendBoundaryViolations(
+        homePage,
+        'import { connection } from "next/server";',
+      ),
+    ).toEqual([]);
+    expect(
+      frontendBoundaryViolations(
+        homePage,
+        'import { connection, cookies } from "next/server";',
+      ),
+    ).toContain("next/server crosses the frontend boundary");
+    expect(
+      frontendBoundaryViolations(
+        otherPage,
+        'import { connection } from "next/server";',
+      ),
+    ).toContain("next/server crosses the frontend boundary");
+    expect(
+      frontendBoundaryViolations(
+        homePage,
+        '"use client";\nimport { connection } from "next/server";',
+      ),
+    ).toContain("next/server is server/runtime-only");
+  });
+
+  it("allows only the Home loader to call the approved Public API server adapter", () => {
+    const homeLoader = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "home",
+      "load-home-catalog.ts",
+    );
+    const otherLoader = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "catalog",
+      "loader.ts",
+    );
+    const approvedImport =
+      'import { fetchServerCatalogPage } from "../../lib/public-api/server";';
+
+    expect(frontendBoundaryViolations(homeLoader, approvedImport)).toEqual([]);
+    expect(
+      frontendBoundaryViolations(
+        homeLoader,
+        'import { parsePublicApiBaseUrl } from "../../lib/public-api/server";',
+      ),
+    ).toContain("../../lib/public-api/server crosses the frontend boundary");
+    expect(frontendBoundaryViolations(otherLoader, approvedImport)).toContain(
+      "../../lib/public-api/server crosses the frontend boundary",
+    );
+    expect(
+      frontendBoundaryViolations(
+        homeLoader,
+        `"use client";\n${approvedImport}`,
+      ),
+    ).toContain("../../lib/public-api/server is server/runtime-only");
+  });
+
   it("keeps all real Web, Admin and UI files outside server boundaries", async () => {
     const workspaces = await discoverWorkspaces();
     const guardedRoots = [

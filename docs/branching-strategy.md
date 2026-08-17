@@ -14,17 +14,7 @@ main
 
 ## 当前任务状态
 
-| 任务    | 状态       | 已交付范围                                     |
-| ------- | ---------- | ---------------------------------------------- |
-| T00     | 完成       | Monorepo、工具链、CI、协作治理                 |
-| T01     | 已重建     | 来源无关的档案领域与公共契约                   |
-| T02     | 完成       | Design tokens、公共 UI、组件目录、视觉资产     |
-| T03     | 完成       | CloudBase 候选架构与无密钥部署文档             |
-| T04.0-R | 已收缩边界 | ArchiveCatalogReader、三路由 OpenAPI、架构守卫 |
-| T04.1-D | 完成       | Catalog contracts、Query Port、mapper与guards  |
-| T04.2   | 完成       | Catalog canonical migration与OpenAPI routes    |
-| 原型    | 归档       | `docs/prototypes/mobile-preview/` 非生产原型   |
-| T05–T09 | 待开发     | 图片、正式 Web 浏览/搜索/详情                  |
+动态任务状态仅由[当前项目状态](project-status.md)维护；本文件不复制roadmap或里程碑进度。
 
 旧数据任务以及 T02、T03 的功能分支均不是活动长期分支。`integration/mvp-v2`
 的完整历史保存在 `archive/integration-mvp-v2-20260807`

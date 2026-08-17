@@ -197,12 +197,72 @@ export const hasUseClientDirective = (source: string): boolean =>
 
 const webRoot = path.join(repositoryRoot, "apps", "web");
 const webPublicApiRoot = path.join(webRoot, "lib", "public-api");
+const webHomePageFile = path.join(webRoot, "app", "page.tsx");
+const webHomeLoaderFile = path.join(
+  webRoot,
+  "features",
+  "home",
+  "load-home-catalog.ts",
+);
 
 export const isAuthorizedWebPublicApiFile = (
   filePath: string,
   source: string,
 ): boolean =>
   isPathInside(webPublicApiRoot, filePath) && !hasUseClientDirective(source);
+
+const isApprovedHomeConnectionReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  if (
+    path.resolve(filePath) !== webHomePageFile ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    reference.specifier !== "next/server"
+  ) {
+    return false;
+  }
+
+  const nextServerImports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])next\/server\2\s*;/g,
+    ),
+  ];
+
+  return (
+    nextServerImports.length === 1 &&
+    nextServerImports[0]?.[1]?.replaceAll(/\s/g, "") === "{connection}"
+  );
+};
+
+const isApprovedHomeLoaderReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  if (
+    path.resolve(filePath) !== webHomeLoaderFile ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    reference.specifier !== "../../lib/public-api/server"
+  ) {
+    return false;
+  }
+
+  const serverAdapterImports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])\.\.\/\.\.\/lib\/public-api\/server\2\s*;/g,
+    ),
+  ];
+
+  return (
+    serverAdapterImports.length === 1 &&
+    serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
+      "{fetchServerCatalogPage}"
+  );
+};
 
 const referencesWebPublicApiBoundary = (
   filePath: string,
@@ -451,6 +511,8 @@ export const frontendBoundaryViolations = (
 ): string[] => {
   const violations = clientBoundaryViolations(filePath, source);
   const isAuthorizedPublicApi = isAuthorizedWebPublicApiFile(filePath, source);
+  const isWebTestFile =
+    isPathInside(webRoot, filePath) && /\.test\.[cm]?[jt]sx?$/.test(filePath);
   const isDomainAgnosticUi = isPathInside(
     path.join(repositoryRoot, "packages", "ui"),
     filePath,
@@ -461,9 +523,24 @@ export const frontendBoundaryViolations = (
       isAuthorizedPublicApi &&
       (reference.specifier === "@moya/contracts/schemas" ||
         reference.specifier === "server-only");
+    const approvedHomeConnectionImport = isApprovedHomeConnectionReference(
+      filePath,
+      source,
+      reference,
+    );
+    const approvedWebTestRendererImport =
+      isWebTestFile && reference.specifier === "react-dom/server";
+    const approvedHomeLoaderImport = isApprovedHomeLoaderReference(
+      filePath,
+      source,
+      reference,
+    );
     if (
       isForbiddenServerReference(reference.specifier) &&
-      !approvedPublicApiRuntimeImport
+      !approvedPublicApiRuntimeImport &&
+      !approvedHomeConnectionImport &&
+      !approvedWebTestRendererImport &&
+      !approvedHomeLoaderImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

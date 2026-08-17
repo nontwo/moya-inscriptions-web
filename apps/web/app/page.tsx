@@ -1,8 +1,11 @@
-export default function HomePage() {
-  return (
-    <main>
-      <h1>摩崖碑刻数字平台</h1>
-      <p>工程基础正在建设</p>
-    </main>
-  );
+import { connection } from "next/server";
+
+import { HomeScreen } from "../features/home/home-screen";
+import { loadHomeCatalogState } from "../features/home/load-home-catalog";
+
+export default async function HomePage() {
+  await connection();
+  const state = await loadHomeCatalogState();
+
+  return <HomeScreen state={state} />;
 }

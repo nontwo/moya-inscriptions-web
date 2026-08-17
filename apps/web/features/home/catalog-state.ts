@@ -1,5 +1,5 @@
 import type { CatalogPage } from "@moya/contracts";
-import type { CatalogPageTransportResult } from "../../lib/public-api/catalog-list.js";
+import type { CatalogPageTransportResult } from "../../lib/public-api/catalog-list";
 
 export type HomeCatalogState =
   | { state: "populated"; page: CatalogPage }
