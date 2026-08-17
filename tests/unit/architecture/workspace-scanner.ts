@@ -195,6 +195,34 @@ export const hasUseClientDirective = (source: string): boolean =>
     source,
   );
 
+const webRoot = path.join(repositoryRoot, "apps", "web");
+const webPublicApiRoot = path.join(webRoot, "lib", "public-api");
+
+export const isAuthorizedWebPublicApiFile = (
+  filePath: string,
+  source: string,
+): boolean =>
+  isPathInside(webPublicApiRoot, filePath) && !hasUseClientDirective(source);
+
+const referencesWebPublicApiBoundary = (
+  filePath: string,
+  specifier: string,
+): boolean => {
+  const normalized = specifier.replaceAll("\\", "/");
+  if (
+    normalized === "@/lib/public-api" ||
+    normalized.startsWith("@/lib/public-api/")
+  ) {
+    return true;
+  }
+  if (!specifier.startsWith(".")) return false;
+
+  return isPathInside(
+    webPublicApiRoot,
+    path.resolve(path.dirname(filePath), specifier),
+  );
+};
+
 const stringLiterals = (source: string): string[] => [
   ...[...source.matchAll(/(["'])([^"'\n]+)\1/g)].map((match) => match[2] ?? ""),
   ...[...source.matchAll(/`([^`$\n]+)`/g)].map((match) => match[1] ?? ""),
@@ -382,7 +410,13 @@ export const clientBoundaryViolations = (
   if (!hasUseClientDirective(source)) return [];
 
   const violations: string[] = [];
+  if (isPathInside(webPublicApiRoot, filePath)) {
+    violations.push("Web Public API boundary cannot be a Client Component");
+  }
   for (const reference of extractModuleReferences(source)) {
+    if (referencesWebPublicApiBoundary(filePath, reference.specifier)) {
+      violations.push(`${reference.specifier} is server/runtime-only`);
+    }
     if (isForbiddenServerReference(reference.specifier)) {
       violations.push(`${reference.specifier} is server/runtime-only`);
     }
@@ -416,13 +450,21 @@ export const frontendBoundaryViolations = (
   source: string,
 ): string[] => {
   const violations = clientBoundaryViolations(filePath, source);
+  const isAuthorizedPublicApi = isAuthorizedWebPublicApiFile(filePath, source);
   const isDomainAgnosticUi = isPathInside(
     path.join(repositoryRoot, "packages", "ui"),
     filePath,
   );
 
   for (const reference of extractModuleReferences(source)) {
-    if (isForbiddenServerReference(reference.specifier)) {
+    const approvedPublicApiRuntimeImport =
+      isAuthorizedPublicApi &&
+      (reference.specifier === "@moya/contracts/schemas" ||
+        reference.specifier === "server-only");
+    if (
+      isForbiddenServerReference(reference.specifier) &&
+      !approvedPublicApiRuntimeImport
+    ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }
     if (
@@ -436,6 +478,26 @@ export const frontendBoundaryViolations = (
 
   for (const reference of dataFileReferences(filePath, source)) {
     violations.push(`${reference} is a direct data-file reference`);
+  }
+
+  if (
+    isPathInside(webRoot, filePath) &&
+    /\b(?:globalThis\.)?fetch\s*\(/.test(source) &&
+    !isAuthorizedPublicApi
+  ) {
+    violations.push(
+      "Web business HTTP fetch must stay inside apps/web/lib/public-api",
+    );
+  }
+
+  if (isAuthorizedPublicApi) {
+    for (const match of source.matchAll(/\bprocess\.env\.([A-Z0-9_]+)/g)) {
+      if (match[1] !== "MOYA_PUBLIC_API_BASE_URL") {
+        violations.push(
+          `${match[1] ?? "unknown environment variable"} is not authorized for the Web Public API boundary`,
+        );
+      }
+    }
   }
 
   if (/\bPUBLIC_CDN_BASE_URL\b/.test(source)) {
