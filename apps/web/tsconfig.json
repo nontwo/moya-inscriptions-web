@@ -5,6 +5,9 @@
     "jsx": "preserve",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "noEmit": true,
+    "paths": {
+      "@moya/contracts/schemas": ["../../packages/contracts/src/schemas.ts"]
+    },
     "plugins": [{ "name": "next" }]
   },
   "include": [

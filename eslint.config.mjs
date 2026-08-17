@@ -119,6 +119,7 @@ export default tseslint.config(
             "@moya/public-api",
             "node-pg-migrate",
             "pg",
+            "server-only",
           ],
           patterns: [
             {
@@ -140,6 +141,48 @@ export default tseslint.config(
               ],
               message:
                 "Frontend code cannot access Reader ports, runtime contracts, data files, or server infrastructure.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["apps/web/lib/public-api/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/api",
+            "@moya/backend-runtime",
+            "@moya/contracts/json-schema",
+            "@moya/data-access",
+            "@moya/public-api",
+            "node-pg-migrate",
+            "pg",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/backend-runtime/*",
+                "@moya/data-access/*",
+                "@moya/api/*",
+                "@moya/public-api/*",
+                "@moya/contracts/internal/*",
+                "**/data/**",
+                "**/database/**",
+                "**/infra/**",
+                "**/services/**",
+                "**/*.csv",
+                "**/*.json",
+                "**/*.pdf",
+                "**/*.tsv",
+                "**/*.xls",
+                "**/*.xlsx",
+              ],
+              message:
+                "The Web Public API boundary may use public runtime schemas, but not private services, data, or infrastructure.",
             },
           ],
         },

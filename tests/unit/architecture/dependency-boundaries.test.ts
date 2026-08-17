@@ -11,6 +11,7 @@ import {
   extractModuleReferences,
   findOwningWorkspace,
   frontendBoundaryViolations,
+  isAuthorizedWebPublicApiFile,
   isPathInside,
   isRawSourceAccessAuthorized,
   repositoryRoot,
@@ -141,10 +142,9 @@ describe("frontend and browser boundaries", () => {
         CatalogKind,
         CatalogListTransportQuery,
         CatalogPage,
-        CatalogSummary,
-        MediaId,
-        PublicMedia
+        MediaId
       } from "@moya/contracts";
+      import type { CatalogSummary, PublicMedia } from "@moya/contracts/types";
     `;
     expect(clientBoundaryViolations(file, allowed)).toEqual([]);
   });
@@ -257,6 +257,125 @@ describe("frontend and browser boundaries", () => {
 
     expect(clientBoundaryViolations(file, source)).toContain(
       "CatalogListQuery is not an approved public DTO type",
+    );
+  });
+
+  it("authorizes the reviewed Web Public API directory without weakening private boundaries", () => {
+    const file = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "lib",
+      "public-api",
+      "catalog-list.ts",
+    );
+    const allowed = `
+      import "server-only";
+      import { catalogPageSchema } from "@moya/contracts/schemas";
+      const configured = process.env.MOYA_PUBLIC_API_BASE_URL;
+      const response = globalThis.fetch(configured);
+    `;
+
+    expect(isAuthorizedWebPublicApiFile(file, allowed)).toBe(true);
+    expect(frontendBoundaryViolations(file, allowed)).toEqual([]);
+
+    const forbidden = `
+      import { createBackendServer } from "@moya/backend-runtime";
+      import { startProductionBackend } from "@moya/backend-production";
+      import { createPostgresPool } from "@moya/catalog-postgres";
+      import { MappedStorageUrlResolver } from "@moya/image";
+      import { canonicalCatalogImportEnvelopeSchema } from "@moya/contracts/internal/catalog-import";
+      import records from "../../../../data/catalog.csv";
+    `;
+
+    expect(frontendBoundaryViolations(file, forbidden)).toEqual(
+      expect.arrayContaining([
+        "@moya/backend-runtime crosses the frontend boundary",
+        "@moya/backend-production crosses the frontend boundary",
+        "@moya/catalog-postgres crosses the frontend boundary",
+        "@moya/image crosses the frontend boundary",
+        "@moya/contracts/internal/catalog-import crosses the frontend boundary",
+        "../../../../data/catalog.csv is a direct data-file reference",
+      ]),
+    );
+  });
+
+  it("keeps the Web Public API boundary out of Client Components", () => {
+    const clientFile = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "components",
+      "catalog-client.tsx",
+    );
+    const clientSource = `
+      "use client";
+      import type { CatalogPage, CatalogSummary, PublicMedia } from "@moya/contracts";
+      import { fetchCatalogPage } from "../lib/public-api/catalog-list";
+    `;
+
+    expect(clientBoundaryViolations(clientFile, clientSource)).toEqual(
+      expect.arrayContaining([
+        "../lib/public-api/catalog-list is server/runtime-only",
+      ]),
+    );
+
+    const boundaryFile = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "lib",
+      "public-api",
+      "client.ts",
+    );
+    expect(clientBoundaryViolations(boundaryFile, '"use client";')).toContain(
+      "Web Public API boundary cannot be a Client Component",
+    );
+  });
+
+  it("rejects Web business fetch outside the reviewed directory", () => {
+    const pageFile = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "home",
+      "loader.ts",
+    );
+
+    expect(
+      frontendBoundaryViolations(
+        pageFile,
+        'const response = fetch("https://api.example.invalid/v1/catalog");',
+      ),
+    ).toContain(
+      "Web business HTTP fetch must stay inside apps/web/lib/public-api",
+    );
+  });
+
+  it("allows only the Owner-authorized server environment variable in the boundary", () => {
+    const file = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "lib",
+      "public-api",
+      "server.ts",
+    );
+
+    expect(
+      frontendBoundaryViolations(
+        file,
+        "const base = process.env.MOYA_PUBLIC_API_BASE_URL;",
+      ),
+    ).toEqual([]);
+    expect(
+      frontendBoundaryViolations(
+        file,
+        "const extra = process.env.ANOTHER_API_URL;",
+      ),
+    ).toContain(
+      "ANOTHER_API_URL is not authorized for the Web Public API boundary",
     );
   });
 

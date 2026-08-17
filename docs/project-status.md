@@ -1,6 +1,6 @@
 # 当前项目状态
 
-> 最后更新：2026-08-16（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
+> 最后更新：2026-08-17（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
 
 ## 阶段结论
 
@@ -38,7 +38,8 @@ migration；`main`继续保留稳定的T00/治理基线。
 | T05.4-B         | 已完成并合并（CLOSED / PASS） | 安全 CSV/XLSX import infrastructure 已完成：bounded XLSX parser、CSV/XLSX convergence、diagnostics与raw-source guard                                                      |
 | PILOT-IMPORT-01 | 已完成（CLOSED / PASS）       | 28条真实审核 Catalog 记录在独立 disposable PostgreSQL 18.4 验证环境完成 transactional apply、idempotent replay与Public API readback；验证库已销毁，应用仓库未导入正式数据 |
 | 响应式产品原型  | 非生产参考（持续演进）        | 同一 URL 验证手机、平板和 PC 壳层；不连接 Reader、数据库、搜索或生产图片                                                                                                  |
-| T06–T09         | 未开始                        | 图片管线、正式 Web 浏览/搜索/详情                                                                                                                                         |
+| T06-A           | 已实现                        | Web server-only Public HTTP boundary、Catalog list runtime validation与纯Home Catalog状态映射；尚未接入正式页面                                                           |
+| T06-B–T09       | 未开始                        | 正式 Web composition、浏览、搜索和详情                                                                                                                                    |
 
 MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media
 foundation现已包含`MediaId`/strict `PublicMedia`、`catalog_media`、explicit
@@ -64,6 +65,10 @@ management仍属于后续独立任务。
   runtime URL；frontend不接触object
   key、bucket、provider、credentials或resolver配置。当前production
   resolver为显式unconfigured/fail-closed状态，Media-less Catalog仍正常读取。
+- 通过`apps/web/lib/public-api/`的server-side HTTP
+  boundary读取`GET /v1/catalog`，验证Public query和Catalog page runtime
+  contract，并把transport success按 `page.total`纯映射为Home
+  populated/empty语义；该boundary尚未接入正式首页。
 - 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
   artifact；全部route拒绝未声明、重复或非法query。
 - 启动`@moya/backend-runtime`的真实Node.js listener，并通过health与Catalog
@@ -107,9 +112,9 @@ Media验证数据模型和读取链路，没有导入真实图片或配置produc
 当前测试覆盖工程fixture、Backend HTTP runtime、Catalog contracts/application
 service、Query Port、strict query、Kind filtering、OpenAPI、Catalog Media
 contracts/persistence/resolver与private-storage边界、T02
-token/资产/组件、响应式原型交互以及Catalog import的PostgreSQL
-dry-run/apply/persistence invariants。真实PostgreSQL
-integration以CI中的PostgreSQL 18.4 clean
+token/资产/组件、响应式原型交互、Web Public Catalog
+transport/Home状态映射以及Catalog import的PostgreSQL dry-run/apply/persistence
+invariants。真实PostgreSQL integration以CI中的PostgreSQL 18.4 clean
 service为权威验证环境；本机不要求安装PostgreSQL或Docker。
 
 标准命令：
@@ -193,6 +198,8 @@ python3 -m http.server 4175 --bind 0.0.0.0
    management均作为后续独立任务，不在MEDIA-01继续扩展。
 3. 后续单独决定Importer Admin、正式/production
    Catalog数据导入（含1658条正式数据）与publication workflow。
-4. T06–T09：依次实现正式 Web 首页、浏览、搜索和档案详情。
+4. T06-A已建立Web-to-Public-HTTP data boundary；后续从fresh
+   `integration/mvp`独立实现正式Web
+   composition，再依次推进浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。
