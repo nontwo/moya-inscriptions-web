@@ -28,24 +28,24 @@
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260817-elevation"
+      href="./preview.shared.css?v=20260818-calligraphy-first-layout"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260817-elevation"
+      href="./preview.css?v=20260818-calligraphy-first-layout"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260817-elevation"
+      href="./preview.tablet.css?v=20260818-calligraphy-first-layout"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260817-elevation"
+      href="./preview.pc.css?v=20260818-calligraphy-first-layout"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -56,7 +56,14 @@
   <body>
     <div class="app-stage">
       <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
-        <section class="app-view" data-view="home" aria-label="首页">
+        <div class="app-primary-shell app-pager" data-pager="primary">
+          <div class="app-pager__track" data-pager-track>
+        <section
+          class="app-view app-pager__page is-pager-active"
+          data-view="home"
+          data-pager-page="home"
+          aria-label="首页"
+        >
           <header class="app-topbar app-topbar--home">
             <div
               class="app-primary-tabs"
@@ -323,10 +330,10 @@
         </section>
 
         <section
-          class="app-view"
+          class="app-view app-pager__page"
           data-view="inscriptions"
+          data-pager-page="inscriptions"
           aria-label="碑刻"
-          hidden
         >
           <header class="app-topbar app-topbar--search">
             <label class="yoyi-search-input app-search">
@@ -367,10 +374,10 @@
           <div class="app-inscriptions-layout">
             <div class="app-inscriptions-list-pane">
               <main class="app-scroll" data-scroll-view="inscriptions">
-                <div class="app-list app-masonry">
+                <div class="app-list">
                   <button
-                    class="app-list-item"
-                    data-search-text="云峰山题名 北魏 楷书 山东云峰山"
+                    class="app-inscription-card"
+                    data-search-text="云峰山题名 碑刻 北魏 楷书 山东云峰山"
                     data-content-id="inscription-yunfeng"
                     data-open-detail
                     data-image="../../design-system/assets/demo/rubbing-fragment.svg"
@@ -381,18 +388,22 @@
                       src="../../design-system/assets/demo/rubbing-fragment.svg"
                       alt="虚构云峰山题名缩略图"
                     />
-                    <span class="app-list-item__body">
-                      <span class="app-list-item__title">云峰山题名</span>
+                    <span class="app-inscription-card__body">
+                      <span class="app-inscription-card__title">云峰山题名</span>
+                      <span class="app-inscription-card__meta">碑刻 · 北魏</span>
+                      <span class="app-inscription-card__desc"
+                        >多图碑刻条目，用来核对图库切换与当前位置。</span
+                      >
                     </span>
                     <span
-                      class="yoyi-icon yoyi-icon--sm"
+                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
                       data-icon="next"
                       aria-hidden="true"
                     ></span>
                   </button>
                   <button
-                    class="app-list-item"
-                    data-search-text="石门东侧残刻 东汉 隶书 汉中石门"
+                    class="app-inscription-card"
+                    data-search-text="石门东侧残刻 碑刻 东汉 隶书 汉中石门"
                     data-content-id="inscription-shimen"
                     data-open-detail
                     data-image="../../design-system/assets/demo/stone-detail.svg"
@@ -403,18 +414,21 @@
                       src="../../design-system/assets/demo/stone-detail.svg"
                       alt="虚构石门东侧残刻缩略图"
                     />
-                    <span class="app-list-item__body">
-                      <span class="app-list-item__title">石门东侧残刻</span>
+                    <span class="app-inscription-card__body">
+                      <span class="app-inscription-card__title"
+                        >石门东侧残刻</span
+                      >
+                      <span class="app-inscription-card__meta">碑刻</span>
                     </span>
                     <span
-                      class="yoyi-icon yoyi-icon--sm"
+                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
                       data-icon="next"
                       aria-hidden="true"
                     ></span>
                   </button>
                   <button
-                    class="app-list-item"
-                    data-search-text="龙门北壁造像记 北魏 魏碑 洛阳龙门"
+                    class="app-inscription-card"
+                    data-search-text="龙门北壁造像记 碑刻 北魏 魏碑 洛阳龙门"
                     data-content-id="inscription-longmen"
                     data-open-detail
                     data-image="../../design-system/assets/demo/cliff-gate.svg"
@@ -425,18 +439,24 @@
                       src="../../design-system/assets/demo/cliff-gate.svg"
                       alt="虚构龙门北壁造像记缩略图"
                     />
-                    <span class="app-list-item__body">
-                      <span class="app-list-item__title">龙门北壁造像记</span>
+                    <span class="app-inscription-card__body">
+                      <span class="app-inscription-card__title"
+                        >龙门北壁造像记</span
+                      >
+                      <span class="app-inscription-card__meta">碑刻 · 北魏</span>
+                      <span class="app-inscription-card__desc"
+                        >长说明与多来源并陈，用来核对详情阅读宽度。</span
+                      >
                     </span>
                     <span
-                      class="yoyi-icon yoyi-icon--sm"
+                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
                       data-icon="next"
                       aria-hidden="true"
                     ></span>
                   </button>
                   <button
-                    class="app-list-item"
-                    data-search-text="天柱山摩崖 唐代 行书 安徽天柱山"
+                    class="app-inscription-card"
+                    data-search-text="天柱山摩崖 碑刻 唐 行书 安徽天柱山"
                     data-content-id="inscription-tianzhu"
                     data-open-detail
                     data-image="../../design-system/assets/demo/valley-wall.svg"
@@ -447,18 +467,22 @@
                       src="../../design-system/assets/demo/valley-wall.svg"
                       alt="虚构天柱山摩崖缩略图"
                     />
-                    <span class="app-list-item__body">
-                      <span class="app-list-item__title">天柱山摩崖</span>
+                    <span class="app-inscription-card__body">
+                      <span class="app-inscription-card__title">天柱山摩崖</span>
+                      <span class="app-inscription-card__meta">碑刻 · 唐</span>
+                      <span class="app-inscription-card__desc"
+                        >高窄摩崖，用来核对着录图像的竖向比例。</span
+                      >
                     </span>
                     <span
-                      class="yoyi-icon yoyi-icon--sm"
+                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
                       data-icon="next"
                       aria-hidden="true"
                     ></span>
                   </button>
                   <button
-                    class="app-list-item"
-                    data-search-text="古道石刻 宋代 楷书 浙东古道"
+                    class="app-inscription-card"
+                    data-search-text="古道石刻 碑刻 宋 楷书 浙东古道"
                     data-content-id="inscription-road"
                     data-open-detail
                     data-image="../../design-system/assets/demo/stele-shadow.svg"
@@ -469,11 +493,12 @@
                       src="../../design-system/assets/demo/stele-shadow.svg"
                       alt="虚构古道石刻缩略图"
                     />
-                    <span class="app-list-item__body">
-                      <span class="app-list-item__title">古道石刻</span>
+                    <span class="app-inscription-card__body">
+                      <span class="app-inscription-card__title">古道石刻</span>
+                      <span class="app-inscription-card__meta">碑刻 · 宋</span>
                     </span>
                     <span
-                      class="yoyi-icon yoyi-icon--sm"
+                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
                       data-icon="next"
                       aria-hidden="true"
                     ></span>
@@ -488,10 +513,10 @@
         </section>
 
         <section
-          class="app-view"
+          class="app-view app-pager__page"
           data-view="calligraphy"
+          data-pager-page="calligraphy"
           aria-label="书帖"
-          hidden
         >
           <header class="app-topbar app-topbar--categories">
             <div class="app-categories" role="tablist" aria-label="书帖分类">
@@ -806,6 +831,8 @@
             </div>
           </main>
         </section>
+          </div>
+        </div>
 
         <section
           class="app-view app-settings"
@@ -1281,7 +1308,9 @@
             aria-label="首页"
             type="button"
           >
-            <span class="yoyi-icon" data-icon="home" aria-hidden="true"></span>
+            <span class="yoyi-icon-wrap" aria-hidden="true">
+              <span class="yoyi-icon" data-icon="home"></span>
+            </span>
             <span
               class="yoyi-fixed-label"
               data-label="nav-home"
@@ -1294,11 +1323,9 @@
             aria-label="碑刻"
             type="button"
           >
-            <span
-              class="yoyi-icon"
-              data-icon="inscriptions"
-              aria-hidden="true"
-            ></span>
+            <span class="yoyi-icon-wrap" aria-hidden="true">
+              <span class="yoyi-icon" data-icon="inscriptions"></span>
+            </span>
             <span
               class="yoyi-fixed-label"
               data-label="nav-inscriptions"
@@ -1311,11 +1338,9 @@
             aria-label="书帖"
             type="button"
           >
-            <span
-              class="yoyi-icon"
-              data-icon="calligraphy"
-              aria-hidden="true"
-            ></span>
+            <span class="yoyi-icon-wrap" aria-hidden="true">
+              <span class="yoyi-icon" data-icon="calligraphy"></span>
+            </span>
             <span
               class="yoyi-fixed-label"
               data-label="nav-calligraphy"
@@ -1343,6 +1368,6 @@
     <script src="./fixtures/home-feed.placeholder.js"></script>
     <script src="./fixtures/topics.placeholder.js"></script>
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
-    <script src="./preview.js?v=20260817-dedupe"></script>
+    <script src="./preview.js?v=20260818-calligraphy-first-layout"></script>
   </body>
 </html>

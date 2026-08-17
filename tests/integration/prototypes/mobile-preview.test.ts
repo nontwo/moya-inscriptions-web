@@ -670,7 +670,7 @@ describe("mobile application preview", () => {
     expect(topicBody.scrollTop).toBe(72);
   });
 
-  it("switches top-level views, filters search, and filters calligraphy cards", () => {
+  it("switches top-level views, filters search, and filters calligraphy cards", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
 
@@ -678,12 +678,25 @@ describe("mobile application preview", () => {
       '[data-primary-view="inscriptions"]',
     );
     inscriptionButton?.click();
+    await waitForAnimationFrames(dom.window, 40);
     expect(
       document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="home"]')?.classList,
+    ).not.toContain("is-pager-active");
     expect(
       document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
     ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')
+        ?.classList,
+    ).toContain("is-pager-active");
+    expect(
+      document.querySelector<HTMLElement>(
+        '[data-pager="primary"] [data-pager-track]',
+      )?.style.transform,
+    ).toBe("");
 
     const input = document.querySelector<HTMLInputElement>(
       "[data-inscription-search]",
@@ -758,6 +771,113 @@ describe("mobile application preview", () => {
         '[data-content-id="calligraphy-yanqinli"]',
       )?.hidden,
     ).toBe(true);
+  });
+
+  it("keeps calligraphy chrome after rapid primary tab switches", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const primaryTrack = document.querySelector<HTMLElement>(
+      '[data-pager="primary"] [data-pager-track]',
+    );
+    const clickPrimary = (view: string) =>
+      document.querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
+        ?.click();
+
+    clickPrimary("inscriptions");
+    clickPrimary("calligraphy");
+    clickPrimary("inscriptions");
+    clickPrimary("calligraphy");
+    await waitForAnimationFrames(dom.window, 40);
+
+    const calligraphy = document.querySelector<HTMLElement>(
+      '[data-view="calligraphy"]',
+    );
+    expect(calligraphy?.hidden).toBe(false);
+    expect(calligraphy?.classList).toContain("is-pager-active");
+    expect(primaryTrack?.style.transform).toBe("");
+    expect(
+      document.querySelector('[data-view="calligraphy"] .app-topbar--categories'),
+    ).toBeTruthy();
+    expect(
+      document.querySelector('[data-view="calligraphy"] [data-category]'),
+    ).toBeTruthy();
+  });
+
+  it("switches primary views from a phone nav tap without dragging", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const calligraphyTab = document.querySelector<HTMLElement>(
+      '[data-primary-view="calligraphy"]',
+    );
+    const inscriptionsTab = document.querySelector<HTMLElement>(
+      '[data-primary-view="inscriptions"]',
+    );
+    if (!calligraphyTab || !inscriptionsTab) {
+      throw new Error("primary nav tabs missing");
+    }
+    tap(dom.window, calligraphyTab, { x: 280, y: 730 }, "touch");
+    await waitForAnimationFrames(dom.window, 40);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="calligraphy"]')
+        ?.classList,
+    ).toContain("is-pager-active");
+    expect(calligraphyTab.classList).toContain("is-active");
+    tap(dom.window, inscriptionsTab, { x: 160, y: 730 }, "touch");
+    await waitForAnimationFrames(dom.window, 40);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')
+        ?.classList,
+    ).toContain("is-pager-active");
+    expect(inscriptionsTab.classList).toContain("is-active");
+  });
+
+  it("does not paint calligraphy cards until the page width is ready", async () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: true,
+        userAgent: phoneUserAgent,
+        viewportHeight: 844,
+        viewportWidth: 390,
+      },
+    );
+    const { document } = dom.window;
+    const app = document.querySelector<HTMLElement>("[data-mobile-app]");
+    const view = document.querySelector<HTMLElement>('[data-view="calligraphy"]');
+    const masonry = document.querySelector<HTMLElement>(
+      '[data-pager-page="all"] .app-masonry',
+    );
+    const card = masonry?.querySelector<HTMLElement>(".app-card");
+    const calligraphyTab = document.querySelector<HTMLElement>(
+      '[data-primary-view="calligraphy"]',
+    );
+    if (!app || !view || !masonry || !card || !calligraphyTab) {
+      throw new Error("calligraphy masonry missing");
+    }
+
+    const widths = { app: 390, view: 390, masonry: 40 };
+    const stubWidth = (element: HTMLElement, key: keyof typeof widths) => {
+      Object.defineProperty(element, "clientWidth", {
+        configurable: true,
+        get: () => widths[key],
+      });
+    };
+    stubWidth(app, "app");
+    stubWidth(view, "view");
+    stubWidth(masonry, "masonry");
+
+    tap(dom.window, calligraphyTab, { x: 280, y: 730 }, "touch");
+    await waitForAnimationFrames(dom.window, 8);
+    expect(masonry.dataset.layoutReady).not.toBe("true");
+    expect(card.style.width).toBe("");
+
+    widths.masonry = 390;
+    dom.window.dispatchEvent(new dom.window.Event("resize"));
+    await waitForAnimationFrames(dom.window, 40);
+    expect(masonry.dataset.layoutReady).toBe("true");
+    expect(Number.parseFloat(card.style.width)).toBeGreaterThan(140);
+    expect(Number.parseFloat(card.style.width)).toBeLessThan(390);
   });
 
   it("follows the finger and settles home pages at the 50 percent boundary", async () => {
@@ -1578,7 +1698,7 @@ describe("mobile application preview", () => {
     resizeCallback([], {} as ResizeObserver);
     frames.runUntilIdle(1000 / 60);
 
-    expect(observedElements).toHaveLength(2);
+    expect(observedElements).toHaveLength(3);
     expect(pagerTranslateX(homeTrack)).toBeCloseTo(-2 * 390);
     expect(
       document.querySelector<HTMLElement>('[data-feed-panel="topics"]')?.hidden,
@@ -1845,6 +1965,10 @@ describe("mobile application preview", () => {
   it("keeps one layout mode across topics and calligraphy categories", () => {
     const masonryColumns = (document: Document, selector: string) =>
       document.querySelector<HTMLElement>(selector)?.dataset.masonryColumns;
+    const inscriptionColumns = (document: Document) =>
+      document.querySelector<HTMLElement>(
+        '[data-view="inscriptions"] .app-list',
+      )?.dataset.inscriptionColumns;
 
     const assertSharedLayout = (
       document: Document,
@@ -1859,9 +1983,7 @@ describe("mobile application preview", () => {
         columns,
       );
       expect(masonryColumns(document, "[data-topics-grid]")).toBe(columns);
-      expect(
-        masonryColumns(document, '[data-view="inscriptions"] .app-masonry'),
-      ).toBe(columns);
+      expect(inscriptionColumns(document)).toBe("1");
       expect(document.querySelector("[data-topics-grid]")?.className).toContain(
         "app-topics__grid",
       );
@@ -1869,7 +1991,7 @@ describe("mobile application preview", () => {
         document
           .querySelector('[data-view="inscriptions"] .app-list')
           ?.classList.contains("app-masonry"),
-      ).toBe(true);
+      ).toBe(false);
       for (const category of ["all", "ink", "rubbing"] as const) {
         expect(
           masonryColumns(
@@ -1989,12 +2111,7 @@ describe("mobile application preview", () => {
     expect(
       Number(masonryColumns(pc.window.document, '[data-feed-grid="discover"]')),
     ).toBeGreaterThanOrEqual(3);
-    expect(
-      masonryColumns(
-        pc.window.document,
-        '[data-view="inscriptions"] .app-masonry',
-      ),
-    ).toBe("1");
+    expect(Number(inscriptionColumns(pc.window.document))).toBe(1);
   });
 
   it("combines UA detection with viewport caps for phone, tablet, and desktop", () => {
@@ -2236,6 +2353,7 @@ describe("mobile application preview", () => {
     expect(devicePlatformScript).toContain("user-scalable=no");
     expect(html).toContain('data-pager="home"');
     expect(html).toContain('data-pager="calligraphy"');
+    expect(html).toContain('data-pager="primary"');
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(html).toContain("data-theme-toggle");
     expect(html).toContain("data-layout-toggle");
@@ -2272,6 +2390,10 @@ describe("mobile application preview", () => {
     expect(script).toContain("function keepSummaryTokens");
     expect(script).toContain("function renderDetailKindPeriod");
     expect(script).toContain("function layoutMasonry");
+    expect(script).toContain("function masonryWidthIsReady");
+    expect(script).toContain("function masonryExpectedWidth");
+    expect(script).toContain('dataset.layoutReady = "true"');
+    expect(sharedCss).toContain(".app-masonry:not([data-layout-ready])");
     expect(script).toContain("function intendedMasonryColumns");
     expect(script).toContain("function recalculateLayout");
     expect(script).toContain("Math.min(...heights)");
@@ -2311,13 +2433,36 @@ describe("mobile application preview", () => {
     expect(html).toContain("yoyi.home-feed-layout");
     expect(html).toContain('data-home-feed="topics"');
     expect(html).toContain("app-masonry app-topics__grid");
-    expect(html).toContain("app-list app-masonry");
+    expect(html).not.toContain("app-list app-masonry");
+    expect(html).toMatch(
+      /data-view="inscriptions"[\s\S]*class="app-inscription-card"[\s\S]*app-inscription-card__title[\s\S]*app-inscription-card__meta/,
+    );
+    expect(html).not.toContain("app-list-item");
+    expect(html).not.toContain("app-list-item__body");
+    expect(html).not.toContain("app-list-item__title");
+    expect(sharedCss).toContain("writing-mode: horizontal-tb");
+    expect(sharedCss).not.toMatch(/writing-mode:\s*vertical/);
+    expect(previewCss).not.toMatch(/writing-mode:\s*vertical/);
+    expect(tabletCss).not.toMatch(/writing-mode:\s*vertical/);
+    expect(pcCss).not.toMatch(/writing-mode:\s*vertical/);
+    expect(sharedCss).not.toContain("grid-template-columns: 96px");
+    expect(sharedCss).toContain(".app-inscription-card");
+    expect(script).toContain("function intendedInscriptionColumns");
+    expect(script).not.toContain('classList.contains("app-list")');
     expect(html).not.toContain("app-home-motto");
     expect(html).toContain('data-placeholder="topics-v1"');
     expect(html).toContain('data-view="topic-column"');
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
-    expect(html).toContain('href="./preview.shared.css?v=20260817-elevation"');
+    expect(html).toContain(
+      'href="./preview.shared.css?v=20260818-calligraphy-first-layout"',
+    );
+    expect(html).toContain(
+      'src="./preview.js?v=20260818-calligraphy-first-layout"',
+    );
+    expect(script).toContain("mediaFocusClosedAt");
+    expect(script).toContain("mediaOpenSawPointer");
+    expect(script).toContain("Number.NEGATIVE_INFINITY");
     expect(html).toContain("data-shared-stylesheet");
     expect(html).toContain('data-platform-stylesheet="phone"');
     expect(html).toContain('data-platform-stylesheet="tablet"');
@@ -2326,7 +2471,15 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(pcCss).toContain("--app-calligraphy-scale: 1");
     expect(pcCss).toContain(".app-scroll.app-pager.is-pager-following");
-    expect(pcCss).toContain("contain: layout paint");
+    expect(pcCss).not.toContain("contain: layout paint");
+    expect(sharedCss).not.toContain("content-visibility: hidden");
+    expect(sharedCss).toContain(".app-primary-shell.is-overlay-parked");
+    expect(script).toContain("is-overlay-parked");
+    expect(sharedCss).toContain(".app-inscriptions-layout");
+    expect(script).toContain("function parkPrimaryTrackIfIdle");
+    expect(script).toContain("function lockPrimaryShellHeight");
+    expect(pcCss).toContain("isolation: auto");
+    expect(script).toContain("function anyPagerFollowing");
     expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
     expect(script).not.toMatch(/addEventListener\(\s*["']touchmove["']/);
     expect(sharedCss).toContain(".app-topics__grid");
@@ -2487,11 +2640,53 @@ describe("mobile application preview", () => {
     ).toBe(false);
     expect(
       document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>("[data-pager='primary']")?.classList,
+    ).toContain("is-overlay-parked");
     expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
       "云峰山题名",
     );
     expect(document.querySelector("[data-inscription-preview]")).toBeNull();
+  });
+
+  it("keeps inscription cards horizontal with media beside caption text", () => {
+    const phone = renderPreview();
+    const card = phone.window.document.querySelector<HTMLElement>(
+      '[data-view="inscriptions"] [data-content-id="inscription-yunfeng"]',
+    );
+    if (!card) throw new Error("inscription card missing");
+    const body = card.querySelector(".app-inscription-card__body");
+    expect(card.classList.contains("app-inscription-card")).toBe(true);
+    expect(card.classList.contains("app-card")).toBe(false);
+    expect(card.querySelector("img")?.nextElementSibling).toBe(body);
+    expect(
+      card.querySelector(".app-inscription-card__title")?.textContent,
+    ).toBe("云峰山题名");
+    expect(card.querySelector(".app-inscription-card__meta")?.textContent).toBe(
+      "碑刻 · 北魏",
+    );
+    expect(
+      card.querySelector(".app-inscription-card__desc")?.textContent,
+    ).toContain("多图碑刻条目");
+    expect(
+      card.querySelector(".app-inscription-card__arrow")?.getAttribute("data-icon"),
+    ).toBe("next");
+    expect(sharedCss).toContain(
+      "grid-template-columns: var(--app-inscription-thumb) minmax(0, 1fr) 22px",
+    );
+    expect(sharedCss).toMatch(
+      /\.app-inscription-card img \{[\s\S]*object-fit: cover/,
+    );
+
+    card.click();
+    expect(
+      phone.window.document.querySelector<HTMLElement>('[data-view="detail"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      phone.window.document.querySelector("[data-detail-title]")?.textContent,
+    ).toBe("云峰山题名");
   });
 
   it("keeps an open inscription detail across the 896px shell boundary", () => {
@@ -2546,6 +2741,11 @@ describe("mobile application preview", () => {
 
     expect(navigation.querySelector(".yoyi-nav-bubble")).toBeTruthy();
     expect(navigation.dataset.minimizeBehavior).toBe("on-scroll");
+    expect(navigation.querySelector(".yoyi-icon-wrap")).toBeTruthy();
+    expect(sharedCss).toContain("--app-nav-collapse-duration: 420ms");
+    expect(sharedCss).toContain("--app-nav-expand-duration: 520ms");
+    expect(sharedCss).toContain(".yoyi-icon-wrap");
+    expect(script).toContain("navigationExpandDelta");
 
     discover.scrollTop = 13;
     discover.dispatchEvent(new phone.window.Event("scroll"));
@@ -2680,13 +2880,14 @@ describe("mobile application preview", () => {
       '[data-primary-view="home"]',
     );
     if (!homeTab) throw new Error("home tab missing");
-    expect(bubble.parentElement).toBe(homeTab);
-    expect(bubble.style.width).toBe("");
-    expect(bubble.style.height).toBe("");
-    expect(bubble.style.transform).toBe("");
+    layoutBottomNav(navigation);
+    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.style.width).toBe("100px");
+    expect(bubble.style.height).toBe("52px");
+    expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
   });
 
-  it("anchors the nav bubble to the triggering tab and reanchors on switch", () => {
+  it("moves the independent nav bubble with transform instead of reparenting", async () => {
     const phone = renderPreview({}, { viewportWidth: 844 });
     const document = phone.window.document;
     const navigation = document.querySelector<HTMLElement>(
@@ -2712,20 +2913,141 @@ describe("mobile application preview", () => {
       throw new Error("navigation tabs missing");
     }
 
-    expect(bubble.parentElement).toBe(homeTab);
+    layoutBottomNav(navigation);
+    homeTab.click();
+    await waitForAnimationFrames(phone.window, 40);
+    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
 
     inscriptionsTab.click();
-    expect(bubble.parentElement).toBe(inscriptionsTab);
-    expect(bubble.style.transform).toBe("");
+    await waitForAnimationFrames(phone.window, 40);
+    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.style.transform).toContain("translate3d(100px, 4px, 0)");
 
     calligraphyTab.click();
-    expect(bubble.parentElement).toBe(calligraphyTab);
+    await waitForAnimationFrames(phone.window, 40);
+    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.style.transform).toContain("translate3d(200px, 4px, 0)");
 
     homeTab.click();
-    expect(bubble.parentElement).toBe(homeTab);
+    await waitForAnimationFrames(phone.window, 40);
+    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
 
     phone.window.dispatchEvent(new phone.window.Event("resize"));
-    expect(bubble.parentElement).toBe(homeTab);
+    expect(bubble.parentElement).toBe(navigation);
+  });
+
+  it("keeps the bottom nav bubble and primary pager in sync for mouse drags", async () => {
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const document = pc.window.document;
+    const navigation = document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const bubble = navigation?.querySelector<HTMLElement>(".yoyi-nav-bubble");
+    const homeTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="home"]',
+    );
+    const primaryTrack = document.querySelector<HTMLElement>(
+      '[data-pager="primary"] [data-pager-track]',
+    );
+    const inscriptionsScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-view="inscriptions"]',
+    );
+    if (
+      !navigation ||
+      !bubble ||
+      !homeTab ||
+      !primaryTrack ||
+      !inscriptionsScroll
+    ) {
+      throw new Error("PC primary pager fixture missing");
+    }
+
+    layoutBottomNav(navigation);
+    homeTab.click();
+    await waitForAnimationFrames(pc.window, 40);
+    expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
+
+    dispatchPointer(pc.window, homeTab, "pointerdown", {
+      clientX: 50,
+      clientY: 720,
+      pointerType: "mouse",
+      timeStamp: 1_000,
+    });
+    dispatchPointer(pc.window, homeTab, "pointermove", {
+      clientX: 100,
+      clientY: 720,
+      pointerType: "mouse",
+      timeStamp: 1_240,
+    });
+    expect(bubble.style.transform).toContain("translate3d(50px, 4px, 0)");
+    expect(pagerTranslateX(primaryTrack)).toBeCloseTo(-512);
+    dispatchPointer(pc.window, homeTab, "pointermove", {
+      clientX: 160,
+      clientY: 720,
+      pointerType: "mouse",
+      timeStamp: 1_360,
+    });
+    dispatchPointer(pc.window, homeTab, "pointerup", {
+      clientX: 160,
+      clientY: 720,
+      pointerType: "mouse",
+      timeStamp: 1_400,
+    });
+    expect(
+      document.querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+        ?.classList,
+    ).toContain("is-active");
+    await waitForAnimationFrames(pc.window, 40);
+    expect(bubble.style.transform).toContain("translate3d(100px, 4px, 0)");
+    expect(primaryTrack.style.transform).toBe("");
+
+    swipe(
+      pc.window,
+      inscriptionsScroll,
+      { x: 80, y: 220 },
+      { x: 700, y: 220 },
+      "mouse",
+    );
+    expect(
+      document.querySelector<HTMLElement>('[data-primary-view="home"]')
+        ?.classList,
+    ).toContain("is-active");
+  });
+
+  it("keeps home and calligraphy tabs as plain selected indicators", () => {
+    const phone = renderPreview({}, { viewportWidth: 844 });
+    const document = phone.window.document;
+    const homeTabs = document.querySelector<HTMLElement>(".app-primary-tabs");
+    const nearby = homeTabs?.querySelector<HTMLElement>(
+      '[data-home-feed="nearby"]',
+    );
+    const categories = document.querySelector<HTMLElement>(".app-categories");
+    const ink = categories?.querySelector<HTMLElement>(
+      '[data-calligraphy-category="ink"]',
+    );
+    if (!homeTabs || !nearby || !categories || !ink) {
+      throw new Error("plain tabs missing");
+    }
+
+    expect(homeTabs.querySelector(".app-tab-bubble")).toBeNull();
+    nearby.click();
+    expect(nearby.classList.contains("is-selected")).toBe(true);
+
+    expect(categories.querySelector(".app-tab-bubble")).toBeNull();
+    ink.click();
+    expect(ink.classList.contains("is-selected")).toBe(true);
+    expect(sharedCss).toContain(".app-primary-tab.is-selected::after");
+    expect(sharedCss).toContain(".app-category.is-selected::after");
   });
 
   it("uses a muted paper fill and visible border for the selected nav bubble", () => {
@@ -2737,6 +3059,14 @@ describe("mobile application preview", () => {
     );
     expect(script).toContain("nearestNavEntry");
     expect(script).toContain("positionNavBubble(nearest, 1.12)");
+    expect(script).toContain("function syncTabStripFromPager");
+    expect(script).toContain("function positionTabStripProgress");
+    expect(html).not.toContain("app-tab-bubble");
+    expect(html).toContain('data-pager="primary"');
+    expect(sharedCss).toContain("--app-nav-transition-duration: 320ms");
+    expect(sharedCss).not.toContain(
+      ".app-bottom-navigation .yoyi-navigation-entry > .yoyi-nav-bubble",
+    );
   });
 
   it("transfers scroll position between nested and document scroll owners", async () => {
@@ -3046,6 +3376,10 @@ describe("mobile application preview", () => {
     );
     if (!focusImage) throw new Error("focus image missing");
     tap(dom.window, focusImage, { x: 180, y: 180 }, "mouse");
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-focus]")?.hidden,
+    ).toBe(true);
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
     expect(
       document.querySelector<HTMLElement>("[data-detail-focus]")?.hidden,
     ).toBe(true);
@@ -3382,7 +3716,12 @@ describe("mobile application preview", () => {
     expect(Number(image.style.getPropertyValue("--focus-scale"))).toBe(1);
     expect(detailScroll?.scrollTop).toBe(120);
 
-    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+    const mediaOpen = document.querySelector<HTMLElement>(
+      "[data-detail-media-open]",
+    );
+    if (!mediaOpen) throw new Error("detail media open missing");
+    tap(dom.window, mediaOpen, { x: 200, y: 180 }, "mouse");
+    mediaOpen.click();
     expect(focus.hidden).toBe(false);
     dom.window.dispatchEvent(
       new dom.window.KeyboardEvent("keydown", { key: "Escape" }),

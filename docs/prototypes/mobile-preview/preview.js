@@ -362,16 +362,42 @@ let pagerResizeObserver = null;
 let masonryLayoutFrame = 0;
 let navigationMinimized = false;
 let navigationLastScrollTop = 0;
+let navigationScrollIntent = 0;
 let navigationIdleTimer = 0;
 let navigationBubbleExpandTimer = 0;
 const navigationIdleMs = 400;
-const navigationExpandMs = 200;
+const navigationExpandMs = 560;
+const navigationCollapseDelta = 12;
+const navigationExpandDelta = 24;
 const navBubble = bottomNavigation.querySelector(".yoyi-nav-bubble");
+const bottomTabStrip = {
+  bubble: navBubble,
+  container: bottomNavigation,
+  itemSelector: "[data-primary-view]",
+  kind: "bottom",
+  selectedClass: "is-active",
+};
+const homeTabStrip = {
+  bubble: document.querySelector(".app-primary-tabs > .app-tab-bubble"),
+  container: document.querySelector(".app-primary-tabs"),
+  itemSelector: "[data-home-feed]",
+  kind: "home",
+  selectedClass: "is-selected",
+};
+const calligraphyTabStrip = {
+  bubble: document.querySelector(".app-categories > .app-tab-bubble"),
+  container: document.querySelector(".app-categories"),
+  itemSelector: "[data-calligraphy-category]",
+  kind: "calligraphy",
+  selectedClass: "is-selected",
+};
+const tabStrips = [bottomTabStrip, homeTabStrip, calligraphyTabStrip];
 let navPointerId = null;
 let navDragging = false;
 let navPointerStartX = 0;
 let navDidPan = false;
 let navIgnoreClick = false;
+let navPagerGesture = null;
 let detailContentId = "";
 let detailRecord = null;
 let detailMediaItems = [];
@@ -406,6 +432,8 @@ const carouselWheelIgnoreMs = 180;
 const focusPagerHideMs = 2000;
 let mediaSwipe = null;
 let mediaSwipeSuppressClick = false;
+let mediaFocusClosedAt = Number.NEGATIVE_INFINITY;
+let mediaOpenSawPointer = false;
 let focusPagerTimer = 0;
 let carouselFrame = 0;
 let pendingCarouselX = null;
@@ -424,7 +452,7 @@ function scrollElementFor(
   platform = root.dataset.platform,
   scrollKey = scrollKeyForView(view),
 ) {
-  if (platform === "pc" && view !== "inscriptions") {
+  if (platform === "pc") {
     return document.scrollingElement ?? document.documentElement;
   }
   if (view === "home" || view === "calligraphy") {
@@ -1119,7 +1147,11 @@ function closeMediaFocus() {
   hideFocusPager();
   cancelCarouselWheel();
   resetCarouselX(detailFocusTrack);
-  if (wasOpen) syncFocusPageLock(false);
+  if (wasOpen) {
+    mediaFocusClosedAt = performance.now();
+    mediaOpenSawPointer = false;
+    syncFocusPageLock(false);
+  }
   const detailScroll = document.querySelector('[data-scroll-view="detail"]');
   if (detailScroll && wasOpen) detailScroll.scrollTop = focusScrollTop;
   if (wasOpen && isPcFocusPlatform()) {
@@ -1683,14 +1715,23 @@ function openDetail(trigger, options = {}) {
 
 function showView(view) {
   if (view !== "detail") closeMediaFocus();
-  document.querySelectorAll("[data-view]").forEach((panel) => {
-    panel.hidden = panel.dataset.view !== view;
-  });
-  bottomNavigation.hidden = !primaryViews.includes(view);
-  if (!primaryViews.includes(view)) setNavigationMinimized(false);
-  if (view === "home" || view === "calligraphy" || view === "inscriptions") {
-    recalculateLayout();
+  const isPrimary = primaryViews.includes(view);
+  const primaryShell = document.querySelector("[data-pager='primary']");
+  if (!isPrimary) parkPrimaryPagerForOverlay();
+  if (primaryShell) {
+    primaryShell.hidden = false;
+    primaryShell.classList.toggle("is-overlay-parked", !isPrimary);
+    primaryShell.toggleAttribute("inert", !isPrimary);
+    primaryShell.setAttribute("aria-hidden", String(!isPrimary));
   }
+  document.querySelectorAll("[data-view]").forEach((panel) => {
+    const name = panel.dataset.view;
+    if (primaryViews.includes(name)) return;
+    panel.hidden = name !== view;
+  });
+  bottomNavigation.hidden = !isPrimary;
+  if (!isPrimary) setNavigationMinimized(false);
+  if (isPrimary) recalculateLayout();
 }
 
 function renderSupplementalHomeCards() {
@@ -1838,6 +1879,12 @@ function updateBottomNavigation() {
     if (selected) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   });
+  if (
+    navDragging ||
+    bottomNavigation.classList.contains("is-bubble-following")
+  ) {
+    return;
+  }
   syncNavBubbleToActive();
 }
 
@@ -1852,7 +1899,60 @@ function prefersReducedNavMotion() {
 }
 
 function navigationEntries() {
-  return [...bottomNavigation.querySelectorAll("[data-primary-view]")];
+  return tabStripItems(bottomTabStrip);
+}
+
+function tabStripItems(strip) {
+  if (!strip?.container) return [];
+  return [...strip.container.querySelectorAll(strip.itemSelector)];
+}
+
+function tabStripActive(strip) {
+  if (!strip?.container) return null;
+  return strip.container.querySelector(
+    `${strip.itemSelector}.${strip.selectedClass}`,
+  );
+}
+
+function tabStripForPager(id) {
+  if (id === "home") return homeTabStrip;
+  if (id === "calligraphy") return calligraphyTabStrip;
+  if (id === "primary") return bottomTabStrip;
+  return null;
+}
+
+function measureEntryBox(container, entry) {
+  return {
+    height: entry.offsetHeight,
+    width: entry.offsetWidth,
+    x: entry.offsetLeft,
+    y: entry.offsetTop,
+  };
+}
+
+function lerp(start, end, amount) {
+  return start + (end - start) * amount;
+}
+
+function lerpBox(start, end, amount) {
+  return {
+    height: lerp(start.height, end.height, amount),
+    width: lerp(start.width, end.width, amount),
+    x: lerp(start.x, end.x, amount),
+    y: lerp(start.y, end.y, amount),
+  };
+}
+
+function applyBubbleBox(strip, box, scale = 1) {
+  const bubble = strip?.bubble;
+  if (!bubble || !strip.container) return;
+  if (bubble.parentElement !== strip.container) {
+    strip.container.prepend(bubble);
+  }
+  if (box.width <= 0 || box.height <= 0) return;
+  bubble.style.width = `${box.width}px`;
+  bubble.style.height = `${box.height}px`;
+  bubble.style.transform = `translate3d(${box.x}px, ${box.y}px, 0) scale(${scale})`;
 }
 
 function clearNavBubbleInlineStyle() {
@@ -1862,33 +1962,66 @@ function clearNavBubbleInlineStyle() {
   navBubble.style.transform = "";
 }
 
-function attachNavBubbleToEntry(entry) {
-  if (!navBubble || !entry) return;
-  clearNavBubbleInlineStyle();
-  if (navBubble.parentElement !== entry) entry.prepend(navBubble);
+function positionTabStripEntry(strip, entry, scale = 1) {
+  if (!strip || !entry) return;
+  applyBubbleBox(strip, measureEntryBox(strip.container, entry), scale);
 }
 
-function releaseNavBubbleToNav() {
-  if (!navBubble) return;
-  if (navBubble.parentElement === bottomNavigation) return;
-  bottomNavigation.prepend(navBubble);
+function positionTabStripProgress(strip, progress, scale = 1) {
+  const items = tabStripItems(strip);
+  const last = items.length - 1;
+  if (last < 0) return;
+  if (progress <= 0) {
+    const box = measureEntryBox(strip.container, items[0]);
+    box.x += progress * Math.max(box.width, 1);
+    applyBubbleBox(strip, box, scale);
+    return;
+  }
+  if (progress >= last) {
+    const box = measureEntryBox(strip.container, items[last]);
+    box.x += (progress - last) * Math.max(box.width, 1);
+    applyBubbleBox(strip, box, scale);
+    return;
+  }
+  const fromIndex = Math.floor(progress);
+  applyBubbleBox(
+    strip,
+    lerpBox(
+      measureEntryBox(strip.container, items[fromIndex]),
+      measureEntryBox(strip.container, items[fromIndex + 1]),
+      progress - fromIndex,
+    ),
+    scale,
+  );
 }
 
 function positionNavBubble(entry, scale = 1) {
-  if (!navBubble || !entry) return;
-  if (scale === 1 && !bottomNavigation.classList.contains("is-dragging-nav")) {
-    attachNavBubbleToEntry(entry);
-    return;
-  }
-  releaseNavBubbleToNav();
-  const width = entry.offsetWidth;
-  const height = entry.offsetHeight;
-  if (width <= 0 || height <= 0) return;
-  const x = entry.offsetLeft;
-  const y = entry.offsetTop;
-  navBubble.style.width = `${width}px`;
-  navBubble.style.height = `${height}px`;
-  navBubble.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+  positionTabStripEntry(bottomTabStrip, entry, scale);
+}
+
+function syncTabStrip(strip) {
+  const active = tabStripActive(strip);
+  if (active) positionTabStripEntry(strip, active);
+}
+
+function markTabStripFollowing(controller, following) {
+  tabStripForPager(controller.id)?.container?.classList.toggle(
+    "is-bubble-following",
+    following,
+  );
+}
+
+function syncTabStripFromPager(controller) {
+  const strip = tabStripForPager(controller.id);
+  if (!strip?.bubble) return;
+  const width = pagerWidth(controller);
+  const progress = width > 0 ? -(controller.currentOffset ?? 0) / width : 0;
+  positionTabStripProgress(strip, progress);
+}
+
+function syncTabStripForPager(controller) {
+  const strip = tabStripForPager(controller.id);
+  if (strip) syncTabStrip(strip);
 }
 
 function cancelPendingNavBubbleSync() {
@@ -1994,6 +2127,7 @@ function setNavigationMinimized(minimized) {
 function resetNavigationScrollTracking({ expand = true } = {}) {
   const scrollElement = currentScrollElement();
   navigationLastScrollTop = scrollElement?.scrollTop ?? 0;
+  navigationScrollIntent = 0;
   if (expand || !navigationCanMinimize()) setNavigationMinimized(false);
 }
 
@@ -2034,8 +2168,16 @@ function onNavigationScroll(event) {
   }
   if (delta === 0) return;
 
-  setNavigationMinimized(true);
-  scheduleNavigationExpand();
+  navigationScrollIntent += delta;
+  if (navigationScrollIntent >= navigationCollapseDelta) {
+    setNavigationMinimized(true);
+    navigationScrollIntent = 0;
+  } else if (navigationScrollIntent <= -navigationExpandDelta) {
+    setNavigationMinimized(false);
+    navigationScrollIntent = 0;
+    return;
+  }
+  if (navigationMinimized) scheduleNavigationExpand();
 }
 
 const navPointerMoveOptions = { passive: false };
@@ -2060,42 +2202,156 @@ function unbindNavPointerTracking() {
   window.removeEventListener("pointercancel", endNavPointer);
 }
 
+function primaryPager() {
+  return pagerControllers.get("primary");
+}
+
+function navTabWidth() {
+  const entries = navigationEntries();
+  return Math.max(1, entries[0]?.offsetWidth || 1);
+}
+
+function lockPrimaryShellHeight(_controller) {
+  // Height locking clipped list content during PC scroll; keep the hook for tests.
+}
+
+function unlockPrimaryShellHeight(controller) {
+  if (controller.id !== "primary") return;
+  controller.surface.style.removeProperty("height");
+}
+
+function primaryTrackIsLive(controller) {
+  return (
+    isPagerFollowing(controller) ||
+    controller.track.classList.contains("is-settling") ||
+    controller.track.classList.contains("is-dragging")
+  );
+}
+
+function parkPrimaryTrackIfIdle(controller) {
+  if (!controller || controller.id !== "primary") return;
+  if (primaryTrackIsLive(controller)) return;
+  const activeIndex = controller.values.indexOf(controller.current());
+  controller.currentOffset = -activeIndex * pagerWidth(controller);
+  controller.track.style.removeProperty("transform");
+}
+
+function restorePrimaryTrackTransform(controller) {
+  if (!controller || controller.id !== "primary") return;
+  const fallback =
+    -controller.values.indexOf(controller.current()) * pagerWidth(controller);
+  const offset = Number.isFinite(controller.currentOffset)
+    ? controller.currentOffset
+    : fallback;
+  setPagerOffset(controller, offset);
+}
+
+function parkPrimaryPagerForOverlay() {
+  const controller = primaryPager();
+  if (!controller) return;
+  cancelPagerSpring(controller);
+  controller.surface.classList.remove("is-pager-following");
+  controller.track.classList.remove("is-dragging", "is-settling");
+  unlockPrimaryShellHeight(controller);
+  setPagerPageState(
+    controller,
+    controller.values.indexOf(controller.current()),
+    false,
+  );
+  parkPrimaryTrackIfIdle(controller);
+  markTabStripFollowing(controller, false);
+}
+
+function beginPrimaryPagerFollow(controller) {
+  if (!controller) return;
+  const activeIndex = controller.values.indexOf(controller.current());
+  markTabStripFollowing(controller, true);
+  controller.surface.classList.add("is-pager-following");
+  lockPrimaryShellHeight(controller);
+  restorePrimaryTrackTransform(controller);
+  setPagerPageState(controller, activeIndex, true);
+}
+
+function armNavPagerGesture(event, controller) {
+  cancelPagerSpring(controller);
+  const width = pagerWidth(controller);
+  const startIndex = controller.values.indexOf(controller.current());
+  return {
+    controller,
+    dragX: 0,
+    startIndex,
+    startOffset: controller.currentOffset ?? -startIndex * width,
+    startProgress: startIndex,
+    startX: event.clientX,
+    samples: [{ time: pagerEventTime(event), x: event.clientX }],
+    width,
+  };
+}
+
+function startNavPagerFollow(gesture) {
+  if (!gesture || gesture.following) return;
+  gesture.following = true;
+  beginPrimaryPagerFollow(gesture.controller);
+  gesture.controller.track.classList.add("is-dragging");
+}
+
 function onNavPointerDown(event) {
   if (navigationMinimized || !event.isPrimary) return;
   if (prefersReducedNavMotion()) return;
-  if (event.pointerType === "mouse" && event.button !== 0) return;
   cancelPendingNavBubbleSync();
-  event.preventDefault();
   if (navDragging) unbindNavPointerTracking();
   navPointerId = event.pointerId;
   navDragging = true;
   navDidPan = false;
   navPointerStartX = event.clientX;
-  bottomNavigation.classList.add("is-dragging-nav");
-  try {
-    bottomNavigation.setPointerCapture?.(event.pointerId);
-  } catch {
-    // Some Android browsers expose pointer capture before fully supporting it.
-  }
+  const controller = primaryPager();
+  navPagerGesture = controller ? armNavPagerGesture(event, controller) : null;
   bindNavPointerTracking();
-  const nearest = nearestNavEntry(event.clientX);
-  navigationEntries().forEach((entry) =>
-    entry.classList.toggle("is-nav-hot", entry === nearest),
-  );
-  positionNavBubble(nearest, 1.12);
+}
+
+function applyNavPagerProgress(gesture, clientX) {
+  const lastIndex = gesture.controller.values.length - 1;
+  let progress =
+    gesture.startProgress + (clientX - gesture.startX) / navTabWidth();
+  if (progress < 0) progress *= pagerEdgeResistance;
+  if (progress > lastIndex) {
+    progress = lastIndex + (progress - lastIndex) * pagerEdgeResistance;
+  }
+  const offset = -progress * gesture.width;
+  gesture.dragX = offset - gesture.startOffset;
+  setPagerOffset(gesture.controller, offset);
+  positionTabStripProgress(bottomTabStrip, progress, 1.12);
 }
 
 function onNavPointerMove(event) {
   if (!navDragging || event.pointerId !== navPointerId) return;
   if (Math.abs(event.clientX - navPointerStartX) > 8) {
-    navDidPan = true;
+    if (!navDidPan) {
+      navDidPan = true;
+      if (navPagerGesture) startNavPagerFollow(navPagerGesture);
+      bottomNavigation.classList.add("is-dragging-nav");
+      try {
+        bottomNavigation.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Pointer capture may be unavailable in some embedded browsers.
+      }
+      positionTabStripProgress(
+        bottomTabStrip,
+        navPagerGesture?.startProgress ?? primaryViews.indexOf(primaryView),
+        1.12,
+      );
+    }
     event.preventDefault();
   }
-  const nearest = nearestNavEntry(event.clientX);
-  navigationEntries().forEach((entry) =>
-    entry.classList.toggle("is-nav-hot", entry === nearest),
-  );
-  positionNavBubble(nearest, 1.12);
+  if (!navDidPan) return;
+  const gesture = navPagerGesture;
+  if (!gesture) {
+    const nearest = nearestNavEntry(event.clientX);
+    positionNavBubble(nearest, 1.12);
+    return;
+  }
+  addPagerSample(gesture, pagerEventTime(event), event.clientX);
+  applyNavPagerProgress(gesture, event.clientX);
 }
 
 function endNavPointer(event) {
@@ -2104,11 +2360,26 @@ function endNavPointer(event) {
   navPointerId = null;
   unbindNavPointerTracking();
   bottomNavigation.classList.remove("is-dragging-nav");
-  const nearest = nearestNavEntry(event.clientX);
   navigationEntries().forEach((entry) => entry.classList.remove("is-nav-hot"));
-  const view = nearest?.dataset.primaryView;
-  if (navDidPan) navIgnoreClick = true;
-  if (view && view !== primaryView) selectPrimaryView(view);
+  const gesture = navPagerGesture;
+  navPagerGesture = null;
+  if (navDidPan) {
+    navIgnoreClick = true;
+    if (gesture) {
+      addPagerSample(gesture, pagerEventTime(event), event.clientX);
+      applyNavPagerProgress(gesture, event.clientX);
+      gesture.controller.track.classList.remove("is-dragging");
+      settlePagerFromGesture(gesture, pagerVelocityFromSamples(gesture));
+    }
+    return;
+  }
+  if (gesture) gesture.controller.track.classList.remove("is-dragging");
+  const entry =
+    event.target.closest?.("[data-primary-view]") ||
+    nearestNavEntry(event.clientX);
+  const view = entry?.dataset.primaryView;
+  navIgnoreClick = true;
+  if (view && view !== primaryView) selectPrimaryView(view, { animate: true });
   else syncNavBubbleToActive();
 }
 
@@ -2125,14 +2396,28 @@ function onNavClickCapture(event) {
   navIgnoreClick = false;
 }
 
-function selectPrimaryView(view, { updateHistory = true } = {}) {
+function selectPrimaryView(
+  view,
+  { updateHistory = true, animate = false, velocity = 0 } = {},
+) {
+  if (!primaryViews.includes(view)) return;
   const previous = primaryView;
-  saveScrollPosition();
+  const controller = pagerControllers.get("primary");
+  if (previous !== view) saveScrollPosition();
   primaryView = view;
+  if (animate && controller) {
+    beginPrimaryPagerFollow(controller);
+    setPagerPageState(controller, controller.values.indexOf(view), true);
+  }
   showView(view);
+  if (view === "home" || view === "calligraphy") {
+    const inner = pagerControllers.get(view);
+    if (inner) syncPager(inner);
+  }
   updateBottomNavigation();
   restoreScrollPosition(view);
   resetNavigationScrollTracking();
+  if (controller) syncPager(controller, { animate, velocity });
   if (updateHistory) {
     history.replaceState({ kind: "primary", view }, "", location.pathname);
   }
@@ -2180,23 +2465,38 @@ function masonryGapPx(container) {
 }
 
 function masonryViewHidden(container) {
-  return Boolean(container.closest("[data-view][hidden]"));
+  return Boolean(
+    container.closest("[data-view][hidden]") ||
+      container.closest(".app-primary-shell.is-overlay-parked"),
+  );
+}
+
+function masonryExpectedWidth(container) {
+  const view = container.closest("[data-view]");
+  if (view && view.clientWidth >= 32) return view.clientWidth;
+  if (app?.clientWidth >= 32) return app.clientWidth;
+  return window.innerWidth || 0;
 }
 
 function masonryMeasureWidth(container) {
   if (container.clientWidth >= 32) return container.clientWidth;
   const page = container.closest(".app-pager__page, [data-scroll-view]");
   if (page && page.clientWidth >= 32) return page.clientWidth;
-  const pager = container.closest("[data-pager], [data-view]");
+  const pager = container.closest("[data-pager]");
   if (pager && pager.clientWidth >= 32) return pager.clientWidth;
   return container.clientWidth;
+}
+
+function masonryWidthIsReady(width, container) {
+  if (width < 32) return false;
+  const expected = masonryExpectedWidth(container);
+  return expected < 64 || width >= expected * 0.6;
 }
 
 function intendedMasonryColumns(container) {
   const platform = root.dataset.platform;
   const layout = root.dataset.homeLayout || "double";
   if (platform === "pc") {
-    if (container.classList.contains("app-list")) return 1;
     const width = Math.max(0, masonryMeasureWidth(container));
     const gap = masonryGapPx(container);
     const minCard = 220;
@@ -2207,6 +2507,22 @@ function intendedMasonryColumns(container) {
     );
   }
   return layout === "single" ? 1 : 2;
+}
+
+function inscriptionList() {
+  return document.querySelector('[data-view="inscriptions"] .app-list');
+}
+
+function intendedInscriptionColumns(_container) {
+  return 1;
+}
+
+function syncInscriptionGrid() {
+  const container = inscriptionList();
+  if (!container) return;
+  const columns = intendedInscriptionColumns(container);
+  container.dataset.inscriptionColumns = String(columns);
+  container.style.setProperty("--app-inscription-columns", String(columns));
 }
 
 function syncMasonryColumnHints() {
@@ -2238,13 +2554,6 @@ function layoutMasonry(container) {
   if (!container || masonryViewHidden(container)) return;
   const columns = intendedMasonryColumns(container);
   container.dataset.masonryColumns = String(columns);
-  if (
-    root.dataset.platform === "pc" &&
-    container.classList.contains("app-list")
-  ) {
-    clearMasonryItemStyles(container);
-    return;
-  }
   const styles = window.getComputedStyle(container);
   const padLeft = Number.parseFloat(styles.paddingLeft) || 0;
   const padRight = Number.parseFloat(styles.paddingRight) || 0;
@@ -2252,10 +2561,11 @@ function layoutMasonry(container) {
   const padBottom = Number.parseFloat(styles.paddingBottom) || 0;
   const outerWidth = masonryMeasureWidth(container);
   const innerWidth = outerWidth - padLeft - padRight;
-  if (innerWidth < 32) return;
+  if (!masonryWidthIsReady(innerWidth, container)) return;
   const items = masonryItems(container);
   if (items.length === 0) {
     clearMasonryItemStyles(container);
+    container.dataset.layoutReady = "true";
     return;
   }
   const gap = masonryGapPx(container);
@@ -2276,6 +2586,7 @@ function layoutMasonry(container) {
   const contentHeight =
     tallest > 0 ? tallest - gap + padTop + padBottom : padTop + padBottom;
   container.style.height = `${Math.max(0, contentHeight)}px`;
+  container.dataset.layoutReady = "true";
 }
 
 function bindMasonryImages(container) {
@@ -2321,7 +2632,7 @@ function activeMasonryContainer() {
       `[data-pager-page="${calligraphyCategory}"] .app-masonry`,
     );
   }
-  return document.querySelector('[data-view="inscriptions"] .app-masonry');
+  return null;
 }
 
 function layoutContextLabel() {
@@ -2332,17 +2643,21 @@ function layoutContextLabel() {
       : page === "calligraphy"
         ? calligraphyCategory
         : "all";
-  const container = activeMasonryContainer();
-  const columns = container
-    ? intendedMasonryColumns(container)
-    : homeFeedLayout === "single"
-      ? 1
-      : 2;
+  const inscriptionGrid = page === "inscriptions" ? inscriptionList() : null;
+  const container = inscriptionGrid ? null : activeMasonryContainer();
+  const columns = inscriptionGrid
+    ? intendedInscriptionColumns(inscriptionGrid)
+    : container
+      ? intendedMasonryColumns(container)
+      : homeFeedLayout === "single"
+        ? 1
+        : 2;
   return `device=${root.dataset.platform} orientation=${layoutOrientation()} page=${page} section=${section} mode=${homeFeedLayout} columns=${columns}`;
 }
 
 function recalculateLayout() {
   syncMasonryColumnHints();
+  syncInscriptionGrid();
   scheduleMasonryLayout();
 }
 
@@ -2376,10 +2691,18 @@ function isPagerFollowing(controller) {
   return controller.surface.classList.contains("is-pager-following");
 }
 
+function anyPagerFollowing() {
+  return [...pagerControllers.values()].some((controller) =>
+    isPagerFollowing(controller),
+  );
+}
+
 function beginPcPagerFollow(controller) {
   if (isPagerFollowing(controller)) return;
   const activeIndex = controller.values.indexOf(controller.current());
   controller.surface.classList.add("is-pager-following");
+  markTabStripFollowing(controller, true);
+  lockPrimaryShellHeight(controller);
   setPagerPageState(controller, activeIndex, true);
   setPagerOffset(controller, -activeIndex * pagerWidth(controller));
 }
@@ -2387,6 +2710,7 @@ function beginPcPagerFollow(controller) {
 function endPcPagerFollow(controller) {
   controller.surface.classList.remove("is-pager-following");
   controller.track.classList.remove("is-dragging");
+  unlockPrimaryShellHeight(controller);
   syncPager(controller);
 }
 
@@ -2450,6 +2774,14 @@ function schedulePcWheelSettle() {
 }
 
 function handlePagerWheel(event, controller) {
+  if (controller.id === "primary") {
+    const inner = event.target.closest?.(
+      "[data-pager='home'], [data-pager='calligraphy']",
+    );
+    if (inner) return;
+  } else {
+    event.stopPropagation();
+  }
   if (!isPcHorizontalWheel(event)) return;
 
   event.preventDefault();
@@ -2513,19 +2845,21 @@ function pagerWidth(controller) {
 function setPagerOffset(controller, offset) {
   controller.currentOffset = offset;
   controller.track.style.transform = `translate3d(${offset}px, 0, 0)`;
+  syncTabStripFromPager(controller);
 }
 
 function setPagerPageState(controller, activeIndex, windowed) {
   controller.pages.forEach((page, index) => {
     const selected = index === activeIndex;
     const inWindow = Math.abs(index - activeIndex) <= 1;
-    if (windowed) {
-      page.hidden = false;
-      page.classList.toggle("is-pager-culled", !inWindow);
-    } else {
-      page.hidden = !selected;
-      page.classList.remove("is-pager-culled");
-    }
+    const hideInactive =
+      controller.id !== "primary" && !windowed && !selected;
+    page.hidden = hideInactive;
+    page.classList.toggle("is-pager-active", selected);
+    page.classList.toggle(
+      "is-pager-culled",
+      controller.id !== "primary" && windowed && !inWindow,
+    );
     page.setAttribute("aria-hidden", String(!selected));
     if (selected) page.removeAttribute("inert");
     else page.setAttribute("inert", "");
@@ -2549,6 +2883,19 @@ function prefersReducedPagerMotion() {
 function concludePagerSpring(controller) {
   controller.animationId = 0;
   controller.track.classList.remove("is-settling");
+  markTabStripFollowing(controller, false);
+  controller.surface.classList.remove("is-pager-following");
+  unlockPrimaryShellHeight(controller);
+  if (controller.id === "primary") {
+    setPagerPageState(
+      controller,
+      controller.values.indexOf(controller.current()),
+      false,
+    );
+    parkPrimaryTrackIfIdle(controller);
+    recalculateLayout();
+  }
+  syncTabStripForPager(controller);
   if (!touchPagerEnabled() && isPagerFollowing(controller)) {
     endPcPagerFollow(controller);
   }
@@ -2556,6 +2903,7 @@ function concludePagerSpring(controller) {
 
 function startPagerSpring(controller, targetOffset, initialVelocity = 0) {
   cancelPagerSpring(controller);
+  markTabStripFollowing(controller, true);
   if (prefersReducedPagerMotion()) {
     setPagerOffset(controller, targetOffset);
     concludePagerSpring(controller);
@@ -2614,17 +2962,30 @@ function syncPager(controller, { animate = false, velocity = 0 } = {}) {
   const activeIndex = controller.values.indexOf(controller.current());
   const touchMode = touchPagerEnabled();
   const following = isPagerFollowing(controller);
+  const keepTrack = touchMode || following || controller.id === "primary";
+  const windowed =
+    controller.id === "primary" ? following || animate : keepTrack;
   cancelPagerSpring(controller);
   controller.track.classList.remove("is-dragging");
-  setPagerPageState(controller, activeIndex, touchMode || following);
-  if (!touchMode && !following) {
-    controller.currentOffset = -activeIndex * pagerWidth(controller);
+  setPagerPageState(controller, activeIndex, windowed);
+  const targetOffset = -activeIndex * pagerWidth(controller);
+  if (!keepTrack) {
+    controller.currentOffset = targetOffset;
     controller.track.style.removeProperty("transform");
+    controller.surface.classList.remove("is-pager-following");
+    markTabStripFollowing(controller, false);
+    syncTabStripForPager(controller);
     return;
   }
-  const targetOffset = -activeIndex * pagerWidth(controller);
   if (animate) {
     startPagerSpring(controller, targetOffset, velocity);
+    return;
+  }
+  controller.surface.classList.remove("is-pager-following");
+  markTabStripFollowing(controller, false);
+  if (controller.id === "primary") {
+    parkPrimaryTrackIfIdle(controller);
+    syncTabStripForPager(controller);
     return;
   }
   setPagerOffset(controller, targetOffset);
@@ -2659,7 +3020,7 @@ function preparePager(id, values, current, select) {
   const track = surface?.querySelector("[data-pager-track]");
   if (!surface || !track) return;
   const pages = values.map((value) =>
-    track.querySelector(`[data-pager-page="${value}"]`),
+    [...track.children].find((node) => node.dataset.pagerPage === value),
   );
   if (pages.some((page) => !page)) return;
   const controller = {
@@ -2688,6 +3049,7 @@ function preparePagers() {
     () => calligraphyCategory,
     selectCalligraphyCategory,
   );
+  preparePager("primary", primaryViews, () => primaryView, selectPrimaryView);
 }
 
 function selectHomeFeed(value, { animate = false, velocity = 0 } = {}) {
@@ -2743,7 +3105,7 @@ function selectCalligraphyCategory(
 
 function cancelActivePagerGesture({ animate = true } = {}) {
   if (!activePagerGesture) return;
-  const { controller, pointerId } = activePagerGesture;
+  const { controller, pointerId, axis } = activePagerGesture;
   try {
     if (controller.surface.hasPointerCapture?.(pointerId)) {
       controller.surface.releasePointerCapture(pointerId);
@@ -2752,6 +3114,10 @@ function cancelActivePagerGesture({ animate = true } = {}) {
     // Pointer capture can disappear when the browser cancels the gesture.
   }
   activePagerGesture = null;
+  if (axis !== "horizontal") {
+    controller.track.classList.remove("is-dragging");
+    return;
+  }
   syncPager(controller, { animate });
 }
 
@@ -2803,9 +3169,29 @@ function pagerReleaseVelocity(gesture, event) {
   return pagerVelocityFromSamples(gesture);
 }
 
+function pagerContains(outer, inner) {
+  return Boolean(outer?.surface?.contains(inner?.surface) && outer !== inner);
+}
+
+function pagerPointerAllowed(controller, event) {
+  if (controller.id === "primary") {
+    return (
+      event.pointerType === "touch" ||
+      event.pointerType === "mouse" ||
+      event.pointerType === "pen"
+    );
+  }
+  return touchPagerEnabled() && event.pointerType === "touch";
+}
+
 function beginPagerGesture(event, controller) {
-  if (!touchPagerEnabled() || event.pointerType !== "touch") return;
-  if (!event.isPrimary || activePagerGesture) {
+  if (!pagerPointerAllowed(controller, event)) return;
+  if (!event.isPrimary) {
+    cancelActivePagerGesture();
+    return;
+  }
+  if (activePagerGesture) {
+    if (pagerContains(controller, activePagerGesture.controller)) return;
     cancelActivePagerGesture();
     return;
   }
@@ -2846,6 +3232,10 @@ function movePagerGesture(event) {
     }
     gesture.axis = "horizontal";
     gesture.controller.track.classList.add("is-dragging");
+    markTabStripFollowing(gesture.controller, true);
+    if (gesture.controller.id === "primary") {
+      beginPrimaryPagerFollow(gesture.controller);
+    }
     try {
       gesture.controller.surface.setPointerCapture?.(gesture.pointerId);
     } catch {
@@ -2900,11 +3290,7 @@ function settlePagerFromGesture(gesture, velocity) {
 
 function completePagerGesture(event) {
   const gesture = activePagerGesture;
-  if (
-    !gesture ||
-    gesture.pointerId !== event.pointerId ||
-    event.pointerType !== "touch"
-  ) {
+  if (!gesture || gesture.pointerId !== event.pointerId) {
     return;
   }
   activePagerGesture = null;
@@ -3064,7 +3450,7 @@ bindClicks("[data-primary-view]", (button) => {
     resetNavigationScrollTracking({ expand: false });
     return;
   }
-  selectPrimaryView(button.dataset.primaryView);
+  selectPrimaryView(button.dataset.primaryView, { animate: true });
 });
 bottomNavigation.addEventListener("pointerdown", onNavPointerDown, {
   passive: false,
@@ -3154,12 +3540,18 @@ focusPrevImage?.addEventListener("error", () =>
 focusNextImage?.addEventListener("error", () =>
   hideBrokenSlide(focusNextImage),
 );
+detailMediaOpen?.addEventListener("pointerdown", () => {
+  mediaOpenSawPointer = true;
+});
 detailMediaOpen?.addEventListener("click", (event) => {
-  if (mediaSwipeSuppressClick) {
+  const recentlyClosed =
+    performance.now() - mediaFocusClosedAt < 400 && !mediaOpenSawPointer;
+  if (mediaSwipeSuppressClick || recentlyClosed) {
     event.preventDefault();
     mediaSwipeSuppressClick = false;
     return;
   }
+  mediaOpenSawPointer = false;
   openMediaFocus();
 });
 detailMediaPrev?.addEventListener("click", () => stepDetailMedia(-1));
@@ -3310,6 +3702,8 @@ window.addEventListener("popstate", (event) => {
   }
   if (primaryView === "home") selectHomeFeed(homeFeed);
   showView(primaryView);
+  const primary = primaryPager();
+  if (primary) syncPager(primary);
   updateBottomNavigation();
   restoreScrollPosition(primaryView);
 });
@@ -3343,8 +3737,12 @@ window.addEventListener(
 );
 window.addEventListener("yoyi:platformchange", onPlatformQueryChange);
 function onNavGeometryChange() {
-  if (navDragging || navigationMinimized) return;
-  syncNavBubbleToActive();
+  tabStrips.forEach((strip) => {
+    if (strip.kind === "bottom" && (navDragging || navigationMinimized)) return;
+    if (strip.container?.classList.contains("is-bubble-following")) return;
+    if (strip.container?.classList.contains("is-dragging-nav")) return;
+    syncTabStrip(strip);
+  });
 }
 
 function onPagerViewportChange() {
@@ -3407,6 +3805,10 @@ function onPagerViewportChange() {
 function observePagerSizes() {
   if (typeof window.ResizeObserver !== "function") return;
   pagerResizeObserver = new window.ResizeObserver(() => {
+    if (anyPagerFollowing()) {
+      scheduleMasonryLayout();
+      return;
+    }
     onPagerViewportChange();
   });
   pagerControllers.forEach((controller) => {
@@ -3435,14 +3837,16 @@ document
   .querySelector('[data-scroll-view="inscriptions"]')
   ?.addEventListener(
     "scroll",
-    (event) =>
-      rememberScrollPosition("inscriptions", event.currentTarget.scrollTop),
+    (event) => {
+      if (root.dataset.platform === "pc") return;
+      rememberScrollPosition("inscriptions", event.currentTarget.scrollTop);
+    },
     { passive: true },
   );
 window.addEventListener(
   "scroll",
   () => {
-    if (root.dataset.platform === "pc" && primaryView !== "inscriptions") {
+    if (root.dataset.platform === "pc" && primaryViews.includes(primaryView)) {
       rememberScrollPosition(
         scrollKeyForView(primaryView),
         (document.scrollingElement ?? document.documentElement).scrollTop,

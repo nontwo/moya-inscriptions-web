@@ -63,9 +63,66 @@ button {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.app-primary-shell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.app-primary-shell.is-overlay-parked {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.app-primary-shell > .app-pager__track {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  height: 100%;
+}
+
+.app-primary-shell > .app-pager__track > .app-view {
+  position: relative;
+  inset: auto;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--yoyi-color-background-page);
+}
+
+.app-primary-shell:not(.is-pager-following)
+  > .app-pager__track
+  > .app-view:not(.is-pager-active) {
+  flex-basis: 0;
+  flex-grow: 0;
+  flex-shrink: 0;
+  width: 0;
+  min-width: 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app-primary-shell.is-pager-following
+  > .app-pager__track
+  > .app-view:not(.is-pager-active) {
+  flex: 0 0 100%;
+  width: 100%;
+  height: auto;
+  min-height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
 .app-view.app-detail,
-.app-view.app-settings {
+.app-view.app-settings,
+.app-view.app-qa-log,
+.app-view.app-topic-column {
+  z-index: 6;
   padding-bottom: 0;
+  background-color: var(--yoyi-color-background-page);
 }
 
 .app-topbar {
@@ -118,6 +175,7 @@ button {
 }
 
 .app-primary-tabs {
+  position: relative;
   display: grid;
   height: 52px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -128,6 +186,7 @@ button {
 
 .app-primary-tab {
   position: relative;
+  z-index: 1;
   display: grid;
   min-width: 72px;
   min-height: 44px;
@@ -142,29 +201,22 @@ button {
   cursor: pointer;
 }
 
-.app-primary-tab::after {
-  position: absolute;
-  right: 18px;
-  bottom: 1px;
-  left: 18px;
-  height: 2px;
-  background: var(--yoyi-color-seal-red);
-  border-radius: var(--yoyi-radius-full);
-  content: "";
-  opacity: 0;
-  transform: scaleX(0.5);
-  transition:
-    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
-    transform var(--yoyi-duration-fast) var(--yoyi-easing-emphasized);
-}
-
-.app-primary-tab.is-selected {
+.app-primary-tab.is-selected,
+.app-primary-tab.is-nav-hot {
   color: var(--yoyi-color-text-primary);
 }
 
-.app-primary-tab.is-selected::after {
-  opacity: 1;
-  transform: scaleX(1);
+.app-primary-tab.is-selected::after,
+.app-category.is-selected::after {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 18px;
+  height: 2px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: 1px;
+  content: "";
+  transform: translateX(-50%);
 }
 
 .app-scroll,
@@ -174,7 +226,6 @@ button {
 }
 
 .app-pager__page.is-pager-culled {
-  content-visibility: hidden;
   pointer-events: none;
 }
 
@@ -189,6 +240,11 @@ html {
   --app-elevation-content: var(--yoyi-shadow-subtle);
   --app-elevation-content-hover: var(--yoyi-material-glass-shadow);
   --app-elevation-panel: var(--yoyi-shadow-dialog);
+  --app-nav-transition-duration: 320ms;
+  --app-nav-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
+  --app-inscription-columns: 1;
+  --app-inscription-thumb: 88px;
+  --app-inscription-card-height: 104px;
 }
 
 html[data-platform="tablet"] {
@@ -196,6 +252,8 @@ html[data-platform="tablet"] {
   --app-masonry-gap: 12px;
   --app-elevation-content: var(--yoyi-shadow-subtle);
   --app-elevation-content-hover: var(--yoyi-material-glass-shadow);
+  --app-inscription-thumb: 112px;
+  --app-inscription-card-height: 120px;
 }
 
 html[data-platform="pc"] {
@@ -203,6 +261,8 @@ html[data-platform="pc"] {
   --app-masonry-gap: 16px;
   --app-elevation-content: var(--yoyi-shadow-subtle);
   --app-elevation-content-hover: var(--yoyi-material-glass-shadow);
+  --app-inscription-thumb: 128px;
+  --app-inscription-card-height: 128px;
 }
 
 .app-masonry,
@@ -218,6 +278,20 @@ html[data-platform="pc"] {
   );
   column-count: auto;
   column-width: auto;
+}
+
+.app-masonry:not([data-layout-ready]),
+.app-topics__grid:not([data-layout-ready]) {
+  visibility: hidden;
+}
+
+.app-view.is-pager-active > .app-scroll.app-pager,
+.app-primary-shell.is-pager-following
+  > .app-pager__track
+  > .app-view
+  > .app-scroll.app-pager {
+  width: 100%;
+  min-width: 100%;
 }
 
 .app-topics__grid {
@@ -256,7 +330,7 @@ html[data-platform="pc"] {
 }
 
 .app-card:focus-visible,
-.app-list-item:focus-visible,
+.app-inscription-card:focus-visible,
 .app-primary-tab:focus-visible,
 .app-category:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
@@ -438,15 +512,13 @@ html[data-platform="pc"] {
 
 .app-list {
   display: grid;
-  align-content: start;
-  padding: 4px 12px 16px;
-}
-
-.app-list.app-masonry {
-  display: block;
   width: 100%;
   max-width: none;
   margin-inline: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--app-masonry-gap);
+  align-content: start;
+  align-items: stretch;
   padding: var(--app-masonry-gap);
   padding-bottom: calc(
     var(--app-masonry-gap) + var(--app-bottom-nav-min-height, 60px) +
@@ -454,70 +526,119 @@ html[data-platform="pc"] {
   );
 }
 
-html[data-platform="phone"] .app-list.app-masonry .app-list-item,
-html[data-platform="tablet"] .app-list.app-masonry .app-list-item {
+.app-list > .app-empty {
+  grid-column: 1 / -1;
+}
+
+.app-inscription-card {
+  display: grid;
+  grid-template-columns: var(--app-inscription-thumb) minmax(0, 1fr) 22px;
+  align-items: center;
+  column-gap: 10px;
   width: 100%;
+  height: var(--app-inscription-card-height);
+  min-height: var(--app-inscription-card-height);
+  max-height: var(--app-inscription-card-height);
   margin: 0;
-  padding: 10px;
+  padding: 8px 10px 8px 8px;
   overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
   background: var(--yoyi-color-background-surface);
   border: 0;
   border-radius: var(--app-content-radius);
   box-shadow: var(--app-elevation-content);
-}
-
-html[data-platform="pc"] .app-list.app-masonry {
-  display: grid;
-}
-
-.app-list-item {
-  display: grid;
-  min-height: 96px;
-  grid-template-columns: 96px minmax(0, 1fr) 24px;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 0;
-  color: var(--yoyi-color-text-primary);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--yoyi-color-border-subtle);
   cursor: pointer;
+  transition:
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
-.app-list-item img {
-  width: 96px;
-  height: 76px;
+.app-inscription-card:active {
+  z-index: 1;
+  transform: scale(0.985);
+}
+
+.app-inscription-card img {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  height: calc(var(--app-inscription-card-height) - 16px);
   object-fit: cover;
+  object-position: center;
   background: var(--yoyi-color-background-muted);
-  border-radius: var(--yoyi-radius-2);
+  border-radius: calc(var(--app-content-radius) - 6px);
 }
 
-.app-list-item > span:nth-child(2),
-.app-list-item__title {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.app-list-item__body {
+.app-inscription-card__body {
   display: grid;
-  gap: 2px;
   min-width: 0;
+  gap: 2px;
+  align-content: center;
+}
+
+.app-inscription-card__title,
+.app-inscription-card__meta,
+.app-inscription-card__desc {
+  writing-mode: horizontal-tb;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.app-inscription-card__title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.app-inscription-card__meta {
+  overflow: hidden;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-inscription-card__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.app-inscription-card__desc:empty {
+  display: none;
+}
+
+.app-inscription-card__arrow {
+  align-self: center;
+  color: var(--yoyi-color-text-tertiary);
 }
 
 .app-shell-only {
   display: none !important;
 }
 
+.app-inscriptions-layout,
 .app-inscriptions-list-pane {
   display: grid;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr);
 }
 
-.app-list-item > .yoyi-icon {
-  color: var(--yoyi-color-text-tertiary);
+[data-scroll-view="inscriptions"] {
+  min-height: 0;
 }
 
 .app-empty {
@@ -527,12 +648,8 @@ html[data-platform="pc"] .app-list.app-masonry {
   text-align: center;
 }
 
-.app-inscriptions-layout {
-  display: block;
-  min-height: 0;
-}
-
 .app-categories {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: min(100%, 240px);
@@ -544,7 +661,9 @@ html[data-platform="pc"] .app-list.app-masonry {
 
 .app-category {
   position: relative;
+  z-index: 1;
   display: grid;
+  grid-row: 1;
   min-width: 72px;
   min-height: 44px;
   padding: 0 10px;
@@ -559,31 +678,11 @@ html[data-platform="pc"] .app-list.app-masonry {
   cursor: pointer;
 }
 
-.app-category::after {
-  position: absolute;
-  right: 18px;
-  bottom: 1px;
-  left: 18px;
-  height: 2px;
-  background: var(--yoyi-color-seal-red);
-  border-radius: var(--yoyi-radius-full);
-  content: "";
-  opacity: 0;
-  transform: scaleX(0.5);
-  transition:
-    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
-    transform var(--yoyi-duration-fast) var(--yoyi-easing-emphasized);
-}
-
-.app-category.is-selected {
+.app-category.is-selected,
+.app-category.is-nav-hot {
   color: var(--yoyi-color-text-primary);
   background: transparent;
   font-weight: 600;
-}
-
-.app-category.is-selected::after {
-  opacity: 1;
-  transform: scaleX(1);
 }
 
 .app-calligraphy-grid .app-card[hidden] {
@@ -592,12 +691,23 @@ html[data-platform="pc"] .app-list.app-masonry {
 
 .app-bottom-navigation {
   z-index: var(--yoyi-z-index-navigation);
+  touch-action: pan-x;
+  user-select: none;
+  cursor: grab;
+}
+
+.app-bottom-navigation.is-dragging-nav {
+  cursor: grabbing;
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation {
   --app-bottom-nav-max-width: 520px;
   --app-bottom-nav-side-gap: var(--yoyi-space-4);
   --app-bottom-nav-min-height: 60px;
+  --app-nav-collapse-duration: 420ms;
+  --app-nav-expand-duration: 520ms;
+  --app-nav-collapse-easing: cubic-bezier(0.33, 0, 0.2, 1);
+  --app-nav-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
   right: 0;
   left: 0;
   width: min(
@@ -608,25 +718,64 @@ html[data-platform="pc"] .app-list.app-masonry {
   margin-inline: auto;
   transform: none;
   transition:
-    width var(--yoyi-duration-normal) var(--yoyi-easing-standard),
-    height var(--yoyi-duration-normal) var(--yoyi-easing-standard),
-    min-height var(--yoyi-duration-normal) var(--yoyi-easing-standard),
-    padding var(--yoyi-duration-normal) var(--yoyi-easing-standard),
-    border-radius var(--yoyi-duration-normal) var(--yoyi-easing-standard),
-    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+    width var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    height var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    min-height var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    max-width var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    padding var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    border-radius var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    box-shadow var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
+    opacity var(--app-nav-collapse-duration) var(--app-nav-collapse-easing);
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
+  transition-duration: var(--app-nav-expand-duration);
+  transition-timing-function: var(--app-nav-expand-easing);
+}
+
+.app-tab-bubble {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid var(--yoyi-color-border-default);
+  transform: translate3d(0, 0, 0);
+  transform-origin: center center;
+  transition:
+    width var(--app-nav-transition-duration) var(--app-nav-transition-easing),
+    height var(--app-nav-transition-duration) var(--app-nav-transition-easing),
+    transform var(--app-nav-transition-duration)
+      var(--app-nav-transition-easing);
+}
+
+.app-primary-tabs.is-dragging-nav .app-tab-bubble,
+.app-primary-tabs.is-bubble-following .app-tab-bubble,
+.app-categories.is-dragging-nav .app-tab-bubble,
+.app-categories.is-bubble-following .app-tab-bubble {
+  transition: none;
 }
 
 .app-bottom-navigation .yoyi-nav-bubble {
   box-sizing: border-box;
   background: var(--yoyi-color-background-muted);
   border: 1px solid var(--yoyi-color-border-default);
+  box-shadow: var(--app-elevation-content);
+  transition:
+    width var(--app-nav-transition-duration) var(--app-nav-transition-easing),
+    height var(--app-nav-transition-duration) var(--app-nav-transition-easing),
+    transform var(--app-nav-transition-duration)
+      var(--app-nav-transition-easing);
 }
 
-.app-bottom-navigation .yoyi-navigation-entry > .yoyi-nav-bubble {
-  inset: 0;
-  width: auto;
-  height: auto;
-  transform: none;
+.app-bottom-navigation.is-dragging-nav .yoyi-nav-bubble,
+.app-bottom-navigation.is-bubble-following .yoyi-nav-bubble {
+  transition: none;
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation[data-bubble-pending]
@@ -646,7 +795,11 @@ html[data-platform="pc"] .app-list.app-masonry {
 }
 
 .app-bottom-navigation .yoyi-navigation-entry {
+  width: 100%;
+  height: 100%;
   min-height: 60px;
+  align-self: stretch;
+  justify-self: stretch;
   gap: 1px;
   padding: 2px;
 }
@@ -654,6 +807,16 @@ html[data-platform="pc"] .app-list.app-masonry {
 .app-bottom-navigation .yoyi-fixed-label {
   width: 44px;
   height: 20px;
+}
+
+.app-bottom-navigation .yoyi-icon-wrap {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 23px;
+  line-height: 0;
 }
 
 .app-bottom-navigation .yoyi-icon {
@@ -668,12 +831,40 @@ html[data-platform="pc"] .app-list.app-masonry {
   height: 44px;
   min-height: 44px;
   padding: 0;
+  place-items: center;
+  justify-items: center;
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
   .yoyi-navigation-entry.is-active {
-  min-height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   padding: 0;
+  gap: 0;
+  line-height: 0;
+  font-size: 0;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-icon-wrap {
+  width: 22px;
+  height: 22px;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized .yoyi-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+  .yoyi-icon[data-icon="home"] {
+  transform: translate3d(0, 0.5px, 0);
 }
 
 .app-settings__content {

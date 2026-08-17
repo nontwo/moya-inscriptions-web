@@ -83,6 +83,7 @@ html {
     min-height: 100dvh;
     height: auto;
     overflow: visible;
+    isolation: auto;
   }
 
   .app-view {
@@ -92,6 +93,61 @@ html {
     padding-bottom: env(safe-area-inset-bottom);
     padding-top: 0;
     padding-left: 0;
+  }
+
+  .app-primary-shell {
+    position: relative;
+    inset: auto;
+    overflow: visible;
+  }
+
+  .app-primary-shell.is-pager-following {
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
+  .app-primary-shell > .app-pager__track {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    height: auto;
+  }
+
+  .app-primary-shell > .app-pager__track > .app-view {
+    display: block;
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    min-height: 100dvh;
+    height: auto;
+    overflow: visible;
+    background-color: var(--yoyi-color-background-page);
+    grid-template-rows: none;
+  }
+
+  html[data-platform="pc"] .app-primary-shell.is-overlay-parked {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  html[data-platform="pc"]
+    .app-primary-shell.is-pager-following
+    > .app-pager__track
+    > .app-view:not(.is-pager-active) {
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  html[data-platform="pc"] .app-inscriptions-layout,
+  html[data-platform="pc"] .app-inscriptions-list-pane {
+    display: block;
+    height: auto;
+    min-height: 0;
   }
 
   .app-view.app-detail,
@@ -198,13 +254,6 @@ html {
     font-size: 1.125rem;
   }
 
-  .app-primary-tab::after {
-    right: 22px;
-    left: 22px;
-    bottom: 2px;
-    height: 3px;
-  }
-
   .app-topbar--categories {
     align-items: center;
     min-height: calc(68px + env(safe-area-inset-top));
@@ -221,13 +270,6 @@ html {
     min-height: 52px;
     padding: 0 16px;
     font-size: 1.125rem;
-  }
-
-  .app-category::after {
-    right: 22px;
-    left: 22px;
-    bottom: 2px;
-    height: 3px;
   }
 
   .app-search--calligraphy {
@@ -356,28 +398,24 @@ html {
     width: 100%;
     max-width: none;
     margin-inline: 0;
-    padding: var(--yoyi-space-4) var(--yoyi-space-5) var(--yoyi-space-10);
-    gap: 0;
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+    gap: var(--app-masonry-gap);
   }
 
-  [data-view="inscriptions"] .app-list-item {
-    min-height: 120px;
-    grid-template-columns: 140px minmax(0, 1fr) 28px;
-    gap: var(--yoyi-space-5);
-    padding: var(--yoyi-space-4) 0;
+  [data-view="inscriptions"] .app-inscription-card {
+    --app-inscription-thumb: 128px;
+    --app-inscription-card-height: 128px;
   }
 
-  [data-view="inscriptions"] .app-list-item img {
-    width: 140px;
-    height: 104px;
-    border-radius: var(--yoyi-radius-sm);
-    box-shadow: var(--app-elevation-content);
+  [data-view="inscriptions"] .app-inscription-card__title {
+    font-size: var(--app-feed-title-size);
+    font-weight: 600;
+    line-height: 1.35;
   }
 
-  [data-view="inscriptions"] .app-list-item > span:nth-child(2),
-  [data-view="inscriptions"] .app-list-item__title {
-    font-size: var(--yoyi-type-list-title-size);
-    line-height: 1.45;
+  [data-view="inscriptions"] .app-inscription-card__meta,
+  [data-view="inscriptions"] .app-inscription-card__desc {
+    font-size: calc(0.625rem * var(--app-calligraphy-scale));
   }
 
   [data-view="inscriptions"] .app-empty {
@@ -438,6 +476,7 @@ html {
   @media (hover: hover) and (pointer: fine) {
     [data-view="home"] .app-card:hover,
     .app-calligraphy-grid .app-card:hover,
+    .app-inscription-card:hover,
     .app-topic-card:hover {
       z-index: 2;
       transform: translateY(-2px);
@@ -448,8 +487,15 @@ html {
       box-shadow: var(--app-elevation-content-hover);
     }
 
+    .app-inscription-card:hover,
     .app-topic-card:hover {
       box-shadow: var(--app-elevation-content-hover);
+    }
+
+    .app-primary-tab:hover,
+    .app-category:hover,
+    .app-bottom-navigation .yoyi-navigation-entry:hover {
+      color: var(--yoyi-color-text-primary);
     }
   }
 
@@ -496,6 +542,24 @@ html {
     min-height: 44px;
     padding: 0;
     grid-template-columns: 1fr;
+    place-items: center;
+    justify-items: center;
+  }
+
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+    .yoyi-navigation-entry.is-active {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    line-height: 0;
+    font-size: 0;
   }
 
   .app-bottom-navigation .yoyi-navigation-entry {
@@ -534,6 +598,10 @@ html {
     display: flex;
     width: 100%;
     height: auto;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__track.is-dragging,
+  .app-scroll.app-pager.is-pager-following .app-pager__track.is-settling {
     will-change: transform;
   }
 
@@ -547,7 +615,6 @@ html {
     min-width: 0;
     height: auto;
     overflow: visible;
-    contain: layout paint;
   }
 }
 
@@ -606,6 +673,15 @@ html {
     font-size: var(--app-feed-title-size);
   }
 
+  [data-view="inscriptions"] .app-inscription-card {
+    --app-inscription-thumb: 136px;
+    --app-inscription-card-height: 136px;
+  }
+
+  [data-view="inscriptions"] .app-inscription-card__title {
+    font-size: var(--yoyi-type-card-title-size);
+  }
+
   [data-view="inscriptions"] .app-topbar--search {
     min-height: calc(76px + env(safe-area-inset-top));
     padding-inline: var(--yoyi-space-6);
@@ -618,23 +694,6 @@ html {
 
   [data-view="inscriptions"] .app-list {
     padding-inline: var(--yoyi-space-6);
-  }
-
-  [data-view="inscriptions"] .app-list-item {
-    min-height: 128px;
-    grid-template-columns: 160px minmax(0, 1fr) 32px;
-    gap: var(--yoyi-space-6);
-    padding: var(--yoyi-space-5) 0;
-  }
-
-  [data-view="inscriptions"] .app-list-item img {
-    width: 160px;
-    height: 120px;
-  }
-
-  [data-view="inscriptions"] .app-list-item > span:nth-child(2),
-  [data-view="inscriptions"] .app-list-item__title {
-    font-size: var(--yoyi-type-card-title-size);
   }
 
   /* Keep token referenced for reading/content alignment rules. */
@@ -665,16 +724,6 @@ html {
     padding-inline: var(--yoyi-space-7);
   }
 
-  [data-view="inscriptions"] .app-list-item {
-    min-height: 136px;
-    grid-template-columns: 176px minmax(0, 1fr) 32px;
-  }
-
-  [data-view="inscriptions"] .app-list-item img {
-    width: 176px;
-    height: 132px;
-  }
-
   .app-detail__media-frame img {
     max-height: min(75dvh, 820px);
   }
@@ -682,9 +731,10 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   .app-card,
+  .app-inscription-card,
   .app-topic-card,
-  .app-primary-tab::after,
-  .app-category::after,
+  .app-tab-bubble,
+  .app-bottom-navigation .yoyi-nav-bubble,
   .app-loading .yoyi-logo,
   .app-loading__motto,
   .app-detail__info-panel,

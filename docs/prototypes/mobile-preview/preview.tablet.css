@@ -24,7 +24,16 @@
   display: flex;
   width: 100%;
   height: 100%;
+}
+
+.app-scroll.app-pager.is-pager-following > .app-pager__track,
+.app-pager__track.is-dragging,
+.app-pager__track.is-settling {
   transform: translate3d(0, 0, 0);
+}
+
+.app-pager__track.is-dragging,
+.app-pager__track.is-settling {
   will-change: transform;
 }
 
@@ -92,12 +101,6 @@
   }
 
   .app-list {
-    width: min(100%, var(--yoyi-container-reading));
-    margin-inline: auto;
-    padding: var(--yoyi-space-4) var(--yoyi-space-7) var(--yoyi-space-7);
-  }
-
-  .app-list.app-masonry {
     width: 100%;
     max-width: none;
     margin-inline: 0;
@@ -106,15 +109,6 @@
       var(--yoyi-space-5) + var(--app-bottom-nav-min-height, 56px) +
         env(safe-area-inset-bottom) + 12px
     );
-  }
-
-  .app-list-item {
-    grid-template-columns: 112px minmax(0, 1fr) 24px;
-  }
-
-  .app-list-item img {
-    width: 112px;
-    height: 84px;
   }
 
   .app-categories {
@@ -166,6 +160,11 @@
 
 /* Tablet landscape: keep the floating glass capsule at the bottom. */
 @media (min-width: 48rem) and (orientation: landscape) {
+  html[data-platform="tablet"] {
+    --app-inscription-thumb: 104px;
+    --app-inscription-card-height: 112px;
+  }
+
   .app-view {
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: 0;
@@ -210,6 +209,9 @@
 
   html[data-platform="tablet"]
     .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized)
+    .yoyi-icon-wrap,
+  html[data-platform="tablet"]
+    .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized)
     .yoyi-icon {
     width: 21px;
     height: 21px;
@@ -224,13 +226,16 @@
     min-height: 44px;
     padding: 0;
     grid-template-columns: 1fr;
+    place-items: center;
+    justify-items: center;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-card,
-  .app-primary-tab::after,
-  .app-category::after,
+  .app-inscription-card,
+  .app-tab-bubble,
+  .app-bottom-navigation .yoyi-nav-bubble,
   .app-loading .yoyi-logo,
   .app-loading__motto,
   .app-detail__info-panel,
