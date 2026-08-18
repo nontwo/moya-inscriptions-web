@@ -58,779 +58,804 @@
       <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
         <div class="app-primary-shell app-pager" data-pager="primary">
           <div class="app-pager__track" data-pager-track>
-        <section
-          class="app-view app-pager__page is-pager-active"
-          data-view="home"
-          data-pager-page="home"
-          aria-label="首页"
-        >
-          <header class="app-topbar app-topbar--home">
-            <div
-              class="app-primary-tabs"
-              role="tablist"
-              aria-label="首页内容范围"
+            <section
+              class="app-view app-pager__page is-pager-active"
+              data-view="home"
+              data-pager-page="home"
+              aria-label="首页"
             >
-              <button
-                class="app-primary-tab is-selected"
-                data-home-feed="discover"
-                role="tab"
-                aria-label="发现"
-                aria-selected="true"
-                type="button"
-              >
-                <span>发现</span>
-              </button>
-              <button
-                class="app-primary-tab"
-                data-home-feed="nearby"
-                role="tab"
-                aria-label="附近"
-                aria-selected="false"
-                type="button"
-              >
-                <span>附近</span>
-              </button>
-              <button
-                class="app-primary-tab"
-                data-home-feed="topics"
-                role="tab"
-                aria-label="专题"
-                aria-selected="false"
-                type="button"
-              >
-                <span>专题</span>
-              </button>
-            </div>
-            <button
-              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-              data-open-settings
-              aria-label="打开设置"
-              type="button"
-            >
-              <span
-                class="yoyi-icon"
-                data-icon="settings"
-                aria-hidden="true"
-              ></span>
-            </button>
-          </header>
-
-          <main
-            class="app-scroll app-pager"
-            data-pager="home"
-            data-scroll-view="home"
-          >
-            <div class="app-pager__track" data-pager-track>
-              <div
-                class="app-pager__page"
-                data-feed-panel="discover"
-                data-pager-page="discover"
-                data-scroll-key="home:discover"
-              >
-                <div class="app-masonry" data-feed-grid="discover">
-                  <button
-                    class="app-card"
-                    data-content-id="discover-cliff-gate"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/cliff-gate.svg"
-                    data-title="山门北壁题记"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/cliff-gate.svg"
-                      alt="虚构山门摩崖图"
-                    />
-                    <span class="app-card__title">山门北壁题记</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="discover-ink"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/ink-album.svg"
-                    data-title="纸上墨痕"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/ink-album.svg"
-                      alt="虚构墨迹册页图"
-                    />
-                    <span class="app-card__title">纸上墨痕</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="discover-stone"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stone-detail.svg"
-                    data-title="龙门残字"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/stone-detail.svg"
-                      alt="虚构石刻局部图"
-                    />
-                    <span class="app-card__title">龙门残字</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="discover-wall"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/discovery-stone.svg"
-                    data-title="山崖旧刻"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/discovery-stone.svg"
-                      alt="虚构山崖旧刻图"
-                    />
-                    <span class="app-card__title">山崖旧刻</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="discover-album"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
-                    data-title="松窗手札"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/calligraphy-sheet.svg"
-                      alt="虚构书法手札图"
-                    />
-                    <span class="app-card__title">松窗手札</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="discover-stele"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stele-shadow.svg"
-                    data-title="暮色碑影"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/stele-shadow.svg"
-                      alt="虚构暮色石碑图"
-                    />
-                    <span class="app-card__title">暮色碑影</span>
-                  </button>
-                </div>
-              </div>
-
-              <div
-                class="app-pager__page"
-                data-feed-panel="nearby"
-                data-pager-page="nearby"
-                data-scroll-key="home:nearby"
-                hidden
-              >
-                <div class="app-masonry" data-feed-grid="nearby">
-                  <button
-                    class="app-card"
-                    data-content-id="nearby-valley"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/valley-wall.svg"
-                    data-title="城北石壁"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/valley-wall.svg"
-                      alt="虚构城北石壁图"
-                    />
-                    <span class="app-card__title">城北石壁</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="nearby-rubbing"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/rubbing-fragment.svg"
-                    data-title="旧拓残片"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/rubbing-fragment.svg"
-                      alt="虚构旧拓残片图"
-                    />
-                    <span class="app-card__title">旧拓残片</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="nearby-gate"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/cliff-gate.svg"
-                    data-title="溪谷题名"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/cliff-gate.svg"
-                      alt="虚构溪谷题名图"
-                    />
-                    <span class="app-card__title">溪谷题名</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="nearby-stele"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stele-shadow.svg"
-                    data-title="西岭碑影"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/stele-shadow.svg"
-                      alt="虚构西岭石碑图"
-                    />
-                    <span class="app-card__title">西岭碑影</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="nearby-sheet"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
-                    data-title="寺中藏帖"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/calligraphy-sheet.svg"
-                      alt="虚构寺中藏帖图"
-                    />
-                    <span class="app-card__title">寺中藏帖</span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-content-id="nearby-cliff"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/discovery-stone.svg"
-                    data-title="近郊摩崖"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/discovery-stone.svg"
-                      alt="虚构近郊摩崖图"
-                    />
-                    <span class="app-card__title">近郊摩崖</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- TOPICS_PLACEHOLDER_START data-placeholder="topics-v1" -->
-              <div
-                class="app-topics app-pager__page"
-                data-feed-panel="topics"
-                data-pager-page="topics"
-                data-placeholder="topics-v1"
-                data-scroll-key="home:topics"
-                hidden
-              >
+              <header class="app-topbar app-topbar--home">
                 <div
-                  class="app-masonry app-topics__grid"
-                  data-topics-grid
-                ></div>
-              </div>
-              <!-- TOPICS_PLACEHOLDER_END -->
-            </div>
-          </main>
-        </section>
+                  class="app-primary-tabs"
+                  role="tablist"
+                  aria-label="首页内容范围"
+                >
+                  <button
+                    class="app-primary-tab is-selected"
+                    data-home-feed="discover"
+                    role="tab"
+                    aria-label="发现"
+                    aria-selected="true"
+                    type="button"
+                  >
+                    <span>发现</span>
+                  </button>
+                  <button
+                    class="app-primary-tab"
+                    data-home-feed="nearby"
+                    role="tab"
+                    aria-label="附近"
+                    aria-selected="false"
+                    type="button"
+                  >
+                    <span>附近</span>
+                  </button>
+                  <button
+                    class="app-primary-tab"
+                    data-home-feed="topics"
+                    role="tab"
+                    aria-label="专题"
+                    aria-selected="false"
+                    type="button"
+                  >
+                    <span>专题</span>
+                  </button>
+                </div>
+                <button
+                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+                  data-open-settings
+                  aria-label="打开设置"
+                  type="button"
+                >
+                  <span
+                    class="yoyi-icon"
+                    data-icon="settings"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+              </header>
 
-        <section
-          class="app-view app-pager__page"
-          data-view="inscriptions"
-          data-pager-page="inscriptions"
-          aria-label="碑刻"
-        >
-          <header class="app-topbar app-topbar--search">
-            <label class="yoyi-search-input app-search">
-              <span class="yoyi-visually-hidden">搜索碑刻</span>
-              <input
-                data-inscription-search
-                aria-label="搜索碑刻"
-                placeholder="搜索碑刻"
-                type="search"
-              />
-              <button
-                class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
-                data-search-clear
-                aria-label="清除搜索"
-                type="button"
-                hidden
+              <main
+                class="app-scroll app-pager"
+                data-pager="home"
+                data-scroll-view="home"
               >
-                <span
-                  class="yoyi-icon yoyi-icon--sm"
-                  data-icon="close"
-                  aria-hidden="true"
-                ></span>
-              </button>
-            </label>
-            <button
-              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-              data-open-settings
-              aria-label="打开设置"
-              type="button"
-            >
-              <span
-                class="yoyi-icon"
-                data-icon="settings"
-                aria-hidden="true"
-              ></span>
-            </button>
-          </header>
-          <div class="app-inscriptions-layout">
-            <div class="app-inscriptions-list-pane">
-              <main class="app-scroll" data-scroll-view="inscriptions">
-                <div class="app-list">
-                  <button
-                    class="app-inscription-card"
-                    data-search-text="云峰山题名 碑刻 北魏 楷书 山东云峰山"
-                    data-content-id="inscription-yunfeng"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/rubbing-fragment.svg"
-                    data-title="云峰山题名"
-                    type="button"
+                <div class="app-pager__track" data-pager-track>
+                  <div
+                    class="app-pager__page"
+                    data-feed-panel="discover"
+                    data-pager-page="discover"
+                    data-scroll-key="home:discover"
                   >
-                    <img
-                      src="../../design-system/assets/demo/rubbing-fragment.svg"
-                      alt="虚构云峰山题名缩略图"
-                    />
-                    <span class="app-inscription-card__body">
-                      <span class="app-inscription-card__title">云峰山题名</span>
-                      <span class="app-inscription-card__meta">碑刻 · 北魏</span>
-                      <span class="app-inscription-card__desc"
-                        >多图碑刻条目，用来核对图库切换与当前位置。</span
+                    <div class="app-masonry" data-feed-grid="discover">
+                      <button
+                        class="app-card"
+                        data-content-id="discover-cliff-gate"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/cliff-gate.svg"
+                        data-title="山门北壁题记"
+                        type="button"
                       >
-                    </span>
-                    <span
-                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
-                      data-icon="next"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <button
-                    class="app-inscription-card"
-                    data-search-text="石门东侧残刻 碑刻 东汉 隶书 汉中石门"
-                    data-content-id="inscription-shimen"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stone-detail.svg"
-                    data-title="石门东侧残刻"
-                    type="button"
+                        <img
+                          src="../../design-system/assets/demo/cliff-gate.svg"
+                          alt="虚构山门摩崖图"
+                        />
+                        <span class="app-card__title">山门北壁题记</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="discover-ink"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/ink-album.svg"
+                        data-title="纸上墨痕"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/ink-album.svg"
+                          alt="虚构墨迹册页图"
+                        />
+                        <span class="app-card__title">纸上墨痕</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="discover-stone"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stone-detail.svg"
+                        data-title="龙门残字"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stone-detail.svg"
+                          alt="虚构石刻局部图"
+                        />
+                        <span class="app-card__title">龙门残字</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="discover-wall"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/discovery-stone.svg"
+                        data-title="山崖旧刻"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/discovery-stone.svg"
+                          alt="虚构山崖旧刻图"
+                        />
+                        <span class="app-card__title">山崖旧刻</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="discover-album"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                        data-title="松窗手札"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                          alt="虚构书法手札图"
+                        />
+                        <span class="app-card__title">松窗手札</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="discover-stele"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stele-shadow.svg"
+                        data-title="暮色碑影"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stele-shadow.svg"
+                          alt="虚构暮色石碑图"
+                        />
+                        <span class="app-card__title">暮色碑影</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    class="app-pager__page"
+                    data-feed-panel="nearby"
+                    data-pager-page="nearby"
+                    data-scroll-key="home:nearby"
+                    hidden
                   >
-                    <img
-                      src="../../design-system/assets/demo/stone-detail.svg"
-                      alt="虚构石门东侧残刻缩略图"
-                    />
-                    <span class="app-inscription-card__body">
-                      <span class="app-inscription-card__title"
-                        >石门东侧残刻</span
+                    <div class="app-masonry" data-feed-grid="nearby">
+                      <button
+                        class="app-card"
+                        data-content-id="nearby-valley"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/valley-wall.svg"
+                        data-title="城北石壁"
+                        type="button"
                       >
-                      <span class="app-inscription-card__meta">碑刻</span>
-                    </span>
-                    <span
-                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
-                      data-icon="next"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <button
-                    class="app-inscription-card"
-                    data-search-text="龙门北壁造像记 碑刻 北魏 魏碑 洛阳龙门"
-                    data-content-id="inscription-longmen"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/cliff-gate.svg"
-                    data-title="龙门北壁造像记"
-                    type="button"
+                        <img
+                          src="../../design-system/assets/demo/valley-wall.svg"
+                          alt="虚构城北石壁图"
+                        />
+                        <span class="app-card__title">城北石壁</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="nearby-rubbing"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                        data-title="旧拓残片"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/rubbing-fragment.svg"
+                          alt="虚构旧拓残片图"
+                        />
+                        <span class="app-card__title">旧拓残片</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="nearby-gate"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/cliff-gate.svg"
+                        data-title="溪谷题名"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/cliff-gate.svg"
+                          alt="虚构溪谷题名图"
+                        />
+                        <span class="app-card__title">溪谷题名</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="nearby-stele"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stele-shadow.svg"
+                        data-title="西岭碑影"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stele-shadow.svg"
+                          alt="虚构西岭石碑图"
+                        />
+                        <span class="app-card__title">西岭碑影</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="nearby-sheet"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                        data-title="寺中藏帖"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                          alt="虚构寺中藏帖图"
+                        />
+                        <span class="app-card__title">寺中藏帖</span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-content-id="nearby-cliff"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/discovery-stone.svg"
+                        data-title="近郊摩崖"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/discovery-stone.svg"
+                          alt="虚构近郊摩崖图"
+                        />
+                        <span class="app-card__title">近郊摩崖</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- TOPICS_PLACEHOLDER_START data-placeholder="topics-v1" -->
+                  <div
+                    class="app-topics app-pager__page"
+                    data-feed-panel="topics"
+                    data-pager-page="topics"
+                    data-placeholder="topics-v1"
+                    data-scroll-key="home:topics"
+                    hidden
                   >
-                    <img
-                      src="../../design-system/assets/demo/cliff-gate.svg"
-                      alt="虚构龙门北壁造像记缩略图"
-                    />
-                    <span class="app-inscription-card__body">
-                      <span class="app-inscription-card__title"
-                        >龙门北壁造像记</span
-                      >
-                      <span class="app-inscription-card__meta">碑刻 · 北魏</span>
-                      <span class="app-inscription-card__desc"
-                        >长说明与多来源并陈，用来核对详情阅读宽度。</span
-                      >
-                    </span>
-                    <span
-                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
-                      data-icon="next"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <button
-                    class="app-inscription-card"
-                    data-search-text="天柱山摩崖 碑刻 唐 行书 安徽天柱山"
-                    data-content-id="inscription-tianzhu"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/valley-wall.svg"
-                    data-title="天柱山摩崖"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/valley-wall.svg"
-                      alt="虚构天柱山摩崖缩略图"
-                    />
-                    <span class="app-inscription-card__body">
-                      <span class="app-inscription-card__title">天柱山摩崖</span>
-                      <span class="app-inscription-card__meta">碑刻 · 唐</span>
-                      <span class="app-inscription-card__desc"
-                        >高窄摩崖，用来核对着录图像的竖向比例。</span
-                      >
-                    </span>
-                    <span
-                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
-                      data-icon="next"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <button
-                    class="app-inscription-card"
-                    data-search-text="古道石刻 碑刻 宋 楷书 浙东古道"
-                    data-content-id="inscription-road"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stele-shadow.svg"
-                    data-title="古道石刻"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/stele-shadow.svg"
-                      alt="虚构古道石刻缩略图"
-                    />
-                    <span class="app-inscription-card__body">
-                      <span class="app-inscription-card__title">古道石刻</span>
-                      <span class="app-inscription-card__meta">碑刻 · 宋</span>
-                    </span>
-                    <span
-                      class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
-                      data-icon="next"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <p class="app-empty" data-search-empty role="status" hidden>
-                    未找到碑刻
-                  </p>
+                    <div
+                      class="app-masonry app-topics__grid"
+                      data-topics-grid
+                    ></div>
+                  </div>
+                  <!-- TOPICS_PLACEHOLDER_END -->
                 </div>
               </main>
-            </div>
-          </div>
-        </section>
+            </section>
 
-        <section
-          class="app-view app-pager__page"
-          data-view="calligraphy"
-          data-pager-page="calligraphy"
-          aria-label="书帖"
-        >
-          <header class="app-topbar app-topbar--categories">
-            <div class="app-categories" role="tablist" aria-label="书帖分类">
-              <button
-                class="app-category is-selected"
-                data-calligraphy-category="all"
-                role="tab"
-                aria-selected="true"
-                type="button"
-              >
-                全部
-              </button>
-              <button
-                class="app-category"
-                data-calligraphy-category="ink"
-                role="tab"
-                aria-selected="false"
-                type="button"
-              >
-                墨迹
-              </button>
-              <button
-                class="app-category"
-                data-calligraphy-category="rubbing"
-                role="tab"
-                aria-selected="false"
-                type="button"
-              >
-                拓本
-              </button>
-            </div>
-            <!-- Prototype-only local filter shell; not T08 SearchDocument. -->
-            <label class="yoyi-search-input app-search app-search--calligraphy">
-              <span class="yoyi-visually-hidden">筛选书帖</span>
-              <input
-                data-calligraphy-filter
-                aria-label="筛选书帖"
-                type="search"
-              />
-              <button
-                class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
-                data-calligraphy-filter-clear
-                aria-label="清除筛选"
-                type="button"
-                hidden
-              >
-                <span
-                  class="yoyi-icon yoyi-icon--sm"
-                  data-icon="close"
-                  aria-hidden="true"
-                ></span>
-              </button>
-            </label>
-            <button
-              class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-              data-open-settings
-              aria-label="打开设置"
-              type="button"
+            <section
+              class="app-view app-pager__page"
+              data-view="inscriptions"
+              data-pager-page="inscriptions"
+              aria-label="碑刻"
             >
-              <span
-                class="yoyi-icon"
-                data-icon="settings"
-                aria-hidden="true"
-              ></span>
-            </button>
-          </header>
-          <main
-            class="app-scroll app-pager"
-            data-pager="calligraphy"
-            data-scroll-view="calligraphy"
-          >
-            <div class="app-pager__track" data-pager-track>
-              <div
-                class="app-pager__page"
-                data-pager-page="all"
-                data-scroll-key="calligraphy:all"
-              >
-                <div class="app-masonry app-calligraphy-grid">
+              <header class="app-topbar app-topbar--search">
+                <label class="yoyi-search-input app-search">
+                  <span class="yoyi-visually-hidden">搜索碑刻</span>
+                  <input
+                    data-inscription-search
+                    aria-label="搜索碑刻"
+                    placeholder="搜索碑刻"
+                    type="search"
+                  />
                   <button
-                    class="app-card"
-                    data-category="ink"
-                    data-calligraphy-filter-text="秋山札 宋 行书"
-                    data-content-id="calligraphy-autumn"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/ink-album.svg"
-                    data-title="秋山札"
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                    data-search-clear
+                    aria-label="清除搜索"
+                    type="button"
+                    hidden
+                  >
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="close"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                </label>
+                <button
+                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+                  data-open-settings
+                  aria-label="打开设置"
+                  type="button"
+                >
+                  <span
+                    class="yoyi-icon"
+                    data-icon="settings"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+              </header>
+              <div class="app-inscriptions-layout">
+                <div class="app-inscriptions-list-pane">
+                  <main class="app-scroll" data-scroll-view="inscriptions">
+                    <div class="app-list">
+                      <button
+                        class="app-inscription-card"
+                        data-search-text="云峰山题名 碑刻 北魏 楷书 山东云峰山"
+                        data-content-id="inscription-yunfeng"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                        data-title="云峰山题名"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/rubbing-fragment.svg"
+                          alt="虚构云峰山题名缩略图"
+                        />
+                        <span class="app-inscription-card__body">
+                          <span class="app-inscription-card__title"
+                            >云峰山题名</span
+                          >
+                          <span class="app-inscription-card__meta"
+                            >碑刻 · 北魏</span
+                          >
+                          <span class="app-inscription-card__desc"
+                            >多图碑刻条目，用来核对图库切换与当前位置。</span
+                          >
+                        </span>
+                        <span
+                          class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
+                          data-icon="next"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        class="app-inscription-card"
+                        data-search-text="石门东侧残刻 碑刻 东汉 隶书 汉中石门"
+                        data-content-id="inscription-shimen"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stone-detail.svg"
+                        data-title="石门东侧残刻"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stone-detail.svg"
+                          alt="虚构石门东侧残刻缩略图"
+                        />
+                        <span class="app-inscription-card__body">
+                          <span class="app-inscription-card__title"
+                            >石门东侧残刻</span
+                          >
+                          <span class="app-inscription-card__meta">碑刻</span>
+                        </span>
+                        <span
+                          class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
+                          data-icon="next"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        class="app-inscription-card"
+                        data-search-text="龙门北壁造像记 碑刻 北魏 魏碑 洛阳龙门"
+                        data-content-id="inscription-longmen"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/cliff-gate.svg"
+                        data-title="龙门北壁造像记"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/cliff-gate.svg"
+                          alt="虚构龙门北壁造像记缩略图"
+                        />
+                        <span class="app-inscription-card__body">
+                          <span class="app-inscription-card__title"
+                            >龙门北壁造像记</span
+                          >
+                          <span class="app-inscription-card__meta"
+                            >碑刻 · 北魏</span
+                          >
+                          <span class="app-inscription-card__desc"
+                            >长说明与多来源并陈，用来核对详情阅读宽度。</span
+                          >
+                        </span>
+                        <span
+                          class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
+                          data-icon="next"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        class="app-inscription-card"
+                        data-search-text="天柱山摩崖 碑刻 唐 行书 安徽天柱山"
+                        data-content-id="inscription-tianzhu"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/valley-wall.svg"
+                        data-title="天柱山摩崖"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/valley-wall.svg"
+                          alt="虚构天柱山摩崖缩略图"
+                        />
+                        <span class="app-inscription-card__body">
+                          <span class="app-inscription-card__title"
+                            >天柱山摩崖</span
+                          >
+                          <span class="app-inscription-card__meta"
+                            >碑刻 · 唐</span
+                          >
+                          <span class="app-inscription-card__desc"
+                            >高窄摩崖，用来核对着录图像的竖向比例。</span
+                          >
+                        </span>
+                        <span
+                          class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
+                          data-icon="next"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <button
+                        class="app-inscription-card"
+                        data-search-text="古道石刻 碑刻 宋 楷书 浙东古道"
+                        data-content-id="inscription-road"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stele-shadow.svg"
+                        data-title="古道石刻"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stele-shadow.svg"
+                          alt="虚构古道石刻缩略图"
+                        />
+                        <span class="app-inscription-card__body">
+                          <span class="app-inscription-card__title"
+                            >古道石刻</span
+                          >
+                          <span class="app-inscription-card__meta"
+                            >碑刻 · 宋</span
+                          >
+                        </span>
+                        <span
+                          class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
+                          data-icon="next"
+                          aria-hidden="true"
+                        ></span>
+                      </button>
+                      <p
+                        class="app-empty"
+                        data-search-empty
+                        role="status"
+                        hidden
+                      >
+                        未找到碑刻
+                      </p>
+                    </div>
+                  </main>
+                </div>
+              </div>
+            </section>
+
+            <section
+              class="app-view app-pager__page"
+              data-view="calligraphy"
+              data-pager-page="calligraphy"
+              aria-label="书帖"
+            >
+              <header class="app-topbar app-topbar--categories">
+                <div
+                  class="app-categories"
+                  role="tablist"
+                  aria-label="书帖分类"
+                >
+                  <button
+                    class="app-category is-selected"
+                    data-calligraphy-category="all"
+                    role="tab"
+                    aria-selected="true"
                     type="button"
                   >
-                    <img
-                      src="../../design-system/assets/demo/ink-album.svg"
-                      alt="虚构秋山札图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">秋山札</span>
-                      <span class="app-card__meta">宋 · 行书</span>
-                    </span>
+                    全部
                   </button>
                   <button
-                    class="app-card"
-                    data-category="ink"
-                    data-calligraphy-filter-text="松窗帖 明 楷书"
-                    data-content-id="calligraphy-pine"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
-                    data-title="松窗帖"
+                    class="app-category"
+                    data-calligraphy-category="ink"
+                    role="tab"
+                    aria-selected="false"
                     type="button"
                   >
-                    <img
-                      src="../../design-system/assets/demo/calligraphy-sheet.svg"
-                      alt="虚构松窗帖图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">松窗帖</span>
-                      <span class="app-card__meta">明 · 楷书</span>
-                    </span>
+                    墨迹
                   </button>
                   <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="集字圣教序 唐 行书"
-                    data-content-id="calligraphy-preface"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/rubbing-fragment.svg"
-                    data-title="集字圣教序"
+                    class="app-category"
+                    data-calligraphy-category="rubbing"
+                    role="tab"
+                    aria-selected="false"
                     type="button"
                   >
-                    <img
-                      src="../../design-system/assets/demo/rubbing-fragment.svg"
-                      alt="虚构集字圣教序拓本图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">集字圣教序</span>
-                      <span class="app-card__meta">唐 · 行书</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="ink"
-                    data-calligraphy-filter-text="草书残卷 唐 草书"
-                    data-content-id="calligraphy-cursive"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/ink-album.svg"
-                    data-title="草书残卷"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/ink-album.svg"
-                      alt="虚构草书残卷图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">草书残卷</span>
-                      <span class="app-card__meta">唐 · 草书</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="北海刻帖 唐 楷书"
-                    data-content-id="calligraphy-beihai"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/inscription-rubbing.svg"
-                    data-title="北海刻帖"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/inscription-rubbing.svg"
-                      alt="虚构北海刻帖拓本图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">北海刻帖</span>
-                      <span class="app-card__meta">唐 · 楷书</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="石门铭拓片 北魏 魏碑"
-                    data-content-id="calligraphy-shimen"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stone-detail.svg"
-                    data-title="石门铭拓片"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/stone-detail.svg"
-                      alt="虚构石门铭拓片图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">石门铭拓片</span>
-                      <span class="app-card__meta">北魏 · 魏碑</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="曹全碑拓 东汉 隶书"
-                    data-content-id="calligraphy-caoquan"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/stele-shadow.svg"
-                    data-title="曹全碑拓"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/stele-shadow.svg"
-                      alt="虚构曹全碑拓图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">曹全碑拓</span>
-                      <span class="app-card__meta">东汉 · 隶书</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="ink"
-                    data-calligraphy-filter-text="兰亭临本 晋 行书"
-                    data-content-id="calligraphy-lanting"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
-                    data-title="兰亭临本"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/calligraphy-sheet.svg"
-                      alt="虚构兰亭临本图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">兰亭临本</span>
-                      <span class="app-card__meta">晋 · 行书</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="龙门二十品 北魏 魏碑"
-                    data-content-id="calligraphy-yizijue"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/cliff-gate.svg"
-                    data-title="龙门二十品"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/cliff-gate.svg"
-                      alt="虚构龙门二十品图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">龙门二十品</span>
-                      <span class="app-card__meta">北魏 · 魏碑</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="ink"
-                    data-calligraphy-filter-text="寒山诗札 唐 行草"
-                    data-content-id="calligraphy-hanshan"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/ink-album.svg"
-                    data-title="寒山诗札"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/ink-album.svg"
-                      alt="虚构寒山诗札图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">寒山诗札</span>
-                      <span class="app-card__meta">唐 · 行草</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="颜勤礼碑 唐 楷书"
-                    data-content-id="calligraphy-yanqinli"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/inscription-rubbing.svg"
-                    data-title="颜勤礼碑"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/inscription-rubbing.svg"
-                      alt="虚构颜勤礼碑图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">颜勤礼碑</span>
-                      <span class="app-card__meta">唐 · 楷书</span>
-                    </span>
-                  </button>
-                  <button
-                    class="app-card"
-                    data-category="rubbing"
-                    data-calligraphy-filter-text="华山庙碑 东汉 隶书"
-                    data-content-id="calligraphy-huashan"
-                    data-open-detail
-                    data-image="../../design-system/assets/demo/valley-wall.svg"
-                    data-title="华山庙碑"
-                    type="button"
-                  >
-                    <img
-                      src="../../design-system/assets/demo/valley-wall.svg"
-                      alt="虚构华山庙碑图"
-                    />
-                    <span class="app-card__caption">
-                      <span class="app-card__title">华山庙碑</span>
-                      <span class="app-card__meta">东汉 · 隶书</span>
-                    </span>
+                    拓本
                   </button>
                 </div>
-                <p class="app-empty" data-calligraphy-filter-empty hidden>
-                  没有符合筛选的书帖
-                </p>
-              </div>
-            </div>
-          </main>
-        </section>
+                <!-- Prototype-only local filter shell; not T08 SearchDocument. -->
+                <label
+                  class="yoyi-search-input app-search app-search--calligraphy"
+                >
+                  <span class="yoyi-visually-hidden">筛选书帖</span>
+                  <input
+                    data-calligraphy-filter
+                    aria-label="筛选书帖"
+                    type="search"
+                  />
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                    data-calligraphy-filter-clear
+                    aria-label="清除筛选"
+                    type="button"
+                    hidden
+                  >
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="close"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                </label>
+                <button
+                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+                  data-open-settings
+                  aria-label="打开设置"
+                  type="button"
+                >
+                  <span
+                    class="yoyi-icon"
+                    data-icon="settings"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+              </header>
+              <main
+                class="app-scroll app-pager"
+                data-pager="calligraphy"
+                data-scroll-view="calligraphy"
+              >
+                <div class="app-pager__track" data-pager-track>
+                  <div
+                    class="app-pager__page"
+                    data-pager-page="all"
+                    data-scroll-key="calligraphy:all"
+                  >
+                    <div class="app-masonry app-calligraphy-grid">
+                      <button
+                        class="app-card"
+                        data-category="ink"
+                        data-calligraphy-filter-text="秋山札 宋 行书"
+                        data-content-id="calligraphy-autumn"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/ink-album.svg"
+                        data-title="秋山札"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/ink-album.svg"
+                          alt="虚构秋山札图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">秋山札</span>
+                          <span class="app-card__meta">宋 · 行书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="ink"
+                        data-calligraphy-filter-text="松窗帖 明 楷书"
+                        data-content-id="calligraphy-pine"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                        data-title="松窗帖"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                          alt="虚构松窗帖图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">松窗帖</span>
+                          <span class="app-card__meta">明 · 楷书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="集字圣教序 唐 行书"
+                        data-content-id="calligraphy-preface"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/rubbing-fragment.svg"
+                        data-title="集字圣教序"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/rubbing-fragment.svg"
+                          alt="虚构集字圣教序拓本图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">集字圣教序</span>
+                          <span class="app-card__meta">唐 · 行书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="ink"
+                        data-calligraphy-filter-text="草书残卷 唐 草书"
+                        data-content-id="calligraphy-cursive"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/ink-album.svg"
+                        data-title="草书残卷"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/ink-album.svg"
+                          alt="虚构草书残卷图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">草书残卷</span>
+                          <span class="app-card__meta">唐 · 草书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="北海刻帖 唐 楷书"
+                        data-content-id="calligraphy-beihai"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/inscription-rubbing.svg"
+                        data-title="北海刻帖"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/inscription-rubbing.svg"
+                          alt="虚构北海刻帖拓本图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">北海刻帖</span>
+                          <span class="app-card__meta">唐 · 楷书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="石门铭拓片 北魏 魏碑"
+                        data-content-id="calligraphy-shimen"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stone-detail.svg"
+                        data-title="石门铭拓片"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stone-detail.svg"
+                          alt="虚构石门铭拓片图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">石门铭拓片</span>
+                          <span class="app-card__meta">北魏 · 魏碑</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="曹全碑拓 东汉 隶书"
+                        data-content-id="calligraphy-caoquan"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/stele-shadow.svg"
+                        data-title="曹全碑拓"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/stele-shadow.svg"
+                          alt="虚构曹全碑拓图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">曹全碑拓</span>
+                          <span class="app-card__meta">东汉 · 隶书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="ink"
+                        data-calligraphy-filter-text="兰亭临本 晋 行书"
+                        data-content-id="calligraphy-lanting"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/calligraphy-sheet.svg"
+                        data-title="兰亭临本"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/calligraphy-sheet.svg"
+                          alt="虚构兰亭临本图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">兰亭临本</span>
+                          <span class="app-card__meta">晋 · 行书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="龙门二十品 北魏 魏碑"
+                        data-content-id="calligraphy-yizijue"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/cliff-gate.svg"
+                        data-title="龙门二十品"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/cliff-gate.svg"
+                          alt="虚构龙门二十品图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">龙门二十品</span>
+                          <span class="app-card__meta">北魏 · 魏碑</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="ink"
+                        data-calligraphy-filter-text="寒山诗札 唐 行草"
+                        data-content-id="calligraphy-hanshan"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/ink-album.svg"
+                        data-title="寒山诗札"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/ink-album.svg"
+                          alt="虚构寒山诗札图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">寒山诗札</span>
+                          <span class="app-card__meta">唐 · 行草</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="颜勤礼碑 唐 楷书"
+                        data-content-id="calligraphy-yanqinli"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/inscription-rubbing.svg"
+                        data-title="颜勤礼碑"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/inscription-rubbing.svg"
+                          alt="虚构颜勤礼碑图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">颜勤礼碑</span>
+                          <span class="app-card__meta">唐 · 楷书</span>
+                        </span>
+                      </button>
+                      <button
+                        class="app-card"
+                        data-category="rubbing"
+                        data-calligraphy-filter-text="华山庙碑 东汉 隶书"
+                        data-content-id="calligraphy-huashan"
+                        data-open-detail
+                        data-image="../../design-system/assets/demo/valley-wall.svg"
+                        data-title="华山庙碑"
+                        type="button"
+                      >
+                        <img
+                          src="../../design-system/assets/demo/valley-wall.svg"
+                          alt="虚构华山庙碑图"
+                        />
+                        <span class="app-card__caption">
+                          <span class="app-card__title">华山庙碑</span>
+                          <span class="app-card__meta">东汉 · 隶书</span>
+                        </span>
+                      </button>
+                    </div>
+                    <p class="app-empty" data-calligraphy-filter-empty hidden>
+                      没有符合筛选的书帖
+                    </p>
+                  </div>
+                </div>
+              </main>
+            </section>
           </div>
         </div>
 
@@ -1368,6 +1393,7 @@
     <script src="./fixtures/home-feed.placeholder.js"></script>
     <script src="./fixtures/topics.placeholder.js"></script>
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
-    <script src="./preview.js?v=20260818-calligraphy-first-layout"></script>
+    <script src="./fixtures/p5-pilot.snapshot.js"></script>
+    <script src="./preview.js?v=20260818-p5-pilot-snapshot"></script>
   </body>
 </html>

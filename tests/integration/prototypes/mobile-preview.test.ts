@@ -40,6 +40,10 @@ const catalogDetailFixture = await readFile(
   new URL("fixtures/catalog-detail.placeholder.js", previewRoot),
   "utf8",
 );
+const p5PilotFixture = await readFile(
+  new URL("fixtures/p5-pilot.snapshot.js", previewRoot),
+  "utf8",
+);
 const sharedCss = await readFile(
   new URL("preview.shared.css", previewRoot),
   "utf8",
@@ -181,6 +185,7 @@ const renderPreview = (
   preferences: Record<string, string> = {},
   deviceOptions: DeviceOptions = {},
   prepareWindow?: (window: Window & typeof globalThis) => void,
+  url = "http://localhost/docs/prototypes/mobile-preview/",
 ) => {
   const withoutExternalScript = html
     .replace(/<script src="\.\/device-platform\.js"><\/script>/, "")
@@ -197,13 +202,17 @@ const renderPreview = (
       "",
     )
     .replace(
+      /<script src="\.\/fixtures\/p5-pilot\.snapshot\.js"><\/script>/,
+      "",
+    )
+    .replace(
       /<script(?: type="module")? src="\.\/preview\.js(?:\?[^"]*)?"><\/script>/,
       "",
     );
   const dom = new JSDOM(withoutExternalScript, {
     pretendToBeVisual: true,
     runScripts: "outside-only",
-    url: "http://localhost/docs/prototypes/mobile-preview/",
+    url,
   });
   openWindows.push(dom.window);
   installDeviceEnvironment(dom.window, deviceOptions);
@@ -215,9 +224,128 @@ const renderPreview = (
   dom.window.eval(homeFeedFixture);
   dom.window.eval(topicsFixture);
   dom.window.eval(catalogDetailFixture);
+  dom.window.eval(p5PilotFixture);
   dom.window.eval(script);
   return dom;
 };
+
+const renderP5Preview = (
+  deviceOptions: DeviceOptions = {},
+  prepareWindow?: (window: Window & typeof globalThis) => void,
+  hash = "",
+) =>
+  renderPreview(
+    {},
+    deviceOptions,
+    prepareWindow,
+    `http://localhost/docs/prototypes/mobile-preview/?dataset=p5${hash}`,
+  );
+
+const expectedP5Titles = [
+  "北魏永平四年郑道昭浮丘子题字",
+  "唐张礼臣墓志盖",
+  "北宋黄庭坚撰文并书丹王纯中墓志铭石碑",
+  "平定准噶尔后勒铭伊犁之碑",
+  "西汉“平原乐陵”题记石",
+  "隋开皇元年定州刺史豆卢通摩崖造像记",
+  "三体石经残刻石",
+  "五代十国南汉大宝五年石经幢",
+  "明张南潨墓志",
+  "元基督教叙利亚文石墓碑（二）",
+  "辽代青砂岩刻“宋魏国妃墓志文”（二）",
+  "东晋王建之墓志",
+  "汉“建安六年八月”残石",
+  "重修护国寺感应塔碑",
+  "晋故处士成君之碑",
+  "大金得胜陀颂碑",
+  "会稽刻石",
+  "袁滋题记摩崖石刻",
+  "石鼓－汧殹",
+  "居巢刘君墓顶镇石题字",
+  "唐伊斯兰教徒珊瑚石墓碑（一）",
+  "苏轼书观自在陀罗尼经文（东塔）",
+  "北魏永平四年郑文公上碑刻石",
+  "清郭嵩涛撰文俞樾篆盖谭钟麟书丹太子太保彭玉麟汉白玉墓志",
+  "东汉鲜于璜碑",
+  "赤德松赞墓碑",
+  "北宋毕昇墓碑",
+  "元至正黄裳题撰灵济庙记",
+];
+
+const expectedP5Descriptions = new Map<string, string>([
+  [
+    "p5-record-03",
+    "北宋元祐二年（1087年）黄庭坚为王纯中撰文并书丹的墓志，现藏修水县黄庭坚纪念馆。",
+  ],
+  [
+    "p5-record-05",
+    "西汉石质题记，正面右下刻“平原樂陵宿伯牙霍巨益”十个隶书字；馆方公布尺寸为长2.18米、宽0.85米、厚0.43米。",
+  ],
+  [
+    "p5-record-06",
+    "开河寺石窟隋代摩崖造像题记，铭文署“开皇元年四月八日”，并记定州刺史豆卢通及相关施主题名。",
+  ],
+  [
+    "p5-record-07",
+    "三国魏正始二年（241年）石经残刻，存高38厘米、宽32厘米，现存11行110字，以古篆、小篆和隶书三种书体刻写《尚书·君奭》内容。",
+  ],
+  [
+    "p5-record-08",
+    "南汉大宝五年（962年）石经幢，通高3.4米，由须弥座、幢柱、覆盆和四方佛塔等石构件组成，现藏东莞市博物馆。",
+  ],
+  [
+    "p5-record-12",
+    "东晋咸安二年（372年）王建之墓志，志文275字，记载墓主籍贯、官职及卒葬等信息，现藏南京市博物馆。",
+  ],
+  [
+    "p5-record-16",
+    "金代汉文、女真文合璧碑刻，正面汉文追述完颜阿骨打聚兵反辽及立碑缘起，碑阴刻对应女真大字。现存于吉林扶余得胜镇原址。",
+  ],
+  [
+    "p5-record-17",
+    "大禹陵现存的会稽刻石，承续秦始皇三十七年会稽刻石的文本传统。国家名录将其归入秦代，本描述不把现存石刻直接等同于已证实的秦代原刻。",
+  ],
+  [
+    "p5-record-18",
+    "唐贞元十年袁滋奉命赴南诏册封异牟寻，途经豆沙关时留下的122字摩崖题记；正文为楷书，“袁滋题”三字为篆书。",
+  ],
+  [
+    "p5-record-19",
+    "故宫博物院所藏十面石鼓之一，以“汧殹”篇名识别，表面刻籀文。其年代历来有多种观点，国家名录将该件归入战国。",
+  ],
+  [
+    "p5-record-21",
+    "海南省博物馆所藏唐代伊斯兰教徒珊瑚石墓碑单件；此类墓碑以珊瑚石制成，刻阿拉伯文宗教文字及墓主信息，是海南沿海伊斯兰墓葬传统的实物。",
+  ],
+  [
+    "p5-record-22",
+    "嵌于广教寺双塔东塔第二层南壁门上的北宋经文刻石，苏轼于元丰四年二月二十七日书《观自在菩萨如意轮陀罗尼经》。",
+  ],
+  [
+    "p5-record-23",
+    "北魏永平四年郑道昭在平度天柱山所刻摩崖碑文，与云峰山郑文公下碑相区分，内容颂扬其父郑羲的才智功德。",
+  ],
+  [
+    "p5-record-24",
+    "清代太子太保彭玉麟汉白玉墓志，由郭嵩涛撰文、俞樾篆盖、谭钟麟书丹。",
+  ],
+  [
+    "p5-record-25",
+    "东汉延熹八年立碑，碑额篆书“汉故雁门太守鲜于君碑”，碑身正背两面刻铭；1973年出土于天津武清，现藏天津博物馆。",
+  ],
+  [
+    "p5-record-26",
+    "藏王墓穆日山陵区的吐蕃时期墓碑，碑身刻古藏文，碑帽、碑身和龟趺碑座组成仿唐式形制；碑文主要记载并赞颂赤德松赞的政绩。",
+  ],
+  [
+    "p5-record-27",
+    "英山县博物馆登记的北宋墓碑。湖北省文物主管部门资料称，1995年专家鉴定其立于皇祐四年，并将墓主认定为活字印刷术发明者毕昇。",
+  ],
+  [
+    "p5-record-28",
+    "元代至正年间黄裳题撰的灵济庙记碑刻，现登记于广西兴安灵渠。",
+  ],
+]);
 
 const setViewportWidth = (dom: PreviewDom, viewportWidth: number) => {
   Object.defineProperty(dom.window, "innerWidth", {
@@ -780,7 +908,8 @@ describe("mobile application preview", () => {
       '[data-pager="primary"] [data-pager-track]',
     );
     const clickPrimary = (view: string) =>
-      document.querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
+      document
+        .querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
         ?.click();
 
     clickPrimary("inscriptions");
@@ -796,7 +925,9 @@ describe("mobile application preview", () => {
     expect(calligraphy?.classList).toContain("is-pager-active");
     expect(primaryTrack?.style.transform).toBe("");
     expect(
-      document.querySelector('[data-view="calligraphy"] .app-topbar--categories'),
+      document.querySelector(
+        '[data-view="calligraphy"] .app-topbar--categories',
+      ),
     ).toBeTruthy();
     expect(
       document.querySelector('[data-view="calligraphy"] [data-category]'),
@@ -844,7 +975,9 @@ describe("mobile application preview", () => {
     );
     const { document } = dom.window;
     const app = document.querySelector<HTMLElement>("[data-mobile-app]");
-    const view = document.querySelector<HTMLElement>('[data-view="calligraphy"]');
+    const view = document.querySelector<HTMLElement>(
+      '[data-view="calligraphy"]',
+    );
     const masonry = document.querySelector<HTMLElement>(
       '[data-pager-page="all"] .app-masonry',
     );
@@ -2457,9 +2590,8 @@ describe("mobile application preview", () => {
     expect(html).toContain(
       'href="./preview.shared.css?v=20260818-calligraphy-first-layout"',
     );
-    expect(html).toContain(
-      'src="./preview.js?v=20260818-calligraphy-first-layout"',
-    );
+    expect(html).toContain('src="./preview.js?v=20260818-p5-pilot-snapshot"');
+    expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(script).toContain("mediaFocusClosedAt");
     expect(script).toContain("mediaOpenSawPointer");
     expect(script).toContain("Number.NEGATIVE_INFINITY");
@@ -2670,7 +2802,9 @@ describe("mobile application preview", () => {
       card.querySelector(".app-inscription-card__desc")?.textContent,
     ).toContain("多图碑刻条目");
     expect(
-      card.querySelector(".app-inscription-card__arrow")?.getAttribute("data-icon"),
+      card
+        .querySelector(".app-inscription-card__arrow")
+        ?.getAttribute("data-icon"),
     ).toBe("next");
     expect(sharedCss).toContain(
       "grid-template-columns: var(--app-inscription-thumb) minmax(0, 1fr) 22px",
@@ -4099,5 +4233,324 @@ describe("mobile application preview", () => {
       desktop.window.document.querySelector<HTMLElement>('[data-view="detail"]')
         ?.hidden,
     ).toBe(false);
+  });
+
+  it("pins the complete approved P5 snapshot without internal workflow data", () => {
+    const dom = renderP5Preview();
+    const snapshot = (
+      dom.window as unknown as {
+        YOYI_P5_PILOT_SNAPSHOT: {
+          records: Array<Record<string, unknown>>;
+          version: string;
+        };
+      }
+    ).YOYI_P5_PILOT_SNAPSHOT;
+    const records = snapshot.records;
+
+    expect(snapshot.version).toBe("p5-pilot-snapshot-v1");
+    expect(records).toHaveLength(28);
+    expect(records.map((record) => record.id)).toEqual(
+      Array.from(
+        { length: 28 },
+        (_, index) => `p5-record-${String(index + 1).padStart(2, "0")}`,
+      ),
+    );
+    expect(records.map((record) => record.title)).toEqual(expectedP5Titles);
+    expect(records[13]?.aliases).toEqual(["西夏碑"]);
+    expect(records[24]?.aliases).toEqual(["汉故雁门太守鲜于君碑"]);
+
+    const recordsWithDescriptions = records.filter(
+      (record) => "description" in record,
+    );
+    expect(recordsWithDescriptions).toHaveLength(expectedP5Descriptions.size);
+    for (const record of records) {
+      const expectedDescription = expectedP5Descriptions.get(String(record.id));
+      if (expectedDescription) {
+        expect(record.description).toBe(expectedDescription);
+      } else {
+        expect(record).not.toHaveProperty("description");
+      }
+
+      expect(record.media).toEqual([]);
+      expect(record).not.toHaveProperty("representativeMedia");
+      expect(Object.keys(record).sort()).toEqual(
+        Object.keys(record)
+          .filter((key) =>
+            [
+              "aliases",
+              "description",
+              "id",
+              "kind",
+              "media",
+              "periodLabel",
+              "prototypeFacts",
+              "title",
+            ].includes(key),
+          )
+          .sort(),
+      );
+
+      const facts = (record.prototypeFacts ?? {}) as Record<string, string>;
+      expect(
+        Object.keys(facts).every((key) =>
+          [
+            "county",
+            "currentCustodian",
+            "currentLocation",
+            "dateText",
+            "dynasty",
+            "prefecture",
+            "province",
+          ].includes(key),
+        ),
+      ).toBe(true);
+      const expectedPeriodLabel = [facts.dynasty, facts.dateText]
+        .filter(Boolean)
+        .join(" · ");
+      if (expectedPeriodLabel) {
+        expect(record.periodLabel).toBe(expectedPeriodLabel);
+      } else {
+        expect(record).not.toHaveProperty("periodLabel");
+      }
+    }
+
+    expect(p5PilotFixture).toContain("T02 PROTOTYPE ONLY");
+    expect(p5PilotFixture).toContain("NON-AUTHORITATIVE");
+    expect(p5PilotFixture).toContain("NON-PRODUCTION");
+    expect(p5PilotFixture).toContain(
+      "adb139588625a9447aadfa242efbd1bfd35de00befa99338ba265b7a9511d3ed",
+    );
+    expect(p5PilotFixture).not.toMatch(
+      /sourceId|catalogImportId|ownerNote|ResearchRecordId|CandidateFactId|EvidenceId|ReviewDecision|import-operation|\b(?:VALUE|UNSUPPLIED|UNKNOWN|CLEAR)\b/,
+    );
+    expect(p5PilotFixture).not.toContain("design-system/assets/demo");
+  });
+
+  it("selects P5 only for the exact query and marks the active dataset", () => {
+    const synthetic = renderPreview();
+    expect(synthetic.window.document.documentElement.dataset.dataset).toBe(
+      "synthetic",
+    );
+    expect(synthetic.window.document.body.textContent).toContain(
+      "山门北壁题记",
+    );
+
+    const unknown = renderPreview(
+      {},
+      {},
+      undefined,
+      "http://localhost/docs/prototypes/mobile-preview/?dataset=P5",
+    );
+    expect(unknown.window.document.documentElement.dataset.dataset).toBe(
+      "synthetic",
+    );
+    expect(unknown.window.document.body.textContent).not.toContain(
+      "北魏永平四年郑道昭浮丘子题字",
+    );
+
+    const p5 = renderP5Preview();
+    const document = p5.window.document;
+    expect(document.documentElement.dataset.dataset).toBe("p5");
+    const discoverCards = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-feed-grid="discover"] [data-open-detail]',
+      ),
+    ];
+    const inscriptionCards = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-view="inscriptions"] .app-inscription-card',
+      ),
+    ];
+    expect(discoverCards).toHaveLength(28);
+    expect(inscriptionCards).toHaveLength(28);
+    expect(
+      discoverCards.map(
+        (card) => card.querySelector(".app-card__title")?.textContent,
+      ),
+    ).toEqual(expectedP5Titles);
+    expect(
+      inscriptionCards.map(
+        (card) =>
+          card.querySelector(".app-inscription-card__title")?.textContent,
+      ),
+    ).toEqual(expectedP5Titles);
+    expect(
+      discoverCards.every(
+        (card) => !card.querySelector("img") && !card.dataset.image,
+      ),
+    ).toBe(true);
+    expect(
+      inscriptionCards.every(
+        (card) => !card.querySelector("img") && !card.dataset.image,
+      ),
+    ).toBe(true);
+    expect(
+      document.querySelectorAll('[data-feed-grid="nearby"] [data-open-detail]'),
+    ).toHaveLength(12);
+    expect(document.body.textContent).toContain("秋山札");
+  });
+
+  it("searches P5 titles and aliases and renders rich and sparse no-media details", async () => {
+    const dom = renderP5Preview();
+    const document = dom.window.document;
+    document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+
+    const search = document.querySelector<HTMLInputElement>(
+      "[data-inscription-search]",
+    );
+    if (!search) throw new Error("inscription search missing");
+    search.value = "毕昇";
+    search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-view="inscriptions"] .app-inscription-card',
+        ),
+      ]
+        .filter((card) => !card.hidden)
+        .map((card) => card.dataset.contentId),
+    ).toEqual(["p5-record-27"]);
+
+    search.value = "西夏碑";
+    search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    const visibleCards = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-view="inscriptions"] .app-inscription-card',
+      ),
+    ].filter((card) => !card.hidden);
+    expect(visibleCards.map((card) => card.dataset.contentId)).toEqual([
+      "p5-record-14",
+    ]);
+
+    search.value = "";
+    search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    document
+      .querySelector<HTMLElement>(
+        '[data-view="inscriptions"] [data-content-id="p5-record-27"]',
+      )
+      ?.click();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "北宋毕昇墓碑",
+    );
+    expect(
+      document.querySelector("[data-detail-description-text]")?.textContent,
+    ).toBe(expectedP5Descriptions.get("p5-record-27"));
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("皇祐四年（1052年）");
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("湖北省 · 黄冈市 · 英山县");
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-fallback]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-detail-image]")?.hasAttribute("src"),
+    ).toBe(false);
+
+    const back = document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!back) throw new Error("detail back missing");
+    await clickAndWaitForHistory(dom.window, back);
+    document
+      .querySelector<HTMLElement>(
+        '[data-view="inscriptions"] [data-content-id="p5-record-01"]',
+      )
+      ?.click();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "北魏永平四年郑道昭浮丘子题字",
+    );
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-description]")?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-aliases]")?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).not.toMatch(/未知|暂无/);
+  });
+
+  it("preserves the P5 query through detail history, back, and direct reload", async () => {
+    const dom = renderP5Preview();
+    const document = dom.window.document;
+    expect(dom.window.location.search).toBe("?dataset=p5");
+    expect(dom.window.location.hash).toBe("");
+
+    document
+      .querySelector<HTMLElement>(
+        '[data-feed-grid="discover"] [data-content-id="p5-record-23"]',
+      )
+      ?.click();
+    expect(dom.window.location.search).toBe("?dataset=p5");
+    expect(dom.window.location.hash).toBe("#detail-p5-record-23");
+
+    const back = document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!back) throw new Error("detail back missing");
+    await clickAndWaitForHistory(dom.window, back);
+    expect(dom.window.location.search).toBe("?dataset=p5");
+    expect(dom.window.location.hash).toBe("");
+    expect(document.documentElement.dataset.dataset).toBe("p5");
+
+    const reloaded = renderP5Preview({}, undefined, "#detail-p5-record-23");
+    expect(reloaded.window.location.search).toBe("?dataset=p5");
+    expect(reloaded.window.location.hash).toBe("#detail-p5-record-23");
+    expect(
+      reloaded.window.document.querySelector("[data-detail-title]")
+        ?.textContent,
+    ).toBe("北魏永平四年郑文公上碑刻石");
+  });
+
+  it("keeps P5 detail responsive on phone, tablet, and desktop", () => {
+    const cases = [
+      {
+        device: { viewportHeight: 844, viewportWidth: 390 },
+        platform: "phone",
+        composition: "stacked",
+      },
+      {
+        device: {
+          mobile: false,
+          userAgent: tabletUserAgent,
+          viewportHeight: 1112,
+          viewportWidth: 834,
+        },
+        platform: "tablet",
+        composition: "wide-stacked",
+      },
+      {
+        device: {
+          maxTouchPoints: 0,
+          mobile: false,
+          userAgent: desktopUserAgent,
+          viewportHeight: 900,
+          viewportWidth: 1440,
+        },
+        platform: "pc",
+        composition: "expanded-split",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const dom = renderP5Preview(testCase.device);
+      const document = dom.window.document;
+      document
+        .querySelector<HTMLElement>(
+          '[data-feed-grid="discover"] [data-content-id="p5-record-23"]',
+        )
+        ?.click();
+      expect(document.documentElement.dataset.platform).toBe(testCase.platform);
+      expect(
+        document
+          .querySelector("[data-view='detail']")
+          ?.getAttribute("data-detail-composition"),
+      ).toBe(testCase.composition);
+      expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+        "北魏永平四年郑文公上碑刻石",
+      );
+      expect(dom.window.location.search).toBe("?dataset=p5");
+    }
   });
 });

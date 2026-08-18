@@ -12,10 +12,29 @@ const findEditorialTopic =
   ((id) => editorialTopics.find((topic) => topic.id === id) ?? null);
 const homeFeedFixture = globalThis.YOYI_HOME_FEED_PLACEHOLDER;
 const supplementalHomeCards = homeFeedFixture?.feedCards ?? {};
-const catalogDetailRecords =
+const syntheticCatalogDetailRecords =
   globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER?.records ?? {};
+const p5PilotRecords = Array.isArray(globalThis.YOYI_P5_PILOT_SNAPSHOT?.records)
+  ? globalThis.YOYI_P5_PILOT_SNAPSHOT.records
+  : [];
+
+function selectPrototypeDataset(search) {
+  return new URLSearchParams(search).get("dataset") === "p5"
+    ? "p5"
+    : "synthetic";
+}
+
+const prototypeDataset = selectPrototypeDataset(window.location.search);
+const p5CatalogDetailRecords = Object.fromEntries(
+  p5PilotRecords.map((record) => [record.id, record]),
+);
+const catalogDetailRecords =
+  prototypeDataset === "p5"
+    ? { ...syntheticCatalogDetailRecords, ...p5CatalogDetailRecords }
+    : syntheticCatalogDetailRecords;
 
 const root = document.documentElement;
+root.dataset.dataset = prototypeDataset;
 const app = document.querySelector("[data-mobile-app]");
 const bottomNavigation = document.querySelector("[data-bottom-navigation]");
 const detailView = document.querySelector("[data-view='detail']");
@@ -1734,6 +1753,110 @@ function showView(view) {
   if (isPrimary) recalculateLayout();
 }
 
+function p5RecordSearchText(record) {
+  return [
+    record.title,
+    ...(Array.isArray(record.aliases) ? record.aliases : []),
+    catalogKindLabel(record.kind),
+    record.periodLabel,
+    ...Object.values(record.prototypeFacts ?? {}),
+    record.description,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function appendP5CardCaption(button, record) {
+  const caption = document.createElement("span");
+  caption.className = "app-card__caption";
+
+  const title = document.createElement("span");
+  title.className = "app-card__title";
+  title.textContent = record.title;
+  caption.append(title);
+
+  if (record.periodLabel) {
+    const meta = document.createElement("span");
+    meta.className = "app-card__meta";
+    meta.textContent = record.periodLabel;
+    caption.append(meta);
+  }
+
+  if (record.description) {
+    const description = document.createElement("span");
+    description.className = "app-card__description";
+    description.textContent = record.description;
+    caption.append(description);
+  }
+
+  button.append(caption);
+}
+
+function createP5HomeCard(record) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "app-card app-card--text-only";
+  button.dataset.contentId = record.id;
+  button.dataset.openDetail = "";
+  button.dataset.title = record.title;
+  appendP5CardCaption(button, record);
+  return button;
+}
+
+function createP5InscriptionCard(record) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "app-inscription-card app-inscription-card--text-only";
+  button.dataset.searchText = p5RecordSearchText(record);
+  button.dataset.contentId = record.id;
+  button.dataset.openDetail = "";
+  button.dataset.title = record.title;
+
+  const body = document.createElement("span");
+  body.className = "app-inscription-card__body";
+  const title = document.createElement("span");
+  title.className = "app-inscription-card__title";
+  title.textContent = record.title;
+  const meta = document.createElement("span");
+  meta.className = "app-inscription-card__meta";
+  meta.textContent = [catalogKindLabel(record.kind), record.periodLabel]
+    .filter(Boolean)
+    .join(" · ");
+  body.append(title, meta);
+
+  if (record.description) {
+    const description = document.createElement("span");
+    description.className = "app-inscription-card__desc";
+    description.textContent = record.description;
+    body.append(description);
+  }
+
+  const arrow = document.createElement("span");
+  arrow.className = "yoyi-icon yoyi-icon--sm app-inscription-card__arrow";
+  arrow.dataset.icon = "next";
+  arrow.setAttribute("aria-hidden", "true");
+  button.append(body, arrow);
+  return button;
+}
+
+function renderP5CatalogCards() {
+  const discover = document.querySelector('[data-feed-grid="discover"]');
+  const inscriptions = document.querySelector(
+    '[data-view="inscriptions"] .app-list',
+  );
+  if (discover) {
+    discover.replaceChildren(...p5PilotRecords.map(createP5HomeCard));
+  }
+  if (inscriptions) {
+    const empty = inscriptions.querySelector("[data-search-empty]");
+    inscriptions.replaceChildren(
+      ...p5PilotRecords.map(createP5InscriptionCard),
+    );
+    if (empty) inscriptions.append(empty);
+  }
+  recalculateLayout();
+}
+
 function renderSupplementalHomeCards() {
   for (const feed of ["discover", "nearby"]) {
     const panel = document.querySelector(`[data-feed-grid="${feed}"]`);
@@ -1759,6 +1882,11 @@ function renderSupplementalHomeCards() {
     });
   }
   recalculateLayout();
+}
+
+function renderSelectedDataset() {
+  renderSupplementalHomeCards();
+  if (prototypeDataset === "p5") renderP5CatalogCards();
 }
 
 function renderTopicsFeed() {
@@ -2419,7 +2547,11 @@ function selectPrimaryView(
   resetNavigationScrollTracking();
   if (controller) syncPager(controller, { animate, velocity });
   if (updateHistory) {
-    history.replaceState({ kind: "primary", view }, "", location.pathname);
+    history.replaceState(
+      { kind: "primary", view },
+      "",
+      `${location.pathname}${location.search}`,
+    );
   }
   if (previous !== view) {
     logQaEvent("nav", `切换到${primaryViewLabel(view)}`);
@@ -2467,7 +2599,7 @@ function masonryGapPx(container) {
 function masonryViewHidden(container) {
   return Boolean(
     container.closest("[data-view][hidden]") ||
-      container.closest(".app-primary-shell.is-overlay-parked"),
+    container.closest(".app-primary-shell.is-overlay-parked"),
   );
 }
 
@@ -2852,8 +2984,7 @@ function setPagerPageState(controller, activeIndex, windowed) {
   controller.pages.forEach((page, index) => {
     const selected = index === activeIndex;
     const inWindow = Math.abs(index - activeIndex) <= 1;
-    const hideInactive =
-      controller.id !== "primary" && !windowed && !selected;
+    const hideInactive = controller.id !== "primary" && !windowed && !selected;
     page.hidden = hideInactive;
     page.classList.toggle("is-pager-active", selected);
     page.classList.toggle(
@@ -3430,7 +3561,7 @@ function findContentTrigger(contentId) {
   );
 }
 
-renderSupplementalHomeCards();
+renderSelectedDataset();
 preparePagers();
 observePagerSizes();
 
@@ -3833,16 +3964,14 @@ document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
     { passive: true },
   );
 });
-document
-  .querySelector('[data-scroll-view="inscriptions"]')
-  ?.addEventListener(
-    "scroll",
-    (event) => {
-      if (root.dataset.platform === "pc") return;
-      rememberScrollPosition("inscriptions", event.currentTarget.scrollTop);
-    },
-    { passive: true },
-  );
+document.querySelector('[data-scroll-view="inscriptions"]')?.addEventListener(
+  "scroll",
+  (event) => {
+    if (root.dataset.platform === "pc") return;
+    rememberScrollPosition("inscriptions", event.currentTarget.scrollTop);
+  },
+  { passive: true },
+);
 window.addEventListener(
   "scroll",
   () => {
@@ -3863,7 +3992,11 @@ logQaEvent(
 );
 
 const bootHash = location.hash;
-history.replaceState({ kind: "primary", view: "home" }, "", location.pathname);
+history.replaceState(
+  { kind: "primary", view: "home" },
+  "",
+  `${location.pathname}${location.search}`,
+);
 renderTopicsFeed();
 selectHomeFeed(homeFeed);
 selectCalligraphyCategory(calligraphyCategory);
