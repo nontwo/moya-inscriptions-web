@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { FixedLabelName, IconName } from "./assets.js";
+import type { FixedLabelName, IconName } from "./assets.ts";
 
 export type NavigationItem = {
   id: string;

@@ -7,9 +7,9 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 
-import type { UiImage } from "../types.js";
-import { cx } from "../utils.js";
-import { Icon } from "./brand.js";
+import type { UiImage } from "../types.ts";
+import { cx } from "../utils.ts";
+import { Icon } from "./brand.tsx";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "quiet" | "danger";

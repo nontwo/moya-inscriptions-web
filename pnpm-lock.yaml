@@ -75,6 +75,12 @@ importers:
       '@moya/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@moya/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@moya/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       next:
         specifier: 16.3.0
         version: 16.3.0(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -97,6 +103,9 @@ importers:
       '@types/react-dom':
         specifier: 19.2.4
         version: 19.2.4(@types/react@19.2.18)
+      jsdom:
+        specifier: 29.1.1
+        version: 29.1.1
       typescript:
         specifier: 6.0.3
         version: 6.0.3

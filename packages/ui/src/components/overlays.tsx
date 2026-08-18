@@ -1,3 +1,5 @@
+"use client";
+
 import {
   useEffect,
   useId,
@@ -7,9 +9,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { cx } from "../utils.js";
-import { Icon } from "./brand.js";
-import { IconButton } from "./primitives.js";
+import { cx } from "../utils.ts";
+import { Icon } from "./brand.tsx";
+import { IconButton } from "./primitives.tsx";
 
 type OverlayPanelProps = {
   variant: "dialog" | "drawer" | "sheet";

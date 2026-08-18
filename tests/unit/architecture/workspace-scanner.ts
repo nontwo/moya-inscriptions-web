@@ -197,6 +197,7 @@ export const hasUseClientDirective = (source: string): boolean =>
 
 const webRoot = path.join(repositoryRoot, "apps", "web");
 const webPublicApiRoot = path.join(webRoot, "lib", "public-api");
+const prototypeRoot = path.join(repositoryRoot, "docs", "prototypes");
 const webHomePageFile = path.join(webRoot, "app", "page.tsx");
 const webHomeLoaderFile = path.join(
   webRoot,
@@ -519,6 +520,18 @@ export const frontendBoundaryViolations = (
   );
 
   for (const reference of extractModuleReferences(source)) {
+    const prototypeReference =
+      isPathInside(webRoot, filePath) &&
+      reference.specifier.startsWith(".") &&
+      isPathInside(
+        prototypeRoot,
+        path.resolve(path.dirname(filePath), reference.specifier),
+      );
+    if (prototypeReference) {
+      violations.push(
+        `${reference.specifier} is non-production prototype-only`,
+      );
+    }
     const approvedPublicApiRuntimeImport =
       isAuthorizedPublicApi &&
       (reference.specifier === "@moya/contracts/schemas" ||

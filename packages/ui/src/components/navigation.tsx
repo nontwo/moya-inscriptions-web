@@ -1,3 +1,5 @@
+"use client";
+
 import {
   useEffect,
   useRef,
@@ -10,10 +12,14 @@ import {
 
 import type { ThemePreference } from "@moya/design-tokens";
 
-import type { NavigationItem } from "../types.js";
-import { cx } from "../utils.js";
-import { FixedLabelMark, Icon, YoyiLogo } from "./brand.js";
-import { IconButton, type IconButtonProps, SearchInput } from "./primitives.js";
+import type { NavigationItem } from "../types.ts";
+import { cx } from "../utils.ts";
+import { FixedLabelMark, Icon, YoyiLogo } from "./brand.tsx";
+import {
+  IconButton,
+  type IconButtonProps,
+  SearchInput,
+} from "./primitives.tsx";
 
 type NavigationItemsProps = {
   items: NavigationItem[];
@@ -36,7 +42,7 @@ function NavigationEntry({
     <>
       {item.icon ? (
         typeof item.icon === "string" ? (
-          <Icon name={item.icon as import("../assets.js").IconName} />
+          <Icon name={item.icon as import("../assets.ts").IconName} />
         ) : (
           item.icon
         )
@@ -340,6 +346,7 @@ export type ResponsiveNavigationProps = NavigationItemsProps & {
   onSearch?: (() => void) | undefined;
   minimizeBehavior?: "never" | "on-scroll-down" | undefined;
   scrollContainerRef?: RefObject<HTMLElement | null> | undefined;
+  composition?: "responsive" | "floating-bottom" | undefined;
   className?: string | undefined;
 };
 
@@ -356,25 +363,38 @@ export function ResponsiveNavigation({
   onSearch,
   minimizeBehavior,
   scrollContainerRef,
+  composition = "responsive",
   className,
 }: ResponsiveNavigationProps) {
   return (
     <div
-      className={cx("yoyi-responsive-navigation", className)}
+      className={cx(
+        "yoyi-responsive-navigation",
+        composition === "floating-bottom" &&
+          "yoyi-responsive-navigation--floating-bottom",
+        className,
+      )}
       data-yoyi-ui="responsive-navigation"
     >
-      <DesktopTopNavigation
-        activeId={activeId}
-        brandHref={brandHref}
-        brandLabel={brandLabel}
-        items={items}
-        label={desktopLabel}
-        onNavigate={onNavigate}
-        onSearch={onSearch}
-        searchLabel={searchLabel}
-      />
+      {composition === "responsive" ? (
+        <DesktopTopNavigation
+          activeId={activeId}
+          brandHref={brandHref}
+          brandLabel={brandLabel}
+          items={items}
+          label={desktopLabel}
+          onNavigate={onNavigate}
+          onSearch={onSearch}
+          searchLabel={searchLabel}
+        />
+      ) : null}
       <MobileBottomNavigation
         activeId={activeId}
+        className={
+          composition === "floating-bottom"
+            ? "yoyi-mobile-bottom-navigation--all-viewports"
+            : undefined
+        }
         items={mobileItems}
         label={mobileLabel}
         minimizeBehavior={minimizeBehavior}

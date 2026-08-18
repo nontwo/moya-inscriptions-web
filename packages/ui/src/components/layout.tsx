@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-import { cx } from "../utils.js";
+import { cx } from "../utils.ts";
 
 export type PageContainerProps = HTMLAttributes<HTMLDivElement> & {
   readingWidth?: boolean;

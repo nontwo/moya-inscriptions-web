@@ -39,7 +39,10 @@
 `minimizeBehavior="never|on-scroll-down"` 和可选
 `scrollContainerRef`。手机可在向下滚动时收拢为当前栏目胶囊；平板与 PC 使用
 `never`。滚动策略由导航或应用壳统一管理，页面不得重复注册显隐 listener。主导航是 Functional
-Glass regular 的唯一当前消费者；选中项使用印泥 tint，不叠加第二层 Glass。
+Glass
+regular 的唯一当前消费者；选中项使用印泥 tint，不叠加第二层 Glass。需要在三端统一采用当前底部浮动主导航时，使用
+`ResponsiveNavigation composition="floating-bottom"`；该模式不渲染desktop
+top-nav或Search。默认`responsive`模式和`DesktopTopNavigation`继续作为向后兼容API保留。
 
 `ThemeCycleButton` 是受控图标按钮，接收 `ThemePreference` 与
 `onValueChange`，按 system、light、dark 顺序循环；主题属性仍由消费端设置。该组件为公共 API 兼容保留，移动预览改用设置页中的明确单选项。

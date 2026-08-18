@@ -21,6 +21,7 @@ import {
   Icon,
   LoadingScreen,
   MobileBottomNavigation,
+  ResponsiveNavigation,
   SearchInput,
   Sheet,
   Tabs,
@@ -116,6 +117,36 @@ describe("public controls", () => {
       screen
         .getByRole("navigation")
         .classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
+  });
+
+  it("supports an all-viewport floating bottom composition without desktop Search", () => {
+    render(
+      createElement(ResponsiveNavigation, {
+        activeId: "home",
+        composition: "floating-bottom",
+        items: [
+          { id: "home", label: "首页", href: "/" },
+          { id: "inscriptions", label: "碑刻", disabled: true },
+          { id: "calligraphy", label: "书帖", disabled: true },
+        ],
+      }),
+    );
+
+    expect(screen.getAllByRole("navigation")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "搜索" })).toBeNull();
+    expect(
+      screen
+        .getByRole("navigation")
+        .classList.contains("yoyi-mobile-bottom-navigation--all-viewports"),
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "碑刻" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "书帖" }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
   });
 

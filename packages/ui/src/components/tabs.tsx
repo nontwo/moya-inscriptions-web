@@ -1,3 +1,5 @@
+"use client";
+
 import {
   forwardRef,
   useRef,
@@ -7,10 +9,10 @@ import {
   type ReactNode,
 } from "react";
 
-import type { CategoryOption, TabOption } from "../types.js";
-import { cx } from "../utils.js";
-import { FixedLabelMark, Icon } from "./brand.js";
-import { IconButton } from "./primitives.js";
+import type { CategoryOption, TabOption } from "../types.ts";
+import { cx } from "../utils.ts";
+import { FixedLabelMark, Icon } from "./brand.tsx";
+import { IconButton } from "./primitives.tsx";
 
 export type TabItemProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,

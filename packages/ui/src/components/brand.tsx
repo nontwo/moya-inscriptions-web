@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from "react";
 
-import type { FixedLabelName, IconName } from "../assets.js";
-import { cx } from "../utils.js";
+import type { FixedLabelName, IconName } from "../assets.ts";
+import { cx } from "../utils.ts";
 
 export type IconProps = Omit<HTMLAttributes<HTMLSpanElement>, "children"> & {
   name: IconName;

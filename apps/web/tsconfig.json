@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "incremental": true,
     "jsx": "preserve",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],

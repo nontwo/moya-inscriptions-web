@@ -52,7 +52,9 @@ describe("HomeScreen", () => {
     );
     expect(markup).not.toContain("objectKey");
     expect(markup).not.toContain("object_key");
-    expect(markup).not.toContain("<a ");
+    expect(markup).toContain('href="/"');
+    expect(markup).not.toContain('href="/inscriptions"');
+    expect(markup).not.toContain('href="/calligraphy"');
   });
 
   it("keeps the Catalog total out of presentation", () => {
@@ -78,6 +80,36 @@ describe("HomeScreen", () => {
 
     expect(markup).toContain("暂无公开图像");
     expect(markup).not.toContain("<img");
+  });
+
+  it("keeps cards non-clickable, API-ordered, and free of Search", () => {
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        state={{
+          state: "populated",
+          page: page([
+            catalogItem({
+              id: "catalog-first" as CatalogSummary["id"],
+              title: "第一条",
+            }),
+            catalogItem({
+              id: "catalog-second" as CatalogSummary["id"],
+              title: "第二条",
+              periodLabel: undefined,
+              summary: undefined,
+            }),
+          ]),
+        }}
+      />,
+    );
+
+    expect(markup.indexOf("第一条")).toBeLessThan(markup.indexOf("第二条"));
+    expect(markup.match(/role="listitem"/g)).toHaveLength(2);
+    expect(markup).not.toMatch(/search|搜索/i);
+    expect(markup).not.toContain('catalog-first"');
+    expect(markup).toContain('aria-label="碑刻"');
+    expect(markup).toContain('aria-label="书帖"');
+    expect(markup.match(/disabled=""/g)).toHaveLength(2);
   });
 
   it.each([

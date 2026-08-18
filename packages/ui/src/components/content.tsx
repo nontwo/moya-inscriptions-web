@@ -1,14 +1,14 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-import type { UiImage } from "../types.js";
-import { cx } from "../utils.js";
-import { MasonryLikeGrid, ResponsiveGrid } from "./layout.js";
+import type { UiImage } from "../types.ts";
+import { cx } from "../utils.ts";
+import { MasonryLikeGrid, ResponsiveGrid } from "./layout.tsx";
 import {
   Badge,
   ImageCard,
   type ImageCardProps,
   ThumbnailListItem,
-} from "./primitives.js";
+} from "./primitives.tsx";
 
 export type DiscoveryCardProps = ImageCardProps;
 

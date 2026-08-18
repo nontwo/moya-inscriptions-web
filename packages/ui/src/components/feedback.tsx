@@ -1,3 +1,5 @@
+"use client";
+
 import {
   useEffect,
   useState,
@@ -5,8 +7,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { cx } from "../utils.js";
-import { Icon, YoyiLogo } from "./brand.js";
+import { cx } from "../utils.ts";
+import { Icon, YoyiLogo } from "./brand.tsx";
 
 export type SpinnerProps = Omit<HTMLAttributes<HTMLSpanElement>, "children"> & {
   label?: string;

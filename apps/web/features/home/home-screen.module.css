@@ -1,4 +1,203 @@
-.media {
+.shell {
+  min-block-size: 100dvh;
+}
+
+.page {
+  padding-block: max(var(--yoyi-space-7), env(safe-area-inset-top))
+    var(--yoyi-space-12);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--yoyi-space-5);
+  padding-block: var(--yoyi-space-5) var(--yoyi-space-7);
+}
+
+.brand > :first-child {
+  width: clamp(56px, 17vw, 82px);
+  color: var(--yoyi-color-text-primary);
+}
+
+.brand h1,
+.brand p,
+.cardBody h3,
+.cardBody p,
+.state h2,
+.state p {
+  margin: 0;
+}
+
+.brand h1 {
+  font-size: clamp(1.5rem, 7vw, var(--yoyi-type-display-size));
+  line-height: 1.18;
+  letter-spacing: 0.04em;
+}
+
+.brand p:first-child {
+  margin-block-end: var(--yoyi-space-2);
+  color: var(--yoyi-color-seal-red);
+  font-size: var(--yoyi-type-label-size);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.brand p:last-child {
+  max-inline-size: 36rem;
+  margin-block-start: var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.65;
+}
+
+.catalogSection {
+  min-inline-size: 0;
+  padding-block-start: var(--yoyi-space-3);
+}
+
+.catalogSection :global(.yoyi-content-section__header),
+.catalogSection :global(.yoyi-masonry-grid) {
+  min-inline-size: 0;
+  inline-size: 100%;
+}
+
+.card {
+  display: inline-block;
+  min-inline-size: 0;
+  inline-size: 100%;
   max-inline-size: 100%;
-  block-size: auto;
+  background: var(--yoyi-surface-paper);
+}
+
+.mediaFrame,
+.mediaFallback {
+  min-inline-size: 0;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  overflow: hidden;
+  background: var(--yoyi-color-background-muted);
+}
+
+.mediaFrame {
+  display: grid;
+  place-items: center;
+}
+
+.media {
+  display: block;
+  min-inline-size: 0;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+
+.mediaFallback {
+  display: grid;
+  min-block-size: 8.5rem;
+  place-content: center;
+  justify-items: center;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-5);
+  color: var(--yoyi-color-text-tertiary);
+  background-image: linear-gradient(
+    135deg,
+    transparent 0 48%,
+    var(--yoyi-color-border-subtle) 48% 52%,
+    transparent 52% 100%
+  );
+  font-size: var(--yoyi-type-caption-size);
+  text-align: center;
+}
+
+.cardBody {
+  display: grid;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-4);
+}
+
+.cardBody h3 {
+  overflow-wrap: anywhere;
+  font-size: var(--yoyi-type-card-title-size);
+  line-height: 1.5;
+}
+
+.period {
+  color: var(--yoyi-color-seal-red);
+  font-size: var(--yoyi-type-metadata-size);
+  font-weight: 600;
+}
+
+.summary {
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.65;
+}
+
+.state {
+  display: grid;
+  min-block-size: min(52dvh, 30rem);
+  place-content: center;
+  justify-items: center;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-9) var(--yoyi-space-5);
+  color: var(--yoyi-color-text-secondary);
+  text-align: center;
+}
+
+.state h2 {
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-type-section-title-size);
+}
+
+.state p {
+  line-height: 1.65;
+}
+
+.state button {
+  min-block-size: 44px;
+  padding-inline: var(--yoyi-space-6);
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-seal-red);
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  cursor: pointer;
+}
+
+.state button:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (min-width: 48rem) {
+  .brand {
+    gap: var(--yoyi-space-7);
+    padding-block: var(--yoyi-space-8) var(--yoyi-space-9);
+  }
+
+  .cardBody {
+    padding: var(--yoyi-space-5);
+  }
+
+  .mediaFallback {
+    min-block-size: 11rem;
+  }
+}
+
+@media (min-width: 56rem) {
+  .page {
+    padding-block-end: calc(
+      var(--yoyi-space-12) + 72px + env(safe-area-inset-bottom)
+    );
+  }
+
+  .brand {
+    padding-inline: var(--yoyi-space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media {
+    animation: none;
+  }
 }

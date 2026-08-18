@@ -353,6 +353,23 @@ describe("frontend and browser boundaries", () => {
     );
   });
 
+  it("keeps T02 prototype fixtures out of the formal Web runtime", () => {
+    const file = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "home",
+      "prototype-data.ts",
+    );
+    const source =
+      'import snapshot from "../../../../docs/prototypes/mobile-preview/fixtures/p5-pilot.snapshot.js";';
+
+    expect(frontendBoundaryViolations(file, source)).toContain(
+      "../../../../docs/prototypes/mobile-preview/fixtures/p5-pilot.snapshot.js is non-production prototype-only",
+    );
+  });
+
   it("allows only the Owner-authorized server environment variable in the boundary", () => {
     const file = path.join(
       repositoryRoot,

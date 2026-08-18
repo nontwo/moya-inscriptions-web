@@ -1,15 +1,24 @@
+@import "@moya/design-tokens/theme.css";
+@import "@moya/ui/styles.css";
+
 * {
   box-sizing: border-box;
 }
 
 html {
-  font-family: system-ui, sans-serif;
+  min-inline-size: 320px;
+  background: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
 }
 
 body {
+  min-block-size: 100dvh;
   margin: 0;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
 }
 
-main {
-  padding: 1rem;
+button,
+a {
+  font: inherit;
 }

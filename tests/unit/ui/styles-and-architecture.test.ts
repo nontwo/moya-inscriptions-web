@@ -44,6 +44,7 @@ describe("UI styles and architecture", () => {
     );
     expect(css).toContain("var(--yoyi-material-glass-fallback-background)");
     expect(css).toContain(".yoyi-mobile-bottom-navigation.is-minimized");
+    expect(css).toContain("yoyi-mobile-bottom-navigation--all-viewports");
     expect(css).toContain(
       ".yoyi-mobile-bottom-navigation.yoyi-functional-glass.is-minimized",
     );
@@ -75,5 +76,17 @@ describe("UI styles and architecture", () => {
     expect(source).not.toMatch(/localStorage|sessionStorage|\bhistory\b/);
     expect(source).not.toMatch(/Repository|mock(?:Data|Repository)/i);
     expect(source).not.toMatch(/next\/(?:router|navigation)/);
+  });
+
+  it("marks every hook-owning shared module as a Client boundary", async () => {
+    for (const file of [
+      "components/navigation.tsx",
+      "components/feedback.tsx",
+      "components/overlays.tsx",
+      "components/tabs.tsx",
+    ]) {
+      const source = await readFile(new URL(file, uiRoot), "utf8");
+      expect(source.trimStart().startsWith('"use client";')).toBe(true);
+    }
   });
 });

@@ -1488,6 +1488,10 @@ html[data-theme="dark"]
     display: none;
   }
 
+  .yoyi-mobile-bottom-navigation.yoyi-mobile-bottom-navigation--all-viewports {
+    display: grid;
+  }
+
   .yoyi-page-container--with-bottom-navigation {
     padding-bottom: 0;
     padding-left: 0;
@@ -1521,6 +1525,24 @@ html[data-theme="dark"]
 
   .yoyi-search-header {
     max-width: var(--yoyi-container-reading);
+  }
+}
+
+@media (min-width: 48rem) and (orientation: landscape) {
+  html[data-platform="tablet"]
+    .yoyi-mobile-bottom-navigation.yoyi-mobile-bottom-navigation--all-viewports {
+    top: auto;
+    right: auto;
+    bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
+    left: 50%;
+    width: min(calc(100% - var(--yoyi-space-7)), 520px);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: auto;
+    align-content: stretch;
+    min-height: 60px;
+    padding: var(--yoyi-space-2) var(--yoyi-space-6);
+    border-radius: calc(var(--yoyi-radius-full) / 2);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
