@@ -30,7 +30,6 @@
   --yoyi-color-info: #456c79;
   --yoyi-color-overlay: rgba(31, 29, 25, 0.46);
   --yoyi-shadow-subtle: 0 2px 12px rgba(53, 45, 34, 0.08);
-  --yoyi-shadow-elevated: 0 10px 32px rgba(53, 45, 34, 0.18);
   --yoyi-shadow-dialog: 0 18px 48px rgba(53, 45, 34, 0.22);
   --yoyi-surface-content: var(--yoyi-color-background-page);
   --yoyi-surface-paper: var(--yoyi-color-background-surface);
@@ -47,7 +46,7 @@
     rgba(255, 255, 255, 0.12) 52%,
     rgba(255, 255, 255, 0.24)
   );
-  --yoyi-material-glass-shadow: var(--yoyi-shadow-elevated);
+  --yoyi-material-glass-shadow: 0 10px 32px rgba(53, 45, 34, 0.18);
 }
 
 :root[data-theme="dark"],
@@ -81,7 +80,6 @@
   --yoyi-color-info: #7ba4b4;
   --yoyi-color-overlay: rgba(10, 10, 9, 0.64);
   --yoyi-shadow-subtle: 0 2px 16px rgba(0, 0, 0, 0.24);
-  --yoyi-shadow-elevated: 0 12px 36px rgba(0, 0, 0, 0.38);
   --yoyi-shadow-dialog: 0 18px 56px rgba(0, 0, 0, 0.42);
   --yoyi-surface-content: var(--yoyi-color-background-page);
   --yoyi-surface-paper: var(--yoyi-color-background-surface);
@@ -98,7 +96,7 @@
     rgba(255, 255, 255, 0.03) 52%,
     rgba(255, 255, 255, 0.08)
   );
-  --yoyi-material-glass-shadow: var(--yoyi-shadow-elevated);
+  --yoyi-material-glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
 }
 
 :root {
@@ -188,7 +186,6 @@
     --yoyi-color-info: #7ba4b4;
     --yoyi-color-overlay: rgba(10, 10, 9, 0.64);
     --yoyi-shadow-subtle: 0 2px 16px rgba(0, 0, 0, 0.24);
-    --yoyi-shadow-elevated: 0 12px 36px rgba(0, 0, 0, 0.38);
     --yoyi-shadow-dialog: 0 18px 56px rgba(0, 0, 0, 0.42);
     --yoyi-surface-content: var(--yoyi-color-background-page);
     --yoyi-surface-paper: var(--yoyi-color-background-surface);
@@ -205,7 +202,7 @@
       rgba(255, 255, 255, 0.03) 52%,
       rgba(255, 255, 255, 0.08)
     );
-    --yoyi-material-glass-shadow: var(--yoyi-shadow-elevated);
+    --yoyi-material-glass-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
   }
 }
 
