@@ -128,7 +128,7 @@ describe("SVG assets", () => {
     const icons = (await collectSvgFiles(iconDirectory)).filter(
       (file) => !file.pathname.endsWith("README.md"),
     );
-    expect(icons).toHaveLength(19);
+    expect(icons).toHaveLength(24);
     for (const icon of icons) {
       expect(await readFile(icon, "utf8"), icon.pathname).toContain(
         "currentColor",
@@ -191,6 +191,28 @@ describe("SVG assets", () => {
     expect(settings).not.toMatch(
       /<text\b|<image\b|base64|(?:href|xlink:href)="https?:\/\/|\/Users\//i,
     );
+  });
+
+  it("adds linear theme and layout toggle icons with a shared stroke", async () => {
+    const icons: Record<string, string> = {
+      "theme-light.svg": "浅色",
+      "theme-dark.svg": "深色",
+      "theme-system.svg": "跟随系统",
+      "layout-single.svg": "单列",
+      "layout-double.svg": "双列",
+    };
+    for (const [name, title] of Object.entries(icons)) {
+      const svg = await readFile(new URL(`icons/${name}`, assetsRoot), "utf8");
+      expect(svg, name).toContain(`<title>${title}</title>`);
+      expect(svg, name).toContain('viewBox="0 0 24 24"');
+      expect(svg, name).toContain('stroke="currentColor"');
+      expect(svg, name).toContain('stroke-width="1.7"');
+      expect(svg, name).toContain('stroke-linecap="round"');
+      expect(svg, name).toContain('stroke-linejoin="round"');
+      expect(svg, name).not.toMatch(
+        /<text\b|<image\b|base64|(?:href|xlink:href)="https?:\/\/|\/Users\//i,
+      );
+    }
   });
 
   it("uses the three normalized transparent PNG navigation marks", async () => {

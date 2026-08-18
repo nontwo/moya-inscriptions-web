@@ -17,6 +17,11 @@ export const iconNames = [
   "previous",
   "next",
   "theme",
+  "theme-light",
+  "theme-dark",
+  "theme-system",
+  "layout-single",
+  "layout-double",
   "settings",
 ] as const;
 

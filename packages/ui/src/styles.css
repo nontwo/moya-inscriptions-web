@@ -177,6 +177,26 @@
   --yoyi-icon-mask: url("./assets/icons/theme.svg");
 }
 
+.yoyi-icon[data-icon="theme-light"] {
+  --yoyi-icon-mask: url("./assets/icons/theme-light.svg");
+}
+
+.yoyi-icon[data-icon="theme-dark"] {
+  --yoyi-icon-mask: url("./assets/icons/theme-dark.svg");
+}
+
+.yoyi-icon[data-icon="theme-system"] {
+  --yoyi-icon-mask: url("./assets/icons/theme-system.svg");
+}
+
+.yoyi-icon[data-icon="layout-single"] {
+  --yoyi-icon-mask: url("./assets/icons/layout-single.svg");
+}
+
+.yoyi-icon[data-icon="layout-double"] {
+  --yoyi-icon-mask: url("./assets/icons/layout-double.svg");
+}
+
 .yoyi-icon[data-icon="settings"] {
   --yoyi-icon-mask: url("./assets/icons/settings.svg");
 }

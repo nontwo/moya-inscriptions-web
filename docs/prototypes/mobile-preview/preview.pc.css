@@ -83,6 +83,7 @@ html {
     min-height: 100dvh;
     height: auto;
     overflow: visible;
+    isolation: auto;
   }
 
   .app-view {
@@ -94,8 +95,64 @@ html {
     padding-left: 0;
   }
 
+  .app-primary-shell {
+    position: relative;
+    inset: auto;
+    overflow: visible;
+  }
+
+  .app-primary-shell.is-pager-following {
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
+  .app-primary-shell > .app-pager__track {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    height: auto;
+  }
+
+  .app-primary-shell > .app-pager__track > .app-view {
+    display: block;
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    min-height: 100dvh;
+    height: auto;
+    overflow: visible;
+    background-color: var(--yoyi-color-background-page);
+    grid-template-rows: none;
+  }
+
+  html[data-platform="pc"] .app-primary-shell.is-overlay-parked {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  html[data-platform="pc"]
+    .app-primary-shell.is-pager-following
+    > .app-pager__track
+    > .app-view:not(.is-pager-active) {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  html[data-platform="pc"] .app-inscriptions-layout,
+  html[data-platform="pc"] .app-inscriptions-list-pane {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+
   .app-view.app-detail,
-  .app-view.app-settings {
+  .app-view.app-settings,
+  .app-view.app-qa-log {
     padding-top: 0;
     padding-left: 0;
     padding-bottom: 0;
@@ -104,6 +161,33 @@ html {
   .mobile-app:has([data-bottom-navigation][hidden]) .app-view {
     padding-left: 0;
     padding-bottom: 0;
+  }
+
+  .app-detail-focus {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    width: 100vw;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100dvh;
+    padding: 32px;
+    overflow: hidden;
+  }
+
+  .app-detail-focus__stage {
+    z-index: 1;
+    min-height: 0;
+  }
+
+  .app-detail-focus__image {
+    min-width: 0;
+    min-height: 0;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
   }
 
   .app-topbar {
@@ -129,25 +213,6 @@ html {
   .app-topbar--categories {
     grid-template-columns: auto minmax(12rem, 1fr) 52px;
     gap: var(--yoyi-space-4);
-  }
-
-  .app-topics {
-    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
-  }
-
-  .app-topics__grid {
-    gap: var(--app-feed-gap);
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(
-        clamp(
-          var(--app-feed-col-min),
-          var(--app-feed-col-fluid),
-          var(--app-feed-col-max)
-        ),
-        1fr
-      )
-    );
   }
 
   .app-topic-card__title {
@@ -185,13 +250,6 @@ html {
     font-size: 1.125rem;
   }
 
-  .app-primary-tab::after {
-    right: 22px;
-    left: 22px;
-    bottom: 2px;
-    height: 3px;
-  }
-
   .app-topbar--categories {
     align-items: center;
     min-height: calc(68px + env(safe-area-inset-top));
@@ -208,13 +266,6 @@ html {
     min-height: 52px;
     padding: 0 16px;
     font-size: 1.125rem;
-  }
-
-  .app-category::after {
-    right: 22px;
-    left: 22px;
-    bottom: 2px;
-    height: 3px;
   }
 
   .app-search--calligraphy {
@@ -242,74 +293,83 @@ html {
   }
 
   .app-masonry {
-    display: grid;
+    display: block;
     width: 100%;
     max-width: none;
     padding: var(--yoyi-space-5) var(--yoyi-space-5) var(--yoyi-space-10);
     column-count: auto;
     column-width: auto;
-    gap: var(--yoyi-space-5);
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
 
   /* Home discover/nearby + topics share calligraphy feed cell size */
   [data-view="home"] .app-masonry,
   [data-home-layout="single"] [data-view="home"] .app-masonry,
   [data-home-layout="double"] [data-view="home"] .app-masonry {
-    display: grid;
+    display: block;
     width: 100%;
     max-width: none;
     margin-inline: 0;
     column-width: auto;
-    gap: var(--app-feed-gap);
     padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(
-        clamp(
-          var(--app-feed-col-min),
-          var(--app-feed-col-fluid),
-          var(--app-feed-col-max)
-        ),
-        1fr
-      )
-    );
   }
 
-  [data-view="home"] .app-card {
+  [data-view="home"] .app-card,
+  [data-view="home"] .app-topic-card {
+    overflow: visible;
     background: transparent;
-    border-radius: 0;
+    box-shadow: none;
   }
 
-  [data-view="home"] .app-card img {
+  [data-view="home"] .app-card img,
+  [data-view="home"] .app-topic-card img {
     min-height: 0;
-    aspect-ratio: 3 / 4;
-    object-fit: cover;
-    border-radius: var(--yoyi-radius-sm);
+    border-radius: var(--app-content-radius);
+    box-shadow: var(--app-elevation-content);
+    transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
   }
 
-  [data-view="home"] .app-card__title {
+  [data-view="home"] .app-card__title,
+  [data-view="home"] .app-topic-card__title {
     padding: var(--yoyi-space-2) 2px 0;
-    text-align: center;
+    text-align: left;
     font-size: var(--app-feed-title-size);
     font-weight: 600;
     line-height: 1.35;
   }
 
-  .app-card {
-    display: grid;
-    width: auto;
+  .app-card,
+  .app-topic-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
     margin: 0;
   }
 
-  .app-card img {
-    min-height: 200px;
-  }
-
-  .app-settings__content,
-  .app-detail__content {
+  .app-settings__content {
     width: min(100%, var(--yoyi-container-reading));
     margin-inline: auto;
+  }
+
+  .yoyi-icon-button.app-setting-toggle {
+    min-width: 48px;
+    min-height: 40px;
+    padding-inline: var(--yoyi-space-4);
+    padding-block: var(--yoyi-space-2);
+  }
+
+  .yoyi-icon-button.app-setting-toggle .yoyi-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .app-detail__content {
+    width: min(100%, var(--yoyi-container-content));
+    margin-inline: auto;
+  }
+
+  .app-detail__reading {
+    width: min(100%, var(--yoyi-container-reading));
   }
 
   [data-view="inscriptions"] .app-topbar--search {
@@ -340,27 +400,24 @@ html {
     width: 100%;
     max-width: none;
     margin-inline: 0;
-    padding: var(--yoyi-space-4) var(--yoyi-space-5) var(--yoyi-space-10);
-    gap: 0;
+    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+    gap: var(--app-masonry-gap);
   }
 
-  [data-view="inscriptions"] .app-list-item {
-    min-height: 120px;
-    grid-template-columns: 140px minmax(0, 1fr) 28px;
-    gap: var(--yoyi-space-5);
-    padding: var(--yoyi-space-4) 0;
+  [data-view="inscriptions"] .app-inscription-card {
+    --app-inscription-thumb: 128px;
+    --app-inscription-card-height: 128px;
   }
 
-  [data-view="inscriptions"] .app-list-item img {
-    width: 140px;
-    height: 104px;
-    border-radius: var(--yoyi-radius-sm);
+  [data-view="inscriptions"] .app-inscription-card__title {
+    font-size: var(--app-feed-title-size);
+    font-weight: 600;
+    line-height: 1.35;
   }
 
-  [data-view="inscriptions"] .app-list-item > span:nth-child(2),
-  [data-view="inscriptions"] .app-list-item__title {
-    font-size: var(--yoyi-type-list-title-size);
-    line-height: 1.45;
+  [data-view="inscriptions"] .app-inscription-card__meta,
+  [data-view="inscriptions"] .app-inscription-card__desc {
+    font-size: calc(0.625rem * var(--app-calligraphy-scale));
   }
 
   [data-view="inscriptions"] .app-empty {
@@ -385,33 +442,22 @@ html {
   .app-calligraphy-grid .app-masonry {
     width: 100%;
     max-width: none;
-    display: grid;
+    display: block;
     column-width: auto;
-    gap: var(--app-feed-gap);
     padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(
-        clamp(
-          var(--app-feed-col-min),
-          var(--app-feed-col-fluid),
-          var(--app-feed-col-max)
-        ),
-        1fr
-      )
-    );
   }
 
   .app-calligraphy-grid .app-card {
+    overflow: visible;
     background: transparent;
-    border-radius: 0;
+    box-shadow: none;
   }
 
   .app-calligraphy-grid .app-card img {
     min-height: 0;
-    aspect-ratio: 1 / 1;
-    object-fit: cover;
-    border-radius: var(--yoyi-radius-sm);
+    border-radius: var(--app-content-radius);
+    box-shadow: var(--app-elevation-content);
+    transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
   }
 
   .app-calligraphy-grid .app-card__caption {
@@ -429,18 +475,30 @@ html {
     font-size: calc(0.625rem * var(--app-calligraphy-scale));
   }
 
-  .app-setting-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--yoyi-space-4);
-  }
+  @media (hover: hover) and (pointer: fine) {
+    [data-view="home"] .app-card:hover,
+    [data-view="home"] .app-topic-card:hover,
+    .app-calligraphy-grid .app-card:hover,
+    .app-inscription-card:hover {
+      z-index: 2;
+      transform: translateY(-2px);
+    }
 
-  .app-setting-options--three {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+    [data-view="home"] .app-card:hover img,
+    [data-view="home"] .app-topic-card:hover img,
+    .app-calligraphy-grid .app-card:hover img {
+      box-shadow: var(--app-elevation-content-hover);
+    }
 
-  .app-setting-option {
-    min-height: 56px;
-    font-size: var(--yoyi-type-body-small-size);
+    .app-inscription-card:hover {
+      box-shadow: var(--app-elevation-content-hover);
+    }
+
+    .app-primary-tab:hover,
+    .app-category:hover,
+    .app-bottom-navigation .yoyi-navigation-entry:hover {
+      color: var(--yoyi-color-text-primary);
+    }
   }
 
   .app-nav-brand {
@@ -450,25 +508,60 @@ html {
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
     position: fixed;
     top: auto;
-    right: auto;
+    right: 0;
     bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
-    left: 50%;
+    left: 0;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: stretch;
     justify-content: initial;
     gap: 0;
-    width: min(calc(100% - var(--yoyi-space-7)), 520px);
-    max-width: none;
-    height: auto;
-    min-height: 60px;
-    padding: var(--yoyi-space-2);
     overflow: hidden;
     z-index: 30;
     border-top: 0;
     border-right: 0;
     border-radius: calc(var(--yoyi-radius-full) / 2);
-    transform: translate3d(-50%, 0, 0);
+    margin-inline: auto;
+    transform: none;
+  }
+
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
+    width: min(
+      calc(100vw - (var(--app-bottom-nav-side-gap) * 2)),
+      var(--app-bottom-nav-max-width)
+    );
+    max-width: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    height: auto;
+    min-height: var(--app-bottom-nav-min-height);
+    padding: var(--yoyi-space-2);
+  }
+
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    grid-template-columns: 1fr;
+    place-items: center;
+    justify-items: center;
+  }
+
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+    .yoyi-navigation-entry.is-active {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    line-height: 0;
+    font-size: 0;
   }
 
   .app-bottom-navigation .yoyi-navigation-entry {
@@ -503,10 +596,29 @@ html {
     overflow: hidden;
   }
 
+  .app-scroll.app-pager:not(.is-pager-following)
+    > .app-pager__track:not(.is-dragging):not(.is-settling) {
+    transform: none !important;
+  }
+
+  .app-scroll.app-pager:not(.is-pager-following)
+    > .app-pager__track
+    > .app-pager__page.is-pager-active {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    overflow: visible;
+  }
+
   .app-scroll.app-pager.is-pager-following .app-pager__track {
     display: flex;
     width: 100%;
     height: auto;
+  }
+
+  .app-scroll.app-pager.is-pager-following .app-pager__track.is-dragging,
+  .app-scroll.app-pager.is-pager-following .app-pager__track.is-settling {
     will-change: transform;
   }
 
@@ -520,7 +632,6 @@ html {
     min-width: 0;
     height: auto;
     overflow: visible;
-    contain: layout paint;
   }
 }
 
@@ -558,8 +669,6 @@ html {
 
   .app-masonry {
     padding-inline: var(--yoyi-space-6);
-    gap: var(--yoyi-space-6);
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
 
   [data-view="home"] .app-masonry,
@@ -569,22 +678,6 @@ html {
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry {
     padding-inline: clamp(1.25rem, 2.2vw, 2rem);
-    gap: var(--app-feed-gap);
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(
-        clamp(
-          var(--app-feed-col-min),
-          var(--app-feed-col-fluid),
-          var(--app-feed-col-max)
-        ),
-        1fr
-      )
-    );
-  }
-
-  .app-card img {
-    min-height: 220px;
   }
 
   .app-card__title {
@@ -595,6 +688,15 @@ html {
   .app-topic-card__title,
   .app-calligraphy-grid .app-card__title {
     font-size: var(--app-feed-title-size);
+  }
+
+  [data-view="inscriptions"] .app-inscription-card {
+    --app-inscription-thumb: 136px;
+    --app-inscription-card-height: 136px;
+  }
+
+  [data-view="inscriptions"] .app-inscription-card__title {
+    font-size: var(--yoyi-type-card-title-size);
   }
 
   [data-view="inscriptions"] .app-topbar--search {
@@ -611,23 +713,6 @@ html {
     padding-inline: var(--yoyi-space-6);
   }
 
-  [data-view="inscriptions"] .app-list-item {
-    min-height: 128px;
-    grid-template-columns: 160px minmax(0, 1fr) 32px;
-    gap: var(--yoyi-space-6);
-    padding: var(--yoyi-space-5) 0;
-  }
-
-  [data-view="inscriptions"] .app-list-item img {
-    width: 160px;
-    height: 120px;
-  }
-
-  [data-view="inscriptions"] .app-list-item > span:nth-child(2),
-  [data-view="inscriptions"] .app-list-item__title {
-    font-size: var(--yoyi-type-card-title-size);
-  }
-
   /* Keep token referenced for reading/content alignment rules. */
   .app-settings__content {
     width: min(100%, var(--yoyi-container-content));
@@ -637,8 +722,6 @@ html {
 @media (min-width: 90rem) {
   .app-masonry {
     padding-inline: var(--yoyi-space-7);
-    gap: var(--yoyi-space-6);
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   }
 
   [data-view="home"] .app-masonry,
@@ -648,22 +731,6 @@ html {
   .app-calligraphy-grid,
   .app-calligraphy-grid.app-masonry {
     padding-inline: clamp(1.5rem, 2.5vw, 2.5rem);
-    gap: var(--app-feed-gap);
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(
-        clamp(
-          var(--app-feed-col-min),
-          var(--app-feed-col-fluid),
-          var(--app-feed-col-max)
-        ),
-        1fr
-      )
-    );
-  }
-
-  .app-card img {
-    min-height: 240px;
   }
 
   [data-view="inscriptions"] .app-topbar--search {
@@ -673,28 +740,18 @@ html {
   [data-view="inscriptions"] .app-list {
     padding-inline: var(--yoyi-space-7);
   }
-
-  [data-view="inscriptions"] .app-list-item {
-    min-height: 136px;
-    grid-template-columns: 176px minmax(0, 1fr) 32px;
-  }
-
-  [data-view="inscriptions"] .app-list-item img {
-    width: 176px;
-    height: 132px;
-  }
-
-  .app-detail__content img {
-    max-height: min(75dvh, 820px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-card,
-  .app-primary-tab::after,
-  .app-category::after,
+  .app-inscription-card,
+  .app-topic-card,
+  .app-tab-bubble,
+  .app-bottom-navigation .yoyi-nav-bubble,
   .app-loading .yoyi-logo,
-  .app-loading__motto {
+  .app-loading__motto,
+  .app-detail__info-panel,
+  .app-detail__media-frame img {
     transition-duration: 1ms;
     animation-duration: 1ms;
     animation-delay: 0ms;
