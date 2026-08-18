@@ -1,6 +1,6 @@
 # 当前项目状态
 
-> 最后更新：2026-08-17（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
+> 最后更新：2026-08-19（Asia/Shanghai）。本文件是项目进度的唯一动态来源。
 
 ## 阶段结论
 
@@ -12,9 +12,9 @@ persistence、representative/gallery read projection、backend-owned
 StorageUrlResolver与strict PublicMedia boundary，并通过merged-head
 CI与PostgreSQL 18.4验证。当前尚未执行正式/production
 Catalog数据导入，也尚未接入production storage provider/CDN或真实Media
-ingestion；应用仓库本身仍不包含任何真实数据集。正式Home已推进到T06-B.1
-request-time orchestration与semantic presentation
-seam，最终视觉composition和Admin产品能力尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
+ingestion；应用仓库本身仍不包含任何真实数据集。正式Home已完成T06-B.2：在T06-A/B.1
+request-time data/state seam之上生产化T02 Home视觉与shell
+preference交互；Admin产品能力尚未完成。旧T01把特定来源数据与公共契约混合，现已撤回并移出应用仓库；新的 T01 已从来源无关的平台档案模型重新建立。
 
 `integration/mvp`
 当前任务分支在T00、重建后的T01、T02、T03、T04.0-R后端边界和独立响应式产品原型之上完成T04.1
@@ -41,8 +41,9 @@ migration；`main`继续保留稳定的T00/治理基线。
 | PILOT-IMPORT-01 | 已完成（CLOSED / PASS）       | 28条真实审核 Catalog 记录在独立 disposable PostgreSQL 18.4 验证环境完成 transactional apply、idempotent replay与Public API readback；验证库已销毁，应用仓库未导入正式数据 |
 | 响应式产品原型  | 非生产参考（持续演进）        | 同一 URL 验证手机、平板和 PC 壳层；不连接 Reader、数据库、搜索或生产图片                                                                                                  |
 | T06-A           | 已完成并合并                  | Web server-only Public HTTP boundary、Catalog list runtime validation与纯Home Catalog状态映射                                                                             |
-| T06-B.1         | 已实现                        | request-time Home loader与可替换的四状态语义presentation seam；最终T02视觉composition尚未接入                                                                             |
-| T06-B.2–T09     | 未开始                        | 最终Home视觉integration、浏览、搜索和详情                                                                                                                                 |
+| T06-B.1         | 已实现                        | request-time Home loader与可替换的四状态语义presentation seam                                                                                                             |
+| T06-B.2         | 已实现                        | T02-authoritative响应式Home content wall、presentation preferences、全屏设置、Glass导航与品牌加载状态                                                                     |
+| T07–T09         | 未开始                        | 浏览、搜索和Catalog详情                                                                                                                                                   |
 
 MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media
 foundation现已包含`MediaId`/strict `PublicMedia`、`catalog_media`、explicit
@@ -73,8 +74,11 @@ management仍属于后续独立任务。
   contract，并把transport success按 `page.total`纯映射为Home
   populated/empty语义。
 - 由formal根Home在`connection()`之后request-time调用薄Home
-  loader，并将四种Home状态交给可替换`HomeScreen`；当前presentation仅提供semantic
-  markup与PublicMedia/no-media处理，不代表最终T02响应式视觉。
+  loader，并将四种Home状态交给`HomeScreen`；T02-authoritative视觉只替换presentation，Catalog
+  cards继续由Server Component按PublicMedia与API顺序渲染。
+- 使用T02
+  Home响应式内容墙、全屏设置、主题/手机平板单双列偏好、浮动Glass导航和品牌加载状态；disabled未来入口不导航，且不引入Catalog
+  client state或未来API。
 - 确定性生成/验证由`/health`与Catalog list/detail组成的三路由OpenAPI 3.1.1
   artifact；全部route拒绝未声明、重复或非法query。
 - 启动`@moya/backend-runtime`的真实Node.js listener，并通过health与Catalog
@@ -94,8 +98,8 @@ management仍属于后续独立任务。
   Public API readback的完整链路；apply与replay均在独立disposable PostgreSQL
   18.4验证环境完成并已在证据收集后销毁，未写入production或本仓库数据。
 
-当前不能把项目视为可上线产品：formal Home当前只完成B.1数据编排与最小semantic
-presentation，最终T02视觉integration与Admin产品仍未完成。Catalog
+当前不能把项目视为可上线产品：formal
+Home已完成T06-B.2视觉integration，但Admin产品、后续浏览/搜索/详情与生产部署仍未完成。Catalog
 HTTP在development/test缺省使用三个条目的fixture；PILOT-IMPORT-01已完成28条真实记录的验证性导入，但正式/production
 Catalog数据导入、Importer Admin UI、production storage provider/CDN、真实Media
 ingestion与upload/management
@@ -125,8 +129,8 @@ Pilot、seed或第二数据路径。
 service、Query Port、strict query、Kind filtering、OpenAPI、Catalog Media
 contracts/persistence/resolver与private-storage边界、T02
 token/资产/组件、响应式原型交互、Web Public Catalog transport、request-time Home
-orchestration/四状态presentation以及Catalog import的PostgreSQL
-dry-run/apply/persistence invariants。真实PostgreSQL
+orchestration/四状态presentation、T02 Home正式视觉/偏好/导航以及Catalog
+import的PostgreSQL dry-run/apply/persistence invariants。真实PostgreSQL
 integration以CI中的PostgreSQL 18.4 clean
 service为权威验证环境；本机不要求安装PostgreSQL或Docker。
 
@@ -211,8 +215,8 @@ python3 -m http.server 4175 --bind 0.0.0.0
    management均作为后续独立任务，不在MEDIA-01继续扩展。
 3. 后续单独决定Importer Admin、正式/production
    Catalog数据导入（含1658条正式数据）与publication workflow。
-4. T06-A data boundary与T06-B.1 formal Home orchestration
-   seam已建立；后续从fresh
-   `integration/mvp`独立执行T06-B.2最终T02视觉integration，再依次推进浏览、搜索和档案详情。
+4. T06-A data boundary、T06-B.1 formal Home orchestration seam与T06-B.2
+   T02-authoritative视觉integration已建立；后续任务从fresh
+   `integration/mvp`独立推进浏览、搜索和档案详情。
 
 只有 T04–T09 完成并通过集成回归后，才评估把 `integration/mvp` 合并到 `main`。

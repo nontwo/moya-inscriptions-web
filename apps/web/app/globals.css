@@ -2,14 +2,24 @@
   box-sizing: border-box;
 }
 
-html {
-  font-family: system-ui, sans-serif;
+html,
+body {
+  min-block-size: 100%;
+  margin: 0;
+  overscroll-behavior-x: none;
 }
 
 body {
-  margin: 0;
+  color: var(--yoyi-color-text-primary);
+  background-color: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
 }
 
-main {
-  padding: 1rem;
+button,
+input {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
 }

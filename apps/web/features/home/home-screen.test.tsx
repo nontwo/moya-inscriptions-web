@@ -45,14 +45,26 @@ describe("HomeScreen", () => {
 
     const markup = renderToStaticMarkup(<HomeScreen state={state} />);
 
-    expect(markup).toContain("公开档案");
+    expect(markup).toContain("首页内容范围");
+    expect(markup).toContain('aria-label="发现"');
+    expect(markup).toContain('aria-selected="true"');
+    expect(markup.match(/aria-selected="false"/g)).toHaveLength(2);
+    expect(markup).toContain('aria-label="附近"');
+    expect(markup).toContain('aria-label="专题"');
     expect(markup).toContain("云峰山刻石");
+    expect(markup).toContain("北魏");
+    expect(markup).not.toContain("公开摘要");
     expect(markup).toContain(
       'src="https://media.example.invalid/catalog-001.jpg"',
     );
     expect(markup).not.toContain("objectKey");
     expect(markup).not.toContain("object_key");
     expect(markup).not.toContain("<a ");
+    expect(markup).not.toContain("data-open-detail");
+    expect(markup).not.toContain("p5-pilot.snapshot");
+    expect(markup).toContain('data-label="nav-home"');
+    expect(markup).toContain('data-label="nav-inscriptions"');
+    expect(markup).toContain('data-label="nav-calligraphy"');
   });
 
   it("keeps the Catalog total out of presentation", () => {
@@ -78,6 +90,30 @@ describe("HomeScreen", () => {
 
     expect(markup).toContain("暂无公开图像");
     expect(markup).not.toContain("<img");
+  });
+
+  it("keeps API order and all future destinations non-navigating", () => {
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        state={{
+          state: "populated",
+          page: page([
+            catalogItem({ title: "第一条" }),
+            catalogItem({
+              id: "catalog-002" as CatalogSummary["id"],
+              title: "第二条",
+            }),
+          ]),
+        }}
+      />,
+    );
+
+    expect(markup.indexOf("第一条")).toBeLessThan(markup.indexOf("第二条"));
+    expect(markup.match(/data-home-card="true"/g)).toHaveLength(2);
+    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+    expect(markup).not.toMatch(
+      /href="\/(nearby|topics|inscriptions|calligraphy)/,
+    );
   });
 
   it.each([
