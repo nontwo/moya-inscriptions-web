@@ -63,6 +63,21 @@ button {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+html[data-platform="phone"],
+html[data-platform="tablet"] {
+  --app-bottom-nav-min-height: 60px;
+  --app-bottom-nav-clearance: calc(
+    var(--app-bottom-nav-viewport-inset, 0px) +
+      max(var(--yoyi-space-3), env(safe-area-inset-bottom)) +
+      var(--app-bottom-nav-min-height) + var(--app-masonry-gap)
+  );
+}
+
+html[data-platform="phone"] .app-view,
+html[data-platform="tablet"] .app-view {
+  padding-bottom: 0;
+}
+
 .app-primary-shell {
   position: absolute;
   inset: 0;
@@ -245,6 +260,11 @@ html {
   --app-inscription-columns: 1;
   --app-inscription-thumb: 88px;
   --app-inscription-card-height: 104px;
+  --app-detail-media-max-height: min(48dvh, 400px);
+}
+
+html[data-platform="phone"] {
+  --app-detail-media-max-height: min(46dvh, 360px);
 }
 
 html[data-platform="tablet"] {
@@ -254,6 +274,7 @@ html[data-platform="tablet"] {
   --app-elevation-content-hover: var(--yoyi-shadow-subtle);
   --app-inscription-thumb: 112px;
   --app-inscription-card-height: 120px;
+  --app-detail-media-max-height: min(50dvh, 460px);
 }
 
 html[data-platform="pc"] {
@@ -263,6 +284,7 @@ html[data-platform="pc"] {
   --app-elevation-content-hover: var(--yoyi-shadow-subtle);
   --app-inscription-thumb: 128px;
   --app-inscription-card-height: 128px;
+  --app-detail-media-max-height: min(62dvh, 560px);
 }
 
 .app-masonry,
@@ -294,20 +316,18 @@ html[data-platform="pc"] {
   min-width: 100%;
 }
 
-.app-topics__grid {
-  padding-top: 0;
-  padding-right: 0;
-  padding-left: 0;
-}
-
 .app-card,
 .app-topic-card {
   box-shadow: var(--app-elevation-content);
 }
 
-.app-card {
-  display: grid;
+.app-card,
+.app-topic-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -324,12 +344,14 @@ html[data-platform="pc"] {
     box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
-.app-card:active {
+.app-card:active,
+.app-topic-card:active {
   z-index: 1;
   transform: scale(0.985);
 }
 
 .app-card:focus-visible,
+.app-topic-card:focus-visible,
 .app-inscription-card:focus-visible,
 .app-primary-tab:focus-visible,
 .app-category:focus-visible {
@@ -342,6 +364,34 @@ html[data-platform="pc"] {
   width: 100%;
   height: auto;
   object-fit: contain;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--app-content-radius);
+}
+
+.app-topic-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--app-content-radius);
+}
+
+.app-card img.is-media-error,
+.app-topic-card img.is-media-error {
+  visibility: hidden;
+}
+
+.app-card.is-media-missing,
+.app-topic-card.is-media-missing,
+.app-inscription-card.is-media-missing {
+  background: var(--yoyi-color-background-surface);
+}
+
+.app-card__media-fallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
   background: var(--yoyi-color-background-muted);
   border-radius: var(--app-content-radius);
 }
@@ -364,6 +414,9 @@ html[data-platform="pc"] {
 
 .app-card__caption .app-card__title {
   padding: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .app-card__meta {
@@ -386,44 +439,13 @@ html[data-platform="pc"] {
 
 /* OWNER: pc-desktop — topics feed (visible all breakpoints; denser on desktop) */
 .app-topics {
-  padding: 8px;
-}
-
-.app-topic-card {
-  display: grid;
-  width: 100%;
-  gap: 0;
   padding: 0;
-  overflow: hidden;
-  color: var(--yoyi-color-text-primary);
-  text-align: left;
-  background: var(--yoyi-color-background-surface);
-  border: 0;
-  border-radius: var(--app-content-radius);
-  cursor: pointer;
-  transition:
-    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
-    box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
-}
-
-.app-topic-card:focus-visible {
-  outline: 2px solid var(--yoyi-color-focus-ring);
-  outline-offset: -2px;
-}
-
-.app-topic-card img {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  background: var(--yoyi-color-background-muted);
-  border-radius: var(--app-content-radius);
 }
 
 .app-topic-card__body {
   display: grid;
-  gap: 6px;
-  padding: 12px 12px 14px;
+  gap: 2px;
+  padding: 9px 10px 11px;
 }
 
 .app-topic-card__badge {
@@ -441,22 +463,29 @@ html[data-platform="pc"] {
 
 .app-topic-card__title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .app-topic-card__blurb {
   margin: 0;
   color: var(--yoyi-color-text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .app-topic-column__content {
   width: min(100%, 760px);
   margin-inline: auto;
   padding: 16px 16px 48px;
+}
+
+.app-topic-column__records {
+  display: grid;
+  gap: var(--app-masonry-gap);
+  margin-top: 16px;
 }
 
 .app-topic-block {
@@ -582,11 +611,19 @@ html[data-platform="pc"] {
   border-radius: calc(var(--app-content-radius) - 6px);
 }
 
+.app-inscription-card .app-card__media-fallback {
+  width: 100%;
+  height: calc(var(--app-inscription-card-height) - 16px);
+  aspect-ratio: auto;
+  border-radius: calc(var(--app-content-radius) - 6px);
+}
+
 .app-inscription-card__body {
   display: grid;
   min-width: 0;
   gap: 2px;
   align-content: center;
+  overflow: hidden;
 }
 
 .app-inscription-card__title,
@@ -719,14 +756,13 @@ html[data-platform="pc"] {
   --app-nav-expand-duration: 520ms;
   --app-nav-collapse-easing: cubic-bezier(0.33, 0, 0.2, 1);
   --app-nav-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
-  right: 0;
-  left: 0;
-  width: min(
-    calc(100vw - (var(--app-bottom-nav-side-gap) * 2)),
-    var(--app-bottom-nav-max-width)
-  );
+  right: var(--app-bottom-nav-side-gap);
+  left: var(--app-bottom-nav-side-gap);
+  width: auto;
+  max-width: var(--app-bottom-nav-max-width);
   min-height: var(--app-bottom-nav-min-height);
   margin-inline: auto;
+  overflow: visible;
   transform: none;
   transition:
     width var(--app-nav-collapse-duration) var(--app-nav-collapse-easing),
@@ -837,11 +873,14 @@ html[data-platform="pc"] {
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
+  left: 50%;
+  right: auto;
   width: 44px;
   min-width: 44px;
   max-width: 44px;
   height: 44px;
   min-height: 44px;
+  margin-left: -22px;
   padding: 0;
   place-items: center;
   justify-items: center;
@@ -1029,14 +1068,17 @@ html[data-platform="pc"] {
 
 .app-detail__media-frame {
   position: relative;
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  min-height: 180px;
+  height: var(--app-detail-media-max-height);
+  max-height: var(--app-detail-media-max-height);
+  margin-inline: auto;
   padding: 0;
-  place-items: center;
   overflow: hidden;
   color: inherit;
-  background: var(--yoyi-color-background-surface);
+  background: var(--yoyi-color-background-muted);
   border: 0;
   border-radius: var(--app-content-radius);
   box-shadow: var(--app-elevation-panel);
@@ -1054,10 +1096,12 @@ html[data-platform="pc"] {
 
 .app-detail__media-frame img {
   display: block;
-  width: 100%;
-  max-height: min(70dvh, 640px);
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  background: var(--yoyi-color-background-surface);
+  background: transparent;
   border-radius: var(--app-content-radius);
   transition: opacity 200ms var(--yoyi-easing-standard);
 }
@@ -1066,34 +1110,27 @@ html[data-platform="pc"] {
   opacity: 0;
 }
 
-.app-detail[data-detail-composition="compact-stacked"]
-  .app-detail__media-frame
-  img {
-  max-height: min(42dvh, 220px);
-}
-
-.app-detail[data-detail-composition="wide-stacked"]
-  .app-detail__media-frame
-  img,
-.app-detail[data-detail-composition="compact-split"]
-  .app-detail__media-frame
-  img,
-.app-detail[data-detail-composition="expanded-split"]
-  .app-detail__media-frame
-  img {
-  max-height: min(75dvh, 820px);
+.app-detail__media-stage {
+  position: relative;
+  width: 100%;
+  touch-action: pan-y;
 }
 
 .app-detail__media-fallback,
 .app-detail__media-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   padding: 36px 16px;
   color: var(--yoyi-color-text-secondary);
   font-size: 14px;
 }
 
-.app-detail__media-stage {
-  position: relative;
-  touch-action: pan-y;
+.app-detail__media-frame .app-detail__media-track {
+  position: absolute;
+  inset: 0;
+  height: auto;
 }
 
 .app-detail__media-track,
@@ -1148,6 +1185,11 @@ html[data-platform="pc"] {
   transition:
     opacity 180ms,
     transform 180ms;
+}
+
+.app-detail__media-counter:not([hidden]) {
+  opacity: 1;
+  transform: none;
 }
 
 .app-detail__media.is-pager-visible .app-detail__media-counter,
@@ -1207,9 +1249,21 @@ html[data-platform="tablet"] .app-detail-focus__dots {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 2px;
   min-height: 22px;
   margin: var(--yoyi-space-3) 0 0;
+}
+
+.app-detail__media-dots {
+  position: absolute;
+  right: 0;
+  bottom: var(--yoyi-space-3);
+  left: 0;
+  z-index: 4;
+  margin: 0;
+  padding-inline: var(--yoyi-space-3);
+  pointer-events: auto;
 }
 
 .app-detail-focus__dots {
@@ -1454,7 +1508,7 @@ html[data-platform="tablet"] .app-detail-focus__dots {
 }
 
 .app-detail-skeleton__media {
-  min-height: 220px;
+  height: var(--app-detail-media-max-height);
 }
 
 .app-detail-skeleton__title {

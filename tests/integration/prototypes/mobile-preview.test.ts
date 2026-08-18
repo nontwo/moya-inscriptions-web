@@ -40,6 +40,10 @@ const catalogDetailFixture = await readFile(
   new URL("fixtures/catalog-detail.placeholder.js", previewRoot),
   "utf8",
 );
+const catalogAdapterScript = await readFile(
+  new URL("catalog-ui-adapter.js", previewRoot),
+  "utf8",
+);
 const p5PilotFixture = await readFile(
   new URL("fixtures/p5-pilot.snapshot.js", previewRoot),
   "utf8",
@@ -206,6 +210,10 @@ const renderPreview = (
       "",
     )
     .replace(
+      /<script src="\.\/catalog-ui-adapter\.js(?:\?[^"]*)?"><\/script>/,
+      "",
+    )
+    .replace(
       /<script(?: type="module")? src="\.\/preview\.js(?:\?[^"]*)?"><\/script>/,
       "",
     );
@@ -225,6 +233,7 @@ const renderPreview = (
   dom.window.eval(topicsFixture);
   dom.window.eval(catalogDetailFixture);
   dom.window.eval(p5PilotFixture);
+  dom.window.eval(catalogAdapterScript);
   dom.window.eval(script);
   return dom;
 };
@@ -1436,6 +1445,9 @@ describe("mobile application preview", () => {
       throw new Error("desktop home surface missing");
     expect(document.documentElement.dataset.platform).toBe("pc");
 
+    dispatchWheel(desktopDom.window, homeScroll, { deltaX: 40, deltaY: 80 });
+    expect(homeScroll.classList).not.toContain("is-pager-following");
+
     dispatchWheel(desktopDom.window, homeScroll, { deltaX: 80, deltaY: 0 });
     expect(homeScroll.classList).toContain("is-pager-following");
     expect(pagerTranslateX(homeTrack)).toBeCloseTo(-80, 0);
@@ -1473,6 +1485,14 @@ describe("mobile application preview", () => {
         ?.classList,
     ).toContain("is-selected");
     expect(homeScroll.classList).not.toContain("is-pager-following");
+    expect(homeTrack.style.transform).toBe("");
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="nearby"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-panel="discover"]')
+        ?.hidden,
+    ).toBe(true);
 
     document
       .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
@@ -1494,6 +1514,11 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-calligraphy-category="ink"]')
         ?.classList,
     ).toContain("is-selected");
+    expect(calligraphyScroll.classList).not.toContain("is-pager-following");
+    expect(
+      calligraphyScroll.querySelector<HTMLElement>("[data-pager-track]")?.style
+        .transform,
+    ).toBe("");
   });
 
   it("settles PC trackpad inertia immediately without waiting for idle", async () => {
@@ -1539,6 +1564,7 @@ describe("mobile application preview", () => {
 
     await waitForAnimationFrames(desktopDom.window, 40);
     expect(homeScroll.classList).not.toContain("is-pager-following");
+    expect(homeTrack.style.transform).toBe("");
 
     document
       .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
@@ -1577,6 +1603,8 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-calligraphy-category="ink"]')
         ?.classList,
     ).toContain("is-selected");
+    expect(calligraphyScroll.classList).not.toContain("is-pager-following");
+    expect(calligraphyTrack.style.transform).toBe("");
   });
 
   it("does not reopen inscription detail from horizontal PC wheel after back", async () => {
@@ -2095,6 +2123,55 @@ describe("mobile application preview", () => {
     );
   });
 
+  it("uses intrinsic image ratios for home, topics, and calligraphy masonry cards", () => {
+    const collectRatios = (document: Document, selector: string) =>
+      [...document.querySelectorAll<HTMLImageElement>(`${selector} img`)]
+        .map((image) => image.style.aspectRatio)
+        .filter(Boolean);
+
+    const phone = renderPreview();
+    const homeRatios = collectRatios(
+      phone.window.document,
+      '[data-feed-grid="discover"]',
+    );
+    const nearbyRatios = collectRatios(
+      phone.window.document,
+      '[data-feed-grid="nearby"]',
+    );
+    const calligraphyRatios = collectRatios(
+      phone.window.document,
+      '[data-pager-page="all"] .app-masonry',
+    );
+    const topicCards = phone.window.document.querySelectorAll(
+      "[data-topics-grid] .app-card.app-topic-card",
+    );
+    expect(new Set(homeRatios).size).toBeGreaterThan(1);
+    expect(new Set(nearbyRatios).size).toBeGreaterThan(1);
+    expect(new Set(calligraphyRatios).size).toBeGreaterThan(1);
+    expect(topicCards.length).toBeGreaterThan(0);
+    expect(homeRatios.some((ratio) => ratio === "1200 / 900")).toBe(false);
+    expect(script).toContain("function createContentCard");
+    expect(script).toContain("function applyMediaIntrinsics");
+    expect(catalogAdapterScript).toContain("function demoImageIntrinsics");
+    expect(sharedCss).not.toMatch(/\.app-card img \{[^}]*height:\s*240px/);
+    expect(sharedCss).not.toMatch(
+      /\.app-card\s*\{[^}]*grid-template-rows:\s*240px/,
+    );
+
+    const p5 = renderP5Preview();
+    const p5HomeRatios = collectRatios(
+      p5.window.document,
+      '[data-feed-grid="discover"]',
+    );
+    expect(p5HomeRatios.some((ratio) => ratio === "1200 / 900")).toBe(false);
+    expect(new Set(p5HomeRatios).size).toBeGreaterThan(1);
+    expect(
+      p5.window.document.querySelector(
+        "[data-topics-grid] .app-card.app-topic-card",
+      ),
+    ).toBeTruthy();
+  });
+
   it("keeps one layout mode across topics and calligraphy categories", () => {
     const masonryColumns = (document: Document, selector: string) =>
       document.querySelector<HTMLElement>(selector)?.dataset.masonryColumns;
@@ -2437,7 +2514,14 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain('"categories settings"');
     expect(previewCss).toContain('"search search"');
     expect(previewCss).not.toContain("calc(88px + env(safe-area-inset-left))");
-    expect(previewCss).toContain("bottom: max(var(--yoyi-space-3)");
+    expect(previewCss).toContain(
+      "max(var(--yoyi-space-3), env(safe-area-inset-bottom))",
+    );
+    expect(previewCss).toContain("--app-bottom-nav-viewport-inset");
+    expect(previewCss).toContain("height: 100svh");
+    expect(previewCss).toContain("overflow-x: clip");
+    expect(tabletCss).toContain("height: 100svh");
+    expect(tabletCss).toContain("overflow-x: clip");
     expect(tabletCss).toContain("@media (min-width: 48rem)");
     expect(tabletCss).not.toContain("@media (min-width: 56rem)");
     expect(tabletCss).not.toContain("@media (min-width: 64rem)");
@@ -2455,7 +2539,8 @@ describe("mobile application preview", () => {
       /orientation: landscape[\s\S]*\.is-minimized\s*\{[^}]*width: 44px/,
     );
     expect(sharedCss).toContain("--app-bottom-nav-max-width: 520px");
-    expect(sharedCss).toContain("100vw - (var(--app-bottom-nav-side-gap) * 2)");
+    expect(sharedCss).toContain("left: var(--app-bottom-nav-side-gap)");
+    expect(sharedCss).toContain("right: var(--app-bottom-nav-side-gap)");
     expect(tabletCss).not.toContain("calc(88px + env(safe-area-inset-left))");
     expect(pcCss).toContain(
       "scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom))",
@@ -2469,13 +2554,27 @@ describe("mobile application preview", () => {
     expect(pcCss).not.toContain(
       "padding-bottom: calc(68px + env(safe-area-inset-bottom))",
     );
+    expect(sharedCss).toContain("--app-bottom-nav-clearance");
+    expect(sharedCss).toContain('html[data-platform="phone"] .app-view');
+    expect(sharedCss).toMatch(
+      /html\[data-platform="phone"\] \.app-view,\s*html\[data-platform="tablet"\] \.app-view\s*\{[^}]*padding-bottom: 0/,
+    );
+    expect(sharedCss).not.toContain(
+      'html[data-platform="phone"]\n  .app-view:not(.app-detail)',
+    );
+    expect(tabletCss).toContain("padding-bottom: 0");
+    expect(script).toContain(
+      'root.style.setProperty("--app-bottom-nav-viewport-inset"',
+    );
     expect(pcCss).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
     expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
     expect(pcCss).not.toContain("border-width: 9px 0 9px 10px");
     expect(pcCss).not.toContain("opacity: 0.88");
-    expect(previewCss).toContain("touch-action: pan-x pan-y");
-    expect(tabletCss).toContain("touch-action: pan-x pan-y");
+    expect(previewCss).toContain("touch-action: pan-y");
+    expect(tabletCss).toContain("touch-action: pan-y");
+    expect(previewCss).not.toContain("touch-action: pan-x pan-y");
+    expect(tabletCss).not.toContain("touch-action: pan-x pan-y");
     expect(previewCss).not.toContain("pinch-zoom;");
     expect(tabletCss).not.toContain("pinch-zoom;");
     expect(pcCss).toContain("pinch-zoom");
@@ -2499,7 +2598,7 @@ describe("mobile application preview", () => {
     expect(tabletCss).toContain("var(--yoyi-container-reading)");
     expect(pcCss).toContain("var(--yoyi-container-reading)");
     expect(tabletCss).toMatch(
-      /\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-5\)/,
+      /\.app-masonry\s*\{[^}]*padding: var\(--yoyi-space-5\) var\(--yoyi-space-5\)/,
     );
     expect(sharedCss).toContain("--app-content-radius");
     expect(sharedCss).toContain("--app-masonry-gap");
@@ -2528,13 +2627,42 @@ describe("mobile application preview", () => {
     expect(script).toContain('dataset.layoutReady = "true"');
     expect(sharedCss).toContain(".app-masonry:not([data-layout-ready])");
     expect(script).toContain("function intendedMasonryColumns");
+    expect(sharedCss).toContain("--app-detail-media-max-height");
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-frame \{[^}]*height: var\(--app-detail-media-max-height\)/,
+    );
+    expect(script).toContain("function applyDetailMedia");
+    expect(sharedCss).toMatch(
+      /\.app-detail-focus__image \{[^}]*object-fit: contain/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-frame img \{[^}]*width: auto/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-frame img \{[^}]*height: auto/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-frame img \{[^}]*max-width: 100%/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-frame img \{[^}]*max-height: 100%/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-frame img \{[^}]*object-fit: contain/,
+    );
+    expect(sharedCss).not.toContain("max-height: min(42dvh, 220px)");
+    expect(sharedCss).not.toContain("max-height: min(75dvh, 820px)");
+    expect(pcCss).not.toContain("max-height: min(75dvh, 820px)");
+    expect(sharedCss).not.toMatch(
+      /\.app-detail__media-frame img \{[^}]*object-fit: cover/,
+    );
     expect(script).toContain("function recalculateLayout");
     expect(script).toContain("Math.min(...heights)");
     expect(script).toContain('querySelectorAll(".app-masonry")');
     expect(pcCss).not.toContain("aspect-ratio: 3 / 4");
     expect(pcCss).not.toContain("aspect-ratio: 1 / 1");
     expect(previewCss).toMatch(
-      /@media \(orientation: landscape\) \{[\s\S]*?\.app-topics\s*\{[^}]*padding: var\(--yoyi-space-4\)/,
+      /@media \(orientation: landscape\) \{[\s\S]*?html\[data-platform="phone"\]\s*\{[^}]*--app-inscription-thumb: 72px/,
     );
     const sharedRules = new Set(
       topLevelCssChunks(sharedCss).map(normalizeCssChunk),
@@ -2588,12 +2716,11 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260818-calligraphy-first-layout"',
+      'href="./preview.shared.css?v=20260819-media-pager"',
     );
-    expect(html).toContain(
-      'src="./preview.js?v=20260818-p5-prototype-demo-media"',
-    );
+    expect(html).toContain('src="./preview.js?v=20260819-media-pager"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
+    expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
     expect(script).toContain("mediaOpenSawPointer");
     expect(script).toContain("Number.NEGATIVE_INFINITY");
@@ -2611,11 +2738,20 @@ describe("mobile application preview", () => {
     expect(script).toContain("is-overlay-parked");
     expect(sharedCss).toContain(".app-inscriptions-layout");
     expect(script).toContain("function parkPrimaryTrackIfIdle");
+    expect(script).toContain("endPcPagerFollow(controller)");
+    expect(pcCss).toContain("transform: none !important");
     expect(script).toContain("function lockPrimaryShellHeight");
     expect(pcCss).toContain("isolation: auto");
     expect(script).toContain("function anyPagerFollowing");
+    expect(script).toContain("function pagerGestureIsLive");
+    expect(script).toMatch(
+      /function isPcHorizontalWheel[\s\S]*carouselDirectionRatio/,
+    );
     expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
     expect(script).not.toMatch(/addEventListener\(\s*["']touchmove["']/);
+    expect(script).toContain("function bindPagerPointerTracking");
+    expect(script).toContain("pagerPeekMoveOptions");
+    expect(script).toContain("function syncBottomNavViewportInset");
     expect(sharedCss).toContain(".app-topics__grid");
     expect(html).not.toMatch(/收藏|下载|分享|著录|拓片信息|相关碑刻/);
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
@@ -2665,9 +2801,13 @@ describe("mobile application preview", () => {
       '[data-detail-composition="stacked"] .app-detail__hero',
     );
     expect(sharedCss).toContain("gap: var(--yoyi-space-8)");
-    expect(sharedCss).not.toMatch(
+    expect(sharedCss).toMatch(
       /\.app-detail__media-dots \{[^}]*position:\s*absolute/,
     );
+    expect(sharedCss).toMatch(
+      /\.app-detail__media-counter:not\(\[hidden\]\) \{[^}]*opacity: 1/,
+    );
+    expect(script).not.toContain("Math.min(total, 5)");
     expect(sharedCss).toMatch(
       /\.yoyi-icon-button\.app-setting-toggle \{[^}]*min-width: 56px/,
     );
@@ -2800,9 +2940,7 @@ describe("mobile application preview", () => {
     expect(card.querySelector(".app-inscription-card__meta")?.textContent).toBe(
       "碑刻 · 北魏",
     );
-    expect(
-      card.querySelector(".app-inscription-card__desc")?.textContent,
-    ).toContain("多图碑刻条目");
+    expect(card.querySelector(".app-inscription-card__desc")).toBeNull();
     expect(
       card
         .querySelector(".app-inscription-card__arrow")
@@ -2823,6 +2961,17 @@ describe("mobile application preview", () => {
     expect(
       phone.window.document.querySelector("[data-detail-title]")?.textContent,
     ).toBe("云峰山题名");
+    expect(
+      phone.window.document.querySelector("[data-detail-summary-text]")
+        ?.textContent,
+    ).toContain("多图碑刻条目");
+    expect(
+      phone.window.document
+        .querySelector("[data-detail-info-panel]")
+        ?.contains(
+          phone.window.document.querySelector("[data-detail-summary-text]"),
+        ),
+    ).toBe(false);
   });
 
   it("keeps an open inscription detail across the 896px shell boundary", () => {
@@ -3281,6 +3430,16 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
     ).toBe("1/3");
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-index]")?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelectorAll("[data-detail-media-dots] [data-media-index]")
+        .length,
+    ).toBe(3);
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-dots]")?.hidden,
+    ).toBe(false);
     expect(document.querySelector("[data-detail-gallery]")).toBeNull();
     expect(
       document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
@@ -3296,6 +3455,9 @@ describe("mobile application preview", () => {
       infoPanel?.contains(
         document.querySelector("[data-detail-description-text]"),
       ),
+    ).toBe(false);
+    expect(
+      infoPanel?.contains(document.querySelector("[data-detail-summary-text]")),
     ).toBe(false);
 
     document.querySelector<HTMLElement>("[data-detail-back]")?.click();
@@ -3428,6 +3590,12 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>("[data-detail-sources]")?.hidden,
     ).toBe(true);
     expect(document.querySelector("[data-detail-gallery]")).toBeNull();
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-index]")?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-dots]")?.hidden,
+    ).toBe(true);
 
     const backButton =
       document.querySelector<HTMLElement>("[data-detail-back]");
@@ -3472,16 +3640,16 @@ describe("mobile application preview", () => {
 
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1/4");
+    ).toBe("1/5");
     expect(document.querySelector("[data-detail-gallery]")).toBeNull();
     expect(
       document.querySelectorAll("[data-detail-media-dots] [data-media-index]")
         .length,
-    ).toBe(4);
+    ).toBe(5);
     document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
     expect(
       document
         .querySelector("[data-detail-media-dots] .is-active")
@@ -3490,18 +3658,18 @@ describe("mobile application preview", () => {
     document.querySelector<HTMLElement>("[data-detail-media-prev]")?.click();
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1/4");
+    ).toBe("1/5");
     document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
     document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
     expect(
       document.querySelector<HTMLElement>("[data-detail-focus]")?.hidden,
     ).toBe(false);
     expect(
       document.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("2 / 4");
+    ).toBe("2 / 5");
     expect(
       document
         .querySelector<HTMLElement>("[data-detail-focus]")
@@ -3527,7 +3695,7 @@ describe("mobile application preview", () => {
     ).toBe(false);
     expect(
       document.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
   });
 
   it("pages detail media with swipe, dots, and arrow keys", () => {
@@ -3550,7 +3718,7 @@ describe("mobile application preview", () => {
       ?.click();
     expect(
       phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1/4");
+    ).toBe("1/5");
     const frame = phoneDocument.querySelector<HTMLElement>(
       "[data-detail-media-open]",
     );
@@ -3565,7 +3733,7 @@ describe("mobile application preview", () => {
     );
     expect(
       phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
     expect(
       phoneDocument
         .querySelector("[data-detail-media]")
@@ -3578,7 +3746,7 @@ describe("mobile application preview", () => {
       ?.click();
     expect(
       phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1/4");
+    ).toBe("1/5");
 
     const pc = renderPreview(
       {},
@@ -3602,7 +3770,7 @@ describe("mobile application preview", () => {
     );
     expect(
       pcDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
     pcDocument.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
     const focus = pcDocument.querySelector<HTMLElement>("[data-detail-focus]");
     const stage = pcDocument.querySelector<HTMLElement>(
@@ -3620,9 +3788,65 @@ describe("mobile application preview", () => {
     );
     expect(
       pcDocument.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("3 / 4");
+    ).toBe("3 / 5");
     expect(focus.hidden).toBe(false);
     expect(focus.classList.contains("is-pager-visible")).toBe(true);
+  });
+
+  it("keeps prototype galleries for 3, 5, and 7 images across feeds", () => {
+    const synthetic = renderPreview();
+    const syntheticDocument = synthetic.window.document;
+    syntheticDocument
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    syntheticDocument
+      .querySelector<HTMLElement>('[data-content-id="calligraphy-pine"]')
+      ?.click();
+    expect(
+      syntheticDocument.querySelector("[data-detail-title]")?.textContent,
+    ).toBe("松窗帖");
+    expect(
+      syntheticDocument.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/7");
+    expect(
+      syntheticDocument.querySelectorAll(
+        "[data-detail-media-dots] [data-media-index]",
+      ).length,
+    ).toBe(7);
+    expect(
+      syntheticDocument.querySelector<HTMLElement>("[data-detail-media-index]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      syntheticDocument
+        .querySelector("[data-detail-media]")
+        ?.classList.contains("is-pager-visible"),
+    ).toBe(false);
+
+    const p5 = renderP5Preview();
+    const p5Document = p5.window.document;
+    const expectGallery = (scope: string, contentId: string, total: number) => {
+      p5Document
+        .querySelector<HTMLElement>(`${scope} [data-content-id="${contentId}"]`)
+        ?.click();
+      expect(
+        p5Document.querySelector("[data-detail-media-index]")?.textContent,
+      ).toBe(`1/${total}`);
+      expect(
+        p5Document.querySelectorAll(
+          "[data-detail-media-dots] [data-media-index]",
+        ).length,
+      ).toBe(total);
+      p5Document.querySelector<HTMLElement>("[data-detail-back]")?.click();
+    };
+    expectGallery('[data-feed-grid="discover"]', "p5-record-01", 5);
+    p5Document
+      .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+      ?.click();
+    expectGallery('[data-view="inscriptions"]', "p5-record-01", 5);
+    expectGallery('[data-view="inscriptions"]', "p5-record-03", 7);
+    p5Document.querySelector<HTMLElement>('[data-home-feed="nearby"]')?.click();
+    expectGallery('[data-feed-grid="nearby"]', "p5-record-02", 3);
   });
 
   it("locks image swipe direction and commits Mac trackpad paging once", async () => {
@@ -3657,7 +3881,7 @@ describe("mobile application preview", () => {
     );
     expect(
       phoneDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1/4");
+    ).toBe("1/5");
 
     const pc = renderPreview(
       {},
@@ -3683,7 +3907,7 @@ describe("mobile application preview", () => {
     dispatchWheel(pc.window, stage, { deltaX: 0, deltaY: 160 });
     expect(
       pcDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("1/4");
+    ).toBe("1/5");
     dispatchWheel(pc.window, stage, { deltaX: 80, deltaY: 0 });
     dispatchWheel(pc.window, stage, { deltaX: 500, deltaY: 0 });
     dispatchWheel(pc.window, stage, { deltaX: 400, deltaY: 0 });
@@ -3692,11 +3916,11 @@ describe("mobile application preview", () => {
     });
     expect(
       pcDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
     dispatchWheel(pc.window, stage, { deltaX: 500, deltaY: 0 });
     expect(
       pcDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("2/4");
+    ).toBe("2/5");
     await new Promise<void>((resolve) => {
       pc.window.setTimeout(() => resolve(), 220);
     });
@@ -3706,7 +3930,7 @@ describe("mobile application preview", () => {
     });
     expect(
       pcDocument.querySelector("[data-detail-media-index]")?.textContent,
-    ).toBe("3/4");
+    ).toBe("3/5");
   });
 
   it("shows the phone focus page hint while swiping and keeps the last page", () => {
@@ -3761,24 +3985,25 @@ describe("mobile application preview", () => {
     expect(focus.classList.contains("is-pager-visible")).toBe(false);
     expect(
       document.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("1 / 4");
+    ).toBe("1 / 5");
 
     swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
     expect(
       document.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("2 / 4");
+    ).toBe("2 / 5");
     expect(focus.classList.contains("is-pager-visible")).toBe(true);
     hideCallbacks.at(-1)?.();
     expect(focus.classList.contains("is-pager-visible")).toBe(false);
     swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
     swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
-    expect(
-      document.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("4 / 4");
     swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
     expect(
       document.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("4 / 4");
+    ).toBe("5 / 5");
+    swipe(window, stage, { x: 280, y: 180 }, { x: 40, y: 180 }, "touch", 180);
+    expect(
+      document.querySelector("[data-detail-focus-index]")?.textContent,
+    ).toBe("5 / 5");
     expect(focus.classList.contains("is-pager-visible")).toBe(true);
     const image = document.querySelector<HTMLElement>(
       "[data-detail-focus-image]",
@@ -3844,7 +4069,7 @@ describe("mobile application preview", () => {
     expect(Number(image.style.getPropertyValue("--focus-scale"))).toBe(1);
     expect(
       document.querySelector("[data-detail-focus-index]")?.textContent,
-    ).toBe("2 / 4");
+    ).toBe("2 / 5");
     expect(focus.classList.contains("is-pager-visible")).toBe(true);
 
     tap(dom.window, image, { x: 200, y: 180 }, "mouse");
@@ -4378,6 +4603,16 @@ describe("mobile application preview", () => {
     ).toEqual(expectedP5Titles);
     expect(
       discoverCards.every(
+        (card) => card.querySelector(".app-card__description") === null,
+      ),
+    ).toBe(true);
+    expect(
+      inscriptionCards.every(
+        (card) => card.querySelector(".app-inscription-card__desc") === null,
+      ),
+    ).toBe(true);
+    expect(
+      discoverCards.every(
         (card) =>
           card.querySelector("img") &&
           card.dataset.image?.includes("design-system/assets/demo") &&
@@ -4402,8 +4637,151 @@ describe("mobile application preview", () => {
     ).toBe(true);
     expect(
       document.querySelectorAll('[data-feed-grid="nearby"] [data-open-detail]'),
-    ).toHaveLength(12);
+    ).toHaveLength(38);
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-feed-grid="nearby"] [data-open-detail]',
+        ),
+      ].some((card) => card.dataset.contentId?.startsWith("p5-record-")),
+    ).toBe(true);
     expect(document.body.textContent).toContain("秋山札");
+    expect(document.body.textContent).toContain("城北石壁");
+    expect(document.body.textContent).toContain("新疆维吾尔自治区博物馆");
+    expect(document.body.textContent).not.toContain("当前快照没有书帖");
+    expect(
+      document.querySelectorAll(
+        '[data-pager="calligraphy"] [data-pager-page="all"] [data-category]',
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-pager="calligraphy"] [data-pager-page="all"] [data-category]',
+        ),
+      ].some((card) => card.dataset.category === "ink"),
+    ).toBe(true);
+    expect(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-pager="calligraphy"] [data-pager-page="all"] [data-category]',
+        ),
+      ].some((card) => card.dataset.category === "rubbing"),
+    ).toBe(true);
+    expect(
+      document.querySelectorAll("[data-topics-grid] .app-topic-card"),
+    ).not.toHaveLength(0);
+    expect(
+      [
+        ...document.querySelectorAll(
+          "[data-topics-grid] .app-topic-card__title",
+        ),
+      ].map((node) => node.textContent),
+    ).toContain("唐");
+  });
+
+  it("adapts missing fields and unsafe media onto the current UI DTO", () => {
+    const adapter = (
+      renderPreview().window as unknown as {
+        YOYI_CATALOG_UI_ADAPTER: {
+          adaptRecord: (
+            raw: unknown,
+            options?: { demoCards?: Array<{ image: string }> },
+          ) => {
+            description?: string;
+            media: Array<{
+              height?: number;
+              origin: string;
+              src: string;
+              width?: number;
+            }>;
+            title: string;
+          };
+          demoImageIntrinsics: (
+            src: unknown,
+          ) => { height: number; width: number } | null;
+          displayText: (value: unknown) => string;
+          isUsableMediaSrc: (src: unknown) => boolean;
+        };
+      }
+    ).YOYI_CATALOG_UI_ADAPTER;
+    expect(adapter.displayText(null)).toBe("");
+    expect(adapter.displayText("undefined")).toBe("");
+    expect(adapter.isUsableMediaSrc("javascript:alert(1)")).toBe(false);
+    const adapted = adapter.adaptRecord(
+      {
+        id: "adapter-empty",
+        title: null,
+        description: null,
+        kind: "inscription",
+        media: [{ src: "javascript:alert(1)" }],
+      },
+      { demoCards: [] },
+    );
+    expect(adapted.title).toBe("条目 adapter-empty");
+    expect(adapted.description).toBeUndefined();
+    expect(adapted.media[0]?.origin).toBe("missing");
+    expect(adapted.media[0]?.src).toBe("");
+    expect(
+      adapter.demoImageIntrinsics(
+        "../../design-system/assets/demo/stone-detail.svg",
+      ),
+    ).toEqual({ width: 360, height: 610 });
+    const demoAdapted = adapter.adaptRecord(
+      {
+        id: "adapter-demo-ratio",
+        title: "比例卡",
+        kind: "inscription",
+        media: [],
+      },
+      {
+        demoCards: [
+          {
+            image: "../../design-system/assets/demo/inscription-rubbing.svg",
+          },
+        ],
+      },
+    );
+    expect(demoAdapted.media[0]?.width).toBe(600);
+    expect(demoAdapted.media[0]?.height).toBe(420);
+  });
+
+  it("opens P5 nearby and dynasty topics into the current detail and topic column", async () => {
+    const dom = renderP5Preview();
+    const document = dom.window.document;
+    document.querySelector<HTMLElement>('[data-home-feed="nearby"]')?.click();
+    const nearbyCard = document.querySelector<HTMLElement>(
+      '[data-feed-grid="nearby"] [data-content-id="p5-record-02"]',
+    );
+    nearbyCard?.click();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "唐张礼臣墓志盖",
+    );
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("新疆维吾尔自治区博物馆");
+
+    const back = document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!back) throw new Error("detail back missing");
+    await clickAndWaitForHistory(dom.window, back);
+    document.querySelector<HTMLElement>('[data-home-feed="topics"]')?.click();
+    const tangTopic = [
+      ...document.querySelectorAll<HTMLElement>(
+        "[data-topics-grid] [data-open-topic]",
+      ),
+    ].find(
+      (card) =>
+        card.querySelector(".app-topic-card__title")?.textContent === "唐",
+    );
+    tangTopic?.click();
+    expect(
+      document.querySelector("[data-topic-column-heading]")?.textContent,
+    ).toBe("唐");
+    expect(
+      document.querySelector(
+        '[data-topic-column-body] [data-content-id="p5-record-02"]',
+      )?.textContent,
+    ).toContain("唐张礼臣墓志盖");
   });
 
   it("searches P5 titles and aliases and renders rich and sparse details with virtual test media", async () => {
@@ -4453,6 +4831,14 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector("[data-detail-description-text]")?.textContent,
     ).toBe(expectedP5Descriptions.get("p5-record-27"));
+    expect(
+      document
+        .querySelector("[data-detail-info-panel]")
+        ?.contains(document.querySelector("[data-detail-description-text]")),
+    ).toBe(false);
+    expect(document.querySelector("[data-detail-title]")?.textContent).not.toBe(
+      expectedP5Descriptions.get("p5-record-27"),
+    );
     expect(
       document.querySelector("[data-detail-facts-list]")?.textContent,
     ).toContain("皇祐四年（1052年）");

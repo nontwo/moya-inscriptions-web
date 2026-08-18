@@ -17,6 +17,7 @@ const syntheticCatalogDetailRecords =
 const p5PilotRecords = Array.isArray(globalThis.YOYI_P5_PILOT_SNAPSHOT?.records)
   ? globalThis.YOYI_P5_PILOT_SNAPSHOT.records
   : [];
+const catalogAdapter = globalThis.YOYI_CATALOG_UI_ADAPTER ?? null;
 
 function selectPrototypeDataset(search) {
   return new URLSearchParams(search).get("dataset") === "p5"
@@ -24,19 +25,55 @@ function selectPrototypeDataset(search) {
     : "synthetic";
 }
 
+function displayText(value) {
+  return catalogAdapter?.displayText(value) ?? String(value ?? "").trim();
+}
+
+function mediaIntrinsics(src, width, height) {
+  const knownWidth = Number(width);
+  const knownHeight = Number(height);
+  if (knownWidth > 0 && knownHeight > 0) {
+    return { width: Math.round(knownWidth), height: Math.round(knownHeight) };
+  }
+  return catalogAdapter?.demoImageIntrinsics(src) ?? null;
+}
+
+function applyMediaIntrinsics(image, media = {}) {
+  const intrinsic = mediaIntrinsics(
+    media.src || image.src,
+    media.width,
+    media.height,
+  );
+  if (!intrinsic) return;
+  image.width = intrinsic.width;
+  image.height = intrinsic.height;
+  image.style.aspectRatio = `${intrinsic.width} / ${intrinsic.height}`;
+}
+
+function adaptCatalogRecord(raw, index) {
+  if (!catalogAdapter) {
+    return {
+      ...raw,
+      media: [],
+    };
+  }
+  return catalogAdapter.adaptRecord(raw, {
+    demoCards: supplementalHomeCards.discover,
+    index,
+  });
+}
+
 const prototypeDataset = selectPrototypeDataset(window.location.search);
-const p5CatalogDetailRecords = Object.fromEntries(
-  p5PilotRecords.map((record, index) => {
-    const demoMedia = p5PrototypeDemoMedia(record, index);
-    return [
-      record.id,
-      {
-        ...record,
-        media: demoMedia ? [demoMedia] : [],
-      },
-    ];
-  }),
+const adaptedP5Records = p5PilotRecords.map((record, index) =>
+  adaptCatalogRecord(record, index),
 );
+const p5CatalogDetailRecords = Object.fromEntries(
+  adaptedP5Records.map((record) => [record.id, record]),
+);
+const p5TopicCollections =
+  catalogAdapter && prototypeDataset === "p5"
+    ? catalogAdapter.topicCollections(adaptedP5Records)
+    : [];
 const catalogDetailRecords =
   prototypeDataset === "p5"
     ? { ...syntheticCatalogDetailRecords, ...p5CatalogDetailRecords }
@@ -143,6 +180,7 @@ const pagerMaximumVelocity = 2.4;
 const pagerViewportStableFrameTarget = 3;
 const pagerViewportSyncMaxFrames = 60;
 const pagerViewportWidthTolerance = 0.5;
+const pagerObservedWidths = new WeakMap();
 const swipeClickSuppressionWindow = 400;
 const pagerWheelIdleMs = 24;
 const pagerWheelInertiaMinEvents = 2;
@@ -387,6 +425,10 @@ let pagerViewportSyncFramesElapsed = 0;
 let pagerViewportStableFrames = 0;
 let pagerViewportPreviousWidths = [];
 let pagerResizeObserver = null;
+let lastPagerWindowWidth = window.innerWidth;
+let pagerPointerMoveMode = "";
+const pagerPeekMoveOptions = { passive: true };
+const pagerActiveMoveOptions = { passive: false };
 let masonryLayoutFrame = 0;
 let navigationMinimized = false;
 let navigationLastScrollTop = 0;
@@ -551,14 +593,14 @@ function updateDetailComposition() {
 }
 
 function catalogKindLabel(kind) {
-  return kind === "calligraphy" ? "书帖" : "碑刻";
+  return (
+    catalogAdapter?.catalogKindLabel(kind) ??
+    (kind === "calligraphy" ? "书帖" : "碑刻")
+  );
 }
 
 function regionLabel(facts) {
-  if (!facts) return "";
-  return [facts.province, facts.prefecture, facts.county]
-    .filter(Boolean)
-    .join(" · ");
+  return catalogAdapter?.regionLabel(facts) ?? "";
 }
 
 function splitDetailTokens(value) {
@@ -634,27 +676,36 @@ function renderDetailAliases(record) {
 }
 
 function detailMediaList(record) {
-  const media = Array.isArray(record?.media) ? record.media : [];
+  const media = (Array.isArray(record?.media) ? record.media : []).filter(
+    (item) => item?.src,
+  );
   if (media.length > 0) return media;
-  if (record?.representativeMedia) return [record.representativeMedia];
+  if (record?.representativeMedia?.src) return [record.representativeMedia];
   return [];
 }
 
 function fallbackCatalogRecord(contentId, trigger) {
   const title = trigger?.dataset.title ?? "";
-  const image = trigger?.dataset.image ?? "";
-  const alt = trigger?.querySelector("img")?.alt ?? title;
+  const imageNode = trigger?.querySelector("img");
+  const imageSrc =
+    trigger?.dataset.image ?? imageNode?.getAttribute("src") ?? "";
+  const alt = imageNode?.alt ?? title;
   const kind = trigger?.closest('[data-view="calligraphy"]')
     ? "calligraphy"
     : "inscription";
-  const item = image
+  const intrinsic = mediaIntrinsics(
+    imageSrc,
+    imageNode?.naturalWidth || imageNode?.width,
+    imageNode?.naturalHeight || imageNode?.height,
+  );
+  const item = imageSrc
     ? {
         alt,
-        height: 900,
+        height: intrinsic?.height,
         id: `${contentId}-media`,
         kind: "image",
-        src: image,
-        width: 1200,
+        src: imageSrc,
+        width: intrinsic?.width,
       }
     : null;
   return {
@@ -687,11 +738,12 @@ function setHidden(element, hidden) {
 }
 
 function appendFact(label, value) {
-  if (!value || !detailFactsList) return;
+  const text = displayText(value);
+  if (!text || !detailFactsList) return;
   const term = document.createElement("dt");
   term.textContent = label;
   const definition = document.createElement("dd");
-  definition.textContent = value;
+  definition.textContent = text;
   detailFactsList.append(term, definition);
 }
 
@@ -774,16 +826,17 @@ function applyDetailMedia() {
 
 function renderLoadedDetail(record) {
   showDetailPanel("loaded");
-  if (detailTitle) detailTitle.textContent = record.title ?? "";
-  if (detailSummaryText) detailSummaryText.textContent = record.summary ?? "";
-  setHidden(detailSummary, !record.summary);
+  const title = displayText(record.title);
+  const summary = displayText(record.summary);
+  const description = displayText(record.description);
+  if (detailTitle) detailTitle.textContent = title;
+  if (detailSummaryText) detailSummaryText.textContent = summary;
+  setHidden(detailSummary, !summary);
   renderDetailFacts(record);
   renderDetailKindPeriod(record);
   renderDetailAliases(record);
-  if (detailDescriptionText) {
-    detailDescriptionText.textContent = record.description ?? "";
-  }
-  setHidden(detailDescription, !record.description);
+  if (detailDescriptionText) detailDescriptionText.textContent = description;
+  setHidden(detailDescription, !description);
   renderDetailSources(record);
   applyDetailMedia();
 }
@@ -829,7 +882,7 @@ function renderMediaDots(container, total, index) {
     return;
   }
   setHidden(container, false);
-  const count = Math.min(total, 5);
+  const count = total;
   if (container.childElementCount !== count) {
     container.replaceChildren();
     for (let i = 0; i < count; i += 1) {
@@ -875,12 +928,15 @@ function applySlideImage(img, item) {
     img.hidden = true;
     img.removeAttribute("src");
     img.alt = "";
+    img.style.aspectRatio = "";
     return;
   }
   img.hidden = false;
   img.alt = item.alt ?? "";
   img.width = item.width ?? 0;
   img.height = item.height ?? 0;
+  img.style.aspectRatio =
+    item.width && item.height ? `${item.width} / ${item.height}` : "";
   if (img.getAttribute("src") !== item.src) img.src = item.src;
 }
 
@@ -1762,113 +1818,130 @@ function showView(view) {
   if (isPrimary) recalculateLayout();
 }
 
-function p5RecordSearchText(record) {
-  return [
-    record.title,
-    ...(Array.isArray(record.aliases) ? record.aliases : []),
-    catalogKindLabel(record.kind),
-    record.periodLabel,
-    ...Object.values(record.prototypeFacts ?? {}),
-    record.description,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function p5PrototypeDemoMedia(record, index) {
-  const demoCards = Array.isArray(supplementalHomeCards.discover)
-    ? supplementalHomeCards.discover
-    : [];
-  if (demoCards.length === 0) return null;
-  const demoCard = demoCards[index % demoCards.length];
-  if (!demoCard?.image) return null;
-  return {
-    alt: `虚拟测试图，与真实记录无对应关系：${record.title}`,
-    height: 900,
-    id: `${record.id}-prototype-demo-media`,
-    kind: "image",
-    src: demoCard.image,
-    width: 1200,
-  };
-}
-
-function appendP5PrototypeDemoImage(button, record, index) {
-  const demoMedia = p5PrototypeDemoMedia(record, index);
-  if (!demoMedia) return;
+function attachCardMedia(button, media) {
+  if (!media) return;
+  if (media.origin) button.dataset.mediaOrigin = media.origin;
+  if (media.src) button.dataset.image = media.src;
+  if (media.origin === "missing" || !media.src) {
+    const fallback = document.createElement("span");
+    fallback.className = "app-card__media-fallback";
+    fallback.setAttribute("role", "img");
+    fallback.setAttribute("aria-label", media.alt || "暂无图像");
+    button.append(fallback);
+    return;
+  }
   const image = document.createElement("img");
-  image.src = demoMedia.src;
-  image.alt = demoMedia.alt;
-  button.dataset.image = demoMedia.src;
-  button.dataset.mediaOrigin = "prototype-demo";
+  image.src = media.src;
+  image.alt = media.alt || "";
+  if (!button.classList.contains("app-inscription-card")) {
+    applyMediaIntrinsics(image, media);
+  }
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.addEventListener("error", () => {
+    image.classList.add("is-media-error");
+    button.classList.add("is-media-missing");
+    image.alt = displayText(media.alt) || "图像无法加载";
+  });
   button.append(image);
 }
 
-function appendP5CardCaption(button, record) {
+function appendCardCaption(button, record, role) {
   const caption = document.createElement("span");
   caption.className = "app-card__caption";
-
   const title = document.createElement("span");
   title.className = "app-card__title";
-  title.textContent = record.title;
+  title.textContent = displayText(record.title);
   caption.append(title);
-
-  if (record.periodLabel) {
+  const metaText = catalogAdapter?.cardMeta(record, role) ?? "";
+  if (metaText) {
     const meta = document.createElement("span");
     meta.className = "app-card__meta";
-    meta.textContent = record.periodLabel;
+    meta.textContent = metaText;
     caption.append(meta);
   }
-
-  if (record.description) {
-    const description = document.createElement("span");
-    description.className = "app-card__description";
-    description.textContent = record.description;
-    caption.append(description);
-  }
-
   button.append(caption);
 }
 
-function createP5HomeCard(record, index) {
+function createContentCard({
+  id,
+  title,
+  image,
+  alt,
+  meta,
+  category,
+  extraClass,
+  filterText,
+  media,
+  width,
+  height,
+}) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "app-card";
-  button.dataset.contentId = record.id;
+  button.className = extraClass ? `app-card ${extraClass}` : "app-card";
+  button.dataset.contentId = id;
   button.dataset.openDetail = "";
-  button.dataset.title = record.title;
-  appendP5PrototypeDemoImage(button, record, index);
-  appendP5CardCaption(button, record);
+  button.dataset.title = displayText(title);
+  if (image) button.dataset.image = image;
+  if (category) button.dataset.category = category;
+  if (filterText) button.dataset.calligraphyFilterText = filterText;
+  attachCardMedia(
+    button,
+    media ||
+      (image
+        ? {
+            alt: alt || displayText(title),
+            height,
+            src: image,
+            width,
+          }
+        : { origin: "missing", alt: displayText(title) }),
+  );
+  const caption = document.createElement("span");
+  caption.className = "app-card__caption";
+  const titleNode = document.createElement("span");
+  titleNode.className = "app-card__title";
+  titleNode.textContent = displayText(title);
+  caption.append(titleNode);
+  if (meta) {
+    const metaNode = document.createElement("span");
+    metaNode.className = "app-card__meta";
+    metaNode.textContent = meta;
+    caption.append(metaNode);
+  }
+  button.append(caption);
   return button;
 }
 
-function createP5InscriptionCard(record, index) {
+function createCatalogHomeCard(record, role = "discover") {
+  return createContentCard({
+    id: record.id,
+    title: displayText(record.title),
+    media: record.media?.[0],
+    meta: catalogAdapter?.cardMeta(record, role) ?? "",
+  });
+}
+
+function createCatalogInscriptionCard(record) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "app-inscription-card";
-  button.dataset.searchText = p5RecordSearchText(record);
+  button.dataset.searchText =
+    catalogAdapter?.searchText(record) ?? record.title;
   button.dataset.contentId = record.id;
   button.dataset.openDetail = "";
-  button.dataset.title = record.title;
-  appendP5PrototypeDemoImage(button, record, index);
+  button.dataset.title = displayText(record.title);
+  attachCardMedia(button, record.media?.[0]);
 
   const body = document.createElement("span");
   body.className = "app-inscription-card__body";
   const title = document.createElement("span");
   title.className = "app-inscription-card__title";
-  title.textContent = record.title;
+  title.textContent = displayText(record.title);
   const meta = document.createElement("span");
   meta.className = "app-inscription-card__meta";
-  meta.textContent = [catalogKindLabel(record.kind), record.periodLabel]
-    .filter(Boolean)
-    .join(" · ");
+  meta.textContent = catalogAdapter?.cardMeta(record, "inscription") ?? "";
   body.append(title, meta);
-
-  if (record.description) {
-    const description = document.createElement("span");
-    description.className = "app-inscription-card__desc";
-    description.textContent = record.description;
-    body.append(description);
-  }
 
   const arrow = document.createElement("span");
   arrow.className = "yoyi-icon yoyi-icon--sm app-inscription-card__arrow";
@@ -1878,22 +1951,96 @@ function createP5InscriptionCard(record, index) {
   return button;
 }
 
+function createCatalogCalligraphyCard(record) {
+  const button = createCatalogHomeCard(record, "calligraphy");
+  button.dataset.category = record.calligraphyCategory || "ink";
+  button.dataset.calligraphyFilterText =
+    catalogAdapter?.searchText(record) ?? "";
+  return button;
+}
+
+function setCatalogState(element, count) {
+  if (!element) return;
+  element.dataset.catalogState = count > 0 ? "ready" : "empty";
+}
+
+function ensureSiblingEmpty(anchor, key, message) {
+  const parent = anchor?.parentElement;
+  if (!parent) return null;
+  let empty = parent.querySelector(`[data-feed-empty="${key}"]`);
+  if (!empty) {
+    empty = document.createElement("p");
+    empty.className = "app-empty";
+    empty.dataset.feedEmpty = key;
+    empty.setAttribute("role", "status");
+    parent.append(empty);
+  }
+  empty.textContent = message;
+  return empty;
+}
+
 function renderP5CatalogCards() {
   const discover = document.querySelector('[data-feed-grid="discover"]');
+  const nearby = document.querySelector('[data-feed-grid="nearby"]');
   const inscriptions = document.querySelector(
     '[data-view="inscriptions"] .app-list',
   );
+  const inscriptionRecords =
+    catalogAdapter?.inscriptionsFrom(adaptedP5Records) ?? adaptedP5Records;
+  const nearbyRecords = catalogAdapter?.nearbyFrom(adaptedP5Records) ?? [];
+
   if (discover) {
-    discover.replaceChildren(...p5PilotRecords.map(createP5HomeCard));
+    discover.replaceChildren(
+      ...inscriptionRecords.map((record) =>
+        createCatalogHomeCard(record, "discover"),
+      ),
+    );
+    setCatalogState(discover, inscriptionRecords.length);
   }
   if (inscriptions) {
     const empty = inscriptions.querySelector("[data-search-empty]");
     inscriptions.replaceChildren(
-      ...p5PilotRecords.map(createP5InscriptionCard),
+      ...inscriptionRecords.map(createCatalogInscriptionCard),
     );
     if (empty) inscriptions.append(empty);
+    setCatalogState(inscriptions, inscriptionRecords.length);
+  }
+  if (nearby) {
+    nearbyRecords.forEach((record) => {
+      if (nearby.querySelector(`[data-content-id="${record.id}"]`)) return;
+      nearby.append(createCatalogHomeCard(record, "nearby"));
+    });
+    setCatalogState(
+      nearby,
+      nearby.querySelectorAll("[data-open-detail]").length,
+    );
   }
   recalculateLayout();
+}
+
+function bindExistingCardMediaFallback() {
+  document
+    .querySelectorAll(
+      ".app-card img, .app-topic-card img, .app-inscription-card img",
+    )
+    .forEach((image) => {
+      if (!image.closest(".app-inscription-card")) {
+        applyMediaIntrinsics(image, {
+          src: image.getAttribute("src"),
+          width: image.getAttribute("width"),
+          height: image.getAttribute("height"),
+        });
+      }
+      if (image.dataset.mediaBound === "true") return;
+      image.dataset.mediaBound = "true";
+      image.loading = image.loading || "lazy";
+      image.addEventListener("error", () => {
+        image.classList.add("is-media-error");
+        image
+          .closest(".app-card, .app-topic-card, .app-inscription-card")
+          ?.classList.add("is-media-missing");
+      });
+    });
 }
 
 function renderSupplementalHomeCards() {
@@ -1902,22 +2049,17 @@ function renderSupplementalHomeCards() {
     const cards = supplementalHomeCards[feed] ?? [];
     if (!panel || !Array.isArray(cards)) continue;
     cards.forEach((card) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "app-card";
-      button.dataset.contentId = card.id;
-      button.dataset.openDetail = "";
-      button.dataset.image = card.image;
-      button.dataset.title = card.title;
-
-      const image = document.createElement("img");
-      image.src = card.image;
-      image.alt = card.alt;
-      const title = document.createElement("span");
-      title.className = "app-card__title";
-      title.textContent = card.title;
-      button.append(image, title);
-      panel.append(button);
+      if (panel.querySelector(`[data-content-id="${card.id}"]`)) return;
+      panel.append(
+        createContentCard({
+          id: card.id,
+          title: card.title,
+          image: card.image,
+          alt: card.alt,
+          width: card.width,
+          height: card.height,
+        }),
+      );
     });
   }
   recalculateLayout();
@@ -1926,27 +2068,80 @@ function renderSupplementalHomeCards() {
 function renderSelectedDataset() {
   renderSupplementalHomeCards();
   if (prototypeDataset === "p5") renderP5CatalogCards();
+  bindExistingCardMediaFallback();
+}
+
+function findTopic(topicId) {
+  return (
+    findEditorialTopic(topicId) ??
+    p5TopicCollections.find((topic) => topic.id === topicId) ??
+    null
+  );
+}
+
+function appendTopicCardBody(button, topic, badgeLabel) {
+  const body = document.createElement("span");
+  body.className = "app-card__caption app-topic-card__body";
+  const badge = document.createElement("span");
+  badge.className = "app-topic-card__badge";
+  badge.textContent = badgeLabel;
+  const title = document.createElement("span");
+  title.className = "app-card__title app-topic-card__title";
+  title.textContent = displayText(topic.title);
+  const blurb = document.createElement("span");
+  blurb.className = "app-card__meta app-topic-card__blurb";
+  blurb.textContent = displayText(topic.blurb);
+  body.append(badge, title, blurb);
+  button.append(body);
+}
+
+function renderAdaptedTopicCard(topic) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "app-card app-topic-card";
+  button.dataset.openTopic = topic.id;
+  button.dataset.kind = topic.kind;
+  button.dataset.contentId = topic.id;
+  attachCardMedia(button, {
+    alt: topic.coverAlt || displayText(topic.title),
+    src: topic.cover,
+    origin: topic.cover ? "prototype-demo" : "missing",
+  });
+  appendTopicCardBody(button, topic, "专题");
+  button.addEventListener("click", () => openTopicColumn(topic.id));
+  return button;
 }
 
 function renderTopicsFeed() {
   if (!topicsGrid) return;
   topicsGrid.replaceChildren();
+  if (prototypeDataset === "p5") {
+    p5TopicCollections.forEach((topic) => {
+      topicsGrid.append(renderAdaptedTopicCard(topic));
+    });
+    setCatalogState(topicsGrid, p5TopicCollections.length);
+    const empty = ensureSiblingEmpty(
+      topicsGrid,
+      "topics",
+      "当前快照没有可按朝代归组的专题",
+    );
+    if (empty) empty.hidden = p5TopicCollections.length > 0;
+    recalculateLayout();
+    return;
+  }
   editorialTopics.forEach((topic) => {
     if (topic.kind !== "editorialTopic") return;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "app-topic-card";
+    button.className = "app-card app-topic-card";
     button.dataset.openTopic = topic.id;
     button.dataset.kind = topic.kind;
     button.dataset.contentId = topic.id;
-    button.innerHTML = `
-      <img src="${topic.cover}" alt="${topic.coverAlt}" />
-      <span class="app-topic-card__body">
-        <span class="app-topic-card__badge">专题/策展</span>
-        <span class="app-topic-card__title">${topic.title}</span>
-        <span class="app-topic-card__blurb">${topic.blurb}</span>
-      </span>
-    `;
+    attachCardMedia(button, {
+      alt: topic.coverAlt || displayText(topic.title),
+      src: topic.cover,
+    });
+    appendTopicCardBody(button, topic, "专题/策展");
     button.addEventListener("click", () => openTopicColumn(topic.id));
     topicsGrid.append(button);
   });
@@ -1999,22 +2194,42 @@ function renderTopicBlock(block) {
 }
 
 function openTopicColumn(topicId, { updateHistory = true } = {}) {
-  const topic = findEditorialTopic(topicId);
-  if (!topic || topic.kind !== "editorialTopic") return;
+  const topic = findTopic(topicId);
+  if (!topic) return;
+  if (topic.kind !== "editorialTopic" && topic.kind !== "catalogCollection") {
+    return;
+  }
   saveScrollPosition();
   if (topicColumnHeading) topicColumnHeading.textContent = topic.title;
   if (topicColumnBody) {
     topicColumnBody.replaceChildren();
     const title = document.createElement("h1");
-    title.textContent = topic.title;
+    title.textContent = displayText(topic.title);
     topicColumnBody.append(title);
     const badge = document.createElement("p");
     badge.className = "app-topic-card__badge";
-    badge.textContent = "专题/策展";
+    badge.textContent =
+      topic.kind === "catalogCollection" ? "专题" : "专题/策展";
     topicColumnBody.append(badge);
-    topic.blocks.forEach((block) => {
-      topicColumnBody.append(renderTopicBlock(block));
-    });
+    if (topic.kind === "catalogCollection") {
+      const blurb = document.createElement("p");
+      blurb.textContent = displayText(topic.blurb);
+      topicColumnBody.append(blurb);
+      const list = document.createElement("div");
+      list.className = "app-topic-column__records";
+      adaptedP5Records
+        .filter((record) => topic.recordIds.includes(record.id))
+        .forEach((record) => {
+          const card = createCatalogHomeCard(record, "discover");
+          card.addEventListener("click", () => openDetail(card));
+          list.append(card);
+        });
+      topicColumnBody.append(list);
+    } else {
+      topic.blocks.forEach((block) => {
+        topicColumnBody.append(renderTopicBlock(block));
+      });
+    }
     topicColumnBody.scrollTop = 0;
   }
   showView("topic-column");
@@ -2378,8 +2593,14 @@ function navTabWidth() {
   return Math.max(1, entries[0]?.offsetWidth || 1);
 }
 
-function lockPrimaryShellHeight(_controller) {
-  // Height locking clipped list content during PC scroll; keep the hook for tests.
+function lockPrimaryShellHeight(controller) {
+  if (controller.id !== "primary") return;
+  if (root.dataset.platform !== "pc") return;
+  const height = Math.max(
+    controller.surface.offsetHeight || 0,
+    window.innerHeight || 0,
+  );
+  if (height > 0) controller.surface.style.height = `${height}px`;
 }
 
 function unlockPrimaryShellHeight(controller) {
@@ -2671,11 +2892,18 @@ function intendedMasonryColumns(container) {
     const width = Math.max(0, masonryMeasureWidth(container));
     const gap = masonryGapPx(container);
     const minCard = 220;
+    const maxCard = 320;
     if (width < 32) return 3;
-    return Math.max(
+    let columns = Math.max(
       3,
-      Math.min(6, Math.floor((width + gap) / (minCard + gap))),
+      Math.min(8, Math.floor((width + gap) / (minCard + gap))),
     );
+    let colWidth = (width - gap * Math.max(0, columns - 1)) / columns;
+    while (columns < 8 && colWidth > maxCard) {
+      columns += 1;
+      colWidth = (width - gap * Math.max(0, columns - 1)) / columns;
+    }
+    return columns;
   }
   return layout === "single" ? 1 : 2;
 }
@@ -2714,6 +2942,7 @@ function clearMasonryItemStyles(container) {
   masonryItems(container).forEach((item) => {
     item.style.removeProperty("position");
     item.style.removeProperty("width");
+    item.style.removeProperty("max-width");
     item.style.removeProperty("left");
     item.style.removeProperty("top");
     item.style.removeProperty("margin");
@@ -2741,10 +2970,12 @@ function layoutMasonry(container) {
   }
   const gap = masonryGapPx(container);
   const colWidth = (innerWidth - gap * Math.max(0, columns - 1)) / columns;
+  if (!(colWidth > 0)) return;
   const heights = Array.from({ length: columns }, () => 0);
   items.forEach((item) => {
     item.style.position = "absolute";
     item.style.width = `${colWidth}px`;
+    item.style.maxWidth = "100%";
     item.style.margin = "0";
     const col = heights.indexOf(Math.min(...heights));
     const x = padLeft + col * (colWidth + gap);
@@ -2829,6 +3060,11 @@ function layoutContextLabel() {
 function recalculateLayout() {
   syncMasonryColumnHints();
   syncInscriptionGrid();
+  const active = activeMasonryContainer();
+  if (active && !masonryViewHidden(active)) {
+    bindMasonryImages(active);
+    layoutMasonry(active);
+  }
   scheduleMasonryLayout();
 }
 
@@ -2846,10 +3082,11 @@ function pcWheelPagerEnabled() {
 }
 
 function isPcHorizontalWheel(event) {
+  if (!pcWheelPagerEnabled() || event.ctrlKey) return false;
+  const deltaX = Math.abs(event.deltaX);
+  const deltaY = Math.abs(event.deltaY);
   return (
-    pcWheelPagerEnabled() &&
-    !event.ctrlKey &&
-    Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    deltaX > deltaY * carouselDirectionRatio && deltaX >= pagerAxisLockDistance
   );
 }
 
@@ -2875,7 +3112,11 @@ function beginPcPagerFollow(controller) {
   markTabStripFollowing(controller, true);
   lockPrimaryShellHeight(controller);
   setPagerPageState(controller, activeIndex, true);
-  setPagerOffset(controller, -activeIndex * pagerWidth(controller));
+  const fallback = -activeIndex * pagerWidth(controller);
+  const offset = Number.isFinite(controller.currentOffset)
+    ? controller.currentOffset
+    : fallback;
+  setPagerOffset(controller, offset);
 }
 
 function endPcPagerFollow(controller) {
@@ -2944,6 +3185,16 @@ function schedulePcWheelSettle() {
   }, pagerWheelIdleMs);
 }
 
+function pagerGestureIsLive() {
+  if (activeWheelGesture || activePagerGesture || navPagerGesture) return true;
+  if (anyPagerFollowing()) return true;
+  return [...pagerControllers.values()].some(
+    (controller) =>
+      controller.track.classList.contains("is-settling") ||
+      controller.track.classList.contains("is-dragging"),
+  );
+}
+
 function handlePagerWheel(event, controller) {
   if (controller.id === "primary") {
     const inner = event.target.closest?.(
@@ -2953,7 +3204,14 @@ function handlePagerWheel(event, controller) {
   } else {
     event.stopPropagation();
   }
-  if (!isPcHorizontalWheel(event)) return;
+  const continuing =
+    activeWheelGesture && activeWheelGesture.controller === controller;
+  if (event.ctrlKey) return;
+  if (!continuing && !isPcHorizontalWheel(event)) return;
+  if (continuing && Math.abs(event.deltaX) < Math.abs(event.deltaY)) {
+    event.preventDefault();
+    return;
+  }
 
   event.preventDefault();
   if (shouldIgnorePcWheel(controller)) return;
@@ -3053,26 +3311,24 @@ function prefersReducedPagerMotion() {
 function concludePagerSpring(controller) {
   controller.animationId = 0;
   controller.track.classList.remove("is-settling");
-  markTabStripFollowing(controller, false);
-  controller.surface.classList.remove("is-pager-following");
-  unlockPrimaryShellHeight(controller);
-  if (controller.id === "primary") {
-    setPagerPageState(
-      controller,
-      controller.values.indexOf(controller.current()),
-      false,
-    );
-    parkPrimaryTrackIfIdle(controller);
-    recalculateLayout();
-  }
-  syncTabStripForPager(controller);
-  if (!touchPagerEnabled() && isPagerFollowing(controller)) {
+  if (controller.id === "primary" || pcWheelPagerEnabled()) {
     endPcPagerFollow(controller);
+  } else {
+    markTabStripFollowing(controller, false);
+    controller.surface.classList.remove("is-pager-following");
+    setPagerOffset(
+      controller,
+      -controller.values.indexOf(controller.current()) * pagerWidth(controller),
+    );
+    syncTabStripForPager(controller);
   }
+  recalculateLayout();
 }
 
 function startPagerSpring(controller, targetOffset, initialVelocity = 0) {
   cancelPagerSpring(controller);
+  if (controller.id === "primary") beginPrimaryPagerFollow(controller);
+  else if (pcWheelPagerEnabled()) beginPcPagerFollow(controller);
   markTabStripFollowing(controller, true);
   if (prefersReducedPagerMotion()) {
     setPagerOffset(controller, targetOffset);
@@ -3233,6 +3489,9 @@ function selectHomeFeed(value, { animate = false, velocity = 0 } = {}) {
     button.setAttribute("aria-selected", String(selected));
   });
   const controller = pagerControllers.get("home");
+  if (animate && controller && pcWheelPagerEnabled()) {
+    beginPcPagerFollow(controller);
+  }
   if (controller) syncPager(controller, { animate, velocity });
   else {
     document.querySelectorAll("[data-feed-panel]").forEach((panel) => {
@@ -3262,6 +3521,9 @@ function selectCalligraphyCategory(
   });
   filterCalligraphy();
   const controller = pagerControllers.get("calligraphy");
+  if (animate && controller && pcWheelPagerEnabled()) {
+    beginPcPagerFollow(controller);
+  }
   if (controller) syncPager(controller, { animate, velocity });
   if (changed && primaryView === "calligraphy") {
     restoreScrollPosition("calligraphy");
@@ -3274,7 +3536,10 @@ function selectCalligraphyCategory(
 }
 
 function cancelActivePagerGesture({ animate = true } = {}) {
-  if (!activePagerGesture) return;
+  if (!activePagerGesture) {
+    unbindPagerPointerTracking();
+    return;
+  }
   const { controller, pointerId, axis } = activePagerGesture;
   try {
     if (controller.surface.hasPointerCapture?.(pointerId)) {
@@ -3284,6 +3549,7 @@ function cancelActivePagerGesture({ animate = true } = {}) {
     // Pointer capture can disappear when the browser cancels the gesture.
   }
   activePagerGesture = null;
+  unbindPagerPointerTracking();
   if (axis !== "horizontal") {
     controller.track.classList.remove("is-dragging");
     return;
@@ -3354,6 +3620,37 @@ function pagerPointerAllowed(controller, event) {
   return touchPagerEnabled() && event.pointerType === "touch";
 }
 
+function unbindPagerPointerTracking() {
+  window.removeEventListener(
+    "pointermove",
+    onPagerPointerMove,
+    pagerPeekMoveOptions,
+  );
+  window.removeEventListener(
+    "pointermove",
+    onPagerPointerMove,
+    pagerActiveMoveOptions,
+  );
+  window.removeEventListener("pointerup", completePagerGesture);
+  window.removeEventListener("pointercancel", onPagerPointerCancel);
+  pagerPointerMoveMode = "";
+}
+
+function bindPagerPointerTracking(mode) {
+  if (pagerPointerMoveMode === mode) return;
+  unbindPagerPointerTracking();
+  pagerPointerMoveMode = mode;
+  const moveOptions =
+    mode === "active" ? pagerActiveMoveOptions : pagerPeekMoveOptions;
+  window.addEventListener("pointermove", onPagerPointerMove, moveOptions);
+  window.addEventListener("pointerup", completePagerGesture);
+  window.addEventListener("pointercancel", onPagerPointerCancel);
+}
+
+function onPagerPointerCancel() {
+  cancelActivePagerGesture();
+}
+
 function beginPagerGesture(event, controller) {
   if (!pagerPointerAllowed(controller, event)) return;
   if (!event.isPrimary) {
@@ -3381,9 +3678,10 @@ function beginPagerGesture(event, controller) {
     samples: [{ time: pagerEventTime(event), x: event.clientX }],
     width,
   };
+  bindPagerPointerTracking("peek");
 }
 
-function movePagerGesture(event) {
+function onPagerPointerMove(event) {
   const gesture = activePagerGesture;
   if (!gesture || gesture.pointerId !== event.pointerId) return;
   if (!event.isPrimary) {
@@ -3398,6 +3696,7 @@ function movePagerGesture(event) {
     }
     if (Math.abs(deltaY) >= Math.abs(deltaX)) {
       activePagerGesture = null;
+      unbindPagerPointerTracking();
       return;
     }
     gesture.axis = "horizontal";
@@ -3406,13 +3705,14 @@ function movePagerGesture(event) {
     if (gesture.controller.id === "primary") {
       beginPrimaryPagerFollow(gesture.controller);
     }
+    bindPagerPointerTracking("active");
     try {
       gesture.controller.surface.setPointerCapture?.(gesture.pointerId);
     } catch {
       // Some embedded browsers expose pointer capture before fully supporting it.
     }
   }
-  event.preventDefault();
+  if (pagerPointerMoveMode === "active") event.preventDefault();
   addPagerVelocitySample(gesture, event);
   const minimumOffset = -(gesture.controller.values.length - 1) * gesture.width;
   let offset = gesture.startOffset + deltaX;
@@ -3464,6 +3764,7 @@ function completePagerGesture(event) {
     return;
   }
   activePagerGesture = null;
+  unbindPagerPointerTracking();
   if (gesture.axis !== "horizontal") return;
   try {
     if (gesture.controller.surface.hasPointerCapture?.(gesture.pointerId)) {
@@ -3639,13 +3940,8 @@ pagerControllers.forEach((controller) => {
   controller.surface.addEventListener("pointerdown", (event) =>
     beginPagerGesture(event, controller),
   );
-  controller.surface.addEventListener("pointermove", movePagerGesture, {
-    passive: false,
-  });
   controller.surface.addEventListener("pointerup", completePagerGesture);
-  controller.surface.addEventListener("pointercancel", () =>
-    cancelActivePagerGesture(),
-  );
+  controller.surface.addEventListener("pointercancel", onPagerPointerCancel);
   controller.surface.addEventListener(
     "click",
     (event) => suppressSwipeClick(event, controller.surface),
@@ -3883,6 +4179,7 @@ function onPlatformQueryChange() {
   const previousComposition = detailView?.dataset.detailComposition;
   syncPlatformAttribute();
   updateDetailComposition();
+  syncBottomNavViewportInset();
   cancelActivePagerGesture({ animate: false });
   syncAllPagers();
   resetNavigationScrollTracking();
@@ -3915,9 +4212,64 @@ function onNavGeometryChange() {
   });
 }
 
+function pagerObservedWidthChanged(entries) {
+  let changed = false;
+  entries.forEach((entry) => {
+    const width = entry.contentRect?.width;
+    if (!Number.isFinite(width)) {
+      changed = true;
+      return;
+    }
+    const previous = pagerObservedWidths.get(entry.target);
+    pagerObservedWidths.set(entry.target, width);
+    if (
+      previous != null &&
+      Math.abs(width - previous) > pagerViewportWidthTolerance
+    ) {
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function syncBottomNavViewportInset() {
+  if (!bottomNavigation) return;
+  if (root.dataset.platform === "pc") {
+    bottomNavigation.style.removeProperty("--app-bottom-nav-viewport-inset");
+    root.style.removeProperty("--app-bottom-nav-viewport-inset");
+    return;
+  }
+  const viewport = window.visualViewport;
+  if (!viewport) {
+    bottomNavigation.style.removeProperty("--app-bottom-nav-viewport-inset");
+    root.style.removeProperty("--app-bottom-nav-viewport-inset");
+    return;
+  }
+  const inset = Math.max(
+    0,
+    window.innerHeight - viewport.height - viewport.offsetTop,
+  );
+  const value = `${inset}px`;
+  bottomNavigation.style.setProperty("--app-bottom-nav-viewport-inset", value);
+  root.style.setProperty("--app-bottom-nav-viewport-inset", value);
+}
+
+function onWindowSizeChange() {
+  if (pagerGestureIsLive()) return;
+  if (
+    Math.abs(window.innerWidth - lastPagerWindowWidth) <=
+    pagerViewportWidthTolerance
+  ) {
+    return;
+  }
+  onPagerViewportChange();
+}
+
 function onPagerViewportChange() {
+  lastPagerWindowWidth = window.innerWidth;
   saveScrollPosition();
   updateDetailComposition();
+  syncBottomNavViewportInset();
   onNavGeometryChange();
   cancelActivePagerGesture({ animate: false });
   pagerControllers.forEach((controller) => cancelPagerSpring(controller));
@@ -3974,20 +4326,24 @@ function onPagerViewportChange() {
 
 function observePagerSizes() {
   if (typeof window.ResizeObserver !== "function") return;
-  pagerResizeObserver = new window.ResizeObserver(() => {
-    if (anyPagerFollowing()) {
-      scheduleMasonryLayout();
-      return;
-    }
+  pagerResizeObserver = new window.ResizeObserver((entries) => {
+    if (pagerGestureIsLive()) return;
+    if (entries.length > 0 && !pagerObservedWidthChanged(entries)) return;
     onPagerViewportChange();
   });
   pagerControllers.forEach((controller) => {
     pagerResizeObserver.observe(controller.surface);
   });
 }
-window.addEventListener("resize", onPagerViewportChange);
+window.addEventListener("resize", onWindowSizeChange);
 window.addEventListener("orientationchange", onPagerViewportChange);
-window.visualViewport?.addEventListener("resize", onPagerViewportChange);
+window.visualViewport?.addEventListener("resize", () => {
+  syncBottomNavViewportInset();
+  onWindowSizeChange();
+});
+window.visualViewport?.addEventListener("scroll", syncBottomNavViewportInset, {
+  passive: true,
+});
 document.addEventListener("scroll", onNavigationScroll, true);
 document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
   scrollElement.addEventListener(
@@ -4040,6 +4396,7 @@ renderTopicsFeed();
 selectHomeFeed(homeFeed);
 selectCalligraphyCategory(calligraphyCategory);
 filterInscriptions("");
+filterCalligraphy();
 applyThemePreference(themePreference, { persist: false });
 applyHomeFeedLayout(homeFeedLayout, { persist: false });
 window
@@ -4049,6 +4406,7 @@ window
     logQaEvent("theme", `系统主题 ${event.matches ? "深色" : "浅色"}`);
   });
 resetNavigationScrollTracking();
+syncBottomNavViewportInset();
 
 const bootDetailId = bootHash.startsWith("#detail-")
   ? decodeURIComponent(bootHash.slice("#detail-".length))

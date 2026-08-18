@@ -137,9 +137,9 @@ html {
     .app-primary-shell.is-pager-following
     > .app-pager__track
     > .app-view:not(.is-pager-active) {
-    height: auto;
-    min-height: 100dvh;
-    max-height: none;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
     overflow: hidden;
   }
 
@@ -213,10 +213,6 @@ html {
   .app-topbar--categories {
     grid-template-columns: auto minmax(12rem, 1fr) 52px;
     gap: var(--yoyi-space-4);
-  }
-
-  .app-topics {
-    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
   }
 
   .app-topic-card__title {
@@ -317,30 +313,36 @@ html {
     padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
   }
 
-  [data-view="home"] .app-card {
+  [data-view="home"] .app-card,
+  [data-view="home"] .app-topic-card {
     overflow: visible;
     background: transparent;
     box-shadow: none;
   }
 
-  [data-view="home"] .app-card img {
+  [data-view="home"] .app-card img,
+  [data-view="home"] .app-topic-card img {
     min-height: 0;
     border-radius: var(--app-content-radius);
     box-shadow: var(--app-elevation-content);
     transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
   }
 
-  [data-view="home"] .app-card__title {
+  [data-view="home"] .app-card__title,
+  [data-view="home"] .app-topic-card__title {
     padding: var(--yoyi-space-2) 2px 0;
-    text-align: center;
+    text-align: left;
     font-size: var(--app-feed-title-size);
     font-weight: 600;
     line-height: 1.35;
   }
 
-  .app-card {
-    display: grid;
+  .app-card,
+  .app-topic-card {
+    display: flex;
+    flex-direction: column;
     width: 100%;
+    max-width: 100%;
     margin: 0;
   }
 
@@ -475,20 +477,20 @@ html {
 
   @media (hover: hover) and (pointer: fine) {
     [data-view="home"] .app-card:hover,
+    [data-view="home"] .app-topic-card:hover,
     .app-calligraphy-grid .app-card:hover,
-    .app-inscription-card:hover,
-    .app-topic-card:hover {
+    .app-inscription-card:hover {
       z-index: 2;
       transform: translateY(-2px);
     }
 
     [data-view="home"] .app-card:hover img,
+    [data-view="home"] .app-topic-card:hover img,
     .app-calligraphy-grid .app-card:hover img {
       box-shadow: var(--app-elevation-content-hover);
     }
 
-    .app-inscription-card:hover,
-    .app-topic-card:hover {
+    .app-inscription-card:hover {
       box-shadow: var(--app-elevation-content-hover);
     }
 
@@ -592,6 +594,21 @@ html {
 
   .app-scroll.app-pager.is-pager-following {
     overflow: hidden;
+  }
+
+  .app-scroll.app-pager:not(.is-pager-following)
+    > .app-pager__track:not(.is-dragging):not(.is-settling) {
+    transform: none !important;
+  }
+
+  .app-scroll.app-pager:not(.is-pager-following)
+    > .app-pager__track
+    > .app-pager__page.is-pager-active {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    overflow: visible;
   }
 
   .app-scroll.app-pager.is-pager-following .app-pager__track {
@@ -722,10 +739,6 @@ html {
 
   [data-view="inscriptions"] .app-list {
     padding-inline: var(--yoyi-space-7);
-  }
-
-  .app-detail__media-frame img {
-    max-height: min(75dvh, 820px);
   }
 }
 

@@ -28,24 +28,24 @@
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260818-calligraphy-first-layout"
+      href="./preview.shared.css?v=20260819-media-pager"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260818-calligraphy-first-layout"
+      href="./preview.css?v=20260819-media-pager"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260818-calligraphy-first-layout"
+      href="./preview.tablet.css?v=20260819-media-pager"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260818-calligraphy-first-layout"
+      href="./preview.pc.css?v=20260819-media-pager"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -395,9 +395,6 @@
                           <span class="app-inscription-card__meta"
                             >碑刻 · 北魏</span
                           >
-                          <span class="app-inscription-card__desc"
-                            >多图碑刻条目，用来核对图库切换与当前位置。</span
-                          >
                         </span>
                         <span
                           class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
@@ -450,9 +447,6 @@
                           <span class="app-inscription-card__meta"
                             >碑刻 · 北魏</span
                           >
-                          <span class="app-inscription-card__desc"
-                            >长说明与多来源并陈，用来核对详情阅读宽度。</span
-                          >
                         </span>
                         <span
                           class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow"
@@ -479,9 +473,6 @@
                           >
                           <span class="app-inscription-card__meta"
                             >碑刻 · 唐</span
-                          >
-                          <span class="app-inscription-card__desc"
-                            >高窄摩崖，用来核对着录图像的竖向比例。</span
                           >
                         </span>
                         <span
@@ -1094,14 +1085,14 @@
                       aria-label="下一张图像"
                       hidden
                     ></button>
+                    <div
+                      class="app-detail__media-dots"
+                      data-detail-media-dots
+                      hidden
+                      role="tablist"
+                      aria-label="图像分页"
+                    ></div>
                   </div>
-                  <div
-                    class="app-detail__media-dots"
-                    data-detail-media-dots
-                    hidden
-                    role="tablist"
-                    aria-label="图像分页"
-                  ></div>
                 </div>
                 <div
                   class="app-detail__identity app-detail__info-panel"
@@ -1116,20 +1107,20 @@
                     <p class="app-detail__aliases-label">又名</p>
                     <p data-detail-aliases-text></p>
                   </div>
-                  <section
-                    class="app-detail__section"
-                    data-detail-summary
-                    hidden
-                  >
-                    <h2>简介</h2>
-                    <p data-detail-summary-text></p>
-                  </section>
                   <section class="app-detail__section" data-detail-facts hidden>
                     <h2>基本资料</h2>
                     <dl class="app-detail__facts" data-detail-facts-list></dl>
                   </section>
                 </div>
               </div>
+              <section
+                class="app-detail__section app-detail__reading"
+                data-detail-summary
+                hidden
+              >
+                <h2>简介</h2>
+                <p data-detail-summary-text></p>
+              </section>
               <section
                 class="app-detail__section app-detail__reading"
                 data-detail-description
@@ -1394,6 +1385,7 @@
     <script src="./fixtures/topics.placeholder.js"></script>
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
     <script src="./fixtures/p5-pilot.snapshot.js"></script>
-    <script src="./preview.js?v=20260818-p5-prototype-demo-media"></script>
+    <script src="./catalog-ui-adapter.js?v=20260819-media-pager"></script>
+    <script src="./preview.js?v=20260819-media-pager"></script>
   </body>
 </html>

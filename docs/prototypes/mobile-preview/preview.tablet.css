@@ -2,7 +2,17 @@
 
 [data-device-class="phone"] .mobile-app,
 [data-device-class="tablet"] .mobile-app {
-  touch-action: pan-x pan-y;
+  touch-action: pan-y;
+}
+
+.mobile-app {
+  height: 100svh;
+  max-height: 100dvh;
+  overflow: visible;
+}
+
+.app-primary-shell {
+  overflow-x: clip;
 }
 
 .app-scroll {
@@ -58,6 +68,23 @@
   display: none;
 }
 
+.app-bottom-navigation.yoyi-mobile-bottom-navigation {
+  position: fixed;
+  top: auto;
+  right: var(--app-bottom-nav-side-gap);
+  bottom: calc(
+    var(--app-bottom-nav-viewport-inset, 0px) +
+      max(var(--yoyi-space-3), env(safe-area-inset-bottom))
+  );
+  left: var(--app-bottom-nav-side-gap);
+  display: grid;
+  width: auto;
+  max-width: var(--app-bottom-nav-max-width);
+  margin-inline: auto;
+  overflow: visible;
+  transform: none;
+}
+
 /* Tablet: full-bleed shell, keep bottom navigation, widen content. */
 @media (min-width: 48rem) {
   .app-stage {
@@ -88,15 +115,15 @@
     column-count: auto;
     column-width: auto;
     padding: var(--yoyi-space-5) var(--yoyi-space-5);
+    padding-bottom: var(--app-bottom-nav-clearance);
   }
 
-  .app-topics {
-    padding: var(--yoyi-space-5);
-  }
-
-  .app-card {
-    display: grid;
+  .app-card,
+  .app-topic-card {
+    display: flex;
+    flex-direction: column;
     width: 100%;
+    max-width: 100%;
     margin: 0;
   }
 
@@ -105,10 +132,7 @@
     max-width: none;
     margin-inline: 0;
     padding: var(--yoyi-space-5);
-    padding-bottom: calc(
-      var(--yoyi-space-5) + var(--app-bottom-nav-min-height, 56px) +
-        env(safe-area-inset-bottom) + 12px
-    );
+    padding-bottom: var(--app-bottom-nav-clearance);
   }
 
   .app-categories {
@@ -163,10 +187,11 @@
   html[data-platform="tablet"] {
     --app-inscription-thumb: 104px;
     --app-inscription-card-height: 112px;
+    --app-bottom-nav-min-height: 56px;
   }
 
-  .app-view {
-    padding-bottom: env(safe-area-inset-bottom);
+  html[data-platform="tablet"] .app-view {
+    padding-bottom: 0;
     padding-left: 0;
   }
 
@@ -174,15 +199,21 @@
     .app-bottom-navigation.yoyi-mobile-bottom-navigation {
     position: fixed;
     top: auto;
-    right: 0;
-    bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
-    left: 0;
+    right: var(--app-bottom-nav-side-gap);
+    bottom: calc(
+      var(--app-bottom-nav-viewport-inset, 0px) +
+        max(var(--yoyi-space-3), env(safe-area-inset-bottom))
+    );
+    left: var(--app-bottom-nav-side-gap);
     display: grid;
+    width: auto;
+    max-width: var(--app-bottom-nav-max-width);
     grid-auto-rows: auto;
     align-content: stretch;
     justify-items: stretch;
     border-radius: calc(var(--yoyi-radius-full) / 2);
     margin-inline: auto;
+    overflow: visible;
     transform: none;
   }
 
@@ -191,10 +222,7 @@
     --app-bottom-nav-max-width: 480px;
     --app-bottom-nav-side-gap: var(--yoyi-space-8);
     --app-bottom-nav-min-height: 56px;
-    width: min(
-      calc(100vw - (var(--app-bottom-nav-side-gap) * 2)),
-      var(--app-bottom-nav-max-width)
-    );
+    width: auto;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     height: auto;
     min-height: var(--app-bottom-nav-min-height);
@@ -219,11 +247,14 @@
 
   html[data-platform="tablet"]
     .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
+    left: 50%;
+    right: auto;
     width: 44px;
     min-width: 44px;
     max-width: 44px;
     height: 44px;
     min-height: 44px;
+    margin-left: -22px;
     padding: 0;
     grid-template-columns: 1fr;
     place-items: center;
