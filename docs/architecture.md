@@ -217,8 +217,11 @@ import/apply基础已完成；正式产品业务仍未完成：
   storage/CDN和真实Media ingestion仍不在当前实现内。
 - T06-A已建立Web server-side Public HTTP data boundary；T06-B.1已实现formal
   request-time Home orchestration与可替换semantic presentation
-  seam；T06-B.2已在不改变transport/loader的前提下接入T02
-  token、共享UI、三端底部浮动主导航和正式Home四状态视觉。T07–T09仍是后续工作。
+  seam；T06-B.2已在不改变transport/loader的前提下接入T02 token、Home
+  tabs、本地presentation preferences、branded loading、responsive content
+  wall、PublicMedia退化和带active bubble/scroll
+  minimize的三端底部浮动主导航。Catalog数据仍由Server
+  Component持有；T07–T09仍是后续工作。
 - Importer Admin workflow与正式/production Catalog数据导入仍不在当前实现内。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service

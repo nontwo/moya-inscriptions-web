@@ -23,8 +23,11 @@ time加载Catalog状态，因此build不读取runtime API configuration或固化
 `HomeScreen`只接收`HomeCatalogState`并渲染populated、empty、unavailable和unexpected-error四种正式视觉状态。它不执行HTTP或业务映射；视觉替换没有改变transport、mapper或loader。
 
 T06-B.2使用`@moya/design-tokens/theme.css`、`@moya/ui/styles.css`和共享
-`ResponsiveNavigation`的`floating-bottom`
-composition。手机、平板和PC均显示底部浮动主导航；首页可用，碑刻与书帖在对应任务开始前保持原生disabled。Search、Detail与客户端Catalog
+`ResponsiveNavigation`的`floating-bottom` composition，productionize merged
+T02的Home tabs、全屏Settings、branded loading、Catalog content wall与带active
+bubble/scroll
+minimize的浮动主导航。发现/Home可用；附近、专题、碑刻与书帖在对应任务开始前保持原生disabled。Settings只在浏览器本地保存system/light/dark主题和phone/tablet
+single/double布局偏好，不持有Catalog数据。Search、Detail与客户端Catalog
 fetch均未引入。
 
 Web通过`@moya/ui`的workspace source export消费本地共享组件；CSS同样使用package
@@ -33,8 +36,8 @@ rewriting，Web只transpile `@moya/ui`这一个本地包。这样fresh
 `pnpm --filter web dev`不依赖ignored `dist/`，而完整`pnpm build`仍按Turbo
 workspace dependency graph构建共享包。
 
-Catalog卡片保持API顺序、不可点击并只读取Public
-DTO。代表图只使用`PublicMedia.src`与intrinsic
+Catalog卡片保持API顺序、不可点击，只显示title、可选periodLabel和Public
+Media。代表图只使用`PublicMedia.src`与intrinsic
 dimensions；缺图和加载失败均在card内安全退化，不组合object key或storage URL。
 
 当前仍不冻结cache/revalidation、retry或timeout策略。

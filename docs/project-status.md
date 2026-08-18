@@ -43,7 +43,7 @@ migration；`main`继续保留稳定的T00/治理基线。
 | 响应式产品原型  | 非生产参考（持续演进）        | 同一 URL 验证手机、平板和 PC 壳层；不连接 Reader、数据库、搜索或生产图片                                                                                                  |
 | T06-A           | 已完成并合并                  | Web server-only Public HTTP boundary、Catalog list runtime validation与纯Home Catalog状态映射                                                                             |
 | T06-B.1         | 已实现                        | request-time Home loader与可替换的四状态语义presentation seam                                                                                                             |
-| T06-B.2         | 已实现                        | T02 token/shared UI、三端底部浮动主导航、正式responsive Catalog cards、PublicMedia/no-media与四状态视觉；等待Owner review/merge                                           |
+| T06-B.2         | 已实现                        | T02 Home tabs、local Settings、branded loading、responsive Catalog wall、PublicMedia退化及active-bubble底部导航                                                           |
 | T07–T09         | 未开始                        | 浏览、搜索和详情                                                                                                                                                          |
 
 MEDIA-01已完成并合并（CLOSED / PASS）：Catalog Media

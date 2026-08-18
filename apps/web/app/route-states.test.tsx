@@ -8,8 +8,9 @@ describe("root route lifecycle states", () => {
   it("renders a branded loading state without technical details", () => {
     const markup = renderToStaticMarkup(<Loading />);
 
-    expect(markup).toContain("摩崖碑刻数字档案");
-    expect(markup).toContain("正在加载公开档案");
+    expect(markup).toContain("志于道，据于德，依于仁，游于艺");
+    expect(markup).toContain('aria-label="正在加载公开档案"');
+    expect(markup).not.toContain("摩崖碑刻数字档案");
     expect(markup).not.toMatch(/stack|database|MOYA_PUBLIC_API_BASE_URL/i);
   });
 

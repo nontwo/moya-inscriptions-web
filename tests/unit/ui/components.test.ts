@@ -118,6 +118,14 @@ describe("public controls", () => {
         .getByRole("navigation")
         .classList.contains("yoyi-functional-glass"),
     ).toBe(true);
+    expect(
+      screen.getByRole("navigation").querySelector(".yoyi-nav-bubble"),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("navigation")
+        .style.getPropertyValue("--yoyi-nav-active-index"),
+    ).toBe("1");
   });
 
   it("supports an all-viewport floating bottom composition without desktop Search", () => {
@@ -151,6 +159,7 @@ describe("public controls", () => {
   });
 
   it("minimizes phone navigation on downward scroll and restores it", () => {
+    vi.useFakeTimers();
     function NavigationHarness() {
       const scrollContainerRef = useRef<HTMLDivElement>(null);
       return createElement(
@@ -177,22 +186,37 @@ describe("public controls", () => {
       );
     }
 
-    render(createElement(NavigationHarness));
-    const navigation = screen.getByRole("navigation");
-    const scrollContainer = screen.getByTestId("scroll-container");
+    try {
+      render(createElement(NavigationHarness));
+      const navigation = screen.getByRole("navigation");
+      const scrollContainer = screen.getByTestId("scroll-container");
 
-    scrollContainer.scrollTop = 13;
-    fireEvent.scroll(scrollContainer);
-    expect(navigation.getAttribute("data-minimized")).toBe("true");
+      scrollContainer.scrollTop = 40;
+      fireEvent.scroll(scrollContainer);
+      expect(navigation.getAttribute("data-minimized")).toBe("true");
 
-    scrollContainer.scrollTop = 4;
-    fireEvent.scroll(scrollContainer);
-    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+      scrollContainer.scrollTop = 20;
+      fireEvent.scroll(scrollContainer);
+      expect(navigation.getAttribute("data-minimized")).toBe("true");
 
-    scrollContainer.scrollTop = 20;
-    fireEvent.scroll(scrollContainer);
-    fireEvent.click(screen.getByRole("button", { name: "首页" }));
-    expect(navigation.hasAttribute("data-minimized")).toBe(false);
+      scrollContainer.scrollTop = 15;
+      fireEvent.scroll(scrollContainer);
+      expect(navigation.hasAttribute("data-minimized")).toBe(false);
+
+      scrollContainer.scrollTop = 40;
+      fireEvent.scroll(scrollContainer);
+      expect(navigation.getAttribute("data-minimized")).toBe("true");
+      act(() => vi.advanceTimersByTime(400));
+      expect(navigation.hasAttribute("data-minimized")).toBe(false);
+
+      scrollContainer.scrollTop = 60;
+      fireEvent.scroll(scrollContainer);
+      expect(navigation.getAttribute("data-minimized")).toBe("true");
+      fireEvent.click(screen.getByRole("button", { name: "首页" }));
+      expect(navigation.hasAttribute("data-minimized")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("only creates a desktop brand link when the caller supplies one", () => {

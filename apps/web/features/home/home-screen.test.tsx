@@ -45,8 +45,16 @@ describe("HomeScreen", () => {
 
     const markup = renderToStaticMarkup(<HomeScreen state={state} />);
 
-    expect(markup).toContain("公开档案");
+    expect(markup).toContain("目录内容");
+    expect(markup).toContain("首页内容范围");
+    expect(markup).toContain("发现");
+    expect(markup).toContain("附近");
+    expect(markup).toContain("专题");
+    expect(markup).toContain("打开设置");
     expect(markup).toContain("云峰山刻石");
+    expect(markup).not.toContain("公开摘要");
+    expect(markup).not.toContain("摩崖碑刻数字档案");
+    expect(markup).not.toContain("在纸墨与山石之间");
     expect(markup).toContain(
       'src="https://media.example.invalid/catalog-001.jpg"',
     );
@@ -109,7 +117,11 @@ describe("HomeScreen", () => {
     expect(markup).not.toContain('catalog-first"');
     expect(markup).toContain('aria-label="碑刻"');
     expect(markup).toContain('aria-label="书帖"');
-    expect(markup.match(/disabled=""/g)).toHaveLength(2);
+    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+    expect(markup).toContain('aria-selected="true"');
+    expect(markup.match(/aria-selected="false"/g)).toHaveLength(2);
+    expect(markup).not.toContain('href="/nearby"');
+    expect(markup).not.toContain('href="/topics"');
   });
 
   it.each([

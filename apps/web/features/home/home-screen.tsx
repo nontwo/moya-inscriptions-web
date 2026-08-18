@@ -1,14 +1,7 @@
-import {
-  Card,
-  ContentSection,
-  Icon,
-  MasonryLikeGrid,
-  PageContainer,
-  ResponsiveNavigation,
-  YoyiLogo,
-} from "@moya/ui";
+import { Icon, ResponsiveNavigation } from "@moya/ui";
 
 import { CatalogMedia } from "./catalog-media";
+import { HomePreferences } from "./home-preferences";
 import styles from "./home-screen.module.css";
 
 import type { CatalogPage, CatalogSummary } from "@moya/contracts";
@@ -19,46 +12,50 @@ export interface HomeScreenProps {
 }
 
 const CatalogItem = ({ item }: { item: CatalogSummary }) => (
-  <Card className={styles.card} role="listitem">
+  <article className={styles.card} role="listitem">
     <CatalogMedia media={item.representativeMedia} />
     <div className={styles.cardBody}>
       <h3>{item.title}</h3>
       {item.periodLabel === undefined ? null : (
         <p className={styles.period}>{item.periodLabel}</p>
       )}
-      {item.summary === undefined ? null : (
-        <p className={styles.summary}>{item.summary}</p>
-      )}
     </div>
-  </Card>
+  </article>
 );
 
 const PopulatedCatalog = ({ page }: { page: CatalogPage }) => (
-  <ContentSection
-    aria-label="公开档案"
-    className={styles.catalogSection}
-    title="公开档案"
-  >
-    <MasonryLikeGrid density="compact" role="list">
+  <section aria-labelledby="catalog-heading" className={styles.catalogSection}>
+    <h2 className="yoyi-visually-hidden" id="catalog-heading">
+      目录内容
+    </h2>
+    <div className={styles.wall} role="list">
       {page.items.map((item) => (
         <CatalogItem key={item.id} item={item} />
       ))}
-    </MasonryLikeGrid>
-  </ContentSection>
+    </div>
+  </section>
 );
 
 const navigationItems = [
-  { id: "home", label: "首页", labelMark: "nav-home", href: "/" },
+  {
+    id: "home",
+    label: "首页",
+    labelMark: "nav-home",
+    icon: "home",
+    href: "/",
+  },
   {
     id: "inscriptions",
     label: "碑刻",
     labelMark: "nav-inscriptions",
+    icon: "inscriptions",
     disabled: true,
   },
   {
     id: "calligraphy",
     label: "书帖",
     labelMark: "nav-calligraphy",
+    icon: "calligraphy",
     disabled: true,
   },
 ] as const;
@@ -124,22 +121,47 @@ export const HomeScreen = ({ state }: HomeScreenProps) => {
 
   return (
     <div className={styles.shell}>
-      <PageContainer className={styles.page}>
-        <header className={styles.brand}>
-          <YoyiLogo label="由艺" />
-          <div>
-            <p>由艺</p>
-            <h1>摩崖碑刻数字档案</h1>
-            <p>在纸墨与山石之间，浏览公开的碑刻与书迹档案。</p>
-          </div>
-        </header>
-        <main>{content}</main>
-      </PageContainer>
+      <header className={styles.homeTopBar}>
+        <div
+          aria-label="首页内容范围"
+          className={styles.homeTabs}
+          role="tablist"
+        >
+          <button
+            aria-selected="true"
+            className={styles.activeTab}
+            role="tab"
+            type="button"
+          >
+            发现
+          </button>
+          <button
+            aria-disabled="true"
+            aria-selected="false"
+            disabled
+            role="tab"
+            type="button"
+          >
+            附近
+          </button>
+          <button
+            aria-disabled="true"
+            aria-selected="false"
+            disabled
+            role="tab"
+            type="button"
+          >
+            专题
+          </button>
+        </div>
+        <HomePreferences />
+      </header>
+      <main className={styles.main}>{content}</main>
       <ResponsiveNavigation
         activeId="home"
         composition="floating-bottom"
         items={[...navigationItems]}
-        minimizeBehavior="never"
+        minimizeBehavior="on-scroll-down"
       />
     </div>
   );

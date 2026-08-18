@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type HTMLAttributes,
   type ReactNode,
@@ -243,6 +244,7 @@ export function MobileBottomNavigation({
   minimizeBehavior = "never",
   scrollContainerRef,
   className,
+  style,
   ...props
 }: MobileBottomNavigationProps) {
   const [minimized, setMinimized] = useState(false);
@@ -267,6 +269,26 @@ export function MobileBottomNavigation({
     let lastScrollTop = readScrollTop();
     let downwardTravel = 0;
     let upwardTravel = 0;
+    let idleRestoreTimer = 0;
+
+    const clearIdleRestore = () => {
+      if (!idleRestoreTimer) return;
+      window.clearTimeout(idleRestoreTimer);
+      idleRestoreTimer = 0;
+    };
+
+    const updateMinimized = (value: boolean) => {
+      minimizedRef.current = value;
+      setMinimized(value);
+    };
+
+    const scheduleIdleRestore = () => {
+      clearIdleRestore();
+      idleRestoreTimer = window.setTimeout(() => {
+        idleRestoreTimer = 0;
+        updateMinimized(false);
+      }, 400);
+    };
 
     const handleScroll = () => {
       const scrollTop = readScrollTop();
@@ -276,7 +298,8 @@ export function MobileBottomNavigation({
       if (scrollTop <= 8) {
         downwardTravel = 0;
         upwardTravel = 0;
-        setMinimized(false);
+        clearIdleRestore();
+        updateMinimized(false);
         return;
       }
 
@@ -285,29 +308,45 @@ export function MobileBottomNavigation({
         upwardTravel = 0;
         if (!minimizedRef.current && downwardTravel >= 12) {
           downwardTravel = 0;
-          setMinimized(true);
+          updateMinimized(true);
         }
+        if (minimizedRef.current) scheduleIdleRestore();
       } else if (delta < 0) {
         upwardTravel -= delta;
         downwardTravel = 0;
-        if (minimizedRef.current && upwardTravel >= 8) {
+        if (minimizedRef.current && upwardTravel >= 24) {
           upwardTravel = 0;
-          setMinimized(false);
+          clearIdleRestore();
+          updateMinimized(false);
         }
       }
     };
 
     eventTarget.addEventListener("scroll", handleScroll, { passive: true });
-    return () => eventTarget.removeEventListener("scroll", handleScroll);
+    return () => {
+      clearIdleRestore();
+      eventTarget.removeEventListener("scroll", handleScroll);
+    };
   }, [minimizeBehavior, scrollContainerRef]);
 
   const handleActivate = (item: NavigationItem) => {
     if (minimized && item.id === activeId) {
+      minimizedRef.current = false;
       setMinimized(false);
       return true;
     }
     return false;
   };
+
+  const activeIndex = Math.max(
+    0,
+    items.findIndex((item) => item.id === activeId),
+  );
+  const navigationStyle = {
+    ...style,
+    "--yoyi-nav-active-index": activeIndex,
+    "--yoyi-nav-item-count": Math.max(items.length, 1),
+  } as CSSProperties;
 
   return (
     <nav
@@ -322,7 +361,9 @@ export function MobileBottomNavigation({
       data-minimize-behavior={minimizeBehavior}
       data-minimized={minimized || undefined}
       data-yoyi-ui="mobile-bottom-navigation"
+      style={navigationStyle}
     >
+      <span aria-hidden="true" className="yoyi-nav-bubble" />
       {items.map((item) => (
         <NavigationEntry
           active={item.id === activeId}

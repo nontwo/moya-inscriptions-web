@@ -50,7 +50,7 @@ describe("formal Home page orchestration", () => {
         state: "populated",
         page: { ...emptyPage, total: 1, totalPages: 1 },
       },
-      expectedText: "公开档案",
+      expectedText: "目录内容",
     },
     {
       state: { state: "empty", page: emptyPage },

@@ -22,3 +22,13 @@ button,
 a {
   font: inherit;
 }
+
+@media (max-width: 55.999rem) {
+  html {
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar {
+    display: none;
+  }
+}

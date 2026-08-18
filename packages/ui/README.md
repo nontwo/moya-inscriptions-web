@@ -28,7 +28,8 @@ key与storage配置。分类和导航均由配置数组驱动。底部固定导�
 显式传入；未传入时只显示品牌，不推断应用路由。包内仅包含正式品牌、图标、字标和纹理资产，不携带虚构藏品图或完整应用状态。
 
 `ResponsiveNavigation composition="floating-bottom"`只渲染同一底部浮动主导航并保持其在phone、tablet和PC可见，不渲染desktop
-top-nav或Search。默认`responsive`模式与
+top-nav或Search。该导航保留独立active
+bubble；`minimizeBehavior="on-scroll-down"`提供domain-neutral的滚动收拢、向上/idle恢复和点击当前项恢复。默认`responsive`模式与
 `DesktopTopNavigation`继续作为向后兼容API保留。
 
 workspace应用通过package source
