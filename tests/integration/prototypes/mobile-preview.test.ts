@@ -2590,7 +2590,9 @@ describe("mobile application preview", () => {
     expect(html).toContain(
       'href="./preview.shared.css?v=20260818-calligraphy-first-layout"',
     );
-    expect(html).toContain('src="./preview.js?v=20260818-p5-pilot-snapshot"');
+    expect(html).toContain(
+      'src="./preview.js?v=20260818-p5-prototype-demo-media"',
+    );
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(script).toContain("mediaFocusClosedAt");
     expect(script).toContain("mediaOpenSawPointer");
@@ -4376,12 +4378,26 @@ describe("mobile application preview", () => {
     ).toEqual(expectedP5Titles);
     expect(
       discoverCards.every(
-        (card) => !card.querySelector("img") && !card.dataset.image,
+        (card) =>
+          card.querySelector("img") &&
+          card.dataset.image?.includes("design-system/assets/demo") &&
+          card.dataset.mediaOrigin === "prototype-demo",
       ),
     ).toBe(true);
     expect(
       inscriptionCards.every(
-        (card) => !card.querySelector("img") && !card.dataset.image,
+        (card) =>
+          card.querySelector("img") &&
+          card.dataset.image?.includes("design-system/assets/demo") &&
+          card.dataset.mediaOrigin === "prototype-demo",
+      ),
+    ).toBe(true);
+    expect(
+      discoverCards.every((card) =>
+        card
+          .querySelector("img")
+          ?.getAttribute("alt")
+          ?.startsWith("虚拟测试图，与真实记录无对应关系："),
       ),
     ).toBe(true);
     expect(
@@ -4390,7 +4406,7 @@ describe("mobile application preview", () => {
     expect(document.body.textContent).toContain("秋山札");
   });
 
-  it("searches P5 titles and aliases and renders rich and sparse no-media details", async () => {
+  it("searches P5 titles and aliases and renders rich and sparse details with virtual test media", async () => {
     const dom = renderP5Preview();
     const document = dom.window.document;
     document
@@ -4446,10 +4462,13 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>("[data-detail-media-fallback]")
         ?.hidden,
-    ).toBe(false);
+    ).toBe(true);
     expect(
-      document.querySelector("[data-detail-image]")?.hasAttribute("src"),
-    ).toBe(false);
+      document.querySelector("[data-detail-image]")?.getAttribute("src"),
+    ).toContain("design-system/assets/demo");
+    expect(
+      document.querySelector("[data-detail-image]")?.getAttribute("alt"),
+    ).toBe("虚拟测试图，与真实记录无对应关系：北宋毕昇墓碑");
 
     const back = document.querySelector<HTMLElement>("[data-detail-back]");
     if (!back) throw new Error("detail back missing");

@@ -67,8 +67,12 @@ Detail：返回隐藏主导航、保留来源滚动，并在 895 /
 批准输入的 canonical SHA-256 为
 `adb139588625a9447aadfa242efbd1bfd35de00befa99338ba265b7a9511d3ed`，记录数为 28。Research 仓库始终是权威来源；该快照不得被
 `apps/web`、backend 或任何生产链路消费，也不构成 Public
-Contract、API、数据库或导入器集成。P5 当前没有建立 Catalog
-Media，因此每条记录都沿用原型已有的无媒体语义：`media: []`，没有代表图、演示图或占位媒体。
+Contract、API、数据库或导入器集成。确定性快照仍忠实保留批准来源的无媒体语义：每条记录均为
+`media: []`，且没有
+`representativeMedia`。为继续测试图片卡片、详情主图和响应式布局，P5 运行时展示层会循环复用原有合成 QA 图片；这些图片以
+`data-media-origin="prototype-demo"`
+标记，替代文本明确说明其与真实记录没有对应关系。虚拟图片不会写回快照，不是 P5 来源数据、Catalog
+Media、占位媒体或生产媒体。
 
 ## 样式隔离
 

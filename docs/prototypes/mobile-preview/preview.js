@@ -26,7 +26,16 @@ function selectPrototypeDataset(search) {
 
 const prototypeDataset = selectPrototypeDataset(window.location.search);
 const p5CatalogDetailRecords = Object.fromEntries(
-  p5PilotRecords.map((record) => [record.id, record]),
+  p5PilotRecords.map((record, index) => {
+    const demoMedia = p5PrototypeDemoMedia(record, index);
+    return [
+      record.id,
+      {
+        ...record,
+        media: demoMedia ? [demoMedia] : [],
+      },
+    ];
+  }),
 );
 const catalogDetailRecords =
   prototypeDataset === "p5"
@@ -1766,6 +1775,34 @@ function p5RecordSearchText(record) {
     .join(" ");
 }
 
+function p5PrototypeDemoMedia(record, index) {
+  const demoCards = Array.isArray(supplementalHomeCards.discover)
+    ? supplementalHomeCards.discover
+    : [];
+  if (demoCards.length === 0) return null;
+  const demoCard = demoCards[index % demoCards.length];
+  if (!demoCard?.image) return null;
+  return {
+    alt: `虚拟测试图，与真实记录无对应关系：${record.title}`,
+    height: 900,
+    id: `${record.id}-prototype-demo-media`,
+    kind: "image",
+    src: demoCard.image,
+    width: 1200,
+  };
+}
+
+function appendP5PrototypeDemoImage(button, record, index) {
+  const demoMedia = p5PrototypeDemoMedia(record, index);
+  if (!demoMedia) return;
+  const image = document.createElement("img");
+  image.src = demoMedia.src;
+  image.alt = demoMedia.alt;
+  button.dataset.image = demoMedia.src;
+  button.dataset.mediaOrigin = "prototype-demo";
+  button.append(image);
+}
+
 function appendP5CardCaption(button, record) {
   const caption = document.createElement("span");
   caption.className = "app-card__caption";
@@ -1792,25 +1829,27 @@ function appendP5CardCaption(button, record) {
   button.append(caption);
 }
 
-function createP5HomeCard(record) {
+function createP5HomeCard(record, index) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "app-card app-card--text-only";
+  button.className = "app-card";
   button.dataset.contentId = record.id;
   button.dataset.openDetail = "";
   button.dataset.title = record.title;
+  appendP5PrototypeDemoImage(button, record, index);
   appendP5CardCaption(button, record);
   return button;
 }
 
-function createP5InscriptionCard(record) {
+function createP5InscriptionCard(record, index) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "app-inscription-card app-inscription-card--text-only";
+  button.className = "app-inscription-card";
   button.dataset.searchText = p5RecordSearchText(record);
   button.dataset.contentId = record.id;
   button.dataset.openDetail = "";
   button.dataset.title = record.title;
+  appendP5PrototypeDemoImage(button, record, index);
 
   const body = document.createElement("span");
   body.className = "app-inscription-card__body";

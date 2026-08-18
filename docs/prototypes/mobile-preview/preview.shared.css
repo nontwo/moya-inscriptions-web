@@ -373,11 +373,6 @@ html[data-platform="pc"] {
   line-height: 1.4;
 }
 
-.app-card--text-only .app-card__caption {
-  min-height: 92px;
-  align-content: start;
-}
-
 .app-card__description {
   display: -webkit-box;
   overflow: hidden;
@@ -585,11 +580,6 @@ html[data-platform="pc"] {
   object-position: center;
   background: var(--yoyi-color-background-muted);
   border-radius: calc(var(--app-content-radius) - 6px);
-}
-
-.app-inscription-card--text-only {
-  grid-template-columns: minmax(0, 1fr) 22px;
-  padding-inline-start: 12px;
 }
 
 .app-inscription-card__body {
