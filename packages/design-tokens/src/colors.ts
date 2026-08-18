@@ -27,6 +27,7 @@ export const semanticColorNames = [
   "info",
   "overlay",
   "shadow-subtle",
+  "shadow-elevated",
   "shadow-dialog",
 ] as const;
 
@@ -62,6 +63,7 @@ export const lightTheme = {
   info: "#456C79",
   overlay: "rgba(31, 29, 25, 0.46)",
   "shadow-subtle": "0 2px 12px rgba(53, 45, 34, 0.08)",
+  "shadow-elevated": "0 10px 32px rgba(53, 45, 34, 0.18)",
   "shadow-dialog": "0 18px 48px rgba(53, 45, 34, 0.22)",
 } as const satisfies SemanticColorTheme;
 
@@ -94,6 +96,7 @@ export const darkTheme = {
   info: "#7BA4B4",
   overlay: "rgba(10, 10, 9, 0.64)",
   "shadow-subtle": "0 2px 16px rgba(0, 0, 0, 0.24)",
+  "shadow-elevated": "0 12px 36px rgba(0, 0, 0, 0.38)",
   "shadow-dialog": "0 18px 56px rgba(0, 0, 0, 0.42)",
 } as const satisfies SemanticColorTheme;
 

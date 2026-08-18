@@ -110,6 +110,7 @@ describe("design tokens", () => {
     expect(css).toContain('[data-theme="dark"]');
     expect(css).toContain("@media (prefers-color-scheme: dark)");
     expect(css).toContain(':root:not([data-theme="light"])');
+    expect(css).toContain("--yoyi-shadow-elevated:");
     expect(css).toContain("--yoyi-material-glass-regular-background:");
     expect(css).toContain("--yoyi-material-glass-fallback-background:");
     expect(css).toContain("--yoyi-blur-glass-regular: 20px");

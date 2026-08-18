@@ -238,7 +238,7 @@ html {
   --app-content-radius: 16px;
   --app-masonry-gap: 8px;
   --app-elevation-content: var(--yoyi-shadow-subtle);
-  --app-elevation-content-hover: var(--yoyi-shadow-subtle);
+  --app-elevation-content-hover: var(--yoyi-shadow-elevated);
   --app-elevation-panel: var(--yoyi-shadow-dialog);
   --app-nav-transition-duration: 320ms;
   --app-nav-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
@@ -251,7 +251,7 @@ html[data-platform="tablet"] {
   --app-content-radius: 16px;
   --app-masonry-gap: 12px;
   --app-elevation-content: var(--yoyi-shadow-subtle);
-  --app-elevation-content-hover: var(--yoyi-shadow-subtle);
+  --app-elevation-content-hover: var(--yoyi-shadow-elevated);
   --app-inscription-thumb: 112px;
   --app-inscription-card-height: 120px;
 }
@@ -260,7 +260,7 @@ html[data-platform="pc"] {
   --app-content-radius: 18px;
   --app-masonry-gap: 16px;
   --app-elevation-content: var(--yoyi-shadow-subtle);
-  --app-elevation-content-hover: var(--yoyi-shadow-subtle);
+  --app-elevation-content-hover: var(--yoyi-shadow-elevated);
   --app-inscription-thumb: 128px;
   --app-inscription-card-height: 128px;
 }
