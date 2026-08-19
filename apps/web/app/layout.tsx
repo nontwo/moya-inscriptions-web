@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import "@moya/design-tokens/theme.css";
 import "@moya/ui/styles.css";
 
-import { presentationPreferenceBootstrap } from "../features/home/presentation-preferences";
+import { devicePlatformBootstrap } from "../product-shell/device-platform";
+import { presentationPreferenceBootstrap } from "../product-shell/presentation-preferences";
 
 import "./globals.css";
 
@@ -21,7 +22,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: presentationPreferenceBootstrap,
+            __html: `${presentationPreferenceBootstrap}\n${devicePlatformBootstrap}`,
           }}
         />
       </head>

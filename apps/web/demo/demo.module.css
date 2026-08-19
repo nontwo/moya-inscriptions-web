@@ -1,0 +1,600 @@
+.surface {
+  display: grid;
+  min-block-size: 0;
+  block-size: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.scroll {
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding-block-end: calc(76px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.searchTopBar,
+.calligraphyTopBar {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  min-block-size: calc(52px + env(safe-area-inset-top));
+  align-items: end;
+  gap: 8px;
+  padding: env(safe-area-inset-top) 8px 4px;
+  background: var(--yoyi-color-background-page);
+  border-block-end: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.searchTopBar {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.calligraphyTopBar {
+  grid-template-columns: minmax(0, 1fr) auto 44px;
+}
+
+.search,
+.calligraphySearch {
+  inline-size: 100%;
+}
+
+.categories {
+  display: grid;
+  min-inline-size: 0;
+  grid-template-columns: repeat(3, minmax(56px, 1fr));
+}
+
+.categories button {
+  position: relative;
+  min-block-size: 44px;
+  color: var(--yoyi-color-text-tertiary);
+  background: transparent;
+  border: 0;
+  font-weight: 600;
+}
+
+.categories .selectedTab {
+  color: var(--yoyi-color-text-primary);
+}
+
+.categories .selectedTab::after {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-end: 5px;
+  inline-size: 18px;
+  block-size: 2px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: 2px;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.contentCard {
+  display: flex;
+  inline-size: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  text-align: start;
+  background: var(--yoyi-color-background-surface);
+  border: 0;
+  border-radius: 16px;
+  box-shadow: var(--yoyi-shadow-subtle);
+  cursor: pointer;
+  break-inside: avoid;
+  transition:
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.cardImage,
+.mediaFallback {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  block-size: auto;
+  background: var(--yoyi-color-background-muted);
+  border-radius: 16px;
+  object-fit: contain;
+}
+
+.mediaFallback {
+  aspect-ratio: 4 / 3;
+}
+
+.cardCaption {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px 11px;
+}
+
+.cardTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cardMeta {
+  color: var(--yoyi-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.inscriptionList {
+  display: grid;
+  gap: 10px;
+  padding: 10px 8px;
+}
+
+.inscriptionCard {
+  display: grid;
+  min-block-size: 96px;
+  grid-template-columns: 112px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 0 0;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  text-align: start;
+  background: var(--yoyi-color-background-surface);
+  border: 0;
+  border-radius: 16px;
+  box-shadow: var(--yoyi-shadow-subtle);
+  cursor: pointer;
+}
+
+.inscriptionCard img,
+.inscriptionFallback {
+  inline-size: 112px;
+  block-size: 96px;
+  background: var(--yoyi-color-background-muted);
+  object-fit: cover;
+}
+
+.inscriptionBody {
+  display: grid;
+  gap: 5px;
+}
+
+.inscriptionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.empty {
+  margin: 0;
+  padding: 56px 16px;
+  color: var(--yoyi-color-text-secondary);
+  text-align: center;
+}
+
+html[data-platform="phone"] .calligraphyTopBar {
+  grid-template-areas:
+    "tabs tabs settings"
+    "search search search";
+  grid-template-columns: 1fr 1fr 44px;
+}
+
+html[data-platform="phone"] .categories {
+  grid-area: tabs;
+}
+
+html[data-platform="phone"] .calligraphySearch {
+  grid-area: search;
+}
+
+html[data-platform="pc"] .surface {
+  display: block;
+  block-size: auto;
+  overflow: visible;
+}
+
+html[data-platform="pc"] .scroll {
+  overflow: visible;
+}
+
+html[data-platform="pc"] .searchTopBar,
+html[data-platform="pc"] .calligraphyTopBar {
+  position: sticky;
+  inset-block-start: 0;
+  min-block-size: calc(68px + env(safe-area-inset-top));
+  align-items: center;
+  padding-inline: var(--yoyi-space-5);
+}
+
+html[data-platform="pc"] .inscriptionList {
+  gap: 14px;
+  padding: var(--yoyi-space-5) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+}
+
+html[data-platform="pc"] .inscriptionCard {
+  min-block-size: 120px;
+  grid-template-columns: 180px minmax(0, 1fr) 32px;
+}
+
+html[data-platform="pc"] .inscriptionCard img,
+html[data-platform="pc"] .inscriptionFallback {
+  inline-size: 180px;
+  block-size: 120px;
+}
+
+html[data-platform="pc"] .contentCard {
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-platform="pc"] .cardImage,
+html[data-platform="pc"] .mediaFallback {
+  border-radius: 18px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+html[data-platform="pc"] .cardCaption {
+  padding: var(--yoyi-space-2) 2px 0;
+}
+
+html[data-platform="pc"] .cardTitle {
+  font-size: 0.75rem;
+}
+
+html[data-platform="pc"] .cardMeta {
+  font-size: 0.625rem;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .contentCard:hover,
+  .inscriptionCard:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentCard,
+  .inscriptionCard {
+    transition-duration: 1ms;
+  }
+}
+
+.detail,
+.topicDetail {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  min-block-size: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+}
+
+.detailTopBar {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  min-block-size: calc(52px + env(safe-area-inset-top));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: end;
+  padding: env(safe-area-inset-top) 8px 0;
+  background: var(--yoyi-color-background-page);
+  border-block-end: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.detailTopBar h1 {
+  align-self: center;
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 44px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailScroll,
+.topicScroll {
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.detailLifecycle {
+  display: grid;
+  min-block-size: 0;
+  place-items: center;
+  padding: 32px;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.detailComposition {
+  display: grid;
+  gap: 14px;
+  padding: 10px 8px 32px;
+}
+
+.detailMediaStage {
+  position: relative;
+  display: grid;
+  min-block-size: clamp(260px, 48dvh, 520px);
+  place-items: center;
+  overflow: hidden;
+  background: var(--yoyi-color-background-muted);
+  border-radius: 18px;
+  box-shadow: var(--yoyi-shadow-subtle);
+  touch-action: pan-y;
+}
+
+.detailImageButton,
+.viewerImageButton {
+  display: grid;
+  inline-size: 100%;
+  block-size: 100%;
+  padding: 0;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+}
+
+.detailImageButton img {
+  max-inline-size: 100%;
+  max-block-size: clamp(260px, 48dvh, 520px);
+  object-fit: contain;
+}
+
+.detailMediaFallback {
+  display: grid;
+  min-block-size: 260px;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.mediaCounter,
+.viewerCounter {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-end: 10px;
+  padding: 3px 8px;
+  color: white;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.mediaArrow {
+  position: absolute;
+  inset-block-start: 50%;
+  display: grid;
+  inline-size: 38px;
+  block-size: 38px;
+  place-items: center;
+  color: var(--yoyi-color-text-primary);
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-surface) 84%,
+    transparent
+  );
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
+.mediaArrow:disabled {
+  opacity: 0.32;
+}
+
+.mediaArrowPrevious {
+  inset-inline-start: 8px;
+}
+
+.mediaArrowNext {
+  inset-inline-end: 8px;
+}
+
+.mediaDots {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-end: 10px;
+  display: flex;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.mediaDots button {
+  inline-size: 7px;
+  block-size: 7px;
+  padding: 0;
+  background: rgb(255 255 255 / 58%);
+  border: 0;
+  border-radius: 50%;
+}
+
+.mediaDots button[aria-selected="true"] {
+  background: white;
+  transform: scale(1.25);
+}
+
+.detailPaper {
+  display: grid;
+  gap: 18px;
+  padding: 18px 16px 24px;
+  background: var(--yoyi-color-background-surface);
+  border-radius: 18px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.detailIdentity {
+  display: grid;
+  gap: 5px;
+}
+
+.detailIdentity h2,
+.detailIdentity p,
+.detailSummary,
+.detailReading h3,
+.detailReading p {
+  margin: 0;
+}
+
+.detailIdentity h2 {
+  font-family: var(--yoyi-font-content);
+  font-size: clamp(1.5rem, 5vw, 2.25rem);
+  line-height: 1.35;
+}
+
+.detailIdentity p,
+.detailSummary {
+  color: var(--yoyi-color-text-secondary);
+}
+
+.detailReading {
+  display: grid;
+  gap: 10px;
+  line-height: 1.8;
+}
+
+.detailReading h3 {
+  font-size: 15px;
+}
+
+.facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.facts div {
+  display: grid;
+  grid-template-columns: 5em minmax(0, 1fr);
+  gap: 10px;
+}
+
+.facts dt {
+  color: var(--yoyi-color-text-tertiary);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.sources {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 1.3em;
+}
+
+.sources li span {
+  display: block;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.viewer {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: rgb(15 14 12 / 94%);
+  touch-action: none;
+}
+
+.viewerImageButton {
+  cursor: zoom-out;
+}
+
+.viewerImageButton img {
+  max-inline-size: 94vw;
+  max-block-size: 92dvh;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 42px rgb(0 0 0 / 48%));
+  transition: transform 160ms ease;
+}
+
+.topicArticle {
+  inline-size: min(100%, 760px);
+  margin-inline: auto;
+  padding: 12px 12px 48px;
+  font-family: var(--yoyi-font-content);
+  font-size: 16px;
+  line-height: 1.9;
+}
+
+.topicArticle > img,
+.topicArticle figure img {
+  inline-size: 100%;
+  block-size: auto;
+  border-radius: 18px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.topicArticle figure {
+  margin: 24px 0;
+}
+
+.topicArticle figcaption {
+  color: var(--yoyi-color-text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.topicBlurb {
+  color: var(--yoyi-color-text-secondary);
+  font-size: 18px;
+}
+
+.topicArticle blockquote {
+  margin: 24px 0;
+  padding: 10px 18px;
+  color: var(--yoyi-color-text-secondary);
+  border-inline-start: 3px solid var(--yoyi-color-seal-red);
+}
+
+.videoPlaceholder {
+  display: grid;
+  min-block-size: 180px;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: 16px;
+}
+
+html[data-platform="pc"] .detailComposition {
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.75fr);
+  align-items: start;
+  gap: 24px;
+  padding: 24px clamp(24px, 4vw, 72px) 56px;
+}
+
+html[data-platform="pc"] .detailMediaStage {
+  position: sticky;
+  inset-block-start: 96px;
+  min-block-size: calc(100dvh - 132px);
+}
+
+html[data-platform="pc"] .detailImageButton img {
+  max-block-size: calc(100dvh - 132px);
+}
+
+html[data-platform="pc"] .detailPaper {
+  margin-block-start: clamp(28px, 6vh, 72px);
+}

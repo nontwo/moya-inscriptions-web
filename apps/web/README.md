@@ -1,33 +1,74 @@
 # Public web application
 
-公开站点现已具备第一个formal Home vertical
-slice。T02的组件目录与响应式原型仍位于
-`docs/`作为设计权威和非生产参考；正式页面通过Public HTTP API读取Catalog。
+`apps/web` 是单一、渐进实现的 Yoyi 公开产品，不维护第二套 production / preview
+composition。T02 的合成原型是行为与交互权威，P5
+28 条内容原型是已批准的真实中文内容密度参考；两者都不是正式 Web 的 runtime 数据源。
 
-T06-A建立了presentation-independent Public HTTP data boundary：
+## 当前 surface 状态
 
-- `lib/public-api/catalog-list.ts`只通过`GET /v1/catalog`读取Public
-  Catalog，并以 `@moya/contracts`的runtime schemas验证query和successful
-  response。
-- `lib/public-api/server.ts`是server-only wiring，只读取
-  `MOYA_PUBLIC_API_BASE_URL`并注入server-side `fetch`。
-- `features/home/catalog-state.ts`只把validated transport
-  result映射为Home的populated、empty、unavailable或unexpected-error状态，不执行HTTP请求。
+| Surface                | Product contract | 当前实现                                      |
+| ---------------------- | ---------------- | --------------------------------------------- |
+| Global Product Shell   | T02 approved     | REAL shell；承载 REAL 与 DEMO surfaces        |
+| Home / 发现            | T02 approved     | REAL；Public HTTP Catalog list                |
+| 附近 / 专题            | T02 approved     | Synthetic DEMO；不访问 backend                |
+| 碑刻 / 书帖 / Search   | T02 approved     | Synthetic DEMO；本地筛选与压力测试内容        |
+| Catalog / Topic Detail | T02 approved     | Synthetic DEMO；REAL Home 仅有 summary bridge |
+| Settings               | T02 approved     | REAL presentation preferences                 |
 
-`MOYA_PUBLIC_API_BASE_URL`必须是无credentials、query和hash的absolute HTTP(S)
-URL；允许`/api/`等固定path prefix。T06-A不冻结cache/revalidation策略。
+未来 T07–T09 在同一应用中逐项把 DEMO capability 替换为 REAL，不预建 provider
+registry、双 composition 或未来 surface framework。DEMO 内容集中在
+`demo/`，不得成为 Public
+Contract、backend、PostgreSQL、Importer、Research 或 Media/storage 的事实来源。
 
-T06-B.1通过`features/home/load-home-catalog.ts`调用该boundary并复用现有Home
-semantic mapper。根`app/page.tsx`先`await connection()`，再在request
-time加载Catalog状态，因此build不读取runtime API configuration或固化API失败状态。
-`HomeScreen`只接收`HomeCatalogState`并渲染populated、empty、unavailable和unexpected-error四种语义状态。它不执行HTTP或业务映射。
+## REAL Home data flow
 
-T06-B.2在不改动transport、loader或Catalog Server
-Component数据流的前提下，生产化了T02
-Home：响应式内容墙、主题与手机/平板单双列偏好、全屏设置、浮动Glass导航及品牌加载状态。Catalog
-cards仍为server-rendered、按API顺序排列且不可点击；附近、专题、碑刻和书帖仅保留disabled
-presentation，不创建未来route或业务能力。当前仍没有冻结cache/revalidation策略。
+```text
+app/page.tsx
+→ features/home/load-home-catalog.ts
+→ lib/public-api/server.ts
+→ lib/public-api/catalog-list.ts
+→ GET /v1/catalog
+→ runtime Public Contract validation
+→ HomeCatalogState
+→ ProductShell / HomeSurface
+```
 
-Web business
-HTTP请求必须位于`lib/public-api/`。Frontend不得导入backend、PostgreSQL、Importer、storage
-internals或raw datasets；runtime Media URL只来自`PublicMedia.src`。
+- `lib/public-api/catalog-list.ts` 负责 Catalog list
+  query、HTTP 分类、JSON 解析与 `catalogPageSchema` validation。
+- `lib/public-api/server.ts` 是 server-only wiring，只读取
+  `MOYA_PUBLIC_API_BASE_URL` 并注入 server-side `fetch`。
+- `features/home/catalog-state.ts`
+  纯映射 populated、empty、unavailable 与 unexpected-error；`features/home/load-home-catalog.ts`
+  是薄 loader。
+- `app/page.tsx` 在 `connection()` 后 request-time 加载；build 不访问 Catalog
+  API。
+- REAL Catalog cards 保持 API 顺序，只使用 `PublicMedia.src`。点开后只显示已验证
+  `CatalogSummary` 中实际存在的字段，不请求 Detail、也不拼接任何 Synthetic
+  facts。
+
+`MOYA_PUBLIC_API_BASE_URL` 必须是无 credentials、query 和 hash 的 absolute
+HTTP(S) URL，可包含 `/api/` 等固定 path
+prefix。当前任务不冻结 cache/revalidation 策略。
+
+## Product Shell ownership
+
+`product-shell/` 只拥有跨 surface 的 presentation mechanics：primary
+navigation、active destination、Settings、theme、共享 content-wall
+preference、物理设备/platform 分类、gesture、history/Back、scroll
+preservation 与 overlay hosting。Catalog Detail 内容仍在独立 surface 中，Product
+Shell 不拥有或制造 Catalog facts。
+
+物理手机任意宽度保持 phone；物理平板只在窄于 768px 时降级为 phone，永不升级为 PC；desktop
+UA 在 768 / 896 边界选择 phone、tablet 或 PC。手机/平板共享 single/double
+content-wall preference；碑刻列表忽略它，PC 使用自身 content-driven 布局。
+
+## Boundary rules
+
+- Web business HTTP 只能位于 `lib/public-api/`。
+- Frontend 不得导入 backend、PostgreSQL、Importer、Research、raw
+  datasets、storage internals 或 object keys。
+- Client Components 可 type-import approved Public DTO；不得 runtime-import
+  schemas。
+- DEMO 不得导入 Public HTTP boundary；Public HTTP 与 Home
+  loader 也不得反向导入 DEMO。
+- 正式 runtime Media URL 只来自 `PublicMedia.src`。

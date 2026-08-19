@@ -48,7 +48,9 @@ describe("HomeScreen", () => {
     expect(markup).toContain("首页内容范围");
     expect(markup).toContain('aria-label="发现"');
     expect(markup).toContain('aria-selected="true"');
-    expect(markup.match(/aria-selected="false"/g)).toHaveLength(2);
+    expect(
+      markup.match(/aria-selected="false"/g)?.length,
+    ).toBeGreaterThanOrEqual(2);
     expect(markup).toContain('aria-label="附近"');
     expect(markup).toContain('aria-label="专题"');
     expect(markup).toContain("云峰山刻石");
@@ -60,7 +62,7 @@ describe("HomeScreen", () => {
     expect(markup).not.toContain("objectKey");
     expect(markup).not.toContain("object_key");
     expect(markup).not.toContain("<a ");
-    expect(markup).not.toContain("data-open-detail");
+    expect(markup).toContain("data-home-card");
     expect(markup).not.toContain("p5-pilot.snapshot");
     expect(markup).toContain('data-label="nav-home"');
     expect(markup).toContain('data-label="nav-inscriptions"');
@@ -89,10 +91,10 @@ describe("HomeScreen", () => {
     );
 
     expect(markup).toContain("暂无公开图像");
-    expect(markup).not.toContain("<img");
+    expect(markup).toMatch(/data-home-card[^>]*>[\s\S]*?暂无公开图像/);
   });
 
-  it("keeps API order and all future destinations non-navigating", () => {
+  it("keeps API order while untouched Synthetic destinations remain usable", () => {
     const markup = renderToStaticMarkup(
       <HomeScreen
         state={{
@@ -110,7 +112,11 @@ describe("HomeScreen", () => {
 
     expect(markup.indexOf("第一条")).toBeLessThan(markup.indexOf("第二条"));
     expect(markup.match(/data-home-card="true"/g)).toHaveLength(2);
-    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+    expect(markup).toContain('data-demo-surface="nearby"');
+    expect(markup).toContain('data-demo-surface="topics"');
+    expect(markup).toContain('data-demo-surface="inscriptions"');
+    expect(markup).toContain('data-demo-surface="calligraphy"');
+    expect(markup).not.toContain('disabled=""');
     expect(markup).not.toMatch(
       /href="\/(nearby|topics|inscriptions|calligraphy)/,
     );

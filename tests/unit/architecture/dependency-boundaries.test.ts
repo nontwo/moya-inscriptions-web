@@ -353,6 +353,49 @@ describe("frontend and browser boundaries", () => {
     );
   });
 
+  it("isolates progressively retained DEMO surfaces from formal data authority", () => {
+    const demoFile = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "demo",
+      "nearby.tsx",
+    );
+    const homeLoader = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "home",
+      "load-home-catalog.ts",
+    );
+
+    expect(
+      frontendBoundaryViolations(
+        demoFile,
+        'import { fetchCatalogPage } from "../lib/public-api/catalog-list";',
+      ),
+    ).toContain("Web DEMO code cannot import the Public API boundary");
+    expect(
+      frontendBoundaryViolations(
+        homeLoader,
+        'import { demoCatalog } from "../../demo/demo-data";',
+      ),
+    ).toContain("Formal Web data boundaries cannot import DEMO code");
+    expect(
+      frontendBoundaryViolations(
+        demoFile,
+        'import snapshot from "../../../docs/prototypes/mobile-preview/fixtures/p5-pilot.snapshot.js";',
+      ),
+    ).toContain("Web runtime cannot depend on P5 snapshots or Research data");
+    expect(
+      frontendBoundaryViolations(
+        demoFile,
+        'import type { CatalogSummary } from "@moya/contracts";',
+      ),
+    ).toEqual([]);
+  });
+
   it("allows only the Owner-authorized server environment variable in the boundary", () => {
     const file = path.join(
       repositoryRoot,

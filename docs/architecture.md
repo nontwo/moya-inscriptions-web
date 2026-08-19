@@ -183,6 +183,38 @@ decision后才能关联或创建Catalog Entity。详细治理决定见
 
 所有公开界面从窄屏和触控场景开始设计，再渐进增强到更宽视口。公共组件和设计 token 由对应所有者统一维护。
 
+Formal Web 是一个逐项生产化的单一产品，不维护 production /
+integration-preview 两套 composition。当前 Product
+Contract 以已批准 T02 为权威且可经 Owner 后续决策演进：Synthetic
+T02 提供行为、交互和压力测试参考，P5
+28 条 T02 模式提供真实中文内容密度参考；两者都不构成 runtime 数据权威。
+
+`apps/web/product-shell` 拥有跨 surface 的 navigation、Settings、presentation
+preferences、物理设备/platform 分类、gesture、history/Back、scroll
+preservation 与 overlay hosting。它不拥有 Catalog Detail 内容。当前 surface
+composition 是 MIXED：Shell 实现为 REAL，Home / Discover 通过现有 Public
+HTTP 链为 REAL，其余已批准的 Nearby、Topics、Browse、Search、Catalog
+Detail 与 Topic Detail 为隔离的 Synthetic
+DEMO。后续 T07–T09 在同一应用中逐项 DEMO →
+REAL，不需要第二个应用或预建通用 SurfaceHost/provider registry。
+
+`apps/web/demo` 只保存明确的、非权威 frontend DEMO types、records 和 focused
+surface behavior；DEMO identity 不得转换为 `CatalogId`。DEMO 不得依赖 Public
+HTTP、server Home loader、backend、PostgreSQL、Importer、Research、raw
+datasets 或 private storage。正式 Public HTTP /
+loader 边界也不得反向依赖 DEMO。REAL
+Home 到尚未 REAL 的 Detail 只传递已经 runtime-validated 的
+`CatalogSummary`，不发 Detail HTTP 请求、不按标题或顺序匹配 Synthetic
+record，也不制造 description、facts、sources 或 gallery。
+
+Web 在首屏前从 UA、`userAgentData.mobile`、touch/platform signals 与 visual
+viewport 建立 `data-device-class` 和
+`data-platform`：物理 phone 在任意宽度保持 phone；物理 tablet 在 `<768px`
+降级 phone、其余保持 tablet；desktop UA 在 `<768px`、`768–895px`、`≥896px`
+分别使用 phone、tablet、PC。resize、orientation 与 visual viewport
+change 会重新计算 platform；响应式 shell、scroll ownership、content
+wall 和 gestures 不再只依赖 viewport media query。
+
 ## Current implementation boundary
 
 工程、设计、Catalog read runtime与受控CSV
@@ -196,7 +228,7 @@ import/apply基础已完成；正式产品业务仍未完成：
 - T04.2已删除Archive compatibility
   contracts和Reader，并把公开OpenAPI迁移到canonical Catalog
   routes；仍未实现runtime adapter。
-- T02 已建立设计 token、通用 UI、正式视觉资产和组件目录；手机交互探索被隔离为非生产原型。
+- T02 已建立设计 token、通用 UI、正式视觉资产和组件目录；Synthetic与P5内容原型继续作为非生产行为/内容参考。
 - T03 只提供 CloudBase 候选架构、示例变量和人工检查表，不创建云资源。
 - 三路由只读OpenAPI当前由`/health`与Catalog
   list/detail组成；T05.1已接通真实Router、handler、application
@@ -216,9 +248,10 @@ import/apply基础已完成；正式产品业务仍未完成：
   projection与backend-owned runtime URL resolution boundary；production
   storage/CDN和真实Media ingestion仍不在当前实现内。
 - T06-A已建立Web server-side Public HTTP data boundary；T06-B.1已实现formal
-  request-time Home orchestration与可替换semantic presentation
-  seam；T06-B.2在不改动transport/loader的前提下生产化T02 Home视觉、shell
-  preferences与navigation。T07–T09仍是后续工作。
+  request-time Home
+  orchestration。T06-B.2在不改动transport/loader的前提下实现REAL Home与Product
+  Shell，并把尚未生产化的T02 surfaces隔离为Synthetic
+  DEMO以维持产品连续性。T07–T09仍是后续REAL能力工作。
 - Importer Admin workflow与正式/production Catalog数据导入仍不在当前实现内。
 
 正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service

@@ -35,12 +35,15 @@ package owns the browser-specific `backdrop-filter` implementation and its
 opaque fallback. Reduced transparency and increased contrast force an opaque
 surface; reduced motion removes animated state changes.
 
-Phone navigation remains a bottom Tab Bar in both orientations and may minimize
-on downward content scrolling. Tablet portrait uses a persistent bottom bar;
-tablet landscape uses a persistent floating left rail. PC uses a persistent
-bottom Tab Bar like tablet portrait, without the brand logo and without
-phone-style minimizing. These placements share the same three semantic
-destinations: 首页、碑刻、书帖.
+Phone, tablet and PC share a floating bottom Tab Bar with the same three
+semantic destinations: 首页、碑刻、书帖. Physical-device classification prevents
+wide phones or tablets from being promoted to PC solely by viewport width. The
+final T02 Product Contract approved in PR #43 supersedes this ADR's earlier
+tablet landscape rail and non-minimizing PC placement details: all three
+platforms may minimize the floating navigation after downward content scroll and
+restore it on upward intent, idle or an active-entry tap. The Functional Glass,
+opaque fallback, accessibility and reduced-motion decisions in this ADR remain
+in force.
 
 Web and any future SwiftUI client share material and component semantics, not
 CSS, platform APIs or rendering implementations.

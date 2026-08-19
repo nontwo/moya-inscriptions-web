@@ -1,0 +1,266 @@
+.stage {
+  display: grid;
+  min-block-size: 100dvh;
+  place-items: center;
+}
+
+.app {
+  position: relative;
+  isolation: isolate;
+  inline-size: min(100%, 430px);
+  block-size: 100svh;
+  max-block-size: 100dvh;
+  overflow: hidden;
+  background: var(--yoyi-color-background-page);
+}
+
+.primaryShell,
+.primaryShell > div,
+.primaryShell > div > section {
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+.primaryShell {
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.primaryShell > div[hidden] {
+  display: none;
+}
+
+.contentWall {
+  --content-wall-gap: 8px;
+  position: relative;
+  display: block;
+  inline-size: 100%;
+  min-block-size: 1px;
+  padding: var(--content-wall-gap);
+  padding-block-end: calc(
+    var(--content-wall-gap) + 60px + env(safe-area-inset-bottom) + 12px
+  );
+}
+
+.contentWall:not([data-layout-ready]) {
+  visibility: hidden;
+}
+
+.bottomNavigation:global(.yoyi-mobile-bottom-navigation) {
+  --product-bottom-nav-max-width: 520px;
+  --product-bottom-nav-side-gap: var(--yoyi-space-4);
+  --product-bottom-nav-min-height: 60px;
+  position: fixed;
+  z-index: var(--yoyi-z-index-navigation);
+  inset-inline: var(--product-bottom-nav-side-gap);
+  inset-block-end: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
+  display: grid;
+  inline-size: auto;
+  max-inline-size: var(--product-bottom-nav-max-width);
+  min-block-size: var(--product-bottom-nav-min-height);
+  margin-inline: auto;
+  overflow: visible;
+  transform: none;
+  transition:
+    inline-size 420ms cubic-bezier(0.33, 0, 0.2, 1),
+    block-size 420ms cubic-bezier(0.33, 0, 0.2, 1),
+    min-block-size 420ms cubic-bezier(0.33, 0, 0.2, 1),
+    max-inline-size 420ms cubic-bezier(0.33, 0, 0.2, 1),
+    padding 420ms cubic-bezier(0.33, 0, 0.2, 1),
+    border-radius 420ms cubic-bezier(0.33, 0, 0.2, 1);
+}
+
+.bottomNavigation:global(.yoyi-mobile-bottom-navigation):not(
+    :global(.is-minimized)
+  ) {
+  transition-duration: 520ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bottomNavigation :global(.yoyi-nav-bubble) {
+  box-sizing: border-box;
+  inline-size: var(--product-nav-bubble-width, 0);
+  block-size: var(--product-nav-bubble-height, 0);
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid var(--yoyi-color-border-default);
+  box-shadow: var(--yoyi-shadow-subtle);
+  transform: translate3d(
+    var(--product-nav-bubble-x, 0),
+    var(--product-nav-bubble-y, 0),
+    0
+  );
+  transition:
+    inline-size 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    block-size 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bottomNavigation :global(.yoyi-navigation-entry) {
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 60px;
+  align-self: stretch;
+  justify-self: stretch;
+  gap: 1px;
+  padding: 2px;
+}
+
+.bottomNavigation :global(.yoyi-fixed-label) {
+  inline-size: 44px;
+  block-size: 20px;
+}
+
+.navigationIconWrap {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  inline-size: 23px;
+  block-size: 23px;
+  line-height: 0;
+}
+
+.navigationIconWrap :global(.yoyi-icon) {
+  inline-size: 23px;
+  block-size: 23px;
+}
+
+.bottomNavigation:global(.is-minimized) {
+  inset-inline-start: 50%;
+  inset-inline-end: auto;
+  inline-size: 44px;
+  min-inline-size: 44px;
+  max-inline-size: 44px;
+  block-size: 44px;
+  min-block-size: 44px;
+  margin-inline-start: -22px;
+  padding: 0;
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
+.bottomNavigation:global(.is-minimized)
+  :global(.yoyi-navigation-entry:not(.is-active)),
+.bottomNavigation:global(.is-minimized) :global(.yoyi-fixed-label),
+.bottomNavigation:global(.is-minimized) :global(.yoyi-nav-bubble) {
+  display: none;
+}
+
+.bottomNavigation:global(.is-minimized)
+  :global(.yoyi-navigation-entry.is-active) {
+  display: flex;
+  inline-size: 44px;
+  block-size: 44px;
+  min-block-size: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.settings {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  min-block-size: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+}
+
+.settingsTopBar {
+  display: grid;
+  min-block-size: calc(52px + env(safe-area-inset-top));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: end;
+  padding: env(safe-area-inset-top) 8px 0;
+  border-block-end: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.settingsTopBar h1 {
+  align-self: center;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 44px;
+  text-align: center;
+}
+
+.settingsContent {
+  min-block-size: 0;
+  padding: 16px 12px 28px;
+  overflow-y: auto;
+}
+
+.settingToggles {
+  display: flex;
+  min-block-size: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yoyi-space-4);
+}
+
+.settingToggle:global(.yoyi-icon-button) {
+  inline-size: auto;
+  min-inline-size: 56px;
+  min-block-size: 44px;
+  padding: var(--yoyi-space-3) var(--yoyi-space-5);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border-color: var(--yoyi-color-border-subtle);
+}
+
+html[data-platform="tablet"] .stage,
+html[data-platform="pc"] .stage {
+  place-items: stretch;
+}
+
+html[data-platform="tablet"] .app,
+html[data-platform="pc"] .app {
+  inline-size: 100%;
+  max-inline-size: none;
+}
+
+html[data-platform="tablet"] .contentWall {
+  --content-wall-gap: 12px;
+  padding: var(--yoyi-space-5);
+  padding-block-end: calc(72px + env(safe-area-inset-bottom));
+}
+
+html[data-platform="tablet"] .settingsContent,
+html[data-platform="pc"] .settingsContent {
+  inline-size: min(100%, var(--yoyi-container-reading));
+  margin-inline: auto;
+  padding: var(--yoyi-space-6) var(--yoyi-space-7) var(--yoyi-space-9);
+}
+
+html[data-platform="pc"] .app {
+  min-block-size: 100dvh;
+  block-size: auto;
+  max-block-size: none;
+  overflow: visible;
+  isolation: auto;
+}
+
+html[data-platform="pc"] .primaryShell,
+html[data-platform="pc"] .primaryShell > div,
+html[data-platform="pc"] .primaryShell > div > section {
+  block-size: auto;
+  overflow: visible;
+}
+
+html[data-platform="pc"] .contentWall {
+  --content-wall-gap: 16px;
+  padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
+}
+
+html[data-platform="pc"] .layoutToggle {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottomNavigation:global(.yoyi-mobile-bottom-navigation),
+  .bottomNavigation :global(.yoyi-nav-bubble) {
+    transition-duration: 1ms;
+  }
+}

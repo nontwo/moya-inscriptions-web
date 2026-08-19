@@ -4,6 +4,10 @@
 > 本目录用于验证信息架构、导航、交互手感与设备响应式呈现；不是正式 Web /
 > T06–T08 验收交付，也不连接 Repository、数据库、Reader/API 或 SearchDocument。
 
+Synthetic T02 是正式产品的行为、交互与压力测试参考；`dataset=p5`
+的28条内容模式是已批准的真实中文标题、可选字段与内容密度参考。两者都是可演进的Product
+Contract参考，不是第二套应用或runtime事实来源。正式`apps/web`是唯一逐项把DEMO能力替换为REAL能力的产品。
+
 同一 URL 复用一套 DOM 和交互状态。`device-platform.js`
 在样式加载前结合 UA、视口宽度与方向设置：
 

@@ -9,6 +9,9 @@ describe("formal route loading", () => {
 
     expect(markup).toContain('role="status"');
     expect(markup).toContain('aria-label="由艺正在加载"');
+    expect(markup).toContain("yoyi-loading-screen");
+    expect(markup).toContain("yoyi-loading-screen__brand");
+    expect(markup).toContain("yoyi-loading-screen__motto");
     expect(markup).toContain('class="yoyi-logo"');
     expect(markup).toContain("志于道，据于德，依于仁，游于艺");
     expect(markup).not.toMatch(/Hero|公开档案|营销/);

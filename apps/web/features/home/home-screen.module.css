@@ -1,20 +1,4 @@
-.stage {
-  display: grid;
-  min-block-size: 100dvh;
-  place-items: center;
-}
-
-.app {
-  position: relative;
-  isolation: isolate;
-  inline-size: min(100%, 430px);
-  block-size: 100svh;
-  max-block-size: 100dvh;
-  overflow: hidden;
-  background-color: var(--yoyi-color-background-page);
-}
-
-.primaryShell {
+.homeSurface {
   display: grid;
   min-block-size: 0;
   block-size: 100%;
@@ -22,20 +6,26 @@
   overflow: hidden;
 }
 
-.topBar,
-.settingsTopBar {
+.homePager {
+  min-block-size: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.homePager > main {
+  block-size: 100%;
+}
+
+.topBar {
   position: relative;
   z-index: 4;
   display: grid;
   min-block-size: calc(52px + env(safe-area-inset-top));
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: end;
   padding: env(safe-area-inset-top) 8px 0;
   background: var(--yoyi-color-background-page);
   border-block-end: 1px solid var(--yoyi-color-border-subtle);
-}
-
-.topBar {
-  grid-template-columns: minmax(0, 1fr) 44px;
 }
 
 .topBar > :last-child {
@@ -67,11 +57,6 @@
   font-size: var(--yoyi-type-button-size);
   font-weight: 600;
   cursor: pointer;
-}
-
-.tabs button:disabled {
-  cursor: default;
-  opacity: 1;
 }
 
 .tabs .selectedTab {
@@ -114,22 +99,6 @@
   min-inline-size: 0;
 }
 
-.masonry {
-  --home-masonry-gap: 8px;
-  position: relative;
-  display: block;
-  inline-size: 100%;
-  min-block-size: 1px;
-  padding: var(--home-masonry-gap);
-  padding-block-end: calc(
-    var(--home-masonry-gap) + 60px + env(safe-area-inset-bottom) + 12px
-  );
-}
-
-.masonry:not([data-layout-ready]) {
-  visibility: hidden;
-}
-
 .card {
   display: flex;
   inline-size: 100%;
@@ -144,10 +113,10 @@
   border: 0;
   border-radius: 16px;
   box-shadow: var(--yoyi-shadow-subtle);
+  cursor: pointer;
   break-inside: avoid;
   transition:
     transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
-    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
     box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
@@ -221,223 +190,6 @@
   font-weight: 600;
 }
 
-.bottomNavigation:global(.yoyi-mobile-bottom-navigation) {
-  --home-bottom-nav-max-width: 520px;
-  --home-bottom-nav-side-gap: var(--yoyi-space-4);
-  --home-bottom-nav-min-height: 60px;
-  --home-nav-collapse-duration: 420ms;
-  --home-nav-expand-duration: 520ms;
-  --home-nav-collapse-easing: cubic-bezier(0.33, 0, 0.2, 1);
-  --home-nav-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
-  position: fixed;
-  z-index: var(--yoyi-z-index-navigation);
-  inset-block-start: auto;
-  inset-inline: var(--home-bottom-nav-side-gap);
-  inset-block-end: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
-  display: grid;
-  inline-size: auto;
-  max-inline-size: var(--home-bottom-nav-max-width);
-  min-block-size: var(--home-bottom-nav-min-height);
-  margin-inline: auto;
-  overflow: visible;
-  transform: none;
-  transition:
-    inline-size var(--home-nav-collapse-duration)
-      var(--home-nav-collapse-easing),
-    block-size var(--home-nav-collapse-duration) var(--home-nav-collapse-easing),
-    min-block-size var(--home-nav-collapse-duration)
-      var(--home-nav-collapse-easing),
-    max-inline-size var(--home-nav-collapse-duration)
-      var(--home-nav-collapse-easing),
-    padding var(--home-nav-collapse-duration) var(--home-nav-collapse-easing),
-    border-radius var(--home-nav-collapse-duration)
-      var(--home-nav-collapse-easing),
-    box-shadow var(--home-nav-collapse-duration) var(--home-nav-collapse-easing),
-    opacity var(--home-nav-collapse-duration) var(--home-nav-collapse-easing);
-}
-
-.bottomNavigation:global(.yoyi-mobile-bottom-navigation):not(
-    :global(.is-minimized)
-  ) {
-  transition-duration: var(--home-nav-expand-duration);
-  transition-timing-function: var(--home-nav-expand-easing);
-}
-
-.bottomNavigation :global(.yoyi-nav-bubble) {
-  box-sizing: border-box;
-  inline-size: var(--home-nav-bubble-width, 0);
-  block-size: var(--home-nav-bubble-height, 0);
-  background: var(--yoyi-color-background-muted);
-  border: 1px solid var(--yoyi-color-border-default);
-  box-shadow: var(--yoyi-shadow-subtle);
-  transform: translate3d(
-    var(--home-nav-bubble-x, 0),
-    var(--home-nav-bubble-y, 0),
-    0
-  );
-  transition:
-    inline-size 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    block-size 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.bottomNavigation[data-bubble-pending] :global(.yoyi-nav-bubble) {
-  opacity: 0;
-}
-
-.bottomNavigation :global(.yoyi-navigation-entry) {
-  inline-size: 100%;
-  block-size: 100%;
-  min-block-size: 60px;
-  align-self: stretch;
-  justify-self: stretch;
-  gap: 1px;
-  padding: 2px;
-}
-
-.bottomNavigation :global(.yoyi-navigation-entry:disabled) {
-  color: var(--yoyi-color-text-primary);
-  cursor: default;
-  opacity: 1;
-}
-
-.bottomNavigation :global(.yoyi-fixed-label) {
-  inline-size: 44px;
-  block-size: 20px;
-}
-
-.navigationIconWrap {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  inline-size: 23px;
-  block-size: 23px;
-  line-height: 0;
-}
-
-.navigationIconWrap :global(.yoyi-icon) {
-  inline-size: 23px;
-  block-size: 23px;
-}
-
-.bottomNavigation:global(.yoyi-mobile-bottom-navigation.is-minimized) {
-  inset-inline-start: 50%;
-  inset-inline-end: auto;
-  inline-size: 44px;
-  min-inline-size: 44px;
-  max-inline-size: 44px;
-  block-size: 44px;
-  min-block-size: 44px;
-  margin-inline-start: -22px;
-  padding: 0;
-  grid-template-columns: 1fr;
-  place-items: center;
-  justify-items: center;
-}
-
-.bottomNavigation:global(.is-minimized)
-  :global(.yoyi-navigation-entry.is-active) {
-  display: flex;
-  inline-size: 100%;
-  min-inline-size: 0;
-  block-size: 100%;
-  min-block-size: 0;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  padding: 0;
-  font-size: 0;
-  line-height: 0;
-  pointer-events: auto;
-}
-
-.bottomNavigation:global(.is-minimized) .navigationIconWrap,
-.bottomNavigation:global(.is-minimized)
-  .navigationIconWrap
-  :global(.yoyi-icon) {
-  inline-size: 22px;
-  block-size: 22px;
-}
-
-.bottomNavigation:global(.is-minimized)
-  .navigationIconWrap
-  :global(.yoyi-icon[data-icon="home"]) {
-  transform: translate3d(0, 0.5px, 0);
-}
-
-.settings {
-  position: fixed;
-  z-index: 40;
-  inset: 0;
-  display: grid;
-  min-block-size: 100dvh;
-  grid-template-rows: auto minmax(0, 1fr);
-  color: var(--yoyi-color-text-primary);
-  background-color: var(--yoyi-color-background-page);
-}
-
-.settingsTopBar {
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
-}
-
-.settingsTopBar h1 {
-  align-self: center;
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 44px;
-  text-align: center;
-}
-
-.topBarSpacer {
-  inline-size: 44px;
-  block-size: 44px;
-}
-
-.settingsContent {
-  min-block-size: 0;
-  padding: 16px 12px 28px;
-  overflow-y: auto;
-}
-
-.settingsForm {
-  display: grid;
-  gap: 24px;
-}
-
-.settingGroup {
-  min-inline-size: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.settingToggles {
-  display: flex;
-  min-block-size: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: var(--yoyi-space-4);
-}
-
-.settingToggle:global(.yoyi-icon-button) {
-  inline-size: auto;
-  min-inline-size: 56px;
-  block-size: auto;
-  min-block-size: 44px;
-  padding: var(--yoyi-space-3) var(--yoyi-space-5);
-  color: var(--yoyi-color-text-primary);
-  background: var(--yoyi-color-background-surface);
-  border-color: var(--yoyi-color-border-subtle);
-}
-
-.settingToggle :global(.yoyi-icon) {
-  inline-size: 20px;
-  block-size: 20px;
-}
-
 .loading {
   position: fixed;
   z-index: 100;
@@ -445,7 +197,7 @@
   display: grid;
   place-items: center;
   color: var(--yoyi-color-text-primary);
-  background-color: var(--yoyi-color-background-page);
+  background: var(--yoyi-color-background-page);
 }
 
 .loadingBrand {
@@ -458,8 +210,6 @@
 
 .loading :global(.yoyi-logo) {
   inline-size: 92px;
-  opacity: 0;
-  animation: yoyi-logo-reveal 560ms var(--yoyi-easing-emphasized) 160ms both;
 }
 
 .loadingMotto {
@@ -472,228 +222,106 @@
   font-weight: 700;
   line-height: 1.75;
   letter-spacing: 0.24em;
-  opacity: 0;
-  animation: yoyi-logo-reveal 560ms var(--yoyi-easing-emphasized) 280ms both;
 }
 
-@media (max-width: 360px) {
-  .settingToggles {
-    gap: var(--yoyi-space-3);
-  }
-
-  .settingToggle:global(.yoyi-icon-button) {
-    min-inline-size: 48px;
-    padding-inline: var(--yoyi-space-4);
-  }
+:global(html[data-platform="tablet"]) .topBar {
+  grid-template-columns: minmax(0, 1fr) 48px;
+  padding-inline: var(--yoyi-space-5);
 }
 
-@media (min-width: 48rem) {
-  .stage {
-    place-items: stretch;
-  }
-
-  .app {
-    inline-size: 100%;
-    max-inline-size: none;
-  }
-
-  .topBar,
-  .settingsTopBar {
-    padding-inline: var(--yoyi-space-5);
-  }
-
-  .topBar {
-    grid-template-columns: minmax(0, 1fr) 48px;
-  }
-
-  .settingsTopBar {
-    grid-template-columns: 48px minmax(0, 1fr) 48px;
-  }
-
-  .masonry {
-    --home-masonry-gap: 12px;
-    padding: var(--yoyi-space-5);
-    padding-block-end: calc(
-      max(var(--yoyi-space-3), env(safe-area-inset-bottom)) + 60px + 12px
-    );
-  }
-
-  .settingsContent {
-    inline-size: min(100%, var(--yoyi-container-reading));
-    margin-inline: auto;
-    padding: var(--yoyi-space-6) var(--yoyi-space-7) var(--yoyi-space-9);
-  }
-
-  .settingToggle:global(.yoyi-icon-button) {
-    min-inline-size: 60px;
-    min-block-size: 48px;
-    padding-inline: var(--yoyi-space-6);
-  }
-
-  .settingToggle :global(.yoyi-icon) {
-    inline-size: 22px;
-    block-size: 22px;
-  }
+:global(html[data-platform="pc"]) .homeSurface {
+  display: block;
+  block-size: auto;
+  overflow: visible;
 }
 
-@media (min-width: 56rem) {
-  .app {
-    min-block-size: 100dvh;
-    block-size: auto;
-    max-block-size: none;
-    overflow: visible;
-    isolation: auto;
-  }
+:global(html[data-platform="pc"]) .topBar {
+  position: sticky;
+  inset-block-start: 0;
+  min-block-size: calc(68px + env(safe-area-inset-top));
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--yoyi-space-4);
+  padding-inline: var(--yoyi-space-5);
+}
 
-  .primaryShell {
-    display: block;
-    block-size: auto;
-    overflow: visible;
-  }
+:global(html[data-platform="pc"]) .topBar > :last-child {
+  inline-size: 52px;
+  block-size: 52px;
+}
 
-  .topBar,
-  .settingsTopBar {
-    position: sticky;
-    inset-block-start: 0;
-    min-block-size: calc(68px + env(safe-area-inset-top));
-    align-items: center;
-    padding-inline: var(--yoyi-space-5);
-  }
+:global(html[data-platform="pc"]) .topBar > :last-child :global(.yoyi-icon) {
+  inline-size: 26px;
+  block-size: 26px;
+}
 
-  .topBar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--yoyi-space-4);
-  }
+:global(html[data-platform="pc"]) .tabs {
+  block-size: 64px;
+  min-inline-size: 280px;
+}
 
-  .topBar > :last-child {
-    inline-size: 52px;
-    block-size: 52px;
-  }
+:global(html[data-platform="pc"]) .tabs button {
+  min-inline-size: 96px;
+  min-block-size: 52px;
+  padding-inline: 16px;
+  font-size: 1.125rem;
+}
 
-  .topBar > :last-child :global(.yoyi-icon) {
-    inline-size: 26px;
-    block-size: 26px;
-  }
+:global(html[data-platform="pc"]) .scroll {
+  overflow: visible;
+}
 
-  .tabs {
-    block-size: 64px;
-    min-inline-size: 280px;
-    justify-self: center;
-  }
+:global(html[data-platform="pc"]) .card {
+  overflow: visible;
+  background: transparent;
+  border-radius: 18px;
+  box-shadow: none;
+}
 
-  .tabs button {
-    min-inline-size: 96px;
-    min-block-size: 52px;
-    padding-inline: 16px;
-    font-size: 1.125rem;
-  }
+:global(html[data-platform="pc"]) .media,
+:global(html[data-platform="pc"]) .mediaFallback {
+  border-radius: 18px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
 
-  .scroll {
-    overflow: visible;
-  }
+:global(html[data-platform="pc"]) .cardCaption {
+  padding: var(--yoyi-space-2) 2px 0;
+}
 
-  .masonry {
-    --home-masonry-gap: 16px;
-    padding: var(--yoyi-space-4) clamp(1rem, 2vw, 1.75rem) var(--yoyi-space-10);
-  }
+:global(html[data-platform="pc"]) .cardTitle {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
 
-  .card {
-    overflow: visible;
-    background: transparent;
-    border-radius: 18px;
-    box-shadow: none;
-  }
+:global(html[data-platform="pc"]) .cardMeta {
+  font-size: 0.625rem;
+}
 
-  .media,
-  .mediaFallback {
-    border-radius: 18px;
-    box-shadow: var(--yoyi-shadow-subtle);
-    transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
-  }
-
-  .cardCaption {
-    padding: var(--yoyi-space-2) 2px 0;
-  }
-
-  .cardTitle {
-    font-size: 0.75rem;
-    line-height: 1.35;
-  }
-
-  .cardMeta {
-    font-size: 0.625rem;
-  }
-
-  .state {
-    min-block-size: calc(100dvh - 68px);
-  }
-
-  .layoutToggle {
-    display: none;
-  }
-
-  .settingsContent {
-    inline-size: min(100%, var(--yoyi-container-reading));
-  }
-
-  .settingToggle:global(.yoyi-icon-button) {
-    min-inline-size: 48px;
-    min-block-size: 40px;
-    padding: var(--yoyi-space-2) var(--yoyi-space-4);
-  }
-
-  .settingToggle :global(.yoyi-icon) {
-    inline-size: 18px;
-    block-size: 18px;
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .card:hover {
-      z-index: 2;
-      transform: translateY(-2px);
-    }
-
-    .card:hover .media,
-    .card:hover .mediaFallback {
-      box-shadow: var(--yoyi-shadow-subtle);
-    }
-
-    .tabs button:hover,
-    .bottomNavigation :global(.yoyi-navigation-entry:hover) {
-      color: var(--yoyi-color-text-primary);
-    }
-  }
+:global(html[data-platform="pc"]) .state {
+  min-block-size: calc(100dvh - 68px);
 }
 
 @media (min-width: 64rem) {
-  .topBar,
-  .settingsTopBar {
+  :global(html[data-platform="pc"]) .topBar {
     min-block-size: calc(72px + env(safe-area-inset-top));
     padding-inline: var(--yoyi-space-6);
   }
 
-  .tabs {
+  :global(html[data-platform="pc"]) .tabs {
     min-inline-size: 300px;
     block-size: 68px;
   }
 
-  .tabs button {
+  :global(html[data-platform="pc"]) .tabs button {
     min-inline-size: 104px;
     font-size: 1.1875rem;
   }
-
-  .masonry {
-    padding-inline: clamp(1.25rem, 2.2vw, 2rem);
-  }
-
-  .settingsContent {
-    inline-size: min(100%, var(--yoyi-container-content));
-  }
 }
 
-@media (min-width: 90rem) {
-  .masonry {
-    padding-inline: clamp(1.5rem, 2.5vw, 2.5rem);
+@media (hover: hover) and (pointer: fine) {
+  :global(html[data-platform="pc"]) .card:hover {
+    z-index: 2;
+    transform: translateY(-2px);
   }
 }
 
@@ -701,8 +329,6 @@
   .card,
   .media,
   .mediaFallback,
-  .bottomNavigation:global(.yoyi-mobile-bottom-navigation),
-  .bottomNavigation :global(.yoyi-nav-bubble),
   .loading :global(.yoyi-logo),
   .loadingMotto {
     transition-duration: 1ms;

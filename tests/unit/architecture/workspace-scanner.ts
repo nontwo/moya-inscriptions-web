@@ -197,6 +197,7 @@ export const hasUseClientDirective = (source: string): boolean =>
 
 const webRoot = path.join(repositoryRoot, "apps", "web");
 const webPublicApiRoot = path.join(webRoot, "lib", "public-api");
+const webDemoRoot = path.join(webRoot, "demo");
 const webHomePageFile = path.join(webRoot, "app", "page.tsx");
 const webHomeLoaderFile = path.join(
   webRoot,
@@ -517,6 +518,9 @@ export const frontendBoundaryViolations = (
     path.join(repositoryRoot, "packages", "ui"),
     filePath,
   );
+  const isWebDemo = isPathInside(webDemoRoot, filePath);
+  const isFormalWebDataBoundary =
+    isAuthorizedPublicApi || path.resolve(filePath) === webHomeLoaderFile;
 
   for (const reference of extractModuleReferences(source)) {
     const approvedPublicApiRuntimeImport =
@@ -545,6 +549,22 @@ export const frontendBoundaryViolations = (
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }
     if (
+      isWebDemo &&
+      referencesWebPublicApiBoundary(filePath, reference.specifier)
+    ) {
+      violations.push("Web DEMO code cannot import the Public API boundary");
+    }
+    if (
+      isFormalWebDataBoundary &&
+      reference.specifier.startsWith(".") &&
+      isPathInside(
+        webDemoRoot,
+        path.resolve(path.dirname(filePath), reference.specifier),
+      )
+    ) {
+      violations.push("Formal Web data boundaries cannot import DEMO code");
+    }
+    if (
       isDomainAgnosticUi &&
       (reference.specifier === "@moya/contracts" ||
         reference.specifier.startsWith("@moya/contracts/"))
@@ -559,11 +579,24 @@ export const frontendBoundaryViolations = (
 
   if (
     isPathInside(webRoot, filePath) &&
+    !isWebTestFile &&
     /\b(?:globalThis\.)?fetch\s*\(/.test(source) &&
     !isAuthorizedPublicApi
   ) {
     violations.push(
       "Web business HTTP fetch must stay inside apps/web/lib/public-api",
+    );
+  }
+
+  if (
+    isPathInside(webRoot, filePath) &&
+    !isWebTestFile &&
+    /(?:p5-pilot\.snapshot|moya-catalog-research|\/research\/p5\/|\\research\\p5\\)/i.test(
+      source,
+    )
+  ) {
+    violations.push(
+      "Web runtime cannot depend on P5 snapshots or Research data",
     );
   }
 

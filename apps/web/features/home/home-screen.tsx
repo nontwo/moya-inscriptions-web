@@ -1,37 +1,25 @@
-import { CatalogMedia } from "./catalog-media";
-import { HomeMasonry } from "./home-masonry";
+import { HomeCatalogCard } from "./home-catalog-card";
 import styles from "./home-screen.module.css";
-import { HomeShell } from "./home-shell";
+import { ContentWall } from "../../product-shell/content-wall";
+import { ProductShell } from "../../product-shell/product-shell";
 
-import type { CatalogPage, CatalogSummary } from "@moya/contracts";
+import type { CatalogPage } from "@moya/contracts";
 import type { HomeCatalogState } from "./catalog-state";
 
 export interface HomeScreenProps {
   state: HomeCatalogState;
 }
 
-const CatalogItem = ({ item }: { item: CatalogSummary }) => (
-  <article className={styles.card} data-home-card role="listitem">
-    <CatalogMedia media={item.representativeMedia} />
-    <div className={styles.cardCaption}>
-      <h3 className={styles.cardTitle}>{item.title}</h3>
-      {item.periodLabel === undefined ? null : (
-        <p className={styles.cardMeta}>{item.periodLabel}</p>
-      )}
-    </div>
-  </article>
-);
-
 const PopulatedCatalog = ({ page }: { page: CatalogPage }) => (
   <section aria-labelledby="catalog-heading" className={styles.catalogSection}>
     <h1 className="yoyi-visually-hidden" id="catalog-heading">
       发现
     </h1>
-    <HomeMasonry>
+    <ContentWall label="公开档案">
       {page.items.map((item) => (
-        <CatalogItem key={item.id} item={item} />
+        <HomeCatalogCard key={item.id} item={item} />
       ))}
-    </HomeMasonry>
+    </ContentWall>
   </section>
 );
 
@@ -91,5 +79,5 @@ export const HomeScreen = ({ state }: HomeScreenProps) => {
       break;
   }
 
-  return <HomeShell>{content}</HomeShell>;
+  return <ProductShell homeDiscover={content} />;
 };

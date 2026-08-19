@@ -2,25 +2,25 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
-import styles from "./home-screen.module.css";
+import styles from "./product-shell.module.css";
 
-import type { HomeLayoutPreference } from "./presentation-preferences";
+import type { ContentWallLayoutPreference } from "./presentation-preferences";
 
 const desktopMinimumCardWidth = 220;
 const desktopMaximumCardWidth = 320;
 
-export const masonryColumnCount = ({
+export const contentWallColumnCount = ({
   width,
   gap,
-  desktop,
+  platform,
   layout,
 }: {
   width: number;
   gap: number;
-  desktop: boolean;
-  layout: HomeLayoutPreference;
+  platform: "phone" | "tablet" | "pc";
+  layout: ContentWallLayoutPreference;
 }) => {
-  if (!desktop) return layout === "single" ? 1 : 2;
+  if (platform !== "pc") return layout === "single" ? 1 : 2;
   if (width < 32) return 3;
 
   let columns = Math.max(
@@ -35,10 +35,16 @@ export const masonryColumnCount = ({
   return columns;
 };
 
-const numericStyle = (styles: CSSStyleDeclaration, property: string) =>
-  Number.parseFloat(styles.getPropertyValue(property)) || 0;
+const numericStyle = (value: CSSStyleDeclaration, property: string) =>
+  Number.parseFloat(value.getPropertyValue(property)) || 0;
 
-export function HomeMasonry({ children }: { children: ReactNode }) {
+export function ContentWall({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label?: string | undefined;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,30 +55,35 @@ export function HomeMasonry({ children }: { children: ReactNode }) {
 
     const layout = () => {
       const computed = window.getComputedStyle(container);
-      const gap = numericStyle(computed, "--home-masonry-gap") || 8;
+      const gap = numericStyle(computed, "--content-wall-gap") || 8;
       const paddingInlineStart = numericStyle(computed, "padding-inline-start");
       const paddingInlineEnd = numericStyle(computed, "padding-inline-end");
       const paddingBlockStart = numericStyle(computed, "padding-block-start");
       const paddingBlockEnd = numericStyle(computed, "padding-block-end");
-      const outerWidth = container.clientWidth;
-      const innerWidth = outerWidth - paddingInlineStart - paddingInlineEnd;
-      if (outerWidth < 32 || innerWidth <= 0) return;
+      const innerWidth =
+        container.clientWidth - paddingInlineStart - paddingInlineEnd;
+      if (container.clientWidth < 32 || innerWidth <= 0) return;
 
-      const rootLayout = document.documentElement.dataset.homeLayout;
-      const columns = masonryColumnCount({
-        width: outerWidth,
+      const root = document.documentElement;
+      const platform =
+        root.dataset.platform === "pc" || root.dataset.platform === "tablet"
+          ? root.dataset.platform
+          : "phone";
+      const columns = contentWallColumnCount({
+        width: container.clientWidth,
         gap,
-        desktop: window.matchMedia("(min-width: 56rem)").matches,
-        layout: rootLayout === "single" ? "single" : "double",
+        platform,
+        layout:
+          root.dataset.contentWallLayout === "single" ? "single" : "double",
       });
       const columnWidth =
         (innerWidth - gap * Math.max(0, columns - 1)) / columns;
       const heights = Array.from({ length: columns }, () => 0);
       const items = [
-        ...container.querySelectorAll<HTMLElement>("[data-home-card]"),
-      ];
+        ...container.querySelectorAll<HTMLElement>("[data-content-wall-card]"),
+      ].filter((item) => !item.hidden);
 
-      items.forEach((item) => {
+      for (const item of items) {
         item.style.position = "absolute";
         item.style.inlineSize = `${columnWidth}px`;
         item.style.maxInlineSize = "100%";
@@ -82,7 +93,7 @@ export function HomeMasonry({ children }: { children: ReactNode }) {
         item.style.insetInlineStart = `${paddingInlineStart + column * (columnWidth + gap)}px`;
         item.style.insetBlockStart = `${paddingBlockStart + shortest}px`;
         heights[column] = (heights[column] ?? 0) + item.offsetHeight + gap;
-      });
+      }
 
       const tallest = Math.max(0, ...heights);
       const contentHeight =
@@ -90,49 +101,51 @@ export function HomeMasonry({ children }: { children: ReactNode }) {
           ? tallest - gap + paddingBlockStart + paddingBlockEnd
           : paddingBlockStart + paddingBlockEnd;
       container.style.blockSize = `${Math.max(0, contentHeight)}px`;
-      container.dataset.masonryColumns = String(columns);
+      container.dataset.contentWallColumns = String(columns);
       container.dataset.layoutReady = "true";
     };
 
     const scheduleLayout = () => {
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
-      firstFrame = window.requestAnimationFrame(() => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      firstFrame = requestAnimationFrame(() => {
         layout();
-        secondFrame = window.requestAnimationFrame(layout);
+        secondFrame = requestAnimationFrame(layout);
       });
     };
-
-    const images = [...container.querySelectorAll<HTMLImageElement>("img")];
-    images.forEach((image) => {
-      image.addEventListener("load", scheduleLayout);
-      image.addEventListener("error", scheduleLayout);
-    });
     const resizeObserver = new ResizeObserver(scheduleLayout);
     resizeObserver.observe(container);
-    const preferenceObserver = new MutationObserver(scheduleLayout);
-    preferenceObserver.observe(document.documentElement, {
-      attributeFilter: ["data-home-layout"],
+    const rootObserver = new MutationObserver(scheduleLayout);
+    rootObserver.observe(document.documentElement, {
       attributes: true,
+      attributeFilter: ["data-content-wall-layout", "data-platform"],
     });
+    for (const image of container.querySelectorAll("img")) {
+      image.addEventListener("load", scheduleLayout);
+      image.addEventListener("error", scheduleLayout);
+    }
+    window.addEventListener("yoyi:platformchange", scheduleLayout);
+    window.addEventListener("yoyi:layoutchange", scheduleLayout);
     scheduleLayout();
-
     return () => {
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
       resizeObserver.disconnect();
-      preferenceObserver.disconnect();
-      images.forEach((image) => {
+      rootObserver.disconnect();
+      window.removeEventListener("yoyi:platformchange", scheduleLayout);
+      window.removeEventListener("yoyi:layoutchange", scheduleLayout);
+      for (const image of container.querySelectorAll("img")) {
         image.removeEventListener("load", scheduleLayout);
         image.removeEventListener("error", scheduleLayout);
-      });
+      }
     };
   }, [children]);
 
   return (
     <div
-      className={styles.masonry}
-      data-home-masonry
+      aria-label={label}
+      className={styles.contentWall}
+      data-content-wall
       ref={containerRef}
       role="list"
     >
