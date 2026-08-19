@@ -198,12 +198,14 @@ export const hasUseClientDirective = (source: string): boolean =>
 const webRoot = path.join(repositoryRoot, "apps", "web");
 const webPublicApiRoot = path.join(webRoot, "lib", "public-api");
 const webHomePageFile = path.join(webRoot, "app", "page.tsx");
+const webHomeRouteFile = path.join(webRoot, "app", "route.ts");
 const webHomeLoaderFile = path.join(
   webRoot,
   "features",
   "home",
   "load-home-catalog.ts",
 );
+const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
 
 export const isAuthorizedWebPublicApiFile = (
   filePath: string,
@@ -217,7 +219,9 @@ const isApprovedHomeConnectionReference = (
   reference: ModuleReference,
 ): boolean => {
   if (
-    path.resolve(filePath) !== webHomePageFile ||
+    ![webHomePageFile, webHomeRouteFile].some(
+      (candidate) => path.resolve(filePath) === candidate,
+    ) ||
     hasUseClientDirective(source) ||
     reference.kind !== "static-import" ||
     reference.specifier !== "next/server"
@@ -236,6 +240,15 @@ const isApprovedHomeConnectionReference = (
     nextServerImports[0]?.[1]?.replaceAll(/\s/g, "") === "{connection}"
   );
 };
+
+const isApprovedT02StaticFilesReference = (
+  filePath: string,
+  reference: ModuleReference,
+): boolean =>
+  path.resolve(filePath) === webT02StaticFilesFile &&
+  reference.kind === "static-import" &&
+  (reference.specifier === "node:fs/promises" ||
+    reference.specifier === "node:path");
 
 const isApprovedHomeLoaderReference = (
   filePath: string,
@@ -528,6 +541,10 @@ export const frontendBoundaryViolations = (
       source,
       reference,
     );
+    const approvedT02StaticFilesImport = isApprovedT02StaticFilesReference(
+      filePath,
+      reference,
+    );
     const approvedWebTestRendererImport =
       isWebTestFile && reference.specifier === "react-dom/server";
     const approvedHomeLoaderImport = isApprovedHomeLoaderReference(
@@ -539,6 +556,7 @@ export const frontendBoundaryViolations = (
       isForbiddenServerReference(reference.specifier) &&
       !approvedPublicApiRuntimeImport &&
       !approvedHomeConnectionImport &&
+      !approvedT02StaticFilesImport &&
       !approvedWebTestRendererImport &&
       !approvedHomeLoaderImport
     ) {
