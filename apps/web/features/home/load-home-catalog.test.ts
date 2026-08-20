@@ -10,7 +10,7 @@ vi.mock("../../lib/public-api/server", () => ({
 
 import { loadHomeCatalogState } from "./load-home-catalog";
 
-import type { CatalogPage } from "@moya/contracts";
+import type { CatalogListTransportQuery, CatalogPage } from "@moya/contracts";
 
 const page = (total: number): CatalogPage => ({
   items: [],
@@ -52,4 +52,21 @@ describe("Home Catalog loader", () => {
       expect(fetchServerCatalogPageMock).toHaveBeenCalledWith();
     },
   );
+
+  it.each([
+    { query: { kind: "inscription" } as CatalogListTransportQuery },
+    { query: { kind: "calligraphy" } as CatalogListTransportQuery },
+  ])("forwards $query.kind through the T06-A boundary", async ({ query }) => {
+    fetchServerCatalogPageMock.mockResolvedValue({
+      state: "success",
+      page: page(1),
+    });
+
+    await expect(loadHomeCatalogState(query)).resolves.toEqual({
+      state: "populated",
+      page: page(1),
+    });
+    expect(fetchServerCatalogPageMock).toHaveBeenCalledOnce();
+    expect(fetchServerCatalogPageMock).toHaveBeenCalledWith(query);
+  });
 });

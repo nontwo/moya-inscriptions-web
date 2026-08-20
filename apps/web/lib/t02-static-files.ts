@@ -9,6 +9,11 @@ const uiStylesRoot = resolve(repositoryRoot, "packages/ui/src");
 const uiAssetsRoot = resolve(uiStylesRoot, "assets");
 
 export type DiscoverTitle = { id: string; title: string };
+export type BrowseTitles = {
+  calligraphy?: readonly DiscoverTitle[];
+  discover?: readonly DiscoverTitle[];
+  inscriptions?: readonly DiscoverTitle[];
+};
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -100,7 +105,7 @@ export const serveT02File = async (
 
 export const readT02Document = async (
   method: "GET" | "HEAD" = "GET",
-  discoverTitles: readonly DiscoverTitle[] = [],
+  browseTitles: BrowseTitles = {},
 ): Promise<Response> => {
   const filePath = join(prototypeRoot, "index.html");
   try {
@@ -109,7 +114,13 @@ export const readT02Document = async (
       /<head>/i,
       '<head>\n    <base href="/docs/prototypes/mobile-preview/" />',
     );
-    const document = applyDiscoverTitles(documentWithBase, discoverTitles);
+    const document = applyCalligraphyTitles(
+      applyInscriptionTitles(
+        applyDiscoverTitles(documentWithBase, browseTitles.discover ?? []),
+        browseTitles.inscriptions ?? [],
+      ),
+      browseTitles.calligraphy ?? [],
+    );
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
       ? new Response(null, { status: 200, headers })
@@ -125,32 +136,77 @@ export const applyDiscoverTitles = (
 ): string => {
   if (discoverTitles.length === 0) return document;
 
-  return document.replace(
+  return applyTitlesInSection(
+    document,
     /(<div\s+class="app-masonry"\s+data-feed-grid="discover">)([\s\S]*?)(<\/div>)/,
+    /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
+    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span>)/,
+    discoverTitles,
+    true,
+  );
+};
+
+export const applyInscriptionTitles = (
+  document: string,
+  inscriptionTitles: readonly DiscoverTitle[],
+): string => {
+  if (inscriptionTitles.length === 0) return document;
+
+  return applyTitlesPreservingContent(
+    document,
+    /(<main\s+class="app-scroll"\s+data-scroll-view="inscriptions">[\s\S]*?<div\s+class="app-list">)([\s\S]*?)(<\/div>)/,
+    /<button\b[^>]*class="app-inscription-card"[^>]*>[\s\S]*?<\/button>/g,
+    /(<span\s+class="app-inscription-card__title"\s*>)[\s\S]*?(<\/span>)/,
+    inscriptionTitles,
+  );
+};
+
+export const applyCalligraphyTitles = (
+  document: string,
+  calligraphyTitles: readonly DiscoverTitle[],
+): string => {
+  if (calligraphyTitles.length === 0) return document;
+
+  return applyTitlesInSection(
+    document,
+    /(<div\s+class="app-masonry\s+app-calligraphy-grid">)([\s\S]*?)(<\/div>)/,
+    /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
+    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span>)/,
+    calligraphyTitles,
+  );
+};
+
+const applyTitlesInSection = (
+  document: string,
+  sectionPattern: RegExp,
+  cardPattern: RegExp,
+  titlePattern: RegExp,
+  titles: readonly DiscoverTitle[],
+  allowOverflow = false,
+): string =>
+  document.replace(
+    sectionPattern,
     (_match, opening: string, content: string, closing: string) => {
-      const cards = content.match(
-        /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
-      );
+      const cards = content.match(cardPattern);
       if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
 
       const updateTitle = (card: string, title: string): string =>
-        card.replace(
-          /(<span\s+class="app-card__title">)[\s\S]*?(<\/span>)/,
-          `$1${escapeHtml(title)}$2`,
-        );
+        card.replace(titlePattern, `$1${escapeHtml(title)}$2`);
 
-      const visibleCardCount = Math.min(cards.length, discoverTitles.length);
+      const visibleCardCount = Math.min(cards.length, titles.length);
       const visibleCards = cards
         .slice(0, visibleCardCount)
-        .map((card, index) => updateTitle(card, discoverTitles[index]!.title));
+        .map((card, index) => updateTitle(card, titles[index]!.title));
 
-      const overflowCards = discoverTitles
-        .slice(cards.length)
-        .map((item, index) =>
-          updateTitle(cards[index % cards.length]!, item.title),
-        );
+      const overflowCards = allowOverflow
+        ? titles
+            .slice(cards.length)
+            .map((item, index) =>
+              updateTitle(cards[index % cards.length]!, item.title),
+            )
+        : [];
 
-      const remainingCards = cards.slice(discoverTitles.length);
+      const remainingCards = cards.slice(visibleCardCount);
 
       return `${opening}${[
         ...visibleCards,
@@ -159,7 +215,30 @@ export const applyDiscoverTitles = (
       ].join("\n")}${closing}`;
     },
   );
-};
+
+const applyTitlesPreservingContent = (
+  document: string,
+  sectionPattern: RegExp,
+  cardPattern: RegExp,
+  titlePattern: RegExp,
+  titles: readonly DiscoverTitle[],
+): string =>
+  document.replace(
+    sectionPattern,
+    (_match, opening: string, content: string, closing: string) => {
+      const cards = content.match(cardPattern);
+      if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
+
+      let titleIndex = 0;
+      const updatedContent = content.replace(cardPattern, (card: string) => {
+        const title = titles[titleIndex++];
+        if (!title) return card;
+        return card.replace(titlePattern, `$1${escapeHtml(title.title)}$2`);
+      });
+
+      return `${opening}${updatedContent}${closing}`;
+    },
+  );
 
 const escapeHtml = (value: string): string =>
   value.replace(
