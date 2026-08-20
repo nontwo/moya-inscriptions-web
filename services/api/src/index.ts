@@ -1,6 +1,4 @@
-export {
-  deriveCatalogPeriodLabel,
-} from "./modules/catalog/application/catalog-read-projections.js";
+export { deriveCatalogPeriodLabel } from "./modules/catalog/application/catalog-read-projections.js";
 export { parseCatalogListQuery } from "./modules/catalog/transport/catalog-list-query-parser.js";
 export {
   mapCatalogDetail,

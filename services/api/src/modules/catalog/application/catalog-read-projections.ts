@@ -1,11 +1,7 @@
 import type { CatalogId, CatalogKind, MediaId } from "@moya/contracts";
 
 export type CatalogFieldState =
-  | "VALUE"
-  | "UNSUPPLIED"
-  | "UNKNOWN"
-  | "NOT_APPLICABLE"
-  | "CLEAR";
+  "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
 
 export interface CatalogStatefulTextProjection {
   readonly state: CatalogFieldState;
@@ -60,8 +56,9 @@ export interface CatalogListPageProjection {
   readonly totalPages: number;
 }
 
-const renderableTextField = (field?: CatalogStatefulTextProjection): string | undefined =>
-  field?.state === "VALUE" ? field.value : undefined;
+const renderableTextField = (
+  field?: CatalogStatefulTextProjection,
+): string | undefined => (field?.state === "VALUE" ? field.value : undefined);
 
 export const deriveCatalogPeriodLabel = (input: {
   readonly dynasty?: CatalogStatefulTextProjection;

@@ -118,9 +118,7 @@ const legacyPeriodLabelProjection = (
   row: CatalogEntryRow,
 ): { readonly legacyPeriodLabel: string } | Record<string, never> => {
   const legacyPeriodLabel = optionalString(row.period_label, "period label");
-  return legacyPeriodLabel === undefined
-    ? {}
-    : { legacyPeriodLabel };
+  return legacyPeriodLabel === undefined ? {} : { legacyPeriodLabel };
 };
 
 const positiveInteger = (value: unknown, field: string): number => {
@@ -226,12 +224,7 @@ export const mapCatalogDetailRow = (
     "prefecture_state",
     "prefecture",
   ),
-  county: readStatefulTextProjection(
-    row,
-    "county",
-    "county_state",
-    "county",
-  ),
+  county: readStatefulTextProjection(row, "county", "county_state", "county"),
   currentLocation: readStatefulTextProjection(
     row,
     "current_location",
