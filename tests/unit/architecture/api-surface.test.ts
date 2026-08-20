@@ -46,6 +46,7 @@ describe("@moya/api server-only surface", () => {
       "CatalogMediaResolutionError",
       "CatalogQueryUnavailableError",
       "CatalogReadService",
+      "deriveCatalogPeriodLabel",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
       "mapCatalogDetail",

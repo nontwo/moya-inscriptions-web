@@ -7,10 +7,21 @@ import type {
   CatalogQueryPort,
   CatalogRecord,
   CatalogSourceCitationProjection,
+  CatalogStatefulTextProjection,
 } from "@moya/api";
+import { deriveCatalogPeriodLabel } from "@moya/api";
 
 interface DevelopmentFixtureEntry {
   readonly record: CatalogRecord;
+  readonly detailFields: {
+    readonly dynasty?: CatalogStatefulTextProjection;
+    readonly dateText?: CatalogStatefulTextProjection;
+    readonly province?: CatalogStatefulTextProjection;
+    readonly prefecture?: CatalogStatefulTextProjection;
+    readonly county?: CatalogStatefulTextProjection;
+    readonly currentLocation?: CatalogStatefulTextProjection;
+    readonly currentCustodian?: CatalogStatefulTextProjection;
+  };
   readonly media: readonly CatalogMediaProjection[];
   readonly sourceCitations: readonly CatalogSourceCitationProjection[];
   /** Deliberately private fixture state used to verify the projection boundary. */
@@ -23,6 +34,15 @@ interface DevelopmentFixtureEntry {
 
 const fixtureId = (value: string) => catalogIdSchema.parse(value);
 const fixtureMediaId = (value: string) => mediaIdSchema.parse(value);
+const valueField = (value: string): CatalogStatefulTextProjection => ({
+  state: "VALUE",
+  value,
+});
+const periodLabelField = (value: string | undefined) =>
+  value === undefined ? {} : { periodLabel: value };
+const emptyStateField = (
+  state: Exclude<CatalogStatefulTextProjection["state"], "VALUE">,
+): CatalogStatefulTextProjection => ({ state });
 
 export const developmentMediaUrlsByObjectKey: ReadonlyMap<string, string> =
   new Map([
@@ -52,7 +72,21 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
       summary: "T05.1 开发测试夹具中的书法类条目。",
       description:
         "仅用于验证 Catalog detail HTTP boundary 与 Public DTO 映射。",
-      periodLabel: "唐",
+      ...periodLabelField(
+        deriveCatalogPeriodLabel({
+          dynasty: valueField("唐"),
+          dateText: valueField("贞观十年"),
+        }),
+      ),
+    },
+    detailFields: {
+      dynasty: valueField("唐"),
+      dateText: valueField("贞观十年"),
+      province: valueField("陕西"),
+      prefecture: emptyStateField("CLEAR"),
+      county: emptyStateField("UNSUPPLIED"),
+      currentLocation: valueField("陕西省碑林区"),
+      currentCustodian: valueField("碑林博物馆"),
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],
     media: [
@@ -91,7 +125,20 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
       aliases: ["广开土王碑"],
       summary: "T05.1 开发测试夹具中的碑刻类条目。",
       description: "仅用于验证 deterministic list、pagination 与 detail 查询。",
-      periodLabel: "东晋",
+      ...periodLabelField(
+        deriveCatalogPeriodLabel({
+          dynasty: valueField("东晋"),
+        }),
+      ),
+    },
+    detailFields: {
+      dynasty: valueField("东晋"),
+      dateText: emptyStateField("UNSUPPLIED"),
+      province: emptyStateField("UNSUPPLIED"),
+      prefecture: emptyStateField("UNSUPPLIED"),
+      county: emptyStateField("UNSUPPLIED"),
+      currentLocation: emptyStateField("UNSUPPLIED"),
+      currentCustodian: emptyStateField("UNSUPPLIED"),
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],
     media: [],
@@ -109,7 +156,20 @@ const developmentFixture: readonly DevelopmentFixtureEntry[] = Object.freeze([
       aliases: ["经石峪摩崖刻经"],
       summary: "T05.1 开发测试夹具中的摩崖刻经条目。",
       description: "仅用于覆盖 inscription CatalogKind 与越界分页行为。",
-      periodLabel: "北齐",
+      ...periodLabelField(
+        deriveCatalogPeriodLabel({
+          dateText: valueField("北齐"),
+        }),
+      ),
+    },
+    detailFields: {
+      dynasty: emptyStateField("UNSUPPLIED"),
+      dateText: valueField("北齐"),
+      province: emptyStateField("UNSUPPLIED"),
+      prefecture: emptyStateField("UNSUPPLIED"),
+      county: emptyStateField("UNSUPPLIED"),
+      currentLocation: emptyStateField("UNSUPPLIED"),
+      currentCustodian: emptyStateField("UNSUPPLIED"),
     },
     sourceCitations: [{ label: "T05.1 test/development fixture" }],
     media: [],
@@ -149,6 +209,7 @@ const toDetailProjection = (
 ): CatalogDetailProjection => {
   return {
     ...toListProjection(entry),
+    ...entry.detailFields,
     sourceCitations: entry.sourceCitations.map((citation) => ({ ...citation })),
     media: entry.media.map((media) => ({ ...media })),
     ...(entry.record.description === undefined

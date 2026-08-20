@@ -95,6 +95,7 @@ describe("development Catalog fixture adapter", () => {
       "九成宫醴泉铭",
       "好太王碑",
     ]);
+    expect(firstRead.items[0]?.periodLabel).toBe("唐 · 贞观十年");
     expect(firstRead.items.map(({ id }) => catalogIdSchema.parse(id))).toEqual(
       firstRead.items.map(({ id }) => id),
     );
@@ -266,6 +267,11 @@ describe("Catalog detail HTTP boundary", () => {
       title: "九成宫醴泉铭",
       representativeMedia: { id: "fixture-media-002" },
       media: [{ id: "fixture-media-001" }, { id: "fixture-media-002" }],
+      dynasty: "唐",
+      dateText: "贞观十年",
+      province: "陕西",
+      currentLocation: "陕西省碑林区",
+      currentCustodian: "碑林博物馆",
     });
   });
 

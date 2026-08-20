@@ -75,15 +75,46 @@ const startHttp = async (
 };
 
 const insertFixture = async (): Promise<void> => {
-  for (const entry of [
+  await pool.query(
+    `INSERT INTO catalog_entries
+       (catalog_id, kind, title, summary, description, period_label,
+        dynasty, dynasty_state, date_text, date_text_state,
+        province, province_state, prefecture, prefecture_state,
+        county, county_state, current_location, current_location_state,
+        current_custodian, current_custodian_state)
+     VALUES
+       ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10,
+        $11, $12, $13, $14,
+        $15, $16, $17, $18,
+        $19, $20)`,
     [
       "test-catalog-001",
       "calligraphy",
       "Test Calligraphy",
       "First summary",
       "First description",
+      "Legacy period",
       "唐",
+      "VALUE",
+      "贞观十年",
+      "VALUE",
+      "陕西",
+      "VALUE",
+      null,
+      "CLEAR",
+      null,
+      "UNSUPPLIED",
+      "陕西省碑林区",
+      "VALUE",
+      "碑林博物馆",
+      "VALUE",
     ],
+  );
+  await pool.query(
+    `INSERT INTO catalog_entries
+       (catalog_id, kind, title, summary, description, period_label)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       "test-catalog-002",
       "inscription",
@@ -92,6 +123,11 @@ const insertFixture = async (): Promise<void> => {
       "Second description",
       "汉",
     ],
+  );
+  await pool.query(
+    `INSERT INTO catalog_entries
+       (catalog_id, kind, title, summary, description, period_label)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       "test-catalog-003",
       "inscription",
@@ -100,14 +136,7 @@ const insertFixture = async (): Promise<void> => {
       null,
       null,
     ],
-  ] as const) {
-    await pool.query(
-      `INSERT INTO catalog_entries
-         (catalog_id, kind, title, summary, description, period_label)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [...entry],
-    );
-  }
+  );
   await pool.query(
     `INSERT INTO catalog_aliases (catalog_id, position, alias)
      VALUES ($1, $2, $3), ($1, $4, $5)`,
@@ -688,7 +717,11 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
 
     expect(catalogPageSchema.parse(await first.json())).toMatchObject({
       items: [
-        { id: "test-catalog-001", aliases: ["First alias", "Second alias"] },
+        {
+          id: "test-catalog-001",
+          aliases: ["First alias", "Second alias"],
+          periodLabel: "唐 · 贞观十年",
+        },
         { id: "test-catalog-002", aliases: [] },
       ],
       page: 1,
@@ -718,7 +751,13 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
         .items.map(({ id }) => id),
     ).toEqual(["test-catalog-003"]);
     expect(catalogPageSchema.parse(await calligraphy.json())).toMatchObject({
-      items: [{ id: "test-catalog-001", kind: "calligraphy" }],
+      items: [
+        {
+          id: "test-catalog-001",
+          kind: "calligraphy",
+          periodLabel: "唐 · 贞观十年",
+        },
+      ],
       total: 1,
       totalPages: 1,
     });
@@ -729,6 +768,12 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     expect(catalogDetailSchema.parse(await detail.json())).toMatchObject({
       id: "test-catalog-001",
       aliases: ["First alias", "Second alias"],
+      periodLabel: "唐 · 贞观十年",
+      dynasty: "唐",
+      dateText: "贞观十年",
+      province: "陕西",
+      currentLocation: "陕西省碑林区",
+      currentCustodian: "碑林博物馆",
       sourceCitations: [
         {
           label: "First citation",

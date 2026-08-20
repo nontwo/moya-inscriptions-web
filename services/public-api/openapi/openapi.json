@@ -47,8 +47,33 @@
             },
             "type": "array"
           },
+          "county": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "currentCustodian": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "currentLocation": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "dateText": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
           "description": {
             "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "dynasty": {
+            "maxLength": 500,
             "minLength": 1,
             "type": "string"
           },
@@ -111,6 +136,16 @@
           },
           "periodLabel": {
             "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "prefecture": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "province": {
+            "maxLength": 500,
             "minLength": 1,
             "type": "string"
           },

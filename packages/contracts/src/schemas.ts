@@ -52,6 +52,13 @@ export const catalogSummarySchema = z.strictObject({
 
 export const catalogDetailSchema = z.strictObject({
   ...catalogSummarySchema.shape,
+  dynasty: exactTextSchema(500).optional(),
+  dateText: exactTextSchema(500).optional(),
+  province: exactTextSchema(500).optional(),
+  prefecture: exactTextSchema(500).optional(),
+  county: exactTextSchema(500).optional(),
+  currentLocation: exactTextSchema(500).optional(),
+  currentCustodian: exactTextSchema(500).optional(),
   description: exactTextSchema(20_000).optional(),
   sourceCitations: z.array(publicSourceCitationSchema),
   media: z.array(publicMediaSchema),

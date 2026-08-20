@@ -1,5 +1,17 @@
 import type { CatalogId, CatalogKind, MediaId } from "@moya/contracts";
 
+export type CatalogFieldState =
+  | "VALUE"
+  | "UNSUPPLIED"
+  | "UNKNOWN"
+  | "NOT_APPLICABLE"
+  | "CLEAR";
+
+export interface CatalogStatefulTextProjection {
+  readonly state: CatalogFieldState;
+  readonly value?: string;
+}
+
 export interface CatalogMediaProjection {
   readonly id: MediaId;
   readonly position: number;
@@ -28,6 +40,13 @@ export interface CatalogSourceCitationProjection {
 }
 
 export interface CatalogDetailProjection extends CatalogListItemProjection {
+  readonly dynasty?: CatalogStatefulTextProjection;
+  readonly dateText?: CatalogStatefulTextProjection;
+  readonly province?: CatalogStatefulTextProjection;
+  readonly prefecture?: CatalogStatefulTextProjection;
+  readonly county?: CatalogStatefulTextProjection;
+  readonly currentLocation?: CatalogStatefulTextProjection;
+  readonly currentCustodian?: CatalogStatefulTextProjection;
   readonly description?: string;
   readonly sourceCitations: readonly CatalogSourceCitationProjection[];
   readonly media: readonly CatalogMediaProjection[];
@@ -40,3 +59,26 @@ export interface CatalogListPageProjection {
   readonly pageSize: number;
   readonly totalPages: number;
 }
+
+const renderableTextField = (field?: CatalogStatefulTextProjection): string | undefined =>
+  field?.state === "VALUE" ? field.value : undefined;
+
+export const deriveCatalogPeriodLabel = (input: {
+  readonly dynasty?: CatalogStatefulTextProjection;
+  readonly dateText?: CatalogStatefulTextProjection;
+  readonly legacyPeriodLabel?: string;
+}): string | undefined => {
+  const dynasty = renderableTextField(input.dynasty);
+  const dateText = renderableTextField(input.dateText);
+
+  if (dynasty !== undefined && dateText !== undefined) {
+    return `${dynasty} · ${dateText}`;
+  }
+  if (dynasty !== undefined) {
+    return dynasty;
+  }
+  if (dateText !== undefined) {
+    return dateText;
+  }
+  return input.legacyPeriodLabel;
+};

@@ -1,3 +1,6 @@
+export {
+  deriveCatalogPeriodLabel,
+} from "./modules/catalog/application/catalog-read-projections.js";
 export { parseCatalogListQuery } from "./modules/catalog/transport/catalog-list-query-parser.js";
 export {
   mapCatalogDetail,
@@ -22,10 +25,12 @@ export type {
 } from "./modules/catalog/application/ports/storage-url-resolver.js";
 export type { CatalogListQuery } from "./modules/catalog/application/queries/catalog-list-query.js";
 export type {
+  CatalogFieldState,
   CatalogDetailProjection,
   CatalogListItemProjection,
   CatalogListPageProjection,
   CatalogMediaProjection,
   CatalogSourceCitationProjection,
+  CatalogStatefulTextProjection,
 } from "./modules/catalog/application/catalog-read-projections.js";
 export type { CatalogRecord } from "./modules/catalog/domain/catalog-record.js";

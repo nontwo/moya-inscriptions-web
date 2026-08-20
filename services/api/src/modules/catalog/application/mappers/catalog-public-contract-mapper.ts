@@ -22,6 +22,7 @@ import type {
   CatalogListPageProjection,
   CatalogMediaProjection,
   CatalogSourceCitationProjection,
+  CatalogStatefulTextProjection,
 } from "../catalog-read-projections.js";
 import type { ResolvedMediaUrl } from "../ports/storage-url-resolver.js";
 
@@ -67,6 +68,10 @@ const mapCatalogSourceCitation = (
   return publicSourceCitationSchema.parse(citation);
 };
 
+const projectPublicText = (
+  field?: CatalogStatefulTextProjection,
+): string | undefined => (field?.state === "VALUE" ? field.value : undefined);
+
 export const mapCatalogSummary = (
   projection: CatalogListItemProjection,
   resolvedMedia: ReadonlyMap<MediaId, ResolvedMediaUrl> = noResolvedMedia,
@@ -106,6 +111,34 @@ export const mapCatalogDetail = (
     ),
   };
 
+  const dynasty = projectPublicText(projection.dynasty);
+  if (dynasty !== undefined) {
+    detail.dynasty = dynasty;
+  }
+  const dateText = projectPublicText(projection.dateText);
+  if (dateText !== undefined) {
+    detail.dateText = dateText;
+  }
+  const province = projectPublicText(projection.province);
+  if (province !== undefined) {
+    detail.province = province;
+  }
+  const prefecture = projectPublicText(projection.prefecture);
+  if (prefecture !== undefined) {
+    detail.prefecture = prefecture;
+  }
+  const county = projectPublicText(projection.county);
+  if (county !== undefined) {
+    detail.county = county;
+  }
+  const currentLocation = projectPublicText(projection.currentLocation);
+  if (currentLocation !== undefined) {
+    detail.currentLocation = currentLocation;
+  }
+  const currentCustodian = projectPublicText(projection.currentCustodian);
+  if (currentCustodian !== undefined) {
+    detail.currentCustodian = currentCustodian;
+  }
   if (projection.description !== undefined) {
     detail.description = projection.description;
   }
