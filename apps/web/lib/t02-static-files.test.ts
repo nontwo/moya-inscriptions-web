@@ -46,6 +46,7 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-content-id="inscription-yunfeng"');
     expect(result).toContain('class="app-inscription-card"');
     expect(result).toContain('class="app-inscription-card__meta"');
+    expect(result).toContain("data-search-empty");
     expect(result).toContain(
       "../../design-system/assets/demo/rubbing-fragment.svg",
     );

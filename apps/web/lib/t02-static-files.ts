@@ -152,7 +152,7 @@ export const applyInscriptionTitles = (
 ): string => {
   if (inscriptionTitles.length === 0) return document;
 
-  return applyTitlesInSection(
+  return applyTitlesPreservingContent(
     document,
     /(<main\s+class="app-scroll"\s+data-scroll-view="inscriptions">[\s\S]*?<div\s+class="app-list">)([\s\S]*?)(<\/div>)/,
     /<button\b[^>]*class="app-inscription-card"[^>]*>[\s\S]*?<\/button>/g,
@@ -213,6 +213,30 @@ const applyTitlesInSection = (
         ...overflowCards,
         ...remainingCards,
       ].join("\n")}${closing}`;
+    },
+  );
+
+const applyTitlesPreservingContent = (
+  document: string,
+  sectionPattern: RegExp,
+  cardPattern: RegExp,
+  titlePattern: RegExp,
+  titles: readonly DiscoverTitle[],
+): string =>
+  document.replace(
+    sectionPattern,
+    (_match, opening: string, content: string, closing: string) => {
+      const cards = content.match(cardPattern);
+      if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
+
+      let titleIndex = 0;
+      const updatedContent = content.replace(cardPattern, (card: string) => {
+        const title = titles[titleIndex++];
+        if (!title) return card;
+        return card.replace(titlePattern, `$1${escapeHtml(title.title)}$2`);
+      });
+
+      return `${opening}${updatedContent}${closing}`;
     },
   );
 
