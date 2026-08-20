@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyDiscoverTitles,
+  applyCalligraphyTitles,
+  applyInscriptionTitles,
   readT02Document,
   serveT02File,
 } from "./t02-static-files";
@@ -29,6 +31,70 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-title="山崖旧刻"');
   });
 
+  it("replaces only the visible Inscription titles in API order", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = applyInscriptionTitles(source, [
+      { id: "real-1", title: "真实碑刻一" },
+      { id: "real-2", title: "真实碑刻二" },
+    ]);
+
+    expect(result).toContain("真实碑刻一");
+    expect(result).toContain("真实碑刻二");
+    expect(result).toContain('data-title="云峰山题名"');
+    expect(result).toContain('data-content-id="inscription-yunfeng"');
+    expect(result).toContain('class="app-inscription-card"');
+    expect(result).toContain('class="app-inscription-card__meta"');
+    expect(result).toContain(
+      "../../design-system/assets/demo/rubbing-fragment.svg",
+    );
+  });
+
+  it("replaces only the visible Calligraphy titles in API order", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = applyCalligraphyTitles(source, [
+      { id: "real-1", title: "真实书帖一" },
+      { id: "real-2", title: "真实书帖二" },
+    ]);
+
+    expect(result).toContain("真实书帖一");
+    expect(result).toContain("真实书帖二");
+    expect(result).toContain('data-title="秋山札"');
+    expect(result).toContain('data-content-id="calligraphy-autumn"');
+    expect(result).toContain('data-category="ink"');
+    expect(result).toContain('class="app-card__meta"');
+    expect(result).toContain("../../design-system/assets/demo/ink-album.svg");
+  });
+
+  it("escapes visible title text before injecting it into HTML", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = applyCalligraphyTitles(source, [
+      { id: "real-1", title: `真实 <b>"第一"</b> & '条'` },
+    ]);
+
+    expect(result).toContain(
+      "真实 &lt;b&gt;&quot;第一&quot;&lt;/b&gt; &amp; &#39;条&#39;",
+    );
+    expect(result).toContain('data-title="秋山札"');
+    expect(result).not.toContain('<b>"第一"</b>');
+    expect(result).not.toContain("real-discover");
+  });
+
+  it("leaves the canonical browse source unchanged when there are no titles", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+
+    expect(applyDiscoverTitles(source, [])).toBe(source);
+    expect(applyInscriptionTitles(source, [])).toBe(source);
+    expect(applyCalligraphyTitles(source, [])).toBe(source);
+  });
+
   it("clones the existing Discover card presentation for overflow titles", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
@@ -53,30 +119,6 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-content-id="discover-cliff-gate"');
     expect(result).toContain('data-content-id="discover-ink"');
     expect(result).toContain("../../design-system/assets/demo/cliff-gate.svg");
-  });
-
-  it("escapes visible title text before injecting it into HTML", async () => {
-    const source = await (
-      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
-    ).text();
-    const result = applyDiscoverTitles(source, [
-      { id: "real-1", title: `真实 <b>"第一"</b> & '条'` },
-    ]);
-
-    expect(result).toContain(
-      "真实 &lt;b&gt;&quot;第一&quot;&lt;/b&gt; &amp; &#39;条&#39;",
-    );
-    expect(result).toContain('data-title="山门北壁题记"');
-    expect(result).not.toContain('<b>"第一"</b>');
-    expect(result).not.toContain("real-discover");
-  });
-
-  it("leaves the canonical Discover feed unchanged when there are no titles", async () => {
-    const source = await (
-      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
-    ).text();
-
-    expect(applyDiscoverTitles(source, [])).toBe(source);
   });
 
   it("serves the canonical root document with one response-time base", async () => {
