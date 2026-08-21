@@ -42,7 +42,7 @@ const page = (title: string) =>
         aliases: [],
         summary: `${title}摘要`,
         periodLabel: "唐",
-      } as CatalogPage["items"][number],
+      } as unknown as CatalogPage["items"][number],
     ],
     page: 1,
     pageSize: 20,
