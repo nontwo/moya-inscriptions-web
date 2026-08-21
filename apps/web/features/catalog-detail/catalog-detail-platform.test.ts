@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   detectCatalogDetailDeviceClass,
+  hasCatalogDetailPcControls,
   resolveCatalogDetailComposition,
   resolveCatalogDetailPlatform,
 } from "./catalog-detail-platform";
@@ -39,5 +40,11 @@ describe("Catalog detail platform resolution", () => {
       "wide-stacked",
     );
     expect(resolveCatalogDetailComposition("pc", false)).toBe("expanded-split");
+  });
+
+  it("uses the resolved platform rather than hover capability for PC controls", () => {
+    expect(hasCatalogDetailPcControls("phone")).toBe(false);
+    expect(hasCatalogDetailPcControls("tablet")).toBe(false);
+    expect(hasCatalogDetailPcControls("pc")).toBe(true);
   });
 });

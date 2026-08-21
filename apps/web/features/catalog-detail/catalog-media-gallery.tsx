@@ -3,11 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  classifyFocusWheel,
   containedImagePanBounds,
+  dynamicFocusMaxScale,
+  edgeCarouselDelta,
   lockGalleryGestureAxis,
+  recentPointerVelocity,
   shouldCommitGallerySwipe,
   shouldSuppressFocusOpen,
-  zoomedEdgePageStep,
+  wheelGestureDelta,
+  zoomFocusAt,
 } from "./catalog-detail-gallery-math";
 import styles from "./catalog-detail-screen.module.css";
 
@@ -22,9 +27,13 @@ export interface CatalogMediaGalleryProps {
 }
 
 const settleMs = 220;
+const wheelIdleMs = 24;
+const wheelIgnoreMs = 180;
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
+
+export const canOpenCatalogMediaFocus = (failed: boolean) => !failed;
 
 export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   const [index, setIndex] = useState(0);
@@ -45,6 +54,8 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     | {
         axis: "horizontal" | "vertical" | null;
         id: number;
+        lastTime: number;
+        lastX: number;
         startedAt: number;
         startX: number;
         startY: number;
@@ -55,12 +66,27 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   const focusClosedAt = useRef(Number.NEGATIVE_INFINITY);
   const focusPagerTimer = useRef<number | undefined>(undefined);
   const focusPointers = useRef(new Map<number, { x: number; y: number }>());
-  const focusGesture = useRef<{
-    distance?: number;
-    edgeStep?: -1 | 1;
-    moved: boolean;
-    pan?: { x: number; y: number };
-  }>({ moved: false });
+  const focusGesture = useRef<
+    | {
+        axis: "horizontal" | "vertical" | null;
+        carouselDelta: number;
+        carouselDragging: boolean;
+        distance?: number;
+        lastTime: number;
+        lastX: number;
+        moved: boolean;
+        originPan: { x: number; y: number };
+        startedAt: number;
+        startX: number;
+        startY: number;
+      }
+    | undefined
+  >(undefined);
+  const wheel = useRef<{ startedAt: number; totalX: number } | undefined>(
+    undefined,
+  );
+  const wheelTimer = useRef<number | undefined>(undefined);
+  const wheelIgnoreUntil = useRef(0);
   const item = media[index];
 
   useEffect(() => {
@@ -92,6 +118,8 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     () => () => {
       if (focusPagerTimer.current !== undefined)
         window.clearTimeout(focusPagerTimer.current);
+      if (wheelTimer.current !== undefined)
+        window.clearTimeout(wheelTimer.current);
     },
     [],
   );
@@ -122,23 +150,33 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
 
   const focusStageSize = () => {
     const stage = focusStageRef.current;
-    if (stage === null) return { height: 1, width: 1 };
+    if (stage === null) return { height: 1, left: 0, top: 0, width: 1 };
     const style = window.getComputedStyle(stage);
+    const rect = stage.getBoundingClientRect();
+    const leftPadding = Number.parseFloat(style.paddingLeft) || 0;
+    const topPadding = Number.parseFloat(style.paddingTop) || 0;
     return {
       height: Math.max(
         1,
         stage.clientHeight -
-          (Number.parseFloat(style.paddingTop) || 0) -
+          topPadding -
           (Number.parseFloat(style.paddingBottom) || 0),
       ),
       width: Math.max(
         1,
         stage.clientWidth -
-          (Number.parseFloat(style.paddingLeft) || 0) -
+          leftPadding -
           (Number.parseFloat(style.paddingRight) || 0),
       ),
+      left: rect.left + leftPadding,
+      top: rect.top + topPadding,
     };
   };
+
+  const naturalSize = () => ({
+    height: focusImageRef.current?.naturalHeight || item.height || 1,
+    width: focusImageRef.current?.naturalWidth || item.width || 1,
+  });
 
   const selectMedia = (nextIndex: number) => {
     setFailedKey(undefined);
@@ -180,11 +218,72 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     return true;
   };
 
+  const rebound = (focus = false) => {
+    if (focus) {
+      setFocusSettling(true);
+      setFocusDragX(0);
+      window.setTimeout(() => setFocusSettling(false), settleMs);
+      return;
+    }
+    setSettling(true);
+    setDragX(0);
+    window.setTimeout(() => setSettling(false), settleMs);
+  };
+
+  const settleWheel = (focus = false) => {
+    const gesture = wheel.current;
+    wheel.current = undefined;
+    wheelTimer.current = undefined;
+    if (gesture === undefined) return;
+    const deltaX = gesture.totalX;
+    const committed = shouldCommitGallerySwipe({
+      deltaX,
+      deltaY: 0,
+      duration: performance.now() - gesture.startedAt,
+      index,
+      total: media.length,
+      width: (focus ? focusRef : frameRef).current?.clientWidth ?? 1,
+    });
+    wheelIgnoreUntil.current = performance.now() + wheelIgnoreMs;
+    if (
+      committed &&
+      (focus ? focusMove(deltaX < 0 ? 1 : -1) : move(deltaX < 0 ? 1 : -1))
+    )
+      return;
+    rebound(focus);
+  };
+
+  const accumulateWheel = (event: React.WheelEvent, focus = false) => {
+    if (!multipleMedia || performance.now() < wheelIgnoreUntil.current) return;
+    const deltaX = wheelGestureDelta({
+      deltaMode: event.deltaMode,
+      deltaX: event.deltaX,
+    });
+    if (deltaX === 0) return;
+    const gesture =
+      wheel.current ??
+      (wheel.current = { startedAt: performance.now(), totalX: 0 });
+    gesture.totalX += deltaX;
+    const atEdge =
+      (index === 0 && gesture.totalX > 0) ||
+      (index === media.length - 1 && gesture.totalX < 0);
+    if (focus) setFocusDragX(atEdge ? gesture.totalX * 0.32 : gesture.totalX);
+    else setDragX(atEdge ? gesture.totalX * 0.32 : gesture.totalX);
+    if (wheelTimer.current !== undefined)
+      window.clearTimeout(wheelTimer.current);
+    wheelTimer.current = window.setTimeout(
+      () => settleWheel(focus),
+      wheelIdleMs,
+    );
+  };
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary) return;
     drag.current = {
       axis: null,
       id: event.pointerId,
+      lastTime: event.timeStamp,
+      lastX: event.clientX,
       startedAt: event.timeStamp,
       startX: event.clientX,
       startY: event.clientY,
@@ -204,6 +303,8 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     const atEdge =
       (index === 0 && x > 0) || (index === media.length - 1 && x < 0);
     setDragX(atEdge ? x * 0.32 : x);
+    current.lastTime = event.timeStamp;
+    current.lastX = event.clientX;
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -219,19 +320,24 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
       duration: event.timeStamp - current.startedAt,
       index,
       total: media.length,
+      velocity: recentPointerVelocity({
+        currentTime: event.timeStamp,
+        currentX: event.clientX,
+        lastTime: current.lastTime,
+        lastX: current.lastX,
+        startTime: current.startedAt,
+        startX: current.startX,
+      }),
       width: frameRef.current?.clientWidth ?? 1,
     });
     const next = x < 0;
     if (committed) move(next ? 1 : -1);
-    else {
-      setSettling(true);
-      setDragX(0);
-      window.setTimeout(() => setSettling(false), settleMs);
-    }
+    else rebound();
   };
 
   const openFocus = () => {
     if (
+      !canOpenCatalogMediaFocus(failed) ||
       suppressClick.current ||
       shouldSuppressFocusOpen(focusClosedAt.current, Date.now())
     ) {
@@ -248,15 +354,29 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
       y: event.clientY,
     });
     const pointers = [...focusPointers.current.values()];
-    focusGesture.current.moved = false;
-    delete focusGesture.current.edgeStep;
     revealFocusPager();
+    const gesture = {
+      axis: null as "horizontal" | "vertical" | null,
+      carouselDelta: 0,
+      carouselDragging: false,
+      lastTime: event.timeStamp,
+      lastX: event.clientX,
+      moved: false,
+      originPan: focusPan,
+      startedAt: event.timeStamp,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
     if (pointers.length === 2) {
-      focusGesture.current.distance = Math.hypot(
-        pointers[0]!.x - pointers[1]!.x,
-        pointers[0]!.y - pointers[1]!.y,
-      );
-    } else focusGesture.current.pan = { x: event.clientX, y: event.clientY };
+      focusGesture.current = {
+        ...gesture,
+        moved: true,
+        distance: Math.hypot(
+          pointers[0]!.x - pointers[1]!.x,
+          pointers[0]!.y - pointers[1]!.y,
+        ),
+      };
+    } else focusGesture.current = gesture;
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -267,91 +387,115 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
       y: event.clientY,
     });
     const pointers = [...focusPointers.current.values()];
-    if (pointers.length === 2 && focusGesture.current.distance !== undefined) {
+    const gesture = focusGesture.current;
+    if (gesture === undefined) return;
+    if (pointers.length === 2 && gesture.distance !== undefined) {
       const distance = Math.hypot(
         pointers[0]!.x - pointers[1]!.x,
         pointers[0]!.y - pointers[1]!.y,
       );
-      setFocusScale((scale) =>
-        clamp(scale * (distance / focusGesture.current.distance!), 1, 4),
-      );
-      focusGesture.current.distance = distance;
-      focusGesture.current.moved = true;
+      const stage = focusStageSize();
+      const natural = naturalSize();
+      const next = zoomFocusAt({
+        maxScale: dynamicFocusMaxScale({
+          naturalHeight: natural.height,
+          naturalWidth: natural.width,
+          stageHeight: stage.height,
+          stageWidth: stage.width,
+        }),
+        naturalHeight: natural.height,
+        naturalWidth: natural.width,
+        originX: (pointers[0]!.x + pointers[1]!.x) / 2 - stage.left,
+        originY: (pointers[0]!.y + pointers[1]!.y) / 2 - stage.top,
+        panX: focusPan.x,
+        panY: focusPan.y,
+        scale: focusScale,
+        stageHeight: stage.height,
+        stageWidth: stage.width,
+        targetScale: focusScale * (distance / gesture.distance),
+      });
+      setFocusScale(next.scale);
+      setFocusPan({ x: next.x, y: next.y });
+      gesture.distance = distance;
+      gesture.moved = true;
       return;
     }
-    const pan = focusGesture.current.pan;
-    if (!pan) return;
+    const x = event.clientX - gesture.startX;
+    const y = event.clientY - gesture.startY;
+    gesture.axis ??= lockGalleryGestureAxis(x, y);
+    if (gesture.axis === null) return;
+    gesture.moved = true;
     if (focusScale <= 1) {
-      const x = event.clientX - pan.x;
-      const y = event.clientY - pan.y;
-      const axis = lockGalleryGestureAxis(x, y);
-      focusGesture.current.moved = axis !== null;
-      if (axis !== "horizontal") return;
+      if (gesture.axis !== "horizontal") return;
       const atEdge =
         (index === 0 && x > 0) || (index === media.length - 1 && x < 0);
       setFocusDragX(atEdge ? x * 0.32 : x);
+      gesture.carouselDelta = x;
+      gesture.lastX = event.clientX;
+      gesture.lastTime = event.timeStamp;
       return;
     }
     const stage = focusStageSize();
+    const natural = naturalSize();
     const bounds = containedImagePanBounds({
-      naturalHeight: item.height ?? focusImageRef.current?.naturalHeight ?? 1,
-      naturalWidth: item.width ?? focusImageRef.current?.naturalWidth ?? 1,
+      naturalHeight: natural.height,
+      naturalWidth: natural.width,
       scale: focusScale,
       stageHeight: stage.height,
       stageWidth: stage.width,
     });
-    const edgeStep = zoomedEdgePageStep({
-      deltaX: event.clientX - pan.x,
-      maxX: bounds.maxX,
-      panX: focusPan.x,
+    const attemptedX = gesture.originPan.x + x;
+    const boundedX = clamp(attemptedX, -bounds.maxX, bounds.maxX);
+    setFocusPan({
+      x: boundedX,
+      y: clamp(gesture.originPan.y + y, -bounds.maxY, bounds.maxY),
     });
-    if (edgeStep !== undefined) {
-      focusGesture.current.edgeStep = edgeStep;
-      setFocusDragX((event.clientX - pan.x) * 0.32);
-      focusGesture.current.moved = true;
-      return;
+    const excess = edgeCarouselDelta({
+      attemptedPanX: attemptedX,
+      boundedPanX: boundedX,
+    });
+    if (gesture.axis === "horizontal" && excess !== 0) {
+      gesture.carouselDragging = true;
+      gesture.carouselDelta = excess;
+      setFocusDragX(excess * 0.32);
     }
-    setFocusPan((current) => ({
-      x: clamp(current.x + event.clientX - pan.x, -bounds.maxX, bounds.maxX),
-      y: clamp(current.y + event.clientY - pan.y, -bounds.maxY, bounds.maxY),
-    }));
-    focusGesture.current.pan = { x: event.clientX, y: event.clientY };
-    focusGesture.current.moved = true;
+    gesture.lastX = event.clientX;
+    gesture.lastTime = event.timeStamp;
   };
 
   const onFocusPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     focusPointers.current.delete(event.pointerId);
     if (focusPointers.current.size > 0) return;
-    const pan = focusGesture.current.pan;
-    const x = pan === undefined ? 0 : event.clientX - pan.x;
-    const y = pan === undefined ? 0 : event.clientY - pan.y;
-    if (focusGesture.current.edgeStep !== undefined) {
-      if (focusMove(focusGesture.current.edgeStep)) return;
-      setFocusSettling(true);
-      setFocusDragX(0);
-      window.setTimeout(() => setFocusSettling(false), settleMs);
-      return;
-    }
-    if (
-      focusScale === 1 &&
+    const gesture = focusGesture.current;
+    focusGesture.current = undefined;
+    if (gesture === undefined) return;
+    const deltaX = gesture.carouselDragging
+      ? gesture.carouselDelta
+      : event.clientX - gesture.startX;
+    const committed =
+      gesture.axis === "horizontal" &&
       shouldCommitGallerySwipe({
-        deltaX: x,
-        deltaY: y,
-        duration: 180,
+        deltaX,
+        deltaY: event.clientY - gesture.startY,
+        duration: event.timeStamp - gesture.startedAt,
         index,
         total: media.length,
+        velocity: recentPointerVelocity({
+          currentTime: event.timeStamp,
+          currentX: event.clientX,
+          lastTime: gesture.lastTime,
+          lastX: gesture.lastX,
+          startTime: gesture.startedAt,
+          startX: gesture.startX,
+        }),
         width: focusRef.current?.clientWidth ?? 1,
-      }) &&
-      focusMove(x < 0 ? 1 : -1)
-    )
-      return;
-    if (focusScale === 1 && focusGesture.current.moved) {
-      setFocusSettling(true);
-      setFocusDragX(0);
-      window.setTimeout(() => setFocusSettling(false), settleMs);
+      });
+    if (committed && focusMove(deltaX < 0 ? 1 : -1)) return;
+    if (gesture.moved) {
+      if (gesture.carouselDragging || focusScale === 1) rebound(true);
       return;
     }
-    if (!focusGesture.current.moved) closeFocus();
+    closeFocus();
   };
 
   return (
@@ -365,7 +509,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
           )
             return;
           event.preventDefault();
-          move(event.deltaX > 0 ? 1 : -1);
+          accumulateWheel(event);
         }}
       >
         <div
@@ -463,9 +607,70 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
           onWheel={(event) => {
             event.preventDefault();
             revealFocusPager();
-            setFocusScale((scale) =>
-              clamp(scale + (event.deltaY < 0 ? 0.2 : -0.2), 1, 4),
-            );
+            const intent = classifyFocusWheel({
+              ctrlKey: event.ctrlKey,
+              deltaMode: event.deltaMode,
+              deltaX: event.deltaX,
+              deltaY: event.deltaY,
+              metaKey: event.metaKey,
+              scale: focusScale,
+            });
+            const stage = focusStageSize();
+            const natural = naturalSize();
+            if (intent === "zoom") {
+              const next = zoomFocusAt({
+                maxScale: dynamicFocusMaxScale({
+                  naturalHeight: natural.height,
+                  naturalWidth: natural.width,
+                  stageHeight: stage.height,
+                  stageWidth: stage.width,
+                }),
+                naturalHeight: natural.height,
+                naturalWidth: natural.width,
+                originX: event.clientX - stage.left,
+                originY: event.clientY - stage.top,
+                panX: focusPan.x,
+                panY: focusPan.y,
+                scale: focusScale,
+                stageHeight: stage.height,
+                stageWidth: stage.width,
+                targetScale: focusScale + (event.deltaY < 0 ? 0.2 : -0.2),
+              });
+              setFocusScale(next.scale);
+              setFocusPan({ x: next.x, y: next.y });
+              return;
+            }
+            if (intent === "pan") {
+              const bounds = containedImagePanBounds({
+                naturalHeight: natural.height,
+                naturalWidth: natural.width,
+                scale: focusScale,
+                stageHeight: stage.height,
+                stageWidth: stage.width,
+              });
+              const attemptedX = focusPan.x - event.deltaX;
+              const boundedX = clamp(attemptedX, -bounds.maxX, bounds.maxX);
+              setFocusPan({
+                x: boundedX,
+                y: clamp(focusPan.y - event.deltaY, -bounds.maxY, bounds.maxY),
+              });
+              const excess = edgeCarouselDelta({
+                attemptedPanX: attemptedX,
+                boundedPanX: boundedX,
+              });
+              if (
+                excess !== 0 &&
+                Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+              ) {
+                accumulateWheel(
+                  { ...event, deltaX: -excess } as React.WheelEvent,
+                  true,
+                );
+              }
+              return;
+            }
+            if (Math.abs(event.deltaX) >= Math.abs(event.deltaY))
+              accumulateWheel(event, true);
           }}
           ref={focusRef}
           role="dialog"

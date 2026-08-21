@@ -1,10 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
   CatalogDetailScreen,
   CatalogDetailStatus,
+  catalogDetailGalleryKey,
+  detailAliases,
   detailIdentityLine,
+  detailTokensOverlap,
   qaMediaForTitle,
 } from "./catalog-detail-screen";
 
@@ -63,6 +67,20 @@ const detail = (overrides: Partial<CatalogDetail> = {}): CatalogDetail =>
   }) as CatalogDetail;
 
 describe("CatalogDetailScreen", () => {
+  it("retains critical T02 Detail title and skeleton dimensions", () => {
+    const css = readFileSync(
+      new URL("./catalog-detail-screen.module.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(css).toContain("font-size: 22px");
+    expect(css).toContain("font-size: 28px");
+    expect(css).toContain("width: 46%");
+    expect(css).toContain("height: 22px");
+    expect(css).toContain("width: 88%");
+    expect(css).toContain("height: 12px");
+  });
+
   it("renders public rich detail fields and API media in order", () => {
     const markup = renderToStaticMarkup(
       <CatalogDetailScreen detail={detail()} />,
@@ -183,6 +201,17 @@ describe("CatalogDetailScreen", () => {
     ).toBe("碑刻 · 山间");
   });
 
+  it("uses the T02 fact-overlap rule for period and alias presentation", () => {
+    expect(detailTokensOverlap("北魏", "北魏")).toBe(true);
+    expect(detailTokensOverlap("永平年间", "永平元年")).toBe(true);
+    expect(
+      detailIdentityLine(detail({ periodLabel: "北魏时期 · 云峰山 · 山间" })),
+    ).toBe("碑刻 · 山间");
+    expect(
+      detailAliases(detail({ aliases: ["云峰山崖壁", "云峰题名"] })),
+    ).toEqual(["云峰题名"]);
+  });
+
   it("uses the exact T02 QA media stress presets", () => {
     expect(
       qaMediaForTitle("云峰山题名").map(({ height, src, width }) => [
@@ -201,6 +230,13 @@ describe("CatalogDetailScreen", () => {
     ]);
   });
 
+  it("keys gallery state by Catalog identity", () => {
+    expect(catalogDetailGalleryKey("catalog-001")).toBe("catalog-001");
+    expect(catalogDetailGalleryKey("catalog-001")).not.toBe(
+      catalogDetailGalleryKey("catalog-002"),
+    );
+  });
+
   it("uses representativeMedia only when the detail media list is empty", () => {
     const markup = renderToStaticMarkup(
       <CatalogDetailScreen detail={detail({ media: [] })} />,
@@ -213,14 +249,24 @@ describe("CatalogDetailScreen", () => {
   });
 
   it.each([
-    ["not-found", "未找到这项资料"],
-    ["unavailable", "档案服务暂时不可用"],
-    ["unexpected-error", "无法加载这项资料"],
-  ] as const)("renders the %s status", (state, title) => {
-    const markup = renderToStaticMarkup(<CatalogDetailStatus state={state} />);
+    [
+      "not-found",
+      "未找到这项资料",
+      "这项资料可能不存在，或已无法访问。",
+      "返回上一页",
+    ],
+    ["unavailable", "暂时无法加载资料", "重试", "返回"],
+    ["unexpected-error", "暂时无法显示此页面", "重试", "返回"],
+  ] as const)(
+    "renders the %s lifecycle copy",
+    (state, title, firstAction, secondAction) => {
+      const markup = renderToStaticMarkup(
+        <CatalogDetailStatus state={state} />,
+      );
 
-    expect(markup).toContain(title);
-    if (state === "not-found") expect(markup).not.toContain("重试");
-    else expect(markup).toContain("重试");
-  });
+      expect(markup).toContain(title);
+      expect(markup).toContain(firstAction);
+      expect(markup).toContain(secondAction);
+    },
+  );
 });

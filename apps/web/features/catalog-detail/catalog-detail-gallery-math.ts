@@ -1,5 +1,10 @@
 export type GestureAxis = "horizontal" | "vertical" | null;
 
+export type FocusWheelIntent = "page" | "pan" | "zoom";
+
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.min(maximum, Math.max(minimum, value));
+
 export const lockGalleryGestureAxis = (
   x: number,
   y: number,
@@ -63,20 +68,127 @@ export const containedImagePanBounds = ({
   };
 };
 
-export const zoomedEdgePageStep = ({
-  deltaX,
-  maxX,
-  panX,
+export const dynamicFocusMaxScale = ({
+  naturalHeight,
+  naturalWidth,
+  stageHeight,
+  stageWidth,
 }: {
-  deltaX: number;
-  maxX: number;
-  panX: number;
-}): -1 | 1 | undefined => {
-  if (maxX <= 0) return undefined;
-  if (deltaX > 0 && panX >= maxX - 1) return -1;
-  if (deltaX < 0 && panX <= -maxX + 1) return 1;
-  return undefined;
+  naturalHeight: number;
+  naturalWidth: number;
+  stageHeight: number;
+  stageWidth: number;
+}) => {
+  const fit = Math.min(stageWidth / naturalWidth, stageHeight / naturalHeight);
+  return clamp(1 / Math.max(fit, Number.EPSILON), 4, 8);
 };
+
+export const zoomFocusAt = ({
+  maxScale,
+  naturalHeight,
+  naturalWidth,
+  originX,
+  originY,
+  panX,
+  panY,
+  scale,
+  stageHeight,
+  stageWidth,
+  targetScale,
+}: {
+  maxScale: number;
+  naturalHeight: number;
+  naturalWidth: number;
+  originX: number;
+  originY: number;
+  panX: number;
+  panY: number;
+  scale: number;
+  stageHeight: number;
+  stageWidth: number;
+  targetScale: number;
+}) => {
+  const nextScale = clamp(targetScale, 1, maxScale);
+  const centerX = stageWidth / 2;
+  const centerY = stageHeight / 2;
+  const imageX = (originX - centerX - panX) / scale;
+  const imageY = (originY - centerY - panY) / scale;
+  const bounds = containedImagePanBounds({
+    naturalHeight,
+    naturalWidth,
+    scale: nextScale,
+    stageHeight,
+    stageWidth,
+  });
+  return {
+    scale: nextScale,
+    x: clamp(originX - centerX - imageX * nextScale, -bounds.maxX, bounds.maxX),
+    y: clamp(originY - centerY - imageY * nextScale, -bounds.maxY, bounds.maxY),
+  };
+};
+
+export const wheelGestureDelta = ({
+  deltaMode,
+  deltaX,
+}: {
+  deltaMode: number;
+  deltaX: number;
+}) => (deltaMode === 1 ? deltaX * 16 : deltaMode === 2 ? deltaX * 240 : deltaX);
+
+export const classifyFocusWheel = ({
+  ctrlKey,
+  deltaMode,
+  deltaX,
+  deltaY,
+  metaKey,
+  scale,
+}: {
+  ctrlKey: boolean;
+  deltaMode: number;
+  deltaX: number;
+  deltaY: number;
+  metaKey: boolean;
+  scale: number;
+}): FocusWheelIntent => {
+  if (
+    ctrlKey ||
+    metaKey ||
+    deltaMode !== 0 ||
+    (Math.abs(deltaY) >= 40 && Math.abs(deltaX) < 1)
+  )
+    return "zoom";
+  if (scale > 1 && Math.abs(deltaY) >= Math.abs(deltaX)) return "pan";
+  return "page";
+};
+
+export const recentPointerVelocity = ({
+  currentTime,
+  currentX,
+  lastTime,
+  lastX,
+  startTime,
+  startX,
+}: {
+  currentTime: number;
+  currentX: number;
+  lastTime: number;
+  lastX: number;
+  startTime: number;
+  startX: number;
+}) => {
+  const recentDuration = currentTime - lastTime;
+  if (recentDuration > 0 && recentDuration < 80)
+    return (currentX - lastX) / recentDuration;
+  return (currentX - startX) / Math.max(16, currentTime - startTime);
+};
+
+export const edgeCarouselDelta = ({
+  attemptedPanX,
+  boundedPanX,
+}: {
+  attemptedPanX: number;
+  boundedPanX: number;
+}) => attemptedPanX - boundedPanX;
 
 export const shouldSuppressFocusOpen = (closedAt: number, now: number) =>
   now - closedAt < 350;

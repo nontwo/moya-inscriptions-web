@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import {
   detectCatalogDetailDeviceClass,
@@ -10,14 +10,19 @@ import {
 
 import type { ReactNode } from "react";
 
-const compositionForWindow = () =>
-  resolveCatalogDetailComposition(
-    resolveCatalogDetailPlatform(
-      detectCatalogDetailDeviceClass(window.navigator),
-      window.innerWidth,
-    ),
-    window.innerWidth > window.innerHeight,
+const layoutForWindow = () => {
+  const platform = resolveCatalogDetailPlatform(
+    detectCatalogDetailDeviceClass(window.navigator),
+    window.innerWidth,
   );
+  return {
+    composition: resolveCatalogDetailComposition(
+      platform,
+      window.innerWidth > window.innerHeight,
+    ),
+    platform,
+  };
+};
 
 export const CatalogDetailFrame = ({
   children,
@@ -26,10 +31,13 @@ export const CatalogDetailFrame = ({
   children: ReactNode;
   className: string | undefined;
 }) => {
-  const [composition, setComposition] = useState("stacked");
+  const [layout, setLayout] = useState({
+    composition: "stacked",
+    platform: "phone",
+  });
 
-  useEffect(() => {
-    const update = () => setComposition(compositionForWindow());
+  useLayoutEffect(() => {
+    const update = () => setLayout(layoutForWindow());
     update();
     window.addEventListener("orientationchange", update);
     window.addEventListener("resize", update);
@@ -40,7 +48,11 @@ export const CatalogDetailFrame = ({
   }, []);
 
   return (
-    <main className={className} data-detail-composition={composition}>
+    <main
+      className={className}
+      data-detail-composition={layout.composition}
+      data-detail-platform={layout.platform}
+    >
       {children}
     </main>
   );

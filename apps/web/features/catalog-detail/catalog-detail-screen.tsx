@@ -56,17 +56,53 @@ const detailTokens = (value: string | undefined): string[] =>
 
 const normalizedDetailToken = (value: string) => value.replace(/\s+/g, "");
 
-export const detailIdentityLine = (detail: CatalogDetail): string => {
-  const chronology = new Set(
-    [detail.dynasty, detail.dateText]
-      .flatMap((value) => detailTokens(value))
-      .map(normalizedDetailToken),
+const commonPrefixLength = (left: string, right: string) => {
+  let length = 0;
+  while (length < left.length && left[length] === right[length]) length += 1;
+  return length;
+};
+
+export const detailTokensOverlap = (left: string, right: string) => {
+  const normalizedLeft = normalizedDetailToken(left);
+  const normalizedRight = normalizedDetailToken(right);
+  if (normalizedLeft === normalizedRight) return true;
+  if (
+    normalizedLeft.length >= 2 &&
+    normalizedRight.length >= 2 &&
+    (normalizedLeft.includes(normalizedRight) ||
+      normalizedRight.includes(normalizedLeft))
+  )
+    return true;
+  return (
+    /年/.test(normalizedLeft) &&
+    /年/.test(normalizedRight) &&
+    commonPrefixLength(normalizedLeft, normalizedRight) >= 2
   );
-  const period = detailTokens(detail.periodLabel).filter(
-    (token) => !chronology.has(normalizedDetailToken(token)),
+};
+
+const renderedFactTokens = (detail: CatalogDetail) =>
+  detailFacts(detail).flatMap(({ value }) => detailTokens(value));
+
+const withoutFactOverlap = (
+  tokens: readonly string[],
+  facts: readonly string[],
+) =>
+  tokens.filter(
+    (token) => !facts.some((fact) => detailTokensOverlap(token, fact)),
+  );
+
+export const detailIdentityLine = (detail: CatalogDetail): string => {
+  const period = withoutFactOverlap(
+    detailTokens(detail.periodLabel),
+    renderedFactTokens(detail),
   );
   return [kindLabel(detail.kind), ...period].join(" · ");
 };
+
+export const detailAliases = (detail: CatalogDetail) =>
+  withoutFactOverlap(detail.aliases, renderedFactTokens(detail));
+
+export const catalogDetailGalleryKey = (catalogId: string) => catalogId;
 
 const publicMedia = (detail: CatalogDetail): readonly PresentationMedia[] => {
   if (detail.media.length > 0)
@@ -119,17 +155,22 @@ export const CatalogDetailStatus = ({
       description: "这项资料可能不存在，或已无法访问。",
     },
     unavailable: {
-      title: "档案服务暂时不可用",
-      description: "请稍后再试。",
+      title: "暂时无法加载资料",
+      description: undefined,
     },
     "unexpected-error": {
-      title: "无法加载这项资料",
-      description: "发生了未预期的错误，请稍后再试。",
+      title: "暂时无法显示此页面",
+      description: undefined,
     },
   }[state];
 
   return (
     <main className={styles.screen}>
+      <header className={styles.topbar}>
+        <a aria-label="返回" className={styles.backLink} href="/">
+          <span aria-hidden="true" className={styles.backIcon} />
+        </a>
+      </header>
       <div className={styles.content}>
         <section
           aria-live={state === "unexpected-error" ? "assertive" : "polite"}
@@ -137,14 +178,16 @@ export const CatalogDetailStatus = ({
           role={state === "unexpected-error" ? "alert" : "status"}
         >
           <h1>{content.title}</h1>
-          <p>{content.description}</p>
+          {content.description === undefined ? null : (
+            <p>{content.description}</p>
+          )}
           {state === "not-found" ? null : (
             <a className={styles.actionLink} href="">
               重试
             </a>
           )}
           <a className={styles.actionLink} href="/">
-            返回
+            {state === "not-found" ? "返回上一页" : "返回"}
           </a>
         </section>
       </div>
@@ -161,26 +204,32 @@ export const CatalogDetailScreen = ({
 }) => {
   const media = detailMedia(detail, qa);
   const facts = detailFacts(detail);
+  const aliases = detailAliases(detail);
 
   return (
     <CatalogDetailFrame className={styles.screen}>
       <header className={styles.topbar}>
         <a aria-label="返回" className={styles.backLink} href="/">
-          <span aria-hidden="true">←</span>
+          <span aria-hidden="true" className={styles.backIcon} />
         </a>
       </header>
       <div className={styles.content}>
         <section
           className={`${styles.hero}${media.length === 0 ? ` ${styles.heroWithoutMedia}` : ""}`}
         >
-          {media.length === 0 ? null : <CatalogMediaGallery media={media} />}
+          {media.length === 0 ? null : (
+            <CatalogMediaGallery
+              key={catalogDetailGalleryKey(detail.id)}
+              media={media}
+            />
+          )}
           <article className={styles.identity}>
             <h1>{detail.title}</h1>
             <p className={styles.kind}>{detailIdentityLine(detail)}</p>
-            {detail.aliases.length === 0 ? null : (
+            {aliases.length === 0 ? null : (
               <div className={styles.aliases}>
                 <p>又名</p>
-                <p>{detail.aliases.join(" · ")}</p>
+                <p>{aliases.join(" · ")}</p>
               </div>
             )}
             {facts.length > 0 || qa ? (

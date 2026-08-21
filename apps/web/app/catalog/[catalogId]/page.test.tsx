@@ -77,8 +77,8 @@ describe("Catalog detail page", () => {
   });
 
   it.each([
-    ["unavailable", "档案服务暂时不可用"],
-    ["unexpected-error", "无法加载这项资料"],
+    ["unavailable", "暂时无法加载资料"],
+    ["unexpected-error", "暂时无法显示此页面"],
   ] as const)("renders the %s state", async (state, text) => {
     fetchServerCatalogDetailMock.mockResolvedValue({ state });
 

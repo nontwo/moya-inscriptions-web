@@ -54,3 +54,6 @@ export const resolveCatalogDetailComposition = (
     return landscape ? "compact-split" : "wide-stacked";
   return "expanded-split";
 };
+
+export const hasCatalogDetailPcControls = (platform: CatalogDetailPlatform) =>
+  platform === "pc";
