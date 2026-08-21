@@ -267,7 +267,7 @@ export const injectRuntimeCatalogRecords = (
     ]),
   );
   const payload = JSON.stringify(records).replace(/</g, "\\u003c");
-  const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: \"runtime-bridge\" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
+  const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: "runtime-bridge" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
   const previewScript =
     /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
   return document.replace(previewScript, `${bridge}\n$1`);
