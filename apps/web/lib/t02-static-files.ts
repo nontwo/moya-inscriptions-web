@@ -10,19 +10,21 @@ const uiAssetsRoot = resolve(uiStylesRoot, "assets");
 
 export type BrowseItem = {
   id: string;
-  kind?: "inscription" | "calligraphy";
+  kind: "inscription" | "calligraphy";
   title: string;
-  aliases?: readonly string[];
-  summary?: string;
-  periodLabel?: string;
-  representativeMedia?: {
-    alt: string;
-    height: number;
-    id: string;
-    kind: "image";
-    src: string;
-    width: number;
-  };
+  aliases: readonly string[];
+  summary?: string | undefined;
+  periodLabel?: string | undefined;
+  representativeMedia?:
+    | {
+        alt: string;
+        height: number;
+        id: string;
+        kind: "image";
+        src: string;
+        width: number;
+      }
+    | undefined;
 };
 
 export type BrowseItems = {
@@ -159,11 +161,12 @@ export const readT02Document = async (
  * before a formal transcription contract exists. This is presentation-only and
  * is deliberately omitted when NODE_ENV=production.
  */
-export const ensureDevelopmentTranscriptionSection = (document: string): string => {
+export const ensureDevelopmentTranscriptionSection = (
+  document: string,
+): string => {
   if (document.includes("data-detail-transcription")) return document;
 
-  const summarySection =
-    /(<section\s+class="app-detail__section app-detail__reading"\s+data-detail-summary\s+hidden>[\s\S]*?<\/section>)/;
+  const summarySection = /(<p data-detail-summary-text><\/p>\s*<\/section>)/;
 
   return document.replace(
     summarySection,
@@ -248,9 +251,9 @@ export const injectRuntimeCatalogRecords = (
     items.map((item) => [
       item.id,
       {
-        aliases: [...(item.aliases ?? [])],
+        aliases: [...item.aliases],
         id: item.id,
-        kind: item.kind ?? "inscription",
+        kind: item.kind,
         media: item.representativeMedia ? [item.representativeMedia] : [],
         periodLabel: item.periodLabel,
         representativeMedia: item.representativeMedia,
@@ -262,7 +265,8 @@ export const injectRuntimeCatalogRecords = (
   );
   const payload = JSON.stringify(records).replace(/</g, "\\u003c");
   const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: \"runtime-bridge\" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
-  const previewScript = /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
+  const previewScript =
+    /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
   return document.replace(previewScript, `${bridge}\n$1`);
 };
 
