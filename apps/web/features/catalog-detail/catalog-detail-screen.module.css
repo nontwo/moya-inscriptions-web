@@ -62,7 +62,6 @@
 .kind,
 .aliases p,
 .identity h1,
-.summary,
 .readingSection p,
 .status h1,
 .status p {
@@ -82,7 +81,6 @@
 }
 
 .aliases,
-.summary,
 .factsSection {
   margin-top: var(--yoyi-space-5);
 }
@@ -98,12 +96,6 @@
 .aliases p:first-child {
   color: var(--yoyi-color-text-tertiary);
   font-size: var(--yoyi-type-caption-size);
-}
-
-.summary {
-  color: var(--yoyi-color-text-secondary);
-  font-size: var(--yoyi-type-body-size);
-  line-height: 1.75;
 }
 
 .factsSection h2,
@@ -142,23 +134,56 @@
   min-width: 0;
 }
 
+.mediaStage {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  touch-action: pan-y;
+}
+
 .mediaFrame {
   position: relative;
-  display: grid;
-  min-height: min(46dvh, 360px);
-  place-items: center;
+  display: block;
+  width: 100%;
+  height: min(46dvh, 360px);
   overflow: hidden;
   background: var(--yoyi-color-background-muted);
   border-radius: var(--yoyi-radius-lg);
   box-shadow: var(--yoyi-shadow-dialog);
+  cursor: pointer;
 }
 
-.media {
+.mediaFrame:focus-visible,
+.galleryEdge:focus-visible,
+.focusEdge:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.mediaTrack {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.mediaTrack.isSettling {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mediaSlide {
+  display: grid;
+  flex: 0 0 100%;
+  width: 100%;
+  place-items: center;
+}
+
+.mediaSlide img {
   display: block;
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: min(46dvh, 360px);
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -181,30 +206,42 @@
   font-size: var(--yoyi-type-caption-size);
 }
 
-.galleryControls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: var(--yoyi-space-3);
-  align-items: center;
-  margin-top: var(--yoyi-space-3);
-}
-
-.galleryButton {
-  min-height: var(--yoyi-space-10);
-  padding: 0 var(--yoyi-space-4);
-  color: var(--yoyi-color-text-primary);
-  background: var(--yoyi-color-background-surface);
-  border: 1px solid var(--yoyi-color-border-default);
-  border-radius: var(--yoyi-radius-md);
+.galleryEdge,
+.focusEdge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 22%;
+  min-width: 44px;
+  padding: 0;
+  background: transparent;
+  border: 0;
   cursor: pointer;
 }
 
-.galleryButton:disabled {
-  color: var(--yoyi-color-text-disabled);
+.galleryEdge:disabled,
+.focusEdge:disabled {
   cursor: default;
+  pointer-events: none;
+}
+
+.galleryEdgePrevious,
+.focusEdgePrevious {
+  left: 0;
+}
+
+.galleryEdgeNext,
+.focusEdgeNext {
+  right: 0;
 }
 
 .galleryDots {
+  position: absolute;
+  right: 0;
+  bottom: var(--yoyi-space-3);
+  left: 0;
+  z-index: 3;
   display: flex;
   gap: var(--yoyi-space-1);
   align-items: center;
@@ -248,6 +285,10 @@
   white-space: pre-wrap;
 }
 
+.placeholder {
+  color: var(--yoyi-color-text-secondary);
+}
+
 .sources {
   display: grid;
   gap: var(--yoyi-space-4);
@@ -280,6 +321,27 @@
   padding-top: var(--yoyi-space-11);
 }
 
+.loading {
+  display: grid;
+  gap: var(--yoyi-space-3);
+  padding-top: var(--yoyi-space-11);
+}
+
+.loading span {
+  display: block;
+  height: var(--yoyi-space-5);
+  border-radius: var(--yoyi-radius-sm);
+  background: var(--yoyi-color-background-muted);
+}
+
+.loading span:nth-child(2) {
+  width: 72%;
+}
+
+.loading span:nth-child(3) {
+  width: 48%;
+}
+
 .status p {
   color: var(--yoyi-color-text-secondary);
   line-height: 1.7;
@@ -306,7 +368,6 @@
 
 .backLink:focus-visible,
 .actionLink:focus-visible,
-.galleryButton:focus-visible,
 .galleryDot:focus-visible,
 .sources a:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
@@ -324,11 +385,19 @@
   }
 
   .mediaFrame {
-    min-height: min(50dvh, 460px);
+    height: min(50dvh, 460px);
+  }
+}
+
+@media (min-width: 48rem) and (orientation: landscape) {
+  .hero {
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+    gap: var(--yoyi-space-8);
+    align-items: start;
   }
 
-  .media {
-    max-height: min(50dvh, 460px);
+  .identity {
+    padding: var(--yoyi-space-7) var(--yoyi-space-8);
   }
 }
 
@@ -349,17 +418,108 @@
   }
 
   .mediaFrame {
-    min-height: min(62dvh, 560px);
+    height: min(62dvh, 560px);
+  }
+}
+
+.focusViewer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  overflow: hidden;
+  background: var(--yoyi-color-background-page);
+}
+
+.focusStage {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  padding: var(--yoyi-space-4);
+  place-items: center;
+  touch-action: none;
+}
+
+.focusTrack {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.focusSlide {
+  display: grid;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.focusSlide img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: transform 180ms var(--yoyi-easing-standard);
+  will-change: transform;
+}
+
+.focusPosition {
+  position: absolute;
+  top: var(--yoyi-space-3);
+  right: var(--yoyi-space-3);
+  margin: 0;
+  padding: var(--yoyi-space-1) var(--yoyi-space-3);
+  border-radius: var(--yoyi-radius-full);
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-background-inverse);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.focusDots {
+  position: absolute;
+  right: 0;
+  bottom: var(--yoyi-space-4);
+  left: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  gap: var(--yoyi-space-1);
+}
+
+@media (min-width: 48rem) and (orientation: portrait) {
+  .hero {
+    justify-items: center;
   }
 
-  .media {
-    max-height: min(62dvh, 560px);
+  .identity {
+    width: min(720px, calc(100% - 48px));
+    padding: var(--yoyi-space-7) var(--yoyi-space-8);
+  }
+}
+
+@media (max-width: 47.999rem) and (orientation: landscape) {
+  .identity {
+    padding: var(--yoyi-space-5);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .galleryEdge,
+  .focusEdge {
+    display: none;
+  }
+
+  .focusDots {
+    display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .galleryButton,
-  .galleryDot {
+  .mediaTrack,
+  .focusTrack,
+  .focusSlide img {
     transition-duration: 1ms;
   }
 }

@@ -6,15 +6,51 @@ import type { CatalogDetail, PublicMedia } from "@moya/contracts";
 export type CatalogDetailStatusKind =
   "not-found" | "unavailable" | "unexpected-error";
 
+type PresentationMedia = Pick<
+  PublicMedia,
+  "alt" | "height" | "src" | "width"
+> & { key: string };
+
+const qaMediaPresets: readonly (readonly [string, number, number])[] = [
+  ["stone-detail.svg", 360, 610],
+  ["inscription-rubbing.svg", 600, 420],
+  ["discovery-stone.svg", 600, 760],
+  ["cliff-gate.svg", 360, 520],
+  ["valley-wall.svg", 360, 430],
+  ["stele-shadow.svg", 360, 400],
+  ["calligraphy-sheet.svg", 600, 760],
+];
+
+const qaMedia: readonly PresentationMedia[] = qaMediaPresets.map(
+  ([file, width, height], index) => ({
+    alt: `虚拟测试图，与真实记录无对应关系：${index + 1}`,
+    height,
+    key: `qa-demo-${index + 1}`,
+    src: `/docs/design-system/assets/demo/${file}`,
+    width,
+  }),
+);
+
 const kindLabel = (kind: CatalogDetail["kind"]): string =>
   kind === "calligraphy" ? "书帖" : "碑刻";
 
-const detailMedia = (detail: CatalogDetail): readonly PublicMedia[] =>
-  detail.media.length > 0
-    ? detail.media
-    : detail.representativeMedia === undefined
-      ? []
-      : [detail.representativeMedia];
+const publicMedia = (detail: CatalogDetail): readonly PresentationMedia[] => {
+  if (detail.media.length > 0)
+    return detail.media.map(({ id, ...media }) => ({ key: id, ...media }));
+  if (detail.representativeMedia !== undefined) {
+    const { id, ...media } = detail.representativeMedia;
+    return [{ key: id, ...media }];
+  }
+  return [];
+};
+
+const detailMedia = (
+  detail: CatalogDetail,
+  qa: boolean,
+): readonly PresentationMedia[] => {
+  const media = publicMedia(detail);
+  return media.length > 0 || !qa ? media : qaMedia;
+};
 
 const regionLabel = (detail: CatalogDetail): string | undefined => {
   const region = [detail.province, detail.prefecture, detail.county].filter(
@@ -29,14 +65,6 @@ const detailFacts = (detail: CatalogDetail) => {
     facts.push({ label: "朝代", value: detail.dynasty });
   if (detail.dateText !== undefined)
     facts.push({ label: "年代", value: detail.dateText });
-  if (
-    detail.dynasty === undefined &&
-    detail.dateText === undefined &&
-    detail.periodLabel !== undefined
-  ) {
-    facts.push({ label: "时期", value: detail.periodLabel });
-  }
-
   const region = regionLabel(detail);
   if (region !== undefined) facts.push({ label: "地区", value: region });
   if (detail.currentLocation !== undefined)
@@ -76,30 +104,29 @@ export const CatalogDetailStatus = ({
         >
           <h1>{content.title}</h1>
           <p>{content.description}</p>
-          <div className={styles.statusActions}>
-            {state === "not-found" ? null : (
-              <a className={styles.actionLink} href="">
-                重新加载
-              </a>
-            )}
-            <a className={styles.actionLink} href="/">
-              返回首页
-            </a>
-          </div>
+          <a className={styles.actionLink} href="/">
+            返回首页
+          </a>
         </section>
       </div>
     </main>
   );
 };
 
-export const CatalogDetailScreen = ({ detail }: { detail: CatalogDetail }) => {
-  const media = detailMedia(detail);
+export const CatalogDetailScreen = ({
+  detail,
+  qa = false,
+}: {
+  detail: CatalogDetail;
+  qa?: boolean;
+}) => {
+  const media = detailMedia(detail, qa);
   const facts = detailFacts(detail);
 
   return (
     <main className={styles.screen}>
       <header className={styles.topbar}>
-        <a className={styles.backLink} href="/">
+        <a aria-label="返回首页" className={styles.backLink} href="/">
           返回首页
         </a>
       </header>
@@ -109,58 +136,83 @@ export const CatalogDetailScreen = ({ detail }: { detail: CatalogDetail }) => {
         >
           {media.length === 0 ? null : <CatalogMediaGallery media={media} />}
           <article className={styles.identity}>
-            <p className={styles.kind}>{kindLabel(detail.kind)}</p>
             <h1>{detail.title}</h1>
+            <p className={styles.kind}>{kindLabel(detail.kind)}</p>
             {detail.aliases.length === 0 ? null : (
               <div className={styles.aliases}>
                 <p>又名</p>
                 <p>{detail.aliases.join(" · ")}</p>
               </div>
             )}
-            {detail.summary === undefined ? null : (
-              <p className={styles.summary}>{detail.summary}</p>
-            )}
-            {facts.length === 0 ? null : (
+            {facts.length > 0 || qa ? (
               <section className={styles.factsSection}>
                 <h2>基本资料</h2>
-                <dl className={styles.facts}>
-                  {facts.map((fact) => (
-                    <div key={fact.label}>
-                      <dt>{fact.label}</dt>
-                      <dd>{fact.value}</dd>
-                    </div>
-                  ))}
-                </dl>
+                {facts.length === 0 ? (
+                  <p className={styles.placeholder}>资料待接入</p>
+                ) : (
+                  <dl className={styles.facts}>
+                    {facts.map((fact) => (
+                      <div key={fact.label}>
+                        <dt>{fact.label}</dt>
+                        <dd>{fact.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
               </section>
-            )}
+            ) : null}
           </article>
         </section>
-        {detail.description === undefined ? null : (
+        {detail.description !== undefined || qa ? (
           <section className={styles.readingSection}>
             <h2>简介</h2>
-            <p>{detail.description}</p>
+            <p
+              className={
+                detail.description === undefined
+                  ? styles.placeholder
+                  : undefined
+              }
+            >
+              {detail.description ?? "内容待接入"}
+            </p>
           </section>
-        )}
-        {detail.sourceCitations.length === 0 ? null : (
+        ) : null}
+        {qa ? (
+          <section className={styles.readingSection}>
+            <h2>释文</h2>
+            <p className={styles.placeholder}>内容待接入</p>
+          </section>
+        ) : null}
+        {qa ? (
+          <section className={styles.readingSection}>
+            <h2>说明</h2>
+            <p className={styles.placeholder}>内容待接入</p>
+          </section>
+        ) : null}
+        {detail.sourceCitations.length > 0 || qa ? (
           <section className={styles.readingSection}>
             <h2>资料来源</h2>
-            <ul className={styles.sources}>
-              {detail.sourceCitations.map((source, index) => (
-                <li key={`${source.label}-${index}`}>
-                  <strong>{source.label}</strong>
-                  {source.citation === undefined ? null : (
-                    <span>{source.citation}</span>
-                  )}
-                  {source.url === undefined ? null : (
-                    <a href={source.url} rel="noreferrer" target="_blank">
-                      查看来源
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
+            {detail.sourceCitations.length === 0 ? (
+              <p className={styles.placeholder}>内容待接入</p>
+            ) : (
+              <ul className={styles.sources}>
+                {detail.sourceCitations.map((source, index) => (
+                  <li key={`${source.label}-${index}`}>
+                    <strong>{source.label}</strong>
+                    {source.citation === undefined ? null : (
+                      <span>{source.citation}</span>
+                    )}
+                    {source.url === undefined ? null : (
+                      <a href={source.url} rel="noreferrer" target="_blank">
+                        查看来源
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
-        )}
+        ) : null}
       </div>
     </main>
   );

@@ -69,7 +69,7 @@ describe("CatalogDetailScreen", () => {
     expect(markup).toContain("云峰山题名");
     expect(markup).toContain("碑刻");
     expect(markup).toContain("云峰题名");
-    expect(markup).toContain("公开摘要。");
+    expect(markup).not.toContain("公开摘要。");
     expect(markup).toContain("北魏");
     expect(markup).toContain("永平年间");
     expect(markup).toContain("山东 · 泰安 · 岱岳");
@@ -84,19 +84,18 @@ describe("CatalogDetailScreen", () => {
     expect(markup).not.toContain("inscription");
   });
 
-  it("uses periodLabel only when dynasty and dateText are both absent", () => {
-    const periodOnly = renderToStaticMarkup(
-      <CatalogDetailScreen
-        detail={detail({ dynasty: undefined, dateText: undefined })}
-      />,
-    );
-    const dynastyAndDate = renderToStaticMarkup(
+  it("uses only the approved public fact fields in their formal order", () => {
+    const markup = renderToStaticMarkup(
       <CatalogDetailScreen detail={detail()} />,
     );
 
-    expect(periodOnly).toContain("时期");
-    expect(periodOnly).toContain("北魏");
-    expect(dynastyAndDate).not.toContain(">时期<");
+    expect(markup).not.toContain("时期");
+    expect(markup.indexOf("朝代")).toBeLessThan(markup.indexOf("年代"));
+    expect(markup.indexOf("年代")).toBeLessThan(markup.indexOf("地区"));
+    expect(markup.indexOf("地区")).toBeLessThan(markup.indexOf("现址"));
+    expect(markup.indexOf("现址")).toBeLessThan(
+      markup.indexOf("保管 / 现藏单位"),
+    );
   });
 
   it("omits independent optional sections for sparse no-media detail", () => {
@@ -126,7 +125,42 @@ describe("CatalogDetailScreen", () => {
     expect(markup).not.toContain("基本资料");
     expect(markup).not.toContain("简介");
     expect(markup).not.toContain("资料来源");
+    expect(markup).not.toContain("释文");
+    expect(markup).not.toContain("说明");
     expect(markup).not.toMatch(/未知|暂无/);
+  });
+
+  it("renders approved QA-only structure and virtual media without public-media leakage", () => {
+    const markup = renderToStaticMarkup(
+      <CatalogDetailScreen
+        detail={detail({
+          aliases: [],
+          county: undefined,
+          currentCustodian: undefined,
+          currentLocation: undefined,
+          dateText: undefined,
+          description: undefined,
+          dynasty: undefined,
+          media: [],
+          prefecture: undefined,
+          province: undefined,
+          representativeMedia: undefined,
+          sourceCitations: [],
+        })}
+        qa
+      />,
+    );
+
+    expect(markup).toContain("资料待接入");
+    expect(markup).toContain("简介");
+    expect(markup).toContain("释文");
+    expect(markup).toContain("说明");
+    expect(markup).toContain("资料来源");
+    expect(markup).toContain("内容待接入");
+    expect(markup).toContain("虚拟测试图，与真实记录无对应关系");
+    expect(markup).toContain(
+      "/docs/design-system/assets/demo/stone-detail.svg",
+    );
   });
 
   it("uses representativeMedia only when the detail media list is empty", () => {

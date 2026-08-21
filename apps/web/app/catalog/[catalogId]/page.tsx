@@ -19,10 +19,13 @@ export default async function CatalogDetailPage({
   await connection();
   const { catalogId } = await params;
   const result = await fetchServerCatalogDetail(catalogId);
+  const qa =
+    process.env.NODE_ENV !== "production" &&
+    process.env.MOYA_CATALOG_DETAIL_QA === "1";
 
   switch (result.state) {
     case "success":
-      return <CatalogDetailScreen detail={result.detail} />;
+      return <CatalogDetailScreen detail={result.detail} qa={qa} />;
     case "not-found":
       return notFound();
     case "unavailable":

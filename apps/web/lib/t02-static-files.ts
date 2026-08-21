@@ -192,19 +192,17 @@ const applyTitlesInSection = (
 
       const updateTitle = (card: string, title: string): string =>
         card.replace(titlePattern, `$1${escapeHtml(title)}$2`);
-      const updateApiCard = (card: string, item: DiscoverTitle): string =>
-        linkCatalogCard(updateTitle(card, item.title), item.id);
 
       const visibleCardCount = Math.min(cards.length, titles.length);
       const visibleCards = cards
         .slice(0, visibleCardCount)
-        .map((card, index) => updateApiCard(card, titles[index]!));
+        .map((card, index) => updateTitle(card, titles[index]!.title));
 
       const overflowCards = allowOverflow
         ? titles
             .slice(cards.length)
             .map((item, index) =>
-              updateApiCard(cards[index % cards.length]!, item),
+              updateTitle(cards[index % cards.length]!, item.title),
             )
         : [];
 
@@ -235,25 +233,12 @@ const applyTitlesPreservingContent = (
       const updatedContent = content.replace(cardPattern, (card: string) => {
         const title = titles[titleIndex++];
         if (!title) return card;
-        return linkCatalogCard(
-          card.replace(titlePattern, `$1${escapeHtml(title.title)}$2`),
-          title.id,
-        );
+        return card.replace(titlePattern, `$1${escapeHtml(title.title)}$2`);
       });
 
       return `${opening}${updatedContent}${closing}`;
     },
   );
-
-const linkCatalogCard = (card: string, catalogId: string): string =>
-  card
-    .replace(
-      /<button\b/,
-      `<a href="${escapeHtml(`/catalog/${encodeURIComponent(catalogId)}`)}"`,
-    )
-    .replace(/\sdata-open-detail(?=[\s>])/i, "")
-    .replace(/\s+type="button"/i, "")
-    .replace(/<\/button>$/, "</a>");
 
 const escapeHtml = (value: string): string =>
   value.replace(
