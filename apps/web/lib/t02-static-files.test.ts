@@ -86,6 +86,45 @@ describe("formal T02 file serving", () => {
     expect(result).not.toContain("real-discover");
   });
 
+  it("links API-backed cards to their encoded official Catalog detail route", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = applyDiscoverTitles(source, [
+      { id: 'catalog/a"&b', title: `API <b>标题</b>` },
+    ]);
+
+    expect(result).toMatch(
+      /href="\/catalog\/catalog%2Fa%22%26b"\s+class="app-card"/,
+    );
+    expect(result).toContain(
+      '<span class="app-card__title">API &lt;b&gt;标题&lt;/b&gt;</span>',
+    );
+    expect(result.match(/<a\b[\s\S]*?<\/a>/)?.[0]).not.toContain(
+      "data-open-detail",
+    );
+    expect(result).toContain('data-content-id="discover-ink"');
+    expect(result).toContain("data-open-detail");
+  });
+
+  it("links API-backed inscription cards while leaving prototype cards intact", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = applyInscriptionTitles(source, [
+      { id: "catalog/inscription-1", title: "真实碑刻" },
+    ]);
+
+    expect(result).toMatch(
+      /href="\/catalog\/catalog%2Finscription-1"\s+class="app-inscription-card"/,
+    );
+    expect(result).toMatch(
+      /class="app-inscription-card__title"\s*>\s*真实碑刻\s*<\/span>/,
+    );
+    expect(result).toContain('data-content-id="inscription-shimen"');
+    expect(result).toContain("data-open-detail");
+  });
+
   it("leaves the canonical browse source unchanged when there are no titles", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
@@ -115,7 +154,7 @@ describe("formal T02 file serving", () => {
     expect(discoverSection).toBeDefined();
     expect(discoverSection).toContain("真实条目 13");
     expect(
-      discoverSection?.match(/<button\b[^>]*data-open-detail/g),
+      discoverSection?.match(/<a\b[^>]*href="\/catalog\/real-/g),
     ).toHaveLength(13);
     expect(result).toContain('data-content-id="discover-cliff-gate"');
     expect(result).toContain('data-content-id="discover-ink"');
