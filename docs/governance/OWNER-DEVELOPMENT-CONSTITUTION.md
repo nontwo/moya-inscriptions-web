@@ -446,6 +446,12 @@ instructions while matching the current repository architecture.
 
 ### Product, scope, and delivery
 
+- Yoyi is a source-independent Chinese cultural-object Catalog and community
+  product. The currently approved formal Catalog kinds remain the explicitly
+  active contract values, currently `inscription` and `calligraphy`. This
+  broader product purpose does not authorize future Catalog kinds, social
+  domains, or other deferred systems; each requires its own approved Scope,
+  Behavior Matrix, and contract/domain evolution where applicable.
 - End-user Yoyi product interfaces remain mobile-first and responsive. This
   does not impose the same presentation priority on Admin or internal tooling.
 - Functional scope, non-goals, and preserved behavior are binding. A task may
@@ -496,7 +502,7 @@ the existing Constitution rule that already provides its protection.
 
 | Legacy rule | Classification | Current disposition and rationale |
 | --- | --- | --- |
-| Build a mobile-first digital archive for Chinese cliff inscriptions and stone inscriptions. | PRESERVE | The product purpose and end-user mobile-first requirement remain in §19. |
+| Build a mobile-first digital archive for Chinese cliff inscriptions and stone inscriptions. | MODERNIZE | The inscription-only wording is now too narrow because the current repository formally supports `inscription` and `calligraphy`. §19 now states the broader source-independent Chinese cultural-object Catalog and community product purpose without authorizing speculative implementation; mobile-first remains separately protected by the modernized mobile-first rule. |
 | Install: `pnpm install`. | RETIRE | This is a setup command, not a universal completion rule. The committed `pnpm-lock.yaml` pins the workspace dependency graph, while installation depends on the task environment. §19 requires proportionate validation instead. |
 | Development: `pnpm dev`. | RETIRE | A development server has no validation role for a documentation-only change and is not required for every implementation task. User-visible work still requires the scoped validation and Owner acceptance required by §§10, 12, and 14. |
 | Build: `pnpm build`. | MODERNIZE | §19 requires a build where the affected scope is buildable and relevant, avoiding meaningless builds for documentation-only work. |
