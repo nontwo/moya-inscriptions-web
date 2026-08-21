@@ -1,15 +1,20 @@
+@import "@moya/design-tokens/theme.css";
+
 * {
   box-sizing: border-box;
 }
 
 html {
-  font-family: system-ui, sans-serif;
+  font-family: var(--yoyi-font-interface);
+  background: var(--yoyi-color-background-page);
 }
 
 body {
   margin: 0;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
 }
 
-main {
-  padding: 1rem;
+a {
+  color: inherit;
 }

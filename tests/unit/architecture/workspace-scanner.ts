@@ -205,6 +205,13 @@ const webHomeLoaderFile = path.join(
   "home",
   "load-home-catalog.ts",
 );
+const webCatalogDetailPageFile = path.join(
+  webRoot,
+  "app",
+  "catalog",
+  "[catalogId]",
+  "page.tsx",
+);
 const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
 
 export const isAuthorizedWebPublicApiFile = (
@@ -213,13 +220,13 @@ export const isAuthorizedWebPublicApiFile = (
 ): boolean =>
   isPathInside(webPublicApiRoot, filePath) && !hasUseClientDirective(source);
 
-const isApprovedHomeConnectionReference = (
+const isApprovedServerConnectionReference = (
   filePath: string,
   source: string,
   reference: ModuleReference,
 ): boolean => {
   if (
-    ![webHomePageFile, webHomeRouteFile].some(
+    ![webHomePageFile, webHomeRouteFile, webCatalogDetailPageFile].some(
       (candidate) => path.resolve(filePath) === candidate,
     ) ||
     hasUseClientDirective(source) ||
@@ -250,30 +257,50 @@ const isApprovedT02StaticFilesReference = (
   (reference.specifier === "node:fs/promises" ||
     reference.specifier === "node:path");
 
-const isApprovedHomeLoaderReference = (
+const isApprovedServerCatalogAdapterReference = (
   filePath: string,
   source: string,
   reference: ModuleReference,
 ): boolean => {
   if (
-    path.resolve(filePath) !== webHomeLoaderFile ||
+    ![
+      webHomeLoaderFile,
+      webCatalogDetailPageFile,
+    ].some((candidate) => path.resolve(filePath) === candidate) ||
     hasUseClientDirective(source) ||
     reference.kind !== "static-import" ||
-    reference.specifier !== "../../lib/public-api/server"
+    ![
+      "../../lib/public-api/server",
+      "../../../lib/public-api/server",
+    ].includes(reference.specifier)
   ) {
     return false;
   }
 
+  const expectedImport =
+    path.resolve(filePath) === webHomeLoaderFile
+      ? {
+          specifier: "../../lib/public-api/server",
+          namedImport: "{fetchServerCatalogPage}",
+        }
+      : {
+          specifier: "../../../lib/public-api/server",
+          namedImport: "{fetchServerCatalogDetail}",
+        };
+  const escapedSpecifier = expectedImport.specifier.replaceAll("/", "\\/");
   const serverAdapterImports = [
     ...source.matchAll(
-      /\bimport\s+([^;]+?)\s+from\s*(["'])\.\.\/\.\.\/lib\/public-api\/server\2\s*;/g,
+      new RegExp(
+        `\\bimport\\s+([^;]+?)\\s+from\\s*(["'])${escapedSpecifier}\\2\\s*;`,
+        "g",
+      ),
     ),
   ];
 
   return (
     serverAdapterImports.length === 1 &&
     serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
-      "{fetchServerCatalogPage}"
+      expectedImport.namedImport
   );
 };
 
@@ -536,7 +563,7 @@ export const frontendBoundaryViolations = (
       isAuthorizedPublicApi &&
       (reference.specifier === "@moya/contracts/schemas" ||
         reference.specifier === "server-only");
-    const approvedHomeConnectionImport = isApprovedHomeConnectionReference(
+    const approvedServerConnectionImport = isApprovedServerConnectionReference(
       filePath,
       source,
       reference,
@@ -547,7 +574,8 @@ export const frontendBoundaryViolations = (
     );
     const approvedWebTestRendererImport =
       isWebTestFile && reference.specifier === "react-dom/server";
-    const approvedHomeLoaderImport = isApprovedHomeLoaderReference(
+    const approvedServerCatalogAdapterImport =
+      isApprovedServerCatalogAdapterReference(
       filePath,
       source,
       reference,
@@ -555,10 +583,10 @@ export const frontendBoundaryViolations = (
     if (
       isForbiddenServerReference(reference.specifier) &&
       !approvedPublicApiRuntimeImport &&
-      !approvedHomeConnectionImport &&
+      !approvedServerConnectionImport &&
       !approvedT02StaticFilesImport &&
       !approvedWebTestRendererImport &&
-      !approvedHomeLoaderImport
+      !approvedServerCatalogAdapterImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

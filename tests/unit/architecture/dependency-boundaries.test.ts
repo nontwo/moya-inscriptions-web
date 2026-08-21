@@ -379,7 +379,7 @@ describe("frontend and browser boundaries", () => {
     );
   });
 
-  it("allows only connection from next/server in the non-client root Home page", () => {
+  it("allows connection only in approved non-client request-time Web pages", () => {
     const homePage = path.join(
       repositoryRoot,
       "apps",
@@ -393,6 +393,15 @@ describe("frontend and browser boundaries", () => {
       "web",
       "app",
       "catalog",
+      "page.tsx",
+    );
+    const catalogDetailPage = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "app",
+      "catalog",
+      "[catalogId]",
       "page.tsx",
     );
 
@@ -410,6 +419,12 @@ describe("frontend and browser boundaries", () => {
     ).toContain("next/server crosses the frontend boundary");
     expect(
       frontendBoundaryViolations(
+        catalogDetailPage,
+        'import { connection } from "next/server";',
+      ),
+    ).toEqual([]);
+    expect(
+      frontendBoundaryViolations(
         otherPage,
         'import { connection } from "next/server";',
       ),
@@ -422,7 +437,7 @@ describe("frontend and browser boundaries", () => {
     ).toContain("next/server is server/runtime-only");
   });
 
-  it("allows only the Home loader to call the approved Public API server adapter", () => {
+  it("allows only approved Web entry points to call their Public API server adapter", () => {
     const homeLoader = path.join(
       repositoryRoot,
       "apps",
@@ -439,8 +454,19 @@ describe("frontend and browser boundaries", () => {
       "catalog",
       "loader.ts",
     );
+    const catalogDetailPage = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "app",
+      "catalog",
+      "[catalogId]",
+      "page.tsx",
+    );
     const approvedImport =
       'import { fetchServerCatalogPage } from "../../lib/public-api/server";';
+    const approvedDetailImport =
+      'import { fetchServerCatalogDetail } from "../../../lib/public-api/server";';
 
     expect(frontendBoundaryViolations(homeLoader, approvedImport)).toEqual([]);
     expect(
@@ -452,6 +478,12 @@ describe("frontend and browser boundaries", () => {
     expect(frontendBoundaryViolations(otherLoader, approvedImport)).toContain(
       "../../lib/public-api/server crosses the frontend boundary",
     );
+    expect(
+      frontendBoundaryViolations(catalogDetailPage, approvedDetailImport),
+    ).toEqual([]);
+    expect(
+      frontendBoundaryViolations(catalogDetailPage, approvedImport),
+    ).toContain("../../lib/public-api/server crosses the frontend boundary");
     expect(
       frontendBoundaryViolations(
         homeLoader,

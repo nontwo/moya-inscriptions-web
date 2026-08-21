@@ -1,8 +1,10 @@
 import "server-only";
 
+import { fetchCatalogDetail } from "./catalog-detail";
 import { fetchCatalogPage } from "./catalog-list";
 
 import type { CatalogListTransportQuery } from "@moya/contracts";
+import type { CatalogDetailTransportResult } from "./catalog-detail";
 import type { CatalogPageTransportResult } from "./catalog-list";
 
 const publicApiBaseUrlVariable = "MOYA_PUBLIC_API_BASE_URL" as const;
@@ -42,6 +44,17 @@ export const fetchServerCatalogPage = async (
   try {
     const baseUrl = parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL);
     return await fetchCatalogPage({ baseUrl, fetch: globalThis.fetch }, query);
+  } catch {
+    return { state: "unexpected-error" };
+  }
+};
+
+export const fetchServerCatalogDetail = async (
+  catalogId: string,
+): Promise<CatalogDetailTransportResult> => {
+  try {
+    const baseUrl = parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL);
+    return await fetchCatalogDetail({ baseUrl, fetch: globalThis.fetch }, catalogId);
   } catch {
     return { state: "unexpected-error" };
   }
