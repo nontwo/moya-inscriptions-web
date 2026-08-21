@@ -54,7 +54,10 @@ export const fetchServerCatalogDetail = async (
 ): Promise<CatalogDetailTransportResult> => {
   try {
     const baseUrl = parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL);
-    return await fetchCatalogDetail({ baseUrl, fetch: globalThis.fetch }, catalogId);
+    return await fetchCatalogDetail(
+      { baseUrl, fetch: globalThis.fetch },
+      catalogId,
+    );
   } catch {
     return { state: "unexpected-error" };
   }

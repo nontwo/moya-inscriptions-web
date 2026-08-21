@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { CatalogDetailScreen, CatalogDetailStatus } from "./catalog-detail-screen";
+import {
+  CatalogDetailScreen,
+  CatalogDetailStatus,
+} from "./catalog-detail-screen";
 
 import type { CatalogDetail } from "@moya/contracts";
 
@@ -59,7 +62,9 @@ const detail = (overrides: Partial<CatalogDetail> = {}): CatalogDetail =>
 
 describe("CatalogDetailScreen", () => {
   it("renders public rich detail fields and API media in order", () => {
-    const markup = renderToStaticMarkup(<CatalogDetailScreen detail={detail()} />);
+    const markup = renderToStaticMarkup(
+      <CatalogDetailScreen detail={detail()} />,
+    );
 
     expect(markup).toContain("云峰山题名");
     expect(markup).toContain("碑刻");
@@ -85,7 +90,9 @@ describe("CatalogDetailScreen", () => {
         detail={detail({ dynasty: undefined, dateText: undefined })}
       />,
     );
-    const dynastyAndDate = renderToStaticMarkup(<CatalogDetailScreen detail={detail()} />);
+    const dynastyAndDate = renderToStaticMarkup(
+      <CatalogDetailScreen detail={detail()} />,
+    );
 
     expect(periodOnly).toContain("时期");
     expect(periodOnly).toContain("北魏");
@@ -138,8 +145,8 @@ describe("CatalogDetailScreen", () => {
     ["unavailable", "档案服务暂时不可用"],
     ["unexpected-error", "无法加载这项资料"],
   ] as const)("renders the %s status", (state, title) => {
-    expect(renderToStaticMarkup(<CatalogDetailStatus state={state} />)).toContain(
-      title,
-    );
+    expect(
+      renderToStaticMarkup(<CatalogDetailStatus state={state} />),
+    ).toContain(title);
   });
 });

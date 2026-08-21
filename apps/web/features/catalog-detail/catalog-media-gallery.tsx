@@ -74,7 +74,11 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
           >
             上一张
           </button>
-          <div aria-label="图像位置" className={styles.galleryDots} role="group">
+          <div
+            aria-label="图像位置"
+            className={styles.galleryDots}
+            role="group"
+          >
             {media.map((entry, entryIndex) => (
               <button
                 aria-current={entryIndex === index ? "true" : undefined}

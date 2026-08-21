@@ -4,9 +4,7 @@ import styles from "./catalog-detail-screen.module.css";
 import type { CatalogDetail, PublicMedia } from "@moya/contracts";
 
 export type CatalogDetailStatusKind =
-  | "not-found"
-  | "unavailable"
-  | "unexpected-error";
+  "not-found" | "unavailable" | "unexpected-error";
 
 const kindLabel = (kind: CatalogDetail["kind"]): string =>
   kind === "calligraphy" ? "书帖" : "碑刻";
@@ -94,11 +92,7 @@ export const CatalogDetailStatus = ({
   );
 };
 
-export const CatalogDetailScreen = ({
-  detail,
-}: {
-  detail: CatalogDetail;
-}) => {
+export const CatalogDetailScreen = ({ detail }: { detail: CatalogDetail }) => {
   const media = detailMedia(detail);
   const facts = detailFacts(detail);
 

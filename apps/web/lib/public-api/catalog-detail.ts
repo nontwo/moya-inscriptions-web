@@ -1,7 +1,4 @@
-import {
-  catalogDetailSchema,
-  catalogIdSchema,
-} from "@moya/contracts/schemas";
+import { catalogDetailSchema, catalogIdSchema } from "@moya/contracts/schemas";
 
 import type { CatalogDetail } from "@moya/contracts";
 

@@ -68,7 +68,9 @@ describe("Public Catalog detail transport", () => {
   });
 
   it("preserves a configured API path prefix", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(detail));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(detail));
 
     await fetchCatalogDetail(
       {
@@ -128,25 +130,33 @@ describe("Public Catalog detail transport", () => {
 
   it.each([
     new Response("{", { status: 200 }),
-    jsonResponse({ ...detail, media: [{ ...detail.media[0], objectKey: "private" }] }),
-  ])("maps malformed successful responses to unexpected-error", async (response) => {
-    await expect(
-      fetchCatalogDetail(
-        {
-          baseUrl: new URL("https://api.example.invalid/"),
-          fetch: vi.fn<typeof fetch>().mockResolvedValue(response),
-        },
-        detail.id,
-      ),
-    ).resolves.toEqual({ state: "unexpected-error" });
-  });
+    jsonResponse({
+      ...detail,
+      media: [{ ...detail.media[0], objectKey: "private" }],
+    }),
+  ])(
+    "maps malformed successful responses to unexpected-error",
+    async (response) => {
+      await expect(
+        fetchCatalogDetail(
+          {
+            baseUrl: new URL("https://api.example.invalid/"),
+            fetch: vi.fn<typeof fetch>().mockResolvedValue(response),
+          },
+          detail.id,
+        ),
+      ).resolves.toEqual({ state: "unexpected-error" });
+    },
+  );
 
   it("maps network failures to unexpected-error", async () => {
     await expect(
       fetchCatalogDetail(
         {
           baseUrl: new URL("https://api.example.invalid/"),
-          fetch: vi.fn<typeof fetch>().mockRejectedValue(new TypeError("offline")),
+          fetch: vi
+            .fn<typeof fetch>()
+            .mockRejectedValue(new TypeError("offline")),
         },
         detail.id,
       ),

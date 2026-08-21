@@ -36,7 +36,10 @@ beforeEach(() => {
 
 describe("Catalog detail page", () => {
   it("loads the detail at request time and renders validated success", async () => {
-    fetchServerCatalogDetailMock.mockResolvedValue({ state: "success", detail });
+    fetchServerCatalogDetailMock.mockResolvedValue({
+      state: "success",
+      detail,
+    });
 
     const page = await CatalogDetailPage({
       params: Promise.resolve({ catalogId: "catalog-001" }),

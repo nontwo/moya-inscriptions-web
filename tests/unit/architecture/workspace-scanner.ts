@@ -263,16 +263,14 @@ const isApprovedServerCatalogAdapterReference = (
   reference: ModuleReference,
 ): boolean => {
   if (
-    ![
-      webHomeLoaderFile,
-      webCatalogDetailPageFile,
-    ].some((candidate) => path.resolve(filePath) === candidate) ||
+    ![webHomeLoaderFile, webCatalogDetailPageFile].some(
+      (candidate) => path.resolve(filePath) === candidate,
+    ) ||
     hasUseClientDirective(source) ||
     reference.kind !== "static-import" ||
-    ![
-      "../../lib/public-api/server",
-      "../../../lib/public-api/server",
-    ].includes(reference.specifier)
+    !["../../lib/public-api/server", "../../../lib/public-api/server"].includes(
+      reference.specifier,
+    )
   ) {
     return false;
   }
@@ -575,11 +573,7 @@ export const frontendBoundaryViolations = (
     const approvedWebTestRendererImport =
       isWebTestFile && reference.specifier === "react-dom/server";
     const approvedServerCatalogAdapterImport =
-      isApprovedServerCatalogAdapterReference(
-      filePath,
-      source,
-      reference,
-    );
+      isApprovedServerCatalogAdapterReference(filePath, source, reference);
     if (
       isForbiddenServerReference(reference.specifier) &&
       !approvedPublicApiRuntimeImport &&

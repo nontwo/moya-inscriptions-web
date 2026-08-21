@@ -90,9 +90,9 @@ describe("Public API server wiring", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(fetchServerCatalogDetail("catalog-001")).resolves.toMatchObject(
-      { state: "success" },
-    );
+    await expect(
+      fetchServerCatalogDetail("catalog-001"),
+    ).resolves.toMatchObject({ state: "success" });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://web.example.invalid/api/v1/catalog/catalog-001",
       expect.any(Object),
