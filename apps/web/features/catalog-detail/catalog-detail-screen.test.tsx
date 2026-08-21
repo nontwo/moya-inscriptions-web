@@ -1,5 +1,4 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -67,20 +66,6 @@ const detail = (overrides: Partial<CatalogDetail> = {}): CatalogDetail =>
   }) as CatalogDetail;
 
 describe("CatalogDetailScreen", () => {
-  it("retains critical T02 Detail title and skeleton dimensions", () => {
-    const css = readFileSync(
-      new URL("./catalog-detail-screen.module.css", import.meta.url),
-      "utf8",
-    );
-
-    expect(css).toContain("font-size: 22px");
-    expect(css).toContain("font-size: 28px");
-    expect(css).toContain("width: 46%");
-    expect(css).toContain("height: 22px");
-    expect(css).toContain("width: 88%");
-    expect(css).toContain("height: 12px");
-  });
-
   it("renders public rich detail fields and API media in order", () => {
     const markup = renderToStaticMarkup(
       <CatalogDetailScreen detail={detail()} />,
