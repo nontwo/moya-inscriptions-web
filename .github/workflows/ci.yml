@@ -34,11 +34,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Diagnose formatting
-        run: |
-          pnpm exec prettier --write apps/web/lib/t02-static-files.ts apps/web/lib/t02-static-files.test.ts
-          git diff -- apps/web/lib/t02-static-files.ts apps/web/lib/t02-static-files.test.ts
-          exit 1
+      - name: Check formatting
+        run: pnpm format:check
 
       - name: Lint
         run: pnpm lint
