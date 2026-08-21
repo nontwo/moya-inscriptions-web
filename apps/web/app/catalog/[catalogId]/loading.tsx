@@ -5,9 +5,11 @@ export default function CatalogDetailLoading() {
     <main aria-busy="true" aria-live="polite" className={styles.screen}>
       <div className={styles.content}>
         <div className={styles.loading}>
-          <span />
-          <span />
-          <span />
+          <span className={styles.loadingMedia} />
+          <span className={styles.loadingTitle} />
+          <span className={styles.loadingLine} />
+          <span className={styles.loadingLine} />
+          <span className={styles.loadingLine} />
         </div>
       </div>
     </main>

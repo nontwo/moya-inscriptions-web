@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import {
+  containedImagePanBounds,
+  lockGalleryGestureAxis,
+  shouldCommitGallerySwipe,
+  shouldSuppressFocusOpen,
+  zoomedEdgePageStep,
+} from "./catalog-detail-gallery-math";
 import styles from "./catalog-detail-screen.module.css";
 
 export interface CatalogMediaGalleryProps {
@@ -14,21 +21,10 @@ export interface CatalogMediaGalleryProps {
   }[];
 }
 
-const swipeDistance = 48;
 const settleMs = 220;
-const axisLockDistance = 10;
-const directionRatio = 1.25;
-const flingVelocity = 0.55;
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
-
-const lockAxis = (x: number, y: number): "horizontal" | "vertical" | null => {
-  if (Math.max(Math.abs(x), Math.abs(y)) < axisLockDistance) return null;
-  if (Math.abs(x) > Math.abs(y) * directionRatio) return "horizontal";
-  if (Math.abs(y) > Math.abs(x) * directionRatio) return "vertical";
-  return null;
-};
 
 export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   const [index, setIndex] = useState(0);
@@ -40,8 +36,11 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   const [focusPan, setFocusPan] = useState({ x: 0, y: 0 });
   const [focusDragX, setFocusDragX] = useState(0);
   const [focusSettling, setFocusSettling] = useState(false);
+  const [focusPagerVisible, setFocusPagerVisible] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const focusRef = useRef<HTMLDivElement>(null);
+  const focusStageRef = useRef<HTMLDivElement>(null);
+  const focusImageRef = useRef<HTMLImageElement>(null);
   const drag = useRef<
     | {
         axis: "horizontal" | "vertical" | null;
@@ -53,9 +52,12 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     | undefined
   >(undefined);
   const suppressClick = useRef(false);
+  const focusClosedAt = useRef(Number.NEGATIVE_INFINITY);
+  const focusPagerTimer = useRef<number | undefined>(undefined);
   const focusPointers = useRef(new Map<number, { x: number; y: number }>());
   const focusGesture = useRef<{
     distance?: number;
+    edgeStep?: -1 | 1;
     moved: boolean;
     pan?: { x: number; y: number };
   }>({ moved: false });
@@ -68,7 +70,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   useEffect(() => {
     if (!focusOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFocusOpen(false);
+      if (event.key === "Escape") closeFocus();
       if (event.key === "ArrowLeft") focusMove(-1);
       if (event.key === "ArrowRight") focusMove(1);
     };
@@ -86,6 +88,14 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     };
   }, [focusOpen]);
 
+  useEffect(
+    () => () => {
+      if (focusPagerTimer.current !== undefined)
+        window.clearTimeout(focusPagerTimer.current);
+    },
+    [],
+  );
+
   if (item === undefined) return null;
 
   const resetFocusTransform = () => {
@@ -93,10 +103,48 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     setFocusPan({ x: 0, y: 0 });
   };
 
+  const revealFocusPager = () => {
+    setFocusPagerVisible(true);
+    if (focusPagerTimer.current !== undefined)
+      window.clearTimeout(focusPagerTimer.current);
+    focusPagerTimer.current = window.setTimeout(() => {
+      setFocusPagerVisible(false);
+      focusPagerTimer.current = undefined;
+    }, 2000);
+  };
+
+  const closeFocus = () => {
+    focusClosedAt.current = Date.now();
+    setFocusOpen(false);
+    setFocusPagerVisible(false);
+    resetFocusTransform();
+  };
+
+  const focusStageSize = () => {
+    const stage = focusStageRef.current;
+    if (stage === null) return { height: 1, width: 1 };
+    const style = window.getComputedStyle(stage);
+    return {
+      height: Math.max(
+        1,
+        stage.clientHeight -
+          (Number.parseFloat(style.paddingTop) || 0) -
+          (Number.parseFloat(style.paddingBottom) || 0),
+      ),
+      width: Math.max(
+        1,
+        stage.clientWidth -
+          (Number.parseFloat(style.paddingLeft) || 0) -
+          (Number.parseFloat(style.paddingRight) || 0),
+      ),
+    };
+  };
+
   const selectMedia = (nextIndex: number) => {
     setFailedKey(undefined);
     setIndex(clamp(nextIndex, 0, media.length - 1));
     resetFocusTransform();
+    if (focusOpen) revealFocusPager();
   };
 
   const multipleMedia = media.length > 1;
@@ -118,7 +166,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   };
 
   const focusMove = (step: number) => {
-    if (!multipleMedia || focusSettling || focusScale > 1) return false;
+    if (!multipleMedia || focusSettling) return false;
     const nextIndex = index + step;
     if (nextIndex < 0 || nextIndex >= media.length) return false;
     const width = focusRef.current?.clientWidth ?? 1;
@@ -149,7 +197,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     if (!current || current.id !== event.pointerId || !multipleMedia) return;
     const x = event.clientX - current.startX;
     const y = event.clientY - current.startY;
-    current.axis ??= lockAxis(x, y);
+    current.axis ??= lockGalleryGestureAxis(x, y);
     if (current.axis !== "horizontal") return;
     event.preventDefault();
     suppressClick.current = true;
@@ -165,14 +213,15 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     if (current.axis !== "horizontal") return;
     const x = event.clientX - current.startX;
     const y = event.clientY - current.startY;
-    const width = frameRef.current?.clientWidth ?? 1;
-    const velocity = x / Math.max(16, event.timeStamp - current.startedAt);
+    const committed = shouldCommitGallerySwipe({
+      deltaX: x,
+      deltaY: y,
+      duration: event.timeStamp - current.startedAt,
+      index,
+      total: media.length,
+      width: frameRef.current?.clientWidth ?? 1,
+    });
     const next = x < 0;
-    const inRange = next ? index < media.length - 1 : index > 0;
-    const committed =
-      inRange &&
-      (Math.abs(x) >= Math.max(swipeDistance, width * 0.18) ||
-        (Math.abs(x) > Math.abs(y) && Math.abs(velocity) >= flingVelocity));
     if (committed) move(next ? 1 : -1);
     else {
       setSettling(true);
@@ -182,11 +231,15 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
   };
 
   const openFocus = () => {
-    if (suppressClick.current) {
+    if (
+      suppressClick.current ||
+      shouldSuppressFocusOpen(focusClosedAt.current, Date.now())
+    ) {
       suppressClick.current = false;
       return;
     }
     setFocusOpen(true);
+    revealFocusPager();
   };
 
   const onFocusPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -196,6 +249,8 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     });
     const pointers = [...focusPointers.current.values()];
     focusGesture.current.moved = false;
+    delete focusGesture.current.edgeStep;
+    revealFocusPager();
     if (pointers.length === 2) {
       focusGesture.current.distance = Math.hypot(
         pointers[0]!.x - pointers[1]!.x,
@@ -229,7 +284,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     if (focusScale <= 1) {
       const x = event.clientX - pan.x;
       const y = event.clientY - pan.y;
-      const axis = lockAxis(x, y);
+      const axis = lockGalleryGestureAxis(x, y);
       focusGesture.current.moved = axis !== null;
       if (axis !== "horizontal") return;
       const atEdge =
@@ -237,11 +292,28 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
       setFocusDragX(atEdge ? x * 0.32 : x);
       return;
     }
-    const maxX = ((focusRef.current?.clientWidth ?? 0) * (focusScale - 1)) / 2;
-    const maxY = ((focusRef.current?.clientHeight ?? 0) * (focusScale - 1)) / 2;
+    const stage = focusStageSize();
+    const bounds = containedImagePanBounds({
+      naturalHeight: item.height ?? focusImageRef.current?.naturalHeight ?? 1,
+      naturalWidth: item.width ?? focusImageRef.current?.naturalWidth ?? 1,
+      scale: focusScale,
+      stageHeight: stage.height,
+      stageWidth: stage.width,
+    });
+    const edgeStep = zoomedEdgePageStep({
+      deltaX: event.clientX - pan.x,
+      maxX: bounds.maxX,
+      panX: focusPan.x,
+    });
+    if (edgeStep !== undefined) {
+      focusGesture.current.edgeStep = edgeStep;
+      setFocusDragX((event.clientX - pan.x) * 0.32);
+      focusGesture.current.moved = true;
+      return;
+    }
     setFocusPan((current) => ({
-      x: clamp(current.x + event.clientX - pan.x, -maxX, maxX),
-      y: clamp(current.y + event.clientY - pan.y, -maxY, maxY),
+      x: clamp(current.x + event.clientX - pan.x, -bounds.maxX, bounds.maxX),
+      y: clamp(current.y + event.clientY - pan.y, -bounds.maxY, bounds.maxY),
     }));
     focusGesture.current.pan = { x: event.clientX, y: event.clientY };
     focusGesture.current.moved = true;
@@ -253,10 +325,23 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
     const pan = focusGesture.current.pan;
     const x = pan === undefined ? 0 : event.clientX - pan.x;
     const y = pan === undefined ? 0 : event.clientY - pan.y;
+    if (focusGesture.current.edgeStep !== undefined) {
+      if (focusMove(focusGesture.current.edgeStep)) return;
+      setFocusSettling(true);
+      setFocusDragX(0);
+      window.setTimeout(() => setFocusSettling(false), settleMs);
+      return;
+    }
     if (
       focusScale === 1 &&
-      Math.abs(x) >= swipeDistance &&
-      Math.abs(x) > Math.abs(y) &&
+      shouldCommitGallerySwipe({
+        deltaX: x,
+        deltaY: y,
+        duration: 180,
+        index,
+        total: media.length,
+        width: focusRef.current?.clientWidth ?? 1,
+      }) &&
       focusMove(x < 0 ? 1 : -1)
     )
       return;
@@ -266,7 +351,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
       window.setTimeout(() => setFocusSettling(false), settleMs);
       return;
     }
-    if (!focusGesture.current.moved) setFocusOpen(false);
+    if (!focusGesture.current.moved) closeFocus();
   };
 
   return (
@@ -377,6 +462,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
           className={styles.focusViewer}
           onWheel={(event) => {
             event.preventDefault();
+            revealFocusPager();
             setFocusScale((scale) =>
               clamp(scale + (event.deltaY < 0 ? 0.2 : -0.2), 1, 4),
             );
@@ -390,6 +476,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
             onPointerDown={onFocusPointerDown}
             onPointerMove={onFocusPointerMove}
             onPointerUp={onFocusPointerUp}
+            ref={focusStageRef}
           >
             <div
               className={`${styles.focusTrack}${focusSettling ? ` ${styles.isSettling}` : ""}`}
@@ -407,6 +494,7 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
                       <img
                         alt={entry.alt}
                         draggable={false}
+                        ref={entry === item ? focusImageRef : undefined}
                         src={entry.src}
                         style={
                           entry === item
@@ -427,23 +515,26 @@ export const CatalogMediaGallery = ({ media }: CatalogMediaGalleryProps) => {
               <button
                 aria-label="上一张图像"
                 className={`${styles.focusEdge} ${styles.focusEdgePrevious}`}
-                disabled={index === 0 || focusScale > 1}
+                disabled={index === 0}
                 onClick={() => focusMove(-1)}
                 type="button"
               />
               <button
                 aria-label="下一张图像"
                 className={`${styles.focusEdge} ${styles.focusEdgeNext}`}
-                disabled={index === media.length - 1 || focusScale > 1}
+                disabled={index === media.length - 1}
                 onClick={() => focusMove(1)}
                 type="button"
               />
-              <p aria-live="polite" className={styles.focusPosition}>
+              <p
+                aria-live="polite"
+                className={`${styles.focusPosition}${focusPagerVisible ? ` ${styles.focusPagerVisible}` : ""}`}
+              >
                 {index + 1} / {media.length}
               </p>
               <div
                 aria-label="图像分页"
-                className={styles.focusDots}
+                className={`${styles.focusDots}${focusPagerVisible ? ` ${styles.focusPagerVisible}` : ""}`}
                 role="tablist"
               >
                 {media.map((entry, entryIndex) => (

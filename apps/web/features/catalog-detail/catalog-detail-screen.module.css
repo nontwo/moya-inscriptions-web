@@ -27,18 +27,19 @@
 }
 
 .backLink {
+  justify-content: center;
+  width: var(--yoyi-space-10);
   display: inline-flex;
   min-height: var(--yoyi-space-10);
   align-items: center;
   color: var(--yoyi-color-text-secondary);
-  font-size: var(--yoyi-type-button-size);
+  font-size: 1.25rem;
   text-decoration: none;
 }
 
 .backLink:hover,
 .backLink:focus-visible {
   color: var(--yoyi-color-text-primary);
-  text-decoration: underline;
 }
 
 .hero {
@@ -327,18 +328,32 @@
   padding-top: var(--yoyi-space-11);
 }
 
-.loading span {
+.loadingMedia,
+.loadingTitle,
+.loadingLine {
   display: block;
-  height: var(--yoyi-space-5);
   border-radius: var(--yoyi-radius-sm);
   background: var(--yoyi-color-background-muted);
 }
 
-.loading span:nth-child(2) {
+.loadingMedia {
+  height: min(46dvh, 360px);
+}
+
+.loadingTitle {
+  width: 72%;
+  height: var(--yoyi-space-7);
+}
+
+.loadingLine {
+  height: var(--yoyi-space-5);
+}
+
+.loadingLine:nth-child(4) {
   width: 72%;
 }
 
-.loading span:nth-child(3) {
+.loadingLine:nth-child(5) {
   width: 48%;
 }
 
@@ -374,52 +389,64 @@
   outline-offset: 2px;
 }
 
-@media (min-width: 48rem) {
-  .screen {
-    padding-top: var(--yoyi-space-6);
-  }
-
-  .topbar,
-  .content {
-    padding-inline: var(--yoyi-space-7);
-  }
-
-  .mediaFrame {
-    height: min(50dvh, 460px);
-  }
+.screen[data-detail-composition="compact-stacked"] .identity {
+  padding: var(--yoyi-space-5);
 }
 
-@media (min-width: 48rem) and (orientation: landscape) {
-  .hero {
-    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-    gap: var(--yoyi-space-8);
-    align-items: start;
-  }
-
-  .identity {
-    padding: var(--yoyi-space-7) var(--yoyi-space-8);
-  }
+.screen[data-detail-composition="wide-stacked"],
+.screen[data-detail-composition="compact-split"],
+.screen[data-detail-composition="expanded-split"] {
+  padding-top: var(--yoyi-space-6);
 }
 
-@media (min-width: 56rem) {
-  .hero {
-    grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
-    gap: var(--yoyi-space-9);
-    align-items: start;
-  }
+.screen[data-detail-composition="wide-stacked"] .topbar,
+.screen[data-detail-composition="wide-stacked"] .content,
+.screen[data-detail-composition="compact-split"] .topbar,
+.screen[data-detail-composition="compact-split"] .content,
+.screen[data-detail-composition="expanded-split"] .topbar,
+.screen[data-detail-composition="expanded-split"] .content {
+  padding-inline: var(--yoyi-space-7);
+}
 
-  .heroWithoutMedia {
-    display: block;
-  }
+.screen[data-detail-composition="wide-stacked"] .hero {
+  justify-items: center;
+  gap: var(--yoyi-space-8);
+}
 
-  .identity {
-    position: sticky;
-    top: var(--yoyi-space-7);
-  }
+.screen[data-detail-composition="wide-stacked"] .identity {
+  width: min(720px, calc(100% - 48px));
+  padding: var(--yoyi-space-7) var(--yoyi-space-8);
+}
 
-  .mediaFrame {
-    height: min(62dvh, 560px);
-  }
+.screen[data-detail-composition="wide-stacked"] .mediaFrame,
+.screen[data-detail-composition="compact-split"] .mediaFrame {
+  height: min(50dvh, 460px);
+}
+
+.screen[data-detail-composition="compact-split"] .hero {
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: var(--yoyi-space-8);
+  align-items: start;
+}
+
+.screen[data-detail-composition="compact-split"] .identity,
+.screen[data-detail-composition="expanded-split"] .identity {
+  padding: var(--yoyi-space-7) var(--yoyi-space-8);
+}
+
+.screen[data-detail-composition="expanded-split"] .hero {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: var(--yoyi-space-9);
+  align-items: start;
+}
+
+.screen[data-detail-composition="expanded-split"] .identity {
+  position: sticky;
+  top: 96px;
+}
+
+.screen[data-detail-composition="expanded-split"] .mediaFrame {
+  height: min(62dvh, 560px);
 }
 
 .focusViewer {
@@ -475,6 +502,8 @@
   color: var(--yoyi-color-text-inverse);
   background: var(--yoyi-color-background-inverse);
   font-size: var(--yoyi-type-caption-size);
+  opacity: 0;
+  transition: opacity 180ms;
 }
 
 .focusDots {
@@ -486,23 +515,12 @@
   display: flex;
   justify-content: center;
   gap: var(--yoyi-space-1);
+  opacity: 0;
+  transition: opacity 180ms;
 }
 
-@media (min-width: 48rem) and (orientation: portrait) {
-  .hero {
-    justify-items: center;
-  }
-
-  .identity {
-    width: min(720px, calc(100% - 48px));
-    padding: var(--yoyi-space-7) var(--yoyi-space-8);
-  }
-}
-
-@media (max-width: 47.999rem) and (orientation: landscape) {
-  .identity {
-    padding: var(--yoyi-space-5);
-  }
+.focusPagerVisible {
+  opacity: 1;
 }
 
 @media (hover: none), (pointer: coarse) {

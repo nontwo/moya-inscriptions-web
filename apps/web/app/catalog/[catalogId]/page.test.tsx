@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { connectionMock } = vi.hoisted(() => ({ connectionMock: vi.fn() }));
 const { notFoundMock } = vi.hoisted(() => ({ notFoundMock: vi.fn() }));
@@ -34,6 +34,8 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("Catalog detail page", () => {
   it("loads the detail at request time and renders validated success", async () => {
     fetchServerCatalogDetailMock.mockResolvedValue({
@@ -57,6 +59,21 @@ describe("Catalog detail page", () => {
       CatalogDetailPage({ params: Promise.resolve({ catalogId: "missing" }) }),
     ).rejects.toThrow("not-found");
     expect(notFoundMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps QA presentation disabled in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("MOYA_CATALOG_DETAIL_QA", "1");
+    fetchServerCatalogDetailMock.mockResolvedValue({
+      state: "success",
+      detail,
+    });
+
+    const page = await CatalogDetailPage({
+      params: Promise.resolve({ catalogId: "catalog-001" }),
+    });
+
+    expect(renderToStaticMarkup(page)).not.toContain("释文");
   });
 
   it.each([

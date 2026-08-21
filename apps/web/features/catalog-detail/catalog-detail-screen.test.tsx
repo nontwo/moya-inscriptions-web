@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   CatalogDetailScreen,
   CatalogDetailStatus,
+  detailIdentityLine,
+  qaMediaForTitle,
 } from "./catalog-detail-screen";
 
 import type { CatalogDetail } from "@moya/contracts";
@@ -67,6 +69,8 @@ describe("CatalogDetailScreen", () => {
     );
 
     expect(markup).toContain("云峰山题名");
+    expect(markup).toContain('aria-label="返回"');
+    expect(markup).not.toContain("返回首页");
     expect(markup).toContain("碑刻");
     expect(markup).toContain("云峰题名");
     expect(markup).not.toContain("公开摘要。");
@@ -89,7 +93,7 @@ describe("CatalogDetailScreen", () => {
       <CatalogDetailScreen detail={detail()} />,
     );
 
-    expect(markup).not.toContain("时期");
+    expect(markup).toContain(">碑刻</p>");
     expect(markup.indexOf("朝代")).toBeLessThan(markup.indexOf("年代"));
     expect(markup.indexOf("年代")).toBeLessThan(markup.indexOf("地区"));
     expect(markup.indexOf("地区")).toBeLessThan(markup.indexOf("现址"));
@@ -157,10 +161,44 @@ describe("CatalogDetailScreen", () => {
     expect(markup).toContain("说明");
     expect(markup).toContain("资料来源");
     expect(markup).toContain("内容待接入");
-    expect(markup).toContain("虚拟测试图，与真实记录无对应关系");
+    expect(markup).toContain("虚拟测试图，与真实记录无对应关系：云峰山题名");
     expect(markup).toContain(
       "/docs/design-system/assets/demo/stone-detail.svg",
     );
+  });
+
+  it("keeps only non-duplicated period tokens in the identity line", () => {
+    expect(detailIdentityLine(detail())).toBe("碑刻");
+    expect(
+      detailIdentityLine(
+        detail({
+          dateText: undefined,
+          dynasty: undefined,
+          periodLabel: "北魏",
+        }),
+      ),
+    ).toBe("碑刻 · 北魏");
+    expect(
+      detailIdentityLine(detail({ periodLabel: "北魏 · 永平年间 · 山间" })),
+    ).toBe("碑刻 · 山间");
+  });
+
+  it("uses the exact T02 QA media stress presets", () => {
+    expect(
+      qaMediaForTitle("云峰山题名").map(({ height, src, width }) => [
+        src.split("/").at(-1),
+        width,
+        height,
+      ]),
+    ).toEqual([
+      ["stone-detail.svg", 360, 610],
+      ["inscription-rubbing.svg", 600, 420],
+      ["discovery-stone.svg", 800, 800],
+      ["stone-detail.svg", 360, 1400],
+      ["valley-wall.svg", 1600, 400],
+      ["stele-shadow.svg", 900, 960],
+      ["cliff-gate.svg", 480, 720],
+    ]);
   });
 
   it("uses representativeMedia only when the detail media list is empty", () => {
@@ -179,8 +217,10 @@ describe("CatalogDetailScreen", () => {
     ["unavailable", "档案服务暂时不可用"],
     ["unexpected-error", "无法加载这项资料"],
   ] as const)("renders the %s status", (state, title) => {
-    expect(
-      renderToStaticMarkup(<CatalogDetailStatus state={state} />),
-    ).toContain(title);
+    const markup = renderToStaticMarkup(<CatalogDetailStatus state={state} />);
+
+    expect(markup).toContain(title);
+    if (state === "not-found") expect(markup).not.toContain("重试");
+    else expect(markup).toContain("重试");
   });
 });

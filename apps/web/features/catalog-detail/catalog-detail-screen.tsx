@@ -1,4 +1,5 @@
 import { CatalogMediaGallery } from "./catalog-media-gallery";
+import { CatalogDetailFrame } from "./catalog-detail-frame";
 import styles from "./catalog-detail-screen.module.css";
 
 import type { CatalogDetail, PublicMedia } from "@moya/contracts";
@@ -14,25 +15,58 @@ type PresentationMedia = Pick<
 const qaMediaPresets: readonly (readonly [string, number, number])[] = [
   ["stone-detail.svg", 360, 610],
   ["inscription-rubbing.svg", 600, 420],
-  ["discovery-stone.svg", 600, 760],
-  ["cliff-gate.svg", 360, 520],
-  ["valley-wall.svg", 360, 430],
-  ["stele-shadow.svg", 360, 400],
-  ["calligraphy-sheet.svg", 600, 760],
+  ["discovery-stone.svg", 800, 800],
+  ["stone-detail.svg", 360, 1400],
+  ["valley-wall.svg", 1600, 400],
+  ["stele-shadow.svg", 900, 960],
+  ["cliff-gate.svg", 480, 720],
 ];
 
-const qaMedia: readonly PresentationMedia[] = qaMediaPresets.map(
-  ([file, width, height], index) => ({
-    alt: `虚拟测试图，与真实记录无对应关系：${index + 1}`,
+const qaMediaKinds = [
+  "竖图",
+  "横图",
+  "方图",
+  "超长竖图",
+  "超宽横图",
+  "近方形",
+  "特殊比例",
+] as const;
+
+export const qaMediaForTitle = (
+  detailTitle: string,
+): readonly PresentationMedia[] =>
+  qaMediaPresets.map(([file, width, height], index) => ({
+    alt: `虚拟测试图，与真实记录无对应关系：${detailTitle}，第 ${index + 1} 张（${qaMediaKinds[index]}）`,
     height,
     key: `qa-demo-${index + 1}`,
     src: `/docs/design-system/assets/demo/${file}`,
     width,
-  }),
-);
+  }));
 
 const kindLabel = (kind: CatalogDetail["kind"]): string =>
   kind === "calligraphy" ? "书帖" : "碑刻";
+
+const detailTokens = (value: string | undefined): string[] =>
+  value === undefined
+    ? []
+    : value
+        .split(/[·•、/|,;；]+|\s+/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+
+const normalizedDetailToken = (value: string) => value.replace(/\s+/g, "");
+
+export const detailIdentityLine = (detail: CatalogDetail): string => {
+  const chronology = new Set(
+    [detail.dynasty, detail.dateText]
+      .flatMap((value) => detailTokens(value))
+      .map(normalizedDetailToken),
+  );
+  const period = detailTokens(detail.periodLabel).filter(
+    (token) => !chronology.has(normalizedDetailToken(token)),
+  );
+  return [kindLabel(detail.kind), ...period].join(" · ");
+};
 
 const publicMedia = (detail: CatalogDetail): readonly PresentationMedia[] => {
   if (detail.media.length > 0)
@@ -49,7 +83,7 @@ const detailMedia = (
   qa: boolean,
 ): readonly PresentationMedia[] => {
   const media = publicMedia(detail);
-  return media.length > 0 || !qa ? media : qaMedia;
+  return media.length > 0 || !qa ? media : qaMediaForTitle(detail.title);
 };
 
 const regionLabel = (detail: CatalogDetail): string | undefined => {
@@ -104,8 +138,13 @@ export const CatalogDetailStatus = ({
         >
           <h1>{content.title}</h1>
           <p>{content.description}</p>
+          {state === "not-found" ? null : (
+            <a className={styles.actionLink} href="">
+              重试
+            </a>
+          )}
           <a className={styles.actionLink} href="/">
-            返回首页
+            返回
           </a>
         </section>
       </div>
@@ -124,10 +163,10 @@ export const CatalogDetailScreen = ({
   const facts = detailFacts(detail);
 
   return (
-    <main className={styles.screen}>
+    <CatalogDetailFrame className={styles.screen}>
       <header className={styles.topbar}>
-        <a aria-label="返回首页" className={styles.backLink} href="/">
-          返回首页
+        <a aria-label="返回" className={styles.backLink} href="/">
+          <span aria-hidden="true">←</span>
         </a>
       </header>
       <div className={styles.content}>
@@ -137,7 +176,7 @@ export const CatalogDetailScreen = ({
           {media.length === 0 ? null : <CatalogMediaGallery media={media} />}
           <article className={styles.identity}>
             <h1>{detail.title}</h1>
-            <p className={styles.kind}>{kindLabel(detail.kind)}</p>
+            <p className={styles.kind}>{detailIdentityLine(detail)}</p>
             {detail.aliases.length === 0 ? null : (
               <div className={styles.aliases}>
                 <p>又名</p>
@@ -214,6 +253,6 @@ export const CatalogDetailScreen = ({
           </section>
         ) : null}
       </div>
-    </main>
+    </CatalogDetailFrame>
   );
 };
