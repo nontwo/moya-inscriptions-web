@@ -6,10 +6,8 @@ import { methodNotAllowed, readT02Document } from "../lib/t02-static-files";
 
 export const runtime = "nodejs";
 
-const toVisibleTitles = (state: HomeCatalogState) =>
-  state.state === "populated"
-    ? state.page.items.map(({ id, title }) => ({ id, title }))
-    : [];
+const toVisibleItems = (state: HomeCatalogState) =>
+  state.state === "populated" ? state.page.items : [];
 
 export const GET = async () => {
   await connection();
@@ -22,9 +20,9 @@ export const GET = async () => {
   );
 
   return readT02Document("GET", {
-    calligraphy: toVisibleTitles(calligraphyState),
-    discover: toVisibleTitles(discoverState),
-    inscriptions: toVisibleTitles(inscriptionState),
+    calligraphy: toVisibleItems(calligraphyState),
+    discover: toVisibleItems(discoverState),
+    inscriptions: toVisibleItems(inscriptionState),
   });
 };
 export const HEAD = () => readT02Document("HEAD");
