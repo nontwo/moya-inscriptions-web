@@ -1,129 +1,136 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applyDiscoverTitles,
-  applyCalligraphyTitles,
-  applyInscriptionTitles,
+  appendCalligraphyItems,
+  appendDiscoverItems,
+  appendInscriptionItems,
+  ensureDevelopmentTranscriptionSection,
   readT02Document,
   serveT02File,
 } from "./t02-static-files";
 
 const bodyText = async (response: Response) => response.text();
 
+const runtimeItem = (title: string, kind: "inscription" | "calligraphy") => ({
+  id: `runtime-${title}`,
+  kind,
+  title,
+  summary: `${title}摘要`,
+  periodLabel: "唐",
+  representativeMedia: {
+    id: `media-${title}`,
+    kind: "image" as const,
+    src: "https://example.com/runtime.jpg",
+    alt: `${title}真实图像`,
+    width: 1200,
+    height: 1600,
+  },
+});
+
 describe("formal T02 file serving", () => {
-  it("replaces only the visible Discover titles in API order", async () => {
+  it("appends real Discover cards without replacing canonical QA cards", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
-    const result = applyDiscoverTitles(source, [
-      { id: "real-1", title: "真实第一条" },
-      { id: "real-2", title: "真实第二条" },
+    const result = appendDiscoverItems(source, [
+      runtimeItem("真实第一条", "inscription"),
+      runtimeItem("真实第二条", "inscription"),
     ]);
 
     expect(result).toContain("真实第一条");
     expect(result).toContain("真实第二条");
-    expect(result).toContain('data-title="山门北壁题记"');
+    expect(result).toContain('data-record-origin="runtime"');
     expect(result).toContain('data-content-id="discover-cliff-gate"');
-    expect(result).toContain('data-title="纸上墨痕"');
+    expect(result).toContain('data-title="山门北壁题记"');
     expect(result).toContain('data-content-id="discover-ink"');
-    expect(result).toContain('data-title="龙门残字"');
-    expect(result).toContain('data-content-id="discover-stone"');
-    expect(result).toContain('data-title="山崖旧刻"');
+    expect(result).toContain('data-title="纸上墨痕"');
+    expect(result).toContain("../../design-system/assets/demo/cliff-gate.svg");
+    expect(result).toContain("https://example.com/runtime.jpg");
   });
 
-  it("replaces only the visible Inscription titles in API order", async () => {
+  it("appends real Inscription records while preserving every QA card identity", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
-    const result = applyInscriptionTitles(source, [
-      { id: "real-1", title: "真实碑刻一" },
-      { id: "real-2", title: "真实碑刻二" },
+    const result = appendInscriptionItems(source, [
+      runtimeItem("真实碑刻一", "inscription"),
+      runtimeItem("真实碑刻二", "inscription"),
     ]);
 
     expect(result).toContain("真实碑刻一");
     expect(result).toContain("真实碑刻二");
-    expect(result).toContain('data-title="云峰山题名"');
+    expect(result).toContain('data-content-id="runtime-真实碑刻一"');
     expect(result).toContain('data-content-id="inscription-yunfeng"');
-    expect(result).toContain('class="app-inscription-card"');
-    expect(result).toContain('class="app-inscription-card__meta"');
+    expect(result).toContain('data-title="云峰山题名"');
+    expect(result).toContain('data-content-id="inscription-shimen"');
+    expect(result).toContain('data-title="石门东侧残刻"');
+    expect(result).toContain("../../design-system/assets/demo/rubbing-fragment.svg");
     expect(result).toContain("data-search-empty");
-    expect(result).toContain(
-      "../../design-system/assets/demo/rubbing-fragment.svg",
-    );
   });
 
-  it("replaces only the visible Calligraphy titles in API order", async () => {
+  it("appends real Calligraphy records while preserving every QA card identity", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
-    const result = applyCalligraphyTitles(source, [
-      { id: "real-1", title: "真实书帖一" },
-      { id: "real-2", title: "真实书帖二" },
+    const result = appendCalligraphyItems(source, [
+      runtimeItem("真实书帖一", "calligraphy"),
+      runtimeItem("真实书帖二", "calligraphy"),
     ]);
 
     expect(result).toContain("真实书帖一");
     expect(result).toContain("真实书帖二");
-    expect(result).toContain('data-title="秋山札"');
+    expect(result).toContain('data-content-id="runtime-真实书帖一"');
+    expect(result).toContain('data-category="all"');
     expect(result).toContain('data-content-id="calligraphy-autumn"');
-    expect(result).toContain('data-category="ink"');
-    expect(result).toContain('class="app-card__meta"');
+    expect(result).toContain('data-title="秋山札"');
+    expect(result).toContain('data-content-id="calligraphy-pine"');
+    expect(result).toContain('data-title="松窗帖"');
     expect(result).toContain("../../design-system/assets/demo/ink-album.svg");
   });
 
-  it("escapes visible title text before injecting it into HTML", async () => {
+  it("never mutates canonical source when there are no runtime items", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
-    const result = applyCalligraphyTitles(source, [
-      { id: "real-1", title: `真实 <b>"第一"</b> & '条'` },
-    ]);
+
+    expect(appendDiscoverItems(source, [])).toBe(source);
+    expect(appendInscriptionItems(source, [])).toBe(source);
+    expect(appendCalligraphyItems(source, [])).toBe(source);
+  });
+
+  it("escapes runtime content before appending it to T02 HTML", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const item = runtimeItem(`真实 <b>"第一"</b> & '条'`, "calligraphy");
+    const result = appendCalligraphyItems(source, [item]);
 
     expect(result).toContain(
       "真实 &lt;b&gt;&quot;第一&quot;&lt;/b&gt; &amp; &#39;条&#39;",
     );
-    expect(result).toContain('data-title="秋山札"');
     expect(result).not.toContain('<b>"第一"</b>');
-    expect(result).not.toContain("real-discover");
+    expect(result).toContain('data-title="秋山札"');
   });
 
-  it("leaves the canonical browse source unchanged when there are no titles", async () => {
+  it("adds the missing Development transcription section exactly once", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
+    const once = ensureDevelopmentTranscriptionSection(source);
+    const twice = ensureDevelopmentTranscriptionSection(once);
 
-    expect(applyDiscoverTitles(source, [])).toBe(source);
-    expect(applyInscriptionTitles(source, [])).toBe(source);
-    expect(applyCalligraphyTitles(source, [])).toBe(source);
+    expect(once).toContain("<h2>释文</h2>");
+    expect(once).toContain("内容待接入");
+    expect(once.match(/data-detail-transcription/g)).toHaveLength(2);
+    expect(twice).toBe(once);
   });
 
-  it("clones the existing Discover card presentation for overflow titles", async () => {
-    const source = await (
-      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
-    ).text();
-    const result = applyDiscoverTitles(
-      source,
-      Array.from({ length: 13 }, (_, index) => ({
-        id: `real-${index + 1}`,
-        title: `真实条目 ${index + 1}`,
-      })),
-    );
-
-    const discoverSection = result.match(
-      /<div\s+class="app-masonry"\s+data-feed-grid="discover">([\s\S]*?)<\/div>/,
-    )?.[1];
-
-    expect(discoverSection).toBeDefined();
-    expect(discoverSection).toContain("真实条目 13");
-    expect(
-      discoverSection?.match(/<button\b[^>]*data-open-detail/g),
-    ).toHaveLength(13);
-    expect(result).toContain('data-content-id="discover-cliff-gate"');
-    expect(result).toContain('data-content-id="discover-ink"');
-    expect(result).toContain("../../design-system/assets/demo/cliff-gate.svg");
-  });
-
-  it("serves the canonical root document with one response-time base", async () => {
-    const response = await readT02Document();
+  it("serves the formal root with canonical QA records, runtime records, and one base", async () => {
+    const response = await readT02Document("GET", {
+      discover: [runtimeItem("真实发现", "inscription")],
+      inscriptions: [runtimeItem("真实碑刻", "inscription")],
+      calligraphy: [runtimeItem("真实书帖", "calligraphy")],
+    });
     const body = await bodyText(response);
 
     expect(response.status).toBe(200);
@@ -133,6 +140,12 @@ describe("formal T02 file serving", () => {
     expect(
       body.match(/<base href="\/docs\/prototypes\/mobile-preview\/" \/>/g),
     ).toHaveLength(1);
+    expect(body).toContain("真实发现");
+    expect(body).toContain("真实碑刻");
+    expect(body).toContain("真实书帖");
+    expect(body).toContain('data-title="山门北壁题记"');
+    expect(body).toContain('data-title="云峰山题名"');
+    expect(body).toContain('data-title="秋山札"');
     expect(body).toContain('<script src="./device-platform.js"></script>');
     expect(body).toContain('data-view="home"');
   });
@@ -202,7 +215,7 @@ describe("formal T02 file serving", () => {
         { kind: "prototype", segments },
         "GET",
       );
-      const body = await bodyText(response);
+      const body = await response.text();
 
       expect(response.status).toBe(404);
       expect(body).toBe("");
