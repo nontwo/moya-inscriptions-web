@@ -66,14 +66,11 @@ html {
   overflow: visible;
 }
 
-/* Desktop: floating left navigation + dense full-width waterfall. */
+/* Desktop: fixed left navigation frame + dense full-width waterfall. */
 @media (min-width: 56rem) {
   html[data-platform="pc"] {
-    --app-pc-nav-left: var(--yoyi-space-4);
-    --app-pc-nav-width: 112px;
-    --app-pc-nav-safe-area: calc(
-      var(--app-pc-nav-left) + var(--app-pc-nav-width) + var(--yoyi-space-4)
-    );
+    --app-pc-nav-width: 88px;
+    --app-pc-nav-safe-area: var(--app-pc-nav-width);
   }
 
   body {
@@ -515,63 +512,39 @@ html {
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
     position: fixed;
-    top: 50%;
+    top: 0;
     right: auto;
-    bottom: auto;
-    left: var(--app-pc-nav-left);
+    bottom: 0;
+    left: 0;
     display: grid;
     align-items: stretch;
     justify-content: initial;
     gap: 0;
     overflow: hidden;
     z-index: 30;
-    border-radius: calc(var(--yoyi-radius-full) / 3);
+    background: var(--yoyi-color-background-surface);
+    border: 0;
+    border-right: 1px solid var(--yoyi-color-border-subtle);
+    border-radius: 0;
+    box-shadow: var(--app-elevation-content);
     margin: 0;
-    transform: translate3d(0, -50%, 0);
+    transform: none;
   }
 
-  .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
-    width: var(--app-pc-nav-width);
-    max-width: var(--app-pc-nav-width);
-    height: min(360px, calc(100dvh - (var(--yoyi-space-4) * 2)));
-    min-height: 320px;
-    grid-template-columns: 1fr;
-    grid-template-rows: repeat(5, minmax(0, 1fr));
-    padding: var(--yoyi-space-2);
-  }
-
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation,
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized),
   .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
-    top: 50%;
-    right: auto;
-    bottom: auto;
-    left: calc(var(--app-pc-nav-left) + ((var(--app-pc-nav-width) - 44px) / 2));
-    width: 44px;
-    min-width: 44px;
-    max-width: 44px;
-    height: 44px;
-    min-height: 44px;
-    margin: 0;
-    padding: 0;
+    width: var(--app-pc-nav-width);
+    min-width: var(--app-pc-nav-width);
+    max-width: var(--app-pc-nav-width);
+    height: 100dvh;
+    min-height: 100dvh;
     grid-template-columns: 1fr;
-    place-items: center;
-    justify-items: center;
-    transform: translate3d(0, -50%, 0);
-  }
-
-  .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
-    .yoyi-navigation-entry.is-active {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    gap: 0;
-    line-height: 0;
-    font-size: 0;
+    grid-template-rows: repeat(5, 64px);
+    align-content: center;
+    margin: 0;
+    padding: var(--yoyi-space-2);
+    transform: none;
   }
 
   .app-bottom-navigation .yoyi-navigation-entry {
@@ -581,25 +554,39 @@ html {
     width: auto;
     min-width: 0;
     min-height: 0;
-    gap: var(--yoyi-space-2);
-    padding: 0 var(--yoyi-space-3);
+    gap: var(--yoyi-space-1);
+    padding: 0 var(--yoyi-space-2);
     border-radius: var(--yoyi-radius-2);
     color: var(--yoyi-color-text-primary);
     background: transparent;
+    cursor: pointer;
+    touch-action: manipulation;
   }
 
   .app-bottom-navigation .yoyi-nav-bubble {
-    border-radius: var(--yoyi-radius-2);
+    display: none;
   }
 
   .app-bottom-navigation .yoyi-navigation-entry.is-active {
     color: var(--yoyi-color-seal-red);
-    background: transparent;
-    box-shadow: none;
+    background: var(--yoyi-color-background-muted);
+    box-shadow: inset 2px 0 0 var(--yoyi-color-seal-red);
   }
 
   .app-bottom-navigation .yoyi-navigation-entry.is-active::after {
     content: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .app-bottom-navigation .yoyi-navigation-entry:hover {
+      color: var(--yoyi-color-text-primary);
+      background: var(--yoyi-color-background-muted);
+    }
+
+    .app-bottom-navigation .yoyi-navigation-entry:focus-visible {
+      outline: 2px solid var(--yoyi-color-seal-red);
+      outline-offset: -2px;
+    }
   }
 
   .app-loading {

@@ -556,13 +556,13 @@ const layoutBottomNav = (navigation: HTMLElement) => {
     navigation.ownerDocument.documentElement.dataset.platform === "pc";
   Object.defineProperty(navigation, "getBoundingClientRect", {
     configurable: true,
-    value: () => (isPc ? box(16, 200, 112, 360) : box(0, 700, 500, 60)),
+    value: () => (isPc ? box(0, 0, 88, 900) : box(0, 700, 500, 60)),
   });
   [...navigation.querySelectorAll<HTMLElement>("[data-nav-entry]")].forEach(
     (entry, index) => {
-      const left = isPc ? 24 : index * 100;
-      const top = isPc ? 208 + index * 68 : 704;
-      const width = isPc ? 96 : 100;
+      const left = isPc ? 8 : index * 100;
+      const top = isPc ? 290 + index * 64 : 704;
+      const width = isPc ? 72 : 100;
       const height = isPc ? 64 : 52;
       Object.defineProperty(entry, "getBoundingClientRect", {
         configurable: true,
@@ -574,7 +574,7 @@ const layoutBottomNav = (navigation: HTMLElement) => {
       });
       Object.defineProperty(entry, "offsetTop", {
         configurable: true,
-        get: () => (isPc ? 8 + index * 68 : 4),
+        get: () => (isPc ? 290 + index * 64 : 4),
       });
       Object.defineProperty(entry, "offsetWidth", {
         configurable: true,
@@ -2664,11 +2664,18 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain(
       "grid-template-columns: repeat(5, minmax(0, 1fr))",
     );
-    expect(pcCss).toContain("grid-template-rows: repeat(5, minmax(0, 1fr))");
+    expect(pcCss).toContain("grid-template-rows: repeat(5, 64px)");
     expect(pcCss).toContain("--app-pc-nav-safe-area");
     expect(pcCss).toContain("padding-left: var(--app-pc-nav-safe-area)");
-    expect(pcCss).toContain("top: 50%");
-    expect(pcCss).toContain("left: var(--app-pc-nav-left)");
+    expect(pcCss).toContain("--app-pc-nav-width: 88px");
+    expect(pcCss).toContain("top: 0");
+    expect(pcCss).toContain("bottom: 0");
+    expect(pcCss).toContain("left: 0");
+    expect(pcCss).toContain("height: 100dvh");
+    expect(pcCss).toContain(
+      "box-shadow: inset 2px 0 0 var(--yoyi-color-seal-red)",
+    );
+    expect(script).toContain('root.dataset.platform === "pc") return;');
     expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
     expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
     expect(pcCss).not.toContain("border-width: 9px 0 9px 10px");
@@ -2828,9 +2835,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260822-primary-nav-five"',
+      'href="./preview.shared.css?v=20260822-fixed-pc-rail"',
     );
-    expect(html).toContain('src="./preview.js?v=20260822-primary-nav-five"');
+    expect(html).toContain('src="./preview.js?v=20260822-fixed-pc-rail"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
@@ -3228,13 +3235,15 @@ describe("mobile application preview", () => {
       "[data-bottom-navigation]",
     );
     if (!pcNav) throw new Error("pc navigation missing");
-    expect(pcNav.dataset.minimizeBehavior).toBe("on-scroll");
+    expect(pcNav.dataset.minimizeBehavior).toBe("none");
+    expect(pcNav.classList.contains("yoyi-functional-glass")).toBe(false);
     const pcScroller =
       pc.window.document.scrollingElement ?? pc.window.document.documentElement;
     pcScroller.scrollTop = 40;
     pcScroller.dispatchEvent(new pc.window.Event("scroll"));
     pc.window.document.dispatchEvent(new pc.window.Event("scroll"));
-    expect(pcNav.dataset.minimized).toBe("true");
+    expect(pcNav.hasAttribute("data-minimized")).toBe(false);
+    expect(pcNav.classList.contains("is-minimized")).toBe(false);
     await waitMs(pc.window, 450);
     expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
@@ -3374,7 +3383,7 @@ describe("mobile application preview", () => {
     expect(bubble.parentElement).toBe(navigation);
   });
 
-  it("keeps the bottom nav bubble and primary pager in sync for mouse drags", async () => {
+  it("keeps the PC rail fixed without bubble, minimize, or drag navigation", async () => {
     const pc = renderPreview(
       {},
       {
@@ -3395,15 +3404,15 @@ describe("mobile application preview", () => {
     const primaryTrack = document.querySelector<HTMLElement>(
       '[data-pager="primary"] [data-pager-track]',
     );
-    const inscriptionsScroll = document.querySelector<HTMLElement>(
-      '[data-scroll-view="inscriptions"]',
+    const inscriptionsTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="inscriptions"]',
     );
     if (
       !navigation ||
       !bubble ||
       !homeTab ||
       !primaryTrack ||
-      !inscriptionsScroll
+      !inscriptionsTab
     ) {
       throw new Error("PC primary pager fixture missing");
     }
@@ -3411,53 +3420,43 @@ describe("mobile application preview", () => {
     layoutBottomNav(navigation);
     homeTab.click();
     await waitForAnimationFrames(pc.window, 40);
-    expect(bubble.style.transform).toContain("translate3d(8px, 8px, 0)");
+    expect(bubble.style.transform).toBe("");
+    expect(bubble.style.width).toBe("");
 
     dispatchPointer(pc.window, homeTab, "pointerdown", {
       clientX: 50,
-      clientY: 240,
+      clientY: 320,
       pointerType: "mouse",
       timeStamp: 1_000,
     });
     dispatchPointer(pc.window, homeTab, "pointermove", {
       clientX: 50,
-      clientY: 272,
+      clientY: 390,
       pointerType: "mouse",
       timeStamp: 1_240,
     });
-    expect(bubble.style.transform).toContain("translate3d(8px, 42px, 0)");
-    expect(pagerTranslateX(primaryTrack)).toBeCloseTo(-512);
-    dispatchPointer(pc.window, homeTab, "pointermove", {
-      clientX: 50,
-      clientY: 310,
-      pointerType: "mouse",
-      timeStamp: 1_360,
-    });
+    expect(bubble.style.transform).toBe("");
+    expect(primaryTrack.style.transform).toBe("");
     dispatchPointer(pc.window, homeTab, "pointerup", {
       clientX: 50,
-      clientY: 310,
+      clientY: 390,
       pointerType: "mouse",
       timeStamp: 1_400,
     });
+    expect(
+      document.querySelector<HTMLElement>('[data-primary-view="home"]')
+        ?.classList,
+    ).toContain("is-active");
+    expect(primaryTrack.style.transform).toBe("");
+
+    inscriptionsTab.click();
     expect(
       document.querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
         ?.classList,
     ).toContain("is-active");
     await waitForAnimationFrames(pc.window, 40);
-    expect(bubble.style.transform).toContain("translate3d(8px, 76px, 0)");
+    expect(bubble.style.transform).toBe("");
     expect(primaryTrack.style.transform).toBe("");
-
-    swipe(
-      pc.window,
-      inscriptionsScroll,
-      { x: 80, y: 220 },
-      { x: 700, y: 220 },
-      "mouse",
-    );
-    expect(
-      document.querySelector<HTMLElement>('[data-primary-view="home"]')
-        ?.classList,
-    ).toContain("is-active");
   });
 
   it("keeps home and calligraphy tabs as plain selected indicators", () => {

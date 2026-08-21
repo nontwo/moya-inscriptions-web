@@ -204,7 +204,12 @@ const scrollPositions = {
 function syncPlatformAttribute() {
   if (platformRuntime) {
     const { platform } = platformRuntime.sync();
-    bottomNavigation.dataset.minimizeBehavior = "on-scroll";
+    bottomNavigation.dataset.minimizeBehavior =
+      platform === "pc" ? "none" : "on-scroll";
+    bottomNavigation.classList.toggle(
+      "yoyi-functional-glass",
+      platform !== "pc",
+    );
     return platform;
   }
   const platform =
@@ -215,7 +220,9 @@ function syncPlatformAttribute() {
         : "pc";
   root.dataset.deviceClass = "desktop";
   root.dataset.platform = platform;
-  bottomNavigation.dataset.minimizeBehavior = "on-scroll";
+  bottomNavigation.dataset.minimizeBehavior =
+    platform === "pc" ? "none" : "on-scroll";
+  bottomNavigation.classList.toggle("yoyi-functional-glass", platform !== "pc");
   return platform;
 }
 
@@ -2272,7 +2279,11 @@ function updateBottomNavigation() {
 }
 
 function navigationCanMinimize() {
-  return primaryViews.includes(primaryView) && !bottomNavigation.hidden;
+  return (
+    root.dataset.platform !== "pc" &&
+    primaryViews.includes(primaryView) &&
+    !bottomNavigation.hidden
+  );
 }
 
 function prefersReducedNavMotion() {
@@ -2340,6 +2351,10 @@ function lerpBox(start, end, amount) {
 }
 
 function applyBubbleBox(strip, box, scale = 1) {
+  if (strip?.kind === "bottom" && root.dataset.platform === "pc") {
+    clearNavBubbleInlineStyle();
+    return;
+  }
   const bubble = strip?.bubble;
   if (!bubble || !strip.container) return;
   if (bubble.parentElement !== strip.container) {
@@ -2461,6 +2476,10 @@ function scheduleNavBubbleSyncAfterExpand() {
 
 function syncNavBubbleToActive() {
   navigationEntries().forEach((entry) => entry.classList.remove("is-nav-hot"));
+  if (root.dataset.platform === "pc") {
+    clearNavBubbleInlineStyle();
+    return;
+  }
   const active = bottomNavigation.querySelector(
     "[data-primary-view].is-active",
   );
@@ -2710,6 +2729,7 @@ function startNavPagerFollow(gesture) {
 }
 
 function onNavPointerDown(event) {
+  if (root.dataset.platform === "pc") return;
   if (navigationMinimized || !event.isPrimary) return;
   if (event.target.closest?.("[data-nav-action]")) return;
   if (prefersReducedNavMotion()) return;
