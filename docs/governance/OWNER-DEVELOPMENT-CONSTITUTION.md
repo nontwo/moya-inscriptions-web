@@ -408,3 +408,114 @@ Before implementation, every task must verify:
 If any required item is missing:
 
 do not implement.
+
+## 19. Current technical and delivery guardrails
+
+The following rules preserve the applicable protections from the legacy root
+instructions while matching the current repository architecture.
+
+### Architecture and data boundaries
+
+- UI and frontend code must not query PostgreSQL directly.
+- Formal Web and Admin business reads must use the approved HTTP/Public API
+  boundary for the domain. Frontend code must not import repository/query-port,
+  backend application, or runtime implementations directly.
+- This rule does not require every server-side or internal monorepo concern to
+  use HTTP where no approved HTTP/Public API boundary applies.
+- Public API, cross-workspace, and domain-boundary contracts belong in
+  `packages/contracts`. Feature-local presentation and internal helper types
+  may remain local. No feature may redefine an existing Public Contract
+  locally.
+- Shared semantic design-system values belong in `packages/design-tokens`.
+  Component-local geometry and layout implementation values do not
+  automatically require global tokens, and existing shared semantic tokens
+  must not be duplicated locally.
+- Frontend code must not receive or access object keys, buckets, storage
+  provider details, storage credentials, or raw source datasets. It must not
+  compose provider or CDN URLs from object keys; it consumes resolved approved
+  runtime URLs only.
+- Runtime workspaces must use the approved canonical runtime source. A
+  controlled backend importer may read approved source input only through its
+  explicit architecture allowlist and controlled-import manifest capability.
+  Frontend runtimes can never receive that capability.
+- Database schema changes require migrations. Dependency upgrades require
+  explicit task approval.
+- Production domains, API keys, CDN configuration, credentials, secrets, and
+  tokens must not be hard-coded or committed.
+- Approved architecture boundaries must not be bypassed for convenience.
+
+### Product, scope, and delivery
+
+- End-user Yoyi product interfaces remain mobile-first and responsive. This
+  does not impose the same presentation priority on Admin or internal tooling.
+- Functional scope, non-goals, and preserved behavior are binding. A task may
+  modify a necessary supporting test, helper, or configuration file when it is
+  within that frozen functional scope. An explicit Owner file allowlist remains
+  binding.
+- Every implementation task must, where applicable, run lint, typecheck,
+  relevant automated tests, and a build when the affected scope is buildable
+  and relevant. It must list modified files and report scope deviations or
+  blockers.
+- Documentation-only and governance-only tasks use proportionate validation;
+  they do not run irrelevant runtime checks merely as ritual compliance.
+
+## 20. Governance evolution and non-silent regression
+
+Governance is allowed to evolve with the project.
+
+Historical constraints are not immutable merely because they are old.
+
+However, creating, reorganizing, consolidating, modernizing, or replacing
+governance must never silently discard an existing constraint.
+
+When changing governance:
+
+1. audit the existing applicable rules;
+2. classify each affected rule as:
+   - PRESERVE
+   - MODERNIZE
+   - MERGE
+   - RETIRE
+3. document the rationale for MODERNIZE or RETIRE;
+4. ensure MERGE rules retain their substantive protection elsewhere;
+5. identify any genuine conflict requiring Owner decision.
+
+A rule may be relaxed or retired when current project evidence objectively
+supports doing so.
+
+Do not make governance monotonically stricter merely for safety.
+
+Do not make governance looser merely for implementation convenience.
+
+## 21. Legacy root `AGENTS.md` audit
+
+This audit covers `integration/mvp@c9bf6eceab55d55ebedd25f7af6e4e46fb4d9830:AGENTS.md`.
+Each substantive legacy rule has one classification. `MODERNIZE` retains the
+architectural purpose with more precise current wording; `MERGE` identifies
+the existing Constitution rule that already provides its protection.
+
+| Legacy rule | Classification | Current disposition and rationale |
+| --- | --- | --- |
+| Build a mobile-first digital archive for Chinese cliff inscriptions and stone inscriptions. | PRESERVE | The product purpose and end-user mobile-first requirement remain in §19. |
+| Install: `pnpm install`. | RETIRE | This is a setup command, not a universal completion rule. The committed `pnpm-lock.yaml` pins the workspace dependency graph, while installation depends on the task environment. §19 requires proportionate validation instead. |
+| Development: `pnpm dev`. | RETIRE | A development server has no validation role for a documentation-only change and is not required for every implementation task. User-visible work still requires the scoped validation and Owner acceptance required by §§10, 12, and 14. |
+| Build: `pnpm build`. | MODERNIZE | §19 requires a build where the affected scope is buildable and relevant, avoiding meaningless builds for documentation-only work. |
+| Lint: `pnpm lint`. | MODERNIZE | §19 requires lint where applicable rather than ritual execution for every non-runtime task. |
+| Type check: `pnpm typecheck`. | MODERNIZE | §19 requires typecheck where applicable rather than ritual execution for every non-runtime task. |
+| Test: `pnpm test`. | MODERNIZE | §19 requires relevant automated tests where applicable and keeps §10's Behavior Matrix validation policy. |
+| UI components must not query PostgreSQL directly. | PRESERVE | §19 retains this direct frontend data-boundary protection. |
+| Shared data types may only be defined in `packages/contracts`. | MODERNIZE | §19 confines Public API, cross-workspace, and domain-boundary contracts to `packages/contracts`, while allowing genuinely feature-local presentation/helper types to remain local. This matches the current public-contract boundary without forcing local UI types into a shared package. |
+| Shared colors, spacing and typography may only be defined in `packages/design-tokens`. | MODERNIZE | §19 reserves shared semantic design-system values for `packages/design-tokens`, while allowing component-local geometry/layout values and preventing duplication of existing tokens. This matches ADR 0007's semantic token direction without token sprawl. |
+| Public Web, Admin, SSR and Server Components must obtain business data through the HTTP API and may only type-import Public DTOs. | MODERNIZE | §19 preserves the approved Web/Admin HTTP/Public API boundary and forbids frontend imports of repository/query-port/backend runtime implementations. It does not overgeneralize HTTP to every internal server-side concern where no such boundary exists. |
+| Object keys and storage details are backend-only; frontend receives resolved URLs and must not compose CDN URLs. | PRESERVE | §19 retains the media/storage boundary established by ADRs 0003 and 0006. |
+| Do not hard-code production domains, API keys or CDN addresses. | PRESERVE | §19 retains the production configuration restriction. |
+| All public interfaces must be mobile-first. | MODERNIZE | §19 preserves mobile-first responsive behavior for end-user Yoyi product interfaces without incorrectly imposing the same priority on Admin/internal tooling. |
+| Do not modify files outside paths assigned in the task prompt. | MODERNIZE | §19 freezes functional scope while allowing necessary supporting files; deliberate Owner file allowlists remain binding. This avoids invalidating a correctly scoped implementation solely because a required test/helper file was not enumerated word-for-word. |
+| Do not upgrade dependencies unless explicitly requested. | PRESERVE | §19 retains explicit task approval for dependency upgrades. |
+| Database changes must use migrations. | PRESERVE | §19 retains migrations as the required database schema-change path. |
+| Never commit secrets, tokens or real environment credentials. | PRESERVE | §19 retains the credential and secret protection. |
+| Do not redefine contracts locally inside feature modules. | MODERNIZE | §19 prohibits local redefinition of existing Public Contracts while allowing feature-local types that are not shared/domain-boundary contracts. |
+| Runtime workspaces must not read raw source datasets except through an explicitly approved controlled importer; frontend can never receive that capability. | MODERNIZE | §19 retains the frontend prohibition and limits source input to the architecture-approved, manifest-controlled backend importer, consistent with ADR 0006's canonical runtime source. |
+| Every task runs lint, typecheck, relevant tests, and build where applicable. | MODERNIZE | §19 makes the same delivery intent applicability-based and explicitly permits proportionate governance validation. |
+| Every task lists modified files. | PRESERVE | §19 retains this completion-reporting requirement. |
+| Every task reports deviations from assigned scope. | MERGE | §§1, 9, 17, 18, and §19 already require frozen scope, STOP reporting for conflicts/blockers, and delivery reporting of deviations. |
