@@ -34,7 +34,16 @@ type QueryKey = "discover" | "inscription" | "calligraphy";
 
 const page = (title: string) =>
   ({
-    items: [{ id: title.toLowerCase(), title } as CatalogPage["items"][number]],
+    items: [
+      {
+        id: title.toLowerCase(),
+        kind: "inscription",
+        title,
+        aliases: [],
+        summary: `${title}摘要`,
+        periodLabel: "唐",
+      } as CatalogPage["items"][number],
+    ],
     page: 1,
     pageSize: 20,
     total: 1,
@@ -54,17 +63,13 @@ const empty = (title = "Demo"): HomeCatalogState => ({
 const unavailable: HomeCatalogState = { state: "unavailable" };
 const unexpectedError: HomeCatalogState = { state: "unexpected-error" };
 
-const resolveTitles = (
-  state: HomeCatalogState,
-): Array<{ id: string; title: string }> =>
-  state.state === "populated"
-    ? state.page.items.map(({ id, title }) => ({ id, title }))
-    : [];
+const resolveItems = (state: HomeCatalogState) =>
+  state.state === "populated" ? state.page.items : [];
 
-const toOverlayArgs = (states: Record<QueryKey, HomeCatalogState>) => ({
-  calligraphy: resolveTitles(states.calligraphy),
-  discover: resolveTitles(states.discover),
-  inscriptions: resolveTitles(states.inscription),
+const toBrowseArgs = (states: Record<QueryKey, HomeCatalogState>) => ({
+  calligraphy: resolveItems(states.calligraphy),
+  discover: resolveItems(states.discover),
+  inscriptions: resolveItems(states.inscription),
 });
 
 const createDeferred = () => {
@@ -83,7 +88,7 @@ beforeEach(() => {
   readT02DocumentMock.mockResolvedValue(new Response("ok"));
 });
 
-describe("T07 browse title orchestration", () => {
+describe("T07 browse runtime composition", () => {
   it("loads discover, inscription, and calligraphy in parallel after connection", async () => {
     const deferreds: Record<QueryKey, ReturnType<typeof createDeferred>> = {
       calligraphy: createDeferred(),
@@ -126,7 +131,7 @@ describe("T07 browse title orchestration", () => {
     expect(readT02DocumentMock).toHaveBeenCalledOnce();
     expect(readT02DocumentMock).toHaveBeenCalledWith(
       "GET",
-      toOverlayArgs({
+      toBrowseArgs({
         discover: populated("发现真实"),
         inscription: populated("碑刻真实"),
         calligraphy: populated("书帖真实"),
@@ -135,7 +140,7 @@ describe("T07 browse title orchestration", () => {
   });
 
   it.each([unavailable, unexpectedError, empty()])(
-    "keeps inscription canonical when inscription browse load is %s",
+    "keeps inscription QA records untouched when inscription browse load is %s",
     async (inscriptionState) => {
       loadHomeCatalogStateMock.mockImplementation(
         (query?: { kind?: "inscription" | "calligraphy" }) => {
@@ -151,7 +156,7 @@ describe("T07 browse title orchestration", () => {
 
       expect(readT02DocumentMock).toHaveBeenCalledWith(
         "GET",
-        toOverlayArgs({
+        toBrowseArgs({
           discover: populated("发现真实"),
           inscription: inscriptionState,
           calligraphy: populated("书帖真实"),
@@ -161,7 +166,7 @@ describe("T07 browse title orchestration", () => {
   );
 
   it.each([unavailable, unexpectedError, empty()])(
-    "keeps calligraphy canonical when calligraphy browse load is %s",
+    "keeps calligraphy QA records untouched when calligraphy browse load is %s",
     async (calligraphyState) => {
       loadHomeCatalogStateMock.mockImplementation(
         (query?: { kind?: "inscription" | "calligraphy" }) => {
@@ -177,7 +182,7 @@ describe("T07 browse title orchestration", () => {
 
       expect(readT02DocumentMock).toHaveBeenCalledWith(
         "GET",
-        toOverlayArgs({
+        toBrowseArgs({
           discover: populated("发现真实"),
           inscription: populated("碑刻真实"),
           calligraphy: calligraphyState,
@@ -186,7 +191,7 @@ describe("T07 browse title orchestration", () => {
     },
   );
 
-  it("keeps both browse surfaces canonical when both browse loads fail", async () => {
+  it("keeps both browse QA surfaces canonical when both browse loads fail", async () => {
     loadHomeCatalogStateMock.mockImplementation(
       (query?: { kind?: "inscription" | "calligraphy" }) => {
         if (query?.kind === "inscription") return Promise.resolve(unavailable);
@@ -200,7 +205,7 @@ describe("T07 browse title orchestration", () => {
 
     expect(readT02DocumentMock).toHaveBeenCalledWith(
       "GET",
-      toOverlayArgs({
+      toBrowseArgs({
         discover: populated("发现真实"),
         inscription: unavailable,
         calligraphy: unexpectedError,
