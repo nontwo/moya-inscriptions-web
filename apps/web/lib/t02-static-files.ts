@@ -21,6 +21,7 @@ export type BrowseTitles = {
 };
 
 export interface T02DocumentOptions {
+  catalogCardsAuthoritative?: boolean;
   catalogDetailQa?: boolean;
 }
 
@@ -157,7 +158,7 @@ export const applyDiscoverCards = (
   cards: readonly CatalogCardSummary[],
   options: T02DocumentOptions = {},
 ): string => {
-  if (cards.length === 0) return document;
+  if (cards.length === 0 && !options.catalogCardsAuthoritative) return document;
 
   return applyCardsInSection(
     document,
@@ -167,7 +168,6 @@ export const applyDiscoverCards = (
     cards,
     "discover",
     options,
-    true,
   );
 };
 
@@ -176,7 +176,7 @@ export const applyInscriptionCards = (
   cards: readonly CatalogCardSummary[],
   options: T02DocumentOptions = {},
 ): string => {
-  if (cards.length === 0) return document;
+  if (cards.length === 0 && !options.catalogCardsAuthoritative) return document;
 
   return applyCardsPreservingContent(
     document,
@@ -194,7 +194,7 @@ export const applyCalligraphyCards = (
   cards: readonly CatalogCardSummary[],
   options: T02DocumentOptions = {},
 ): string => {
-  if (cards.length === 0) return document;
+  if (cards.length === 0 && !options.catalogCardsAuthoritative) return document;
 
   return applyCardsInSection(
     document,
@@ -225,8 +225,16 @@ const cardMeta = (card: CatalogCardSummary, role: CardRole): string => {
 const setAttribute = (source: string, name: string, value: string): string => {
   const encoded = escapeHtml(value);
   const pattern = new RegExp(`(\\s${name}=)(["'])[\\s\\S]*?\\2`);
-  if (pattern.test(source)) return source.replace(pattern, `$1"${encoded}"`);
-  return source.replace(/^(<button\b[^>]*)(>)/, `$1 ${name}="${encoded}"$2`);
+  if (pattern.test(source))
+    return source.replace(
+      pattern,
+      (_match, opening: string) => `${opening}"${encoded}"`,
+    );
+  return source.replace(
+    /^(<button\b[^>]*)(>)/,
+    (_match, opening: string, closing: string) =>
+      `${opening} ${name}="${encoded}"${closing}`,
+  );
 };
 
 const removeAttribute = (source: string, name: string): string =>
@@ -264,9 +272,8 @@ const replaceCardMedia = (
 ): string => {
   const imagePattern = /<img\b[^>]*\/?\s*>/;
   if (card.representativeMedia) {
-    const withImage = source.replace(
-      imagePattern,
-      publicImage(card.representativeMedia),
+    const withImage = source.replace(imagePattern, () =>
+      publicImage(card.representativeMedia!),
     );
     return setAttribute(
       setAttribute(
@@ -288,8 +295,7 @@ const replaceCardMedia = (
   }
 
   const withoutImageData = removeAttribute(source, "data-image");
-  const withFallback = withoutImageData.replace(
-    imagePattern,
+  const withFallback = withoutImageData.replace(imagePattern, () =>
     missingImage(card.title),
   );
   return setAttribute(
@@ -306,7 +312,12 @@ const updateCard = (
   role: CardRole,
   options: T02DocumentOptions,
 ): string => {
-  let result = source.replace(titlePattern, `$1${escapeHtml(card.title)}$2`);
+  const title = escapeHtml(card.title);
+  let result = source.replace(
+    titlePattern,
+    (_match, opening: string, closing: string) =>
+      `${opening}${title}${closing}`,
+  );
   result = setAttribute(result, "data-content-id", card.id);
   result = setAttribute(result, "data-title", card.title);
   result = setAttribute(result, "data-catalog-source", "public");
@@ -323,7 +334,8 @@ const updateCard = (
     );
     result = result.replace(
       /(<span\s+class="app-inscription-card__meta"\s*>)[\s\S]*?(<\/span\s*>)/,
-      `$1${escapeHtml(meta)}$2`,
+      (_match, opening: string, closing: string) =>
+        `${opening}${escapeHtml(meta)}${closing}`,
     );
   } else if (role === "calligraphy") {
     result = setAttribute(result, "data-category", "all");
@@ -336,7 +348,8 @@ const updateCard = (
     );
     result = result.replace(
       /(<span\s+class="app-card__meta"\s*>)[\s\S]*?(<\/span\s*>)/,
-      `$1${escapeHtml(meta)}$2`,
+      (_match, opening: string, closing: string) =>
+        `${opening}${escapeHtml(meta)}${closing}`,
     );
   }
   return result;
@@ -350,7 +363,6 @@ const applyCardsInSection = (
   items: readonly CatalogCardSummary[],
   role: CardRole,
   options: T02DocumentOptions,
-  allowOverflow = false,
 ): string =>
   document.replace(
     sectionPattern,
@@ -358,34 +370,23 @@ const applyCardsInSection = (
       const cards = content.match(cardPattern);
       if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
 
-      const visibleCardCount = Math.min(cards.length, items.length);
-      const visibleCards = cards
-        .slice(0, visibleCardCount)
-        .map((card, index) =>
-          updateCard(card, titlePattern, items[index]!, role, options),
-        );
+      let cardIndex = 0;
+      const renderedCards = items
+        .map((item, index) =>
+          updateCard(
+            cards[index % cards.length]!,
+            titlePattern,
+            item,
+            role,
+            options,
+          ),
+        )
+        .join("\n");
+      const updatedContent = content.replace(cardPattern, () =>
+        cardIndex++ === 0 ? renderedCards : "",
+      );
 
-      const overflowCards = allowOverflow
-        ? items
-            .slice(cards.length)
-            .map((item, index) =>
-              updateCard(
-                cards[index % cards.length]!,
-                titlePattern,
-                item,
-                role,
-                options,
-              ),
-            )
-        : [];
-
-      const remainingCards = cards.slice(visibleCardCount);
-
-      return `${opening}${[
-        ...visibleCards,
-        ...overflowCards,
-        ...remainingCards,
-      ].join("\n")}${closing}`;
+      return `${opening}${updatedContent}${closing}`;
     },
   );
 
@@ -404,12 +405,21 @@ const applyCardsPreservingContent = (
       const cards = content.match(cardPattern);
       if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
 
-      let titleIndex = 0;
-      const updatedContent = content.replace(cardPattern, (card: string) => {
-        const item = items[titleIndex++];
-        if (!item) return card;
-        return updateCard(card, titlePattern, item, role, options);
-      });
+      let cardIndex = 0;
+      const renderedCards = items
+        .map((item, index) =>
+          updateCard(
+            cards[index % cards.length]!,
+            titlePattern,
+            item,
+            role,
+            options,
+          ),
+        )
+        .join("\n");
+      const updatedContent = content.replace(cardPattern, () =>
+        cardIndex++ === 0 ? renderedCards : "",
+      );
 
       return `${opening}${updatedContent}${closing}`;
     },

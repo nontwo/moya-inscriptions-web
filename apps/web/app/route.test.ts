@@ -99,6 +99,11 @@ const toOverlayArgs = (states: Record<QueryKey, HomeCatalogState>) => ({
   inscriptions: resolveCards(states.inscription),
 });
 
+const authoritativeOptions = {
+  catalogCardsAuthoritative: true,
+  catalogDetailQa: false,
+};
+
 const createDeferred = () => {
   let resolve!: (value: HomeCatalogState) => void;
   const promise = new Promise<HomeCatalogState>((resolver) => {
@@ -167,7 +172,7 @@ describe("T09.2 T02 Catalog card orchestration", () => {
         inscription: populated("碑刻真实"),
         calligraphy: populated("书帖真实"),
       }),
-      { catalogDetailQa: false },
+      authoritativeOptions,
     );
   });
 
@@ -193,7 +198,7 @@ describe("T09.2 T02 Catalog card orchestration", () => {
           inscription: inscriptionState,
           calligraphy: populated("书帖真实"),
         }),
-        { catalogDetailQa: false },
+        authoritativeOptions,
       );
     },
   );
@@ -220,7 +225,7 @@ describe("T09.2 T02 Catalog card orchestration", () => {
           inscription: populated("碑刻真实"),
           calligraphy: calligraphyState,
         }),
-        { catalogDetailQa: false },
+        authoritativeOptions,
       );
     },
   );
@@ -244,7 +249,7 @@ describe("T09.2 T02 Catalog card orchestration", () => {
         inscription: unavailable,
         calligraphy: unexpectedError,
       }),
-      { catalogDetailQa: false },
+      authoritativeOptions,
     );
   });
 
@@ -258,7 +263,7 @@ describe("T09.2 T02 Catalog card orchestration", () => {
     expect(readT02DocumentMock).toHaveBeenCalledWith(
       "GET",
       expect.any(Object),
-      { catalogDetailQa: true },
+      { catalogCardsAuthoritative: true, catalogDetailQa: true },
     );
 
     vi.stubEnv("NODE_ENV", "production");
@@ -268,7 +273,7 @@ describe("T09.2 T02 Catalog card orchestration", () => {
     expect(readT02DocumentMock).toHaveBeenCalledWith(
       "GET",
       expect.any(Object),
-      { catalogDetailQa: false },
+      authoritativeOptions,
     );
   });
 });

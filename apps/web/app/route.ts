@@ -47,7 +47,10 @@ export const GET = async () => {
       discover: toVisibleCards(discoverState),
       inscriptions: toVisibleCards(inscriptionState),
     },
-    { catalogDetailQa: catalogDetailQaEnabled() },
+    {
+      catalogCardsAuthoritative: true,
+      catalogDetailQa: catalogDetailQaEnabled(),
+    },
   );
 };
 export const HEAD = () => readT02Document("HEAD");

@@ -66,8 +66,8 @@ describe("formal T02 file serving", () => {
     expect(result).not.toContain("虚构山门摩崖图");
     expect(result).toContain('data-content-id="real-2"');
     expect(result).toContain('aria-label="暂无图像：真实第二条"');
-    expect(result).toContain('data-title="龙门残字"');
-    expect(result).toContain('data-content-id="discover-stone"');
+    expect(result).not.toContain('data-title="龙门残字"');
+    expect(result).not.toContain('data-content-id="discover-stone"');
   });
 
   it("binds real Inscription metadata and searchable text", async () => {
@@ -89,6 +89,7 @@ describe("formal T02 file serving", () => {
       /class="app-inscription-card__meta"\s*>碑刻 · 北魏<\/span\s*>/,
     );
     expect(result).not.toContain("楷书 山东云峰山");
+    expect(result).not.toContain('data-content-id="inscription-shimen"');
     expect(result).toContain('class="app-inscription-card"');
     expect(result).toContain("data-search-empty");
   });
@@ -111,6 +112,7 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-calligraphy-filter-text="真实书帖 书帖 唐"');
     expect(result).toMatch(/class="app-card__meta">唐 · 书帖<\/span>/);
     expect(result).not.toContain("宋 · 行书");
+    expect(result).not.toContain('data-content-id="calligraphy-pine"');
   });
 
   it("escapes public identity in attributes and visible text", async () => {
@@ -165,7 +167,7 @@ describe("formal T02 file serving", () => {
     expect(result).not.toContain("虚构云峰山题名缩略图");
   });
 
-  it("leaves canonical cards unchanged when no Public records map to them", async () => {
+  it("preserves prototype cards outside authoritative root mode", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
@@ -175,7 +177,28 @@ describe("formal T02 file serving", () => {
     expect(applyCalligraphyCards(source, [])).toBe(source);
   });
 
-  it("maps overflow Discover cards while preserving remaining prototype cards", async () => {
+  it("removes API-backed cards when authoritative Public results are empty", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const options = { catalogCardsAuthoritative: true };
+    const result = applyCalligraphyCards(
+      applyInscriptionCards(
+        applyDiscoverCards(source, [], options),
+        [],
+        options,
+      ),
+      [],
+      options,
+    );
+
+    expect(result).not.toContain('data-content-id="discover-cliff-gate"');
+    expect(result).not.toContain('data-content-id="inscription-yunfeng"');
+    expect(result).not.toContain('data-content-id="calligraphy-autumn"');
+    expect(result).toContain("data-search-empty");
+  });
+
+  it("renders overflow Discover cards without prototype residue", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
@@ -203,6 +226,92 @@ describe("formal T02 file serving", () => {
       'data-content-id="discover-cliff-gate"',
     );
     expect(discoverSection).not.toContain("虚构山门摩崖图");
+  });
+
+  it("renders every Public record in inscription and calligraphy sections", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const options = { catalogCardsAuthoritative: true };
+    const inscriptions = applyInscriptionCards(
+      source,
+      Array.from({ length: 9 }, (_, index) =>
+        card({
+          id: `inscription-${index + 1}`,
+          title: `真实碑刻 ${index + 1}`,
+        }),
+      ),
+      options,
+    );
+    const calligraphy = applyCalligraphyCards(
+      source,
+      Array.from({ length: 9 }, (_, index) =>
+        card({
+          id: `calligraphy-${index + 1}`,
+          kind: "calligraphy",
+          title: `真实书帖 ${index + 1}`,
+        }),
+      ),
+      options,
+    );
+
+    expect(
+      inscriptions.match(/class="app-inscription-card(?:\s|")/g),
+    ).toHaveLength(9);
+    expect(inscriptions).toContain('data-content-id="inscription-9"');
+    expect(inscriptions).not.toContain('data-content-id="inscription-yunfeng"');
+    expect(inscriptions).toContain("data-search-empty");
+    expect(calligraphy.match(/data-catalog-source="public"/g)).toHaveLength(9);
+    expect(calligraphy).toContain('data-content-id="calligraphy-9"');
+    expect(calligraphy).not.toContain('data-content-id="calligraphy-autumn"');
+  });
+
+  it("inserts replacement-sensitive Public values literally and safely", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const replacementSensitiveMedia = {
+      ...media,
+      alt: "图像 $& $1 $` $' <>&\"'",
+      src: "https://media.example.invalid/item?$&=$1&tail=$`$'",
+    };
+    const result = applyCalligraphyCards(source, [
+      card({
+        id: "catalog-$&-$1-$`-$'",
+        kind: "calligraphy",
+        periodLabel: "时期 $& $1 $` $'",
+        representativeMedia: replacementSensitiveMedia,
+        title: "题名 $& $1 $` $' <>&\"'",
+      }),
+    ]);
+
+    expect(result).toContain('data-content-id="catalog-$&amp;-$1-$`-$&#39;"');
+    expect(result).toContain(
+      'data-title="题名 $&amp; $1 $` $&#39; &lt;&gt;&amp;&quot;&#39;"',
+    );
+    expect(result).toContain(
+      'src="https://media.example.invalid/item?$&amp;=$1&amp;tail=$`$&#39;"',
+    );
+    expect(result).toContain(
+      'alt="图像 $&amp; $1 $` $&#39; &lt;&gt;&amp;&quot;&#39;"',
+    );
+    expect(result).toContain("时期 $&amp; $1 $` $&#39; · 书帖");
+    expect(result).not.toContain("秋山札");
+    expect(result).not.toContain('data-content-id="calligraphy-autumn"');
+  });
+
+  it("uses literal replacement-sensitive titles in missing-media fallbacks", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = applyDiscoverCards(source, [
+      card({ title: "无图 $& $1 $` $' <>&\"'" }),
+    ]);
+
+    expect(result).toContain(
+      'aria-label="暂无图像：无图 $&amp; $1 $` $&#39; &lt;&gt;&amp;&quot;&#39;"',
+    );
+    expect(result).not.toContain("山门北壁题记");
   });
 
   it("serves the canonical root document with one response-time base", async () => {
