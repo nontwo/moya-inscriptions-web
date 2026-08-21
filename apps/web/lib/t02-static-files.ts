@@ -146,7 +146,10 @@ export const readT02Document = async (
       ),
       browseItems.calligraphy ?? [],
     );
-    const document = injectRuntimeCatalogRecords(documentWithCards, browseItems);
+    const document = injectRuntimeCatalogRecords(
+      documentWithCards,
+      browseItems,
+    );
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
       ? new Response(null, { status: 200, headers })
