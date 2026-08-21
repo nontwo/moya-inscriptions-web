@@ -443,8 +443,9 @@ const navBubble = bottomNavigation.querySelector(".yoyi-nav-bubble");
 const bottomTabStrip = {
   bubble: navBubble,
   container: bottomNavigation,
-  itemSelector: "[data-primary-view]",
+  itemSelector: "[data-nav-entry]",
   kind: "bottom",
+  progressItemSelector: "[data-primary-view]",
   selectedClass: "is-active",
 };
 const homeTabStrip = {
@@ -2284,9 +2285,22 @@ function navigationEntries() {
   return tabStripItems(bottomTabStrip);
 }
 
+function navigationPageEntries() {
+  return tabStripProgressItems(bottomTabStrip);
+}
+
 function tabStripItems(strip) {
   if (!strip?.container) return [];
   return [...strip.container.querySelectorAll(strip.itemSelector)];
+}
+
+function tabStripProgressItems(strip) {
+  if (!strip?.container) return [];
+  return [
+    ...strip.container.querySelectorAll(
+      strip.progressItemSelector ?? strip.itemSelector,
+    ),
+  ];
 }
 
 function tabStripActive(strip) {
@@ -2350,7 +2364,7 @@ function positionTabStripEntry(strip, entry, scale = 1) {
 }
 
 function positionTabStripProgress(strip, progress, scale = 1) {
-  const items = tabStripItems(strip);
+  const items = tabStripProgressItems(strip);
   const last = items.length - 1;
   if (last < 0) return;
   if (progress <= 0) {
@@ -2459,14 +2473,17 @@ function syncNavBubbleToActive() {
   }
 }
 
-function nearestNavEntry(clientX) {
-  const entries = navigationEntries();
+function nearestNavEntry(clientPosition) {
+  const entries = navigationPageEntries();
   let nearest = entries[0];
   let best = Infinity;
   for (const entry of entries) {
     const rect = entry.getBoundingClientRect();
-    const center = rect.left + rect.width / 2;
-    const distance = Math.abs(clientX - center);
+    const center =
+      root.dataset.platform === "pc"
+        ? rect.top + rect.height / 2
+        : rect.left + rect.width / 2;
+    const distance = Math.abs(clientPosition - center);
     if (distance < best) {
       best = distance;
       nearest = entry;
@@ -2589,8 +2606,16 @@ function primaryPager() {
 }
 
 function navTabWidth() {
-  const entries = navigationEntries();
-  return Math.max(1, entries[0]?.offsetWidth || 1);
+  const entries = navigationPageEntries();
+  const size =
+    root.dataset.platform === "pc"
+      ? entries[0]?.offsetHeight
+      : entries[0]?.offsetWidth;
+  return Math.max(1, size || 1);
+}
+
+function navPointerCoordinate(event) {
+  return root.dataset.platform === "pc" ? event.clientY : event.clientX;
 }
 
 function lockPrimaryShellHeight(controller) {
@@ -2664,14 +2689,15 @@ function armNavPagerGesture(event, controller) {
   cancelPagerSpring(controller);
   const width = pagerWidth(controller);
   const startIndex = controller.values.indexOf(controller.current());
+  const startPosition = navPointerCoordinate(event);
   return {
     controller,
     dragX: 0,
     startIndex,
     startOffset: controller.currentOffset ?? -startIndex * width,
     startProgress: startIndex,
-    startX: event.clientX,
-    samples: [{ time: pagerEventTime(event), x: event.clientX }],
+    startX: startPosition,
+    samples: [{ time: pagerEventTime(event), x: startPosition }],
     width,
   };
 }
@@ -2685,13 +2711,14 @@ function startNavPagerFollow(gesture) {
 
 function onNavPointerDown(event) {
   if (navigationMinimized || !event.isPrimary) return;
+  if (event.target.closest?.("[data-nav-action]")) return;
   if (prefersReducedNavMotion()) return;
   cancelPendingNavBubbleSync();
   if (navDragging) unbindNavPointerTracking();
   navPointerId = event.pointerId;
   navDragging = true;
   navDidPan = false;
-  navPointerStartX = event.clientX;
+  navPointerStartX = navPointerCoordinate(event);
   const controller = primaryPager();
   navPagerGesture = controller ? armNavPagerGesture(event, controller) : null;
   bindNavPointerTracking();
@@ -2713,7 +2740,8 @@ function applyNavPagerProgress(gesture, clientX) {
 
 function onNavPointerMove(event) {
   if (!navDragging || event.pointerId !== navPointerId) return;
-  if (Math.abs(event.clientX - navPointerStartX) > 8) {
+  const clientPosition = navPointerCoordinate(event);
+  if (Math.abs(clientPosition - navPointerStartX) > 8) {
     if (!navDidPan) {
       navDidPan = true;
       if (navPagerGesture) startNavPagerFollow(navPagerGesture);
@@ -2734,16 +2762,17 @@ function onNavPointerMove(event) {
   if (!navDidPan) return;
   const gesture = navPagerGesture;
   if (!gesture) {
-    const nearest = nearestNavEntry(event.clientX);
+    const nearest = nearestNavEntry(clientPosition);
     positionNavBubble(nearest, 1.12);
     return;
   }
-  addPagerSample(gesture, pagerEventTime(event), event.clientX);
-  applyNavPagerProgress(gesture, event.clientX);
+  addPagerSample(gesture, pagerEventTime(event), clientPosition);
+  applyNavPagerProgress(gesture, clientPosition);
 }
 
 function endNavPointer(event) {
   if (!navDragging || event.pointerId !== navPointerId) return;
+  const clientPosition = navPointerCoordinate(event);
   navDragging = false;
   navPointerId = null;
   unbindNavPointerTracking();
@@ -2754,8 +2783,8 @@ function endNavPointer(event) {
   if (navDidPan) {
     navIgnoreClick = true;
     if (gesture) {
-      addPagerSample(gesture, pagerEventTime(event), event.clientX);
-      applyNavPagerProgress(gesture, event.clientX);
+      addPagerSample(gesture, pagerEventTime(event), clientPosition);
+      applyNavPagerProgress(gesture, clientPosition);
       gesture.controller.track.classList.remove("is-dragging");
       settlePagerFromGesture(gesture, pagerVelocityFromSamples(gesture));
     }
@@ -2764,7 +2793,7 @@ function endNavPointer(event) {
   if (gesture) gesture.controller.track.classList.remove("is-dragging");
   const entry =
     event.target.closest?.("[data-primary-view]") ||
-    nearestNavEntry(event.clientX);
+    nearestNavEntry(clientPosition);
   const view = entry?.dataset.primaryView;
   navIgnoreClick = true;
   if (view && view !== primaryView) selectPrimaryView(view, { animate: true });
@@ -2816,6 +2845,12 @@ function selectPrimaryView(
   if (previous !== view) {
     logQaEvent("nav", `切换到${primaryViewLabel(view)}`);
   }
+}
+
+function handleReservedNavAction(action) {
+  if (action !== "create" && action !== "profile") return;
+  logQaEvent("nav", `reserved action: ${action}`);
+  syncNavBubbleToActive();
 }
 
 function matchesCalligraphyCard(card, normalizedQuery) {
@@ -3922,6 +3957,9 @@ bindClicks("[data-primary-view]", (button) => {
     return;
   }
   selectPrimaryView(button.dataset.primaryView, { animate: true });
+});
+bindClicks("[data-nav-action]", (button) => {
+  handleReservedNavAction(button.dataset.navAction);
 });
 bottomNavigation.addEventListener("pointerdown", onNavPointerDown, {
   passive: false,

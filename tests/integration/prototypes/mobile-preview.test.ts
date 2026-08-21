@@ -552,31 +552,37 @@ const layoutBottomNav = (navigation: HTMLElement) => {
       },
     }) as DOMRect;
 
+  const isPc =
+    navigation.ownerDocument.documentElement.dataset.platform === "pc";
   Object.defineProperty(navigation, "getBoundingClientRect", {
     configurable: true,
-    value: () => box(0, 700, 300, 60),
+    value: () => (isPc ? box(16, 200, 112, 360) : box(0, 700, 500, 60)),
   });
-  [...navigation.querySelectorAll<HTMLElement>("[data-primary-view]")].forEach(
+  [...navigation.querySelectorAll<HTMLElement>("[data-nav-entry]")].forEach(
     (entry, index) => {
+      const left = isPc ? 24 : index * 100;
+      const top = isPc ? 208 + index * 68 : 704;
+      const width = isPc ? 96 : 100;
+      const height = isPc ? 64 : 52;
       Object.defineProperty(entry, "getBoundingClientRect", {
         configurable: true,
-        value: () => box(index * 100, 704, 100, 52),
+        value: () => box(left, top, width, height),
       });
       Object.defineProperty(entry, "offsetLeft", {
         configurable: true,
-        get: () => index * 100,
+        get: () => (isPc ? 8 : index * 100),
       });
       Object.defineProperty(entry, "offsetTop", {
         configurable: true,
-        get: () => 4,
+        get: () => (isPc ? 8 + index * 68 : 4),
       });
       Object.defineProperty(entry, "offsetWidth", {
         configurable: true,
-        get: () => 100,
+        get: () => width,
       });
       Object.defineProperty(entry, "offsetHeight", {
         configurable: true,
-        get: () => 52,
+        get: () => height,
       });
     },
   );
@@ -679,6 +685,12 @@ describe("mobile application preview", () => {
         ?.closest(".app-nav-brand"),
     ).toBeTruthy();
     expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(3);
+    expect(document.querySelectorAll("[data-nav-entry]")).toHaveLength(5);
+    expect(
+      [...document.querySelectorAll<HTMLElement>("[data-nav-entry]")].map(
+        (entry) => entry.dataset.primaryView ?? entry.dataset.navAction,
+      ),
+    ).toEqual(["home", "inscriptions", "create", "calligraphy", "profile"]);
     expect(
       document
         .querySelector("[data-bottom-navigation]")
@@ -2421,6 +2433,83 @@ describe("mobile application preview", () => {
     }
   });
 
+  it("keeps the five-entry navigation in the approved device matrix", () => {
+    for (const [viewportWidth, viewportHeight] of [
+      [390, 844],
+      [844, 390],
+      [932, 430],
+    ] as const) {
+      const phone = renderPreview(
+        {},
+        {
+          mobile: true,
+          userAgent: phoneUserAgent,
+          viewportHeight,
+          viewportWidth,
+        },
+      );
+      expect(phone.window.document.documentElement.dataset.platform).toBe(
+        "phone",
+      );
+      expect(activePlatformStyles(phone.window.document)).toEqual(["phone"]);
+      expect(
+        phone.window.document.querySelectorAll(
+          "[data-bottom-navigation] [data-nav-entry]",
+        ),
+      ).toHaveLength(5);
+    }
+
+    for (const [viewportWidth, viewportHeight] of [
+      [834, 1112],
+      [1194, 834],
+    ] as const) {
+      const tablet = renderPreview(
+        {},
+        {
+          mobile: false,
+          userAgent: tabletUserAgent,
+          viewportHeight,
+          viewportWidth,
+        },
+      );
+      expect(tablet.window.document.documentElement.dataset.platform).toBe(
+        "tablet",
+      );
+      expect(activePlatformStyles(tablet.window.document)).toEqual(["tablet"]);
+      expect(
+        tablet.window.document.querySelectorAll(
+          "[data-bottom-navigation] [data-nav-entry]",
+        ),
+      ).toHaveLength(5);
+    }
+
+    for (const [viewportWidth, platform] of [
+      [895, "tablet"],
+      [896, "pc"],
+      [1440, "pc"],
+    ] as const) {
+      const desktop = renderPreview(
+        {},
+        {
+          maxTouchPoints: 0,
+          mobile: false,
+          userAgent: desktopUserAgent,
+          viewportHeight: 900,
+          viewportWidth,
+        },
+      );
+      expect(desktop.window.document.documentElement.dataset.platform).toBe(
+        platform,
+      );
+      expect(activePlatformStyles(desktop.window.document)).toEqual([platform]);
+      expect(
+        desktop.window.document.querySelectorAll(
+          "[data-bottom-navigation] [data-nav-entry]",
+        ),
+      ).toHaveLength(5);
+    }
+  });
+
   it("restores valid preferences and falls back from invalid stored values", () => {
     const stored = renderPreview({
       "yoyi.home-feed-layout": "single",
@@ -2533,6 +2622,9 @@ describe("mobile application preview", () => {
     expect(tabletCss).toContain("orientation: landscape");
     expect(tabletCss).toContain("--app-bottom-nav-max-width: 480px");
     expect(tabletCss).toContain(
+      "grid-template-columns: repeat(5, minmax(0, 1fr))",
+    );
+    expect(tabletCss).toContain(
       ".app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized)",
     );
     expect(tabletCss).toMatch(
@@ -2566,7 +2658,17 @@ describe("mobile application preview", () => {
     expect(script).toContain(
       'root.style.setProperty("--app-bottom-nav-viewport-inset"',
     );
-    expect(pcCss).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
+    expect(sharedCss).toContain(
+      "grid-template-columns: repeat(5, minmax(0, 1fr))",
+    );
+    expect(previewCss).toContain(
+      "grid-template-columns: repeat(5, minmax(0, 1fr))",
+    );
+    expect(pcCss).toContain("grid-template-rows: repeat(5, minmax(0, 1fr))");
+    expect(pcCss).toContain("--app-pc-nav-safe-area");
+    expect(pcCss).toContain("padding-left: var(--app-pc-nav-safe-area)");
+    expect(pcCss).toContain("top: 50%");
+    expect(pcCss).toContain("left: var(--app-pc-nav-left)");
     expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
     expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
     expect(pcCss).not.toContain("border-width: 9px 0 9px 10px");
@@ -2689,6 +2791,16 @@ describe("mobile application preview", () => {
     expect(html).not.toContain("data-shell-control");
     expect(html).toContain('data-primary-view="inscriptions"');
     expect(html).toContain('data-primary-view="calligraphy"');
+    expect(html).toContain('data-nav-action="create"');
+    expect(html).toContain('data-nav-action="profile"');
+    expect(html).toContain('data-icon="create"');
+    expect(html).toContain('data-icon="profile"');
+    expect(sharedCss).toContain(
+      '-webkit-mask-image: url("./assets/nav-create.svg")',
+    );
+    expect(sharedCss).toContain(
+      '-webkit-mask-image: url("./assets/nav-profile.svg")',
+    );
     expect(html).toContain("yoyi-nav-bubble");
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
@@ -2716,9 +2828,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260819-media-pager"',
+      'href="./preview.shared.css?v=20260822-primary-nav-five"',
     );
-    expect(html).toContain('src="./preview.js?v=20260819-media-pager"');
+    expect(html).toContain('src="./preview.js?v=20260822-primary-nav-five"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
@@ -3127,6 +3239,45 @@ describe("mobile application preview", () => {
     expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
 
+  it("keeps reserved create and profile actions presentation-only", () => {
+    const dom = renderPreview({}, { viewportWidth: 390 });
+    const document = dom.window.document;
+    const navigation = document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const create = navigation?.querySelector<HTMLElement>(
+      '[data-nav-action="create"]',
+    );
+    const profile = navigation?.querySelector<HTMLElement>(
+      '[data-nav-action="profile"]',
+    );
+    if (!navigation || !create || !profile) {
+      throw new Error("reserved navigation actions missing");
+    }
+
+    create.click();
+    profile.click();
+
+    expect(
+      document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
+    ).toBe(false);
+    expect(
+      navigation.querySelectorAll(".yoyi-navigation-entry.is-active"),
+    ).toHaveLength(1);
+    expect(
+      navigation
+        .querySelector('[data-primary-view="home"]')
+        ?.classList.contains("is-active"),
+    ).toBe(true);
+    expect(dom.window.history.state).toEqual({ kind: "primary", view: "home" });
+    expect(dom.window.sessionStorage.getItem("yoyi.qa-log")).toContain(
+      "reserved action: create",
+    );
+    expect(dom.window.sessionStorage.getItem("yoyi.qa-log")).toContain(
+      "reserved action: profile",
+    );
+  });
+
   it("repositions the nav bubble after the tab bar finishes expanding", async () => {
     const phone = renderPreview({}, { viewportWidth: 844 });
     const document = phone.window.document;
@@ -3212,7 +3363,7 @@ describe("mobile application preview", () => {
     calligraphyTab.click();
     await waitForAnimationFrames(phone.window, 40);
     expect(bubble.parentElement).toBe(navigation);
-    expect(bubble.style.transform).toContain("translate3d(200px, 4px, 0)");
+    expect(bubble.style.transform).toContain("translate3d(300px, 4px, 0)");
 
     homeTab.click();
     await waitForAnimationFrames(phone.window, 40);
@@ -3260,31 +3411,31 @@ describe("mobile application preview", () => {
     layoutBottomNav(navigation);
     homeTab.click();
     await waitForAnimationFrames(pc.window, 40);
-    expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
+    expect(bubble.style.transform).toContain("translate3d(8px, 8px, 0)");
 
     dispatchPointer(pc.window, homeTab, "pointerdown", {
       clientX: 50,
-      clientY: 720,
+      clientY: 240,
       pointerType: "mouse",
       timeStamp: 1_000,
     });
     dispatchPointer(pc.window, homeTab, "pointermove", {
-      clientX: 100,
-      clientY: 720,
+      clientX: 50,
+      clientY: 272,
       pointerType: "mouse",
       timeStamp: 1_240,
     });
-    expect(bubble.style.transform).toContain("translate3d(50px, 4px, 0)");
+    expect(bubble.style.transform).toContain("translate3d(8px, 42px, 0)");
     expect(pagerTranslateX(primaryTrack)).toBeCloseTo(-512);
     dispatchPointer(pc.window, homeTab, "pointermove", {
-      clientX: 160,
-      clientY: 720,
+      clientX: 50,
+      clientY: 310,
       pointerType: "mouse",
       timeStamp: 1_360,
     });
     dispatchPointer(pc.window, homeTab, "pointerup", {
-      clientX: 160,
-      clientY: 720,
+      clientX: 50,
+      clientY: 310,
       pointerType: "mouse",
       timeStamp: 1_400,
     });
@@ -3293,7 +3444,7 @@ describe("mobile application preview", () => {
         ?.classList,
     ).toContain("is-active");
     await waitForAnimationFrames(pc.window, 40);
-    expect(bubble.style.transform).toContain("translate3d(100px, 4px, 0)");
+    expect(bubble.style.transform).toContain("translate3d(8px, 76px, 0)");
     expect(primaryTrack.style.transform).toBe("");
 
     swipe(

@@ -777,6 +777,7 @@ html[data-platform="pc"] {
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   transition-duration: var(--app-nav-expand-duration);
   transition-timing-function: var(--app-nav-expand-easing);
 }
@@ -857,6 +858,29 @@ html[data-platform="pc"] {
   height: 20px;
 }
 
+.app-bottom-navigation .app-nav-text-label {
+  display: grid;
+  width: 44px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", var(--yoyi-font-interface);
+  font-size: var(--yoyi-type-navigation-size);
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.04em;
+}
+
+.yoyi-icon[data-icon="create"] {
+  -webkit-mask-image: url("./assets/nav-create.svg");
+  mask-image: url("./assets/nav-create.svg");
+}
+
+.yoyi-icon[data-icon="profile"] {
+  -webkit-mask-image: url("./assets/nav-profile.svg");
+  mask-image: url("./assets/nav-profile.svg");
+}
+
 .app-bottom-navigation .yoyi-icon-wrap {
   display: flex;
   flex: 0 0 auto;
@@ -916,6 +940,22 @@ html[data-platform="pc"] {
 .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
   .yoyi-icon[data-icon="home"] {
   transform: translate3d(0, 0.5px, 0);
+}
+
+html[data-theme="dark"]
+  .app-bottom-navigation
+  .yoyi-navigation-entry.is-active
+  .app-nav-text-label {
+  color: var(--yoyi-color-text-primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"])
+    .app-bottom-navigation
+    .yoyi-navigation-entry.is-active
+    .app-nav-text-label {
+    color: var(--yoyi-color-text-primary);
+  }
 }
 
 .app-settings__content {

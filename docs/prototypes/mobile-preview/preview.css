@@ -160,7 +160,7 @@
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
     width: auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     height: auto;
     min-height: var(--app-bottom-nav-min-height);
     padding: var(--yoyi-space-2);

@@ -66,8 +66,16 @@ html {
   overflow: visible;
 }
 
-/* Desktop: persistent bottom Tab Bar + dense full-width waterfall. */
+/* Desktop: floating left navigation + dense full-width waterfall. */
 @media (min-width: 56rem) {
+  html[data-platform="pc"] {
+    --app-pc-nav-left: var(--yoyi-space-4);
+    --app-pc-nav-width: 112px;
+    --app-pc-nav-safe-area: calc(
+      var(--app-pc-nav-left) + var(--app-pc-nav-width) + var(--yoyi-space-4)
+    );
+  }
+
   body {
     overflow: auto;
     --app-calligraphy-scale: 1;
@@ -92,7 +100,7 @@ html {
     min-height: 100dvh;
     padding-bottom: env(safe-area-inset-bottom);
     padding-top: 0;
-    padding-left: 0;
+    padding-left: var(--app-pc-nav-safe-area);
   }
 
   .app-primary-shell {
@@ -507,45 +515,47 @@ html {
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
     position: fixed;
-    top: auto;
-    right: 0;
-    bottom: max(var(--yoyi-space-3), env(safe-area-inset-bottom));
-    left: 0;
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: var(--app-pc-nav-left);
     display: grid;
     align-items: stretch;
     justify-content: initial;
     gap: 0;
     overflow: hidden;
     z-index: 30;
-    border-top: 0;
-    border-right: 0;
-    border-radius: calc(var(--yoyi-radius-full) / 2);
-    margin-inline: auto;
-    transform: none;
+    border-radius: calc(var(--yoyi-radius-full) / 3);
+    margin: 0;
+    transform: translate3d(0, -50%, 0);
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
-    width: min(
-      calc(100vw - (var(--app-bottom-nav-side-gap) * 2)),
-      var(--app-bottom-nav-max-width)
-    );
-    max-width: none;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    height: auto;
-    min-height: var(--app-bottom-nav-min-height);
+    width: var(--app-pc-nav-width);
+    max-width: var(--app-pc-nav-width);
+    height: min(360px, calc(100dvh - (var(--yoyi-space-4) * 2)));
+    min-height: 320px;
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(5, minmax(0, 1fr));
     padding: var(--yoyi-space-2);
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized {
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: calc(var(--app-pc-nav-left) + ((var(--app-pc-nav-width) - 44px) / 2));
     width: 44px;
     min-width: 44px;
     max-width: 44px;
     height: 44px;
     min-height: 44px;
+    margin: 0;
     padding: 0;
     grid-template-columns: 1fr;
     place-items: center;
     justify-items: center;
+    transform: translate3d(0, -50%, 0);
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
@@ -565,17 +575,21 @@ html {
   }
 
   .app-bottom-navigation .yoyi-navigation-entry {
-    flex-direction: column;
-    justify-content: center;
+    flex-direction: row;
+    justify-content: flex-start;
     align-items: center;
     width: auto;
     min-width: 0;
-    min-height: 60px;
-    gap: 2px;
-    padding: 0 var(--yoyi-space-2);
-    border-radius: var(--yoyi-radius-full);
+    min-height: 0;
+    gap: var(--yoyi-space-2);
+    padding: 0 var(--yoyi-space-3);
+    border-radius: var(--yoyi-radius-2);
     color: var(--yoyi-color-text-primary);
     background: transparent;
+  }
+
+  .app-bottom-navigation .yoyi-nav-bubble {
+    border-radius: var(--yoyi-radius-2);
   }
 
   .app-bottom-navigation .yoyi-navigation-entry.is-active {

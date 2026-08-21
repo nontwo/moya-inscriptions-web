@@ -28,24 +28,24 @@
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260819-media-pager"
+      href="./preview.shared.css?v=20260822-primary-nav-five"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260819-media-pager"
+      href="./preview.css?v=20260822-primary-nav-five"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260819-media-pager"
+      href="./preview.tablet.css?v=20260822-primary-nav-five"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260819-media-pager"
+      href="./preview.pc.css?v=20260822-primary-nav-five"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -1319,6 +1319,7 @@
           </div>
           <button
             class="yoyi-navigation-entry is-active"
+            data-nav-entry
             data-primary-view="home"
             aria-current="page"
             aria-label="首页"
@@ -1335,6 +1336,7 @@
           </button>
           <button
             class="yoyi-navigation-entry"
+            data-nav-entry
             data-primary-view="inscriptions"
             aria-label="碑刻"
             type="button"
@@ -1350,6 +1352,19 @@
           </button>
           <button
             class="yoyi-navigation-entry"
+            data-nav-entry
+            data-nav-action="create"
+            aria-label="创作（功能预留）"
+            type="button"
+          >
+            <span class="yoyi-icon-wrap" aria-hidden="true">
+              <span class="yoyi-icon" data-icon="create"></span>
+            </span>
+            <span class="app-nav-text-label" aria-hidden="true">创作</span>
+          </button>
+          <button
+            class="yoyi-navigation-entry"
+            data-nav-entry
             data-primary-view="calligraphy"
             aria-label="书帖"
             type="button"
@@ -1362,6 +1377,18 @@
               data-label="nav-calligraphy"
               aria-hidden="true"
             ></span>
+          </button>
+          <button
+            class="yoyi-navigation-entry"
+            data-nav-entry
+            data-nav-action="profile"
+            aria-label="我的（功能预留）"
+            type="button"
+          >
+            <span class="yoyi-icon-wrap" aria-hidden="true">
+              <span class="yoyi-icon" data-icon="profile"></span>
+            </span>
+            <span class="app-nav-text-label" aria-hidden="true">我的</span>
           </button>
         </nav>
 
@@ -1386,6 +1413,6 @@
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
     <script src="./fixtures/p5-pilot.snapshot.js"></script>
     <script src="./catalog-ui-adapter.js?v=20260819-media-pager"></script>
-    <script src="./preview.js?v=20260819-media-pager"></script>
+    <script src="./preview.js?v=20260822-primary-nav-five"></script>
   </body>
 </html>
