@@ -9,7 +9,10 @@ import type {
   CatalogListItemProjection,
   CatalogMediaProjection,
   CatalogSourceCitationProjection,
+  CatalogFieldState,
+  CatalogStatefulTextProjection,
 } from "@moya/api";
+import { deriveCatalogPeriodLabel } from "@moya/api";
 import type { QueryResultRow } from "pg";
 
 export interface CatalogEntryRow extends QueryResultRow {
@@ -19,6 +22,20 @@ export interface CatalogEntryRow extends QueryResultRow {
   readonly summary: unknown;
   readonly description?: unknown;
   readonly period_label: unknown;
+  readonly dynasty: unknown;
+  readonly dynasty_state: unknown;
+  readonly date_text: unknown;
+  readonly date_text_state: unknown;
+  readonly province: unknown;
+  readonly province_state: unknown;
+  readonly prefecture: unknown;
+  readonly prefecture_state: unknown;
+  readonly county: unknown;
+  readonly county_state: unknown;
+  readonly current_location: unknown;
+  readonly current_location_state: unknown;
+  readonly current_custodian: unknown;
+  readonly current_custodian_state: unknown;
 }
 
 export interface CatalogAliasRow extends QueryResultRow {
@@ -57,6 +74,53 @@ const requiredString = (value: unknown, field: string): string => {
 const optionalString = (value: unknown, field: string): string | undefined =>
   value === null ? undefined : requiredString(value, field);
 
+const catalogFieldStates = new Set<CatalogFieldState>([
+  "VALUE",
+  "UNSUPPLIED",
+  "UNKNOWN",
+  "NOT_APPLICABLE",
+  "CLEAR",
+]);
+
+const readCatalogFieldState = (
+  value: unknown,
+  field: string,
+): CatalogFieldState => {
+  if (
+    typeof value !== "string" ||
+    !catalogFieldStates.has(value as CatalogFieldState)
+  ) {
+    throw new Error(`Invalid PostgreSQL Catalog ${field}`);
+  }
+  return value as CatalogFieldState;
+};
+
+const readStatefulTextProjection = (
+  row: CatalogEntryRow,
+  valueField: keyof CatalogEntryRow,
+  stateField: keyof CatalogEntryRow,
+  field: string,
+): CatalogStatefulTextProjection => {
+  const state = readCatalogFieldState(row[stateField], `${field} state`);
+  if (state === "VALUE") {
+    return {
+      state,
+      value: requiredString(row[valueField], field),
+    };
+  }
+  if (row[valueField] !== null && row[valueField] !== undefined) {
+    throw new Error(`Invalid PostgreSQL Catalog ${field} state mismatch`);
+  }
+  return { state };
+};
+
+const legacyPeriodLabelProjection = (
+  row: CatalogEntryRow,
+): { readonly legacyPeriodLabel: string } | Record<string, never> => {
+  const legacyPeriodLabel = optionalString(row.period_label, "period label");
+  return legacyPeriodLabel === undefined ? {} : { legacyPeriodLabel };
+};
+
 const positiveInteger = (value: unknown, field: string): number => {
   if (!Number.isInteger(value) || Number(value) <= 0) {
     throw new Error(`Invalid PostgreSQL Catalog Media ${field}`);
@@ -93,21 +157,37 @@ export const mapCatalogEntryRow = (
   row: CatalogEntryRow,
   aliases: readonly string[],
   representativeMedia?: CatalogMediaProjection,
-): CatalogListItemProjection => ({
-  id: catalogIdSchema.parse(row.catalog_id),
-  kind: catalogKindSchema.parse(row.kind),
-  title: requiredString(row.title, "title"),
-  aliases: [...aliases],
-  ...(row.summary === null
-    ? {}
-    : { summary: requiredString(row.summary, "summary") }),
-  ...(row.period_label === null
-    ? {}
-    : { periodLabel: requiredString(row.period_label, "period label") }),
-  ...(representativeMedia === undefined
-    ? {}
-    : { representativeMedia: { ...representativeMedia } }),
-});
+): CatalogListItemProjection => {
+  const periodLabel = deriveCatalogPeriodLabel({
+    dynasty: readStatefulTextProjection(
+      row,
+      "dynasty",
+      "dynasty_state",
+      "dynasty",
+    ),
+    dateText: readStatefulTextProjection(
+      row,
+      "date_text",
+      "date_text_state",
+      "date text",
+    ),
+    ...legacyPeriodLabelProjection(row),
+  });
+
+  return {
+    id: catalogIdSchema.parse(row.catalog_id),
+    kind: catalogKindSchema.parse(row.kind),
+    title: requiredString(row.title, "title"),
+    aliases: [...aliases],
+    ...(row.summary === null
+      ? {}
+      : { summary: requiredString(row.summary, "summary") }),
+    ...(periodLabel === undefined ? {} : { periodLabel }),
+    ...(representativeMedia === undefined
+      ? {}
+      : { representativeMedia: { ...representativeMedia } }),
+  };
+};
 
 export const mapCatalogDetailRow = (
   row: CatalogEntryRow,
@@ -119,6 +199,43 @@ export const mapCatalogDetailRow = (
     row,
     aliases,
     media.find(({ isRepresentative }) => isRepresentative),
+  ),
+  dynasty: readStatefulTextProjection(
+    row,
+    "dynasty",
+    "dynasty_state",
+    "dynasty",
+  ),
+  dateText: readStatefulTextProjection(
+    row,
+    "date_text",
+    "date_text_state",
+    "date text",
+  ),
+  province: readStatefulTextProjection(
+    row,
+    "province",
+    "province_state",
+    "province",
+  ),
+  prefecture: readStatefulTextProjection(
+    row,
+    "prefecture",
+    "prefecture_state",
+    "prefecture",
+  ),
+  county: readStatefulTextProjection(row, "county", "county_state", "county"),
+  currentLocation: readStatefulTextProjection(
+    row,
+    "current_location",
+    "current_location_state",
+    "current location",
+  ),
+  currentCustodian: readStatefulTextProjection(
+    row,
+    "current_custodian",
+    "current_custodian_state",
+    "current custodian",
   ),
   sourceCitations: sourceCitations.map((citation) => ({ ...citation })),
   media: media.map((item) => ({ ...item })),

@@ -5,7 +5,11 @@ export const countCatalogEntriesSql = `
 `;
 
 export const listCatalogEntriesSql = `
-  SELECT catalog_id, kind, title, summary, period_label
+  SELECT catalog_id, kind, title, summary, period_label,
+         dynasty, dynasty_state, date_text, date_text_state,
+         province, province_state, prefecture, prefecture_state,
+         county, county_state, current_location, current_location_state,
+         current_custodian, current_custodian_state
   FROM catalog_entries
   WHERE ($1::text IS NULL OR kind = $1::text)
   ORDER BY catalog_id ASC
@@ -13,7 +17,11 @@ export const listCatalogEntriesSql = `
 `;
 
 export const findCatalogEntrySql = `
-  SELECT catalog_id, kind, title, summary, description, period_label
+  SELECT catalog_id, kind, title, summary, description, period_label,
+         dynasty, dynasty_state, date_text, date_text_state,
+         province, province_state, prefecture, prefecture_state,
+         county, county_state, current_location, current_location_state,
+         current_custodian, current_custodian_state
   FROM catalog_entries
   WHERE catalog_id = $1
 `;

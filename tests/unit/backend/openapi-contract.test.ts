@@ -150,7 +150,6 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "relateditem",
       "categoryids",
       "city",
-      "county",
     ]) {
       expect(serialized).not.toContain(term);
     }

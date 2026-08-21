@@ -33,6 +33,19 @@ const internalListItem = {
 const internalDetail = {
   ...internalListItem,
   description: "公开详情",
+  dynasty: { state: "VALUE" as const, value: "唐" },
+  dateText: { state: "UNSUPPLIED" as const },
+  province: { state: "NOT_APPLICABLE" as const },
+  prefecture: { state: "CLEAR" as const },
+  county: { state: "UNKNOWN" as const },
+  currentLocation: {
+    state: "VALUE" as const,
+    value: "陕西省碑林区",
+  },
+  currentCustodian: {
+    state: "VALUE" as const,
+    value: "碑林博物馆",
+  },
   rawSource: { sourcePath: "private/raw-source.json" },
   sourceCitations: [
     {
@@ -100,6 +113,9 @@ describe("Catalog public-contract mapper", () => {
       aliases: ["虚构别名"],
       summary: "公开摘要",
       periodLabel: "宋",
+      dynasty: "唐",
+      currentLocation: "陕西省碑林区",
+      currentCustodian: "碑林博物馆",
       description: "公开详情",
       media: [],
       sourceCitations: [

@@ -87,7 +87,21 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       title: "Test inscription",
       summary: "Summary",
       description: "Description",
-      period_label: "唐",
+      period_label: "Legacy period",
+      dynasty: "唐",
+      dynasty_state: "VALUE",
+      date_text: "贞观十年",
+      date_text_state: "VALUE",
+      province: "陕西",
+      province_state: "VALUE",
+      prefecture: null,
+      prefecture_state: "CLEAR",
+      county: null,
+      county_state: "UNSUPPLIED",
+      current_location: "陕西省碑林区",
+      current_location_state: "VALUE",
+      current_custodian: "碑林博物馆",
+      current_custodian_state: "VALUE",
       raw_source: "must remain private",
       review_state: "pending",
     };
@@ -110,13 +124,25 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       title: row.title,
       aliases: ["Alias"],
       summary: row.summary,
-      periodLabel: row.period_label,
+      periodLabel: "唐 · 贞观十年",
     });
-    expect(
-      JSON.stringify(
-        mapCatalogDetailRow(row, aliases.get(row.catalog_id) ?? [], citations),
-      ),
-    ).not.toContain("raw_source");
+    const detail = mapCatalogDetailRow(
+      row,
+      aliases.get(row.catalog_id) ?? [],
+      citations,
+    );
+
+    expect(detail).toMatchObject({
+      periodLabel: "唐 · 贞观十年",
+      dynasty: { state: "VALUE", value: "唐" },
+      dateText: { state: "VALUE", value: "贞观十年" },
+      province: { state: "VALUE", value: "陕西" },
+      prefecture: { state: "CLEAR" },
+      county: { state: "UNSUPPLIED" },
+      currentLocation: { state: "VALUE", value: "陕西省碑林区" },
+      currentCustodian: { state: "VALUE", value: "碑林博物馆" },
+    });
+    expect(JSON.stringify(detail)).not.toContain("raw_source");
   });
 
   it("maps ordered Media projections and explicit representatives only", () => {
