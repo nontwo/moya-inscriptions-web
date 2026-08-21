@@ -66,7 +66,9 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-title="云峰山题名"');
     expect(result).toContain('data-content-id="inscription-shimen"');
     expect(result).toContain('data-title="石门东侧残刻"');
-    expect(result).toContain("../../design-system/assets/demo/rubbing-fragment.svg");
+    expect(result).toContain(
+      "../../design-system/assets/demo/rubbing-fragment.svg",
+    );
     expect(result).toContain("data-search-empty");
   });
 
