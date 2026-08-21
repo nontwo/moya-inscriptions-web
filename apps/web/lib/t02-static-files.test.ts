@@ -5,6 +5,7 @@ import {
   appendDiscoverItems,
   appendInscriptionItems,
   ensureDevelopmentTranscriptionSection,
+  injectRuntimeCatalogRecords,
   readT02Document,
   serveT02File,
 } from "./t02-static-files";
@@ -15,6 +16,7 @@ const runtimeItem = (title: string, kind: "inscription" | "calligraphy") => ({
   id: `runtime-${title}`,
   kind,
   title,
+  aliases: [],
   summary: `${title}摘要`,
   periodLabel: "唐",
   representativeMedia: {
@@ -121,8 +123,25 @@ describe("formal T02 file serving", () => {
 
     expect(once).toContain("<h2>释文</h2>");
     expect(once).toContain("内容待接入");
-    expect(once.match(/data-detail-transcription/g)).toHaveLength(2);
+    expect(once.match(/data-detail-transcription(?:\s|>)/g)).toHaveLength(1);
     expect(twice).toBe(once);
+  });
+
+  it("binds a runtime card to its own truthful record before preview.js", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const result = injectRuntimeCatalogRecords(source, {
+      discover: [runtimeItem("真实书帖", "calligraphy")],
+    });
+
+    expect(result).toContain("data-runtime-catalog-bridge");
+    expect(result).toContain('"id":"runtime-真实书帖"');
+    expect(result).toContain('"kind":"calligraphy"');
+    expect(result).toContain('"title":"真实书帖"');
+    expect(result.indexOf("data-runtime-catalog-bridge")).toBeLessThan(
+      result.indexOf("./preview.js"),
+    );
   });
 
   it("serves the formal root with canonical QA records, runtime records, and one base", async () => {
