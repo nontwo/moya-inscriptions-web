@@ -12,6 +12,7 @@ export type BrowseItem = {
   id: string;
   kind?: "inscription" | "calligraphy";
   title: string;
+  aliases?: readonly string[];
   summary?: string;
   periodLabel?: string;
   representativeMedia?: {
@@ -133,7 +134,7 @@ export const readT02Document = async (
       process.env.NODE_ENV === "production"
         ? documentWithBase
         : ensureDevelopmentTranscriptionSection(documentWithBase);
-    const document = appendCalligraphyItems(
+    const documentWithCards = appendCalligraphyItems(
       appendInscriptionItems(
         appendDiscoverItems(
           documentWithDevelopmentDetail,
@@ -143,6 +144,7 @@ export const readT02Document = async (
       ),
       browseItems.calligraphy ?? [],
     );
+    const document = injectRuntimeCatalogRecords(documentWithCards, browseItems);
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
       ? new Response(null, { status: 200, headers })
@@ -219,14 +221,55 @@ const appendCardsInSection = (
       `${opening}${content}\n${cards.join("\n")}${closing}`,
   );
 
-const renderMedia = (
-  item: BrowseItem,
-  className?: string,
+const allRuntimeItems = (browseItems: BrowseItems): BrowseItem[] => {
+  const items = [
+    ...(browseItems.discover ?? []),
+    ...(browseItems.inscriptions ?? []),
+    ...(browseItems.calligraphy ?? []),
+  ];
+  const unique = new Map<string, BrowseItem>();
+  for (const item of items) unique.set(item.id, item);
+  return [...unique.values()];
+};
+
+/**
+ * Real browse cards must resolve to their own real CatalogSummary-shaped record.
+ * This prevents a real title from opening a synthetic QA record with unrelated
+ * media/facts while still leaving the QA fixture records intact and independent.
+ */
+export const injectRuntimeCatalogRecords = (
+  document: string,
+  browseItems: BrowseItems,
 ): string => {
+  const items = allRuntimeItems(browseItems);
+  if (items.length === 0) return document;
+
+  const records = Object.fromEntries(
+    items.map((item) => [
+      item.id,
+      {
+        aliases: [...(item.aliases ?? [])],
+        id: item.id,
+        kind: item.kind ?? "inscription",
+        media: item.representativeMedia ? [item.representativeMedia] : [],
+        periodLabel: item.periodLabel,
+        representativeMedia: item.representativeMedia,
+        sourceCitations: [],
+        summary: item.summary,
+        title: item.title,
+      },
+    ]),
+  );
+  const payload = JSON.stringify(records).replace(/</g, "\\u003c");
+  const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: \"runtime-bridge\" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
+  const previewScript = /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
+  return document.replace(previewScript, `${bridge}\n$1`);
+};
+
+const renderMedia = (item: BrowseItem): string => {
   const media = item.representativeMedia;
   if (!media) return "";
-  const classAttribute = className ? ` class="${className}"` : "";
-  return `<img${classAttribute} src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" width="${media.width}" height="${media.height}" />`;
+  return `<img src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" width="${media.width}" height="${media.height}" />`;
 };
 
 const runtimeCardAttributes = (item: BrowseItem): string => {
