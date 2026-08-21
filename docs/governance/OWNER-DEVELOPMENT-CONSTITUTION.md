@@ -61,7 +61,8 @@ STOP and require Owner decision.
 
 Until an explicit future `T02 Productionization` task is approved:
 
-T02 remains the single current authority for Web user-facing UI and interaction behavior.
+T02 remains the single current authority for Web user-facing UI and interaction
+behavior.
 
 This includes:
 
@@ -105,7 +106,8 @@ Development may contain BOTH:
 
 They must remain semantically distinguishable.
 
-Development must preserve QA fixtures needed to test scenarios not yet covered by real data, including:
+Development must preserve QA fixtures needed to test scenarios not yet covered
+by real data, including:
 
 - image aspect ratios;
 - multi-image records;
@@ -126,7 +128,8 @@ For implemented structural fields lacking authoritative data:
 - all 基本资料 absent → `资料待接入`
 - real record media absent → existing T02 QA virtual media
 
-Development must not require Owner to remember a hidden/manual environment flag merely to inspect the complete implemented design.
+Development must not require Owner to remember a hidden/manual environment flag
+merely to inspect the complete implemented design.
 
 ### Production
 
@@ -152,15 +155,11 @@ Frozen principle:
 
 Development may show:
 
-real Record A
-+
-QA Record B
+real Record A + QA Record B
 
 But must never create:
 
-real CatalogId
-+
-prototype facts/title/description
+real CatalogId + prototype facts/title/description
 
 unless a value is explicitly presentation-only QA fallback.
 
@@ -178,9 +177,7 @@ Presentation-only QA values must never enter:
 
 Formal runtime data follows:
 
-PostgreSQL
-→ Public API
-→ Web presentation.
+PostgreSQL → Public API → Web presentation.
 
 Prototype field names do not redefine formal Catalog semantics.
 
@@ -209,18 +206,20 @@ Examples include:
 - knowledge graph;
 - annotation/OCR.
 
-Development UI placeholders are allowed without creating formal persistence/contract fields.
+Development UI placeholders are allowed without creating formal
+persistence/contract fields.
 
 Formal evolution happens only when an approved real requirement requires it.
 
 ## 7. Mandatory Behavior Matrix
 
-Every task affecting user-visible behavior MUST freeze a Behavior Matrix before implementation.
+Every task affecting user-visible behavior MUST freeze a Behavior Matrix before
+implementation.
 
 Required shape:
 
 | Scenario | Development | Production | Must Preserve |
-| --- | --- | --- | --- |
+| -------- | ----------- | ---------- | ------------- |
 
 Implementation may not begin before this matrix is approved.
 
@@ -232,7 +231,8 @@ the Behavior Matrix wins.
 
 Plan Mode may only determine:
 
-> the smallest implementation that satisfies the already frozen Scope and Behavior Matrix.
+> the smallest implementation that satisfies the already frozen Scope and
+> Behavior Matrix.
 
 Plan Mode may not independently redefine:
 
@@ -258,7 +258,8 @@ Do not compensate with architecture growth.
 
 ## 10. Testing policy
 
-Automated tests start during implementation and continuously validate the approved Behavior Matrix.
+Automated tests start during implementation and continuously validate the
+approved Behavior Matrix.
 
 Tests do not define requirements.
 
@@ -273,18 +274,15 @@ For T02 integration, tests must distinguish as relevant:
 - errors;
 - preserved T02 behavior.
 
-Owner visual/manual testing happens only after the scoped user-facing vertical slice is complete and automated validation passes.
+Owner visual/manual testing happens only after the scoped user-facing vertical
+slice is complete and automated validation passes.
 
 ## 11. Git workflow
 
 Implementation stage:
 
-implementation
-→ automated validation
-→ commit
-→ push
-→ Draft PR
-→ independent review.
+implementation → automated validation → commit → push → Draft PR → independent
+review.
 
 Never automatically:
 
@@ -302,13 +300,12 @@ Protected Owner-local files unless explicitly authorized:
 
 ## 12. Two-layer review
 
-Layer 1:
-Independent GitHub code review of actual diff, architecture, dependencies, CI and scope.
+Layer 1: Independent GitHub code review of actual diff, architecture,
+dependencies, CI and scope.
 
 Codex self-report is not sufficient.
 
-Layer 2:
-Owner manual/real-device acceptance for user-visible work.
+Layer 2: Owner manual/real-device acceptance for user-visible work.
 
 Both must pass before merge.
 
@@ -316,9 +313,8 @@ Both must pass before merge.
 
 Owner acceptance failures must first be classified as:
 
-A. bounded implementation bug;
-B. requirement/Behavior-Matrix ambiguity;
-C. genuine architecture blocker.
+A. bounded implementation bug; B. requirement/Behavior-Matrix ambiguity; C.
+genuine architecture blocker.
 
 A bounded UI bug must not reopen architecture.
 
@@ -342,7 +338,8 @@ Otherwise status remains OPEN.
 
 ## 15. T02 Productionization must be explicit
 
-A future T02 → formal Web migration may happen only through a separately approved task explicitly named/scoped as T02 Productionization.
+A future T02 → formal Web migration may happen only through a separately
+approved task explicitly named/scoped as T02 Productionization.
 
 It must have its own:
 
@@ -423,13 +420,12 @@ instructions while matching the current repository architecture.
 - This rule does not require every server-side or internal monorepo concern to
   use HTTP where no approved HTTP/Public API boundary applies.
 - Public API, cross-workspace, and domain-boundary contracts belong in
-  `packages/contracts`. Feature-local presentation and internal helper types
-  may remain local. No feature may redefine an existing Public Contract
-  locally.
+  `packages/contracts`. Feature-local presentation and internal helper types may
+  remain local. No feature may redefine an existing Public Contract locally.
 - Shared semantic design-system values belong in `packages/design-tokens`.
-  Component-local geometry and layout implementation values do not
-  automatically require global tokens, and existing shared semantic tokens
-  must not be duplicated locally.
+  Component-local geometry and layout implementation values do not automatically
+  require global tokens, and existing shared semantic tokens must not be
+  duplicated locally.
 - Frontend code must not receive or access object keys, buckets, storage
   provider details, storage credentials, or raw source datasets. It must not
   compose provider or CDN URLs from object keys; it consumes resolved approved
@@ -452,16 +448,15 @@ instructions while matching the current repository architecture.
   broader product purpose does not authorize future Catalog kinds, social
   domains, or other deferred systems; each requires its own approved Scope,
   Behavior Matrix, and contract/domain evolution where applicable.
-- End-user Yoyi product interfaces remain mobile-first and responsive. This
-  does not impose the same presentation priority on Admin or internal tooling.
+- End-user Yoyi product interfaces remain mobile-first and responsive. This does
+  not impose the same presentation priority on Admin or internal tooling.
 - Functional scope, non-goals, and preserved behavior are binding. A task may
   modify a necessary supporting test, helper, or configuration file when it is
   within that frozen functional scope. An explicit Owner file allowlist remains
   binding.
 - Every implementation task must, where applicable, run lint, typecheck,
-  relevant automated tests, and a build when the affected scope is buildable
-  and relevant. It must list modified files and report scope deviations or
-  blockers.
+  relevant automated tests, and a build when the affected scope is buildable and
+  relevant. It must list modified files and report scope deviations or blockers.
 - Documentation-only and governance-only tasks use proportionate validation;
   they do not run irrelevant runtime checks merely as ritual compliance.
 
@@ -495,33 +490,34 @@ Do not make governance looser merely for implementation convenience.
 
 ## 21. Legacy root `AGENTS.md` audit
 
-This audit covers `integration/mvp@c9bf6eceab55d55ebedd25f7af6e4e46fb4d9830:AGENTS.md`.
-Each substantive legacy rule has one classification. `MODERNIZE` retains the
-architectural purpose with more precise current wording; `MERGE` identifies
-the existing Constitution rule that already provides its protection.
+This audit covers
+`integration/mvp@c9bf6eceab55d55ebedd25f7af6e4e46fb4d9830:AGENTS.md`. Each
+substantive legacy rule has one classification. `MODERNIZE` retains the
+architectural purpose with more precise current wording; `MERGE` identifies the
+existing Constitution rule that already provides its protection.
 
-| Legacy rule | Classification | Current disposition and rationale |
-| --- | --- | --- |
-| Build a mobile-first digital archive for Chinese cliff inscriptions and stone inscriptions. | MODERNIZE | The inscription-only wording is now too narrow because the current repository formally supports `inscription` and `calligraphy`. §19 now states the broader source-independent Chinese cultural-object Catalog and community product purpose without authorizing speculative implementation; mobile-first remains separately protected by the modernized mobile-first rule. |
-| Install: `pnpm install`. | RETIRE | This is a setup command, not a universal completion rule. The committed `pnpm-lock.yaml` pins the workspace dependency graph, while installation depends on the task environment. §19 requires proportionate validation instead. |
-| Development: `pnpm dev`. | RETIRE | A development server has no validation role for a documentation-only change and is not required for every implementation task. User-visible work still requires the scoped validation and Owner acceptance required by §§10, 12, and 14. |
-| Build: `pnpm build`. | MODERNIZE | §19 requires a build where the affected scope is buildable and relevant, avoiding meaningless builds for documentation-only work. |
-| Lint: `pnpm lint`. | MODERNIZE | §19 requires lint where applicable rather than ritual execution for every non-runtime task. |
-| Type check: `pnpm typecheck`. | MODERNIZE | §19 requires typecheck where applicable rather than ritual execution for every non-runtime task. |
-| Test: `pnpm test`. | MODERNIZE | §19 requires relevant automated tests where applicable and keeps §10's Behavior Matrix validation policy. |
-| UI components must not query PostgreSQL directly. | PRESERVE | §19 retains this direct frontend data-boundary protection. |
-| Shared data types may only be defined in `packages/contracts`. | MODERNIZE | §19 confines Public API, cross-workspace, and domain-boundary contracts to `packages/contracts`, while allowing genuinely feature-local presentation/helper types to remain local. This matches the current public-contract boundary without forcing local UI types into a shared package. |
-| Shared colors, spacing and typography may only be defined in `packages/design-tokens`. | MODERNIZE | §19 reserves shared semantic design-system values for `packages/design-tokens`, while allowing component-local geometry/layout values and preventing duplication of existing tokens. This matches ADR 0007's semantic token direction without token sprawl. |
-| Public Web, Admin, SSR and Server Components must obtain business data through the HTTP API and may only type-import Public DTOs. | MODERNIZE | §19 preserves the approved Web/Admin HTTP/Public API boundary and forbids frontend imports of repository/query-port/backend runtime implementations. It does not overgeneralize HTTP to every internal server-side concern where no such boundary exists. |
-| Object keys and storage details are backend-only; frontend receives resolved URLs and must not compose CDN URLs. | PRESERVE | §19 retains the media/storage boundary established by ADRs 0003 and 0006. |
-| Do not hard-code production domains, API keys or CDN addresses. | PRESERVE | §19 retains the production configuration restriction. |
-| All public interfaces must be mobile-first. | MODERNIZE | §19 preserves mobile-first responsive behavior for end-user Yoyi product interfaces without incorrectly imposing the same priority on Admin/internal tooling. |
-| Do not modify files outside paths assigned in the task prompt. | MODERNIZE | §19 freezes functional scope while allowing necessary supporting files; deliberate Owner file allowlists remain binding. This avoids invalidating a correctly scoped implementation solely because a required test/helper file was not enumerated word-for-word. |
-| Do not upgrade dependencies unless explicitly requested. | PRESERVE | §19 retains explicit task approval for dependency upgrades. |
-| Database changes must use migrations. | PRESERVE | §19 retains migrations as the required database schema-change path. |
-| Never commit secrets, tokens or real environment credentials. | PRESERVE | §19 retains the credential and secret protection. |
-| Do not redefine contracts locally inside feature modules. | MODERNIZE | §19 prohibits local redefinition of existing Public Contracts while allowing feature-local types that are not shared/domain-boundary contracts. |
-| Runtime workspaces must not read raw source datasets except through an explicitly approved controlled importer; frontend can never receive that capability. | MODERNIZE | §19 retains the frontend prohibition and limits source input to the architecture-approved, manifest-controlled backend importer, consistent with ADR 0006's canonical runtime source. |
-| Every task runs lint, typecheck, relevant tests, and build where applicable. | MODERNIZE | §19 makes the same delivery intent applicability-based and explicitly permits proportionate governance validation. |
-| Every task lists modified files. | PRESERVE | §19 retains this completion-reporting requirement. |
-| Every task reports deviations from assigned scope. | MERGE | §§1, 9, 17, 18, and §19 already require frozen scope, STOP reporting for conflicts/blockers, and delivery reporting of deviations. |
+| Legacy rule                                                                                                                                                 | Classification | Current disposition and rationale                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build a mobile-first digital archive for Chinese cliff inscriptions and stone inscriptions.                                                                 | MODERNIZE      | The inscription-only wording is now too narrow because the current repository formally supports `inscription` and `calligraphy`. §19 now states the broader source-independent Chinese cultural-object Catalog and community product purpose without authorizing speculative implementation; mobile-first remains separately protected by the modernized mobile-first rule. |
+| Install: `pnpm install`.                                                                                                                                    | RETIRE         | This is a setup command, not a universal completion rule. The committed `pnpm-lock.yaml` pins the workspace dependency graph, while installation depends on the task environment. §19 requires proportionate validation instead.                                                                                                                                            |
+| Development: `pnpm dev`.                                                                                                                                    | RETIRE         | A development server has no validation role for a documentation-only change and is not required for every implementation task. User-visible work still requires the scoped validation and Owner acceptance required by §§10, 12, and 14.                                                                                                                                    |
+| Build: `pnpm build`.                                                                                                                                        | MODERNIZE      | §19 requires a build where the affected scope is buildable and relevant, avoiding meaningless builds for documentation-only work.                                                                                                                                                                                                                                           |
+| Lint: `pnpm lint`.                                                                                                                                          | MODERNIZE      | §19 requires lint where applicable rather than ritual execution for every non-runtime task.                                                                                                                                                                                                                                                                                 |
+| Type check: `pnpm typecheck`.                                                                                                                               | MODERNIZE      | §19 requires typecheck where applicable rather than ritual execution for every non-runtime task.                                                                                                                                                                                                                                                                            |
+| Test: `pnpm test`.                                                                                                                                          | MODERNIZE      | §19 requires relevant automated tests where applicable and keeps §10's Behavior Matrix validation policy.                                                                                                                                                                                                                                                                   |
+| UI components must not query PostgreSQL directly.                                                                                                           | PRESERVE       | §19 retains this direct frontend data-boundary protection.                                                                                                                                                                                                                                                                                                                  |
+| Shared data types may only be defined in `packages/contracts`.                                                                                              | MODERNIZE      | §19 confines Public API, cross-workspace, and domain-boundary contracts to `packages/contracts`, while allowing genuinely feature-local presentation/helper types to remain local. This matches the current public-contract boundary without forcing local UI types into a shared package.                                                                                  |
+| Shared colors, spacing and typography may only be defined in `packages/design-tokens`.                                                                      | MODERNIZE      | §19 reserves shared semantic design-system values for `packages/design-tokens`, while allowing component-local geometry/layout values and preventing duplication of existing tokens. This matches ADR 0007's semantic token direction without token sprawl.                                                                                                                 |
+| Public Web, Admin, SSR and Server Components must obtain business data through the HTTP API and may only type-import Public DTOs.                           | MODERNIZE      | §19 preserves the approved Web/Admin HTTP/Public API boundary and forbids frontend imports of repository/query-port/backend runtime implementations. It does not overgeneralize HTTP to every internal server-side concern where no such boundary exists.                                                                                                                   |
+| Object keys and storage details are backend-only; frontend receives resolved URLs and must not compose CDN URLs.                                            | PRESERVE       | §19 retains the media/storage boundary established by ADRs 0003 and 0006.                                                                                                                                                                                                                                                                                                   |
+| Do not hard-code production domains, API keys or CDN addresses.                                                                                             | PRESERVE       | §19 retains the production configuration restriction.                                                                                                                                                                                                                                                                                                                       |
+| All public interfaces must be mobile-first.                                                                                                                 | MODERNIZE      | §19 preserves mobile-first responsive behavior for end-user Yoyi product interfaces without incorrectly imposing the same priority on Admin/internal tooling.                                                                                                                                                                                                               |
+| Do not modify files outside paths assigned in the task prompt.                                                                                              | MODERNIZE      | §19 freezes functional scope while allowing necessary supporting files; deliberate Owner file allowlists remain binding. This avoids invalidating a correctly scoped implementation solely because a required test/helper file was not enumerated word-for-word.                                                                                                            |
+| Do not upgrade dependencies unless explicitly requested.                                                                                                    | PRESERVE       | §19 retains explicit task approval for dependency upgrades.                                                                                                                                                                                                                                                                                                                 |
+| Database changes must use migrations.                                                                                                                       | PRESERVE       | §19 retains migrations as the required database schema-change path.                                                                                                                                                                                                                                                                                                         |
+| Never commit secrets, tokens or real environment credentials.                                                                                               | PRESERVE       | §19 retains the credential and secret protection.                                                                                                                                                                                                                                                                                                                           |
+| Do not redefine contracts locally inside feature modules.                                                                                                   | MODERNIZE      | §19 prohibits local redefinition of existing Public Contracts while allowing feature-local types that are not shared/domain-boundary contracts.                                                                                                                                                                                                                             |
+| Runtime workspaces must not read raw source datasets except through an explicitly approved controlled importer; frontend can never receive that capability. | MODERNIZE      | §19 retains the frontend prohibition and limits source input to the architecture-approved, manifest-controlled backend importer, consistent with ADR 0006's canonical runtime source.                                                                                                                                                                                       |
+| Every task runs lint, typecheck, relevant tests, and build where applicable.                                                                                | MODERNIZE      | §19 makes the same delivery intent applicability-based and explicitly permits proportionate governance validation.                                                                                                                                                                                                                                                          |
+| Every task lists modified files.                                                                                                                            | PRESERVE       | §19 retains this completion-reporting requirement.                                                                                                                                                                                                                                                                                                                          |
+| Every task reports deviations from assigned scope.                                                                                                          | MERGE          | §§1, 9, 17, 18, and §19 already require frozen scope, STOP reporting for conflicts/blockers, and delivery reporting of deviations.                                                                                                                                                                                                                                          |
