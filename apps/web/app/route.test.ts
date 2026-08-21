@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CatalogPage } from "@moya/contracts";
+import type { CatalogKind, CatalogPage } from "@moya/contracts";
 import type { HomeCatalogState } from "../features/home/catalog-state";
 
 const { connectionMock } = vi.hoisted(() => ({
@@ -32,9 +32,28 @@ import { GET } from "./route";
 
 type QueryKey = "discover" | "inscription" | "calligraphy";
 
-const page = (title: string) =>
+const representativeMedia = {
+  id: "media-001",
+  kind: "image" as const,
+  src: "https://media.example.invalid/public.jpg",
+  alt: "公开图像",
+  width: 1200,
+  height: 1600,
+};
+
+const page = (title: string, kind: CatalogKind = "inscription") =>
   ({
-    items: [{ id: title.toLowerCase(), title } as CatalogPage["items"][number]],
+    items: [
+      {
+        aliases: ["不传递的别名"],
+        id: title.toLowerCase(),
+        kind,
+        periodLabel: "北魏",
+        representativeMedia,
+        summary: "不传递的摘要",
+        title,
+      },
+    ],
     page: 1,
     pageSize: 20,
     total: 1,
@@ -54,17 +73,30 @@ const empty = (title = "Demo"): HomeCatalogState => ({
 const unavailable: HomeCatalogState = { state: "unavailable" };
 const unexpectedError: HomeCatalogState = { state: "unexpected-error" };
 
-const resolveTitles = (
+const resolveCards = (
   state: HomeCatalogState,
-): Array<{ id: string; title: string }> =>
+): Array<
+  Pick<
+    CatalogPage["items"][number],
+    "id" | "kind" | "title" | "periodLabel" | "representativeMedia"
+  >
+> =>
   state.state === "populated"
-    ? state.page.items.map(({ id, title }) => ({ id, title }))
+    ? state.page.items.map(
+        ({ id, kind, periodLabel, representativeMedia, title }) => ({
+          id,
+          kind,
+          periodLabel,
+          representativeMedia,
+          title,
+        }),
+      )
     : [];
 
 const toOverlayArgs = (states: Record<QueryKey, HomeCatalogState>) => ({
-  calligraphy: resolveTitles(states.calligraphy),
-  discover: resolveTitles(states.discover),
-  inscriptions: resolveTitles(states.inscription),
+  calligraphy: resolveCards(states.calligraphy),
+  discover: resolveCards(states.discover),
+  inscriptions: resolveCards(states.inscription),
 });
 
 const createDeferred = () => {
@@ -83,7 +115,11 @@ beforeEach(() => {
   readT02DocumentMock.mockResolvedValue(new Response("ok"));
 });
 
-describe("T07 browse title orchestration", () => {
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("T09.2 T02 Catalog card orchestration", () => {
   it("loads discover, inscription, and calligraphy in parallel after connection", async () => {
     const deferreds: Record<QueryKey, ReturnType<typeof createDeferred>> = {
       calligraphy: createDeferred(),
@@ -131,6 +167,7 @@ describe("T07 browse title orchestration", () => {
         inscription: populated("碑刻真实"),
         calligraphy: populated("书帖真实"),
       }),
+      { catalogDetailQa: false },
     );
   });
 
@@ -156,6 +193,7 @@ describe("T07 browse title orchestration", () => {
           inscription: inscriptionState,
           calligraphy: populated("书帖真实"),
         }),
+        { catalogDetailQa: false },
       );
     },
   );
@@ -182,6 +220,7 @@ describe("T07 browse title orchestration", () => {
           inscription: populated("碑刻真实"),
           calligraphy: calligraphyState,
         }),
+        { catalogDetailQa: false },
       );
     },
   );
@@ -205,6 +244,31 @@ describe("T07 browse title orchestration", () => {
         inscription: unavailable,
         calligraphy: unexpectedError,
       }),
+      { catalogDetailQa: false },
+    );
+  });
+
+  it("enables presentation-only QA only outside production", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("MOYA_CATALOG_DETAIL_QA", "1");
+    loadHomeCatalogStateMock.mockResolvedValue(populated("真实条目"));
+
+    await GET();
+
+    expect(readT02DocumentMock).toHaveBeenCalledWith(
+      "GET",
+      expect.any(Object),
+      { catalogDetailQa: true },
+    );
+
+    vi.stubEnv("NODE_ENV", "production");
+    readT02DocumentMock.mockClear();
+    await GET();
+
+    expect(readT02DocumentMock).toHaveBeenCalledWith(
+      "GET",
+      expect.any(Object),
+      { catalogDetailQa: false },
     );
   });
 });

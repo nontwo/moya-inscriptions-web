@@ -1,6 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 
+import type { CatalogSummary, PublicMedia } from "@moya/contracts";
+
 const repositoryRoot = resolve(process.cwd(), "../..");
 const prototypeRoot = resolve(repositoryRoot, "docs/prototypes/mobile-preview");
 const demoAssetRoot = resolve(repositoryRoot, "docs/design-system/assets");
@@ -8,12 +10,19 @@ const designTokensRoot = resolve(repositoryRoot, "packages/design-tokens/src");
 const uiStylesRoot = resolve(repositoryRoot, "packages/ui/src");
 const uiAssetsRoot = resolve(uiStylesRoot, "assets");
 
-export type DiscoverTitle = { id: string; title: string };
+export type CatalogCardSummary = Pick<
+  CatalogSummary,
+  "id" | "kind" | "title" | "periodLabel" | "representativeMedia"
+>;
 export type BrowseTitles = {
-  calligraphy?: readonly DiscoverTitle[];
-  discover?: readonly DiscoverTitle[];
-  inscriptions?: readonly DiscoverTitle[];
+  calligraphy?: readonly CatalogCardSummary[];
+  discover?: readonly CatalogCardSummary[];
+  inscriptions?: readonly CatalogCardSummary[];
 };
+
+export interface T02DocumentOptions {
+  catalogDetailQa?: boolean;
+}
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -106,6 +115,7 @@ export const serveT02File = async (
 export const readT02Document = async (
   method: "GET" | "HEAD" = "GET",
   browseTitles: BrowseTitles = {},
+  options: T02DocumentOptions = {},
 ): Promise<Response> => {
   const filePath = join(prototypeRoot, "index.html");
   try {
@@ -114,12 +124,24 @@ export const readT02Document = async (
       /<head>/i,
       '<head>\n    <base href="/docs/prototypes/mobile-preview/" />',
     );
-    const document = applyCalligraphyTitles(
-      applyInscriptionTitles(
-        applyDiscoverTitles(documentWithBase, browseTitles.discover ?? []),
+    const documentWithQa = options.catalogDetailQa
+      ? documentWithBase.replace(
+          /<html\b/,
+          '<html data-catalog-detail-qa="true"',
+        )
+      : documentWithBase;
+    const document = applyCalligraphyCards(
+      applyInscriptionCards(
+        applyDiscoverCards(
+          documentWithQa,
+          browseTitles.discover ?? [],
+          options,
+        ),
         browseTitles.inscriptions ?? [],
+        options,
       ),
       browseTitles.calligraphy ?? [],
+      options,
     );
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
@@ -130,58 +152,204 @@ export const readT02Document = async (
   }
 };
 
-export const applyDiscoverTitles = (
+export const applyDiscoverCards = (
   document: string,
-  discoverTitles: readonly DiscoverTitle[],
+  cards: readonly CatalogCardSummary[],
+  options: T02DocumentOptions = {},
 ): string => {
-  if (discoverTitles.length === 0) return document;
+  if (cards.length === 0) return document;
 
-  return applyTitlesInSection(
+  return applyCardsInSection(
     document,
     /(<div\s+class="app-masonry"\s+data-feed-grid="discover">)([\s\S]*?)(<\/div>)/,
     /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
-    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span>)/,
-    discoverTitles,
+    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span\s*>)/,
+    cards,
+    "discover",
+    options,
     true,
   );
 };
 
-export const applyInscriptionTitles = (
+export const applyInscriptionCards = (
   document: string,
-  inscriptionTitles: readonly DiscoverTitle[],
+  cards: readonly CatalogCardSummary[],
+  options: T02DocumentOptions = {},
 ): string => {
-  if (inscriptionTitles.length === 0) return document;
+  if (cards.length === 0) return document;
 
-  return applyTitlesPreservingContent(
+  return applyCardsPreservingContent(
     document,
     /(<main\s+class="app-scroll"\s+data-scroll-view="inscriptions">[\s\S]*?<div\s+class="app-list">)([\s\S]*?)(<\/div>)/,
     /<button\b[^>]*class="app-inscription-card"[^>]*>[\s\S]*?<\/button>/g,
-    /(<span\s+class="app-inscription-card__title"\s*>)[\s\S]*?(<\/span>)/,
-    inscriptionTitles,
+    /(<span\s+class="app-inscription-card__title"\s*>)[\s\S]*?(<\/span\s*>)/,
+    cards,
+    "inscription",
+    options,
   );
 };
 
-export const applyCalligraphyTitles = (
+export const applyCalligraphyCards = (
   document: string,
-  calligraphyTitles: readonly DiscoverTitle[],
+  cards: readonly CatalogCardSummary[],
+  options: T02DocumentOptions = {},
 ): string => {
-  if (calligraphyTitles.length === 0) return document;
+  if (cards.length === 0) return document;
 
-  return applyTitlesInSection(
+  return applyCardsInSection(
     document,
     /(<div\s+class="app-masonry\s+app-calligraphy-grid">)([\s\S]*?)(<\/div>)/,
     /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
-    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span>)/,
-    calligraphyTitles,
+    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span\s*>)/,
+    cards,
+    "calligraphy",
+    options,
   );
 };
 
-const applyTitlesInSection = (
+type CardRole = "calligraphy" | "discover" | "inscription";
+
+const catalogKindLabel = (kind: CatalogSummary["kind"]): string =>
+  kind === "calligraphy" ? "书帖" : "碑刻";
+
+const cardMeta = (card: CatalogCardSummary, role: CardRole): string => {
+  if (role === "discover") return "";
+  const kind = catalogKindLabel(card.kind);
+  const tokens =
+    role === "calligraphy"
+      ? [card.periodLabel, kind]
+      : [kind, card.periodLabel];
+  return tokens.filter(Boolean).join(" · ");
+};
+
+const setAttribute = (source: string, name: string, value: string): string => {
+  const encoded = escapeHtml(value);
+  const pattern = new RegExp(`(\\s${name}=)(["'])[\\s\\S]*?\\2`);
+  if (pattern.test(source)) return source.replace(pattern, `$1"${encoded}"`);
+  return source.replace(/^(<button\b[^>]*)(>)/, `$1 ${name}="${encoded}"$2`);
+};
+
+const removeAttribute = (source: string, name: string): string =>
+  source.replace(new RegExp(`\\s${name}=(["'])[\\s\\S]*?\\1`), "");
+
+const addClass = (source: string, className: string): string =>
+  source.replace(
+    /^(<button\b[^>]*\sclass=")([^"]*)(")/,
+    (_match, opening: string, classes: string, closing: string) =>
+      classes.split(/\s+/).includes(className)
+        ? `${opening}${classes}${closing}`
+        : `${opening}${classes} ${className}${closing}`,
+  );
+
+const removeClass = (source: string, className: string): string =>
+  source.replace(
+    /^(<button\b[^>]*\sclass=")([^"]*)(")/,
+    (_match, opening: string, classes: string, closing: string) =>
+      `${opening}${classes
+        .split(/\s+/)
+        .filter((value) => value && value !== className)
+        .join(" ")}${closing}`,
+  );
+
+const publicImage = (media: PublicMedia): string =>
+  `<img src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" width="${media.width}" height="${media.height}" loading="lazy" decoding="async" />`;
+
+const missingImage = (title: string): string =>
+  `<span class="app-card__media-fallback" role="img" aria-label="${escapeHtml(`暂无图像：${title}`)}"></span>`;
+
+const replaceCardMedia = (
+  source: string,
+  card: CatalogCardSummary,
+  qa: boolean,
+): string => {
+  const imagePattern = /<img\b[^>]*\/?\s*>/;
+  if (card.representativeMedia) {
+    const withImage = source.replace(
+      imagePattern,
+      publicImage(card.representativeMedia),
+    );
+    return setAttribute(
+      setAttribute(
+        removeClass(withImage, "is-media-missing"),
+        "data-image",
+        card.representativeMedia.src,
+      ),
+      "data-media-origin",
+      "catalog",
+    );
+  }
+
+  if (qa) {
+    const qaAlt = `虚拟测试图，与真实记录无对应关系：${card.title}`;
+    const withAlt = source.replace(imagePattern, (image) =>
+      setAttribute(image, "alt", qaAlt),
+    );
+    return setAttribute(withAlt, "data-media-origin", "prototype-demo");
+  }
+
+  const withoutImageData = removeAttribute(source, "data-image");
+  const withFallback = withoutImageData.replace(
+    imagePattern,
+    missingImage(card.title),
+  );
+  return setAttribute(
+    addClass(withFallback, "is-media-missing"),
+    "data-media-origin",
+    "missing",
+  );
+};
+
+const updateCard = (
+  source: string,
+  titlePattern: RegExp,
+  card: CatalogCardSummary,
+  role: CardRole,
+  options: T02DocumentOptions,
+): string => {
+  let result = source.replace(titlePattern, `$1${escapeHtml(card.title)}$2`);
+  result = setAttribute(result, "data-content-id", card.id);
+  result = setAttribute(result, "data-title", card.title);
+  result = setAttribute(result, "data-catalog-source", "public");
+  result = replaceCardMedia(result, card, options.catalogDetailQa === true);
+
+  const meta = cardMeta(card, role);
+  if (role === "inscription") {
+    result = setAttribute(
+      result,
+      "data-search-text",
+      [card.title, catalogKindLabel(card.kind), card.periodLabel]
+        .filter(Boolean)
+        .join(" "),
+    );
+    result = result.replace(
+      /(<span\s+class="app-inscription-card__meta"\s*>)[\s\S]*?(<\/span\s*>)/,
+      `$1${escapeHtml(meta)}$2`,
+    );
+  } else if (role === "calligraphy") {
+    result = setAttribute(result, "data-category", "all");
+    result = setAttribute(
+      result,
+      "data-calligraphy-filter-text",
+      [card.title, catalogKindLabel(card.kind), card.periodLabel]
+        .filter(Boolean)
+        .join(" "),
+    );
+    result = result.replace(
+      /(<span\s+class="app-card__meta"\s*>)[\s\S]*?(<\/span\s*>)/,
+      `$1${escapeHtml(meta)}$2`,
+    );
+  }
+  return result;
+};
+
+const applyCardsInSection = (
   document: string,
   sectionPattern: RegExp,
   cardPattern: RegExp,
   titlePattern: RegExp,
-  titles: readonly DiscoverTitle[],
+  items: readonly CatalogCardSummary[],
+  role: CardRole,
+  options: T02DocumentOptions,
   allowOverflow = false,
 ): string =>
   document.replace(
@@ -190,19 +358,24 @@ const applyTitlesInSection = (
       const cards = content.match(cardPattern);
       if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
 
-      const updateTitle = (card: string, title: string): string =>
-        card.replace(titlePattern, `$1${escapeHtml(title)}$2`);
-
-      const visibleCardCount = Math.min(cards.length, titles.length);
+      const visibleCardCount = Math.min(cards.length, items.length);
       const visibleCards = cards
         .slice(0, visibleCardCount)
-        .map((card, index) => updateTitle(card, titles[index]!.title));
+        .map((card, index) =>
+          updateCard(card, titlePattern, items[index]!, role, options),
+        );
 
       const overflowCards = allowOverflow
-        ? titles
+        ? items
             .slice(cards.length)
             .map((item, index) =>
-              updateTitle(cards[index % cards.length]!, item.title),
+              updateCard(
+                cards[index % cards.length]!,
+                titlePattern,
+                item,
+                role,
+                options,
+              ),
             )
         : [];
 
@@ -216,12 +389,14 @@ const applyTitlesInSection = (
     },
   );
 
-const applyTitlesPreservingContent = (
+const applyCardsPreservingContent = (
   document: string,
   sectionPattern: RegExp,
   cardPattern: RegExp,
   titlePattern: RegExp,
-  titles: readonly DiscoverTitle[],
+  items: readonly CatalogCardSummary[],
+  role: CardRole,
+  options: T02DocumentOptions,
 ): string =>
   document.replace(
     sectionPattern,
@@ -231,9 +406,9 @@ const applyTitlesPreservingContent = (
 
       let titleIndex = 0;
       const updatedContent = content.replace(cardPattern, (card: string) => {
-        const title = titles[titleIndex++];
-        if (!title) return card;
-        return card.replace(titlePattern, `$1${escapeHtml(title.title)}$2`);
+        const item = items[titleIndex++];
+        if (!item) return card;
+        return updateCard(card, titlePattern, item, role, options);
       });
 
       return `${opening}${updatedContent}${closing}`;

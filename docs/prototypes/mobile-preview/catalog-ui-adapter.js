@@ -218,6 +218,53 @@
     return Object.values(adapted).some(Boolean) ? adapted : undefined;
   }
 
+  function adaptSourceCitations(values) {
+    return (Array.isArray(values) ? values : [])
+      .map((citation) => ({
+        citation: displayText(citation?.citation),
+        label: displayText(citation?.label),
+        url: isUsableMediaSrc(citation?.url) ? displayText(citation.url) : "",
+      }))
+      .filter((citation) => citation.label || citation.citation);
+  }
+
+  function adaptPublicDetail(raw, options = {}) {
+    const id = displayText(raw?.id);
+    const title = displayText(raw?.title) || (id ? `条目 ${id}` : "未命名");
+    const kind = raw?.kind === "calligraphy" ? "calligraphy" : "inscription";
+    const prototypeFacts = adaptFacts(raw);
+    const sourceCitations = adaptSourceCitations(raw?.sourceCitations);
+    const catalogMedia = sourceMediaList({ ...raw, id, title }, title);
+    const qa = options.qa === true;
+    const media =
+      catalogMedia.length > 0
+        ? catalogMedia
+        : qa
+          ? prototypeDemoGallery({ ...raw, id, title }, 7)
+          : [];
+    const introduction = displayText(raw?.description);
+
+    return {
+      aliases: displayList(raw?.aliases),
+      catalogSource: "public",
+      explanation: qa ? "内容待接入" : undefined,
+      factsPlaceholder: qa && !prototypeFacts ? "资料待接入" : undefined,
+      id: id || "unknown-record",
+      introduction: introduction || (qa ? "内容待接入" : undefined),
+      kind,
+      media,
+      periodLabel: displayText(raw?.periodLabel) || undefined,
+      prototypeFacts,
+      qa,
+      representativeMedia: media[0],
+      sourceCitations,
+      sourcesPlaceholder:
+        qa && sourceCitations.length === 0 ? "内容待接入" : undefined,
+      title,
+      transcription: qa ? "内容待接入" : undefined,
+    };
+  }
+
   function searchText(record) {
     return [
       record.title,
@@ -242,15 +289,7 @@
     const description = displayText(raw?.description);
     const periodLabel = displayText(raw?.periodLabel);
     const prototypeFacts = adaptFacts(raw?.prototypeFacts);
-    const sourceCitations = (
-      Array.isArray(raw?.sourceCitations) ? raw.sourceCitations : []
-    )
-      .map((citation) => ({
-        citation: displayText(citation?.citation),
-        label: displayText(citation?.label),
-        url: isUsableMediaSrc(citation?.url) ? displayText(citation.url) : "",
-      }))
-      .filter((citation) => citation.label || citation.citation);
+    const sourceCitations = adaptSourceCitations(raw?.sourceCitations);
     const media = resolveDisplayMedia({ ...raw, id, title }, options);
     const calligraphyCategory =
       raw?.calligraphyCategory === "rubbing" ? "rubbing" : "ink";
@@ -329,6 +368,7 @@
   }
 
   globalThis.YOYI_CATALOG_UI_ADAPTER = {
+    adaptPublicDetail,
     adaptRecord,
     calligraphyFrom,
     cardMeta,

@@ -13,13 +13,6 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try { const theme = localStorage.getItem("yoyi.theme-preference"); if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; } catch {}`,
-          }}
-        />
-      </head>
       <body>{children}</body>
     </html>
   );

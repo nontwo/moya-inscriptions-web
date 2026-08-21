@@ -205,12 +205,13 @@ const webHomeLoaderFile = path.join(
   "home",
   "load-home-catalog.ts",
 );
-const webCatalogDetailPageFile = path.join(
+const webCatalogDetailBridgeFile = path.join(
   webRoot,
   "app",
+  "api",
   "catalog",
   "[catalogId]",
-  "page.tsx",
+  "route.ts",
 );
 const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
 
@@ -220,13 +221,13 @@ export const isAuthorizedWebPublicApiFile = (
 ): boolean =>
   isPathInside(webPublicApiRoot, filePath) && !hasUseClientDirective(source);
 
-const isApprovedServerConnectionReference = (
+const isApprovedHomeConnectionReference = (
   filePath: string,
   source: string,
   reference: ModuleReference,
 ): boolean => {
   if (
-    ![webHomePageFile, webHomeRouteFile, webCatalogDetailPageFile].some(
+    ![webHomePageFile, webHomeRouteFile].some(
       (candidate) => path.resolve(filePath) === candidate,
     ) ||
     hasUseClientDirective(source) ||
@@ -263,14 +264,15 @@ const isApprovedServerCatalogAdapterReference = (
   reference: ModuleReference,
 ): boolean => {
   if (
-    ![webHomeLoaderFile, webCatalogDetailPageFile].some(
+    ![webHomeLoaderFile, webCatalogDetailBridgeFile].some(
       (candidate) => path.resolve(filePath) === candidate,
     ) ||
     hasUseClientDirective(source) ||
     reference.kind !== "static-import" ||
-    !["../../lib/public-api/server", "../../../lib/public-api/server"].includes(
-      reference.specifier,
-    )
+    ![
+      "../../lib/public-api/server",
+      "../../../../lib/public-api/server",
+    ].includes(reference.specifier)
   ) {
     return false;
   }
@@ -282,7 +284,7 @@ const isApprovedServerCatalogAdapterReference = (
           namedImport: "{fetchServerCatalogPage}",
         }
       : {
-          specifier: "../../../lib/public-api/server",
+          specifier: "../../../../lib/public-api/server",
           namedImport: "{fetchServerCatalogDetail}",
         };
   const escapedSpecifier = expectedImport.specifier.replaceAll("/", "\\/");
@@ -561,7 +563,7 @@ export const frontendBoundaryViolations = (
       isAuthorizedPublicApi &&
       (reference.specifier === "@moya/contracts/schemas" ||
         reference.specifier === "server-only");
-    const approvedServerConnectionImport = isApprovedServerConnectionReference(
+    const approvedServerConnectionImport = isApprovedHomeConnectionReference(
       filePath,
       source,
       reference,

@@ -4,12 +4,31 @@ import type { HomeCatalogState } from "../features/home/catalog-state";
 import { loadHomeCatalogState } from "../features/home/load-home-catalog";
 import { methodNotAllowed, readT02Document } from "../lib/t02-static-files";
 
+import type { CatalogSummary } from "@moya/contracts";
+
 export const runtime = "nodejs";
 
-const toVisibleTitles = (state: HomeCatalogState) =>
+type CatalogCardSummary = Pick<
+  CatalogSummary,
+  "id" | "kind" | "title" | "periodLabel" | "representativeMedia"
+>;
+
+const toVisibleCards = (state: HomeCatalogState): CatalogCardSummary[] =>
   state.state === "populated"
-    ? state.page.items.map(({ id, title }) => ({ id, title }))
+    ? state.page.items.map(
+        ({ id, kind, periodLabel, representativeMedia, title }) => ({
+          id,
+          kind,
+          periodLabel,
+          representativeMedia,
+          title,
+        }),
+      )
     : [];
+
+const catalogDetailQaEnabled = (): boolean =>
+  process.env.NODE_ENV !== "production" &&
+  process.env.MOYA_CATALOG_DETAIL_QA === "1";
 
 export const GET = async () => {
   await connection();
@@ -21,11 +40,15 @@ export const GET = async () => {
     ],
   );
 
-  return readT02Document("GET", {
-    calligraphy: toVisibleTitles(calligraphyState),
-    discover: toVisibleTitles(discoverState),
-    inscriptions: toVisibleTitles(inscriptionState),
-  });
+  return readT02Document(
+    "GET",
+    {
+      calligraphy: toVisibleCards(calligraphyState),
+      discover: toVisibleCards(discoverState),
+      inscriptions: toVisibleCards(inscriptionState),
+    },
+    { catalogDetailQa: catalogDetailQaEnabled() },
+  );
 };
 export const HEAD = () => readT02Document("HEAD");
 export const POST = methodNotAllowed;

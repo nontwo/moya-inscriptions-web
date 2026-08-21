@@ -250,6 +250,66 @@ const renderP5Preview = (
     `http://localhost/docs/prototypes/mobile-preview/?dataset=p5${hash}`,
   );
 
+const publicDetail = {
+  id: "catalog-001",
+  kind: "inscription",
+  title: "云峰山题名（公开）",
+  aliases: ["云峰山崖壁", "云峰题名"],
+  summary: "只供列表使用的公开摘要",
+  periodLabel: "北魏 · 永平年间 · 山间",
+  dynasty: "北魏",
+  dateText: "永平年间",
+  province: "山东",
+  prefecture: "烟台",
+  county: "莱州",
+  currentLocation: "云峰山崖壁",
+  currentCustodian: "云峰山文保所",
+  description: "来自 Public CatalogDetail 的正式简介。",
+  media: [
+    {
+      id: "media-001",
+      kind: "image",
+      src: "https://media.example.invalid/public-detail.jpg",
+      alt: "公开详情图像",
+      width: 1200,
+      height: 1600,
+    },
+  ],
+  sourceCitations: [
+    { label: "公开资料", citation: "卷一。", url: "https://example.invalid" },
+  ],
+};
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+
+const installPublicCard = (
+  window: Window & typeof globalThis,
+  fetchMock: ReturnType<typeof vi.fn>,
+  { catalogId = publicDetail.id, qa = false } = {},
+) => {
+  const card = window.document.querySelector<HTMLElement>(
+    '[data-content-id="discover-cliff-gate"]',
+  );
+  if (!card) throw new Error("Discover card missing");
+  card.dataset.catalogSource = "public";
+  card.dataset.contentId = catalogId;
+  card.dataset.title = publicDetail.title;
+  if (qa) window.document.documentElement.dataset.catalogDetailQa = "true";
+  Object.defineProperty(window, "fetch", {
+    configurable: true,
+    value: fetchMock,
+  });
+};
+
+const settlePublicDetail = async () => {
+  await Promise.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+};
+
 const expectedP5Titles = [
   "北魏永平四年郑道昭浮丘子题字",
   "唐张礼臣墓志盖",
@@ -4270,6 +4330,200 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(false);
+  });
+
+  it("loads real Public CatalogDetail into the existing T02 Detail and preserves back context", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(publicDetail));
+    const dom = renderPreview({}, {}, (window) => {
+      installPublicCard(window, fetchMock);
+    });
+    const { document } = dom.window;
+    const homeScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-key="home:discover"]',
+    );
+    if (!homeScroll) throw new Error("Discover scroll missing");
+    homeScroll.scrollTop = 84;
+    homeScroll.dispatchEvent(new dom.window.Event("scroll"));
+
+    document
+      .querySelector<HTMLElement>('[data-content-id="catalog-001"]')
+      ?.click();
+
+    expect(
+      document.querySelector<HTMLElement>('[data-detail-panel="loading"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/catalog-001", {
+      headers: { Accept: "application/json" },
+    });
+
+    await settlePublicDetail();
+
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      publicDetail.title,
+    );
+    expect(
+      document.querySelector("[data-detail-summary-text]")?.textContent,
+    ).toBe(publicDetail.description);
+    expect(
+      document.querySelector("[data-detail-summary-text]")?.textContent,
+    ).not.toContain(publicDetail.summary);
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("碑刻 · 山间");
+    expect(
+      [...document.querySelectorAll("[data-detail-facts-list] dt")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["朝代", "年代", "地区", "现址", "保管 / 现藏单位"]);
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).not.toContain("时期");
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-transcription]")
+        ?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-description]")?.hidden,
+    ).toBe(true);
+    expect(
+      document.querySelector("[data-detail-sources]")?.textContent,
+    ).toContain("公开资料");
+    expect(
+      document.querySelector<HTMLImageElement>("[data-detail-image]")?.src,
+    ).toBe(publicDetail.media[0]!.src);
+
+    const back = document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!back) throw new Error("Detail back missing");
+    await clickAndWaitForHistory(dom.window, back);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
+    ).toBe(false);
+    expect(homeScroll.scrollTop).toBe(84);
+  });
+
+  it.each([
+    [404, "not-found"],
+    [503, "unavailable"],
+    [502, "error"],
+  ] as const)(
+    "maps bridge HTTP %s into the existing %s panel",
+    async (status, panel) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status }));
+      const dom = renderPreview({}, {}, (window) => {
+        installPublicCard(window, fetchMock);
+      });
+
+      dom.window.document
+        .querySelector<HTMLElement>('[data-content-id="catalog-001"]')
+        ?.click();
+      await settlePublicDetail();
+
+      expect(
+        dom.window.document.querySelector<HTMLElement>(
+          `[data-detail-panel="${panel}"]`,
+        )?.hidden,
+      ).toBe(false);
+    },
+  );
+
+  it("reuses T02 QA placeholders and virtual gallery only in Owner QA", async () => {
+    const sparse = {
+      id: publicDetail.id,
+      kind: "inscription",
+      title: publicDetail.title,
+      aliases: [],
+      media: [],
+      sourceCitations: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(sparse));
+    const dom = renderPreview({}, {}, (window) => {
+      installPublicCard(window, fetchMock, { qa: true });
+    });
+
+    dom.window.document
+      .querySelector<HTMLElement>('[data-content-id="catalog-001"]')
+      ?.click();
+    await settlePublicDetail();
+
+    const { document } = dom.window;
+    expect(
+      document.querySelector("[data-detail-facts]")?.textContent,
+    ).toContain("资料待接入");
+    expect(
+      document.querySelector("[data-detail-summary]")?.textContent,
+    ).toContain("内容待接入");
+    expect(
+      document.querySelector("[data-detail-transcription]")?.textContent,
+    ).toContain("内容待接入");
+    expect(
+      document.querySelector("[data-detail-description]")?.textContent,
+    ).toContain("内容待接入");
+    expect(
+      document.querySelector("[data-detail-sources]")?.textContent,
+    ).toContain("内容待接入");
+    expect(
+      document.querySelector<HTMLImageElement>("[data-detail-image]")?.alt,
+    ).toContain("虚拟测试图，与真实记录无对应关系");
+    expect(
+      document.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/7");
+  });
+
+  it("omits sparse Public sections and QA media in production", async () => {
+    const sparse = {
+      id: publicDetail.id,
+      kind: "inscription",
+      title: publicDetail.title,
+      aliases: [],
+      media: [],
+      sourceCitations: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(sparse));
+    const dom = renderPreview({}, {}, (window) => {
+      installPublicCard(window, fetchMock);
+    });
+
+    dom.window.document
+      .querySelector<HTMLElement>('[data-content-id="catalog-001"]')
+      ?.click();
+    await settlePublicDetail();
+
+    const { document } = dom.window;
+    for (const selector of [
+      "[data-detail-facts]",
+      "[data-detail-summary]",
+      "[data-detail-transcription]",
+      "[data-detail-description]",
+      "[data-detail-sources]",
+    ]) {
+      expect(document.querySelector<HTMLElement>(selector)?.hidden).toBe(true);
+    }
+    expect(
+      document.querySelector<HTMLImageElement>("[data-detail-image]")?.hidden,
+    ).toBe(true);
+    expect(document.body.textContent).not.toContain("内容待接入");
+  });
+
+  it("keeps prototype-only cards on the local fixture path", () => {
+    const fetchMock = vi.fn();
+    const dom = renderPreview({}, {}, (window) => {
+      Object.defineProperty(window, "fetch", {
+        configurable: true,
+        value: fetchMock,
+      });
+    });
+
+    dom.window.document
+      .querySelector<HTMLElement>('[data-content-id="discover-cliff-gate"]')
+      ?.click();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      dom.window.document.querySelector("[data-detail-title]")?.textContent,
+    ).toBe("山门北壁题记");
   });
 
   it("renders loading, not-found, and unavailable catalog states from hash", () => {

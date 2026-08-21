@@ -93,12 +93,24 @@ const detailSummary = document.querySelector("[data-detail-summary]");
 const detailSummaryText = document.querySelector("[data-detail-summary-text]");
 const detailFacts = document.querySelector("[data-detail-facts]");
 const detailFactsList = document.querySelector("[data-detail-facts-list]");
+const detailFactsPlaceholder = document.querySelector(
+  "[data-detail-facts-placeholder]",
+);
+const detailTranscription = document.querySelector(
+  "[data-detail-transcription]",
+);
+const detailTranscriptionText = document.querySelector(
+  "[data-detail-transcription-text]",
+);
 const detailDescription = document.querySelector("[data-detail-description]");
 const detailDescriptionText = document.querySelector(
   "[data-detail-description-text]",
 );
 const detailSources = document.querySelector("[data-detail-sources]");
 const detailSourcesList = document.querySelector("[data-detail-sources-list]");
+const detailSourcesPlaceholder = document.querySelector(
+  "[data-detail-sources-placeholder]",
+);
 const detailMedia = document.querySelector("[data-detail-media]");
 const detailMediaOpen = document.querySelector("[data-detail-media-open]");
 const detailMediaFallback = document.querySelector(
@@ -470,6 +482,7 @@ let navIgnoreClick = false;
 let navPagerGesture = null;
 let detailContentId = "";
 let detailRecord = null;
+let detailLoadGeneration = 0;
 let detailMediaItems = [];
 let detailMediaIndexValue = 0;
 let detailMediaFailed = false;
@@ -756,7 +769,12 @@ function renderDetailFacts(record) {
   appendFact("地区", regionLabel(facts));
   appendFact("现址", facts?.currentLocation);
   appendFact("保管 / 现藏单位", facts?.currentCustodian);
-  setHidden(detailFacts, detailFactsList.children.length === 0);
+  const placeholder = displayText(record.factsPlaceholder);
+  if (detailFactsPlaceholder) {
+    detailFactsPlaceholder.textContent = placeholder;
+    setHidden(detailFactsPlaceholder, !placeholder);
+  }
+  setHidden(detailFacts, detailFactsList.children.length === 0 && !placeholder);
 }
 
 function renderDetailSources(record) {
@@ -788,7 +806,12 @@ function renderDetailSources(record) {
     }
     detailSourcesList.append(item);
   });
-  setHidden(detailSources, citations.length === 0);
+  const placeholder = displayText(record.sourcesPlaceholder);
+  if (detailSourcesPlaceholder) {
+    detailSourcesPlaceholder.textContent = placeholder;
+    setHidden(detailSourcesPlaceholder, !placeholder);
+  }
+  setHidden(detailSources, citations.length === 0 && !placeholder);
 }
 
 function currentDetailMedia() {
@@ -827,16 +850,21 @@ function applyDetailMedia() {
 function renderLoadedDetail(record) {
   showDetailPanel("loaded");
   const title = displayText(record.title);
-  const summary = displayText(record.summary);
-  const description = displayText(record.description);
+  const introduction = displayText(record.introduction ?? record.summary);
+  const transcription = displayText(record.transcription);
+  const explanation = displayText(record.explanation ?? record.description);
   if (detailTitle) detailTitle.textContent = title;
-  if (detailSummaryText) detailSummaryText.textContent = summary;
-  setHidden(detailSummary, !summary);
+  if (detailSummaryText) detailSummaryText.textContent = introduction;
+  setHidden(detailSummary, !introduction);
   renderDetailFacts(record);
   renderDetailKindPeriod(record);
   renderDetailAliases(record);
-  if (detailDescriptionText) detailDescriptionText.textContent = description;
-  setHidden(detailDescription, !description);
+  if (detailTranscriptionText) {
+    detailTranscriptionText.textContent = transcription;
+  }
+  setHidden(detailTranscription, !transcription);
+  if (detailDescriptionText) detailDescriptionText.textContent = explanation;
+  setHidden(detailDescription, !explanation);
   renderDetailSources(record);
   applyDetailMedia();
 }
@@ -869,7 +897,7 @@ function rememberDetailHistory(contentId, { replace = false } = {}) {
     mediaIndex: detailMediaIndexValue,
     sourceView: primaryView,
   };
-  const url = `#detail-${contentId}`;
+  const url = `#detail-${encodeURIComponent(contentId)}`;
   if (replace) history.replaceState(state, "", url);
   else history.pushState(state, "", url);
 }
@@ -1766,29 +1794,76 @@ function onDetailImageError() {
   logQaEvent("media", "图像暂时无法加载");
 }
 
+function applyDetailRecord(record, mediaIndex = 0) {
+  detailRecord = record;
+  detailMediaItems = detailMediaList(record);
+  detailMediaIndexValue = Math.max(
+    0,
+    Math.min(mediaIndex, Math.max(detailMediaItems.length - 1, 0)),
+  );
+  renderCatalogDetail(record);
+}
+
+async function loadPublicCatalogDetail(contentId, generation, mediaIndex) {
+  let record;
+  try {
+    const response = await fetch(
+      `/api/catalog/${encodeURIComponent(contentId)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (response.status === 404) {
+      record = { id: contentId, lifecycle: "not-found" };
+    } else if (response.status === 503) {
+      record = { id: contentId, lifecycle: "unavailable" };
+    } else if (!response.ok) {
+      record = { id: contentId, lifecycle: "error" };
+    } else {
+      const detail = await response.json();
+      record = catalogAdapter?.adaptPublicDetail(detail, {
+        qa: root.dataset.catalogDetailQa === "true",
+      });
+      if (!record) record = { id: contentId, lifecycle: "error" };
+    }
+  } catch {
+    record = { id: contentId, lifecycle: "error" };
+  }
+
+  if (
+    generation !== detailLoadGeneration ||
+    detailContentId !== contentId ||
+    detailView?.hidden
+  ) {
+    return;
+  }
+  applyDetailRecord(record, mediaIndex);
+  logQaEvent("detail", `载入 ${record?.title || contentId}（${contentId}）`);
+}
+
 function openDetailById(
   contentId,
   { mediaIndex = 0, trigger = null, updateHistory = true } = {},
 ) {
   saveScrollPosition();
   closeMediaFocus();
+  const generation = ++detailLoadGeneration;
   detailContentId = contentId;
-  detailRecord = resolveCatalogRecord(contentId, trigger);
-  detailMediaItems = detailMediaList(detailRecord);
-  detailMediaIndexValue = Math.max(
-    0,
-    Math.min(mediaIndex, Math.max(detailMediaItems.length - 1, 0)),
-  );
+  const fixtureRecord = catalogDetailRecords[contentId];
+  const loadsPublicDetail =
+    trigger?.dataset.catalogSource === "public" ||
+    (!trigger && fixtureRecord === undefined);
+  const record = loadsPublicDetail
+    ? { id: contentId, lifecycle: "loading" }
+    : resolveCatalogRecord(contentId, trigger);
   updateDetailComposition();
-  renderCatalogDetail(detailRecord);
+  applyDetailRecord(record, mediaIndex);
   showView("detail");
   const detailScroll = document.querySelector('[data-scroll-view="detail"]');
   if (detailScroll) detailScroll.scrollTop = 0;
   if (updateHistory) rememberDetailHistory(contentId);
-  logQaEvent(
-    "detail",
-    `打开 ${detailRecord?.title || contentId}（${contentId}）`,
-  );
+  logQaEvent("detail", `打开 ${record?.title || contentId}（${contentId}）`);
+  if (loadsPublicDetail) {
+    void loadPublicCatalogDetail(contentId, generation, mediaIndex);
+  }
 }
 
 function openDetail(trigger, options = {}) {
@@ -1798,7 +1873,10 @@ function openDetail(trigger, options = {}) {
 }
 
 function showView(view) {
-  if (view !== "detail") closeMediaFocus();
+  if (view !== "detail") {
+    detailLoadGeneration += 1;
+    closeMediaFocus();
+  }
   const isPrimary = primaryViews.includes(view);
   const primaryShell = document.querySelector("[data-pager='primary']");
   if (!isPrimary) parkPrimaryPagerForOverlay();
@@ -3873,6 +3951,7 @@ function closeQaLog() {
 }
 
 function closeDetail() {
+  detailLoadGeneration += 1;
   closeMediaFocus();
   logQaEvent(
     "detail",
@@ -3895,10 +3974,11 @@ function findContentTrigger(contentId) {
   const activePagerPage = document.querySelector(
     `[data-view="${primaryView}"] [data-pager-page][aria-hidden="false"]`,
   );
-  return (
-    activePagerPage?.querySelector(`[data-content-id="${contentId}"]`) ??
-    document.querySelector(`[data-content-id="${contentId}"]`)
-  );
+  const matchingCard = (container) =>
+    [...(container?.querySelectorAll("[data-content-id]") ?? [])].find(
+      (element) => element.dataset.contentId === contentId,
+    ) ?? null;
+  return matchingCard(activePagerPage) ?? matchingCard(document);
 }
 
 renderSelectedDataset();
