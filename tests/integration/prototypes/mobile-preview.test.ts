@@ -58,6 +58,12 @@ const tabletCss = await readFile(
   "utf8",
 );
 const pcCss = await readFile(new URL("preview.pc.css", previewRoot), "utf8");
+const createLabelAsset = await readFile(
+  new URL("assets/nav-create-label-mask.png", previewRoot),
+);
+const profileLabelAsset = await readFile(
+  new URL("assets/nav-profile-label-mask.png", previewRoot),
+);
 
 const openWindows: Window[] = [];
 
@@ -2664,17 +2670,19 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain(
       "grid-template-columns: repeat(5, minmax(0, 1fr))",
     );
-    expect(pcCss).toContain("grid-template-rows: repeat(5, 64px)");
+    expect(pcCss).toContain("grid-template-rows: repeat(5, 68px)");
     expect(pcCss).toContain("--app-pc-nav-safe-area");
     expect(pcCss).toContain("padding-left: var(--app-pc-nav-safe-area)");
-    expect(pcCss).toContain("--app-pc-nav-width: 88px");
+    expect(pcCss).toContain("--app-pc-nav-width: clamp(88px, 7vw, 104px)");
+    expect(pcCss).toContain("flex-direction: column");
+    expect(pcCss).toContain("height: 68px");
+    expect(pcCss).toContain("gap: 4px");
     expect(pcCss).toContain("top: 0");
     expect(pcCss).toContain("bottom: 0");
     expect(pcCss).toContain("left: 0");
     expect(pcCss).toContain("height: 100dvh");
-    expect(pcCss).toContain(
-      "box-shadow: inset 2px 0 0 var(--yoyi-color-seal-red)",
-    );
+    expect(pcCss).toContain("background: var(--yoyi-color-background-muted)");
+    expect(pcCss).not.toContain("box-shadow: inset 2px 0 0");
     expect(script).toContain('root.dataset.platform === "pc") return;');
     expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
     expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
@@ -2802,12 +2810,26 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-nav-action="profile"');
     expect(html).toContain('data-icon="create"');
     expect(html).toContain('data-icon="profile"');
+    expect(html).toContain('data-label="nav-create"');
+    expect(html).toContain('data-label="nav-profile"');
+    expect(html).not.toContain("app-nav-text-label");
     expect(sharedCss).toContain(
       '-webkit-mask-image: url("./assets/nav-create.svg")',
     );
     expect(sharedCss).toContain(
       '-webkit-mask-image: url("./assets/nav-profile.svg")',
     );
+    expect(sharedCss).toContain(
+      '-webkit-mask-image: url("./assets/nav-create-label-mask.png?v=20260822")',
+    );
+    expect(sharedCss).toContain(
+      '-webkit-mask-image: url("./assets/nav-profile-label-mask.png?v=20260822")',
+    );
+    for (const labelAsset of [createLabelAsset, profileLabelAsset]) {
+      expect(labelAsset.subarray(1, 4).toString()).toBe("PNG");
+      expect(labelAsset.readUInt32BE(16)).toBe(264);
+      expect(labelAsset.readUInt32BE(20)).toBe(120);
+    }
     expect(html).toContain("yoyi-nav-bubble");
     expect(html).toContain("yoyi.theme-preference");
     expect(html).toContain("yoyi.home-feed-layout");
@@ -2835,9 +2857,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260822-fixed-pc-rail"',
+      'href="./preview.shared.css?v=20260822-nav-proportion"',
     );
-    expect(html).toContain('src="./preview.js?v=20260822-fixed-pc-rail"');
+    expect(html).toContain('src="./preview.js?v=20260822-nav-proportion"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
