@@ -102,10 +102,10 @@ const quickActionLabels = {
 };
 const quickActionDelay = 460;
 const quickActionMovementTolerance = 10;
+const quickActionClickSuppressionWindow = 650;
 let quickActionGesture = null;
-let quickActionCommitTimer = 0;
-let quickActionSuppressClickCard = null;
-let quickActionSuppressClickTimer = 0;
+let quickActionSuppressClick = null;
+let gestureOwner = null;
 const detailView = document.querySelector("[data-view='detail']");
 const detailImage = document.querySelector("[data-detail-image]");
 const detailTitle = document.querySelector("[data-detail-title]");
@@ -2820,6 +2820,7 @@ function beginPrimaryPagerFollow(controller) {
 }
 
 function onNavPointerDown(event) {
+  if (gestureOwner === "quick-action") return;
   if (root.dataset.platform === "pc") return;
   if (navigationMinimized || !event.isPrimary) return;
   if (prefersReducedNavMotion()) return;
@@ -2843,6 +2844,7 @@ function updatePendingBrowseEntry(entry) {
 }
 
 function onNavPointerMove(event) {
+  if (gestureOwner === "quick-action") return;
   if (!navDragging || event.pointerId !== navPointerId) return;
   const clientX = event.clientX;
   if (Math.abs(clientX - navPointerStartX) > 8) {
@@ -2885,6 +2887,7 @@ function cancelNavPointer({ syncBubble = true } = {}) {
 }
 
 function endNavPointer(event) {
+  if (gestureOwner === "quick-action") return;
   if (!navDragging || event.pointerId !== navPointerId) return;
   const shouldCommit = navDidPan && event.type !== "pointercancel";
   if (shouldCommit) {
@@ -3837,6 +3840,7 @@ function onPagerPointerCancel() {
 }
 
 function beginPagerGesture(event, controller) {
+  if (gestureOwner === "quick-action") return;
   if (!pagerPointerAllowed(controller, event)) return;
   if (!event.isPrimary) {
     cancelActivePagerGesture();
@@ -3867,6 +3871,10 @@ function beginPagerGesture(event, controller) {
 }
 
 function onPagerPointerMove(event) {
+  if (gestureOwner === "quick-action") {
+    cancelActivePagerGesture({ animate: false });
+    return;
+  }
   const gesture = activePagerGesture;
   if (!gesture || gesture.pointerId !== event.pointerId) return;
   if (!event.isPrimary) {
@@ -3944,6 +3952,7 @@ function settlePagerFromGesture(gesture, velocity) {
 }
 
 function completePagerGesture(event) {
+  if (gestureOwner === "quick-action") return;
   const gesture = activePagerGesture;
   if (!gesture || gesture.pointerId !== event.pointerId) {
     return;
@@ -4096,6 +4105,60 @@ function clearQuickActionTimer() {
   quickActionGesture.timer = 0;
 }
 
+function armQuickActionClickSuppression(gesture) {
+  quickActionSuppressClick = {
+    card: gesture.card,
+    contentId: gesture.contentId,
+    pointerId: gesture.pointerId,
+    releasedAt: 0,
+    expiresAt: performance.now() + quickActionClickSuppressionWindow,
+  };
+}
+
+function releaseQuickActionClickSuppression(gesture) {
+  if (quickActionSuppressClick?.pointerId !== gesture.pointerId) return;
+  quickActionSuppressClick.releasedAt = performance.now();
+  quickActionSuppressClick.expiresAt =
+    quickActionSuppressClick.releasedAt + quickActionClickSuppressionWindow;
+}
+
+function suppressQuickActionSyntheticClick(event) {
+  const suppression = quickActionSuppressClick;
+  if (!suppression) return;
+  if (performance.now() > suppression.expiresAt) {
+    quickActionSuppressClick = null;
+    return;
+  }
+  const target = event.target instanceof Element ? event.target : null;
+  const card = target?.closest("[data-open-detail]");
+  if (
+    card !== suppression.card ||
+    card?.dataset.contentId !== suppression.contentId ||
+    suppression.releasedAt === 0
+  ) {
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  quickActionSuppressClick = null;
+}
+
+function bindQuickActionScrollLock() {
+  window.addEventListener("touchmove", onQuickActionTouchMove, {
+    capture: true,
+    passive: false,
+  });
+}
+
+function unbindQuickActionScrollLock() {
+  window.removeEventListener("touchmove", onQuickActionTouchMove, true);
+}
+
+function onQuickActionTouchMove(event) {
+  if (gestureOwner !== "quick-action") return;
+  event.preventDefault();
+}
+
 function setQuickActionCandidate(action = null) {
   if (quickActionGesture) quickActionGesture.pendingAction = action;
   quickActionBubbles.forEach((bubble) => {
@@ -4191,6 +4254,8 @@ function openQuickAction() {
   if (!gesture || !gesture.card.isConnected || !quickActionOverlay) return;
   gesture.timer = 0;
   gesture.opened = true;
+  gestureOwner = "quick-action";
+  armQuickActionClickSuppression(gesture);
   cancelActivePagerGesture({ animate: false });
   try {
     gesture.card.setPointerCapture?.(gesture.pointerId);
@@ -4200,6 +4265,7 @@ function openQuickAction() {
   quickActionOverlay.hidden = false;
   quickActionOverlay.setAttribute("aria-hidden", "false");
   app?.classList.add("is-quick-action-open");
+  bindQuickActionScrollLock();
   quickActionStatus.textContent = "";
   positionQuickActionMenu(gesture);
   setQuickActionCandidate();
@@ -4208,10 +4274,6 @@ function openQuickAction() {
 function closeQuickAction() {
   const gesture = quickActionGesture;
   clearQuickActionTimer();
-  if (quickActionCommitTimer) {
-    window.clearTimeout(quickActionCommitTimer);
-    quickActionCommitTimer = 0;
-  }
   if (gesture?.opened) {
     try {
       if (gesture.card.hasPointerCapture?.(gesture.pointerId)) {
@@ -4221,6 +4283,8 @@ function closeQuickAction() {
       // The browser can release capture before this cancellation runs.
     }
   }
+  if (gestureOwner === "quick-action") gestureOwner = null;
+  unbindQuickActionScrollLock();
   quickActionGesture = null;
   setQuickActionCandidate();
   app?.classList.remove("is-quick-action-open");
@@ -4237,27 +4301,14 @@ function closeQuickAction() {
   if (quickActionStatus) quickActionStatus.textContent = "";
 }
 
-function suppressQuickActionClick(card) {
-  quickActionSuppressClickCard = card;
-  if (quickActionSuppressClickTimer) {
-    window.clearTimeout(quickActionSuppressClickTimer);
-  }
-  quickActionSuppressClickTimer = window.setTimeout(() => {
-    quickActionSuppressClickCard = null;
-    quickActionSuppressClickTimer = 0;
-  }, 500);
-}
-
 function commitQuickAction(action, gesture) {
   const label = quickActionLabels[action];
   if (!label) {
     closeQuickAction();
     return;
   }
-  suppressQuickActionClick(gesture.card);
   quickActionStatus.textContent = `已选择${label}`;
   logQaEvent("quick-action", `[quick-action] ${action} ${gesture.contentId}`);
-  quickActionCommitTimer = window.setTimeout(() => closeQuickAction(), 240);
 }
 
 function beginQuickAction(event) {
@@ -4299,6 +4350,7 @@ function moveQuickAction(event) {
     return;
   }
   event.preventDefault();
+  event.stopImmediatePropagation();
   setQuickActionCandidate(
     quickActionCandidateAtPoint(event.clientX, event.clientY),
   );
@@ -4313,6 +4365,8 @@ function finishQuickAction(event) {
     return;
   }
   event.preventDefault();
+  event.stopImmediatePropagation();
+  releaseQuickActionClickSuppression(gesture);
   const action =
     quickActionCandidateAtPoint(event.clientX, event.clientY) ||
     gesture.pendingAction;
@@ -4321,12 +4375,25 @@ function finishQuickAction(event) {
     return;
   }
   commitQuickAction(action, gesture);
+  closeQuickAction();
 }
 
 function cancelQuickActionForSecondaryPointer(event) {
-  if (quickActionGesture && quickActionGesture.pointerId !== event.pointerId) {
-    closeQuickAction();
+  const gesture = quickActionGesture;
+  if (!gesture || gesture.pointerId === event.pointerId) return;
+  if (gesture.opened) releaseQuickActionClickSuppression(gesture);
+  closeQuickAction();
+}
+
+function cancelQuickAction(event) {
+  const gesture = quickActionGesture;
+  if (!gesture || (event && gesture.pointerId !== event.pointerId)) return;
+  if (gesture.opened) {
+    event?.preventDefault();
+    event?.stopImmediatePropagation();
+    releaseQuickActionClickSuppression(gesture);
   }
+  closeQuickAction();
 }
 
 function suppressQuickActionContextMenu(event) {
@@ -4345,32 +4412,28 @@ function suppressQuickActionMediaDrag(event) {
 function bindQuickActions() {
   document.querySelectorAll("[data-open-detail]").forEach((card) => {
     card.dataset.quickActions = "enabled";
+    card.querySelectorAll("img").forEach((image) => {
+      image.draggable = false;
+    });
     card.addEventListener("pointerdown", beginQuickAction);
     card.addEventListener("contextmenu", suppressQuickActionContextMenu);
     card.addEventListener("dragstart", suppressQuickActionMediaDrag);
-    card.addEventListener(
-      "click",
-      (event) => {
-        if (event.currentTarget !== quickActionSuppressClickCard) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        quickActionSuppressClickCard = null;
-        if (quickActionSuppressClickTimer) {
-          window.clearTimeout(quickActionSuppressClickTimer);
-          quickActionSuppressClickTimer = 0;
-        }
-      },
-      { capture: true },
-    );
   });
+  document.addEventListener("click", suppressQuickActionSyntheticClick, true);
   window.addEventListener(
     "pointerdown",
     cancelQuickActionForSecondaryPointer,
     true,
   );
-  window.addEventListener("pointermove", moveQuickAction, { passive: false });
-  window.addEventListener("pointerup", finishQuickAction, { passive: false });
-  window.addEventListener("pointercancel", closeQuickAction, true);
+  window.addEventListener("pointermove", moveQuickAction, {
+    capture: true,
+    passive: false,
+  });
+  window.addEventListener("pointerup", finishQuickAction, {
+    capture: true,
+    passive: false,
+  });
+  window.addEventListener("pointercancel", cancelQuickAction, true);
 }
 
 renderSelectedDataset();

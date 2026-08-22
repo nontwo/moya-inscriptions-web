@@ -450,6 +450,7 @@ const dispatchPointer = (
     });
   }
   target.dispatchEvent(event);
+  return event;
 };
 
 const swipe = (
@@ -717,6 +718,18 @@ describe("mobile application preview", () => {
     expect(overlay.textContent).toContain("点赞");
     expect(overlay.textContent).toContain("分享");
 
+    const actionMove = dispatchPointer(dom.window, card, "pointermove", {
+      clientX: 118,
+      clientY: 154,
+    });
+    expect(actionMove.defaultPrevented).toBe(true);
+    const actionTouchMove = new dom.window.Event("touchmove", {
+      bubbles: true,
+      cancelable: true,
+    });
+    dom.window.dispatchEvent(actionTouchMove);
+    expect(actionTouchMove.defaultPrevented).toBe(true);
+
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
     expect(overlay.hidden).toBe(true);
   });
@@ -733,6 +746,8 @@ describe("mobile application preview", () => {
     if (!card || !image || !composer) {
       throw new Error("quick-action browser-suppression fixture missing");
     }
+
+    expect(image.draggable).toBe(false);
 
     const cardContextMenu = new dom.window.Event("contextmenu", {
       bubbles: true,
@@ -818,8 +833,46 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
-    await waitMs(dom.window, 520);
+    await waitMs(dom.window, 700);
     expect(overlay.hidden).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(false);
+  });
+
+  it("cancels an active quick action without opening detail and restores a fresh click", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const overlay = document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    if (!card || !overlay) throw new Error("quick action card missing");
+
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
+    });
+    dispatchPointer(dom.window, card, "pointerdown", {
+      clientX: 80,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 480);
+    expect(overlay.hidden).toBe(false);
+    dispatchPointer(dom.window, card, "pointerup", {
+      clientX: 12,
+      clientY: 80,
+    });
+
+    expect(overlay.hidden).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    await waitMs(dom.window, 700);
     card.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
@@ -3506,7 +3559,9 @@ describe("mobile application preview", () => {
       /function isPcHorizontalWheel[\s\S]*carouselDirectionRatio/,
     );
     expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
-    expect(script).not.toMatch(/addEventListener\(\s*["']touchmove["']/);
+    expect(script).toMatch(
+      /function bindQuickActionScrollLock[\s\S]*addEventListener\(\s*["']touchmove["']/,
+    );
     expect(script).toContain("function bindPagerPointerTracking");
     expect(script).toContain("pagerPeekMoveOptions");
     expect(script).toContain("function syncBottomNavViewportInset");

@@ -76,7 +76,7 @@ button {
   pointer-events: none;
   border-radius: var(--app-content-radius);
   box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
-  transform: translate3d(0, -2px, 0) scale(1.018);
+  transform: translate3d(0, -3px, 0) scale(1.03);
   transform-origin: center;
 }
 
@@ -134,28 +134,20 @@ button {
 
 .app-quick-action__glyph {
   display: block;
+  width: 20px;
   height: 20px;
-  font-family: var(--yoyi-font-interface);
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.app-quick-action__glyph::before {
-  content: "☆";
-}
-
-[data-quick-action="like"] .app-quick-action__glyph::before {
-  content: "♡";
-}
-
-[data-quick-action="share"] .app-quick-action__glyph::before {
-  content: "↗";
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .app-quick-action__label {
   display: block;
+  font-family: var(--yoyi-font-interface);
   font-size: 11px;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -167,7 +159,7 @@ button {
       var(--quick-action-y, 0px),
       0
     )
-    scale(1.08);
+    scale(1.05);
 }
 
 .app-quick-action__status {
