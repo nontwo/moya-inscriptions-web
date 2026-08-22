@@ -658,6 +658,112 @@ afterEach(() => {
 });
 
 describe("mobile application preview", () => {
+  it("opens quick actions only after a stationary long press and cancels them on movement or viewport changes", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const overlay = document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    if (!card || !overlay) throw new Error("quick action card missing");
+
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
+    });
+
+    expect(card.dataset.quickActions).toBe("enabled");
+    expect(
+      document.querySelector("[data-bottom-navigation] [data-quick-actions]"),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-detail-focus] [data-quick-actions]"),
+    ).toBeNull();
+
+    dispatchPointer(dom.window, card, "pointerdown", {
+      clientX: 80,
+      clientY: 260,
+    });
+    dispatchPointer(dom.window, card, "pointermove", {
+      clientX: 94,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 500);
+    expect(overlay.hidden).toBe(true);
+
+    dispatchPointer(dom.window, card, "pointerdown", {
+      clientX: 80,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 480);
+    expect(overlay.hidden).toBe(false);
+    expect(document.querySelectorAll("[data-quick-action]")).toHaveLength(3);
+    expect(overlay.textContent).toContain("收藏");
+    expect(overlay.textContent).toContain("点赞");
+    expect(overlay.textContent).toContain("分享");
+
+    dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+    expect(overlay.hidden).toBe(true);
+  });
+
+  it("commits the selected quick action without opening detail and suppresses only the resulting click", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const overlay = document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    if (!card || !overlay) throw new Error("quick action card missing");
+
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
+    });
+    dispatchPointer(dom.window, card, "pointerdown", {
+      clientX: 80,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 480);
+    dispatchPointer(dom.window, card, "pointermove", {
+      clientX: 118,
+      clientY: 154,
+    });
+    expect(
+      document.querySelector("[data-quick-action='like']")?.classList,
+    ).toContain("is-candidate");
+    dispatchPointer(dom.window, card, "pointerup", {
+      clientX: 118,
+      clientY: 154,
+    });
+
+    expect(
+      JSON.parse(dom.window.sessionStorage.getItem("yoyi.qa-log") ?? "[]"),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "[quick-action] like discover-cliff-gate",
+        }),
+      ]),
+    );
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    await waitMs(dom.window, 520);
+    expect(overlay.hidden).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(false);
+  });
+
   it("starts on the discovery screen without visible branding or catalogue content", () => {
     const dom = renderPreview();
     const document = dom.window.document;
@@ -3096,6 +3202,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-pager="primary"');
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(html).toContain("data-theme-toggle");
+    expect(html).toContain(
+      "app-quick-action-overlay__backdrop yoyi-functional-glass",
+    );
     expect(html).toContain("data-layout-toggle");
     expect(html).not.toContain("data-theme-option");
     expect(html).not.toContain("data-layout-option");

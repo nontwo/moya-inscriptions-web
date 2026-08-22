@@ -84,6 +84,25 @@ const root = document.documentElement;
 root.dataset.dataset = prototypeDataset;
 const app = document.querySelector("[data-mobile-app]");
 const bottomNavigation = document.querySelector("[data-bottom-navigation]");
+const quickActionOverlay = document.querySelector(
+  "[data-quick-action-overlay]",
+);
+const quickActionCard = document.querySelector("[data-quick-action-card]");
+const quickActionStatus = document.querySelector("[data-quick-action-status]");
+const quickActionBubbles = Array.from(
+  document.querySelectorAll("[data-quick-action]"),
+);
+const quickActionLabels = {
+  collect: "收藏",
+  like: "点赞",
+  share: "分享",
+};
+const quickActionDelay = 460;
+const quickActionMovementTolerance = 10;
+let quickActionGesture = null;
+let quickActionCommitTimer = 0;
+let quickActionSuppressClickCard = null;
+let quickActionSuppressClickTimer = 0;
 const detailView = document.querySelector("[data-view='detail']");
 const detailImage = document.querySelector("[data-detail-image]");
 const detailTitle = document.querySelector("[data-detail-title]");
@@ -1268,6 +1287,7 @@ function closeMediaFocus() {
 
 function openMediaFocus() {
   if (!currentDetailMedia() || detailMediaFailed) return;
+  closeQuickAction();
   const detailScroll = document.querySelector('[data-scroll-view="detail"]');
   focusScrollTop = detailScroll?.scrollTop ?? 0;
   focusWindowScroll =
@@ -1792,6 +1812,7 @@ function openDetailById(
   contentId,
   { mediaIndex = 0, trigger = null, updateHistory = true } = {},
 ) {
+  closeQuickAction();
   saveScrollPosition();
   closeMediaFocus();
   detailContentId = contentId;
@@ -1820,6 +1841,7 @@ function openDetail(trigger, options = {}) {
 }
 
 function showView(view) {
+  closeQuickAction();
   if (view !== "detail") closeMediaFocus();
   const isNavigationView = navigationViews.includes(view);
   const isPagerView = primaryViews.includes(view);
@@ -4068,6 +4090,278 @@ function findContentTrigger(contentId) {
   );
 }
 
+function quickActionClamp(value, minimum, maximum) {
+  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
+}
+
+function clearQuickActionTimer() {
+  if (!quickActionGesture?.timer) return;
+  window.clearTimeout(quickActionGesture.timer);
+  quickActionGesture.timer = 0;
+}
+
+function setQuickActionCandidate(action = null) {
+  if (quickActionGesture) quickActionGesture.pendingAction = action;
+  quickActionBubbles.forEach((bubble) => {
+    bubble.classList.toggle(
+      "is-candidate",
+      bubble.dataset.quickAction === action,
+    );
+  });
+}
+
+function quickActionCandidateAtPoint(clientX, clientY) {
+  const hitZones = quickActionGesture?.hitZones;
+  if (!hitZones) return null;
+  for (const [action, zone] of hitZones) {
+    const inset = 10;
+    if (
+      clientX >= zone.left - inset &&
+      clientX <= zone.left + zone.width + inset &&
+      clientY >= zone.top - inset &&
+      clientY <= zone.top + zone.height + inset
+    ) {
+      return action;
+    }
+  }
+  return null;
+}
+
+function positionQuickActionMenu(gesture) {
+  if (!app) return;
+  const appRect = app.getBoundingClientRect();
+  const appWidth = Math.max(appRect.width, app.clientWidth, window.innerWidth);
+  const appHeight = Math.max(
+    appRect.height,
+    app.clientHeight,
+    window.innerHeight,
+  );
+  const cardRect = gesture.card.getBoundingClientRect();
+  const cardWidth = Math.max(cardRect.width, gesture.card.clientWidth, 1);
+  const cardHeight = Math.max(cardRect.height, gesture.card.clientHeight, 1);
+  const cardLeft = cardRect.left - appRect.left;
+  const cardTop = cardRect.top - appRect.top;
+  const bubbleSize = root.dataset.platform === "pc" ? 72 : 64;
+  const bubbleGap = 10;
+  const bubbleRowWidth =
+    bubbleSize * quickActionBubbles.length +
+    bubbleGap * (quickActionBubbles.length - 1);
+  const edgeGap = 12;
+  const navRect = bottomNavigation?.getBoundingClientRect();
+  const navTop =
+    navRect && navRect.height > 0 ? navRect.top - appRect.top : appHeight;
+  const belowY = cardTop + cardHeight + 14;
+  const aboveY = cardTop - bubbleSize - 14;
+  const preferredY =
+    aboveY >= edgeGap || belowY + bubbleSize > navTop - edgeGap
+      ? aboveY
+      : belowY;
+  const bubbleY = quickActionClamp(
+    preferredY,
+    edgeGap,
+    Math.min(appHeight - bubbleSize - edgeGap, navTop - bubbleSize - edgeGap),
+  );
+  const bubbleX = quickActionClamp(
+    cardLeft + cardWidth / 2 - bubbleRowWidth / 2,
+    edgeGap,
+    appWidth - bubbleRowWidth - edgeGap,
+  );
+  const hitZones = new Map();
+
+  quickActionCard?.replaceChildren(gesture.card.cloneNode(true));
+  if (quickActionCard) {
+    quickActionCard.style.left = `${cardLeft}px`;
+    quickActionCard.style.top = `${cardTop}px`;
+    quickActionCard.style.width = `${cardWidth}px`;
+    quickActionCard.style.height = `${cardHeight}px`;
+  }
+  quickActionBubbles.forEach((bubble, index) => {
+    const x = bubbleX + index * (bubbleSize + bubbleGap);
+    bubble.style.setProperty("--quick-action-x", `${x}px`);
+    bubble.style.setProperty("--quick-action-y", `${bubbleY}px`);
+    bubble.style.setProperty("--quick-action-bubble-size", `${bubbleSize}px`);
+    hitZones.set(bubble.dataset.quickAction, {
+      left: appRect.left + x,
+      top: appRect.top + bubbleY,
+      width: bubbleSize,
+      height: bubbleSize,
+    });
+  });
+  gesture.hitZones = hitZones;
+}
+
+function openQuickAction() {
+  const gesture = quickActionGesture;
+  if (!gesture || !gesture.card.isConnected || !quickActionOverlay) return;
+  gesture.timer = 0;
+  gesture.opened = true;
+  cancelActivePagerGesture({ animate: false });
+  try {
+    gesture.card.setPointerCapture?.(gesture.pointerId);
+  } catch {
+    // Pointer capture can be unavailable after a system gesture interruption.
+  }
+  quickActionOverlay.hidden = false;
+  quickActionOverlay.setAttribute("aria-hidden", "false");
+  app?.classList.add("is-quick-action-open");
+  quickActionStatus.textContent = "";
+  positionQuickActionMenu(gesture);
+  setQuickActionCandidate();
+}
+
+function closeQuickAction() {
+  const gesture = quickActionGesture;
+  clearQuickActionTimer();
+  if (quickActionCommitTimer) {
+    window.clearTimeout(quickActionCommitTimer);
+    quickActionCommitTimer = 0;
+  }
+  if (gesture?.opened) {
+    try {
+      if (gesture.card.hasPointerCapture?.(gesture.pointerId)) {
+        gesture.card.releasePointerCapture(gesture.pointerId);
+      }
+    } catch {
+      // The browser can release capture before this cancellation runs.
+    }
+  }
+  quickActionGesture = null;
+  setQuickActionCandidate();
+  app?.classList.remove("is-quick-action-open");
+  if (quickActionOverlay) {
+    quickActionOverlay.hidden = true;
+    quickActionOverlay.setAttribute("aria-hidden", "true");
+  }
+  if (quickActionCard) quickActionCard.replaceChildren();
+  quickActionBubbles.forEach((bubble) => {
+    bubble.style.removeProperty("--quick-action-x");
+    bubble.style.removeProperty("--quick-action-y");
+    bubble.style.removeProperty("--quick-action-bubble-size");
+  });
+  if (quickActionStatus) quickActionStatus.textContent = "";
+}
+
+function suppressQuickActionClick(card) {
+  quickActionSuppressClickCard = card;
+  if (quickActionSuppressClickTimer) {
+    window.clearTimeout(quickActionSuppressClickTimer);
+  }
+  quickActionSuppressClickTimer = window.setTimeout(() => {
+    quickActionSuppressClickCard = null;
+    quickActionSuppressClickTimer = 0;
+  }, 500);
+}
+
+function commitQuickAction(action, gesture) {
+  const label = quickActionLabels[action];
+  if (!label) {
+    closeQuickAction();
+    return;
+  }
+  suppressQuickActionClick(gesture.card);
+  quickActionStatus.textContent = `已选择${label}`;
+  logQaEvent("quick-action", `[quick-action] ${action} ${gesture.contentId}`);
+  quickActionCommitTimer = window.setTimeout(() => closeQuickAction(), 240);
+}
+
+function beginQuickAction(event) {
+  if (
+    !event.isPrimary ||
+    event.button > 0 ||
+    event.target.closest("input, textarea, select, a, [contenteditable='true']")
+  ) {
+    return;
+  }
+  closeQuickAction();
+  const card = event.currentTarget;
+  quickActionGesture = {
+    card,
+    contentId: card.dataset.contentId || "content-card",
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    opened: false,
+    pendingAction: null,
+    timer: 0,
+    hitZones: null,
+  };
+  quickActionGesture.timer = window.setTimeout(
+    openQuickAction,
+    quickActionDelay,
+  );
+}
+
+function moveQuickAction(event) {
+  const gesture = quickActionGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(
+    event.clientX - gesture.startX,
+    event.clientY - gesture.startY,
+  );
+  if (!gesture.opened) {
+    if (distance > quickActionMovementTolerance) closeQuickAction();
+    return;
+  }
+  event.preventDefault();
+  setQuickActionCandidate(
+    quickActionCandidateAtPoint(event.clientX, event.clientY),
+  );
+}
+
+function finishQuickAction(event) {
+  const gesture = quickActionGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return;
+  clearQuickActionTimer();
+  if (!gesture.opened) {
+    quickActionGesture = null;
+    return;
+  }
+  event.preventDefault();
+  const action =
+    quickActionCandidateAtPoint(event.clientX, event.clientY) ||
+    gesture.pendingAction;
+  if (!action) {
+    closeQuickAction();
+    return;
+  }
+  commitQuickAction(action, gesture);
+}
+
+function cancelQuickActionForSecondaryPointer(event) {
+  if (quickActionGesture && quickActionGesture.pointerId !== event.pointerId) {
+    closeQuickAction();
+  }
+}
+
+function bindQuickActions() {
+  document.querySelectorAll("[data-open-detail]").forEach((card) => {
+    card.dataset.quickActions = "enabled";
+    card.addEventListener("pointerdown", beginQuickAction);
+    card.addEventListener(
+      "click",
+      (event) => {
+        if (event.currentTarget !== quickActionSuppressClickCard) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        quickActionSuppressClickCard = null;
+        if (quickActionSuppressClickTimer) {
+          window.clearTimeout(quickActionSuppressClickTimer);
+          quickActionSuppressClickTimer = 0;
+        }
+      },
+      { capture: true },
+    );
+  });
+  window.addEventListener(
+    "pointerdown",
+    cancelQuickActionForSecondaryPointer,
+    true,
+  );
+  window.addEventListener("pointermove", moveQuickAction, { passive: false });
+  window.addEventListener("pointerup", finishQuickAction, { passive: false });
+  window.addEventListener("pointercancel", closeQuickAction, true);
+}
+
 renderSelectedDataset();
 preparePagers();
 observePagerSizes();
@@ -4164,6 +4458,7 @@ bindClicks("[data-qa-log-copy]", () => {
 bindClicks("[data-theme-toggle]", cycleThemePreference);
 bindClicks("[data-layout-toggle]", cycleHomeFeedLayout);
 bindClicks("[data-open-detail]", openDetail);
+bindQuickActions();
 
 document
   .querySelector("[data-detail-back]")
@@ -4366,6 +4661,7 @@ window.addEventListener("popstate", (event) => {
 function onPlatformQueryChange() {
   const previousPlatform = root.dataset.platform;
   const previousComposition = detailView?.dataset.detailComposition;
+  closeQuickAction();
   syncPlatformAttribute();
   updateDetailComposition();
   syncBottomNavViewportInset();
@@ -4456,6 +4752,7 @@ function onWindowSizeChange() {
 
 function onPagerViewportChange() {
   lastPagerWindowWidth = window.innerWidth;
+  closeQuickAction();
   cancelNavPointer();
   saveScrollPosition();
   updateDetailComposition();
@@ -4535,6 +4832,7 @@ window.visualViewport?.addEventListener("scroll", syncBottomNavViewportInset, {
   passive: true,
 });
 document.addEventListener("scroll", onNavigationScroll, true);
+document.addEventListener("scroll", closeQuickAction, true);
 document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
   scrollElement.addEventListener(
     "scroll",

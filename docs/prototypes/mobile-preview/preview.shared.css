@@ -55,6 +55,125 @@ button {
   isolation: isolate;
 }
 
+.app-quick-action-overlay {
+  position: absolute;
+  z-index: 80;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app-quick-action-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  opacity: 0.78;
+}
+
+.app-quick-action__card {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: var(--app-content-radius);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
+  transform: translate3d(0, -2px, 0) scale(1.018);
+  transform-origin: center;
+}
+
+.app-quick-action__card > * {
+  pointer-events: none;
+}
+
+.app-quick-action__bubbles {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+}
+
+.app-quick-action__bubble {
+  position: absolute;
+  display: grid;
+  width: var(--quick-action-bubble-size, 64px);
+  height: var(--quick-action-bubble-size, 64px);
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  border: 1px solid
+    color-mix(in srgb, var(--yoyi-color-text-primary) 12%, transparent);
+  border-radius: 50%;
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-surface) 90%,
+    transparent
+  );
+  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+  transform: translate3d(
+      var(--quick-action-x, 0px),
+      var(--quick-action-y, 0px),
+      0
+    )
+    scale(1);
+  transition:
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.app-quick-action__glyph {
+  display: block;
+  height: 20px;
+  font-family: var(--yoyi-font-interface);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.app-quick-action__glyph::before {
+  content: "☆";
+}
+
+[data-quick-action="like"] .app-quick-action__glyph::before {
+  content: "♡";
+}
+
+[data-quick-action="share"] .app-quick-action__glyph::before {
+  content: "↗";
+}
+
+.app-quick-action__label {
+  display: block;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.app-quick-action__bubble.is-candidate {
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+  transform: translate3d(
+      var(--quick-action-x, 0px),
+      var(--quick-action-y, 0px),
+      0
+    )
+    scale(1.08);
+}
+
+.app-quick-action__status {
+  position: absolute;
+  z-index: 3;
+  right: var(--yoyi-space-4);
+  bottom: calc(var(--app-bottom-nav-clearance) + var(--yoyi-space-3));
+  left: var(--yoyi-space-4);
+  margin: 0;
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-font-size-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
 .app-view {
   position: absolute;
   inset: 0;

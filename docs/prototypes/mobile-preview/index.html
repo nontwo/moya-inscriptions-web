@@ -1786,6 +1786,33 @@
         </nav>
 
         <div
+          class="app-quick-action-overlay"
+          data-quick-action-overlay
+          hidden
+          aria-hidden="true"
+        >
+          <div
+            class="app-quick-action-overlay__backdrop yoyi-functional-glass"
+          ></div>
+          <div class="app-quick-action__card" data-quick-action-card></div>
+          <div class="app-quick-action__bubbles" data-quick-action-bubbles>
+            <span class="app-quick-action__bubble" data-quick-action="collect"
+              ><span class="app-quick-action__glyph" aria-hidden="true"></span
+              ><span class="app-quick-action__label">收藏</span></span
+            >
+            <span class="app-quick-action__bubble" data-quick-action="like"
+              ><span class="app-quick-action__glyph" aria-hidden="true"></span
+              ><span class="app-quick-action__label">点赞</span></span
+            >
+            <span class="app-quick-action__bubble" data-quick-action="share"
+              ><span class="app-quick-action__glyph" aria-hidden="true"></span
+              ><span class="app-quick-action__label">分享</span></span
+            >
+          </div>
+          <p class="app-quick-action__status" data-quick-action-status></p>
+        </div>
+
+        <div
           class="app-loading yoyi-paper yoyi-paper--visible"
           data-loading-screen
           role="status"
