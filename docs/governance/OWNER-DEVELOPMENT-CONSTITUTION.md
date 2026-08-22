@@ -126,10 +126,18 @@ For implemented structural fields lacking authoritative data:
 - 说明 unavailable → section visible + `内容待接入`
 - 资料来源 empty → `内容待接入`
 - all 基本资料 absent → `资料待接入`
-- real record media absent → existing T02 QA virtual media
+- real record media absent → truthful missing-media presentation
+
+Independent T02 QA records retain their own virtual media for Development
+coverage. A real runtime record must never acquire unrelated QA/demo media.
 
 Development must not require Owner to remember a hidden/manual environment flag
 merely to inspect the complete implemented design.
+
+QA fixtures required by the approved Behavior Matrix must be available by
+default in normal Development / Owner QA. An explicit diagnostic flag may exist,
+but it must not be required to restore basic QA fixtures that are part of normal
+Development acceptance.
 
 ### Production
 
@@ -151,6 +159,15 @@ Frozen principle:
 
 > 正式态忠于真实数据；开发态忠于完整设计。
 
+### Prototype fixture boundary
+
+Prototype/QA fixture files may remain checked into the repository and available
+to the canonical T02 prototype and Development QA. Their repository presence
+does not authorize the formal Production root to consume them.
+
+Formal Production composition must exclude prototype-only records and content
+sources unless a separate approved Production task explicitly promotes them.
+
 ## 4. No semantic mixing of real and QA data
 
 Development may show:
@@ -159,9 +176,10 @@ real Record A + QA Record B
 
 But must never create:
 
-real CatalogId + prototype facts/title/description
+real CatalogId A + QA title/media/facts/Detail identity B
 
-unless a value is explicitly presentation-only QA fallback.
+Presentation-only QA placeholders are permitted only when their QA nature is
+explicit and they do not change canonical identity or canonical data.
 
 Presentation-only QA values must never enter:
 
@@ -265,14 +283,19 @@ Tests do not define requirements.
 
 For T02 integration, tests must distinguish as relevant:
 
-- real data;
-- QA data;
-- Development;
-- Production;
+- visible real/QA identity;
+- content/Catalog ID;
+- media origin;
+- Detail identity;
+- Development versus Production environment;
 - media present/missing;
 - content present/missing;
 - errors;
 - preserved T02 behavior.
+
+The physical existence of an old DOM fragment is not sufficient when the
+approved user-visible QA behavior or identity is no longer usable. Green CI does
+not override the approved Behavior Matrix.
 
 Owner visual/manual testing happens only after the scoped user-facing vertical
 slice is complete and automated validation passes.
@@ -308,6 +331,9 @@ Codex self-report is not sufficient.
 Layer 2: Owner manual/real-device acceptance for user-visible work.
 
 Both must pass before merge.
+
+CI passing by itself does not mean DONE. A failed Owner manual/real-device check
+keeps the task OPEN.
 
 ## 13. Bug-fix boundaries
 
@@ -350,15 +376,10 @@ It must have its own:
 
 No ordinary feature task may silently perform that migration.
 
-## 16. Model choice does not alter authority
+## 16. Model and tool choice does not alter authority
 
-Suggested resource workflow:
-
-- architecture/Plan → GPT-5.6 Sol High
-- implementation → GPT-5.6 Terra High
-- mechanical Git/small fixes → GPT-5.6 Luna
-
-Model choice never changes or overrides constitutional rules.
+Model or tool choice does not alter repository authority, Owner requirements,
+Scope, the approved Behavior Matrix, or governance.
 
 ## 17. Mandatory STOP conditions
 
