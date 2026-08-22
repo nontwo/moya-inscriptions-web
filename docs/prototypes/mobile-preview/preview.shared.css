@@ -66,7 +66,23 @@ button {
 .app-quick-action-overlay__backdrop {
   position: absolute;
   inset: 0;
-  opacity: 0.78;
+  opacity: 0.8;
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-page) 38%,
+    transparent
+  );
+  transition: opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.app-primary-shell,
+.app-bottom-navigation {
+  transition: filter var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.mobile-app.is-quick-action-open .app-primary-shell,
+.mobile-app.is-quick-action-open .app-bottom-navigation {
+  filter: blur(5px) saturate(84%);
 }
 
 .app-quick-action__card {
@@ -74,10 +90,23 @@ button {
   z-index: 1;
   overflow: hidden;
   pointer-events: none;
+  border: 1px solid
+    color-mix(in srgb, var(--yoyi-color-seal-red) 42%, transparent);
   border-radius: var(--app-content-radius);
-  box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
-  transform: translate3d(0, -3px, 0) scale(1.03);
+  box-shadow:
+    0 22px 48px rgb(0 0 0 / 28%),
+    0 0 0 3px color-mix(in srgb, var(--yoyi-color-seal-red) 10%, transparent);
+  opacity: 0;
+  transform: translate3d(
+      var(--quick-action-card-shift-x, 0px),
+      var(--quick-action-card-shift-y, 0px),
+      0
+    )
+    scale(0.97);
   transform-origin: center;
+  transition:
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-medium) var(--yoyi-easing-emphasized);
 }
 
 .app-quick-action__card > * {
@@ -120,16 +149,39 @@ button {
     transparent
   );
   box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+  opacity: 0;
+  transform: translate3d(
+      var(--quick-action-x, 0px),
+      var(--quick-action-y, 0px),
+      0
+    )
+    scale(0.86);
+  transition:
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.app-quick-action-overlay.is-ready .app-quick-action__card {
+  opacity: 1;
+  transform: translate3d(
+      var(--quick-action-card-shift-x, 0px),
+      var(--quick-action-card-shift-y, 0px),
+      0
+    )
+    scale(1.03);
+}
+
+.app-quick-action-overlay.is-ready .app-quick-action__bubble {
+  opacity: 1;
   transform: translate3d(
       var(--quick-action-x, 0px),
       var(--quick-action-y, 0px),
       0
     )
     scale(1);
-  transition:
-    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
-    color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
-    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+  transition-delay: var(--quick-action-delay, 0ms);
 }
 
 .app-quick-action__glyph {
@@ -151,7 +203,7 @@ button {
   line-height: 1;
 }
 
-.app-quick-action__bubble.is-candidate {
+.app-quick-action-overlay.is-ready .app-quick-action__bubble.is-candidate {
   color: var(--yoyi-color-seal-red);
   background: var(--yoyi-color-seal-red-muted);
   transform: translate3d(
@@ -159,7 +211,7 @@ button {
       var(--quick-action-y, 0px),
       0
     )
-    scale(1.05);
+    scale(1.06);
 }
 
 .app-quick-action__status {

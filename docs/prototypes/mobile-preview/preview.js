@@ -4186,6 +4186,55 @@ function quickActionCandidateAtPoint(clientX, clientY) {
   return null;
 }
 
+function quickActionLayoutPositions(layout, card, bounds, bubbleSize) {
+  const bubbleGap = 12;
+  const cardGap = 16;
+  const bubbleCount = quickActionBubbles.length;
+  const groupHeight = bubbleSize * bubbleCount + bubbleGap * (bubbleCount - 1);
+  const groupWidth = groupHeight;
+  const positions = [];
+
+  if (layout === "left-arc" || layout === "right-arc") {
+    const isLeft = layout === "left-arc";
+    const baseX = isLeft
+      ? card.left - bubbleSize - cardGap
+      : card.left + card.width + cardGap;
+    const startY = quickActionClamp(
+      card.top + card.height / 2 - groupHeight / 2,
+      bounds.top,
+      bounds.bottom - groupHeight,
+    );
+    quickActionBubbles.forEach((_, index) => {
+      positions.push({
+        x: baseX + (index === 1 ? (isLeft ? 10 : -10) : 0),
+        y: startY + index * (bubbleSize + bubbleGap),
+      });
+    });
+    return positions;
+  }
+
+  const isTop = layout === "top-arc";
+  const startX = quickActionClamp(
+    card.left + card.width / 2 - groupWidth / 2,
+    bounds.left,
+    bounds.right - groupWidth,
+  );
+  const baseY = isTop
+    ? card.top - bubbleSize - cardGap
+    : card.top + card.height + cardGap;
+  quickActionBubbles.forEach((_, index) => {
+    positions.push({
+      x: startX + index * (bubbleSize + bubbleGap),
+      y: quickActionClamp(
+        baseY + (index === 1 ? (isTop ? 10 : -10) : 0),
+        bounds.top,
+        bounds.bottom - bubbleSize,
+      ),
+    });
+  });
+  return positions;
+}
+
 function positionQuickActionMenu(gesture) {
   if (!app) return;
   const appRect = app.getBoundingClientRect();
@@ -4198,50 +4247,84 @@ function positionQuickActionMenu(gesture) {
   const cardRect = gesture.card.getBoundingClientRect();
   const cardWidth = Math.max(cardRect.width, gesture.card.clientWidth, 1);
   const cardHeight = Math.max(cardRect.height, gesture.card.clientHeight, 1);
-  const cardLeft = cardRect.left - appRect.left;
-  const cardTop = cardRect.top - appRect.top;
+  const card = {
+    height: cardHeight,
+    left: cardRect.left - appRect.left,
+    top: cardRect.top - appRect.top,
+    width: cardWidth,
+  };
   const bubbleSize = root.dataset.platform === "pc" ? 72 : 64;
-  const bubbleGap = 10;
-  const bubbleRowWidth =
-    bubbleSize * quickActionBubbles.length +
-    bubbleGap * (quickActionBubbles.length - 1);
   const edgeGap = 12;
   const navRect = bottomNavigation?.getBoundingClientRect();
+  const isPc = root.dataset.platform === "pc";
+  const isPcRail =
+    isPc &&
+    navRect &&
+    navRect.width > 0 &&
+    navRect.left <= appRect.left + edgeGap;
+  const view = gesture.card.closest(".app-view");
+  const topbarRect = view
+    ?.querySelector(".app-topbar")
+    ?.getBoundingClientRect();
+  const topbarBottom =
+    topbarRect && topbarRect.height > 0
+      ? topbarRect.bottom - appRect.top + edgeGap
+      : edgeGap;
   const navTop =
-    navRect && navRect.height > 0 ? navRect.top - appRect.top : appHeight;
-  const belowY = cardTop + cardHeight + 14;
-  const aboveY = cardTop - bubbleSize - 14;
-  const preferredY =
-    aboveY >= edgeGap || belowY + bubbleSize > navTop - edgeGap
-      ? aboveY
-      : belowY;
-  const bubbleY = quickActionClamp(
-    preferredY,
-    edgeGap,
-    Math.min(appHeight - bubbleSize - edgeGap, navTop - bubbleSize - edgeGap),
-  );
-  const bubbleX = quickActionClamp(
-    cardLeft + cardWidth / 2 - bubbleRowWidth / 2,
-    edgeGap,
-    appWidth - bubbleRowWidth - edgeGap,
+    !isPc && navRect && navRect.height > 0
+      ? navRect.top - appRect.top - edgeGap
+      : appHeight - edgeGap;
+  const bounds = {
+    bottom: Math.max(topbarBottom + bubbleSize, navTop),
+    left: isPcRail ? navRect.right - appRect.left + edgeGap : edgeGap,
+    right: appWidth - edgeGap,
+    top: Math.max(edgeGap, topbarBottom),
+  };
+  const leftSpace = card.left - bounds.left;
+  const rightSpace = bounds.right - (card.left + card.width);
+  const topSpace = card.top - bounds.top;
+  const bottomSpace = bounds.bottom - (card.top + card.height);
+  const sideRequirement = bubbleSize + 16;
+  const verticalRequirement = bubbleSize + 16;
+  const layout =
+    leftSpace >= sideRequirement || rightSpace >= sideRequirement
+      ? leftSpace >= rightSpace
+        ? "left-arc"
+        : "right-arc"
+      : topSpace >= verticalRequirement || bottomSpace >= verticalRequirement
+        ? topSpace >= bottomSpace
+          ? "top-arc"
+          : "bottom-arc"
+        : bottomSpace >= topSpace
+          ? "bottom-arc"
+          : "top-arc";
+  const positions = quickActionLayoutPositions(
+    layout,
+    card,
+    bounds,
+    bubbleSize,
   );
   const hitZones = new Map();
 
   quickActionCard?.replaceChildren(gesture.card.cloneNode(true));
   if (quickActionCard) {
-    quickActionCard.style.left = `${cardLeft}px`;
-    quickActionCard.style.top = `${cardTop}px`;
+    quickActionCard.style.left = `${card.left}px`;
+    quickActionCard.style.top = `${card.top}px`;
     quickActionCard.style.width = `${cardWidth}px`;
     quickActionCard.style.height = `${cardHeight}px`;
+    quickActionCard.style.setProperty("--quick-action-card-shift-x", "0px");
+    quickActionCard.style.setProperty("--quick-action-card-shift-y", "-4px");
   }
+  quickActionOverlay.dataset.layout = layout;
   quickActionBubbles.forEach((bubble, index) => {
-    const x = bubbleX + index * (bubbleSize + bubbleGap);
+    const { x, y } = positions[index];
     bubble.style.setProperty("--quick-action-x", `${x}px`);
-    bubble.style.setProperty("--quick-action-y", `${bubbleY}px`);
+    bubble.style.setProperty("--quick-action-y", `${y}px`);
     bubble.style.setProperty("--quick-action-bubble-size", `${bubbleSize}px`);
+    bubble.style.setProperty("--quick-action-delay", `${index * 55}ms`);
     hitZones.set(bubble.dataset.quickAction, {
       left: appRect.left + x,
-      top: appRect.top + bubbleY,
+      top: appRect.top + y,
       width: bubbleSize,
       height: bubbleSize,
     });
@@ -4264,11 +4347,17 @@ function openQuickAction() {
   }
   quickActionOverlay.hidden = false;
   quickActionOverlay.setAttribute("aria-hidden", "false");
+  quickActionOverlay.classList.remove("is-ready");
   app?.classList.add("is-quick-action-open");
   bindQuickActionScrollLock();
   quickActionStatus.textContent = "";
   positionQuickActionMenu(gesture);
   setQuickActionCandidate();
+  window.requestAnimationFrame(() => {
+    if (quickActionGesture === gesture && !quickActionOverlay.hidden) {
+      quickActionOverlay.classList.add("is-ready");
+    }
+  });
 }
 
 function closeQuickAction() {
@@ -4289,14 +4378,19 @@ function closeQuickAction() {
   setQuickActionCandidate();
   app?.classList.remove("is-quick-action-open");
   if (quickActionOverlay) {
+    quickActionOverlay.classList.remove("is-ready");
+    delete quickActionOverlay.dataset.layout;
     quickActionOverlay.hidden = true;
     quickActionOverlay.setAttribute("aria-hidden", "true");
   }
   if (quickActionCard) quickActionCard.replaceChildren();
+  quickActionCard?.style.removeProperty("--quick-action-card-shift-x");
+  quickActionCard?.style.removeProperty("--quick-action-card-shift-y");
   quickActionBubbles.forEach((bubble) => {
     bubble.style.removeProperty("--quick-action-x");
     bubble.style.removeProperty("--quick-action-y");
     bubble.style.removeProperty("--quick-action-bubble-size");
+    bubble.style.removeProperty("--quick-action-delay");
   });
   if (quickActionStatus) quickActionStatus.textContent = "";
 }

@@ -718,9 +718,19 @@ describe("mobile application preview", () => {
     expect(overlay.textContent).toContain("点赞");
     expect(overlay.textContent).toContain("分享");
 
+    const likeBubble = document.querySelector<HTMLElement>(
+      "[data-quick-action='like']",
+    );
+    if (!likeBubble) throw new Error("quick-action like bubble missing");
     const actionMove = dispatchPointer(dom.window, card, "pointermove", {
-      clientX: 118,
-      clientY: 154,
+      clientX:
+        Number.parseFloat(
+          likeBubble.style.getPropertyValue("--quick-action-x"),
+        ) + 32,
+      clientY:
+        Number.parseFloat(
+          likeBubble.style.getPropertyValue("--quick-action-y"),
+        ) + 32,
     });
     expect(actionMove.defaultPrevented).toBe(true);
     const actionTouchMove = new dom.window.Event("touchmove", {
@@ -732,6 +742,126 @@ describe("mobile application preview", () => {
 
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
     expect(overlay.hidden).toBe(true);
+  });
+
+  it("adapts quick-action arcs to the focused card and protected UI bounds", async () => {
+    const openAt = async (
+      dom: PreviewDom,
+      rect: { height: number; left: number; top: number; width: number },
+    ) => {
+      const card = dom.window.document.querySelector<HTMLElement>(
+        '[data-content-id="discover-cliff-gate"]',
+      );
+      if (!card) throw new Error("quick-action card missing");
+      Object.defineProperty(card, "getBoundingClientRect", {
+        configurable: true,
+        value: () => rect,
+      });
+      dispatchPointer(dom.window, card, "pointerdown", {
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      });
+      await waitMs(dom.window, 480);
+      return card;
+    };
+
+    const rightBiased = renderPreview();
+    const rightBiasedOverlay =
+      rightBiased.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(rightBiased, { left: 210, top: 200, width: 160, height: 180 });
+    expect(rightBiasedOverlay?.dataset.layout).toBe("left-arc");
+
+    const leftBiased = renderPreview();
+    const leftBiasedOverlay =
+      leftBiased.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(leftBiased, { left: 20, top: 200, width: 160, height: 180 });
+    expect(leftBiasedOverlay?.dataset.layout).toBe("right-arc");
+
+    const edgeBound = renderPreview();
+    const edgeDocument = edgeBound.window.document;
+    const navigation = edgeDocument.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const topbar = edgeDocument.querySelector<HTMLElement>(".app-topbar");
+    if (!navigation || !topbar) throw new Error("quick-action bounds missing");
+    Object.defineProperty(navigation, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ height: 80, left: 0, top: 700, width: 390 }),
+    });
+    Object.defineProperty(topbar, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ bottom: 70, height: 70, left: 0, top: 0, width: 390 }),
+    });
+    await openAt(edgeBound, { left: 20, top: 600, width: 160, height: 140 });
+    expect(
+      [
+        ...edgeDocument.querySelectorAll<HTMLElement>("[data-quick-action]"),
+      ].every((bubble) => {
+        const y = Number.parseFloat(
+          bubble.style.getPropertyValue("--quick-action-y"),
+        );
+        return y >= 82 && y + 64 <= 688;
+      }),
+    ).toBe(true);
+
+    const wideCard = renderPreview();
+    const wideCardOverlay = wideCard.window.document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    await openAt(wideCard, { left: 12, top: 110, width: 366, height: 180 });
+    expect(wideCardOverlay?.dataset.layout).toBe("bottom-arc");
+
+    const desktop = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 768,
+        viewportWidth: 1024,
+      },
+    );
+    const desktopNavigation =
+      desktop.window.document.querySelector<HTMLElement>(
+        "[data-bottom-navigation]",
+      );
+    if (!desktopNavigation) throw new Error("PC rail missing");
+    Object.defineProperty(desktopNavigation, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        bottom: 768,
+        height: 768,
+        left: 0,
+        right: 104,
+        top: 0,
+        width: 104,
+      }),
+    });
+    await openAt(desktop, { left: 720, top: 220, width: 180, height: 220 });
+    expect(
+      [
+        ...desktop.window.document.querySelectorAll<HTMLElement>(
+          "[data-quick-action]",
+        ),
+      ].every(
+        (bubble) =>
+          Number.parseFloat(
+            bubble.style.getPropertyValue("--quick-action-x"),
+          ) >= 116,
+      ),
+    ).toBe(true);
+  });
+
+  it("adds focused-card and staged quick-action visual treatment", () => {
+    expect(sharedCss).toContain("filter: blur(5px) saturate(84%)");
+    expect(sharedCss).toContain("--quick-action-card-shift-y");
+    expect(sharedCss).toContain(".app-quick-action-overlay.is-ready");
+    expect(sharedCss).toContain("--quick-action-delay");
+    expect(sharedCss).toContain("scale(1.06)");
   });
 
   it("limits browser long-press suppression to quick-action cards and their media", () => {
@@ -805,16 +935,26 @@ describe("mobile application preview", () => {
       clientY: 260,
     });
     await waitMs(dom.window, 480);
+    const likeBubble = document.querySelector<HTMLElement>(
+      "[data-quick-action='like']",
+    );
+    if (!likeBubble) throw new Error("quick-action like bubble missing");
+    const likeX =
+      Number.parseFloat(likeBubble.style.getPropertyValue("--quick-action-x")) +
+      32;
+    const likeY =
+      Number.parseFloat(likeBubble.style.getPropertyValue("--quick-action-y")) +
+      32;
     dispatchPointer(dom.window, card, "pointermove", {
-      clientX: 118,
-      clientY: 154,
+      clientX: likeX,
+      clientY: likeY,
     });
     expect(
       document.querySelector("[data-quick-action='like']")?.classList,
     ).toContain("is-candidate");
     dispatchPointer(dom.window, card, "pointerup", {
-      clientX: 118,
-      clientY: 154,
+      clientX: likeX,
+      clientY: likeY,
     });
 
     expect(
