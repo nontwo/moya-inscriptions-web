@@ -28,24 +28,24 @@
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260822-nav-proportion"
+      href="./preview.shared.css?v=20260822-create-composer"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260822-nav-proportion"
+      href="./preview.css?v=20260822-create-composer"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260822-nav-proportion"
+      href="./preview.tablet.css?v=20260822-create-composer"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260822-nav-proportion"
+      href="./preview.pc.css?v=20260822-create-composer"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -520,6 +520,102 @@
                   </main>
                 </div>
               </div>
+            </section>
+
+            <section
+              class="app-view app-pager__page app-create"
+              data-view="create"
+              data-pager-page="create"
+              aria-label="创作"
+            >
+              <header class="app-topbar app-topbar--create">
+                <span class="app-topbar__spacer" aria-hidden="true"></span>
+                <h1 class="app-topbar__title">创作</h1>
+                <button
+                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
+                  data-open-settings
+                  aria-label="打开设置"
+                  type="button"
+                >
+                  <span
+                    class="yoyi-icon"
+                    data-icon="settings"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+              </header>
+              <main
+                class="app-scroll app-create__scroll"
+                data-scroll-view="create"
+                data-scroll-key="create"
+              >
+                <div class="app-create__layout">
+                  <section
+                    class="app-create-composer"
+                    data-create-composer
+                    aria-labelledby="create-composer-title"
+                  >
+                    <h2 class="yoyi-visually-hidden" id="create-composer-title">
+                      提交内容
+                    </h2>
+                    <textarea
+                      class="yoyi-textarea app-create-composer__text"
+                      data-create-text
+                      aria-label="创作内容"
+                      placeholder="分享你的书法、碑刻、拓本与所见所感…"
+                      rows="10"
+                    ></textarea>
+                    <p
+                      class="app-create-composer__status"
+                      data-create-feedback
+                      role="status"
+                      aria-live="polite"
+                    >
+                      仅用于界面演示，内容不会保存或发布
+                    </p>
+                    <footer class="app-create-composer__toolbar">
+                      <div
+                        class="app-create-composer__tools"
+                        aria-label="创作工具"
+                      >
+                        <button
+                          class="yoyi-button yoyi-button--quiet yoyi-button--sm app-create-action"
+                          data-create-media
+                          aria-label="添加图片（功能待接入）"
+                          type="button"
+                        >
+                          <span
+                            class="yoyi-icon yoyi-icon--sm"
+                            data-icon="image"
+                            aria-hidden="true"
+                          ></span>
+                          <span>图片</span>
+                        </button>
+                        <button
+                          class="yoyi-button yoyi-button--quiet yoyi-button--sm app-create-action"
+                          data-create-tags
+                          aria-label="添加标签（功能待接入）"
+                          type="button"
+                        >
+                          <span
+                            class="app-create-action__hash"
+                            aria-hidden="true"
+                            >#</span
+                          >
+                          <span>标签</span>
+                        </button>
+                      </div>
+                      <button
+                        class="yoyi-button yoyi-button--sm app-create-submit"
+                        data-create-submit
+                        type="button"
+                      >
+                        提交
+                      </button>
+                    </footer>
+                  </section>
+                </div>
+              </main>
             </section>
 
             <section
@@ -1353,8 +1449,8 @@
           <button
             class="yoyi-navigation-entry"
             data-nav-entry
-            data-nav-action="create"
-            aria-label="创作（功能预留）"
+            data-primary-view="create"
+            aria-label="创作"
             type="button"
           >
             <span class="yoyi-icon-wrap" aria-hidden="true">
@@ -1421,6 +1517,6 @@
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
     <script src="./fixtures/p5-pilot.snapshot.js"></script>
     <script src="./catalog-ui-adapter.js?v=20260819-media-pager"></script>
-    <script src="./preview.js?v=20260822-nav-proportion"></script>
+    <script src="./preview.js?v=20260822-create-composer"></script>
   </body>
 </html>

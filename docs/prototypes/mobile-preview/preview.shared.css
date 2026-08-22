@@ -189,6 +189,101 @@ html[data-platform="tablet"] .app-view {
   text-align: center;
 }
 
+.app-topbar--create {
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
+.app-create__scroll {
+  padding: var(--yoyi-space-4) var(--yoyi-space-3)
+    var(--app-bottom-nav-clearance);
+}
+
+.app-create__layout {
+  width: min(100%, 860px);
+  min-height: 100%;
+  margin-inline: auto;
+}
+
+.app-create-composer {
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--app-content-radius);
+  box-shadow: var(--app-elevation-panel);
+  transition:
+    border-color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.app-create-composer:focus-within {
+  border-color: var(--yoyi-color-border-strong);
+  box-shadow:
+    0 0 0 2px var(--yoyi-color-focus-ring),
+    var(--app-elevation-panel);
+}
+
+.app-create-composer__text.yoyi-textarea {
+  box-sizing: border-box;
+  min-height: clamp(260px, 48dvh, 440px);
+  padding: var(--yoyi-space-6);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  resize: none;
+  font-size: max(1rem, var(--yoyi-type-input-size));
+  line-height: 1.75;
+}
+
+.app-create-composer__status {
+  min-height: 20px;
+  margin: 0;
+  padding: var(--yoyi-space-3) var(--yoyi-space-5) 0;
+  color: var(--yoyi-color-text-secondary);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+  font-size: var(--yoyi-type-metadata-size);
+  line-height: 1.5;
+}
+
+.app-create-composer__toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-2) var(--yoyi-space-3) var(--yoyi-space-3);
+}
+
+.app-create-composer__tools {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--yoyi-space-1);
+}
+
+.app-create-action.yoyi-button {
+  min-width: 0;
+  gap: var(--yoyi-space-2);
+  padding-inline: var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  font-weight: 500;
+}
+
+.app-create-action__hash {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.app-create-submit {
+  min-width: 88px;
+}
+
 .app-primary-tabs {
   position: relative;
   display: grid;

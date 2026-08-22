@@ -124,6 +124,14 @@
     --app-inscription-thumb: 72px;
     --app-inscription-card-height: 88px;
   }
+
+  html[data-platform="phone"] .app-create__scroll {
+    padding-top: var(--yoyi-space-2);
+  }
+
+  html[data-platform="phone"] .app-create-composer__text.yoyi-textarea {
+    min-height: 150px;
+  }
 }
 
 /* Physical phones keep the bottom Tab Bar in either orientation. */

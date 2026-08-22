@@ -100,6 +100,19 @@
     padding-inline: var(--yoyi-space-5);
   }
 
+  .app-create__scroll {
+    padding: var(--yoyi-space-6) var(--yoyi-space-7)
+      var(--app-bottom-nav-clearance);
+  }
+
+  .app-create__layout {
+    width: min(100%, var(--yoyi-container-reading));
+  }
+
+  .app-create-composer__text.yoyi-textarea {
+    min-height: clamp(360px, 48dvh, 520px);
+  }
+
   .app-topbar--detail,
   .app-topbar--settings {
     grid-template-columns: 48px minmax(0, 1fr) 48px;
@@ -193,6 +206,10 @@
   html[data-platform="tablet"] .app-view {
     padding-bottom: 0;
     padding-left: 0;
+  }
+
+  html[data-platform="tablet"] .app-create-composer__text.yoyi-textarea {
+    min-height: 320px;
   }
 
   html[data-platform="tablet"]

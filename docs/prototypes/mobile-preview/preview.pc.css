@@ -148,6 +148,13 @@ html {
     overflow: hidden;
   }
 
+  html[data-platform="pc"]
+    .app-primary-shell:not(.is-pager-following)
+    > .app-pager__track
+    > .app-view:not(.is-pager-active) {
+    padding-left: 0;
+  }
+
   html[data-platform="pc"] .app-inscriptions-layout,
   html[data-platform="pc"] .app-inscriptions-list-pane {
     display: block;
@@ -210,6 +217,10 @@ html {
     align-items: center;
   }
 
+  .app-topbar--create {
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
+  }
+
   .app-topbar--search {
     grid-template-columns: minmax(0, 1fr) 52px;
     gap: var(--yoyi-space-4);
@@ -218,6 +229,21 @@ html {
   .app-topbar--categories {
     grid-template-columns: auto minmax(12rem, 1fr) 52px;
     gap: var(--yoyi-space-4);
+  }
+
+  .app-create__scroll {
+    box-sizing: border-box;
+    min-height: calc(100dvh - 68px);
+    padding: clamp(32px, 5vw, 64px);
+    overflow: visible;
+  }
+
+  .app-create__layout {
+    width: min(100%, 860px);
+  }
+
+  .app-create-composer__text.yoyi-textarea {
+    min-height: clamp(360px, 48dvh, 480px);
   }
 
   .app-topic-card__title {

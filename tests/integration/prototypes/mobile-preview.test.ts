@@ -690,7 +690,7 @@ describe("mobile application preview", () => {
         .querySelector("[data-bottom-navigation] .yoyi-logo")
         ?.closest(".app-nav-brand"),
     ).toBeTruthy();
-    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(3);
+    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(4);
     expect(document.querySelectorAll("[data-nav-entry]")).toHaveLength(5);
     expect(
       [...document.querySelectorAll<HTMLElement>("[data-nav-entry]")].map(
@@ -754,7 +754,7 @@ describe("mobile application preview", () => {
     expect(new Set(contentIds).size).toBe(contentIds.length);
     expect(document.querySelector('[data-label="tab-discover"]')).toBeNull();
     expect(document.querySelector('[data-label="tab-nearby"]')).toBeNull();
-    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(3);
+    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(4);
     expect(document.querySelector("[data-calligraphy-filter]")).toBeTruthy();
     expect(document.querySelector("[data-theme-cycle]")).toBeNull();
     expect(
@@ -763,6 +763,69 @@ describe("mobile application preview", () => {
     expect(html.indexOf("yoyi.theme-preference")).toBeLessThan(
       html.indexOf("theme.css"),
     );
+  });
+
+  it("opens the create composer and keeps every action presentation-only", async () => {
+    const dom = renderPreview({}, { viewportWidth: 390 });
+    const document = dom.window.document;
+    const createTab = document.querySelector<HTMLElement>(
+      '[data-primary-view="create"]',
+    );
+    const createView = document.querySelector<HTMLElement>(
+      '[data-view="create"]',
+    );
+    const textarea =
+      document.querySelector<HTMLTextAreaElement>("[data-create-text]");
+    const feedback = document.querySelector<HTMLElement>(
+      "[data-create-feedback]",
+    );
+    if (!createTab || !createView || !textarea || !feedback) {
+      throw new Error("create composer fixture missing");
+    }
+
+    createTab.click();
+    await waitForAnimationFrames(dom.window, 40);
+    expect(createView.classList).toContain("is-pager-active");
+    expect(createTab.classList).toContain("is-active");
+    expect(createTab.getAttribute("aria-current")).toBe("page");
+    expect(dom.window.history.state).toEqual({
+      kind: "primary",
+      view: "create",
+    });
+    expect(textarea.placeholder).toBe("分享你的书法、碑刻、拓本与所见所感…");
+    expect(document.querySelector("[data-create-composer]")).toBeTruthy();
+    expect(createView.querySelectorAll("[data-create-composer]")).toHaveLength(
+      1,
+    );
+    expect(createView.querySelector('input[type="file"]')).toBeNull();
+    expect(createView.querySelector("form")).toBeNull();
+
+    textarea.focus();
+    textarea.value = "临时创作内容";
+    textarea.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    document.querySelector<HTMLElement>("[data-create-media]")?.click();
+    expect(feedback.textContent).toContain("不会打开文件选择器");
+    document.querySelector<HTMLElement>("[data-create-tags]")?.click();
+    expect(feedback.textContent).toContain("标签功能待接入");
+    document.querySelector<HTMLElement>("[data-create-submit]")?.click();
+    expect(feedback.textContent).toContain("内容未发布");
+    expect(textarea.value).toBe("临时创作内容");
+    expect(dom.window.history.state).toEqual({
+      kind: "primary",
+      view: "create",
+    });
+    expect(createView.textContent).not.toContain("发布成功");
+
+    const qaLog = dom.window.sessionStorage.getItem("yoyi.qa-log");
+    expect(qaLog).toContain("composer focused");
+    expect(qaLog).toContain("[create] reserved media action");
+    expect(qaLog).toContain("[create] reserved tags action");
+    expect(qaLog).toContain("[create] reserved submit action");
+
+    document.querySelector<HTMLElement>('[data-primary-view="home"]')?.click();
+    createTab.click();
+    await waitForAnimationFrames(dom.window, 40);
+    expect(textarea.value).toBe("临时创作内容");
   });
 
   it("opens every supplemental home card with the existing detail behavior", () => {
@@ -1957,7 +2020,7 @@ describe("mobile application preview", () => {
   it("opens settings from every primary view and returns to its source", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
-    for (const view of ["home", "inscriptions", "calligraphy"]) {
+    for (const view of ["home", "inscriptions", "create", "calligraphy"]) {
       document
         .querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
         ?.click();
@@ -2440,6 +2503,21 @@ describe("mobile application preview", () => {
   });
 
   it("keeps the five-entry navigation in the approved device matrix", () => {
+    const expectCreateView = (document: Document) => {
+      document
+        .querySelector<HTMLElement>('[data-primary-view="create"]')
+        ?.click();
+      expect(
+        document.querySelector<HTMLElement>('[data-view="create"]')?.classList,
+      ).toContain("is-pager-active");
+      expect(
+        document
+          .querySelector('[data-primary-view="create"]')
+          ?.classList.contains("is-active"),
+      ).toBe(true);
+      expect(document.querySelector("[data-create-text]")).toBeTruthy();
+    };
+
     for (const [viewportWidth, viewportHeight] of [
       [390, 844],
       [844, 390],
@@ -2463,6 +2541,7 @@ describe("mobile application preview", () => {
           "[data-bottom-navigation] [data-nav-entry]",
         ),
       ).toHaveLength(5);
+      expectCreateView(phone.window.document);
     }
 
     for (const [viewportWidth, viewportHeight] of [
@@ -2487,6 +2566,7 @@ describe("mobile application preview", () => {
           "[data-bottom-navigation] [data-nav-entry]",
         ),
       ).toHaveLength(5);
+      expectCreateView(tablet.window.document);
     }
 
     for (const [viewportWidth, platform] of [
@@ -2513,6 +2593,7 @@ describe("mobile application preview", () => {
           "[data-bottom-navigation] [data-nav-entry]",
         ),
       ).toHaveLength(5);
+      expectCreateView(desktop.window.document);
     }
   });
 
@@ -2683,6 +2764,9 @@ describe("mobile application preview", () => {
     expect(pcCss).toContain("height: 100dvh");
     expect(pcCss).toContain("background: var(--yoyi-color-background-muted)");
     expect(pcCss).not.toContain("box-shadow: inset 2px 0 0");
+    expect(pcCss).toMatch(
+      /\.app-primary-shell:not\(\.is-pager-following\)[\s\S]*\.app-view:not\(\.is-pager-active\)[\s\S]*padding-left: 0/,
+    );
     expect(script).toContain('root.dataset.platform === "pc") return;');
     expect(pcCss).toContain(".app-nav-brand {\n    display: none;");
     expect(pcCss).not.toContain("calc(164px + env(safe-area-inset-left))");
@@ -2805,13 +2889,27 @@ describe("mobile application preview", () => {
     expect(html).not.toContain("data-preview-tab");
     expect(html).not.toContain("data-shell-control");
     expect(html).toContain('data-primary-view="inscriptions"');
+    expect(html).toContain('data-view="create"');
     expect(html).toContain('data-primary-view="calligraphy"');
-    expect(html).toContain('data-nav-action="create"');
+    expect(html).toContain('data-primary-view="create"');
     expect(html).toContain('data-nav-action="profile"');
     expect(html).toContain('data-icon="create"');
     expect(html).toContain('data-icon="profile"');
     expect(html).toContain('data-label="nav-create"');
     expect(html).toContain('data-label="nav-profile"');
+    for (const hook of [
+      "data-create-composer",
+      "data-create-text",
+      "data-create-media",
+      "data-create-tags",
+      "data-create-submit",
+    ]) {
+      expect(html).toContain(hook);
+    }
+    expect(sharedCss).toContain(".app-create-composer:focus-within");
+    expect(sharedCss).toContain("var(--yoyi-color-background-surface)");
+    expect(script).toContain("function handleReservedCreateAction");
+    expect(script).not.toContain("fetch(");
     expect(html).not.toContain("app-nav-text-label");
     expect(sharedCss).toContain(
       '-webkit-mask-image: url("./assets/nav-create.svg")',
@@ -2857,9 +2955,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260822-nav-proportion"',
+      'href="./preview.shared.css?v=20260822-create-composer"',
     );
-    expect(html).toContain('src="./preview.js?v=20260822-nav-proportion"');
+    expect(html).toContain('src="./preview.js?v=20260822-create-composer"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
@@ -2894,7 +2992,7 @@ describe("mobile application preview", () => {
     expect(script).toContain("pagerPeekMoveOptions");
     expect(script).toContain("function syncBottomNavViewportInset");
     expect(sharedCss).toContain(".app-topics__grid");
-    expect(html).not.toMatch(/收藏|下载|分享|著录|拓片信息|相关碑刻/);
+    expect(html).not.toMatch(/收藏|下载|著录|拓片信息|相关碑刻/);
     expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
     expect(html).not.toContain("<h2>图像</h2>");
     expect(html).not.toContain("data-detail-gallery");
@@ -3115,6 +3213,58 @@ describe("mobile application preview", () => {
     ).toBe(false);
   });
 
+  it("keeps the create composer active across the 895 and 896px boundary", async () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 895,
+      },
+    );
+    const document = dom.window.document;
+    const textarea =
+      document.querySelector<HTMLTextAreaElement>("[data-create-text]");
+    document
+      .querySelector<HTMLElement>('[data-primary-view="create"]')
+      ?.click();
+    await waitForAnimationFrames(dom.window, 40);
+    if (!textarea) throw new Error("create textarea missing");
+    textarea.value = "断点切换中的临时内容";
+
+    expect(document.documentElement.dataset.platform).toBe("tablet");
+    expect(
+      document.querySelector<HTMLElement>('[data-view="create"]')?.classList,
+    ).toContain("is-pager-active");
+    expect(
+      document
+        .querySelector("[data-bottom-navigation]")
+        ?.classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
+
+    setViewportWidth(dom, 896);
+    expect(document.documentElement.dataset.platform).toBe("pc");
+    expect(textarea.value).toBe("断点切换中的临时内容");
+    expect(
+      document
+        .querySelector('[data-primary-view="create"]')
+        ?.classList.contains("is-active"),
+    ).toBe(true);
+    expect(
+      document
+        .querySelector("[data-bottom-navigation]")
+        ?.classList.contains("yoyi-functional-glass"),
+    ).toBe(false);
+
+    setViewportWidth(dom, 895);
+    expect(document.documentElement.dataset.platform).toBe("tablet");
+    expect(textarea.value).toBe("断点切换中的临时内容");
+    expect(document.querySelectorAll("[data-bottom-navigation]")).toHaveLength(
+      1,
+    );
+  });
+
   it("keeps an open inscription detail across the 896px shell boundary", () => {
     const dom = renderPreview(
       {},
@@ -3177,7 +3327,7 @@ describe("mobile application preview", () => {
     discover.dispatchEvent(new phone.window.Event("scroll"));
     expect(navigation.dataset.minimized).toBe("true");
     expect(navigation.classList.contains("is-minimized")).toBe(true);
-    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(3);
+    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(4);
 
     discover.scrollTop = 4;
     discover.dispatchEvent(new phone.window.Event("scroll"));
@@ -3215,6 +3365,11 @@ describe("mobile application preview", () => {
     ).toBe(true);
 
     swipe(phone.window, navigation, { x: 150, y: 730 }, { x: 250, y: 730 });
+    expect(
+      phoneDocument.querySelector<HTMLElement>('[data-view="create"]')?.hidden,
+    ).toBe(false);
+
+    swipe(phone.window, navigation, { x: 250, y: 730 }, { x: 350, y: 730 });
     expect(
       phoneDocument.querySelector<HTMLElement>('[data-view="calligraphy"]')
         ?.hidden,
@@ -3270,40 +3425,40 @@ describe("mobile application preview", () => {
     expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
 
-  it("keeps reserved create and profile actions presentation-only", () => {
+  it("keeps the reserved profile action presentation-only", () => {
     const dom = renderPreview({}, { viewportWidth: 390 });
     const document = dom.window.document;
     const navigation = document.querySelector<HTMLElement>(
       "[data-bottom-navigation]",
     );
     const create = navigation?.querySelector<HTMLElement>(
-      '[data-nav-action="create"]',
+      '[data-primary-view="create"]',
     );
     const profile = navigation?.querySelector<HTMLElement>(
       '[data-nav-action="profile"]',
     );
     if (!navigation || !create || !profile) {
-      throw new Error("reserved navigation actions missing");
+      throw new Error("create or reserved profile navigation missing");
     }
 
     create.click();
     profile.click();
 
     expect(
-      document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
+      document.querySelector<HTMLElement>('[data-view="create"]')?.hidden,
     ).toBe(false);
     expect(
       navigation.querySelectorAll(".yoyi-navigation-entry.is-active"),
     ).toHaveLength(1);
     expect(
       navigation
-        .querySelector('[data-primary-view="home"]')
+        .querySelector('[data-primary-view="create"]')
         ?.classList.contains("is-active"),
     ).toBe(true);
-    expect(dom.window.history.state).toEqual({ kind: "primary", view: "home" });
-    expect(dom.window.sessionStorage.getItem("yoyi.qa-log")).toContain(
-      "reserved action: create",
-    );
+    expect(dom.window.history.state).toEqual({
+      kind: "primary",
+      view: "create",
+    });
     expect(dom.window.sessionStorage.getItem("yoyi.qa-log")).toContain(
       "reserved action: profile",
     );

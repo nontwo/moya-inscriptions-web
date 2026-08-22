@@ -135,6 +135,8 @@ const calligraphyFilterInput = document.querySelector(
 const calligraphyFilterClear = document.querySelector(
   "[data-calligraphy-filter-clear]",
 );
+const createText = document.querySelector("[data-create-text]");
+const createFeedback = document.querySelector("[data-create-feedback]");
 const topicsGrid = document.querySelector("[data-topics-grid]");
 const topicColumnBody = document.querySelector("[data-topic-column-body]");
 const topicColumnHeading = document.querySelector(
@@ -159,7 +161,7 @@ const layoutModeLabels = {
   single: "单列",
   double: "双列",
 };
-const primaryViews = ["home", "inscriptions", "calligraphy"];
+const primaryViews = ["home", "inscriptions", "create", "calligraphy"];
 const homeFeeds = ["discover", "nearby", "topics"];
 const calligraphyCategories = ["all", "ink", "rubbing"];
 const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
@@ -196,6 +198,7 @@ const scrollPositions = {
   "home:nearby": 0,
   "home:topics": 0,
   inscriptions: 0,
+  create: 0,
   "calligraphy:all": 0,
   "calligraphy:ink": 0,
   "calligraphy:rubbing": 0,
@@ -297,6 +300,7 @@ function persistQaLog() {
 
 function primaryViewLabel(view) {
   if (view === "inscriptions") return "碑刻";
+  if (view === "create") return "创作";
   if (view === "calligraphy") return "书帖";
   return "首页";
 }
@@ -2868,9 +2872,20 @@ function selectPrimaryView(
 }
 
 function handleReservedNavAction(action) {
-  if (action !== "create" && action !== "profile") return;
+  if (action !== "profile") return;
   logQaEvent("nav", `reserved action: ${action}`);
   syncNavBubbleToActive();
+}
+
+function handleReservedCreateAction(action) {
+  const feedback = {
+    media: "图片功能待接入，不会打开文件选择器",
+    submit: "提交功能待接入，内容未发布",
+    tags: "标签功能待接入",
+  }[action];
+  if (!feedback) return;
+  if (createFeedback) createFeedback.textContent = feedback;
+  logQaEvent("create", `[create] reserved ${action} action`);
 }
 
 function matchesCalligraphyCard(card, normalizedQuery) {
@@ -3980,6 +3995,12 @@ bindClicks("[data-primary-view]", (button) => {
 });
 bindClicks("[data-nav-action]", (button) => {
   handleReservedNavAction(button.dataset.navAction);
+});
+bindClicks("[data-create-media]", () => handleReservedCreateAction("media"));
+bindClicks("[data-create-tags]", () => handleReservedCreateAction("tags"));
+bindClicks("[data-create-submit]", () => handleReservedCreateAction("submit"));
+createText?.addEventListener("focus", () => {
+  logQaEvent("create", "composer focused");
 });
 bottomNavigation.addEventListener("pointerdown", onNavPointerDown, {
   passive: false,
