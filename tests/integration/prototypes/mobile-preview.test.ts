@@ -797,6 +797,20 @@ describe("mobile application preview", () => {
       value: () => ({ bottom: 70, height: 70, left: 0, top: 0, width: 390 }),
     });
     await openAt(edgeBound, { left: 20, top: 600, width: 160, height: 140 });
+    const focusedCard = edgeDocument.querySelector<HTMLElement>(
+      "[data-quick-action-card]",
+    );
+    if (!focusedCard) throw new Error("focused quick-action card missing");
+    const focusTop = Number.parseFloat(focusedCard.style.top);
+    const focusLeft = Number.parseFloat(focusedCard.style.left);
+    expect(
+      edgeDocument.querySelector<HTMLElement>("[data-quick-action-overlay]")
+        ?.dataset.focusSafe,
+    ).toBe("true");
+    expect(focusTop - 7).toBeGreaterThanOrEqual(82);
+    expect(focusTop + 140 * 1.03).toBeLessThanOrEqual(688);
+    expect(focusLeft - 7).toBeGreaterThanOrEqual(12);
+    expect(focusLeft + 160 * 1.03).toBeLessThanOrEqual(378);
     expect(
       [
         ...edgeDocument.querySelectorAll<HTMLElement>("[data-quick-action]"),

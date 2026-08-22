@@ -4341,18 +4341,43 @@ function positionQuickActionMenu(gesture) {
     right: Math.min(appWidth - edgeGap, visualRight - edgeGap),
     top: Math.max(visualTop + edgeGap, topbarBottom),
   };
+  const focusScale = 1.03;
+  const focusOutline = 4;
+  const focusLift = 4;
+  const focusInsetX = (card.width * focusScale - card.width) / 2 + focusOutline;
+  const focusInsetY =
+    (card.height * focusScale - card.height) / 2 + focusOutline + focusLift;
+  const finalCard = {
+    ...card,
+    left: quickActionClamp(
+      card.left,
+      bounds.left + focusInsetX,
+      bounds.right - card.width - focusInsetX,
+    ),
+    top: quickActionClamp(
+      card.top,
+      bounds.top + focusInsetY,
+      bounds.bottom - card.height - focusInsetY,
+    ),
+  };
   const candidates = ["left-arc", "right-arc", "top-arc", "bottom-arc"].map(
     (layout) => {
       const positions = quickActionLayoutPositions(
         layout,
-        card,
+        finalCard,
         bounds,
         metrics,
       );
       return {
         layout,
         positions,
-        score: quickActionLayoutScore(layout, positions, card, bounds, metrics),
+        score: quickActionLayoutScore(
+          layout,
+          positions,
+          finalCard,
+          bounds,
+          metrics,
+        ),
       };
     },
   );
@@ -4363,14 +4388,15 @@ function positionQuickActionMenu(gesture) {
 
   quickActionCard?.replaceChildren(gesture.card.cloneNode(true));
   if (quickActionCard) {
-    quickActionCard.style.left = `${card.left}px`;
-    quickActionCard.style.top = `${card.top}px`;
+    quickActionCard.style.left = `${finalCard.left}px`;
+    quickActionCard.style.top = `${finalCard.top}px`;
     quickActionCard.style.width = `${cardWidth}px`;
     quickActionCard.style.height = `${cardHeight}px`;
     quickActionCard.style.setProperty("--quick-action-card-shift-x", "0px");
     quickActionCard.style.setProperty("--quick-action-card-shift-y", "-4px");
   }
   quickActionOverlay.dataset.layout = layout;
+  quickActionOverlay.dataset.focusSafe = "true";
   quickActionBubbles.forEach((bubble, index) => {
     const { x, y } = positions[index];
     bubble.style.setProperty("--quick-action-x", `${x}px`);
@@ -4435,6 +4461,7 @@ function closeQuickAction() {
   if (quickActionOverlay) {
     quickActionOverlay.classList.remove("is-ready");
     delete quickActionOverlay.dataset.layout;
+    delete quickActionOverlay.dataset.focusSafe;
     quickActionOverlay.hidden = true;
     quickActionOverlay.setAttribute("aria-hidden", "true");
   }
