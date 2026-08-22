@@ -364,17 +364,18 @@ Otherwise status remains OPEN.
 
 ## 15. T02 Productionization must be explicit
 
-A future T02 → formal Web migration may happen only through a separately
-approved task explicitly named/scoped as T02 Productionization.
+Formal Web may consume and serve the current canonical T02 presentation as its
+approved UI/interaction authority.
 
-It must have its own:
+`T02 Productionization` refers only to a future material replacement,
+extraction, rewrite, or migration of that canonical presentation into another
+formal UI implementation or architecture.
 
-- Scope;
-- Behavior Matrix;
-- Plan;
-- Owner approval.
+Such a migration may happen only through a separately approved task with its own
+Scope, Behavior Matrix, Plan, and Owner approval.
 
-No ordinary feature task may silently perform that migration.
+No ordinary feature, data, or runtime task may silently perform that migration
+or create a second implementation of approved T02 behavior.
 
 ## 16. Model and tool choice does not alter authority
 
