@@ -1170,6 +1170,131 @@ describe("mobile application preview", () => {
     expect(inscriptionsTab.classList).toContain("is-active");
   });
 
+  it("defers a browse-nav page change until the drag ends", async () => {
+    const dom = renderPreview({}, { viewportWidth: 390 });
+    const document = dom.window.document;
+    const navigation = document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const bubble = navigation?.querySelector<HTMLElement>(".yoyi-nav-bubble");
+    const homeTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="home"]',
+    );
+    const calligraphyTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="calligraphy"]',
+    );
+    const primaryTrack = document.querySelector<HTMLElement>(
+      '[data-pager="primary"] [data-pager-track]',
+    );
+    if (
+      !navigation ||
+      !bubble ||
+      !homeTab ||
+      !calligraphyTab ||
+      !primaryTrack
+    ) {
+      throw new Error("browse nav drag fixture missing");
+    }
+
+    layoutBottomNav(navigation);
+    dispatchPointer(dom.window, homeTab, "pointerdown", {
+      clientX: 50,
+      clientY: 730,
+      timeStamp: 1_000,
+    });
+    dispatchPointer(dom.window, navigation, "pointermove", {
+      clientX: 250,
+      clientY: 730,
+      timeStamp: 1_200,
+    });
+
+    expect(homeTab.classList.contains("is-active")).toBe(true);
+    expect(calligraphyTab.classList.contains("is-active")).toBe(false);
+    expect(calligraphyTab.classList.contains("is-nav-hot")).toBe(true);
+    expect(dom.window.history.state).toEqual({ kind: "primary", view: "home" });
+    expect(primaryTrack.style.transform).toBe("");
+    expect(bubble.style.transform).toContain("translate3d(200px, 4px, 0)");
+
+    dispatchPointer(dom.window, navigation, "pointerup", {
+      clientX: 250,
+      clientY: 730,
+      timeStamp: 1_400,
+    });
+    await waitForAnimationFrames(dom.window, 40);
+
+    expect(calligraphyTab.classList.contains("is-active")).toBe(true);
+    expect(calligraphyTab.classList.contains("is-nav-hot")).toBe(false);
+    expect(dom.window.history.state).toEqual({
+      kind: "primary",
+      view: "calligraphy",
+    });
+    expect(primaryTrack.style.transform).toBe("");
+  });
+
+  it("keeps create outside browse-nav drags and as an independent click target", async () => {
+    const dom = renderPreview({}, { viewportWidth: 390 });
+    const document = dom.window.document;
+    const navigation = document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const bubble = navigation?.querySelector<HTMLElement>(".yoyi-nav-bubble");
+    const calligraphyTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="calligraphy"]',
+    );
+    const createTab = navigation?.querySelector<HTMLElement>(
+      '[data-primary-view="create"]',
+    );
+    if (!navigation || !bubble || !calligraphyTab || !createTab) {
+      throw new Error("create nav drag fixture missing");
+    }
+
+    layoutBottomNav(navigation);
+    calligraphyTab.click();
+    await waitForAnimationFrames(dom.window, 40);
+    dispatchPointer(dom.window, calligraphyTab, "pointerdown", {
+      clientX: 250,
+      clientY: 730,
+      timeStamp: 1_000,
+    });
+    dispatchPointer(dom.window, navigation, "pointermove", {
+      clientX: 480,
+      clientY: 730,
+      timeStamp: 1_200,
+    });
+    expect(calligraphyTab.classList.contains("is-active")).toBe(true);
+    expect(createTab.classList.contains("is-nav-hot")).toBe(false);
+    expect(bubble.style.transform).toContain("translate3d(200px, 4px, 0)");
+    dispatchPointer(dom.window, navigation, "pointerup", {
+      clientX: 480,
+      clientY: 730,
+      timeStamp: 1_400,
+    });
+    await waitForAnimationFrames(dom.window, 40);
+    expect(calligraphyTab.classList.contains("is-active")).toBe(true);
+    await waitMs(dom.window, 0);
+
+    createTab.click();
+    expect(createTab.classList.contains("is-active")).toBe(true);
+    expect(bubble.style.transform).toContain("translate3d(300px, 4px, 0)");
+    dispatchPointer(dom.window, createTab, "pointerdown", {
+      clientX: 350,
+      clientY: 730,
+      timeStamp: 1_600,
+    });
+    dispatchPointer(dom.window, navigation, "pointermove", {
+      clientX: 50,
+      clientY: 730,
+      timeStamp: 1_800,
+    });
+    dispatchPointer(dom.window, navigation, "pointerup", {
+      clientX: 50,
+      clientY: 730,
+      timeStamp: 2_000,
+    });
+    expect(createTab.classList.contains("is-active")).toBe(true);
+    expect(bubble.style.transform).toContain("translate3d(300px, 4px, 0)");
+  });
+
   it("does not switch primary views when the main content is swiped horizontally", () => {
     const dom = renderPreview({}, { viewportWidth: 390 });
     const document = dom.window.document;
@@ -3586,7 +3711,7 @@ describe("mobile application preview", () => {
       '[data-primary-view="home"]',
     );
     if (!homeTab) throw new Error("home tab missing");
-    swipe(phone.window, homeTab, { x: 50, y: 730 }, { x: 150, y: 730 });
+    swipe(phone.window, homeTab, { x: 50, y: 730 }, { x: 55, y: 730 });
     expect(
       navigation
         .querySelector('[data-primary-view="home"]')
@@ -3891,8 +4016,10 @@ describe("mobile application preview", () => {
     expect(sharedCss).toMatch(
       /\.app-bottom-navigation \.yoyi-nav-bubble\s*\{[^}]*border: 1px solid var\(--yoyi-color-border-default\)/,
     );
-    expect(script).toContain("nearestNavEntry");
-    expect(script).toContain("positionNavBubble(nearest, 1.12)");
+    expect(script).toContain("nearestBrowseNavEntry");
+    expect(script).toContain("function browseNavProgress");
+    expect(script).toContain("function cancelNavPointer");
+    expect(script).not.toContain("function applyNavPagerProgress");
     expect(script).toContain("function syncTabStripFromPager");
     expect(script).toContain("function positionTabStripProgress");
     expect(html).not.toContain("app-tab-bubble");
@@ -3901,6 +4028,8 @@ describe("mobile application preview", () => {
     expect(sharedCss).not.toContain(
       ".app-bottom-navigation .yoyi-navigation-entry > .yoyi-nav-bubble",
     );
+    expect(sharedCss).toContain("touch-action: pan-y");
+    expect(html.match(/data-browse-nav/g)).toHaveLength(3);
   });
 
   it("transfers scroll position between nested and document scroll owners", async () => {

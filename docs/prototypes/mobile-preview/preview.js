@@ -464,6 +464,10 @@ const bottomTabStrip = {
   progressItemSelector: "[data-primary-view]",
   selectedClass: "is-active",
 };
+const bottomBrowseTabStrip = {
+  ...bottomTabStrip,
+  progressItemSelector: "[data-browse-nav]",
+};
 const homeTabStrip = {
   bubble: document.querySelector(".app-primary-tabs > .app-tab-bubble"),
   container: document.querySelector(".app-primary-tabs"),
@@ -484,7 +488,8 @@ let navDragging = false;
 let navPointerStartX = 0;
 let navDidPan = false;
 let navIgnoreClick = false;
-let navPagerGesture = null;
+let navIgnoreClickTimer = 0;
+let navPendingEntry = null;
 let detailContentId = "";
 let detailRecord = null;
 let detailMediaItems = [];
@@ -2371,8 +2376,8 @@ function navigationEntries() {
   return tabStripItems(bottomTabStrip);
 }
 
-function navigationPageEntries() {
-  return tabStripProgressItems(bottomTabStrip);
+function browseNavigationEntries() {
+  return tabStripProgressItems(bottomBrowseTabStrip);
 }
 
 function tabStripItems(strip) {
@@ -2571,23 +2576,39 @@ function syncNavBubbleToActive() {
   }
 }
 
-function nearestNavEntry(clientPosition) {
-  const entries = navigationPageEntries();
+function nearestBrowseNavEntry(clientX) {
+  const entries = browseNavigationEntries();
   let nearest = entries[0];
   let best = Infinity;
   for (const entry of entries) {
     const rect = entry.getBoundingClientRect();
-    const center =
-      root.dataset.platform === "pc"
-        ? rect.top + rect.height / 2
-        : rect.left + rect.width / 2;
-    const distance = Math.abs(clientPosition - center);
+    const center = rect.left + rect.width / 2;
+    const distance = Math.abs(clientX - center);
     if (distance < best) {
       best = distance;
       nearest = entry;
     }
   }
   return nearest;
+}
+
+function browseNavProgress(clientX) {
+  const entries = browseNavigationEntries();
+  if (entries.length <= 1) return 0;
+  const centers = entries.map((entry) => {
+    const rect = entry.getBoundingClientRect();
+    return rect.left + rect.width / 2;
+  });
+  if (clientX <= centers[0]) return 0;
+  const lastIndex = centers.length - 1;
+  if (clientX >= centers[lastIndex]) return lastIndex;
+  for (let index = 0; index < lastIndex; index += 1) {
+    if (clientX <= centers[index + 1]) {
+      const span = Math.max(1, centers[index + 1] - centers[index]);
+      return index + (clientX - centers[index]) / span;
+    }
+  }
+  return lastIndex;
 }
 
 function clearNavigationIdleTimer() {
@@ -2703,19 +2724,6 @@ function primaryPager() {
   return pagerControllers.get("primary");
 }
 
-function navTabWidth() {
-  const entries = navigationPageEntries();
-  const size =
-    root.dataset.platform === "pc"
-      ? entries[0]?.offsetHeight
-      : entries[0]?.offsetWidth;
-  return Math.max(1, size || 1);
-}
-
-function navPointerCoordinate(event) {
-  return root.dataset.platform === "pc" ? event.clientY : event.clientX;
-}
-
 function lockPrimaryShellHeight(controller) {
   if (controller.id !== "primary") return;
   if (root.dataset.platform !== "pc") return;
@@ -2783,66 +2791,35 @@ function beginPrimaryPagerFollow(controller) {
   setPagerPageState(controller, activeIndex, true);
 }
 
-function armNavPagerGesture(event, controller) {
-  cancelPagerSpring(controller);
-  const width = pagerWidth(controller);
-  const startIndex = controller.values.indexOf(controller.current());
-  const startPosition = navPointerCoordinate(event);
-  return {
-    controller,
-    dragX: 0,
-    startIndex,
-    startOffset: controller.currentOffset ?? -startIndex * width,
-    startProgress: startIndex,
-    startX: startPosition,
-    samples: [{ time: pagerEventTime(event), x: startPosition }],
-    width,
-  };
-}
-
-function startNavPagerFollow(gesture) {
-  if (!gesture || gesture.following) return;
-  gesture.following = true;
-  beginPrimaryPagerFollow(gesture.controller);
-  gesture.controller.track.classList.add("is-dragging");
-}
-
 function onNavPointerDown(event) {
   if (root.dataset.platform === "pc") return;
   if (navigationMinimized || !event.isPrimary) return;
   if (prefersReducedNavMotion()) return;
+  const entry = event.target.closest?.("[data-browse-nav]");
+  if (!entry) return;
   cancelPendingNavBubbleSync();
-  if (navDragging) unbindNavPointerTracking();
+  if (navDragging) cancelNavPointer();
   navPointerId = event.pointerId;
   navDragging = true;
   navDidPan = false;
-  navPointerStartX = navPointerCoordinate(event);
-  const controller = primaryPager();
-  navPagerGesture = controller ? armNavPagerGesture(event, controller) : null;
+  navPointerStartX = event.clientX;
+  navPendingEntry = entry;
   bindNavPointerTracking();
 }
 
-function applyNavPagerProgress(gesture, clientX) {
-  const lastIndex = gesture.controller.values.length - 1;
-  let progress =
-    gesture.startProgress + (clientX - gesture.startX) / navTabWidth();
-  if (progress < 0) progress *= pagerEdgeResistance;
-  if (progress > lastIndex) {
-    progress = lastIndex + (progress - lastIndex) * pagerEdgeResistance;
-  }
-  const offset = -progress * gesture.width;
-  gesture.dragX = offset - gesture.startOffset;
-  setPagerOffset(gesture.controller, offset);
-  positionTabStripProgress(bottomTabStrip, progress, 1.12);
+function updatePendingBrowseEntry(entry) {
+  navPendingEntry = entry;
+  browseNavigationEntries().forEach((browseEntry) => {
+    browseEntry.classList.toggle("is-nav-hot", browseEntry === entry);
+  });
 }
 
 function onNavPointerMove(event) {
   if (!navDragging || event.pointerId !== navPointerId) return;
-  const clientPosition = navPointerCoordinate(event);
-  if (Math.abs(clientPosition - navPointerStartX) > 8) {
+  const clientX = event.clientX;
+  if (Math.abs(clientX - navPointerStartX) > 8) {
     if (!navDidPan) {
       navDidPan = true;
-      if (navPagerGesture) startNavPagerFollow(navPagerGesture);
       bottomNavigation.classList.add("is-dragging-nav");
       try {
         bottomNavigation.setPointerCapture?.(event.pointerId);
@@ -2850,52 +2827,65 @@ function onNavPointerMove(event) {
         // Pointer capture may be unavailable in some embedded browsers.
       }
       positionTabStripProgress(
-        bottomTabStrip,
-        navPagerGesture?.startProgress ?? primaryViews.indexOf(primaryView),
+        bottomBrowseTabStrip,
+        browseNavProgress(clientX),
         1.12,
       );
     }
     event.preventDefault();
   }
   if (!navDidPan) return;
-  const gesture = navPagerGesture;
-  if (!gesture) {
-    const nearest = nearestNavEntry(clientPosition);
-    positionNavBubble(nearest, 1.12);
-    return;
-  }
-  addPagerSample(gesture, pagerEventTime(event), clientPosition);
-  applyNavPagerProgress(gesture, clientPosition);
+  positionTabStripProgress(
+    bottomBrowseTabStrip,
+    browseNavProgress(clientX),
+    1.12,
+  );
+  updatePendingBrowseEntry(nearestBrowseNavEntry(clientX));
 }
 
-function endNavPointer(event) {
-  if (!navDragging || event.pointerId !== navPointerId) return;
-  const clientPosition = navPointerCoordinate(event);
+function cancelNavPointer({ syncBubble = true } = {}) {
   navDragging = false;
   navPointerId = null;
   unbindNavPointerTracking();
   bottomNavigation.classList.remove("is-dragging-nav");
-  navigationEntries().forEach((entry) => entry.classList.remove("is-nav-hot"));
-  const gesture = navPagerGesture;
-  navPagerGesture = null;
-  if (navDidPan) {
-    navIgnoreClick = true;
-    if (gesture) {
-      addPagerSample(gesture, pagerEventTime(event), clientPosition);
-      applyNavPagerProgress(gesture, clientPosition);
-      gesture.controller.track.classList.remove("is-dragging");
-      settlePagerFromGesture(gesture, pagerVelocityFromSamples(gesture));
-    }
+  browseNavigationEntries().forEach((entry) =>
+    entry.classList.remove("is-nav-hot"),
+  );
+  navPendingEntry = null;
+  navDidPan = false;
+  if (syncBubble) syncNavBubbleToActive();
+}
+
+function endNavPointer(event) {
+  if (!navDragging || event.pointerId !== navPointerId) return;
+  const shouldCommit = navDidPan && event.type !== "pointercancel";
+  if (shouldCommit) {
+    positionTabStripProgress(
+      bottomBrowseTabStrip,
+      browseNavProgress(event.clientX),
+      1.12,
+    );
+    updatePendingBrowseEntry(nearestBrowseNavEntry(event.clientX));
+  }
+  const entry = navPendingEntry;
+  cancelNavPointer({ syncBubble: !shouldCommit });
+  if (!shouldCommit) return;
+  suppressDraggedNavClick();
+  const view = entry?.dataset.primaryView;
+  if (view && view !== primaryView) {
+    selectPrimaryView(view, { animate: true });
     return;
   }
-  if (gesture) gesture.controller.track.classList.remove("is-dragging");
-  const entry =
-    event.target.closest?.("[data-primary-view]") ||
-    nearestNavEntry(clientPosition);
-  const view = entry?.dataset.primaryView;
+  syncNavBubbleToActive();
+}
+
+function suppressDraggedNavClick() {
   navIgnoreClick = true;
-  if (view && view !== primaryView) selectPrimaryView(view, { animate: true });
-  else syncNavBubbleToActive();
+  if (navIgnoreClickTimer) window.clearTimeout(navIgnoreClickTimer);
+  navIgnoreClickTimer = window.setTimeout(() => {
+    navIgnoreClick = false;
+    navIgnoreClickTimer = 0;
+  }, 0);
 }
 
 function onNavClickCapture(event) {
@@ -2908,6 +2898,8 @@ function onNavClickCapture(event) {
   if (!navIgnoreClick) return;
   event.preventDefault();
   event.stopPropagation();
+  if (navIgnoreClickTimer) window.clearTimeout(navIgnoreClickTimer);
+  navIgnoreClickTimer = 0;
   navIgnoreClick = false;
 }
 
@@ -3355,7 +3347,7 @@ function schedulePcWheelSettle() {
 }
 
 function pagerGestureIsLive() {
-  if (activeWheelGesture || activePagerGesture || navPagerGesture) return true;
+  if (activeWheelGesture || activePagerGesture) return true;
   if (anyPagerFollowing()) return true;
   return [...pagerControllers.values()].some(
     (controller) =>
@@ -4108,6 +4100,9 @@ createText?.addEventListener("focus", () => {
   logQaEvent("create", "composer focused");
 });
 bottomNavigation.addEventListener("click", onNavClickCapture, true);
+bottomNavigation.addEventListener("pointerdown", onNavPointerDown, {
+  passive: false,
+});
 bindClicks("[data-home-feed]", (button) =>
   selectHomeFeed(button.dataset.homeFeed, { animate: true }),
 );
@@ -4451,6 +4446,7 @@ function onWindowSizeChange() {
 
 function onPagerViewportChange() {
   lastPagerWindowWidth = window.innerWidth;
+  cancelNavPointer();
   saveScrollPosition();
   updateDetailComposition();
   syncBottomNavViewportInset();

@@ -1240,7 +1240,7 @@ html[data-platform="pc"] {
 
 .app-bottom-navigation {
   z-index: var(--yoyi-z-index-navigation);
-  touch-action: manipulation;
+  touch-action: pan-y;
   user-select: none;
   cursor: grab;
 }
@@ -1326,6 +1326,10 @@ html[data-platform="pc"] {
 .app-bottom-navigation.is-dragging-nav .yoyi-nav-bubble,
 .app-bottom-navigation.is-bubble-following .yoyi-nav-bubble {
   transition: none;
+}
+
+.app-bottom-navigation .yoyi-navigation-entry.is-nav-hot {
+  color: var(--yoyi-color-text-primary);
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation[data-bubble-pending]
