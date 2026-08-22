@@ -4294,6 +4294,55 @@ describe("mobile application preview", () => {
     expect(primaryTrack.style.transform).toBe("");
   });
 
+  it("keeps all PC rail entries visible when a mobile minimized class lingers", () => {
+    const pc = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 1024,
+      },
+    );
+    const navigation = pc.window.document.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    if (!navigation) throw new Error("PC rail missing");
+
+    navigation.classList.add("is-minimized");
+    const entries = [
+      ...navigation.querySelectorAll<HTMLElement>("[data-primary-view]"),
+    ];
+    expect(entries.map((entry) => entry.dataset.primaryView)).toEqual([
+      "home",
+      "inscriptions",
+      "calligraphy",
+      "create",
+    ]);
+    expect(
+      entries.map(
+        (entry) => entry.querySelector<HTMLElement>(".yoyi-icon")?.dataset.icon,
+      ),
+    ).toEqual(["home", "inscriptions", "calligraphy", "create"]);
+    expect(
+      entries.map(
+        (entry) =>
+          entry.querySelector<HTMLElement>(".yoyi-fixed-label")?.dataset.label,
+      ),
+    ).toEqual([
+      "nav-home",
+      "nav-inscriptions",
+      "nav-calligraphy",
+      "nav-create",
+    ]);
+    expect(pcCss).toMatch(
+      /\.app-bottom-navigation\.yoyi-mobile-bottom-navigation\.is-minimized[\s\S]*\.yoyi-navigation-entry\s*\{[^}]*display: flex;[^}]*pointer-events: auto;/,
+    );
+    expect(pcCss).toMatch(
+      /\.app-bottom-navigation\.yoyi-mobile-bottom-navigation\.is-minimized[\s\S]*\.yoyi-fixed-label\s*\{[^}]*display: inline-block;/,
+    );
+  });
+
   it("keeps home and calligraphy tabs as plain selected indicators", () => {
     const phone = renderPreview({}, { viewportWidth: 844 });
     const document = phone.window.document;
