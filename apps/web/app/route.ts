@@ -19,11 +19,15 @@ export const GET = async () => {
     ],
   );
 
-  return readT02Document("GET", {
-    calligraphy: toVisibleItems(calligraphyState),
-    discover: toVisibleItems(discoverState),
-    inscriptions: toVisibleItems(inscriptionState),
-  });
+  return readT02Document(
+    "GET",
+    {
+      calligraphy: toVisibleItems(calligraphyState),
+      discover: toVisibleItems(discoverState),
+      inscriptions: toVisibleItems(inscriptionState),
+    },
+    "formal-root",
+  );
 };
-export const HEAD = () => readT02Document("HEAD");
+export const HEAD = () => readT02Document("HEAD", {}, "formal-root");
 export const POST = methodNotAllowed;

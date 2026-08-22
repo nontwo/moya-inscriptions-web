@@ -28,7 +28,7 @@ vi.mock("../lib/t02-static-files", () => ({
   readT02Document: readT02DocumentMock,
 }));
 
-import { GET } from "./route";
+import { GET, HEAD } from "./route";
 
 type QueryKey = "discover" | "inscription" | "calligraphy";
 
@@ -136,6 +136,7 @@ describe("T07 browse runtime composition", () => {
         inscription: populated("碑刻真实"),
         calligraphy: populated("书帖真实"),
       }),
+      "formal-root",
     );
   });
 
@@ -161,6 +162,7 @@ describe("T07 browse runtime composition", () => {
           inscription: inscriptionState,
           calligraphy: populated("书帖真实"),
         }),
+        "formal-root",
       );
     },
   );
@@ -187,6 +189,7 @@ describe("T07 browse runtime composition", () => {
           inscription: populated("碑刻真实"),
           calligraphy: calligraphyState,
         }),
+        "formal-root",
       );
     },
   );
@@ -210,6 +213,13 @@ describe("T07 browse runtime composition", () => {
         inscription: unavailable,
         calligraphy: unexpectedError,
       }),
+      "formal-root",
     );
+  });
+
+  it("uses formal-root composition for HEAD", async () => {
+    await HEAD();
+
+    expect(readT02DocumentMock).toHaveBeenCalledWith("HEAD", {}, "formal-root");
   });
 });

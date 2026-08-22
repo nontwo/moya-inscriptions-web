@@ -33,6 +33,8 @@ export type BrowseItems = {
   inscriptions?: readonly BrowseItem[];
 };
 
+export type T02DocumentComposition = "formal-root" | "prototype";
+
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -124,6 +126,7 @@ export const serveT02File = async (
 export const readT02Document = async (
   method: "GET" | "HEAD" = "GET",
   browseItems: BrowseItems = {},
+  composition: T02DocumentComposition = "prototype",
 ): Promise<Response> => {
   const filePath = join(prototypeRoot, "index.html");
   try {
@@ -132,10 +135,14 @@ export const readT02Document = async (
       /<head>/i,
       '<head>\n    <base href="/docs/prototypes/mobile-preview/" />',
     );
+    const documentForComposition =
+      composition === "formal-root" && process.env.NODE_ENV === "production"
+        ? sanitizeProductionT02Document(documentWithBase)
+        : documentWithBase;
     const documentWithDevelopmentDetail =
       process.env.NODE_ENV === "production"
-        ? documentWithBase
-        : ensureDevelopmentTranscriptionSection(documentWithBase);
+        ? documentForComposition
+        : ensureDevelopmentTranscriptionSection(documentForComposition);
     const documentWithCards = appendCalligraphyItems(
       appendInscriptionItems(
         appendDiscoverItems(
@@ -158,6 +165,40 @@ export const readT02Document = async (
     return new Response(null, { status: 404 });
   }
 };
+
+const prototypeFixtureScriptPattern =
+  /\s*<script\s+src="\.\/fixtures\/(?:home-feed\.placeholder|topics\.placeholder|catalog-detail\.placeholder|p5-pilot\.snapshot)\.js"><\/script>/g;
+
+const prototypeDetailImageSourcePattern =
+  /(<img\s+data-detail-image)\s+src="\.\.\/\.\.\/design-system\/assets\/demo\/cliff-gate\.svg"/;
+
+const prototypeCardPattern =
+  /\s*<button\b(?=[^>]*\bdata-open-detail(?:\s|>))[^>]*>[\s\S]*?<\/button>/g;
+
+const productionPrototypeCardSections = [
+  /(<div\s+class="app-masonry"\s+data-feed-grid="discover">)([\s\S]*?)(<\/div>)/,
+  /(<div\s+class="app-masonry"\s+data-feed-grid="nearby">)([\s\S]*?)(<\/div>)/,
+  /(<main\s+class="app-scroll"\s+data-scroll-view="inscriptions">[\s\S]*?<div\s+class="app-list">)([\s\S]*?)(<\/div>)/,
+  /(<div\s+class="app-masonry\s+app-calligraphy-grid">)([\s\S]*?)(<\/div>)/,
+] as const;
+
+/**
+ * The formal Production root reuses T02's UI shell without consuming its
+ * prototype records. The canonical prototype document and direct prototype
+ * route remain untouched.
+ */
+export const sanitizeProductionT02Document = (document: string): string =>
+  productionPrototypeCardSections.reduce(
+    (result, sectionPattern) =>
+      result.replace(
+        sectionPattern,
+        (_match, opening: string, content: string, closing: string) =>
+          `${opening}${content.replace(prototypeCardPattern, "")}${closing}`,
+      ),
+    document
+      .replace(prototypeFixtureScriptPattern, "")
+      .replace(prototypeDetailImageSourcePattern, "$1"),
+  );
 
 /**
  * Development/Owner-QA keeps the complete approved Detail structure visible even

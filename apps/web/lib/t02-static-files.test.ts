@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   appendCalligraphyItems,
@@ -7,6 +7,7 @@ import {
   ensureDevelopmentTranscriptionSection,
   injectRuntimeCatalogRecords,
   readT02Document,
+  sanitizeProductionT02Document,
   serveT02File,
 } from "./t02-static-files";
 
@@ -27,6 +28,10 @@ const runtimeItem = (title: string, kind: "inscription" | "calligraphy") => ({
     width: 1200,
     height: 1600,
   },
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("formal T02 file serving", () => {
@@ -147,11 +152,16 @@ describe("formal T02 file serving", () => {
   });
 
   it("serves the formal root with canonical QA records, runtime records, and one base", async () => {
-    const response = await readT02Document("GET", {
-      discover: [runtimeItem("真实发现", "inscription")],
-      inscriptions: [runtimeItem("真实碑刻", "inscription")],
-      calligraphy: [runtimeItem("真实书帖", "calligraphy")],
-    });
+    vi.stubEnv("NODE_ENV", "development");
+    const response = await readT02Document(
+      "GET",
+      {
+        discover: [runtimeItem("真实发现", "inscription")],
+        inscriptions: [runtimeItem("真实碑刻", "inscription")],
+        calligraphy: [runtimeItem("真实书帖", "calligraphy")],
+      },
+      "formal-root",
+    );
     const body = await bodyText(response);
 
     expect(response.status).toBe(200);
@@ -169,6 +179,144 @@ describe("formal T02 file serving", () => {
     expect(body).toContain('data-title="秋山札"');
     expect(body).toContain('<script src="./device-platform.js"></script>');
     expect(body).toContain('data-view="home"');
+    expect(body).toContain("./fixtures/home-feed.placeholder.js");
+    expect(body).toContain("./fixtures/topics.placeholder.js");
+    expect(body).toContain("./fixtures/catalog-detail.placeholder.js");
+    expect(body).toContain("./fixtures/p5-pilot.snapshot.js");
+    expect(body).toContain("<h2>释文</h2>");
+    expect(body).toContain("内容待接入");
+  });
+
+  it("serves only truthful runtime records from the formal Production root", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const missingMedia = {
+      ...runtimeItem("真实无图碑刻", "inscription"),
+      id: "runtime-no-media",
+      representativeMedia: undefined,
+    };
+    const response = await readT02Document(
+      "GET",
+      {
+        calligraphy: [runtimeItem("真实书帖", "calligraphy")],
+        discover: [runtimeItem("真实发现", "inscription")],
+        inscriptions: [missingMedia],
+      },
+      "formal-root",
+    );
+    const body = await bodyText(response);
+    const contentIds = [...body.matchAll(/data-content-id="([^"]+)"/g)].map(
+      ([, id]) => id,
+    );
+    const missingMediaCard = body.match(
+      /<button\b[^>]*data-content-id="runtime-no-media"[^>]*>[\s\S]*?<\/button>/,
+    )?.[0];
+
+    expect(response.status).toBe(200);
+    expect(contentIds).toEqual([
+      "runtime-真实发现",
+      "runtime-no-media",
+      "runtime-真实书帖",
+    ]);
+    expect(body).toContain('data-record-origin="runtime"');
+    expect(body).toContain('data-content-id="runtime-no-media"');
+    expect(body).toContain('data-title="真实无图碑刻"');
+    expect(missingMediaCard).toBeDefined();
+    expect(missingMediaCard).not.toContain("<img");
+    expect(missingMediaCard).not.toContain("data-image");
+    expect(body).not.toContain("../../design-system/assets/demo/");
+
+    for (const qaIdentity of [
+      "云峰山题名",
+      "石门东侧残刻",
+      "秋山札",
+      "松窗帖",
+      "discover-cliff-gate",
+      "inscription-yunfeng",
+      "inscription-shimen",
+      "calligraphy-autumn",
+      "calligraphy-pine",
+    ]) {
+      expect(body).not.toContain(qaIdentity);
+    }
+
+    for (const fixtureScript of [
+      "home-feed.placeholder.js",
+      "topics.placeholder.js",
+      "catalog-detail.placeholder.js",
+      "p5-pilot.snapshot.js",
+    ]) {
+      expect(body).not.toContain(fixtureScript);
+    }
+
+    expect(body).not.toContain("内容待接入");
+    expect(body).not.toContain("data-detail-transcription");
+    expect(body).toContain('data-view="home"');
+    expect(body).toContain('data-view="detail"');
+    expect(body).toContain('data-feed-grid="discover"');
+    expect(body).toContain('data-feed-grid="nearby"');
+    expect(body).toContain('data-scroll-view="inscriptions"');
+    expect(body).toContain("app-calligraphy-grid");
+    expect(body).toContain("data-search-empty");
+    expect(body).toContain("data-calligraphy-filter-empty");
+    expect(body).toContain("./catalog-ui-adapter.js?v=20260819-media-pager");
+    expect(body).toContain("./preview.js?v=20260819-media-pager");
+  });
+
+  it("never restores QA records when the formal Production root has no runtime data", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    const body = await bodyText(
+      await readT02Document("GET", {}, "formal-root"),
+    );
+
+    expect([...body.matchAll(/data-content-id=/g)]).toHaveLength(0);
+    expect(body).not.toContain("../../design-system/assets/demo/");
+    expect(body).not.toContain("catalog-detail.placeholder.js");
+    expect(body).toContain('data-view="home"');
+    expect(body).toContain("data-search-empty");
+  });
+
+  it("keeps the canonical prototype source intact in Production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    const source = await bodyText(
+      await serveT02File(
+        { kind: "prototype", segments: ["index.html"] },
+        "GET",
+      ),
+    );
+    const directPrototype = await bodyText(await readT02Document("GET"));
+
+    for (const document of [source, directPrototype]) {
+      expect(document).toContain('data-content-id="discover-cliff-gate"');
+      expect(document).toContain('data-content-id="inscription-yunfeng"');
+      expect(document).toContain('data-content-id="calligraphy-autumn"');
+      expect(document).toContain("../../design-system/assets/demo/");
+      expect(document).toContain("./fixtures/home-feed.placeholder.js");
+      expect(document).toContain("./fixtures/topics.placeholder.js");
+      expect(document).toContain("./fixtures/catalog-detail.placeholder.js");
+      expect(document).toContain("./fixtures/p5-pilot.snapshot.js");
+    }
+  });
+
+  it("removes prototype records only inside explicit Production data boundaries", async () => {
+    const source = await bodyText(
+      await serveT02File(
+        { kind: "prototype", segments: ["index.html"] },
+        "GET",
+      ),
+    );
+    const result = sanitizeProductionT02Document(source);
+
+    expect(result).not.toContain("data-content-id=");
+    expect(result).not.toContain("./fixtures/catalog-detail.placeholder.js");
+    expect(result).toContain('data-feed-grid="discover"');
+    expect(result).toContain('data-feed-grid="nearby"');
+    expect(result).toContain("data-search-empty");
+    expect(result).toContain("data-calligraphy-filter-empty");
+    expect(result).toContain('data-view="detail"');
+    expect(result).toContain("./catalog-ui-adapter.js?v=20260819-media-pager");
+    expect(result).toContain("./preview.js?v=20260819-media-pager");
   });
 
   it("supports bodyless HEAD responses", async () => {
