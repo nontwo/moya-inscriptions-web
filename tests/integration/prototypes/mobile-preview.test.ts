@@ -1003,6 +1003,10 @@ describe("mobile application preview", () => {
       "由艺同好",
     );
     expect(
+      profileView.querySelector(".app-profile-identity__eyebrow"),
+    ).toBeNull();
+    expect(profileView.textContent).not.toContain("SYNTHETIC PROFILE");
+    expect(
       profileView.querySelectorAll("[data-profile-stats] > div"),
     ).toHaveLength(4);
     expect(profileView.querySelectorAll("[data-profile-tab]")).toHaveLength(4);

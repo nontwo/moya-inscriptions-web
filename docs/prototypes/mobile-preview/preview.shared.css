@@ -507,7 +507,6 @@ html[data-platform="tablet"] .app-view {
   min-width: 0;
 }
 
-.app-profile-identity__eyebrow,
 .app-profile-identity__id,
 .app-profile-identity__bio,
 .app-profile-shortcuts__heading p,
@@ -516,19 +515,8 @@ html[data-platform="tablet"] .app-view {
   margin: 0;
 }
 
-.app-profile-identity__eyebrow {
-  overflow: hidden;
-  color: var(--yoyi-color-text-tertiary);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .app-profile-identity h1 {
-  margin: 2px 0 1px;
+  margin: 0 0 1px;
   overflow: hidden;
   font-size: 21px;
   line-height: 1.25;
