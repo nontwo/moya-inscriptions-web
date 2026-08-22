@@ -4234,7 +4234,14 @@ function quickActionLayoutPositions(layout, card, bounds, metrics) {
   return positions;
 }
 
-function quickActionLayoutScore(layout, positions, card, bounds, metrics) {
+function quickActionLayoutScore(
+  layout,
+  positions,
+  card,
+  bounds,
+  metrics,
+  pressPoint,
+) {
   const overflow = positions.reduce((total, position) => {
     const right = position.x + metrics.bubbleSize;
     const bottom = position.y + metrics.bubbleSize;
@@ -4259,7 +4266,13 @@ function quickActionLayoutScore(layout, positions, card, bounds, metrics) {
     sideSpace >= metrics.bubbleSize + metrics.cardGap
       ? 1000
       : 0;
-  return sidePriority + sideSpace - overflow * 10000;
+  const averageFingerTravel =
+    positions.reduce((total, position) => {
+      const centerX = position.x + metrics.bubbleSize / 2;
+      const centerY = position.y + metrics.bubbleSize / 2;
+      return total + Math.hypot(centerX - pressPoint.x, centerY - pressPoint.y);
+    }, 0) / Math.max(positions.length, 1);
+  return sidePriority + sideSpace - averageFingerTravel - overflow * 10000;
 }
 
 function positionQuickActionMenu(gesture) {
@@ -4360,6 +4373,18 @@ function positionQuickActionMenu(gesture) {
       bounds.bottom - card.height - focusInsetY,
     ),
   };
+  const pressPoint = {
+    x: quickActionClamp(
+      (gesture.pressX ?? gesture.startX) - appRect.left,
+      bounds.left,
+      bounds.right,
+    ),
+    y: quickActionClamp(
+      (gesture.pressY ?? gesture.startY) - appRect.top,
+      bounds.top,
+      bounds.bottom,
+    ),
+  };
   const candidates = ["left-arc", "right-arc", "top-arc", "bottom-arc"].map(
     (layout) => {
       const positions = quickActionLayoutPositions(
@@ -4377,6 +4402,7 @@ function positionQuickActionMenu(gesture) {
           finalCard,
           bounds,
           metrics,
+          pressPoint,
         ),
       };
     },
@@ -4501,6 +4527,8 @@ function beginQuickAction(event) {
     card,
     contentId: card.dataset.contentId || "content-card",
     pointerId: event.pointerId,
+    pressX: event.clientX,
+    pressY: event.clientY,
     startX: event.clientX,
     startY: event.clientY,
     opened: false,

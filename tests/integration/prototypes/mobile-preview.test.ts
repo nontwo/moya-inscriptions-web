@@ -748,6 +748,10 @@ describe("mobile application preview", () => {
     const openAt = async (
       dom: PreviewDom,
       rect: { height: number; left: number; top: number; width: number },
+      press = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      },
     ) => {
       const card = dom.window.document.querySelector<HTMLElement>(
         '[data-content-id="discover-cliff-gate"]',
@@ -758,8 +762,8 @@ describe("mobile application preview", () => {
         value: () => rect,
       });
       dispatchPointer(dom.window, card, "pointerdown", {
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
+        clientX: press.x,
+        clientY: press.y,
       });
       await waitMs(dom.window, 480);
       return card;
@@ -780,6 +784,30 @@ describe("mobile application preview", () => {
       );
     await openAt(leftBiased, { left: 20, top: 200, width: 160, height: 180 });
     expect(leftBiasedOverlay?.dataset.layout).toBe("right-arc");
+
+    const leftPress = renderPreview();
+    const leftPressOverlay =
+      leftPress.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(
+      leftPress,
+      { left: 120, top: 260, width: 150, height: 180 },
+      { x: 125, y: 350 },
+    );
+    expect(leftPressOverlay?.dataset.layout).toBe("left-arc");
+
+    const rightPress = renderPreview();
+    const rightPressOverlay =
+      rightPress.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(
+      rightPress,
+      { left: 120, top: 260, width: 150, height: 180 },
+      { x: 265, y: 350 },
+    );
+    expect(rightPressOverlay?.dataset.layout).toBe("right-arc");
 
     const edgeBound = renderPreview();
     const edgeDocument = edgeBound.window.document;
