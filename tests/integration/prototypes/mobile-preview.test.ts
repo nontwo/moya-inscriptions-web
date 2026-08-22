@@ -3877,8 +3877,35 @@ describe("mobile application preview", () => {
     expect(navigation.querySelector(".yoyi-nav-bubble")).toBeTruthy();
     expect(navigation.dataset.minimizeBehavior).toBe("on-scroll");
     expect(navigation.querySelector(".yoyi-icon-wrap")).toBeTruthy();
+    expect(
+      navigation
+        .querySelector("[data-browse-nav-group]")
+        ?.classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
+    expect(
+      navigation
+        .querySelector('[data-primary-view="create"]')
+        ?.classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
     expect(sharedCss).toContain("--app-nav-collapse-duration: 420ms");
     expect(sharedCss).toContain("--app-nav-expand-duration: 520ms");
+    expect(sharedCss).toContain(
+      "--app-bottom-nav-min-height: clamp(52px, 14.5vw, 60px)",
+    );
+    expect(sharedCss).toContain(
+      "--app-bottom-nav-create-size: var(--app-bottom-nav-min-height)",
+    );
+    expect(sharedCss).toContain(".app-bottom-navigation__create.is-active");
+    expect(sharedCss).not.toMatch(
+      /\.app-bottom-navigation__create\.is-active\s*\{[^}]*background:/,
+    );
+    expect(sharedCss).toMatch(
+      /\.is-minimized\s*\{[^}]*display: grid;[^}]*place-items: center;/,
+    );
+    expect(sharedCss).toMatch(
+      /\.is-minimized[\s\S]*\.yoyi-navigation-entry\.is-active\s*\{[^}]*display: grid;[^}]*place-items: center;/,
+    );
+    expect(previewCss).toContain("max-height: 30rem");
     expect(sharedCss).toContain(".yoyi-icon-wrap");
     expect(script).toContain("navigationExpandDelta");
 

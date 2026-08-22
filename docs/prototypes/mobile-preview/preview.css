@@ -175,6 +175,15 @@
   }
 }
 
+@media (orientation: landscape) and (max-height: 30rem) {
+  html[data-platform="phone"]
+    .app-bottom-navigation.yoyi-mobile-bottom-navigation {
+    --app-bottom-nav-side-gap: var(--yoyi-space-3);
+    --app-bottom-nav-group-gap: var(--yoyi-space-2);
+    --app-bottom-nav-min-height: 52px;
+  }
+}
+
 /* Physical phones keep the bottom Tab Bar in either orientation. */
 @media (orientation: landscape) and (min-width: 35.5rem) {
   .app-stage {

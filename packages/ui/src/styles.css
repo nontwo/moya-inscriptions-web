@@ -1234,6 +1234,25 @@ html[data-platform="pc"]
   box-shadow: none;
 }
 
+/* A functional-glass navigation action owns its material even when active. */
+.yoyi-mobile-bottom-navigation .yoyi-navigation-entry.yoyi-functional-glass {
+  background: var(--yoyi-material-glass-fallback-background);
+  border: 1px solid var(--yoyi-material-glass-border);
+  box-shadow: var(--yoyi-material-glass-shadow);
+}
+
+@supports (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  .yoyi-mobile-bottom-navigation .yoyi-navigation-entry.yoyi-functional-glass {
+    background: var(--yoyi-material-glass-regular-background);
+    -webkit-backdrop-filter: blur(var(--yoyi-blur-glass-regular))
+      saturate(var(--yoyi-material-glass-saturation));
+    backdrop-filter: blur(var(--yoyi-blur-glass-regular))
+      saturate(var(--yoyi-material-glass-saturation));
+  }
+}
+
 .yoyi-mobile-bottom-navigation .yoyi-navigation-entry.is-nav-hot {
   transform: scale(1.08);
 }
