@@ -47,6 +47,7 @@ button {
 }
 
 .mobile-app {
+  --quick-action-background-blur: 10px;
   position: relative;
   width: min(100%, 430px);
   height: 100dvh;
@@ -82,7 +83,7 @@ button {
 
 .mobile-app.is-quick-action-open .app-primary-shell,
 .mobile-app.is-quick-action-open .app-bottom-navigation {
-  filter: blur(5px) saturate(84%);
+  filter: blur(var(--quick-action-background-blur)) saturate(84%);
 }
 
 .app-quick-action__card {
@@ -131,8 +132,8 @@ button {
 .app-quick-action__bubble {
   position: absolute;
   display: grid;
-  width: var(--quick-action-bubble-size, 64px);
-  height: var(--quick-action-bubble-size, 64px);
+  width: var(--quick-action-bubble-size, clamp(56px, 14vw, 64px));
+  height: var(--quick-action-bubble-size, clamp(56px, 14vw, 64px));
   align-content: center;
   justify-items: center;
   gap: 3px;

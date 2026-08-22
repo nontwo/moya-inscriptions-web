@@ -4281,10 +4281,17 @@ function positionQuickActionMenu(gesture) {
     width: cardWidth,
   };
   const shortSide = Math.min(cardWidth, cardHeight);
+  const bubbleScale = root.dataset.platform === "pc" ? 0.34 : 0.4;
+  const bubbleRange =
+    root.dataset.platform === "tablet"
+      ? [60, 70]
+      : root.dataset.platform === "pc"
+        ? [54, 64]
+        : [56, 64];
   const bubbleSize = quickActionClamp(
-    shortSide * (root.dataset.platform === "pc" ? 0.34 : 0.4),
-    root.dataset.platform === "pc" ? 54 : 54,
-    root.dataset.platform === "pc" ? 64 : 66,
+    shortSide * bubbleScale,
+    bubbleRange[0],
+    bubbleRange[1],
   );
   const metrics = {
     bubbleGap: quickActionClamp(shortSide * 0.08, 8, 14),

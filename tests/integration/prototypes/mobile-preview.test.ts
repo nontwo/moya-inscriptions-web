@@ -860,7 +860,10 @@ describe("mobile application preview", () => {
   });
 
   it("adds focused-card and staged quick-action visual treatment", () => {
-    expect(sharedCss).toContain("filter: blur(5px) saturate(84%)");
+    expect(sharedCss).toContain(
+      "filter: blur(var(--quick-action-background-blur)) saturate(84%)",
+    );
+    expect(sharedCss).not.toMatch(/backdrop-filter\s*:/i);
     expect(sharedCss).toContain("--quick-action-card-shift-y");
     expect(sharedCss).toContain(".app-quick-action-overlay.is-ready");
     expect(sharedCss).toContain("--quick-action-delay");
