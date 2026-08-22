@@ -4186,9 +4186,8 @@ function quickActionCandidateAtPoint(clientX, clientY) {
   return null;
 }
 
-function quickActionLayoutPositions(layout, card, bounds, bubbleSize) {
-  const bubbleGap = 12;
-  const cardGap = 16;
+function quickActionLayoutPositions(layout, card, bounds, metrics) {
+  const { bubbleGap, bubbleSize, cardGap, petalInset } = metrics;
   const bubbleCount = quickActionBubbles.length;
   const groupHeight = bubbleSize * bubbleCount + bubbleGap * (bubbleCount - 1);
   const groupWidth = groupHeight;
@@ -4202,11 +4201,11 @@ function quickActionLayoutPositions(layout, card, bounds, bubbleSize) {
     const startY = quickActionClamp(
       card.top + card.height / 2 - groupHeight / 2,
       bounds.top,
-      bounds.bottom - groupHeight,
+      bounds.bottom - groupHeight - 1,
     );
     quickActionBubbles.forEach((_, index) => {
       positions.push({
-        x: baseX + (index === 1 ? (isLeft ? 10 : -10) : 0),
+        x: baseX + (index === 1 ? (isLeft ? petalInset : -petalInset) : 0),
         y: startY + index * (bubbleSize + bubbleGap),
       });
     });
@@ -4226,13 +4225,41 @@ function quickActionLayoutPositions(layout, card, bounds, bubbleSize) {
     positions.push({
       x: startX + index * (bubbleSize + bubbleGap),
       y: quickActionClamp(
-        baseY + (index === 1 ? (isTop ? 10 : -10) : 0),
+        baseY + (index === 1 ? (isTop ? petalInset : -petalInset) : 0),
         bounds.top,
         bounds.bottom - bubbleSize,
       ),
     });
   });
   return positions;
+}
+
+function quickActionLayoutScore(layout, positions, card, bounds, metrics) {
+  const overflow = positions.reduce((total, position) => {
+    const right = position.x + metrics.bubbleSize;
+    const bottom = position.y + metrics.bubbleSize;
+    return (
+      total +
+      Math.max(0, bounds.left - position.x) +
+      Math.max(0, right - bounds.right) +
+      Math.max(0, bounds.top - position.y) +
+      Math.max(0, bottom - bounds.bottom)
+    );
+  }, 0);
+  const sideSpace =
+    layout === "left-arc"
+      ? card.left - bounds.left
+      : layout === "right-arc"
+        ? bounds.right - (card.left + card.width)
+        : layout === "top-arc"
+          ? card.top - bounds.top
+          : bounds.bottom - (card.top + card.height);
+  const sidePriority =
+    (layout === "left-arc" || layout === "right-arc") &&
+    sideSpace >= metrics.bubbleSize + metrics.cardGap
+      ? 1000
+      : 0;
+  return sidePriority + sideSpace - overflow * 10000;
 }
 
 function positionQuickActionMenu(gesture) {
@@ -4253,7 +4280,18 @@ function positionQuickActionMenu(gesture) {
     top: cardRect.top - appRect.top,
     width: cardWidth,
   };
-  const bubbleSize = root.dataset.platform === "pc" ? 72 : 64;
+  const shortSide = Math.min(cardWidth, cardHeight);
+  const bubbleSize = quickActionClamp(
+    shortSide * (root.dataset.platform === "pc" ? 0.34 : 0.4),
+    root.dataset.platform === "pc" ? 54 : 54,
+    root.dataset.platform === "pc" ? 64 : 66,
+  );
+  const metrics = {
+    bubbleGap: quickActionClamp(shortSide * 0.08, 8, 14),
+    bubbleSize,
+    cardGap: quickActionClamp(shortSide * 0.12, 16, 26),
+    petalInset: quickActionClamp(shortSide * 0.08, 7, 15),
+  };
   const edgeGap = 12;
   const navRect = bottomNavigation?.getBoundingClientRect();
   const isPc = root.dataset.platform === "pc";
@@ -4270,39 +4308,49 @@ function positionQuickActionMenu(gesture) {
     topbarRect && topbarRect.height > 0
       ? topbarRect.bottom - appRect.top + edgeGap
       : edgeGap;
+  const visualViewport = window.visualViewport;
+  const visualLeft = Number.isFinite(visualViewport?.offsetLeft)
+    ? visualViewport.offsetLeft - appRect.left
+    : 0;
+  const visualTop = Number.isFinite(visualViewport?.offsetTop)
+    ? visualViewport.offsetTop - appRect.top
+    : 0;
+  const visualRight = Number.isFinite(visualViewport?.width)
+    ? visualLeft + visualViewport.width
+    : appWidth;
+  const visualBottom = Number.isFinite(visualViewport?.height)
+    ? visualTop + visualViewport.height
+    : appHeight;
   const navTop =
     !isPc && navRect && navRect.height > 0
       ? navRect.top - appRect.top - edgeGap
-      : appHeight - edgeGap;
+      : visualBottom - edgeGap;
   const bounds = {
     bottom: Math.max(topbarBottom + bubbleSize, navTop),
-    left: isPcRail ? navRect.right - appRect.left + edgeGap : edgeGap,
-    right: appWidth - edgeGap,
-    top: Math.max(edgeGap, topbarBottom),
+    left: Math.max(
+      visualLeft + edgeGap,
+      isPcRail ? navRect.right - appRect.left + edgeGap : edgeGap,
+    ),
+    right: Math.min(appWidth - edgeGap, visualRight - edgeGap),
+    top: Math.max(visualTop + edgeGap, topbarBottom),
   };
-  const leftSpace = card.left - bounds.left;
-  const rightSpace = bounds.right - (card.left + card.width);
-  const topSpace = card.top - bounds.top;
-  const bottomSpace = bounds.bottom - (card.top + card.height);
-  const sideRequirement = bubbleSize + 16;
-  const verticalRequirement = bubbleSize + 16;
-  const layout =
-    leftSpace >= sideRequirement || rightSpace >= sideRequirement
-      ? leftSpace >= rightSpace
-        ? "left-arc"
-        : "right-arc"
-      : topSpace >= verticalRequirement || bottomSpace >= verticalRequirement
-        ? topSpace >= bottomSpace
-          ? "top-arc"
-          : "bottom-arc"
-        : bottomSpace >= topSpace
-          ? "bottom-arc"
-          : "top-arc";
-  const positions = quickActionLayoutPositions(
-    layout,
-    card,
-    bounds,
-    bubbleSize,
+  const candidates = ["left-arc", "right-arc", "top-arc", "bottom-arc"].map(
+    (layout) => {
+      const positions = quickActionLayoutPositions(
+        layout,
+        card,
+        bounds,
+        metrics,
+      );
+      return {
+        layout,
+        positions,
+        score: quickActionLayoutScore(layout, positions, card, bounds, metrics),
+      };
+    },
+  );
+  const { layout, positions } = candidates.reduce((best, candidate) =>
+    candidate.score > best.score ? candidate : best,
   );
   const hitZones = new Map();
 

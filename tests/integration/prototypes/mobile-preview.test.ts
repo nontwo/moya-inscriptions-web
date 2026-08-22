@@ -804,7 +804,10 @@ describe("mobile application preview", () => {
         const y = Number.parseFloat(
           bubble.style.getPropertyValue("--quick-action-y"),
         );
-        return y >= 82 && y + 64 <= 688;
+        const size = Number.parseFloat(
+          bubble.style.getPropertyValue("--quick-action-bubble-size"),
+        );
+        return y >= 82 && y + size <= 688;
       }),
     ).toBe(true);
 
