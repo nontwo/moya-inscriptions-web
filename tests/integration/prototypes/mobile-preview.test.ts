@@ -877,10 +877,25 @@ describe("mobile application preview", () => {
     expect(
       profileView.querySelectorAll("[data-profile-stats] > div"),
     ).toHaveLength(4);
-    expect(profileView.querySelectorAll("[data-profile-tab]")).toHaveLength(5);
+    expect(profileView.querySelectorAll("[data-profile-tab]")).toHaveLength(4);
     expect(
       profileView.querySelectorAll("[data-profile-posts] .app-card"),
     ).toHaveLength(6);
+    const collectionCards = [
+      ...profileView.querySelectorAll<HTMLElement>(
+        "[data-profile-collections] .app-card",
+      ),
+    ];
+    expect(collectionCards).toHaveLength(4);
+    expect(
+      new Set(collectionCards.map((card) => card.dataset.contentId)).size,
+    ).toBe(4);
+    expect(profileView.querySelector('[data-profile-tab="likes"]')).toBeNull();
+    expect(
+      profileView.querySelector('[data-profile-panel="likes"]'),
+    ).toBeNull();
+    expect(profileView.textContent).not.toContain("喜欢");
+    expect(profileView.textContent).toContain("获赞");
     expect(profileView.querySelector("form")).toBeNull();
     expect(profileView.querySelector('input[type="file"]')).toBeNull();
     expect(
@@ -892,8 +907,7 @@ describe("mobile application preview", () => {
     ).toEqual(["prototype-only", "synthetic", "non-production"]);
 
     for (const [tab, text] of [
-      ["favorites", "暂无收藏"],
-      ["likes", "暂无喜欢内容"],
+      ["collections", "山门北壁题记"],
       ["comments", "评论功能待接入"],
       ["history", "暂无浏览记录"],
       ["posts", "山门北壁题记"],
@@ -937,7 +951,7 @@ describe("mobile application preview", () => {
     profileTab.click();
     await waitForAnimationFrames(dom.window, 40);
     profileView
-      .querySelector<HTMLElement>("[data-profile-posts] .app-card")
+      .querySelector<HTMLElement>("[data-profile-collections] .app-card")
       ?.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
@@ -2805,7 +2819,7 @@ describe("mobile application preview", () => {
       expect(
         document.querySelectorAll("[data-primary-view].is-active"),
       ).toHaveLength(0);
-      expect(document.querySelectorAll("[data-profile-tab]")).toHaveLength(5);
+      expect(document.querySelectorAll("[data-profile-tab]")).toHaveLength(4);
       expect(
         document.querySelectorAll("[data-profile-posts] .app-card"),
       ).toHaveLength(6);
@@ -3202,10 +3216,13 @@ describe("mobile application preview", () => {
     ]) {
       expect(html).toContain(hook);
     }
-    expect(html.match(/data-profile-tab=/g)).toHaveLength(5);
+    expect(html.match(/data-profile-tab=/g)).toHaveLength(4);
     expect(html).toContain("prototype-only synthetic non-production");
     expect(html).toContain('src="./fixtures/profile.placeholder.js"');
     expect(profileFixture).toContain("YOYI_PROFILE_PLACEHOLDER");
+    expect(profileFixture).toContain("collections:");
+    expect(profileFixture).not.toContain("favorites:");
+    expect(profileFixture).not.toContain("likes:");
     expect(profileFixture).toContain("non-production");
     expect(profileFixture).not.toContain("fetch(");
     expect(sharedCss).toContain(".app-create-composer:focus-within");

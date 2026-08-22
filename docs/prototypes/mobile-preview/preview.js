@@ -166,7 +166,7 @@ const primaryViews = ["home", "inscriptions", "calligraphy"];
 const navigationViews = [...primaryViews, "create", "profile"];
 const homeFeeds = ["discover", "nearby", "topics"];
 const calligraphyCategories = ["all", "ink", "rubbing"];
-const profileTabs = ["posts", "favorites", "likes", "comments", "history"];
+const profileTabs = ["posts", "collections", "comments", "history"];
 const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
 const pagerAxisLockDistance = 8;
 const pagerEdgeResistance = 0.25;
@@ -1980,24 +1980,34 @@ function renderProfilePlaceholder() {
     );
   }
 
-  const posts = document.querySelector("[data-profile-posts]");
-  if (!posts) return;
-  const records = Array.isArray(profilePlaceholder.posts)
-    ? profilePlaceholder.posts
-    : [];
-  posts.replaceChildren(
-    ...records.map((record) =>
-      createContentCard({
-        alt: record.alt,
-        id: record.id,
-        image: record.image,
-        meta: `${displayText(record.kind)} · ${displayText(record.meta)}`,
-        title: record.title,
-      }),
-    ),
+  const renderProfileCards = (selector, records) => {
+    const grid = document.querySelector(selector);
+    if (!grid) return;
+    const uniqueRecords = (Array.isArray(records) ? records : []).filter(
+      (record, index, all) =>
+        record?.id &&
+        all.findIndex((candidate) => candidate?.id === record.id) === index,
+    );
+    grid.replaceChildren(
+      ...uniqueRecords.map((record) =>
+        createContentCard({
+          alt: record.alt,
+          id: record.id,
+          image: record.image,
+          meta: `${displayText(record.kind)} · ${displayText(record.meta)}`,
+          title: record.title,
+        }),
+      ),
+    );
+    const empty = grid.parentElement?.querySelector("[data-profile-empty]");
+    if (empty) empty.hidden = uniqueRecords.length > 0;
+  };
+
+  renderProfileCards("[data-profile-posts]", profilePlaceholder.posts);
+  renderProfileCards(
+    "[data-profile-collections]",
+    profilePlaceholder.collections,
   );
-  const empty = posts.parentElement?.querySelector("[data-profile-empty]");
-  if (empty) empty.hidden = records.length > 0;
 }
 
 function createCatalogHomeCard(record, role = "discover") {

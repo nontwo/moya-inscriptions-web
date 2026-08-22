@@ -1098,25 +1098,14 @@
                         </button>
                         <button
                           class="app-profile-tab"
-                          data-profile-tab="favorites"
+                          data-profile-tab="collections"
                           role="tab"
                           aria-selected="false"
-                          aria-controls="profile-panel-favorites"
+                          aria-controls="profile-panel-collections"
                           tabindex="-1"
                           type="button"
                         >
                           收藏
-                        </button>
-                        <button
-                          class="app-profile-tab"
-                          data-profile-tab="likes"
-                          role="tab"
-                          aria-selected="false"
-                          aria-controls="profile-panel-likes"
-                          tabindex="-1"
-                          type="button"
-                        >
-                          喜欢
                         </button>
                         <button
                           class="app-profile-tab"
@@ -1159,24 +1148,18 @@
                       </div>
                       <div
                         class="app-profile-panel"
-                        id="profile-panel-favorites"
-                        data-profile-panel="favorites"
+                        id="profile-panel-collections"
+                        data-profile-panel="collections"
                         role="tabpanel"
                         hidden
                       >
-                        <p class="app-profile-empty" data-profile-empty>
+                        <div
+                          class="app-profile-grid"
+                          data-profile-collections
+                          aria-label="收藏内容"
+                        ></div>
+                        <p class="app-profile-empty" data-profile-empty hidden>
                           暂无收藏
-                        </p>
-                      </div>
-                      <div
-                        class="app-profile-panel"
-                        id="profile-panel-likes"
-                        data-profile-panel="likes"
-                        role="tabpanel"
-                        hidden
-                      >
-                        <p class="app-profile-empty" data-profile-empty>
-                          暂无喜欢内容
                         </p>
                       </div>
                       <div
