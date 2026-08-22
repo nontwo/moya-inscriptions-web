@@ -94,9 +94,9 @@
   .app-topbar--categories {
     min-height: calc(108px + env(safe-area-inset-top));
     grid-template-areas:
-      "categories settings"
+      "categories actions"
       "search search";
-    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: 52px 44px;
     gap: 4px 6px;
     padding-bottom: 8px;
@@ -119,8 +119,8 @@
     margin-bottom: 0;
   }
 
-  .app-topbar--categories > [data-open-settings] {
-    grid-area: settings;
+  .app-topbar--categories .app-topbar__actions {
+    grid-area: actions;
   }
 }
 
@@ -209,7 +209,7 @@
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
     width: auto;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     height: auto;
     min-height: var(--app-bottom-nav-min-height);
     padding: var(--yoyi-space-2);

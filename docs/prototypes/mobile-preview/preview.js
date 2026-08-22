@@ -162,13 +162,8 @@ const layoutModeLabels = {
   single: "单列",
   double: "双列",
 };
-const primaryViews = [
-  "home",
-  "inscriptions",
-  "create",
-  "calligraphy",
-  "profile",
-];
+const primaryViews = ["home", "inscriptions", "calligraphy"];
+const navigationViews = [...primaryViews, "create", "profile"];
 const homeFeeds = ["discover", "nearby", "topics"];
 const calligraphyCategories = ["all", "ink", "rubbing"];
 const profileTabs = ["posts", "favorites", "likes", "comments", "history"];
@@ -1821,23 +1816,28 @@ function openDetail(trigger, options = {}) {
 
 function showView(view) {
   if (view !== "detail") closeMediaFocus();
-  const isPrimary = primaryViews.includes(view);
+  const isNavigationView = navigationViews.includes(view);
+  const isPagerView = primaryViews.includes(view);
   const primaryShell = document.querySelector("[data-pager='primary']");
-  if (!isPrimary) parkPrimaryPagerForOverlay();
+  if (!isNavigationView) parkPrimaryPagerForOverlay();
   if (primaryShell) {
     primaryShell.hidden = false;
-    primaryShell.classList.toggle("is-overlay-parked", !isPrimary);
-    primaryShell.toggleAttribute("inert", !isPrimary);
-    primaryShell.setAttribute("aria-hidden", String(!isPrimary));
+    primaryShell.classList.toggle("is-overlay-parked", !isNavigationView);
+    primaryShell.classList.toggle(
+      "is-standalone-active",
+      isNavigationView && !isPagerView,
+    );
+    primaryShell.toggleAttribute("inert", !isNavigationView);
+    primaryShell.setAttribute("aria-hidden", String(!isNavigationView));
   }
   document.querySelectorAll("[data-view]").forEach((panel) => {
     const name = panel.dataset.view;
     if (primaryViews.includes(name)) return;
     panel.hidden = name !== view;
   });
-  bottomNavigation.hidden = !isPrimary;
-  if (!isPrimary) setNavigationMinimized(false);
-  if (isPrimary) recalculateLayout();
+  bottomNavigation.hidden = !isNavigationView;
+  if (!isPagerView) setNavigationMinimized(false);
+  if (isNavigationView) recalculateLayout();
 }
 
 function attachCardMedia(button, media) {
@@ -1942,7 +1942,9 @@ function renderProfilePlaceholder() {
     const element = document.querySelector(selector);
     if (element && value) element.textContent = displayText(value);
   };
-  setText("[data-profile-monogram]", profile.monogram);
+  document.querySelectorAll("[data-profile-monogram]").forEach((element) => {
+    if (profile.monogram) element.textContent = displayText(profile.monogram);
+  });
   setText("[data-profile-name]", profile.displayName);
   setText("[data-profile-id]", profile.id);
   setText("[data-profile-bio]", profile.bio);
@@ -2354,7 +2356,7 @@ function updateBottomNavigation() {
 function navigationCanMinimize() {
   return (
     root.dataset.platform !== "pc" &&
-    primaryViews.includes(primaryView) &&
+    Boolean(bottomNavigation.querySelector("[data-primary-view].is-active")) &&
     !bottomNavigation.hidden
   );
 }
@@ -2556,6 +2558,10 @@ function syncNavBubbleToActive() {
   const active = bottomNavigation.querySelector(
     "[data-primary-view].is-active",
   );
+  if (!active) {
+    clearNavBubbleInlineStyle();
+    return;
+  }
   if (
     active &&
     !navigationMinimized &&
@@ -2909,12 +2915,13 @@ function selectPrimaryView(
   view,
   { updateHistory = true, animate = false, velocity = 0 } = {},
 ) {
-  if (!primaryViews.includes(view)) return;
+  if (!navigationViews.includes(view)) return;
   const previous = primaryView;
   const controller = pagerControllers.get("primary");
+  const isPagerView = primaryViews.includes(view);
   if (previous !== view) saveScrollPosition();
   primaryView = view;
-  if (animate && controller) {
+  if (animate && controller && isPagerView) {
     beginPrimaryPagerFollow(controller);
     setPagerPageState(controller, controller.values.indexOf(view), true);
   }
@@ -2926,7 +2933,7 @@ function selectPrimaryView(
   updateBottomNavigation();
   restoreScrollPosition(view);
   resetNavigationScrollTracking();
-  if (controller) syncPager(controller, { animate, velocity });
+  if (controller && isPagerView) syncPager(controller, { animate, velocity });
   if (updateHistory) {
     history.replaceState(
       { kind: "primary", view },
@@ -3359,10 +3366,7 @@ function pagerGestureIsLive() {
 
 function handlePagerWheel(event, controller) {
   if (controller.id === "primary") {
-    const inner = event.target.closest?.(
-      "[data-pager='home'], [data-pager='calligraphy']",
-    );
-    if (inner) return;
+    return;
   } else {
     event.stopPropagation();
   }
@@ -3637,7 +3641,12 @@ function preparePagers() {
     () => calligraphyCategory,
     selectCalligraphyCategory,
   );
-  preparePager("primary", primaryViews, () => primaryView, selectPrimaryView);
+  preparePager(
+    "primary",
+    primaryViews,
+    () => (primaryViews.includes(primaryView) ? primaryView : "home"),
+    selectPrimaryView,
+  );
 }
 
 function selectHomeFeed(value, { animate = false, velocity = 0 } = {}) {
@@ -3772,13 +3781,7 @@ function pagerContains(outer, inner) {
 }
 
 function pagerPointerAllowed(controller, event) {
-  if (controller.id === "primary") {
-    return (
-      event.pointerType === "touch" ||
-      event.pointerType === "mouse" ||
-      event.pointerType === "pen"
-    );
-  }
+  if (controller.id === "primary") return false;
   return touchPagerEnabled() && event.pointerType === "touch";
 }
 
@@ -4085,6 +4088,13 @@ bindClicks("[data-primary-view]", (button) => {
   }
   selectPrimaryView(button.dataset.primaryView, { animate: true });
 });
+bindClicks("[data-topbar-action]", (button) => {
+  if (button.dataset.topbarAction === "profile") {
+    selectPrimaryView("profile", { animate: false });
+    return;
+  }
+  logQaEvent("profile", "顶部私信入口功能待接入");
+});
 bindClicks("[data-create-media]", () => handleReservedCreateAction("media"));
 bindClicks("[data-create-tags]", () => handleReservedCreateAction("tags"));
 bindClicks("[data-create-submit]", () => handleReservedCreateAction("submit"));
@@ -4096,9 +4106,6 @@ bindClicks("[data-profile-action]", (button) => {
 });
 createText?.addEventListener("focus", () => {
   logQaEvent("create", "composer focused");
-});
-bottomNavigation.addEventListener("pointerdown", onNavPointerDown, {
-  passive: false,
 });
 bottomNavigation.addEventListener("click", onNavClickCapture, true);
 bindClicks("[data-home-feed]", (button) =>
@@ -4306,14 +4313,16 @@ window.addEventListener("popstate", (event) => {
   }
   const state = event.state;
   if (state?.kind === "qa-log") {
-    if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
+    if (navigationViews.includes(state.sourceView))
+      primaryView = state.sourceView;
     updateBottomNavigation();
     renderQaLog();
     showView("qa-log");
     return;
   }
   if (state?.kind === "settings") {
-    if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
+    if (navigationViews.includes(state.sourceView))
+      primaryView = state.sourceView;
     updateBottomNavigation();
     showView("settings");
     return;
@@ -4327,7 +4336,8 @@ window.addEventListener("popstate", (event) => {
     return;
   }
   if (state?.kind === "detail") {
-    if (primaryViews.includes(state.sourceView)) primaryView = state.sourceView;
+    if (navigationViews.includes(state.sourceView))
+      primaryView = state.sourceView;
     updateBottomNavigation();
     const trigger = findContentTrigger(state.contentId);
     openDetailById(state.contentId, {
@@ -4337,13 +4347,13 @@ window.addEventListener("popstate", (event) => {
     });
     return;
   }
-  if (state?.kind === "primary" && primaryViews.includes(state.view)) {
+  if (state?.kind === "primary" && navigationViews.includes(state.view)) {
     primaryView = state.view;
   }
   if (primaryView === "home") selectHomeFeed(homeFeed);
   showView(primaryView);
   const primary = primaryPager();
-  if (primary) syncPager(primary);
+  if (primary && primaryViews.includes(primaryView)) syncPager(primary);
   updateBottomNavigation();
   restoreScrollPosition(primaryView);
 });
@@ -4544,7 +4554,10 @@ document.querySelector('[data-scroll-view="inscriptions"]')?.addEventListener(
 window.addEventListener(
   "scroll",
   () => {
-    if (root.dataset.platform === "pc" && primaryViews.includes(primaryView)) {
+    if (
+      root.dataset.platform === "pc" &&
+      navigationViews.includes(primaryView)
+    ) {
       rememberScrollPosition(
         scrollKeyForView(primaryView),
         (document.scrollingElement ?? document.documentElement).scrollTop,

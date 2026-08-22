@@ -28,24 +28,24 @@
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260822-profile-view"
+      href="./preview.shared.css?v=20260822-topbar-profile-nav"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260822-profile-view"
+      href="./preview.css?v=20260822-topbar-profile-nav"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260822-profile-view"
+      href="./preview.tablet.css?v=20260822-topbar-profile-nav"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260822-profile-view"
+      href="./preview.pc.css?v=20260822-topbar-profile-nav"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -101,18 +101,39 @@
                     <span>专题</span>
                   </button>
                 </div>
-                <button
-                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-                  data-open-settings
-                  aria-label="打开设置"
-                  type="button"
-                >
-                  <span
-                    class="yoyi-icon"
-                    data-icon="settings"
-                    aria-hidden="true"
-                  ></span>
-                </button>
+                <div class="app-topbar__actions" aria-label="账户入口">
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm app-topbar-message"
+                    data-topbar-action="messages"
+                    aria-label="私信（功能待接入）"
+                    type="button"
+                  >
+                    <span
+                      class="app-topbar-message__glyph"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-topbar-profile"
+                    data-topbar-action="profile"
+                    aria-label="打开我的"
+                    type="button"
+                  >
+                    <span data-topbar-profile-monogram>艺</span>
+                  </button>
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                    data-open-settings
+                    aria-label="打开设置"
+                    type="button"
+                  >
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="settings"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                </div>
               </header>
 
               <main
@@ -358,18 +379,39 @@
                     ></span>
                   </button>
                 </label>
-                <button
-                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-                  data-open-settings
-                  aria-label="打开设置"
-                  type="button"
-                >
-                  <span
-                    class="yoyi-icon"
-                    data-icon="settings"
-                    aria-hidden="true"
-                  ></span>
-                </button>
+                <div class="app-topbar__actions" aria-label="账户入口">
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm app-topbar-message"
+                    data-topbar-action="messages"
+                    aria-label="私信（功能待接入）"
+                    type="button"
+                  >
+                    <span
+                      class="app-topbar-message__glyph"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-topbar-profile"
+                    data-topbar-action="profile"
+                    aria-label="打开我的"
+                    type="button"
+                  >
+                    <span data-topbar-profile-monogram>艺</span>
+                  </button>
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                    data-open-settings
+                    aria-label="打开设置"
+                    type="button"
+                  >
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="settings"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                </div>
               </header>
               <div class="app-inscriptions-layout">
                 <div class="app-inscriptions-list-pane">
@@ -523,26 +565,48 @@
             </section>
 
             <section
-              class="app-view app-pager__page app-create"
+              class="app-view app-create"
               data-view="create"
-              data-pager-page="create"
+              data-standalone-view
               aria-label="创作"
+              hidden
             >
               <header class="app-topbar app-topbar--create">
                 <span class="app-topbar__spacer" aria-hidden="true"></span>
                 <h1 class="app-topbar__title">创作</h1>
-                <button
-                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-                  data-open-settings
-                  aria-label="打开设置"
-                  type="button"
-                >
-                  <span
-                    class="yoyi-icon"
-                    data-icon="settings"
-                    aria-hidden="true"
-                  ></span>
-                </button>
+                <div class="app-topbar__actions" aria-label="账户入口">
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm app-topbar-message"
+                    data-topbar-action="messages"
+                    aria-label="私信（功能待接入）"
+                    type="button"
+                  >
+                    <span
+                      class="app-topbar-message__glyph"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-topbar-profile"
+                    data-topbar-action="profile"
+                    aria-label="打开我的"
+                    type="button"
+                  >
+                    <span data-topbar-profile-monogram>艺</span>
+                  </button>
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                    data-open-settings
+                    aria-label="打开设置"
+                    type="button"
+                  >
+                    <span
+                      class="yoyi-icon yoyi-icon--sm"
+                      data-icon="settings"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                </div>
               </header>
               <main
                 class="app-scroll app-create__scroll"
@@ -682,18 +746,39 @@
                     ></span>
                   </button>
                 </label>
-                <button
-                  class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
-                  data-open-settings
-                  aria-label="打开设置"
-                  type="button"
-                >
-                  <span
-                    class="yoyi-icon"
-                    data-icon="settings"
-                    aria-hidden="true"
-                  ></span>
-                </button>
+                <div class="app-topbar__actions" aria-label="账户入口">
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm app-topbar-message"
+                    data-topbar-action="messages"
+                    aria-label="私信（功能待接入）"
+                    type="button"
+                  >
+                    <span
+                      class="app-topbar-message__glyph"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                  <button
+                    class="app-topbar-profile"
+                    data-topbar-action="profile"
+                    aria-label="打开我的"
+                    type="button"
+                  >
+                    <span data-topbar-profile-monogram>艺</span>
+                  </button>
+                  <button
+                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
+                    data-open-settings
+                    aria-label="打开设置"
+                    type="button"
+                  >
+                    <span
+                      class="yoyi-icon"
+                      data-icon="settings"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
+                </div>
               </header>
               <main
                 class="app-scroll app-pager"
@@ -945,11 +1030,12 @@
             </section>
 
             <section
-              class="app-view app-pager__page app-profile"
+              class="app-view app-profile"
               data-view="profile"
-              data-pager-page="profile"
+              data-standalone-view
               data-profile-fixture="prototype-only synthetic non-production"
               aria-label="我的"
+              hidden
             >
               <main
                 class="app-scroll app-profile__scroll"
@@ -1682,22 +1768,6 @@
           <button
             class="yoyi-navigation-entry"
             data-nav-entry
-            data-primary-view="create"
-            aria-label="创作"
-            type="button"
-          >
-            <span class="yoyi-icon-wrap" aria-hidden="true">
-              <span class="yoyi-icon" data-icon="create"></span>
-            </span>
-            <span
-              class="yoyi-fixed-label"
-              data-label="nav-create"
-              aria-hidden="true"
-            ></span>
-          </button>
-          <button
-            class="yoyi-navigation-entry"
-            data-nav-entry
             data-primary-view="calligraphy"
             aria-label="书帖"
             type="button"
@@ -1714,16 +1784,16 @@
           <button
             class="yoyi-navigation-entry"
             data-nav-entry
-            data-primary-view="profile"
-            aria-label="我的"
+            data-primary-view="create"
+            aria-label="创作"
             type="button"
           >
             <span class="yoyi-icon-wrap" aria-hidden="true">
-              <span class="yoyi-icon" data-icon="profile"></span>
+              <span class="yoyi-icon" data-icon="create"></span>
             </span>
             <span
               class="yoyi-fixed-label"
-              data-label="nav-profile"
+              data-label="nav-create"
               aria-hidden="true"
             ></span>
           </button>
@@ -1751,6 +1821,6 @@
     <script src="./fixtures/p5-pilot.snapshot.js"></script>
     <script src="./fixtures/profile.placeholder.js"></script>
     <script src="./catalog-ui-adapter.js?v=20260819-media-pager"></script>
-    <script src="./preview.js?v=20260822-profile-view"></script>
+    <script src="./preview.js?v=20260822-topbar-profile-nav"></script>
   </body>
 </html>

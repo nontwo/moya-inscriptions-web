@@ -699,13 +699,16 @@ describe("mobile application preview", () => {
         .querySelector("[data-bottom-navigation] .yoyi-logo")
         ?.closest(".app-nav-brand"),
     ).toBeTruthy();
-    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(5);
-    expect(document.querySelectorAll("[data-nav-entry]")).toHaveLength(5);
+    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(4);
+    expect(document.querySelectorAll("[data-nav-entry]")).toHaveLength(4);
     expect(
       [...document.querySelectorAll<HTMLElement>("[data-nav-entry]")].map(
         (entry) => entry.dataset.primaryView ?? entry.dataset.navAction,
       ),
-    ).toEqual(["home", "inscriptions", "create", "calligraphy", "profile"]);
+    ).toEqual(["home", "inscriptions", "calligraphy", "create"]);
+    expect(
+      document.querySelectorAll('[data-topbar-action="profile"]'),
+    ).toHaveLength(4);
     expect(
       document
         .querySelector("[data-bottom-navigation]")
@@ -794,7 +797,8 @@ describe("mobile application preview", () => {
 
     createTab.click();
     await waitForAnimationFrames(dom.window, 40);
-    expect(createView.classList).toContain("is-pager-active");
+    expect(createView.hidden).toBe(false);
+    expect(createView.hasAttribute("data-pager-page")).toBe(false);
     expect(createTab.classList).toContain("is-active");
     expect(createTab.getAttribute("aria-current")).toBe("page");
     expect(dom.window.history.state).toEqual({
@@ -841,7 +845,7 @@ describe("mobile application preview", () => {
     const dom = renderPreview({}, { viewportWidth: 390 });
     const document = dom.window.document;
     const profileTab = document.querySelector<HTMLElement>(
-      '[data-primary-view="profile"]',
+      '[data-view="home"] [data-topbar-action="profile"]',
     );
     const profileView = document.querySelector<HTMLElement>(
       '[data-view="profile"]',
@@ -855,9 +859,11 @@ describe("mobile application preview", () => {
 
     profileTab.click();
     await waitForAnimationFrames(dom.window, 40);
-    expect(profileView.classList).toContain("is-pager-active");
-    expect(profileTab.classList).toContain("is-active");
-    expect(profileTab.getAttribute("aria-current")).toBe("page");
+    expect(profileView.hidden).toBe(false);
+    expect(profileView.hasAttribute("data-pager-page")).toBe(false);
+    expect(
+      document.querySelectorAll("[data-primary-view].is-active"),
+    ).toHaveLength(0);
     expect(dom.window.history.state).toEqual({
       kind: "primary",
       view: "profile",
@@ -925,8 +931,8 @@ describe("mobile application preview", () => {
       ?.click();
     await waitForAnimationFrames(dom.window, 40);
     expect(
-      document.querySelector<HTMLElement>('[data-view="create"]')?.classList,
-    ).toContain("is-pager-active");
+      document.querySelector<HTMLElement>('[data-view="create"]')?.hidden,
+    ).toBe(false);
 
     profileTab.click();
     await waitForAnimationFrames(dom.window, 40);
@@ -1126,7 +1132,7 @@ describe("mobile application preview", () => {
       '[data-view="calligraphy"]',
     );
     expect(calligraphy?.hidden).toBe(false);
-    expect(calligraphy?.classList).toContain("is-pager-active");
+    expect(calligraphy?.getAttribute("aria-label")).toBe("书帖");
     expect(primaryTrack?.style.transform).toBe("");
     expect(
       document.querySelector(
@@ -1150,20 +1156,39 @@ describe("mobile application preview", () => {
     if (!calligraphyTab || !inscriptionsTab) {
       throw new Error("primary nav tabs missing");
     }
-    tap(dom.window, calligraphyTab, { x: 280, y: 730 }, "touch");
+    calligraphyTab.click();
     await waitForAnimationFrames(dom.window, 40);
     expect(
-      document.querySelector<HTMLElement>('[data-view="calligraphy"]')
-        ?.classList,
-    ).toContain("is-pager-active");
+      document.querySelector<HTMLElement>('[data-view="calligraphy"]')?.hidden,
+    ).toBe(false);
     expect(calligraphyTab.classList).toContain("is-active");
-    tap(dom.window, inscriptionsTab, { x: 160, y: 730 }, "touch");
+    inscriptionsTab.click();
     await waitForAnimationFrames(dom.window, 40);
     expect(
-      document.querySelector<HTMLElement>('[data-view="inscriptions"]')
-        ?.classList,
-    ).toContain("is-pager-active");
+      document.querySelector<HTMLElement>('[data-view="inscriptions"]')?.hidden,
+    ).toBe(false);
     expect(inscriptionsTab.classList).toContain("is-active");
+  });
+
+  it("does not switch primary views when the main content is swiped horizontally", () => {
+    const dom = renderPreview({}, { viewportWidth: 390 });
+    const document = dom.window.document;
+    const primaryShell = document.querySelector<HTMLElement>(
+      '[data-pager="primary"]',
+    );
+    const homeTab = document.querySelector<HTMLElement>(
+      '[data-primary-view="home"]',
+    );
+    if (!primaryShell || !homeTab) throw new Error("primary surface missing");
+
+    swipe(dom.window, primaryShell, { x: 320, y: 420 }, { x: 40, y: 420 });
+
+    expect(homeTab.classList.contains("is-active")).toBe(true);
+    expect(
+      document
+        .querySelector<HTMLElement>('[data-primary-view="inscriptions"]')
+        ?.classList.contains("is-active"),
+    ).toBe(false);
   });
 
   it("does not paint calligraphy cards until the page width is ready", async () => {
@@ -1204,7 +1229,7 @@ describe("mobile application preview", () => {
     stubWidth(view, "view");
     stubWidth(masonry, "masonry");
 
-    tap(dom.window, calligraphyTab, { x: 280, y: 730 }, "touch");
+    calligraphyTab.click();
     await waitForAnimationFrames(dom.window, 8);
     expect(masonry.dataset.layoutReady).not.toBe("true");
     expect(card.style.width).toBe("");
@@ -2141,9 +2166,17 @@ describe("mobile application preview", () => {
       "calligraphy",
       "profile",
     ]) {
-      document
-        .querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
-        ?.click();
+      if (view === "profile") {
+        document
+          .querySelector<HTMLElement>(
+            '[data-view="home"] [data-topbar-action="profile"]',
+          )
+          ?.click();
+      } else {
+        document
+          .querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
+          ?.click();
+      }
       document
         .querySelector<HTMLElement>(
           `[data-view="${view}"] [data-open-settings]`,
@@ -2622,14 +2655,14 @@ describe("mobile application preview", () => {
     }
   });
 
-  it("keeps the five-entry navigation in the approved device matrix", () => {
+  it("keeps the four-entry navigation and topbar profile entry in the approved device matrix", () => {
     const expectNewPrimaryViews = (document: Document) => {
       document
         .querySelector<HTMLElement>('[data-primary-view="create"]')
         ?.click();
       expect(
         document.querySelector<HTMLElement>('[data-view="create"]')?.classList,
-      ).toContain("is-pager-active");
+      ).not.toContain("is-pager-active");
       expect(
         document
           .querySelector('[data-primary-view="create"]')
@@ -2637,16 +2670,16 @@ describe("mobile application preview", () => {
       ).toBe(true);
       expect(document.querySelector("[data-create-text]")).toBeTruthy();
       document
-        .querySelector<HTMLElement>('[data-primary-view="profile"]')
+        .querySelector<HTMLElement>(
+          '[data-view="home"] [data-topbar-action="profile"]',
+        )
         ?.click();
       expect(
         document.querySelector<HTMLElement>('[data-view="profile"]')?.classList,
-      ).toContain("is-pager-active");
+      ).not.toContain("is-pager-active");
       expect(
-        document
-          .querySelector('[data-primary-view="profile"]')
-          ?.classList.contains("is-active"),
-      ).toBe(true);
+        document.querySelectorAll("[data-primary-view].is-active"),
+      ).toHaveLength(0);
       expect(document.querySelectorAll("[data-profile-tab]")).toHaveLength(5);
       expect(
         document.querySelectorAll("[data-profile-posts] .app-card"),
@@ -2675,7 +2708,7 @@ describe("mobile application preview", () => {
         phone.window.document.querySelectorAll(
           "[data-bottom-navigation] [data-nav-entry]",
         ),
-      ).toHaveLength(5);
+      ).toHaveLength(4);
       expectNewPrimaryViews(phone.window.document);
     }
 
@@ -2700,7 +2733,7 @@ describe("mobile application preview", () => {
         tablet.window.document.querySelectorAll(
           "[data-bottom-navigation] [data-nav-entry]",
         ),
-      ).toHaveLength(5);
+      ).toHaveLength(4);
       expectNewPrimaryViews(tablet.window.document);
     }
 
@@ -2727,7 +2760,7 @@ describe("mobile application preview", () => {
         desktop.window.document.querySelectorAll(
           "[data-bottom-navigation] [data-nav-entry]",
         ),
-      ).toHaveLength(5);
+      ).toHaveLength(4);
       expectNewPrimaryViews(desktop.window.document);
     }
   });
@@ -2822,7 +2855,7 @@ describe("mobile application preview", () => {
     expect(previewCss).toContain("orientation: portrait");
     expect(previewCss).toContain("orientation: landscape");
     expect(previewCss).toContain("min-width: 35.5rem");
-    expect(previewCss).toContain('"categories settings"');
+    expect(previewCss).toContain('"categories actions"');
     expect(previewCss).toContain('"search search"');
     expect(previewCss).not.toContain("calc(88px + env(safe-area-inset-left))");
     expect(previewCss).toContain(
@@ -2844,7 +2877,7 @@ describe("mobile application preview", () => {
     expect(tabletCss).toContain("orientation: landscape");
     expect(tabletCss).toContain("--app-bottom-nav-max-width: 480px");
     expect(tabletCss).toContain(
-      "grid-template-columns: repeat(5, minmax(0, 1fr))",
+      "grid-template-columns: repeat(4, minmax(0, 1fr))",
     );
     expect(tabletCss).toContain(
       ".app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized)",
@@ -2881,12 +2914,12 @@ describe("mobile application preview", () => {
       'root.style.setProperty("--app-bottom-nav-viewport-inset"',
     );
     expect(sharedCss).toContain(
-      "grid-template-columns: repeat(5, minmax(0, 1fr))",
+      "grid-template-columns: repeat(4, minmax(0, 1fr))",
     );
     expect(previewCss).toContain(
-      "grid-template-columns: repeat(5, minmax(0, 1fr))",
+      "grid-template-columns: repeat(4, minmax(0, 1fr))",
     );
-    expect(pcCss).toContain("grid-template-rows: repeat(5, 68px)");
+    expect(pcCss).toContain("grid-template-rows: repeat(4, 68px)");
     expect(pcCss).toContain("--app-pc-nav-safe-area");
     expect(pcCss).toContain("padding-left: var(--app-pc-nav-safe-area)");
     expect(pcCss).toContain("--app-pc-nav-width: clamp(88px, 7vw, 104px)");
@@ -3028,11 +3061,10 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain('data-primary-view="create"');
     expect(html).toContain('data-view="profile"');
-    expect(html).toContain('data-primary-view="profile"');
+    expect(html).toContain('data-topbar-action="profile"');
+    expect(html).not.toContain('data-primary-view="profile"');
     expect(html).toContain('data-icon="create"');
-    expect(html).toContain('data-icon="profile"');
     expect(html).toContain('data-label="nav-create"');
-    expect(html).toContain('data-label="nav-profile"');
     for (const hook of [
       "data-create-composer",
       "data-create-text",
@@ -3100,9 +3132,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260822-profile-view"',
+      'href="./preview.shared.css?v=20260822-topbar-profile-nav"',
     );
-    expect(html).toContain('src="./preview.js?v=20260822-profile-view"');
+    expect(html).toContain('src="./preview.js?v=20260822-topbar-profile-nav"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
@@ -3385,7 +3417,7 @@ describe("mobile application preview", () => {
     expect(document.documentElement.dataset.platform).toBe("tablet");
     expect(
       document.querySelector<HTMLElement>('[data-view="create"]')?.classList,
-    ).toContain("is-pager-active");
+    ).not.toContain("is-pager-active");
     expect(
       document
         .querySelector("[data-bottom-navigation]")
@@ -3426,7 +3458,9 @@ describe("mobile application preview", () => {
     );
     const document = dom.window.document;
     document
-      .querySelector<HTMLElement>('[data-primary-view="profile"]')
+      .querySelector<HTMLElement>(
+        '[data-view="home"] [data-topbar-action="profile"]',
+      )
       ?.click();
     await waitForAnimationFrames(dom.window, 40);
     document
@@ -3435,10 +3469,8 @@ describe("mobile application preview", () => {
 
     expect(document.documentElement.dataset.platform).toBe("tablet");
     expect(
-      document
-        .querySelector('[data-primary-view="profile"]')
-        ?.classList.contains("is-active"),
-    ).toBe(true);
+      document.querySelectorAll("[data-primary-view].is-active"),
+    ).toHaveLength(0);
     expect(
       document.querySelector<HTMLElement>('[data-profile-panel="history"]')
         ?.hidden,
@@ -3447,10 +3479,8 @@ describe("mobile application preview", () => {
     setViewportWidth(dom, 896);
     expect(document.documentElement.dataset.platform).toBe("pc");
     expect(
-      document
-        .querySelector('[data-primary-view="profile"]')
-        ?.classList.contains("is-active"),
-    ).toBe(true);
+      document.querySelectorAll("[data-primary-view].is-active"),
+    ).toHaveLength(0);
     expect(
       document
         .querySelector('[data-profile-tab="history"]')
@@ -3530,7 +3560,7 @@ describe("mobile application preview", () => {
     discover.dispatchEvent(new phone.window.Event("scroll"));
     expect(navigation.dataset.minimized).toBe("true");
     expect(navigation.classList.contains("is-minimized")).toBe(true);
-    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(5);
+    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(4);
 
     discover.scrollTop = 4;
     discover.dispatchEvent(new phone.window.Event("scroll"));
@@ -3558,29 +3588,23 @@ describe("mobile application preview", () => {
     if (!homeTab) throw new Error("home tab missing");
     swipe(phone.window, homeTab, { x: 50, y: 730 }, { x: 150, y: 730 });
     expect(
-      phoneDocument.querySelector<HTMLElement>('[data-view="inscriptions"]')
-        ?.hidden,
-    ).toBe(false);
-    expect(
       navigation
-        .querySelector('[data-primary-view="inscriptions"]')
+        .querySelector('[data-primary-view="home"]')
         ?.classList.contains("is-active"),
     ).toBe(true);
-
-    swipe(phone.window, navigation, { x: 150, y: 730 }, { x: 250, y: 730 });
+    navigation
+      .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
+      ?.click();
+    expect(
+      navigation
+        .querySelector('[data-primary-view="calligraphy"]')
+        ?.classList.contains("is-active"),
+    ).toBe(true);
+    navigation
+      .querySelector<HTMLElement>('[data-primary-view="create"]')
+      ?.click();
     expect(
       phoneDocument.querySelector<HTMLElement>('[data-view="create"]')?.hidden,
-    ).toBe(false);
-
-    swipe(phone.window, navigation, { x: 250, y: 730 }, { x: 350, y: 730 });
-    expect(
-      phoneDocument.querySelector<HTMLElement>('[data-view="calligraphy"]')
-        ?.hidden,
-    ).toBe(false);
-
-    swipe(phone.window, navigation, { x: 350, y: 730 }, { x: 450, y: 730 });
-    expect(
-      phoneDocument.querySelector<HTMLElement>('[data-view="profile"]')?.hidden,
     ).toBe(false);
 
     const tablet = renderPreview(
@@ -3633,35 +3657,26 @@ describe("mobile application preview", () => {
     expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
 
-  it("keeps profile active as the fifth destination", async () => {
+  it("opens profile from the topbar without adding a bottom-navigation destination", async () => {
     const dom = renderPreview({}, { viewportWidth: 390 });
     const document = dom.window.document;
-    const navigation = document.querySelector<HTMLElement>(
-      "[data-bottom-navigation]",
+    const profile = document.querySelector<HTMLElement>(
+      '[data-view="home"] [data-topbar-action="profile"]',
     );
-    const profile = navigation?.querySelector<HTMLElement>(
-      '[data-primary-view="profile"]',
-    );
-    if (!navigation || !profile) {
-      throw new Error("profile navigation missing");
+    if (!profile) {
+      throw new Error("profile topbar entry missing");
     }
 
     profile.click();
     await waitForAnimationFrames(dom.window, 40);
 
     expect(
-      document
-        .querySelector<HTMLElement>('[data-view="profile"]')
-        ?.classList.contains("is-pager-active"),
-    ).toBe(true);
+      document.querySelector<HTMLElement>('[data-view="profile"]')?.hidden,
+    ).toBe(false);
+    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(4);
     expect(
-      navigation.querySelectorAll(".yoyi-navigation-entry.is-active"),
-    ).toHaveLength(1);
-    expect(
-      navigation
-        .querySelector('[data-primary-view="profile"]')
-        ?.classList.contains("is-active"),
-    ).toBe(true);
+      document.querySelectorAll(".yoyi-navigation-entry.is-active"),
+    ).toHaveLength(0);
     expect(dom.window.history.state).toEqual({
       kind: "primary",
       view: "profile",
@@ -3756,7 +3771,7 @@ describe("mobile application preview", () => {
     calligraphyTab.click();
     await waitForAnimationFrames(phone.window, 40);
     expect(bubble.parentElement).toBe(navigation);
-    expect(bubble.style.transform).toContain("translate3d(300px, 4px, 0)");
+    expect(bubble.style.transform).toContain("translate3d(200px, 4px, 0)");
 
     homeTab.click();
     await waitForAnimationFrames(phone.window, 40);

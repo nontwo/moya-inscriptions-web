@@ -135,6 +135,19 @@ html {
     grid-template-rows: none;
   }
 
+  .app-primary-shell > .app-pager__track > .app-view[data-standalone-view] {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: block;
+    width: auto;
+    min-width: 0;
+    min-height: 100dvh;
+    height: auto;
+    padding-left: var(--app-pc-nav-safe-area);
+    overflow: visible;
+  }
+
   html[data-platform="pc"] .app-primary-shell.is-overlay-parked {
     position: absolute;
     inset: 0;
@@ -223,16 +236,16 @@ html {
   }
 
   .app-topbar--create {
-    grid-template-columns: 52px minmax(0, 1fr) 52px;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
   }
 
   .app-topbar--search {
-    grid-template-columns: minmax(0, 1fr) 52px;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--yoyi-space-4);
   }
 
   .app-topbar--categories {
-    grid-template-columns: auto minmax(12rem, 1fr) 52px;
+    grid-template-columns: auto minmax(12rem, 1fr) auto;
     gap: var(--yoyi-space-4);
   }
 
@@ -642,7 +655,7 @@ html {
     height: 100dvh;
     min-height: 100dvh;
     grid-template-columns: 1fr;
-    grid-template-rows: repeat(5, 68px);
+    grid-template-rows: repeat(4, 68px);
     align-content: center;
     gap: var(--yoyi-space-1);
     margin: 0;
