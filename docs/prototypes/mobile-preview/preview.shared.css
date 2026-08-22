@@ -84,6 +84,15 @@ button {
   pointer-events: none;
 }
 
+/* Keep browser long-press and image-drag suppression inside actionable cards. */
+[data-quick-actions="enabled"] img,
+[data-quick-actions="enabled"] .app-card-media {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .app-quick-action__bubbles {
   position: absolute;
   z-index: 2;

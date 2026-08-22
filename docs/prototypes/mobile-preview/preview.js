@@ -4329,10 +4329,25 @@ function cancelQuickActionForSecondaryPointer(event) {
   }
 }
 
+function suppressQuickActionContextMenu(event) {
+  event.preventDefault();
+}
+
+function suppressQuickActionMediaDrag(event) {
+  if (
+    event.target instanceof Element &&
+    event.target.closest("img, .app-card-media")
+  ) {
+    event.preventDefault();
+  }
+}
+
 function bindQuickActions() {
   document.querySelectorAll("[data-open-detail]").forEach((card) => {
     card.dataset.quickActions = "enabled";
     card.addEventListener("pointerdown", beginQuickAction);
+    card.addEventListener("contextmenu", suppressQuickActionContextMenu);
+    card.addEventListener("dragstart", suppressQuickActionMediaDrag);
     card.addEventListener(
       "click",
       (event) => {

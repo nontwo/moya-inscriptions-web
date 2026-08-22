@@ -717,6 +717,55 @@ describe("mobile application preview", () => {
     expect(overlay.hidden).toBe(true);
   });
 
+  it("limits browser long-press suppression to quick-action cards and their media", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const image = card?.querySelector("img");
+    const composer =
+      document.querySelector<HTMLTextAreaElement>("[data-create-text]");
+    if (!card || !image || !composer) {
+      throw new Error("quick-action browser-suppression fixture missing");
+    }
+
+    const cardContextMenu = new dom.window.Event("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    card.dispatchEvent(cardContextMenu);
+    expect(cardContextMenu.defaultPrevented).toBe(true);
+
+    const imageDrag = new dom.window.Event("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    image.dispatchEvent(imageDrag);
+    expect(imageDrag.defaultPrevented).toBe(true);
+
+    const cardDrag = new dom.window.Event("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    card.dispatchEvent(cardDrag);
+    expect(cardDrag.defaultPrevented).toBe(false);
+
+    const composerContextMenu = new dom.window.Event("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(composerContextMenu);
+    expect(composerContextMenu.defaultPrevented).toBe(false);
+
+    const documentContextMenu = new dom.window.Event("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(documentContextMenu);
+    expect(documentContextMenu.defaultPrevented).toBe(false);
+  });
+
   it("commits the selected quick action without opening detail and suppresses only the resulting click", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
