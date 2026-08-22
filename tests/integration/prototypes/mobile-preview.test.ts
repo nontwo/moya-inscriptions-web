@@ -713,6 +713,28 @@ describe("mobile application preview", () => {
     });
     await waitMs(dom.window, 480);
     expect(overlay.hidden).toBe(false);
+    const focusLayer = document.querySelector<HTMLElement>(
+      '[data-quick-action-layer="focus"]',
+    );
+    const bubbleLayer = document.querySelector<HTMLElement>(
+      '[data-quick-action-layer="bubbles"]',
+    );
+    if (!focusLayer || !bubbleLayer) {
+      throw new Error("quick-action layers missing");
+    }
+    expect(
+      document.querySelectorAll('[data-quick-action-layer="background"]'),
+    ).toHaveLength(2);
+    expect(
+      focusLayer.closest('[data-quick-action-layer="background"]'),
+    ).toBeNull();
+    expect(
+      bubbleLayer.closest('[data-quick-action-layer="background"]'),
+    ).toBeNull();
+    expect(focusLayer.querySelector("img")).not.toBeNull();
+    const cardText = card.textContent?.trim();
+    if (!cardText) throw new Error("quick-action card text missing");
+    expect(focusLayer.textContent).toContain(cardText);
     expect(document.querySelectorAll("[data-quick-action]")).toHaveLength(3);
     expect(overlay.textContent).toContain("收藏");
     expect(overlay.textContent).toContain("点赞");
@@ -776,6 +798,15 @@ describe("mobile application preview", () => {
       );
     await openAt(rightBiased, { left: 210, top: 200, width: 160, height: 180 });
     expect(rightBiasedOverlay?.dataset.layout).toBe("left-arc");
+    const rightBiasedPositions = [
+      ...rightBiased.window.document.querySelectorAll<HTMLElement>(
+        "[data-quick-action]",
+      ),
+    ].map((bubble) =>
+      Number.parseFloat(bubble.style.getPropertyValue("--quick-action-x")),
+    );
+    expect(rightBiasedPositions[0]!).toBeLessThan(rightBiasedPositions[1]!);
+    expect(rightBiasedPositions[2]!).toBeLessThan(rightBiasedPositions[1]!);
 
     const leftBiased = renderPreview();
     const leftBiasedOverlay =
@@ -784,6 +815,15 @@ describe("mobile application preview", () => {
       );
     await openAt(leftBiased, { left: 20, top: 200, width: 160, height: 180 });
     expect(leftBiasedOverlay?.dataset.layout).toBe("right-arc");
+    const leftBiasedPositions = [
+      ...leftBiased.window.document.querySelectorAll<HTMLElement>(
+        "[data-quick-action]",
+      ),
+    ].map((bubble) =>
+      Number.parseFloat(bubble.style.getPropertyValue("--quick-action-x")),
+    );
+    expect(leftBiasedPositions[0]!).toBeGreaterThan(leftBiasedPositions[1]!);
+    expect(leftBiasedPositions[2]!).toBeGreaterThan(leftBiasedPositions[1]!);
 
     const leftPress = renderPreview();
     const leftPressOverlay =
@@ -905,6 +945,7 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain(
       "filter: blur(var(--quick-action-background-blur)) saturate(84%)",
     );
+    expect(sharedCss).toContain('[data-quick-action-layer="background"]');
     expect(sharedCss).not.toMatch(/backdrop-filter\s*:/i);
     expect(sharedCss).toContain("--quick-action-card-shift-y");
     expect(sharedCss).toContain(".app-quick-action-overlay.is-ready");

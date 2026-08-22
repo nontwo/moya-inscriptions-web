@@ -4186,8 +4186,13 @@ function quickActionCandidateAtPoint(clientX, clientY) {
   return null;
 }
 
+function quickActionFanDirectionSign(layout) {
+  if (layout === "left-arc" || layout === "top-arc") return -1;
+  return 1;
+}
+
 function quickActionLayoutPositions(layout, card, bounds, metrics) {
-  const { bubbleGap, bubbleSize, cardGap, petalInset } = metrics;
+  const { arcDepth, bubbleGap, bubbleSize, cardGap } = metrics;
   const bubbleCount = quickActionBubbles.length;
   const groupHeight = bubbleSize * bubbleCount + bubbleGap * (bubbleCount - 1);
   const groupWidth = groupHeight;
@@ -4195,6 +4200,7 @@ function quickActionLayoutPositions(layout, card, bounds, metrics) {
 
   if (layout === "left-arc" || layout === "right-arc") {
     const isLeft = layout === "left-arc";
+    const directionSign = quickActionFanDirectionSign(layout);
     const baseX = isLeft
       ? card.left - bubbleSize - cardGap
       : card.left + card.width + cardGap;
@@ -4205,7 +4211,7 @@ function quickActionLayoutPositions(layout, card, bounds, metrics) {
     );
     quickActionBubbles.forEach((_, index) => {
       positions.push({
-        x: baseX + (index === 1 ? (isLeft ? petalInset : -petalInset) : 0),
+        x: baseX + (index === 1 ? -directionSign * arcDepth : 0),
         y: startY + index * (bubbleSize + bubbleGap),
       });
     });
@@ -4213,6 +4219,7 @@ function quickActionLayoutPositions(layout, card, bounds, metrics) {
   }
 
   const isTop = layout === "top-arc";
+  const directionSign = quickActionFanDirectionSign(layout);
   const startX = quickActionClamp(
     card.left + card.width / 2 - groupWidth / 2,
     bounds.left,
@@ -4225,7 +4232,7 @@ function quickActionLayoutPositions(layout, card, bounds, metrics) {
     positions.push({
       x: startX + index * (bubbleSize + bubbleGap),
       y: quickActionClamp(
-        baseY + (index === 1 ? (isTop ? petalInset : -petalInset) : 0),
+        baseY + (index === 1 ? -directionSign * arcDepth : 0),
         bounds.top,
         bounds.bottom - bubbleSize,
       ),
@@ -4310,7 +4317,7 @@ function positionQuickActionMenu(gesture) {
     bubbleGap: quickActionClamp(shortSide * 0.08, 8, 14),
     bubbleSize,
     cardGap: quickActionClamp(shortSide * 0.12, 16, 26),
-    petalInset: quickActionClamp(shortSide * 0.08, 7, 15),
+    arcDepth: quickActionClamp(shortSide * 0.08, 7, 15),
   };
   const edgeGap = 12;
   const navRect = bottomNavigation?.getBoundingClientRect();
@@ -4527,6 +4534,7 @@ function beginQuickAction(event) {
     card,
     contentId: card.dataset.contentId || "content-card",
     pointerId: event.pointerId,
+    pointerType: event.pointerType,
     pressX: event.clientX,
     pressY: event.clientY,
     startX: event.clientX,

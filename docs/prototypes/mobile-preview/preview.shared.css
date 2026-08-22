@@ -76,13 +76,11 @@ button {
   transition: opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
-.app-primary-shell,
-.app-bottom-navigation {
+[data-quick-action-layer="background"] {
   transition: filter var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
-.mobile-app.is-quick-action-open .app-primary-shell,
-.mobile-app.is-quick-action-open .app-bottom-navigation {
+.mobile-app.is-quick-action-open [data-quick-action-layer="background"] {
   filter: blur(var(--quick-action-background-blur)) saturate(84%);
 }
 

@@ -56,7 +56,11 @@
   <body>
     <div class="app-stage">
       <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
-        <div class="app-primary-shell app-pager" data-pager="primary">
+        <div
+          class="app-primary-shell app-pager"
+          data-pager="primary"
+          data-quick-action-layer="background"
+        >
           <div class="app-pager__track" data-pager-track>
             <section
               class="app-view app-pager__page is-pager-active"
@@ -1658,6 +1662,7 @@
           class="yoyi-mobile-bottom-navigation app-bottom-navigation"
           data-bottom-navigation
           data-minimize-behavior="on-scroll"
+          data-quick-action-layer="background"
           aria-label="主导航"
         >
           <div
@@ -1747,9 +1752,18 @@
         >
           <div
             class="app-quick-action-overlay__backdrop yoyi-functional-glass"
+            data-quick-action-layer="dim"
           ></div>
-          <div class="app-quick-action__card" data-quick-action-card></div>
-          <div class="app-quick-action__bubbles" data-quick-action-bubbles>
+          <div
+            class="app-quick-action__card"
+            data-quick-action-card
+            data-quick-action-layer="focus"
+          ></div>
+          <div
+            class="app-quick-action__bubbles"
+            data-quick-action-bubbles
+            data-quick-action-layer="bubbles"
+          >
             <span class="app-quick-action__bubble" data-quick-action="collect"
               ><svg
                 class="app-quick-action__glyph"
