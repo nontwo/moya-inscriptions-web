@@ -48,6 +48,10 @@ const p5PilotFixture = await readFile(
   new URL("fixtures/p5-pilot.snapshot.js", previewRoot),
   "utf8",
 );
+const profileFixture = await readFile(
+  new URL("fixtures/profile.placeholder.js", previewRoot),
+  "utf8",
+);
 const sharedCss = await readFile(
   new URL("preview.shared.css", previewRoot),
   "utf8",
@@ -216,6 +220,10 @@ const renderPreview = (
       "",
     )
     .replace(
+      /<script src="\.\/fixtures\/profile\.placeholder\.js"><\/script>/,
+      "",
+    )
+    .replace(
       /<script src="\.\/catalog-ui-adapter\.js(?:\?[^"]*)?"><\/script>/,
       "",
     )
@@ -239,6 +247,7 @@ const renderPreview = (
   dom.window.eval(topicsFixture);
   dom.window.eval(catalogDetailFixture);
   dom.window.eval(p5PilotFixture);
+  dom.window.eval(profileFixture);
   dom.window.eval(catalogAdapterScript);
   dom.window.eval(script);
   return dom;
@@ -690,7 +699,7 @@ describe("mobile application preview", () => {
         .querySelector("[data-bottom-navigation] .yoyi-logo")
         ?.closest(".app-nav-brand"),
     ).toBeTruthy();
-    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(4);
+    expect(document.querySelectorAll("[data-primary-view]")).toHaveLength(5);
     expect(document.querySelectorAll("[data-nav-entry]")).toHaveLength(5);
     expect(
       [...document.querySelectorAll<HTMLElement>("[data-nav-entry]")].map(
@@ -754,7 +763,7 @@ describe("mobile application preview", () => {
     expect(new Set(contentIds).size).toBe(contentIds.length);
     expect(document.querySelector('[data-label="tab-discover"]')).toBeNull();
     expect(document.querySelector('[data-label="tab-nearby"]')).toBeNull();
-    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(4);
+    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(5);
     expect(document.querySelector("[data-calligraphy-filter]")).toBeTruthy();
     expect(document.querySelector("[data-theme-cycle]")).toBeNull();
     expect(
@@ -826,6 +835,111 @@ describe("mobile application preview", () => {
     createTab.click();
     await waitForAnimationFrames(dom.window, 40);
     expect(textarea.value).toBe("临时创作内容");
+  });
+
+  it("opens the synthetic profile view and keeps account actions presentation-only", async () => {
+    const dom = renderPreview({}, { viewportWidth: 390 });
+    const document = dom.window.document;
+    const profileTab = document.querySelector<HTMLElement>(
+      '[data-primary-view="profile"]',
+    );
+    const profileView = document.querySelector<HTMLElement>(
+      '[data-view="profile"]',
+    );
+    const feedback = document.querySelector<HTMLElement>(
+      "[data-profile-feedback]",
+    );
+    if (!profileTab || !profileView || !feedback) {
+      throw new Error("profile fixture missing");
+    }
+
+    profileTab.click();
+    await waitForAnimationFrames(dom.window, 40);
+    expect(profileView.classList).toContain("is-pager-active");
+    expect(profileTab.classList).toContain("is-active");
+    expect(profileTab.getAttribute("aria-current")).toBe("page");
+    expect(dom.window.history.state).toEqual({
+      kind: "primary",
+      view: "profile",
+    });
+    expect(profileView.dataset.profileFixture).toBe(
+      "prototype-only synthetic non-production",
+    );
+    expect(profileView.querySelector("[data-profile-name]")?.textContent).toBe(
+      "由艺同好",
+    );
+    expect(
+      profileView.querySelectorAll("[data-profile-stats] > div"),
+    ).toHaveLength(4);
+    expect(profileView.querySelectorAll("[data-profile-tab]")).toHaveLength(5);
+    expect(
+      profileView.querySelectorAll("[data-profile-posts] .app-card"),
+    ).toHaveLength(6);
+    expect(profileView.querySelector("form")).toBeNull();
+    expect(profileView.querySelector('input[type="file"]')).toBeNull();
+    expect(
+      (
+        dom.window as unknown as {
+          YOYI_PROFILE_PLACEHOLDER: { classification: string[] };
+        }
+      ).YOYI_PROFILE_PLACEHOLDER.classification,
+    ).toEqual(["prototype-only", "synthetic", "non-production"]);
+
+    for (const [tab, text] of [
+      ["favorites", "暂无收藏"],
+      ["likes", "暂无喜欢内容"],
+      ["comments", "评论功能待接入"],
+      ["history", "暂无浏览记录"],
+      ["posts", "山门北壁题记"],
+    ]) {
+      profileView
+        .querySelector<HTMLElement>(`[data-profile-tab="${tab}"]`)
+        ?.click();
+      expect(
+        profileView.querySelector<HTMLElement>(`[data-profile-panel="${tab}"]`)
+          ?.hidden,
+      ).toBe(false);
+      expect(
+        profileView.querySelector(`[data-profile-panel="${tab}"]`)?.textContent,
+      ).toContain(text);
+    }
+
+    profileView
+      .querySelector<HTMLElement>('[data-profile-action="edit"]')
+      ?.click();
+    expect(feedback.textContent).toContain("编辑资料功能待接入");
+    profileView
+      .querySelector<HTMLElement>('[data-profile-action="messages"]')
+      ?.click();
+    expect(feedback.textContent).toContain("消息功能待接入");
+    profileView
+      .querySelector<HTMLElement>('[data-profile-action="drafts"]')
+      ?.click();
+    expect(feedback.textContent).toContain("不会读取或保存草稿");
+    expect(dom.window.sessionStorage.getItem("yoyi.qa-log")).toContain(
+      "reserved drafts action",
+    );
+
+    profileView
+      .querySelector<HTMLElement>('[data-profile-action="create"]')
+      ?.click();
+    await waitForAnimationFrames(dom.window, 40);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="create"]')?.classList,
+    ).toContain("is-pager-active");
+
+    profileTab.click();
+    await waitForAnimationFrames(dom.window, 40);
+    profileView
+      .querySelector<HTMLElement>("[data-profile-posts] .app-card")
+      ?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(false);
+    expect(dom.window.history.state).toMatchObject({
+      kind: "detail",
+      sourceView: "profile",
+    });
   });
 
   it("opens every supplemental home card with the existing detail behavior", () => {
@@ -2020,7 +2134,13 @@ describe("mobile application preview", () => {
   it("opens settings from every primary view and returns to its source", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
-    for (const view of ["home", "inscriptions", "create", "calligraphy"]) {
+    for (const view of [
+      "home",
+      "inscriptions",
+      "create",
+      "calligraphy",
+      "profile",
+    ]) {
       document
         .querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
         ?.click();
@@ -2503,7 +2623,7 @@ describe("mobile application preview", () => {
   });
 
   it("keeps the five-entry navigation in the approved device matrix", () => {
-    const expectCreateView = (document: Document) => {
+    const expectNewPrimaryViews = (document: Document) => {
       document
         .querySelector<HTMLElement>('[data-primary-view="create"]')
         ?.click();
@@ -2516,6 +2636,21 @@ describe("mobile application preview", () => {
           ?.classList.contains("is-active"),
       ).toBe(true);
       expect(document.querySelector("[data-create-text]")).toBeTruthy();
+      document
+        .querySelector<HTMLElement>('[data-primary-view="profile"]')
+        ?.click();
+      expect(
+        document.querySelector<HTMLElement>('[data-view="profile"]')?.classList,
+      ).toContain("is-pager-active");
+      expect(
+        document
+          .querySelector('[data-primary-view="profile"]')
+          ?.classList.contains("is-active"),
+      ).toBe(true);
+      expect(document.querySelectorAll("[data-profile-tab]")).toHaveLength(5);
+      expect(
+        document.querySelectorAll("[data-profile-posts] .app-card"),
+      ).toHaveLength(6);
     };
 
     for (const [viewportWidth, viewportHeight] of [
@@ -2541,7 +2676,7 @@ describe("mobile application preview", () => {
           "[data-bottom-navigation] [data-nav-entry]",
         ),
       ).toHaveLength(5);
-      expectCreateView(phone.window.document);
+      expectNewPrimaryViews(phone.window.document);
     }
 
     for (const [viewportWidth, viewportHeight] of [
@@ -2566,7 +2701,7 @@ describe("mobile application preview", () => {
           "[data-bottom-navigation] [data-nav-entry]",
         ),
       ).toHaveLength(5);
-      expectCreateView(tablet.window.document);
+      expectNewPrimaryViews(tablet.window.document);
     }
 
     for (const [viewportWidth, platform] of [
@@ -2593,7 +2728,7 @@ describe("mobile application preview", () => {
           "[data-bottom-navigation] [data-nav-entry]",
         ),
       ).toHaveLength(5);
-      expectCreateView(desktop.window.document);
+      expectNewPrimaryViews(desktop.window.document);
     }
   });
 
@@ -2892,7 +3027,8 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-view="create"');
     expect(html).toContain('data-primary-view="calligraphy"');
     expect(html).toContain('data-primary-view="create"');
-    expect(html).toContain('data-nav-action="profile"');
+    expect(html).toContain('data-view="profile"');
+    expect(html).toContain('data-primary-view="profile"');
     expect(html).toContain('data-icon="create"');
     expect(html).toContain('data-icon="profile"');
     expect(html).toContain('data-label="nav-create"');
@@ -2903,9 +3039,18 @@ describe("mobile application preview", () => {
       "data-create-media",
       "data-create-tags",
       "data-create-submit",
+      "data-profile-stats",
+      "data-profile-posts",
+      "data-profile-feedback",
     ]) {
       expect(html).toContain(hook);
     }
+    expect(html.match(/data-profile-tab=/g)).toHaveLength(5);
+    expect(html).toContain("prototype-only synthetic non-production");
+    expect(html).toContain('src="./fixtures/profile.placeholder.js"');
+    expect(profileFixture).toContain("YOYI_PROFILE_PLACEHOLDER");
+    expect(profileFixture).toContain("non-production");
+    expect(profileFixture).not.toContain("fetch(");
     expect(sharedCss).toContain(".app-create-composer:focus-within");
     expect(sharedCss).toContain("var(--yoyi-color-background-surface)");
     expect(script).toContain("function handleReservedCreateAction");
@@ -2955,9 +3100,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-setting-group="home-layout"');
     expect(html).toContain('src="./device-platform.js"');
     expect(html).toContain(
-      'href="./preview.shared.css?v=20260822-create-composer"',
+      'href="./preview.shared.css?v=20260822-profile-view"',
     );
-    expect(html).toContain('src="./preview.js?v=20260822-create-composer"');
+    expect(html).toContain('src="./preview.js?v=20260822-profile-view"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
@@ -2992,8 +3137,12 @@ describe("mobile application preview", () => {
     expect(script).toContain("pagerPeekMoveOptions");
     expect(script).toContain("function syncBottomNavViewportInset");
     expect(sharedCss).toContain(".app-topics__grid");
-    expect(html).not.toMatch(/收藏|下载|著录|拓片信息|相关碑刻/);
-    expect(html).not.toMatch(/关注|评论|登录|账号|地图/);
+    const detailMarkup = html.slice(
+      html.indexOf('data-view="detail"'),
+      html.indexOf("<!-- TOPICS_PLACEHOLDER_START"),
+    );
+    expect(detailMarkup).not.toMatch(/收藏|下载|著录|拓片信息|相关碑刻/);
+    expect(detailMarkup).not.toMatch(/关注|评论|登录|账号|地图/);
     expect(html).not.toContain("<h2>图像</h2>");
     expect(html).not.toContain("data-detail-gallery");
     expect(html).toContain("data-detail-focus-stage");
@@ -3265,6 +3414,60 @@ describe("mobile application preview", () => {
     );
   });
 
+  it("keeps the profile view and selected tab across the 895 and 896px boundary", async () => {
+    const dom = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportWidth: 895,
+      },
+    );
+    const document = dom.window.document;
+    document
+      .querySelector<HTMLElement>('[data-primary-view="profile"]')
+      ?.click();
+    await waitForAnimationFrames(dom.window, 40);
+    document
+      .querySelector<HTMLElement>('[data-profile-tab="history"]')
+      ?.click();
+
+    expect(document.documentElement.dataset.platform).toBe("tablet");
+    expect(
+      document
+        .querySelector('[data-primary-view="profile"]')
+        ?.classList.contains("is-active"),
+    ).toBe(true);
+    expect(
+      document.querySelector<HTMLElement>('[data-profile-panel="history"]')
+        ?.hidden,
+    ).toBe(false);
+
+    setViewportWidth(dom, 896);
+    expect(document.documentElement.dataset.platform).toBe("pc");
+    expect(
+      document
+        .querySelector('[data-primary-view="profile"]')
+        ?.classList.contains("is-active"),
+    ).toBe(true);
+    expect(
+      document
+        .querySelector('[data-profile-tab="history"]')
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      document.querySelectorAll("[data-profile-posts] .app-card"),
+    ).toHaveLength(6);
+
+    setViewportWidth(dom, 895);
+    expect(document.documentElement.dataset.platform).toBe("tablet");
+    expect(
+      document.querySelector<HTMLElement>('[data-profile-panel="history"]')
+        ?.hidden,
+    ).toBe(false);
+  });
+
   it("keeps an open inscription detail across the 896px shell boundary", () => {
     const dom = renderPreview(
       {},
@@ -3327,7 +3530,7 @@ describe("mobile application preview", () => {
     discover.dispatchEvent(new phone.window.Event("scroll"));
     expect(navigation.dataset.minimized).toBe("true");
     expect(navigation.classList.contains("is-minimized")).toBe(true);
-    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(4);
+    expect(navigation.querySelectorAll("[data-primary-view]")).toHaveLength(5);
 
     discover.scrollTop = 4;
     discover.dispatchEvent(new phone.window.Event("scroll"));
@@ -3373,6 +3576,11 @@ describe("mobile application preview", () => {
     expect(
       phoneDocument.querySelector<HTMLElement>('[data-view="calligraphy"]')
         ?.hidden,
+    ).toBe(false);
+
+    swipe(phone.window, navigation, { x: 350, y: 730 }, { x: 450, y: 730 });
+    expect(
+      phoneDocument.querySelector<HTMLElement>('[data-view="profile"]')?.hidden,
     ).toBe(false);
 
     const tablet = renderPreview(
@@ -3425,42 +3633,41 @@ describe("mobile application preview", () => {
     expect(pcNav.hasAttribute("data-minimized")).toBe(false);
   });
 
-  it("keeps the reserved profile action presentation-only", () => {
+  it("keeps profile active as the fifth destination", async () => {
     const dom = renderPreview({}, { viewportWidth: 390 });
     const document = dom.window.document;
     const navigation = document.querySelector<HTMLElement>(
       "[data-bottom-navigation]",
     );
-    const create = navigation?.querySelector<HTMLElement>(
-      '[data-primary-view="create"]',
-    );
     const profile = navigation?.querySelector<HTMLElement>(
-      '[data-nav-action="profile"]',
+      '[data-primary-view="profile"]',
     );
-    if (!navigation || !create || !profile) {
-      throw new Error("create or reserved profile navigation missing");
+    if (!navigation || !profile) {
+      throw new Error("profile navigation missing");
     }
 
-    create.click();
     profile.click();
+    await waitForAnimationFrames(dom.window, 40);
 
     expect(
-      document.querySelector<HTMLElement>('[data-view="create"]')?.hidden,
-    ).toBe(false);
+      document
+        .querySelector<HTMLElement>('[data-view="profile"]')
+        ?.classList.contains("is-pager-active"),
+    ).toBe(true);
     expect(
       navigation.querySelectorAll(".yoyi-navigation-entry.is-active"),
     ).toHaveLength(1);
     expect(
       navigation
-        .querySelector('[data-primary-view="create"]')
+        .querySelector('[data-primary-view="profile"]')
         ?.classList.contains("is-active"),
     ).toBe(true);
     expect(dom.window.history.state).toEqual({
       kind: "primary",
-      view: "create",
+      view: "profile",
     });
     expect(dom.window.sessionStorage.getItem("yoyi.qa-log")).toContain(
-      "reserved action: profile",
+      "切换到我的",
     );
   });
 

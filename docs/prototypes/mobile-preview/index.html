@@ -28,24 +28,24 @@
     />
     <link
       rel="stylesheet"
-      href="./preview.shared.css?v=20260822-create-composer"
+      href="./preview.shared.css?v=20260822-profile-view"
       data-shared-stylesheet
     />
     <link
       rel="stylesheet"
-      href="./preview.css?v=20260822-create-composer"
+      href="./preview.css?v=20260822-profile-view"
       media="not all"
       data-platform-stylesheet="phone"
     />
     <link
       rel="stylesheet"
-      href="./preview.tablet.css?v=20260822-create-composer"
+      href="./preview.tablet.css?v=20260822-profile-view"
       media="not all"
       data-platform-stylesheet="tablet"
     />
     <link
       rel="stylesheet"
-      href="./preview.pc.css?v=20260822-create-composer"
+      href="./preview.pc.css?v=20260822-profile-view"
       media="not all"
       data-platform-stylesheet="pc"
     />
@@ -943,6 +943,239 @@
                 </div>
               </main>
             </section>
+
+            <section
+              class="app-view app-pager__page app-profile"
+              data-view="profile"
+              data-pager-page="profile"
+              data-profile-fixture="prototype-only synthetic non-production"
+              aria-label="我的"
+            >
+              <main
+                class="app-scroll app-profile__scroll"
+                data-scroll-view="profile"
+                data-scroll-key="profile"
+              >
+                <div class="app-profile__page">
+                  <header class="app-profile-header">
+                    <div
+                      class="app-profile-avatar"
+                      data-profile-monogram
+                      aria-label="虚构用户头像"
+                      role="img"
+                    >
+                      艺
+                    </div>
+                    <div class="app-profile-identity">
+                      <p class="app-profile-identity__eyebrow">
+                        SYNTHETIC PROFILE
+                      </p>
+                      <h1 data-profile-name>由艺同好</h1>
+                      <p class="app-profile-identity__id">
+                        由艺号 <span data-profile-id>yoyi_demo_001</span>
+                      </p>
+                      <p class="app-profile-identity__bio" data-profile-bio>
+                        在山川与纸墨之间，记录石刻的时间痕迹。
+                      </p>
+                      <div
+                        class="app-profile-badges"
+                        data-profile-badges
+                        aria-label="个人标签"
+                      ></div>
+                    </div>
+                    <button
+                      class="yoyi-button yoyi-button--quiet yoyi-button--sm app-profile-edit"
+                      data-profile-action="edit"
+                      type="button"
+                    >
+                      编辑资料
+                    </button>
+                    <dl class="app-profile-stats" data-profile-stats></dl>
+                  </header>
+
+                  <div class="app-profile__columns">
+                    <section class="app-profile-content" aria-label="我的内容">
+                      <div
+                        class="app-profile-tabs"
+                        role="tablist"
+                        aria-label="我的内容分类"
+                      >
+                        <button
+                          class="app-profile-tab is-selected"
+                          data-profile-tab="posts"
+                          role="tab"
+                          aria-selected="true"
+                          aria-controls="profile-panel-posts"
+                          type="button"
+                        >
+                          我的发布
+                        </button>
+                        <button
+                          class="app-profile-tab"
+                          data-profile-tab="favorites"
+                          role="tab"
+                          aria-selected="false"
+                          aria-controls="profile-panel-favorites"
+                          tabindex="-1"
+                          type="button"
+                        >
+                          收藏
+                        </button>
+                        <button
+                          class="app-profile-tab"
+                          data-profile-tab="likes"
+                          role="tab"
+                          aria-selected="false"
+                          aria-controls="profile-panel-likes"
+                          tabindex="-1"
+                          type="button"
+                        >
+                          喜欢
+                        </button>
+                        <button
+                          class="app-profile-tab"
+                          data-profile-tab="comments"
+                          role="tab"
+                          aria-selected="false"
+                          aria-controls="profile-panel-comments"
+                          tabindex="-1"
+                          type="button"
+                        >
+                          评论
+                        </button>
+                        <button
+                          class="app-profile-tab"
+                          data-profile-tab="history"
+                          role="tab"
+                          aria-selected="false"
+                          aria-controls="profile-panel-history"
+                          tabindex="-1"
+                          type="button"
+                        >
+                          浏览记录
+                        </button>
+                      </div>
+
+                      <div
+                        class="app-profile-panel"
+                        id="profile-panel-posts"
+                        data-profile-panel="posts"
+                        role="tabpanel"
+                      >
+                        <div
+                          class="app-profile-grid"
+                          data-profile-posts
+                          aria-label="虚构发布内容"
+                        ></div>
+                        <p class="app-profile-empty" data-profile-empty hidden>
+                          还没有发布内容
+                        </p>
+                      </div>
+                      <div
+                        class="app-profile-panel"
+                        id="profile-panel-favorites"
+                        data-profile-panel="favorites"
+                        role="tabpanel"
+                        hidden
+                      >
+                        <p class="app-profile-empty" data-profile-empty>
+                          暂无收藏
+                        </p>
+                      </div>
+                      <div
+                        class="app-profile-panel"
+                        id="profile-panel-likes"
+                        data-profile-panel="likes"
+                        role="tabpanel"
+                        hidden
+                      >
+                        <p class="app-profile-empty" data-profile-empty>
+                          暂无喜欢内容
+                        </p>
+                      </div>
+                      <div
+                        class="app-profile-panel"
+                        id="profile-panel-comments"
+                        data-profile-panel="comments"
+                        role="tabpanel"
+                        hidden
+                      >
+                        <p class="app-profile-empty" data-profile-empty>
+                          评论功能待接入
+                        </p>
+                      </div>
+                      <div
+                        class="app-profile-panel"
+                        id="profile-panel-history"
+                        data-profile-panel="history"
+                        role="tabpanel"
+                        hidden
+                      >
+                        <p class="app-profile-empty" data-profile-empty>
+                          暂无浏览记录
+                        </p>
+                      </div>
+                    </section>
+
+                    <aside class="app-profile-shortcuts" aria-label="快捷入口">
+                      <div class="app-profile-shortcuts__heading">
+                        <div>
+                          <p>快捷入口</p>
+                          <span>账户能力将在后续接入</span>
+                        </div>
+                        <span
+                          class="app-profile-shortcuts__mark"
+                          aria-hidden="true"
+                          >艺</span
+                        >
+                      </div>
+                      <div class="app-profile-shortcuts__grid">
+                        <button
+                          class="app-profile-shortcut"
+                          data-open-settings
+                          type="button"
+                        >
+                          <span>设置</span>
+                          <small>显示与调试</small>
+                        </button>
+                        <button
+                          class="app-profile-shortcut"
+                          data-profile-action="messages"
+                          type="button"
+                        >
+                          <span>消息</span>
+                          <small>功能待接入</small>
+                        </button>
+                        <button
+                          class="app-profile-shortcut"
+                          data-profile-action="drafts"
+                          type="button"
+                        >
+                          <span>草稿箱</span>
+                          <small>12 个草稿</small>
+                        </button>
+                        <button
+                          class="app-profile-shortcut"
+                          data-profile-action="create"
+                          type="button"
+                        >
+                          <span>创作中心</span>
+                          <small>打开现有创作界面</small>
+                        </button>
+                      </div>
+                      <p
+                        class="app-profile-feedback"
+                        data-profile-feedback
+                        role="status"
+                        aria-live="polite"
+                      >
+                        页面内容为 synthetic UI，不代表真实账户数据
+                      </p>
+                    </aside>
+                  </div>
+                </div>
+              </main>
+            </section>
           </div>
         </div>
 
@@ -1481,8 +1714,8 @@
           <button
             class="yoyi-navigation-entry"
             data-nav-entry
-            data-nav-action="profile"
-            aria-label="我的（功能预留）"
+            data-primary-view="profile"
+            aria-label="我的"
             type="button"
           >
             <span class="yoyi-icon-wrap" aria-hidden="true">
@@ -1516,7 +1749,8 @@
     <script src="./fixtures/topics.placeholder.js"></script>
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
     <script src="./fixtures/p5-pilot.snapshot.js"></script>
+    <script src="./fixtures/profile.placeholder.js"></script>
     <script src="./catalog-ui-adapter.js?v=20260819-media-pager"></script>
-    <script src="./preview.js?v=20260822-create-composer"></script>
+    <script src="./preview.js?v=20260822-profile-view"></script>
   </body>
 </html>

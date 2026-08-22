@@ -85,6 +85,11 @@
   transform: none;
 }
 
+.app-profile-grid .app-card img {
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
 /* Tablet: full-bleed shell, keep bottom navigation, widen content. */
 @media (min-width: 48rem) {
   .app-stage {
@@ -111,6 +116,36 @@
 
   .app-create-composer__text.yoyi-textarea {
     min-height: clamp(360px, 48dvh, 520px);
+  }
+
+  .app-profile__scroll {
+    padding: var(--yoyi-space-5) var(--yoyi-space-7)
+      var(--app-bottom-nav-clearance);
+  }
+
+  .app-profile__page,
+  .app-profile__columns {
+    gap: var(--yoyi-space-5);
+  }
+
+  .app-profile-header {
+    grid-template-columns: 88px minmax(0, 1fr) auto;
+    padding: var(--yoyi-space-5);
+  }
+
+  .app-profile-avatar {
+    width: 88px;
+    height: 88px;
+    font-size: 36px;
+  }
+
+  .app-profile-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: var(--yoyi-space-4);
+  }
+
+  .app-profile-shortcuts__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .app-topbar--detail,
@@ -210,6 +245,26 @@
 
   html[data-platform="tablet"] .app-create-composer__text.yoyi-textarea {
     min-height: 320px;
+  }
+
+  html[data-platform="tablet"] .app-profile__scroll {
+    padding-top: var(--yoyi-space-4);
+  }
+
+  html[data-platform="tablet"] .app-profile__columns {
+    grid-template-columns: minmax(0, 1fr) minmax(232px, 0.34fr);
+  }
+
+  html[data-platform="tablet"] .app-profile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  html[data-platform="tablet"] .app-profile-shortcuts {
+    align-self: start;
+  }
+
+  html[data-platform="tablet"] .app-profile-shortcuts__grid {
+    grid-template-columns: 1fr;
   }
 
   html[data-platform="tablet"]

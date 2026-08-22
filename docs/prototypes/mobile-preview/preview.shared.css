@@ -255,6 +255,327 @@ html[data-platform="tablet"] .app-view {
   padding: var(--yoyi-space-2) var(--yoyi-space-3) var(--yoyi-space-3);
 }
 
+.app-profile__scroll {
+  padding: var(--yoyi-space-3) var(--yoyi-space-3)
+    var(--app-bottom-nav-clearance);
+}
+
+.app-profile__page {
+  display: grid;
+  width: min(100%, 1120px);
+  margin-inline: auto;
+  gap: var(--yoyi-space-3);
+}
+
+.app-profile-header,
+.app-profile-content,
+.app-profile-shortcuts {
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--app-content-radius);
+  box-shadow: var(--app-elevation-content);
+}
+
+.app-profile-header {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-4);
+}
+
+.app-profile-avatar {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  color: var(--yoyi-color-background-surface);
+  background: var(--yoyi-color-seal-red);
+  border: 5px solid var(--yoyi-color-seal-red-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-family: var(--app-motto-font);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-profile-identity {
+  min-width: 0;
+}
+
+.app-profile-identity__eyebrow,
+.app-profile-identity__id,
+.app-profile-identity__bio,
+.app-profile-shortcuts__heading p,
+.app-profile-shortcuts__heading span,
+.app-profile-feedback {
+  margin: 0;
+}
+
+.app-profile-identity__eyebrow {
+  overflow: hidden;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-profile-identity h1 {
+  margin: 2px 0 1px;
+  overflow: hidden;
+  font-size: 21px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-profile-identity__id {
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-metadata-size);
+  line-height: 1.5;
+}
+
+.app-profile-identity__bio {
+  display: -webkit-box;
+  margin-top: var(--yoyi-space-2);
+  overflow: hidden;
+  color: var(--yoyi-color-text-secondary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.app-profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yoyi-space-1);
+  margin-top: var(--yoyi-space-2);
+}
+
+.app-profile-badges span {
+  padding: 3px 8px;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.app-profile-edit.yoyi-button {
+  min-width: 72px;
+  padding-inline: var(--yoyi-space-3);
+  white-space: nowrap;
+}
+
+.app-profile-stats {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: var(--yoyi-space-2) 0 0;
+  padding-top: var(--yoyi-space-3);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.app-profile-stats > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding-inline: var(--yoyi-space-2);
+  text-align: center;
+}
+
+.app-profile-stats > div + div {
+  border-left: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.app-profile-stats dt,
+.app-profile-stats dd {
+  margin: 0;
+}
+
+.app-profile-stats dt {
+  grid-row: 2;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.app-profile-stats dd {
+  grid-row: 1;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-profile__columns {
+  display: grid;
+  gap: var(--yoyi-space-3);
+}
+
+.app-profile-content {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-profile-tabs {
+  display: flex;
+  min-width: 0;
+  gap: var(--yoyi-space-1);
+  padding: var(--yoyi-space-2);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  scrollbar-width: none;
+}
+
+.app-profile-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.app-profile-tab {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-profile-tab.is-selected {
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-muted);
+}
+
+.app-profile-tab.is-selected::after {
+  position: absolute;
+  right: var(--yoyi-space-3);
+  bottom: 3px;
+  left: var(--yoyi-space-3);
+  height: 2px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: var(--yoyi-radius-full);
+  content: "";
+}
+
+.app-profile-tab:focus-visible,
+.app-profile-edit:focus-visible,
+.app-profile-shortcut:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-profile-panel {
+  min-height: 240px;
+}
+
+.app-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--app-masonry-gap);
+  padding: var(--app-masonry-gap);
+}
+
+.app-profile-empty {
+  display: grid;
+  min-height: 240px;
+  margin: 0;
+  padding: var(--yoyi-space-7);
+  place-items: center;
+  color: var(--yoyi-color-text-tertiary);
+  text-align: center;
+  font-size: 14px;
+}
+
+.app-profile-shortcuts {
+  padding: var(--yoyi-space-4);
+}
+
+.app-profile-shortcuts__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yoyi-space-3);
+}
+
+.app-profile-shortcuts__heading p {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.app-profile-shortcuts__heading span,
+.app-profile-feedback {
+  color: var(--yoyi-color-text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.app-profile-shortcuts__mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-family: var(--app-motto-font);
+  font-weight: 700;
+}
+
+.app-profile-shortcuts__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--yoyi-space-2);
+  margin-top: var(--yoyi-space-3);
+}
+
+.app-profile-shortcut {
+  display: grid;
+  min-width: 0;
+  min-height: 64px;
+  align-content: center;
+  gap: 2px;
+  padding: var(--yoyi-space-3);
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid transparent;
+  border-radius: var(--yoyi-radius-md);
+  cursor: pointer;
+}
+
+.app-profile-shortcut span {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.app-profile-shortcut small {
+  overflow: hidden;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-profile-shortcut:active {
+  transform: scale(0.985);
+}
+
+.app-profile-feedback {
+  min-height: 18px;
+  margin-top: var(--yoyi-space-3);
+}
+
 .app-create-composer__tools {
   display: flex;
   min-width: 0;

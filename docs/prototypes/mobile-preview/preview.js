@@ -18,6 +18,7 @@ const p5PilotRecords = Array.isArray(globalThis.YOYI_P5_PILOT_SNAPSHOT?.records)
   ? globalThis.YOYI_P5_PILOT_SNAPSHOT.records
   : [];
 const catalogAdapter = globalThis.YOYI_CATALOG_UI_ADAPTER ?? null;
+const profilePlaceholder = globalThis.YOYI_PROFILE_PLACEHOLDER ?? null;
 
 function selectPrototypeDataset(search) {
   return new URLSearchParams(search).get("dataset") === "p5"
@@ -161,9 +162,16 @@ const layoutModeLabels = {
   single: "单列",
   double: "双列",
 };
-const primaryViews = ["home", "inscriptions", "create", "calligraphy"];
+const primaryViews = [
+  "home",
+  "inscriptions",
+  "create",
+  "calligraphy",
+  "profile",
+];
 const homeFeeds = ["discover", "nearby", "topics"];
 const calligraphyCategories = ["all", "ink", "rubbing"];
+const profileTabs = ["posts", "favorites", "likes", "comments", "history"];
 const platformRuntime = globalThis.YOYI_DEVICE_PLATFORM;
 const pagerAxisLockDistance = 8;
 const pagerEdgeResistance = 0.25;
@@ -202,6 +210,7 @@ const scrollPositions = {
   "calligraphy:all": 0,
   "calligraphy:ink": 0,
   "calligraphy:rubbing": 0,
+  profile: 0,
 };
 
 function syncPlatformAttribute() {
@@ -302,6 +311,7 @@ function primaryViewLabel(view) {
   if (view === "inscriptions") return "碑刻";
   if (view === "create") return "创作";
   if (view === "calligraphy") return "书帖";
+  if (view === "profile") return "我的";
   return "首页";
 }
 
@@ -1925,6 +1935,64 @@ function createContentCard({
   return button;
 }
 
+function renderProfilePlaceholder() {
+  if (!profilePlaceholder) return;
+  const profile = profilePlaceholder.profile ?? {};
+  const setText = (selector, value) => {
+    const element = document.querySelector(selector);
+    if (element && value) element.textContent = displayText(value);
+  };
+  setText("[data-profile-monogram]", profile.monogram);
+  setText("[data-profile-name]", profile.displayName);
+  setText("[data-profile-id]", profile.id);
+  setText("[data-profile-bio]", profile.bio);
+
+  const badges = document.querySelector("[data-profile-badges]");
+  if (badges) {
+    badges.replaceChildren(
+      ...(profile.badges ?? []).map((label) => {
+        const badge = document.createElement("span");
+        badge.textContent = displayText(label);
+        return badge;
+      }),
+    );
+  }
+
+  const stats = document.querySelector("[data-profile-stats]");
+  if (stats) {
+    stats.replaceChildren(
+      ...(profilePlaceholder.stats ?? []).map(({ label, value }) => {
+        const item = document.createElement("div");
+        const term = document.createElement("dt");
+        const description = document.createElement("dd");
+        term.textContent = displayText(label);
+        description.textContent = displayText(value);
+        item.append(term, description);
+        return item;
+      }),
+    );
+  }
+
+  const posts = document.querySelector("[data-profile-posts]");
+  if (!posts) return;
+  const records = Array.isArray(profilePlaceholder.posts)
+    ? profilePlaceholder.posts
+    : [];
+  posts.replaceChildren(
+    ...records.map((record) =>
+      createContentCard({
+        alt: record.alt,
+        id: record.id,
+        image: record.image,
+        meta: `${displayText(record.kind)} · ${displayText(record.meta)}`,
+        title: record.title,
+      }),
+    ),
+  );
+  const empty = posts.parentElement?.querySelector("[data-profile-empty]");
+  if (empty) empty.hidden = records.length > 0;
+}
+
 function createCatalogHomeCard(record, role = "discover") {
   return createContentCard({
     id: record.id,
@@ -2079,6 +2147,7 @@ function renderSupplementalHomeCards() {
 
 function renderSelectedDataset() {
   renderSupplementalHomeCards();
+  renderProfilePlaceholder();
   if (prototypeDataset === "p5") renderP5CatalogCards();
   bindExistingCardMediaFallback();
 }
@@ -2735,7 +2804,6 @@ function startNavPagerFollow(gesture) {
 function onNavPointerDown(event) {
   if (root.dataset.platform === "pc") return;
   if (navigationMinimized || !event.isPrimary) return;
-  if (event.target.closest?.("[data-nav-action]")) return;
   if (prefersReducedNavMotion()) return;
   cancelPendingNavBubbleSync();
   if (navDragging) unbindNavPointerTracking();
@@ -2871,10 +2939,34 @@ function selectPrimaryView(
   }
 }
 
-function handleReservedNavAction(action) {
-  if (action !== "profile") return;
-  logQaEvent("nav", `reserved action: ${action}`);
-  syncNavBubbleToActive();
+function selectProfileTab(value) {
+  if (!profileTabs.includes(value)) return;
+  document.querySelectorAll("[data-profile-tab]").forEach((button) => {
+    const selected = button.dataset.profileTab === value;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+  document.querySelectorAll("[data-profile-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.profilePanel !== value;
+  });
+  logQaEvent("profile", `切换栏目 ${value}`);
+}
+
+function handleProfileAction(action) {
+  if (action === "create") {
+    selectPrimaryView("create", { animate: true });
+    return;
+  }
+  const feedback = {
+    drafts: "草稿箱仅为界面演示，不会读取或保存草稿",
+    edit: "编辑资料功能待接入",
+    messages: "消息功能待接入",
+  }[action];
+  if (!feedback) return;
+  const status = document.querySelector("[data-profile-feedback]");
+  if (status) status.textContent = feedback;
+  logQaEvent("profile", `reserved ${action} action`);
 }
 
 function handleReservedCreateAction(action) {
@@ -3993,12 +4085,15 @@ bindClicks("[data-primary-view]", (button) => {
   }
   selectPrimaryView(button.dataset.primaryView, { animate: true });
 });
-bindClicks("[data-nav-action]", (button) => {
-  handleReservedNavAction(button.dataset.navAction);
-});
 bindClicks("[data-create-media]", () => handleReservedCreateAction("media"));
 bindClicks("[data-create-tags]", () => handleReservedCreateAction("tags"));
 bindClicks("[data-create-submit]", () => handleReservedCreateAction("submit"));
+bindClicks("[data-profile-tab]", (button) => {
+  selectProfileTab(button.dataset.profileTab);
+});
+bindClicks("[data-profile-action]", (button) => {
+  handleProfileAction(button.dataset.profileAction);
+});
 createText?.addEventListener("focus", () => {
   logQaEvent("create", "composer focused");
 });

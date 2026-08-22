@@ -78,7 +78,7 @@ describe("design-system material boundary", () => {
     );
   });
 
-  it("freezes the four primary destinations and reserved profile entry", async () => {
+  it("freezes the five primary destinations", async () => {
     const prototypeHtml = await readFile(
       new URL("docs/prototypes/mobile-preview/index.html", repoRoot),
       "utf8",
@@ -86,7 +86,13 @@ describe("design-system material boundary", () => {
     const ids = [...prototypeHtml.matchAll(/data-primary-view="([^"]+)"/g)].map(
       ([, id]) => id,
     );
-    expect(ids).toEqual(["home", "inscriptions", "create", "calligraphy"]);
-    expect(prototypeHtml).toContain('data-nav-action="profile"');
+    expect(ids).toEqual([
+      "home",
+      "inscriptions",
+      "create",
+      "calligraphy",
+      "profile",
+    ]);
+    expect(prototypeHtml).not.toContain('data-nav-action="profile"');
   });
 });

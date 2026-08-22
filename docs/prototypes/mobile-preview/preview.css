@@ -85,6 +85,11 @@
   transform: none;
 }
 
+.app-profile-grid .app-card img {
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
 @media (orientation: portrait) {
   .app-topbar--categories {
     min-height: calc(108px + env(safe-area-inset-top));
@@ -131,6 +136,42 @@
 
   html[data-platform="phone"] .app-create-composer__text.yoyi-textarea {
     min-height: 150px;
+  }
+
+  html[data-platform="phone"] .app-profile__scroll {
+    padding-top: var(--yoyi-space-2);
+  }
+
+  html[data-platform="phone"] .app-profile-header {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    gap: var(--yoyi-space-2);
+    padding: var(--yoyi-space-2) var(--yoyi-space-3);
+  }
+
+  html[data-platform="phone"] .app-profile-avatar {
+    width: 56px;
+    height: 56px;
+    border-width: 4px;
+    font-size: 24px;
+  }
+
+  html[data-platform="phone"] .app-profile-identity__bio {
+    margin-top: var(--yoyi-space-1);
+    -webkit-line-clamp: 1;
+  }
+
+  html[data-platform="phone"] .app-profile-badges {
+    display: none;
+  }
+
+  html[data-platform="phone"] .app-profile-stats {
+    margin-top: 0;
+    padding-top: var(--yoyi-space-2);
+  }
+
+  html[data-platform="phone"] .app-profile-panel,
+  html[data-platform="phone"] .app-profile-empty {
+    min-height: 180px;
   }
 }
 
