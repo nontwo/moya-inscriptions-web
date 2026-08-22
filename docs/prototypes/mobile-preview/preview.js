@@ -84,6 +84,9 @@ const root = document.documentElement;
 root.dataset.dataset = prototypeDataset;
 const app = document.querySelector("[data-mobile-app]");
 const bottomNavigation = document.querySelector("[data-bottom-navigation]");
+const bottomBrowseNavigation = bottomNavigation.querySelector(
+  "[data-browse-nav-group]",
+);
 const quickActionOverlay = document.querySelector(
   "[data-quick-action-overlay]",
 );
@@ -232,10 +235,6 @@ function syncPlatformAttribute() {
     const { platform } = platformRuntime.sync();
     bottomNavigation.dataset.minimizeBehavior =
       platform === "pc" ? "none" : "on-scroll";
-    bottomNavigation.classList.toggle(
-      "yoyi-functional-glass",
-      platform !== "pc",
-    );
     return platform;
   }
   const platform =
@@ -248,7 +247,6 @@ function syncPlatformAttribute() {
   root.dataset.platform = platform;
   bottomNavigation.dataset.minimizeBehavior =
     platform === "pc" ? "none" : "on-scroll";
-  bottomNavigation.classList.toggle("yoyi-functional-glass", platform !== "pc");
   return platform;
 }
 
@@ -474,19 +472,16 @@ const navigationIdleMs = 400;
 const navigationExpandMs = 560;
 const navigationCollapseDelta = 12;
 const navigationExpandDelta = 24;
-const navBubble = bottomNavigation.querySelector(".yoyi-nav-bubble");
+const navBubble = bottomBrowseNavigation.querySelector(".yoyi-nav-bubble");
 const bottomTabStrip = {
   bubble: navBubble,
-  container: bottomNavigation,
-  itemSelector: "[data-nav-entry]",
+  container: bottomBrowseNavigation,
+  itemSelector: "[data-browse-nav]",
   kind: "bottom",
-  progressItemSelector: "[data-primary-view]",
+  progressItemSelector: "[data-browse-nav]",
   selectedClass: "is-active",
 };
-const bottomBrowseTabStrip = {
-  ...bottomTabStrip,
-  progressItemSelector: "[data-browse-nav]",
-};
+const bottomBrowseTabStrip = bottomTabStrip;
 const homeTabStrip = {
   bubble: document.querySelector(".app-primary-tabs > .app-tab-bubble"),
   container: document.querySelector(".app-primary-tabs"),
@@ -2375,6 +2370,7 @@ function closeTopicColumn() {
 }
 
 function updateBottomNavigation() {
+  bottomNavigation.dataset.activeView = primaryView;
   document.querySelectorAll("[data-primary-view]").forEach((button) => {
     const selected = button.dataset.primaryView === primaryView;
     button.classList.toggle("is-active", selected);
@@ -2592,7 +2588,7 @@ function syncNavBubbleToActive() {
     clearNavBubbleInlineStyle();
     return;
   }
-  const active = bottomNavigation.querySelector(
+  const active = bottomBrowseNavigation.querySelector(
     "[data-primary-view].is-active",
   );
   if (!active) {

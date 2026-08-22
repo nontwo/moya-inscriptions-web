@@ -496,7 +496,7 @@ html[data-platform="tablet"] .app-view {
   color: var(--yoyi-color-background-surface);
   background: var(--yoyi-color-seal-red);
   border: 5px solid var(--yoyi-color-seal-red-muted);
-  border-radius: var(--yoyi-radius-full);
+  border-radius: var(--yoyi-radius-md);
   font-family: var(--app-motto-font);
   font-size: 30px;
   font-weight: 700;
@@ -1396,8 +1396,44 @@ html[data-platform="pc"] {
     opacity var(--app-nav-collapse-duration) var(--app-nav-collapse-easing);
 }
 
+html[data-platform="phone"]
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation,
+html[data-platform="tablet"]
+  .app-bottom-navigation.yoyi-mobile-bottom-navigation {
+  display: flex;
+  align-items: stretch;
+  gap: var(--yoyi-space-2);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-bottom-navigation__browse {
+  position: relative;
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  min-height: var(--app-bottom-nav-min-height);
+  border-radius: var(--yoyi-radius-full);
+}
+
+.app-bottom-navigation__create {
+  position: relative;
+  flex: 0 0 64px;
+  min-width: 64px;
+  min-height: var(--app-bottom-nav-min-height);
+  border-radius: var(--yoyi-radius-full);
+}
+
+.app-bottom-navigation__create.is-active {
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-background-muted);
+}
+
 .app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized) {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   transition-duration: var(--app-nav-expand-duration);
   transition-timing-function: var(--app-nav-expand-easing);
 }
@@ -1529,6 +1565,33 @@ html[data-platform="pc"] {
   padding: 0;
   place-items: center;
   justify-items: center;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+  .app-bottom-navigation__browse {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized
+  .app-bottom-navigation__create {
+  display: none;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized[data-active-view="create"]
+  .app-bottom-navigation__browse {
+  display: none;
+}
+
+.app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized[data-active-view="create"]
+  .app-bottom-navigation__create {
+  display: flex;
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .app-bottom-navigation.yoyi-mobile-bottom-navigation.is-minimized

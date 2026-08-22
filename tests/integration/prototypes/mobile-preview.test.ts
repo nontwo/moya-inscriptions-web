@@ -546,6 +546,15 @@ const waitMs = (window: Window, ms: number) =>
     window.setTimeout(resolve, ms);
   });
 
+const openSettingsFromProfile = (document: Document) => {
+  document
+    .querySelector<HTMLElement>('[data-topbar-action="profile"]')
+    ?.click();
+  document
+    .querySelector<HTMLElement>('[data-view="profile"] [data-open-settings]')
+    ?.click();
+};
+
 const layoutBottomNav = (navigation: HTMLElement) => {
   const box = (
     left: number,
@@ -813,11 +822,24 @@ describe("mobile application preview", () => {
       ),
     ).toEqual(["home", "inscriptions", "calligraphy", "create"]);
     expect(
+      document.querySelectorAll("[data-browse-nav-group] [data-browse-nav]"),
+    ).toHaveLength(3);
+    expect(
+      document
+        .querySelector<HTMLElement>("[data-browse-nav-group]")
+        ?.nextElementSibling?.getAttribute("data-primary-view"),
+    ).toBe("create");
+    expect(
       document.querySelectorAll('[data-topbar-action="profile"]'),
     ).toHaveLength(4);
     expect(
       document
-        .querySelector("[data-bottom-navigation]")
+        .querySelector("[data-browse-nav-group]")
+        ?.classList.contains("yoyi-functional-glass"),
+    ).toBe(true);
+    expect(
+      document
+        .querySelector(".app-bottom-navigation__create")
         ?.classList.contains("yoyi-functional-glass"),
     ).toBe(true);
     expect(
@@ -872,7 +894,7 @@ describe("mobile application preview", () => {
     expect(new Set(contentIds).size).toBe(contentIds.length);
     expect(document.querySelector('[data-label="tab-discover"]')).toBeNull();
     expect(document.querySelector('[data-label="tab-nearby"]')).toBeNull();
-    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(5);
+    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(1);
     expect(document.querySelector("[data-calligraphy-filter]")).toBeTruthy();
     expect(document.querySelector("[data-theme-cycle]")).toBeNull();
     expect(
@@ -1395,7 +1417,7 @@ describe("mobile application preview", () => {
 
     createTab.click();
     expect(createTab.classList.contains("is-active")).toBe(true);
-    expect(bubble.style.transform).toContain("translate3d(300px, 4px, 0)");
+    expect(bubble.style.transform).toBe("");
     dispatchPointer(dom.window, createTab, "pointerdown", {
       clientX: 350,
       clientY: 730,
@@ -1412,7 +1434,7 @@ describe("mobile application preview", () => {
       timeStamp: 2_000,
     });
     expect(createTab.classList.contains("is-active")).toBe(true);
-    expect(bubble.style.transform).toContain("translate3d(300px, 4px, 0)");
+    expect(bubble.style.transform).toBe("");
   });
 
   it("does not switch primary views when the main content is swiped horizontally", () => {
@@ -2401,47 +2423,25 @@ describe("mobile application preview", () => {
     );
   });
 
-  it("opens settings from every primary view and returns to its source", async () => {
+  it("opens settings from the profile shortcut and returns to profile", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
-    for (const view of [
-      "home",
-      "inscriptions",
-      "create",
-      "calligraphy",
-      "profile",
-    ]) {
-      if (view === "profile") {
-        document
-          .querySelector<HTMLElement>(
-            '[data-view="home"] [data-topbar-action="profile"]',
-          )
-          ?.click();
-      } else {
-        document
-          .querySelector<HTMLElement>(`[data-primary-view="${view}"]`)
-          ?.click();
-      }
-      document
-        .querySelector<HTMLElement>(
-          `[data-view="${view}"] [data-open-settings]`,
-        )
-        ?.click();
-      expect(
-        document.querySelector<HTMLElement>('[data-view="settings"]')?.hidden,
-      ).toBe(false);
-      expect(
-        document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
-      ).toBe(true);
-      const backButton = document.querySelector<HTMLElement>(
-        "[data-settings-back]",
-      );
-      if (!backButton) throw new Error("settings back button not found");
-      await clickAndWaitForHistory(dom.window, backButton);
-      expect(
-        document.querySelector<HTMLElement>(`[data-view="${view}"]`)?.hidden,
-      ).toBe(false);
-    }
+    expect(document.querySelectorAll("[data-open-settings]")).toHaveLength(1);
+    openSettingsFromProfile(document);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="settings"]')?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector<HTMLElement>("[data-bottom-navigation]")?.hidden,
+    ).toBe(true);
+    const backButton = document.querySelector<HTMLElement>(
+      "[data-settings-back]",
+    );
+    if (!backButton) throw new Error("settings back button not found");
+    await clickAndWaitForHistory(dom.window, backButton);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="profile"]')?.hidden,
+    ).toBe(false);
   });
 
   it("opens the QA log from settings, records detail, and returns through settings", async () => {
@@ -2454,7 +2454,7 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>("[data-detail-back]");
     if (!detailBack) throw new Error("detail back missing");
     await clickAndWaitForHistory(dom.window, detailBack);
-    document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+    openSettingsFromProfile(document);
     document.querySelector<HTMLElement>("[data-open-qa-log]")?.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="qa-log"]')?.hidden,
@@ -2484,7 +2484,7 @@ describe("mobile application preview", () => {
     if (!settingsBack) throw new Error("settings back missing");
     await clickAndWaitForHistory(dom.window, settingsBack);
     expect(
-      document.querySelector<HTMLElement>('[data-view="home"]')?.hidden,
+      document.querySelector<HTMLElement>('[data-view="profile"]')?.hidden,
     ).toBe(false);
   });
 
@@ -2501,7 +2501,7 @@ describe("mobile application preview", () => {
       });
     });
     const document = dom.window.document;
-    document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+    openSettingsFromProfile(document);
     const settingsCopy = document.querySelector<HTMLButtonElement>(
       '[data-setting-group="qa-log"] [data-qa-log-copy]',
     );
@@ -2537,7 +2537,7 @@ describe("mobile application preview", () => {
   it("persists explicit theme and home feed layout choices", () => {
     const dom = renderPreview();
     const document = dom.window.document;
-    document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+    openSettingsFromProfile(document);
 
     const themeToggle = document.querySelector<HTMLButtonElement>(
       "[data-theme-toggle]",
@@ -2696,7 +2696,7 @@ describe("mobile application preview", () => {
       window: Window & typeof globalThis,
     ) => {
       assertSharedLayout(document, "double");
-      document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+      openSettingsFromProfile(document);
       document.querySelector<HTMLElement>("[data-layout-toggle]")?.click();
       expect(document.documentElement.dataset.homeLayout).toBe("single");
       const qaLog = JSON.parse(
@@ -2735,7 +2735,7 @@ describe("mobile application preview", () => {
           ?.click();
         assertSharedLayout(document, "single");
       }
-      document.querySelector<HTMLElement>("[data-open-settings]")?.click();
+      openSettingsFromProfile(document);
       document.querySelector<HTMLElement>("[data-layout-toggle]")?.click();
       document
         .querySelector<HTMLElement>('[data-primary-view="calligraphy"]')
@@ -3121,8 +3121,8 @@ describe("mobile application preview", () => {
     expect(tabletCss).toContain("floating glass capsule at the bottom");
     expect(tabletCss).toContain("orientation: landscape");
     expect(tabletCss).toContain("--app-bottom-nav-max-width: 480px");
-    expect(tabletCss).toContain(
-      "grid-template-columns: repeat(4, minmax(0, 1fr))",
+    expect(sharedCss).toContain(
+      "grid-template-columns: repeat(3, minmax(0, 1fr))",
     );
     expect(tabletCss).toContain(
       ".app-bottom-navigation.yoyi-mobile-bottom-navigation:not(.is-minimized)",
@@ -3671,7 +3671,7 @@ describe("mobile application preview", () => {
     ).not.toContain("is-pager-active");
     expect(
       document
-        .querySelector("[data-bottom-navigation]")
+        .querySelector("[data-browse-nav-group]")
         ?.classList.contains("yoyi-functional-glass"),
     ).toBe(true);
 
@@ -3976,13 +3976,15 @@ describe("mobile application preview", () => {
     );
     if (!homeTab) throw new Error("home tab missing");
     layoutBottomNav(navigation);
-    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.parentElement).toBe(
+      navigation.querySelector("[data-browse-nav-group]"),
+    );
     expect(bubble.style.width).toBe("100px");
     expect(bubble.style.height).toBe("52px");
     expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
   });
 
-  it("moves the independent nav bubble with transform instead of reparenting", async () => {
+  it("moves the browse-nav bubble with transform without reparenting", async () => {
     const phone = renderPreview({}, { viewportWidth: 844 });
     const document = phone.window.document;
     const navigation = document.querySelector<HTMLElement>(
@@ -4011,26 +4013,36 @@ describe("mobile application preview", () => {
     layoutBottomNav(navigation);
     homeTab.click();
     await waitForAnimationFrames(phone.window, 40);
-    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.parentElement).toBe(
+      navigation.querySelector("[data-browse-nav-group]"),
+    );
     expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
 
     inscriptionsTab.click();
     await waitForAnimationFrames(phone.window, 40);
-    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.parentElement).toBe(
+      navigation.querySelector("[data-browse-nav-group]"),
+    );
     expect(bubble.style.transform).toContain("translate3d(100px, 4px, 0)");
 
     calligraphyTab.click();
     await waitForAnimationFrames(phone.window, 40);
-    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.parentElement).toBe(
+      navigation.querySelector("[data-browse-nav-group]"),
+    );
     expect(bubble.style.transform).toContain("translate3d(200px, 4px, 0)");
 
     homeTab.click();
     await waitForAnimationFrames(phone.window, 40);
-    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.parentElement).toBe(
+      navigation.querySelector("[data-browse-nav-group]"),
+    );
     expect(bubble.style.transform).toContain("translate3d(0px, 4px, 0)");
 
     phone.window.dispatchEvent(new phone.window.Event("resize"));
-    expect(bubble.parentElement).toBe(navigation);
+    expect(bubble.parentElement).toBe(
+      navigation.querySelector("[data-browse-nav-group]"),
+    );
   });
 
   it("keeps the PC rail fixed without bubble, minimize, or drag navigation", async () => {
@@ -4155,7 +4167,7 @@ describe("mobile application preview", () => {
       ".app-bottom-navigation .yoyi-navigation-entry > .yoyi-nav-bubble",
     );
     expect(sharedCss).toContain("touch-action: pan-y");
-    expect(html.match(/data-browse-nav/g)).toHaveLength(3);
+    expect(html.match(/data-browse-nav(?:\s|>)/g)).toHaveLength(3);
   });
 
   it("transfers scroll position between nested and document scroll owners", async () => {

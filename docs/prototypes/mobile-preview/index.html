@@ -121,18 +121,6 @@
                   >
                     <span data-topbar-profile-monogram>艺</span>
                   </button>
-                  <button
-                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
-                    data-open-settings
-                    aria-label="打开设置"
-                    type="button"
-                  >
-                    <span
-                      class="yoyi-icon yoyi-icon--sm"
-                      data-icon="settings"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
                 </div>
               </header>
 
@@ -399,18 +387,6 @@
                   >
                     <span data-topbar-profile-monogram>艺</span>
                   </button>
-                  <button
-                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
-                    data-open-settings
-                    aria-label="打开设置"
-                    type="button"
-                  >
-                    <span
-                      class="yoyi-icon yoyi-icon--sm"
-                      data-icon="settings"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
                 </div>
               </header>
               <div class="app-inscriptions-layout">
@@ -594,18 +570,6 @@
                   >
                     <span data-topbar-profile-monogram>艺</span>
                   </button>
-                  <button
-                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
-                    data-open-settings
-                    aria-label="打开设置"
-                    type="button"
-                  >
-                    <span
-                      class="yoyi-icon yoyi-icon--sm"
-                      data-icon="settings"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
                 </div>
               </header>
               <main
@@ -765,18 +729,6 @@
                     type="button"
                   >
                     <span data-topbar-profile-monogram>艺</span>
-                  </button>
-                  <button
-                    class="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--sm"
-                    data-open-settings
-                    aria-label="打开设置"
-                    type="button"
-                  >
-                    <span
-                      class="yoyi-icon"
-                      data-icon="settings"
-                      aria-hidden="true"
-                    ></span>
                   </button>
                 </div>
               </header>
@@ -1706,69 +1658,74 @@
         <!-- TOPICS_PLACEHOLDER_END -->
 
         <nav
-          class="yoyi-mobile-bottom-navigation yoyi-functional-glass app-bottom-navigation"
+          class="yoyi-mobile-bottom-navigation app-bottom-navigation"
           data-bottom-navigation
           data-minimize-behavior="on-scroll"
           aria-label="主导航"
         >
-          <span class="yoyi-nav-bubble" aria-hidden="true"></span>
-          <div class="app-nav-brand" aria-hidden="true">
-            <span class="yoyi-logo"></span>
+          <div
+            class="app-bottom-navigation__browse yoyi-functional-glass"
+            data-browse-nav-group
+          >
+            <span class="yoyi-nav-bubble" aria-hidden="true"></span>
+            <div class="app-nav-brand" aria-hidden="true">
+              <span class="yoyi-logo"></span>
+            </div>
+            <button
+              class="yoyi-navigation-entry is-active"
+              data-nav-entry
+              data-browse-nav
+              data-primary-view="home"
+              aria-current="page"
+              aria-label="首页"
+              type="button"
+            >
+              <span class="yoyi-icon-wrap" aria-hidden="true">
+                <span class="yoyi-icon" data-icon="home"></span>
+              </span>
+              <span
+                class="yoyi-fixed-label"
+                data-label="nav-home"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <button
+              class="yoyi-navigation-entry"
+              data-nav-entry
+              data-browse-nav
+              data-primary-view="inscriptions"
+              aria-label="碑刻"
+              type="button"
+            >
+              <span class="yoyi-icon-wrap" aria-hidden="true">
+                <span class="yoyi-icon" data-icon="inscriptions"></span>
+              </span>
+              <span
+                class="yoyi-fixed-label"
+                data-label="nav-inscriptions"
+                aria-hidden="true"
+              ></span>
+            </button>
+            <button
+              class="yoyi-navigation-entry"
+              data-nav-entry
+              data-browse-nav
+              data-primary-view="calligraphy"
+              aria-label="书帖"
+              type="button"
+            >
+              <span class="yoyi-icon-wrap" aria-hidden="true">
+                <span class="yoyi-icon" data-icon="calligraphy"></span>
+              </span>
+              <span
+                class="yoyi-fixed-label"
+                data-label="nav-calligraphy"
+                aria-hidden="true"
+              ></span>
+            </button>
           </div>
           <button
-            class="yoyi-navigation-entry is-active"
-            data-nav-entry
-            data-browse-nav
-            data-primary-view="home"
-            aria-current="page"
-            aria-label="首页"
-            type="button"
-          >
-            <span class="yoyi-icon-wrap" aria-hidden="true">
-              <span class="yoyi-icon" data-icon="home"></span>
-            </span>
-            <span
-              class="yoyi-fixed-label"
-              data-label="nav-home"
-              aria-hidden="true"
-            ></span>
-          </button>
-          <button
-            class="yoyi-navigation-entry"
-            data-nav-entry
-            data-browse-nav
-            data-primary-view="inscriptions"
-            aria-label="碑刻"
-            type="button"
-          >
-            <span class="yoyi-icon-wrap" aria-hidden="true">
-              <span class="yoyi-icon" data-icon="inscriptions"></span>
-            </span>
-            <span
-              class="yoyi-fixed-label"
-              data-label="nav-inscriptions"
-              aria-hidden="true"
-            ></span>
-          </button>
-          <button
-            class="yoyi-navigation-entry"
-            data-nav-entry
-            data-browse-nav
-            data-primary-view="calligraphy"
-            aria-label="书帖"
-            type="button"
-          >
-            <span class="yoyi-icon-wrap" aria-hidden="true">
-              <span class="yoyi-icon" data-icon="calligraphy"></span>
-            </span>
-            <span
-              class="yoyi-fixed-label"
-              data-label="nav-calligraphy"
-              aria-hidden="true"
-            ></span>
-          </button>
-          <button
-            class="yoyi-navigation-entry"
+            class="yoyi-navigation-entry yoyi-functional-glass app-bottom-navigation__create"
             data-nav-entry
             data-primary-view="create"
             aria-label="创作"

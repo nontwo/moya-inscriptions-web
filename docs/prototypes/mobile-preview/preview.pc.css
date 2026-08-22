@@ -625,6 +625,15 @@ html {
     display: none;
   }
 
+  .app-bottom-navigation__browse {
+    display: contents;
+  }
+
+  .app-bottom-navigation__browse.yoyi-functional-glass::before,
+  .app-bottom-navigation__create.yoyi-functional-glass::before {
+    display: none;
+  }
+
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
     position: fixed;
     top: 0;
