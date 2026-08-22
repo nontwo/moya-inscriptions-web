@@ -4,10 +4,24 @@ import type { HomeCatalogState } from "../features/home/catalog-state";
 import { loadHomeCatalogState } from "../features/home/load-home-catalog";
 import { methodNotAllowed, readT02Document } from "../lib/t02-static-files";
 
+import type { BrowseItem } from "../lib/t02-static-files";
+
 export const runtime = "nodejs";
 
-const toVisibleItems = (state: HomeCatalogState) =>
-  state.state === "populated" ? state.page.items : [];
+const toVisibleItems = (state: HomeCatalogState): BrowseItem[] =>
+  state.state === "populated"
+    ? state.page.items.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: item.title,
+        ...(item.periodLabel === undefined
+          ? {}
+          : { periodLabel: item.periodLabel }),
+        ...(item.representativeMedia === undefined
+          ? {}
+          : { representativeMedia: item.representativeMedia }),
+      }))
+    : [];
 
 export const GET = async () => {
   await connection();

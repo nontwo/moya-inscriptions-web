@@ -250,6 +250,100 @@ const renderP5Preview = (
     `http://localhost/docs/prototypes/mobile-preview/?dataset=p5${hash}`,
   );
 
+const publicDetail = {
+  id: "catalog-real-001",
+  kind: "inscription",
+  title: "真实摩崖题记",
+  aliases: ["真实别名"],
+  summary: "仅用于列表的真实摘要",
+  periodLabel: "唐 · 开元八年",
+  dynasty: "唐",
+  dateText: "开元八年",
+  province: "河南省",
+  prefecture: "洛阳市",
+  county: "龙门区",
+  currentLocation: "龙门石窟北壁",
+  currentCustodian: "龙门石窟研究院",
+  description: "来自 Public CatalogDetail 的正式简介。",
+  representativeMedia: {
+    id: "real-media-1",
+    kind: "image",
+    src: "https://media.example.invalid/real-1.jpg",
+    alt: "真实图像一",
+    width: 1200,
+    height: 1600,
+  },
+  media: [
+    {
+      id: "real-media-2",
+      kind: "image",
+      src: "https://media.example.invalid/real-2.jpg",
+      alt: "真实图像二",
+      width: 1600,
+      height: 900,
+    },
+    {
+      id: "real-media-3",
+      kind: "image",
+      src: "https://media.example.invalid/real-3.jpg",
+      alt: "真实图像三",
+      width: 900,
+      height: 1200,
+    },
+  ],
+  sourceCitations: [
+    {
+      label: "正式著录",
+      citation: "卷一，第十页。",
+      url: "https://source.example.invalid/catalog-real-001",
+    },
+  ],
+};
+
+const installRuntimeCard = (
+  window: Window & typeof globalThis,
+  catalogId: string,
+  title = "真实目录卡片",
+) => {
+  const button = window.document.createElement("button");
+  button.type = "button";
+  button.className = "app-card";
+  button.dataset.contentId = catalogId;
+  button.dataset.openDetail = "";
+  button.dataset.recordOrigin = "runtime";
+  button.dataset.title = title;
+  const titleNode = window.document.createElement("span");
+  titleNode.className = "app-card__title";
+  titleNode.textContent = title;
+  button.append(titleNode);
+  window.document.querySelector('[data-feed-grid="discover"]')?.append(button);
+  return button;
+};
+
+const installFormalRuntime = (
+  window: Window & typeof globalThis,
+  fetchImplementation: (...args: unknown[]) => unknown,
+  environment: "development" | "production" = "development",
+) => {
+  window.document.documentElement.dataset.formalRoot = "true";
+  window.document.documentElement.dataset.runtimeEnvironment = environment;
+  Object.defineProperty(window, "fetch", {
+    configurable: true,
+    value: fetchImplementation,
+  });
+};
+
+const browserResponse = (status: number, body?: unknown) => ({
+  status,
+  json: async () => body,
+});
+
+const settleDetailLoad = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+};
+
 const expectedP5Titles = [
   "北魏永平四年郑道昭浮丘子题字",
   "唐张礼臣墓志盖",
@@ -2718,7 +2812,7 @@ describe("mobile application preview", () => {
     expect(html).toContain(
       'href="./preview.shared.css?v=20260819-media-pager"',
     );
-    expect(html).toContain('src="./preview.js?v=20260819-media-pager"');
+    expect(html).toContain('src="./preview.js?v=20260823-catalog-detail"');
     expect(html).toContain('src="./fixtures/p5-pilot.snapshot.js"');
     expect(html).toContain('src="./catalog-ui-adapter.js');
     expect(script).toContain("mediaFocusClosedAt");
@@ -2962,14 +3056,16 @@ describe("mobile application preview", () => {
       phone.window.document.querySelector("[data-detail-title]")?.textContent,
     ).toBe("云峰山题名");
     expect(
-      phone.window.document.querySelector("[data-detail-summary-text]")
+      phone.window.document.querySelector("[data-detail-introduction-text]")
         ?.textContent,
     ).toContain("多图碑刻条目");
     expect(
       phone.window.document
         .querySelector("[data-detail-info-panel]")
         ?.contains(
-          phone.window.document.querySelector("[data-detail-summary-text]"),
+          phone.window.document.querySelector(
+            "[data-detail-introduction-text]",
+          ),
         ),
     ).toBe(false);
   });
@@ -3413,7 +3509,7 @@ describe("mobile application preview", () => {
       document.querySelector("[data-detail-aliases-text]")?.textContent,
     ).toContain("山门题名");
     expect(
-      document.querySelector("[data-detail-summary-text]")?.textContent,
+      document.querySelector("[data-detail-introduction-text]")?.textContent,
     ).toContain("山门北壁");
     expect(
       document.querySelector("[data-detail-facts-list]")?.textContent,
@@ -3422,7 +3518,7 @@ describe("mobile application preview", () => {
       document.querySelector("[data-detail-facts-list]")?.textContent,
     ).toContain("唐");
     expect(
-      document.querySelector("[data-detail-description-text]")?.textContent,
+      document.querySelector("[data-detail-explanation-text]")?.textContent,
     ).toContain("多图");
     expect(
       document.querySelector("[data-detail-sources-list]")?.textContent,
@@ -3453,15 +3549,456 @@ describe("mobile application preview", () => {
     ).toBe(true);
     expect(
       infoPanel?.contains(
-        document.querySelector("[data-detail-description-text]"),
+        document.querySelector("[data-detail-explanation-text]"),
       ),
     ).toBe(false);
     expect(
-      infoPanel?.contains(document.querySelector("[data-detail-summary-text]")),
+      infoPanel?.contains(
+        document.querySelector("[data-detail-introduction-text]"),
+      ),
     ).toBe(false);
 
     document.querySelector<HTMLElement>("[data-detail-back]")?.click();
   });
+
+  it("loads validated Public CatalogDetail into the existing T02 Detail", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(browserResponse(200, publicDetail)),
+    );
+    let runtimeCard: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock);
+      runtimeCard = installRuntimeCard(window, publicDetail.id);
+    });
+    const document = dom.window.document;
+
+    runtimeCard?.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-detail-panel="loading"]')
+        ?.hidden,
+    ).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/catalog-real-001", {
+      headers: { Accept: "application/json" },
+    });
+
+    await settleDetailLoad();
+
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      publicDetail.title,
+    );
+    expect(
+      document.querySelector("[data-detail-introduction-text]")?.textContent,
+    ).toBe(publicDetail.description);
+    expect(document.body.textContent).not.toContain(publicDetail.summary);
+    expect(
+      document.querySelector("[data-detail-aliases-text]")?.textContent,
+    ).toBe("真实别名");
+    expect(
+      [...document.querySelectorAll("[data-detail-facts-list] dt")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["朝代", "年代", "地区", "现址", "保管 / 现藏单位"]);
+    expect(
+      [...document.querySelectorAll("[data-detail-facts-list] dt")].some(
+        (node) => node.textContent === "时期",
+      ),
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-detail-facts-list]")?.textContent,
+    ).toContain("河南省 · 洛阳市 · 龙门区");
+    expect(
+      document.querySelector("[data-detail-kind-period]")?.textContent,
+    ).toBe("碑刻");
+    expect(
+      document.querySelector("[data-detail-sources-list]")?.textContent,
+    ).toContain("正式著录");
+    for (const selector of [
+      "[data-detail-transcription-text]",
+      "[data-detail-historical-context-text]",
+      "[data-detail-scholarly-research-text]",
+      "[data-detail-explanation-text]",
+    ]) {
+      expect(document.querySelector(selector)?.textContent).toBe("内容待接入");
+    }
+    expect(
+      document.querySelector("[data-detail-image]")?.getAttribute("src"),
+    ).toBe(publicDetail.media[0]?.src);
+    expect(
+      document.querySelector("[data-detail-media-index]")?.textContent,
+    ).toBe("1/2");
+    document.querySelector<HTMLElement>("[data-detail-media-next]")?.click();
+    expect(
+      document.querySelector("[data-detail-image]")?.getAttribute("src"),
+    ).toBe(publicDetail.media[1]?.src);
+    document.querySelector<HTMLElement>("[data-detail-media-open]")?.click();
+    expect(
+      document.querySelector("[data-detail-focus-image]")?.getAttribute("src"),
+    ).toBe(publicDetail.media[1]?.src);
+  });
+
+  it("keeps QA Detail local while runtime identity collisions load Public Detail", async () => {
+    const collidingDetail = {
+      id: "discover-cliff-gate",
+      kind: "inscription",
+      title: "真实同 ID 条目",
+      aliases: [],
+      summary: "不能成为详情简介的摘要",
+      media: [],
+      sourceCitations: [],
+    };
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(browserResponse(200, collidingDetail)),
+    );
+    let runtimeCard: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock);
+      runtimeCard = installRuntimeCard(window, collidingDetail.id);
+    });
+    const document = dom.window.document;
+
+    document
+      .querySelector<HTMLElement>(
+        '[data-feed-grid="discover"] [data-content-id="discover-cliff-gate"]:not([data-record-origin="runtime"])',
+      )
+      ?.click();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "山门北壁题记",
+    );
+    const back = document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!back) throw new Error("detail back missing");
+    await clickAndWaitForHistory(dom.window, back);
+
+    runtimeCard?.click();
+    await settleDetailLoad();
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      collidingDetail.title,
+    );
+    expect(
+      document.querySelector("[data-detail-introduction-text]")?.textContent,
+    ).toBe("内容待接入");
+    expect(document.body.textContent).not.toContain(collidingDetail.summary);
+    expect(
+      document.querySelector("[data-detail-facts-placeholder]")?.textContent,
+    ).toBe("资料待接入");
+    expect(
+      document.querySelector("[data-detail-sources-placeholder]")?.textContent,
+    ).toBe("内容待接入");
+    for (const selector of [
+      "[data-detail-transcription-text]",
+      "[data-detail-historical-context-text]",
+      "[data-detail-scholarly-research-text]",
+      "[data-detail-explanation-text]",
+    ]) {
+      expect(document.querySelector(selector)?.textContent).toBe("内容待接入");
+    }
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-fallback]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-detail-image]")?.getAttribute("src"),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-detail-image]")?.getAttribute("alt"),
+    ).toBe("");
+  });
+
+  it("omits unsupported and missing Public sections in Production", async () => {
+    const sparseDetail = {
+      id: "catalog-production-sparse",
+      kind: "calligraphy",
+      title: "真实生产稀疏条目",
+      aliases: [],
+      summary: "生产列表摘要",
+      media: [],
+      sourceCitations: [],
+    };
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(browserResponse(200, sparseDetail)),
+    );
+    let runtimeCard: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock, "production");
+      runtimeCard = installRuntimeCard(window, sparseDetail.id);
+    });
+    const document = dom.window.document;
+
+    runtimeCard?.click();
+    await settleDetailLoad();
+
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      sparseDetail.title,
+    );
+    for (const selector of [
+      "[data-detail-facts]",
+      "[data-detail-introduction]",
+      "[data-detail-transcription]",
+      "[data-detail-historical-context]",
+      "[data-detail-scholarly-research]",
+      "[data-detail-explanation]",
+      "[data-detail-sources]",
+    ]) {
+      expect(document.querySelector<HTMLElement>(selector)?.hidden).toBe(true);
+    }
+    expect(
+      document.querySelector('[data-detail-panel="loaded"]')?.textContent,
+    ).not.toMatch(/内容待接入|资料待接入/);
+    expect(
+      document.querySelector<HTMLElement>("[data-detail-media-fallback]")
+        ?.hidden,
+    ).toBe(false);
+    expect(
+      document.querySelector("[data-detail-image]")?.getAttribute("src"),
+    ).toBeNull();
+  });
+
+  it("uses representative media only when the Public media list is empty", async () => {
+    const representativeOnly = {
+      ...publicDetail,
+      id: "catalog-representative-only",
+      dynasty: "唐",
+      dateText: undefined,
+      province: undefined,
+      prefecture: undefined,
+      county: undefined,
+      currentLocation: undefined,
+      currentCustodian: undefined,
+      media: [],
+    };
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(browserResponse(200, representativeOnly)),
+    );
+    let runtimeCard: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock);
+      runtimeCard = installRuntimeCard(window, representativeOnly.id);
+    });
+
+    runtimeCard?.click();
+    await settleDetailLoad();
+
+    expect(
+      dom.window.document
+        .querySelector("[data-detail-image]")
+        ?.getAttribute("src"),
+    ).toBe(representativeOnly.representativeMedia.src);
+    expect(
+      [
+        ...dom.window.document.querySelectorAll("[data-detail-facts-list] dt"),
+      ].map((node) => node.textContent),
+    ).toEqual(["朝代"]);
+    expect(
+      dom.window.document.querySelector<HTMLElement>(
+        "[data-detail-facts-placeholder]",
+      )?.hidden,
+    ).toBe(true);
+  });
+
+  it.each([
+    [404, "not-found"],
+    [503, "unavailable"],
+    [502, "error"],
+  ] as const)(
+    "maps runtime HTTP %s into the existing %s panel",
+    async (status, panel) => {
+      const fetchMock = vi.fn(() => Promise.resolve(browserResponse(status)));
+      let runtimeCard: HTMLElement | undefined;
+      const dom = renderPreview({}, {}, (window) => {
+        installFormalRuntime(window, fetchMock);
+        runtimeCard = installRuntimeCard(window, `catalog-${status}`);
+      });
+
+      runtimeCard?.click();
+      await settleDetailLoad();
+
+      expect(
+        dom.window.document.querySelector<HTMLElement>(
+          `[data-detail-panel="${panel}"]`,
+        )?.hidden,
+      ).toBe(false);
+    },
+  );
+
+  it("retries the current runtime Detail without adding history", async () => {
+    let attempt = 0;
+    const fetchMock = vi.fn(() => {
+      attempt += 1;
+      return Promise.resolve(
+        attempt === 1
+          ? browserResponse(503)
+          : browserResponse(200, publicDetail),
+      );
+    });
+    let runtimeCard: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock);
+      runtimeCard = installRuntimeCard(window, publicDetail.id);
+    });
+    const document = dom.window.document;
+
+    runtimeCard?.click();
+    const detailHistoryLength = dom.window.history.length;
+    await settleDetailLoad();
+    document.querySelector<HTMLElement>("[data-detail-retry]")?.click();
+    expect(dom.window.history.length).toBe(detailHistoryLength);
+    await settleDetailLoad();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(dom.window.history.length).toBe(detailHistoryLength);
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      publicDetail.title,
+    );
+  });
+
+  it("lets the latest runtime Detail win and ignores a stale response", async () => {
+    let resolveA!: (value: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    const responseA = new Promise((resolve) => {
+      resolveA = resolve;
+    });
+    const responseB = new Promise((resolve) => {
+      resolveB = resolve;
+    });
+    const fetchMock = vi.fn((url: unknown) =>
+      String(url).endsWith("catalog-a") ? responseA : responseB,
+    );
+    let cardA: HTMLElement | undefined;
+    let cardB: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock);
+      cardA = installRuntimeCard(window, "catalog-a", "真实 A");
+      cardB = installRuntimeCard(window, "catalog-b", "真实 B");
+    });
+    const document = dom.window.document;
+
+    cardA?.click();
+    cardB?.click();
+    resolveB(
+      browserResponse(200, {
+        ...publicDetail,
+        id: "catalog-b",
+        title: "真实 B Detail",
+      }),
+    );
+    await settleDetailLoad();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "真实 B Detail",
+    );
+
+    resolveA(
+      browserResponse(200, {
+        ...publicDetail,
+        id: "catalog-a",
+        title: "迟到的 A Detail",
+      }),
+    );
+    await settleDetailLoad();
+    expect(document.querySelector("[data-detail-title]")?.textContent).toBe(
+      "真实 B Detail",
+    );
+  });
+
+  it("does not reopen a runtime Detail after back and restores source scroll", async () => {
+    let resolveDetail!: (value: unknown) => void;
+    const pendingResponse = new Promise((resolve) => {
+      resolveDetail = resolve;
+    });
+    const fetchMock = vi.fn(() => pendingResponse);
+    let runtimeCard: HTMLElement | undefined;
+    const dom = renderPreview({}, {}, (window) => {
+      installFormalRuntime(window, fetchMock);
+      runtimeCard = installRuntimeCard(window, publicDetail.id);
+    });
+    const document = dom.window.document;
+    const sourceScroll = document.querySelector<HTMLElement>(
+      '[data-scroll-key="home:discover"]',
+    );
+    if (!sourceScroll) throw new Error("source scroll missing");
+    sourceScroll.scrollTop = 137;
+    sourceScroll.dispatchEvent(new dom.window.Event("scroll"));
+
+    runtimeCard?.click();
+    const back = document.querySelector<HTMLElement>("[data-detail-back]");
+    if (!back) throw new Error("detail back missing");
+    await clickAndWaitForHistory(dom.window, back);
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    expect(sourceScroll.scrollTop).toBe(137);
+
+    resolveDetail(browserResponse(200, publicDetail));
+    await settleDetailLoad();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    expect(sourceScroll.scrollTop).toBe(137);
+  });
+
+  it("deep-links into the same T02 Detail and forces Public identity", async () => {
+    const collidingDetail = {
+      ...publicDetail,
+      id: "discover-cliff-gate",
+      title: "Deep Link 真实条目",
+    };
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(browserResponse(200, collidingDetail)),
+    );
+    const dom = renderPreview(
+      {},
+      {},
+      (window) => installFormalRuntime(window, fetchMock),
+      "http://localhost/?catalogId=discover-cliff-gate#detail-discover-cliff-gate",
+    );
+
+    await settleDetailLoad();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/catalog/discover-cliff-gate", {
+      headers: { Accept: "application/json" },
+    });
+    expect(
+      dom.window.document.querySelector("[data-detail-title]")?.textContent,
+    ).toBe(collidingDetail.title);
+    expect(
+      dom.window.document.querySelector<HTMLElement>('[data-view="detail"]')
+        ?.hidden,
+    ).toBe(false);
+  });
+
+  it.each([
+    [
+      "malformed JSON",
+      () =>
+        Promise.resolve({
+          status: 200,
+          json: async () => {
+            throw new Error("malformed");
+          },
+        }),
+    ],
+    ["network failure", () => Promise.reject(new Error("offline"))],
+  ] as const)(
+    "maps browser %s into the existing error panel",
+    async (_label, response) => {
+      const fetchMock = vi.fn(() => response());
+      let runtimeCard: HTMLElement | undefined;
+      const dom = renderPreview({}, {}, (window) => {
+        installFormalRuntime(window, fetchMock);
+        runtimeCard = installRuntimeCard(window, "catalog-browser-error");
+      });
+
+      runtimeCard?.click();
+      await settleDetailLoad();
+
+      expect(
+        dom.window.document.querySelector<HTMLElement>(
+          '[data-detail-panel="error"]',
+        )?.hidden,
+      ).toBe(false);
+    },
+  );
 
   it("drops identity tokens that already appear in catalog facts", () => {
     const openDetail = (document: Document, contentId: string) => {
@@ -3575,7 +4112,7 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>("[data-detail-aliases]")?.hidden,
     ).toBe(true);
     expect(
-      document.querySelector<HTMLElement>("[data-detail-summary]")?.hidden,
+      document.querySelector<HTMLElement>("[data-detail-introduction]")?.hidden,
     ).toBe(true);
     expect(
       document.querySelector<HTMLElement>("[data-detail-facts]")?.hidden,
@@ -3584,7 +4121,7 @@ describe("mobile application preview", () => {
       document.querySelector("[data-detail-kind-period]")?.textContent,
     ).toBe("碑刻");
     expect(
-      document.querySelector<HTMLElement>("[data-detail-description]")?.hidden,
+      document.querySelector<HTMLElement>("[data-detail-explanation]")?.hidden,
     ).toBe(true);
     expect(
       document.querySelector<HTMLElement>("[data-detail-sources]")?.hidden,
@@ -4829,12 +5366,12 @@ describe("mobile application preview", () => {
       "北宋毕昇墓碑",
     );
     expect(
-      document.querySelector("[data-detail-description-text]")?.textContent,
+      document.querySelector("[data-detail-explanation-text]")?.textContent,
     ).toBe(expectedP5Descriptions.get("p5-record-27"));
     expect(
       document
         .querySelector("[data-detail-info-panel]")
-        ?.contains(document.querySelector("[data-detail-description-text]")),
+        ?.contains(document.querySelector("[data-detail-explanation-text]")),
     ).toBe(false);
     expect(document.querySelector("[data-detail-title]")?.textContent).not.toBe(
       expectedP5Descriptions.get("p5-record-27"),
@@ -4868,7 +5405,7 @@ describe("mobile application preview", () => {
       "北魏永平四年郑道昭浮丘子题字",
     );
     expect(
-      document.querySelector<HTMLElement>("[data-detail-description]")?.hidden,
+      document.querySelector<HTMLElement>("[data-detail-explanation]")?.hidden,
     ).toBe(true);
     expect(
       document.querySelector<HTMLElement>("[data-detail-aliases]")?.hidden,

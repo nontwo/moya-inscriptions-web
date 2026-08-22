@@ -1,6 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 
+import type { CatalogSummary } from "@moya/contracts";
+
 const repositoryRoot = resolve(process.cwd(), "../..");
 const prototypeRoot = resolve(repositoryRoot, "docs/prototypes/mobile-preview");
 const demoAssetRoot = resolve(repositoryRoot, "docs/design-system/assets");
@@ -8,24 +10,10 @@ const designTokensRoot = resolve(repositoryRoot, "packages/design-tokens/src");
 const uiStylesRoot = resolve(repositoryRoot, "packages/ui/src");
 const uiAssetsRoot = resolve(uiStylesRoot, "assets");
 
-export type BrowseItem = {
-  id: string;
-  kind: "inscription" | "calligraphy";
-  title: string;
-  aliases: readonly string[];
-  summary?: string | undefined;
-  periodLabel?: string | undefined;
-  representativeMedia?:
-    | {
-        alt: string;
-        height: number;
-        id: string;
-        kind: "image";
-        src: string;
-        width: number;
-      }
-    | undefined;
-};
+export type BrowseItem = Pick<
+  CatalogSummary,
+  "id" | "kind" | "title" | "periodLabel" | "representativeMedia"
+>;
 
 export type BrowseItems = {
   calligraphy?: readonly BrowseItem[];
@@ -135,32 +123,32 @@ export const readT02Document = async (
       /<head>/i,
       '<head>\n    <base href="/docs/prototypes/mobile-preview/" />',
     );
+    const isFormalRoot = composition === "formal-root";
+    const isProduction = process.env.NODE_ENV === "production";
     const documentForComposition =
-      composition === "formal-root" && process.env.NODE_ENV === "production"
+      isFormalRoot && isProduction
         ? sanitizeProductionT02Document(documentWithBase)
         : documentWithBase;
-    const documentWithDevelopmentDetail =
-      process.env.NODE_ENV === "production"
-        ? documentForComposition
-        : ensureDevelopmentTranscriptionSection(documentForComposition);
+    const documentWithRuntimeContext = isFormalRoot
+      ? documentForComposition.replace(
+          /<html\b/,
+          `<html data-formal-root="true" data-runtime-environment="${isProduction ? "production" : "development"}"`,
+        )
+      : documentForComposition;
     const documentWithCards = appendCalligraphyItems(
       appendInscriptionItems(
         appendDiscoverItems(
-          documentWithDevelopmentDetail,
+          documentWithRuntimeContext,
           browseItems.discover ?? [],
         ),
         browseItems.inscriptions ?? [],
       ),
       browseItems.calligraphy ?? [],
     );
-    const document = injectRuntimeCatalogRecords(
-      documentWithCards,
-      browseItems,
-    );
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
       ? new Response(null, { status: 200, headers })
-      : new Response(document, { status: 200, headers });
+      : new Response(documentWithCards, { status: 200, headers });
   } catch {
     return new Response(null, { status: 404 });
   }
@@ -199,24 +187,6 @@ export const sanitizeProductionT02Document = (document: string): string =>
       .replace(prototypeFixtureScriptPattern, "")
       .replace(prototypeDetailImageSourcePattern, "$1"),
   );
-
-/**
- * Development/Owner-QA keeps the complete approved Detail structure visible even
- * before a formal transcription contract exists. This is presentation-only and
- * is deliberately omitted when NODE_ENV=production.
- */
-export const ensureDevelopmentTranscriptionSection = (
-  document: string,
-): string => {
-  if (document.includes("data-detail-transcription")) return document;
-
-  const summarySection = /(<p data-detail-summary-text><\/p>\s*<\/section>)/;
-
-  return document.replace(
-    summarySection,
-    `$1\n              <section\n                class="app-detail__section app-detail__reading"\n                data-detail-transcription\n              >\n                <h2>释文</h2>\n                <p data-detail-transcription-text>内容待接入</p>\n              </section>`,
-  );
-};
 
 export const appendDiscoverItems = (
   document: string,
@@ -268,55 +238,11 @@ const appendCardsInSection = (
       `${opening}${content}\n${cards.join("\n")}${closing}`,
   );
 
-const allRuntimeItems = (browseItems: BrowseItems): BrowseItem[] => {
-  const items = [
-    ...(browseItems.discover ?? []),
-    ...(browseItems.inscriptions ?? []),
-    ...(browseItems.calligraphy ?? []),
-  ];
-  const unique = new Map<string, BrowseItem>();
-  for (const item of items) unique.set(item.id, item);
-  return [...unique.values()];
-};
-
-/**
- * Real browse cards must resolve to their own real CatalogSummary-shaped record.
- * This prevents a real title from opening a synthetic QA record with unrelated
- * media/facts while still leaving the QA fixture records intact and independent.
- */
-export const injectRuntimeCatalogRecords = (
-  document: string,
-  browseItems: BrowseItems,
-): string => {
-  const items = allRuntimeItems(browseItems);
-  if (items.length === 0) return document;
-
-  const records = Object.fromEntries(
-    items.map((item) => [
-      item.id,
-      {
-        aliases: [...item.aliases],
-        id: item.id,
-        kind: item.kind,
-        media: item.representativeMedia ? [item.representativeMedia] : [],
-        periodLabel: item.periodLabel,
-        representativeMedia: item.representativeMedia,
-        sourceCitations: [],
-        summary: item.summary,
-        title: item.title,
-      },
-    ]),
-  );
-  const payload = JSON.stringify(records).replace(/</g, "\\u003c");
-  const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: "runtime-bridge" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
-  const previewScript =
-    /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
-  return document.replace(previewScript, `${bridge}\n$1`);
-};
-
 const renderMedia = (item: BrowseItem): string => {
   const media = item.representativeMedia;
-  if (!media) return "";
+  if (!media) {
+    return `<span class="app-card__media-fallback" role="img" aria-label="${escapeHtml(`暂无图像：${item.title}`)}"></span>`;
+  }
   return `<img src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" width="${media.width}" height="${media.height}" />`;
 };
 
@@ -327,6 +253,7 @@ const runtimeCardAttributes = (item: BrowseItem): string => {
     `data-content-id="${escapeHtml(item.id)}"`,
     "data-open-detail",
     image ? `data-image="${escapeHtml(image)}"` : "",
+    `data-media-origin="${image ? "catalog" : "missing"}"`,
     `data-title="${escapeHtml(item.title)}"`,
     'type="button"',
   ]
@@ -335,16 +262,18 @@ const runtimeCardAttributes = (item: BrowseItem): string => {
 };
 
 const searchableText = (item: BrowseItem): string =>
-  [item.title, item.summary, item.periodLabel].filter(Boolean).join(" ");
+  [item.title, item.kind === "calligraphy" ? "书帖" : "碑刻", item.periodLabel]
+    .filter(Boolean)
+    .join(" ");
 
 const renderDiscoverCard = (item: BrowseItem): string =>
-  `<button class="app-card" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n</button>`;
+  `<button class="app-card${item.representativeMedia ? "" : " is-media-missing"}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n</button>`;
 
 const renderInscriptionCard = (item: BrowseItem): string =>
-  `<button class="app-inscription-card" data-search-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-inscription-card__body">\n<span class="app-inscription-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-inscription-card__meta">碑刻 · ${escapeHtml(item.periodLabel)}</span>` : '<span class="app-inscription-card__meta">碑刻</span>'}\n</span>\n<span class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow" data-icon="next" aria-hidden="true"></span>\n</button>`;
+  `<button class="app-inscription-card${item.representativeMedia ? "" : " is-media-missing"}" data-search-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-inscription-card__body">\n<span class="app-inscription-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-inscription-card__meta">碑刻 · ${escapeHtml(item.periodLabel)}</span>` : '<span class="app-inscription-card__meta">碑刻</span>'}\n</span>\n<span class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow" data-icon="next" aria-hidden="true"></span>\n</button>`;
 
 const renderCalligraphyCard = (item: BrowseItem): string =>
-  `<button class="app-card" data-category="all" data-calligraphy-filter-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__caption">\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-card__meta">${escapeHtml(item.periodLabel)}</span>` : ""}\n</span>\n</button>`;
+  `<button class="app-card${item.representativeMedia ? "" : " is-media-missing"}" data-category="all" data-calligraphy-filter-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__caption">\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-card__meta">${escapeHtml(item.periodLabel)} · 书帖</span>` : '<span class="app-card__meta">书帖</span>'}\n</span>\n</button>`;
 
 const escapeHtml = (value: string): string =>
   value.replace(

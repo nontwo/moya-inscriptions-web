@@ -64,7 +64,17 @@ const unavailable: HomeCatalogState = { state: "unavailable" };
 const unexpectedError: HomeCatalogState = { state: "unexpected-error" };
 
 const resolveItems = (state: HomeCatalogState) =>
-  state.state === "populated" ? state.page.items : [];
+  state.state === "populated"
+    ? state.page.items.map(
+        ({ id, kind, title, periodLabel, representativeMedia }) => ({
+          id,
+          kind,
+          title,
+          ...(periodLabel === undefined ? {} : { periodLabel }),
+          ...(representativeMedia === undefined ? {} : { representativeMedia }),
+        }),
+      )
+    : [];
 
 const toBrowseArgs = (states: Record<QueryKey, HomeCatalogState>) => ({
   calligraphy: resolveItems(states.calligraphy),
@@ -138,6 +148,11 @@ describe("T07 browse runtime composition", () => {
       }),
       "formal-root",
     );
+    const browseItems = readT02DocumentMock.mock.calls[0]?.[1];
+    for (const item of Object.values(browseItems ?? {}).flat()) {
+      expect(item).not.toHaveProperty("aliases");
+      expect(item).not.toHaveProperty("summary");
+    }
   });
 
   it.each([unavailable, unexpectedError, empty()])(
