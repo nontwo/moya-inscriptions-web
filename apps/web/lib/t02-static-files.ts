@@ -1,8 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { CatalogSummary } from "@moya/contracts";
-
 const repositoryRoot = resolve(process.cwd(), "../..");
 const prototypeRoot = resolve(repositoryRoot, "docs/prototypes/mobile-preview");
 const demoAssetRoot = resolve(repositoryRoot, "docs/design-system/assets");
@@ -10,10 +8,24 @@ const designTokensRoot = resolve(repositoryRoot, "packages/design-tokens/src");
 const uiStylesRoot = resolve(repositoryRoot, "packages/ui/src");
 const uiAssetsRoot = resolve(uiStylesRoot, "assets");
 
-export type BrowseItem = Pick<
-  CatalogSummary,
-  "id" | "kind" | "title" | "periodLabel" | "representativeMedia"
->;
+export type BrowseItem = {
+  id: string;
+  kind: "inscription" | "calligraphy";
+  title: string;
+  aliases: readonly string[];
+  summary?: string | undefined;
+  periodLabel?: string | undefined;
+  representativeMedia?:
+    | {
+        alt: string;
+        height: number;
+        id: string;
+        kind: "image";
+        src: string;
+        width: number;
+      }
+    | undefined;
+};
 
 export type BrowseItems = {
   calligraphy?: readonly BrowseItem[];
@@ -240,9 +252,7 @@ const appendCardsInSection = (
 
 const renderMedia = (item: BrowseItem): string => {
   const media = item.representativeMedia;
-  if (!media) {
-    return `<span class="app-card__media-fallback" role="img" aria-label="${escapeHtml(`暂无图像：${item.title}`)}"></span>`;
-  }
+  if (!media) return "";
   return `<img src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" width="${media.width}" height="${media.height}" />`;
 };
 
@@ -253,7 +263,6 @@ const runtimeCardAttributes = (item: BrowseItem): string => {
     `data-content-id="${escapeHtml(item.id)}"`,
     "data-open-detail",
     image ? `data-image="${escapeHtml(image)}"` : "",
-    `data-media-origin="${image ? "catalog" : "missing"}"`,
     `data-title="${escapeHtml(item.title)}"`,
     'type="button"',
   ]
@@ -262,18 +271,16 @@ const runtimeCardAttributes = (item: BrowseItem): string => {
 };
 
 const searchableText = (item: BrowseItem): string =>
-  [item.title, item.kind === "calligraphy" ? "书帖" : "碑刻", item.periodLabel]
-    .filter(Boolean)
-    .join(" ");
+  [item.title, item.summary, item.periodLabel].filter(Boolean).join(" ");
 
 const renderDiscoverCard = (item: BrowseItem): string =>
-  `<button class="app-card${item.representativeMedia ? "" : " is-media-missing"}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n</button>`;
+  `<button class="app-card" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n</button>`;
 
 const renderInscriptionCard = (item: BrowseItem): string =>
-  `<button class="app-inscription-card${item.representativeMedia ? "" : " is-media-missing"}" data-search-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-inscription-card__body">\n<span class="app-inscription-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-inscription-card__meta">碑刻 · ${escapeHtml(item.periodLabel)}</span>` : '<span class="app-inscription-card__meta">碑刻</span>'}\n</span>\n<span class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow" data-icon="next" aria-hidden="true"></span>\n</button>`;
+  `<button class="app-inscription-card" data-search-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-inscription-card__body">\n<span class="app-inscription-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-inscription-card__meta">碑刻 · ${escapeHtml(item.periodLabel)}</span>` : '<span class="app-inscription-card__meta">碑刻</span>'}\n</span>\n<span class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow" data-icon="next" aria-hidden="true"></span>\n</button>`;
 
 const renderCalligraphyCard = (item: BrowseItem): string =>
-  `<button class="app-card${item.representativeMedia ? "" : " is-media-missing"}" data-category="all" data-calligraphy-filter-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__caption">\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-card__meta">${escapeHtml(item.periodLabel)} · 书帖</span>` : '<span class="app-card__meta">书帖</span>'}\n</span>\n</button>`;
+  `<button class="app-card" data-category="all" data-calligraphy-filter-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__caption">\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-card__meta">${escapeHtml(item.periodLabel)}</span>` : ""}\n</span>\n</button>`;
 
 const escapeHtml = (value: string): string =>
   value.replace(

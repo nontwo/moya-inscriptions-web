@@ -17,14 +17,14 @@ const runtimeItem = (
   title: string,
   kind: "inscription" | "calligraphy",
 ): BrowseItem => ({
-  id: `runtime-${title}` as BrowseItem["id"],
+  id: `runtime-${title}`,
   kind,
   title,
+  aliases: [],
+  summary: `${title}摘要`,
   periodLabel: "唐",
   representativeMedia: {
-    id: `media-${title}` as NonNullable<
-      BrowseItem["representativeMedia"]
-    >["id"],
+    id: `media-${title}`,
     kind: "image" as const,
     src: "https://example.com/runtime.jpg",
     alt: `${title}真实图像`,
@@ -98,6 +98,29 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-content-id="calligraphy-pine"');
     expect(result).toContain('data-title="松窗帖"');
     expect(result).toContain("../../design-system/assets/demo/ink-album.svg");
+  });
+
+  it("preserves accepted browse search text and calligraphy metadata", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const inscription = appendInscriptionItems(source, [
+      runtimeItem("苍岩题记", "inscription"),
+    ]);
+    const calligraphy = appendCalligraphyItems(source, [
+      runtimeItem("兰亭短札", "calligraphy"),
+    ]);
+
+    expect(inscription).toContain(
+      'data-search-text="苍岩题记 苍岩题记摘要 唐"',
+    );
+    expect(calligraphy).toContain(
+      'data-calligraphy-filter-text="兰亭短札 兰亭短札摘要 唐"',
+    );
+    expect(calligraphy).toContain('<span class="app-card__meta">唐</span>');
+    expect(calligraphy).not.toContain(
+      '<span class="app-card__meta">唐 · 书帖</span>',
+    );
   });
 
   it("never mutates canonical source when there are no runtime items", async () => {
@@ -191,9 +214,11 @@ describe("formal T02 file serving", () => {
   it("serves only truthful runtime records from the formal Production root", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const missingMedia: BrowseItem = {
-      id: "runtime-no-media" as BrowseItem["id"],
+      id: "runtime-no-media",
       kind: "inscription",
       title: "真实无图碑刻",
+      aliases: [],
+      summary: "真实无图碑刻摘要",
       periodLabel: "唐",
     };
     const response = await readT02Document(
@@ -225,9 +250,9 @@ describe("formal T02 file serving", () => {
     expect(missingMediaCard).toBeDefined();
     expect(missingMediaCard).not.toContain("<img");
     expect(missingMediaCard).not.toContain("data-image");
-    expect(missingMediaCard).toContain("app-card__media-fallback");
-    expect(missingMediaCard).toContain('data-media-origin="missing"');
-    expect(missingMediaCard).toContain("暂无图像：真实无图碑刻");
+    expect(missingMediaCard).not.toContain("app-card__media-fallback");
+    expect(missingMediaCard).not.toContain("is-media-missing");
+    expect(missingMediaCard).not.toContain("data-media-origin");
     expect(body).not.toContain("../../design-system/assets/demo/");
 
     for (const qaIdentity of [
