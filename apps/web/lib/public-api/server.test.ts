@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchServerCatalogPage, parsePublicApiBaseUrl } from "./server.js";
+import {
+  fetchServerCatalogDetail,
+  fetchServerCatalogPage,
+  parsePublicApiBaseUrl,
+} from "./server.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -44,6 +48,17 @@ describe("Public API server wiring", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("does not fetch Detail when server configuration is missing", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "");
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchServerCatalogDetail("catalog-001")).resolves.toEqual({
+      state: "unexpected-error",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("supplies the validated server base URL and fetch implementation", async () => {
     vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "https://web.example.invalid/api");
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
@@ -65,6 +80,31 @@ describe("Public API server wiring", () => {
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://web.example.invalid/api/v1/catalog",
+      expect.any(Object),
+    );
+  });
+
+  it("forwards Detail through the same server-only base URL boundary", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "https://web.example.invalid/api");
+    const detail = {
+      id: "catalog-001",
+      kind: "inscription",
+      title: "真实碑刻",
+      aliases: [],
+      sourceCitations: [],
+      media: [],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json(detail));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchServerCatalogDetail(detail.id)).resolves.toEqual({
+      state: "success",
+      detail,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://web.example.invalid/api/v1/catalog/catalog-001",
       expect.any(Object),
     );
   });

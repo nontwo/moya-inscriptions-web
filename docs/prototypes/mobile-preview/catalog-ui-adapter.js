@@ -218,6 +218,59 @@
     return Object.values(adapted).some(Boolean) ? adapted : undefined;
   }
 
+  function adaptSourceCitations(values) {
+    return (Array.isArray(values) ? values : [])
+      .map((citation) => ({
+        citation: displayText(citation?.citation),
+        label: displayText(citation?.label),
+        url: isUsableMediaSrc(citation?.url) ? displayText(citation.url) : "",
+      }))
+      .filter((citation) => citation.label || citation.citation);
+  }
+
+  function adaptPublicDetail(raw, options = {}) {
+    const id = displayText(raw?.id);
+    const title = displayText(raw?.title);
+    if (
+      !id ||
+      !title ||
+      (raw?.kind !== "inscription" && raw?.kind !== "calligraphy") ||
+      !Array.isArray(raw?.aliases) ||
+      !Array.isArray(raw?.media) ||
+      !Array.isArray(raw?.sourceCitations)
+    ) {
+      return null;
+    }
+
+    const development = options.development === true;
+    const presentationFacts = adaptFacts(raw);
+    const sourceCitations = adaptSourceCitations(raw.sourceCitations);
+    const media = sourceMediaList(raw, title);
+    const introduction = displayText(raw.description);
+
+    return {
+      aliases: displayList(raw.aliases),
+      catalogSource: "public",
+      explanation: development ? "内容待接入" : undefined,
+      factsPlaceholder:
+        development && !presentationFacts ? "资料待接入" : undefined,
+      historicalContext: development ? "内容待接入" : undefined,
+      id,
+      introduction: introduction || (development ? "内容待接入" : undefined),
+      kind: raw.kind,
+      media,
+      periodLabel: displayText(raw.periodLabel) || undefined,
+      presentationFacts,
+      representativeMedia: media[0],
+      scholarlyResearch: development ? "内容待接入" : undefined,
+      sourceCitations,
+      sourcesPlaceholder:
+        development && sourceCitations.length === 0 ? "内容待接入" : undefined,
+      title,
+      transcription: development ? "内容待接入" : undefined,
+    };
+  }
+
   function searchText(record) {
     return [
       record.title,
@@ -240,17 +293,14 @@
     const aliases = displayList(raw?.aliases);
     const summary = displayText(raw?.summary);
     const description = displayText(raw?.description);
+    const introduction = displayText(raw?.introduction) || summary;
+    const transcription = displayText(raw?.transcription);
+    const historicalContext = displayText(raw?.historicalContext);
+    const scholarlyResearch = displayText(raw?.scholarlyResearch);
+    const explanation = displayText(raw?.explanation) || description;
     const periodLabel = displayText(raw?.periodLabel);
     const prototypeFacts = adaptFacts(raw?.prototypeFacts);
-    const sourceCitations = (
-      Array.isArray(raw?.sourceCitations) ? raw.sourceCitations : []
-    )
-      .map((citation) => ({
-        citation: displayText(citation?.citation),
-        label: displayText(citation?.label),
-        url: isUsableMediaSrc(citation?.url) ? displayText(citation.url) : "",
-      }))
-      .filter((citation) => citation.label || citation.citation);
+    const sourceCitations = adaptSourceCitations(raw?.sourceCitations);
     const media = resolveDisplayMedia({ ...raw, id, title }, options);
     const calligraphyCategory =
       raw?.calligraphyCategory === "rubbing" ? "rubbing" : "ink";
@@ -258,15 +308,21 @@
       aliases,
       calligraphyCategory,
       description: description || undefined,
+      explanation: explanation || undefined,
+      historicalContext: historicalContext || undefined,
       id: id || "unknown-record",
+      introduction: introduction || undefined,
       kind,
       media,
       periodLabel: periodLabel || undefined,
+      presentationFacts: prototypeFacts,
       prototypeFacts,
       representativeMedia: media[0],
+      scholarlyResearch: scholarlyResearch || undefined,
       sourceCitations,
       summary: summary || undefined,
       title,
+      transcription: transcription || undefined,
     };
   }
 
@@ -330,6 +386,7 @@
 
   globalThis.YOYI_CATALOG_UI_ADAPTER = {
     adaptRecord,
+    adaptPublicDetail,
     calligraphyFrom,
     cardMeta,
     catalogKindLabel,

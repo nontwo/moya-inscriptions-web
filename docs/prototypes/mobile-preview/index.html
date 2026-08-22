@@ -1110,24 +1110,49 @@
                   <section class="app-detail__section" data-detail-facts hidden>
                     <h2>基本资料</h2>
                     <dl class="app-detail__facts" data-detail-facts-list></dl>
+                    <p data-detail-facts-placeholder hidden></p>
                   </section>
                 </div>
               </div>
               <section
                 class="app-detail__section app-detail__reading"
-                data-detail-summary
+                data-detail-introduction
                 hidden
               >
                 <h2>简介</h2>
-                <p data-detail-summary-text></p>
+                <p data-detail-introduction-text></p>
               </section>
               <section
                 class="app-detail__section app-detail__reading"
-                data-detail-description
+                data-detail-transcription
+                hidden
+              >
+                <h2>释文</h2>
+                <p data-detail-transcription-text></p>
+              </section>
+              <section
+                class="app-detail__section app-detail__reading"
+                data-detail-historical-context
+                hidden
+              >
+                <h2>历史背景</h2>
+                <p data-detail-historical-context-text></p>
+              </section>
+              <section
+                class="app-detail__section app-detail__reading"
+                data-detail-scholarly-research
+                hidden
+              >
+                <h2>学术研究</h2>
+                <p data-detail-scholarly-research-text></p>
+              </section>
+              <section
+                class="app-detail__section app-detail__reading"
+                data-detail-explanation
                 hidden
               >
                 <h2>说明</h2>
-                <p data-detail-description-text></p>
+                <p data-detail-explanation-text></p>
               </section>
               <section
                 class="app-detail__section app-detail__reading"
@@ -1136,6 +1161,7 @@
               >
                 <h2>资料来源</h2>
                 <ul class="app-detail__sources" data-detail-sources-list></ul>
+                <p data-detail-sources-placeholder hidden></p>
               </section>
             </div>
 
@@ -1385,7 +1411,7 @@
     <script src="./fixtures/topics.placeholder.js"></script>
     <script src="./fixtures/catalog-detail.placeholder.js"></script>
     <script src="./fixtures/p5-pilot.snapshot.js"></script>
-    <script src="./catalog-ui-adapter.js?v=20260819-media-pager"></script>
-    <script src="./preview.js?v=20260819-media-pager"></script>
+    <script src="./catalog-ui-adapter.js?v=20260823-catalog-detail"></script>
+    <script src="./preview.js?v=20260823-catalog-detail"></script>
   </body>
 </html>

@@ -67,6 +67,15 @@ const prototypeDataset = selectPrototypeDataset(window.location.search);
 const adaptedP5Records = p5PilotRecords.map((record, index) =>
   adaptCatalogRecord(record, index),
 );
+const adaptedSyntheticCatalogDetailRecords = Object.fromEntries(
+  Object.entries(syntheticCatalogDetailRecords).map(([id, record], index) => [
+    id,
+    record?.lifecycle
+      ? record
+      : (catalogAdapter?.adaptRecord(record, { index }) ??
+        adaptCatalogRecord(record, index)),
+  ]),
+);
 const p5CatalogDetailRecords = Object.fromEntries(
   adaptedP5Records.map((record) => [record.id, record]),
 );
@@ -76,8 +85,8 @@ const p5TopicCollections =
     : [];
 const catalogDetailRecords =
   prototypeDataset === "p5"
-    ? { ...syntheticCatalogDetailRecords, ...p5CatalogDetailRecords }
-    : syntheticCatalogDetailRecords;
+    ? { ...adaptedSyntheticCatalogDetailRecords, ...p5CatalogDetailRecords }
+    : adaptedSyntheticCatalogDetailRecords;
 
 const root = document.documentElement;
 root.dataset.dataset = prototypeDataset;
@@ -89,16 +98,42 @@ const detailTitle = document.querySelector("[data-detail-title]");
 const detailKindPeriod = document.querySelector("[data-detail-kind-period]");
 const detailAliases = document.querySelector("[data-detail-aliases]");
 const detailAliasesText = document.querySelector("[data-detail-aliases-text]");
-const detailSummary = document.querySelector("[data-detail-summary]");
-const detailSummaryText = document.querySelector("[data-detail-summary-text]");
+const detailIntroduction = document.querySelector("[data-detail-introduction]");
+const detailIntroductionText = document.querySelector(
+  "[data-detail-introduction-text]",
+);
 const detailFacts = document.querySelector("[data-detail-facts]");
 const detailFactsList = document.querySelector("[data-detail-facts-list]");
-const detailDescription = document.querySelector("[data-detail-description]");
-const detailDescriptionText = document.querySelector(
-  "[data-detail-description-text]",
+const detailFactsPlaceholder = document.querySelector(
+  "[data-detail-facts-placeholder]",
+);
+const detailTranscription = document.querySelector(
+  "[data-detail-transcription]",
+);
+const detailTranscriptionText = document.querySelector(
+  "[data-detail-transcription-text]",
+);
+const detailHistoricalContext = document.querySelector(
+  "[data-detail-historical-context]",
+);
+const detailHistoricalContextText = document.querySelector(
+  "[data-detail-historical-context-text]",
+);
+const detailScholarlyResearch = document.querySelector(
+  "[data-detail-scholarly-research]",
+);
+const detailScholarlyResearchText = document.querySelector(
+  "[data-detail-scholarly-research-text]",
+);
+const detailExplanation = document.querySelector("[data-detail-explanation]");
+const detailExplanationText = document.querySelector(
+  "[data-detail-explanation-text]",
 );
 const detailSources = document.querySelector("[data-detail-sources]");
 const detailSourcesList = document.querySelector("[data-detail-sources-list]");
+const detailSourcesPlaceholder = document.querySelector(
+  "[data-detail-sources-placeholder]",
+);
 const detailMedia = document.querySelector("[data-detail-media]");
 const detailMediaOpen = document.querySelector("[data-detail-media-open]");
 const detailMediaFallback = document.querySelector(
@@ -470,6 +505,8 @@ let navIgnoreClick = false;
 let navPagerGesture = null;
 let detailContentId = "";
 let detailRecord = null;
+let detailIsPublic = false;
+let detailLoadGeneration = 0;
 let detailMediaItems = [];
 let detailMediaIndexValue = 0;
 let detailMediaFailed = false;
@@ -750,13 +787,18 @@ function appendFact(label, value) {
 function renderDetailFacts(record) {
   if (!detailFacts || !detailFactsList) return;
   detailFactsList.replaceChildren();
-  const facts = record.prototypeFacts;
+  const facts = record.presentationFacts;
   appendFact("朝代", facts?.dynasty);
   appendFact("年代", facts?.dateText);
   appendFact("地区", regionLabel(facts));
   appendFact("现址", facts?.currentLocation);
   appendFact("保管 / 现藏单位", facts?.currentCustodian);
-  setHidden(detailFacts, detailFactsList.children.length === 0);
+  const placeholder = displayText(record.factsPlaceholder);
+  if (detailFactsPlaceholder) {
+    detailFactsPlaceholder.textContent = placeholder;
+    setHidden(detailFactsPlaceholder, !placeholder);
+  }
+  setHidden(detailFacts, detailFactsList.children.length === 0 && !placeholder);
 }
 
 function renderDetailSources(record) {
@@ -788,7 +830,18 @@ function renderDetailSources(record) {
     }
     detailSourcesList.append(item);
   });
-  setHidden(detailSources, citations.length === 0);
+  const placeholder = displayText(record.sourcesPlaceholder);
+  if (detailSourcesPlaceholder) {
+    detailSourcesPlaceholder.textContent = placeholder;
+    setHidden(detailSourcesPlaceholder, !placeholder);
+  }
+  setHidden(detailSources, citations.length === 0 && !placeholder);
+}
+
+function renderReadingSection(section, textNode, value) {
+  const text = displayText(value);
+  if (textNode) textNode.textContent = text;
+  setHidden(section, !text);
 }
 
 function currentDetailMedia() {
@@ -827,16 +880,35 @@ function applyDetailMedia() {
 function renderLoadedDetail(record) {
   showDetailPanel("loaded");
   const title = displayText(record.title);
-  const summary = displayText(record.summary);
-  const description = displayText(record.description);
   if (detailTitle) detailTitle.textContent = title;
-  if (detailSummaryText) detailSummaryText.textContent = summary;
-  setHidden(detailSummary, !summary);
   renderDetailFacts(record);
   renderDetailKindPeriod(record);
   renderDetailAliases(record);
-  if (detailDescriptionText) detailDescriptionText.textContent = description;
-  setHidden(detailDescription, !description);
+  renderReadingSection(
+    detailIntroduction,
+    detailIntroductionText,
+    record.introduction,
+  );
+  renderReadingSection(
+    detailTranscription,
+    detailTranscriptionText,
+    record.transcription,
+  );
+  renderReadingSection(
+    detailHistoricalContext,
+    detailHistoricalContextText,
+    record.historicalContext,
+  );
+  renderReadingSection(
+    detailScholarlyResearch,
+    detailScholarlyResearchText,
+    record.scholarlyResearch,
+  );
+  renderReadingSection(
+    detailExplanation,
+    detailExplanationText,
+    record.explanation,
+  );
   renderDetailSources(record);
   applyDetailMedia();
 }
@@ -867,9 +939,10 @@ function rememberDetailHistory(contentId, { replace = false } = {}) {
     contentId,
     kind: "detail",
     mediaIndex: detailMediaIndexValue,
+    recordOrigin: detailIsPublic ? "runtime" : "fixture",
     sourceView: primaryView,
   };
-  const url = `#detail-${contentId}`;
+  const url = `#detail-${encodeURIComponent(contentId)}`;
   if (replace) history.replaceState(state, "", url);
   else history.pushState(state, "", url);
 }
@@ -1766,29 +1839,88 @@ function onDetailImageError() {
   logQaEvent("media", "图像暂时无法加载");
 }
 
-function openDetailById(
-  contentId,
-  { mediaIndex = 0, trigger = null, updateHistory = true } = {},
-) {
-  saveScrollPosition();
-  closeMediaFocus();
-  detailContentId = contentId;
-  detailRecord = resolveCatalogRecord(contentId, trigger);
+function applyDetailRecord(record, mediaIndex = 0) {
+  detailRecord = record;
   detailMediaItems = detailMediaList(detailRecord);
   detailMediaIndexValue = Math.max(
     0,
     Math.min(mediaIndex, Math.max(detailMediaItems.length - 1, 0)),
   );
-  updateDetailComposition();
   renderCatalogDetail(detailRecord);
+}
+
+async function loadPublicCatalogDetail(contentId, generation, mediaIndex) {
+  let record;
+  try {
+    const response = await fetch(
+      `/api/catalog/${encodeURIComponent(contentId)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (response.status === 404) {
+      record = { id: contentId, lifecycle: "not-found" };
+    } else if (response.status === 503) {
+      record = { id: contentId, lifecycle: "unavailable" };
+    } else if (response.status !== 200) {
+      record = { id: contentId, lifecycle: "error" };
+    } else {
+      const detail = await response.json();
+      record = catalogAdapter?.adaptPublicDetail(detail, {
+        development: root.dataset.runtimeEnvironment === "development",
+      });
+      if (!record || record.id !== contentId) {
+        record = { id: contentId, lifecycle: "error" };
+      }
+    }
+  } catch {
+    record = { id: contentId, lifecycle: "error" };
+  }
+
+  if (
+    generation !== detailLoadGeneration ||
+    !detailIsPublic ||
+    detailContentId !== contentId ||
+    detailView?.hidden
+  ) {
+    return;
+  }
+
+  applyDetailRecord(record, mediaIndex);
+  logQaEvent("detail", `载入 ${record?.title || contentId}（${contentId}）`);
+}
+
+function openDetailById(
+  contentId,
+  {
+    forcePublic = false,
+    mediaIndex = 0,
+    trigger = null,
+    updateHistory = true,
+  } = {},
+) {
+  saveScrollPosition();
+  closeMediaFocus();
+  const generation = ++detailLoadGeneration;
+  detailContentId = contentId;
+  const fixtureRecord = catalogDetailRecords[contentId];
+  detailIsPublic =
+    forcePublic ||
+    trigger?.dataset.recordOrigin === "runtime" ||
+    (!trigger &&
+      fixtureRecord === undefined &&
+      root.dataset.formalRoot === "true");
+  const record = detailIsPublic
+    ? { id: contentId, lifecycle: "loading" }
+    : resolveCatalogRecord(contentId, trigger);
+  updateDetailComposition();
+  applyDetailRecord(record, mediaIndex);
   showView("detail");
   const detailScroll = document.querySelector('[data-scroll-view="detail"]');
   if (detailScroll) detailScroll.scrollTop = 0;
   if (updateHistory) rememberDetailHistory(contentId);
-  logQaEvent(
-    "detail",
-    `打开 ${detailRecord?.title || contentId}（${contentId}）`,
-  );
+  logQaEvent("detail", `打开 ${record?.title || contentId}（${contentId}）`);
+  if (detailIsPublic) {
+    void loadPublicCatalogDetail(contentId, generation, mediaIndex);
+  }
 }
 
 function openDetail(trigger, options = {}) {
@@ -1798,7 +1930,10 @@ function openDetail(trigger, options = {}) {
 }
 
 function showView(view) {
-  if (view !== "detail") closeMediaFocus();
+  if (view !== "detail") {
+    detailLoadGeneration += 1;
+    closeMediaFocus();
+  }
   const isPrimary = primaryViews.includes(view);
   const primaryShell = document.querySelector("[data-pager='primary']");
   if (!isPrimary) parkPrimaryPagerForOverlay();
@@ -3873,6 +4008,7 @@ function closeQaLog() {
 }
 
 function closeDetail() {
+  detailLoadGeneration += 1;
   closeMediaFocus();
   logQaEvent(
     "detail",
@@ -3885,6 +4021,7 @@ function closeDetail() {
 function retryDetail() {
   if (!detailContentId) return;
   openDetailById(detailContentId, {
+    forcePublic: detailIsPublic,
     mediaIndex: detailMediaIndexValue,
     trigger: findContentTrigger(detailContentId),
     updateHistory: false,
@@ -4119,6 +4256,9 @@ window.addEventListener("hashchange", () => {
   const contentId = decodeURIComponent(location.hash.slice("#detail-".length));
   if (!detailView?.hidden && detailContentId === contentId) return;
   openDetailById(contentId, {
+    forcePublic:
+      root.dataset.formalRoot === "true" &&
+      new URLSearchParams(location.search).get("catalogId") === contentId,
     trigger: findContentTrigger(contentId),
     updateHistory: false,
   });
@@ -4157,6 +4297,7 @@ window.addEventListener("popstate", (event) => {
     updateBottomNavigation();
     const trigger = findContentTrigger(state.contentId);
     openDetailById(state.contentId, {
+      forcePublic: state.recordOrigin === "runtime",
       mediaIndex: state.mediaIndex ?? 0,
       trigger,
       updateHistory: false,
@@ -4418,6 +4559,9 @@ if (bootHash === "#settings-log") {
   openSettings();
 } else if (bootDetailId) {
   openDetailById(bootDetailId, {
+    forcePublic:
+      root.dataset.formalRoot === "true" &&
+      new URLSearchParams(location.search).get("catalogId") === bootDetailId,
     trigger: findContentTrigger(bootDetailId),
   });
 }

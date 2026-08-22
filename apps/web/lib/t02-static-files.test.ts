@@ -4,16 +4,19 @@ import {
   appendCalligraphyItems,
   appendDiscoverItems,
   appendInscriptionItems,
-  ensureDevelopmentTranscriptionSection,
-  injectRuntimeCatalogRecords,
   readT02Document,
   sanitizeProductionT02Document,
   serveT02File,
 } from "./t02-static-files";
 
+import type { BrowseItem } from "./t02-static-files";
+
 const bodyText = async (response: Response) => response.text();
 
-const runtimeItem = (title: string, kind: "inscription" | "calligraphy") => ({
+const runtimeItem = (
+  title: string,
+  kind: "inscription" | "calligraphy",
+): BrowseItem => ({
   id: `runtime-${title}`,
   kind,
   title,
@@ -97,6 +100,29 @@ describe("formal T02 file serving", () => {
     expect(result).toContain("../../design-system/assets/demo/ink-album.svg");
   });
 
+  it("preserves accepted browse search text and calligraphy metadata", async () => {
+    const source = await (
+      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
+    ).text();
+    const inscription = appendInscriptionItems(source, [
+      runtimeItem("苍岩题记", "inscription"),
+    ]);
+    const calligraphy = appendCalligraphyItems(source, [
+      runtimeItem("兰亭短札", "calligraphy"),
+    ]);
+
+    expect(inscription).toContain(
+      'data-search-text="苍岩题记 苍岩题记摘要 唐"',
+    );
+    expect(calligraphy).toContain(
+      'data-calligraphy-filter-text="兰亭短札 兰亭短札摘要 唐"',
+    );
+    expect(calligraphy).toContain('<span class="app-card__meta">唐</span>');
+    expect(calligraphy).not.toContain(
+      '<span class="app-card__meta">唐 · 书帖</span>',
+    );
+  });
+
   it("never mutates canonical source when there are no runtime items", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
@@ -121,34 +147,28 @@ describe("formal T02 file serving", () => {
     expect(result).toContain('data-title="秋山札"');
   });
 
-  it("adds the missing Development transcription section exactly once", async () => {
+  it("keeps every approved Detail section in canonical T02 order", async () => {
     const source = await (
       await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
     ).text();
-    const once = ensureDevelopmentTranscriptionSection(source);
-    const twice = ensureDevelopmentTranscriptionSection(once);
-
-    expect(once).toContain("<h2>释文</h2>");
-    expect(once).toContain("内容待接入");
-    expect(once.match(/data-detail-transcription(?:\s|>)/g)).toHaveLength(1);
-    expect(twice).toBe(once);
-  });
-
-  it("binds a runtime card to its own truthful record before preview.js", async () => {
-    const source = await (
-      await serveT02File({ kind: "prototype", segments: ["index.html"] }, "GET")
-    ).text();
-    const result = injectRuntimeCatalogRecords(source, {
-      discover: [runtimeItem("真实书帖", "calligraphy")],
-    });
-
-    expect(result).toContain("data-runtime-catalog-bridge");
-    expect(result).toContain('"id":"runtime-真实书帖"');
-    expect(result).toContain('"kind":"calligraphy"');
-    expect(result).toContain('"title":"真实书帖"');
-    expect(result.indexOf("data-runtime-catalog-bridge")).toBeLessThan(
-      result.indexOf("./preview.js"),
+    const labels = [
+      "基本资料",
+      "简介",
+      "释文",
+      "历史背景",
+      "学术研究",
+      "说明",
+      "资料来源",
+    ];
+    const positions = labels.map((label) =>
+      source.indexOf(`<h2>${label}</h2>`),
     );
+
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual(
+      [...positions].sort((left, right) => left - right),
+    );
+    expect(source.match(/data-detail-transcription(?:\s|>)/g)).toHaveLength(1);
   });
 
   it("serves the formal root with canonical QA records, runtime records, and one base", async () => {
@@ -183,16 +203,23 @@ describe("formal T02 file serving", () => {
     expect(body).toContain("./fixtures/topics.placeholder.js");
     expect(body).toContain("./fixtures/catalog-detail.placeholder.js");
     expect(body).toContain("./fixtures/p5-pilot.snapshot.js");
+    expect(body).toContain('data-formal-root="true"');
+    expect(body).toContain('data-runtime-environment="development"');
     expect(body).toContain("<h2>释文</h2>");
-    expect(body).toContain("内容待接入");
+    expect(body).toContain("<h2>历史背景</h2>");
+    expect(body).toContain("<h2>学术研究</h2>");
+    expect(body).not.toContain("data-runtime-catalog-bridge");
   });
 
   it("serves only truthful runtime records from the formal Production root", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const missingMedia = {
-      ...runtimeItem("真实无图碑刻", "inscription"),
+    const missingMedia: BrowseItem = {
       id: "runtime-no-media",
-      representativeMedia: undefined,
+      kind: "inscription",
+      title: "真实无图碑刻",
+      aliases: [],
+      summary: "真实无图碑刻摘要",
+      periodLabel: "唐",
     };
     const response = await readT02Document(
       "GET",
@@ -223,6 +250,9 @@ describe("formal T02 file serving", () => {
     expect(missingMediaCard).toBeDefined();
     expect(missingMediaCard).not.toContain("<img");
     expect(missingMediaCard).not.toContain("data-image");
+    expect(missingMediaCard).not.toContain("app-card__media-fallback");
+    expect(missingMediaCard).not.toContain("is-media-missing");
+    expect(missingMediaCard).not.toContain("data-media-origin");
     expect(body).not.toContain("../../design-system/assets/demo/");
 
     for (const qaIdentity of [
@@ -249,7 +279,10 @@ describe("formal T02 file serving", () => {
     }
 
     expect(body).not.toContain("内容待接入");
-    expect(body).not.toContain("data-detail-transcription");
+    expect(body).toContain("data-detail-transcription");
+    expect(body).toContain("data-detail-historical-context");
+    expect(body).toContain("data-detail-scholarly-research");
+    expect(body).toContain('data-runtime-environment="production"');
     expect(body).toContain('data-view="home"');
     expect(body).toContain('data-view="detail"');
     expect(body).toContain('data-feed-grid="discover"');
@@ -258,8 +291,8 @@ describe("formal T02 file serving", () => {
     expect(body).toContain("app-calligraphy-grid");
     expect(body).toContain("data-search-empty");
     expect(body).toContain("data-calligraphy-filter-empty");
-    expect(body).toContain("./catalog-ui-adapter.js?v=20260819-media-pager");
-    expect(body).toContain("./preview.js?v=20260819-media-pager");
+    expect(body).toContain("./catalog-ui-adapter.js?v=20260823-catalog-detail");
+    expect(body).toContain("./preview.js?v=20260823-catalog-detail");
   });
 
   it("never restores QA records when the formal Production root has no runtime data", async () => {
@@ -315,8 +348,10 @@ describe("formal T02 file serving", () => {
     expect(result).toContain("data-search-empty");
     expect(result).toContain("data-calligraphy-filter-empty");
     expect(result).toContain('data-view="detail"');
-    expect(result).toContain("./catalog-ui-adapter.js?v=20260819-media-pager");
-    expect(result).toContain("./preview.js?v=20260819-media-pager");
+    expect(result).toContain(
+      "./catalog-ui-adapter.js?v=20260823-catalog-detail",
+    );
+    expect(result).toContain("./preview.js?v=20260823-catalog-detail");
   });
 
   it("supports bodyless HEAD responses", async () => {

@@ -138,6 +138,11 @@ describe("T07 browse runtime composition", () => {
       }),
       "formal-root",
     );
+    const browseItems = readT02DocumentMock.mock.calls[0]?.[1];
+    for (const item of Object.values(browseItems ?? {}).flat()) {
+      expect(item).toHaveProperty("aliases");
+      expect(item).toHaveProperty("summary");
+    }
   });
 
   it.each([unavailable, unexpectedError, empty()])(

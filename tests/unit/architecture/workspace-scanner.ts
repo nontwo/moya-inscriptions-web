@@ -205,6 +205,14 @@ const webHomeLoaderFile = path.join(
   "home",
   "load-home-catalog.ts",
 );
+const webCatalogDetailApiRouteFile = path.join(
+  webRoot,
+  "app",
+  "api",
+  "catalog",
+  "[catalogId]",
+  "route.ts",
+);
 const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
 
 export const isAuthorizedWebPublicApiFile = (
@@ -274,6 +282,33 @@ const isApprovedHomeLoaderReference = (
     serverAdapterImports.length === 1 &&
     serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
       "{fetchServerCatalogPage}"
+  );
+};
+
+const isApprovedCatalogDetailApiReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  if (
+    path.resolve(filePath) !== webCatalogDetailApiRouteFile ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    reference.specifier !== "../../../../lib/public-api/server"
+  ) {
+    return false;
+  }
+
+  const serverAdapterImports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])\.\.\/\.\.\/\.\.\/\.\.\/lib\/public-api\/server\2\s*;/g,
+    ),
+  ];
+
+  return (
+    serverAdapterImports.length === 1 &&
+    serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
+      "{fetchServerCatalogDetail}"
   );
 };
 
@@ -552,13 +587,19 @@ export const frontendBoundaryViolations = (
       source,
       reference,
     );
+    const approvedCatalogDetailApiImport = isApprovedCatalogDetailApiReference(
+      filePath,
+      source,
+      reference,
+    );
     if (
       isForbiddenServerReference(reference.specifier) &&
       !approvedPublicApiRuntimeImport &&
       !approvedHomeConnectionImport &&
       !approvedT02StaticFilesImport &&
       !approvedWebTestRendererImport &&
-      !approvedHomeLoaderImport
+      !approvedHomeLoaderImport &&
+      !approvedCatalogDetailApiImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

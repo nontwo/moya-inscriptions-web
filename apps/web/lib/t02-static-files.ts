@@ -135,32 +135,32 @@ export const readT02Document = async (
       /<head>/i,
       '<head>\n    <base href="/docs/prototypes/mobile-preview/" />',
     );
+    const isFormalRoot = composition === "formal-root";
+    const isProduction = process.env.NODE_ENV === "production";
     const documentForComposition =
-      composition === "formal-root" && process.env.NODE_ENV === "production"
+      isFormalRoot && isProduction
         ? sanitizeProductionT02Document(documentWithBase)
         : documentWithBase;
-    const documentWithDevelopmentDetail =
-      process.env.NODE_ENV === "production"
-        ? documentForComposition
-        : ensureDevelopmentTranscriptionSection(documentForComposition);
+    const documentWithRuntimeContext = isFormalRoot
+      ? documentForComposition.replace(
+          /<html\b/,
+          `<html data-formal-root="true" data-runtime-environment="${isProduction ? "production" : "development"}"`,
+        )
+      : documentForComposition;
     const documentWithCards = appendCalligraphyItems(
       appendInscriptionItems(
         appendDiscoverItems(
-          documentWithDevelopmentDetail,
+          documentWithRuntimeContext,
           browseItems.discover ?? [],
         ),
         browseItems.inscriptions ?? [],
       ),
       browseItems.calligraphy ?? [],
     );
-    const document = injectRuntimeCatalogRecords(
-      documentWithCards,
-      browseItems,
-    );
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
       ? new Response(null, { status: 200, headers })
-      : new Response(document, { status: 200, headers });
+      : new Response(documentWithCards, { status: 200, headers });
   } catch {
     return new Response(null, { status: 404 });
   }
@@ -199,24 +199,6 @@ export const sanitizeProductionT02Document = (document: string): string =>
       .replace(prototypeFixtureScriptPattern, "")
       .replace(prototypeDetailImageSourcePattern, "$1"),
   );
-
-/**
- * Development/Owner-QA keeps the complete approved Detail structure visible even
- * before a formal transcription contract exists. This is presentation-only and
- * is deliberately omitted when NODE_ENV=production.
- */
-export const ensureDevelopmentTranscriptionSection = (
-  document: string,
-): string => {
-  if (document.includes("data-detail-transcription")) return document;
-
-  const summarySection = /(<p data-detail-summary-text><\/p>\s*<\/section>)/;
-
-  return document.replace(
-    summarySection,
-    `$1\n              <section\n                class="app-detail__section app-detail__reading"\n                data-detail-transcription\n              >\n                <h2>释文</h2>\n                <p data-detail-transcription-text>内容待接入</p>\n              </section>`,
-  );
-};
 
 export const appendDiscoverItems = (
   document: string,
@@ -267,52 +249,6 @@ const appendCardsInSection = (
     (_match, opening: string, content: string, closing: string) =>
       `${opening}${content}\n${cards.join("\n")}${closing}`,
   );
-
-const allRuntimeItems = (browseItems: BrowseItems): BrowseItem[] => {
-  const items = [
-    ...(browseItems.discover ?? []),
-    ...(browseItems.inscriptions ?? []),
-    ...(browseItems.calligraphy ?? []),
-  ];
-  const unique = new Map<string, BrowseItem>();
-  for (const item of items) unique.set(item.id, item);
-  return [...unique.values()];
-};
-
-/**
- * Real browse cards must resolve to their own real CatalogSummary-shaped record.
- * This prevents a real title from opening a synthetic QA record with unrelated
- * media/facts while still leaving the QA fixture records intact and independent.
- */
-export const injectRuntimeCatalogRecords = (
-  document: string,
-  browseItems: BrowseItems,
-): string => {
-  const items = allRuntimeItems(browseItems);
-  if (items.length === 0) return document;
-
-  const records = Object.fromEntries(
-    items.map((item) => [
-      item.id,
-      {
-        aliases: [...item.aliases],
-        id: item.id,
-        kind: item.kind,
-        media: item.representativeMedia ? [item.representativeMedia] : [],
-        periodLabel: item.periodLabel,
-        representativeMedia: item.representativeMedia,
-        sourceCitations: [],
-        summary: item.summary,
-        title: item.title,
-      },
-    ]),
-  );
-  const payload = JSON.stringify(records).replace(/</g, "\\u003c");
-  const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: "runtime-bridge" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
-  const previewScript =
-    /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
-  return document.replace(previewScript, `${bridge}\n$1`);
-};
 
 const renderMedia = (item: BrowseItem): string => {
   const media = item.representativeMedia;
