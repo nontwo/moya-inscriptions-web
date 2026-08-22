@@ -102,7 +102,7 @@
   }
 
   .app-topbar {
-    padding-inline: var(--yoyi-space-5);
+    --app-topbar-side-space: var(--yoyi-space-5);
   }
 
   .app-create__scroll {
@@ -154,7 +154,7 @@
   }
 
   .app-topbar--home {
-    grid-template-columns: minmax(0, 1fr) 48px;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .app-masonry {

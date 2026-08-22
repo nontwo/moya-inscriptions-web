@@ -302,12 +302,15 @@ html[data-platform="tablet"] .app-view {
 }
 
 .app-topbar {
+  --app-topbar-side-space: 8px;
   position: relative;
   z-index: 4;
   display: grid;
   min-height: calc(52px + env(safe-area-inset-top));
   align-items: end;
-  padding: env(safe-area-inset-top) 8px 0;
+  padding: env(safe-area-inset-top)
+    max(var(--app-topbar-side-space), env(safe-area-inset-right)) 0
+    max(var(--app-topbar-side-space), env(safe-area-inset-left));
   background: var(--yoyi-color-background-page);
   border-bottom: 1px solid var(--yoyi-color-border-subtle);
 }
@@ -356,16 +359,25 @@ html[data-platform="tablet"] .app-view {
 
 .app-topbar__actions {
   display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 70px;
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
   min-height: 44px;
 }
 
+.app-topbar__actions > [data-topbar-action] {
+  flex: 0 0 auto;
+}
+
 .app-topbar-profile {
   display: inline-grid;
+  flex: 0 0 32px;
   width: 32px;
+  min-width: 32px;
   height: 32px;
+  min-height: 32px;
   place-items: center;
   padding: 0;
   overflow: hidden;

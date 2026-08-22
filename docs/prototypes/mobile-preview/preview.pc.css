@@ -225,7 +225,7 @@ html {
     top: 0;
     z-index: 4;
     min-height: calc(68px + env(safe-area-inset-top));
-    padding-inline: var(--yoyi-space-5);
+    --app-topbar-side-space: var(--yoyi-space-5);
     align-items: center;
   }
 
@@ -770,7 +770,7 @@ html {
 
 @media (min-width: 64rem) {
   .app-topbar {
-    padding-inline: var(--yoyi-space-6);
+    --app-topbar-side-space: var(--yoyi-space-6);
     min-height: calc(72px + env(safe-area-inset-top));
   }
 
@@ -828,7 +828,7 @@ html {
 
   [data-view="inscriptions"] .app-topbar--search {
     min-height: calc(76px + env(safe-area-inset-top));
-    padding-inline: var(--yoyi-space-6);
+    --app-topbar-side-space: var(--yoyi-space-6);
     grid-template-columns: minmax(0, 1fr) 56px;
   }
 
@@ -861,7 +861,7 @@ html {
   }
 
   [data-view="inscriptions"] .app-topbar--search {
-    padding-inline: var(--yoyi-space-7);
+    --app-topbar-side-space: var(--yoyi-space-7);
   }
 
   [data-view="inscriptions"] .app-list {

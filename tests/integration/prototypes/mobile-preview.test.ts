@@ -3063,6 +3063,28 @@ describe("mobile application preview", () => {
     }
   });
 
+  it("keeps topbar actions non-shrinking and safe-area aware", () => {
+    expect(sharedCss).toContain("--app-topbar-side-space: 8px");
+    expect(sharedCss).toContain(
+      "max(var(--app-topbar-side-space), env(safe-area-inset-right))",
+    );
+    expect(sharedCss).toContain(
+      "max(var(--app-topbar-side-space), env(safe-area-inset-left))",
+    );
+    expect(sharedCss).toMatch(
+      /\.app-topbar__actions \{[^}]*flex: 0 0 auto;[^}]*min-width: 70px;/,
+    );
+    expect(sharedCss).toMatch(
+      /\.app-topbar-profile \{[^}]*flex: 0 0 32px;[^}]*min-width: 32px;[^}]*min-height: 32px;/,
+    );
+    expect(previewCss).toContain(
+      "--app-topbar-side-space: var(--yoyi-space-4)",
+    );
+    expect(tabletCss).toContain("--app-topbar-side-space: var(--yoyi-space-5)");
+    expect(tabletCss).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(pcCss).toContain("--app-topbar-side-space: var(--yoyi-space-6)");
+  });
+
   it("restores valid preferences and falls back from invalid stored values", () => {
     const stored = renderPreview({
       "yoyi.home-feed-layout": "single",

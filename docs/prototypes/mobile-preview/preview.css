@@ -187,7 +187,7 @@
   }
 
   .app-topbar {
-    padding-inline: var(--yoyi-space-4);
+    --app-topbar-side-space: var(--yoyi-space-4);
   }
 
   .app-bottom-navigation.yoyi-mobile-bottom-navigation {
