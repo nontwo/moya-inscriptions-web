@@ -62,6 +62,10 @@ const tabletCss = await readFile(
   "utf8",
 );
 const pcCss = await readFile(new URL("preview.pc.css", previewRoot), "utf8");
+const uiCss = await readFile(
+  new URL("../../../packages/ui/src/styles.css", import.meta.url),
+  "utf8",
+);
 const createLabelAsset = await readFile(
   new URL("assets/nav-create-label-mask.png", previewRoot),
 );
@@ -3209,6 +3213,18 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain("left: var(--app-bottom-nav-side-gap)");
     expect(sharedCss).toContain("right: var(--app-bottom-nav-side-gap)");
     expect(tabletCss).not.toContain("calc(88px + env(safe-area-inset-left))");
+    expect(uiCss).toMatch(
+      /html\[data-platform="phone"\][\s\S]*\.yoyi-navigation-entry\.yoyi-functional-glass/,
+    );
+    expect(uiCss).toMatch(
+      /html\[data-platform="tablet"\][\s\S]*\.yoyi-navigation-entry\.yoyi-functional-glass/,
+    );
+    expect(uiCss).not.toContain(
+      'html[data-platform="pc"]\n  .yoyi-mobile-bottom-navigation\n  .yoyi-navigation-entry.yoyi-functional-glass',
+    );
+    expect(pcCss).toMatch(
+      /\.app-bottom-navigation \.yoyi-navigation-entry\s*\{[^}]*background: transparent;[^}]*border: 0;[^}]*box-shadow: none;/,
+    );
     expect(pcCss).toContain(
       "scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom))",
     );

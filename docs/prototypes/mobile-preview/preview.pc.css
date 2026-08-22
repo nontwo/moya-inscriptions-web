@@ -685,6 +685,8 @@ html {
     border-radius: var(--yoyi-radius-2);
     color: var(--yoyi-color-text-primary);
     background: transparent;
+    border: 0;
+    box-shadow: none;
     cursor: pointer;
     touch-action: manipulation;
   }
