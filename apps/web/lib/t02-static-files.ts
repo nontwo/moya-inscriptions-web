@@ -8,12 +8,32 @@ const designTokensRoot = resolve(repositoryRoot, "packages/design-tokens/src");
 const uiStylesRoot = resolve(repositoryRoot, "packages/ui/src");
 const uiAssetsRoot = resolve(uiStylesRoot, "assets");
 
-export type DiscoverTitle = { id: string; title: string };
-export type BrowseTitles = {
-  calligraphy?: readonly DiscoverTitle[];
-  discover?: readonly DiscoverTitle[];
-  inscriptions?: readonly DiscoverTitle[];
+export type BrowseItem = {
+  id: string;
+  kind: "inscription" | "calligraphy";
+  title: string;
+  aliases: readonly string[];
+  summary?: string | undefined;
+  periodLabel?: string | undefined;
+  representativeMedia?:
+    | {
+        alt: string;
+        height: number;
+        id: string;
+        kind: "image";
+        src: string;
+        width: number;
+      }
+    | undefined;
 };
+
+export type BrowseItems = {
+  calligraphy?: readonly BrowseItem[];
+  discover?: readonly BrowseItem[];
+  inscriptions?: readonly BrowseItem[];
+};
+
+export type T02DocumentComposition = "formal-root" | "prototype";
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -105,7 +125,8 @@ export const serveT02File = async (
 
 export const readT02Document = async (
   method: "GET" | "HEAD" = "GET",
-  browseTitles: BrowseTitles = {},
+  browseItems: BrowseItems = {},
+  composition: T02DocumentComposition = "prototype",
 ): Promise<Response> => {
   const filePath = join(prototypeRoot, "index.html");
   try {
@@ -114,12 +135,27 @@ export const readT02Document = async (
       /<head>/i,
       '<head>\n    <base href="/docs/prototypes/mobile-preview/" />',
     );
-    const document = applyCalligraphyTitles(
-      applyInscriptionTitles(
-        applyDiscoverTitles(documentWithBase, browseTitles.discover ?? []),
-        browseTitles.inscriptions ?? [],
+    const documentForComposition =
+      composition === "formal-root" && process.env.NODE_ENV === "production"
+        ? sanitizeProductionT02Document(documentWithBase)
+        : documentWithBase;
+    const documentWithDevelopmentDetail =
+      process.env.NODE_ENV === "production"
+        ? documentForComposition
+        : ensureDevelopmentTranscriptionSection(documentForComposition);
+    const documentWithCards = appendCalligraphyItems(
+      appendInscriptionItems(
+        appendDiscoverItems(
+          documentWithDevelopmentDetail,
+          browseItems.discover ?? [],
+        ),
+        browseItems.inscriptions ?? [],
       ),
-      browseTitles.calligraphy ?? [],
+      browseItems.calligraphy ?? [],
+    );
+    const document = injectRuntimeCatalogRecords(
+      documentWithCards,
+      browseItems,
     );
     const headers = { "Content-Type": contentTypes[".html"]! };
     return method === "HEAD"
@@ -130,115 +166,185 @@ export const readT02Document = async (
   }
 };
 
-export const applyDiscoverTitles = (
-  document: string,
-  discoverTitles: readonly DiscoverTitle[],
-): string => {
-  if (discoverTitles.length === 0) return document;
+const prototypeFixtureScriptPattern =
+  /\s*<script\s+src="\.\/fixtures\/(?:home-feed\.placeholder|topics\.placeholder|catalog-detail\.placeholder|p5-pilot\.snapshot)\.js"><\/script>/g;
 
-  return applyTitlesInSection(
+const prototypeDetailImageSourcePattern =
+  /(<img\s+data-detail-image)\s+src="\.\.\/\.\.\/design-system\/assets\/demo\/cliff-gate\.svg"/;
+
+const prototypeCardPattern =
+  /\s*<button\b(?=[^>]*\bdata-open-detail(?:\s|>))[^>]*>[\s\S]*?<\/button>/g;
+
+const productionPrototypeCardSections = [
+  /(<div\s+class="app-masonry"\s+data-feed-grid="discover">)([\s\S]*?)(<\/div>)/,
+  /(<div\s+class="app-masonry"\s+data-feed-grid="nearby">)([\s\S]*?)(<\/div>)/,
+  /(<main\s+class="app-scroll"\s+data-scroll-view="inscriptions">[\s\S]*?<div\s+class="app-list">)([\s\S]*?)(<\/div>)/,
+  /(<div\s+class="app-masonry\s+app-calligraphy-grid">)([\s\S]*?)(<\/div>)/,
+] as const;
+
+/**
+ * The formal Production root reuses T02's UI shell without consuming its
+ * prototype records. The canonical prototype document and direct prototype
+ * route remain untouched.
+ */
+export const sanitizeProductionT02Document = (document: string): string =>
+  productionPrototypeCardSections.reduce(
+    (result, sectionPattern) =>
+      result.replace(
+        sectionPattern,
+        (_match, opening: string, content: string, closing: string) =>
+          `${opening}${content.replace(prototypeCardPattern, "")}${closing}`,
+      ),
+    document
+      .replace(prototypeFixtureScriptPattern, "")
+      .replace(prototypeDetailImageSourcePattern, "$1"),
+  );
+
+/**
+ * Development/Owner-QA keeps the complete approved Detail structure visible even
+ * before a formal transcription contract exists. This is presentation-only and
+ * is deliberately omitted when NODE_ENV=production.
+ */
+export const ensureDevelopmentTranscriptionSection = (
+  document: string,
+): string => {
+  if (document.includes("data-detail-transcription")) return document;
+
+  const summarySection = /(<p data-detail-summary-text><\/p>\s*<\/section>)/;
+
+  return document.replace(
+    summarySection,
+    `$1\n              <section\n                class="app-detail__section app-detail__reading"\n                data-detail-transcription\n              >\n                <h2>释文</h2>\n                <p data-detail-transcription-text>内容待接入</p>\n              </section>`,
+  );
+};
+
+export const appendDiscoverItems = (
+  document: string,
+  items: readonly BrowseItem[],
+): string => {
+  if (items.length === 0) return document;
+
+  return appendCardsInSection(
     document,
     /(<div\s+class="app-masonry"\s+data-feed-grid="discover">)([\s\S]*?)(<\/div>)/,
-    /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
-    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span>)/,
-    discoverTitles,
-    true,
+    items.map(renderDiscoverCard),
   );
 };
 
-export const applyInscriptionTitles = (
+export const appendInscriptionItems = (
   document: string,
-  inscriptionTitles: readonly DiscoverTitle[],
+  items: readonly BrowseItem[],
 ): string => {
-  if (inscriptionTitles.length === 0) return document;
+  if (items.length === 0) return document;
 
-  return applyTitlesPreservingContent(
+  return appendCardsInSection(
     document,
     /(<main\s+class="app-scroll"\s+data-scroll-view="inscriptions">[\s\S]*?<div\s+class="app-list">)([\s\S]*?)(<\/div>)/,
-    /<button\b[^>]*class="app-inscription-card"[^>]*>[\s\S]*?<\/button>/g,
-    /(<span\s+class="app-inscription-card__title"\s*>)[\s\S]*?(<\/span>)/,
-    inscriptionTitles,
+    items.map(renderInscriptionCard),
   );
 };
 
-export const applyCalligraphyTitles = (
+export const appendCalligraphyItems = (
   document: string,
-  calligraphyTitles: readonly DiscoverTitle[],
+  items: readonly BrowseItem[],
 ): string => {
-  if (calligraphyTitles.length === 0) return document;
+  if (items.length === 0) return document;
 
-  return applyTitlesInSection(
+  return appendCardsInSection(
     document,
     /(<div\s+class="app-masonry\s+app-calligraphy-grid">)([\s\S]*?)(<\/div>)/,
-    /<button\b[^>]*data-open-detail[^>]*>[\s\S]*?<\/button>/g,
-    /(<span\s+class="app-card__title"\s*>)[\s\S]*?(<\/span>)/,
-    calligraphyTitles,
+    items.map(renderCalligraphyCard),
   );
 };
 
-const applyTitlesInSection = (
+const appendCardsInSection = (
   document: string,
   sectionPattern: RegExp,
-  cardPattern: RegExp,
-  titlePattern: RegExp,
-  titles: readonly DiscoverTitle[],
-  allowOverflow = false,
+  cards: readonly string[],
 ): string =>
   document.replace(
     sectionPattern,
-    (_match, opening: string, content: string, closing: string) => {
-      const cards = content.match(cardPattern);
-      if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
-
-      const updateTitle = (card: string, title: string): string =>
-        card.replace(titlePattern, `$1${escapeHtml(title)}$2`);
-
-      const visibleCardCount = Math.min(cards.length, titles.length);
-      const visibleCards = cards
-        .slice(0, visibleCardCount)
-        .map((card, index) => updateTitle(card, titles[index]!.title));
-
-      const overflowCards = allowOverflow
-        ? titles
-            .slice(cards.length)
-            .map((item, index) =>
-              updateTitle(cards[index % cards.length]!, item.title),
-            )
-        : [];
-
-      const remainingCards = cards.slice(visibleCardCount);
-
-      return `${opening}${[
-        ...visibleCards,
-        ...overflowCards,
-        ...remainingCards,
-      ].join("\n")}${closing}`;
-    },
+    (_match, opening: string, content: string, closing: string) =>
+      `${opening}${content}\n${cards.join("\n")}${closing}`,
   );
 
-const applyTitlesPreservingContent = (
+const allRuntimeItems = (browseItems: BrowseItems): BrowseItem[] => {
+  const items = [
+    ...(browseItems.discover ?? []),
+    ...(browseItems.inscriptions ?? []),
+    ...(browseItems.calligraphy ?? []),
+  ];
+  const unique = new Map<string, BrowseItem>();
+  for (const item of items) unique.set(item.id, item);
+  return [...unique.values()];
+};
+
+/**
+ * Real browse cards must resolve to their own real CatalogSummary-shaped record.
+ * This prevents a real title from opening a synthetic QA record with unrelated
+ * media/facts while still leaving the QA fixture records intact and independent.
+ */
+export const injectRuntimeCatalogRecords = (
   document: string,
-  sectionPattern: RegExp,
-  cardPattern: RegExp,
-  titlePattern: RegExp,
-  titles: readonly DiscoverTitle[],
-): string =>
-  document.replace(
-    sectionPattern,
-    (_match, opening: string, content: string, closing: string) => {
-      const cards = content.match(cardPattern);
-      if (!cards || cards.length === 0) return `${opening}${content}${closing}`;
+  browseItems: BrowseItems,
+): string => {
+  const items = allRuntimeItems(browseItems);
+  if (items.length === 0) return document;
 
-      let titleIndex = 0;
-      const updatedContent = content.replace(cardPattern, (card: string) => {
-        const title = titles[titleIndex++];
-        if (!title) return card;
-        return card.replace(titlePattern, `$1${escapeHtml(title.title)}$2`);
-      });
-
-      return `${opening}${updatedContent}${closing}`;
-    },
+  const records = Object.fromEntries(
+    items.map((item) => [
+      item.id,
+      {
+        aliases: [...item.aliases],
+        id: item.id,
+        kind: item.kind,
+        media: item.representativeMedia ? [item.representativeMedia] : [],
+        periodLabel: item.periodLabel,
+        representativeMedia: item.representativeMedia,
+        sourceCitations: [],
+        summary: item.summary,
+        title: item.title,
+      },
+    ]),
   );
+  const payload = JSON.stringify(records).replace(/</g, "\\u003c");
+  const bridge = `<script data-runtime-catalog-bridge>\n(() => {\n  const fixture = globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER ?? { records: {}, version: "runtime-bridge" };\n  fixture.records = { ...(fixture.records ?? {}), ...${payload} };\n  globalThis.YOYI_CATALOG_DETAIL_PLACEHOLDER = fixture;\n})();\n</script>`;
+  const previewScript =
+    /(<script(?:\s+type="module")?\s+src="\.\/preview\.js(?:\?[^"]*)?"><\/script>)/;
+  return document.replace(previewScript, `${bridge}\n$1`);
+};
+
+const renderMedia = (item: BrowseItem): string => {
+  const media = item.representativeMedia;
+  if (!media) return "";
+  return `<img src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" width="${media.width}" height="${media.height}" />`;
+};
+
+const runtimeCardAttributes = (item: BrowseItem): string => {
+  const image = item.representativeMedia?.src;
+  return [
+    'data-record-origin="runtime"',
+    `data-content-id="${escapeHtml(item.id)}"`,
+    "data-open-detail",
+    image ? `data-image="${escapeHtml(image)}"` : "",
+    `data-title="${escapeHtml(item.title)}"`,
+    'type="button"',
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
+
+const searchableText = (item: BrowseItem): string =>
+  [item.title, item.summary, item.periodLabel].filter(Boolean).join(" ");
+
+const renderDiscoverCard = (item: BrowseItem): string =>
+  `<button class="app-card" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n</button>`;
+
+const renderInscriptionCard = (item: BrowseItem): string =>
+  `<button class="app-inscription-card" data-search-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-inscription-card__body">\n<span class="app-inscription-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-inscription-card__meta">碑刻 · ${escapeHtml(item.periodLabel)}</span>` : '<span class="app-inscription-card__meta">碑刻</span>'}\n</span>\n<span class="yoyi-icon yoyi-icon--sm app-inscription-card__arrow" data-icon="next" aria-hidden="true"></span>\n</button>`;
+
+const renderCalligraphyCard = (item: BrowseItem): string =>
+  `<button class="app-card" data-category="all" data-calligraphy-filter-text="${escapeHtml(searchableText(item))}" ${runtimeCardAttributes(item)}>\n${renderMedia(item)}\n<span class="app-card__caption">\n<span class="app-card__title">${escapeHtml(item.title)}</span>\n${item.periodLabel ? `<span class="app-card__meta">${escapeHtml(item.periodLabel)}</span>` : ""}\n</span>\n</button>`;
 
 const escapeHtml = (value: string): string =>
   value.replace(
