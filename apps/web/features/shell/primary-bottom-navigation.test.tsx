@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
+  canArmPrimaryNavigationPointer,
   commitPrimaryNavigationDragRelease,
   createPrimaryNavigationEntryElements,
   hasPrimaryNavigationHorizontalDragIntent,
@@ -169,6 +170,15 @@ describe("PrimaryBottomNavigation", () => {
     ).toBe(true);
     expect(hasPrimaryNavigationHorizontalDragIntent(20, 20)).toBe(false);
     expect(hasPrimaryNavigationHorizontalDragIntent(9, 12)).toBe(false);
+  });
+
+  it("arms primary touch independently of mouse-only button semantics", () => {
+    expect(canArmPrimaryNavigationPointer(true, "touch", -1)).toBe(true);
+    expect(canArmPrimaryNavigationPointer(true, "touch", 0)).toBe(true);
+    expect(canArmPrimaryNavigationPointer(true, "pen", -1)).toBe(true);
+    expect(canArmPrimaryNavigationPointer(true, "mouse", 0)).toBe(true);
+    expect(canArmPrimaryNavigationPointer(true, "mouse", 2)).toBe(false);
+    expect(canArmPrimaryNavigationPointer(false, "touch", 0)).toBe(false);
   });
 
   it("derives continuous clamped bubble preview from rendered entry centers", () => {

@@ -76,6 +76,30 @@ const openDevelopmentSurface = async (page: Page) => {
   };
 };
 
+const confirmMouseNavigationReady = async (
+  surface: Locator,
+  navigation: Locator,
+) => {
+  await expect
+    .poll(async () => {
+      await navigation
+        .getByRole("button", { exact: true, name: "碑刻" })
+        .click();
+      return surface.getAttribute("data-active-destination");
+    })
+    .toBe("inscriptions");
+  await expectActiveDestination(surface, "inscriptions");
+  await expect
+    .poll(async () => {
+      await navigation
+        .getByRole("button", { exact: true, name: "首页" })
+        .click();
+      return surface.getAttribute("data-active-destination");
+    })
+    .toBe("home");
+  await expectActiveDestination(surface, "home");
+};
+
 test("Development acceptance surface coordinates semantic navigation, pager, shell, and QA platform", async ({
   page,
 }) => {
@@ -144,10 +168,33 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
   await expectActiveDestination(surface, "inscriptions");
 });
 
-test("Navigation drag previews only the bubble and commits on release", async ({
+test("Touchscreen tap commits each primary destination on touch WebKit", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    !["mobile-webkit", "tablet-webkit"].includes(testInfo.project.name),
+    "Touchscreen evidence runs only in configured touch contexts.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+
+  for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
+    const center = await locatorCenter(
+      navigation.getByRole("button", {
+        exact: true,
+        name: destinationAcceptance[destination].label,
+      }),
+    );
+    await page.touchscreen.tap(center.x, center.y);
+    await expectActiveDestination(surface, destination);
+  }
+});
+
+test("Mouse regression: navigation drag previews only the bubble and commits on release", async ({
   page,
 }) => {
   const { navigation, surface } = await openDevelopmentSurface(page);
+  await confirmMouseNavigationReady(surface, navigation);
   const homeButton = navigation.getByRole("button", {
     exact: true,
     name: "首页",
@@ -192,10 +239,11 @@ test("Navigation drag previews only the bubble and commits on release", async ({
   );
 });
 
-test("Navigation drag returning to current and pointer cancellation do not commit", async ({
+test("Mouse and synthetic pointer regressions: current-item release and cancellation do not commit", async ({
   page,
 }) => {
   const { navigation, surface } = await openDevelopmentSurface(page);
+  await confirmMouseNavigationReady(surface, navigation);
   const homeButton = navigation.getByRole("button", {
     exact: true,
     name: "首页",
@@ -225,6 +273,7 @@ test("Navigation drag returning to current and pointer cancellation do not commi
     clientY: homeCenter.y,
     isPrimary: true,
     pointerId,
+    pointerType: "touch",
   });
   await navigation.dispatchEvent("pointermove", {
     button: 0,
@@ -232,6 +281,7 @@ test("Navigation drag returning to current and pointer cancellation do not commi
     clientY: inscriptionsCenter.y,
     isPrimary: true,
     pointerId,
+    pointerType: "touch",
   });
   await expect(navigation).toHaveAttribute("data-dragging", "true");
   await navigation.dispatchEvent("pointercancel", {
@@ -240,6 +290,7 @@ test("Navigation drag returning to current and pointer cancellation do not commi
     clientY: inscriptionsCenter.y,
     isPrimary: true,
     pointerId,
+    pointerType: "touch",
   });
 
   await expectActiveDestination(surface, "home");
@@ -250,7 +301,7 @@ test("Navigation drag returning to current and pointer cancellation do not commi
   );
 });
 
-test("Horizontal drag over Primary content never switches destination", async ({
+test("Mouse regression: horizontal drag over Primary content never switches destination", async ({
   page,
 }) => {
   const { navigation, surface } = await openDevelopmentSurface(page);
