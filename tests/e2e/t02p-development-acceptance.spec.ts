@@ -32,6 +32,9 @@ const expectActiveDestination = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
   await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
   await expect(
+    navigation.locator("[data-primary-navigation-bubble]"),
+  ).toBeVisible();
+  await expect(
     navigation.getByRole("button", {
       exact: true,
       name: destinationAcceptance[destination].label,
@@ -58,10 +61,25 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
 
   const surface = page.locator("[data-t02p-development-acceptance]");
   await expect(surface).toBeVisible();
+  const navigation = surface.getByRole("navigation", { name: "主要内容" });
+  await expect(navigation).toBeVisible();
+  await expect(navigation).toHaveCSS("position", "fixed");
+  await expect(
+    navigation.locator("[data-primary-navigation-destination]"),
+  ).toHaveCount(3);
+  await expect(
+    navigation.locator(
+      '[data-primary-navigation-destination="upload"], [data-primary-navigation-destination="profile"], [data-primary-navigation-destination="user"]',
+    ),
+  ).toHaveCount(0);
+  await expect(
+    surface.locator(
+      '[data-yoyi-ui="desktop-navigation"], .yoyi-desktop-navigation',
+    ),
+  ).toHaveCount(0);
   await expectActiveDestination(surface, "home");
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
-  const navigation = surface.getByRole("navigation", { name: "主要内容" });
   await navigation.getByRole("button", { name: "碑刻", exact: true }).click();
   await expectActiveDestination(surface, "inscriptions");
 
@@ -88,6 +106,8 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
     "data-platform",
     "phone",
   );
+  await expect(navigation).toHaveAttribute("data-platform", "phone");
+  await expect(navigation).toBeVisible();
   await expectActiveDestination(surface, "inscriptions");
 
   await platformSelector.selectOption("tablet");
@@ -96,5 +116,7 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
     "data-platform",
     "tablet",
   );
+  await expect(navigation).toHaveAttribute("data-platform", "tablet");
+  await expect(navigation).toBeVisible();
   await expectActiveDestination(surface, "inscriptions");
 });
