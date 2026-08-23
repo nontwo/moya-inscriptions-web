@@ -1,22 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import {
+  detectDeviceClass,
+  resolvePresentationPlatform,
+} from "./device-platform";
 import { PrimaryNavigationPager } from "./primary-navigation-pager";
 
 import type { PresentationPlatform } from "./device-platform";
 import type { PrimaryDestination } from "./primary-shell";
 
-const presentationPlatforms = [
-  "phone",
-  "tablet",
-  "pc",
-] as const satisfies readonly PresentationPlatform[];
+type PresentationPlatformMode = "auto" | PresentationPlatform;
+
+const presentationPlatformLabels = {
+  pc: "PC",
+  phone: "Phone",
+  tablet: "Tablet",
+} as const satisfies Record<PresentationPlatform, string>;
+
+const presentationPlatformModes = [
+  ["auto", "Auto"],
+  ["phone", presentationPlatformLabels.phone],
+  ["tablet", presentationPlatformLabels.tablet],
+  ["pc", presentationPlatformLabels.pc],
+] as const satisfies readonly (readonly [PresentationPlatformMode, string])[];
+
+type NavigatorWithUserAgentData = Navigator & {
+  readonly userAgentData?: { readonly mobile?: boolean | null } | null;
+};
+
+const readRuntimePresentationPlatform = (): PresentationPlatform => {
+  const runtimeNavigator = navigator as NavigatorWithUserAgentData;
+  const userAgentData = runtimeNavigator.userAgentData;
+  const deviceClass = detectDeviceClass({
+    maxTouchPoints: runtimeNavigator.maxTouchPoints,
+    userAgent: runtimeNavigator.userAgent,
+    ...(userAgentData === undefined ? {} : { userAgentData }),
+  });
+
+  return resolvePresentationPlatform(deviceClass, window.innerWidth);
+};
 
 export const T02pDevelopmentAcceptanceSurface = () => {
   const [activeDestination, setActiveDestination] =
     useState<PrimaryDestination>("home");
-  const [platform, setPlatform] = useState<PresentationPlatform>("pc");
+  const [platformMode, setPlatformMode] =
+    useState<PresentationPlatformMode>("auto");
+  const [runtimePlatform, setRuntimePlatform] =
+    useState<PresentationPlatform>("pc");
+  const platform = platformMode === "auto" ? runtimePlatform : platformMode;
+
+  useEffect(() => {
+    const synchronizeRuntimePlatform = () => {
+      setRuntimePlatform(readRuntimePresentationPlatform());
+    };
+
+    synchronizeRuntimePlatform();
+    window.addEventListener("orientationchange", synchronizeRuntimePlatform);
+    window.addEventListener("resize", synchronizeRuntimePlatform);
+
+    return () => {
+      window.removeEventListener(
+        "orientationchange",
+        synchronizeRuntimePlatform,
+      );
+      window.removeEventListener("resize", synchronizeRuntimePlatform);
+    };
+  }, []);
 
   return (
     <main
@@ -31,23 +82,33 @@ export const T02pDevelopmentAcceptanceSurface = () => {
       <select
         id="t02p-qa-platform"
         data-qa-platform-selector=""
-        value={platform}
+        value={platformMode}
         onChange={(event) => {
-          const nextPlatform = presentationPlatforms.find(
-            (candidate) => candidate === event.currentTarget.value,
-          );
+          const nextMode = presentationPlatformModes.find(
+            ([candidate]) => candidate === event.currentTarget.value,
+          )?.[0];
 
-          if (nextPlatform !== undefined) {
-            setPlatform(nextPlatform);
+          if (nextMode !== undefined) {
+            if (nextMode === "auto") {
+              setRuntimePlatform(readRuntimePresentationPlatform());
+            }
+            setPlatformMode(nextMode);
           }
         }}
       >
-        {presentationPlatforms.map((candidate) => (
+        {presentationPlatformModes.map(([candidate, label]) => (
           <option key={candidate} value={candidate}>
-            {candidate}
+            {label}
           </option>
         ))}
       </select>
+
+      <p>
+        Effective presentation platform:{" "}
+        <output aria-live="polite" data-qa-effective-platform="">
+          {presentationPlatformLabels[platform]}
+        </output>
+      </p>
 
       <PrimaryNavigationPager
         activeDestination={activeDestination}

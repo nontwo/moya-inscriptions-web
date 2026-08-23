@@ -15,6 +15,41 @@ const destinationAcceptance = {
 } as const;
 
 type AcceptanceDestination = keyof typeof destinationAcceptance;
+type AcceptancePlatform = "phone" | "tablet" | "pc";
+
+const presentationPlatformLabels = {
+  pc: "PC",
+  phone: "Phone",
+  tablet: "Tablet",
+} as const satisfies Record<AcceptancePlatform, string>;
+
+const expectedInitialAutoPlatform = (
+  projectName: string,
+): AcceptancePlatform => {
+  if (projectName === "mobile-webkit") return "phone";
+  if (projectName === "tablet-webkit") return "tablet";
+  return "pc";
+};
+
+const platformSelector = (surface: Locator) =>
+  surface.getByRole("combobox", { name: "QA presentation platform" });
+
+const expectPresentationPlatform = async (
+  surface: Locator,
+  platform: AcceptancePlatform,
+) => {
+  await expect(surface).toHaveAttribute("data-platform", platform);
+  await expect(surface.locator("[data-primary-shell]")).toHaveAttribute(
+    "data-platform",
+    platform,
+  );
+  await expect(
+    surface.getByRole("navigation", { name: "主要内容" }),
+  ).toHaveAttribute("data-platform", platform);
+  await expect(surface.locator("[data-qa-effective-platform]")).toHaveText(
+    presentationPlatformLabels[platform],
+  );
+};
 
 const expectActiveDestination = async (
   surface: Locator,
@@ -141,7 +176,7 @@ const confirmMouseNavigationReady = async (
 
 test("Development acceptance surface coordinates semantic navigation, pager, shell, and QA platform", async ({
   page,
-}) => {
+}, testInfo) => {
   const response = await page.goto("/dev/t02p");
   expect(response?.status()).toBe(200);
 
@@ -189,29 +224,159 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
   await pagerAction(surface, "next").click();
   await expectActiveDestination(surface, "inscriptions");
 
-  const platformSelector = surface.getByRole("combobox", {
-    name: "QA presentation platform",
-  });
-  await expect(platformSelector).toHaveValue("pc");
-  await platformSelector.selectOption("phone");
-  await expect(surface).toHaveAttribute("data-platform", "phone");
-  await expect(surface.locator("[data-primary-shell]")).toHaveAttribute(
-    "data-platform",
-    "phone",
+  const qaPlatformSelector = platformSelector(surface);
+  await expect(qaPlatformSelector).toHaveValue("auto");
+  await expectPresentationPlatform(
+    surface,
+    expectedInitialAutoPlatform(testInfo.project.name),
   );
-  await expect(navigation).toHaveAttribute("data-platform", "phone");
+  await qaPlatformSelector.selectOption("phone");
+  await expectPresentationPlatform(surface, "phone");
   await expect(navigation).toBeVisible();
   await expectActiveDestination(surface, "inscriptions");
 
-  await platformSelector.selectOption("tablet");
-  await expect(surface).toHaveAttribute("data-platform", "tablet");
-  await expect(surface.locator("[data-primary-shell]")).toHaveAttribute(
-    "data-platform",
-    "tablet",
-  );
-  await expect(navigation).toHaveAttribute("data-platform", "tablet");
+  await qaPlatformSelector.selectOption("tablet");
+  await expectPresentationPlatform(surface, "tablet");
   await expect(navigation).toBeVisible();
   await expectActiveDestination(surface, "inscriptions");
+
+  await qaPlatformSelector.selectOption("pc");
+  await expectPresentationPlatform(surface, "pc");
+  await expectActiveDestination(surface, "inscriptions");
+
+  await qaPlatformSelector.selectOption("auto");
+  await expectPresentationPlatform(
+    surface,
+    expectedInitialAutoPlatform(testInfo.project.name),
+  );
+  await expectActiveDestination(surface, "inscriptions");
+});
+
+test("Auto mode applies desktop viewport boundaries without resetting the active destination", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Desktop policy boundaries run only in the desktop browser context.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  await confirmMouseNavigationReady(surface, navigation);
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+  await expect(platformSelector(surface)).toHaveValue("auto");
+
+  for (const [width, platform] of [
+    [767, "phone"],
+    [768, "tablet"],
+    [895, "tablet"],
+    [896, "pc"],
+  ] as const satisfies readonly (readonly [number, AcceptancePlatform])[]) {
+    await page.setViewportSize({ height: 900, width });
+    await expectPresentationPlatform(surface, platform);
+    await expectActiveDestination(surface, "inscriptions");
+  }
+});
+
+test("Auto mode keeps an iPhone-like runtime on phone across viewport changes", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-webkit",
+    "Phone runtime policy runs only in the Mobile WebKit context.",
+  );
+
+  const { surface } = await openDevelopmentSurface(page);
+  await expect(platformSelector(surface)).toHaveValue("auto");
+  await expectPresentationPlatform(surface, "phone");
+
+  await page.setViewportSize({ height: 500, width: 1200 });
+  await expectPresentationPlatform(surface, "phone");
+  await page.setViewportSize({ height: 700, width: 320 });
+  await expectPresentationPlatform(surface, "phone");
+});
+
+test("Auto mode applies iPad-like viewport caps in both directions", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet-webkit",
+    "Tablet runtime policy runs only in the Tablet WebKit context.",
+  );
+
+  const { surface } = await openDevelopmentSurface(page);
+  await expect(platformSelector(surface)).toHaveValue("auto");
+  await expectPresentationPlatform(surface, "tablet");
+
+  await page.setViewportSize({ height: 900, width: 600 });
+  await expectPresentationPlatform(surface, "phone");
+  await page.setViewportSize({ height: 768, width: 1024 });
+  await expectPresentationPlatform(surface, "tablet");
+});
+
+test("Auto mode synchronizes from current runtime values on orientationchange", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The isolated orientation event check runs once in Desktop Chromium.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  await confirmMouseNavigationReady(surface, navigation);
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expectActiveDestination(surface, "calligraphy");
+
+  await page.evaluate(() => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 800,
+    });
+    window.dispatchEvent(new Event("orientationchange"));
+  });
+
+  await expectPresentationPlatform(surface, "tablet");
+  await expectActiveDestination(surface, "calligraphy");
+});
+
+test("QA overrides survive runtime changes and returning Auto uses the current runtime", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Override and reload coordination run once in Desktop Chromium.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const qaPlatformSelector = platformSelector(surface);
+  await confirmMouseNavigationReady(surface, navigation);
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+
+  for (const [mode, width] of [
+    ["phone", 1000],
+    ["tablet", 500],
+    ["pc", 800],
+  ] as const satisfies readonly (readonly [AcceptancePlatform, number])[]) {
+    await qaPlatformSelector.selectOption(mode);
+    await page.setViewportSize({ height: 900, width });
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("orientationchange"));
+    });
+    await expectPresentationPlatform(surface, mode);
+    await expectActiveDestination(surface, "inscriptions");
+  }
+
+  await qaPlatformSelector.selectOption("auto");
+  await expectPresentationPlatform(surface, "tablet");
+  await expectActiveDestination(surface, "inscriptions");
+
+  await qaPlatformSelector.selectOption("phone");
+  await page.reload();
+  const reloadedSurface = page.locator("[data-t02p-development-acceptance]");
+  await expect(reloadedSurface).toBeVisible();
+  await expect(platformSelector(reloadedSurface)).toHaveValue("auto");
+  await expectPresentationPlatform(reloadedSurface, "tablet");
 });
 
 test("Touchscreen tap commits each primary destination on touch WebKit", async ({
