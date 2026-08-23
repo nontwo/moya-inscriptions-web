@@ -41,13 +41,27 @@ const expectActiveDestination = async (
     }),
   ).toHaveAttribute("aria-current", "page");
 
-  const activeSection = shell.locator(
-    `[data-primary-destination="${destination}"]`,
-  );
-  await expect(activeSection).toHaveAttribute("data-active", "true");
-  await expect(
-    activeSection.locator(`[data-qa-panel="${destination}"]`),
-  ).toHaveText(destinationAcceptance[destination].panel);
+  for (const candidate of Object.keys(
+    destinationAcceptance,
+  ) as AcceptanceDestination[]) {
+    const section = shell.locator(`[data-primary-destination="${candidate}"]`);
+    const active = candidate === destination;
+
+    await expect(section).toHaveAttribute(
+      "data-active",
+      active ? "true" : "false",
+    );
+    if (active) {
+      await expect(section).not.toHaveAttribute("hidden", "");
+      await expect(section).toBeVisible();
+      await expect(
+        section.locator(`[data-qa-panel="${candidate}"]`),
+      ).toHaveText(destinationAcceptance[candidate].panel);
+    } else {
+      await expect(section).toHaveAttribute("hidden", "");
+      await expect(section).toBeHidden();
+    }
+  }
 };
 
 const pagerAction = (surface: Locator, action: "previous" | "next") =>
@@ -332,6 +346,7 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
   const inscriptionsCenter = await locatorCenter(inscriptionsButton);
 
   await trackPointerCaptureCalls(homeButton);
+  await expect(navigation).toHaveCSS("touch-action", "pan-y");
 
   await homeButton.dispatchEvent("pointerdown", {
     button: 0,
