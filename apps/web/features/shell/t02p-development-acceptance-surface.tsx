@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PrimaryNavigationPager } from "./primary-navigation-pager";
 import {
+  appendBoundedT02pInteractionEntry,
   buildT02pInteractionReport,
   createAnimationFrameThrottle,
   formatT02pCurrentState,
@@ -12,18 +13,15 @@ import {
   formatT02pPageEvent,
   formatT02pPointerEvent,
   formatT02pSessionHeader,
-  formatT02pTouchEvent,
   formatT02pUnhandledRejection,
   formatT02pWindowError,
-  MAX_T02P_INTERACTION_LOG_ENTRIES,
   readT02pClientEnvironment,
   readT02pNavigationSnapshot,
   t02pMouseEventTypes,
   t02pPointerEventTypes,
-  t02pTouchEventTypes,
 } from "./t02p-interaction-log";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { PresentationPlatform } from "./device-platform";
 import type { PrimaryDestination } from "./primary-shell";
 import type { T02pClientEnvironment } from "./t02p-interaction-log";
@@ -46,7 +44,7 @@ const interactionPanelStyle = {
 
 const interactionLogStyle = {
   boxSizing: "border-box",
-  maxHeight: "20rem",
+  maxHeight: "12rem",
   marginBlockEnd: 0,
   overflow: "auto",
   padding: "0.75rem",
@@ -68,20 +66,55 @@ const logControlStyle = {
   marginBlock: "0.75rem",
 } satisfies CSSProperties;
 
-export const T02pDevelopmentAcceptanceSurface = () => {
-  const [activeDestination, setActiveDestination] =
-    useState<PrimaryDestination>("home");
-  const [platform, setPlatform] = useState<PresentationPlatform>("pc");
-  const [clientEnvironment, setClientEnvironment] =
-    useState<T02pClientEnvironment | null>(null);
+const pendingEnvironment = {
+  devicePixelRatio: 0,
+  hasPointerEvent: false,
+  hasTouchStart: false,
+  maxTouchPoints: 0,
+  url: "pending",
+  userAgent: "pending",
+  viewportHeight: 0,
+  viewportWidth: 0,
+} satisfies T02pClientEnvironment;
+
+interface T02pInteractionLoggerProps {
+  readonly activeDestination: PrimaryDestination;
+  readonly platform: PresentationPlatform;
+  readonly surfaceRef: RefObject<HTMLElement | null>;
+}
+
+interface T02pVisibleLogStatus {
+  readonly environment: T02pClientEnvironment;
+  readonly eventCount: number;
+  readonly hydrated: boolean;
+  readonly lastSignificantEvent: string;
+}
+
+const visibleStatusDelayMs = 300;
+
+const T02pInteractionLogger = ({
+  activeDestination,
+  platform,
+  surfaceRef,
+}: T02pInteractionLoggerProps) => {
   const [copyStatus, setCopyStatus] = useState<"" | "Copied" | "Copy failed">(
     "",
   );
-  const [interactionEntries, setInteractionEntries] = useState<string[]>([]);
-  const surfaceRef = useRef<HTMLElement | null>(null);
+  const [visibleStatus, setVisibleStatus] = useState<T02pVisibleLogStatus>({
+    environment: pendingEnvironment,
+    eventCount: 0,
+    hydrated: false,
+    lastSignificantEvent: "Awaiting hydration",
+  });
+  const panelRef = useRef<HTMLElement | null>(null);
+  const renderCountRef = useRef(0);
+  const interactionEntriesRef = useRef<string[]>([]);
   const sequenceRef = useRef(0);
   const sessionHeaderRef = useRef("");
   const hydrationLoggedRef = useRef(false);
+  const environmentRef = useRef<T02pClientEnvironment | null>(null);
+  const lastSignificantEventRef = useRef("Awaiting hydration");
+  const visibleStatusTimerRef = useRef<number | null>(null);
   const activeDestinationRef = useRef(activeDestination);
   const platformRef = useRef(platform);
   const previousDestinationRef = useRef(activeDestination);
@@ -90,20 +123,52 @@ export const T02pDevelopmentAcceptanceSurface = () => {
   activeDestinationRef.current = activeDestination;
   platformRef.current = platform;
 
+  useEffect(() => {
+    renderCountRef.current += 1;
+    panelRef.current?.setAttribute(
+      "data-t02p-log-render-count",
+      String(renderCountRef.current),
+    );
+  });
+
   const stampInteractionEntry = useCallback((body: string) => {
     sequenceRef.current += 1;
 
     return `#${String(sequenceRef.current).padStart(4, "0")} ${new Date().toISOString()}\n${body}`;
   }, []);
 
-  const appendInteractionEntry = useCallback(
-    (body: string) => {
-      const entry = stampInteractionEntry(body);
-      setInteractionEntries((currentEntries) =>
-        [...currentEntries, entry].slice(-MAX_T02P_INTERACTION_LOG_ENTRIES),
+  const refreshVisibleStatus = useCallback(() => {
+    setVisibleStatus({
+      environment: environmentRef.current ?? pendingEnvironment,
+      eventCount: interactionEntriesRef.current.length,
+      hydrated: hydrationLoggedRef.current,
+      lastSignificantEvent: lastSignificantEventRef.current,
+    });
+  }, []);
+
+  const scheduleVisibleStatusRefresh = useCallback(() => {
+    if (visibleStatusTimerRef.current !== null) {
+      window.clearTimeout(visibleStatusTimerRef.current);
+    }
+
+    visibleStatusTimerRef.current = window.setTimeout(() => {
+      visibleStatusTimerRef.current = null;
+      refreshVisibleStatus();
+    }, visibleStatusDelayMs);
+  }, [refreshVisibleStatus]);
+
+  const recordInteractionEntry = useCallback(
+    (body: string, significantEvent?: string) => {
+      appendBoundedT02pInteractionEntry(
+        interactionEntriesRef.current,
+        stampInteractionEntry(body),
       );
+      if (significantEvent !== undefined) {
+        lastSignificantEventRef.current = significantEvent;
+      }
+      scheduleVisibleStatusRefresh();
     },
-    [stampInteractionEntry],
+    [scheduleVisibleStatusRefresh, stampInteractionEntry],
   );
 
   const readCurrentNavigationSnapshot = useCallback(
@@ -112,13 +177,13 @@ export const T02pDevelopmentAcceptanceSurface = () => {
         surfaceRef.current,
         activeDestinationRef.current,
       ),
-    [],
+    [surfaceRef],
   );
 
   useEffect(() => {
     let disposed = false;
     const environment = readT02pClientEnvironment(window);
-    setClientEnvironment(environment);
+    environmentRef.current = environment;
 
     if (!hydrationLoggedRef.current) {
       hydrationLoggedRef.current = true;
@@ -128,11 +193,13 @@ export const T02pDevelopmentAcceptanceSurface = () => {
         platformRef.current,
       );
       sessionHeaderRef.current = sessionHeader;
-      appendInteractionEntry(
+      recordInteractionEntry(
         `${sessionHeader}\n${formatT02pNavigationSnapshot(
           readCurrentNavigationSnapshot(),
         )}`,
+        "SESSION HYDRATED",
       );
+      refreshVisibleStatus();
     }
 
     const isLoggerControlEvent = (event: Event) =>
@@ -141,27 +208,26 @@ export const T02pDevelopmentAcceptanceSurface = () => {
 
     const enqueueAfterDispatch = (
       formatEvent: () => string,
+      significantEvent: string | undefined,
       includeNavigationSnapshot = false,
+      shouldRecord: (() => boolean) | undefined = undefined,
     ) => {
       queueMicrotask(() => {
-        if (disposed) return;
+        if (disposed || (shouldRecord !== undefined && !shouldRecord())) return;
 
         const eventEntry = formatEvent();
-        appendInteractionEntry(
+        recordInteractionEntry(
           includeNavigationSnapshot
             ? `${eventEntry}\n${formatT02pNavigationSnapshot(
                 readCurrentNavigationSnapshot(),
               )}`
             : eventEntry,
+          significantEvent,
         );
       });
     };
 
     const pointerMoveThrottle = createAnimationFrameThrottle(
-      window,
-      (observation: () => void) => observation(),
-    );
-    const touchMoveThrottle = createAnimationFrameThrottle(
       window,
       (observation: () => void) => observation(),
     );
@@ -172,7 +238,11 @@ export const T02pDevelopmentAcceptanceSurface = () => {
       const observation = () =>
         enqueueAfterDispatch(
           () => formatT02pPointerEvent(event, document),
+          event.type === "pointermove" ? undefined : `POINTER ${event.type}`,
           true,
+          event.type === "pointermove"
+            ? () => readCurrentNavigationSnapshot().dragging === "true"
+            : undefined,
         );
 
       if (event.type === "pointermove") {
@@ -186,57 +256,37 @@ export const T02pDevelopmentAcceptanceSurface = () => {
       observation();
     };
 
-    const handleTouchEvent = (nativeEvent: Event) => {
-      if (isLoggerControlEvent(nativeEvent)) return;
-      const event = nativeEvent as TouchEvent;
-      const observation = () =>
-        enqueueAfterDispatch(() => formatT02pTouchEvent(event, document), true);
-
-      if (event.type === "touchmove") {
-        touchMoveThrottle.push(observation);
-        return;
-      }
-      if (event.type === "touchend" || event.type === "touchcancel") {
-        touchMoveThrottle.flush();
-      }
-
-      observation();
-    };
-
     const handleMouseEvent = (nativeEvent: Event) => {
       if (isLoggerControlEvent(nativeEvent)) return;
       const event = nativeEvent as MouseEvent;
       enqueueAfterDispatch(
         () => formatT02pMouseEvent(event, document),
-        event.type === "click",
+        "CLICK",
+        true,
       );
     };
 
     const handlePageEvent = (event: Event) => {
-      if (event.type === "resize" || event.type === "orientationchange") {
-        setClientEnvironment(readT02pClientEnvironment(window));
-      }
-      enqueueAfterDispatch(() =>
-        formatT02pPageEvent(event.type, window, document),
+      environmentRef.current = readT02pClientEnvironment(window);
+      enqueueAfterDispatch(
+        () => formatT02pPageEvent(event.type, window, document),
+        `PAGE ${event.type}`,
       );
     };
 
     const handleWindowError = (event: ErrorEvent) => {
-      enqueueAfterDispatch(() => formatT02pWindowError(event));
+      enqueueAfterDispatch(() => formatT02pWindowError(event), "ERROR");
     };
 
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      enqueueAfterDispatch(() => formatT02pUnhandledRejection(event));
+      enqueueAfterDispatch(
+        () => formatT02pUnhandledRejection(event),
+        "ERROR unhandledrejection",
+      );
     };
 
     for (const eventType of t02pPointerEventTypes) {
       document.addEventListener(eventType, handlePointerEvent, {
-        capture: true,
-        passive: true,
-      });
-    }
-    for (const eventType of t02pTouchEventTypes) {
-      document.addEventListener(eventType, handleTouchEvent, {
         capture: true,
         passive: true,
       });
@@ -260,12 +310,12 @@ export const T02pDevelopmentAcceptanceSurface = () => {
     return () => {
       disposed = true;
       pointerMoveThrottle.dispose();
-      touchMoveThrottle.dispose();
+      if (visibleStatusTimerRef.current !== null) {
+        window.clearTimeout(visibleStatusTimerRef.current);
+        visibleStatusTimerRef.current = null;
+      }
       for (const eventType of t02pPointerEventTypes) {
         document.removeEventListener(eventType, handlePointerEvent, true);
-      }
-      for (const eventType of t02pTouchEventTypes) {
-        document.removeEventListener(eventType, handleTouchEvent, true);
       }
       for (const eventType of t02pMouseEventTypes) {
         document.removeEventListener(eventType, handleMouseEvent, true);
@@ -280,22 +330,27 @@ export const T02pDevelopmentAcceptanceSurface = () => {
         true,
       );
     };
-  }, [appendInteractionEntry, readCurrentNavigationSnapshot]);
+  }, [
+    readCurrentNavigationSnapshot,
+    recordInteractionEntry,
+    refreshVisibleStatus,
+  ]);
 
   useEffect(() => {
     const previousDestination = previousDestinationRef.current;
     if (previousDestination === activeDestination) return;
 
     previousDestinationRef.current = activeDestination;
-    appendInteractionEntry(
+    recordInteractionEntry(
       `STATE activeDestination: ${previousDestination} -> ${activeDestination}\n${formatT02pNavigationSnapshot(
         readCurrentNavigationSnapshot(),
       )}`,
+      `STATE activeDestination: ${previousDestination} -> ${activeDestination}`,
     );
   }, [
     activeDestination,
-    appendInteractionEntry,
     readCurrentNavigationSnapshot,
+    recordInteractionEntry,
   ]);
 
   useEffect(() => {
@@ -303,49 +358,41 @@ export const T02pDevelopmentAcceptanceSurface = () => {
     if (previousPlatform === platform) return;
 
     previousPlatformRef.current = platform;
-    appendInteractionEntry(
+    recordInteractionEntry(
       `STATE platform: ${previousPlatform} -> ${platform}\n${formatT02pNavigationSnapshot(
         readCurrentNavigationSnapshot(),
       )}`,
+      `STATE platform: ${previousPlatform} -> ${platform}`,
     );
-  }, [appendInteractionEntry, platform, readCurrentNavigationSnapshot]);
-
-  const currentEnvironment =
-    clientEnvironment ??
-    ({
-      devicePixelRatio: 0,
-      hasPointerEvent: false,
-      hasTouchStart: false,
-      maxTouchPoints: 0,
-      url: "pending",
-      userAgent: "pending",
-      viewportHeight: 0,
-      viewportWidth: 0,
-    } satisfies T02pClientEnvironment);
+  }, [platform, readCurrentNavigationSnapshot, recordInteractionEntry]);
 
   const handleClearLog = () => {
     const environment = readT02pClientEnvironment(window);
-    const sessionHeader =
-      sessionHeaderRef.current ||
-      formatT02pSessionHeader(
-        environment,
-        activeDestinationRef.current,
-        platformRef.current,
-      );
-    const currentState = formatT02pCurrentState(
+    const sessionHeader = formatT02pSessionHeader(
       environment,
+      activeDestinationRef.current,
       platformRef.current,
-      readCurrentNavigationSnapshot(),
     );
 
+    if (visibleStatusTimerRef.current !== null) {
+      window.clearTimeout(visibleStatusTimerRef.current);
+      visibleStatusTimerRef.current = null;
+    }
+    interactionEntriesRef.current.length = 0;
     sequenceRef.current = 0;
+    environmentRef.current = environment;
+    sessionHeaderRef.current = sessionHeader;
+    lastSignificantEventRef.current = "SESSION HYDRATED";
+    appendBoundedT02pInteractionEntry(
+      interactionEntriesRef.current,
+      stampInteractionEntry(
+        `${sessionHeader}\n${formatT02pNavigationSnapshot(
+          readCurrentNavigationSnapshot(),
+        )}`,
+      ),
+    );
     setCopyStatus("");
-    setClientEnvironment(environment);
-    setInteractionEntries([
-      stampInteractionEntry("LOG CLEARED"),
-      stampInteractionEntry(`SESSION MARKER\n${sessionHeader}`),
-      stampInteractionEntry(currentState),
-    ]);
+    refreshVisibleStatus();
   };
 
   const handleCopyLog = async () => {
@@ -368,7 +415,7 @@ export const T02pDevelopmentAcceptanceSurface = () => {
       await navigator.clipboard.writeText(
         buildT02pInteractionReport(
           sessionHeader,
-          interactionEntries,
+          interactionEntriesRef.current,
           currentState,
         ),
       );
@@ -377,6 +424,91 @@ export const T02pDevelopmentAcceptanceSurface = () => {
       setCopyStatus("Copy failed");
     }
   };
+
+  const { environment } = visibleStatus;
+  const compactLog = [
+    visibleStatus.hydrated ? "Hydrated" : "Awaiting hydration",
+    `event count: ${visibleStatus.eventCount}`,
+    `activeDestination: ${activeDestination}`,
+    `last significant event: ${visibleStatus.lastSignificantEvent}`,
+  ].join("\n");
+
+  return (
+    <section
+      ref={panelRef}
+      aria-labelledby="t02p-interaction-log-heading"
+      data-t02p-interaction-log=""
+      style={interactionPanelStyle}
+    >
+      <h2 id="t02p-interaction-log-heading">Real-device interaction log</h2>
+      <dl>
+        <dt>hydration</dt>
+        <dd data-interaction-status="hydration">
+          {visibleStatus.hydrated ? "Hydrated" : "Awaiting hydration"}
+        </dd>
+        <dt>event count</dt>
+        <dd data-interaction-status="eventCount">{visibleStatus.eventCount}</dd>
+        <dt>last significant event</dt>
+        <dd data-interaction-status="lastSignificantEvent">
+          {visibleStatus.lastSignificantEvent}
+        </dd>
+        <dt>activeDestination</dt>
+        <dd data-interaction-status="activeDestination">{activeDestination}</dd>
+        <dt>presentation platform</dt>
+        <dd data-interaction-status="platform">{platform}</dd>
+        <dt>viewport</dt>
+        <dd data-interaction-status="viewport">
+          {environment.viewportWidth}x{environment.viewportHeight}
+        </dd>
+        <dt>devicePixelRatio</dt>
+        <dd>{environment.devicePixelRatio}</dd>
+        <dt>userAgent</dt>
+        <dd style={{ overflowWrap: "anywhere" }}>{environment.userAgent}</dd>
+        <dt>pointer / touch support</dt>
+        <dd>
+          PointerEvent={String(environment.hasPointerEvent)}; ontouchstart=
+          {String(environment.hasTouchStart)}; maxTouchPoints=
+          {environment.maxTouchPoints}
+        </dd>
+      </dl>
+
+      <div style={logControlStyle}>
+        <button type="button" onClick={handleClearLog}>
+          Clear log
+        </button>
+        <button type="button" onClick={handleCopyLog}>
+          Copy log
+        </button>
+        <output aria-live="polite" data-copy-log-status="">
+          {copyStatus}
+        </output>
+      </div>
+
+      <pre
+        aria-label="Real-device interaction log status"
+        data-t02p-interaction-log-entries=""
+        style={interactionLogStyle}
+      >
+        {compactLog}
+      </pre>
+    </section>
+  );
+};
+
+export const T02pDevelopmentAcceptanceSurface = () => {
+  const [activeDestination, setActiveDestination] =
+    useState<PrimaryDestination>("home");
+  const [platform, setPlatform] = useState<PresentationPlatform>("pc");
+  const surfaceRef = useRef<HTMLElement | null>(null);
+  const renderCountRef = useRef(0);
+
+  useEffect(() => {
+    renderCountRef.current += 1;
+    surfaceRef.current?.setAttribute(
+      "data-t02p-surface-render-count",
+      String(renderCountRef.current),
+    );
+  });
 
   return (
     <main
@@ -427,58 +559,11 @@ export const T02pDevelopmentAcceptanceSurface = () => {
         }
       />
 
-      <section
-        aria-labelledby="t02p-interaction-log-heading"
-        data-t02p-interaction-log=""
-        style={interactionPanelStyle}
-      >
-        <h2 id="t02p-interaction-log-heading">Real-device interaction log</h2>
-        <dl>
-          <dt>activeDestination</dt>
-          <dd data-interaction-status="activeDestination">
-            {activeDestination}
-          </dd>
-          <dt>presentation platform</dt>
-          <dd data-interaction-status="platform">{platform}</dd>
-          <dt>viewport</dt>
-          <dd data-interaction-status="viewport">
-            {currentEnvironment.viewportWidth}x
-            {currentEnvironment.viewportHeight}
-          </dd>
-          <dt>devicePixelRatio</dt>
-          <dd>{currentEnvironment.devicePixelRatio}</dd>
-          <dt>userAgent</dt>
-          <dd style={{ overflowWrap: "anywhere" }}>
-            {currentEnvironment.userAgent}
-          </dd>
-          <dt>pointer / touch support</dt>
-          <dd>
-            PointerEvent={String(currentEnvironment.hasPointerEvent)};{" "}
-            ontouchstart={String(currentEnvironment.hasTouchStart)};
-            maxTouchPoints={currentEnvironment.maxTouchPoints}
-          </dd>
-        </dl>
-
-        <div style={logControlStyle}>
-          <button type="button" onClick={handleClearLog}>
-            Clear log
-          </button>
-          <button type="button" onClick={handleCopyLog}>
-            Copy log
-          </button>
-          <output aria-live="polite" data-copy-log-status="">
-            {copyStatus}
-          </output>
-        </div>
-
-        <pre
-          aria-label="Real-device interaction log entries"
-          data-t02p-interaction-log-entries=""
-          style={interactionLogStyle}
-        >
-          {interactionEntries.join("\n\n")}
-        </pre>
-      </section>
+      <T02pInteractionLogger
+        activeDestination={activeDestination}
+        platform={platform}
+        surfaceRef={surfaceRef}
+      />
     </main>
   );
 };

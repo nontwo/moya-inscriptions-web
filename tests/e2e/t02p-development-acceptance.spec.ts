@@ -125,7 +125,7 @@ const confirmMouseNavigationReady = async (
   await expectActiveDestination(surface, "home");
 };
 
-test("Development real-device log records hydration, input, state, and clear markers", async ({
+test("Development real-device log shows compact settled status and starts fresh after clear", async ({
   page,
 }) => {
   const response = await page.goto("/dev/t02p?iphone=diagnostic-test-head");
@@ -133,32 +133,116 @@ test("Development real-device log records hydration, input, state, and clear mar
 
   const surface = page.locator("[data-t02p-development-acceptance]");
   const panel = surface.locator("[data-t02p-interaction-log]");
-  const log = panel.locator("[data-t02p-interaction-log-entries]");
+  const compactLog = panel.locator("[data-t02p-interaction-log-entries]");
+  const eventCount = panel.locator('[data-interaction-status="eventCount"]');
+  const lastSignificantEvent = panel.locator(
+    '[data-interaction-status="lastSignificantEvent"]',
+  );
   const navigation = surface.getByRole("navigation", { name: "主要内容" });
 
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading")).toHaveText(
     "Real-device interaction log",
   );
-  await expect(log).toContainText("SESSION HYDRATED");
-  await expect(log).toContainText('iphone="diagnostic-test-head"');
-  await expect(log).toContainText("activeDestination=home");
+  await expect(
+    panel.locator('[data-interaction-status="hydration"]'),
+  ).toHaveText("Hydrated");
+  await expect(eventCount).toHaveText("1");
+  await expect(lastSignificantEvent).toHaveText("SESSION HYDRATED");
+  await expect(compactLog).toContainText("activeDestination: home");
+  await expect(compactLog).not.toContainText("POINTER type=");
 
   await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
   await expectActiveDestination(surface, "inscriptions");
-  await expect(log).toContainText("POINTER type=pointerdown");
-  await expect(log).toContainText("MOUSE type=click");
-  await expect(log).toContainText(
+  await expect(lastSignificantEvent).toContainText(
     "STATE activeDestination: home -> inscriptions",
   );
-  await expect(log).toContainText("NAV activeDestination=inscriptions");
+  await expect
+    .poll(async () => Number(await eventCount.textContent()))
+    .toBeGreaterThan(1);
+  await expect(compactLog).not.toContainText("MOUSE type=click");
 
   await panel.getByRole("button", { name: "Clear log" }).click();
-  await expect(log).toContainText("LOG CLEARED");
-  await expect(log).toContainText("SESSION MARKER");
-  await expect(log).toContainText("CURRENT STATE");
-  await expect(log).not.toContainText("STATE activeDestination:");
+  await expect(eventCount).toHaveText("1");
+  await expect(lastSignificantEvent).toHaveText("SESSION HYDRATED");
+  await expect(compactLog).toContainText("activeDestination: inscriptions");
   await expect(panel.getByRole("button", { name: "Copy log" })).toBeVisible();
+});
+
+test("Raw event bursts update only the isolated logger after settling", async ({
+  page,
+}) => {
+  const { surface } = await openDevelopmentSurface(page);
+  const panel = surface.locator("[data-t02p-interaction-log]");
+  const eventCount = panel.locator('[data-interaction-status="eventCount"]');
+  const target = surface.locator('[data-qa-panel="home"]');
+
+  await expect(
+    panel.locator('[data-interaction-status="hydration"]'),
+  ).toHaveText("Hydrated");
+  await page.waitForTimeout(400);
+
+  const initialEventCount = Number(await eventCount.textContent());
+  const initialSurfaceRenderCount = Number(
+    await surface.getAttribute("data-t02p-surface-render-count"),
+  );
+  const initialLoggerRenderCount = Number(
+    await panel.getAttribute("data-t02p-log-render-count"),
+  );
+
+  await target.evaluate(async (element) => {
+    for (let index = 0; index < 4; index += 1) {
+      element.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          buttons: 1,
+          isPrimary: true,
+          pointerId: index + 1,
+          pointerType: "touch",
+        }),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 15));
+      element.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          button: 0,
+          buttons: 0,
+          isPrimary: true,
+          pointerId: index + 1,
+          pointerType: "touch",
+        }),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 15));
+      element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, button: 0 }),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 15));
+    }
+  });
+
+  await expect
+    .poll(async () => Number(await eventCount.textContent()))
+    .toBe(initialEventCount + 12);
+  expect(
+    Number(await surface.getAttribute("data-t02p-surface-render-count")),
+  ).toBe(initialSurfaceRenderCount);
+  expect(
+    Number(await panel.getAttribute("data-t02p-log-render-count")) -
+      initialLoggerRenderCount,
+  ).toBeLessThanOrEqual(2);
+
+  await target.evaluate((element) => {
+    for (let index = 0; index < 410; index += 1) {
+      element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, button: 0 }),
+      );
+    }
+  });
+  await expect(eventCount).toHaveText("400");
+  expect(
+    Number(await surface.getAttribute("data-t02p-surface-render-count")),
+  ).toBe(initialSurfaceRenderCount);
 });
 
 test("Desktop Chromium copies the plain-text real-device report", async ({
@@ -177,8 +261,16 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
   });
 
   const panel = page.locator("[data-t02p-interaction-log]");
-  const log = panel.locator("[data-t02p-interaction-log-entries]");
-  await expect(log).toContainText("SESSION HYDRATED");
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  const navigation = surface.getByRole("navigation", { name: "主要内容" });
+  await expect(
+    panel.locator('[data-interaction-status="hydration"]'),
+  ).toHaveText("Hydrated");
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+  await expect(
+    panel.locator('[data-interaction-status="lastSignificantEvent"]'),
+  ).toContainText("STATE activeDestination: home -> inscriptions");
   await panel.getByRole("button", { name: "Copy log" }).click();
   await expect(panel.locator("[data-copy-log-status]")).toHaveText("Copied");
 
@@ -188,7 +280,29 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
   expect(clipboardText).toContain("SESSION\n");
   expect(clipboardText).toContain('iphone="clipboard-test-head"');
   expect(clipboardText).toContain("EVENTS\n");
+  expect(clipboardText).toContain("POINTER type=pointerdown");
+  expect(clipboardText).toContain("POINTER type=pointerup");
+  expect(clipboardText).toContain("MOUSE type=click");
+  expect(clipboardText).toContain(
+    "STATE activeDestination: home -> inscriptions",
+  );
   expect(clipboardText).toContain("CURRENT STATE\n");
+
+  await panel.getByRole("button", { name: "Clear log" }).click();
+  await expect(
+    panel.locator('[data-interaction-status="eventCount"]'),
+  ).toHaveText("1");
+  await panel.getByRole("button", { name: "Copy log" }).click();
+  await expect(panel.locator("[data-copy-log-status]")).toHaveText("Copied");
+
+  const clearedClipboardText = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(clearedClipboardText).toContain("SESSION HYDRATED");
+  expect(clearedClipboardText).toContain("activeDestination=inscriptions");
+  expect(clearedClipboardText).not.toContain(
+    "STATE activeDestination: home -> inscriptions",
+  );
 });
 
 test("Formal root excludes the Development real-device interaction log", async ({

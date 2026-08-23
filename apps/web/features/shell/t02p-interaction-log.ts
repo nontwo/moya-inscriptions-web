@@ -12,14 +12,7 @@ export const t02pPointerEventTypes = [
   "lostpointercapture",
 ] as const;
 
-export const t02pTouchEventTypes = [
-  "touchstart",
-  "touchmove",
-  "touchend",
-  "touchcancel",
-] as const;
-
-export const t02pMouseEventTypes = ["click", "mousedown", "mouseup"] as const;
+export const t02pMouseEventTypes = ["click"] as const;
 
 export interface T02pClientEnvironment {
   readonly devicePixelRatio: number;
@@ -206,30 +199,6 @@ export const formatT02pPointerEvent = (
   ].join(" ");
 };
 
-export const formatT02pTouchEvent = (event: TouchEvent, document: Document) => {
-  const target = eventTargetElement(event.target);
-  const changedTouch = event.changedTouches.item(0);
-  const hit =
-    changedTouch === null
-      ? null
-      : elementAtPoint(document, changedTouch.clientX, changedTouch.clientY);
-
-  return [
-    `TOUCH type=${event.type}`,
-    `trusted=${event.isTrusted}`,
-    `touches=${event.touches.length}`,
-    `changedTouches=${event.changedTouches.length}`,
-    `client=${
-      changedTouch === null
-        ? "-"
-        : `${changedTouch.clientX},${changedTouch.clientY}`
-    }`,
-    `defaultPrevented=${event.defaultPrevented}`,
-    `target={${describeElement(target)}}`,
-    `hit={${describeElement(hit)}}`,
-  ].join(" ");
-};
-
 export const formatT02pMouseEvent = (event: MouseEvent, document: Document) => {
   const target = eventTargetElement(event.target);
   const hit = elementAtPoint(document, event.clientX, event.clientY);
@@ -276,6 +245,15 @@ export const buildT02pInteractionReport = (
     "CURRENT STATE",
     currentState,
   ].join("\n");
+
+export const appendBoundedT02pInteractionEntry = (
+  entries: string[],
+  entry: string,
+) => {
+  entries.push(entry);
+  const overflow = entries.length - MAX_T02P_INTERACTION_LOG_ENTRIES;
+  if (overflow > 0) entries.splice(0, overflow);
+};
 
 export interface AnimationFrameThrottle<T> {
   readonly dispose: () => void;
