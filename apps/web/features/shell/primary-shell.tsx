@@ -27,18 +27,21 @@ export const PrimaryShell = ({
     <section
       data-primary-destination="home"
       data-active={activeDestination === "home" ? "true" : "false"}
+      hidden={activeDestination !== "home"}
     >
       {home}
     </section>
     <section
       data-primary-destination="inscriptions"
       data-active={activeDestination === "inscriptions" ? "true" : "false"}
+      hidden={activeDestination !== "inscriptions"}
     >
       {inscriptions}
     </section>
     <section
       data-primary-destination="calligraphy"
       data-active={activeDestination === "calligraphy" ? "true" : "false"}
+      hidden={activeDestination !== "calligraphy"}
     >
       {calligraphy}
     </section>

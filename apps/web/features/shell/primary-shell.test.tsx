@@ -26,6 +26,20 @@ const renderShell = (
     />,
   );
 
+const destinationSectionTag = (
+  markup: string,
+  destination: PrimaryDestination,
+) => {
+  const tag = markup.match(
+    new RegExp(
+      `<section(?=[^>]*data-primary-destination="${destination}")[^>]*>`,
+    ),
+  )?.[0];
+
+  expect(tag).toBeDefined();
+  return tag ?? "";
+};
+
 describe("PrimaryShell", () => {
   it("represents exactly the three semantic destinations with distinguishable mounted content", () => {
     const markup = renderShell();
@@ -38,7 +52,7 @@ describe("PrimaryShell", () => {
   });
 
   it.each(destinations)(
-    "expresses %s as the active destination independently of presentation order",
+    "exposes only %s while keeping every destination mounted",
     (activeDestination) => {
       const markup = renderShell(activeDestination);
 
@@ -46,13 +60,14 @@ describe("PrimaryShell", () => {
         `data-active-destination="${activeDestination}"`,
       );
       for (const destination of destinations) {
-        expect(markup).toMatch(
-          new RegExp(
-            `data-primary-destination="${destination}" data-active="${
-              destination === activeDestination ? "true" : "false"
-            }"`,
-          ),
+        const sectionTag = destinationSectionTag(markup, destination);
+        const active = destination === activeDestination;
+
+        expect(sectionTag).toContain(
+          `data-active="${active ? "true" : "false"}"`,
         );
+        expect(sectionTag.includes(" hidden")).toBe(!active);
+        expect(markup).toContain(`${destination} content`);
       }
     },
   );
