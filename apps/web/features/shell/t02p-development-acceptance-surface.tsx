@@ -13,11 +13,17 @@ import type { PrimaryDestination } from "./primary-shell";
 
 type PresentationPlatformMode = "auto" | PresentationPlatform;
 
+const presentationPlatformLabels = {
+  pc: "PC",
+  phone: "Phone",
+  tablet: "Tablet",
+} as const satisfies Record<PresentationPlatform, string>;
+
 const presentationPlatformModes = [
   ["auto", "Auto"],
-  ["phone", "Phone"],
-  ["tablet", "Tablet"],
-  ["pc", "PC"],
+  ["phone", presentationPlatformLabels.phone],
+  ["tablet", presentationPlatformLabels.tablet],
+  ["pc", presentationPlatformLabels.pc],
 ] as const satisfies readonly (readonly [PresentationPlatformMode, string])[];
 
 type NavigatorWithUserAgentData = Navigator & {
@@ -96,6 +102,13 @@ export const T02pDevelopmentAcceptanceSurface = () => {
           </option>
         ))}
       </select>
+
+      <p>
+        Effective presentation platform:{" "}
+        <output aria-live="polite" data-qa-effective-platform="">
+          {presentationPlatformLabels[platform]}
+        </output>
+      </p>
 
       <PrimaryNavigationPager
         activeDestination={activeDestination}

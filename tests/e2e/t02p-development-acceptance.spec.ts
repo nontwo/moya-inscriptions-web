@@ -17,6 +17,12 @@ const destinationAcceptance = {
 type AcceptanceDestination = keyof typeof destinationAcceptance;
 type AcceptancePlatform = "phone" | "tablet" | "pc";
 
+const presentationPlatformLabels = {
+  pc: "PC",
+  phone: "Phone",
+  tablet: "Tablet",
+} as const satisfies Record<AcceptancePlatform, string>;
+
 const expectedInitialAutoPlatform = (
   projectName: string,
 ): AcceptancePlatform => {
@@ -40,6 +46,9 @@ const expectPresentationPlatform = async (
   await expect(
     surface.getByRole("navigation", { name: "主要内容" }),
   ).toHaveAttribute("data-platform", platform);
+  await expect(surface.locator("[data-qa-effective-platform]")).toHaveText(
+    presentationPlatformLabels[platform],
+  );
 };
 
 const expectActiveDestination = async (
