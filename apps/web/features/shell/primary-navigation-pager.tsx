@@ -2,19 +2,17 @@
 
 import type { ReactNode } from "react";
 
+import { PrimaryBottomNavigation } from "./primary-bottom-navigation";
 import { PrimaryShell } from "./primary-shell";
 
 import type { PresentationPlatform } from "./device-platform";
 import type { PrimaryDestination } from "./primary-shell";
 
-const primaryDestinationItems = [
-  { id: "home", label: "首页" },
-  { id: "inscriptions", label: "碑刻" },
-  { id: "calligraphy", label: "书帖" },
-] as const satisfies readonly {
-  readonly id: PrimaryDestination;
-  readonly label: string;
-}[];
+const primaryPagerSequence = [
+  "home",
+  "inscriptions",
+  "calligraphy",
+] as const satisfies readonly PrimaryDestination[];
 
 export type PrimaryDestinationDirection = "previous" | "next";
 
@@ -22,12 +20,10 @@ export const resolveAdjacentPrimaryDestination = (
   activeDestination: PrimaryDestination,
   direction: PrimaryDestinationDirection,
 ): PrimaryDestination | null => {
-  const activeIndex = primaryDestinationItems.findIndex(
-    ({ id }) => id === activeDestination,
-  );
+  const activeIndex = primaryPagerSequence.indexOf(activeDestination);
   const targetIndex = activeIndex + (direction === "previous" ? -1 : 1);
 
-  return primaryDestinationItems[targetIndex]?.id ?? null;
+  return primaryPagerSequence[targetIndex] ?? null;
 };
 
 export interface PrimaryNavigationPagerProps {
@@ -69,24 +65,11 @@ export const PrimaryNavigationPager = ({
         calligraphy={calligraphy}
       />
 
-      <nav aria-label="主要内容" data-primary-navigation="">
-        {primaryDestinationItems.map(({ id, label }) => {
-          const selected = id === activeDestination;
-
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-current={selected ? "page" : undefined}
-              data-primary-navigation-destination={id}
-              data-selected={selected ? "true" : "false"}
-              onClick={() => onDestinationChange(id)}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </nav>
+      <PrimaryBottomNavigation
+        activeDestination={activeDestination}
+        platform={platform}
+        onDestinationChange={onDestinationChange}
+      />
 
       <div aria-label="主要内容分页" data-primary-pager="" role="group">
         <button

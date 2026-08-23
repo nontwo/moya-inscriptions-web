@@ -35,7 +35,7 @@ const renderCoordination = (
   );
 
 describe("PrimaryNavigationPager", () => {
-  it("renders exactly the three semantic navigation destinations with their labels", () => {
+  it("renders the thin navigation and semantic QA pager scaffold", () => {
     const markup = renderCoordination();
 
     expect(markup.match(/data-primary-navigation-destination=/g)).toHaveLength(
@@ -45,12 +45,11 @@ describe("PrimaryNavigationPager", () => {
       expect(markup).toContain(
         `data-primary-navigation-destination="${destination}"`,
       );
-      expect(markup).toMatch(
-        new RegExp(
-          `data-primary-navigation-destination="${destination}"[^>]*>${label}</button>`,
-        ),
-      );
+      expect(markup).toContain(`aria-label="${label}"`);
     }
+    expect(markup).toContain('aria-label="主要内容分页"');
+    expect(markup).toContain(">上一页</button>");
+    expect(markup).toContain(">下一页</button>");
   });
 
   it.each(destinations)(
@@ -99,7 +98,7 @@ describe("PrimaryNavigationPager", () => {
     PrimaryDestinationDirection,
     PrimaryDestination | null,
   ])[])(
-    "resolves %s %s to %s without wrapping",
+    "resolves the pager-only sequence from %s %s to %s without wrapping",
     (activeDestination, direction, expected) => {
       expect(
         resolveAdjacentPrimaryDestination(activeDestination, direction),
