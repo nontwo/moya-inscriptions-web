@@ -1,12 +1,26 @@
 import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const supportRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(supportRoot, "../../..");
 const sourceWebRoot = join(repositoryRoot, "apps/web");
+
+const uiBuild = spawnSync("pnpm", ["--filter", "@moya/ui", "build"], {
+  cwd: repositoryRoot,
+  env: process.env,
+  stdio: "inherit",
+});
+
+if (uiBuild.error) throw uiBuild.error;
+if (uiBuild.status !== 0) {
+  throw new Error(
+    `Failed to build @moya/ui for Formal Web E2E (exit ${uiBuild.status ?? "unknown"}).`,
+  );
+}
+
 const temporaryRepositoryRoot = mkdtempSync(
   join(tmpdir(), "moya-t02p01-formal-web-"),
 );
