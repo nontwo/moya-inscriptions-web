@@ -15,6 +15,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @moya/tests test:e2e",
     "test:postgres": "pnpm --filter @moya/tests test:postgres",
     "generate:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs",
     "check:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --check",
