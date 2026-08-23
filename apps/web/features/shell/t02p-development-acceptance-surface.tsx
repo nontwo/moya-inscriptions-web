@@ -110,9 +110,10 @@ const T02pInteractionLogger = ({
   platform,
   surfaceRef,
 }: T02pInteractionLoggerProps) => {
-  const [copyStatus, setCopyStatus] = useState<"" | "Copied" | "Copy failed">(
-    "",
-  );
+  const [copyStatus, setCopyStatus] = useState<
+    "" | "Copied" | "Copy failed — manual copy below"
+  >("");
+  const [manualCopyReport, setManualCopyReport] = useState<string | null>(null);
   const [visibleStatus, setVisibleStatus] = useState<T02pVisibleLogStatus>({
     environment: pendingEnvironment,
     eventCount: 0,
@@ -121,6 +122,7 @@ const T02pInteractionLogger = ({
     visualTraceCount: 0,
   });
   const panelRef = useRef<HTMLElement | null>(null);
+  const manualCopyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const renderCountRef = useRef(0);
   const interactionEntriesRef = useRef<string[]>([]);
   const sequenceRef = useRef(0);
@@ -665,6 +667,7 @@ const T02pInteractionLogger = ({
       ),
     );
     setCopyStatus("");
+    setManualCopyReport(null);
     refreshVisibleStatus();
     scheduleSettledVisualBaseline();
   };
@@ -683,21 +686,31 @@ const T02pInteractionLogger = ({
         activeDestinationRef.current,
         platformRef.current,
       );
+    const report = buildT02pInteractionReport(
+      sessionHeader,
+      interactionEntriesRef.current,
+      currentState,
+      visualTraceReportsRef.current,
+    );
 
     try {
       if (navigator.clipboard === undefined) throw new Error("No clipboard");
-      await navigator.clipboard.writeText(
-        buildT02pInteractionReport(
-          sessionHeader,
-          interactionEntriesRef.current,
-          currentState,
-          visualTraceReportsRef.current,
-        ),
-      );
+      await navigator.clipboard.writeText(report);
+      setManualCopyReport(null);
       setCopyStatus("Copied");
     } catch {
-      setCopyStatus("Copy failed");
+      setManualCopyReport(report);
+      setCopyStatus("Copy failed — manual copy below");
     }
+  };
+
+  const handleSelectManualCopyReport = () => {
+    const textarea = manualCopyTextareaRef.current;
+    if (textarea === null) return;
+
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
   };
 
   const { environment } = visibleStatus;
@@ -763,6 +776,32 @@ const T02pInteractionLogger = ({
           {copyStatus}
         </output>
       </div>
+
+      {manualCopyReport !== null ? (
+        <div data-manual-copy-fallback="">
+          <label htmlFor="t02p-manual-copy-report">Manual copy report</label>
+          <button type="button" onClick={handleSelectManualCopyReport}>
+            Select all
+          </button>
+          <textarea
+            ref={manualCopyTextareaRef}
+            id="t02p-manual-copy-report"
+            aria-label="Manual-copy interaction report"
+            readOnly
+            rows={24}
+            value={manualCopyReport}
+            style={{
+              boxSizing: "border-box",
+              display: "block",
+              fontFamily: "monospace",
+              fontSize: "0.75rem",
+              marginBlockStart: "0.5rem",
+              minHeight: "50vh",
+              width: "100%",
+            }}
+          />
+        </div>
+      ) : null}
 
       <pre
         aria-label="Real-device interaction log status"

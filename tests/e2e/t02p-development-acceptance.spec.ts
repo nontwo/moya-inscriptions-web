@@ -288,6 +288,7 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
   );
   await panel.getByRole("button", { name: "Copy log" }).click();
   await expect(panel.locator("[data-copy-log-status]")).toHaveText("Copied");
+  await expect(panel.locator("[data-manual-copy-fallback]")).toHaveCount(0);
 
   const clipboardText = await page.evaluate(() =>
     navigator.clipboard.readText(),
@@ -349,6 +350,74 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
     "STATE activeDestination: home -> inscriptions",
   );
   expect(clearedClipboardText).toContain("NAV VISUAL TRACE\n(none)");
+});
+
+test("Clipboard failure exposes a selectable manual-copy report and Clear removes it", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error("Clipboard unavailable")),
+      },
+    });
+  });
+
+  const response = await page.goto("/dev/t02p?iphone=manual-copy-test-head");
+  expect(response?.status()).toBe(200);
+
+  const panel = page.locator("[data-t02p-interaction-log]");
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  const navigation = surface.getByRole("navigation", { name: "主要内容" });
+  await expect(
+    panel.locator('[data-interaction-status="hydration"]'),
+  ).toHaveText("Hydrated");
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+  await expect(
+    panel.locator('[data-interaction-status="visualTraceCount"]'),
+  ).toHaveText("1");
+
+  await panel.getByRole("button", { name: "Copy log" }).click();
+  await expect(panel.locator("[data-copy-log-status]")).toHaveText(
+    "Copy failed — manual copy below",
+  );
+
+  const textarea = panel.getByRole("textbox", {
+    name: "Manual-copy interaction report",
+  });
+  await expect(textarea).toBeVisible();
+  await expect(textarea).toHaveAttribute("readonly", "");
+  const report = await textarea.inputValue();
+  expect(report).toContain("SESSION\n");
+  expect(report).toContain('iphone="manual-copy-test-head"');
+  expect(report).toContain("EVENTS\n");
+  expect(report).toContain("CURRENT STATE\n");
+  expect(report).toContain("NAV VISUAL TRACE\n");
+  expect(report).toContain("interaction: home -> inscriptions");
+
+  await panel.getByRole("button", { name: "Select all" }).click();
+  expect(
+    await textarea.evaluate((element) => {
+      const textAreaElement = element as HTMLTextAreaElement;
+      return {
+        active: document.activeElement === textAreaElement,
+        selectionEnd: textAreaElement.selectionEnd,
+        selectionStart: textAreaElement.selectionStart,
+        valueLength: textAreaElement.value.length,
+      };
+    }),
+  ).toEqual({
+    active: true,
+    selectionEnd: report.length,
+    selectionStart: 0,
+    valueLength: report.length,
+  });
+
+  await panel.getByRole("button", { name: "Clear log" }).click();
+  await expect(panel.locator("[data-manual-copy-fallback]")).toHaveCount(0);
+  await expect(panel.locator("[data-copy-log-status]")).toHaveText("");
 });
 
 test("Formal root excludes the Development real-device interaction log", async ({
