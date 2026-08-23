@@ -125,6 +125,80 @@ const confirmMouseNavigationReady = async (
   await expectActiveDestination(surface, "home");
 };
 
+test("Development real-device log records hydration, input, state, and clear markers", async ({
+  page,
+}) => {
+  const response = await page.goto("/dev/t02p?iphone=diagnostic-test-head");
+  expect(response?.status()).toBe(200);
+
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  const panel = surface.locator("[data-t02p-interaction-log]");
+  const log = panel.locator("[data-t02p-interaction-log-entries]");
+  const navigation = surface.getByRole("navigation", { name: "主要内容" });
+
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("heading")).toHaveText(
+    "Real-device interaction log",
+  );
+  await expect(log).toContainText("SESSION HYDRATED");
+  await expect(log).toContainText('iphone="diagnostic-test-head"');
+  await expect(log).toContainText("activeDestination=home");
+
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+  await expect(log).toContainText("POINTER type=pointerdown");
+  await expect(log).toContainText("MOUSE type=click");
+  await expect(log).toContainText(
+    "STATE activeDestination: home -> inscriptions",
+  );
+  await expect(log).toContainText("NAV activeDestination=inscriptions");
+
+  await panel.getByRole("button", { name: "Clear log" }).click();
+  await expect(log).toContainText("LOG CLEARED");
+  await expect(log).toContainText("SESSION MARKER");
+  await expect(log).toContainText("CURRENT STATE");
+  await expect(log).not.toContainText("STATE activeDestination:");
+  await expect(panel.getByRole("button", { name: "Copy log" })).toBeVisible();
+});
+
+test("Desktop Chromium copies the plain-text real-device report", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Clipboard automation is asserted in its supported Chromium context.",
+  );
+
+  const response = await page.goto("/dev/t02p?iphone=clipboard-test-head");
+  expect(response?.status()).toBe(200);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+
+  const panel = page.locator("[data-t02p-interaction-log]");
+  const log = panel.locator("[data-t02p-interaction-log-entries]");
+  await expect(log).toContainText("SESSION HYDRATED");
+  await panel.getByRole("button", { name: "Copy log" }).click();
+  await expect(panel.locator("[data-copy-log-status]")).toHaveText("Copied");
+
+  const clipboardText = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(clipboardText).toContain("SESSION\n");
+  expect(clipboardText).toContain('iphone="clipboard-test-head"');
+  expect(clipboardText).toContain("EVENTS\n");
+  expect(clipboardText).toContain("CURRENT STATE\n");
+});
+
+test("Formal root excludes the Development real-device interaction log", async ({
+  page,
+}) => {
+  const response = await page.goto("/");
+  expect(response?.status()).toBe(200);
+  await expect(page.locator("[data-t02p-interaction-log]")).toHaveCount(0);
+});
+
 test("Development acceptance surface coordinates semantic navigation, pager, shell, and QA platform", async ({
   page,
 }) => {
