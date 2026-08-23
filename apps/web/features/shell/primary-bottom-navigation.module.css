@@ -20,7 +20,7 @@
   padding: var(--yoyi-space-2);
   overflow: hidden;
   border-radius: calc(var(--yoyi-radius-full) / 2);
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 
 .bubble {
@@ -40,11 +40,15 @@
   box-shadow: var(--yoyi-shadow-subtle);
   pointer-events: none;
   transform: translate3d(
-    calc(var(--primary-navigation-active-index) * 100%),
+    calc(var(--primary-navigation-bubble-index) * 100%),
     0,
     0
   );
   transition: transform var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.navigation[data-dragging="true"] .bubble {
+  transition: none;
 }
 
 .entry {
@@ -58,7 +62,7 @@
   padding: 2px;
   color: var(--yoyi-color-text-primary);
   border-radius: var(--yoyi-radius-full);
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 
 .entry[data-selected="true"] {

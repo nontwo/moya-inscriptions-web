@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 const destinationAcceptance = {
   calligraphy: {
@@ -52,6 +52,29 @@ const expectActiveDestination = async (
 
 const pagerAction = (surface: Locator, action: "previous" | "next") =>
   surface.locator(`[data-primary-pager-action="${action}"]`);
+
+const locatorCenter = async (locator: Locator) => {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error("Expected a visible locator bounding box");
+
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+};
+
+const openDevelopmentSurface = async (page: Page) => {
+  const response = await page.goto("/dev/t02p");
+  expect(response?.status()).toBe(200);
+
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  await expect(surface).toBeVisible();
+
+  return {
+    navigation: surface.getByRole("navigation", { name: "主要内容" }),
+    surface,
+  };
+};
 
 test("Development acceptance surface coordinates semantic navigation, pager, shell, and QA platform", async ({
   page,
@@ -119,4 +142,129 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
   await expect(navigation).toHaveAttribute("data-platform", "tablet");
   await expect(navigation).toBeVisible();
   await expectActiveDestination(surface, "inscriptions");
+});
+
+test("Navigation drag previews only the bubble and commits on release", async ({
+  page,
+}) => {
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const homeButton = navigation.getByRole("button", {
+    exact: true,
+    name: "首页",
+  });
+  const inscriptionsButton = navigation.getByRole("button", {
+    exact: true,
+    name: "碑刻",
+  });
+  const homeCenter = await locatorCenter(homeButton);
+  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+  const committedHomePanel = surface.locator(
+    '[data-primary-destination="home"]',
+  );
+  const committedPanelBeforeDrag = await committedHomePanel.boundingBox();
+
+  await page.mouse.move(homeCenter.x, homeCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y, {
+    steps: 5,
+  });
+
+  await expect(navigation).toHaveAttribute("data-dragging", "true");
+  await expect(navigation).toHaveAttribute("data-bubble-preview-index", /.+/);
+  const previewIndex = Number(
+    await navigation.getAttribute("data-bubble-preview-index"),
+  );
+  expect(previewIndex).toBeGreaterThanOrEqual(0.5);
+  expect(previewIndex).toBeLessThanOrEqual(1.5);
+  await expectActiveDestination(surface, "home");
+  await expect(committedHomePanel).toHaveAttribute("data-active", "true");
+  expect(await committedHomePanel.boundingBox()).toEqual(
+    committedPanelBeforeDrag,
+  );
+
+  await page.mouse.up();
+
+  await expectActiveDestination(surface, "inscriptions");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await expect(navigation).not.toHaveAttribute(
+    "data-bubble-preview-index",
+    /.+/,
+  );
+});
+
+test("Navigation drag returning to current and pointer cancellation do not commit", async ({
+  page,
+}) => {
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const homeButton = navigation.getByRole("button", {
+    exact: true,
+    name: "首页",
+  });
+  const inscriptionsButton = navigation.getByRole("button", {
+    exact: true,
+    name: "碑刻",
+  });
+  const homeCenter = await locatorCenter(homeButton);
+  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+  const sameItemPreviewX =
+    homeCenter.x + (inscriptionsCenter.x - homeCenter.x) * 0.35;
+
+  await page.mouse.move(homeCenter.x, homeCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(sameItemPreviewX, homeCenter.y, { steps: 5 });
+  await expect(navigation).toHaveAttribute("data-dragging", "true");
+  await page.mouse.up();
+
+  await expectActiveDestination(surface, "home");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+
+  const pointerId = 71;
+  await homeButton.dispatchEvent("pointerdown", {
+    button: 0,
+    clientX: homeCenter.x,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId,
+  });
+  await navigation.dispatchEvent("pointermove", {
+    button: 0,
+    clientX: inscriptionsCenter.x,
+    clientY: inscriptionsCenter.y,
+    isPrimary: true,
+    pointerId,
+  });
+  await expect(navigation).toHaveAttribute("data-dragging", "true");
+  await navigation.dispatchEvent("pointercancel", {
+    button: 0,
+    clientX: inscriptionsCenter.x,
+    clientY: inscriptionsCenter.y,
+    isPrimary: true,
+    pointerId,
+  });
+
+  await expectActiveDestination(surface, "home");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await expect(navigation).not.toHaveAttribute(
+    "data-bubble-preview-index",
+    /.+/,
+  );
+});
+
+test("Horizontal drag over Primary content never switches destination", async ({
+  page,
+}) => {
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const homePanel = surface.locator('[data-qa-panel="home"]');
+  const panelCenter = await locatorCenter(homePanel);
+
+  await page.mouse.move(panelCenter.x, panelCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(panelCenter.x + 120, panelCenter.y, { steps: 5 });
+  await page.mouse.up();
+
+  await expectActiveDestination(surface, "home");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await expect(
+    surface.locator('[data-primary-destination="home"]'),
+  ).toHaveAttribute("data-active", "true");
 });

@@ -2,7 +2,15 @@ import { Children, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { PrimaryBottomNavigation } from "./primary-bottom-navigation";
+import {
+  commitPrimaryNavigationDragRelease,
+  createPrimaryNavigationEntryElements,
+  hasPrimaryNavigationHorizontalDragIntent,
+  PRIMARY_NAVIGATION_DRAG_THRESHOLD_PX,
+  PrimaryBottomNavigation,
+  resolvePrimaryNavigationBubbleIndex,
+  resolvePrimaryNavigationReleaseIndex,
+} from "./primary-bottom-navigation";
 
 import type { ReactElement } from "react";
 import type { PresentationPlatform } from "./device-platform";
@@ -54,18 +62,13 @@ interface NavigationButtonProps {
 
 const navigationButtons = (
   onDestinationChange: (destination: PrimaryDestination) => void,
-) => {
-  const navigation = PrimaryBottomNavigation({
-    activeDestination: "home",
-    platform: "phone",
-    onDestinationChange,
-  });
-
-  return Children.toArray(navigation.props.children).filter(
+) =>
+  Children.toArray(
+    createPrimaryNavigationEntryElements("home", onDestinationChange),
+  ).filter(
     (child): child is ReactElement<NavigationButtonProps> =>
       isValidElement<NavigationButtonProps>(child) && child.type === "button",
   );
-};
 
 describe("PrimaryBottomNavigation", () => {
   it("renders exactly the current ordered destinations and formal marks", () => {
@@ -101,6 +104,9 @@ describe("PrimaryBottomNavigation", () => {
 
       expect(markup.match(/aria-current="page"/g)).toHaveLength(1);
       expect(markup).toContain(`data-active-index="${activeIndex}"`);
+      expect(markup).toContain(
+        `--primary-navigation-bubble-index:${activeIndex}`,
+      );
       for (const { id: candidate } of destinations) {
         expect(markup).toContain(
           `data-primary-navigation-destination="${candidate}" data-selected="${
@@ -146,5 +152,59 @@ describe("PrimaryBottomNavigation", () => {
     expect(markup).not.toContain("yoyi-responsive-navigation");
     expect(markup).not.toContain("yoyi-desktop-navigation");
     expect(markup).not.toContain("data-primary-pager");
+  });
+
+  it("starts drag only beyond the strict horizontal intent threshold", () => {
+    expect(
+      hasPrimaryNavigationHorizontalDragIntent(
+        PRIMARY_NAVIGATION_DRAG_THRESHOLD_PX,
+        0,
+      ),
+    ).toBe(false);
+    expect(
+      hasPrimaryNavigationHorizontalDragIntent(
+        PRIMARY_NAVIGATION_DRAG_THRESHOLD_PX + 1,
+        PRIMARY_NAVIGATION_DRAG_THRESHOLD_PX,
+      ),
+    ).toBe(true);
+    expect(hasPrimaryNavigationHorizontalDragIntent(20, 20)).toBe(false);
+    expect(hasPrimaryNavigationHorizontalDragIntent(9, 12)).toBe(false);
+  });
+
+  it("derives continuous clamped bubble preview from rendered entry centers", () => {
+    const entryCenters = [100, 220, 400];
+
+    expect(resolvePrimaryNavigationBubbleIndex(entryCenters, 0, -200)).toBe(0);
+    expect(resolvePrimaryNavigationBubbleIndex(entryCenters, 0, 60)).toBe(0.5);
+    expect(resolvePrimaryNavigationBubbleIndex(entryCenters, 1, 90)).toBe(1.5);
+    expect(resolvePrimaryNavigationBubbleIndex(entryCenters, 1, 500)).toBe(2);
+  });
+
+  it("resolves release to the nearest real entry without a hard-coded count", () => {
+    expect(
+      resolvePrimaryNavigationReleaseIndex(0.49, destinations.length),
+    ).toBe(0);
+    expect(resolvePrimaryNavigationReleaseIndex(0.5, destinations.length)).toBe(
+      1,
+    );
+    expect(resolvePrimaryNavigationReleaseIndex(20, destinations.length)).toBe(
+      destinations.length - 1,
+    );
+  });
+
+  it("commits a different release destination exactly once and skips current", () => {
+    const onDestinationChange = vi.fn();
+
+    expect(
+      commitPrimaryNavigationDragRelease("home", 1, onDestinationChange),
+    ).toBe("inscriptions");
+    expect(onDestinationChange).toHaveBeenCalledOnce();
+    expect(onDestinationChange).toHaveBeenCalledWith("inscriptions");
+
+    onDestinationChange.mockClear();
+    expect(
+      commitPrimaryNavigationDragRelease("home", 0.4, onDestinationChange),
+    ).toBe("home");
+    expect(onDestinationChange).not.toHaveBeenCalled();
   });
 });
