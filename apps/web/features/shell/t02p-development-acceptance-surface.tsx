@@ -7,9 +7,14 @@ import {
   appendBoundedT02pInteractionEntry,
   buildT02pInteractionReport,
   createAnimationFrameThrottle,
+  createT02pNodeIdentityTracker,
   formatT02pCurrentState,
+  formatT02pFocusActiveEvidence,
   formatT02pMouseEvent,
+  formatT02pNavigationMotionEvent,
+  formatT02pNavigationMutation,
   formatT02pNavigationSnapshot,
+  formatT02pNavigationVisualTrace,
   formatT02pPageEvent,
   formatT02pPointerEvent,
   formatT02pSessionHeader,
@@ -17,6 +22,7 @@ import {
   formatT02pWindowError,
   readT02pClientEnvironment,
   readT02pNavigationSnapshot,
+  readT02pNavigationVisualSnapshot,
   t02pMouseEventTypes,
   t02pPointerEventTypes,
 } from "./t02p-interaction-log";
@@ -24,7 +30,13 @@ import {
 import type { CSSProperties, RefObject } from "react";
 import type { PresentationPlatform } from "./device-platform";
 import type { PrimaryDestination } from "./primary-shell";
-import type { T02pClientEnvironment } from "./t02p-interaction-log";
+import type {
+  T02pClientEnvironment,
+  T02pNavigationVisualFrame,
+  T02pNavigationVisualSnapshot,
+  T02pNodeIdentityTracker,
+  T02pVisualLifecycleEntry,
+} from "./t02p-interaction-log";
 
 const presentationPlatforms = [
   "phone",
@@ -88,6 +100,7 @@ interface T02pVisibleLogStatus {
   readonly eventCount: number;
   readonly hydrated: boolean;
   readonly lastSignificantEvent: string;
+  readonly visualTraceCount: number;
 }
 
 const visibleStatusDelayMs = 300;
@@ -105,6 +118,7 @@ const T02pInteractionLogger = ({
     eventCount: 0,
     hydrated: false,
     lastSignificantEvent: "Awaiting hydration",
+    visualTraceCount: 0,
   });
   const panelRef = useRef<HTMLElement | null>(null);
   const renderCountRef = useRef(0);
@@ -115,10 +129,24 @@ const T02pInteractionLogger = ({
   const environmentRef = useRef<T02pClientEnvironment | null>(null);
   const lastSignificantEventRef = useRef("Awaiting hydration");
   const visibleStatusTimerRef = useRef<number | null>(null);
+  const nodeIdentityTrackerRef = useRef<T02pNodeIdentityTracker | null>(null);
+  const visualLifecycleEntriesRef = useRef<T02pVisualLifecycleEntry[]>([]);
+  const pendingVisualLifecycleStartRef = useRef<number | null>(null);
+  const visualTraceReportsRef = useRef<string[]>([]);
+  const settledVisualSnapshotRef = useRef<T02pNavigationVisualSnapshot | null>(
+    null,
+  );
+  const visualTraceGenerationRef = useRef(0);
+  const visualTraceFrameRef = useRef<number | null>(null);
+  const visualTraceTimerRef = useRef<number | null>(null);
   const activeDestinationRef = useRef(activeDestination);
   const platformRef = useRef(platform);
   const previousDestinationRef = useRef(activeDestination);
   const previousPlatformRef = useRef(platform);
+
+  if (nodeIdentityTrackerRef.current === null) {
+    nodeIdentityTrackerRef.current = createT02pNodeIdentityTracker();
+  }
 
   activeDestinationRef.current = activeDestination;
   platformRef.current = platform;
@@ -143,6 +171,7 @@ const T02pInteractionLogger = ({
       eventCount: interactionEntriesRef.current.length,
       hydrated: hydrationLoggedRef.current,
       lastSignificantEvent: lastSignificantEventRef.current,
+      visualTraceCount: visualTraceReportsRef.current.length,
     });
   }, []);
 
@@ -180,9 +209,134 @@ const T02pInteractionLogger = ({
     [surfaceRef],
   );
 
+  const readCurrentVisualSnapshot = useCallback(
+    () =>
+      readT02pNavigationVisualSnapshot(
+        surfaceRef.current,
+        activeDestinationRef.current,
+        nodeIdentityTrackerRef.current ?? createT02pNodeIdentityTracker(),
+      ),
+    [surfaceRef],
+  );
+
+  const appendVisualLifecycleEntry = useCallback(
+    (entry: T02pVisualLifecycleEntry) => {
+      visualLifecycleEntriesRef.current.push(entry);
+      const overflow = visualLifecycleEntriesRef.current.length - 600;
+      if (overflow <= 0) return;
+
+      visualLifecycleEntriesRef.current.splice(0, overflow);
+      if (pendingVisualLifecycleStartRef.current !== null) {
+        pendingVisualLifecycleStartRef.current = Math.max(
+          0,
+          pendingVisualLifecycleStartRef.current - overflow,
+        );
+      }
+    },
+    [],
+  );
+
+  const beginVisualInteraction = useCallback(() => {
+    if (pendingVisualLifecycleStartRef.current === null) {
+      pendingVisualLifecycleStartRef.current =
+        visualLifecycleEntriesRef.current.length;
+    }
+  }, []);
+
+  const cancelVisualTrace = useCallback(() => {
+    visualTraceGenerationRef.current += 1;
+    if (visualTraceFrameRef.current !== null) {
+      window.cancelAnimationFrame(visualTraceFrameRef.current);
+      visualTraceFrameRef.current = null;
+    }
+    if (visualTraceTimerRef.current !== null) {
+      window.clearTimeout(visualTraceTimerRef.current);
+      visualTraceTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleSettledVisualBaseline = useCallback(() => {
+    if (visualTraceFrameRef.current !== null) {
+      window.cancelAnimationFrame(visualTraceFrameRef.current);
+    }
+    visualTraceFrameRef.current = window.requestAnimationFrame(() => {
+      visualTraceFrameRef.current = null;
+      settledVisualSnapshotRef.current = readCurrentVisualSnapshot();
+    });
+  }, [readCurrentVisualSnapshot]);
+
+  const startVisualTrace = useCallback(
+    (
+      from: PrimaryDestination,
+      to: PrimaryDestination,
+      lifecycleStart: number,
+    ) => {
+      cancelVisualTrace();
+      const generation = visualTraceGenerationRef.current;
+      const frames: T02pNavigationVisualFrame[] = [];
+      const baseline = settledVisualSnapshotRef.current;
+      if (baseline !== null) {
+        frames.push({ label: "FRAME 0", snapshot: baseline });
+      }
+
+      let frameNumber = baseline === null ? 0 : 1;
+      const captureFrame = () => {
+        visualTraceFrameRef.current = window.requestAnimationFrame(() => {
+          visualTraceFrameRef.current = null;
+          if (generation !== visualTraceGenerationRef.current) return;
+
+          const snapshot = readCurrentVisualSnapshot();
+          if ([0, 1, 2, 3, 5].includes(frameNumber)) {
+            frames.push({ label: `FRAME ${frameNumber}`, snapshot });
+          }
+
+          if (frameNumber < 5) {
+            frameNumber += 1;
+            captureFrame();
+            return;
+          }
+
+          visualTraceTimerRef.current = window.setTimeout(() => {
+            visualTraceTimerRef.current = null;
+            visualTraceFrameRef.current = window.requestAnimationFrame(() => {
+              visualTraceFrameRef.current = null;
+              if (generation !== visualTraceGenerationRef.current) return;
+
+              const settledSnapshot = readCurrentVisualSnapshot();
+              frames.push({
+                label: "FRAME +300ms",
+                snapshot: settledSnapshot,
+              });
+              settledVisualSnapshotRef.current = settledSnapshot;
+              const lifecycle =
+                visualLifecycleEntriesRef.current.slice(lifecycleStart);
+              visualTraceReportsRef.current.push(
+                formatT02pNavigationVisualTrace(from, to, frames, lifecycle),
+              );
+              if (visualTraceReportsRef.current.length > 12) {
+                visualTraceReportsRef.current.splice(
+                  0,
+                  visualTraceReportsRef.current.length - 12,
+                );
+              }
+              lastSignificantEventRef.current = `NAV VISUAL TRACE ${from} -> ${to} complete`;
+              refreshVisibleStatus();
+            });
+          }, 300);
+        });
+      };
+
+      captureFrame();
+    },
+    [cancelVisualTrace, readCurrentVisualSnapshot, refreshVisibleStatus],
+  );
+
   useEffect(() => {
     let disposed = false;
     const environment = readT02pClientEnvironment(window);
+    const identities =
+      nodeIdentityTrackerRef.current ?? createT02pNodeIdentityTracker();
+    nodeIdentityTrackerRef.current = identities;
     environmentRef.current = environment;
 
     if (!hydrationLoggedRef.current) {
@@ -235,9 +389,30 @@ const T02pInteractionLogger = ({
     const handlePointerEvent = (nativeEvent: Event) => {
       if (isLoggerControlEvent(nativeEvent)) return;
       const event = nativeEvent as PointerEvent;
+      const eventTarget = event.target instanceof Element ? event.target : null;
+      if (
+        event.type === "pointerdown" &&
+        eventTarget !== null &&
+        eventTarget.closest("[data-primary-navigation]") !== null
+      ) {
+        beginVisualInteraction();
+      }
+      const includeFocusEvidence = [
+        "pointerdown",
+        "pointerup",
+        "pointercancel",
+      ].includes(event.type);
       const observation = () =>
         enqueueAfterDispatch(
-          () => formatT02pPointerEvent(event, document),
+          () =>
+            [
+              formatT02pPointerEvent(event, document),
+              includeFocusEvidence
+                ? formatT02pFocusActiveEvidence(surfaceRef.current, identities)
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
           event.type === "pointermove" ? undefined : `POINTER ${event.type}`,
           true,
           event.type === "pointermove"
@@ -259,8 +434,21 @@ const T02pInteractionLogger = ({
     const handleMouseEvent = (nativeEvent: Event) => {
       if (isLoggerControlEvent(nativeEvent)) return;
       const event = nativeEvent as MouseEvent;
+      const eventTarget = event.target instanceof Element ? event.target : null;
+      if (
+        eventTarget !== null &&
+        eventTarget.closest(
+          "[data-primary-navigation], [data-primary-pager-action]",
+        ) !== null
+      ) {
+        beginVisualInteraction();
+      }
       enqueueAfterDispatch(
-        () => formatT02pMouseEvent(event, document),
+        () =>
+          `${formatT02pMouseEvent(
+            event,
+            document,
+          )}\n${formatT02pFocusActiveEvidence(surfaceRef.current, identities)}`,
         "CLICK",
         true,
       );
@@ -285,6 +473,62 @@ const T02pInteractionLogger = ({
       );
     };
 
+    const handleNavigationMotionEvent = (event: Event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target === null ||
+        target.closest("[data-primary-navigation]") === null
+      )
+        return;
+
+      appendVisualLifecycleEntry({
+        kind: "motion",
+        summary: formatT02pNavigationMotionEvent(
+          event as TransitionEvent | AnimationEvent,
+          identities,
+        ),
+      });
+    };
+
+    const navigation = surfaceRef.current?.querySelector<HTMLElement>(
+      "[data-primary-navigation]",
+    );
+    const navigationObserver =
+      navigation === null || navigation === undefined
+        ? null
+        : new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              appendVisualLifecycleEntry(
+                formatT02pNavigationMutation(mutation, identities),
+              );
+            }
+          });
+    navigationObserver?.observe(navigation as HTMLElement, {
+      attributeFilter: [
+        "aria-current",
+        "class",
+        "data-active-index",
+        "data-bubble-preview-index",
+        "data-dragging",
+        "data-selected",
+        "style",
+      ],
+      attributeOldValue: true,
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+
+    const navigationMotionEventTypes = [
+      "transitionrun",
+      "transitionstart",
+      "transitionend",
+      "transitioncancel",
+      "animationstart",
+      "animationend",
+      "animationcancel",
+    ] as const;
+
     for (const eventType of t02pPointerEventTypes) {
       document.addEventListener(eventType, handlePointerEvent, {
         capture: true,
@@ -306,10 +550,16 @@ const T02pInteractionLogger = ({
       handleUnhandledRejection,
       true,
     );
+    for (const eventType of navigationMotionEventTypes) {
+      document.addEventListener(eventType, handleNavigationMotionEvent, true);
+    }
+    scheduleSettledVisualBaseline();
 
     return () => {
       disposed = true;
+      navigationObserver?.disconnect();
       pointerMoveThrottle.dispose();
+      cancelVisualTrace();
       if (visibleStatusTimerRef.current !== null) {
         window.clearTimeout(visibleStatusTimerRef.current);
         visibleStatusTimerRef.current = null;
@@ -329,11 +579,23 @@ const T02pInteractionLogger = ({
         handleUnhandledRejection,
         true,
       );
+      for (const eventType of navigationMotionEventTypes) {
+        document.removeEventListener(
+          eventType,
+          handleNavigationMotionEvent,
+          true,
+        );
+      }
     };
   }, [
+    appendVisualLifecycleEntry,
+    beginVisualInteraction,
+    cancelVisualTrace,
     readCurrentNavigationSnapshot,
     recordInteractionEntry,
     refreshVisibleStatus,
+    scheduleSettledVisualBaseline,
+    surfaceRef,
   ]);
 
   useEffect(() => {
@@ -341,16 +603,22 @@ const T02pInteractionLogger = ({
     if (previousDestination === activeDestination) return;
 
     previousDestinationRef.current = activeDestination;
+    const lifecycleStart =
+      pendingVisualLifecycleStartRef.current ??
+      visualLifecycleEntriesRef.current.length;
+    pendingVisualLifecycleStartRef.current = null;
     recordInteractionEntry(
       `STATE activeDestination: ${previousDestination} -> ${activeDestination}\n${formatT02pNavigationSnapshot(
         readCurrentNavigationSnapshot(),
       )}`,
       `STATE activeDestination: ${previousDestination} -> ${activeDestination}`,
     );
+    startVisualTrace(previousDestination, activeDestination, lifecycleStart);
   }, [
     activeDestination,
     readCurrentNavigationSnapshot,
     recordInteractionEntry,
+    startVisualTrace,
   ]);
 
   useEffect(() => {
@@ -378,7 +646,12 @@ const T02pInteractionLogger = ({
       window.clearTimeout(visibleStatusTimerRef.current);
       visibleStatusTimerRef.current = null;
     }
+    cancelVisualTrace();
     interactionEntriesRef.current.length = 0;
+    visualLifecycleEntriesRef.current.length = 0;
+    visualTraceReportsRef.current.length = 0;
+    pendingVisualLifecycleStartRef.current = null;
+    settledVisualSnapshotRef.current = null;
     sequenceRef.current = 0;
     environmentRef.current = environment;
     sessionHeaderRef.current = sessionHeader;
@@ -393,6 +666,7 @@ const T02pInteractionLogger = ({
     );
     setCopyStatus("");
     refreshVisibleStatus();
+    scheduleSettledVisualBaseline();
   };
 
   const handleCopyLog = async () => {
@@ -417,6 +691,7 @@ const T02pInteractionLogger = ({
           sessionHeader,
           interactionEntriesRef.current,
           currentState,
+          visualTraceReportsRef.current,
         ),
       );
       setCopyStatus("Copied");
@@ -429,6 +704,7 @@ const T02pInteractionLogger = ({
   const compactLog = [
     visibleStatus.hydrated ? "Hydrated" : "Awaiting hydration",
     `event count: ${visibleStatus.eventCount}`,
+    `visual trace count: ${visibleStatus.visualTraceCount}`,
     `activeDestination: ${activeDestination}`,
     `last significant event: ${visibleStatus.lastSignificantEvent}`,
   ].join("\n");
@@ -448,6 +724,10 @@ const T02pInteractionLogger = ({
         </dd>
         <dt>event count</dt>
         <dd data-interaction-status="eventCount">{visibleStatus.eventCount}</dd>
+        <dt>visual trace count</dt>
+        <dd data-interaction-status="visualTraceCount">
+          {visibleStatus.visualTraceCount}
+        </dd>
         <dt>last significant event</dt>
         <dd data-interaction-status="lastSignificantEvent">
           {visibleStatus.lastSignificantEvent}

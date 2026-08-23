@@ -135,6 +135,9 @@ test("Development real-device log shows compact settled status and starts fresh 
   const panel = surface.locator("[data-t02p-interaction-log]");
   const compactLog = panel.locator("[data-t02p-interaction-log-entries]");
   const eventCount = panel.locator('[data-interaction-status="eventCount"]');
+  const visualTraceCount = panel.locator(
+    '[data-interaction-status="visualTraceCount"]',
+  );
   const lastSignificantEvent = panel.locator(
     '[data-interaction-status="lastSignificantEvent"]',
   );
@@ -148,14 +151,16 @@ test("Development real-device log shows compact settled status and starts fresh 
     panel.locator('[data-interaction-status="hydration"]'),
   ).toHaveText("Hydrated");
   await expect(eventCount).toHaveText("1");
+  await expect(visualTraceCount).toHaveText("0");
   await expect(lastSignificantEvent).toHaveText("SESSION HYDRATED");
   await expect(compactLog).toContainText("activeDestination: home");
   await expect(compactLog).not.toContainText("POINTER type=");
 
   await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
   await expectActiveDestination(surface, "inscriptions");
-  await expect(lastSignificantEvent).toContainText(
-    "STATE activeDestination: home -> inscriptions",
+  await expect(visualTraceCount).toHaveText("1");
+  await expect(lastSignificantEvent).toHaveText(
+    "NAV VISUAL TRACE home -> inscriptions complete",
   );
   await expect
     .poll(async () => Number(await eventCount.textContent()))
@@ -164,6 +169,7 @@ test("Development real-device log shows compact settled status and starts fresh 
 
   await panel.getByRole("button", { name: "Clear log" }).click();
   await expect(eventCount).toHaveText("1");
+  await expect(visualTraceCount).toHaveText("0");
   await expect(lastSignificantEvent).toHaveText("SESSION HYDRATED");
   await expect(compactLog).toContainText("activeDestination: inscriptions");
   await expect(panel.getByRole("button", { name: "Copy log" })).toBeVisible();
@@ -268,9 +274,18 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
   ).toHaveText("Hydrated");
   await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
   await expectActiveDestination(surface, "inscriptions");
+  const surfaceRenderCountAfterState = await surface.getAttribute(
+    "data-t02p-surface-render-count",
+  );
+  await expect(
+    panel.locator('[data-interaction-status="visualTraceCount"]'),
+  ).toHaveText("1");
   await expect(
     panel.locator('[data-interaction-status="lastSignificantEvent"]'),
-  ).toContainText("STATE activeDestination: home -> inscriptions");
+  ).toHaveText("NAV VISUAL TRACE home -> inscriptions complete");
+  expect(await surface.getAttribute("data-t02p-surface-render-count")).toBe(
+    surfaceRenderCountAfterState,
+  );
   await panel.getByRole("button", { name: "Copy log" }).click();
   await expect(panel.locator("[data-copy-log-status]")).toHaveText("Copied");
 
@@ -287,11 +302,41 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
     "STATE activeDestination: home -> inscriptions",
   );
   expect(clipboardText).toContain("CURRENT STATE\n");
+  expect(clipboardText).toContain("NAV VISUAL TRACE\n");
+  expect(clipboardText).toContain("interaction: home -> inscriptions");
+  expect(clipboardText).toContain("VISUAL FRAME 0");
+  expect(clipboardText).toContain("VISUAL FRAME 1");
+  expect(clipboardText).toContain("VISUAL FRAME 2");
+  expect(clipboardText).toContain("VISUAL FRAME 3");
+  expect(clipboardText).toContain("VISUAL FRAME 5");
+  expect(clipboardText).toContain("VISUAL FRAME +300ms");
+  expect(clipboardText).toContain("home.nodes buttonNode=");
+  expect(clipboardText).toContain("iconWrapNode=");
+  expect(clipboardText).toContain("iconNode=");
+  expect(clipboardText).toContain("labelNode=");
+  expect(clipboardText).toContain("home.icon backgroundColor=");
+  expect(clipboardText).toContain("WebkitMaskImage=");
+  expect(clipboardText).toContain("home.label backgroundColor=");
+  expect(clipboardText).toContain("home.button active=");
+  expect(clipboardText).toContain('rect="x:');
+  expect(clipboardText).toContain("navigation activeDestination=");
+  expect(clipboardText).toContain("WebkitBackdropFilter=");
+  expect(clipboardText).toContain("bubble backgroundColor=");
+  expect(clipboardText).toContain("transition=");
+  expect(clipboardText).toContain("renders acceptanceSurface=");
+  expect(clipboardText).toContain("FOCUS ACTIVE activeElementNode=");
+  expect(clipboardText).toContain("MUTATION attribute");
+  expect(clipboardText).toContain("name=data-selected");
+  expect(clipboardText).toContain("DOM replacements: none");
+  expect(clipboardText).toContain("childList mutations: none");
 
   await panel.getByRole("button", { name: "Clear log" }).click();
   await expect(
     panel.locator('[data-interaction-status="eventCount"]'),
   ).toHaveText("1");
+  await expect(
+    panel.locator('[data-interaction-status="visualTraceCount"]'),
+  ).toHaveText("0");
   await panel.getByRole("button", { name: "Copy log" }).click();
   await expect(panel.locator("[data-copy-log-status]")).toHaveText("Copied");
 
@@ -303,6 +348,7 @@ test("Desktop Chromium copies the plain-text real-device report", async ({
   expect(clearedClipboardText).not.toContain(
     "STATE activeDestination: home -> inscriptions",
   );
+  expect(clearedClipboardText).toContain("NAV VISUAL TRACE\n(none)");
 });
 
 test("Formal root excludes the Development real-device interaction log", async ({
