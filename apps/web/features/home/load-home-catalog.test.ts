@@ -11,6 +11,7 @@ vi.mock("../../lib/public-api/server", () => ({
 import { loadHomeCatalogState } from "./load-home-catalog";
 
 import type { CatalogListTransportQuery, CatalogPage } from "@moya/contracts";
+import type { HomeCatalogSource } from "./load-home-catalog";
 
 const page = (total: number): CatalogPage => ({
   items: [],
@@ -68,5 +69,23 @@ describe("Home Catalog loader", () => {
     });
     expect(fetchServerCatalogPageMock).toHaveBeenCalledOnce();
     expect(fetchServerCatalogPageMock).toHaveBeenCalledWith(query);
+  });
+
+  it("maps an explicitly injected source without calling the real transport", async () => {
+    const query = {
+      kind: "inscription",
+    } satisfies CatalogListTransportQuery;
+    const scenarioSource = vi.fn<HomeCatalogSource>().mockResolvedValue({
+      state: "success",
+      page: page(1),
+    });
+
+    await expect(loadHomeCatalogState(query, scenarioSource)).resolves.toEqual({
+      state: "populated",
+      page: page(1),
+    });
+    expect(scenarioSource).toHaveBeenCalledOnce();
+    expect(scenarioSource).toHaveBeenCalledWith(query);
+    expect(fetchServerCatalogPageMock).not.toHaveBeenCalled();
   });
 });
