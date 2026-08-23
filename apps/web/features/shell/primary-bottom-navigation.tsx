@@ -55,14 +55,16 @@ type PrimaryNavigationStyle = CSSProperties & {
 };
 
 interface PrimaryNavigationPointerGesture {
-  readonly captureTarget: HTMLButtonElement;
   readonly committedDestination: PrimaryDestination;
   readonly entryCenters: readonly number[];
+  readonly initiatingButton: HTMLButtonElement;
   readonly pointerId: number;
+  readonly pointerType: string;
   readonly startIndex: number;
   readonly startX: number;
   readonly startY: number;
   dragging: boolean;
+  explicitlyCaptured: boolean;
 }
 
 export const PRIMARY_NAVIGATION_DRAG_THRESHOLD_PX = 8;
@@ -194,12 +196,12 @@ const readPrimaryNavigationEntryCenters = (navigation: HTMLElement) =>
   );
 
 const releasePrimaryNavigationPointer = (
-  captureTarget: HTMLButtonElement,
+  initiatingButton: HTMLButtonElement,
   pointerId: number,
 ) => {
   try {
-    if (captureTarget.hasPointerCapture(pointerId)) {
-      captureTarget.releasePointerCapture(pointerId);
+    if (initiatingButton.hasPointerCapture(pointerId)) {
+      initiatingButton.releasePointerCapture(pointerId);
     }
   } catch {
     // Pointer capture may already be released by the browser.
@@ -229,8 +231,11 @@ export const PrimaryBottomNavigation = ({
     releasePointer = true,
   ) => {
     gestureRef.current = null;
-    if (releasePointer) {
-      releasePrimaryNavigationPointer(gesture.captureTarget, gesture.pointerId);
+    if (releasePointer && gesture.explicitlyCaptured) {
+      releasePrimaryNavigationPointer(
+        gesture.initiatingButton,
+        gesture.pointerId,
+      );
     }
     setDragPreviewIndex(null);
   };
@@ -250,27 +255,26 @@ export const PrimaryBottomNavigation = ({
     const pointerTarget = event.target;
     if (!(pointerTarget instanceof Element)) return;
 
-    const captureTarget = pointerTarget.closest<HTMLButtonElement>(
+    const initiatingButton = pointerTarget.closest<HTMLButtonElement>(
       "[data-primary-navigation-destination]",
     );
-    if (captureTarget === null || !event.currentTarget.contains(captureTarget))
+    if (
+      initiatingButton === null ||
+      !event.currentTarget.contains(initiatingButton)
+    )
       return;
 
     const entryCenters = readPrimaryNavigationEntryCenters(event.currentTarget);
     if (entryCenters.length !== primaryNavigationItems.length) return;
 
-    try {
-      captureTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Touch browsers may already provide implicit capture on this same button.
-    }
-
     gestureRef.current = {
-      captureTarget,
       committedDestination: activeDestination,
       dragging: false,
       entryCenters,
+      explicitlyCaptured: false,
+      initiatingButton,
       pointerId: event.pointerId,
+      pointerType: event.pointerType,
       startIndex: activeIndex,
       startX: event.clientX,
       startY: event.clientY,
@@ -295,6 +299,14 @@ export const PrimaryBottomNavigation = ({
       }
 
       gesture.dragging = true;
+      if (gesture.pointerType === "mouse") {
+        try {
+          gesture.initiatingButton.setPointerCapture(event.pointerId);
+          gesture.explicitlyCaptured = true;
+        } catch {
+          // Synthetic and embedded mouse events may not support capture.
+        }
+      }
     }
 
     event.preventDefault();
@@ -351,7 +363,8 @@ export const PrimaryBottomNavigation = ({
     if (
       gesture === null ||
       gesture.pointerId !== event.pointerId ||
-      event.target !== gesture.captureTarget
+      !gesture.explicitlyCaptured ||
+      event.target !== gesture.initiatingButton
     )
       return;
 
@@ -359,7 +372,7 @@ export const PrimaryBottomNavigation = ({
   };
 
   const handleClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
-    if (!suppressClickRef.current) return;
+    if (!suppressClickRef.current || event.detail === 0) return;
 
     suppressClickRef.current = false;
     event.preventDefault();

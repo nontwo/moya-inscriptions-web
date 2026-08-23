@@ -63,6 +63,31 @@ const locatorCenter = async (locator: Locator) => {
   };
 };
 
+const trackPointerCaptureCalls = async (button: Locator) => {
+  await button.evaluate((element) => {
+    const captureButton = element as HTMLButtonElement;
+    const setPointerCapture =
+      captureButton.setPointerCapture.bind(captureButton);
+    const releasePointerCapture =
+      captureButton.releasePointerCapture.bind(captureButton);
+
+    captureButton.dataset.testSetPointerCaptureCount = "0";
+    captureButton.dataset.testReleasePointerCaptureCount = "0";
+    captureButton.setPointerCapture = (pointerId) => {
+      captureButton.dataset.testSetPointerCaptureCount = String(
+        Number(captureButton.dataset.testSetPointerCaptureCount) + 1,
+      );
+      setPointerCapture(pointerId);
+    };
+    captureButton.releasePointerCapture = (pointerId) => {
+      captureButton.dataset.testReleasePointerCaptureCount = String(
+        Number(captureButton.dataset.testReleasePointerCaptureCount) + 1,
+      );
+      releasePointerCapture(pointerId);
+    };
+  });
+};
+
 const openDevelopmentSurface = async (page: Page) => {
   const response = await page.goto("/dev/t02p");
   expect(response?.status()).toBe(200);
@@ -127,7 +152,14 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
   await expectActiveDestination(surface, "home");
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
-  await navigation.getByRole("button", { name: "碑刻", exact: true }).click();
+  await expect
+    .poll(async () => {
+      await navigation
+        .getByRole("button", { name: "碑刻", exact: true })
+        .click();
+      return surface.getAttribute("data-active-destination");
+    })
+    .toBe("inscriptions");
   await expectActiveDestination(surface, "inscriptions");
 
   await navigation.getByRole("button", { name: "书帖", exact: true }).click();
@@ -190,6 +222,27 @@ test("Touchscreen tap commits each primary destination on touch WebKit", async (
   }
 });
 
+test("Mobile WebKit locator click commits each primary destination", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-webkit",
+    "Locator-click evidence is reported separately for Mobile WebKit.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+
+  for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
+    await navigation
+      .getByRole("button", {
+        exact: true,
+        name: destinationAcceptance[destination].label,
+      })
+      .click();
+    await expectActiveDestination(surface, destination);
+  }
+});
+
 test("Mouse regression: navigation drag previews only the bubble and commits on release", async ({
   page,
 }) => {
@@ -210,12 +263,28 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
   );
   const committedPanelBeforeDrag = await committedHomePanel.boundingBox();
 
+  await trackPointerCaptureCalls(homeButton);
+
   await page.mouse.move(homeCenter.x, homeCenter.y);
   await page.mouse.down();
+  await expect(homeButton).toHaveAttribute(
+    "data-test-set-pointer-capture-count",
+    "0",
+  );
+  await page.mouse.move(homeCenter.x + 4, homeCenter.y);
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await expect(homeButton).toHaveAttribute(
+    "data-test-set-pointer-capture-count",
+    "0",
+  );
   await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y, {
     steps: 5,
   });
 
+  await expect(homeButton).toHaveAttribute(
+    "data-test-set-pointer-capture-count",
+    "1",
+  );
   await expect(navigation).toHaveAttribute("data-dragging", "true");
   await expect(navigation).toHaveAttribute("data-bubble-preview-index", /.+/);
   const previewIndex = Number(
@@ -232,11 +301,165 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
   await page.mouse.up();
 
   await expectActiveDestination(surface, "inscriptions");
+  await expect(homeButton).toHaveAttribute(
+    "data-test-release-pointer-capture-count",
+    "1",
+  );
   await expect(navigation).not.toHaveAttribute("data-dragging", "true");
   await expect(navigation).not.toHaveAttribute(
     "data-bubble-preview-index",
     /.+/,
   );
+});
+
+test("Synthetic touch pointer logic: passive candidate, intent threshold, and drag-click isolation", async ({
+  page,
+}) => {
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const homeButton = navigation.getByRole("button", {
+    exact: true,
+    name: "首页",
+  });
+  const inscriptionsButton = navigation.getByRole("button", {
+    exact: true,
+    name: "碑刻",
+  });
+  const calligraphyButton = navigation.getByRole("button", {
+    exact: true,
+    name: "书帖",
+  });
+  const homeCenter = await locatorCenter(homeButton);
+  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+
+  await trackPointerCaptureCalls(homeButton);
+
+  await homeButton.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId: 81,
+    pointerType: "touch",
+  });
+  await expectActiveDestination(surface, "home");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await expect(navigation).not.toHaveAttribute(
+    "data-bubble-preview-index",
+    /.+/,
+  );
+  await expect(homeButton).toHaveAttribute(
+    "data-test-set-pointer-capture-count",
+    "0",
+  );
+
+  await homeButton.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x + 8,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId: 81,
+    pointerType: "touch",
+  });
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await homeButton.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: homeCenter.x + 8,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId: 81,
+    pointerType: "touch",
+  });
+  await inscriptionsButton.click();
+  await expectActiveDestination(surface, "inscriptions");
+  await homeButton.click();
+  await expectActiveDestination(surface, "home");
+
+  await homeButton.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId: 82,
+    pointerType: "touch",
+  });
+  await homeButton.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x + 20,
+    clientY: homeCenter.y + 30,
+    isPrimary: true,
+    pointerId: 82,
+    pointerType: "touch",
+  });
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await expect(homeButton).toHaveAttribute(
+    "data-test-set-pointer-capture-count",
+    "0",
+  );
+  await homeButton.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: homeCenter.x + 20,
+    clientY: homeCenter.y + 30,
+    isPrimary: true,
+    pointerId: 82,
+    pointerType: "touch",
+  });
+  await expectActiveDestination(surface, "home");
+
+  await homeButton.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId: 83,
+    pointerType: "touch",
+  });
+  await homeButton.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: inscriptionsCenter.x,
+    clientY: inscriptionsCenter.y,
+    isPrimary: true,
+    pointerId: 83,
+    pointerType: "touch",
+  });
+  await expect(navigation).toHaveAttribute("data-dragging", "true");
+  await expect(navigation).toHaveAttribute("data-bubble-preview-index", /.+/);
+  await expect(homeButton).toHaveAttribute(
+    "data-test-set-pointer-capture-count",
+    "0",
+  );
+  await homeButton.evaluate((button, { x, y }) => {
+    button.dispatchEvent(
+      new PointerEvent("pointerup", {
+        bubbles: true,
+        button: 0,
+        buttons: 0,
+        clientX: x,
+        clientY: y,
+        isPrimary: true,
+        pointerId: 83,
+        pointerType: "touch",
+      }),
+    );
+    button.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        detail: 1,
+      }),
+    );
+  }, inscriptionsCenter);
+  await expectActiveDestination(surface, "inscriptions");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await calligraphyButton.click();
+  await expectActiveDestination(surface, "calligraphy");
 });
 
 test("Mouse and synthetic pointer regressions: current-item release and cancellation do not commit", async ({
