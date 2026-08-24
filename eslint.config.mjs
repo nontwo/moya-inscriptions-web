@@ -36,7 +36,6 @@ export default tseslint.config(
           paths: [
             "@moya/api",
             "@moya/backend-runtime",
-            "@moya/data-access",
             "@moya/public-api",
             "hono",
             "node-pg-migrate",
@@ -46,7 +45,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/api/*",
                 "@moya/public-api/*",
                 "**/apps/**",
@@ -55,46 +53,6 @@ export default tseslint.config(
               ],
               message:
                 "Contracts cannot depend on applications, services, databases, routers, or infrastructure.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["packages/data-access/src/**/*.{ts,tsx,mts,cts}"],
-    rules: {
-      "no-restricted-globals": [
-        "error",
-        { name: "Request", message: "Reader ports do not know HTTP." },
-        { name: "Response", message: "Reader ports do not know HTTP." },
-      ],
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            "@moya/api",
-            "@moya/backend-runtime",
-            "@moya/contracts/json-schema",
-            "@moya/contracts/schemas",
-            "@moya/public-api",
-            "hono",
-            "node-pg-migrate",
-            "pg",
-          ],
-          patterns: [
-            {
-              group: [
-                "@moya/backend-runtime/*",
-                "@moya/public-api/*",
-                "@moya/api/*",
-                "**/apps/**",
-                "**/data/**",
-                "**/database/**",
-                "**/services/**",
-              ],
-              message:
-                "Reader ports cannot depend on HTTP, applications, data files, or infrastructure.",
             },
           ],
         },
@@ -115,7 +73,6 @@ export default tseslint.config(
             "@moya/backend-runtime",
             "@moya/contracts/json-schema",
             "@moya/contracts/schemas",
-            "@moya/data-access",
             "@moya/public-api",
             "node-pg-migrate",
             "pg",
@@ -125,7 +82,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/api/*",
                 "@moya/public-api/*",
                 "**/data/**",
@@ -157,7 +113,6 @@ export default tseslint.config(
             "@moya/api",
             "@moya/backend-runtime",
             "@moya/contracts/json-schema",
-            "@moya/data-access",
             "@moya/public-api",
             "node-pg-migrate",
             "pg",
@@ -166,7 +121,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/api/*",
                 "@moya/public-api/*",
                 "@moya/contracts/internal/*",
@@ -199,7 +153,6 @@ export default tseslint.config(
             "@moya/api",
             "@moya/backend-runtime",
             "@moya/contracts",
-            "@moya/data-access",
             "@moya/public-api",
             "node-pg-migrate",
             "pg",
@@ -210,7 +163,6 @@ export default tseslint.config(
                 "@moya/backend-runtime/*",
                 "@moya/contracts/*",
                 "@moya/api/*",
-                "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/data/**",
                 "**/database/**",
@@ -234,7 +186,6 @@ export default tseslint.config(
           paths: [
             "@moya/api",
             "@moya/backend-runtime",
-            "@moya/data-access",
             "node-pg-migrate",
             "pg",
           ],
@@ -243,7 +194,6 @@ export default tseslint.config(
               group: [
                 "@moya/api/*",
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "**/data/**",
                 "**/database/**",
               ],
@@ -265,7 +215,6 @@ export default tseslint.config(
             "@moya/backend-production",
             "@moya/catalog-postgres",
             "@moya/contracts/json-schema",
-            "@moya/data-access",
             "hono",
             "node-pg-migrate",
             "pg",
@@ -274,7 +223,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/api/*",
-                "@moya/data-access/*",
                 "**/apps/**",
                 "**/data/**",
                 "**/database/**",
@@ -309,7 +257,6 @@ export default tseslint.config(
             "@moya/backend-production",
             "@moya/backend-runtime",
             "@moya/catalog-postgres",
-            "@moya/data-access",
             "@moya/public-api",
             "hono",
             "node-pg-migrate",
@@ -319,7 +266,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/apps/**",
                 "**/data/**",
@@ -342,7 +288,6 @@ export default tseslint.config(
         {
           paths: [
             "@moya/backend-runtime",
-            "@moya/data-access",
             "@moya/public-api",
             "hono",
             "node-pg-migrate",
@@ -352,7 +297,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/apps/**",
                 "**/data/**",
@@ -379,7 +323,6 @@ export default tseslint.config(
         {
           paths: [
             "@moya/backend-runtime",
-            "@moya/data-access",
             "@moya/public-api",
             "@moya/contracts/json-schema",
             "@moya/contracts/schemas",
@@ -391,7 +334,6 @@ export default tseslint.config(
             {
               group: [
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/apps/**",
                 "**/data/**",
@@ -416,7 +358,6 @@ export default tseslint.config(
           paths: [
             "@moya/backend-production",
             "@moya/backend-runtime",
-            "@moya/data-access",
             "@moya/public-api",
           ],
           patterns: [
@@ -424,13 +365,12 @@ export default tseslint.config(
               group: [
                 "@moya/backend-production/*",
                 "@moya/backend-runtime/*",
-                "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/apps/**",
                 "**/data/**",
               ],
               message:
-                "The PostgreSQL adapter cannot depend on transport, frontend, retained data-access, Public API composition, or data files.",
+                "The PostgreSQL adapter cannot depend on transport, frontend, Public API composition, or data files.",
             },
           ],
         },
@@ -443,19 +383,12 @@ export default tseslint.config(
       "no-restricted-imports": [
         "error",
         {
-          paths: [
-            "@moya/api",
-            "@moya/contracts",
-            "@moya/data-access",
-            "@moya/public-api",
-            "pg",
-          ],
+          paths: ["@moya/api", "@moya/contracts", "@moya/public-api", "pg"],
           patterns: [
             {
               group: [
                 "@moya/api/*",
                 "@moya/contracts/*",
-                "@moya/data-access/*",
                 "@moya/public-api/*",
                 "**/apps/**",
                 "**/data/**",

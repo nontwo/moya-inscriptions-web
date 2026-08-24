@@ -65,7 +65,6 @@ describe("UI styles and architecture", () => {
     expect(source).not.toMatch(
       /\bfetch\s*\(|axios|postgres|from\s+["']pg["']/i,
     );
-    expect(source).not.toContain("@moya/data-access");
     expect(source).not.toContain("@moya/contracts");
     expect(source).not.toContain("apps/web");
   });

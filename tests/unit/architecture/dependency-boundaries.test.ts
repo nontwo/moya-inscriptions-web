@@ -21,7 +21,6 @@ import {
 
 import type { WorkspaceInfo } from "./workspace-scanner.js";
 
-const retainedDataAccessPackage = ["@moya", "data-access"].join("/");
 const webQaRoot = path.join(repositoryRoot, "apps", "web", "qa");
 const webDevelopmentRouteRoot = path.join(
   repositoryRoot,
@@ -155,7 +154,6 @@ describe("workspace dependency boundaries", () => {
     expect(moyaDependencies("@moya/catalog-importer")).toEqual([
       "@moya/contracts",
     ]);
-    expect(moyaDependencies("@moya/data-access")).toEqual([]);
     expect(moyaDependencies("@moya/image")).toEqual([
       "@moya/api",
       "@moya/contracts",
@@ -193,7 +191,6 @@ describe("frontend and browser boundaries", () => {
       import { startProductionBackend } from "@moya/backend-production";
       import { createPostgresPool } from "@moya/catalog-postgres";
       import { MappedStorageUrlResolver } from "@moya/image";
-      import "${retainedDataAccessPackage}";
       import { Pool } from "pg";
       import migration from "../../../database/migrations/example.sql";
       const records = new URL("../../data/records.json", import.meta.url);
@@ -207,7 +204,6 @@ describe("frontend and browser boundaries", () => {
         "@moya/backend-production is server/runtime-only",
         "@moya/catalog-postgres is server/runtime-only",
         "@moya/image is server/runtime-only",
-        `${retainedDataAccessPackage} is server/runtime-only`,
         "pg is server/runtime-only",
         "../../../database/migrations/example.sql is server/runtime-only",
         "../../data/records.json is a direct data-file reference",
@@ -224,7 +220,6 @@ describe("frontend and browser boundaries", () => {
       import { startProductionBackend } from "@moya/backend-production";
       import { createPostgresPool } from "@moya/catalog-postgres";
       import { MappedStorageUrlResolver } from "@moya/image";
-      import "${retainedDataAccessPackage}";
       import { openApiDocument } from "@moya/public-api";
       import { handler } from "../../services/public-api/src/handler";
     `;
@@ -236,7 +231,6 @@ describe("frontend and browser boundaries", () => {
         "@moya/backend-runtime crosses the frontend boundary",
         "@moya/catalog-postgres crosses the frontend boundary",
         "@moya/image crosses the frontend boundary",
-        `${retainedDataAccessPackage} crosses the frontend boundary`,
         "@moya/public-api crosses the frontend boundary",
         "../../services/public-api/src/handler crosses the frontend boundary",
       ]),
