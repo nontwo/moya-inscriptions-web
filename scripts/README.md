@@ -1,6 +1,6 @@
 # Project scripts
 
-计划由 T05 负责的跨工作区自动化脚本入口。当前没有图片处理、生产数据导入或部署脚本；新增脚本必须明确输入、输出、幂等性与密钥边界。
+跨工作区开发自动化脚本入口。当前没有图片处理、生产数据导入或部署脚本；新增脚本必须明确输入、输出、幂等性与密钥边界。
 
 ## Catalog Import Owner template
 
@@ -16,4 +16,5 @@ Root scripts会自行build contracts：
 - `pnpm check:catalog-import-template`
 
 该脚本不读取production data、external Owner workspace、credentials或runtime
-services。它不是parser/importer，不能被apps、services或production runtime依赖。
+services。它只生成已实现 importer 所使用的安全空白工作簿模板，不能被apps、services或production
+runtime依赖。

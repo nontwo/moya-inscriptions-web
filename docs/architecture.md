@@ -1,221 +1,207 @@
 # Architecture
 
-## Monorepo overview
+## System shape
 
-本项目使用 pnpm
-workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类型检查和测试。根配置由架构总控维护，以保证多个 Agent 使用一致工具链。
+由艺（Yoyi）使用 pnpm
+workspace 与 Turborepo 管理单一 repository。当前公开 Catalog 范围严格为
+`inscription | calligraphy`；长期产品目的不自动授权新的 Contract
+values、subsystems 或 deployment provider。
 
-## Layer responsibilities
+```text
+Browser
+  → Public Web / Formal Root
+  → Public HTTP API
+  → backend Catalog application
+  → CatalogQueryPort
+  → PostgreSQL adapter
 
-- `apps/web` 提供移动优先的公开页面，只负责页面组合和交互。
-- `apps/admin` 提供管理端界面边界，当前仍不含任何管理业务。
-- `services/public-api` 拥有公开 OpenAPI contract 与无副作用的 health contract
-  helper，不启动 listener。
-- `services/backend-runtime` 是T05 HTTP transport/runtime
-  boundary，负责启动Node.js listener、runtime config、router、handler、JSON
-  response与graceful shutdown；当前实现health与Catalog list/detail HTTP
-  boundary。
-- `services/catalog-postgres` 是private PostgreSQL infrastructure
-  adapter，依赖application-owned port、internal projections、contracts与`pg`
-  driver，不定义HTTP或Public contract。
-- `services/backend-production` 是production composition
-  root，只组合runtime、PostgreSQL adapter与显式unconfigured storage
-  resolver，并管理pool lifecycle。
-- `services/catalog-importer` 是private server-only `catalog-import/v1`
-  boundary，负责bounded XLSX / strict CSV parse、shared canonical
-  validation、PostgreSQL-backed dry-run与transactional apply；它不定义Public
-  API，也不读取external research project或SQLite。
-- `services/api` 是backend-only Modular Monolith application
-  boundary，当前拥有Catalog normalized query、internal read projections、
-  `CatalogQueryPort`、`StorageUrlResolver`、transport parser和Public Contract
-  mapper，但没有HTTP或persistence runtime。
-- `packages/contracts` 是共享 HTTP boundary 的 Public DTO、Public Query、Public
-  Error、Public ID 和 runtime
-  schema 唯一来源；它既不是后端内部模型，也不是前端业务层。
-- `packages/ui` 和 `packages/design-tokens` 分别承载共享组件与视觉 token。
-- `packages/search`隔离搜索能力；server-only
-  `packages/image`实现显式mapped和unconfigured storage URL resolver，不拥有HTTP
-  status policy。
-- `database/migrations` 是数据库结构变更的唯一入口。
+PostgreSQL media rows
+  → backend StorageUrlResolver
+  → resolved PublicMedia.src
+  → Public HTTP API
+  → Web presentation
+```
 
-## Data boundaries
+Frontend 不直接读取 PostgreSQL、Query Port、backend implementation、raw
+dataset、object key、bucket 或 provider configuration。
 
-UI 组件不得直接查询 PostgreSQL。Web、Admin、SSR 和 Server
-Component 必须通过 HTTP
-API 获取业务数据，不得直接导入 Reader、Repository、backend
-application 或 service runtime implementation。Frontend 可以使用 `import type`
-从 `packages/contracts` 获取 Public
-DTO/API 类型。业务模块不得本地重复定义公共契约。
+## Workspace responsibilities
 
-Object key、bucket 和 provider 细节只存在于后端。backend
-`StorageUrlResolver`批量生成 public/signed runtime URL，并通过 `PublicMedia.src`
-交给 Frontend；Frontend 不得自行拼接 CDN URL。`PUBLIC_CDN_BASE_URL`
-是 legacy/deprecated frontend
-convention，不是未来 Resolver 已批准的配置名。不得硬编码生产域名、CDN 地址、存储桶或密钥。
+- `apps/web`：Public Web composition、interaction 与 server-side Public HTTP
+  client。
+- `apps/admin`：独立最小 Admin boundary，当前没有管理业务。
+- `services/backend-runtime`：Node.js listener、runtime
+  config、router、handlers、JSON response、readiness injection 与 graceful
+  shutdown。
+- `services/backend-production`：PostgreSQL adapter、runtime 与显式 unconfigured
+  storage resolver 的 production composition root。
+- `services/api`：backend-only Catalog application boundary，拥有 normalized
+  query、internal projections、`CatalogQueryPort`、`StorageUrlResolver`、read
+  service 与 Public mapper。
+- `services/catalog-postgres`：private PostgreSQL adapter、migration
+  runner 与 required ledger/readiness validation。
+- `services/catalog-importer`：private controlled importer；对 strict
+  CSV 与 bounded XLSX 执行 canonical
+  convergence、diagnostics、dry-run 与 hash-bound transactional apply。
+- `services/public-api`：Public OpenAPI contract 与 deterministic
+  generator；不启动 HTTP listener。
+- `packages/contracts`：Public DTO/query/error/ID 与 runtime
+  schema 的唯一来源，并隔离 server-only Catalog Import contract。
+- `packages/image`：backend-only `StorageUrlResolver`
+  implementations；不拥有 provider credentials、upload 或 transport status
+  policy。
+- `packages/ui`、`packages/design-tokens`：共享 semantic
+  components、assets 与 tokens。
+- `packages/search`：尚未实现业务搜索的隔离 boundary。
+- `database/migrations`：database schema evolution 的唯一入口。
 
-后端采用 Modular Monolith。T04.2完成canonical migration后的读边界为：
+CLEAN-03 已删除退休的空 data-access workspace；它不再是 active
+dependency 或 current architecture
+recommendation。旧 ADR/audit 只保留当时的历史事实。
+
+## Formal Web composition
+
+`apps/web/app/route.ts` 是当前 Formal Root composition root。`GET /` 在
+`connection()` 后并行执行：
+
+```text
+load all Catalog
+load kind=inscription
+load kind=calligraphy
+  → validated HomeCatalogState values
+  → readT02Document(..., "formal-root")
+  → current T02 document with runtime Catalog cards
+```
+
+`apps/web/lib/public-api/` 是 Web business reads 的唯一 HTTP boundary。它读取
+`MOYA_PUBLIC_API_BASE_URL`，验证 Public query/response，并把 transport
+outcomes 映射为 presentation state。`app/route.ts` 不导入 backend
+service 或 PostgreSQL code。
+
+`readT02Document` 复用 checked-in T02 document 作为当前正式 UI/interaction
+authority。Development Formal Root 可保留语义明确的 QA/Prototype
+coverage；Production composition 先移除 Prototype cards、fixture
+scripts 与 Prototype-only detail image，再追加真实 runtime records。
+
+`/docs/prototypes/mobile-preview/` 是直接 Prototype
+route：它读取相同 document 但不执行 Formal Root runtime composition。它的 local
+state、fixtures、P5 snapshot 与 demo media 不属于 Production architecture。
+
+React T02P 已建立 browser regression、typed Catalog scenarios、platform
+observation、 `PrimaryShell`、navigation/pager 与 Home/Browse
+presentation。`/dev/t02p` 仅在 Development 提供 acceptance
+coverage，Production 返回 404。React Production cutover、T02 static
+bridge 删除与 direct Prototype route 删除都不属于当前架构变更。
+
+## Public HTTP and application boundary
+
+当前 Public endpoints：
+
+- `GET /health`；
+- `GET /v1/catalog`；
+- `GET /v1/catalog/{catalogId}`。
+
+全部 endpoint 执行 strict query policy。Catalog list 的 optional `kind` 只允许
+`inscription | calligraphy`，并支持分页。Catalog detail 暴露已批准的 canonical
+chronology/location/facts/description/source projection 与 ordered Public
+Media；缺失 optional values 不得由 transport 或 UI 虚构。
 
 ```text
 Public transport input
-→ backend Catalog transport parser
-→ normalized CatalogListQuery
+→ backend transport parser
+→ normalized application query
 → CatalogReadService
 → CatalogQueryPort
 → internal read projection
-→ explicit Public Contract mapper
+→ StorageUrlResolver (when media exists)
+→ explicit Public mapper
 → strict Public DTO
 ```
 
-T05.1以小型deterministic development/test adapter实现现有Query
-Port；它不是production persistence或正式数据集。T05.2的private PostgreSQL
-adapter实现同一port，并由独立production root显式注入，不修改T04
-contract。`CatalogListTransportQuery`属于Public Contract；normalized
-`CatalogListQuery`只属于application layer。Transport parser位于独立backend
-transport boundary，application不得反向依赖transport。T05.3的
-`CatalogReadService`负责port orchestration与Public
-mapping，handler不得直接操作projection或SQL。
+Public response 不能泄漏 SQL rows、driver errors、citation evidence、private
+source、object key、storage configuration 或 credentials。
 
-公共契约采用以下单向事实链：
+## Media boundary
 
-```text
-Zod 4 runtime schema
-→ inferred TypeScript type
-→ JSON Schema Draft 2020-12
-→ OpenAPI 3.1.1 components
-```
+Backend `StorageUrlResolver` 批量把 logical object keys 解析为 public/signed
+runtime URLs。Public API 只输出 `PublicMedia.src`；Frontend 与 `@moya/ui`
+直接消费这个已解析值，不得从 object key 推导、拼接或猜测 provider/CDN URL。
 
-contracts 根入口与 `./types` 只提供类型；runtime schema 和 JSON
-Schema 必须从显式子路径导入。Web、Admin、共享 UI 和 Client
-Component 不得直接导入 Reader、runtime schema、数据库或数据文件；Client
-Component 只能 type-import 公开 DTO/API 类型。
+`PUBLIC_CDN_BASE_URL` 只作为 negative architecture guard 和历史 candidate
+evidence 保留，不是 active configuration。Development fixture 使用 explicit
+mapped resolver；Production composition 在未选择 provider 时使用 unconfigured
+resolver 并 fail closed，不会伪造 URL。没有 Media 的 Catalog 仍可正常读取。
 
-当前公开路由边界只有`GET /health`、`GET /v1/catalog`和
-`GET /v1/catalog/{catalogId}`。公共响应使用`CatalogSummary`、`CatalogDetail`
-和`CatalogPage`，不包含内部生命周期、审核、删除、图片、关系或下级地区状态。搜索、分类和图片由T08、T07和T05分别引入。
+## PostgreSQL, migrations and importer
 
-T05.1 runtime已把三条冻结route接入Router。未知路径返回JSON
-404；已知路径的不允许方法返回JSON 405与`Allow: GET`。Catalog Public
-response必须经过`CatalogReadService`和application mapper；fixture private
-metadata不得进入HTTP。PostgreSQL row同样先由adapter-private
-mapper投影为既有internal read projection，再经过application Public mapper；SQL
-row、citation evidence、driver error和连接信息不得越过HTTP privacy boundary。
-
-Production migration与startup是两个独立阶段：
+PostgreSQL 是 Production runtime canonical source of truth。Production
+startup 与 migration 严格分离：
 
 ```text
 explicit migration command
-→ verify success
-→ production startup read-only ledger validation
-→ HTTP listener
+→ verify migration success
+→ production startup
+→ read-only required-ledger validation
+→ listener starts
 ```
 
-普通backend startup绝不执行DDL或创建migration
-ledger。当前兼容与测试基线固定为PostgreSQL 18.4；minor
-upgrade必须以显式infrastructure maintenance
-change同步更新Compose、CI和兼容文档。未知的更新ledger
-row可以存在，但不证明旧binary可安全rollback；未来变更必须遵循经审核的backward-compatible
-expand/contract策略。
+普通 startup 不执行 DDL。当前 Compose/CI compatibility baseline 为 PostgreSQL
+18.4；minor upgrade 与 schema evolution 都需要独立批准和相应 validation。
 
-Production中的`GET /health`是DB-aware readiness：数据库不可用返回既有
-`SERVICE_UNAVAILABLE` 503。它未经新的deployment decision不得同时用作process
-liveness probe。Health是独立unversioned operational endpoint，不经过Catalog
-service、DTO或Port。
-
-所有当前HTTP endpoint执行strict query policy：未声明、重复或非法query参数返回
-`INVALID_QUERY`。Catalog list只增加optional `kind` filter，并由transport
-schema、application
-query和adapter共同限制为`inscription | calligraphy`；过滤发生在fixture或PostgreSQL
-adapter，不发生在Frontend、Router或handler。
-
-地区规范化、行政区证据和审核流程不属于 T01/T04.0-R。未来如需这些能力，必须以新的独立任务建立 internal
-contract、数据源和审核流程；不得恢复旧 D01 pilot。
-
-Raw source 默认不得被任何 runtime
-workspace 读取。只有经架构 allowlist 明确批准的 backend importer
-package，并同时声明
-`moyaArchitecture.rawSourceAccess = "controlled-importer"`，才可获得例外；Frontend
-workspace 永久不得授权。当前 allowlist 精确且仅包含
-`@moya/catalog-importer`，能力范围只覆盖caller显式提供的 `catalog-import/v1` CSV
-bundle与`catalog-import-xlsx/v1` workbook。
-
-## Long-term data governance
-
-PostgreSQL 是 production runtime 的 canonical source of
-truth。XLSX 是 Owner/Editor working format，CSV/canonical rows 是 canonical bulk
-interchange/import boundary；完整 production
-workbook 默认不进入代码 Git。Frontend、HTTP
-runtime 与 application 不得读取 XLSX、CSV、fixture 或 raw source 作为 production
-database。
-
-已批准写入路径固定为：
+已实现写入路径是 controlled importer：
 
 ```text
-Owner XLSX / CSV
-→ canonical rows
+Owner XLSX or strict CSV
+→ bounded parsing and canonical rows
 → shared validation
-→ duplicate candidates
-→ diff / dry-run
-→ Owner review and approval
-→ PostgreSQL
-
-Admin CMS
-→ Admin API
-→ same core domain validation
-→ PostgreSQL
+→ duplicate/diff dry-run
+→ hash-bound authorization
+→ transactional PostgreSQL apply
 ```
 
-`CatalogId`、`SourceId`和未来`SiteId`保持独立；多个SourceRecord可以对应同一Catalog
-Entity，但不得自动destructive merge。Raw provenance、evidence与publication
-decision必须可追溯，Owner publication authority不等同于absolute factual truth。
+Importer 不自动读取 repository Prototype/P5 snapshot，也不构成 Public API、Admin
+CMS 或 publication workflow。完整 production workbook 默认不进入 code Git。
 
-Official Catalog与UGC是硬边界。User Submission必须经moderation与明确publication
-decision后才能关联或创建Catalog Entity。详细治理决定见
-[`ADR 0006`](adr/0006-long-term-data-governance-and-runtime-source.md)。
+## Development and Production composition
 
-## Interface principle
+Development 可以同时包含真实 runtime records 与独立的 T02 QA
+records，以覆盖媒体比例、多图、缺失内容、Detail、Gallery、Viewer 与 responsive
+behavior。二者必须保持 identity 与 data
+origin 可区分；真实 CatalogId 不得获取 QA title、facts 或 unrelated demo media。
 
-所有公开界面从窄屏和触控场景开始设计，再渐进增强到更宽视口。公共组件和设计 token 由对应所有者统一维护。
+Production 只消费 PostgreSQL → Public API 的真实 runtime data，排除 Prototype
+fixtures、QA virtual media、`内容待接入` 与 `资料待接入`。缺失 optional
+content 使用 truthful omission 或 missing-media presentation。
 
-## Current implementation boundary
+Repository 中 28 条 P5 snapshot 是 checked-in、non-authoritative、Prototype-only
+evidence。它不自动进入 PostgreSQL，不是 Production runtime
+source，也不改变 canonical data path。
 
-工程、设计、Catalog read runtime与受控CSV
-import/apply基础已完成；正式产品业务仍未完成：
+## Deployment authority
 
-- 旧 T01 数据方案已经撤回；应用仓库不保存真实数据集或审核候选。
-- T01/T04.0-R的来源无关过渡契约已由T04.2 canonical migration取代。
-- T04.1 Phase 1 增加了canonical Catalog contracts、internal record/read
-  projections、application-owned `CatalogQueryPort`、transport
-  parser、显式mapper和architecture guards；没有迁移route或实现runtime adapter。
-- T04.2已删除Archive compatibility
-  contracts和Reader，并把公开OpenAPI迁移到canonical Catalog
-  routes；仍未实现runtime adapter。
-- T02 已建立设计 token、通用 UI、正式视觉资产和组件目录；手机交互探索被隔离为非生产原型。
-- T03 只提供 CloudBase 候选架构、示例变量和人工检查表，不创建云资源。
-- 三路由只读OpenAPI当前由`/health`与Catalog
-  list/detail组成；T05.1已接通真实Router、handler、application
-  boundary与确定性fixture adapter。
-- T05.1 fixture不是production
-  persistence或1658条正式数据导入；T05.2建立PostgreSQL read
-  schema、adapter、migration/readiness lifecycle与production composition。
-- 后续批准的Catalog import persistence pipeline增加facts/states、description
-  state、aliasType、internal SourceId/provenance和durable operation
-  audit，并实现strict CSV parse、dry-run、hash-bound
-  authorization及transactional/idempotent apply。
-- Supplied `ownerNote`当前在所有apply路径共享的pre-write decision处fail
-  closed；alias storage已经支持，但undefined collection replace/merge/delete
-  update semantics仍fail closed。T05.4-B已实现bounded XLSX parser、CSV/XLSX
-  convergence、structured diagnostics与唯一controlled-importer authorization。
-- MEDIA-01已建立Catalog Media persistence、representative/gallery read
-  projection与backend-owned runtime URL resolution boundary；production
-  storage/CDN和真实Media ingestion仍不在当前实现内。
-- T06-A已建立Web server-side Public HTTP data boundary；T06-B.1已实现formal
-  request-time Home orchestration与可替换semantic presentation
-  seam。T06-B.2最终视觉composition以及T07–T09仍是后续工作。
-- Importer Admin workflow与正式/production Catalog数据导入仍不在当前实现内。
+当前没有选择或 provision production provider。Active deployment
+documents 只保留 provider-neutral PostgreSQL readiness、migration/startup
+separation、release safety 与 backup/rollback principles。历史 CloudBase T03
+candidate material 位于
+`docs/archive/deployment/cloudbase-t03-candidate/`，不可执行，也不是 Web
+runtime、API path、storage/CDN、environment variables 或 Production
+deployment 的当前权威。
 
-正式页面必须通过 HTTP API 消费数据；UI 不得直接读取Query Port、service
-implementation、数据文件或 PostgreSQL。Frontend 可以 type-import
-`packages/contracts` 的 Public DTO和transport type，但不得依赖
-`@moya/public-api`、`@moya/backend-runtime`、`@moya/api`或任何 `services/**`
-runtime。原型中的本地状态、Mock 内容和浏览器 history 不属于生产架构。已接受的边界记录在
-[`docs/adr/`](adr/README.md)。
+Production domains、credentials、API keys、CDN configuration、purchases 与 real
+cloud operations 都需要独立 Owner authority；不得硬编码或从 archived
+candidate 恢复。
+
+## Stable architecture guardrails
+
+- Public/cross-workspace contracts 只在 `packages/contracts` 定义。
+- UI/Frontend 不直接查询 PostgreSQL，也不导入 backend runtime/application。
+- Database schema change 必须使用 migration。
+- Dependency upgrade 必须显式批准。
+- Production secret、domain、credential 与 provider value 不进入 Git。
+- T02 保持 current UI/interaction authority，直到独立 T02 Productionization
+  task 明确批准 material replacement/cutover。
+- Prototype/QA repository presence 不授权 Production consumption。
+
+Accepted 与 superseded architecture decisions 见
+[ADR index](adr/README.md)；动态 milestone 状态只见
+[project status](project-status.md)。

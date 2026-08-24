@@ -57,7 +57,7 @@ export const openApiDocument: JsonObject = {
   openapi: "3.1.1",
   jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
   info: {
-    title: "摩崖碑刻数字平台 Public API",
+    title: "由艺（Yoyi）Public API",
     version: "1.0.0",
     description:
       "Inscription-first, read-only access to the public Catalog. Operational health is unversioned; public Catalog contracts use /v1.",

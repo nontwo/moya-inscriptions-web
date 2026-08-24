@@ -2,14 +2,17 @@
   "name": "moya-inscriptions-web",
   "version": "0.0.0",
   "private": true,
-  "description": "Engineering foundation for the Moya inscriptions digital platform.",
+  "description": "Engineering foundation for 由艺 (Yoyi), the inscription and calligraphy Catalog.",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24 <25",
     "pnpm": ">=11.9.0 <12"
   },
   "scripts": {
-    "dev": "turbo run dev --filter=web --filter=admin",
+    "dev": "pnpm dev:web",
+    "dev:web": "pnpm --filter web dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "dev:all": "turbo run dev --filter=web --filter=admin",
     "build": "turbo run build",
     "db:migrate": "pnpm --filter @moya/catalog-postgres migrate",
     "lint": "turbo run lint",

@@ -1,8 +1,7 @@
-# 交互原型（手机 / 平板 / PC 自动识别）
+# 由艺（Yoyi）交互原型（手机 / 平板 / PC 自动识别）
 
 > **非生产原型（prototype shell only）：**
-> 本目录用于验证信息架构、导航、交互手感与设备响应式呈现；不是正式 Web /
-> T06–T08 验收交付，也不连接 Repository、数据库、Reader/API 或 SearchDocument。
+> 本目录用于验证信息架构、导航、交互手感与设备响应式呈现；不是正式 Web 交付，也不连接 Repository、数据库、Reader/API 或 SearchDocument。
 
 同一 URL 复用一套 DOM 和交互状态。`device-platform.js`
 在样式加载前结合 UA、视口宽度与方向设置：

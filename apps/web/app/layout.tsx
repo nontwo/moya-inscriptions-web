@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "摩崖碑刻数字平台",
-  description: "中国摩崖与石刻资料的移动优先数字档案。",
+  title: "由艺（Yoyi）",
+  description:
+    "来源无关的中国文化艺术 Catalog，当前公开范围为碑刻（inscription）与书帖（calligraphy）。",
 };
 
 export default function RootLayout({

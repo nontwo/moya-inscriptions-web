@@ -52,17 +52,22 @@ dynamic status reporting or the authority chain.
 - [`governance/history/`](governance/history/) contains completed governance
   audits and superseded evidence.
 - [`audits/`](audits/) contains retained technical audit evidence.
+- [`history/`](history/) contains detailed milestone narration removed from the
+  concise dynamic status.
 - Superseded or partially superseded ADRs remain in [`adr/`](adr/README.md) as
   historical evidence. Their superseded rules do not override current accepted
   architecture.
 
 Historical audits and superseded evidence do not override current rules.
 
-## 4. Candidate or archived designs
+## 4. Prototype and archived designs
 
-- [`deployment/`](deployment/) records candidate deployment architecture and
-  checklists. Candidate deployment documents do not constitute an approved
-  deployment or authorize real infrastructure operations.
+- [`deployment/`](deployment/) contains only active provider-neutral readiness,
+  release-safety, migration and rollback guidance. It does not select a
+  production provider or authorize real infrastructure operations.
+- [`archive/deployment/`](archive/deployment/) contains historical provider
+  candidates, including T03 CloudBase evidence. Archived material is
+  non-executable and non-authoritative for current configuration or deployment.
 - [`prototypes/`](prototypes/) contains non-production prototypes and reference
   material. Repository presence does not authorize Production consumption or a
   replacement of the canonical T02 presentation.

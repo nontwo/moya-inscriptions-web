@@ -1,14 +1,33 @@
-# 部署文档
+# Deployment readiness
 
-本目录记录摩崖碑刻数字平台的中国大陆候选部署方案。当前阶段只建立边界、示例配置和人工检查流程，不开通、购买或正式发布任何云资源。
+本目录只记录由艺（Yoyi）当前仍有效的 provider-neutral deployment
+safety。Repository 尚未选择、购买、provision 或部署任何 production
+provider/resource；这些文档不能作为真实外部操作授权。
 
-## 文档索引
+## Active documents
 
-- [CloudBase 中国大陆候选架构](cloudbase-mainland-architecture.md)
-- [部署检查清单](deployment-checklist.md)
-- [回滚方案](rollback-plan.md)
-- [候选基础设施配置](../../infra/cloudbase/README.md)
+- [PostgreSQL 18 migration and readiness baseline](postgres-18-readiness-and-migrations.md)
+- [Provider-neutral deployment checklist](deployment-checklist.md)
+- [Provider-neutral rollback principles](rollback-plan.md)
 
-## 决策状态
+Active guidance 保留以下已实现或稳定边界：
 
-CloudBase 是候选平台而非已批准的生产平台。正式采用前仍需完成账号主体、预算、区域、备案、等保/数据合规、服务配额、数据库形态和应用运行模式评审。任何真实资源操作都应另行审批，并由有权限的人员在控制台或受审计的发布流水线中执行。
+- migration command 与 production startup 分离；
+- required migration ledger 在 listener 启动前只读验证；
+- Web、Backend Runtime/API 与 Admin 的进程和端口分离；
+- release artifact、configuration revision 与 Git SHA 可追溯；
+- backup/restore、forward-compatible migration 与 rollback safety principles；
+- Frontend 只消费 resolved `PublicMedia.src`，不接收 object key/provider
+  config。
+
+## Provider status
+
+没有 current provider decision，也没有 active provider-specific IaC、environment
+template、Web hosting target、object storage/CDN
+configuration、domain 或 credential。任何 provider selection、production
+deployment、purchase、credential 或 real resource operation 都需要独立 Owner
+authority。
+
+历史 T03 CloudBase candidate、candidate checklist、rollback text 与
+`infra/cloudbase` examples 已移动到
+[CloudBase T03 candidate archive](../archive/deployment/cloudbase-t03-candidate/README.md)。该 archive 非执行、非当前权威，也不授权创建资源。

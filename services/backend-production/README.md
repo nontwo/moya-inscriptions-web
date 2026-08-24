@@ -1,8 +1,11 @@
 # `@moya/backend-production`
 
 T05.2 production composition root。它把现有HTTP runtime、application-owned
-`CatalogQueryPort`和private PostgreSQL adapter组合起来，不拥有Public
-contract或persistence implementation。
+`CatalogQueryPort`、private PostgreSQL adapter与显式unconfigured
+`StorageUrlResolver`组合起来，不拥有Public contract、persistence
+implementation或storage provider
+configuration。没有代表图的Catalog可以正常读取；需要Media
+URL的读取在provider未配置时保持fail closed，不伪造URL。
 
 Migration必须在启动前显式执行；普通backend启动只读验证ledger：
 

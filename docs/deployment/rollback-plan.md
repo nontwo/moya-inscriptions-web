@@ -1,88 +1,88 @@
-# 回滚方案
+# Provider-neutral rollback principles
 
-## 原则
+本文件不包含 provider
+console、CLI 或 production 操作授权。它定义 provider-neutral safety
+boundary；真实 rollback runbook 必须在 provider 与 production
+topology 获批后由有权限的负责人验证。
 
-- 回滚目标是恢复“上一个已知良好版本”，不是临时重新构建一个近似版本。
-- Web 产物、API 镜像和配置修订必须可独立定位，并与完整 Git SHA 关联。
-- 应用回滚不得删除对象存储数据；数据库恢复是高风险独立操作，需要单独审批。
-- 优先通过流量切换和版本指针回退恢复服务，保留故障版本供取证。
-- 下列时间仅是建议的演练目标，不是供应商 SLA：5 分钟内停止扩流，15 分钟内完成应用版本回退，30 分钟内完成核心路径复核。
+## Principles
 
-## 回滚前所需记录
+- Rollback 目标是 previous known-good immutable
+  release，不是在 incident 中重新构建。
+- Web artifact、backend artifact、configuration revision 与完整 Git
+  SHA 必须可独立定位。
+- Application rollback 不删除 database rows 或 media objects。
+- Database restore/downgrade 是高风险独立操作，需要明确 data
+  authority 与已验证 backup。
+- 优先停止扩大影响、回退 traffic/version pointer，并保留 failed
+  artifact 与 evidence。
 
-每次发布前保存：
+## Required release record
 
-- 当前与目标 Git SHA；
-- Web 产物摘要或静态托管发布快照；
-- API 镜像不可变 digest 和 CloudBase 服务版本；
-- 环境变量/密钥版本号（不记录明文值）；
-- HTTP 路由、域名、流量比例和 CDN 配置修订；
-- 数据库迁移版本与发布前备份标识；
-- 发布前核心指标基线和上一个已知良好版本。
+每次 production release 前记录：
 
-缺少这些记录时不得继续生产发布。
+- current/target/previous known-good Git SHA 与 artifact digests；
+- configuration/secret revision identifiers（不记录明文值）；
+- Web/API route and traffic revision；
+- migration ledger state 与 backup identifier；
+- readiness、error rate、latency 与 database connection baseline；
+- rollback authority、communication owner 与 observation window。
 
-## 决策流程
+缺少这些记录时不得继续 production release。
 
-1. 告警或验证失败后，发布负责人宣布停止扩流并记录时间线。
-2. 判断影响面：仅 Web、仅 API、配置/路由、资源 CDN，或涉及数据库/安全事件。
-3. 有安全或数据完整性风险时立即隔离写流量，并通知安全/数据负责人。
-4. 选择下述最小影响回滚路径；不要同时进行多个未经验证的修复。
-5. 恢复后执行核心验证并观察指标；未恢复则升级为故障处置，不反复盲目发布。
+## Decision flow
 
-## Web 回滚
+1. 发现 mandatory validation failure 后停止扩大 traffic，并记录时间线。
+2. 分类影响面：Web、Backend/API、configuration/routing、Media URL
+   resolution、database 或 security/data-integrity incident。
+3. 安全或数据完整性风险优先隔离写流量并升级到相应 authority。
+4. 选择最小影响 rollback path，不同时执行多个未经验证的修复。
+5. 恢复后运行 core checks 并观察；未恢复则进入 incident
+   response，不反复盲目发布。
 
-### 静态网站托管
+## Application and configuration rollback
 
-1. 将入口或发布版本指向上一份已验证的不可变 Web 产物/快照。
-2. 保留新版本文件供排查，不覆盖或删除旧版本。
-3. 仅当可变路径已经被覆盖时刷新对应 CDN 路径；使用哈希文件名时不做全量刷新。
-4. 验证首页、客户端路由、404、`/api/*` 调用和关键图片。
+- 将 Web/backend traffic 或 version pointer 回到 previous known-good immutable
+  digest。
+- 恢复与该 release 匹配的 configuration revision；禁止复制其他 environment
+  credential。
+- 确认 Web、Backend/API 与 PostgreSQL 仍指向同一获批 environment。
+- 验证 Formal Root、health/readiness、Catalog list/detail、error paths 与 Media
+  URL resolution。
+- 不从 historical provider candidate 恢复 environment names、static hosting
+  assumption、API path、CDN base URL 或 object storage configuration。
 
-### 云托管容器
+## Media and cache safety
 
-1. 将流量切回上一已知良好的 Web 服务版本/镜像 digest。
-2. 恢复相匹配的配置修订，确认 API 与资源域名仍指向同一环境。
-3. 验证实例健康、首屏、SSR 路由、静态资源和移动端关键路径。
+- UI 始终使用 Public response 已解析的
+  `PublicMedia.src`，rollback 不引入 frontend object-key composition。
+- Application rollback 不删除 media objects；immutable/versioned
+  objects 保留供已知良好 release 使用。
+- Cache invalidation 仅针对经确认的 affected
+  paths；不以全量 purge 替代 root-cause classification。
+- 发现 unauthorized public access 时先收紧 access，再执行 precise
+  invalidation 与 incident investigation。
 
-## API 回滚
+## Database safety
 
-1. 停止向故障版本扩大流量，将流量切回上一 API 镜像 digest。
-2. 恢复与旧版本兼容的运行时配置修订；不得把其他环境凭据复制进生产。
-3. 确认健康检查、只读接口、鉴权、对象存储访问和数据库连接恢复。
-4. 若新旧 API 与数据库 Schema 不兼容，按已评审的迁移兼容窗口处理；不要直接执行未演练的向下迁移。
+- 优先使用 backward-compatible expand/contract migration，使 previous
+  application release 仍可工作。
+- 不执行未演练的 down migration，不把普通 application rollback 等同于 database
+  restore。
+- Destructive migration 必须有 verified backup、restore
+  steps、RPO/RTO 与 data-owner approval。
+- Point-in-time restore 前先隔离写入并保全 audit evidence；恢复后验证 migration
+  ledger 与 application compatibility。
 
-## 配置、路由与域名回滚
+## Closure
 
-1. 恢复上一配置修订和 HTTP 网关路由。
-2. 对照记录核对环境 ID、域名、CNAME、证书、`/api/*` 优先级和 CORS allowlist。
-3. DNS 回滚需考虑 TTL；在传播完成前保留新旧源站健康，避免二次中断。
-4. 证书故障优先恢复上一有效证书绑定，不关闭 HTTPS 作为绕过方案。
-
-## 对象存储与 CDN 回滚
-
-1. 应用回滚只恢复 backend
-   StorageUrlResolver 配置/版本清单的上一映射，不删除对象；legacy
-   `PUBLIC_CDN_BASE_URL` 不得重新暴露给 Frontend。
-2. 使用不可变 object key 时，旧页面自然引用旧对象，无需刷新全站缓存。
-3. 若错误覆盖了可变 key，先恢复正确对象版本，再精准刷新该路径并验证各节点。
-4. 发现越权公开时，先收紧存储权限和 CDN 访问，再进行缓存失效与事件调查。
-
-## 数据库情况
-
-数据库回滚不属于普通应用回滚：
-
-- 优先采用向后兼容的扩展式迁移，使上一 API 版本仍可工作。
-- 破坏性迁移必须有经验证的备份、恢复步骤、RPO/RTO 和数据负责人批准。
-- 需要时间点恢复时，先隔离写入并保全审计证据，再由数据库负责人执行。
-- 不在本仓库的部署骨架中提供自动降级或恢复命令。
-
-## 回滚后验证与收尾
-
-- [ ] Web、API、对象存储/CDN 和数据库连接均指向同一生产环境。
-- [ ] 核心页面、API、鉴权失败路径、图片加载和移动端体验恢复。
-- [ ] 错误率、延迟、实例、数据库连接和 CDN 回源恢复到基线。
-- [ ] 日志确认没有敏感信息泄漏、跨环境访问或持续数据写入异常。
-- [ ] 记录实际恢复时间、流量状态、版本摘要和仍受影响的用户范围。
-- [ ] 冻结故障版本，保留日志与产物，创建复盘和修复任务。
-- [ ] 修复版重新走完整测试与发布清单，不直接在生产原地修改。
+- [ ] Web、Backend/API、database 与 resolved Media URLs 恢复到 known-good
+      state。
+- [ ] Readiness、Catalog reads、error rate、latency 与 database
+      connections 恢复基线。
+- [ ] Logs 证明无 credential leak、cross-environment access 或持续 data
+      corruption。
+- [ ] 实际恢复时间、artifact/config revision、traffic state 与 residual
+      impact 已记录。
+- [ ] Failed release 与 evidence 已保留，follow-up fix 重新通过完整 release
+      checklist。

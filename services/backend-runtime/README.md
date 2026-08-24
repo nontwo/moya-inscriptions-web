@@ -29,7 +29,10 @@ development 和 test 默认使用 `HOST=127.0.0.1`、`PORT=3001`；环境变量�
 显式注入的`catalogQueryPort`在所有环境中优先。未注入时只有development/test可使用fixture；production
 composition会在listener创建前失败。T05.2 production root显式注入PostgreSQL
 adapter和DB-aware readiness；runtime本身不依赖driver、migration或production
-composition。对象存储、媒体、搜索、认证或Frontend集成仍未实现。
+composition。Development fixture通过显式mapped `StorageUrlResolver`生成
+`PublicMedia.src`；production composition保持unconfigured/fail-closed
+resolver，尚未选择storage provider或接入真实Media
+ingestion。搜索与认证仍未实现。
 
 缺省development/test
 health不依赖外部资源。production注入的`/health`语义是readiness；DB不可用时返回既有`SERVICE_UNAVAILABLE`
