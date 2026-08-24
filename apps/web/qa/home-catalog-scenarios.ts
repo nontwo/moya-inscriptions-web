@@ -15,6 +15,8 @@ const visualBrokenMediaPath = visualAssetPath(
   "qa-visual-intentionally-missing.svg",
 );
 
+const smallPopulatedMediaPath = visualAssetPath("rubbing-fragment.svg");
+
 type VisualMediaDefinition = {
   readonly fileName: string;
   readonly height: number;
@@ -325,6 +327,30 @@ const page = (
         ? 0
         : Math.ceil(matchingItems.length / pageSize),
   };
+};
+
+export const createSmallPopulatedHomeCatalogSource = (
+  mediaOrigin: string,
+): HomeCatalogSource => {
+  const origin = normalizeVisualMediaOrigin(mediaOrigin);
+  const items = populatedItems.map((item): CatalogSummary => {
+    if (!("representativeMedia" in item)) return item;
+
+    return {
+      ...item,
+      representativeMedia: {
+        ...item.representativeMedia,
+        height: 480,
+        src: new URL(smallPopulatedMediaPath, origin).href,
+        width: 360,
+      },
+    };
+  });
+
+  return async (query) => ({
+    page: page(items, query),
+    state: "success",
+  });
 };
 
 export const createVisualHomeCatalogSource = (

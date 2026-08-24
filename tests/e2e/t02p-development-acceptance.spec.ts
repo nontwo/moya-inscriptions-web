@@ -369,11 +369,38 @@ test("Catalog scenario selector maps every state without changing destination", 
   );
 
   const { navigation, surface } = await openDevelopmentSurface(page);
-  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
-  await expectActiveDestination(surface, "calligraphy");
+  const smallPopulatedImageRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "image") {
+      smallPopulatedImageRequests.push(request.url());
+    }
+  });
   const selector = catalogScenarioSelector(surface);
 
   await selector.selectOption("small-populated");
+  const smallPopulatedImage = activeCatalogPresentation(surface).locator(
+    '[data-catalog-media-state="valid"] img',
+  );
+  await expect(smallPopulatedImage).toHaveCount(1);
+  await expect
+    .poll(() =>
+      smallPopulatedImage.evaluate(
+        (image) =>
+          (image as HTMLImageElement).complete &&
+          (image as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+  expect(smallPopulatedImageRequests.length).toBeGreaterThan(0);
+  expect(
+    smallPopulatedImageRequests.every(
+      (requestUrl) => new URL(requestUrl).origin === new URL(page.url()).origin,
+    ),
+  ).toBe(true);
+
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expectActiveDestination(surface, "calligraphy");
+
   await expect(surface).toHaveAttribute(
     "data-catalog-scenario",
     "small-populated",

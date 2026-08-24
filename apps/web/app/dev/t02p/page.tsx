@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { T02pDevelopmentAcceptanceSurface } from "../../../features/shell/t02p-development-acceptance-surface";
 import { loadHomeCatalogState } from "../../../features/home/load-home-catalog";
 import {
+  createSmallPopulatedHomeCatalogSource,
   createVisualHomeCatalogSource,
   homeCatalogScenarioSources,
 } from "../../../qa/home-catalog-scenarios";
@@ -68,11 +69,13 @@ export default async function T02pDevelopmentPage() {
   }
 
   const mediaOrigin = await readDevelopmentRequestOrigin();
+  const smallPopulatedSource =
+    createSmallPopulatedHomeCatalogSource(mediaOrigin);
   const visualSource = createVisualHomeCatalogSource(mediaOrigin);
   const [visual, smallPopulated, empty, unavailable, unexpectedError] =
     await Promise.all([
       loadDestinationStates(visualSource),
-      loadDestinationStates(homeCatalogScenarioSources.populated),
+      loadDestinationStates(smallPopulatedSource),
       loadDestinationStates(homeCatalogScenarioSources.empty),
       loadDestinationStates(homeCatalogScenarioSources.unavailable),
       loadDestinationStates(homeCatalogScenarioSources.unexpectedError),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { loadHomeCatalogState } from "../features/home/load-home-catalog";
 import {
+  createSmallPopulatedHomeCatalogSource,
   createVisualCatalogItems,
   createVisualHomeCatalogSource,
   homeCatalogScenarioSources,
@@ -52,6 +53,7 @@ describe("Home Catalog QA scenarios", () => {
     expect(noMediaItems).toHaveLength(6);
     expect(brokenMediaItems).toHaveLength(1);
     expect(items.every(({ id }) => id.startsWith("qa-visual-"))).toBe(true);
+    expect(new Set(items.map(({ id }) => id)).size).toBe(items.length);
     expect(
       items.every(
         ({ representativeMedia }) =>
@@ -165,6 +167,25 @@ describe("Home Catalog QA scenarios", () => {
     expect(
       state.page.items.every(({ id }) => id.startsWith("qa-scenario-")),
     ).toBe(true);
+  });
+
+  it("uses same-origin checked-in media for Development Small populated", async () => {
+    const state = await loadHomeCatalogState(
+      undefined,
+      createSmallPopulatedHomeCatalogSource(visualOrigin),
+    );
+
+    expect(state.state).toBe("populated");
+    if (state.state !== "populated") return;
+
+    expect(state.page.items).toHaveLength(2);
+    const [withMedia, withoutMedia] = state.page.items;
+    expect(withMedia?.representativeMedia).toMatchObject({
+      height: 480,
+      src: `${visualOrigin}/docs/design-system/assets/demo/rubbing-fragment.svg`,
+      width: 360,
+    });
+    expect(withoutMedia).not.toHaveProperty("representativeMedia");
   });
 
   it("represents representative-media and no-media records truthfully", async () => {
