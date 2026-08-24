@@ -5,12 +5,12 @@ import type { Locator, Page } from "@playwright/test";
 const destinationAcceptance = {
   calligraphy: {
     label: "书帖",
-    panel: "Calligraphy acceptance panel",
+    presentation: "calligraphy",
   },
-  home: { label: "首页", panel: "Home acceptance panel" },
+  home: { label: "首页", presentation: "home" },
   inscriptions: {
     label: "碑刻",
-    panel: "Inscription acceptance panel",
+    presentation: "inscription",
   },
 } as const;
 
@@ -33,6 +33,17 @@ const expectedInitialAutoPlatform = (
 
 const platformSelector = (surface: Locator) =>
   surface.getByRole("combobox", { name: "QA presentation platform" });
+
+const catalogScenarioSelector = (surface: Locator) =>
+  surface.getByRole("combobox", { name: "QA Catalog scenario" });
+
+const feedLayoutSelector = (surface: Locator) =>
+  surface.getByRole("combobox", { name: "QA phone/tablet feed layout" });
+
+const activeCatalogPresentation = (surface: Locator) =>
+  surface.locator(
+    "[data-primary-destination]:not([hidden]) [data-catalog-presentation]",
+  );
 
 const expectPresentationPlatform = async (
   surface: Locator,
@@ -67,6 +78,9 @@ const expectActiveDestination = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
   await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
   await expect(
+    shell.locator("[data-primary-destination]:not([hidden])"),
+  ).toHaveCount(1);
+  await expect(
     navigation.locator("[data-primary-navigation-bubble]"),
   ).toBeVisible();
   await expect(
@@ -89,9 +103,13 @@ const expectActiveDestination = async (
     if (active) {
       await expect(section).not.toHaveAttribute("hidden", "");
       await expect(section).toBeVisible();
+      const panel = section.locator(`[data-qa-panel="${candidate}"]`);
+      await expect(panel).toBeVisible();
       await expect(
-        section.locator(`[data-qa-panel="${candidate}"]`),
-      ).toHaveText(destinationAcceptance[candidate].panel);
+        panel.locator(
+          `[data-catalog-presentation="${destinationAcceptance[candidate].presentation}"]`,
+        ),
+      ).toBeVisible();
     } else {
       await expect(section).toHaveAttribute("hidden", "");
       await expect(section).toBeHidden();
@@ -101,6 +119,15 @@ const expectActiveDestination = async (
 
 const pagerAction = (surface: Locator, action: "previous" | "next") =>
   surface.locator(`[data-primary-pager-action="${action}"]`);
+
+const activatePagerAction = async (
+  surface: Locator,
+  action: "previous" | "next",
+) => {
+  const button = pagerAction(surface, action);
+  await expect(button).toBeEnabled();
+  await button.evaluate((element) => (element as HTMLButtonElement).click());
+};
 
 const locatorCenter = async (locator: Locator) => {
   const box = await locator.boundingBox();
@@ -198,7 +225,12 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
       '[data-yoyi-ui="desktop-navigation"], .yoyi-desktop-navigation',
     ),
   ).toHaveCount(0);
+  await expect(catalogScenarioSelector(surface)).toHaveValue("visual");
+  await expect(surface).toHaveAttribute("data-catalog-scenario", "visual");
   await expectActiveDestination(surface, "home");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(24);
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
   await expect
@@ -210,18 +242,24 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
     })
     .toBe("inscriptions");
   await expectActiveDestination(surface, "inscriptions");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(12);
 
   await navigation.getByRole("button", { name: "书帖", exact: true }).click();
   await expectActiveDestination(surface, "calligraphy");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(12);
   await expect(pagerAction(surface, "next")).toBeDisabled();
 
-  await pagerAction(surface, "previous").click();
+  await activatePagerAction(surface, "previous");
   await expectActiveDestination(surface, "inscriptions");
-  await pagerAction(surface, "previous").click();
+  await activatePagerAction(surface, "previous");
   await expectActiveDestination(surface, "home");
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
-  await pagerAction(surface, "next").click();
+  await activatePagerAction(surface, "next");
   await expectActiveDestination(surface, "inscriptions");
 
   const qaPlatformSelector = platformSelector(surface);
@@ -250,6 +288,146 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
     expectedInitialAutoPlatform(testInfo.project.name),
   );
   await expectActiveDestination(surface, "inscriptions");
+});
+
+test("Visual Catalog covers valid, absent, and failed media with long-scroll navigation clearance", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The full deterministic media-state audit runs once in Desktop Chromium.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const home = activeCatalogPresentation(surface);
+  const cards = home.locator("[data-catalog-card]");
+  await expect(catalogScenarioSelector(surface)).toHaveValue("visual");
+  await expect(cards).toHaveCount(24);
+
+  for (let index = 0; index < 24; index += 1) {
+    await cards.nth(index).scrollIntoViewIfNeeded();
+  }
+
+  await expect(home.locator('[data-catalog-media-state="failed"]')).toHaveCount(
+    1,
+  );
+  await expect(
+    home.locator('[data-catalog-media-state="missing"]'),
+  ).toHaveCount(6);
+  await expect(home.locator('[data-catalog-media-state="valid"]')).toHaveCount(
+    17,
+  );
+  await expect(home.getByText("图像无法加载", { exact: true })).toHaveCount(1);
+  await expect(home.getByText("暂无公开图像", { exact: true })).toHaveCount(6);
+
+  const validImages = home.locator('[data-catalog-media-state="valid"] img');
+  await expect(validImages).toHaveCount(17);
+  expect(
+    await validImages.evaluateAll((images) =>
+      images.every((image) => {
+        const source = new URL((image as HTMLImageElement).currentSrc);
+        return (
+          source.origin === window.location.origin &&
+          source.pathname.startsWith("/docs/design-system/assets/demo/") &&
+          (image as HTMLImageElement).complete &&
+          (image as HTMLImageElement).naturalWidth > 0
+        );
+      }),
+    ),
+  ).toBe(true);
+
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight > window.innerHeight,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const lastCardBox = await cards.last().boundingBox();
+  const navigationBox = await navigation.boundingBox();
+  if (lastCardBox === null || navigationBox === null) {
+    throw new Error("Expected Catalog card and navigation geometry");
+  }
+  expect(lastCardBox.y + lastCardBox.height).toBeLessThanOrEqual(
+    navigationBox.y + 1,
+  );
+});
+
+test("Catalog scenario selector maps every state without changing destination", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The complete scenario matrix runs once in Desktop Chromium.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expectActiveDestination(surface, "calligraphy");
+  const selector = catalogScenarioSelector(surface);
+
+  await selector.selectOption("small-populated");
+  await expect(surface).toHaveAttribute(
+    "data-catalog-scenario",
+    "small-populated",
+  );
+  await expectActiveDestination(surface, "calligraphy");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(1);
+
+  for (const [scenario, state, text] of [
+    ["empty", "empty", "暂无公开书帖"],
+    ["unavailable", "unavailable", "档案服务暂时不可用"],
+    ["unexpected-error", "unexpected-error", "无法加载公开档案"],
+  ] as const) {
+    await selector.selectOption(scenario);
+    await expect(surface).toHaveAttribute("data-catalog-scenario", scenario);
+    await expectActiveDestination(surface, "calligraphy");
+    await expect(activeCatalogPresentation(surface)).toHaveAttribute(
+      "data-catalog-presentation-state",
+      state,
+    );
+    await expect(
+      activeCatalogPresentation(surface).getByText(text),
+    ).toBeVisible();
+  }
+});
+
+test("Feed layout remains bounded to phone/tablet while PC stays responsive", async ({
+  page,
+}, testInfo) => {
+  const { surface } = await openDevelopmentSurface(page);
+  const selector = feedLayoutSelector(surface);
+  const feed = activeCatalogPresentation(surface).locator("[data-feed-layout]");
+  await expect(selector).toHaveValue("double");
+
+  if (testInfo.project.name === "desktop-chromium") {
+    await expect(selector).toBeDisabled();
+    const columnCount = Number(
+      await feed.evaluate((node) => getComputedStyle(node).columnCount),
+    );
+    expect(columnCount).toBeGreaterThanOrEqual(3);
+    return;
+  }
+
+  await expect(selector).toBeEnabled();
+  await selector.selectOption("single");
+  await expect(surface).toHaveAttribute("data-feed-layout", "single");
+  await expect(feed).toHaveCSS("column-count", "1");
+  await expectActiveDestination(surface, "home");
+
+  await selector.selectOption("double");
+  await expect(surface).toHaveAttribute("data-feed-layout", "double");
+  await expect(feed).toHaveCSS("column-count", "2");
+  await expectActiveDestination(surface, "home");
 });
 
 test("Auto mode applies desktop viewport boundaries without resetting the active destination", async ({

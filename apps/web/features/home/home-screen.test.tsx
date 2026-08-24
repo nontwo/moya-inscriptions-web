@@ -1,9 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { CatalogBrowseScreen } from "./catalog-screen";
 import { HomeScreen } from "./home-screen";
 
-import type { CatalogPage, CatalogSummary, PublicMedia } from "@moya/contracts";
+import type {
+  CatalogId,
+  CatalogPage,
+  CatalogSummary,
+  PublicMedia,
+} from "@moya/contracts";
 
 const catalogItem = (overrides: Partial<CatalogSummary> = {}): CatalogSummary =>
   ({
@@ -43,21 +49,27 @@ describe("HomeScreen", () => {
       ]),
     } as const;
 
-    const markup = renderToStaticMarkup(<HomeScreen state={state} />);
+    const markup = renderToStaticMarkup(
+      <HomeScreen feedLayout="double" state={state} />,
+    );
 
-    expect(markup).toContain("公开档案");
+    expect(markup).toContain('data-catalog-presentation="home"');
+    expect(markup).toContain("发现");
     expect(markup).toContain("云峰山刻石");
     expect(markup).toContain(
       'src="https://media.example.invalid/catalog-001.jpg"',
     );
+    expect(markup).toContain('data-catalog-media-state="valid"');
     expect(markup).not.toContain("objectKey");
     expect(markup).not.toContain("object_key");
     expect(markup).not.toContain("<a ");
+    expect(markup).not.toContain("<button");
   });
 
   it("keeps the Catalog total out of presentation", () => {
     const markup = renderToStaticMarkup(
       <HomeScreen
+        feedLayout="double"
         state={{
           state: "populated",
           page: page([catalogItem()], 987_654),
@@ -69,15 +81,46 @@ describe("HomeScreen", () => {
     expect(markup).not.toContain("987654");
   });
 
-  it("renders a semantic no-media fallback", () => {
+  it("renders semantic no-media fallback and sparse metadata", () => {
     const markup = renderToStaticMarkup(
       <HomeScreen
-        state={{ state: "populated", page: page([catalogItem()]) }}
+        feedLayout="single"
+        state={{
+          state: "populated",
+          page: page([
+            catalogItem({
+              aliases: [],
+              periodLabel: undefined,
+              representativeMedia: undefined,
+              summary: undefined,
+            }),
+          ]),
+        }}
       />,
     );
 
+    expect(markup).toContain('data-feed-layout="single"');
+    expect(markup).toContain('data-catalog-media-state="missing"');
     expect(markup).toContain("暂无公开图像");
+    expect(markup).toContain("碑刻");
+    expect(markup).not.toContain("undefined");
     expect(markup).not.toContain("<img");
+  });
+
+  it("renders a very long synthetic title without truncating content", () => {
+    const longTitle =
+      "合成长题名用于验证多行排版与稀疏元数据时卡片仍然保持完整可读且不暗示真实文物身份";
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        feedLayout="double"
+        state={{
+          state: "populated",
+          page: page([catalogItem({ title: longTitle })]),
+        }}
+      />,
+    );
+
+    expect(markup).toContain(longTitle);
   });
 
   it.each([
@@ -85,8 +128,58 @@ describe("HomeScreen", () => {
     [{ state: "unavailable" }, "档案服务暂时不可用"],
     [{ state: "unexpected-error" }, "无法加载公开档案"],
   ] as const)("renders the %s state", (state, expectedText) => {
-    expect(renderToStaticMarkup(<HomeScreen state={state} />)).toContain(
-      expectedText,
+    expect(
+      renderToStaticMarkup(<HomeScreen feedLayout="double" state={state} />),
+    ).toContain(expectedText);
+  });
+});
+
+describe("CatalogBrowseScreen", () => {
+  const mixedState = {
+    state: "populated",
+    page: page([
+      catalogItem({
+        id: "inscription-001" as CatalogId,
+        title: "合成碑刻",
+      }),
+      catalogItem({
+        id: "calligraphy-001" as CatalogId,
+        kind: "calligraphy",
+        title: "合成书帖",
+      }),
+    ]),
+  } as const;
+
+  it("filters the shared Catalog state to inscription list rows", () => {
+    const markup = renderToStaticMarkup(
+      <CatalogBrowseScreen
+        feedLayout="double"
+        kind="inscription"
+        state={mixedState}
+      />,
     );
+
+    expect(markup).toContain('data-catalog-presentation="inscription"');
+    expect(markup).toContain('data-catalog-item-count="1"');
+    expect(markup).toContain('data-catalog-card-variant="inscription"');
+    expect(markup).toContain("合成碑刻");
+    expect(markup).not.toContain("合成书帖");
+  });
+
+  it("filters the shared Catalog state to calligraphy feed cards", () => {
+    const markup = renderToStaticMarkup(
+      <CatalogBrowseScreen
+        feedLayout="single"
+        kind="calligraphy"
+        state={mixedState}
+      />,
+    );
+
+    expect(markup).toContain('data-catalog-presentation="calligraphy"');
+    expect(markup).toContain('data-catalog-item-count="1"');
+    expect(markup).toContain('data-catalog-card-variant="feed"');
+    expect(markup).toContain('data-feed-layout="single"');
+    expect(markup).toContain("合成书帖");
+    expect(markup).not.toContain("合成碑刻");
   });
 });

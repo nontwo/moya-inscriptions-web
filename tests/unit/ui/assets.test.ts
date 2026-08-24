@@ -307,7 +307,7 @@ describe("SVG assets", () => {
 });
 
 describe("documentation demo assets", () => {
-  it("preserves all nine fixtures byte-for-byte outside the UI package", async () => {
+  it("preserves all eleven fixtures byte-for-byte outside the UI package", async () => {
     const expectedHashes: Record<string, string> = {
       "calligraphy-sheet.svg":
         "313d8971b4d885ffbd635caedadda8faa1834814cfb9275d604e5a6ab19e53c6",
@@ -319,6 +319,10 @@ describe("documentation demo assets", () => {
         "e60d38b4c822a2ce377e7346306987c1932cbc24ed95580ff05f00d9b405ac7e",
       "inscription-rubbing.svg":
         "5150fdd47a9a269fcf4046cdff033b745fd7eb6eebfcdfac56589dc39480fa8f",
+      "qa-visual-square.svg":
+        "ec46a4e2a97f5fb231f77312696f804dc4bdd95b8ee83b65422897c7e82b05f2",
+      "qa-visual-ultrawide.svg":
+        "1e484333f256758bcccefec08032f8046fcc87d8dc6610457402d23fa8d5a18b",
       "rubbing-fragment.svg":
         "1e112e783bef1e688b575d1495d11f9516ea273cb8d9da4a3c430b07412bb72c",
       "stele-shadow.svg":
@@ -329,7 +333,7 @@ describe("documentation demo assets", () => {
         "25735a88b90beb5a72e84bb43b36d7bf4742a67d600693b9ab5a7fb902ccc50c",
     };
     const files = await collectSvgFiles(demoAssetsRoot);
-    expect(files).toHaveLength(9);
+    expect(files).toHaveLength(11);
     for (const file of files) {
       const name = file.pathname.split("/").at(-1) ?? "";
       const bytes = await readFile(file);

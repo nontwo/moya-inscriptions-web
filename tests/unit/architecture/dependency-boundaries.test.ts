@@ -22,6 +22,40 @@ import {
 import type { WorkspaceInfo } from "./workspace-scanner.js";
 
 const retainedDataAccessPackage = ["@moya", "data-access"].join("/");
+const webQaRoot = path.join(repositoryRoot, "apps", "web", "qa");
+const webDevelopmentRouteRoot = path.join(
+  repositoryRoot,
+  "apps",
+  "web",
+  "app",
+  "dev",
+);
+const prototypeRoot = path.join(repositoryRoot, "docs", "prototypes");
+
+const isTestSource = (file: string): boolean =>
+  /(?:^|\/)(?:tests?|__tests__)(?:\/|$)/u.test(file) ||
+  /\.(?:spec|test)\.[cm]?[jt]sx?$/u.test(file);
+
+const resolvesInside = (
+  importer: string,
+  specifier: string,
+  root: string,
+): boolean =>
+  specifier.startsWith(".") &&
+  isPathInside(root, path.resolve(path.dirname(importer), specifier));
+
+const isQaScenarioReference = (importer: string, specifier: string): boolean =>
+  resolvesInside(importer, specifier, webQaRoot) ||
+  specifier === "apps/web/qa" ||
+  specifier.startsWith("apps/web/qa/");
+
+const isPrototypeFixtureReference = (
+  importer: string,
+  specifier: string,
+): boolean =>
+  resolvesInside(importer, specifier, prototypeRoot) ||
+  specifier.includes("docs/prototypes/") ||
+  specifier.includes("p5-pilot.snapshot");
 
 describe("workspace dependency boundaries", () => {
   it("declares every imported workspace dependency", async () => {
@@ -521,6 +555,125 @@ describe("frontend and browser boundaries", () => {
           violations.push(
             `${path.relative(repositoryRoot, file)}: ${violation}`,
           );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
+describe("Development Catalog QA composition boundary", () => {
+  const qaImport =
+    'import { homeCatalogScenarioSources } from "apps/web/qa/home-catalog-scenarios";';
+
+  const qaImportViolations = (file: string, source: string): string[] => {
+    const authorized =
+      isPathInside(webQaRoot, file) ||
+      isPathInside(webDevelopmentRouteRoot, file) ||
+      isTestSource(file);
+
+    return extractModuleReferences(source)
+      .filter(({ specifier }) => isQaScenarioReference(file, specifier))
+      .filter(() => !authorized)
+      .map(
+        ({ specifier }) =>
+          `${path.relative(repositoryRoot, file)} cannot import Development QA scenario ${specifier}`,
+      );
+  };
+
+  it("allows QA scenarios only in Development route composition, QA source, and tests", () => {
+    const developmentPage = path.join(
+      webDevelopmentRouteRoot,
+      "t02p",
+      "page.tsx",
+    );
+    const qaTest = path.join(webQaRoot, "home-catalog-scenarios.test.ts");
+
+    expect(qaImportViolations(developmentPage, qaImport)).toEqual([]);
+    expect(
+      qaImportViolations(
+        qaTest,
+        'import { createVisualCatalogItems } from "./home-catalog-scenarios";',
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      "Formal route",
+      path.join(repositoryRoot, "apps", "web", "app", "route.ts"),
+    ],
+    [
+      "Production feature",
+      path.join(
+        repositoryRoot,
+        "apps",
+        "web",
+        "features",
+        "home",
+        "home-screen.tsx",
+      ),
+    ],
+    [
+      "backend",
+      path.join(
+        repositoryRoot,
+        "services",
+        "backend-runtime",
+        "src",
+        "server.ts",
+      ),
+    ],
+    [
+      "Public API",
+      path.join(repositoryRoot, "services", "public-api", "src", "handler.ts"),
+    ],
+    [
+      "database importer",
+      path.join(
+        repositoryRoot,
+        "services",
+        "catalog-importer",
+        "src",
+        "import.ts",
+      ),
+    ],
+  ])("rejects %s imports from the Web QA source", (_boundary, file) => {
+    expect(qaImportViolations(file, qaImport)).toHaveLength(1);
+  });
+
+  it("keeps every real runtime composition import within the QA allowlist", async () => {
+    const workspaces = await discoverWorkspaces();
+    const violations: string[] = [];
+
+    for (const workspace of workspaces) {
+      for (const file of workspace.sourceFiles) {
+        const source = await readFile(file, "utf8");
+        violations.push(...qaImportViolations(file, source));
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("forbids Product and QA runtime modules from importing Prototype fixtures", async () => {
+    const workspaces = await discoverWorkspaces();
+    const violations: string[] = [];
+
+    for (const workspace of workspaces.filter(
+      ({ manifest }) => manifest.name !== "@moya/tests",
+    )) {
+      for (const file of workspace.sourceFiles.filter(
+        (candidate) => !isTestSource(candidate),
+      )) {
+        const source = await readFile(file, "utf8");
+        for (const { specifier } of extractModuleReferences(source)) {
+          if (isPrototypeFixtureReference(file, specifier)) {
+            violations.push(
+              `${path.relative(repositoryRoot, file)} imports Prototype fixture ${specifier}`,
+            );
+          }
         }
       }
     }
