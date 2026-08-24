@@ -735,6 +735,8 @@ describe("mobile application preview", () => {
     const cardText = card.textContent?.trim();
     if (!cardText) throw new Error("quick-action card text missing");
     expect(focusLayer.textContent).toContain(cardText);
+    expect(card.classList).toContain("is-quick-action-source");
+    expect(focusLayer.querySelector(".is-quick-action-source")).toBeNull();
     expect(document.querySelectorAll("[data-quick-action]")).toHaveLength(3);
     document
       .querySelectorAll<HTMLElement>("[data-quick-action]")
@@ -768,6 +770,7 @@ describe("mobile application preview", () => {
 
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
     expect(overlay.hidden).toBe(true);
+    expect(card.classList).not.toContain("is-quick-action-source");
   });
 
   it("adapts quick-action arcs to the focused card and protected UI bounds", async () => {
@@ -802,15 +805,33 @@ describe("mobile application preview", () => {
       );
     await openAt(rightBiased, { left: 210, top: 200, width: 160, height: 180 });
     expect(rightBiasedOverlay?.dataset.layout).toBe("left-arc");
-    const rightBiasedPositions = [
-      ...rightBiased.window.document.querySelectorAll<HTMLElement>(
-        "[data-quick-action]",
-      ),
-    ].map((bubble) =>
-      Number.parseFloat(bubble.style.getPropertyValue("--quick-action-x")),
-    );
-    expect(rightBiasedPositions[0]!).toBeLessThan(rightBiasedPositions[1]!);
-    expect(rightBiasedPositions[2]!).toBeLessThan(rightBiasedPositions[1]!);
+    const positionsFor = (dom: PreviewDom) =>
+      [
+        ...dom.window.document.querySelectorAll<HTMLElement>(
+          "[data-quick-action]",
+        ),
+      ].map((bubble) => {
+        const size = Number.parseFloat(
+          bubble.style.getPropertyValue("--quick-action-bubble-size"),
+        );
+        return {
+          size,
+          x: Number.parseFloat(
+            bubble.style.getPropertyValue("--quick-action-x"),
+          ),
+          y: Number.parseFloat(
+            bubble.style.getPropertyValue("--quick-action-y"),
+          ),
+        };
+      });
+    const centersFor = (dom: PreviewDom) =>
+      positionsFor(dom).map((position) => ({
+        x: position.x + position.size / 2,
+        y: position.y + position.size / 2,
+      }));
+    const rightBiasedCenters = centersFor(rightBiased);
+    expect(rightBiasedCenters[1]!.x).toBeLessThan(rightBiasedCenters[0]!.x);
+    expect(rightBiasedCenters[1]!.x).toBeLessThan(rightBiasedCenters[2]!.x);
 
     const leftBiased = renderPreview();
     const leftBiasedOverlay =
@@ -819,15 +840,9 @@ describe("mobile application preview", () => {
       );
     await openAt(leftBiased, { left: 20, top: 200, width: 160, height: 180 });
     expect(leftBiasedOverlay?.dataset.layout).toBe("right-arc");
-    const leftBiasedPositions = [
-      ...leftBiased.window.document.querySelectorAll<HTMLElement>(
-        "[data-quick-action]",
-      ),
-    ].map((bubble) =>
-      Number.parseFloat(bubble.style.getPropertyValue("--quick-action-x")),
-    );
-    expect(leftBiasedPositions[0]!).toBeGreaterThan(leftBiasedPositions[1]!);
-    expect(leftBiasedPositions[2]!).toBeGreaterThan(leftBiasedPositions[1]!);
+    const leftBiasedCenters = centersFor(leftBiased);
+    expect(leftBiasedCenters[1]!.x).toBeGreaterThan(leftBiasedCenters[0]!.x);
+    expect(leftBiasedCenters[1]!.x).toBeGreaterThan(leftBiasedCenters[2]!.x);
 
     const leftPress = renderPreview();
     const leftPressOverlay =
@@ -840,6 +855,8 @@ describe("mobile application preview", () => {
       { x: 125, y: 350 },
     );
     expect(leftPressOverlay?.dataset.layout).toBe("left-arc");
+    const leftPressCenters = centersFor(leftPress);
+    expect(leftPressCenters.every((center) => center.x < 125)).toBe(true);
 
     const rightPress = renderPreview();
     const rightPressOverlay =
@@ -852,6 +869,23 @@ describe("mobile application preview", () => {
       { x: 265, y: 350 },
     );
     expect(rightPressOverlay?.dataset.layout).toBe("right-arc");
+    const rightPressCenters = centersFor(rightPress);
+    expect(rightPressCenters.every((center) => center.x > 265)).toBe(true);
+
+    const lowerLeftPress = renderPreview();
+    await openAt(
+      lowerLeftPress,
+      { left: 120, top: 260, width: 150, height: 180 },
+      { x: 125, y: 410 },
+    );
+    expect(
+      centersFor(lowerLeftPress).reduce(
+        (total, center) => total + center.y,
+        0,
+      ) / 3,
+    ).toBeGreaterThan(
+      leftPressCenters.reduce((total, center) => total + center.y, 0) / 3 + 40,
+    );
 
     const edgeBound = renderPreview();
     const edgeDocument = edgeBound.window.document;
@@ -887,13 +921,16 @@ describe("mobile application preview", () => {
       [
         ...edgeDocument.querySelectorAll<HTMLElement>("[data-quick-action]"),
       ].every((bubble) => {
+        const x = Number.parseFloat(
+          bubble.style.getPropertyValue("--quick-action-x"),
+        );
         const y = Number.parseFloat(
           bubble.style.getPropertyValue("--quick-action-y"),
         );
         const size = Number.parseFloat(
           bubble.style.getPropertyValue("--quick-action-bubble-size"),
         );
-        return y >= 82 && y + size <= 688;
+        return x >= 12 && x + size <= 378 && y >= 82 && y + size <= 688;
       }),
     ).toBe(true);
 
@@ -955,6 +992,10 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain(".app-quick-action-overlay.is-ready");
     expect(sharedCss).toContain("--quick-action-delay");
     expect(sharedCss).toContain("scale(1.06)");
+    expect(sharedCss).toContain(".is-quick-action-source");
+    expect(sharedCss).toContain("visibility: hidden");
+    expect(sharedCss).toContain("display: flex");
+    expect(sharedCss).toContain("stroke-width: 2.2");
   });
 
   it("limits browser long-press suppression to quick-action cards and their media", () => {

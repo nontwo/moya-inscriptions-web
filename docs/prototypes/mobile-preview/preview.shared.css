@@ -84,6 +84,10 @@ button {
   filter: blur(var(--quick-action-background-blur)) saturate(84%);
 }
 
+.mobile-app.is-quick-action-open .is-quick-action-source {
+  visibility: hidden;
+}
+
 .app-quick-action__card {
   position: absolute;
   z-index: 1;
@@ -129,11 +133,11 @@ button {
 
 .app-quick-action__bubble {
   position: absolute;
-  display: grid;
+  display: flex;
   width: var(--quick-action-bubble-size, clamp(56px, 14vw, 64px));
   height: var(--quick-action-bubble-size, clamp(56px, 14vw, 64px));
-  align-content: center;
-  justify-items: center;
+  align-items: center;
+  justify-content: center;
   border: 1px solid
     color-mix(in srgb, var(--yoyi-color-text-primary) 12%, transparent);
   border-radius: 50%;
@@ -184,13 +188,14 @@ button {
 
 .app-quick-action__glyph {
   display: block;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 23px;
+  width: 23px;
+  height: 23px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.7;
+  stroke-width: 2.2;
 }
 
 .app-quick-action-overlay.is-ready .app-quick-action__bubble.is-candidate {

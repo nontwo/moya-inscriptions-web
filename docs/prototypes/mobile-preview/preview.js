@@ -4194,59 +4194,85 @@ function quickActionCandidateAtPoint(clientX, clientY) {
   return null;
 }
 
-function quickActionFanDirectionSign(layout) {
-  if (layout === "left-arc" || layout === "top-arc") return -1;
-  return 1;
+function quickActionFanDirection(layout) {
+  if (layout === "left-arc") return { x: -1, y: 0 };
+  if (layout === "right-arc") return { x: 1, y: 0 };
+  if (layout === "top-arc") return { x: 0, y: -1 };
+  return { x: 0, y: 1 };
 }
 
-function quickActionLayoutPositions(layout, card, bounds, metrics) {
-  const { arcDepth, bubbleGap, bubbleSize, cardGap } = metrics;
-  const bubbleCount = quickActionBubbles.length;
-  const groupHeight = bubbleSize * bubbleCount + bubbleGap * (bubbleCount - 1);
-  const groupWidth = groupHeight;
-  const positions = [];
-
-  if (layout === "left-arc" || layout === "right-arc") {
-    const isLeft = layout === "left-arc";
-    const directionSign = quickActionFanDirectionSign(layout);
-    const baseX = isLeft
-      ? card.left - bubbleSize - cardGap
-      : card.left + card.width + cardGap;
-    const startY = quickActionClamp(
-      card.top + card.height / 2 - groupHeight / 2,
-      bounds.top,
-      bounds.bottom - groupHeight - 1,
-    );
-    quickActionBubbles.forEach((_, index) => {
-      positions.push({
-        x: baseX + (index === 1 ? -directionSign * arcDepth : 0),
-        y: startY + index * (bubbleSize + bubbleGap),
-      });
-    });
-    return positions;
+function quickActionDistanceToCardEdge(layout, card, pressPoint) {
+  if (layout === "left-arc") return Math.max(0, pressPoint.x - card.left);
+  if (layout === "right-arc") {
+    return Math.max(0, card.left + card.width - pressPoint.x);
   }
+  if (layout === "top-arc") return Math.max(0, pressPoint.y - card.top);
+  return Math.max(0, card.top + card.height - pressPoint.y);
+}
 
-  const isTop = layout === "top-arc";
-  const directionSign = quickActionFanDirectionSign(layout);
-  const startX = quickActionClamp(
-    card.left + card.width / 2 - groupWidth / 2,
-    bounds.left,
-    bounds.right - groupWidth,
+function quickActionKeepPetalInBounds(positions, bounds, bubbleSize) {
+  const left = Math.min(...positions.map((position) => position.x));
+  const right = Math.max(
+    ...positions.map((position) => position.x + bubbleSize),
   );
-  const baseY = isTop
-    ? card.top - bubbleSize - cardGap
-    : card.top + card.height + cardGap;
-  quickActionBubbles.forEach((_, index) => {
-    positions.push({
-      x: startX + index * (bubbleSize + bubbleGap),
-      y: quickActionClamp(
-        baseY + (index === 1 ? -directionSign * arcDepth : 0),
-        bounds.top,
-        bounds.bottom - bubbleSize,
-      ),
-    });
+  const top = Math.min(...positions.map((position) => position.y));
+  const bottom = Math.max(
+    ...positions.map((position) => position.y + bubbleSize),
+  );
+  let shiftX = 0;
+  let shiftY = 0;
+
+  if (left < bounds.left) shiftX = bounds.left - left;
+  else if (right > bounds.right) shiftX = bounds.right - right;
+  if (top < bounds.top) shiftY = bounds.top - top;
+  else if (bottom > bounds.bottom) shiftY = bounds.bottom - bottom;
+
+  return positions.map((position) => ({
+    x: position.x + shiftX,
+    y: position.y + shiftY,
+  }));
+}
+
+function quickActionLayoutPositions(layout, card, bounds, metrics, pressPoint) {
+  const { bubbleSize, cardGap, fanAngle, petalRadius } = metrics;
+  const direction = quickActionFanDirection(layout);
+  const tangent = { x: -direction.y, y: direction.x };
+  const outerCosine = Math.cos(fanAngle);
+  const requiredRadius =
+    (quickActionDistanceToCardEdge(layout, card, pressPoint) +
+      bubbleSize / 2 +
+      cardGap) /
+    outerCosine;
+  const radius = Math.max(petalRadius, requiredRadius);
+  const angles = [-fanAngle, 0, fanAngle];
+  const positions = angles.map((angle) => {
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    const centerX =
+      pressPoint.x + radius * (direction.x * cosine + tangent.x * sine);
+    const centerY =
+      pressPoint.y + radius * (direction.y * cosine + tangent.y * sine);
+    return {
+      x: centerX - bubbleSize / 2,
+      y: centerY - bubbleSize / 2,
+    };
   });
-  return positions;
+
+  return quickActionKeepPetalInBounds(positions, bounds, bubbleSize);
+}
+
+function quickActionOverlapArea(position, card, bubbleSize) {
+  const overlapWidth = Math.max(
+    0,
+    Math.min(position.x + bubbleSize, card.left + card.width) -
+      Math.max(position.x, card.left),
+  );
+  const overlapHeight = Math.max(
+    0,
+    Math.min(position.y + bubbleSize, card.top + card.height) -
+      Math.max(position.y, card.top),
+  );
+  return overlapWidth * overlapHeight;
 }
 
 function quickActionLayoutScore(
@@ -4270,24 +4296,41 @@ function quickActionLayoutScore(
   }, 0);
   const sideSpace =
     layout === "left-arc"
-      ? card.left - bounds.left
+      ? pressPoint.x - bounds.left
       : layout === "right-arc"
-        ? bounds.right - (card.left + card.width)
+        ? bounds.right - pressPoint.x
         : layout === "top-arc"
-          ? card.top - bounds.top
-          : bounds.bottom - (card.top + card.height);
-  const sidePriority =
-    (layout === "left-arc" || layout === "right-arc") &&
-    sideSpace >= metrics.bubbleSize + metrics.cardGap
-      ? 1000
-      : 0;
+          ? pressPoint.y - bounds.top
+          : bounds.bottom - pressPoint.y;
+  const cardEdgeDistance = quickActionDistanceToCardEdge(
+    layout,
+    card,
+    pressPoint,
+  );
+  const closestCardEdge = Math.min(
+    quickActionDistanceToCardEdge("left-arc", card, pressPoint),
+    quickActionDistanceToCardEdge("right-arc", card, pressPoint),
+    quickActionDistanceToCardEdge("top-arc", card, pressPoint),
+    quickActionDistanceToCardEdge("bottom-arc", card, pressPoint),
+  );
+  const cardOverlap = positions.reduce(
+    (total, position) =>
+      total + quickActionOverlapArea(position, card, metrics.bubbleSize),
+    0,
+  );
   const averageFingerTravel =
     positions.reduce((total, position) => {
       const centerX = position.x + metrics.bubbleSize / 2;
       const centerY = position.y + metrics.bubbleSize / 2;
       return total + Math.hypot(centerX - pressPoint.x, centerY - pressPoint.y);
     }, 0) / Math.max(positions.length, 1);
-  return sidePriority + sideSpace - averageFingerTravel - overflow * 10000;
+  return (
+    sideSpace -
+    averageFingerTravel -
+    (cardEdgeDistance - closestCardEdge) * 40 -
+    overflow * 10000 -
+    cardOverlap * 10000
+  );
 }
 
 function positionQuickActionMenu(gesture) {
@@ -4322,10 +4365,10 @@ function positionQuickActionMenu(gesture) {
     bubbleRange[1],
   );
   const metrics = {
-    bubbleGap: quickActionClamp(shortSide * 0.08, 8, 14),
     bubbleSize,
     cardGap: quickActionClamp(shortSide * 0.12, 16, 26),
-    arcDepth: quickActionClamp(shortSide * 0.08, 7, 15),
+    fanAngle: Math.PI / 5.5,
+    petalRadius: quickActionClamp(shortSide * 0.34, 66, 92),
   };
   const edgeGap = 12;
   const navRect = bottomNavigation?.getBoundingClientRect();
@@ -4407,6 +4450,7 @@ function positionQuickActionMenu(gesture) {
         finalCard,
         bounds,
         metrics,
+        pressPoint,
       );
       return {
         layout,
@@ -4474,6 +4518,7 @@ function openQuickAction() {
   bindQuickActionScrollLock();
   quickActionStatus.textContent = "";
   positionQuickActionMenu(gesture);
+  gesture.card.classList.add("is-quick-action-source");
   setQuickActionCandidate();
   window.requestAnimationFrame(() => {
     if (quickActionGesture === gesture && !quickActionOverlay.hidden) {
@@ -4485,6 +4530,7 @@ function openQuickAction() {
 function closeQuickAction() {
   const gesture = quickActionGesture;
   clearQuickActionTimer();
+  gesture?.card.classList.remove("is-quick-action-source");
   if (gesture?.opened) {
     try {
       if (gesture.card.hasPointerCapture?.(gesture.pointerId)) {
