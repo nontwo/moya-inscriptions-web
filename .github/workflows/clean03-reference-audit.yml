@@ -21,11 +21,12 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          rg -n \
+          grep -RInE \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude=clean03-references.txt \
             '@moya/data-access|packages/data-access|retainedDataAccess|data-access-surface' \
             . \
-            --glob '!node_modules/**' \
-            --glob '!.git/**' \
             > clean03-references.txt || true
           cat clean03-references.txt
 
