@@ -59,17 +59,17 @@ the affected validation. Record each applicable command and result in the PR.
   independent review agent may mark the PR Ready, squash merge it while pinning
   the expected head SHA, and complete merged-head verification.
 - Ask the Owner only when an active gate requires human visual or real-device
-  judgment, a major directional decision, production authority, or resolution
-  of a mandatory STOP condition. After the Owner records the necessary judgment
-  for the exact reviewed head, the review agent performs the routine Ready,
-  merge, and merged-head operations.
+  judgment, a major directional decision, production authority, or resolution of
+  a mandatory STOP condition. After the Owner records the necessary judgment for
+  the exact reviewed head, the review agent performs the routine Ready, merge,
+  and merged-head operations.
 - Reply to, fix, and resolve review findings in the PR. Any substantive new
   commit invalidates earlier review approval and requires review of the updated
   diff.
 - Automated validation, independent diff or code review, and any applicable
-  Owner judgment are distinct gates. For user-visible work, provide evidence
-  for the task's approved platform matrix instead of a universal pair of phone
-  and desktop screenshots.
+  Owner judgment are distinct gates. For user-visible work, provide evidence for
+  the task's approved platform matrix instead of a universal pair of phone and
+  desktop screenshots.
 - Delete a merged task branch through the approved post-merge workflow after
   merged-head verification.
 
