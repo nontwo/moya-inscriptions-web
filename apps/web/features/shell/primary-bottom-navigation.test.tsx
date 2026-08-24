@@ -144,7 +144,7 @@ describe("PrimaryBottomNavigation", () => {
     const markup = renderNavigation();
 
     expectTypeOf<keyof PrimaryBottomNavigationProps>().toEqualTypeOf<
-      "activeDestination" | "platform" | "onDestinationChange"
+      "activeDestination" | "hidden" | "platform" | "onDestinationChange"
     >();
     expect(markup).toContain("yoyi-functional-glass");
     expect(markup).toContain("yoyi-navigation-entry");
@@ -153,6 +153,22 @@ describe("PrimaryBottomNavigation", () => {
     expect(markup).not.toContain("yoyi-responsive-navigation");
     expect(markup).not.toContain("yoyi-desktop-navigation");
     expect(markup).not.toContain("data-primary-pager");
+  });
+
+  it("keeps the same native navigation subtree while hidden by an overlay", () => {
+    const markup = renderToStaticMarkup(
+      <PrimaryBottomNavigation
+        activeDestination="home"
+        hidden
+        platform="phone"
+        onDestinationChange={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('hidden=""');
+    expect(markup.match(/data-primary-navigation-destination=/g)).toHaveLength(
+      destinations.length,
+    );
   });
 
   it("starts drag only beyond the strict horizontal intent threshold", () => {

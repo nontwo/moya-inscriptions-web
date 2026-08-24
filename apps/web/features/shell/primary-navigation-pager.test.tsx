@@ -133,6 +133,7 @@ describe("PrimaryNavigationPager", () => {
     >().toEqualTypeOf<PresentationPlatform>();
     expectTypeOf<keyof PrimaryNavigationPagerProps>().toEqualTypeOf<
       | "activeDestination"
+      | "navigationHidden"
       | "platform"
       | "onDestinationChange"
       | "home"

@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { T02pDevelopmentAcceptanceSurface } from "../../../features/shell/t02p-development-acceptance-surface";
+import { detectDeviceClass } from "../../../features/shell/device-platform";
 import { loadCatalogDetailPresentation } from "../../../features/detail/load-catalog-detail";
 import { loadHomeCatalogState } from "../../../features/home/load-home-catalog";
 import {
@@ -56,6 +57,20 @@ const readDevelopmentRequestOrigin = async (): Promise<string> => {
   return origin.origin;
 };
 
+const readInitialPresentationPlatform = async () => {
+  const requestHeaders = await headers();
+  const deviceClass = detectDeviceClass({
+    userAgent: requestHeaders.get("user-agent"),
+    userAgentData: {
+      mobile: requestHeaders.get("sec-ch-ua-mobile") === "?1",
+    },
+  });
+
+  if (deviceClass === "phone") return "phone" as const;
+  if (deviceClass === "tablet") return "tablet" as const;
+  return "pc" as const;
+};
+
 const loadDestinationStates = async (
   source: HomeCatalogSource,
 ): Promise<T02pDevelopmentCatalogDestinationStates> => {
@@ -92,7 +107,10 @@ export default async function T02pDevelopmentPage({
   }
 
   const resolvedSearchParams = await searchParams;
-  const mediaOrigin = await readDevelopmentRequestOrigin();
+  const [mediaOrigin, initialPlatform] = await Promise.all([
+    readDevelopmentRequestOrigin(),
+    readInitialPresentationPlatform(),
+  ]);
   const detailScenarios = createDetailQaScenarios(mediaOrigin);
   const detailKey = singleSearchParam(resolvedSearchParams, "detail");
   const catalogId = singleSearchParam(resolvedSearchParams, "catalogId");
@@ -139,6 +157,7 @@ export default async function T02pDevelopmentPage({
       detailScenarios={detailScenarios}
       initialDetail={initialDetail}
       initialImageId={initialImageId}
+      initialPlatform={initialPlatform}
       scenarios={scenarios}
     />
   );

@@ -9,8 +9,6 @@ import type {
   ReactElement,
 } from "react";
 
-import { FixedLabelMark, Icon } from "@moya/ui";
-
 import "@moya/design-tokens/theme.css";
 import "@moya/ui/styles.css";
 
@@ -18,13 +16,14 @@ import styles from "./primary-bottom-navigation.module.css";
 
 import type { PresentationPlatform } from "./device-platform";
 import type { PrimaryDestination } from "./primary-shell";
-import type { FixedLabelName, IconName } from "@moya/ui";
+
+type PrimaryNavigationIconName = "calligraphy" | "home" | "inscriptions";
 
 interface PrimaryNavigationItem {
   readonly id: PrimaryDestination;
   readonly label: string;
-  readonly icon: IconName;
-  readonly labelMark: FixedLabelName;
+  readonly icon: PrimaryNavigationIconName;
+  readonly labelMark: `nav-${PrimaryDestination}`;
 }
 
 const primaryNavigationItems = [
@@ -131,9 +130,41 @@ export const resolvePrimaryNavigationReleaseIndex = (
 
 export interface PrimaryBottomNavigationProps {
   readonly activeDestination: PrimaryDestination;
+  readonly hidden?: boolean | undefined;
   readonly platform: PresentationPlatform;
   readonly onDestinationChange: (destination: PrimaryDestination) => void;
 }
+
+const PrimaryNavigationIcon = ({
+  name,
+}: {
+  readonly name: PrimaryNavigationIconName;
+}) => {
+  const path =
+    name === "home"
+      ? "M3.5 11.2 12 4l8.5 7.2M6.2 9.7v9.5h11.6V9.7M9.5 19.2v-5.7h5v5.7"
+      : name === "inscriptions"
+        ? "M7 20h10M8.2 20V7.2c0-2.1 1.7-3.7 3.8-3.7s3.8 1.6 3.8 3.7V20M10.4 8.2h3.2M10.4 11.4h3.2M10.4 14.6h3.2"
+        : "M5 5.2c4.5-.7 9.1-.7 13.8 0v13.6c-4.7-.7-9.3-.7-13.8 0V5.2Zm7 0v13.6M8 8.6h2M14 8.6h2M8 12h2M14 12h2";
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.inlineIcon}
+      data-icon={name}
+      viewBox="0 0 24 24"
+    >
+      <path
+        d={path}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+    </svg>
+  );
+};
 
 export const createPrimaryNavigationEntryElements = (
   activeDestination: PrimaryDestination,
@@ -156,9 +187,15 @@ export const createPrimaryNavigationEntryElements = (
         onClick={() => onDestinationChange(id)}
       >
         <span aria-hidden="true" className={styles.iconWrap}>
-          <Icon name={icon} />
+          <PrimaryNavigationIcon name={icon} />
         </span>
-        <FixedLabelMark decorative label={label} name={labelMark} />
+        <span
+          aria-hidden="true"
+          className={styles.labelMark}
+          data-label={labelMark}
+        >
+          {label}
+        </span>
       </button>
     );
   });
@@ -210,6 +247,7 @@ const releasePrimaryNavigationPointer = (
 
 export const PrimaryBottomNavigation = ({
   activeDestination,
+  hidden = false,
   platform,
   onDestinationChange,
 }: PrimaryBottomNavigationProps) => {
@@ -389,6 +427,7 @@ export const PrimaryBottomNavigation = ({
       data-item-count={primaryNavigationItems.length}
       data-platform={platform}
       data-primary-navigation=""
+      hidden={hidden}
       onClickCapture={handleClickCapture}
       onLostPointerCapture={handleLostPointerCapture}
       onPointerCancel={handlePointerCancel}

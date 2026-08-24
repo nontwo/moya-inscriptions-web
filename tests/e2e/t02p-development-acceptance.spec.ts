@@ -76,10 +76,6 @@ const expectFeedCardGeometry = async ({
     (feedBox.width - columnGap * Math.max(0, columnCount - 1)) / columnCount;
 
   expect(Math.abs(normalCardBox.width - expectedColumnWidth)).toBeLessThan(2);
-  expect(
-    await fullCard.evaluate((node) => getComputedStyle(node).columnSpan),
-  ).toBe(fullSpan ? "all" : "none");
-
   if (fullSpan) {
     expect(Math.abs(fullCardBox.x - feedBox.x)).toBeLessThan(2);
     expect(Math.abs(fullCardBox.width - feedBox.width)).toBeLessThan(2);
@@ -147,9 +143,10 @@ const expectPresentationPlatform = async (
     "data-platform",
     platform,
   );
-  await expect(
-    surface.getByRole("navigation", { name: "主要内容" }),
-  ).toHaveAttribute("data-platform", platform);
+  await expect(surface.locator("[data-primary-navigation]")).toHaveAttribute(
+    "data-platform",
+    platform,
+  );
   await expect(surface.locator("[data-qa-effective-platform]")).toHaveText(
     presentationPlatformLabels[platform],
   );
@@ -533,8 +530,10 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
 
   if (testInfo.project.name === "desktop-chromium") {
     await expect(selector).toBeDisabled();
-    const columnCount = Number(
-      await feed.evaluate((node) => getComputedStyle(node).columnCount),
+    const columnCount = await feed.evaluate(
+      (node) =>
+        getComputedStyle(node).gridTemplateColumns.split(" ").filter(Boolean)
+          .length,
     );
     expect(columnCount).toBeGreaterThanOrEqual(3);
     await expectFeedCardGeometry({
@@ -550,7 +549,15 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   await expect(selector).toBeEnabled();
   await selector.selectOption("single");
   await expect(surface).toHaveAttribute("data-feed-layout", "single");
-  await expect(feed).toHaveCSS("column-count", "1");
+  await expect
+    .poll(() =>
+      feed.evaluate(
+        (node) =>
+          getComputedStyle(node).gridTemplateColumns.split(" ").filter(Boolean)
+            .length,
+      ),
+    )
+    .toBe(1);
   await expectActiveDestination(surface, "home");
   await expectFeedCardGeometry({
     columnCount: 1,
@@ -562,15 +569,39 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
 
   await selector.selectOption("double");
   await expect(surface).toHaveAttribute("data-feed-layout", "double");
-  await expect(feed).toHaveCSS("column-count", "2");
+  await expect
+    .poll(() =>
+      feed.evaluate(
+        (node) =>
+          getComputedStyle(node).gridTemplateColumns.split(" ").filter(Boolean)
+            .length,
+      ),
+    )
+    .toBe(2);
   await expectActiveDestination(surface, "home");
   await expectFeedCardGeometry({
     columnCount: 2,
     feed,
     fullCard,
-    fullSpan: testInfo.project.name === "tablet-webkit",
+    fullSpan: true,
     normalCard,
   });
+  const fullSpanIndex = await feed
+    .locator("[data-catalog-card]")
+    .evaluateAll((cards) =>
+      cards.findIndex(
+        (card) => card.getAttribute("data-catalog-feed-span") === "full",
+      ),
+    );
+  const cardsAfterSpan = feed.locator("[data-catalog-card]");
+  const [firstAfterSpan, secondAfterSpan] = await Promise.all([
+    requireBoundingBox(cardsAfterSpan.nth(fullSpanIndex + 1)),
+    requireBoundingBox(cardsAfterSpan.nth(fullSpanIndex + 2)),
+  ]);
+  expect(Math.abs(firstAfterSpan.y - secondAfterSpan.y)).toBeLessThan(2);
+  expect(Math.abs(firstAfterSpan.x - secondAfterSpan.x)).toBeGreaterThan(
+    firstAfterSpan.width / 2,
+  );
 });
 
 test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct full-width rhythm", async ({
@@ -1235,9 +1266,11 @@ test("Detail QA surface exposes exactly the approved scenarios and truthful dire
       .locator("[data-t02p-qa-controls]")
       .evaluate((element) => (element as HTMLElement).inert),
   ).toBe(true);
-  await expect(
-    surface.getByRole("navigation", { name: "主要内容" }),
-  ).toBeVisible();
+  await expect(surface.locator("[data-primary-navigation]")).toHaveAttribute(
+    "hidden",
+    "",
+  );
+  await expect(surface.locator("[data-primary-navigation]")).toHaveCount(1);
   await expect(surface.locator("[data-detail-state=loaded]")).toBeVisible();
 
   await page.goto("/dev/t02p?detail=no-media");
@@ -1282,7 +1315,7 @@ test("Browse to Detail preserves the mounted shell, history, scroll, and focus",
   );
   await expect(shell.locator("[data-primary-destination]")).toHaveCount(3);
   await expect(shell).toHaveAttribute("aria-hidden", "true");
-  await expect(navigation).toBeVisible();
+  await expect(navigation).toBeHidden();
   await expect(page).toHaveURL(/\?detail=single-portrait$/);
   await expect(
     surface.locator('[data-detail-experience] button[aria-label="返回"]'),
@@ -1295,19 +1328,173 @@ test("Browse to Detail preserves the mounted shell, history, scroll, and focus",
   expect(await page.evaluate(() => window.scrollY)).toBe(initialScroll);
 });
 
-test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, and direct image URLs", async ({
+test("Browse cards use one full-area target, preserve keyboard activation, and ignore vertical scroll release", async ({
+  page,
+}) => {
+  const { surface } = await openDevelopmentSurface(page);
+  const card = surface
+    .locator('[data-qa-panel="home"] [data-catalog-card]')
+    .first();
+  const action = card.locator("[data-open-catalog-detail]");
+  const [cardBox, actionBox] = await Promise.all([
+    requireBoundingBox(card),
+    requireBoundingBox(action),
+  ]);
+  expect(Math.abs(cardBox.x - actionBox.x)).toBeLessThan(2);
+  expect(Math.abs(cardBox.y - actionBox.y)).toBeLessThan(2);
+  expect(Math.abs(cardBox.width - actionBox.width)).toBeLessThan(2);
+  expect(Math.abs(cardBox.height - actionBox.height)).toBeLessThan(2);
+
+  await action.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      button: 0,
+      isPrimary: true,
+      pointerId: 901,
+      pointerType: "touch",
+    };
+    element.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        ...init,
+        clientX: box.right - 8,
+        clientY: box.top + 12,
+      }),
+    );
+    element.dispatchEvent(
+      new PointerEvent("pointermove", {
+        ...init,
+        buttons: 1,
+        clientX: box.right - 8,
+        clientY: box.top + 68,
+      }),
+    );
+    element.dispatchEvent(
+      new PointerEvent("pointerup", {
+        ...init,
+        clientX: box.right - 8,
+        clientY: box.top + 68,
+      }),
+    );
+    (element as HTMLButtonElement).click();
+  });
+  await expect(surface).toHaveAttribute("data-detail-open", "false");
+
+  await action.click({
+    position: { x: actionBox.width - 8, y: actionBox.height - 8 },
+  });
+  await expect(surface).toHaveAttribute("data-detail-open", "true");
+  await page.goBack();
+  await expect(action).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(surface).toHaveAttribute("data-detail-open", "true");
+});
+
+test("Primary navigation keeps one hydrated DOM instance and stable inline marks across destination changes", async ({
+  page,
+}) => {
+  const failedResources: string[] = [];
+  page.on("response", (response) => {
+    if (
+      !response.ok() &&
+      /(?:assets\/icons|assets\/labels)/.test(response.url())
+    ) {
+      failedResources.push(`${response.status()} ${response.url()}`);
+    }
+  });
+  await page.addInitScript(() => {
+    window.addEventListener("DOMContentLoaded", () => {
+      const runtime = window as Window & {
+        __t02pPlatformTrace?: string[];
+      };
+      const surface = document.querySelector(
+        "[data-t02p-development-acceptance]",
+      );
+      runtime.__t02pPlatformTrace = [
+        surface?.getAttribute("data-platform") ?? "missing",
+      ];
+      if (surface === null) return;
+      new MutationObserver(() => {
+        runtime.__t02pPlatformTrace?.push(
+          surface.getAttribute("data-platform") ?? "missing",
+        );
+      }).observe(surface, { attributeFilter: ["data-platform"] });
+    });
+  });
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  await navigation.evaluate((element) => {
+    (element as HTMLElement).dataset.testStableIdentity = "retained";
+  });
+  for (const destination of ["碑刻", "书帖", "首页"] as const) {
+    await navigation
+      .getByRole("button", { exact: true, name: destination })
+      .click();
+    await expect(navigation).toHaveAttribute(
+      "data-test-stable-identity",
+      "retained",
+    );
+  }
+
+  const opener = surface
+    .locator('[data-qa-panel="home"] [data-open-catalog-detail]')
+    .first();
+  await opener.click();
+  await expect(surface.locator("[data-primary-navigation]")).toHaveAttribute(
+    "hidden",
+    "",
+  );
+  await page.goBack();
+  await expect(navigation).toHaveAttribute(
+    "data-test-stable-identity",
+    "retained",
+  );
+  await expect(
+    navigation.locator("[data-primary-navigation-destination]").first(),
+  ).toHaveCSS("transition-duration", "0s");
+  await expect(navigation.locator("svg[data-icon]")).toHaveCount(3);
+  await expect(navigation.locator("[data-label]")).toHaveCount(3);
+  expect(
+    await navigation
+      .locator("svg[data-icon], [data-label]")
+      .evaluateAll((marks) =>
+        marks.every((mark) => {
+          const style = getComputedStyle(mark);
+          return (
+            style.maskImage === "none" &&
+            style.visibility === "visible" &&
+            style.opacity === "1"
+          );
+        }),
+      ),
+  ).toBe(true);
+
+  await expect.poll(() => failedResources).toEqual([]);
+  const platformTrace = await page.evaluate(
+    () =>
+      (window as Window & { __t02pPlatformTrace?: string[] })
+        .__t02pPlatformTrace ?? [],
+  );
+  expect(platformTrace).toEqual([await surface.getAttribute("data-platform")]);
+});
+
+test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and direct image URLs", async ({
   page,
 }) => {
   await page.goto("/dev/t02p?detail=calligraphy-mixed");
-  const gallery = page.locator("[data-detail-gallery]");
-  const stage = gallery.locator("[data-detail-main-stage]");
-  const counter = gallery.locator("[data-detail-media-index]");
-  await expect(counter).toHaveText("1/3");
+  const carousel = page.locator("[data-detail-media-carousel]");
+  const stage = carousel.locator("[data-detail-main-stage]");
+  const counter = carousel.locator("[data-detail-media-index]");
+  const dots = carousel.locator("[data-detail-media-dot]");
+  await expect(counter).toHaveText("第 1 张，共 3 张");
+  await expect(dots).toHaveCount(3);
+  await expect(dots.nth(0)).toHaveAttribute("aria-current", "true");
+  await expect(page.locator("[data-detail-thumbnail-grid]")).toHaveCount(0);
   const platform = await page
     .locator("[data-t02p-development-acceptance]")
     .getAttribute("data-platform");
   const viewportWidth = page.viewportSize()?.width ?? 0;
-  const edgeControls = gallery.locator(
+  const edgeControls = carousel.locator(
     "[data-detail-media-previous], [data-detail-media-next]",
   );
   if (platform === "pc" && viewportWidth >= 1100) {
@@ -1315,45 +1502,60 @@ test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, a
   } else {
     await expect(edgeControls.first()).toBeHidden();
   }
-  await gallery.locator("[data-media-id]").nth(1).click();
-  await expect(counter).toHaveText("2/3");
-  await gallery.locator("[data-media-id]").first().click();
-  await expect(counter).toHaveText("1/3");
+  await dots.nth(1).click();
+  await expect(counter).toHaveText("第 2 张，共 3 张");
+  await expect(dots.nth(1)).toHaveAttribute("aria-current", "true");
+  await dots.first().click();
+  await expect(counter).toHaveText("第 1 张，共 3 张");
 
   const box = await requireBoundingBox(stage);
-  await stage.evaluate((element, stageBox) => {
-    element.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        bubbles: true,
-        button: 0,
-        buttons: 1,
-        clientX: stageBox.x + stageBox.width * 0.8,
-        clientY: stageBox.y + stageBox.height / 2,
-        isPrimary: true,
-        pointerId: 401,
-        pointerType: "touch",
-      }),
-    );
-    element.dispatchEvent(
-      new PointerEvent("pointerup", {
-        bubbles: true,
-        button: 0,
-        buttons: 0,
-        clientX: stageBox.x + stageBox.width * 0.2,
-        clientY: stageBox.y + stageBox.height / 2,
-        isPrimary: true,
-        pointerId: 401,
-        pointerType: "touch",
-      }),
-    );
-  }, box);
-  await expect(counter).toHaveText("2/3");
+  await stage.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: box.x + box.width * 0.8,
+    clientY: box.y + box.height / 2,
+    isPrimary: true,
+    pointerId: 401,
+    pointerType: "touch",
+  });
+  await stage.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: box.x + box.width * 0.45,
+    clientY: box.y + box.height / 2,
+    isPrimary: true,
+    pointerId: 401,
+    pointerType: "touch",
+  });
+  await expect(stage).toHaveAttribute("data-dragging", "true");
+  expect(
+    await carousel
+      .locator("[data-detail-media-track]")
+      .evaluate((track) => getComputedStyle(track).transform),
+  ).not.toBe("none");
+  await stage.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: box.x + box.width * 0.2,
+    clientY: box.y + box.height / 2,
+    isPrimary: true,
+    pointerId: 401,
+    pointerType: "touch",
+  });
+  await expect(counter).toHaveText("第 2 张，共 3 张");
 
-  const mainImage = gallery.locator("[data-detail-main-image]");
+  const mainImage = carousel.locator("[data-detail-main-image]");
+  const detailScroller = page.locator("[data-detail-scroll]");
+  await detailScroller.evaluate((element) => {
+    element.scrollTop = 40;
+  });
   await mainImage.click();
   const viewer = page.locator("[data-detail-viewer]");
   const viewerStage = viewer.locator("[data-viewer-scale]");
   await expect(viewer).toBeVisible();
+  const savedDetailScroll = await detailScroller.evaluate(
+    (element) => element.scrollTop,
+  );
   await expect(viewer.locator("[data-detail-viewer-index]")).toHaveText(
     "2 / 3",
   );
@@ -1363,6 +1565,9 @@ test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, a
   await expect(viewer).toBeHidden();
   await expect(page).toHaveURL(/\?detail=calligraphy-mixed$/);
   await expect(mainImage).toBeFocused();
+  await expect
+    .poll(() => detailScroller.evaluate((element) => element.scrollTop))
+    .toBe(savedDetailScroll);
 
   await mainImage.click();
   await expect(viewer).toBeVisible();
@@ -1433,14 +1638,34 @@ test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, a
   await mainImage.click();
   await expect(viewer).toBeVisible();
   await expect(viewerStage).toHaveAttribute("data-viewer-scale", "fit");
-  await page.keyboard.press("Escape");
+  await viewer
+    .getByRole("button", { exact: true, name: "关闭图像查看" })
+    .click();
   await expect(viewer).toBeHidden();
+  await expect(mainImage).toBeFocused();
 
   await page.goto(
     "/dev/t02p?detail=calligraphy-mixed&image=qa-detail-calligraphy-mixed-media-3",
   );
   await expect(page.locator("[data-detail-viewer]")).toBeVisible();
   await expect(page.locator("[data-detail-viewer-index]")).toHaveText("3 / 3");
+});
+
+test("Carousel preserves the accepted settle easing and reduced-motion duration", async ({
+  page,
+}) => {
+  await page.goto("/dev/t02p?detail=calligraphy-mixed");
+  const track = page.locator(
+    "[data-detail-media-carousel] [data-detail-media-track]",
+  );
+  await expect(track).toHaveCSS("transition-duration", "0.22s");
+  await expect(track).toHaveCSS(
+    "transition-timing-function",
+    "cubic-bezier(0.22, 1, 0.36, 1)",
+  );
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(track).toHaveCSS("transition-duration", "0.001s");
 });
 
 test("Viewer reports a truthful failure for a broken direct image", async ({
@@ -1459,28 +1684,76 @@ test("Viewer reports a truthful failure for a broken direct image", async ({
   await expect(viewer.locator("[data-detail-viewer-image]")).toHaveCount(0);
 });
 
-test("Tablet landscape uses a split Detail composition and ultra-wide thumbnails span both columns", async ({
+test("Tablet landscape uses a split Detail composition with one carousel and independent reading cards", async ({
   page,
-}) => {
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet-webkit",
+    "The Tablet Detail composition audit runs only in Tablet WebKit.",
+  );
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto("/dev/t02p?detail=tablet-ultrawide-grid");
   const surface = page.locator("[data-t02p-development-acceptance]");
-  await platformSelector(surface).selectOption("tablet");
+  await expectPresentationPlatform(surface, "tablet");
   const detail = page.locator("[data-detail-composition]");
   await expect(detail).toHaveAttribute(
     "data-detail-composition",
     "tablet-landscape",
   );
 
-  const grid = page.locator("[data-detail-thumbnail-grid]");
-  const regular = grid.locator('[data-gallery-span="single"]').first();
-  const ultraWide = grid.locator('[data-gallery-span="full"]').first();
-  const [gridBox, regularBox, ultraWideBox] = await Promise.all([
-    requireBoundingBox(grid),
-    requireBoundingBox(regular),
-    requireBoundingBox(ultraWide),
-  ]);
-  expect(regularBox.width).toBeLessThan(gridBox.width * 0.6);
-  expect(Math.abs(ultraWideBox.x - gridBox.x)).toBeLessThan(2);
-  expect(Math.abs(ultraWideBox.width - gridBox.width)).toBeLessThan(2);
+  const carousel = page.locator("[data-detail-media-carousel]");
+  await expect(carousel).toBeVisible();
+  await expect(carousel).toHaveAttribute("data-media-count", "5");
+  await expect(carousel.locator("[data-detail-media-dot]")).toHaveCount(5);
+  await expect(page.locator("[data-detail-thumbnail-grid]")).toHaveCount(0);
+  await expect(page.locator("[data-detail-info-panel]")).toBeVisible();
+  await expect(
+    page.locator('[data-detail-section]:not([data-detail-section="sources"])'),
+  ).toHaveCount(5);
+});
+
+test("captures corrected Browse and Detail compositions for the approved device matrix", async ({
+  page,
+}, testInfo) => {
+  const profiles =
+    testInfo.project.name === "mobile-webkit"
+      ? [
+          ["iphone-portrait", 390, 844],
+          ["iphone-landscape", 844, 390],
+        ]
+      : testInfo.project.name === "tablet-webkit"
+        ? [
+            ["ipad-portrait", 834, 1194],
+            ["ipad-landscape", 1194, 834],
+          ]
+        : [["pc", 1440, 1000]];
+
+  for (const [name, width, height] of profiles) {
+    if (typeof width !== "number" || typeof height !== "number") continue;
+    await page.setViewportSize({ height, width });
+    await page.goto("/dev/t02p");
+    await expect(
+      page.locator("[data-t02p-development-acceptance]"),
+    ).toBeVisible();
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath(`${name}-browse.png`),
+    });
+    const ultraWideCard = page
+      .locator('[data-catalog-feed-span="full"]')
+      .first();
+    await ultraWideCard.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath(`${name}-ultrawide.png`),
+    });
+
+    await page.goto("/dev/t02p?detail=calligraphy-mixed");
+    await expect(page.locator("[data-detail-state=loaded]")).toBeVisible();
+    await expect(page.locator("[data-detail-media-carousel]")).toBeVisible();
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath(`${name}-detail.png`),
+    });
+  }
 });

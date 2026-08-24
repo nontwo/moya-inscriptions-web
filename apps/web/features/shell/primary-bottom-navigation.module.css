@@ -23,6 +23,10 @@
   touch-action: pan-y;
 }
 
+.navigation[hidden] {
+  display: none;
+}
+
 .bubble {
   position: absolute;
   z-index: 0;
@@ -63,6 +67,7 @@
   color: var(--yoyi-color-text-primary);
   border-radius: var(--yoyi-radius-full);
   touch-action: pan-y;
+  transition: none;
 }
 
 .entry[data-selected="true"] {
@@ -79,26 +84,33 @@
   line-height: 0;
 }
 
-.iconWrap :global(.yoyi-icon) {
+.inlineIcon {
+  display: block;
   width: 23px;
   height: 23px;
 }
 
-.entry :global(.yoyi-fixed-label) {
+.labelMark {
+  display: block;
   width: 44px;
   height: 20px;
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
 }
 
-:global(html[data-theme="dark"])
-  .entry[data-selected="true"]
-  :global(.yoyi-fixed-label) {
+:global(html[data-theme="dark"]) .entry[data-selected="true"] .labelMark {
   color: var(--yoyi-color-text-primary);
 }
 
 @media (prefers-color-scheme: dark) {
   :global(html:not([data-theme="light"]))
     .entry[data-selected="true"]
-    :global(.yoyi-fixed-label) {
+    .labelMark {
     color: var(--yoyi-color-text-primary);
   }
 }
@@ -111,7 +123,7 @@
   }
 
   .navigation[data-platform="tablet"] .iconWrap,
-  .navigation[data-platform="tablet"] .iconWrap :global(.yoyi-icon) {
+  .navigation[data-platform="tablet"] .inlineIcon {
     width: 21px;
     height: 21px;
   }

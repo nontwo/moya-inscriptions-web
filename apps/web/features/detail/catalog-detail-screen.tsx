@@ -1,6 +1,6 @@
 import { Icon } from "@moya/ui";
 
-import { CatalogGallery } from "./catalog-gallery";
+import { CatalogMediaCarousel } from "./catalog-media-carousel";
 import styles from "./catalog-detail.module.css";
 
 import type { CatalogDetailPresentationState } from "./catalog-detail-presentation";
@@ -105,7 +105,7 @@ export const CatalogDetailScreen = ({
     body = (
       <>
         <div className={styles.hero}>
-          <CatalogGallery
+          <CatalogMediaCarousel
             activeIndex={activeMediaIndex}
             media={detail.media}
             onActiveIndexChange={onActiveMediaIndexChange}

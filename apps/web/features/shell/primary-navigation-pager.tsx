@@ -28,6 +28,7 @@ export const resolveAdjacentPrimaryDestination = (
 
 export interface PrimaryNavigationPagerProps {
   readonly activeDestination: PrimaryDestination;
+  readonly navigationHidden?: boolean | undefined;
   readonly platform: PresentationPlatform;
   readonly onDestinationChange: (destination: PrimaryDestination) => void;
   readonly home: ReactNode;
@@ -37,6 +38,7 @@ export interface PrimaryNavigationPagerProps {
 
 export const PrimaryNavigationPager = ({
   activeDestination,
+  navigationHidden = false,
   platform,
   onDestinationChange,
   home,
@@ -67,6 +69,7 @@ export const PrimaryNavigationPager = ({
 
       <PrimaryBottomNavigation
         activeDestination={activeDestination}
+        hidden={navigationHidden}
         platform={platform}
         onDestinationChange={onDestinationChange}
       />

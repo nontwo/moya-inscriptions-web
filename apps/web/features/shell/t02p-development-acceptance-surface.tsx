@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   detectDeviceClass,
@@ -68,6 +68,7 @@ export interface T02pDevelopmentAcceptanceSurfaceProps {
   readonly detailScenarios: readonly T02pDevelopmentDetailScenario[];
   readonly initialDetail?: T02pInitialDetail | undefined;
   readonly initialImageId?: string | undefined;
+  readonly initialPlatform?: PresentationPlatform | undefined;
   readonly scenarios: T02pDevelopmentCatalogScenarios;
 }
 
@@ -164,6 +165,7 @@ export const T02pDevelopmentAcceptanceSurface = ({
   detailScenarios,
   initialDetail,
   initialImageId,
+  initialPlatform = "pc",
   scenarios,
 }: T02pDevelopmentAcceptanceSurfaceProps) => {
   const [activeDestination, setActiveDestination] =
@@ -171,7 +173,7 @@ export const T02pDevelopmentAcceptanceSurface = ({
   const [platformMode, setPlatformMode] =
     useState<PresentationPlatformMode>("auto");
   const [runtimePlatform, setRuntimePlatform] =
-    useState<PresentationPlatform>("pc");
+    useState<PresentationPlatform>(initialPlatform);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">(
     "portrait",
   );
@@ -195,7 +197,7 @@ export const T02pDevelopmentAcceptanceSurface = ({
   const catalogStates = scenarios[catalogScenario];
   const openableCatalogIds = detailScenarios.map(({ catalogId }) => catalogId);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const synchronizeViewport = () => {
       setRuntimePlatform(readRuntimePresentationPlatform());
       setOrientation(readOrientation());
@@ -453,6 +455,7 @@ export const T02pDevelopmentAcceptanceSurface = ({
 
       <PrimaryNavigationPager
         activeDestination={activeDestination}
+        navigationHidden={activeDetail !== null}
         platform={platform}
         onDestinationChange={changeDestination}
         home={

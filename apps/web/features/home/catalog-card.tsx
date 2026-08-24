@@ -8,6 +8,7 @@ import { isUltraWideCatalogMedia } from "../catalog/media-layout";
 import styles from "./home-screen.module.css";
 
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 export { isUltraWideCatalogMedia } from "../catalog/media-layout";
 
@@ -91,6 +92,8 @@ const CatalogCardMedia = ({
 };
 
 export const CatalogCard = ({ item, onOpen, variant }: CatalogCardProps) => {
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
   const mediaKey = item.representativeMedia?.id ?? `${item.id}-missing-media`;
   const feedSpan =
     variant === "feed" && isUltraWideCatalogMedia(item.representativeMedia)
@@ -111,12 +114,41 @@ export const CatalogCard = ({ item, onOpen, variant }: CatalogCardProps) => {
       <div className={styles.cardBody}>
         <h3 className={styles.cardTitle}>{item.title}</h3>
         <p className={styles.cardMetadata}>{metadata}</p>
-        {variant === "inscription" && item.summary !== undefined ? (
-          <p className={styles.cardSummary}>{item.summary}</p>
-        ) : null}
       </div>
+      {variant === "inscription" ? (
+        <span aria-hidden="true" className={styles.inscriptionDirection}>
+          <Icon name="next" />
+        </span>
+      ) : null}
     </>
   );
+
+  const actionClassName = `${styles.cardAction} ${
+    variant === "inscription"
+      ? styles.inscriptionCardAction
+      : styles.feedCardAction
+  }`;
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!event.isPrimary) return;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    suppressClickRef.current = false;
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const start = pointerStartRef.current;
+    if (start === null) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+      suppressClickRef.current = true;
+    }
+  };
+
+  const finishPointer = () => {
+    pointerStartRef.current = null;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  };
 
   return (
     <article
@@ -131,13 +163,19 @@ export const CatalogCard = ({ item, onOpen, variant }: CatalogCardProps) => {
       role={variant === "feed" ? "listitem" : undefined}
     >
       {onOpen === undefined ? (
-        content
+        <div className={actionClassName}>{content}</div>
       ) : (
         <button
           aria-label={`查看${item.title}详情`}
-          className={styles.cardAction}
+          className={actionClassName}
           data-open-catalog-detail=""
-          onClick={(event) => onOpen(event.currentTarget)}
+          onClick={(event) => {
+            if (!suppressClickRef.current) onOpen(event.currentTarget);
+          }}
+          onPointerCancel={finishPointer}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishPointer}
           type="button"
         >
           {content}

@@ -112,6 +112,27 @@ describe("CatalogCard", () => {
 
     expect(markup).toContain('data-open-catalog-detail=""');
     expect(markup).toContain('aria-label="查看云峰山刻石详情"');
+    expect(markup.match(/<button/g)).toHaveLength(1);
+    expect(markup.indexOf("data-catalog-media-state")).toBeLessThan(
+      markup.indexOf("云峰山刻石</h3>"),
+    );
+    expect(markup.indexOf("云峰山刻石</h3>")).toBeLessThan(
+      markup.indexOf("碑刻 · 北魏"),
+    );
+  });
+
+  it("keeps the accepted inscription row free of an invented summary or nested target", () => {
+    const markup = renderToStaticMarkup(
+      <CatalogCard
+        item={catalogItem({ summary: "不应进入碑刻列表卡片的详情摘要" })}
+        onOpen={() => undefined}
+        variant="inscription"
+      />,
+    );
+
+    expect(markup.match(/<button/g)).toHaveLength(1);
+    expect(markup).toContain('data-icon="next"');
+    expect(markup).not.toContain("不应进入碑刻列表卡片的详情摘要");
   });
 });
 

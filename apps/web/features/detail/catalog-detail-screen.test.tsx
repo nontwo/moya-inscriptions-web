@@ -66,12 +66,15 @@ const renderScreen = (state: CatalogDetailPresentationState) =>
   );
 
 describe("CatalogDetailScreen", () => {
-  it("keeps Detail identity, facts, Gallery, and four reading sections separate", () => {
+  it("keeps one media carousel, Detail identity, facts, and four reading cards separate", () => {
     const markup = renderScreen(loadedState);
 
     expect(markup).toContain('data-detail-composition="tablet-landscape"');
-    expect(markup).toContain('data-gallery-count="2"');
-    expect(markup).toContain('data-gallery-span="full"');
+    expect(markup).toContain('data-detail-media-carousel=""');
+    expect(markup).toContain('data-media-count="2"');
+    expect(markup.match(/data-detail-media-dot=/g)).toHaveLength(2);
+    expect(markup).not.toContain("thumbnail");
+    expect(markup).not.toContain("data-detail-gallery");
     for (const section of [
       "introduction",
       "transcription",
@@ -83,6 +86,20 @@ describe("CatalogDetailScreen", () => {
     expect(markup).toContain("测试碑刻");
     expect(markup).toContain("别名甲");
     expect(markup).toContain("唐代");
+  });
+
+  it("omits dots and numeric presentation for a single image", () => {
+    const markup = renderScreen({
+      detail: {
+        ...loadedState.detail,
+        media: loadedState.detail.media.slice(0, 1),
+      },
+      state: "loaded",
+    });
+
+    expect(markup).toContain('data-media-count="1"');
+    expect(markup).not.toContain("data-detail-media-dots");
+    expect(markup).not.toContain("data-detail-media-index");
   });
 
   it("renders truthful lifecycle and no-media states", () => {
