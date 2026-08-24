@@ -682,11 +682,18 @@ describe("mobile application preview", () => {
       "[data-quick-action-overlay]",
     );
     if (!card || !overlay) throw new Error("quick action card missing");
+    const sourceImage = card.querySelector<HTMLImageElement>("img");
+    if (!sourceImage) throw new Error("quick-action source image missing");
 
     Object.defineProperty(card, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
     });
+    card.style.position = "absolute";
+    card.style.left = "28px";
+    card.style.top = "12px";
+    card.dataset.masonryBound = "true";
+    sourceImage.dataset.mediaBound = "true";
 
     expect(card.dataset.quickActions).toBe("enabled");
     expect(
@@ -707,6 +714,8 @@ describe("mobile application preview", () => {
     await waitMs(dom.window, 500);
     expect(overlay.hidden).toBe(true);
 
+    // A stale marker must never be copied into the visible focus-card clone.
+    card.dataset.quickActionSource = "true";
     dispatchPointer(dom.window, card, "pointerdown", {
       clientX: 80,
       clientY: 260,
@@ -731,12 +740,31 @@ describe("mobile application preview", () => {
     expect(
       bubbleLayer.closest('[data-quick-action-layer="background"]'),
     ).toBeNull();
-    expect(focusLayer.querySelector("img")).not.toBeNull();
+    const focusPreview = focusLayer.querySelector<HTMLElement>(
+      "[data-quick-action-focus-preview]",
+    );
+    const focusImage = focusLayer.querySelector<HTMLImageElement>(
+      "[data-quick-action-focus-image]",
+    );
+    if (!focusPreview || !focusImage) {
+      throw new Error("quick-action focus image missing");
+    }
+    expect(focusImage.src).toBe(sourceImage.currentSrc || sourceImage.src);
+    expect(focusLayer.querySelector(".app-card")).toBeNull();
+    expect(focusLayer.querySelector("[data-masonry-bound]")).toBeNull();
+    expect(focusLayer.querySelector("[data-media-bound]")).toBeNull();
     const cardText = card.textContent?.trim();
     if (!cardText) throw new Error("quick-action card text missing");
     expect(focusLayer.textContent).toContain(cardText);
-    expect(card.classList).toContain("is-quick-action-source");
-    expect(focusLayer.querySelector(".is-quick-action-source")).toBeNull();
+    expect(card.dataset.quickActionSource).toBe("true");
+    expect(
+      focusLayer.querySelector("[data-quick-action-source]"),
+    ).toBeNull();
+    focusImage.dispatchEvent(new dom.window.Event("error"));
+    expect(
+      focusLayer.querySelector("[data-quick-action-focus-fallback]"),
+    ).not.toBeNull();
+    expect(focusLayer.textContent).toContain(cardText);
     expect(document.querySelectorAll("[data-quick-action]")).toHaveLength(3);
     document
       .querySelectorAll<HTMLElement>("[data-quick-action]")
@@ -770,8 +798,61 @@ describe("mobile application preview", () => {
 
     dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
     expect(overlay.hidden).toBe(true);
-    expect(card.classList).not.toContain("is-quick-action-source");
+    expect(card.dataset.quickActionSource).toBeUndefined();
   });
+
+  it("renders the pressed image independently for home, inscription, and calligraphy cards", async () => {
+    const selectors = [
+      '[data-view="home"] [data-open-detail]',
+      '[data-view="inscriptions"] [data-open-detail]',
+      '[data-view="calligraphy"] [data-open-detail]',
+    ];
+
+    for (const selector of selectors) {
+      const dom = renderPreview();
+      const document = dom.window.document;
+      const card = document.querySelector<HTMLElement>(selector);
+      const overlay = document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+      const sourceImage = card?.querySelector<HTMLImageElement>("img");
+      if (!card || !overlay || !sourceImage) {
+        throw new Error(`quick-action card fixture missing for ${selector}`);
+      }
+      Object.defineProperty(card, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ left: 80, top: 200, width: 180, height: 220 }),
+      });
+      card.style.position = "absolute";
+      card.style.left = "24px";
+      card.style.top = "16px";
+      sourceImage.dataset.masonryBound = "true";
+
+      dispatchPointer(dom.window, card, "pointerdown", {
+        clientX: 170,
+        clientY: 300,
+      });
+      await waitMs(dom.window, 480);
+      const focusImage = document.querySelector<HTMLImageElement>(
+        "[data-quick-action-focus-image]",
+      );
+      expect(overlay.hidden).toBe(false);
+      expect(focusImage?.src).toBe(sourceImage.currentSrc || sourceImage.src);
+      expect(
+        document.querySelector("[data-quick-action-card] .app-card"),
+      ).toBeNull();
+      expect(
+        document.querySelector("[data-quick-action-card] [data-masonry-bound]"),
+      ).toBeNull();
+
+      dispatchPointer(dom.window, card, "pointerup", {
+        clientX: 170,
+        clientY: 300,
+      });
+      expect(overlay.hidden).toBe(true);
+      expect(card.dataset.quickActionSource).toBeUndefined();
+    }
+  }, 6_000);
 
   it("adapts quick-action arcs to the focused card and protected UI bounds", async () => {
     const openAt = async (
@@ -829,7 +910,18 @@ describe("mobile application preview", () => {
         x: position.x + position.size / 2,
         y: position.y + position.size / 2,
       }));
+    const expectFixedBubbleGap = (dom: PreviewDom) => {
+      const positions = positionsFor(dom);
+      for (let index = 0; index < positions.length - 1; index += 1) {
+        const current = positions[index]!;
+        const next = positions[index + 1]!;
+        const distance = Math.hypot(next.x - current.x, next.y - current.y);
+        const candidateDiameter = Math.max(current.size, next.size) * 1.06;
+        expect(distance - candidateDiameter).toBeGreaterThanOrEqual(11.99);
+      }
+    };
     const rightBiasedCenters = centersFor(rightBiased);
+    expectFixedBubbleGap(rightBiased);
     expect(rightBiasedCenters[1]!.x).toBeLessThan(rightBiasedCenters[0]!.x);
     expect(rightBiasedCenters[1]!.x).toBeLessThan(rightBiasedCenters[2]!.x);
 
@@ -841,6 +933,7 @@ describe("mobile application preview", () => {
     await openAt(leftBiased, { left: 20, top: 200, width: 160, height: 180 });
     expect(leftBiasedOverlay?.dataset.layout).toBe("right-arc");
     const leftBiasedCenters = centersFor(leftBiased);
+    expectFixedBubbleGap(leftBiased);
     expect(leftBiasedCenters[1]!.x).toBeGreaterThan(leftBiasedCenters[0]!.x);
     expect(leftBiasedCenters[1]!.x).toBeGreaterThan(leftBiasedCenters[2]!.x);
 
@@ -856,6 +949,7 @@ describe("mobile application preview", () => {
     );
     expect(leftPressOverlay?.dataset.layout).toBe("left-arc");
     const leftPressCenters = centersFor(leftPress);
+    expectFixedBubbleGap(leftPress);
     expect(leftPressCenters.every((center) => center.x < 125)).toBe(true);
 
     const rightPress = renderPreview();
@@ -870,6 +964,7 @@ describe("mobile application preview", () => {
     );
     expect(rightPressOverlay?.dataset.layout).toBe("right-arc");
     const rightPressCenters = centersFor(rightPress);
+    expectFixedBubbleGap(rightPress);
     expect(rightPressCenters.every((center) => center.x > 265)).toBe(true);
 
     const lowerLeftPress = renderPreview();
@@ -903,6 +998,7 @@ describe("mobile application preview", () => {
       value: () => ({ bottom: 70, height: 70, left: 0, top: 0, width: 390 }),
     });
     await openAt(edgeBound, { left: 20, top: 600, width: 160, height: 140 });
+    expectFixedBubbleGap(edgeBound);
     const focusedCard = edgeDocument.querySelector<HTMLElement>(
       "[data-quick-action-card]",
     );
@@ -930,9 +1026,24 @@ describe("mobile application preview", () => {
         const size = Number.parseFloat(
           bubble.style.getPropertyValue("--quick-action-bubble-size"),
         );
-        return x >= 12 && x + size <= 378 && y >= 82 && y + size <= 688;
+        const candidateOverflow = size * 0.03;
+        return (
+          x - candidateOverflow >= 12 &&
+          x + size + candidateOverflow <= 378 &&
+          y - candidateOverflow >= 82 &&
+          y + size + candidateOverflow <= 688
+        );
       }),
     ).toBe(true);
+
+    const topBiased = renderPreview();
+    const topBiasedOverlay =
+      topBiased.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(topBiased, { left: 115, top: 600, width: 160, height: 140 });
+    expect(topBiasedOverlay?.dataset.layout).toBe("top-arc");
+    expectFixedBubbleGap(topBiased);
 
     const wideCard = renderPreview();
     const wideCardOverlay = wideCard.window.document.querySelector<HTMLElement>(
@@ -940,6 +1051,7 @@ describe("mobile application preview", () => {
     );
     await openAt(wideCard, { left: 12, top: 110, width: 366, height: 180 });
     expect(wideCardOverlay?.dataset.layout).toBe("bottom-arc");
+    expectFixedBubbleGap(wideCard);
 
     const desktop = renderPreview(
       {},
@@ -968,6 +1080,7 @@ describe("mobile application preview", () => {
       }),
     });
     await openAt(desktop, { left: 720, top: 220, width: 180, height: 220 });
+    expectFixedBubbleGap(desktop);
     expect(
       [
         ...desktop.window.document.querySelectorAll<HTMLElement>(
@@ -980,7 +1093,23 @@ describe("mobile application preview", () => {
           ) >= 116,
       ),
     ).toBe(true);
-  });
+
+    const tablet = renderPreview(
+      {},
+      {
+        maxTouchPoints: 5,
+        mobile: false,
+        userAgent: tabletUserAgent,
+        viewportHeight: 1112,
+        viewportWidth: 834,
+      },
+    );
+    await openAt(tablet, { left: 320, top: 360, width: 180, height: 220 });
+    expect(tablet.window.document.documentElement.dataset.platform).toBe(
+      "tablet",
+    );
+    expectFixedBubbleGap(tablet);
+  }, 10_000);
 
   it("adds focused-card and staged quick-action visual treatment", () => {
     expect(sharedCss).toContain(
@@ -992,8 +1121,13 @@ describe("mobile application preview", () => {
     expect(sharedCss).toContain(".app-quick-action-overlay.is-ready");
     expect(sharedCss).toContain("--quick-action-delay");
     expect(sharedCss).toContain("scale(1.06)");
-    expect(sharedCss).toContain(".is-quick-action-source");
-    expect(sharedCss).toContain("visibility: hidden");
+    expect(sharedCss).toContain('[data-quick-action-source="true"]');
+    expect(sharedCss).toContain("opacity: 0");
+    expect(sharedCss).not.toContain(".is-quick-action-source");
+    expect(sharedCss).toContain(".app-quick-action__focus-preview");
+    expect(sharedCss).toContain(".app-quick-action__focus-image");
+    expect(sharedCss).toContain("object-fit: contain");
+    expect(sharedCss).toContain("filter: none");
     expect(sharedCss).toContain("display: flex");
     expect(sharedCss).toContain("stroke-width: 2.2");
   });
@@ -1103,12 +1237,14 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
+    expect(card.dataset.quickActionSource).toBeUndefined();
     card.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
     await waitMs(dom.window, 700);
     expect(overlay.hidden).toBe(true);
+    expect(card.dataset.quickActionSource).toBeUndefined();
     card.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,

@@ -110,6 +110,8 @@ const quickActionHooks = {
 };
 const quickActionDelay = 460;
 const quickActionMovementTolerance = 10;
+const quickActionBubbleGap = 12;
+const quickActionCandidateScale = 1.06;
 const quickActionClickSuppressionWindow = 650;
 let quickActionGesture = null;
 let quickActionSuppressClick = null;
@@ -4210,15 +4212,31 @@ function quickActionDistanceToCardEdge(layout, card, pressPoint) {
   return Math.max(0, card.top + card.height - pressPoint.y);
 }
 
-function quickActionKeepPetalInBounds(positions, bounds, bubbleSize) {
-  const left = Math.min(...positions.map((position) => position.x));
+function quickActionRenderedBubbleFrame(position, bubbleSize, scale = 1) {
+  const overflow = ((bubbleSize * scale) - bubbleSize) / 2;
+  return {
+    bottom: position.y + bubbleSize + overflow,
+    left: position.x - overflow,
+    right: position.x + bubbleSize + overflow,
+    top: position.y - overflow,
+  };
+}
+
+function quickActionKeepPetalInBounds(
+  positions,
+  bounds,
+  bubbleSize,
+  bubbleScale = 1,
+) {
+  const renderedFrames = positions.map((position) =>
+    quickActionRenderedBubbleFrame(position, bubbleSize, bubbleScale),
+  );
+  const left = Math.min(...renderedFrames.map((frame) => frame.left));
   const right = Math.max(
-    ...positions.map((position) => position.x + bubbleSize),
+    ...renderedFrames.map((frame) => frame.right),
   );
-  const top = Math.min(...positions.map((position) => position.y));
-  const bottom = Math.max(
-    ...positions.map((position) => position.y + bubbleSize),
-  );
+  const top = Math.min(...renderedFrames.map((frame) => frame.top));
+  const bottom = Math.max(...renderedFrames.map((frame) => frame.bottom));
   let shiftX = 0;
   let shiftY = 0;
 
@@ -4234,7 +4252,14 @@ function quickActionKeepPetalInBounds(positions, bounds, bubbleSize) {
 }
 
 function quickActionLayoutPositions(layout, card, bounds, metrics, pressPoint) {
-  const { bubbleSize, cardGap, fanAngle, petalRadius } = metrics;
+  const {
+    bubbleGap,
+    bubbleScale,
+    bubbleSize,
+    cardGap,
+    fanAngle,
+    petalRadius,
+  } = metrics;
   const direction = quickActionFanDirection(layout);
   const tangent = { x: -direction.y, y: direction.x };
   const outerCosine = Math.cos(fanAngle);
@@ -4243,7 +4268,14 @@ function quickActionLayoutPositions(layout, card, bounds, metrics, pressPoint) {
       bubbleSize / 2 +
       cardGap) /
     outerCosine;
-  const radius = Math.max(petalRadius, requiredRadius);
+  const requiredSpacingRadius =
+    (bubbleSize * bubbleScale + bubbleGap) /
+    (2 * Math.sin(fanAngle / 2));
+  const radius = Math.max(
+    petalRadius,
+    requiredRadius,
+    requiredSpacingRadius,
+  );
   const angles = [-fanAngle, 0, fanAngle];
   const positions = angles.map((angle) => {
     const cosine = Math.cos(angle);
@@ -4258,21 +4290,106 @@ function quickActionLayoutPositions(layout, card, bounds, metrics, pressPoint) {
     };
   });
 
-  return quickActionKeepPetalInBounds(positions, bounds, bubbleSize);
+  return quickActionKeepPetalInBounds(
+    positions,
+    bounds,
+    bubbleSize,
+    bubbleScale,
+  );
 }
 
-function quickActionOverlapArea(position, card, bubbleSize) {
+function quickActionOverlapArea(position, card, bubbleSize, bubbleScale = 1) {
+  const renderedFrame = quickActionRenderedBubbleFrame(
+    position,
+    bubbleSize,
+    bubbleScale,
+  );
   const overlapWidth = Math.max(
     0,
-    Math.min(position.x + bubbleSize, card.left + card.width) -
-      Math.max(position.x, card.left),
+    Math.min(renderedFrame.right, card.left + card.width) -
+      Math.max(renderedFrame.left, card.left),
   );
   const overlapHeight = Math.max(
     0,
-    Math.min(position.y + bubbleSize, card.top + card.height) -
-      Math.max(position.y, card.top),
+    Math.min(renderedFrame.bottom, card.top + card.height) -
+      Math.max(renderedFrame.top, card.top),
   );
   return overlapWidth * overlapHeight;
+}
+
+function quickActionFocusImageSource(card) {
+  const sourceImage = card.querySelector("img:not(.is-media-error)");
+  const src =
+    sourceImage?.currentSrc || sourceImage?.src || card.dataset.image || "";
+  if (!src) return null;
+  return {
+    alt: sourceImage?.alt || card.dataset.title || "内容图片",
+    src,
+  };
+}
+
+function quickActionFocusTitle(card) {
+  return (
+    card.dataset.title ||
+    card
+      .querySelector(".app-card__title, .app-inscription-card__title")
+      ?.textContent?.trim() ||
+    "内容预览"
+  );
+}
+
+function quickActionFocusMeta(card) {
+  return card
+    .querySelector(".app-card__meta, .app-inscription-card__meta")
+    ?.textContent?.trim();
+}
+
+function renderQuickActionFocusPreview(card) {
+  const preview = document.createElement("div");
+  preview.className = "app-quick-action__focus-preview";
+  preview.dataset.quickActionFocusPreview = "true";
+  preview.setAttribute("aria-hidden", "true");
+
+  const media = document.createElement("div");
+  media.className = "app-quick-action__focus-media";
+  const renderFallback = () => {
+    media.replaceChildren();
+    const fallback = document.createElement("span");
+    fallback.className = "app-quick-action__focus-fallback";
+    fallback.dataset.quickActionFocusFallback = "true";
+    fallback.textContent = "图片不可用";
+    media.append(fallback);
+  };
+  const sourceImage = quickActionFocusImageSource(card);
+  if (sourceImage) {
+    const image = document.createElement("img");
+    image.className = "app-quick-action__focus-image";
+    image.dataset.quickActionFocusImage = "true";
+    image.src = sourceImage.src;
+    image.alt = sourceImage.alt;
+    image.loading = "eager";
+    image.decoding = "sync";
+    image.addEventListener("error", renderFallback, { once: true });
+    media.append(image);
+  } else {
+    renderFallback();
+  }
+
+  const caption = document.createElement("div");
+  caption.className = "app-quick-action__focus-caption";
+  const title = document.createElement("span");
+  title.className = "app-quick-action__focus-title";
+  title.textContent = quickActionFocusTitle(card);
+  caption.append(title);
+  const metaText = quickActionFocusMeta(card);
+  if (metaText) {
+    const meta = document.createElement("span");
+    meta.className = "app-quick-action__focus-meta";
+    meta.textContent = metaText;
+    caption.append(meta);
+  }
+  preview.append(media, caption);
+  return preview;
 }
 
 function quickActionLayoutScore(
@@ -4284,14 +4401,17 @@ function quickActionLayoutScore(
   pressPoint,
 ) {
   const overflow = positions.reduce((total, position) => {
-    const right = position.x + metrics.bubbleSize;
-    const bottom = position.y + metrics.bubbleSize;
+    const renderedFrame = quickActionRenderedBubbleFrame(
+      position,
+      metrics.bubbleSize,
+      metrics.bubbleScale,
+    );
     return (
       total +
-      Math.max(0, bounds.left - position.x) +
-      Math.max(0, right - bounds.right) +
-      Math.max(0, bounds.top - position.y) +
-      Math.max(0, bottom - bounds.bottom)
+      Math.max(0, bounds.left - renderedFrame.left) +
+      Math.max(0, renderedFrame.right - bounds.right) +
+      Math.max(0, bounds.top - renderedFrame.top) +
+      Math.max(0, renderedFrame.bottom - bounds.bottom)
     );
   }, 0);
   const sideSpace =
@@ -4315,7 +4435,13 @@ function quickActionLayoutScore(
   );
   const cardOverlap = positions.reduce(
     (total, position) =>
-      total + quickActionOverlapArea(position, card, metrics.bubbleSize),
+      total +
+        quickActionOverlapArea(
+          position,
+          card,
+          metrics.bubbleSize,
+          metrics.bubbleScale,
+        ),
     0,
   );
   const averageFingerTravel =
@@ -4365,6 +4491,8 @@ function positionQuickActionMenu(gesture) {
     bubbleRange[1],
   );
   const metrics = {
+    bubbleGap: quickActionBubbleGap,
+    bubbleScale: quickActionCandidateScale,
     bubbleSize,
     cardGap: quickActionClamp(shortSide * 0.12, 16, 26),
     fanAngle: Math.PI / 5.5,
@@ -4471,7 +4599,7 @@ function positionQuickActionMenu(gesture) {
   );
   const hitZones = new Map();
 
-  quickActionCard?.replaceChildren(gesture.card.cloneNode(true));
+  quickActionCard?.replaceChildren(renderQuickActionFocusPreview(gesture.card));
   if (quickActionCard) {
     quickActionCard.style.left = `${finalCard.left}px`;
     quickActionCard.style.top = `${finalCard.top}px`;
@@ -4518,7 +4646,7 @@ function openQuickAction() {
   bindQuickActionScrollLock();
   quickActionStatus.textContent = "";
   positionQuickActionMenu(gesture);
-  gesture.card.classList.add("is-quick-action-source");
+  gesture.card.dataset.quickActionSource = "true";
   setQuickActionCandidate();
   window.requestAnimationFrame(() => {
     if (quickActionGesture === gesture && !quickActionOverlay.hidden) {
@@ -4530,7 +4658,7 @@ function openQuickAction() {
 function closeQuickAction() {
   const gesture = quickActionGesture;
   clearQuickActionTimer();
-  gesture?.card.classList.remove("is-quick-action-source");
+  if (gesture?.card) delete gesture.card.dataset.quickActionSource;
   if (gesture?.opened) {
     try {
       if (gesture.card.hasPointerCapture?.(gesture.pointerId)) {

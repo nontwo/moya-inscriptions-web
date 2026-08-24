@@ -84,8 +84,9 @@ button {
   filter: blur(var(--quick-action-background-blur)) saturate(84%);
 }
 
-.mobile-app.is-quick-action-open .is-quick-action-source {
-  visibility: hidden;
+.mobile-app.is-quick-action-open [data-quick-action-source="true"] {
+  /* The dedicated focus preview covers this source outside the blur layer. */
+  opacity: 0;
 }
 
 .app-quick-action__card {
@@ -114,6 +115,72 @@ button {
 
 .app-quick-action__card > * {
   pointer-events: none;
+}
+
+.app-quick-action__focus-preview {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  filter: none;
+  isolation: isolate;
+}
+
+.app-quick-action__focus-media {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--yoyi-color-background-muted);
+}
+
+.app-quick-action__focus-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: var(--yoyi-color-background-muted);
+  filter: none;
+}
+
+.app-quick-action__focus-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-font-size-sm);
+  font-weight: 600;
+}
+
+.app-quick-action__focus-caption {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px 11px;
+  background: var(--yoyi-color-background-surface);
+}
+
+.app-quick-action__focus-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.app-quick-action__focus-meta {
+  overflow: hidden;
+  color: var(--yoyi-color-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Keep browser long-press and image-drag suppression inside actionable cards. */
