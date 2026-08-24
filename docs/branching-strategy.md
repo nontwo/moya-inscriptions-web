@@ -17,8 +17,8 @@ main
   validation, actual-diff review, and every applicable Owner gate pass.
 - Owner judgment is required only for visual or real-device acceptance, a major
   product or architecture direction, a production-authority operation, or an
-  unresolved mandatory STOP condition. The Owner does not perform routine
-  GitHub merge operations.
+  unresolved mandatory STOP condition. The Owner does not perform routine GitHub
+  merge operations.
 - Promotion from `integration/mvp` to `main` creates a stable milestone and
   requires an explicit Owner milestone decision. After approval, an independent
   review agent may execute the promotion merge and merged-head verification.
