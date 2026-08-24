@@ -9,6 +9,9 @@ export type CatalogScreenPresentation = "home" | CatalogKind;
 
 export interface CatalogCollectionScreenProps {
   readonly feedLayout: CatalogFeedLayout;
+  readonly onOpenCatalog?:
+    ((catalogId: string, opener: HTMLElement) => void) | undefined;
+  readonly openableCatalogIds?: readonly string[] | undefined;
   readonly presentation: CatalogScreenPresentation;
   readonly state: HomeCatalogState;
 }
@@ -72,6 +75,8 @@ const IconForState = ({
 
 const PopulatedCollection = ({
   feedLayout,
+  onOpenCatalog,
+  openableCatalogIds,
   presentation,
   state,
 }: CatalogCollectionScreenProps & {
@@ -101,7 +106,16 @@ const PopulatedCollection = ({
       >
         {items.map((item) => (
           <li key={item.id}>
-            <CatalogCard item={item} variant="inscription" />
+            <CatalogCard
+              item={item}
+              onOpen={
+                onOpenCatalog !== undefined &&
+                openableCatalogIds?.includes(item.id) === true
+                  ? (opener) => onOpenCatalog(item.id, opener)
+                  : undefined
+              }
+              variant="inscription"
+            />
           </li>
         ))}
       </ul>
@@ -116,7 +130,17 @@ const PopulatedCollection = ({
       role="list"
     >
       {items.map((item) => (
-        <CatalogCard key={item.id} item={item} variant="feed" />
+        <CatalogCard
+          key={item.id}
+          item={item}
+          onOpen={
+            onOpenCatalog !== undefined &&
+            openableCatalogIds?.includes(item.id) === true
+              ? (opener) => onOpenCatalog(item.id, opener)
+              : undefined
+          }
+          variant="feed"
+        />
       ))}
     </div>
   );
@@ -124,6 +148,8 @@ const PopulatedCollection = ({
 
 export const CatalogCollectionScreen = ({
   feedLayout,
+  onOpenCatalog,
+  openableCatalogIds,
   presentation,
   state,
 }: CatalogCollectionScreenProps) => {
@@ -135,6 +161,8 @@ export const CatalogCollectionScreen = ({
       content = (
         <PopulatedCollection
           feedLayout={feedLayout}
+          onOpenCatalog={onOpenCatalog}
+          openableCatalogIds={openableCatalogIds}
           presentation={presentation}
           state={state}
         />
@@ -189,16 +217,23 @@ export const CatalogCollectionScreen = ({
 export interface CatalogBrowseScreenProps {
   readonly feedLayout: CatalogFeedLayout;
   readonly kind: CatalogKind;
+  readonly onOpenCatalog?:
+    ((catalogId: string, opener: HTMLElement) => void) | undefined;
+  readonly openableCatalogIds?: readonly string[] | undefined;
   readonly state: HomeCatalogState;
 }
 
 export const CatalogBrowseScreen = ({
   feedLayout,
   kind,
+  onOpenCatalog,
+  openableCatalogIds,
   state,
 }: CatalogBrowseScreenProps) => (
   <CatalogCollectionScreen
     feedLayout={feedLayout}
+    onOpenCatalog={onOpenCatalog}
+    openableCatalogIds={openableCatalogIds}
     presentation={kind}
     state={state}
   />

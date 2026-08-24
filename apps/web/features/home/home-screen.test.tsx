@@ -100,6 +100,19 @@ describe("CatalogCard", () => {
       ),
     ).not.toContain("data-catalog-feed-span");
   });
+
+  it("renders an accessible Detail trigger only when one is supplied", () => {
+    const markup = renderToStaticMarkup(
+      <CatalogCard
+        item={catalogItem()}
+        onOpen={() => undefined}
+        variant="feed"
+      />,
+    );
+
+    expect(markup).toContain('data-open-catalog-detail=""');
+    expect(markup).toContain('aria-label="查看云峰山刻石详情"');
+  });
 });
 
 describe("HomeScreen", () => {
@@ -150,6 +163,30 @@ describe("HomeScreen", () => {
 
     expect(markup).toContain("云峰山刻石");
     expect(markup).not.toContain("987654");
+  });
+
+  it("only makes allowlisted Catalog identities openable", () => {
+    const markup = renderToStaticMarkup(
+      <HomeScreen
+        feedLayout="double"
+        onOpenCatalog={() => undefined}
+        openableCatalogIds={["catalog-open"]}
+        state={{
+          state: "populated",
+          page: page([
+            catalogItem({ id: "catalog-open" as CatalogId, title: "可打开" }),
+            catalogItem({
+              id: "catalog-closed" as CatalogId,
+              title: "不可打开",
+            }),
+          ]),
+        }}
+      />,
+    );
+
+    expect(markup.match(/data-open-catalog-detail=/g)).toHaveLength(1);
+    expect(markup).toContain("可打开");
+    expect(markup).toContain("不可打开");
   });
 
   it("renders semantic no-media fallback and sparse metadata", () => {

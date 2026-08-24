@@ -1181,3 +1181,260 @@ test("Mouse regression: horizontal drag over Primary content never switches dest
     surface.locator('[data-primary-destination="home"]'),
   ).toHaveAttribute("data-active", "true");
 });
+
+const detailScenarioKeys = [
+  "single-portrait",
+  "single-landscape",
+  "single-ultrawide",
+  "inscription-complete",
+  "calligraphy-mixed",
+  "tablet-ultrawide-grid",
+  "no-media",
+  "long-partial",
+] as const;
+
+test("Detail QA surface exposes exactly the approved scenarios and truthful direct states", async ({
+  page,
+}) => {
+  const response = await page.goto("/dev/t02p?detail=single-portrait");
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  const selector = surface.locator("[data-qa-detail-scenario-selector]");
+
+  await expect(selector.locator("option")).toHaveCount(8);
+  await expect(selector.locator("option")).toHaveText(
+    detailScenarioKeys.map(
+      (key) =>
+        ({
+          "calligraphy-mixed": "Mixed calligraphy",
+          "inscription-complete": "Complete inscription",
+          "long-partial": "Long partial content",
+          "no-media": "No media",
+          "single-landscape": "Single landscape",
+          "single-portrait": "Single portrait",
+          "single-ultrawide": "Single ultra-wide",
+          "tablet-ultrawide-grid": "Tablet ultra-wide grid",
+        })[key],
+    ),
+  );
+  await expect(surface).toHaveAttribute("data-detail-open", "true");
+  await expect(surface).toHaveAttribute(
+    "data-detail-qa-scenario",
+    "single-portrait",
+  );
+  await expect(surface.locator("[data-primary-shell]")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+  await expect(surface.locator("[data-t02p-qa-controls]")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+  expect(
+    await surface
+      .locator("[data-t02p-qa-controls]")
+      .evaluate((element) => (element as HTMLElement).inert),
+  ).toBe(true);
+  await expect(
+    surface.getByRole("navigation", { name: "主要内容" }),
+  ).toBeVisible();
+  await expect(surface.locator("[data-detail-state=loaded]")).toBeVisible();
+
+  await page.goto("/dev/t02p?detail=no-media");
+  await expect(
+    page.locator('[data-detail-media-state="missing"]'),
+  ).toBeVisible();
+
+  await page.goto("/dev/t02p?detail=long-partial");
+  await expect(
+    page.locator('[data-detail-section="introduction"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-detail-section="transcription"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-detail-section="scholarly-research"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-detail-section="historical-context"]'),
+  ).toHaveCount(0);
+
+  await page.goto("/dev/t02p?detail=not-an-approved-scenario");
+  await expect(page.locator('[data-detail-state="not-found"]')).toBeVisible();
+  await expect(page.locator("[data-detail-title]")).toHaveCount(0);
+});
+
+test("Browse to Detail preserves the mounted shell, history, scroll, and focus", async ({
+  page,
+}) => {
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const shell = surface.locator("[data-primary-shell]");
+  const opener = surface
+    .locator('[data-qa-panel="home"] [data-open-catalog-detail]')
+    .first();
+  await opener.scrollIntoViewIfNeeded();
+  const initialScroll = await page.evaluate(() => window.scrollY);
+
+  await opener.click();
+  await expect(surface).toHaveAttribute(
+    "data-detail-qa-scenario",
+    "single-portrait",
+  );
+  await expect(shell.locator("[data-primary-destination]")).toHaveCount(3);
+  await expect(shell).toHaveAttribute("aria-hidden", "true");
+  await expect(navigation).toBeVisible();
+  await expect(page).toHaveURL(/\?detail=single-portrait$/);
+
+  await page.goBack();
+  await expect(surface).toHaveAttribute("data-detail-open", "false");
+  await expect(shell).not.toHaveAttribute("aria-hidden", "true");
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialScroll);
+});
+
+test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, and direct image URLs", async ({
+  page,
+}) => {
+  await page.goto("/dev/t02p?detail=calligraphy-mixed");
+  const gallery = page.locator("[data-detail-gallery]");
+  const stage = gallery.locator("[data-detail-main-stage]");
+  const counter = gallery.locator("[data-detail-media-index]");
+  await expect(counter).toHaveText("1/3");
+  await gallery.locator("[data-media-id]").nth(1).click();
+  await expect(counter).toHaveText("2/3");
+  await gallery.locator("[data-media-id]").first().click();
+  await expect(counter).toHaveText("1/3");
+
+  const box = await requireBoundingBox(stage);
+  await stage.evaluate((element, stageBox) => {
+    element.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        clientX: stageBox.x + stageBox.width * 0.8,
+        clientY: stageBox.y + stageBox.height / 2,
+        isPrimary: true,
+        pointerId: 401,
+        pointerType: "touch",
+      }),
+    );
+    element.dispatchEvent(
+      new PointerEvent("pointerup", {
+        bubbles: true,
+        button: 0,
+        buttons: 0,
+        clientX: stageBox.x + stageBox.width * 0.2,
+        clientY: stageBox.y + stageBox.height / 2,
+        isPrimary: true,
+        pointerId: 401,
+        pointerType: "touch",
+      }),
+    );
+  }, box);
+  await expect(counter).toHaveText("2/3");
+
+  const mainImage = gallery.locator("[data-detail-main-image]");
+  await mainImage.click();
+  const viewer = page.locator("[data-detail-viewer]");
+  const viewerStage = viewer.locator("[data-viewer-scale]");
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator("[data-detail-viewer-index]")).toHaveText(
+    "2 / 3",
+  );
+  await expect(page).toHaveURL(/image=qa-detail-calligraphy-mixed-media-2/);
+
+  await page.keyboard.press("ArrowRight");
+  await expect(viewer.locator("[data-detail-viewer-index]")).toHaveText(
+    "3 / 3",
+  );
+  await page.keyboard.press("ArrowLeft");
+  await expect(viewer.locator("[data-detail-viewer-index]")).toHaveText(
+    "2 / 3",
+  );
+
+  const viewerBox = await requireBoundingBox(viewerStage);
+  await viewerStage.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: viewerBox.x + 260,
+    clientY: viewerBox.y + 240,
+    isPrimary: true,
+    pointerId: 501,
+    pointerType: "touch",
+  });
+  await viewerStage.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: viewerBox.x + 360,
+    clientY: viewerBox.y + 240,
+    isPrimary: false,
+    pointerId: 502,
+    pointerType: "touch",
+  });
+  await viewerStage.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: viewerBox.x + 460,
+    clientY: viewerBox.y + 240,
+    isPrimary: false,
+    pointerId: 502,
+    pointerType: "touch",
+  });
+  await expect(viewerStage).toHaveAttribute("data-viewer-scale", "zoomed");
+  await viewerStage.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: viewerBox.x + 460,
+    clientY: viewerBox.y + 240,
+    isPrimary: false,
+    pointerId: 502,
+    pointerType: "touch",
+  });
+  await viewerStage.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: viewerBox.x + 260,
+    clientY: viewerBox.y + 240,
+    isPrimary: true,
+    pointerId: 501,
+    pointerType: "touch",
+  });
+
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+  await expect(page).not.toHaveURL(/image=/);
+  await expect(mainImage).toBeFocused();
+
+  await page.goto(
+    "/dev/t02p?detail=calligraphy-mixed&image=qa-detail-calligraphy-mixed-media-3",
+  );
+  await expect(page.locator("[data-detail-viewer]")).toBeVisible();
+  await expect(page.locator("[data-detail-viewer-index]")).toHaveText("3 / 3");
+});
+
+test("Tablet landscape uses a split Detail composition and ultra-wide thumbnails span both columns", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/dev/t02p?detail=tablet-ultrawide-grid");
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  await platformSelector(surface).selectOption("tablet");
+  const detail = page.locator("[data-detail-composition]");
+  await expect(detail).toHaveAttribute(
+    "data-detail-composition",
+    "tablet-landscape",
+  );
+
+  const grid = page.locator("[data-detail-thumbnail-grid]");
+  const regular = grid.locator('[data-gallery-span="single"]').first();
+  const ultraWide = grid.locator('[data-gallery-span="full"]').first();
+  const [gridBox, regularBox, ultraWideBox] = await Promise.all([
+    requireBoundingBox(grid),
+    requireBoundingBox(regular),
+    requireBoundingBox(ultraWide),
+  ]);
+  expect(regularBox.width).toBeLessThan(gridBox.width * 0.6);
+  expect(Math.abs(ultraWideBox.x - gridBox.x)).toBeLessThan(2);
+  expect(Math.abs(ultraWideBox.width - gridBox.width)).toBeLessThan(2);
+});

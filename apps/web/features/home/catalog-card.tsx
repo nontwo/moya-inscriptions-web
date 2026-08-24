@@ -4,33 +4,20 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@moya/ui";
 
+import { isUltraWideCatalogMedia } from "../catalog/media-layout";
 import styles from "./home-screen.module.css";
 
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
+
+export { isUltraWideCatalogMedia } from "../catalog/media-layout";
 
 export type CatalogCardVariant = "feed" | "inscription";
 
 export interface CatalogCardProps {
   readonly item: CatalogSummary;
+  readonly onOpen?: ((opener: HTMLElement) => void) | undefined;
   readonly variant: CatalogCardVariant;
 }
-
-type CatalogMediaDimensions = Pick<PublicMedia, "height" | "width">;
-
-export const isUltraWideCatalogMedia = (
-  media: CatalogMediaDimensions | undefined,
-): boolean => {
-  if (media === undefined) return false;
-
-  const { height, width } = media;
-  return (
-    Number.isFinite(height) &&
-    Number.isFinite(width) &&
-    height > 0 &&
-    width > 0 &&
-    width / height >= 2.4
-  );
-};
 
 const catalogKindLabels = {
   calligraphy: "书帖",
@@ -103,7 +90,7 @@ const CatalogCardMedia = ({
   );
 };
 
-export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
+export const CatalogCard = ({ item, onOpen, variant }: CatalogCardProps) => {
   const mediaKey = item.representativeMedia?.id ?? `${item.id}-missing-media`;
   const feedSpan =
     variant === "feed" && isUltraWideCatalogMedia(item.representativeMedia)
@@ -113,18 +100,8 @@ export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
     .filter((value) => value !== undefined)
     .join(" · ");
 
-  return (
-    <article
-      className={`${styles.card} ${
-        variant === "inscription" ? styles.inscriptionCard : styles.feedCard
-      }`}
-      data-catalog-card=""
-      data-catalog-card-variant={variant}
-      data-catalog-feed-span={feedSpan}
-      data-catalog-id={item.id}
-      data-catalog-kind={item.kind}
-      role={variant === "feed" ? "listitem" : undefined}
-    >
+  const content = (
+    <>
       <CatalogCardMedia
         key={mediaKey}
         media={item.representativeMedia}
@@ -138,6 +115,34 @@ export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
           <p className={styles.cardSummary}>{item.summary}</p>
         ) : null}
       </div>
+    </>
+  );
+
+  return (
+    <article
+      className={`${styles.card} ${
+        variant === "inscription" ? styles.inscriptionCard : styles.feedCard
+      }`}
+      data-catalog-card=""
+      data-catalog-card-variant={variant}
+      data-catalog-feed-span={feedSpan}
+      data-catalog-id={item.id}
+      data-catalog-kind={item.kind}
+      role={variant === "feed" ? "listitem" : undefined}
+    >
+      {onOpen === undefined ? (
+        content
+      ) : (
+        <button
+          aria-label={`查看${item.title}详情`}
+          className={styles.cardAction}
+          data-open-catalog-detail=""
+          onClick={(event) => onOpen(event.currentTarget)}
+          type="button"
+        >
+          {content}
+        </button>
+      )}
     </article>
   );
 };

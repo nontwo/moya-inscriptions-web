@@ -205,6 +205,12 @@ const webHomeLoaderFile = path.join(
   "home",
   "load-home-catalog.ts",
 );
+const webCatalogDetailLoaderFile = path.join(
+  webRoot,
+  "features",
+  "detail",
+  "load-catalog-detail.ts",
+);
 const webCatalogDetailApiRouteFile = path.join(
   webRoot,
   "app",
@@ -282,6 +288,33 @@ const isApprovedHomeLoaderReference = (
     serverAdapterImports.length === 1 &&
     serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
       "{fetchServerCatalogPage}"
+  );
+};
+
+const isApprovedCatalogDetailLoaderReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  if (
+    path.resolve(filePath) !== webCatalogDetailLoaderFile ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    reference.specifier !== "../../lib/public-api/server"
+  ) {
+    return false;
+  }
+
+  const serverAdapterImports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])\.\.\/\.\.\/lib\/public-api\/server\2\s*;/g,
+    ),
+  ];
+
+  return (
+    serverAdapterImports.length === 1 &&
+    serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
+      "{fetchServerCatalogDetail}"
   );
 };
 
@@ -587,6 +620,8 @@ export const frontendBoundaryViolations = (
       source,
       reference,
     );
+    const approvedCatalogDetailLoaderImport =
+      isApprovedCatalogDetailLoaderReference(filePath, source, reference);
     const approvedCatalogDetailApiImport = isApprovedCatalogDetailApiReference(
       filePath,
       source,
@@ -599,6 +634,7 @@ export const frontendBoundaryViolations = (
       !approvedT02StaticFilesImport &&
       !approvedWebTestRendererImport &&
       !approvedHomeLoaderImport &&
+      !approvedCatalogDetailLoaderImport &&
       !approvedCatalogDetailApiImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);

@@ -456,7 +456,7 @@ describe("frontend and browser boundaries", () => {
     ).toContain("next/server is server/runtime-only");
   });
 
-  it("allows only the Home loader to call the approved Public API server adapter", () => {
+  it("allows only the approved Home and Detail loaders to call their Public API server adapters", () => {
     const homeLoader = path.join(
       repositoryRoot,
       "apps",
@@ -473,10 +473,27 @@ describe("frontend and browser boundaries", () => {
       "catalog",
       "loader.ts",
     );
+    const detailLoader = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "detail",
+      "load-catalog-detail.ts",
+    );
     const approvedImport =
       'import { fetchServerCatalogPage } from "../../lib/public-api/server";';
 
     expect(frontendBoundaryViolations(homeLoader, approvedImport)).toEqual([]);
+    expect(
+      frontendBoundaryViolations(
+        detailLoader,
+        'import { fetchServerCatalogDetail } from "../../lib/public-api/server";',
+      ),
+    ).toEqual([]);
+    expect(frontendBoundaryViolations(detailLoader, approvedImport)).toContain(
+      "../../lib/public-api/server crosses the frontend boundary",
+    );
     expect(
       frontendBoundaryViolations(
         homeLoader,
