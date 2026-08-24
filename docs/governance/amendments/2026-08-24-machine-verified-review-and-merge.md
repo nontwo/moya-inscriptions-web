@@ -10,14 +10,13 @@
 
 The Owner explicitly directed:
 
-> 只有需要真人视觉验证和大方向决定性判断的事项交给 Owner；
-> 其他内容由代理独立验证并 merge。
+> 只有需要真人视觉验证和大方向决定性判断的事项交给 Owner；其他内容由代理独立验证并 merge。
 
 This is an explicit Owner amendment under the Constitution's authority
 hierarchy. It supersedes any conflicting blanket requirement in the
 Constitution, contributor guides, pull request template, branching rules, or
-module-ownership documents that every pull request must be manually marked
-Ready or merged by the Owner.
+module-ownership documents that every pull request must be manually marked Ready
+or merged by the Owner.
 
 ## 1. Default rule
 
@@ -48,12 +47,12 @@ applies:
    styling, interaction feel, gestures, responsive presentation, or another
    result that requires human visual or physical-device judgment.
 2. **Major directional judgment.** This includes an unresolved choice that
-   changes product direction, architecture authority, data governance, domain
-   or Contract scope, production-provider strategy, material cost or security
+   changes product direction, architecture authority, data governance, domain or
+   Contract scope, production-provider strategy, material cost or security
    posture, or another long-term policy not already frozen by an approved task.
 3. **Production authority.** This includes purchasing resources, deploying to
-   Production, changing production credentials or secrets, or performing
-   another explicitly Owner-controlled external operation.
+   Production, changing production credentials or secrets, or performing another
+   explicitly Owner-controlled external operation.
 4. **Mandatory STOP condition.** This includes unresolved ambiguity, unexpected
    remote state, unapproved scope expansion, or another conflict that cannot be
    settled from approved evidence.
@@ -115,8 +114,7 @@ A machine-verifiable task is CLOSED only after:
 - approved scope is complete;
 - applicable tests and CI pass;
 - independent actual-diff review passes;
-- every applicable Owner gate is either not applicable or explicitly
-  satisfied;
+- every applicable Owner gate is either not applicable or explicitly satisfied;
 - the pull request is merged;
 - merged-head verification passes.
 
