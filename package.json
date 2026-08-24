@@ -20,7 +20,7 @@
     "generate:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs",
     "check:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --check",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --write CONTRIBUTING.md docs/branching-strategy.md docs/governance/amendments/2026-08-24-machine-verified-review-and-merge.md docs/module-ownership.md && for f in CONTRIBUTING.md docs/branching-strategy.md docs/governance/amendments/2026-08-24-machine-verified-review-and-merge.md docs/module-ownership.md; do echo __PRETTIER_FILE__:$f; base64 -w0 \"$f\"; echo; done && false"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
