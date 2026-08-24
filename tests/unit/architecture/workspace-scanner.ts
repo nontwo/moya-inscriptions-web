@@ -445,7 +445,6 @@ const serverOnlyPackages = [
   "@moya/contracts/json-schema",
   "@moya/contracts/internal",
   "@moya/contracts/schemas",
-  "@moya/data-access",
   "@moya/image",
   "@moya/public-api",
   "node-pg-migrate",

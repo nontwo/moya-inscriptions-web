@@ -25,7 +25,6 @@ API消费业务数据。
 - `packages/contracts`：来源无关的 Public DTO、transport query 与 runtime
   schema。
 - `packages/design-tokens`、`packages/ui`：共享视觉 token、公共组件与正式资产。
-- `packages/data-access`：保留的backend workspace边界。
 - `packages/search`、`packages/image`：搜索与backend-owned Media
   runtime职责边界。
 - `database/migrations`：数据库迁移的唯一入口。

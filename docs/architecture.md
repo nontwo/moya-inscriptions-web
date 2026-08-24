@@ -33,8 +33,6 @@ workspace 管理单一仓库，并由 Turborepo 统一调度构建、lint、类�
   Error、Public ID 和 runtime
   schema 唯一来源；它既不是后端内部模型，也不是前端业务层。
 - `packages/ui` 和 `packages/design-tokens` 分别承载共享组件与视觉 token。
-- `packages/data-access`是T04.2按最小清理策略保留的空backend
-  workspace，当前不导出port、repository或adapter。
 - `packages/search`隔离搜索能力；server-only
   `packages/image`实现显式mapped和unconfigured storage URL resolver，不拥有HTTP
   status policy。
@@ -76,11 +74,6 @@ contract。`CatalogListTransportQuery`属于Public Contract；normalized
 transport boundary，application不得反向依赖transport。T05.3的
 `CatalogReadService`负责port orchestration与Public
 mapping，handler不得直接操作projection或SQL。
-
-`packages/data-access`不再承载兼容Reader，且不得建立第二套Catalog
-port。该workspace保持dependency-free，不得依赖PostgreSQL
-driver、SQL、HTTP、runtime
-schema、数据文件或环境变量。删除整个workspace不属于T04.2。
 
 公共契约采用以下单向事实链：
 

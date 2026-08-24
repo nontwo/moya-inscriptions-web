@@ -108,7 +108,6 @@ describe("@moya/backend-runtime package boundary", () => {
   it("keeps lower and contract boundaries independent of the runtime", async () => {
     const guardedRoots = [
       path.join(repositoryRoot, "packages", "contracts", "src"),
-      path.join(repositoryRoot, "packages", "data-access", "src"),
       path.join(repositoryRoot, "services", "api", "src"),
       path.join(repositoryRoot, "services", "public-api", "src"),
     ];
