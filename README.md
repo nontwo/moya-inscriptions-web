@@ -24,14 +24,14 @@ API消费业务数据。
   Contract mapper。
 - `packages/contracts`：来源无关的 Public DTO、transport query 与 runtime
   schema。
-- `packages/design-tokens`、`packages/ui`：T02 已交付的视觉 token、公共组件与正式资产。
+- `packages/design-tokens`、`packages/ui`：共享视觉 token、公共组件与正式资产。
 - `packages/data-access`：保留的backend workspace边界。
 - `packages/search`、`packages/image`：搜索与backend-owned Media
   runtime职责边界。
 - `database/migrations`：数据库迁移的唯一入口。
 - `tests`：单元、集成、端到端测试和 fixture。
-- `docs`：架构、工作流、分支策略和模块所有权文档。
-- `infra`、`scripts`：未来基础设施与自动化脚本入口。
+- `docs`：文档权威地图、架构、状态、分支策略和模块所有权文档。
+- `infra`、`scripts`：候选基础设施与自动化脚本入口。
 
 ## 环境要求
 
@@ -88,8 +88,7 @@ cp .env.example .env.local
 `integration/mvp`，不得直接推送 `main`，不得对共享分支 force
 push。每个 Agent 必须遵守
 [模块路径所有权](docs/module-ownership.md)，越界修改时应停止并报告。详细流程见
-[开发工作流](docs/development-workflow.md) 和
-[分支策略](docs/branching-strategy.md)。
+[贡献指南](CONTRIBUTING.md) 和 [分支策略](docs/branching-strategy.md)。
 
 ## 架构入口
 
@@ -101,4 +100,4 @@ push。每个 Agent 必须遵守
 - Public Web HTTP boundary：`apps/web/lib/public-api`
 - 设计系统与非生产原型：`packages/design-tokens`、`packages/ui`、`docs/prototypes`
 
-当前已完成能力、活动任务和后续范围只在[当前项目状态](docs/project-status.md)维护，README不复制roadmap状态。
+当前已完成能力、活动任务和后续范围只在[当前项目状态](docs/project-status.md)维护，README不复制roadmap状态。文档分类和权威关系见[文档地图](docs/README.md)。

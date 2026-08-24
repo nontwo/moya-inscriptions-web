@@ -3,20 +3,31 @@
 ```text
 main
 └── integration/mvp
-    └── <issue 对应的短期任务分支>
+    └── <short-lived task branch for a work reference>
 ```
 
-- `main` 只存放完整测试和 CI 均通过的版本。
-- 功能分支从最新 `integration/mvp` 创建，并先合并回 `integration/mvp`。
-- 功能任务不得直接推送 `main`。
-- 共享分支禁止 force push，也不得重写他人历史。
-- 阶段基准通过 PR squash merge 进入 `main`，再建立带说明的基准标签。
+- `main` is the Owner-approved milestone baseline.
+- `integration/mvp` is the shared integration branch.
+- A short-lived task branch starts from the latest `integration/mvp` and returns
+  through a squash-merge pull request.
+- Never push directly to `main` or `integration/mvp`.
+- Never force-push a shared branch or rewrite another contributor's history.
+- A machine-verifiable pull request targeting `integration/mvp` may be marked
+  Ready and squash merged by an independent review agent after applicable
+  validation, actual-diff review, and every applicable Owner gate pass.
+- Owner judgment is required only for visual or real-device acceptance, a major
+  product or architecture direction, a production-authority operation, or an
+  unresolved mandatory STOP condition. The Owner does not perform routine GitHub
+  merge operations.
+- Promotion from `integration/mvp` to `main` creates a stable milestone and
+  requires an explicit Owner milestone decision. After approval, an independent
+  review agent may execute the promotion merge and merged-head verification.
+- Add an annotated baseline tag after an approved milestone enters `main`.
+- Delete a short-lived branch through the approved post-merge workflow only
+  after merged-head verification passes.
 
-## 当前任务状态
+## Status source
 
-动态任务状态仅由[当前项目状态](project-status.md)维护；本文件不复制roadmap或里程碑进度。
-
-旧数据任务以及 T02、T03 的功能分支均不是活动长期分支。`integration/mvp-v2`
-的完整历史保存在 `archive/integration-mvp-v2-20260807`
-标签，仅供查阅，不作为实现来源。当前长期活动分支只应保留 `main` 和
-`integration/mvp`。
+Dynamic task, roadmap, and milestone status belongs only in
+[project status](project-status.md). This file defines branch topology and
+milestone-promotion rules only.

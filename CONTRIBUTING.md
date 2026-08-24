@@ -1,32 +1,89 @@
-# 贡献与双人协作规范
+# Contributing
 
-## 标准流程
+Repository development is governed by the [Owner Development Constitution][1]
+and the active [Owner amendments][2]. Read both before planning or changing
+files. This guide supplies operational steps only. It cannot relax the
+Constitution, an active amendment, frozen task scope, or an explicit Owner file
+allowlist.
 
-1. 先同步最新的 `integration/mvp`，再创建任务分支。
-2. 一个 Issue 对应一个分支和一个 Pull Request。
-3. 分支名称使用以下格式：
-   - `feat/<issue>-<name>`
-   - `fix/<issue>-<name>`
-   - `chore/<issue>-<name>`
-4. 禁止直接推送 `main` 或 `integration/mvp`。
-5. 开发未完成时创建 Draft PR，目标分支为 `integration/mvp`。
-6. 提交 PR 前运行
-   `pnpm format:check`、`pnpm lint`、`pnpm typecheck`、`pnpm test` 和
-   `pnpm build`。
-7. 涉及界面的 PR 必须附手机端和桌面端截图；无界面变化时明确说明。
-8. Review 问题必须在 PR 对话中回应、修复并标记解决。
-9. 新提交会使旧批准失效，需要重新审核。
-10. 仅仓库所有者 `@nontwo` 负责最终合并。
-11. 合并方式统一使用 Squash and merge。
-12. 合并后删除功能分支。
-13. 禁止提交 `.env`、Token、云密钥、生产数据库凭据或其他 Secret。
-14. 未经 `@nontwo`
-    明确批准，不得修改公共契约、根依赖、锁文件、数据库 Schema、CI 或部署配置。
+## Start a task
 
-## 范围边界
+1. Record an explicit work reference: a GitHub Issue, a formal task ID, or
+   another Owner-approved reference.
+2. Freeze the goal, non-goals, allowed paths, and preserved behavior. Freeze a
+   Behavior Matrix before implementation whenever user-visible behavior is in
+   scope.
+3. Sync `integration/mvp`, record its exact base SHA, and create a short-lived
+   task branch such as `feat/<reference>-<name>`, `fix/<reference>-<name>`, or
+   `chore/<reference>-<name>`.
+4. Check [module ownership][3]. Stop for an Owner decision only when the task
+   crosses an unfrozen ownership or scope boundary, or triggers another active
+   Owner-decision gate.
 
-协作者只修改 Issue 和任务说明授权的路径。需要越界时应停止编码，在 Issue 或 PR 中说明原因并等待
-`@nontwo` 批准。
+Never push directly to `main` or `integration/mvp`. Never force-push a shared
+branch or rewrite another contributor's history.
 
-当前 Private 仓库的 GitHub 套餐不支持强制 Branch
-Protection 或 Ruleset。在套餐能力改变前，上述禁止直接推送和必须审核的规则属于强制团队约定，不能由 GitHub 完全技术阻断。
+## Local setup
+
+Use the Node.js version in `.nvmrc` and the pnpm version pinned by the root
+`package.json`:
+
+```bash
+corepack enable
+corepack prepare pnpm@11.9.0 --activate
+pnpm install --frozen-lockfile
+```
+
+Run `pnpm dev` only when the scoped work requires a local runtime.
+
+## Validate the scoped change
+
+Validation must be proportionate to the approved scope. Run formatting, lint,
+typecheck, relevant automated tests, and a build whenever they apply to the
+affected runtime, architecture, dependency, database, or user-visible surface.
+Run PostgreSQL and E2E validation when those surfaces are affected. A
+documentation-only change does not require unrelated runtime checks.
+
+Do not hide, skip, or downgrade an applicable failure. Fix its cause and rerun
+the affected validation. Record each applicable command and result in the PR.
+
+## Pull request, review, and merge
+
+- Open a Draft PR to `integration/mvp` and complete the repository PR template.
+- Keep commits and the diff scoped and reviewable. List every modified file and
+  disclose deviations, risks, and deferred work.
+- An independent reviewer must inspect the actual GitHub diff, exact head SHA,
+  current remote state, applicable automated evidence, and review threads.
+  Implementation-agent self-report and green CI alone are not sufficient.
+- For a fully machine-verifiable task with no unresolved Owner gate, the
+  independent review agent may mark the PR Ready, squash merge it while pinning
+  the expected head SHA, and complete merged-head verification.
+- Ask the Owner only when an active gate requires human visual or real-device
+  judgment, a major directional decision, production authority, or resolution of
+  a mandatory STOP condition. After the Owner records the necessary judgment for
+  the exact reviewed head, the review agent performs the routine Ready, merge,
+  and merged-head operations.
+- Reply to, fix, and resolve review findings in the PR. Any substantive new
+  commit invalidates earlier review approval and requires review of the updated
+  diff.
+- Automated validation, independent diff or code review, and any applicable
+  Owner judgment are distinct gates. For user-visible work, provide evidence for
+  the task's approved platform matrix instead of a universal pair of phone and
+  desktop screenshots.
+- Delete a merged task branch through the approved post-merge workflow after
+  merged-head verification.
+
+Never commit `.env` files, tokens, cloud keys, production database credentials,
+or other secrets. Public Contracts, root dependencies, lockfiles, database
+schema or migrations, CI, deployment configuration, and other protected files
+require explicit frozen task scope. Obtain an Owner decision only when the
+required scope or direction has not already been approved.
+
+Contributor, local, CI, and PR or test environments must not use production
+credentials or a production database. Any production deployment is a separate
+Owner-approved operation performed by an authorized operator from an approved
+`main` baseline. Repository candidate deployment documents do not authorize it.
+
+[1]: docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md
+[2]: docs/governance/amendments/
+[3]: docs/module-ownership.md
