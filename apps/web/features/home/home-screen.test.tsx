@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { CatalogCard, isUltraWideCatalogMedia } from "./catalog-card";
 import { CatalogBrowseScreen } from "./catalog-screen";
 import { HomeScreen } from "./home-screen";
 
@@ -30,6 +31,76 @@ const page = (items: CatalogSummary[], total = items.length): CatalogPage =>
     pageSize: 20,
     totalPages: total === 0 ? 0 : Math.ceil(total / 20),
   }) as CatalogPage;
+
+describe("isUltraWideCatalogMedia", () => {
+  it.each([
+    [{ height: 1_000, width: 2_399 }, false],
+    [{ height: 1_000, width: 2_400 }, true],
+    [{ height: 280, width: 960 }, true],
+  ] as const)("classifies %o as %s", (media, expected) => {
+    expect(isUltraWideCatalogMedia(media)).toBe(expected);
+  });
+
+  it.each([
+    undefined,
+    { height: 0, width: 960 },
+    { height: -1, width: 960 },
+    { height: 280, width: 0 },
+    { height: 280, width: -1 },
+    { height: Number.NaN, width: 960 },
+    { height: 280, width: Number.POSITIVE_INFINITY },
+  ])("returns false for missing or invalid dimensions: %o", (media) => {
+    expect(isUltraWideCatalogMedia(media)).toBe(false);
+  });
+});
+
+describe("CatalogCard", () => {
+  const ultraWideMedia = {
+    alt: "合成超宽媒体",
+    height: 1_000,
+    id: "media-ultra-wide",
+    kind: "image",
+    src: "/ultra-wide.svg",
+    width: 2_400,
+  } as PublicMedia;
+
+  it("marks only ultra-wide feed cards for full feed span", () => {
+    const ultraWideItem = catalogItem({ representativeMedia: ultraWideMedia });
+    const regularItem = catalogItem({
+      representativeMedia: {
+        ...ultraWideMedia,
+        id: "media-regular",
+        width: 2_399,
+      } as PublicMedia,
+    });
+
+    expect(
+      renderToStaticMarkup(<CatalogCard item={ultraWideItem} variant="feed" />),
+    ).toContain('data-catalog-feed-span="full"');
+    expect(
+      renderToStaticMarkup(<CatalogCard item={regularItem} variant="feed" />),
+    ).not.toContain("data-catalog-feed-span");
+    expect(
+      renderToStaticMarkup(
+        <CatalogCard
+          item={catalogItem({ representativeMedia: undefined })}
+          variant="feed"
+        />,
+      ),
+    ).not.toContain("data-catalog-feed-span");
+  });
+
+  it("does not mark inscription cards even when their media is ultra-wide", () => {
+    expect(
+      renderToStaticMarkup(
+        <CatalogCard
+          item={catalogItem({ representativeMedia: ultraWideMedia })}
+          variant="inscription"
+        />,
+      ),
+    ).not.toContain("data-catalog-feed-span");
+  });
+});
 
 describe("HomeScreen", () => {
   it("renders populated Catalog content and only the PublicMedia runtime URL", () => {

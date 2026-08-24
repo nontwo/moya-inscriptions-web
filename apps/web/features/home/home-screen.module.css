@@ -198,6 +198,13 @@
   margin-bottom: var(--yoyi-space-5);
 }
 
+:global([data-primary-shell][data-platform="tablet"])
+  .feed[data-feed-layout="double"]
+  .feedCard[data-catalog-feed-span="full"] {
+  display: flex;
+  column-span: all;
+}
+
 :global([data-primary-shell][data-platform="tablet"]) .inscriptionCard {
   min-height: 120px;
   grid-template-columns: 112px minmax(0, 1fr);

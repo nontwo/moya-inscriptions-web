@@ -15,6 +15,23 @@ export interface CatalogCardProps {
   readonly variant: CatalogCardVariant;
 }
 
+type CatalogMediaDimensions = Pick<PublicMedia, "height" | "width">;
+
+export const isUltraWideCatalogMedia = (
+  media: CatalogMediaDimensions | undefined,
+): boolean => {
+  if (media === undefined) return false;
+
+  const { height, width } = media;
+  return (
+    Number.isFinite(height) &&
+    Number.isFinite(width) &&
+    height > 0 &&
+    width > 0 &&
+    width / height >= 2.4
+  );
+};
+
 const catalogKindLabels = {
   calligraphy: "书帖",
   inscription: "碑刻",
@@ -88,6 +105,10 @@ const CatalogCardMedia = ({
 
 export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
   const mediaKey = item.representativeMedia?.id ?? `${item.id}-missing-media`;
+  const feedSpan =
+    variant === "feed" && isUltraWideCatalogMedia(item.representativeMedia)
+      ? "full"
+      : undefined;
   const metadata = [catalogKindLabels[item.kind], item.periodLabel]
     .filter((value) => value !== undefined)
     .join(" · ");
@@ -99,6 +120,7 @@ export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
       }`}
       data-catalog-card=""
       data-catalog-card-variant={variant}
+      data-catalog-feed-span={feedSpan}
       data-catalog-id={item.id}
       data-catalog-kind={item.kind}
       role={variant === "feed" ? "listitem" : undefined}

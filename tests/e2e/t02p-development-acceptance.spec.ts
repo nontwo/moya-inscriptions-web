@@ -45,6 +45,99 @@ const activeCatalogPresentation = (surface: Locator) =>
     "[data-primary-destination]:not([hidden]) [data-catalog-presentation]",
   );
 
+const requireBoundingBox = async (locator: Locator) => {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error("Expected a visible locator bounding box");
+  return box;
+};
+
+const expectFeedCardGeometry = async ({
+  columnCount,
+  feed,
+  fullCard,
+  fullSpan,
+  normalCard,
+}: {
+  readonly columnCount: number;
+  readonly feed: Locator;
+  readonly fullCard: Locator;
+  readonly fullSpan: boolean;
+  readonly normalCard: Locator;
+}) => {
+  const [feedBox, fullCardBox, normalCardBox] = await Promise.all([
+    requireBoundingBox(feed),
+    requireBoundingBox(fullCard),
+    requireBoundingBox(normalCard),
+  ]);
+  const columnGap = await feed.evaluate((node) =>
+    Number.parseFloat(getComputedStyle(node).columnGap),
+  );
+  const expectedColumnWidth =
+    (feedBox.width - columnGap * Math.max(0, columnCount - 1)) / columnCount;
+
+  expect(Math.abs(normalCardBox.width - expectedColumnWidth)).toBeLessThan(2);
+  expect(
+    await fullCard.evaluate((node) => getComputedStyle(node).columnSpan),
+  ).toBe(fullSpan ? "all" : "none");
+
+  if (fullSpan) {
+    expect(Math.abs(fullCardBox.x - feedBox.x)).toBeLessThan(2);
+    expect(Math.abs(fullCardBox.width - feedBox.width)).toBeLessThan(2);
+  } else {
+    expect(Math.abs(fullCardBox.width - expectedColumnWidth)).toBeLessThan(2);
+  }
+};
+
+const expectCatalogCardsNotToOverlap = async (feed: Locator) => {
+  expect(
+    await feed.locator("[data-catalog-card]").evaluateAll((cards) => {
+      const rectangles = cards.map((card) => card.getBoundingClientRect());
+
+      return rectangles.every((rectangle, index) =>
+        rectangles.slice(index + 1).every((candidate) => {
+          const horizontalOverlap =
+            Math.min(rectangle.right, candidate.right) -
+            Math.max(rectangle.left, candidate.left);
+          const verticalOverlap =
+            Math.min(rectangle.bottom, candidate.bottom) -
+            Math.max(rectangle.top, candidate.top);
+          return horizontalOverlap <= 1 || verticalOverlap <= 1;
+        }),
+      );
+    }),
+  ).toBe(true);
+};
+
+const expectNoHorizontalOverflow = async (page: Page) => {
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+};
+
+const expectFeedToClearNavigation = async ({
+  feed,
+  navigation,
+  page,
+}: {
+  readonly feed: Locator;
+  readonly navigation: Locator;
+  readonly page: Page;
+}) => {
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const navigationBox = await requireBoundingBox(navigation);
+  const finalCardBottom = await feed
+    .locator("[data-catalog-card]")
+    .evaluateAll((cards) =>
+      Math.max(...cards.map((card) => card.getBoundingClientRect().bottom)),
+    );
+
+  expect(finalCardBottom).toBeLessThanOrEqual(navigationBox.y + 1);
+};
+
 const expectPresentationPlatform = async (
   surface: Locator,
   platform: AcceptancePlatform,
@@ -431,7 +524,12 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   const { surface } = await openDevelopmentSurface(page);
   const selector = feedLayoutSelector(surface);
   const feed = activeCatalogPresentation(surface).locator("[data-feed-layout]");
+  const fullCard = feed.locator('[data-catalog-feed-span="full"]').first();
+  const normalCard = feed
+    .locator("[data-catalog-card]:not([data-catalog-feed-span])")
+    .first();
   await expect(selector).toHaveValue("double");
+  await expect(feed.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
 
   if (testInfo.project.name === "desktop-chromium") {
     await expect(selector).toBeDisabled();
@@ -439,6 +537,13 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
       await feed.evaluate((node) => getComputedStyle(node).columnCount),
     );
     expect(columnCount).toBeGreaterThanOrEqual(3);
+    await expectFeedCardGeometry({
+      columnCount,
+      feed,
+      fullCard,
+      fullSpan: false,
+      normalCard,
+    });
     return;
   }
 
@@ -447,11 +552,162 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   await expect(surface).toHaveAttribute("data-feed-layout", "single");
   await expect(feed).toHaveCSS("column-count", "1");
   await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 1,
+    feed,
+    fullCard,
+    fullSpan: false,
+    normalCard,
+  });
 
   await selector.selectOption("double");
   await expect(surface).toHaveAttribute("data-feed-layout", "double");
   await expect(feed).toHaveCSS("column-count", "2");
   await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed,
+    fullCard,
+    fullSpan: testInfo.project.name === "tablet-webkit",
+    normalCard,
+  });
+});
+
+test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct full-width rhythm", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet-webkit",
+    "The Tablet feed composition audit runs only in Tablet WebKit.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  await page.setViewportSize({ height: 1194, width: 834 });
+  await expect(platformSelector(surface)).toHaveValue("auto");
+  await expectPresentationPlatform(surface, "tablet");
+  await expect(feedLayoutSelector(surface)).toHaveValue("double");
+
+  const home = activeCatalogPresentation(surface);
+  const homeFeed = home.locator('[data-feed-layout="double"]');
+  const homeUltraWide = home.locator(
+    '[data-catalog-id="qa-visual-inscription-04"]',
+  );
+  await expect(home.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: homeFeed,
+    fullCard: homeUltraWide,
+    fullSpan: true,
+    normalCard: home.locator('[data-catalog-id="qa-visual-inscription-01"]'),
+  });
+
+  const beforeSpan = home.locator(
+    '[data-catalog-id="qa-visual-calligraphy-03"]',
+  );
+  const afterSpanLeft = home.locator(
+    '[data-catalog-id="qa-visual-calligraphy-04"]',
+  );
+  const afterSpanRight = home.locator(
+    '[data-catalog-id="qa-visual-inscription-05"]',
+  );
+  await expect(beforeSpan).toBeVisible();
+  await expect(afterSpanLeft).toBeVisible();
+  await expect(afterSpanRight).toBeVisible();
+  const [afterSpanLeftBox, afterSpanRightBox] = await Promise.all([
+    requireBoundingBox(afterSpanLeft),
+    requireBoundingBox(afterSpanRight),
+  ]);
+  expect(Math.abs(afterSpanLeftBox.x - afterSpanRightBox.x)).toBeGreaterThan(
+    afterSpanLeftBox.width / 2,
+  );
+
+  await homeUltraWide.locator("img").dispatchEvent("error");
+  await expect(homeUltraWide).toHaveAttribute("data-catalog-feed-span", "full");
+  await expect(
+    homeUltraWide.locator('[data-catalog-media-state="failed"]'),
+  ).toBeVisible();
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: homeFeed,
+    fullCard: homeUltraWide,
+    fullSpan: true,
+    normalCard: home.locator('[data-catalog-id="qa-visual-inscription-01"]'),
+  });
+  await expectCatalogCardsNotToOverlap(homeFeed);
+  await expectNoHorizontalOverflow(page);
+  await expectFeedToClearNavigation({ feed: homeFeed, navigation, page });
+
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expectActiveDestination(surface, "calligraphy");
+  await page.setViewportSize({ height: 834, width: 1194 });
+  await expect(platformSelector(surface)).toHaveValue("auto");
+  await expectPresentationPlatform(surface, "tablet");
+  await expectActiveDestination(surface, "calligraphy");
+
+  const calligraphy = activeCatalogPresentation(surface);
+  const calligraphyFeed = calligraphy.locator('[data-feed-layout="double"]');
+  await expect(
+    calligraphy.locator('[data-catalog-feed-span="full"]'),
+  ).toHaveCount(1);
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: calligraphyFeed,
+    fullCard: calligraphy.locator(
+      '[data-catalog-id="qa-visual-calligraphy-05"]',
+    ),
+    fullSpan: true,
+    normalCard: calligraphy.locator(
+      '[data-catalog-id="qa-visual-calligraphy-01"]',
+    ),
+  });
+  await expectCatalogCardsNotToOverlap(calligraphyFeed);
+  await expectNoHorizontalOverflow(page);
+
+  await navigation.getByRole("button", { exact: true, name: "首页" }).click();
+  await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: activeCatalogPresentation(surface).locator(
+      '[data-feed-layout="double"]',
+    ),
+    fullCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-04"]',
+    ),
+    fullSpan: true,
+    normalCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-01"]',
+    ),
+  });
+
+  await feedLayoutSelector(surface).selectOption("single");
+  await expect(surface).toHaveAttribute("data-feed-layout", "single");
+  await expectFeedCardGeometry({
+    columnCount: 1,
+    feed: activeCatalogPresentation(surface).locator(
+      '[data-feed-layout="single"]',
+    ),
+    fullCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-04"]',
+    ),
+    fullSpan: false,
+    normalCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-01"]',
+    ),
+  });
+
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+  const inscriptions = activeCatalogPresentation(surface);
+  const inscriptionList = inscriptions.locator("[data-catalog-item-count]");
+  await expect(inscriptions.locator("[data-catalog-feed-span]")).toHaveCount(0);
+  const [inscriptionListBox, inscriptionCardBox] = await Promise.all([
+    requireBoundingBox(inscriptionList),
+    requireBoundingBox(inscriptions.locator("[data-catalog-card]").first()),
+  ]);
+  expect(
+    Math.abs(inscriptionCardBox.width - inscriptionListBox.width),
+  ).toBeLessThan(2);
+  await expectNoHorizontalOverflow(page);
 });
 
 test("Auto mode applies desktop viewport boundaries without resetting the active destination", async ({
