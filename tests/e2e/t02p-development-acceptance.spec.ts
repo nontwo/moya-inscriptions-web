@@ -51,6 +51,87 @@ const requireBoundingBox = async (locator: Locator) => {
   return box;
 };
 
+const expectImageFullyContained = async (stage: Locator, image: Locator) => {
+  await expect
+    .poll(() =>
+      image.evaluate(
+        (node) =>
+          node instanceof HTMLImageElement &&
+          node.complete &&
+          node.naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+
+  await expect
+    .poll(async () => {
+      const [stageBox, imageBox] = await Promise.all([
+        stage.boundingBox(),
+        image.boundingBox(),
+      ]);
+      if (stageBox === null || imageBox === null) return false;
+      return (
+        imageBox.x >= stageBox.x - 1 &&
+        imageBox.y >= stageBox.y - 1 &&
+        imageBox.x + imageBox.width <= stageBox.x + stageBox.width + 1 &&
+        imageBox.y + imageBox.height <= stageBox.y + stageBox.height + 1
+      );
+    })
+    .toBe(true);
+
+  const [stageBox, imageBox, imageMetrics] = await Promise.all([
+    requireBoundingBox(stage),
+    requireBoundingBox(image),
+    image.evaluate((node) => {
+      if (!(node instanceof HTMLImageElement)) {
+        throw new TypeError("Expected an image element");
+      }
+      return {
+        naturalHeight: node.naturalHeight,
+        naturalWidth: node.naturalWidth,
+        objectFit: getComputedStyle(node).objectFit,
+      };
+    }),
+  ]);
+
+  expect(imageBox.x).toBeGreaterThanOrEqual(stageBox.x - 1);
+  expect(imageBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+  expect(imageBox.x + imageBox.width).toBeLessThanOrEqual(
+    stageBox.x + stageBox.width + 1,
+  );
+  expect(imageBox.y + imageBox.height).toBeLessThanOrEqual(
+    stageBox.y + stageBox.height + 1,
+  );
+  expect(imageMetrics.objectFit).toBe("contain");
+
+  const naturalRatio = imageMetrics.naturalWidth / imageMetrics.naturalHeight;
+  const imageBoxRatio = imageBox.width / imageBox.height;
+  const paintedWidth =
+    naturalRatio > imageBoxRatio
+      ? imageBox.width
+      : imageBox.height * naturalRatio;
+  const paintedHeight =
+    naturalRatio > imageBoxRatio
+      ? imageBox.width / naturalRatio
+      : imageBox.height;
+  const paintedBox = {
+    height: paintedHeight,
+    width: paintedWidth,
+    x: imageBox.x + (imageBox.width - paintedWidth) / 2,
+    y: imageBox.y + (imageBox.height - paintedHeight) / 2,
+  };
+
+  expect(paintedBox.x).toBeGreaterThanOrEqual(stageBox.x - 1);
+  expect(paintedBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+  expect(paintedBox.x + paintedBox.width).toBeLessThanOrEqual(
+    stageBox.x + stageBox.width + 1,
+  );
+  expect(paintedBox.y + paintedBox.height).toBeLessThanOrEqual(
+    stageBox.y + stageBox.height + 1,
+  );
+  expect(paintedBox.width / paintedBox.height).toBeCloseTo(naturalRatio, 2);
+};
+
 const expectFeedCardGeometry = async ({
   columnCount,
   feed,
@@ -1490,6 +1571,9 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   await expect(dots).toHaveCount(3);
   await expect(dots.nth(0)).toHaveAttribute("aria-current", "true");
   await expect(page.locator("[data-detail-thumbnail-grid]")).toHaveCount(0);
+  const activeDetailImage = carousel.locator("[data-detail-main-image] img");
+  await expect(activeDetailImage).toHaveAttribute("draggable", "false");
+  await expectImageFullyContained(stage, activeDetailImage);
   const platform = await page
     .locator("[data-t02p-development-acceptance]")
     .getAttribute("data-platform");
@@ -1505,8 +1589,16 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   await dots.nth(1).click();
   await expect(counter).toHaveText("第 2 张，共 3 张");
   await expect(dots.nth(1)).toHaveAttribute("aria-current", "true");
+  await expectImageFullyContained(
+    stage,
+    carousel.locator("[data-detail-main-image] img"),
+  );
   await dots.first().click();
   await expect(counter).toHaveText("第 1 张，共 3 张");
+  await expectImageFullyContained(
+    stage,
+    carousel.locator("[data-detail-main-image] img"),
+  );
 
   const box = await requireBoundingBox(stage);
   await stage.dispatchEvent("pointerdown", {
@@ -1539,39 +1631,12 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   await expect(counter).toHaveText("第 1 张，共 3 张");
   await expect(stage).not.toHaveAttribute("data-dragging", "true");
 
-  await stage.dispatchEvent("pointerdown", {
-    button: 0,
-    buttons: 1,
-    clientX: box.x + box.width * 0.8,
-    clientY: box.y + box.height / 2,
-    isPrimary: true,
-    pointerId: 401,
-    pointerType: "touch",
+  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2, {
+    steps: 5,
   });
-  await stage.dispatchEvent("pointermove", {
-    button: 0,
-    buttons: 1,
-    clientX: box.x + box.width * 0.45,
-    clientY: box.y + box.height / 2,
-    isPrimary: true,
-    pointerId: 401,
-    pointerType: "touch",
-  });
-  await expect(stage).toHaveAttribute("data-dragging", "true");
-  expect(
-    await carousel
-      .locator("[data-detail-media-track]")
-      .evaluate((track) => getComputedStyle(track).transform),
-  ).not.toBe("none");
-  await stage.dispatchEvent("pointerup", {
-    button: 0,
-    buttons: 0,
-    clientX: box.x + box.width * 0.2,
-    clientY: box.y + box.height / 2,
-    isPrimary: true,
-    pointerId: 401,
-    pointerType: "touch",
-  });
+  await page.mouse.up();
   await expect(counter).toHaveText("第 2 张，共 3 张");
 
   const mainImage = carousel.locator("[data-detail-main-image]");
@@ -1590,6 +1655,10 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
     "2 / 3",
   );
   await expect(page).toHaveURL(/image=qa-detail-calligraphy-mixed-media-2/);
+  await expectImageFullyContained(
+    viewerStage,
+    viewer.locator("[data-detail-viewer-image]"),
+  );
 
   await page.goBack();
   await expect(viewer).toBeHidden();
@@ -1711,6 +1780,45 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   );
   await expect(page.locator("[data-detail-viewer]")).toBeVisible();
   await expect(page.locator("[data-detail-viewer-index]")).toHaveText("3 / 3");
+});
+
+test("PC and iPad landscape Viewer fit the complete image to the full viewport", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "mobile-webkit",
+    "Landscape full-screen fitting is audited on PC and iPad.",
+  );
+  const viewport =
+    testInfo.project.name === "tablet-webkit"
+      ? { height: 834, width: 1194 }
+      : { height: 720, width: 1280 };
+  await page.setViewportSize(viewport);
+  await page.goto(
+    "/dev/t02p?detail=calligraphy-mixed&image=qa-detail-calligraphy-mixed-media-1",
+  );
+
+  const surface = page.locator("[data-t02p-development-acceptance]");
+  await expectPresentationPlatform(
+    surface,
+    testInfo.project.name === "tablet-webkit" ? "tablet" : "pc",
+  );
+  const viewer = page.locator("[data-detail-viewer]");
+  const viewerStage = viewer.locator("[data-viewer-scale]");
+  const viewerImage = viewer.locator("[data-detail-viewer-image]");
+  await expect(viewer).toBeVisible();
+  await expectImageFullyContained(viewerStage, viewerImage);
+
+  const [viewerBox, stageBox] = await Promise.all([
+    requireBoundingBox(viewer),
+    requireBoundingBox(viewerStage),
+  ]);
+  expect(viewerBox).toEqual({ x: 0, y: 0, ...viewport });
+  expect(stageBox).toEqual({ x: 0, y: 0, ...viewport });
+  await page.screenshot({
+    animations: "disabled",
+    path: testInfo.outputPath(`${testInfo.project.name}-viewer-fit.png`),
+  });
 });
 
 test("Carousel preserves the accepted settle easing and reduced-motion duration", async ({

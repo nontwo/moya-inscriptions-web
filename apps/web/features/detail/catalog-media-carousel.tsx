@@ -190,9 +190,7 @@ export const CatalogMediaCarousel = ({
           const target = event.target;
           if (
             target instanceof Element &&
-            target.closest(
-              "[data-detail-media-dot], [data-detail-media-previous], [data-detail-media-next]",
-            ) !== null
+            target.closest("[data-detail-media-dot]") !== null
           ) {
             return;
           }
@@ -276,6 +274,7 @@ export const CatalogMediaCarousel = ({
                     <img
                       alt={item.alt}
                       decoding="async"
+                      draggable={false}
                       fetchPriority={active ? "high" : "auto"}
                       height={item.height}
                       loading={active ? "eager" : "lazy"}
@@ -301,7 +300,9 @@ export const CatalogMediaCarousel = ({
               className={`${styles.carouselEdge} ${styles.carouselEdgePrevious}`}
               data-detail-media-previous=""
               disabled={activeIndex === 0}
-              onClick={() => selectIndex(activeIndex - 1)}
+              onClick={() => {
+                if (!suppressClickRef.current) selectIndex(activeIndex - 1);
+              }}
               type="button"
             />
             <button
@@ -309,7 +310,9 @@ export const CatalogMediaCarousel = ({
               className={`${styles.carouselEdge} ${styles.carouselEdgeNext}`}
               data-detail-media-next=""
               disabled={activeIndex === media.length - 1}
-              onClick={() => selectIndex(activeIndex + 1)}
+              onClick={() => {
+                if (!suppressClickRef.current) selectIndex(activeIndex + 1);
+              }}
               type="button"
             />
             <div
