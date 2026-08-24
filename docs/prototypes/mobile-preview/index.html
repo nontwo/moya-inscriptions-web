@@ -56,7 +56,11 @@
   <body>
     <div class="app-stage">
       <div class="mobile-app yoyi-paper yoyi-paper--visible" data-mobile-app>
-        <div class="app-primary-shell app-pager" data-pager="primary">
+        <div
+          class="app-primary-shell app-pager"
+          data-pager="primary"
+          data-quick-action-layer="background"
+        >
           <div class="app-pager__track" data-pager-track>
             <section
               class="app-view app-pager__page is-pager-active"
@@ -1658,6 +1662,7 @@
           class="yoyi-mobile-bottom-navigation app-bottom-navigation"
           data-bottom-navigation
           data-minimize-behavior="on-scroll"
+          data-quick-action-layer="background"
           aria-label="主导航"
         >
           <div
@@ -1738,6 +1743,70 @@
             ></span>
           </button>
         </nav>
+
+        <div
+          class="app-quick-action-overlay"
+          data-quick-action-overlay
+          hidden
+          aria-hidden="true"
+        >
+          <div
+            class="app-quick-action-overlay__backdrop yoyi-functional-glass"
+            data-quick-action-layer="dim"
+          ></div>
+          <div
+            class="app-quick-action__card"
+            data-quick-action-card
+            data-quick-action-layer="focus"
+          ></div>
+          <div
+            class="app-quick-action__bubbles"
+            data-quick-action-bubbles
+            data-quick-action-layer="bubbles"
+          >
+            <span
+              class="app-quick-action__bubble"
+              data-quick-action="collect"
+              role="img"
+              aria-label="收藏"
+              ><svg
+                class="app-quick-action__glyph"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M7 3.75h10v16.5L12 17l-5 3.25z" /></svg
+            ></span>
+            <span
+              class="app-quick-action__bubble"
+              data-quick-action="like"
+              role="img"
+              aria-label="点赞"
+              ><svg
+                class="app-quick-action__glyph"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M20.3 8.1c0 5.2-8.3 9.4-8.3 9.4S3.7 13.3 3.7 8.1A4.3 4.3 0 0 1 12 6.5a4.3 4.3 0 0 1 8.3 1.6Z"
+                /></svg
+            ></span>
+            <span
+              class="app-quick-action__bubble"
+              data-quick-action="share"
+              role="img"
+              aria-label="分享"
+              ><svg
+                class="app-quick-action__glyph"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 15.5V3.75m0 0L7.75 8M12 3.75 16.25 8M5 12.25v6h14v-6"
+                /></svg
+            ></span>
+          </div>
+          <p class="app-quick-action__status" data-quick-action-status></p>
+        </div>
 
         <div
           class="app-loading yoyi-paper yoyi-paper--visible"

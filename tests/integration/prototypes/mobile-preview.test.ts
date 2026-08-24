@@ -672,31 +672,440 @@ afterEach(() => {
 });
 
 describe("mobile application preview", () => {
-  it("has no long-press quick action UI and preserves ordinary detail activation", async () => {
+  it("opens quick actions only after a stationary long press and cancels them on movement or viewport changes", async () => {
     const dom = renderPreview();
     const document = dom.window.document;
     const card = document.querySelector<HTMLElement>(
       '[data-content-id="discover-cliff-gate"]',
     );
-    if (!card) throw new Error("content card missing");
+    const overlay = document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    if (!card || !overlay) throw new Error("quick action card missing");
+
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
+    });
+
+    expect(card.dataset.quickActions).toBe("enabled");
+    expect(
+      document.querySelector("[data-bottom-navigation] [data-quick-actions]"),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-detail-focus] [data-quick-actions]"),
+    ).toBeNull();
 
     dispatchPointer(dom.window, card, "pointerdown", {
       clientX: 80,
       clientY: 260,
     });
-    await waitMs(dom.window, 520);
-    dispatchPointer(dom.window, card, "pointerup", {
+    dispatchPointer(dom.window, card, "pointermove", {
+      clientX: 94,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 500);
+    expect(overlay.hidden).toBe(true);
+
+    dispatchPointer(dom.window, card, "pointerdown", {
       clientX: 80,
       clientY: 260,
     });
+    await waitMs(dom.window, 480);
+    expect(overlay.hidden).toBe(false);
+    const focusLayer = document.querySelector<HTMLElement>(
+      '[data-quick-action-layer="focus"]',
+    );
+    const bubbleLayer = document.querySelector<HTMLElement>(
+      '[data-quick-action-layer="bubbles"]',
+    );
+    if (!focusLayer || !bubbleLayer) {
+      throw new Error("quick-action layers missing");
+    }
+    expect(
+      document.querySelectorAll('[data-quick-action-layer="background"]'),
+    ).toHaveLength(2);
+    expect(
+      focusLayer.closest('[data-quick-action-layer="background"]'),
+    ).toBeNull();
+    expect(
+      bubbleLayer.closest('[data-quick-action-layer="background"]'),
+    ).toBeNull();
+    expect(focusLayer.querySelector("img")).not.toBeNull();
+    const cardText = card.textContent?.trim();
+    if (!cardText) throw new Error("quick-action card text missing");
+    expect(focusLayer.textContent).toContain(cardText);
+    expect(document.querySelectorAll("[data-quick-action]")).toHaveLength(3);
+    document
+      .querySelectorAll<HTMLElement>("[data-quick-action]")
+      .forEach((bubble) => {
+        expect(bubble.textContent?.trim()).toBe("");
+        expect(bubble.querySelector("svg")).not.toBeNull();
+        expect(bubble.getAttribute("aria-label")).toBeTruthy();
+      });
 
-    expect(document.querySelector("[data-quick-action-overlay]")).toBeNull();
-    expect(document.querySelectorAll("[data-quick-action]")).toHaveLength(0);
-    expect(document.querySelector("[data-quick-action-card]")).toBeNull();
+    const likeBubble = document.querySelector<HTMLElement>(
+      "[data-quick-action='like']",
+    );
+    if (!likeBubble) throw new Error("quick-action like bubble missing");
+    const actionMove = dispatchPointer(dom.window, card, "pointermove", {
+      clientX:
+        Number.parseFloat(
+          likeBubble.style.getPropertyValue("--quick-action-x"),
+        ) + 32,
+      clientY:
+        Number.parseFloat(
+          likeBubble.style.getPropertyValue("--quick-action-y"),
+        ) + 32,
+    });
+    expect(actionMove.defaultPrevented).toBe(true);
+    const actionTouchMove = new dom.window.Event("touchmove", {
+      bubbles: true,
+      cancelable: true,
+    });
+    dom.window.dispatchEvent(actionTouchMove);
+    expect(actionTouchMove.defaultPrevented).toBe(true);
+
+    dom.window.dispatchEvent(new dom.window.Event("orientationchange"));
+    expect(overlay.hidden).toBe(true);
+  });
+
+  it("adapts quick-action arcs to the focused card and protected UI bounds", async () => {
+    const openAt = async (
+      dom: PreviewDom,
+      rect: { height: number; left: number; top: number; width: number },
+      press = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      },
+    ) => {
+      const card = dom.window.document.querySelector<HTMLElement>(
+        '[data-content-id="discover-cliff-gate"]',
+      );
+      if (!card) throw new Error("quick-action card missing");
+      Object.defineProperty(card, "getBoundingClientRect", {
+        configurable: true,
+        value: () => rect,
+      });
+      dispatchPointer(dom.window, card, "pointerdown", {
+        clientX: press.x,
+        clientY: press.y,
+      });
+      await waitMs(dom.window, 480);
+      return card;
+    };
+
+    const rightBiased = renderPreview();
+    const rightBiasedOverlay =
+      rightBiased.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(rightBiased, { left: 210, top: 200, width: 160, height: 180 });
+    expect(rightBiasedOverlay?.dataset.layout).toBe("left-arc");
+    const rightBiasedPositions = [
+      ...rightBiased.window.document.querySelectorAll<HTMLElement>(
+        "[data-quick-action]",
+      ),
+    ].map((bubble) =>
+      Number.parseFloat(bubble.style.getPropertyValue("--quick-action-x")),
+    );
+    expect(rightBiasedPositions[0]!).toBeLessThan(rightBiasedPositions[1]!);
+    expect(rightBiasedPositions[2]!).toBeLessThan(rightBiasedPositions[1]!);
+
+    const leftBiased = renderPreview();
+    const leftBiasedOverlay =
+      leftBiased.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(leftBiased, { left: 20, top: 200, width: 160, height: 180 });
+    expect(leftBiasedOverlay?.dataset.layout).toBe("right-arc");
+    const leftBiasedPositions = [
+      ...leftBiased.window.document.querySelectorAll<HTMLElement>(
+        "[data-quick-action]",
+      ),
+    ].map((bubble) =>
+      Number.parseFloat(bubble.style.getPropertyValue("--quick-action-x")),
+    );
+    expect(leftBiasedPositions[0]!).toBeGreaterThan(leftBiasedPositions[1]!);
+    expect(leftBiasedPositions[2]!).toBeGreaterThan(leftBiasedPositions[1]!);
+
+    const leftPress = renderPreview();
+    const leftPressOverlay =
+      leftPress.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(
+      leftPress,
+      { left: 120, top: 260, width: 150, height: 180 },
+      { x: 125, y: 350 },
+    );
+    expect(leftPressOverlay?.dataset.layout).toBe("left-arc");
+
+    const rightPress = renderPreview();
+    const rightPressOverlay =
+      rightPress.window.document.querySelector<HTMLElement>(
+        "[data-quick-action-overlay]",
+      );
+    await openAt(
+      rightPress,
+      { left: 120, top: 260, width: 150, height: 180 },
+      { x: 265, y: 350 },
+    );
+    expect(rightPressOverlay?.dataset.layout).toBe("right-arc");
+
+    const edgeBound = renderPreview();
+    const edgeDocument = edgeBound.window.document;
+    const navigation = edgeDocument.querySelector<HTMLElement>(
+      "[data-bottom-navigation]",
+    );
+    const topbar = edgeDocument.querySelector<HTMLElement>(".app-topbar");
+    if (!navigation || !topbar) throw new Error("quick-action bounds missing");
+    Object.defineProperty(navigation, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ height: 80, left: 0, top: 700, width: 390 }),
+    });
+    Object.defineProperty(topbar, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ bottom: 70, height: 70, left: 0, top: 0, width: 390 }),
+    });
+    await openAt(edgeBound, { left: 20, top: 600, width: 160, height: 140 });
+    const focusedCard = edgeDocument.querySelector<HTMLElement>(
+      "[data-quick-action-card]",
+    );
+    if (!focusedCard) throw new Error("focused quick-action card missing");
+    const focusTop = Number.parseFloat(focusedCard.style.top);
+    const focusLeft = Number.parseFloat(focusedCard.style.left);
+    expect(
+      edgeDocument.querySelector<HTMLElement>("[data-quick-action-overlay]")
+        ?.dataset.focusSafe,
+    ).toBe("true");
+    expect(focusTop - 7).toBeGreaterThanOrEqual(82);
+    expect(focusTop + 140 * 1.03).toBeLessThanOrEqual(688);
+    expect(focusLeft - 7).toBeGreaterThanOrEqual(12);
+    expect(focusLeft + 160 * 1.03).toBeLessThanOrEqual(378);
+    expect(
+      [
+        ...edgeDocument.querySelectorAll<HTMLElement>("[data-quick-action]"),
+      ].every((bubble) => {
+        const y = Number.parseFloat(
+          bubble.style.getPropertyValue("--quick-action-y"),
+        );
+        const size = Number.parseFloat(
+          bubble.style.getPropertyValue("--quick-action-bubble-size"),
+        );
+        return y >= 82 && y + size <= 688;
+      }),
+    ).toBe(true);
+
+    const wideCard = renderPreview();
+    const wideCardOverlay = wideCard.window.document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    await openAt(wideCard, { left: 12, top: 110, width: 366, height: 180 });
+    expect(wideCardOverlay?.dataset.layout).toBe("bottom-arc");
+
+    const desktop = renderPreview(
+      {},
+      {
+        maxTouchPoints: 0,
+        mobile: false,
+        userAgent: desktopUserAgent,
+        viewportHeight: 768,
+        viewportWidth: 1024,
+      },
+    );
+    const desktopNavigation =
+      desktop.window.document.querySelector<HTMLElement>(
+        "[data-bottom-navigation]",
+      );
+    if (!desktopNavigation) throw new Error("PC rail missing");
+    Object.defineProperty(desktopNavigation, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        bottom: 768,
+        height: 768,
+        left: 0,
+        right: 104,
+        top: 0,
+        width: 104,
+      }),
+    });
+    await openAt(desktop, { left: 720, top: 220, width: 180, height: 220 });
+    expect(
+      [
+        ...desktop.window.document.querySelectorAll<HTMLElement>(
+          "[data-quick-action]",
+        ),
+      ].every(
+        (bubble) =>
+          Number.parseFloat(
+            bubble.style.getPropertyValue("--quick-action-x"),
+          ) >= 116,
+      ),
+    ).toBe(true);
+  });
+
+  it("adds focused-card and staged quick-action visual treatment", () => {
+    expect(sharedCss).toContain(
+      "filter: blur(var(--quick-action-background-blur)) saturate(84%)",
+    );
+    expect(sharedCss).toContain('[data-quick-action-layer="background"]');
+    expect(sharedCss).not.toMatch(/backdrop-filter\s*:/i);
+    expect(sharedCss).toContain("--quick-action-card-shift-y");
+    expect(sharedCss).toContain(".app-quick-action-overlay.is-ready");
+    expect(sharedCss).toContain("--quick-action-delay");
+    expect(sharedCss).toContain("scale(1.06)");
+  });
+
+  it("limits browser long-press suppression to quick-action cards and their media", () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const image = card?.querySelector("img");
+    const composer =
+      document.querySelector<HTMLTextAreaElement>("[data-create-text]");
+    if (!card || !image || !composer) {
+      throw new Error("quick-action browser-suppression fixture missing");
+    }
+
+    expect(image.draggable).toBe(false);
+
+    const cardContextMenu = new dom.window.Event("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    card.dispatchEvent(cardContextMenu);
+    expect(cardContextMenu.defaultPrevented).toBe(true);
+
+    const imageDrag = new dom.window.Event("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    image.dispatchEvent(imageDrag);
+    expect(imageDrag.defaultPrevented).toBe(true);
+
+    const cardDrag = new dom.window.Event("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    card.dispatchEvent(cardDrag);
+    expect(cardDrag.defaultPrevented).toBe(false);
+
+    const composerContextMenu = new dom.window.Event("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(composerContextMenu);
+    expect(composerContextMenu.defaultPrevented).toBe(false);
+
+    const documentContextMenu = new dom.window.Event("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(documentContextMenu);
+    expect(documentContextMenu.defaultPrevented).toBe(false);
+  });
+
+  it("commits the selected quick action without opening detail and suppresses only the resulting click", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const overlay = document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    if (!card || !overlay) throw new Error("quick action card missing");
+
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
+    });
+    dispatchPointer(dom.window, card, "pointerdown", {
+      clientX: 80,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 480);
+    const likeBubble = document.querySelector<HTMLElement>(
+      "[data-quick-action='like']",
+    );
+    if (!likeBubble) throw new Error("quick-action like bubble missing");
+    const likeX =
+      Number.parseFloat(likeBubble.style.getPropertyValue("--quick-action-x")) +
+      32;
+    const likeY =
+      Number.parseFloat(likeBubble.style.getPropertyValue("--quick-action-y")) +
+      32;
+    dispatchPointer(dom.window, card, "pointermove", {
+      clientX: likeX,
+      clientY: likeY,
+    });
+    expect(
+      document.querySelector("[data-quick-action='like']")?.classList,
+    ).toContain("is-candidate");
+    dispatchPointer(dom.window, card, "pointerup", {
+      clientX: likeX,
+      clientY: likeY,
+    });
+
+    expect(
+      JSON.parse(dom.window.sessionStorage.getItem("yoyi.qa-log") ?? "[]"),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "[quick-action] like discover-cliff-gate",
+        }),
+      ]),
+    );
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    await waitMs(dom.window, 700);
+    expect(overlay.hidden).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(false);
+  });
 
+  it("cancels an active quick action without opening detail and restores a fresh click", async () => {
+    const dom = renderPreview();
+    const document = dom.window.document;
+    const card = document.querySelector<HTMLElement>(
+      '[data-content-id="discover-cliff-gate"]',
+    );
+    const overlay = document.querySelector<HTMLElement>(
+      "[data-quick-action-overlay]",
+    );
+    if (!card || !overlay) throw new Error("quick action card missing");
+
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, top: 200, width: 160, height: 180 }),
+    });
+    dispatchPointer(dom.window, card, "pointerdown", {
+      clientX: 80,
+      clientY: 260,
+    });
+    await waitMs(dom.window, 480);
+    expect(overlay.hidden).toBe(false);
+    dispatchPointer(dom.window, card, "pointerup", {
+      clientX: 12,
+      clientY: 80,
+    });
+
+    expect(overlay.hidden).toBe(true);
+    card.click();
+    expect(
+      document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
+    ).toBe(true);
+    await waitMs(dom.window, 700);
     card.click();
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
@@ -3170,7 +3579,9 @@ describe("mobile application preview", () => {
     expect(html).toContain('data-pager="primary"');
     expect(pcCss).toContain('[data-setting-group="home-layout"]');
     expect(html).toContain("data-theme-toggle");
-    expect(html).not.toContain("data-quick-action-overlay");
+    expect(html).toContain(
+      "app-quick-action-overlay__backdrop yoyi-functional-glass",
+    );
     expect(html).toContain("data-layout-toggle");
     expect(html).not.toContain("data-theme-option");
     expect(html).not.toContain("data-layout-option");
@@ -3381,7 +3792,9 @@ describe("mobile application preview", () => {
       /function isPcHorizontalWheel[\s\S]*carouselDirectionRatio/,
     );
     expect(script).toMatch(/addEventListener\(\s*["']wheel["']/);
-    expect(script).not.toContain("bindQuickActionScrollLock");
+    expect(script).toMatch(
+      /function bindQuickActionScrollLock[\s\S]*addEventListener\(\s*["']touchmove["']/,
+    );
     expect(script).toContain("function bindPagerPointerTracking");
     expect(script).toContain("pagerPeekMoveOptions");
     expect(script).toContain("function syncBottomNavViewportInset");

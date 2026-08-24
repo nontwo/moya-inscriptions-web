@@ -47,12 +47,174 @@ button {
 }
 
 .mobile-app {
+  --quick-action-background-blur: 10px;
   position: relative;
   width: min(100%, 430px);
   height: 100dvh;
   overflow: hidden;
   background-color: var(--yoyi-color-background-page);
   isolation: isolate;
+}
+
+.app-quick-action-overlay {
+  position: absolute;
+  z-index: 80;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app-quick-action-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  opacity: 0.8;
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-page) 38%,
+    transparent
+  );
+  transition: opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+[data-quick-action-layer="background"] {
+  transition: filter var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.mobile-app.is-quick-action-open [data-quick-action-layer="background"] {
+  filter: blur(var(--quick-action-background-blur)) saturate(84%);
+}
+
+.app-quick-action__card {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  border: 1px solid
+    color-mix(in srgb, var(--yoyi-color-seal-red) 42%, transparent);
+  border-radius: var(--app-content-radius);
+  box-shadow:
+    0 22px 48px rgb(0 0 0 / 28%),
+    0 0 0 3px color-mix(in srgb, var(--yoyi-color-seal-red) 10%, transparent);
+  opacity: 0;
+  transform: translate3d(
+      var(--quick-action-card-shift-x, 0px),
+      var(--quick-action-card-shift-y, 0px),
+      0
+    )
+    scale(0.97);
+  transform-origin: center;
+  transition:
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-medium) var(--yoyi-easing-emphasized);
+}
+
+.app-quick-action__card > * {
+  pointer-events: none;
+}
+
+/* Keep browser long-press and image-drag suppression inside actionable cards. */
+[data-quick-actions="enabled"] img,
+[data-quick-actions="enabled"] .app-card-media {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.app-quick-action__bubbles {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+}
+
+.app-quick-action__bubble {
+  position: absolute;
+  display: grid;
+  width: var(--quick-action-bubble-size, clamp(56px, 14vw, 64px));
+  height: var(--quick-action-bubble-size, clamp(56px, 14vw, 64px));
+  align-content: center;
+  justify-items: center;
+  border: 1px solid
+    color-mix(in srgb, var(--yoyi-color-text-primary) 12%, transparent);
+  border-radius: 50%;
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-surface) 90%,
+    transparent
+  );
+  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+  opacity: 0;
+  transform: translate3d(
+      var(--quick-action-x, 0px),
+      var(--quick-action-y, 0px),
+      0
+    )
+    scale(0.86);
+  transition:
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.app-quick-action-overlay.is-ready .app-quick-action__card {
+  opacity: 1;
+  transform: translate3d(
+      var(--quick-action-card-shift-x, 0px),
+      var(--quick-action-card-shift-y, 0px),
+      0
+    )
+    scale(1.03);
+}
+
+.app-quick-action-overlay.is-ready .app-quick-action__bubble {
+  opacity: 1;
+  transform: translate3d(
+      var(--quick-action-x, 0px),
+      var(--quick-action-y, 0px),
+      0
+    )
+    scale(1);
+  transition-delay: var(--quick-action-delay, 0ms);
+}
+
+.app-quick-action__glyph {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.app-quick-action-overlay.is-ready .app-quick-action__bubble.is-candidate {
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+  transform: translate3d(
+      var(--quick-action-x, 0px),
+      var(--quick-action-y, 0px),
+      0
+    )
+    scale(1.06);
+}
+
+.app-quick-action__status {
+  position: absolute;
+  z-index: 3;
+  right: var(--yoyi-space-4);
+  bottom: calc(var(--app-bottom-nav-clearance) + var(--yoyi-space-3));
+  left: var(--yoyi-space-4);
+  margin: 0;
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-font-size-sm);
+  font-weight: 600;
+  text-align: center;
 }
 
 .app-view {
