@@ -30,6 +30,27 @@ const webDevelopmentRouteRoot = path.join(
   "dev",
 );
 const prototypeRoot = path.join(repositoryRoot, "docs", "prototypes");
+const webProductShellRoot = path.join(
+  repositoryRoot,
+  "apps",
+  "web",
+  "features",
+  "product-shell",
+);
+const webProductPreviewRoot = path.join(
+  repositoryRoot,
+  "apps",
+  "web",
+  "features",
+  "product-preview",
+);
+const webFeatureQaRoot = path.join(
+  repositoryRoot,
+  "apps",
+  "web",
+  "features",
+  "qa",
+);
 
 const isTestSource = (file: string): boolean =>
   /(?:^|\/)(?:tests?|__tests__)(?:\/|$)/u.test(file) ||
@@ -649,6 +670,46 @@ describe("Development Catalog QA composition boundary", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("keeps Product Shell and Clean Preview independent from QA sources and harnesses", async () => {
+    const violations: string[] = [];
+
+    for (const root of [webProductShellRoot, webProductPreviewRoot]) {
+      const workspace = (await discoverWorkspaces()).find(
+        ({ root: candidate }) => isPathInside(candidate, root),
+      );
+      if (workspace === undefined) continue;
+      for (const file of workspace.sourceFiles.filter((candidate) =>
+        isPathInside(root, candidate),
+      )) {
+        const source = await readFile(file, "utf8");
+        for (const { specifier } of extractModuleReferences(source)) {
+          if (
+            isQaScenarioReference(file, specifier) ||
+            resolvesInside(file, specifier, webFeatureQaRoot)
+          ) {
+            violations.push(
+              `${path.relative(repositoryRoot, file)} imports QA runtime ${specifier}`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps the QA Harness out of Product Shell history and navigation ownership", async () => {
+    const qaHarness = await readFile(
+      path.join(webFeatureQaRoot, "t02p-qa-harness.tsx"),
+      "utf8",
+    );
+
+    expect(qaHarness).not.toMatch(
+      /history|popstate|activeDestination|onDestinationChange|localStorage/u,
+    );
+    expect(qaHarness).toContain("<T02pProductPreview");
   });
 
   it("forbids Product and QA runtime modules from importing Prototype fixtures", async () => {

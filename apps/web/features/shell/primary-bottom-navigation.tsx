@@ -11,9 +11,6 @@ import type {
 
 import { FixedLabelMark, Icon } from "@moya/ui";
 
-import "@moya/design-tokens/theme.css";
-import "@moya/ui/styles.css";
-
 import styles from "./primary-bottom-navigation.module.css";
 
 import type { PresentationPlatform } from "./device-platform";

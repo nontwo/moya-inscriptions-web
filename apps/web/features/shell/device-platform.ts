@@ -8,6 +8,14 @@ export interface DeviceDetectionInput {
   readonly maxTouchPoints?: number | null;
 }
 
+export interface RuntimeNavigatorLike {
+  readonly userAgent?: string | null;
+  readonly userAgentData?: { readonly mobile?: boolean | null } | null;
+  readonly maxTouchPoints?: number | null;
+}
+
+export type PresentationOrientation = "portrait" | "landscape";
+
 // These private compatibility thresholds mirror the current prototype, not a Product breakpoint API.
 const phoneMaximumWidth = 768;
 const pcMinimumWidth = 896;
@@ -46,3 +54,33 @@ export const resolvePresentationPlatform = (
   if (width < phoneMaximumWidth) return "phone";
   return width < pcMinimumWidth ? "tablet" : "pc";
 };
+
+export const readRuntimeDeviceClass = (
+  navigatorLike: RuntimeNavigatorLike,
+): DeviceClass =>
+  detectDeviceClass({
+    ...(navigatorLike.maxTouchPoints === undefined
+      ? {}
+      : { maxTouchPoints: navigatorLike.maxTouchPoints }),
+    ...(navigatorLike.userAgent === undefined
+      ? {}
+      : { userAgent: navigatorLike.userAgent }),
+    ...(navigatorLike.userAgentData === undefined
+      ? {}
+      : { userAgentData: navigatorLike.userAgentData }),
+  });
+
+export const resolveRuntimePresentationPlatform = (
+  navigatorLike: RuntimeNavigatorLike,
+  viewportWidth: number,
+): PresentationPlatform =>
+  resolvePresentationPlatform(
+    readRuntimeDeviceClass(navigatorLike),
+    viewportWidth,
+  );
+
+export const resolvePresentationOrientation = (
+  viewportWidth: number,
+  viewportHeight: number,
+): PresentationOrientation =>
+  viewportWidth > viewportHeight ? "landscape" : "portrait";

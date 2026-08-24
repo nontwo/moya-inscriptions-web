@@ -22,6 +22,7 @@ const destinations = [
 const renderCoordination = (
   activeDestination: PrimaryDestination = "home",
   platform: PresentationPlatform = "pc",
+  showDevelopmentPagerControls = false,
 ) =>
   renderToStaticMarkup(
     <PrimaryNavigationPager
@@ -31,11 +32,12 @@ const renderCoordination = (
       home={<p>home content</p>}
       inscriptions={<p>inscriptions content</p>}
       calligraphy={<p>calligraphy content</p>}
+      showDevelopmentPagerControls={showDevelopmentPagerControls}
     />,
   );
 
 describe("PrimaryNavigationPager", () => {
-  it("renders the thin navigation and semantic QA pager scaffold", () => {
+  it("renders the product navigation without QA pager controls by default", () => {
     const markup = renderCoordination();
 
     expect(markup.match(/data-primary-navigation-destination=/g)).toHaveLength(
@@ -47,7 +49,15 @@ describe("PrimaryNavigationPager", () => {
       );
       expect(markup).toContain(`aria-label="${label}"`);
     }
+    expect(markup).not.toContain('aria-label="主要内容分页"');
+    expect(markup).not.toContain("data-development-primary-pager");
+  });
+
+  it("can expose the existing bounded pager only for a Development harness", () => {
+    const markup = renderCoordination("inscriptions", "tablet", true);
+
     expect(markup).toContain('aria-label="主要内容分页"');
+    expect(markup).toContain("data-development-primary-pager");
     expect(markup).toContain(">上一页</button>");
     expect(markup).toContain(">下一页</button>");
   });
@@ -71,7 +81,7 @@ describe("PrimaryNavigationPager", () => {
   );
 
   it("uses one controlled active destination for navigation, pager, and PrimaryShell", () => {
-    const markup = renderCoordination("inscriptions", "tablet");
+    const markup = renderCoordination("inscriptions", "tablet", true);
 
     expect(
       markup.match(/data-active-destination="inscriptions"/g),
@@ -107,8 +117,8 @@ describe("PrimaryNavigationPager", () => {
   );
 
   it("disables only the unavailable edge action", () => {
-    const homeMarkup = renderCoordination("home");
-    const calligraphyMarkup = renderCoordination("calligraphy");
+    const homeMarkup = renderCoordination("home", "pc", true);
+    const calligraphyMarkup = renderCoordination("calligraphy", "pc", true);
 
     expect(homeMarkup).toContain(
       'data-primary-pager-action="previous" disabled=""',
@@ -138,13 +148,34 @@ describe("PrimaryNavigationPager", () => {
       | "home"
       | "inscriptions"
       | "calligraphy"
+      | "navigationHidden"
+      | "showDevelopmentPagerControls"
     >();
+  });
+
+  it("hides the unchanged navigation while an owned overlay is active", () => {
+    const markup = renderToStaticMarkup(
+      <PrimaryNavigationPager
+        activeDestination="home"
+        calligraphy={<p>calligraphy content</p>}
+        home={<p>home content</p>}
+        inscriptions={<p>inscriptions content</p>}
+        navigationHidden
+        onDestinationChange={vi.fn()}
+        platform="phone"
+      />,
+    );
+
+    expect(markup).toContain(
+      'aria-hidden="true" data-primary-navigation-layer="" hidden=""',
+    );
+    expect(markup).toContain("data-primary-navigation");
   });
 
   it("renders native buttons without prototype browser globals", () => {
     expect("window" in globalThis).toBe(false);
     expect("document" in globalThis).toBe(false);
     expect(() => renderCoordination()).not.toThrow();
-    expect(renderCoordination().match(/<button/g)).toHaveLength(5);
+    expect(renderCoordination().match(/<button/g)).toHaveLength(3);
   });
 });

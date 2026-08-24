@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   detectDeviceClass,
+  readRuntimeDeviceClass,
+  resolvePresentationOrientation,
   resolvePresentationPlatform,
+  resolveRuntimePresentationPlatform,
 } from "./device-platform";
 
 describe("current T02 device classification compatibility", () => {
@@ -60,6 +63,45 @@ describe("current T02 device classification compatibility", () => {
         userAgentData: { mobile: true },
       }),
     ).toBe("tablet");
+  });
+});
+
+describe("Product Shell runtime platform helpers", () => {
+  it("keeps real phones on phone and touch-Mac iPads below PC", () => {
+    expect(
+      resolveRuntimePresentationPlatform(
+        { userAgent: "Mozilla/5.0 (iPhone) Mobile" },
+        1_200,
+      ),
+    ).toBe("phone");
+    expect(
+      resolveRuntimePresentationPlatform(
+        {
+          maxTouchPoints: 5,
+          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X)",
+        },
+        1_366,
+      ),
+    ).toBe("tablet");
+  });
+
+  it("preserves Client Hint data while reading the runtime device class", () => {
+    expect(
+      readRuntimeDeviceClass({
+        userAgent: "Mozilla/5.0",
+        userAgentData: { mobile: true },
+      }),
+    ).toBe("phone");
+  });
+
+  it.each([
+    [390, 844, "portrait"],
+    [1_024, 768, "landscape"],
+    [800, 800, "portrait"],
+  ] as const)("resolves %sx%s as %s", (width, height, expectedOrientation) => {
+    expect(resolvePresentationOrientation(width, height)).toBe(
+      expectedOrientation,
+    );
   });
 });
 

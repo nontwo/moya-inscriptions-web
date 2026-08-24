@@ -18,6 +18,7 @@ describe("T02pDevelopmentPage", () => {
     headersMock.mockResolvedValue(
       new Headers({
         host: "192.0.2.44:3102",
+        "user-agent": "Mozilla/5.0 (iPhone) Mobile",
         "x-forwarded-proto": "http",
       }),
     );
@@ -36,30 +37,37 @@ describe("T02pDevelopmentPage", () => {
     expect(headersMock).not.toHaveBeenCalled();
   });
 
-  it("composes all QA scenarios and same-origin Visual media in Development", async () => {
+  it("renders the clean product preview without QA controls in Development", async () => {
     vi.stubEnv("NODE_ENV", "development");
 
     const markup = renderToStaticMarkup(await T02pDevelopmentPage());
 
-    expect(markup).toContain("T02P Development acceptance");
-    expect(markup).toContain('data-catalog-scenario="visual"');
-    expect(markup).toContain(
-      '<option value="visual" selected="">Visual</option>',
-    );
-    expect(markup).toContain(
-      '<option value="small-populated">Small populated</option>',
-    );
-    expect(markup).toContain('<option value="empty">Empty</option>');
-    expect(markup).toContain(
-      '<option value="unavailable">Unavailable</option>',
-    );
-    expect(markup).toContain(
-      '<option value="unexpected-error">Unexpected error</option>',
-    );
+    expect(markup).toContain("data-clean-product-preview");
+    expect(markup).toContain("data-product-shell");
+    expect(markup).toContain('data-platform="phone"');
+    expect(markup).not.toContain("T02P QA Harness");
+    expect(markup).not.toContain("data-qa-controls");
+    expect(markup).not.toContain("data-qa-platform-selector");
+    expect(markup).not.toContain("data-qa-catalog-scenario-selector");
+    expect(markup).not.toContain("data-development-primary-pager");
     expect(markup).toContain(
       'src="http://192.0.2.44:3102/docs/design-system/assets/demo/',
     );
     expect(markup.match(/data-primary-destination=/g)).toHaveLength(3);
+  });
+
+  it("uses the approved tablet SSR fallback for an iPad request", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    headersMock.mockResolvedValue(
+      new Headers({
+        host: "192.0.2.44:3102",
+        "user-agent": "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)",
+      }),
+    );
+
+    const markup = renderToStaticMarkup(await T02pDevelopmentPage());
+
+    expect(markup).toContain('data-platform="tablet"');
   });
 
   it("fails closed when the Development request has no unambiguous Host", async () => {

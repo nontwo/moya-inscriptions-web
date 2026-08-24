@@ -1,0 +1,72 @@
+.productShell {
+  min-width: 0;
+  min-height: 100dvh;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
+}
+
+.primaryLayer {
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.primaryLayer :global([data-primary-shell]) {
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.primaryLayer :global([data-primary-destination]) {
+  min-width: 0;
+  min-height: 100dvh;
+  background: var(--yoyi-color-background-page);
+}
+
+.productShell[data-platform="phone"]
+  .primaryLayer
+  :global([data-primary-shell]),
+.productShell[data-platform="tablet"]
+  .primaryLayer
+  :global([data-primary-shell]) {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.productShell[data-platform="phone"]
+  .primaryLayer
+  :global([data-primary-destination]),
+.productShell[data-platform="tablet"]
+  .primaryLayer
+  :global([data-primary-destination]) {
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.settingsButton {
+  position: fixed;
+  z-index: var(--yoyi-z-index-sticky);
+  top: max(var(--yoyi-space-3), env(safe-area-inset-top));
+  right: var(--yoyi-space-4);
+  width: 44px;
+  height: 44px;
+  color: var(--yoyi-color-text-primary);
+  border-color: var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+}
+
+.loading {
+  z-index: calc(var(--yoyi-z-index-overlay) + 10);
+}
+
+:global(html[data-yoyi-boot="ready"]) .loading {
+  display: none;
+}
+
+@media (min-width: 56rem) {
+  .settingsButton {
+    top: var(--yoyi-space-5);
+    right: var(--yoyi-space-6);
+  }
+}
