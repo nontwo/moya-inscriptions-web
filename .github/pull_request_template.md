@@ -1,53 +1,69 @@
 # Pull Request
 
-## 关联任务
+## Task and exact revisions
 
-Closes #
+- Work reference (Issue, task ID, or other Owner-approved reference):
+- Base SHA:
+- Head SHA:
 
-## 本次完成
+## Scope
 
--
--
+- Goal:
+- Non-goals:
+- Allowed path scope:
+- Modified files:
+- Scope deviations (write `None` or explain):
 
-## 修改范围
+## Behavior
 
--
+- Behavior Matrix: `Not applicable` / link or table
+- Development behavior:
+- Production behavior:
+- Behavior that must remain unchanged:
 
-## 未包含内容
+## Automated validation
 
--
+List only applicable checks and include command plus result.
 
-## 手机端截图
+| Surface                                  | Applicability and result              |
+| ---------------------------------------- | ------------------------------------- |
+| Format / lint / typecheck / unit / build |                                       |
+| PostgreSQL validation                    | `Not applicable` / command and result |
+| E2E validation                           | `Not applicable` / command and result |
+| Other scoped validation                  |                                       |
 
-## 桌面端截图
+## Change boundaries
 
-## 自动测试
+- Dependencies: `None` / details and approval
+- Lockfile: `Unchanged` / details and approval
+- Database or migrations: `None` / details and approval
+- Public Contract or API: `None` / details and approval
 
-- [ ] lint
-- [ ] typecheck
-- [ ] unit tests
-- [ ] build
-- [ ] E2E（如适用）
+## Independent review
 
-## 人工测试
+- Actual diff and exact-head review: `Pending` / reviewer and result
+- Current remote state and review-thread check: `Pending` / result
+- Expected head SHA pinned for merge: `Pending` / SHA
 
-- [ ] 手机端
-- [ ] 桌面端
-- [ ] 空数据
-- [ ] 错误状态
-- [ ] 图片加载失败
-- [ ] 未影响其他模块
+## Owner decision gates
 
-## 数据库变化
+Use `Not applicable` unless a gate genuinely applies.
 
-- [ ] 无
-- [ ] 有，已包含 migration
+- Visual or real-device acceptance:
+- Major product/architecture/data-governance direction:
+- Production resource, credential, or deployment authority:
+- Unresolved mandatory STOP condition:
 
-## 新增依赖
+A fully machine-verifiable PR with no unresolved Owner gate may be marked Ready,
+squash merged by an independent review agent, and verified at the merged head.
+Green CI or the implementation-agent report alone is not sufficient.
 
-- [ ] 无
-- [ ] 有，原因：
+For an applicable Owner gate, record the Owner judgment for the exact reviewed
+head. The independent review agent then performs the routine Ready, merge, and
+merged-head operations.
 
-## 风险和遗留问题
+## Risk and follow-up
 
-## 修改文件列表
+- Risks:
+- Deferred work:
+- Merged-head verification plan:
