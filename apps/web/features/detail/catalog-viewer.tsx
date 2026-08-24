@@ -209,6 +209,19 @@ export const CatalogViewer = ({
     }
   };
 
+  const cancelPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    dragRef.current = null;
+    movedRef.current = true;
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Interrupted pointers may already have released capture.
+    }
+  };
+
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (scale === 1 && Math.abs(event.deltaX) > Math.abs(event.deltaY) * 1.25) {
@@ -275,7 +288,8 @@ export const CatalogViewer = ({
         <div
           className={styles.viewerStage}
           data-viewer-scale={scale > 1.05 ? "zoomed" : "fit"}
-          onPointerCancel={finishPointer}
+          onLostPointerCapture={cancelPointer}
+          onPointerCancel={cancelPointer}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={finishPointer}

@@ -1515,6 +1515,36 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
     clientX: box.x + box.width * 0.8,
     clientY: box.y + box.height / 2,
     isPrimary: true,
+    pointerId: 400,
+    pointerType: "touch",
+  });
+  await stage.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: box.x + box.width * 0.2,
+    clientY: box.y + box.height / 2,
+    isPrimary: true,
+    pointerId: 400,
+    pointerType: "touch",
+  });
+  await stage.dispatchEvent("pointercancel", {
+    button: 0,
+    buttons: 0,
+    clientX: box.x + box.width * 0.2,
+    clientY: box.y + box.height / 2,
+    isPrimary: true,
+    pointerId: 400,
+    pointerType: "touch",
+  });
+  await expect(counter).toHaveText("第 1 张，共 3 张");
+  await expect(stage).not.toHaveAttribute("data-dragging", "true");
+
+  await stage.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: box.x + box.width * 0.8,
+    clientY: box.y + box.height / 2,
+    isPrimary: true,
     pointerId: 401,
     pointerType: "touch",
   });
@@ -1583,6 +1613,38 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   );
 
   const viewerBox = await requireBoundingBox(viewerStage);
+  await viewerStage.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: viewerBox.x + 360,
+    clientY: viewerBox.y + 240,
+    isPrimary: true,
+    pointerId: 500,
+    pointerType: "touch",
+  });
+  await viewerStage.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: viewerBox.x + 120,
+    clientY: viewerBox.y + 240,
+    isPrimary: true,
+    pointerId: 500,
+    pointerType: "touch",
+  });
+  await viewerStage.dispatchEvent("pointercancel", {
+    button: 0,
+    buttons: 0,
+    clientX: viewerBox.x + 120,
+    clientY: viewerBox.y + 240,
+    isPrimary: true,
+    pointerId: 500,
+    pointerType: "touch",
+  });
+  await expect(viewer.locator("[data-detail-viewer-index]")).toHaveText(
+    "2 / 3",
+  );
+  await expect(page).toHaveURL(/image=qa-detail-calligraphy-mixed-media-2/);
+
   await viewerStage.dispatchEvent("pointerdown", {
     button: 0,
     buttons: 1,

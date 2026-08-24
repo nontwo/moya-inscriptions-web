@@ -131,6 +131,26 @@ export const CatalogMediaCarousel = ({
     }
   };
 
+  const cancelGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (gesture === null || gesture.id !== event.pointerId) return;
+    gestureRef.current = null;
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+    setDragging(false);
+    setDragOffset(0);
+
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Interrupted pointers may already have released capture.
+    }
+  };
+
   if (media.length === 0) {
     return (
       <section
@@ -162,9 +182,9 @@ export const CatalogMediaCarousel = ({
         data-detail-main-stage=""
         data-dragging={dragging ? "true" : undefined}
         onLostPointerCapture={(event) => {
-          if (gestureRef.current?.id === event.pointerId) finishGesture(event);
+          if (gestureRef.current?.id === event.pointerId) cancelGesture(event);
         }}
-        onPointerCancel={finishGesture}
+        onPointerCancel={cancelGesture}
         onPointerDown={(event) => {
           if (!event.isPrimary || event.button !== 0) return;
           const target = event.target;
