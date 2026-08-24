@@ -9,7 +9,7 @@
    `InscriptionList`，不复用首页瀑布流。
 6. 书帖使用配置驱动的
    `CalligraphyCategoryTabs`、`CalligraphyCard/Grid`；URL 参数同步属于页面层。
-7. Object key 只留在后端；页面接收未来 `PublicMediaDTO.src` 中由 backend
+7. Object key 只留在后端；页面接收当前 `PublicMedia.src` 中由 backend
    `StorageUrlResolver` 生成的 public/signed runtime URL，再传给
    `UiImage`。页面不得自行拼接 CDN URL。
 8. 用户显式主题偏好由应用在首屏前写入 `data-theme`；`system`

@@ -1,10 +1,11 @@
 # `@moya/contracts`
 
 跨模块公共类型和 runtime
-schema 的唯一来源。本包只定义碑刻 MVP 当前已批准的 Public DTO、transport
+schema 的唯一来源。本包只定义由艺（Yoyi）当前已批准的 Public DTO、transport
 query、分页和安全错误，不保存或导入真实数据。
 
-`CatalogId`、`MediaId`、两值 `CatalogKind`、`PublicMedia`、`CatalogSummary`、
+`CatalogId`、`MediaId`、两值
+`CatalogKind`（`inscription | calligraphy`）、`PublicMedia`、`CatalogSummary`、
 `CatalogDetail`、`CatalogPage`和`CatalogListTransportQuery`是canonical Public
 Contract。T04.2已删除T04.0-R的Archive compatibility
 exports；新代码只使用Catalog语言。

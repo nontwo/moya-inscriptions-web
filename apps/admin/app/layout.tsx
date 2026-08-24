@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "摩崖碑刻数字平台管理端",
-  description: "摩崖碑刻数字平台的管理端工程骨架。",
+  title: "由艺（Yoyi）管理端",
+  description: "由艺（Yoyi）的最小管理端工程骨架。",
 };
 
 export default function RootLayout({

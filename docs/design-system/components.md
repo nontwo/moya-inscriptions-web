@@ -8,7 +8,8 @@
 - `IconButton`：必须提供可访问 `label`。
 - `Input`、`Textarea`：原生属性加 `invalid`。
 - `SearchInput`：必须提供 `label`，可配置 clear 回调。
-- `Card`、`ImageCard`：图片 URL 由消费端从对象 key 派生后传入。
+- `Card`、`ImageCard`：图片 URL 直接使用 Public API 提供的已解析运行时值（例如
+  `PublicMedia.src`）；消费端不得接收 object key 或自行拼接 provider/CDN URL。
 - `ListItem`、`ThumbnailListItem`：标题、描述、元信息和首尾插槽。
 - `Tag`、`CategoryTag`、`Badge`、`Divider`、`Skeleton`、`Spinner`。
 

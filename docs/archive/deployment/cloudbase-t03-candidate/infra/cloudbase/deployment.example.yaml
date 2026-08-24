@@ -1,4 +1,4 @@
-# Candidate inventory only. This file is intentionally non-executable.
+# Historical T03 candidate inventory only. This file is intentionally non-executable.
 schemaVersion: "0.1"
 kind: CloudBaseCandidateDeployment
 

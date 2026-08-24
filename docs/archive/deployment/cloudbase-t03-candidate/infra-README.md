@@ -1,0 +1,6 @@
+# Historical T03 Infrastructure index
+
+T03 已交付的部署与基础设施候选入口。当前不连接云服务，也不包含可执行 IaC 或正式部署配置。
+
+当前仅提供
+[CloudBase 中国大陆候选部署骨架](infra/cloudbase/README.md)。其中所有环境 ID、域名、存储桶和配置值均为占位符；文件不可直接用于创建、购买或发布云资源。

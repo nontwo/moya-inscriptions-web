@@ -18,8 +18,10 @@ import {
 } from "@moya/ui";
 ```
 
-组件不绑定路由、API、数据库或业务契约。图片 URL 必须由消费端从对象 key 派生后再传入
-`UiImage.src`。分类和导航均由配置数组驱动。底部固定导航项可通过 `labelMark`
+组件不绑定路由、API、数据库或业务契约。图片 URL 必须直接使用 Public
+API 提供的已解析运行时值（例如 `PublicMedia.src`）再传入
+`UiImage.src`；UI 消费端不得接收 object key，也不得自行拼接 provider 或 CDN
+URL。分类和导航均由配置数组驱动。底部固定导航项可通过 `labelMark`
 显示用户提供的透明图片字标；真实 `label`
 始终保留为无障碍名称。其他标签默认使用系统字体文本。
 

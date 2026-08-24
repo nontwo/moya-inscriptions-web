@@ -1,66 +1,76 @@
-# 部署检查清单
+# Provider-neutral deployment checklist
 
-本清单适用于未来获批后的人工或流水线发布。当前任务不得据此开通资源或执行正式发布。
+本清单只保存 provider-neutral release
+safety。它不选择 provider，不创建资源，也不授权 production
+deployment。真实外部操作必须在独立批准后补充 provider、账号、区域、预算、安全、合规与运行目标。
 
-## 一次性准备
+## Authority gate
 
-- [ ] CloudBase 已通过供应商、预算、安全、隐私和中国大陆数据合规评审。
-- [ ] 开发、测试、生产使用三个独立 CloudBase 环境，资源和权限不共享。
-- [ ] 生产地域、套餐、QPS、并发、存储、CDN 流量和成本告警已评审。
-- [ ] 生产域名完成适用的 ICP/接入备案，DNS、CNAME 和证书责任人已明确。
-- [ ] Web 运行模式（静态托管或云托管容器）已经验证。
-- [ ] API 已有 HTTP 入口、容器定义、健康检查、超时和优雅停机行为。
-- [ ] PostgreSQL 连接池、最小权限账号、备份、恢复演练和迁移流程已就绪。
-- [ ] 对象存储公开/私有边界、安全规则、CORS、防盗链和生命周期策略已评审。
-- [ ] 日志、指标、追踪、可用性探针和通知渠道已配置并完成告警演练。
-- [ ] 发布与回滚权限采用最小权限，生产操作可审计且至少双人复核。
+- [ ] Production
+      provider、运行地域、成本上限、账号主体与责任人已由 Owner 明确批准。
+- [ ] Production resource
+      purchase/provision、domain、certificate、credential 与 secret 操作具有单独授权。
+- [ ] Web runtime target 已根据当前 Next.js request-time route
+      requirements 验证；不得依据历史 candidate 假设 static hosting。
+- [ ] HTTP deployable runtime 指向 `services/backend-production`（组合
+      `services/backend-runtime`），不得把 contract-only `services/public-api`
+      当作listener。
 
-## 每次发布前
+## Environment and process separation
 
-- [ ] 记录发布负责人、变更单、目标环境、维护窗口和完整 Git SHA。
-- [ ] 确认目标提交来自受保护分支，评审与 CI 均通过，工作树无未提交变更。
-- [ ] 本地/CI 已通过 `pnpm format:check`、`pnpm lint`、`pnpm typecheck`、
-      `pnpm test`、`pnpm build` 和 `git diff --check`。
-- [ ] 使用测试环境验证与生产完全相同的 Web 产物和 API 镜像 digest。
-- [ ] 核对环境 ID、地域、域名、路由和存储桶，确认没有跨环境引用。
-- [ ] 核对图片 URL 由 backend resolver 生成，Frontend 产物不读取 legacy
-      `PUBLIC_CDN_BASE_URL`，也不包含 object key/bucket/provider internals。
-- [ ] 通过密钥管理/运行时注入核对敏感配置；发布包、镜像和日志不含明文密钥。
-- [ ] 数据库迁移（如有）已评审为向前/向后兼容，并有独立备份与恢复步骤。
-- [ ] 记录当前已知良好版本、配置修订、路由和流量比例作为回滚目标。
-- [ ] CDN 缓存策略与本次资源 key 变更已确认；不覆盖长缓存的既有 key。
-- [ ] 回滚负责人在线，且外部依赖、备案、证书和 CloudBase 状态无异常。
+- [ ] Public Web、Backend Runtime/API、Admin 分别拥有独立 process
+      definition；当前本地端口权威为 `3000`、`3001`、`3002`。
+- [ ] Production `HOST`、`PORT`、`DATABASE_URL` 与 Web
+      `MOYA_PUBLIC_API_BASE_URL` 由受控 runtime configuration 注入。
+- [ ] Frontend artifact 不包含 `DATABASE_URL`、object key、bucket、provider
+      credential 或 storage configuration。
+- [ ] Public Media 只输出 backend resolver 生成的
+      `PublicMedia.src`；UI 不推导 URL。
+- [ ] Development/Production data
+      composition 已验证隔离，Production 不包含 QA、Prototype 或 P5 snapshot
+      records。
 
-## 建议发布顺序
+## Database readiness
 
-1. 在测试环境部署不可变 API 镜像和 Web 产物。
-2. 运行健康检查、API 契约检查、移动端关键路径和图片/CDN 冒烟测试。
-3. 若存在兼容性数据库迁移，按获批迁移计划执行并验证；本骨架不提供迁移命令。
-4. 生产先部署 API 新版本但不扩大流量，确认健康后逐步切流。
-5. 部署 Web 产物并核对 `/`、`/api/*`、404/错误页和静态资源。
-6. 逐步扩大流量，持续观察错误率、延迟、实例、数据库连接和 CDN 回源。
-7. 达到观察窗口并由发布负责人确认后，标记版本为已知良好版本。
+- [ ] Target PostgreSQL major/minor 与已验证 compatibility
+      baseline 一致，或已有独立 maintenance approval 与完整 test evidence。
+- [ ] Backup identifier、restore procedure、RPO/RTO 与负责人已记录并演练。
+- [ ] 使用已实现的显式 migration command，成功后才启动 production backend：
 
-## 发布后验证
+```sh
+pnpm --filter @moya/catalog-postgres build
+DATABASE_URL='postgresql://...' pnpm --filter @moya/catalog-postgres migrate
+```
 
-- [ ] Web 首页、核心公开页面和移动窄屏入口返回预期状态码，无混合内容。
-- [ ] API 健康检查、只读接口、鉴权失败和限频行为符合预期。
-- [ ] Web 不直接访问数据库；浏览器产物不包含 `DATABASE_URL` 或云 API 密钥。
-- [ ] Public Media 响应只包含 backend resolver 生成的 public/signed runtime
-      URL；Frontend 未自行拼接 object key，CDN 命中和回源正常。
-- [ ] HTTPS 证书链、SNI、重定向、DNS/CNAME 和各域名安全头符合评审结果。
-- [ ] 日志中可关联发布版本且没有凭据、连接串或个人敏感信息泄漏。
-- [ ] 错误率、P95/P99 延迟、5xx、实例重启、数据库连接和 CDN 回源无异常。
-- [ ] 发布记录包含实际产物摘要、配置修订、验证证据和最终流量状态。
+- [ ] Startup 只读验证 required migration ledger，不自动执行 DDL。
+- [ ] Schema change 已按 expand/contract compatibility 评审；destructive
+      rollback 不是普通应用回滚步骤。
 
-## 停止发布并回滚的条件
+## Release evidence
 
-出现下列任一情况时停止扩大流量，并由发布负责人决定立即回滚：
+- [ ] 记录完整 Git SHA、immutable artifact digest、configuration
+      revision、target environment 与 previous known-good release。
+- [ ] Exact release content 已通过 applicable
+      format、lint、typecheck、tests、build、E2E 与 PostgreSQL validation。
+- [ ] GitHub diff、exact head、CI、dependencies/lockfile 与 review
+      threads 已由 independent reviewer 检查。
+- [ ] 同一 immutable artifact 先在获批 non-production
+      environment 验证，再晋级；不在 Production 重新构建。
+- [ ] Migration、application release 与 traffic
+      change 是可观测、可停止、可独立记录的 steps。
 
-- 健康检查失败、持续 5xx、关键页面不可用或错误率显著高于既有基线。
-- 鉴权绕过、数据越权、敏感信息泄漏或错误环境/存储桶连接。
-- 数据库迁移不兼容、连接池耗尽或出现数据完整性风险。
-- HTTPS、证书、域名、DNS、CORS 或 CDN 回源导致主路径不可用。
-- 无法获取关键日志/指标，因而不能证明发布安全。
+## Post-release checks
 
-具体步骤见 [回滚方案](rollback-plan.md)。
+- [ ] Web、Public API 与 database readiness 返回预期结果。
+- [ ] `GET /v1/catalog` 与 detail 只返回 truthful Production data 和 resolved
+      runtime media URLs。
+- [ ] Error rate、latency、process restarts、database connections 与 resource
+      saturation 在批准阈值内。
+- [ ] Logs/metrics 可关联 release SHA，且不包含 credential、connection
+      string 或 private data。
+- [ ] 发布记录保存实际 artifact/configuration、验证 evidence 与 final traffic
+      state。
+
+若任一 mandatory item 不能证明，停止 release；按
+[rollback principles](rollback-plan.md) 恢复 previous known-good
+state 或升级为 incident response。

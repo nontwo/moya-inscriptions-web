@@ -1,4 +1,4 @@
-# CloudBase 候选部署骨架
+# Historical T03 CloudBase 候选部署骨架
 
 本目录描述 CloudBase 中国大陆部署的候选资源和配置边界，不是可执行的基础设施即代码，也不会创建或购买任何腾讯云资源。
 
@@ -29,4 +29,4 @@
 这些缺口需要在对应业务路径的后续任务中解决，本任务不修改
 `apps/**`、`services/**`、 `database/**` 或 `scripts/**`。
 
-完整设计与操作约束见 [部署文档](../../docs/deployment/README.md)。
+完整历史索引见 [archive README](../../README.md)。

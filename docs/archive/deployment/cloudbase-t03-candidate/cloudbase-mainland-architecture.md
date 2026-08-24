@@ -1,4 +1,4 @@
-# CloudBase 中国大陆候选架构
+# Historical T03 CloudBase 中国大陆候选架构
 
 ## 目标与非目标
 
@@ -90,7 +90,7 @@ CloudBase 环境是资源隔离单元；不同环境的计算、数据、存储�
 5. 环境间数据同步只允许经过审批的脱敏/导入流程，不允许运行时跨环境调用。
 
 示例占位配置见
-[`infra/cloudbase/deployment.example.yaml`](../../infra/cloudbase/deployment.example.yaml)。
+[`infra/cloudbase/deployment.example.yaml`](infra/cloudbase/deployment.example.yaml)。
 
 ## HTTPS、域名与中国大陆要求
 
@@ -132,8 +132,8 @@ CloudBase 云托管的环境变量与服务版本绑定；平台配置会覆盖�
 - 发布元数据记录 Git
   SHA、Web 产物摘要、API 镜像 digest、配置修订和上一个已知良好版本。
 - 对象 key 不随回滚删除；回滚恢复应用版本和配置映射，避免数据二次破坏。
-- 实际操作前逐项完成 [部署检查清单](deployment-checklist.md)，失败时执行
-  [回滚方案](rollback-plan.md)。
+- 实际操作前逐项完成 [部署检查清单](t03-deployment-checklist.md)，失败时执行
+  [回滚方案](t03-rollback-plan.md)。
 
 ## 上线前必须完成的后续决策
 
