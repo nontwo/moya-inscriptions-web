@@ -1,23 +1,39 @@
 # Documentation authority map
 
-This map classifies repository documents by authority and lifecycle. The
-[Owner Development Constitution](governance/OWNER-DEVELOPMENT-CONSTITUTION.md)
-is the sole normative repository development authority. Operational guides and
-technical documents must remain consistent with it and cannot amend it.
+This map classifies repository documents by authority and lifecycle.
+
+The current authority order is:
+
+1. explicit current Owner instructions and active
+   [`governance/amendments/`](governance/amendments/);
+2. the
+   [Owner Development Constitution](governance/OWNER-DEVELOPMENT-CONSTITUTION.md);
+3. task-specific frozen Scope and Behavior Matrix;
+4. approved Plan and implementation prompt;
+5. model, agent, or tool inference.
+
+Operational guides and technical documents must remain consistent with this
+chain and cannot amend it.
 
 ## 1. Normative and current authority
 
 - [`../AGENTS.md`](../AGENTS.md) is the short repository entrypoint that
-  requires the Constitution to be read before planning or modification.
+  requires the Constitution and all active amendments to be read before
+  planning or modification.
+- [`governance/amendments/`](governance/amendments/) records explicit current
+  Owner amendments. The active
+  [machine-verified review and merge amendment](governance/amendments/2026-08-24-machine-verified-review-and-merge.md)
+  reserves Owner involvement for visual/real-device, major-direction,
+  production-authority, and unresolved STOP gates; routine machine-verifiable
+  review and merge are handled by an independent review agent.
 - [`governance/OWNER-DEVELOPMENT-CONSTITUTION.md`](governance/OWNER-DEVELOPMENT-CONSTITUTION.md)
-  is normative and controls repository development below explicit Owner
-  amendments.
+  is the normative Constitution below active Owner amendments.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) is the subordinate operational
   contributor guide.
 - [`branching-strategy.md`](branching-strategy.md) defines branch topology and
   milestone-promotion rules only.
-- [`module-ownership.md`](module-ownership.md) records stable ownership and
-  approval boundaries.
+- [`module-ownership.md`](module-ownership.md) records stable ownership,
+  implementation authority, and decision gates.
 
 ## 2. Current architecture and status
 
@@ -31,7 +47,7 @@ technical documents must remain consistent with it and cannot amend it.
   the relevant package or service README files.
 
 Current architecture documents describe the active system; they do not replace
-dynamic status reporting or the Constitution.
+dynamic status reporting or the authority chain.
 
 ## 3. Historical records
 
@@ -54,4 +70,4 @@ Historical audits and superseded evidence do not override current rules.
   replacement of the canonical T02 presentation.
 
 Candidate and archived material becomes current only through an explicitly
-approved task and the applicable constitutional process.
+approved task and the applicable authority process.
