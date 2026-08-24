@@ -1672,7 +1672,8 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   await detailScroller.evaluate((element) => {
     element.scrollTop = 40;
   });
-  await mainImage.click();
+  await mainImage.focus();
+  await mainImage.press("Enter");
   const viewer = page.locator("[data-detail-viewer]");
   const viewerStage = viewer.locator("[data-viewer-scale]");
   await expect(viewer).toBeVisible();

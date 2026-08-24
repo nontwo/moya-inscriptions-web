@@ -211,7 +211,11 @@ export const CatalogMediaCarousel = ({
         data-detail-main-stage=""
         data-dragging={dragging ? "true" : undefined}
         onClickCapture={(event: ReactMouseEvent<HTMLDivElement>) => {
-          if (!suppressClickRef.current || event.detail === 0) return;
+          if (!suppressClickRef.current) return;
+          if (event.detail === 0) {
+            clearClickSuppression();
+            return;
+          }
           clearClickSuppression();
           event.preventDefault();
           event.stopPropagation();
