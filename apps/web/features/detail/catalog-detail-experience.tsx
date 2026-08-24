@@ -31,19 +31,35 @@ export const CatalogDetailExperience = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const savedScrollRef = useRef(0);
+  const viewerInitializedRef = useRef(false);
+  const viewerOpenRef = useRef(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const media = state.state === "loaded" ? state.detail.media : [];
 
+  const restoreViewerOpener = () => {
+    requestAnimationFrame(() => {
+      if (scrollRef.current !== null) {
+        scrollRef.current.scrollTop = savedScrollRef.current;
+      }
+      openerRef.current?.focus();
+    });
+  };
+
   useEffect(() => {
     const requestedIndex = media.findIndex(({ id }) => id === initialImageId);
     if (requestedIndex >= 0) {
+      viewerOpenRef.current = true;
       setActiveMediaIndex(requestedIndex);
       setViewerOpen(true);
     } else {
-      setActiveMediaIndex(0);
+      const shouldRestoreOpener = viewerOpenRef.current;
+      viewerOpenRef.current = false;
+      if (!viewerInitializedRef.current) setActiveMediaIndex(0);
       setViewerOpen(false);
+      if (shouldRestoreOpener) restoreViewerOpener();
     }
+    viewerInitializedRef.current = true;
   }, [initialImageId, media]);
 
   const openViewer = (index: number, opener: HTMLElement) => {
@@ -51,20 +67,17 @@ export const CatalogDetailExperience = ({
     if (item === undefined) return;
     savedScrollRef.current = scrollRef.current?.scrollTop ?? 0;
     openerRef.current = opener;
+    viewerOpenRef.current = true;
     setActiveMediaIndex(index);
     setViewerOpen(true);
     onViewerStateChange(item.id);
   };
 
   const closeViewer = () => {
+    viewerOpenRef.current = false;
     setViewerOpen(false);
     onViewerStateChange(null);
-    requestAnimationFrame(() => {
-      if (scrollRef.current !== null) {
-        scrollRef.current.scrollTop = savedScrollRef.current;
-      }
-      openerRef.current?.focus();
-    });
+    restoreViewerOpener();
   };
 
   return (

@@ -51,6 +51,9 @@ export const CatalogViewer = ({
   const movedRef = useRef(false);
   const wheelLockRef = useRef(false);
   const wheelTimeoutRef = useRef<number | null>(null);
+  const [failedMediaIds, setFailedMediaIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [scale, setScale] = useState(1);
   const [translation, setTranslation] = useState({ x: 0, y: 0 });
   const active = media[index];
@@ -62,6 +65,11 @@ export const CatalogViewer = ({
     dragRef.current = null;
     pinchRef.current = null;
     movedRef.current = false;
+    wheelLockRef.current = false;
+    if (wheelTimeoutRef.current !== null) {
+      window.clearTimeout(wheelTimeoutRef.current);
+      wheelTimeoutRef.current = null;
+    }
   };
 
   const changeIndex = (nextIndex: number) => {
@@ -112,7 +120,11 @@ export const CatalogViewer = ({
 
   useEffect(() => {
     resetTransform();
-  }, [active?.id]);
+  }, [active?.id, open]);
+
+  useEffect(() => {
+    setFailedMediaIds(new Set());
+  }, [media]);
 
   const pointerDistance = (): number => {
     const [first, second] = [...pointersRef.current.values()];
@@ -222,6 +234,7 @@ export const CatalogViewer = ({
     "--viewer-x": `${translation.x}px`,
     "--viewer-y": `${translation.y}px`,
   } as CSSProperties;
+  const activeFailed = active === undefined || failedMediaIds.has(active.id);
 
   return (
     <dialog
@@ -268,19 +281,32 @@ export const CatalogViewer = ({
           onPointerUp={finishPointer}
           onWheel={handleWheel}
         >
-          <img
-            alt={active.alt}
-            className={styles.viewerImage}
-            data-detail-viewer-image=""
-            draggable={false}
-            height={active.height}
-            onClick={() => {
-              if (!movedRef.current) onClose();
-            }}
-            src={active.src}
-            style={imageStyle}
-            width={active.width}
-          />
+          {activeFailed ? (
+            <div
+              className={styles.viewerMediaError}
+              data-detail-viewer-media-state="failed"
+              role="status"
+            >
+              图像无法加载
+            </div>
+          ) : (
+            <img
+              alt={active.alt}
+              className={styles.viewerImage}
+              data-detail-viewer-image=""
+              draggable={false}
+              height={active.height}
+              onClick={() => {
+                if (!movedRef.current) onClose();
+              }}
+              onError={() => {
+                setFailedMediaIds((current) => new Set(current).add(active.id));
+              }}
+              src={active.src}
+              style={imageStyle}
+              width={active.width}
+            />
+          )}
           {media.length > 1 ? (
             <>
               <span

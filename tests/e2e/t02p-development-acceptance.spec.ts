@@ -1284,6 +1284,9 @@ test("Browse to Detail preserves the mounted shell, history, scroll, and focus",
   await expect(shell).toHaveAttribute("aria-hidden", "true");
   await expect(navigation).toBeVisible();
   await expect(page).toHaveURL(/\?detail=single-portrait$/);
+  await expect(
+    surface.locator('[data-detail-experience] button[aria-label="返回"]'),
+  ).toBeFocused();
 
   await page.goBack();
   await expect(surface).toHaveAttribute("data-detail-open", "false");
@@ -1300,6 +1303,18 @@ test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, a
   const stage = gallery.locator("[data-detail-main-stage]");
   const counter = gallery.locator("[data-detail-media-index]");
   await expect(counter).toHaveText("1/3");
+  const platform = await page
+    .locator("[data-t02p-development-acceptance]")
+    .getAttribute("data-platform");
+  const viewportWidth = page.viewportSize()?.width ?? 0;
+  const edgeControls = gallery.locator(
+    "[data-detail-media-previous], [data-detail-media-next]",
+  );
+  if (platform === "pc" && viewportWidth >= 1100) {
+    await expect(edgeControls.first()).toBeVisible();
+  } else {
+    await expect(edgeControls.first()).toBeHidden();
+  }
   await gallery.locator("[data-media-id]").nth(1).click();
   await expect(counter).toHaveText("2/3");
   await gallery.locator("[data-media-id]").first().click();
@@ -1342,6 +1357,15 @@ test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, a
   await expect(viewer.locator("[data-detail-viewer-index]")).toHaveText(
     "2 / 3",
   );
+  await expect(page).toHaveURL(/image=qa-detail-calligraphy-mixed-media-2/);
+
+  await page.goBack();
+  await expect(viewer).toBeHidden();
+  await expect(page).toHaveURL(/\?detail=calligraphy-mixed$/);
+  await expect(mainImage).toBeFocused();
+
+  await mainImage.click();
+  await expect(viewer).toBeVisible();
   await expect(page).toHaveURL(/image=qa-detail-calligraphy-mixed-media-2/);
 
   await page.keyboard.press("ArrowRight");
@@ -1406,11 +1430,33 @@ test("Gallery and Viewer support selection, swipe, keyboard, zoom, pan, close, a
   await expect(page).not.toHaveURL(/image=/);
   await expect(mainImage).toBeFocused();
 
+  await mainImage.click();
+  await expect(viewer).toBeVisible();
+  await expect(viewerStage).toHaveAttribute("data-viewer-scale", "fit");
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+
   await page.goto(
     "/dev/t02p?detail=calligraphy-mixed&image=qa-detail-calligraphy-mixed-media-3",
   );
   await expect(page.locator("[data-detail-viewer]")).toBeVisible();
   await expect(page.locator("[data-detail-viewer-index]")).toHaveText("3 / 3");
+});
+
+test("Viewer reports a truthful failure for a broken direct image", async ({
+  page,
+}) => {
+  await page.route("**/qa-visual-square.svg", (route) => route.abort());
+  await page.goto(
+    "/dev/t02p?detail=calligraphy-mixed&image=qa-detail-calligraphy-mixed-media-3",
+  );
+
+  const viewer = page.locator("[data-detail-viewer]");
+  await expect(viewer).toBeVisible();
+  await expect(
+    viewer.locator('[data-detail-viewer-media-state="failed"]'),
+  ).toHaveText("图像无法加载");
+  await expect(viewer.locator("[data-detail-viewer-image]")).toHaveCount(0);
 });
 
 test("Tablet landscape uses a split Detail composition and ultra-wide thumbnails span both columns", async ({

@@ -2,7 +2,7 @@
   position: fixed;
   z-index: 20;
   inset: 0 0 var(--primary-navigation-height, 76px);
-  background: var(--surface-canvas, #f6f3ec);
+  background: var(--yoyi-color-background-page);
 }
 
 .detailScroller {
@@ -14,10 +14,14 @@
 
 .detail {
   min-height: 100%;
-  color: #26221c;
+  color: var(--yoyi-color-text-primary);
   background:
-    radial-gradient(circle at 100% 0, rgb(126 90 53 / 10%), transparent 32rem),
-    #f6f3ec;
+    radial-gradient(
+      circle at 100% 0,
+      color-mix(in srgb, var(--yoyi-color-seal-red) 10%, transparent),
+      transparent 32rem
+    ),
+    var(--yoyi-color-background-page);
 }
 
 .detailHeader {
@@ -29,18 +33,22 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px clamp(16px, 4vw, 48px);
-  border-bottom: 1px solid rgb(58 48 37 / 10%);
-  background: rgb(246 243 236 / 92%);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-page) 92%,
+    transparent
+  );
 }
 
 .detailHeader button,
 .messageActions button {
   min-width: 44px;
   min-height: 44px;
-  border: 1px solid rgb(58 48 37 / 20%);
-  border-radius: 999px;
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-full);
   color: inherit;
-  background: rgb(255 255 255 / 72%);
+  background: var(--yoyi-color-background-elevated);
   cursor: pointer;
 }
 
@@ -61,7 +69,7 @@
 
 .identityPanel h1 {
   margin: 0;
-  font-family: var(--font-serif, serif);
+  font-family: var(--yoyi-font-interface);
   font-size: clamp(2rem, 5vw, 4rem);
   font-weight: 500;
   line-height: 1.1;
@@ -70,7 +78,7 @@
 
 .kindPeriod {
   margin: 14px 0 0;
-  color: #795e42;
+  color: var(--yoyi-color-text-secondary);
   letter-spacing: 0.12em;
 }
 
@@ -78,14 +86,14 @@
 .factsSection {
   margin-top: 28px;
   padding-top: 20px;
-  border-top: 1px solid rgb(58 48 37 / 16%);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
 }
 
 .aliases > span,
 .factsSection h2,
 .readingSection h2 {
   margin: 0 0 10px;
-  color: #80684e;
+  color: var(--yoyi-color-text-secondary);
   font-size: 0.8rem;
   font-weight: 650;
   letter-spacing: 0.14em;
@@ -111,7 +119,7 @@
 }
 
 .facts dt {
-  color: #786e62;
+  color: var(--yoyi-color-text-secondary);
 }
 
 .facts dd {
@@ -129,8 +137,8 @@
   max-height: min(46dvh, 430px);
   place-items: center;
   overflow: hidden;
-  border-radius: 18px;
-  background: #dfd9ce;
+  border-radius: var(--yoyi-radius-lg);
+  background: var(--yoyi-color-background-muted);
   touch-action: pan-y;
 }
 
@@ -165,9 +173,9 @@
   bottom: 12px;
   left: 50%;
   padding: 5px 10px;
-  border-radius: 999px;
-  color: #fff;
-  background: rgb(0 0 0 / 58%);
+  border-radius: var(--yoyi-radius-full);
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-overlay);
   font-variant-numeric: tabular-nums;
   transform: translateX(-50%);
 }
@@ -177,6 +185,7 @@
   position: absolute;
   z-index: 2;
   top: 0;
+  display: none;
   width: 28%;
   height: 100%;
   padding: 0;
@@ -214,16 +223,16 @@
   overflow: hidden;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 10px;
-  background: #e4ded4;
+  border-radius: var(--yoyi-radius-lg);
+  background: var(--yoyi-color-background-muted);
   cursor: pointer;
 }
 
 .thumbnail[data-selected="true"] {
-  border-color: #6d4f32;
+  border-color: var(--yoyi-color-focus-ring);
   box-shadow:
-    0 0 0 2px #f6f3ec,
-    0 0 0 4px #6d4f32;
+    0 0 0 2px var(--yoyi-color-background-page),
+    0 0 0 4px var(--yoyi-color-focus-ring);
 }
 
 .mediaError,
@@ -233,13 +242,13 @@
   place-items: center;
   align-content: center;
   gap: 10px;
-  color: #71675d;
-  background: #dfd9ce;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
 }
 
 .missingMedia {
   min-height: 280px;
-  border-radius: 18px;
+  border-radius: var(--yoyi-radius-lg);
 }
 
 .readingFlow {
@@ -251,7 +260,7 @@
 
 .readingSection {
   padding: 26px 0;
-  border-top: 1px solid rgb(58 48 37 / 16%);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
   font-size: 1rem;
   line-height: 1.85;
 }
@@ -259,7 +268,7 @@
 .readingSection[data-detail-placeholder="true"] p,
 .factsSection [data-detail-placeholder],
 .readingSection [data-detail-placeholder] {
-  color: #82786e;
+  color: var(--yoyi-color-text-secondary);
   font-style: italic;
 }
 
@@ -278,7 +287,7 @@
 }
 
 .sources a {
-  color: #76522e;
+  color: var(--yoyi-color-seal-red);
 }
 
 .message,
@@ -297,7 +306,7 @@
 
 .message p {
   margin: 0;
-  color: #74695e;
+  color: var(--yoyi-color-text-secondary);
 }
 
 .messageActions {
@@ -319,8 +328,13 @@
 .skeleton span {
   display: block;
   height: 18px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #ded8ce 25%, #eeeae2 50%, #ded8ce 75%);
+  border-radius: var(--yoyi-radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--yoyi-color-background-muted) 25%,
+    var(--yoyi-color-background-elevated) 50%,
+    var(--yoyi-color-background-muted) 75%
+  );
   background-size: 200% 100%;
   animation: skeleton-pulse 1.4s linear infinite;
 }
@@ -344,12 +358,12 @@
   margin: 0;
   padding: 0;
   border: 0;
-  color: #fff;
-  background: #090909;
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-paper-dark);
 }
 
 .viewer::backdrop {
-  background: #090909;
+  background: var(--yoyi-color-paper-dark);
 }
 
 .viewerStage {
@@ -369,10 +383,10 @@
   min-width: 44px;
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid rgb(255 255 255 / 42%);
-  border-radius: 999px;
-  color: #fff;
-  background: rgb(0 0 0 / 58%);
+  border: 1px solid var(--yoyi-color-border-strong);
+  border-radius: var(--yoyi-radius-full);
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-overlay);
   cursor: pointer;
 }
 
@@ -386,6 +400,14 @@
     scale(var(--viewer-scale));
   transform-origin: center;
   will-change: transform;
+}
+
+.viewerMediaError {
+  position: relative;
+  z-index: 1;
+  padding: var(--yoyi-space-6);
+  color: var(--yoyi-color-paper-light);
+  text-align: center;
 }
 
 .viewerCounter {
@@ -442,6 +464,12 @@
 }
 
 @media (min-width: 1100px) {
+  .gallery[data-platform="pc"] .galleryEdge,
+  .viewer[data-platform="pc"] .viewerEdge {
+    display: block;
+  }
+
+  .gallery[data-platform="pc"] .galleryEdge::after,
   .viewer[data-platform="pc"] .viewerEdge::after {
     position: absolute;
     top: 50%;
@@ -452,11 +480,13 @@
     content: "";
   }
 
+  .gallery[data-platform="pc"] .galleryEdgePrevious::after,
   .viewer[data-platform="pc"] .viewerEdgePrevious::after {
     left: 32px;
     transform: rotate(-135deg);
   }
 
+  .gallery[data-platform="pc"] .galleryEdgeNext::after,
   .viewer[data-platform="pc"] .viewerEdgeNext::after {
     right: 32px;
     transform: rotate(45deg);

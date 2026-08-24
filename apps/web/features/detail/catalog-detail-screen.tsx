@@ -198,7 +198,7 @@ export const CatalogDetailScreen = ({
       data-platform={platform}
     >
       <header className={styles.detailHeader}>
-        <button aria-label="返回" onClick={onBack} type="button">
+        <button aria-label="返回" autoFocus onClick={onBack} type="button">
           <Icon aria-hidden="true" name="back" />
         </button>
         <span aria-hidden="true" />

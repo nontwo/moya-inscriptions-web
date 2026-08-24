@@ -26,6 +26,10 @@ type DetailQuery =
   | { readonly kind: "invalid"; readonly raw: string }
   | { readonly catalogId: string; readonly kind: "runtime" };
 
+type T02pHistoryLayer = "detail" | "viewer";
+
+const T02P_HISTORY_LAYER_KEY = "moyaT02pLayer";
+
 export interface T02pInitialDetail {
   readonly query: DetailQuery;
   readonly state: CatalogDetailPresentationState;
@@ -125,6 +129,25 @@ const urlForDetail = (query: DetailQuery | null, imageId?: string): string => {
   return `${url.pathname}${url.search}${url.hash}`;
 };
 
+const historyStateFor = (
+  layer: T02pHistoryLayer | null,
+): Record<string, unknown> => {
+  const current =
+    typeof window.history.state === "object" && window.history.state !== null
+      ? (window.history.state as Record<string, unknown>)
+      : {};
+  const next = { ...current };
+  if (layer === null) delete next[T02P_HISTORY_LAYER_KEY];
+  else next[T02P_HISTORY_LAYER_KEY] = layer;
+  return next;
+};
+
+const readHistoryLayer = (state: unknown): T02pHistoryLayer | null => {
+  if (typeof state !== "object" || state === null) return null;
+  const layer = (state as Record<string, unknown>)[T02P_HISTORY_LAYER_KEY];
+  return layer === "detail" || layer === "viewer" ? layer : null;
+};
+
 const detailScenarioByKey = (
   scenarios: readonly T02pDevelopmentDetailScenario[],
   key: string | undefined,
@@ -167,6 +190,7 @@ export const T02pDevelopmentAcceptanceSurface = ({
   const [feedLayout, setFeedLayout] = useState<CatalogFeedLayout>("double");
   const detailOpenerRef = useRef<HTMLElement | null>(null);
   const pushedDetailHistoryRef = useRef(false);
+  const pushedViewerHistoryRef = useRef(false);
   const platform = platformMode === "auto" ? runtimePlatform : platformMode;
   const catalogStates = scenarios[catalogScenario];
   const openableCatalogIds = detailScenarios.map(({ catalogId }) => catalogId);
@@ -205,8 +229,12 @@ export const T02pDevelopmentAcceptanceSurface = ({
   }, [activeDetail]);
 
   useEffect(() => {
-    const restoreFromUrl = () => {
+    const restoreFromUrl = (event: PopStateEvent) => {
       const params = new URL(window.location.href).searchParams;
+      const historyLayer = readHistoryLayer(event.state);
+      pushedDetailHistoryRef.current =
+        historyLayer === "detail" || historyLayer === "viewer";
+      pushedViewerHistoryRef.current = historyLayer === "viewer";
       const qaScenario = detailScenarioByKey(
         detailScenarios,
         params.get("detail") ?? undefined,
@@ -231,6 +259,7 @@ export const T02pDevelopmentAcceptanceSurface = ({
       setActiveInitialImageId(undefined);
       setActiveDetail(null);
       pushedDetailHistoryRef.current = false;
+      pushedViewerHistoryRef.current = false;
       requestAnimationFrame(() => detailOpenerRef.current?.focus());
     };
 
@@ -251,7 +280,12 @@ export const T02pDevelopmentAcceptanceSurface = ({
     });
     detailOpenerRef.current = opener;
     pushedDetailHistoryRef.current = true;
-    window.history.pushState(null, "", urlForDetail(query));
+    pushedViewerHistoryRef.current = false;
+    window.history.pushState(
+      historyStateFor("detail"),
+      "",
+      urlForDetail(query),
+    );
   };
 
   const openCatalog = (catalogId: string, opener: HTMLElement) => {
@@ -267,16 +301,22 @@ export const T02pDevelopmentAcceptanceSurface = ({
     }
     setActiveDetail(null);
     setActiveInitialImageId(undefined);
-    window.history.replaceState(null, "", urlForDetail(null));
+    pushedViewerHistoryRef.current = false;
+    window.history.replaceState(historyStateFor(null), "", urlForDetail(null));
     requestAnimationFrame(() => detailOpenerRef.current?.focus());
   };
 
   const changeDestination = (destination: PrimaryDestination) => {
     if (activeDetail !== null) {
       pushedDetailHistoryRef.current = false;
+      pushedViewerHistoryRef.current = false;
       setActiveDetail(null);
       setActiveInitialImageId(undefined);
-      window.history.replaceState(null, "", urlForDetail(null));
+      window.history.replaceState(
+        historyStateFor(null),
+        "",
+        urlForDetail(null),
+      );
     }
     setActiveDestination(destination);
   };
@@ -455,11 +495,38 @@ export const T02pDevelopmentAcceptanceSurface = ({
           onBack={closeDetail}
           onRetry={() => window.location.reload()}
           onViewerStateChange={(imageId) => {
-            window.history.replaceState(
-              null,
-              "",
-              urlForDetail(activeDetail.query, imageId ?? undefined),
-            );
+            setActiveInitialImageId(imageId ?? undefined);
+            if (imageId === null) {
+              if (pushedViewerHistoryRef.current) {
+                pushedViewerHistoryRef.current = false;
+                window.history.back();
+                return;
+              }
+              window.history.replaceState(
+                historyStateFor(
+                  pushedDetailHistoryRef.current ? "detail" : null,
+                ),
+                "",
+                urlForDetail(activeDetail.query),
+              );
+              return;
+            }
+
+            const currentUrl = new URL(window.location.href);
+            const nextUrl = urlForDetail(activeDetail.query, imageId);
+            if (currentUrl.searchParams.has("image")) {
+              window.history.replaceState(
+                historyStateFor(
+                  pushedViewerHistoryRef.current ? "viewer" : null,
+                ),
+                "",
+                nextUrl,
+              );
+              return;
+            }
+
+            pushedViewerHistoryRef.current = true;
+            window.history.pushState(historyStateFor("viewer"), "", nextUrl);
           }}
           orientation={orientation}
           platform={platform}
