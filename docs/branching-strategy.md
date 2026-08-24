@@ -11,11 +11,16 @@ main
   `integration/mvp`。
 - 不得直接推送 `main` 或 `integration/mvp`。共享分支禁止 force
   push，任何人不得重写他人历史。
-- 只有完成适用验证、独立 diff/code
-  review 和 Owner 验收的集成基准，才可由 Owner 通过 PR 从 `integration/mvp`
-  提升到 `main`。
+- 目标为 `integration/mvp` 的机器可验证任务，在适用验证、独立实际 diff
+  review 和全部适用 Owner gate 通过后，可由独立 review agent 标记 Ready、按预期
+  head SHA squash merge，并完成 merged-head verification。
+- 只有视觉/真机验收、重大产品或架构方向、生产权限操作、或尚未解决的 mandatory
+  STOP condition 需要 Owner 判断；Owner 不承担例行 GitHub 合并操作。
+- `integration/mvp` 提升到 `main` 会建立稳定里程碑，因此必须先取得明确的 Owner
+  milestone decision。批准后，可由独立 review agent 执行 PR 合并和 merged-head
+  verification。
 - 经批准的阶段基准进入 `main`
-  后建立带说明的基准标签。短期任务分支的删除遵循获批的合并后流程。
+  后建立带说明的基准标签。短期任务分支在 merged-head verification 通过后按获批流程删除。
 
 ## Status source
 
