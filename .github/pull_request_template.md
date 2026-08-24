@@ -39,16 +39,31 @@ List only applicable checks and include command plus result.
 - Database or migrations: `None` / details and approval
 - Public Contract or API: `None` / details and approval
 
-## Review and acceptance
+## Independent review
 
-- Independent diff/code review: `Pending` / link and result
-- Owner visual or real-device acceptance: `Not applicable` / approved platform
-  matrix, evidence, and result
+- Actual diff and exact-head review: `Pending` / reviewer and result
+- Current remote state and review-thread check: `Pending` / result
+- Expected head SHA pinned for merge: `Pending` / SHA
 
-Automated validation, independent review, and Owner acceptance are separate
-gates. Do not mark the PR Ready or merge it automatically.
+## Owner decision gates
+
+Use `Not applicable` unless a gate genuinely applies.
+
+- Visual or real-device acceptance:
+- Major product/architecture/data-governance direction:
+- Production resource, credential, or deployment authority:
+- Unresolved mandatory STOP condition:
+
+A fully machine-verifiable PR with no unresolved Owner gate may be marked Ready,
+squash merged by an independent review agent, and verified at the merged head.
+Green CI or the implementation-agent report alone is not sufficient.
+
+For an applicable Owner gate, record the Owner judgment for the exact reviewed
+head. The independent review agent then performs the routine Ready, merge, and
+merged-head operations.
 
 ## Risk and follow-up
 
 - Risks:
 - Deferred work:
+- Merged-head verification plan:
