@@ -1,71 +1,137 @@
 # Module ownership
 
-## Collaboration ownership
+This file records stable ownership, implementation authority, and decision gates
+only. Dynamic task, milestone, and completion status belongs exclusively in
+[project status](project-status.md).
 
-| 路径或职责                   | 实施负责人     | 必须审批/合并者 |
-| ---------------------------- | -------------- | --------------- |
-| 根配置                       | `@nontwo`      | `@nontwo`       |
-| `.github/**`                 | `@nontwo`      | `@nontwo`       |
-| `packages/contracts/**`      | `@nontwo`      | `@nontwo`       |
-| `database/**`                | 任务分支负责人 | `@nontwo`       |
-| `infra/**`                   | 任务分支负责人 | `@nontwo`       |
-| `apps/**` 具体业务模块       | 任务分支负责人 | `@nontwo`       |
-| `services/**` 具体业务模块   | 任务分支负责人 | `@nontwo`       |
-| `packages/**` 非公共契约模块 | 任务分支负责人 | `@nontwo`       |
-| `main` 最终合并              | 仅 `@nontwo`   | `@nontwo`       |
-| `integration/mvp` 最终合并   | 仅 `@nontwo`   | `@nontwo`       |
+The active machine-verified review and merge amendment is recorded under
+`governance/amendments/`. It controls routine Ready, merge, and merged-head
+operations.
 
-任务分支负责人只能修改 Issue 或任务说明明确授权的路径。协作者不得成为关键目录的唯一所有者。
+## Path groups
 
-## MVP task ownership
+### Root governance and configuration
 
-| 路径                               | 任务  | 状态                                      |
-| ---------------------------------- | ----- | ----------------------------------------- |
-| `packages/contracts/**`            | T01   | 已重建                                    |
-| `packages/design-tokens/**`        | T02   | 已完成                                    |
-| `packages/ui/**`                   | T02   | 已完成                                    |
-| `docs/design-system/**`            | T02   | 已完成                                    |
-| `infra/**`                         | T03   | 已完成                                    |
-| `docs/deployment/**`               | T03   | 已完成                                    |
-| `database/**`                      | T05.2 | Catalog read model migration              |
-| `services/api/**`                  | T04.1 | Catalog Phase 1 已建立                    |
-| `services/public-api/**`           | T04   | 三路由 contract 已建立                    |
-| `services/backend-runtime/**`      | T05   | Health/Catalog HTTP runtime与lifecycle    |
-| `services/catalog-postgres/**`     | T05.2 | PostgreSQL read adapter与migration runner |
-| `services/backend-production/**`   | T05.2 | Production composition root               |
-| `packages/data-access/**`          | T04.2 | 空backend workspace                       |
-| `scripts/**`                       | T05   | 待开发                                    |
-| `packages/image/**`                | T05   | 待开发                                    |
-| `apps/web/app/layout.tsx`          | T06   | 待开发                                    |
-| `apps/web/app/page.tsx`            | T06   | 待开发                                    |
-| `apps/web/features/home/**`        | T06   | 待开发                                    |
-| `apps/web/app/regions/**`          | T07   | 待开发                                    |
-| `apps/web/app/categories/**`       | T07   | 待开发                                    |
-| `apps/web/features/browse/**`      | T07   | 待开发                                    |
-| `apps/web/app/search/**`           | T08   | 待开发                                    |
-| `apps/web/features/search/**`      | T08   | 待开发                                    |
-| `apps/web/app/items/**`            | T09   | 待开发                                    |
-| `apps/web/features/item-detail/**` | T09   | 待开发                                    |
+This group includes:
 
-`docs/prototypes/mobile-preview/**`
-是已归档的非生产原型，只能用于交互参考；任何正式页面实现都必须在对应 T06–T09 任务中重新接入 API/application
-boundary、真实契约和图片适配器。
+- `AGENTS.md`;
+- the root `package.json`;
+- workspace configuration;
+- TypeScript, lint, and formatting configuration;
+- framework-wide configuration.
 
-## Architecture-controlled files
+Implementation requires explicit frozen task scope. Independent actual-diff
+review is mandatory. Ask the Owner only when the task changes an unfrozen
+governance rule or major architectural direction.
 
-以下内容只能由架构总控修改：
+### GitHub, CI, and deployment configuration
 
-- 根目录 `package.json`
-- `pnpm-lock.yaml`
-- `pnpm-workspace.yaml`
-- 公共 TypeScript 配置
-- ESLint 和 Prettier 配置
-- Next.js 全局配置
-- CI 文件
-- 环境变量名称
-- 数据库迁移编号
-- 公共契约
-- 公共 UI 组件
-- 设计 token
+This group includes `.github/**`, CI, and deployment configuration.
 
-任何 Agent 需要修改非所属路径时，必须停止并报告，不得自行越界。架构总控确认任务拆分、依赖和合并顺序后，才能继续。
+Implementation requires explicit frozen task scope. Independent review is
+mandatory. Ask the Owner only for a new production authority, unresolved
+security direction, or unresolved delivery direction.
+
+### Governance and architecture
+
+This group includes:
+
+- `docs/governance/**`;
+- `docs/architecture.md`;
+- `docs/adr/**`.
+
+An explicitly scoped governance or architecture task may modify these paths.
+Independent review is mandatory. Ask the Owner only when the task changes an
+unfrozen major direction.
+
+### Public Contracts and API boundaries
+
+This group includes `packages/contracts/**` and Public Contract or API
+boundaries.
+
+An explicitly scoped Contract task may modify these paths. It requires
+independent review and applicable validation. Ask the Owner for an unapproved
+domain or Contract expansion.
+
+### Database schema and migrations
+
+This group includes `database/**`, migration numbering, and database schema.
+
+An explicitly scoped database task may modify these paths. It requires
+independent review and PostgreSQL validation. Ask the Owner for an unapproved
+schema or data-governance direction.
+
+### Infrastructure and environment-variable names
+
+This group includes `infra/**` and environment-variable names.
+
+An explicitly scoped infrastructure task may modify these paths. It requires
+independent review. Ask the Owner for provider choice, production resources,
+credentials, material cost, or security direction.
+
+### Shared UI and design system
+
+This group includes:
+
+- `packages/ui/**`;
+- `packages/design-tokens/**`;
+- shared semantic design assets.
+
+An explicitly scoped design-system task may modify these paths. It requires
+independent review and applicable validation. User-visible presentation changes
+also require Owner visual or real-device acceptance.
+
+### Applications, services, and other business packages
+
+This group includes `apps/**`, `services/**`, and other `packages/**` business
+modules.
+
+The task implementer may modify only the exact frozen module scope. Independent
+review and applicable validation are mandatory. Ask the Owner only for an
+applicable visual, directional, production, or unresolved STOP gate.
+
+### Supporting documentation, tests, fixtures, and scripts
+
+The task implementer may modify only the exact approved supporting scope.
+Independent review and proportionate validation are mandatory.
+
+## Merge authority
+
+### Short-lived task pull requests into `integration/mvp`
+
+An authorized independent review agent executes the merge after all applicable
+gates pass. Routine Owner action is not required. The agent must pin the
+expected head SHA and complete merged-head verification.
+
+### Promotion from `integration/mvp` to `main`
+
+An explicit Owner milestone decision is required because the promotion creates a
+stable baseline. After approval, an authorized independent review agent executes
+the promotion merge and merged-head verification.
+
+## Protected Owner-local files
+
+Protected Owner-local instruction files include:
+
+- `apps/web/AGENTS.md`;
+- `apps/web/CLAUDE.md`.
+
+Do not modify them without explicit authorization.
+
+## Scope-bound modification
+
+Implementation authority does not grant general write authority. An implementer
+may change only paths required by the frozen task scope and any explicit file
+allowlist. Public Contracts, dependencies and lockfiles, database schema or
+migrations, CI, deployment configuration, shared UI, design tokens,
+architecture, and governance require explicit task scope and applicable
+validation.
+
+When a necessary change crosses an unfrozen path, responsibility, domain, or
+major-direction boundary, stop and report the exact dependency, affected paths,
+and smallest options. Continue after the Owner freezes the required direction or
+expanded scope. Once that judgment is recorded, routine implementation, review,
+merge, and merged-head verification return to the machine-managed workflow.
+
+No contributor or implementation agent may be the sole reviewer of its own
+protected or shared-boundary change. Independent review remains mandatory.
