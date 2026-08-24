@@ -688,6 +688,7 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
   const homeCenter = await locatorCenter(homeButton);
   const inscriptionsCenter = await locatorCenter(inscriptionsButton);
 
+  await confirmMouseNavigationReady(surface, navigation);
   await trackPointerCaptureCalls(homeButton);
   await expect(navigation).toHaveCSS("touch-action", "pan-y");
 
