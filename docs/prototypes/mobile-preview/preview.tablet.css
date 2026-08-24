@@ -92,9 +92,6 @@
 
 /* Tablet: full-bleed shell, keep bottom navigation, widen content. */
 @media (min-width: 48rem) {
-  .mobile-app {
-    --quick-action-background-blur: 12px;
-  }
   .app-stage {
     place-items: stretch;
   }

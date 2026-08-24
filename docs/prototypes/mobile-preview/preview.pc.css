@@ -73,9 +73,6 @@ html {
 
 /* Desktop: fixed left navigation frame + dense full-width waterfall. */
 @media (min-width: 56rem) {
-  .mobile-app {
-    --quick-action-background-blur: 12px;
-  }
   html[data-platform="pc"] {
     --app-pc-nav-width: clamp(88px, 7vw, 104px);
     --app-pc-nav-safe-area: var(--app-pc-nav-width);

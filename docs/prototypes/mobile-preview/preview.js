@@ -87,25 +87,6 @@ const bottomNavigation = document.querySelector("[data-bottom-navigation]");
 const bottomBrowseNavigation = bottomNavigation.querySelector(
   "[data-browse-nav-group]",
 );
-const quickActionOverlay = document.querySelector(
-  "[data-quick-action-overlay]",
-);
-const quickActionCard = document.querySelector("[data-quick-action-card]");
-const quickActionStatus = document.querySelector("[data-quick-action-status]");
-const quickActionBubbles = Array.from(
-  document.querySelectorAll("[data-quick-action]"),
-);
-const quickActionLabels = {
-  collect: "收藏",
-  like: "点赞",
-  share: "分享",
-};
-const quickActionDelay = 460;
-const quickActionMovementTolerance = 10;
-const quickActionClickSuppressionWindow = 650;
-let quickActionGesture = null;
-let quickActionSuppressClick = null;
-let gestureOwner = null;
 const detailView = document.querySelector("[data-view='detail']");
 const detailImage = document.querySelector("[data-detail-image]");
 const detailTitle = document.querySelector("[data-detail-title]");
@@ -1282,7 +1263,6 @@ function closeMediaFocus() {
 
 function openMediaFocus() {
   if (!currentDetailMedia() || detailMediaFailed) return;
-  closeQuickAction();
   const detailScroll = document.querySelector('[data-scroll-view="detail"]');
   focusScrollTop = detailScroll?.scrollTop ?? 0;
   focusWindowScroll =
@@ -1807,7 +1787,6 @@ function openDetailById(
   contentId,
   { mediaIndex = 0, trigger = null, updateHistory = true } = {},
 ) {
-  closeQuickAction();
   saveScrollPosition();
   closeMediaFocus();
   detailContentId = contentId;
@@ -1836,7 +1815,6 @@ function openDetail(trigger, options = {}) {
 }
 
 function showView(view) {
-  closeQuickAction();
   if (view !== "detail") closeMediaFocus();
   const isNavigationView = navigationViews.includes(view);
   const isPagerView = primaryViews.includes(view);
@@ -2820,7 +2798,6 @@ function beginPrimaryPagerFollow(controller) {
 }
 
 function onNavPointerDown(event) {
-  if (gestureOwner === "quick-action") return;
   if (root.dataset.platform === "pc") return;
   if (navigationMinimized || !event.isPrimary) return;
   if (prefersReducedNavMotion()) return;
@@ -2844,7 +2821,6 @@ function updatePendingBrowseEntry(entry) {
 }
 
 function onNavPointerMove(event) {
-  if (gestureOwner === "quick-action") return;
   if (!navDragging || event.pointerId !== navPointerId) return;
   const clientX = event.clientX;
   if (Math.abs(clientX - navPointerStartX) > 8) {
@@ -2887,7 +2863,6 @@ function cancelNavPointer({ syncBubble = true } = {}) {
 }
 
 function endNavPointer(event) {
-  if (gestureOwner === "quick-action") return;
   if (!navDragging || event.pointerId !== navPointerId) return;
   const shouldCommit = navDidPan && event.type !== "pointercancel";
   if (shouldCommit) {
@@ -3840,7 +3815,6 @@ function onPagerPointerCancel() {
 }
 
 function beginPagerGesture(event, controller) {
-  if (gestureOwner === "quick-action") return;
   if (!pagerPointerAllowed(controller, event)) return;
   if (!event.isPrimary) {
     cancelActivePagerGesture();
@@ -3871,10 +3845,6 @@ function beginPagerGesture(event, controller) {
 }
 
 function onPagerPointerMove(event) {
-  if (gestureOwner === "quick-action") {
-    cancelActivePagerGesture({ animate: false });
-    return;
-  }
   const gesture = activePagerGesture;
   if (!gesture || gesture.pointerId !== event.pointerId) return;
   if (!event.isPrimary) {
@@ -3952,7 +3922,6 @@ function settlePagerFromGesture(gesture, velocity) {
 }
 
 function completePagerGesture(event) {
-  if (gestureOwner === "quick-action") return;
   const gesture = activePagerGesture;
   if (!gesture || gesture.pointerId !== event.pointerId) {
     return;
@@ -4095,559 +4064,6 @@ function findContentTrigger(contentId) {
   );
 }
 
-function quickActionClamp(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
-}
-
-function clearQuickActionTimer() {
-  if (!quickActionGesture?.timer) return;
-  window.clearTimeout(quickActionGesture.timer);
-  quickActionGesture.timer = 0;
-}
-
-function armQuickActionClickSuppression(gesture) {
-  quickActionSuppressClick = {
-    card: gesture.card,
-    contentId: gesture.contentId,
-    pointerId: gesture.pointerId,
-    releasedAt: 0,
-    expiresAt: performance.now() + quickActionClickSuppressionWindow,
-  };
-}
-
-function releaseQuickActionClickSuppression(gesture) {
-  if (quickActionSuppressClick?.pointerId !== gesture.pointerId) return;
-  quickActionSuppressClick.releasedAt = performance.now();
-  quickActionSuppressClick.expiresAt =
-    quickActionSuppressClick.releasedAt + quickActionClickSuppressionWindow;
-}
-
-function suppressQuickActionSyntheticClick(event) {
-  const suppression = quickActionSuppressClick;
-  if (!suppression) return;
-  if (performance.now() > suppression.expiresAt) {
-    quickActionSuppressClick = null;
-    return;
-  }
-  const target = event.target instanceof Element ? event.target : null;
-  const card = target?.closest("[data-open-detail]");
-  if (
-    card !== suppression.card ||
-    card?.dataset.contentId !== suppression.contentId ||
-    suppression.releasedAt === 0
-  ) {
-    return;
-  }
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  quickActionSuppressClick = null;
-}
-
-function bindQuickActionScrollLock() {
-  window.addEventListener("touchmove", onQuickActionTouchMove, {
-    capture: true,
-    passive: false,
-  });
-}
-
-function unbindQuickActionScrollLock() {
-  window.removeEventListener("touchmove", onQuickActionTouchMove, true);
-}
-
-function onQuickActionTouchMove(event) {
-  if (gestureOwner !== "quick-action") return;
-  event.preventDefault();
-}
-
-function setQuickActionCandidate(action = null) {
-  if (quickActionGesture) quickActionGesture.pendingAction = action;
-  quickActionBubbles.forEach((bubble) => {
-    bubble.classList.toggle(
-      "is-candidate",
-      bubble.dataset.quickAction === action,
-    );
-  });
-}
-
-function quickActionCandidateAtPoint(clientX, clientY) {
-  const hitZones = quickActionGesture?.hitZones;
-  if (!hitZones) return null;
-  for (const [action, zone] of hitZones) {
-    const inset = 10;
-    if (
-      clientX >= zone.left - inset &&
-      clientX <= zone.left + zone.width + inset &&
-      clientY >= zone.top - inset &&
-      clientY <= zone.top + zone.height + inset
-    ) {
-      return action;
-    }
-  }
-  return null;
-}
-
-function quickActionFanDirectionSign(layout) {
-  if (layout === "left-arc" || layout === "top-arc") return -1;
-  return 1;
-}
-
-function quickActionLayoutPositions(layout, card, bounds, metrics) {
-  const { arcDepth, bubbleGap, bubbleSize, cardGap } = metrics;
-  const bubbleCount = quickActionBubbles.length;
-  const groupHeight = bubbleSize * bubbleCount + bubbleGap * (bubbleCount - 1);
-  const groupWidth = groupHeight;
-  const positions = [];
-
-  if (layout === "left-arc" || layout === "right-arc") {
-    const isLeft = layout === "left-arc";
-    const directionSign = quickActionFanDirectionSign(layout);
-    const baseX = isLeft
-      ? card.left - bubbleSize - cardGap
-      : card.left + card.width + cardGap;
-    const startY = quickActionClamp(
-      card.top + card.height / 2 - groupHeight / 2,
-      bounds.top,
-      bounds.bottom - groupHeight - 1,
-    );
-    quickActionBubbles.forEach((_, index) => {
-      positions.push({
-        x: baseX + (index === 1 ? -directionSign * arcDepth : 0),
-        y: startY + index * (bubbleSize + bubbleGap),
-      });
-    });
-    return positions;
-  }
-
-  const isTop = layout === "top-arc";
-  const directionSign = quickActionFanDirectionSign(layout);
-  const startX = quickActionClamp(
-    card.left + card.width / 2 - groupWidth / 2,
-    bounds.left,
-    bounds.right - groupWidth,
-  );
-  const baseY = isTop
-    ? card.top - bubbleSize - cardGap
-    : card.top + card.height + cardGap;
-  quickActionBubbles.forEach((_, index) => {
-    positions.push({
-      x: startX + index * (bubbleSize + bubbleGap),
-      y: quickActionClamp(
-        baseY + (index === 1 ? -directionSign * arcDepth : 0),
-        bounds.top,
-        bounds.bottom - bubbleSize,
-      ),
-    });
-  });
-  return positions;
-}
-
-function quickActionLayoutScore(
-  layout,
-  positions,
-  card,
-  bounds,
-  metrics,
-  pressPoint,
-) {
-  const overflow = positions.reduce((total, position) => {
-    const right = position.x + metrics.bubbleSize;
-    const bottom = position.y + metrics.bubbleSize;
-    return (
-      total +
-      Math.max(0, bounds.left - position.x) +
-      Math.max(0, right - bounds.right) +
-      Math.max(0, bounds.top - position.y) +
-      Math.max(0, bottom - bounds.bottom)
-    );
-  }, 0);
-  const sideSpace =
-    layout === "left-arc"
-      ? card.left - bounds.left
-      : layout === "right-arc"
-        ? bounds.right - (card.left + card.width)
-        : layout === "top-arc"
-          ? card.top - bounds.top
-          : bounds.bottom - (card.top + card.height);
-  const sidePriority =
-    (layout === "left-arc" || layout === "right-arc") &&
-    sideSpace >= metrics.bubbleSize + metrics.cardGap
-      ? 1000
-      : 0;
-  const averageFingerTravel =
-    positions.reduce((total, position) => {
-      const centerX = position.x + metrics.bubbleSize / 2;
-      const centerY = position.y + metrics.bubbleSize / 2;
-      return total + Math.hypot(centerX - pressPoint.x, centerY - pressPoint.y);
-    }, 0) / Math.max(positions.length, 1);
-  return sidePriority + sideSpace - averageFingerTravel - overflow * 10000;
-}
-
-function positionQuickActionMenu(gesture) {
-  if (!app) return;
-  const appRect = app.getBoundingClientRect();
-  const appWidth = Math.max(appRect.width, app.clientWidth, window.innerWidth);
-  const appHeight = Math.max(
-    appRect.height,
-    app.clientHeight,
-    window.innerHeight,
-  );
-  const cardRect = gesture.card.getBoundingClientRect();
-  const cardWidth = Math.max(cardRect.width, gesture.card.clientWidth, 1);
-  const cardHeight = Math.max(cardRect.height, gesture.card.clientHeight, 1);
-  const card = {
-    height: cardHeight,
-    left: cardRect.left - appRect.left,
-    top: cardRect.top - appRect.top,
-    width: cardWidth,
-  };
-  const shortSide = Math.min(cardWidth, cardHeight);
-  const bubbleScale = root.dataset.platform === "pc" ? 0.34 : 0.4;
-  const bubbleRange =
-    root.dataset.platform === "tablet"
-      ? [60, 70]
-      : root.dataset.platform === "pc"
-        ? [54, 64]
-        : [56, 64];
-  const bubbleSize = quickActionClamp(
-    shortSide * bubbleScale,
-    bubbleRange[0],
-    bubbleRange[1],
-  );
-  const metrics = {
-    bubbleGap: quickActionClamp(shortSide * 0.08, 8, 14),
-    bubbleSize,
-    cardGap: quickActionClamp(shortSide * 0.12, 16, 26),
-    arcDepth: quickActionClamp(shortSide * 0.08, 7, 15),
-  };
-  const edgeGap = 12;
-  const navRect = bottomNavigation?.getBoundingClientRect();
-  const isPc = root.dataset.platform === "pc";
-  const isPcRail =
-    isPc &&
-    navRect &&
-    navRect.width > 0 &&
-    navRect.left <= appRect.left + edgeGap;
-  const view = gesture.card.closest(".app-view");
-  const topbarRect = view
-    ?.querySelector(".app-topbar")
-    ?.getBoundingClientRect();
-  const topbarBottom =
-    topbarRect && topbarRect.height > 0
-      ? topbarRect.bottom - appRect.top + edgeGap
-      : edgeGap;
-  const visualViewport = window.visualViewport;
-  const visualLeft = Number.isFinite(visualViewport?.offsetLeft)
-    ? visualViewport.offsetLeft - appRect.left
-    : 0;
-  const visualTop = Number.isFinite(visualViewport?.offsetTop)
-    ? visualViewport.offsetTop - appRect.top
-    : 0;
-  const visualRight = Number.isFinite(visualViewport?.width)
-    ? visualLeft + visualViewport.width
-    : appWidth;
-  const visualBottom = Number.isFinite(visualViewport?.height)
-    ? visualTop + visualViewport.height
-    : appHeight;
-  const navTop =
-    !isPc && navRect && navRect.height > 0
-      ? navRect.top - appRect.top - edgeGap
-      : visualBottom - edgeGap;
-  const bounds = {
-    bottom: Math.max(topbarBottom + bubbleSize, navTop),
-    left: Math.max(
-      visualLeft + edgeGap,
-      isPcRail ? navRect.right - appRect.left + edgeGap : edgeGap,
-    ),
-    right: Math.min(appWidth - edgeGap, visualRight - edgeGap),
-    top: Math.max(visualTop + edgeGap, topbarBottom),
-  };
-  const focusScale = 1.03;
-  const focusOutline = 4;
-  const focusLift = 4;
-  const focusInsetX = (card.width * focusScale - card.width) / 2 + focusOutline;
-  const focusInsetY =
-    (card.height * focusScale - card.height) / 2 + focusOutline + focusLift;
-  const finalCard = {
-    ...card,
-    left: quickActionClamp(
-      card.left,
-      bounds.left + focusInsetX,
-      bounds.right - card.width - focusInsetX,
-    ),
-    top: quickActionClamp(
-      card.top,
-      bounds.top + focusInsetY,
-      bounds.bottom - card.height - focusInsetY,
-    ),
-  };
-  const pressPoint = {
-    x: quickActionClamp(
-      (gesture.pressX ?? gesture.startX) - appRect.left,
-      bounds.left,
-      bounds.right,
-    ),
-    y: quickActionClamp(
-      (gesture.pressY ?? gesture.startY) - appRect.top,
-      bounds.top,
-      bounds.bottom,
-    ),
-  };
-  const candidates = ["left-arc", "right-arc", "top-arc", "bottom-arc"].map(
-    (layout) => {
-      const positions = quickActionLayoutPositions(
-        layout,
-        finalCard,
-        bounds,
-        metrics,
-      );
-      return {
-        layout,
-        positions,
-        score: quickActionLayoutScore(
-          layout,
-          positions,
-          finalCard,
-          bounds,
-          metrics,
-          pressPoint,
-        ),
-      };
-    },
-  );
-  const { layout, positions } = candidates.reduce((best, candidate) =>
-    candidate.score > best.score ? candidate : best,
-  );
-  const hitZones = new Map();
-
-  quickActionCard?.replaceChildren(gesture.card.cloneNode(true));
-  if (quickActionCard) {
-    quickActionCard.style.left = `${finalCard.left}px`;
-    quickActionCard.style.top = `${finalCard.top}px`;
-    quickActionCard.style.width = `${cardWidth}px`;
-    quickActionCard.style.height = `${cardHeight}px`;
-    quickActionCard.style.setProperty("--quick-action-card-shift-x", "0px");
-    quickActionCard.style.setProperty("--quick-action-card-shift-y", "-4px");
-  }
-  quickActionOverlay.dataset.layout = layout;
-  quickActionOverlay.dataset.focusSafe = "true";
-  quickActionBubbles.forEach((bubble, index) => {
-    const { x, y } = positions[index];
-    bubble.style.setProperty("--quick-action-x", `${x}px`);
-    bubble.style.setProperty("--quick-action-y", `${y}px`);
-    bubble.style.setProperty("--quick-action-bubble-size", `${bubbleSize}px`);
-    bubble.style.setProperty("--quick-action-delay", `${index * 55}ms`);
-    hitZones.set(bubble.dataset.quickAction, {
-      left: appRect.left + x,
-      top: appRect.top + y,
-      width: bubbleSize,
-      height: bubbleSize,
-    });
-  });
-  gesture.hitZones = hitZones;
-}
-
-function openQuickAction() {
-  const gesture = quickActionGesture;
-  if (!gesture || !gesture.card.isConnected || !quickActionOverlay) return;
-  gesture.timer = 0;
-  gesture.opened = true;
-  gestureOwner = "quick-action";
-  armQuickActionClickSuppression(gesture);
-  cancelActivePagerGesture({ animate: false });
-  try {
-    gesture.card.setPointerCapture?.(gesture.pointerId);
-  } catch {
-    // Pointer capture can be unavailable after a system gesture interruption.
-  }
-  quickActionOverlay.hidden = false;
-  quickActionOverlay.setAttribute("aria-hidden", "false");
-  quickActionOverlay.classList.remove("is-ready");
-  app?.classList.add("is-quick-action-open");
-  bindQuickActionScrollLock();
-  quickActionStatus.textContent = "";
-  positionQuickActionMenu(gesture);
-  setQuickActionCandidate();
-  window.requestAnimationFrame(() => {
-    if (quickActionGesture === gesture && !quickActionOverlay.hidden) {
-      quickActionOverlay.classList.add("is-ready");
-    }
-  });
-}
-
-function closeQuickAction() {
-  const gesture = quickActionGesture;
-  clearQuickActionTimer();
-  if (gesture?.opened) {
-    try {
-      if (gesture.card.hasPointerCapture?.(gesture.pointerId)) {
-        gesture.card.releasePointerCapture(gesture.pointerId);
-      }
-    } catch {
-      // The browser can release capture before this cancellation runs.
-    }
-  }
-  if (gestureOwner === "quick-action") gestureOwner = null;
-  unbindQuickActionScrollLock();
-  quickActionGesture = null;
-  setQuickActionCandidate();
-  app?.classList.remove("is-quick-action-open");
-  if (quickActionOverlay) {
-    quickActionOverlay.classList.remove("is-ready");
-    delete quickActionOverlay.dataset.layout;
-    delete quickActionOverlay.dataset.focusSafe;
-    quickActionOverlay.hidden = true;
-    quickActionOverlay.setAttribute("aria-hidden", "true");
-  }
-  if (quickActionCard) quickActionCard.replaceChildren();
-  quickActionCard?.style.removeProperty("--quick-action-card-shift-x");
-  quickActionCard?.style.removeProperty("--quick-action-card-shift-y");
-  quickActionBubbles.forEach((bubble) => {
-    bubble.style.removeProperty("--quick-action-x");
-    bubble.style.removeProperty("--quick-action-y");
-    bubble.style.removeProperty("--quick-action-bubble-size");
-    bubble.style.removeProperty("--quick-action-delay");
-  });
-  if (quickActionStatus) quickActionStatus.textContent = "";
-}
-
-function commitQuickAction(action, gesture) {
-  const label = quickActionLabels[action];
-  if (!label) {
-    closeQuickAction();
-    return;
-  }
-  quickActionStatus.textContent = `已选择${label}`;
-  logQaEvent("quick-action", `[quick-action] ${action} ${gesture.contentId}`);
-}
-
-function beginQuickAction(event) {
-  if (
-    !event.isPrimary ||
-    event.button > 0 ||
-    event.target.closest("input, textarea, select, a, [contenteditable='true']")
-  ) {
-    return;
-  }
-  closeQuickAction();
-  const card = event.currentTarget;
-  quickActionGesture = {
-    card,
-    contentId: card.dataset.contentId || "content-card",
-    pointerId: event.pointerId,
-    pointerType: event.pointerType,
-    pressX: event.clientX,
-    pressY: event.clientY,
-    startX: event.clientX,
-    startY: event.clientY,
-    opened: false,
-    pendingAction: null,
-    timer: 0,
-    hitZones: null,
-  };
-  quickActionGesture.timer = window.setTimeout(
-    openQuickAction,
-    quickActionDelay,
-  );
-}
-
-function moveQuickAction(event) {
-  const gesture = quickActionGesture;
-  if (!gesture || gesture.pointerId !== event.pointerId) return;
-  const distance = Math.hypot(
-    event.clientX - gesture.startX,
-    event.clientY - gesture.startY,
-  );
-  if (!gesture.opened) {
-    if (distance > quickActionMovementTolerance) closeQuickAction();
-    return;
-  }
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  setQuickActionCandidate(
-    quickActionCandidateAtPoint(event.clientX, event.clientY),
-  );
-}
-
-function finishQuickAction(event) {
-  const gesture = quickActionGesture;
-  if (!gesture || gesture.pointerId !== event.pointerId) return;
-  clearQuickActionTimer();
-  if (!gesture.opened) {
-    quickActionGesture = null;
-    return;
-  }
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  releaseQuickActionClickSuppression(gesture);
-  const action =
-    quickActionCandidateAtPoint(event.clientX, event.clientY) ||
-    gesture.pendingAction;
-  if (!action) {
-    closeQuickAction();
-    return;
-  }
-  commitQuickAction(action, gesture);
-  closeQuickAction();
-}
-
-function cancelQuickActionForSecondaryPointer(event) {
-  const gesture = quickActionGesture;
-  if (!gesture || gesture.pointerId === event.pointerId) return;
-  if (gesture.opened) releaseQuickActionClickSuppression(gesture);
-  closeQuickAction();
-}
-
-function cancelQuickAction(event) {
-  const gesture = quickActionGesture;
-  if (!gesture || (event && gesture.pointerId !== event.pointerId)) return;
-  if (gesture.opened) {
-    event?.preventDefault();
-    event?.stopImmediatePropagation();
-    releaseQuickActionClickSuppression(gesture);
-  }
-  closeQuickAction();
-}
-
-function suppressQuickActionContextMenu(event) {
-  event.preventDefault();
-}
-
-function suppressQuickActionMediaDrag(event) {
-  if (
-    event.target instanceof Element &&
-    event.target.closest("img, .app-card-media")
-  ) {
-    event.preventDefault();
-  }
-}
-
-function bindQuickActions() {
-  document.querySelectorAll("[data-open-detail]").forEach((card) => {
-    card.dataset.quickActions = "enabled";
-    card.querySelectorAll("img").forEach((image) => {
-      image.draggable = false;
-    });
-    card.addEventListener("pointerdown", beginQuickAction);
-    card.addEventListener("contextmenu", suppressQuickActionContextMenu);
-    card.addEventListener("dragstart", suppressQuickActionMediaDrag);
-  });
-  document.addEventListener("click", suppressQuickActionSyntheticClick, true);
-  window.addEventListener(
-    "pointerdown",
-    cancelQuickActionForSecondaryPointer,
-    true,
-  );
-  window.addEventListener("pointermove", moveQuickAction, {
-    capture: true,
-    passive: false,
-  });
-  window.addEventListener("pointerup", finishQuickAction, {
-    capture: true,
-    passive: false,
-  });
-  window.addEventListener("pointercancel", cancelQuickAction, true);
-}
-
 renderSelectedDataset();
 preparePagers();
 observePagerSizes();
@@ -4744,7 +4160,6 @@ bindClicks("[data-qa-log-copy]", () => {
 bindClicks("[data-theme-toggle]", cycleThemePreference);
 bindClicks("[data-layout-toggle]", cycleHomeFeedLayout);
 bindClicks("[data-open-detail]", openDetail);
-bindQuickActions();
 
 document
   .querySelector("[data-detail-back]")
@@ -4947,7 +4362,6 @@ window.addEventListener("popstate", (event) => {
 function onPlatformQueryChange() {
   const previousPlatform = root.dataset.platform;
   const previousComposition = detailView?.dataset.detailComposition;
-  closeQuickAction();
   syncPlatformAttribute();
   updateDetailComposition();
   syncBottomNavViewportInset();
@@ -5038,7 +4452,6 @@ function onWindowSizeChange() {
 
 function onPagerViewportChange() {
   lastPagerWindowWidth = window.innerWidth;
-  closeQuickAction();
   cancelNavPointer();
   saveScrollPosition();
   updateDetailComposition();
@@ -5118,7 +4531,6 @@ window.visualViewport?.addEventListener("scroll", syncBottomNavViewportInset, {
   passive: true,
 });
 document.addEventListener("scroll", onNavigationScroll, true);
-document.addEventListener("scroll", closeQuickAction, true);
 document.querySelectorAll("[data-scroll-key]").forEach((scrollElement) => {
   scrollElement.addEventListener(
     "scroll",
