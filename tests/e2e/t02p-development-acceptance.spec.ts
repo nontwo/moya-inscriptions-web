@@ -369,12 +369,6 @@ test("Catalog scenario selector maps every state without changing destination", 
   );
 
   const { navigation, surface } = await openDevelopmentSurface(page);
-  const smallPopulatedImageRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.resourceType() === "image") {
-      smallPopulatedImageRequests.push(request.url());
-    }
-  });
   const selector = catalogScenarioSelector(surface);
 
   await selector.selectOption("small-populated");
@@ -391,12 +385,15 @@ test("Catalog scenario selector maps every state without changing destination", 
       ),
     )
     .toBe(true);
-  expect(smallPopulatedImageRequests.length).toBeGreaterThan(0);
-  expect(
-    smallPopulatedImageRequests.every(
-      (requestUrl) => new URL(requestUrl).origin === new URL(page.url()).origin,
+  const smallPopulatedImageUrl = new URL(
+    await smallPopulatedImage.evaluate(
+      (image) => (image as HTMLImageElement).currentSrc,
     ),
-  ).toBe(true);
+  );
+  expect(smallPopulatedImageUrl.origin).toBe(new URL(page.url()).origin);
+  expect(smallPopulatedImageUrl.pathname).toBe(
+    "/docs/design-system/assets/demo/rubbing-fragment.svg",
+  );
 
   await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
   await expectActiveDestination(surface, "calligraphy");
