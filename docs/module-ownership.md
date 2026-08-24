@@ -105,9 +105,9 @@ expected head SHA and complete merged-head verification.
 
 ### Promotion from `integration/mvp` to `main`
 
-An explicit Owner milestone decision is required because the promotion creates
-a stable baseline. After approval, an authorized independent review agent
-executes the promotion merge and merged-head verification.
+An explicit Owner milestone decision is required because the promotion creates a
+stable baseline. After approval, an authorized independent review agent executes
+the promotion merge and merged-head verification.
 
 ## Protected Owner-local files
 
