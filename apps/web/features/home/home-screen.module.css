@@ -1,4 +1,265 @@
+.screen {
+  min-width: 0;
+  padding: 0 var(--yoyi-space-3) calc(96px + env(safe-area-inset-bottom));
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
+}
+
+.screenHeader {
+  padding: var(--yoyi-space-5) var(--yoyi-space-1) var(--yoyi-space-4);
+}
+
+.screenHeader h2 {
+  margin: 0;
+  font-size: var(--yoyi-type-section-title-size);
+  line-height: 1.3;
+}
+
+.feed {
+  column-count: 2;
+  column-gap: var(--yoyi-space-3);
+}
+
+.feed[data-feed-layout="single"] {
+  column-count: 1;
+}
+
+.card {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 0;
+  border-radius: 16px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.feedCard {
+  display: inline-flex;
+  width: 100%;
+  margin: 0 0 var(--yoyi-space-3);
+  flex-direction: column;
+  break-inside: avoid;
+}
+
 .media {
-  max-inline-size: 100%;
-  block-size: auto;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--yoyi-color-background-muted);
+}
+
+.feedMedia img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.mediaFallback {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  place-items: center;
+  align-content: center;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  font-size: var(--yoyi-type-caption-size);
+  text-align: center;
+}
+
+.mediaFallback[data-catalog-media-state="failed"] {
+  color: var(--yoyi-color-error);
+}
+
+.mediaFallback :global(.yoyi-icon) {
+  width: 28px;
+  height: 28px;
+}
+
+.cardBody {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-1);
+  padding: 9px 10px 11px;
+}
+
+.cardTitle,
+.cardMetadata,
+.cardSummary {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cardTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cardMetadata,
+.cardSummary {
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-metadata-size);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.cardSummary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.inscriptionList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: var(--yoyi-space-3);
+  list-style: none;
+}
+
+.inscriptionCard {
+  display: grid;
+  width: 100%;
+  min-height: 104px;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.inscriptionMedia,
+.inscriptionCard > .mediaFallback {
+  width: 88px;
+  min-height: 104px;
+  aspect-ratio: auto;
+  border-radius: 16px 0 0 16px;
+}
+
+.inscriptionMedia img {
+  display: block;
+  width: 100%;
+  height: 104px;
+  object-fit: cover;
+}
+
+.inscriptionCard .cardBody {
+  align-content: center;
+  padding: var(--yoyi-space-4);
+}
+
+.stateMessage {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  align-content: center;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-8) var(--yoyi-space-5);
+  color: var(--yoyi-color-text-secondary);
+  text-align: center;
+}
+
+.stateMessage h3,
+.stateMessage p {
+  margin: 0;
+}
+
+.stateMessage h3 {
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-type-section-title-size);
+}
+
+.stateMark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-weight: 700;
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .screen {
+  padding-inline: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .feed {
+  column-gap: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .feedCard {
+  margin-bottom: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="tablet"])
+  .feed[data-feed-layout="double"]
+  .feedCard[data-catalog-feed-span="full"] {
+  display: flex;
+  column-span: all;
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .inscriptionCard {
+  min-height: 120px;
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .inscriptionMedia,
+:global([data-primary-shell][data-platform="tablet"])
+  .inscriptionCard
+  > .mediaFallback {
+  width: 112px;
+  min-height: 120px;
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .inscriptionMedia img {
+  height: 120px;
+}
+
+:global([data-primary-shell][data-platform="pc"]) .screen {
+  padding-inline: var(--yoyi-space-6);
+}
+
+:global([data-primary-shell][data-platform="pc"]) .feed {
+  column-count: 3;
+  column-gap: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="pc"]) .feedCard {
+  margin-bottom: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="pc"]) .inscriptionCard {
+  min-height: 128px;
+  grid-template-columns: 128px minmax(0, 1fr);
+}
+
+:global([data-primary-shell][data-platform="pc"]) .inscriptionMedia,
+:global([data-primary-shell][data-platform="pc"])
+  .inscriptionCard
+  > .mediaFallback {
+  width: 128px;
+  min-height: 128px;
+}
+
+:global([data-primary-shell][data-platform="pc"]) .inscriptionMedia img {
+  height: 128px;
+}
+
+@media (min-width: 64rem) {
+  :global([data-primary-shell][data-platform="pc"]) .feed {
+    column-count: 4;
+  }
+}
+
+@media (min-width: 90rem) {
+  :global([data-primary-shell][data-platform="pc"]) .feed {
+    column-count: 5;
+  }
 }

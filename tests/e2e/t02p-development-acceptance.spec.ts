@@ -5,12 +5,12 @@ import type { Locator, Page } from "@playwright/test";
 const destinationAcceptance = {
   calligraphy: {
     label: "书帖",
-    panel: "Calligraphy acceptance panel",
+    presentation: "calligraphy",
   },
-  home: { label: "首页", panel: "Home acceptance panel" },
+  home: { label: "首页", presentation: "home" },
   inscriptions: {
     label: "碑刻",
-    panel: "Inscription acceptance panel",
+    presentation: "inscription",
   },
 } as const;
 
@@ -33,6 +33,110 @@ const expectedInitialAutoPlatform = (
 
 const platformSelector = (surface: Locator) =>
   surface.getByRole("combobox", { name: "QA presentation platform" });
+
+const catalogScenarioSelector = (surface: Locator) =>
+  surface.getByRole("combobox", { name: "QA Catalog scenario" });
+
+const feedLayoutSelector = (surface: Locator) =>
+  surface.getByRole("combobox", { name: "QA phone/tablet feed layout" });
+
+const activeCatalogPresentation = (surface: Locator) =>
+  surface.locator(
+    "[data-primary-destination]:not([hidden]) [data-catalog-presentation]",
+  );
+
+const requireBoundingBox = async (locator: Locator) => {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error("Expected a visible locator bounding box");
+  return box;
+};
+
+const expectFeedCardGeometry = async ({
+  columnCount,
+  feed,
+  fullCard,
+  fullSpan,
+  normalCard,
+}: {
+  readonly columnCount: number;
+  readonly feed: Locator;
+  readonly fullCard: Locator;
+  readonly fullSpan: boolean;
+  readonly normalCard: Locator;
+}) => {
+  const [feedBox, fullCardBox, normalCardBox] = await Promise.all([
+    requireBoundingBox(feed),
+    requireBoundingBox(fullCard),
+    requireBoundingBox(normalCard),
+  ]);
+  const columnGap = await feed.evaluate((node) =>
+    Number.parseFloat(getComputedStyle(node).columnGap),
+  );
+  const expectedColumnWidth =
+    (feedBox.width - columnGap * Math.max(0, columnCount - 1)) / columnCount;
+
+  expect(Math.abs(normalCardBox.width - expectedColumnWidth)).toBeLessThan(2);
+  expect(
+    await fullCard.evaluate((node) => getComputedStyle(node).columnSpan),
+  ).toBe(fullSpan ? "all" : "none");
+
+  if (fullSpan) {
+    expect(Math.abs(fullCardBox.x - feedBox.x)).toBeLessThan(2);
+    expect(Math.abs(fullCardBox.width - feedBox.width)).toBeLessThan(2);
+  } else {
+    expect(Math.abs(fullCardBox.width - expectedColumnWidth)).toBeLessThan(2);
+  }
+};
+
+const expectCatalogCardsNotToOverlap = async (feed: Locator) => {
+  expect(
+    await feed.locator("[data-catalog-card]").evaluateAll((cards) => {
+      const rectangles = cards.map((card) => card.getBoundingClientRect());
+
+      return rectangles.every((rectangle, index) =>
+        rectangles.slice(index + 1).every((candidate) => {
+          const horizontalOverlap =
+            Math.min(rectangle.right, candidate.right) -
+            Math.max(rectangle.left, candidate.left);
+          const verticalOverlap =
+            Math.min(rectangle.bottom, candidate.bottom) -
+            Math.max(rectangle.top, candidate.top);
+          return horizontalOverlap <= 1 || verticalOverlap <= 1;
+        }),
+      );
+    }),
+  ).toBe(true);
+};
+
+const expectNoHorizontalOverflow = async (page: Page) => {
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+};
+
+const expectFeedToClearNavigation = async ({
+  feed,
+  navigation,
+  page,
+}: {
+  readonly feed: Locator;
+  readonly navigation: Locator;
+  readonly page: Page;
+}) => {
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const navigationBox = await requireBoundingBox(navigation);
+  const finalCardBottom = await feed
+    .locator("[data-catalog-card]")
+    .evaluateAll((cards) =>
+      Math.max(...cards.map((card) => card.getBoundingClientRect().bottom)),
+    );
+
+  expect(finalCardBottom).toBeLessThanOrEqual(navigationBox.y + 1);
+};
 
 const expectPresentationPlatform = async (
   surface: Locator,
@@ -67,6 +171,9 @@ const expectActiveDestination = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
   await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
   await expect(
+    shell.locator("[data-primary-destination]:not([hidden])"),
+  ).toHaveCount(1);
+  await expect(
     navigation.locator("[data-primary-navigation-bubble]"),
   ).toBeVisible();
   await expect(
@@ -89,9 +196,13 @@ const expectActiveDestination = async (
     if (active) {
       await expect(section).not.toHaveAttribute("hidden", "");
       await expect(section).toBeVisible();
+      const panel = section.locator(`[data-qa-panel="${candidate}"]`);
+      await expect(panel).toBeVisible();
       await expect(
-        section.locator(`[data-qa-panel="${candidate}"]`),
-      ).toHaveText(destinationAcceptance[candidate].panel);
+        panel.locator(
+          `[data-catalog-presentation="${destinationAcceptance[candidate].presentation}"]`,
+        ),
+      ).toBeVisible();
     } else {
       await expect(section).toHaveAttribute("hidden", "");
       await expect(section).toBeHidden();
@@ -101,6 +212,15 @@ const expectActiveDestination = async (
 
 const pagerAction = (surface: Locator, action: "previous" | "next") =>
   surface.locator(`[data-primary-pager-action="${action}"]`);
+
+const activatePagerAction = async (
+  surface: Locator,
+  action: "previous" | "next",
+) => {
+  const button = pagerAction(surface, action);
+  await expect(button).toBeEnabled();
+  await button.evaluate((element) => (element as HTMLButtonElement).click());
+};
 
 const locatorCenter = async (locator: Locator) => {
   const box = await locator.boundingBox();
@@ -198,7 +318,12 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
       '[data-yoyi-ui="desktop-navigation"], .yoyi-desktop-navigation',
     ),
   ).toHaveCount(0);
+  await expect(catalogScenarioSelector(surface)).toHaveValue("visual");
+  await expect(surface).toHaveAttribute("data-catalog-scenario", "visual");
   await expectActiveDestination(surface, "home");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(24);
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
   await expect
@@ -210,18 +335,24 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
     })
     .toBe("inscriptions");
   await expectActiveDestination(surface, "inscriptions");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(12);
 
   await navigation.getByRole("button", { name: "书帖", exact: true }).click();
   await expectActiveDestination(surface, "calligraphy");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(12);
   await expect(pagerAction(surface, "next")).toBeDisabled();
 
-  await pagerAction(surface, "previous").click();
+  await activatePagerAction(surface, "previous");
   await expectActiveDestination(surface, "inscriptions");
-  await pagerAction(surface, "previous").click();
+  await activatePagerAction(surface, "previous");
   await expectActiveDestination(surface, "home");
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
-  await pagerAction(surface, "next").click();
+  await activatePagerAction(surface, "next");
   await expectActiveDestination(surface, "inscriptions");
 
   const qaPlatformSelector = platformSelector(surface);
@@ -250,6 +381,333 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
     expectedInitialAutoPlatform(testInfo.project.name),
   );
   await expectActiveDestination(surface, "inscriptions");
+});
+
+test("Visual Catalog covers valid, absent, and failed media with long-scroll navigation clearance", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The full deterministic media-state audit runs once in Desktop Chromium.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const home = activeCatalogPresentation(surface);
+  const cards = home.locator("[data-catalog-card]");
+  await expect(catalogScenarioSelector(surface)).toHaveValue("visual");
+  await expect(cards).toHaveCount(24);
+
+  for (let index = 0; index < 24; index += 1) {
+    await cards.nth(index).scrollIntoViewIfNeeded();
+  }
+
+  await expect(home.locator('[data-catalog-media-state="failed"]')).toHaveCount(
+    1,
+  );
+  await expect(
+    home.locator('[data-catalog-media-state="missing"]'),
+  ).toHaveCount(6);
+  await expect(home.locator('[data-catalog-media-state="valid"]')).toHaveCount(
+    17,
+  );
+  await expect(home.getByText("图像无法加载", { exact: true })).toHaveCount(1);
+  await expect(home.getByText("暂无公开图像", { exact: true })).toHaveCount(6);
+
+  const validImages = home.locator('[data-catalog-media-state="valid"] img');
+  await expect(validImages).toHaveCount(17);
+  expect(
+    await validImages.evaluateAll((images) =>
+      images.every((image) => {
+        const source = new URL((image as HTMLImageElement).currentSrc);
+        return (
+          source.origin === window.location.origin &&
+          source.pathname.startsWith("/docs/design-system/assets/demo/") &&
+          (image as HTMLImageElement).complete &&
+          (image as HTMLImageElement).naturalWidth > 0
+        );
+      }),
+    ),
+  ).toBe(true);
+
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight > window.innerHeight,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const lastCardBox = await cards.last().boundingBox();
+  const navigationBox = await navigation.boundingBox();
+  if (lastCardBox === null || navigationBox === null) {
+    throw new Error("Expected Catalog card and navigation geometry");
+  }
+  expect(lastCardBox.y + lastCardBox.height).toBeLessThanOrEqual(
+    navigationBox.y + 1,
+  );
+});
+
+test("Catalog scenario selector maps every state without changing destination", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The complete scenario matrix runs once in Desktop Chromium.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  const selector = catalogScenarioSelector(surface);
+
+  await selector.selectOption("small-populated");
+  const smallPopulatedImage = activeCatalogPresentation(surface).locator(
+    '[data-catalog-media-state="valid"] img',
+  );
+  await expect(smallPopulatedImage).toHaveCount(1);
+  await expect
+    .poll(() =>
+      smallPopulatedImage.evaluate(
+        (image) =>
+          (image as HTMLImageElement).complete &&
+          (image as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+  const smallPopulatedImageUrl = new URL(
+    await smallPopulatedImage.evaluate(
+      (image) => (image as HTMLImageElement).currentSrc,
+    ),
+  );
+  expect(smallPopulatedImageUrl.origin).toBe(new URL(page.url()).origin);
+  expect(smallPopulatedImageUrl.pathname).toBe(
+    "/docs/design-system/assets/demo/rubbing-fragment.svg",
+  );
+
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expectActiveDestination(surface, "calligraphy");
+
+  await expect(surface).toHaveAttribute(
+    "data-catalog-scenario",
+    "small-populated",
+  );
+  await expectActiveDestination(surface, "calligraphy");
+  await expect(
+    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+  ).toHaveCount(1);
+
+  for (const [scenario, state, text] of [
+    ["empty", "empty", "暂无公开书帖"],
+    ["unavailable", "unavailable", "档案服务暂时不可用"],
+    ["unexpected-error", "unexpected-error", "无法加载公开档案"],
+  ] as const) {
+    await selector.selectOption(scenario);
+    await expect(surface).toHaveAttribute("data-catalog-scenario", scenario);
+    await expectActiveDestination(surface, "calligraphy");
+    await expect(activeCatalogPresentation(surface)).toHaveAttribute(
+      "data-catalog-presentation-state",
+      state,
+    );
+    await expect(
+      activeCatalogPresentation(surface).getByText(text),
+    ).toBeVisible();
+  }
+});
+
+test("Feed layout remains bounded to phone/tablet while PC stays responsive", async ({
+  page,
+}, testInfo) => {
+  const { surface } = await openDevelopmentSurface(page);
+  const selector = feedLayoutSelector(surface);
+  const feed = activeCatalogPresentation(surface).locator("[data-feed-layout]");
+  const fullCard = feed.locator('[data-catalog-feed-span="full"]').first();
+  const normalCard = feed
+    .locator("[data-catalog-card]:not([data-catalog-feed-span])")
+    .first();
+  await expect(selector).toHaveValue("double");
+  await expect(feed.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
+
+  if (testInfo.project.name === "desktop-chromium") {
+    await expect(selector).toBeDisabled();
+    const columnCount = Number(
+      await feed.evaluate((node) => getComputedStyle(node).columnCount),
+    );
+    expect(columnCount).toBeGreaterThanOrEqual(3);
+    await expectFeedCardGeometry({
+      columnCount,
+      feed,
+      fullCard,
+      fullSpan: false,
+      normalCard,
+    });
+    return;
+  }
+
+  await expect(selector).toBeEnabled();
+  await selector.selectOption("single");
+  await expect(surface).toHaveAttribute("data-feed-layout", "single");
+  await expect(feed).toHaveCSS("column-count", "1");
+  await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 1,
+    feed,
+    fullCard,
+    fullSpan: false,
+    normalCard,
+  });
+
+  await selector.selectOption("double");
+  await expect(surface).toHaveAttribute("data-feed-layout", "double");
+  await expect(feed).toHaveCSS("column-count", "2");
+  await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed,
+    fullCard,
+    fullSpan: testInfo.project.name === "tablet-webkit",
+    normalCard,
+  });
+});
+
+test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct full-width rhythm", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet-webkit",
+    "The Tablet feed composition audit runs only in Tablet WebKit.",
+  );
+
+  const { navigation, surface } = await openDevelopmentSurface(page);
+  await page.setViewportSize({ height: 1194, width: 834 });
+  await expect(platformSelector(surface)).toHaveValue("auto");
+  await expectPresentationPlatform(surface, "tablet");
+  await expect(feedLayoutSelector(surface)).toHaveValue("double");
+
+  const home = activeCatalogPresentation(surface);
+  const homeFeed = home.locator('[data-feed-layout="double"]');
+  const homeUltraWide = home.locator(
+    '[data-catalog-id="qa-visual-inscription-04"]',
+  );
+  await expect(home.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: homeFeed,
+    fullCard: homeUltraWide,
+    fullSpan: true,
+    normalCard: home.locator('[data-catalog-id="qa-visual-inscription-01"]'),
+  });
+
+  const beforeSpan = home.locator(
+    '[data-catalog-id="qa-visual-calligraphy-03"]',
+  );
+  const afterSpanLeft = home.locator(
+    '[data-catalog-id="qa-visual-calligraphy-04"]',
+  );
+  const afterSpanRight = home.locator(
+    '[data-catalog-id="qa-visual-inscription-05"]',
+  );
+  await expect(beforeSpan).toBeVisible();
+  await expect(afterSpanLeft).toBeVisible();
+  await expect(afterSpanRight).toBeVisible();
+  const [afterSpanLeftBox, afterSpanRightBox] = await Promise.all([
+    requireBoundingBox(afterSpanLeft),
+    requireBoundingBox(afterSpanRight),
+  ]);
+  expect(Math.abs(afterSpanLeftBox.x - afterSpanRightBox.x)).toBeGreaterThan(
+    afterSpanLeftBox.width / 2,
+  );
+
+  await homeUltraWide.locator("img").dispatchEvent("error");
+  await expect(homeUltraWide).toHaveAttribute("data-catalog-feed-span", "full");
+  await expect(
+    homeUltraWide.locator('[data-catalog-media-state="failed"]'),
+  ).toBeVisible();
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: homeFeed,
+    fullCard: homeUltraWide,
+    fullSpan: true,
+    normalCard: home.locator('[data-catalog-id="qa-visual-inscription-01"]'),
+  });
+  await expectCatalogCardsNotToOverlap(homeFeed);
+  await expectNoHorizontalOverflow(page);
+  await expectFeedToClearNavigation({ feed: homeFeed, navigation, page });
+
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expectActiveDestination(surface, "calligraphy");
+  await page.setViewportSize({ height: 834, width: 1194 });
+  await expect(platformSelector(surface)).toHaveValue("auto");
+  await expectPresentationPlatform(surface, "tablet");
+  await expectActiveDestination(surface, "calligraphy");
+
+  const calligraphy = activeCatalogPresentation(surface);
+  const calligraphyFeed = calligraphy.locator('[data-feed-layout="double"]');
+  await expect(
+    calligraphy.locator('[data-catalog-feed-span="full"]'),
+  ).toHaveCount(1);
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: calligraphyFeed,
+    fullCard: calligraphy.locator(
+      '[data-catalog-id="qa-visual-calligraphy-05"]',
+    ),
+    fullSpan: true,
+    normalCard: calligraphy.locator(
+      '[data-catalog-id="qa-visual-calligraphy-01"]',
+    ),
+  });
+  await expectCatalogCardsNotToOverlap(calligraphyFeed);
+  await expectNoHorizontalOverflow(page);
+
+  await navigation.getByRole("button", { exact: true, name: "首页" }).click();
+  await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 2,
+    feed: activeCatalogPresentation(surface).locator(
+      '[data-feed-layout="double"]',
+    ),
+    fullCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-04"]',
+    ),
+    fullSpan: true,
+    normalCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-01"]',
+    ),
+  });
+
+  await feedLayoutSelector(surface).selectOption("single");
+  await expect(surface).toHaveAttribute("data-feed-layout", "single");
+  await expectFeedCardGeometry({
+    columnCount: 1,
+    feed: activeCatalogPresentation(surface).locator(
+      '[data-feed-layout="single"]',
+    ),
+    fullCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-04"]',
+    ),
+    fullSpan: false,
+    normalCard: activeCatalogPresentation(surface).locator(
+      '[data-catalog-id="qa-visual-inscription-01"]',
+    ),
+  });
+
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
+  const inscriptions = activeCatalogPresentation(surface);
+  const inscriptionList = inscriptions.locator("[data-catalog-item-count]");
+  await expect(inscriptions.locator("[data-catalog-feed-span]")).toHaveCount(0);
+  const [inscriptionListBox, inscriptionCardBox] = await Promise.all([
+    requireBoundingBox(inscriptionList),
+    requireBoundingBox(inscriptions.locator("[data-catalog-card]").first()),
+  ]);
+  expect(
+    Math.abs(inscriptionCardBox.width - inscriptionListBox.width),
+  ).toBeLessThan(2);
+  await expectNoHorizontalOverflow(page);
 });
 
 test("Auto mode applies desktop viewport boundaries without resetting the active destination", async ({
@@ -510,6 +968,7 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
   const homeCenter = await locatorCenter(homeButton);
   const inscriptionsCenter = await locatorCenter(inscriptionsButton);
 
+  await confirmMouseNavigationReady(surface, navigation);
   await trackPointerCaptureCalls(homeButton);
   await expect(navigation).toHaveCSS("touch-action", "pan-y");
 
