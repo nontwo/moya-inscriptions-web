@@ -1,7 +1,7 @@
 # 由艺（Yoyi）Public Web
 
-Public Web 是 Next.js App Router 应用。当前 Formal Root 不是已删除的
-`app/page.tsx`；`app/route.ts` 是明确的 route handler composition root。
+Public Web 是 Next.js App Router 应用。`app/route.ts` 是当前 Formal
+Root 的明确 route handler composition root。
 
 ## Formal Root composition
 

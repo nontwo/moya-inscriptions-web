@@ -61,8 +61,8 @@ recommendation。旧 ADR/audit 只保留当时的历史事实。
 
 ## Formal Web composition
 
-当前 Formal Root 由 `apps/web/app/route.ts` 实现，不存在
-`apps/web/app/page.tsx`。`GET /` 在 `connection()` 后并行执行：
+`apps/web/app/route.ts` 是当前 Formal Root composition root。`GET /` 在
+`connection()` 后并行执行：
 
 ```text
 load all Catalog

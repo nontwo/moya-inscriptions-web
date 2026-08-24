@@ -52,7 +52,9 @@ Glass regular 的唯一当前消费者；选中项使用印泥 tint，不叠加�
 - `CalligraphyCard/Grid`：独立于碑刻列表的卡片布局。
 
 这些类型都是 UI 展示类型，不代表 `packages/contracts` 中的业务模型。其中
-`UiImage.src` 只是渲染边界属性：正式应用必须先由图片适配器根据 object
-key 派生 URL，再把结果传给组件。
+`UiImage.src` 只是渲染边界属性：正式应用必须直接传入 Public
+API 提供的已解析 runtime URL（例如
+`PublicMedia.src`），不得让图片适配器接收 object key 或自行拼接 provider/CDN
+URL。
 
 内容卡片、碑刻图片与专题内容不得默认使用 Functional Glass。
