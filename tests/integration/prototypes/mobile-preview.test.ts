@@ -4250,6 +4250,15 @@ describe("mobile application preview", () => {
     expect(sharedCss).toMatch(
       /\.is-minimized[\s\S]*\.yoyi-navigation-entry\.is-active\s*\{[^}]*display: grid;[^}]*place-items: center;/,
     );
+    expect(sharedCss).toMatch(
+      /\.is-minimized[\s\S]*\.yoyi-navigation-entry\.is-active\s*\{[^}]*grid-template: "icon" 1fr \/ 1fr;/,
+    );
+    expect(sharedCss).toMatch(
+      /\.is-minimized[\s\S]*\.yoyi-navigation-entry\.is-active[\s\S]*\.yoyi-fixed-label\s*\{[^}]*display: none;/,
+    );
+    expect(sharedCss).toMatch(
+      /\.is-minimized[\s\S]*\.yoyi-icon-wrap\s*\{[^}]*grid-area: icon;[^}]*align-self: center;[^}]*justify-self: center;/,
+    );
     expect(previewCss).toContain("max-height: 30rem");
     expect(sharedCss).toContain(".yoyi-icon-wrap");
     expect(script).toContain("navigationExpandDelta");
