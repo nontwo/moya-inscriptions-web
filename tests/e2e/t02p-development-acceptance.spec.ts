@@ -1631,13 +1631,41 @@ test("Carousel and Viewer support dots, swipe, keyboard, zoom, pan, close, and d
   await expect(counter).toHaveText("第 1 张，共 3 张");
   await expect(stage).not.toHaveAttribute("data-dragging", "true");
 
-  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2, {
-    steps: 5,
-  });
+  if (platform === "pc" && viewportWidth >= 1100) {
+    const previousEdge = carousel.locator("[data-detail-media-previous]");
+    await expect(previousEdge).toBeDisabled();
+    await expect(previousEdge).toHaveCSS("pointer-events", "none");
+    await page.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.35, box.y + box.height / 2, {
+      steps: 5,
+    });
+    await expect(stage).toHaveAttribute("data-dragging", "true");
+    await page.mouse.up();
+    await expect(counter).toHaveText("第 1 张，共 3 张");
+    await expect(stage).not.toHaveAttribute("data-dragging", "true");
+
+    // Press and release inside the same enabled edge control. The swipe must
+    // commit exactly once and suppress the click synthesized after pointerup.
+    await page.mouse.move(box.x + box.width * 0.98, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.78, box.y + box.height / 2, {
+      steps: 5,
+    });
+  } else {
+    // Mobile/tablet profiles have no edge overlays, so drag the image button
+    // directly and prove that the resulting click does not open Viewer.
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2, {
+      steps: 5,
+    });
+  }
   await page.mouse.up();
   await expect(counter).toHaveText("第 2 张，共 3 张");
+  await expect(dots.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(page.locator("[data-detail-viewer]")).toBeHidden();
+  await expect(page).not.toHaveURL(/[?&]image=/);
 
   const mainImage = carousel.locator("[data-detail-main-image]");
   const detailScroller = page.locator("[data-detail-scroll]");

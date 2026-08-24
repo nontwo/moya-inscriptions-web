@@ -296,6 +296,10 @@
   cursor: default;
 }
 
+.carouselEdge:disabled {
+  pointer-events: none;
+}
+
 .carouselEdgePrevious,
 .viewerEdgePrevious {
   left: 0;

@@ -6,7 +6,11 @@ import { Icon } from "@moya/ui";
 
 import styles from "./catalog-detail.module.css";
 
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import type { PublicMedia } from "@moya/contracts";
 import type { PresentationPlatform } from "../shell/device-platform";
 
@@ -16,6 +20,8 @@ export const MEDIA_CAROUSEL_SWIPE_DISTANCE_PX = 48;
 export const MEDIA_CAROUSEL_FLING_PX_PER_MS = 0.55;
 export const MEDIA_CAROUSEL_HORIZONTAL_RATIO = 1.25;
 export const MEDIA_CAROUSEL_EDGE_RUBBER = 0.32;
+
+const MEDIA_CAROUSEL_CLICK_SUPPRESSION_MS = 500;
 
 type CarouselAxis = "horizontal" | "vertical" | null;
 
@@ -82,6 +88,26 @@ export const CatalogMediaCarousel = ({
   );
   const gestureRef = useRef<CarouselGesture | null>(null);
   const suppressClickRef = useRef(false);
+  const suppressClickTimerRef = useRef<number | null>(null);
+
+  const clearClickSuppression = () => {
+    if (suppressClickTimerRef.current !== null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+      suppressClickTimerRef.current = null;
+    }
+    suppressClickRef.current = false;
+  };
+
+  const suppressCompletedGestureClick = () => {
+    if (suppressClickTimerRef.current !== null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+    }
+    suppressClickRef.current = true;
+    suppressClickTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = false;
+      suppressClickTimerRef.current = null;
+    }, MEDIA_CAROUSEL_CLICK_SUPPRESSION_MS);
+  };
 
   useEffect(() => {
     setDragOffset(0);
@@ -92,6 +118,15 @@ export const CatalogMediaCarousel = ({
     gestureRef.current = null;
     setFailedMediaIds(new Set());
   }, [media]);
+
+  useEffect(
+    () => () => {
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const selectIndex = (index: number) => {
     const bounded = Math.min(Math.max(index, 0), media.length - 1);
@@ -107,10 +142,7 @@ export const CatalogMediaCarousel = ({
     const elapsed = Math.max(event.timeStamp - gesture.lastTime, 1);
     const velocity = (event.clientX - gesture.lastX) / elapsed;
     const moved = Math.hypot(dx, event.clientY - gesture.startY) >= 10;
-    suppressClickRef.current = moved;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
+    if (moved) suppressCompletedGestureClick();
 
     setDragging(false);
     setDragOffset(0);
@@ -135,10 +167,7 @@ export const CatalogMediaCarousel = ({
     const gesture = gestureRef.current;
     if (gesture === null || gesture.id !== event.pointerId) return;
     gestureRef.current = null;
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
+    suppressCompletedGestureClick();
     setDragging(false);
     setDragOffset(0);
 
@@ -181,6 +210,12 @@ export const CatalogMediaCarousel = ({
         className={styles.mainStage}
         data-detail-main-stage=""
         data-dragging={dragging ? "true" : undefined}
+        onClickCapture={(event: ReactMouseEvent<HTMLDivElement>) => {
+          if (!suppressClickRef.current || event.detail === 0) return;
+          clearClickSuppression();
+          event.preventDefault();
+          event.stopPropagation();
+        }}
         onLostPointerCapture={(event) => {
           if (gestureRef.current?.id === event.pointerId) cancelGesture(event);
         }}
@@ -194,6 +229,7 @@ export const CatalogMediaCarousel = ({
           ) {
             return;
           }
+          clearClickSuppression();
           gestureRef.current = {
             axis: null,
             id: event.pointerId,
