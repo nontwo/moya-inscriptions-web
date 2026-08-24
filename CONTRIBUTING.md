@@ -1,10 +1,8 @@
 # Contributing
 
-Repository development is governed by the
-[Owner Development Constitution](docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md)
-and the active
-[Owner amendments](docs/governance/amendments/). Read both before planning or
-changing files. This guide supplies operational steps only and cannot relax the
+Repository development is governed by the [Owner Development Constitution][1]
+and the active [Owner amendments][2]. Read both before planning or changing
+files. This guide supplies operational steps only. It cannot relax the
 Constitution, an active amendment, frozen task scope, or an explicit Owner file
 allowlist.
 
@@ -18,9 +16,9 @@ allowlist.
 3. Sync `integration/mvp`, record its exact base SHA, and create a short-lived
    task branch such as `feat/<reference>-<name>`, `fix/<reference>-<name>`, or
    `chore/<reference>-<name>`.
-4. Check [module ownership](docs/module-ownership.md). Stop for an Owner decision
-   only when the task would cross an unfrozen ownership/scope boundary or trigger
-   another active Owner-decision gate.
+4. Check [module ownership][3]. Stop for an Owner decision only when the task
+   crosses an unfrozen ownership or scope boundary, or triggers another active
+   Owner-decision gate.
 
 Never push directly to `main` or `integration/mvp`. Never force-push a shared
 branch or rewrite another contributor's history.
@@ -68,10 +66,10 @@ the affected validation. Record each applicable command and result in the PR.
 - Reply to, fix, and resolve review findings in the PR. Any substantive new
   commit invalidates earlier review approval and requires review of the updated
   diff.
-- Automated validation, independent diff/code review, and any applicable Owner
-  judgment are distinct gates. For user-visible work, provide evidence for the
-  task's approved platform matrix rather than a universal pair of phone and
-  desktop screenshots.
+- Automated validation, independent diff or code review, and any applicable
+  Owner judgment are distinct gates. For user-visible work, provide evidence
+  for the task's approved platform matrix instead of a universal pair of phone
+  and desktop screenshots.
 - Delete a merged task branch through the approved post-merge workflow after
   merged-head verification.
 
@@ -81,7 +79,11 @@ schema or migrations, CI, deployment configuration, and other protected files
 require explicit frozen task scope. Obtain an Owner decision only when the
 required scope or direction has not already been approved.
 
-Contributor, local, CI, and PR/test environments must not use production
+Contributor, local, CI, and PR or test environments must not use production
 credentials or a production database. Any production deployment is a separate
 Owner-approved operation performed by an authorized operator from an approved
-`main` baseline; repository candidate deployment documents do not authorize it.
+`main` baseline. Repository candidate deployment documents do not authorize it.
+
+[1]: docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md
+[2]: docs/governance/amendments/
+[3]: docs/module-ownership.md
