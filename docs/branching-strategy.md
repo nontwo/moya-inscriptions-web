@@ -3,25 +3,31 @@
 ```text
 main
 └── integration/mvp
-    └── <work-reference 对应的短期任务分支>
+    └── <short-lived task branch for a work reference>
 ```
 
-- `main` 是经 Owner 批准的里程碑基准分支；`integration/mvp` 是当前共享集成分支。
-- 短期任务分支从最新 `integration/mvp` 创建，并通过 PR squash merge 回
-  `integration/mvp`。
-- 不得直接推送 `main` 或 `integration/mvp`。共享分支禁止 force
-  push，任何人不得重写他人历史。
-- 目标为 `integration/mvp` 的机器可验证任务，在适用验证、独立实际 diff
-  review 和全部适用 Owner gate 通过后，可由独立 review agent 标记 Ready、按预期
-  head SHA squash merge，并完成 merged-head verification。
-- 只有视觉/真机验收、重大产品或架构方向、生产权限操作、或尚未解决的 mandatory
-  STOP condition 需要 Owner 判断；Owner 不承担例行 GitHub 合并操作。
-- `integration/mvp` 提升到 `main` 会建立稳定里程碑，因此必须先取得明确的 Owner
-  milestone decision。批准后，可由独立 review agent 执行 PR 合并和 merged-head
-  verification。
-- 经批准的阶段基准进入 `main`
-  后建立带说明的基准标签。短期任务分支在 merged-head verification 通过后按获批流程删除。
+- `main` is the Owner-approved milestone baseline.
+- `integration/mvp` is the shared integration branch.
+- A short-lived task branch starts from the latest `integration/mvp` and returns
+  through a squash-merge pull request.
+- Never push directly to `main` or `integration/mvp`.
+- Never force-push a shared branch or rewrite another contributor's history.
+- A machine-verifiable pull request targeting `integration/mvp` may be marked
+  Ready and squash merged by an independent review agent after applicable
+  validation, actual-diff review, and every applicable Owner gate pass.
+- Owner judgment is required only for visual or real-device acceptance, a major
+  product or architecture direction, a production-authority operation, or an
+  unresolved mandatory STOP condition. The Owner does not perform routine
+  GitHub merge operations.
+- Promotion from `integration/mvp` to `main` creates a stable milestone and
+  requires an explicit Owner milestone decision. After approval, an independent
+  review agent may execute the promotion merge and merged-head verification.
+- Add an annotated baseline tag after an approved milestone enters `main`.
+- Delete a short-lived branch through the approved post-merge workflow only
+  after merged-head verification passes.
 
 ## Status source
 
-动态任务、roadmap 和里程碑状态仅由[当前项目状态](project-status.md)维护。本文件只定义分支拓扑和里程碑提升规则。
+Dynamic task, roadmap, and milestone status belongs only in
+[project status](project-status.md). This file defines branch topology and
+milestone-promotion rules only.
