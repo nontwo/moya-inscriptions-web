@@ -757,9 +757,7 @@ describe("mobile application preview", () => {
     if (!cardText) throw new Error("quick-action card text missing");
     expect(focusLayer.textContent).toContain(cardText);
     expect(card.dataset.quickActionSource).toBe("true");
-    expect(
-      focusLayer.querySelector("[data-quick-action-source]"),
-    ).toBeNull();
+    expect(focusLayer.querySelector("[data-quick-action-source]")).toBeNull();
     focusImage.dispatchEvent(new dom.window.Event("error"));
     expect(
       focusLayer.querySelector("[data-quick-action-focus-fallback]"),

@@ -4213,7 +4213,7 @@ function quickActionDistanceToCardEdge(layout, card, pressPoint) {
 }
 
 function quickActionRenderedBubbleFrame(position, bubbleSize, scale = 1) {
-  const overflow = ((bubbleSize * scale) - bubbleSize) / 2;
+  const overflow = (bubbleSize * scale - bubbleSize) / 2;
   return {
     bottom: position.y + bubbleSize + overflow,
     left: position.x - overflow,
@@ -4232,9 +4232,7 @@ function quickActionKeepPetalInBounds(
     quickActionRenderedBubbleFrame(position, bubbleSize, bubbleScale),
   );
   const left = Math.min(...renderedFrames.map((frame) => frame.left));
-  const right = Math.max(
-    ...renderedFrames.map((frame) => frame.right),
-  );
+  const right = Math.max(...renderedFrames.map((frame) => frame.right));
   const top = Math.min(...renderedFrames.map((frame) => frame.top));
   const bottom = Math.max(...renderedFrames.map((frame) => frame.bottom));
   let shiftX = 0;
@@ -4252,14 +4250,8 @@ function quickActionKeepPetalInBounds(
 }
 
 function quickActionLayoutPositions(layout, card, bounds, metrics, pressPoint) {
-  const {
-    bubbleGap,
-    bubbleScale,
-    bubbleSize,
-    cardGap,
-    fanAngle,
-    petalRadius,
-  } = metrics;
+  const { bubbleGap, bubbleScale, bubbleSize, cardGap, fanAngle, petalRadius } =
+    metrics;
   const direction = quickActionFanDirection(layout);
   const tangent = { x: -direction.y, y: direction.x };
   const outerCosine = Math.cos(fanAngle);
@@ -4269,13 +4261,8 @@ function quickActionLayoutPositions(layout, card, bounds, metrics, pressPoint) {
       cardGap) /
     outerCosine;
   const requiredSpacingRadius =
-    (bubbleSize * bubbleScale + bubbleGap) /
-    (2 * Math.sin(fanAngle / 2));
-  const radius = Math.max(
-    petalRadius,
-    requiredRadius,
-    requiredSpacingRadius,
-  );
+    (bubbleSize * bubbleScale + bubbleGap) / (2 * Math.sin(fanAngle / 2));
+  const radius = Math.max(petalRadius, requiredRadius, requiredSpacingRadius);
   const angles = [-fanAngle, 0, fanAngle];
   const positions = angles.map((angle) => {
     const cosine = Math.cos(angle);
@@ -4436,12 +4423,12 @@ function quickActionLayoutScore(
   const cardOverlap = positions.reduce(
     (total, position) =>
       total +
-        quickActionOverlapArea(
-          position,
-          card,
-          metrics.bubbleSize,
-          metrics.bubbleScale,
-        ),
+      quickActionOverlapArea(
+        position,
+        card,
+        metrics.bubbleSize,
+        metrics.bubbleScale,
+      ),
     0,
   );
   const averageFingerTravel =
