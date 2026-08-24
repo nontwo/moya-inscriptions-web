@@ -1,53 +1,54 @@
 # Pull Request
 
-## 关联任务
+## Task and exact revisions
 
-Closes #
+- Work reference (Issue, task ID, or other Owner-approved reference):
+- Base SHA:
+- Head SHA:
 
-## 本次完成
+## Scope
 
--
--
+- Goal:
+- Non-goals:
+- Allowed path scope:
+- Modified files:
+- Scope deviations (write `None` or explain):
 
-## 修改范围
+## Behavior
 
--
+- Behavior Matrix: `Not applicable` / link or table
+- Development behavior:
+- Production behavior:
+- Behavior that must remain unchanged:
 
-## 未包含内容
+## Automated validation
 
--
+List only applicable checks and include command plus result.
 
-## 手机端截图
+| Surface                                  | Applicability and result              |
+| ---------------------------------------- | ------------------------------------- |
+| Format / lint / typecheck / unit / build |                                       |
+| PostgreSQL validation                    | `Not applicable` / command and result |
+| E2E validation                           | `Not applicable` / command and result |
+| Other scoped validation                  |                                       |
 
-## 桌面端截图
+## Change boundaries
 
-## 自动测试
+- Dependencies: `None` / details and approval
+- Lockfile: `Unchanged` / details and approval
+- Database or migrations: `None` / details and approval
+- Public Contract or API: `None` / details and approval
 
-- [ ] lint
-- [ ] typecheck
-- [ ] unit tests
-- [ ] build
-- [ ] E2E（如适用）
+## Review and acceptance
 
-## 人工测试
+- Independent diff/code review: `Pending` / link and result
+- Owner visual or real-device acceptance: `Not applicable` / approved platform
+  matrix, evidence, and result
 
-- [ ] 手机端
-- [ ] 桌面端
-- [ ] 空数据
-- [ ] 错误状态
-- [ ] 图片加载失败
-- [ ] 未影响其他模块
+Automated validation, independent review, and Owner acceptance are separate
+gates. Do not mark the PR Ready or merge it automatically.
 
-## 数据库变化
+## Risk and follow-up
 
-- [ ] 无
-- [ ] 有，已包含 migration
-
-## 新增依赖
-
-- [ ] 无
-- [ ] 有，原因：
-
-## 风险和遗留问题
-
-## 修改文件列表
+- Risks:
+- Deferred work:

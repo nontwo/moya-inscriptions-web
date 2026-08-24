@@ -1,71 +1,37 @@
 # Module ownership
 
-## Collaboration ownership
+This file records stable ownership and approval boundaries only. Dynamic task,
+milestone, and completion status belongs exclusively in
+[project status](project-status.md).
 
-| 路径或职责                   | 实施负责人     | 必须审批/合并者 |
-| ---------------------------- | -------------- | --------------- |
-| 根配置                       | `@nontwo`      | `@nontwo`       |
-| `.github/**`                 | `@nontwo`      | `@nontwo`       |
-| `packages/contracts/**`      | `@nontwo`      | `@nontwo`       |
-| `database/**`                | 任务分支负责人 | `@nontwo`       |
-| `infra/**`                   | 任务分支负责人 | `@nontwo`       |
-| `apps/**` 具体业务模块       | 任务分支负责人 | `@nontwo`       |
-| `services/**` 具体业务模块   | 任务分支负责人 | `@nontwo`       |
-| `packages/**` 非公共契约模块 | 任务分支负责人 | `@nontwo`       |
-| `main` 最终合并              | 仅 `@nontwo`   | `@nontwo`       |
-| `integration/mvp` 最终合并   | 仅 `@nontwo`   | `@nontwo`       |
+## Path ownership
 
-任务分支负责人只能修改 Issue 或任务说明明确授权的路径。协作者不得成为关键目录的唯一所有者。
+| Path or responsibility                                                                                                                          | Implementation responsibility                                               | Required approval and merge |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------- |
+| Root governance and configuration, including `AGENTS.md`, root `package.json`, workspace, TypeScript, lint, format, and framework configuration | Owner, or a task implementer with an explicit Owner-approved path scope     | `@nontwo`                   |
+| `.github/**`, CI, and deployment configuration                                                                                                  | Owner, or an explicitly authorized task implementer                         | `@nontwo`                   |
+| `docs/governance/**`, `docs/architecture.md`, and `docs/adr/**`                                                                                 | Owner, or an explicitly authorized governance/architecture task implementer | `@nontwo`                   |
+| `packages/contracts/**` and Public Contract/API boundaries                                                                                      | Owner, or an explicitly authorized contract task implementer                | `@nontwo`                   |
+| `database/**`, migration numbering, and database schema                                                                                         | Scoped database task implementer                                            | `@nontwo`                   |
+| `infra/**` and environment-variable names                                                                                                       | Scoped infrastructure task implementer                                      | `@nontwo`                   |
+| `packages/ui/**`, `packages/design-tokens/**`, and shared semantic design assets                                                                | Scoped design-system task implementer                                       | `@nontwo`                   |
+| `apps/**`, `services/**`, and other `packages/**` business modules                                                                              | Task implementer for the exact approved module scope                        | `@nontwo`                   |
+| Other `docs/**`, tests, fixtures, and scripts                                                                                                   | Task implementer for the exact approved supporting scope                    | `@nontwo`                   |
+| Final merge to `main` or `integration/mvp`                                                                                                      | Owner only                                                                  | `@nontwo`                   |
 
-## MVP task ownership
+Protected Owner-local instruction files, including `apps/web/AGENTS.md` and
+`apps/web/CLAUDE.md`, must not be modified without explicit authorization.
 
-| 路径                               | 任务  | 状态                                      |
-| ---------------------------------- | ----- | ----------------------------------------- |
-| `packages/contracts/**`            | T01   | 已重建                                    |
-| `packages/design-tokens/**`        | T02   | 已完成                                    |
-| `packages/ui/**`                   | T02   | 已完成                                    |
-| `docs/design-system/**`            | T02   | 已完成                                    |
-| `infra/**`                         | T03   | 已完成                                    |
-| `docs/deployment/**`               | T03   | 已完成                                    |
-| `database/**`                      | T05.2 | Catalog read model migration              |
-| `services/api/**`                  | T04.1 | Catalog Phase 1 已建立                    |
-| `services/public-api/**`           | T04   | 三路由 contract 已建立                    |
-| `services/backend-runtime/**`      | T05   | Health/Catalog HTTP runtime与lifecycle    |
-| `services/catalog-postgres/**`     | T05.2 | PostgreSQL read adapter与migration runner |
-| `services/backend-production/**`   | T05.2 | Production composition root               |
-| `packages/data-access/**`          | T04.2 | 空backend workspace                       |
-| `scripts/**`                       | T05   | 待开发                                    |
-| `packages/image/**`                | T05   | 待开发                                    |
-| `apps/web/app/layout.tsx`          | T06   | 待开发                                    |
-| `apps/web/app/page.tsx`            | T06   | 待开发                                    |
-| `apps/web/features/home/**`        | T06   | 待开发                                    |
-| `apps/web/app/regions/**`          | T07   | 待开发                                    |
-| `apps/web/app/categories/**`       | T07   | 待开发                                    |
-| `apps/web/features/browse/**`      | T07   | 待开发                                    |
-| `apps/web/app/search/**`           | T08   | 待开发                                    |
-| `apps/web/features/search/**`      | T08   | 待开发                                    |
-| `apps/web/app/items/**`            | T09   | 待开发                                    |
-| `apps/web/features/item-detail/**` | T09   | 待开发                                    |
+## Scope-bound modification
 
-`docs/prototypes/mobile-preview/**`
-是已归档的非生产原型，只能用于交互参考；任何正式页面实现都必须在对应 T06–T09 任务中重新接入 API/application
-boundary、真实契约和图片适配器。
+Implementation responsibility does not grant general write authority. The
+implementer may change only paths required by the frozen task scope and any
+explicit Owner allowlist. Public Contracts, dependencies and lockfiles, database
+schema or migrations, CI, deployment configuration, shared UI, design tokens,
+architecture, and governance require explicit scope and Owner approval.
 
-## Architecture-controlled files
-
-以下内容只能由架构总控修改：
-
-- 根目录 `package.json`
-- `pnpm-lock.yaml`
-- `pnpm-workspace.yaml`
-- 公共 TypeScript 配置
-- ESLint 和 Prettier 配置
-- Next.js 全局配置
-- CI 文件
-- 环境变量名称
-- 数据库迁移编号
-- 公共契约
-- 公共 UI 组件
-- 设计 token
-
-任何 Agent 需要修改非所属路径时，必须停止并报告，不得自行越界。架构总控确认任务拆分、依赖和合并顺序后，才能继续。
+When a necessary change crosses a path or responsibility boundary, stop and
+report the exact dependency, affected paths, and smallest options. Continue only
+after the Owner approves an expanded scope, task split, handoff, and merge
+order. No contributor becomes the sole authority for a protected or shared
+boundary.

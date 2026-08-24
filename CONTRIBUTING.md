@@ -1,32 +1,73 @@
-# 贡献与双人协作规范
+# Contributing
 
-## 标准流程
+Repository development is governed by the
+[Owner Development Constitution](docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md).
+Read it before planning or changing files. This guide supplies operational steps
+only and cannot relax the Constitution, frozen task scope, or an explicit Owner
+file allowlist.
 
-1. 先同步最新的 `integration/mvp`，再创建任务分支。
-2. 一个 Issue 对应一个分支和一个 Pull Request。
-3. 分支名称使用以下格式：
-   - `feat/<issue>-<name>`
-   - `fix/<issue>-<name>`
-   - `chore/<issue>-<name>`
-4. 禁止直接推送 `main` 或 `integration/mvp`。
-5. 开发未完成时创建 Draft PR，目标分支为 `integration/mvp`。
-6. 提交 PR 前运行
-   `pnpm format:check`、`pnpm lint`、`pnpm typecheck`、`pnpm test` 和
-   `pnpm build`。
-7. 涉及界面的 PR 必须附手机端和桌面端截图；无界面变化时明确说明。
-8. Review 问题必须在 PR 对话中回应、修复并标记解决。
-9. 新提交会使旧批准失效，需要重新审核。
-10. 仅仓库所有者 `@nontwo` 负责最终合并。
-11. 合并方式统一使用 Squash and merge。
-12. 合并后删除功能分支。
-13. 禁止提交 `.env`、Token、云密钥、生产数据库凭据或其他 Secret。
-14. 未经 `@nontwo`
-    明确批准，不得修改公共契约、根依赖、锁文件、数据库 Schema、CI 或部署配置。
+## Start a task
 
-## 范围边界
+1. Record an explicit work reference: a GitHub Issue, a formal task ID, or
+   another Owner-approved reference.
+2. Freeze the goal, non-goals, allowed paths, and preserved behavior. Freeze a
+   Behavior Matrix before implementation whenever user-visible behavior is in
+   scope.
+3. Sync `integration/mvp`, record its exact base SHA, and create a short-lived
+   task branch such as `feat/<reference>-<name>`, `fix/<reference>-<name>`, or
+   `chore/<reference>-<name>`.
+4. Check [module ownership](docs/module-ownership.md). Stop and obtain explicit
+   Owner approval before crossing an ownership or frozen-scope boundary.
 
-协作者只修改 Issue 和任务说明授权的路径。需要越界时应停止编码，在 Issue 或 PR 中说明原因并等待
-`@nontwo` 批准。
+Never push directly to `main` or `integration/mvp`. Never force-push a shared
+branch or rewrite another contributor's history.
 
-当前 Private 仓库的 GitHub 套餐不支持强制 Branch
-Protection 或 Ruleset。在套餐能力改变前，上述禁止直接推送和必须审核的规则属于强制团队约定，不能由 GitHub 完全技术阻断。
+## Local setup
+
+Use the Node.js version in `.nvmrc` and the pnpm version pinned by the root
+`package.json`:
+
+```bash
+corepack enable
+corepack prepare pnpm@11.9.0 --activate
+pnpm install --frozen-lockfile
+```
+
+Run `pnpm dev` only when the scoped work requires a local runtime.
+
+## Validate the scoped change
+
+Validation must be proportionate to the approved scope. Run formatting, lint,
+typecheck, relevant automated tests, and a build whenever they apply to the
+affected runtime, architecture, dependency, database, or user-visible surface.
+Run PostgreSQL and E2E validation when those surfaces are affected. A
+documentation-only change does not require unrelated runtime checks.
+
+Do not hide, skip, or downgrade an applicable failure. Fix its cause and rerun
+the affected validation. Record each applicable command and result in the PR.
+
+## Pull request and review
+
+- Open a Draft PR to `integration/mvp` and complete the repository PR template.
+- Keep commits and the diff scoped and reviewable. List every modified file and
+  disclose deviations, risks, and deferred work.
+- Do not automatically mark the PR Ready or merge it. The Owner controls those
+  transitions and the final squash merge.
+- Reply to, fix, and resolve review findings in the PR. Any substantive new
+  commit invalidates earlier review approval and requires review of the updated
+  diff.
+- Automated validation, independent diff/code review, and Owner visual or
+  real-device acceptance are distinct gates. For user-visible work, provide
+  evidence for the task's approved platform matrix rather than a universal pair
+  of phone and desktop screenshots.
+- Delete a merged task branch only through the approved post-merge workflow.
+
+Never commit `.env` files, tokens, cloud keys, production database credentials,
+or other secrets. Public Contracts, root dependencies, lockfiles, database
+schema or migrations, CI, deployment configuration, and other protected files
+require explicit task scope and Owner approval.
+
+Contributor, local, CI, and PR/test environments must not use production
+credentials or a production database. Any production deployment is a separate
+Owner-approved operation performed by an authorized operator from an approved
+`main` baseline; repository candidate deployment documents do not authorize it.
