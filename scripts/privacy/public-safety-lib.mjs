@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -17,6 +18,8 @@ export const APPROVED_EMAIL = "163475477+nontwo@users.noreply.github.com";
 export const PRIVATE_PATTERNS_FILENAME = "privacy-guard-private-patterns.json";
 const LEGACY_BOUNDARY_PATH =
   "docs/governance/privacy/legacy-public-ref-boundary.json";
+const LEGACY_BOUNDARY_SHA256 =
+  "c14929c96486d45114e6bc0ad52d9770d692140db7204f522a65bd1649276746";
 
 const ZERO_OID = /^0{40,64}$/;
 const TEXT_EXTENSIONS = new Set([
@@ -56,17 +59,49 @@ const TEXT_EXTENSIONS = new Set([
   ".yml",
 ]);
 const METADATA_EXTENSIONS = new Set([
+  ".docm",
   ".docx",
+  ".dotm",
+  ".dotx",
   ".jpeg",
   ".jpg",
   ".pdf",
   ".png",
+  ".potm",
+  ".potx",
+  ".ppsm",
+  ".ppsx",
+  ".pptm",
   ".pptx",
+  ".sldm",
+  ".sldx",
   ".webp",
+  ".xlsb",
+  ".xlsm",
   ".xlsx",
+  ".xltm",
+  ".xltx",
   ".zip",
 ]);
-const OOXML_EXTENSIONS = new Set([".docx", ".pptx", ".xlsx"]);
+const OOXML_EXTENSIONS = new Set([
+  ".docm",
+  ".docx",
+  ".dotm",
+  ".dotx",
+  ".potm",
+  ".potx",
+  ".ppsm",
+  ".ppsx",
+  ".pptm",
+  ".pptx",
+  ".sldm",
+  ".sldx",
+  ".xlsb",
+  ".xlsm",
+  ".xlsx",
+  ".xltm",
+  ".xltx",
+]);
 
 function finding(kind, target, line, remediation) {
   return {
@@ -189,11 +224,19 @@ export function scanText(text, options = {}) {
     }
   }
 
-  for (const match of collectMatches(
-    text,
-    /\bhttps?:\/\/[^\s/@:]+:[^\s/@]+@[^\s]+/giu,
-  )) {
-    if (!/example\.invalid/iu.test(match[0])) {
+  for (const match of collectMatches(text, /\bhttps?:\/\/[^\s"'<>]+/giu)) {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(match[0]);
+    } catch {
+      parsedUrl = undefined;
+    }
+    if (
+      parsedUrl &&
+      (parsedUrl.username || parsedUrl.password) &&
+      parsedUrl.hostname !== "example.invalid" &&
+      !parsedUrl.hostname.endsWith(".example.invalid")
+    ) {
       findings.push(
         finding(
           "authenticated-url",
@@ -206,18 +249,19 @@ export function scanText(text, options = {}) {
   }
 
   const assignmentExpression =
-    /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*["']?([A-Za-z0-9$./+_-][^\s,"'`;}{]*)/giu;
+    /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,`;}{]+))/giu;
   for (const match of collectMatches(text, assignmentExpression)) {
-    const value = match[2];
+    const value = match[2] ?? match[3] ?? match[4] ?? "";
     const safeSynthetic =
       value === "" ||
       value === "$" ||
       /^(?:placeholder|example|dummy|synthetic|test|moya_test)(?:[_-][A-Za-z0-9]+)*$/iu.test(
         value,
       ) ||
-      /\$\{|<[^>]+>|\{\{/.test(value) ||
+      /^\$\{[A-Z_][A-Z0-9_]*\}$/u.test(value) ||
+      /^<[^>]+>$|^\{\{[^}]+\}\}$/u.test(value) ||
       /^(?:process|Deno)\.env(?:\.|\[)/u.test(value) ||
-      /example\.invalid|localhost|127\.0\.0\.1/iu.test(value);
+      /^(?:example\.invalid|localhost|127\.0\.0\.1)$/iu.test(value);
     if (!safeSynthetic) {
       findings.push(
         finding(
@@ -234,9 +278,20 @@ export function scanText(text, options = {}) {
     text,
     /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/giu,
   )) {
-    if (
-      !/(?:localhost|127\.0\.0\.1|moya_test|example\.invalid)/iu.test(match[0])
-    ) {
+    let parsedConnection;
+    try {
+      parsedConnection = new URL(match[0]);
+    } catch {
+      parsedConnection = undefined;
+    }
+    const hostname = parsedConnection?.hostname.toLowerCase();
+    const safeHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]" ||
+      hostname === "example.invalid" ||
+      hostname?.endsWith(".example.invalid");
+    if (!safeHost) {
       findings.push(
         finding(
           "production-connection-string",
@@ -268,7 +323,7 @@ export function scanText(text, options = {}) {
 
   for (const match of collectMatches(
     text,
-    /(?:private|non[- ]public).{0,80}github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/giu,
+    /(?:private|non[- ]public).{0,80}(?:github|gitlab)\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/giu,
   )) {
     findings.push(
       finding(
@@ -278,6 +333,47 @@ export function scanText(text, options = {}) {
         "replace the repository locator with neutral provenance",
       ),
     );
+  }
+
+  for (const match of collectMatches(
+    text,
+    /(?:private|non[- ]public).{0,80}s3:\/\/[A-Za-z0-9._/-]+/giu,
+  )) {
+    findings.push(
+      finding(
+        "private-storage-locator",
+        target,
+        lineNumberAt(text, match.index),
+        "replace the private storage locator with neutral provenance",
+      ),
+    );
+  }
+
+  for (const match of collectMatches(
+    text,
+    /\bprivate[ _-](?:export|storage|dataset|artifact|source)[ _-](?:path|file|locator|url|bucket)\b[ \t]*[:=][ \t]*\S+/giu,
+  )) {
+    findings.push(
+      finding(
+        "private-export-locator",
+        target,
+        lineNumberAt(text, match.index),
+        "replace the private export or storage locator with neutral provenance",
+      ),
+    );
+  }
+
+  const certificateHeader = ["-----BEGIN", "CERTIFICATE-----"].join(" ");
+  for (let offset = text.indexOf(certificateHeader); offset !== -1;) {
+    findings.push(
+      finding(
+        "certificate-material",
+        target,
+        lineNumberAt(text, offset),
+        "remove certificate material and publish only a documented fingerprint if required",
+      ),
+    );
+    offset = text.indexOf(certificateHeader, offset + certificateHeader.length);
   }
 
   for (const match of collectMatches(
@@ -368,8 +464,27 @@ function parseGithubNoreply(email) {
   return match ? { handle: match[2] } : undefined;
 }
 
+function isAiIdentity(value) {
+  return /(?:^|[^a-z])(?:ai|codex|chatgpt|openai|artificial[ _-]?intelligence)(?:[^a-z]|$)/iu.test(
+    value,
+  );
+}
+
 export function validateGitIdentity(name, email, options = {}) {
   const target = options.target ?? "Git identity";
+  if (
+    isAiIdentity(name) ||
+    isAiIdentity(parseGithubNoreply(email)?.handle ?? "")
+  ) {
+    return [
+      finding(
+        "email-bearing-ai-identity",
+        target,
+        undefined,
+        "use an accountable human GitHub ID-based noreply identity and record tool assistance without an email",
+      ),
+    ];
+  }
   if (name === APPROVED_NAME && email === APPROVED_EMAIL) return [];
   if (name === "GitHub" && email.toLowerCase() === "noreply@github.com")
     return [];
@@ -988,12 +1103,12 @@ function scanStructuralContent(filename, text) {
 export function scanFileBuffer(buffer, filename, options = {}) {
   const privatePatterns = options.privatePatterns ?? [];
   const findings = scanFilename(filename, filename, { privatePatterns });
-  if (looksTextual(buffer, filename)) {
+  if (METADATA_EXTENSIONS.has(extensionFor(filename))) {
+    findings.push(...scanBinaryMetadata(buffer, filename, { privatePatterns }));
+  } else if (looksTextual(buffer, filename)) {
     const text = buffer.toString("utf8");
     findings.push(...scanText(text, { privatePatterns, target: filename }));
     findings.push(...scanStructuralContent(filename, text));
-  } else if (METADATA_EXTENSIONS.has(extensionFor(filename))) {
-    findings.push(...scanBinaryMetadata(buffer, filename, { privatePatterns }));
   } else {
     const printable = buffer
       .toString("latin1")
@@ -1040,9 +1155,47 @@ function objectBuffer(revision, filename, cwd) {
   return result.status === 0 ? result.stdout : undefined;
 }
 
-function scanChanges(changes, revision, cwd, privatePatterns) {
+function sha256(buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+function requiresWholeTextScan(filename) {
+  const normalized = filename.replaceAll("\\", "/");
+  return (
+    normalized === LEGACY_BOUNDARY_PATH ||
+    normalized.endsWith("docs/prototypes/mobile-preview/README.md") ||
+    normalized.endsWith(
+      "docs/prototypes/mobile-preview/fixtures/p5-pilot.snapshot.js",
+    ) ||
+    normalized.endsWith(
+      "tests/unit/backend/catalog-importer-security-boundaries.test.ts",
+    )
+  );
+}
+
+function addedTextForChange(change, revision, baseRevision, cwd) {
+  const argumentsForDiff =
+    revision === ":" ? ["diff", "--cached"] : ["diff", baseRevision, revision];
+  const result = git(
+    [
+      ...argumentsForDiff,
+      "--unified=0",
+      "--no-color",
+      "--no-ext-diff",
+      "--",
+      change.path,
+    ].filter(Boolean),
+    { cwd },
+  );
+  return result.stdout
+    .split("\n")
+    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .map((line) => line.slice(1))
+    .join("\n");
+}
+
+function scanChanges(changes, revision, cwd, privatePatterns, baseRevision) {
   const findings = [];
-  const boundaryCommit = canonicalBoundaryCommit(cwd);
   for (const change of changes) {
     findings.push(
       ...scanFilename(change.path, change.path, { privatePatterns }),
@@ -1056,20 +1209,19 @@ function scanChanges(changes, revision, cwd, privatePatterns) {
       .some(
         (filename) => filename.replaceAll("\\", "/") === LEGACY_BOUNDARY_PATH,
       );
-    const isInitialBoundaryAddition =
-      change.status.startsWith("A") &&
-      ((revision === ":" && !boundaryCommit) || revision === boundaryCommit);
-    if (touchesBoundary && !isInitialBoundaryAddition) {
-      findings.push(
-        finding(
-          "legacy-boundary-modification",
-          LEGACY_BOUNDARY_PATH,
-          undefined,
-          "preserve the frozen legacy boundary and obtain an explicit Owner decision for any exception",
-        ),
-      );
+    if (change.status.startsWith("D")) {
+      if (touchesBoundary) {
+        findings.push(
+          finding(
+            "legacy-boundary-modification",
+            LEGACY_BOUNDARY_PATH,
+            undefined,
+            "preserve the frozen legacy boundary and obtain an explicit Owner decision for any exception",
+          ),
+        );
+      }
+      continue;
     }
-    if (change.status.startsWith("D")) continue;
     const buffer = objectBuffer(revision, change.path, cwd);
     if (!buffer) {
       findings.push(
@@ -1082,47 +1234,53 @@ function scanChanges(changes, revision, cwd, privatePatterns) {
       );
       continue;
     }
-    findings.push(...scanFileBuffer(buffer, change.path, { privatePatterns }));
+    if (touchesBoundary && sha256(buffer) !== LEGACY_BOUNDARY_SHA256) {
+      findings.push(
+        finding(
+          "legacy-boundary-modification",
+          LEGACY_BOUNDARY_PATH,
+          undefined,
+          "preserve the frozen legacy boundary and obtain an explicit Owner decision for any exception",
+        ),
+      );
+    }
+
+    const fullObjectRequired =
+      change.status.startsWith("A") ||
+      METADATA_EXTENSIONS.has(extensionFor(change.path)) ||
+      requiresWholeTextScan(change.path) ||
+      !looksTextual(buffer, change.path);
+    if (fullObjectRequired) {
+      findings.push(
+        ...scanFileBuffer(buffer, change.path, { privatePatterns }),
+      );
+      continue;
+    }
+
+    const addedText = addedTextForChange(change, revision, baseRevision, cwd);
+    findings.push(
+      ...scanText(addedText, { privatePatterns, target: change.path }),
+    );
   }
   return findings;
 }
 
-function readLegacyBoundary(cwd) {
+function readLegacyBoundary(cwd, override) {
+  if (override) return override;
   const root = repositoryRoot(cwd);
-  const boundaryCommit = canonicalBoundaryCommit(cwd);
-  if (boundaryCommit) {
-    const content = git(["show", `${boundaryCommit}:${LEGACY_BOUNDARY_PATH}`], {
-      cwd,
-    }).stdout;
-    return JSON.parse(content);
-  }
   const boundaryPath = path.join(root, LEGACY_BOUNDARY_PATH);
   if (!existsSync(boundaryPath)) {
     return { annotatedTags: [], activePullRequests: [], branchTips: {} };
   }
-  return JSON.parse(readFileSync(boundaryPath, "utf8"));
+  const content = readFileSync(boundaryPath);
+  if (sha256(content) !== LEGACY_BOUNDARY_SHA256) {
+    return { annotatedTags: [], activePullRequests: [], branchTips: {} };
+  }
+  return JSON.parse(content.toString("utf8"));
 }
 
-function canonicalBoundaryCommit(cwd) {
-  const result = git(
-    [
-      "log",
-      "--reverse",
-      "--diff-filter=A",
-      "--format=%H",
-      "HEAD",
-      "--",
-      LEGACY_BOUNDARY_PATH,
-    ],
-    { allowFailure: true, cwd },
-  );
-  return result.status === 0
-    ? result.stdout.trim().split("\n").filter(Boolean)[0]
-    : undefined;
-}
-
-function legacyCommitSet(cwd) {
-  const boundary = readLegacyBoundary(cwd);
+function legacyCommitSet(cwd, override) {
+  const boundary = readLegacyBoundary(cwd, override);
   const roots = [
     ...Object.values(boundary.branchTips ?? {}),
     ...(boundary.annotatedTags ?? []).map((tag) => tag.peeledTarget),
@@ -1143,8 +1301,8 @@ function legacyCommitSet(cwd) {
   return new Set(result.stdout.trim().split("\n").filter(Boolean));
 }
 
-function legacyTagSet(cwd) {
-  const boundary = readLegacyBoundary(cwd);
+function legacyTagSet(cwd, override) {
+  const boundary = readLegacyBoundary(cwd, override);
   return new Set((boundary.annotatedTags ?? []).map((tag) => tag.objectId));
 }
 
@@ -1192,6 +1350,14 @@ function changesForCommit(commit, cwd) {
   return parseNameStatusZ(output);
 }
 
+function firstParentForCommit(commit, cwd) {
+  const result = git(["rev-parse", "--verify", `${commit}^1`], {
+    allowFailure: true,
+    cwd,
+  });
+  return result.status === 0 ? result.stdout.trim() : undefined;
+}
+
 export function scanCommit(commit, options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const privatePatterns = options.privatePatterns ?? loadPrivatePatterns(cwd);
@@ -1212,14 +1378,20 @@ export function scanCommit(commit, options = {}) {
     ...scanEmailTrailers(metadata.message, `commit ${commit}:trailer`),
   );
   findings.push(
-    ...scanChanges(changesForCommit(commit, cwd), commit, cwd, privatePatterns),
+    ...scanChanges(
+      changesForCommit(commit, cwd),
+      commit,
+      cwd,
+      privatePatterns,
+      firstParentForCommit(commit, cwd),
+    ),
   );
   return deduplicateFindings(findings);
 }
 
 export function scanAnnotatedTag(tagObject, options = {}) {
   const cwd = options.cwd ?? process.cwd();
-  if (legacyTagSet(cwd).has(tagObject)) return [];
+  if (legacyTagSet(cwd, options.legacyBoundary).has(tagObject)) return [];
   const objectType = git(["cat-file", "-t", tagObject], { cwd }).stdout.trim();
   if (objectType !== "tag") return [];
   const content = git(["cat-file", "-p", tagObject], { cwd }).stdout;
@@ -1257,7 +1429,7 @@ export function scanAnnotatedTag(tagObject, options = {}) {
 export function scanRange(base, head, options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const privatePatterns = options.privatePatterns ?? loadPrivatePatterns(cwd);
-  const legacy = legacyCommitSet(cwd);
+  const legacy = legacyCommitSet(cwd, options.legacyBoundary);
   const rangeArguments =
     !base || ZERO_OID.test(base) ? [head] : [`${base}..${head}`];
   const commits = git(["rev-list", "--reverse", ...rangeArguments], { cwd })
@@ -1285,7 +1457,7 @@ export function scanStaged(options = {}) {
   const changes = parseNameStatusZ(result.stdout);
   return deduplicateFindings([
     ...inspectCurrentIdentity(cwd),
-    ...scanChanges(changes, ":", cwd, privatePatterns),
+    ...scanChanges(changes, ":", cwd, privatePatterns, "HEAD"),
   ]);
 }
 
@@ -1428,6 +1600,12 @@ function redactForOutput(value) {
     .replace(/[\u0000-\u001f\u007f]/gu, "?")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, "[REDACTED_EMAIL]")
     .replace(
+      /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s]+/giu,
+      "[REDACTED_CONNECTION]",
+    )
+    .replace(/\bhttps?:\/\/[^\s]+/giu, "[REDACTED_URL]")
+    .replace(/\bs3:\/\/[^\s]+/giu, "[REDACTED_STORAGE]")
+    .replace(
       /(?:file:\/\/)?\/Users\/[^/\s<>{}]+(?:\/[^\s]*)?/giu,
       "[REDACTED_PATH]",
     )
@@ -1439,10 +1617,34 @@ function redactForOutput(value) {
       /(?:file:\/\/)?[A-Z]:\\Users\\[^\\\s<>{}]+(?:\\[^\s]*)?/giu,
       "[REDACTED_PATH]",
     )
-    .replace(/https?:\/\/[^\s/@:]+:[^\s/@]+@[^\s]+/giu, "[REDACTED_URL]")
     .replace(
       /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{12,}\b/gu,
       "[REDACTED_TOKEN]",
+    )
+    .replace(/\bAKIA[A-Z0-9]{16}\b/gu, "[REDACTED_TOKEN]")
+    .replace(
+      /\b(?:sk|rk)_(?:live|prod)_[A-Za-z0-9]{12,}\b/gu,
+      "[REDACTED_TOKEN]",
+    )
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{12,}\b/gu, "[REDACTED_TOKEN]")
+    .replace(/\b[0-9a-f]{40,64}\b/giu, "[REDACTED_OBJECT]")
+    .replace(
+      /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/giu,
+      "$1=[REDACTED_CREDENTIAL]",
+    )
+    .replace(/\+?[0-9][0-9 ()-]{7,}[0-9]/gu, (candidate) => {
+      const digitCount = candidate.replace(/\D/gu, "").length;
+      return digitCount >= 10 && digitCount <= 15
+        ? "[REDACTED_PHONE]"
+        : candidate;
+    })
+    .replace(
+      /\b(?:home|mailing)[ _-]?address[ \t]*[:=][ \t]*[^/\\\s]+/giu,
+      "[REDACTED_ADDRESS]",
+    )
+    .replace(
+      /\b(?:student|government|passport|tax|bank|account|card|medical|immigration)[ _-]?(?:id|identifier|number|record|document)[ \t]*[:=][ \t]*[^/\\\s]+/giu,
+      "[REDACTED_IDENTIFIER]",
     );
 }
 

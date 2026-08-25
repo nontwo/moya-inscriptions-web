@@ -2,13 +2,10 @@ name: Public Safety
 
 on:
   pull_request:
-    branches:
-      - main
-      - integration/mvp
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches:
-      - main
-      - integration/mvp
+      - "**"
     tags:
       - "**"
   workflow_dispatch:

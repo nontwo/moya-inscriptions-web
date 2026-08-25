@@ -5,6 +5,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -24,6 +25,7 @@ import {
   scanCommit,
   scanFilename,
   scanGithubEvent,
+  scanFileBuffer,
   scanRange,
   scanStaged,
   scanText,
@@ -116,6 +118,43 @@ function pngWithText(keyword, value) {
   return Buffer.concat([signature, length, type, data, checksum]);
 }
 
+function storedZip(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let localOffset = 0;
+  for (const [entryName, entryValue] of entries) {
+    const name = Buffer.from(entryName, "utf8");
+    const data = Buffer.from(entryValue, "utf8");
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt32LE(data.length, 18);
+    localHeader.writeUInt32LE(data.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localParts.push(localHeader, name, data);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt32LE(data.length, 20);
+    centralHeader.writeUInt32LE(data.length, 24);
+    centralHeader.writeUInt16LE(name.length, 28);
+    centralHeader.writeUInt32LE(localOffset, 42);
+    centralParts.push(centralHeader, name);
+    localOffset += localHeader.length + name.length + data.length;
+  }
+  const local = Buffer.concat(localParts);
+  const central = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(local.length, 16);
+  return Buffer.concat([local, central, end]);
+}
+
 describe("public privacy scanner", () => {
   it("accepts the approved Owner identity", () => {
     expect(validateGitIdentity(APPROVED_NAME, APPROVED_EMAIL)).toEqual([]);
@@ -129,6 +168,44 @@ describe("public privacy scanner", () => {
       ),
     ).toEqual([]);
   });
+
+  it.each(["Codex", "ChatGPT", "OpenAI"])(
+    "rejects an email-bearing AI Git identity named %s",
+    (name) => {
+      const handle = name.toLowerCase();
+      expect(
+        validateGitIdentity(
+          name,
+          `12345678+${handle}@users.noreply.github.com`,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "email-bearing-ai-identity" }),
+        ]),
+      );
+    },
+  );
+
+  it.each(["AUTHOR", "COMMITTER"])(
+    "rejects an email-bearing AI %s identity in commit metadata",
+    (role) => {
+      const repository = createRepository();
+      const environment = {
+        [`GIT_${role}_EMAIL`]: "12345678+codex@users.noreply.github.com",
+        [`GIT_${role}_NAME`]: "Codex",
+      };
+      const commit = createCommit(
+        repository,
+        "test: unsafe AI identity",
+        environment,
+      );
+      expect(scanCommit(commit, { cwd: repository })).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "email-bearing-ai-identity" }),
+        ]),
+      );
+    },
+  );
 
   it("rejects a personal Author email", () => {
     const repository = createRepository();
@@ -264,6 +341,74 @@ describe("public privacy scanner", () => {
     );
   });
 
+  it("rejects a quoted credential whose prefix only looks synthetic", () => {
+    const value = ["placeholder", "actual-secret-value"].join(" ");
+    const assignment = ["password", `"${value}"`].join(" = ");
+    expect(scanText(assignment)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "credential-assignment" }),
+      ]),
+    );
+  });
+
+  it("does not accept localhost as a credential substring", () => {
+    const value = ["actual-secret", "localhost", "copy"].join("-");
+    const assignment = ["token", value].join(" = ");
+    expect(scanText(assignment)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "credential-assignment" }),
+      ]),
+    );
+  });
+
+  it("rejects token-only authenticated URLs", () => {
+    const userinfo = ["private", "access", "material"].join("-");
+    const url = [`https://${userinfo}`, "10.0.0.2/archive"].join("@");
+    expect(scanText(url)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "authenticated-url" }),
+      ]),
+    );
+  });
+
+  it("rejects a remote database even when localhost appears in its query", () => {
+    const connection = [
+      "postgresql",
+      "//archive:fixture@10.0.0.2/catalog?label=localhost",
+    ].join(":");
+    expect(scanText(connection)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "production-connection-string" }),
+      ]),
+    );
+  });
+
+  it("rejects explicitly private repository, export, storage, and certificate locators", () => {
+    const gitlab = [
+      "private repository: https://gitlab.com",
+      "team",
+      "data",
+    ].join("/");
+    const storage = ["private storage: s3:/", "archive-bucket", "source"].join(
+      "/",
+    );
+    const certificate = ["-----BEGIN", "CERTIFICATE-----"].join(" ");
+    const text = [
+      gitlab,
+      storage,
+      ["private_export_path", "/srv/archive/export.xlsx"].join(": "),
+      certificate,
+    ].join("\n");
+    expect(scanText(text)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "private-repository-locator" }),
+        expect.objectContaining({ kind: "private-storage-locator" }),
+        expect.objectContaining({ kind: "private-export-locator" }),
+        expect.objectContaining({ kind: "certificate-material" }),
+      ]),
+    );
+  });
+
   it("rejects a PR body containing a personal path", () => {
     const repository = createRepository();
     const eventPath = writeEvent(repository, {
@@ -309,7 +454,7 @@ describe("public privacy scanner", () => {
     });
     const tagObject = runGit(repository, ["rev-parse", "legacy-tag"]);
     const target = runGit(repository, ["rev-parse", "legacy-tag^{}"]);
-    writeBoundary(repository, {
+    const legacyBoundary = {
       activePullRequests: [],
       annotatedTags: [
         {
@@ -320,26 +465,30 @@ describe("public privacy scanner", () => {
       ],
       branchTips: {},
       policyVersion: 1,
-    });
-    expect(scanAnnotatedTag(tagObject, { cwd: repository })).toEqual([]);
+    };
+    writeBoundary(repository, legacyBoundary);
+    expect(
+      scanAnnotatedTag(tagObject, { cwd: repository, legacyBoundary }),
+    ).toEqual([]);
   });
 
   it("scans a new commit on a legacy branch", () => {
     const repository = createRepository();
     const legacyTip = runGit(repository, ["rev-parse", "HEAD"]);
-    writeBoundary(repository, {
+    const legacyBoundary = {
       activePullRequests: [],
       annotatedTags: [],
       branchTips: { "refs/heads/legacy": legacyTip },
       policyVersion: 1,
-    });
+    };
+    writeBoundary(repository, legacyBoundary);
     const newCommit = createCommit(repository, "test: new unsafe commit", {
       GIT_AUTHOR_EMAIL: personalEmail,
       GIT_AUTHOR_NAME: "sample-owner",
     });
-    expect(scanRange(undefined, newCommit, { cwd: repository })).not.toEqual(
-      [],
-    );
+    expect(
+      scanRange(undefined, newCommit, { cwd: repository, legacyBoundary }),
+    ).not.toEqual([]);
   });
 
   it("rejects any later modification of the frozen legacy boundary", () => {
@@ -373,15 +522,61 @@ describe("public privacy scanner", () => {
     );
   });
 
+  it("does not trust a branch-local boundary that self-declares unsafe history", () => {
+    const repository = createRepository();
+    const unsafeCommit = createCommit(repository, "test: unsafe old branch", {
+      GIT_AUTHOR_EMAIL: personalEmail,
+      GIT_AUTHOR_NAME: "sample-owner",
+    });
+    writeBoundary(repository, {
+      activePullRequests: [],
+      annotatedTags: [],
+      branchTips: { "refs/heads/self-declared": unsafeCommit },
+      policyVersion: 1,
+    });
+    runGit(repository, [
+      "add",
+      "docs/governance/privacy/legacy-public-ref-boundary.json",
+    ]);
+    runGit(repository, ["commit", "-q", "-m", "test: self-declare legacy"]);
+    const head = runGit(repository, ["rev-parse", "HEAD"]);
+    expect(scanRange(undefined, head, { cwd: repository })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "unsafe-git-identity" }),
+        expect.objectContaining({ kind: "legacy-boundary-modification" }),
+      ]),
+    );
+  });
+
+  it("scans only added text when a safe edit touches accepted legacy text", () => {
+    const repository = createRepository();
+    writeFileSync(
+      path.join(repository, "legacy.txt"),
+      `accepted historical contact: ${personalEmail}\n`,
+    );
+    runGit(repository, ["add", "legacy.txt"]);
+    runGit(repository, ["commit", "-q", "-m", "test: legacy text fixture"]);
+    const base = runGit(repository, ["rev-parse", "HEAD"]);
+    writeFileSync(
+      path.join(repository, "legacy.txt"),
+      `accepted historical contact: ${personalEmail}\nsafe clarification\n`,
+    );
+    runGit(repository, ["add", "legacy.txt"]);
+    runGit(repository, ["commit", "-q", "-m", "test: safe clarification"]);
+    const head = runGit(repository, ["rev-parse", "HEAD"]);
+    expect(scanRange(base, head, { cwd: repository })).toEqual([]);
+  });
+
   it("rejects a stale branch that reintroduces private provenance", () => {
     const repository = createRepository();
     const legacyTip = runGit(repository, ["rev-parse", "HEAD"]);
-    writeBoundary(repository, {
+    const legacyBoundary = {
       activePullRequests: [],
       annotatedTags: [],
       branchTips: { "refs/heads/legacy": legacyTip },
       policyVersion: 1,
-    });
+    };
+    writeBoundary(repository, legacyBoundary);
     const locator = [
       "https://github.com",
       "private-lab",
@@ -393,7 +588,9 @@ describe("public privacy scanner", () => {
       {},
       `Private source authority: ${locator}\n`,
     );
-    expect(scanRange(legacyTip, newCommit, { cwd: repository })).toEqual(
+    expect(
+      scanRange(legacyTip, newCommit, { cwd: repository, legacyBoundary }),
+    ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "private-repository-locator" }),
       ]),
@@ -413,6 +610,27 @@ describe("public privacy scanner", () => {
       scanFilename(`reports/${personalEmail}.txt`),
     );
     expect(filenameReport).not.toContain(personalEmail);
+
+    const phone = ["+1", "415", "555", "0123"].join("-");
+    const awsKey = ["AKIA", "ABCDEFGHIJKLMNOP"].join("");
+    const slackToken = ["xoxb", "1234567890", "abcdefghijklmnop"].join("-");
+    const privateObject = "a".repeat(40);
+    for (const protectedValue of [phone, awsKey, slackToken, privateObject]) {
+      const prefix =
+        protectedValue === privateObject ? "private research " : "";
+      const protectedReport = formatFindings(
+        scanFilename(`reports/${prefix}${protectedValue}.txt`),
+      );
+      expect(protectedReport).not.toContain(protectedValue);
+    }
+  });
+
+  it("reruns Public Safety when PR title or body metadata is edited", () => {
+    const workflow = readFileSync(
+      path.join(sourceRepositoryRoot, ".github/workflows/public-safety.yml"),
+      "utf8",
+    );
+    expect(workflow).toMatch(/pull_request:\n\s+types:\s*\[[^\]]*edited/u);
   });
 
   it("rejects binary metadata containing a personal author or path", () => {
@@ -429,6 +647,88 @@ describe("public privacy scanner", () => {
   it("accepts clean image metadata", () => {
     const cleanPng = pngWithText("Description", "Public archive preview");
     expect(scanBinaryMetadata(cleanPng, "artifact.png")).toEqual([]);
+  });
+
+  it("routes text-like PDFs through metadata inspection", () => {
+    const pdf = Buffer.from(
+      ["%PDF-1.4", "/Author (sample-owner)", "%%EOF"].join("\n"),
+      "ascii",
+    );
+    expect(scanFileBuffer(pdf, "artifact.pdf")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "personal-document-author" }),
+      ]),
+    );
+  });
+
+  it("inspects macro-enabled OOXML properties and active content", () => {
+    const document = storedZip([
+      [
+        "docProps/core.xml",
+        "<cp:coreProperties><dc:creator>sample-owner</dc:creator></cp:coreProperties>",
+      ],
+      ["word/vbaProject.bin", "macro fixture"],
+    ]);
+    expect(scanFileBuffer(document, "artifact.docm")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "personal-document-author" }),
+        expect.objectContaining({ kind: "unexpected-active-content" }),
+      ]),
+    );
+  });
+
+  it("inspects OOXML contact metadata and external relationships", () => {
+    const phone = ["+1", "415", "555", "0123"].join(" ");
+    const document = storedZip([
+      ["docProps/custom.xml", `<Property>phone: ${phone}</Property>`],
+      [
+        "word/_rels/document.xml.rels",
+        '<Relationship TargetMode="External" Target="https://example.invalid/public"/>',
+      ],
+    ]);
+    expect(scanFileBuffer(document, "artifact.docx")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "regulated-personal-data" }),
+        expect.objectContaining({ kind: "external-document-relationship" }),
+      ]),
+    );
+  });
+
+  it("enforces ExifTool metadata output when enabled", () => {
+    const directory = mkdtempSync(
+      path.join(os.tmpdir(), "moya-exiftool-test-"),
+    );
+    temporaryDirectories.add(directory);
+    const executable = path.join(directory, "exiftool");
+    writeFileSync(
+      executable,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "-ver" ]; then',
+        '  echo "13.0"',
+        "else",
+        '  echo \'[{"EXIF:OwnerName":"sample-owner"}]\'',
+        "fi",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    const previousFlag = process.env.MOYA_USE_EXIFTOOL;
+    const previousPath = process.env.PATH;
+    process.env.MOYA_USE_EXIFTOOL = "1";
+    process.env.PATH = `${directory}${path.delimiter}${previousPath}`;
+    try {
+      expect(
+        scanBinaryMetadata(pngWithText("Description", "safe"), "artifact.png"),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "personal-document-author" }),
+        ]),
+      );
+    } finally {
+      if (previousFlag === undefined) delete process.env.MOYA_USE_EXIFTOOL;
+      else process.env.MOYA_USE_EXIFTOOL = previousFlag;
+      process.env.PATH = previousPath;
+    }
   });
 
   it("accepts a safe new-branch push event", () => {
