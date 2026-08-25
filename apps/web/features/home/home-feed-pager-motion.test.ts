@@ -3,35 +3,32 @@ import { describe, expect, it } from "vitest";
 import {
   homePagerProgress,
   isExplicitHorizontalHomeWheel,
-  isHomePagerAtIndex,
+  isHomePagerAtOffset,
   resolveHomePagerSettledIndex,
 } from "./home-feed-pager-motion";
 
 describe("Home native pager motion", () => {
   it("derives and clamps continuous tab progress from native scroll", () => {
-    expect(homePagerProgress(-20, 400, 2)).toBe(0);
-    expect(homePagerProgress(200, 400, 2)).toBe(0.5);
-    expect(homePagerProgress(1_200, 400, 2)).toBe(2);
-    expect(homePagerProgress(50, 0, 2)).toBe(2);
+    const offsets = [0, 412, 830];
+    expect(homePagerProgress(-20, offsets)).toBe(0);
+    expect(homePagerProgress(206, offsets)).toBe(0.5);
+    expect(homePagerProgress(621, offsets)).toBe(1.5);
+    expect(homePagerProgress(1_200, offsets)).toBe(2);
+    expect(homePagerProgress(50, [])).toBe(0);
   });
 
-  it("settles a native gesture to at most one adjacent feed", () => {
-    expect(resolveHomePagerSettledIndex(0, 2, 390, 400)).toBe(1);
-    expect(resolveHomePagerSettledIndex(0, 2, 800, 400)).toBe(1);
-    expect(resolveHomePagerSettledIndex(1, 2, 0, 400)).toBe(0);
-    expect(resolveHomePagerSettledIndex(1, 2, 800, 400)).toBe(2);
-    expect(resolveHomePagerSettledIndex(2, 2, 0, 400)).toBe(1);
-  });
-
-  it("allows a tab request to target any valid feed", () => {
-    expect(resolveHomePagerSettledIndex(0, 2, 0, 400, 2)).toBe(2);
-    expect(resolveHomePagerSettledIndex(2, 2, 800, 400, -1)).toBe(0);
-    expect(resolveHomePagerSettledIndex(0, 2, 0, 400, 9)).toBe(2);
+  it("uses the nearest actual panel offset as the settled truth", () => {
+    const offsets = [0, 412, 830];
+    expect(resolveHomePagerSettledIndex(0, offsets)).toBe(0);
+    expect(resolveHomePagerSettledIndex(390, offsets)).toBe(1);
+    expect(resolveHomePagerSettledIndex(620, offsets)).toBe(1);
+    expect(resolveHomePagerSettledIndex(700, offsets)).toBe(2);
+    expect(resolveHomePagerSettledIndex(1_200, offsets)).toBe(2);
   });
 
   it("recognizes a settled snap point within the pixel tolerance", () => {
-    expect(isHomePagerAtIndex(399.4, 400, 1)).toBe(true);
-    expect(isHomePagerAtIndex(397, 400, 1)).toBe(false);
+    expect(isHomePagerAtOffset(410.2, 412)).toBe(true);
+    expect(isHomePagerAtOffset(409, 412)).toBe(false);
   });
 
   it("accepts only explicit horizontal PC wheel input", () => {

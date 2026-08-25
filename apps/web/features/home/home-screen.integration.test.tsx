@@ -15,6 +15,10 @@ import type { HomeSurfaceData } from "./home-feed";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: Root[] = [];
+const elementScrollToDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollTo",
+);
 const emptyHome: HomeSurfaceData = {
   discover: { state: "empty" },
   nearby: { state: "empty" },
@@ -78,6 +82,23 @@ describe("HomeScreen integration", () => {
       configurable: true,
       value: vi.fn(),
     });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: function scrollTo(
+        this: HTMLElement,
+        options?: ScrollToOptions | number,
+        top?: number,
+      ) {
+        const left =
+          typeof options === "number" ? options : (options?.left ?? 0);
+        this.scrollLeft = left;
+        if (typeof options === "number" && top !== undefined) {
+          this.scrollTop = top;
+        }
+        this.dispatchEvent(new Event("scroll"));
+        this.dispatchEvent(new Event("scrollend"));
+      },
+    });
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: (callback: FrameRequestCallback) =>
@@ -87,6 +108,12 @@ describe("HomeScreen integration", () => {
       configurable: true,
       value: (id: number) => window.clearTimeout(id),
     });
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
+      function (this: HTMLElement) {
+        const feed = this.dataset.homeFeedPanel;
+        return feed === "nearby" ? 390 : feed === "topics" ? 780 : 0;
+      },
+    );
   });
 
   afterEach(() => {
@@ -94,6 +121,16 @@ describe("HomeScreen integration", () => {
       act(() => root.unmount());
     }
     document.body.replaceChildren();
+    vi.restoreAllMocks();
+    if (elementScrollToDescriptor === undefined) {
+      Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+    } else {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "scrollTo",
+        elementScrollToDescriptor,
+      );
+    }
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });

@@ -132,6 +132,15 @@ describe("T02 R03 architecture boundaries", () => {
     expect(pager).not.toMatch(
       /addEventListener\(["'](?:pointer|touch)|spring|resistance/u,
     );
+    expect(pager).not.toMatch(
+      /HOME_PAGER_SCROLL_IDLE_MS|setTimeout\([^)]*settle/u,
+    );
+    expect(pager).not.toMatch(/clientWidth\s*\*\s*(?:index|targetIndex)/u);
+    expect(pager).toContain('"onscrollend" in frame');
+    expect(pager).toContain("panel.offsetLeft");
+    expect(pager).toContain("internalCommitIndexRef");
+    expect(pager).toContain("generationRef");
+    expect(pager).toContain("HOME_PAGER_FALLBACK_STABLE_FRAMES");
     expect(pager).not.toMatch(/primary-navigation|PrimaryNavigationPager/u);
     expect(home).not.toMatch(/history|popstate/u);
     expect(productShell).toContain("registerActiveHomeScrollElement");
@@ -142,6 +151,7 @@ describe("T02 R03 architecture boundaries", () => {
     expect(styles).toMatch(
       /\.feedPanel \{[^}]*scroll-snap-align: start;[^}]*scroll-snap-stop: always;/su,
     );
+    expect(styles).toMatch(/\.pagerTrack \{[^}]*gap: 0;[^}]*padding: 0;/su);
     expect(styles).toMatch(
       /data-home-pager-platform="phone"\] \.feedPanel,[\s\S]*data-home-pager-platform="tablet"\] \.feedPanel \{[^}]*height: 100%;[^}]*overflow-y: auto;[^}]*overscroll-behavior-y: contain;[^}]*-webkit-overflow-scrolling: touch;/u,
     );

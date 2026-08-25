@@ -12,10 +12,10 @@ import {
 import styles from "./home-screen.module.css";
 import {
   HOME_PAGER_CLICK_SUPPRESS_PX,
-  HOME_PAGER_SCROLL_IDLE_MS,
+  HOME_PAGER_FALLBACK_STABLE_FRAMES,
   homePagerProgress,
   isExplicitHorizontalHomeWheel,
-  isHomePagerAtIndex,
+  isHomePagerAtOffset,
   resolveHomePagerSettledIndex,
 } from "./home-feed-pager-motion";
 import { homeFeeds } from "./home-feed";
@@ -25,8 +25,12 @@ import type { HomeFeed } from "./home-feed";
 import type { PresentationPlatform } from "../shell/device-platform";
 
 interface ScrollSession {
-  originIndex: number;
-  requestedIndex: number | null;
+  readonly generation: number;
+  hasScrolled: boolean;
+  readonly mode: "native" | "programmatic";
+  readonly originIndex: number;
+  readonly requestedIndex: number | null;
+  scrollEndPending: boolean;
 }
 
 export interface HomeFeedPagerHandle {
@@ -81,7 +85,9 @@ export const HomeFeedPager = forwardRef<
   const onCommitRef = useRef(onCommit);
   const onProgressRef = useRef(onProgress);
   const sessionRef = useRef<ScrollSession | null>(null);
-  const quietTimerRef = useRef<number | null>(null);
+  const generationRef = useRef(0);
+  const fallbackFrameRef = useRef<number | null>(null);
+  const fallbackTokenRef = useRef(0);
   const progressFrameRef = useRef<number | null>(null);
   const wheelTimerRef = useRef<number | null>(null);
   const wheelHandledRef = useRef(false);
@@ -90,18 +96,14 @@ export const HomeFeedPager = forwardRef<
   const touchActiveRef = useRef(false);
   const touchStartScrollLeftRef = useRef<number | null>(null);
   const suppressClickUntilRef = useRef(0);
-  const settleRef = useRef<() => void>(() => undefined);
+  const supportsScrollEndRef = useRef(false);
+  const internalCommitIndexRef = useRef<number | null>(null);
+  const settleRef = useRef<(generation: number) => void>(() => undefined);
 
   activeIndexRef.current = activeIndex;
   primaryVisibleRef.current = primaryVisible;
   onCommitRef.current = onCommit;
   onProgressRef.current = onProgress;
-
-  const clearQuietTimer = useCallback(() => {
-    if (quietTimerRef.current === null) return;
-    window.clearTimeout(quietTimerRef.current);
-    quietTimerRef.current = null;
-  }, []);
 
   const setScrolling = useCallback((scrolling: boolean) => {
     const frame = frameRef.current;
@@ -118,6 +120,16 @@ export const HomeFeedPager = forwardRef<
     );
     if (height > 0) heightsRef.current[feed] = height;
     return height;
+  }, []);
+
+  const readSnapOffsets = useCallback((): number[] => {
+    const offsets: number[] = [];
+    for (const feed of homeFeeds) {
+      const panel = panelRefs.current[feed];
+      if (panel === null) return [];
+      offsets.push(panel.offsetLeft);
+    }
+    return offsets;
   }, []);
 
   const restorePreservedPanelScrollTops = useCallback(() => {
@@ -143,54 +155,92 @@ export const HomeFeedPager = forwardRef<
     [readPanelHeight],
   );
 
-  const publishProgress = useCallback((immediate = false) => {
-    const publish = () => {
-      progressFrameRef.current = null;
-      const frame = frameRef.current;
-      if (frame === null) return;
-      const width = Math.max(1, frame.clientWidth);
-      onProgressRef.current?.(
-        homePagerProgress(frame.scrollLeft, width, homeFeeds.length - 1),
-      );
-    };
-    if (immediate) {
-      if (progressFrameRef.current !== null) {
-        window.cancelAnimationFrame(progressFrameRef.current);
+  const cancelProgressFrame = useCallback(() => {
+    if (progressFrameRef.current === null) return;
+    window.cancelAnimationFrame(progressFrameRef.current);
+    progressFrameRef.current = null;
+  }, []);
+
+  const publishProgress = useCallback(
+    (immediate = false) => {
+      const publish = () => {
+        progressFrameRef.current = null;
+        const frame = frameRef.current;
+        if (frame === null) return;
+        const offsets = readSnapOffsets();
+        onProgressRef.current?.(homePagerProgress(frame.scrollLeft, offsets));
+      };
+      if (immediate) {
+        cancelProgressFrame();
+        publish();
+        return;
       }
-      publish();
-      return;
-    }
-    if (progressFrameRef.current === null) {
-      progressFrameRef.current = window.requestAnimationFrame(publish);
+      if (progressFrameRef.current === null) {
+        progressFrameRef.current = window.requestAnimationFrame(publish);
+      }
+    },
+    [cancelProgressFrame, readSnapOffsets],
+  );
+
+  const cancelFallback = useCallback(() => {
+    fallbackTokenRef.current += 1;
+    if (fallbackFrameRef.current !== null) {
+      window.cancelAnimationFrame(fallbackFrameRef.current);
+      fallbackFrameRef.current = null;
     }
   }, []);
 
-  const scrollFrameTo = useCallback(
-    (index: number, behavior: ScrollBehavior) => {
-      const frame = frameRef.current;
-      if (frame === null) return;
-      const left = Math.max(1, frame.clientWidth) * index;
-      if (typeof frame.scrollTo === "function") {
-        frame.scrollTo({ behavior, left, top: 0 });
-      } else {
-        frame.scrollLeft = left;
-        frame.dispatchEvent(new Event("scroll"));
-      }
+  const invalidateSession = useCallback(
+    (resetTouch = true) => {
+      generationRef.current += 1;
+      cancelFallback();
+      cancelProgressFrame();
+      sessionRef.current = null;
+      internalCommitIndexRef.current = null;
+      if (resetTouch) touchActiveRef.current = false;
+      touchStartScrollLeftRef.current = null;
+      setScrolling(false);
     },
-    [],
+    [cancelFallback, cancelProgressFrame, setScrolling],
   );
 
-  const scheduleSettle = useCallback(() => {
-    clearQuietTimer();
-    quietTimerRef.current = window.setTimeout(() => {
-      quietTimerRef.current = null;
-      settleRef.current();
-    }, HOME_PAGER_SCROLL_IDLE_MS);
-  }, [clearQuietTimer]);
+  const startSession = useCallback(
+    (
+      mode: ScrollSession["mode"],
+      requestedIndex: number | null,
+      originIndex: number,
+    ): ScrollSession => {
+      generationRef.current += 1;
+      cancelFallback();
+      cancelProgressFrame();
+      internalCommitIndexRef.current = null;
+      const session: ScrollSession = {
+        generation: generationRef.current,
+        hasScrolled: false,
+        mode,
+        originIndex,
+        requestedIndex,
+        scrollEndPending: false,
+      };
+      sessionRef.current = session;
+      setScrolling(true);
+      if (platform === "pc") applyPanelHeight(originIndex);
+      return session;
+    },
+    [
+      applyPanelHeight,
+      cancelFallback,
+      cancelProgressFrame,
+      platform,
+      setScrolling,
+    ],
+  );
 
   const finishSettle = useCallback(
-    (targetIndex: number) => {
-      clearQuietTimer();
+    (generation: number, targetIndex: number) => {
+      const session = sessionRef.current;
+      if (session === null || session.generation !== generation) return;
+      cancelFallback();
       sessionRef.current = null;
       touchStartScrollLeftRef.current = null;
       setScrolling(false);
@@ -198,80 +248,131 @@ export const HomeFeedPager = forwardRef<
       publishProgress(true);
       const targetFeed = homeFeeds[targetIndex];
       if (targetFeed !== undefined && targetIndex !== activeIndexRef.current) {
+        internalCommitIndexRef.current = targetIndex;
         onCommitRef.current(targetFeed);
       }
     },
-    [
-      applyPanelHeight,
-      clearQuietTimer,
-      platform,
-      publishProgress,
-      setScrolling,
-    ],
+    [applyPanelHeight, cancelFallback, platform, publishProgress, setScrolling],
   );
 
-  const settlePager = useCallback(() => {
-    const frame = frameRef.current;
-    const session = sessionRef.current;
-    if (frame === null || session === null) return;
-    if (touchActiveRef.current) {
-      scheduleSettle();
-      return;
-    }
-    const width = Math.max(1, frame.clientWidth);
-    const targetIndex = resolveHomePagerSettledIndex(
-      session.originIndex,
-      homeFeeds.length - 1,
-      frame.scrollLeft,
-      width,
-      session.requestedIndex,
-    );
-    if (!isHomePagerAtIndex(frame.scrollLeft, width, targetIndex)) {
-      session.requestedIndex = targetIndex;
-      scrollFrameTo(targetIndex, reducedMotionPreferred() ? "auto" : "smooth");
-      scheduleSettle();
-      return;
-    }
-    finishSettle(targetIndex);
-  }, [finishSettle, scheduleSettle, scrollFrameTo]);
+  const settlePager = useCallback(
+    (generation: number) => {
+      const frame = frameRef.current;
+      const session = sessionRef.current;
+      if (
+        frame === null ||
+        session === null ||
+        session.generation !== generation ||
+        touchActiveRef.current
+      ) {
+        return;
+      }
+      const offsets = readSnapOffsets();
+      if (offsets.length !== homeFeeds.length) return;
+      const targetIndex = resolveHomePagerSettledIndex(
+        frame.scrollLeft,
+        offsets,
+      );
+      const targetOffset = offsets[targetIndex];
+      if (
+        targetOffset === undefined ||
+        !isHomePagerAtOffset(frame.scrollLeft, targetOffset)
+      ) {
+        return;
+      }
+      finishSettle(generation, targetIndex);
+    },
+    [finishSettle, readSnapOffsets],
+  );
   settleRef.current = settlePager;
 
-  const beginSession = useCallback(
-    (requestedIndex: number | null) => {
-      sessionRef.current = {
-        originIndex: activeIndexRef.current,
-        requestedIndex,
+  const scheduleFallback = useCallback(
+    (generation: number) => {
+      if (supportsScrollEndRef.current) return;
+      cancelFallback();
+      const frame = frameRef.current;
+      if (frame === null) return;
+      const token = fallbackTokenRef.current;
+      let lastLeft = frame.scrollLeft;
+      let stableFrames = 0;
+      const sample = () => {
+        fallbackFrameRef.current = null;
+        const currentFrame = frameRef.current;
+        const session = sessionRef.current;
+        if (
+          currentFrame === null ||
+          token !== fallbackTokenRef.current ||
+          session === null ||
+          session.generation !== generation
+        ) {
+          return;
+        }
+        const nextLeft = currentFrame.scrollLeft;
+        if (touchActiveRef.current) {
+          stableFrames = 0;
+        } else if (Math.abs(nextLeft - lastLeft) <= 0.25) {
+          stableFrames += 1;
+        } else {
+          stableFrames = 0;
+        }
+        lastLeft = nextLeft;
+        if (stableFrames >= HOME_PAGER_FALLBACK_STABLE_FRAMES) {
+          settleRef.current(generation);
+          return;
+        }
+        fallbackFrameRef.current = window.requestAnimationFrame(sample);
       };
-      setScrolling(true);
-      if (platform === "pc") applyPanelHeight(activeIndexRef.current);
+      fallbackFrameRef.current = window.requestAnimationFrame(sample);
     },
-    [applyPanelHeight, platform, setScrolling],
+    [cancelFallback],
+  );
+
+  const scrollFrameToIndex = useCallback(
+    (index: number, behavior: ScrollBehavior) => {
+      const frame = frameRef.current;
+      const offset = readSnapOffsets()[index];
+      if (frame === null || offset === undefined) return;
+      if (typeof frame.scrollTo === "function") {
+        frame.scrollTo({ behavior, left: offset, top: 0 });
+      } else {
+        frame.scrollLeft = offset;
+        frame.dispatchEvent(new Event("scroll"));
+      }
+    },
+    [readSnapOffsets],
   );
 
   const requestFeed = useCallback(
     (feed: HomeFeed) => {
       const frame = frameRef.current;
       const targetIndex = homeFeeds.indexOf(feed);
-      if (frame === null || targetIndex < 0) return;
-      const width = Math.max(1, frame.clientWidth);
+      const offsets = readSnapOffsets();
+      const targetOffset = offsets[targetIndex];
+      if (frame === null || targetIndex < 0 || targetOffset === undefined)
+        return;
       if (
         targetIndex === activeIndexRef.current &&
-        isHomePagerAtIndex(frame.scrollLeft, width, targetIndex)
+        isHomePagerAtOffset(frame.scrollLeft, targetOffset)
       ) {
         publishProgress(true);
         return;
       }
-      clearQuietTimer();
-      beginSession(targetIndex);
-      scrollFrameTo(targetIndex, reducedMotionPreferred() ? "auto" : "smooth");
-      scheduleSettle();
+      const originIndex = resolveHomePagerSettledIndex(
+        frame.scrollLeft,
+        offsets,
+      );
+      startSession("programmatic", targetIndex, originIndex);
+      scrollFrameToIndex(
+        targetIndex,
+        platform === "pc" || reducedMotionPreferred() ? "auto" : "smooth",
+      );
     },
     [
-      beginSession,
-      clearQuietTimer,
+      platform,
       publishProgress,
-      scheduleSettle,
-      scrollFrameTo,
+      readSnapOffsets,
+      scrollFrameToIndex,
+      startSession,
     ],
   );
 
@@ -286,7 +387,6 @@ export const HomeFeedPager = forwardRef<
   const handleScroll = useCallback(() => {
     const frame = frameRef.current;
     if (frame === null) return;
-    publishProgress();
     const touchStart = touchStartScrollLeftRef.current;
     if (
       touchStart !== null &&
@@ -294,36 +394,54 @@ export const HomeFeedPager = forwardRef<
     ) {
       suppressClickUntilRef.current = performance.now() + 500;
     }
-    const width = Math.max(1, frame.clientWidth);
+    const offsets = readSnapOffsets();
+    const activeOffset = offsets[activeIndexRef.current];
+    let session = sessionRef.current;
     if (
-      sessionRef.current === null &&
-      isHomePagerAtIndex(frame.scrollLeft, width, activeIndexRef.current)
+      session === null &&
+      activeOffset !== undefined &&
+      isHomePagerAtOffset(frame.scrollLeft, activeOffset)
     ) {
       return;
     }
-    if (sessionRef.current === null) beginSession(null);
-    scheduleSettle();
-  }, [beginSession, publishProgress, scheduleSettle]);
+    if (session === null) {
+      session = startSession("native", null, activeIndexRef.current);
+    }
+    session.hasScrolled = true;
+    session.scrollEndPending = false;
+    publishProgress();
+    scheduleFallback(session.generation);
+  }, [publishProgress, readSnapOffsets, scheduleFallback, startSession]);
 
   const handleTouchStart = useCallback(() => {
+    const frame = frameRef.current;
+    if (frame === null) return;
     touchActiveRef.current = true;
     suppressClickUntilRef.current = 0;
-    touchStartScrollLeftRef.current = frameRef.current?.scrollLeft ?? null;
-    const session = sessionRef.current;
-    if (session !== null && session.requestedIndex !== null) {
-      session.originIndex = activeIndexRef.current;
-      session.requestedIndex = null;
-    }
-  }, []);
+    touchStartScrollLeftRef.current = frame.scrollLeft;
+    const offsets = readSnapOffsets();
+    const originIndex = resolveHomePagerSettledIndex(frame.scrollLeft, offsets);
+    startSession("native", null, originIndex);
+  }, [readSnapOffsets, startSession]);
 
   const handleTouchFinish = useCallback(() => {
     touchActiveRef.current = false;
-    if (sessionRef.current !== null) {
-      scheduleSettle();
-    } else {
+    const session = sessionRef.current;
+    if (session === null) {
       touchStartScrollLeftRef.current = null;
+      return;
     }
-  }, [scheduleSettle]);
+    if (!session.hasScrolled) {
+      invalidateSession(false);
+      return;
+    }
+    if (session.scrollEndPending) {
+      session.scrollEndPending = false;
+      settleRef.current(session.generation);
+      return;
+    }
+    scheduleFallback(session.generation);
+  }, [invalidateSession, scheduleFallback]);
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -362,14 +480,20 @@ export const HomeFeedPager = forwardRef<
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (frame === null) return;
-    clearQuietTimer();
-    sessionRef.current = null;
-    touchActiveRef.current = false;
-    touchStartScrollLeftRef.current = null;
-    setScrolling(false);
-    const width = Math.max(1, frame.clientWidth);
-    frameWidthRef.current = width;
-    frame.scrollLeft = activeIndex * width;
+    const internalCommit = internalCommitIndexRef.current === activeIndex;
+    if (internalCommit) {
+      internalCommitIndexRef.current = null;
+    } else {
+      invalidateSession();
+      const offset = readSnapOffsets()[activeIndex];
+      if (
+        offset !== undefined &&
+        !isHomePagerAtOffset(frame.scrollLeft, offset)
+      ) {
+        frame.scrollLeft = offset;
+      }
+    }
+    frameWidthRef.current = frame.clientWidth;
     if (platform === "pc") {
       for (const feed of homeFeeds) readPanelHeight(feed);
       applyPanelHeight(activeIndex);
@@ -381,11 +505,11 @@ export const HomeFeedPager = forwardRef<
     activeFeed,
     activeIndex,
     applyPanelHeight,
-    clearQuietTimer,
+    invalidateSession,
     platform,
     publishProgress,
     readPanelHeight,
-    setScrolling,
+    readSnapOffsets,
   ]);
 
   useLayoutEffect(() => {
@@ -406,6 +530,26 @@ export const HomeFeedPager = forwardRef<
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
+    if (frame === null) return undefined;
+    supportsScrollEndRef.current = "onscrollend" in frame;
+    frame.dataset.homePagerSettleMode = supportsScrollEndRef.current
+      ? "scrollend"
+      : "stable-frames";
+    const handleScrollEnd = () => {
+      const session = sessionRef.current;
+      if (session === null) return;
+      if (touchActiveRef.current) {
+        session.scrollEndPending = true;
+        return;
+      }
+      settleRef.current(session.generation);
+    };
+    frame.addEventListener("scrollend", handleScrollEnd);
+    return () => frame.removeEventListener("scrollend", handleScrollEnd);
+  }, []);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
     if (frame === null || typeof ResizeObserver !== "function") return;
     const observer = new ResizeObserver(() => {
       if (platform === "pc") {
@@ -420,12 +564,11 @@ export const HomeFeedPager = forwardRef<
         frameWasUnavailableRef.current = false;
         restorePreservedPanelScrollTops();
       }
-      if (width > 0 && Math.abs(width - frameWidthRef.current) > 0.5) {
+      if (Math.abs(width - frameWidthRef.current) > 0.5) {
         frameWidthRef.current = width;
-        clearQuietTimer();
-        sessionRef.current = null;
-        setScrolling(false);
-        frame.scrollLeft = activeIndexRef.current * width;
+        invalidateSession();
+        const offset = readSnapOffsets()[activeIndexRef.current];
+        if (offset !== undefined) frame.scrollLeft = offset;
         publishProgress(true);
       }
       if (platform === "pc" && sessionRef.current === null) {
@@ -442,33 +585,24 @@ export const HomeFeedPager = forwardRef<
     return () => observer.disconnect();
   }, [
     applyPanelHeight,
-    clearQuietTimer,
+    invalidateSession,
     platform,
     publishProgress,
     readPanelHeight,
+    readSnapOffsets,
     restorePreservedPanelScrollTops,
-    setScrolling,
   ]);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (frame === null) return;
-    const handleScrollEnd = () => settleRef.current();
-    frame.addEventListener("scrollend", handleScrollEnd);
-    return () => frame.removeEventListener("scrollend", handleScrollEnd);
-  }, []);
 
   useEffect(
     () => () => {
-      clearQuietTimer();
-      if (progressFrameRef.current !== null) {
-        window.cancelAnimationFrame(progressFrameRef.current);
-      }
+      generationRef.current += 1;
+      cancelFallback();
+      cancelProgressFrame();
       if (wheelTimerRef.current !== null) {
         window.clearTimeout(wheelTimerRef.current);
       }
     },
-    [clearQuietTimer],
+    [cancelFallback, cancelProgressFrame],
   );
 
   return (

@@ -103,15 +103,22 @@ const nativeSettleHomeFeed = async (home: Locator, feed: HomeFeedName) => {
       (candidate) => homeFeedIndex[candidate] === targetIndex,
     );
     if (targetFeed === undefined) throw new Error("Missing adjacent Home feed");
-    await pager.evaluate((node, adjacentIndex) => {
-      const frame = node as HTMLElement;
-      frame.scrollTo({
-        behavior: "auto",
-        left: frame.clientWidth * adjacentIndex,
-        top: 0,
-      });
-      frame.dispatchEvent(new Event("scrollend"));
-    }, targetIndex);
+    await pager.evaluate(
+      (node, input) => {
+        const frame = node as HTMLElement;
+        const panel = frame.querySelector<HTMLElement>(
+          `[data-home-feed-panel="${input.feed}"]`,
+        );
+        if (panel === null) throw new Error("Missing adjacent Home panel");
+        frame.scrollTo({
+          behavior: "auto",
+          left: panel.offsetLeft,
+          top: 0,
+        });
+        frame.dispatchEvent(new Event("scrollend"));
+      },
+      { feed: targetFeed },
+    );
     await expect(home).toHaveAttribute("data-active-home-feed", targetFeed);
     active = targetFeed;
   }
@@ -838,6 +845,133 @@ test("Home native pager follows scroll progress and commits only after snap sett
     "data-active-destination",
     "home",
   );
+});
+
+test("Home native settle commits once without post-release programmatic drift", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    expectedInitialAutoPlatform(testInfo.project.name) === "pc",
+    "The native settle ownership regression belongs to Phone and Tablet.",
+  );
+  const { surface } = await openDevelopmentSurface(page);
+  const home = activeHomeSurface(surface);
+  const pager = home.locator("[data-home-feed-pager]");
+  await expect(pager).toHaveAttribute(
+    "data-home-pager-settle-mode",
+    "scrollend",
+  );
+
+  await pager.evaluate((node) => {
+    const frame = node as HTMLElement & {
+      __r03NativeSettleEvidence?: {
+        activeFeedChanges: string[];
+        programmaticScrolls: number[];
+      };
+    };
+    const evidence = {
+      activeFeedChanges: [] as string[],
+      programmaticScrolls: [] as number[],
+    };
+    frame.__r03NativeSettleEvidence = evidence;
+    const nativeScrollTo = frame.scrollTo.bind(frame);
+    frame.scrollTo = ((optionsOrX?: ScrollToOptions | number, y?: number) => {
+      const left =
+        typeof optionsOrX === "number"
+          ? optionsOrX
+          : Number(optionsOrX?.left ?? frame.scrollLeft);
+      evidence.programmaticScrolls.push(left);
+      if (typeof optionsOrX === "number") nativeScrollTo(optionsOrX, y ?? 0);
+      else nativeScrollTo(optionsOrX);
+    }) as typeof frame.scrollTo;
+    const homeSurface = frame.closest<HTMLElement>("[data-home-surface]");
+    if (homeSurface === null) throw new Error("Missing Home surface");
+    new MutationObserver(() => {
+      evidence.activeFeedChanges.push(
+        homeSurface.dataset.activeHomeFeed ?? "missing",
+      );
+    }).observe(homeSurface, {
+      attributeFilter: ["data-active-home-feed"],
+    });
+  });
+
+  const feeds = ["discover", "nearby", "topics"] as const;
+  let currentIndex = 0;
+  for (let iteration = 0; iteration < 30; iteration += 1) {
+    const direction =
+      currentIndex === 0 ? 1 : currentIndex === 2 ? -1 : iteration % 2 ? -1 : 1;
+    const targetIndex = currentIndex + direction;
+    const targetFeed = feeds[targetIndex];
+    if (targetFeed === undefined) throw new Error("Missing Home feed target");
+    await pager.evaluate(
+      (node, input) => {
+        const frame = node as HTMLElement;
+        const panels = Array.from(
+          frame.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
+        );
+        const source = panels[input.sourceIndex];
+        const target = panels[input.targetIndex];
+        if (source === undefined || target === undefined) {
+          throw new Error("Missing Home feed panel");
+        }
+        frame.style.scrollSnapType = "none";
+        frame.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+        for (const progress of [0.25, 0.6, 1]) {
+          frame.scrollLeft =
+            source.offsetLeft +
+            (target.offsetLeft - source.offsetLeft) * progress;
+          frame.dispatchEvent(new Event("scroll"));
+        }
+        frame.dispatchEvent(new TouchEvent("touchend", { bubbles: true }));
+        frame.dispatchEvent(new Event("scrollend"));
+        frame.style.scrollSnapType = "";
+      },
+      { sourceIndex: currentIndex, targetIndex },
+    );
+    await expect(home).toHaveAttribute("data-active-home-feed", targetFeed);
+    currentIndex = targetIndex;
+  }
+
+  const activeBeforeShortDrag = feeds[currentIndex];
+  if (activeBeforeShortDrag === undefined)
+    throw new Error("Missing active feed");
+  await pager.evaluate((node, sourceIndex) => {
+    const frame = node as HTMLElement;
+    const panels = Array.from(
+      frame.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
+    );
+    const source = panels[sourceIndex];
+    const neighbor = panels[sourceIndex === 0 ? 1 : sourceIndex - 1];
+    if (source === undefined || neighbor === undefined) {
+      throw new Error("Missing short-drag panel");
+    }
+    frame.style.scrollSnapType = "none";
+    frame.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+    frame.scrollLeft =
+      source.offsetLeft + (neighbor.offsetLeft - source.offsetLeft) * 0.2;
+    frame.dispatchEvent(new Event("scroll"));
+    frame.scrollLeft = source.offsetLeft;
+    frame.dispatchEvent(new Event("scroll"));
+    frame.dispatchEvent(new TouchEvent("touchend", { bubbles: true }));
+    frame.dispatchEvent(new Event("scrollend"));
+    frame.style.scrollSnapType = "";
+  }, currentIndex);
+  await expect(home).toHaveAttribute(
+    "data-active-home-feed",
+    activeBeforeShortDrag,
+  );
+
+  const evidence = await pager.evaluate((node) => {
+    const frame = node as HTMLElement & {
+      __r03NativeSettleEvidence?: {
+        activeFeedChanges: string[];
+        programmaticScrolls: number[];
+      };
+    };
+    return frame.__r03NativeSettleEvidence;
+  });
+  expect(evidence?.activeFeedChanges).toHaveLength(30);
+  expect(evidence?.programmaticScrolls).toEqual([]);
 });
 
 test("Home PC pager accepts only explicit horizontal wheel input", async ({

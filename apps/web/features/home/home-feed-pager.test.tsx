@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HomeFeedPager } from "./home-feed-pager";
-import { HOME_PAGER_SCROLL_IDLE_MS } from "./home-feed-pager-motion";
 import { homeFeeds } from "./home-feed";
 
 import type { Root } from "react-dom/client";
@@ -19,6 +18,7 @@ import type { HomeFeed } from "./home-feed";
 const roots: Root[] = [];
 let prefersReducedMotion = false;
 let pagerWidth = 400;
+let pagerOffsets = [0, 400, 800];
 let scrollToCalls: ScrollToOptions[] = [];
 const resizeObservers: TestResizeObserver[] = [];
 
@@ -91,15 +91,12 @@ const nativeScroll = (frame: HTMLElement, scrollLeft: number) => {
   });
 };
 
-const settleFromIdle = () => {
-  act(() => vi.advanceTimersByTime(HOME_PAGER_SCROLL_IDLE_MS));
-};
-
 describe("HomeFeedPager native scroll-snap", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     prefersReducedMotion = false;
     pagerWidth = 400;
+    pagerOffsets = [0, 400, 800];
     scrollToCalls = [];
     resizeObservers.length = 0;
     Object.defineProperty(globalThis, "ResizeObserver", {
@@ -108,6 +105,14 @@ describe("HomeFeedPager native scroll-snap", () => {
     });
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
       () => pagerWidth,
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
+      function (this: HTMLElement) {
+        const feed = this.dataset.homeFeedPanel as HomeFeed | undefined;
+        return feed === undefined
+          ? 0
+          : (pagerOffsets[homeFeeds.indexOf(feed)] ?? 0);
+      },
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
       function (this: HTMLElement) {
@@ -139,6 +144,10 @@ describe("HomeFeedPager native scroll-snap", () => {
       configurable: true,
       value: vi.fn(() => ({ matches: prefersReducedMotion })),
     });
+    Object.defineProperty(HTMLElement.prototype, "onscrollend", {
+      configurable: true,
+      value: null,
+    });
   });
 
   afterEach(() => {
@@ -146,6 +155,7 @@ describe("HomeFeedPager native scroll-snap", () => {
       act(() => root.unmount());
     }
     document.body.replaceChildren();
+    Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     vi.restoreAllMocks();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
@@ -182,53 +192,57 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(frame.dataset.homePagerScrolling).toBe("true");
   });
 
-  it("commits exactly once after native scrollend and deduplicates idle settle", () => {
+  it("uses native scrollend as the only settle path when supported", () => {
     const { frame, onCommit } = renderPager();
 
     nativeScroll(frame, 400);
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(onCommit).not.toHaveBeenCalled();
     act(() => frame.dispatchEvent(new Event("scrollend")));
 
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("nearby");
     expect(frame.dataset.homePagerScrolling).toBe("false");
-    settleFromIdle();
+    act(() => frame.dispatchEvent(new Event("scrollend")));
     expect(onCommit).toHaveBeenCalledOnce();
   });
 
-  it("does not settle while the native touch remains active", () => {
+  it("defers an observed scrollend until the native touch is no longer active", () => {
     const { frame, onCommit } = renderPager();
 
     act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
     nativeScroll(frame, 400);
-    settleFromIdle();
-    settleFromIdle();
+    act(() => frame.dispatchEvent(new Event("scrollend")));
     expect(onCommit).not.toHaveBeenCalled();
 
     act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    settleFromIdle();
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("nearby");
   });
 
-  it("uses the idle fallback and clamps a fling to one adjacent feed", () => {
+  it("uses stable animation frames only when scrollend is unsupported", () => {
+    Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     const { frame, onCommit } = renderPager();
 
-    nativeScroll(frame, 800);
-    settleFromIdle();
-    expect(scrollToCalls.at(-1)?.left).toBe(400);
-    expect(onCommit).not.toHaveBeenCalled();
-    settleFromIdle();
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 400);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    act(() => vi.runAllTimers());
 
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("nearby");
+    expect(scrollToCalls).toEqual([]);
+    expect(frame.dataset.homePagerSettleMode).toBe("stable-frames");
   });
 
   it("returns to the current snap point with zero commit", () => {
     const { frame, onCommit } = renderPager();
 
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
     nativeScroll(frame, 80);
     nativeScroll(frame, 0);
-    settleFromIdle();
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    act(() => frame.dispatchEvent(new Event("scrollend")));
 
     expect(onCommit).not.toHaveBeenCalled();
     expect(frame.style.height).toBe("");
@@ -318,12 +332,13 @@ describe("HomeFeedPager native scroll-snap", () => {
   });
 
   it("allows a tab request to cross directly to a non-adjacent feed", () => {
+    pagerOffsets = [0, 412, 830];
     const { frame, handle, onCommit } = renderPager();
 
     act(() => handle.current?.scrollToFeed("topics"));
     expect(scrollToCalls.at(-1)).toMatchObject({
       behavior: "smooth",
-      left: 800,
+      left: 830,
     });
     expect(onCommit).not.toHaveBeenCalled();
     act(() => frame.dispatchEvent(new Event("scrollend")));
@@ -342,6 +357,18 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(onCommit).toHaveBeenCalledWith("nearby");
   });
 
+  it("uses an immediate actual-offset request for PC browser parity", () => {
+    pagerOffsets = [0, 412, 830];
+    const { frame, handle, onCommit } = renderPager(vi.fn(), "pc");
+
+    act(() => handle.current?.scrollToFeed("nearby"));
+    expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 412 });
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+
   it("suppresses the click synthesized by a completed touch scroll", () => {
     const { container, frame, handle } = renderPager();
     const action = container.querySelector<HTMLButtonElement>("button")!;
@@ -350,7 +377,7 @@ describe("HomeFeedPager native scroll-snap", () => {
     act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
     nativeScroll(frame, 400);
     act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    settleFromIdle();
+    act(() => frame.dispatchEvent(new Event("scrollend")));
     act(() => action.click());
 
     expect(activated).not.toHaveBeenCalled();
@@ -379,5 +406,85 @@ describe("HomeFeedPager native scroll-snap", () => {
 
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+
+  it("consumes an internal commit without aligning scrollLeft a second time", () => {
+    pagerOffsets = [0, 412, 830];
+    const { frame, onCommit, render } = renderPager();
+
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 411.5);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+    expect(scrollToCalls).toEqual([]);
+    render("nearby");
+    expect(frame.scrollLeft).toBe(411.5);
+    expect(scrollToCalls).toEqual([]);
+  });
+
+  it("invalidates a stale native session when a new touch reverses direction", () => {
+    const { frame, onCommit } = renderPager();
+
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 400);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 0);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(scrollToCalls).toEqual([]);
+  });
+
+  it("lets a reverse touch replace a pending programmatic request", () => {
+    const { frame, handle, onCommit } = renderPager();
+
+    act(() => handle.current?.scrollToFeed("topics"));
+    expect(scrollToCalls).toHaveLength(1);
+
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 0);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(scrollToCalls).toHaveLength(1);
+  });
+
+  it("cancels an unsupported-browser fallback when a newer touch starts", () => {
+    Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
+    const { frame, onCommit } = renderPager();
+
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 400);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 0);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(scrollToCalls).toEqual([]);
+  });
+
+  it("invalidates settle work on resize and aligns from current panel offsets", () => {
+    const { frame, onCommit } = renderPager();
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 400);
+
+    pagerWidth = 500;
+    pagerOffsets = [0, 500, 1_000];
+    act(() => resizeObservers[0]?.trigger());
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+
+    expect(frame.scrollLeft).toBe(0);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(scrollToCalls).toEqual([]);
   });
 });

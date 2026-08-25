@@ -177,12 +177,9 @@ export const HomeScreen = ({
 
   useEffect(() => {
     if (activeTopicId !== null && activeFeed !== "topics") {
-      setActiveFeed("topics");
-      if (platform === "pc") {
-        restoreActiveScrollTop(scrollPositionsRef.current.topics);
-      }
+      pagerRef.current?.scrollToFeed("topics");
     }
-  }, [activeFeed, activeTopicId, platform, restoreActiveScrollTop]);
+  }, [activeFeed, activeTopicId]);
 
   useEffect(() => {
     if (activeTopicId === null) return;
@@ -195,8 +192,11 @@ export const HomeScreen = ({
 
   useEffect(() => {
     if (initialTopicId === null || initializedTopicRef.current) return;
+    if (activeFeed !== "topics") {
+      pagerRef.current?.scrollToFeed("topics");
+      return;
+    }
     initializedTopicRef.current = true;
-    if (activeFeed !== "topics") setActiveFeed("topics");
     initialTopicFrameRef.current = window.requestAnimationFrame(() => {
       initialTopicFrameRef.current = null;
       const opener =
