@@ -16,6 +16,7 @@ import styles from "./product-shell.module.css";
 
 import { PRODUCT_LOADING_MINIMUM_MS } from "./product-boot";
 import {
+  mergeProductHistoryState,
   parseProductHistoryState,
   primaryHistoryState,
   primaryLocation,
@@ -51,6 +52,7 @@ import {
 } from "../shell/primary-navigation-motion";
 
 import type { ReactNode, RefObject } from "react";
+import type { ProductHistoryState } from "./product-history";
 import type { FeedLayoutPreference, ThemePreference } from "./preferences";
 import type {
   PresentationOrientation,
@@ -60,6 +62,9 @@ import type {
 import type { PrimaryDestination } from "../shell/primary-shell";
 
 type ScrollPositions = Record<PrimaryDestination, number>;
+
+const currentProductHistoryState = (state: ProductHistoryState) =>
+  mergeProductHistoryState(window.history.state, state);
 
 export interface ProductShellContextValue {
   readonly activeDestination: PrimaryDestination;
@@ -330,7 +335,7 @@ export const ProductShell = ({
       activeDestinationRef.current = destination;
       setActiveDestination(destination);
       window.history.replaceState(
-        primaryHistoryState(destination),
+        currentProductHistoryState(primaryHistoryState(destination)),
         "",
         primaryLocation(window.location),
       );
@@ -366,7 +371,7 @@ export const ProductShell = ({
       saveScroll(sourceDestination, platformRef.current);
       settingsOpenerRef.current = opener;
       window.history.pushState(
-        settingsHistoryState(sourceDestination),
+        currentProductHistoryState(settingsHistoryState(sourceDestination)),
         "",
         settingsLocation(window.location),
       );
@@ -384,7 +389,9 @@ export const ProductShell = ({
 
     setSettingsVisibility(false);
     window.history.replaceState(
-      primaryHistoryState(activeDestinationRef.current),
+      currentProductHistoryState(
+        primaryHistoryState(activeDestinationRef.current),
+      ),
       "",
       primaryLocation(window.location),
     );
@@ -410,12 +417,16 @@ export const ProductShell = ({
       topicOpenerRef.current = opener;
       topicOpenerIdRef.current = topicId;
       window.history.replaceState(
-        primaryHistoryState("home", boundedScrollTop, topicId),
+        currentProductHistoryState(
+          primaryHistoryState("home", boundedScrollTop, topicId),
+        ),
         "",
         primaryLocation(window.location),
       );
       window.history.pushState(
-        topicHistoryState(topicId, boundedScrollTop),
+        currentProductHistoryState(
+          topicHistoryState(topicId, boundedScrollTop),
+        ),
         "",
         topicLocation(window.location, topicId),
       );
@@ -432,7 +443,7 @@ export const ProductShell = ({
     }
     setTopicVisibility(null);
     window.history.replaceState(
-      primaryHistoryState("home"),
+      currentProductHistoryState(primaryHistoryState("home")),
       "",
       primaryLocation(window.location),
     );
@@ -632,12 +643,12 @@ export const ProductShell = ({
       setTopicVisibility(null);
     } else if (directSettings) {
       window.history.replaceState(
-        primaryHistoryState(destination),
+        currentProductHistoryState(primaryHistoryState(destination)),
         "",
         primaryLocation(window.location),
       );
       window.history.pushState(
-        settingsHistoryState(destination),
+        currentProductHistoryState(settingsHistoryState(destination)),
         "",
         settingsLocation(window.location),
       );
@@ -645,12 +656,16 @@ export const ProductShell = ({
       setTopicVisibility(null);
     } else {
       window.history.replaceState(
-        primaryHistoryState(
-          destination,
-          initialState?.kind === "primary" ? initialState.scrollTop : undefined,
-          initialState?.kind === "primary"
-            ? initialState.focusTopicId
-            : undefined,
+        currentProductHistoryState(
+          primaryHistoryState(
+            destination,
+            initialState?.kind === "primary"
+              ? initialState.scrollTop
+              : undefined,
+            initialState?.kind === "primary"
+              ? initialState.focusTopicId
+              : undefined,
+          ),
         ),
         "",
         primaryLocation(window.location),

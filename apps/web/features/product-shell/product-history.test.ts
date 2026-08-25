@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   PRODUCT_SHELL_HISTORY_VERSION,
   isPrimaryDestination,
+  mergeProductHistoryState,
   parseProductHistoryState,
   primaryHistoryState,
   settingsHistoryState,
@@ -25,6 +26,30 @@ describe("Product Shell history", () => {
     expect(
       parseProductHistoryState(settingsHistoryState("inscriptions")),
     ).toEqual(settingsHistoryState("inscriptions"));
+  });
+
+  it("preserves router history fields without retaining stale Product fields", () => {
+    const merged = mergeProductHistoryState(
+      {
+        __NA: true,
+        __PRIVATE_NEXTJS_INTERNALS_TREE: ["existing"],
+        destination: "inscriptions",
+        kind: "primary",
+        scrollTop: 44,
+        version: PRODUCT_SHELL_HISTORY_VERSION,
+      },
+      topicHistoryState("topic-one", 147),
+    );
+    expect(merged).toMatchObject({
+      __NA: true,
+      __PRIVATE_NEXTJS_INTERNALS_TREE: ["existing"],
+      ...topicHistoryState("topic-one", 147),
+    });
+    expect(merged).not.toHaveProperty("destination");
+    expect(merged).not.toHaveProperty("scrollTop");
+    expect(parseProductHistoryState(merged)).toEqual(
+      topicHistoryState("topic-one", 147),
+    );
   });
 
   it("preserves a bounded primary scroll checkpoint for an overlay source entry", () => {

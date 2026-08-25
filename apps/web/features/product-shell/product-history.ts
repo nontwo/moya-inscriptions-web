@@ -30,6 +30,35 @@ export type ProductHistoryState =
   | SettingsProductHistoryState
   | TopicProductHistoryState;
 
+const productHistoryKeys = new Set([
+  "destination",
+  "focusTopicId",
+  "kind",
+  "scrollTop",
+  "sourceDestination",
+  "sourceHomeFeed",
+  "sourceScrollTop",
+  "topicId",
+  "version",
+]);
+
+export const mergeProductHistoryState = (
+  runtimeState: unknown,
+  productState: ProductHistoryState,
+): ProductHistoryState & Record<string, unknown> => {
+  const preserved =
+    typeof runtimeState === "object" &&
+    runtimeState !== null &&
+    !Array.isArray(runtimeState)
+      ? Object.fromEntries(
+          Object.entries(runtimeState).filter(
+            ([key]) => !productHistoryKeys.has(key),
+          ),
+        )
+      : {};
+  return { ...preserved, ...productState };
+};
+
 const primaryDestinations = new Set<PrimaryDestination>([
   "home",
   "inscriptions",
