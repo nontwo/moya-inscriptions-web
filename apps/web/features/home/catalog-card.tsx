@@ -6,6 +6,7 @@ import { Icon } from "@moya/ui";
 
 import styles from "./home-screen.module.css";
 
+import type { CSSProperties } from "react";
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
 
 export type CatalogCardVariant = "feed" | "inscription";
@@ -42,9 +43,11 @@ const catalogKindLabels = {
 } as const satisfies Record<CatalogSummary["kind"], string>;
 
 const MediaFallback = ({
+  aspectRatio,
   label,
   state,
 }: {
+  readonly aspectRatio?: string;
   readonly label: string;
   readonly state: "failed" | "missing";
 }) => (
@@ -53,6 +56,11 @@ const MediaFallback = ({
     className={styles.mediaFallback}
     data-catalog-media-state={state}
     role="img"
+    style={
+      aspectRatio === undefined
+        ? undefined
+        : ({ aspectRatio } satisfies CSSProperties)
+    }
   >
     <Icon aria-hidden="true" name={state === "failed" ? "error" : "image"} />
     <span>{state === "failed" ? "图像无法加载" : "暂无公开图像"}</span>
@@ -85,7 +93,13 @@ const CatalogCardMedia = ({
     return <MediaFallback label={`暂无公开图像：${title}`} state="missing" />;
   }
   if (failed) {
-    return <MediaFallback label={`图像无法加载：${title}`} state="failed" />;
+    return (
+      <MediaFallback
+        aspectRatio={`${media.width} / ${media.height}`}
+        label={`图像无法加载：${title}`}
+        state="failed"
+      />
+    );
   }
 
   return (

@@ -7,6 +7,7 @@ import { Icon } from "@moya/ui";
 import styles from "./home-screen.module.css";
 
 import type { NearbyCard } from "./home-feed";
+import type { CSSProperties } from "react";
 
 export const HomeContentCard = ({
   item,
@@ -33,6 +34,13 @@ export const HomeContentCard = ({
           className={styles.mediaFallback}
           data-catalog-media-state={failed ? "failed" : "missing"}
           role="img"
+          style={
+            failed && media !== undefined
+              ? ({
+                  aspectRatio: `${media.width} / ${media.height}`,
+                } satisfies CSSProperties)
+              : undefined
+          }
         >
           <Icon aria-hidden="true" name={failed ? "error" : "image"} />
           <span>{failed ? "图像无法加载" : "暂无图像"}</span>

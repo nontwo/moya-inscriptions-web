@@ -183,4 +183,42 @@ describe("HomeScreen integration", () => {
     );
     expect(home.scrollTop).toBe(44);
   });
+
+  it("leaves orientation-time Primary scroll restoration with ProductShell", async () => {
+    const container = renderHome();
+    await act(async () => vi.runAllTimers());
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperty(home, "scrollHeight", {
+      configurable: true,
+      value: 2_000,
+    });
+    Object.defineProperty(home, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    const primaryButton = (label: string) =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+        (button) => button.getAttribute("aria-label") === label,
+      )!;
+
+    home.scrollTop = 180;
+    act(() => primaryButton("碑刻").click());
+    await act(async () => vi.runAllTimers());
+    act(() => primaryButton("首页").click());
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 700,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 390,
+    });
+    act(() => window.dispatchEvent(new Event("orientationchange")));
+    await act(async () => vi.runAllTimers());
+
+    expect(home.scrollTop).toBe(180);
+  });
 });

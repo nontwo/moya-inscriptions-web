@@ -11,7 +11,7 @@ export default async function T02pDevelopmentPage({
   readonly searchParams?: Promise<
     Record<string, string | string[] | undefined>
   >;
-} = {}) {
+}) {
   if (process.env.NODE_ENV !== "development") {
     notFound();
   }

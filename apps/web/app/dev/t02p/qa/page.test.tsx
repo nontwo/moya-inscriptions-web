@@ -31,7 +31,7 @@ describe("T02pQaPage", () => {
   it("keeps the QA Harness unavailable in Production", async () => {
     vi.stubEnv("NODE_ENV", "production");
 
-    await expect(T02pQaPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(T02pQaPage({})).rejects.toThrow("NEXT_NOT_FOUND");
     expect(notFoundMock).toHaveBeenCalledOnce();
     expect(headersMock).not.toHaveBeenCalled();
   });
@@ -39,7 +39,7 @@ describe("T02pQaPage", () => {
   it("renders Development controls outside the shared Product Shell", async () => {
     vi.stubEnv("NODE_ENV", "development");
 
-    const markup = renderToStaticMarkup(await T02pQaPage());
+    const markup = renderToStaticMarkup(await T02pQaPage({}));
 
     expect(markup).toContain("T02P QA Harness");
     expect(markup).toContain("data-t02p-qa-harness");

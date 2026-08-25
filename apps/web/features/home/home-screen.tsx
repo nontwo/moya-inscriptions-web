@@ -117,7 +117,6 @@ export const HomeScreen = ({
     activeTopicId,
     feedLayout,
     openTopic,
-    orientation,
     platform,
     readActiveScrollTop,
     restoreActiveScrollTop,
@@ -181,18 +180,6 @@ export const HomeScreen = ({
     },
     [],
   );
-
-  useEffect(() => {
-    const current = readActiveScrollTop();
-    scrollPositionsRef.current[activeFeedRef.current] = current;
-    restoreActiveScrollTop(current);
-  }, [
-    feedLayout,
-    orientation,
-    platform,
-    readActiveScrollTop,
-    restoreActiveScrollTop,
-  ]);
 
   const panels = {
     discover: renderFeedState(
