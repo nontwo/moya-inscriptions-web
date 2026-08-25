@@ -6,6 +6,7 @@ import { Icon } from "@moya/ui";
 
 import styles from "./topic-detail.module.css";
 
+import type { CSSProperties } from "react";
 import type { Topic } from "./topic";
 
 export const TopicCard = ({
@@ -40,6 +41,13 @@ export const TopicCard = ({
             className={styles.coverFallback}
             data-topic-cover-state={failed ? "failed" : "missing"}
             role="img"
+            style={
+              failed && cover !== undefined
+                ? ({
+                    aspectRatio: `${cover.width} / ${cover.height}`,
+                  } satisfies CSSProperties)
+                : undefined
+            }
           >
             <Icon aria-hidden="true" name={failed ? "error" : "image"} />
           </span>

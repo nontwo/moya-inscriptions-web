@@ -175,7 +175,6 @@
   display: grid;
   width: 100%;
   aspect-ratio: 16 / 9;
-  margin-bottom: 22px;
   place-items: center;
   padding: var(--yoyi-space-4);
   color: var(--yoyi-color-text-secondary);
@@ -183,6 +182,14 @@
   border: 1px dashed var(--yoyi-color-border-subtle);
   border-radius: var(--yoyi-radius-sm);
   text-align: center;
+}
+
+.blockMediaFallback {
+  gap: var(--yoyi-space-2);
+}
+
+.videoPlaceholder {
+  margin-bottom: 22px;
 }
 
 .collection {

@@ -94,4 +94,26 @@ describe("T02 R03 architecture boundaries", () => {
     }
     expect(violations).toEqual([]);
   });
+
+  it("scopes the new PC card treatment to R03 masonry and preserves deferred browse spacing", async () => {
+    const styles = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/home/home-screen.module.css",
+      ),
+      "utf8",
+    );
+    expect(styles).not.toContain(
+      ':global([data-primary-shell][data-platform="pc"]) .feedCard {',
+    );
+    expect(styles).toContain(
+      ':global([data-primary-shell][data-platform="pc"]) .masonry .feedCard {',
+    );
+    expect(styles).toMatch(
+      /data-platform="tablet"\]\) \.feed \{\s+column-gap: var\(--yoyi-space-5\);/u,
+    );
+    expect(styles).toMatch(
+      /data-platform="pc"\]\) \.feed \.feedCard \{\s+margin-bottom: var\(--yoyi-space-5\);/u,
+    );
+  });
 });

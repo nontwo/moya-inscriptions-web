@@ -95,7 +95,9 @@ const CatalogCardMedia = ({
   if (failed) {
     return (
       <MediaFallback
-        aspectRatio={`${media.width} / ${media.height}`}
+        {...(variant === "feed"
+          ? { aspectRatio: `${media.width} / ${media.height}` }
+          : {})}
         label={`图像无法加载：${title}`}
         state="failed"
       />

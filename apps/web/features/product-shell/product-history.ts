@@ -6,6 +6,7 @@ export interface PrimaryProductHistoryState {
   readonly kind: "primary";
   readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
   readonly destination: PrimaryDestination;
+  readonly scrollTop?: number;
 }
 
 export interface SettingsProductHistoryState {
@@ -42,9 +43,15 @@ export const isPrimaryDestination = (
 
 export const primaryHistoryState = (
   destination: PrimaryDestination,
+  scrollTop?: number,
 ): PrimaryProductHistoryState => ({
   destination,
   kind: "primary",
+  ...(scrollTop === undefined
+    ? {}
+    : {
+        scrollTop: Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0,
+      }),
   version: PRODUCT_SHELL_HISTORY_VERSION,
 });
 
@@ -82,7 +89,17 @@ export const parseProductHistoryState = (
     candidate.kind === "primary" &&
     isPrimaryDestination(candidate.destination)
   ) {
-    return primaryHistoryState(candidate.destination);
+    if (candidate.scrollTop === undefined) {
+      return primaryHistoryState(candidate.destination);
+    }
+    if (
+      typeof candidate.scrollTop === "number" &&
+      Number.isFinite(candidate.scrollTop) &&
+      candidate.scrollTop >= 0
+    ) {
+      return primaryHistoryState(candidate.destination, candidate.scrollTop);
+    }
+    return null;
   }
 
   if (

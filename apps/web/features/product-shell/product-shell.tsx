@@ -144,6 +144,7 @@ export const ProductShell = ({
   const settingsBackRef = useRef<HTMLButtonElement>(null);
   const topicBackRef = useRef<HTMLButtonElement>(null);
   const topicOpenerRef = useRef<HTMLElement | null>(null);
+  const topicSourceScrollTopRef = useRef(0);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
@@ -359,8 +360,14 @@ export const ProductShell = ({
       const boundedScrollTop = Number.isFinite(sourceScrollTop)
         ? Math.max(0, sourceScrollTop)
         : readActiveScrollTop();
+      topicSourceScrollTopRef.current = boundedScrollTop;
       scrollPositionsRef.current.home = boundedScrollTop;
       topicOpenerRef.current = opener;
+      window.history.replaceState(
+        primaryHistoryState("home", boundedScrollTop),
+        "",
+        primaryLocation(window.location),
+      );
       window.history.pushState(
         topicHistoryState(topicId, boundedScrollTop),
         "",
@@ -562,8 +569,15 @@ export const ProductShell = ({
 
     activeDestinationRef.current = destination;
     setActiveDestination(destination);
+    if (
+      initialState?.kind === "primary" &&
+      initialState.scrollTop !== undefined
+    ) {
+      scrollPositionsRef.current[destination] = initialState.scrollTop;
+    }
 
     if (initialState?.kind === "topic") {
+      topicSourceScrollTopRef.current = initialState.sourceScrollTop;
       scrollPositionsRef.current.home = initialState.sourceScrollTop;
       setSettingsVisibility(false);
       setTopicVisibility(initialState.topicId);
@@ -585,19 +599,30 @@ export const ProductShell = ({
       setTopicVisibility(null);
     } else {
       window.history.replaceState(
-        primaryHistoryState(destination),
+        primaryHistoryState(
+          destination,
+          initialState?.kind === "primary" ? initialState.scrollTop : undefined,
+        ),
         "",
         primaryLocation(window.location),
       );
       setSettingsVisibility(false);
       setTopicVisibility(null);
+      if (
+        initialState?.kind === "primary" &&
+        initialState.scrollTop !== undefined
+      ) {
+        restoreScroll(destination, platformRef.current);
+      }
     }
 
     const handlePopState = (event: PopStateEvent) => {
       const state = parseProductHistoryState(event.state);
       const wasSettingsOpen = settingsOpenRef.current;
       const wasTopicOpen = topicIdRef.current !== null;
-      saveScroll(activeDestinationRef.current, platformRef.current);
+      if (!wasTopicOpen) {
+        saveScroll(activeDestinationRef.current, platformRef.current);
+      }
 
       if (state?.kind === "settings") {
         activeDestinationRef.current = state.sourceDestination;
@@ -610,6 +635,7 @@ export const ProductShell = ({
       if (state?.kind === "topic") {
         activeDestinationRef.current = "home";
         setActiveDestination("home");
+        topicSourceScrollTopRef.current = state.sourceScrollTop;
         scrollPositionsRef.current.home = state.sourceScrollTop;
         setSettingsVisibility(false);
         setTopicVisibility(state.topicId);
@@ -628,6 +654,11 @@ export const ProductShell = ({
       setActiveDestination(nextDestination);
       setTopicVisibility(null);
       setSettingsVisibility(false);
+      if (state?.kind === "primary" && state.scrollTop !== undefined) {
+        scrollPositionsRef.current[nextDestination] = state.scrollTop;
+      } else if (wasTopicOpen) {
+        scrollPositionsRef.current.home = topicSourceScrollTopRef.current;
+      }
       restoreScroll(nextDestination, platformRef.current);
 
       if (wasSettingsOpen || wasTopicOpen) {

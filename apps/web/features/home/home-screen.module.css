@@ -340,6 +340,14 @@
   padding-inline: var(--yoyi-space-5);
 }
 
+:global([data-primary-shell][data-platform="tablet"]) .feed {
+  column-gap: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .feed .feedCard {
+  margin-bottom: var(--yoyi-space-5);
+}
+
 :global([data-primary-shell][data-platform="tablet"])
   .feed[data-feed-layout="double"]
   .feedCard[data-catalog-feed-span="full"] {
@@ -396,21 +404,24 @@
     calc(96px + env(safe-area-inset-bottom));
 }
 
-:global([data-primary-shell][data-platform="pc"]) .feedCard {
+:global([data-primary-shell][data-platform="pc"]) .masonry .feedCard {
   overflow: visible;
   background: transparent;
   box-shadow: none;
   transition: transform var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
-:global([data-primary-shell][data-platform="pc"]) .feedCard .feedMedia,
-:global([data-primary-shell][data-platform="pc"]) .feedCard .mediaFallback {
+:global([data-primary-shell][data-platform="pc"]) .masonry .feedCard .feedMedia,
+:global([data-primary-shell][data-platform="pc"])
+  .masonry
+  .feedCard
+  .mediaFallback {
   border-radius: 18px;
   box-shadow: var(--yoyi-shadow-subtle);
   transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
-:global([data-primary-shell][data-platform="pc"]) .feedCard .cardBody {
+:global([data-primary-shell][data-platform="pc"]) .masonry .feedCard .cardBody {
   padding: var(--yoyi-space-2) 2px 0;
 }
 
@@ -421,6 +432,10 @@
 :global([data-primary-shell][data-platform="pc"]) .feed {
   column-count: 3;
   column-gap: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="pc"]) .feed .feedCard {
+  margin-bottom: var(--yoyi-space-5);
 }
 
 :global([data-primary-shell][data-platform="pc"]) .inscriptionCard {
@@ -441,12 +456,16 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  :global([data-primary-shell][data-platform="pc"]) .feedCard:hover {
+  :global([data-primary-shell][data-platform="pc"]) .masonry .feedCard:hover {
     transform: translateY(-2px);
   }
 
-  :global([data-primary-shell][data-platform="pc"]) .feedCard:hover .feedMedia,
   :global([data-primary-shell][data-platform="pc"])
+    .masonry
+    .feedCard:hover
+    .feedMedia,
+  :global([data-primary-shell][data-platform="pc"])
+    .masonry
     .feedCard:hover
     .mediaFallback {
     box-shadow: var(--yoyi-shadow-dialog);
@@ -467,9 +486,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pagerTrack,
-  .feedCard,
-  .feedCard .feedMedia,
-  .feedCard .mediaFallback {
+  .masonry .feedCard,
+  .masonry .feedCard .feedMedia,
+  .masonry .feedCard .mediaFallback {
     transition-duration: 1ms;
   }
 }

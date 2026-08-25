@@ -27,6 +27,13 @@ describe("Product Shell history", () => {
     ).toEqual(settingsHistoryState("inscriptions"));
   });
 
+  it("preserves a bounded primary scroll checkpoint for an overlay source entry", () => {
+    expect(parseProductHistoryState(primaryHistoryState("home", 147))).toEqual(
+      primaryHistoryState("home", 147),
+    );
+    expect(primaryHistoryState("home", -10).scrollTop).toBe(0);
+  });
+
   it("parses the bounded Topic layer and clamps its source scroll", () => {
     expect(
       parseProductHistoryState(topicHistoryState("topic-one", 147)),
@@ -47,6 +54,12 @@ describe("Product Shell history", () => {
     {
       destination: "unknown",
       kind: "primary",
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      destination: "home",
+      kind: "primary",
+      scrollTop: -1,
       version: PRODUCT_SHELL_HISTORY_VERSION,
     },
     {

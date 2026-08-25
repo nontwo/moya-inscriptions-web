@@ -363,8 +363,10 @@ describe("ProductShell", () => {
 
   it("owns Topic history, inertness, navigation identity, Back/Forward, scroll, and focus", async () => {
     const pushState = vi.spyOn(window.history, "pushState");
+    const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderTopicShell();
     await act(async () => vi.runAllTimers());
+    replaceState.mockClear();
     const home = container.querySelector<HTMLElement>(
       '[data-primary-destination="home"]',
     )!;
@@ -392,6 +394,11 @@ describe("ProductShell", () => {
       "",
       "/dev/t02p#topic-topic-one",
     );
+    expect(replaceState).toHaveBeenCalledWith(
+      primaryHistoryState("home", 164),
+      "",
+      "/dev/t02p",
+    );
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
     expect(
       container
@@ -410,7 +417,9 @@ describe("ProductShell", () => {
 
     act(() =>
       window.dispatchEvent(
-        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+        new PopStateEvent("popstate", {
+          state: primaryHistoryState("home", 164),
+        }),
       ),
     );
     await act(async () => vi.runAllTimers());
@@ -436,6 +445,41 @@ describe("ProductShell", () => {
         .querySelector("[data-product-shell]")
         ?.getAttribute("data-active-destination"),
     ).toBe("home");
+  });
+
+  it("restores the recorded Topic source scroll after a Topic-detail reload and Back", async () => {
+    window.history.replaceState(
+      topicHistoryState("topic-one", 164),
+      "",
+      "/dev/t02p#topic-topic-one",
+    );
+    const { container } = renderTopicShell();
+    await act(async () => vi.runAllTimers());
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperty(home, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(home, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    home.scrollTop = 0;
+
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: primaryHistoryState("home", 164),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(home.scrollTop).toBe(164);
   });
 
   it.each(["home", "inscriptions", "calligraphy"] as const)(

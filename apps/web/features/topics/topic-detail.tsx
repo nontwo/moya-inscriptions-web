@@ -8,30 +8,40 @@ import { CatalogCard, isUltraWideCatalogMedia } from "../home/catalog-card";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import styles from "./topic-detail.module.css";
 
-import type { RefObject } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { FeedLayoutPreference } from "../product-shell/preferences";
 import type { PresentationPlatform } from "../shell/device-platform";
 import type { Topic, TopicImageBlock } from "./topic";
 
 const TopicImage = ({ block }: { readonly block: TopicImageBlock }) => {
   const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <div className={styles.blockMediaFallback} role="status">
-        图像无法加载
-      </div>
-    );
-  }
   return (
     <figure className={styles.imageBlock} data-topic-block="image">
-      <img
-        alt={block.media.alt}
-        decoding="async"
-        height={block.media.height}
-        onError={() => setFailed(true)}
-        src={block.media.src}
-        width={block.media.width}
-      />
+      {failed ? (
+        <div
+          aria-label={`图像无法加载：${block.media.alt}`}
+          className={styles.blockMediaFallback}
+          data-topic-block-media-state="failed"
+          role="img"
+          style={
+            {
+              aspectRatio: `${block.media.width} / ${block.media.height}`,
+            } satisfies CSSProperties
+          }
+        >
+          <Icon aria-hidden="true" name="error" />
+          <span>图像无法加载</span>
+        </div>
+      ) : (
+        <img
+          alt={block.media.alt}
+          decoding="async"
+          height={block.media.height}
+          onError={() => setFailed(true)}
+          src={block.media.src}
+          width={block.media.width}
+        />
+      )}
       {block.caption === undefined ? null : (
         <figcaption>{block.caption}</figcaption>
       )}

@@ -769,6 +769,48 @@ test("Topic Detail is a Product overlay with stable navigation, history, and foc
   ).toBeVisible();
 });
 
+test("Topic Detail reload and Back preserve the recorded Topics source scroll", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-webkit",
+    "The reload-to-Back scroll regression runs once in iPhone WebKit.",
+  );
+  const response = await page.goto(
+    "/dev/t02p/qa?scenario=topics-editorial&feed=topics",
+  );
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-t02p-qa-harness]");
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  const shell = productShell(surface);
+  const home = activeHomeSurface(surface);
+  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(
+    home.locator('[data-home-feed-panel="topics"] [data-home-masonry]'),
+  ).toHaveAttribute("data-layout-ready", "true");
+  const sourceTop = await writePrimaryScroll(shell, "home", 180);
+  expect(sourceTop).toBeGreaterThan(0);
+
+  await home
+    .locator("[data-topic-card]")
+    .first()
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
+  await page.reload();
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
+  expect(await page.evaluate(() => window.history.state?.sourceScrollTop)).toBe(
+    sourceTop,
+  );
+
+  await page.goBack();
+  await expect(shell.getByRole("dialog", { name: /专题：/ })).toHaveCount(0);
+  expect(await page.evaluate(() => window.history.state?.scrollTop)).toBe(
+    sourceTop,
+  );
+  await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(sourceTop);
+});
+
 test("Catalog Collection Topic resolves Catalog summaries without a fake Detail action", async ({
   page,
 }, testInfo) => {

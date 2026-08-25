@@ -1,12 +1,31 @@
-import { createRef } from "react";
+// @vitest-environment jsdom
+
+import { act, createRef } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TopicCard } from "./topic-card";
 import { TopicDetail } from "./topic-detail";
 
 import type { CatalogId, CatalogSummary, MediaId } from "@moya/contracts";
+import type { Root } from "react-dom/client";
 import type { EditorialTopic, Topic } from "./topic";
+
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+const roots: Root[] = [];
+
+const renderClient = (node: React.ReactNode) => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+  act(() => root.render(node));
+  return container;
+};
 
 const media = {
   alt: "专题演示图",
@@ -44,6 +63,11 @@ const renderDetail = (topic: Topic | null) =>
   );
 
 describe("Topic components", () => {
+  afterEach(() => {
+    for (const root of roots.splice(0)) act(() => root.unmount());
+    document.body.replaceChildren();
+  });
+
   it("exposes the entire Topic card as one native button", () => {
     const markup = renderToStaticMarkup(
       <TopicCard onOpen={vi.fn()} topic={editorial} />,
@@ -93,5 +117,46 @@ describe("Topic components", () => {
     const markup = renderDetail(null);
     expect(markup).toContain('data-topic-detail-state="not-found"');
     expect(markup).toContain("未找到这个专题");
+  });
+
+  it("preserves failed Topic cover geometry", () => {
+    const container = renderClient(
+      <TopicCard onOpen={vi.fn()} topic={editorial} />,
+    );
+    act(() =>
+      container
+        .querySelector("img")
+        ?.dispatchEvent(new Event("error", { bubbles: true })),
+    );
+    expect(
+      container.querySelector<HTMLElement>('[data-topic-cover-state="failed"]')
+        ?.style.aspectRatio,
+    ).toBe("600 / 400");
+  });
+
+  it("preserves failed Topic block geometry and caption", () => {
+    const container = renderClient(
+      <TopicDetail
+        backButtonRef={createRef<HTMLButtonElement>()}
+        feedLayout="double"
+        onClose={vi.fn()}
+        platform="phone"
+        topic={editorial}
+      />,
+    );
+    const block = container.querySelector<HTMLElement>(
+      '[data-topic-block="image"]',
+    )!;
+    act(() =>
+      block
+        .querySelector("img")
+        ?.dispatchEvent(new Event("error", { bubbles: true })),
+    );
+    expect(
+      block.querySelector<HTMLElement>(
+        '[data-topic-block-media-state="failed"]',
+      )?.style.aspectRatio,
+    ).toBe("600 / 400");
+    expect(block.querySelector("figcaption")?.textContent).toBe("图注");
   });
 });
