@@ -119,6 +119,7 @@ export const HomeScreen = ({
     openTopic,
     platform,
     readActiveScrollTop,
+    registerTopicOpener,
     restoreActiveScrollTop,
   } = useProductShell();
   const [activeFeed, setActiveFeed] = useState<HomeFeed>(() =>
@@ -151,6 +152,15 @@ export const HomeScreen = ({
       restoreActiveScrollTop(scrollPositionsRef.current.topics);
     }
   }, [activeFeed, activeTopicId, restoreActiveScrollTop]);
+
+  useEffect(() => {
+    if (activeTopicId === null) return;
+    const opener = Array.from(
+      rootRef.current?.querySelectorAll<HTMLButtonElement>("[data-topic-id]") ??
+        [],
+    ).find((button) => button.dataset.topicId === activeTopicId);
+    if (opener !== undefined) registerTopicOpener(activeTopicId, opener);
+  }, [activeTopicId, registerTopicOpener]);
 
   useEffect(() => {
     if (initialTopicId === null || initializedTopicRef.current) return;

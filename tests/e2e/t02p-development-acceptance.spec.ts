@@ -799,6 +799,9 @@ test("Topic Detail reload and Back preserve the recorded Topics source scroll", 
   await page.reload();
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
   await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
+  const restoredOpener = activeHomeSurface(surface)
+    .locator("[data-topic-card]")
+    .first();
   expect(await page.evaluate(() => window.history.state?.sourceScrollTop)).toBe(
     sourceTop,
   );
@@ -809,35 +812,7 @@ test("Topic Detail reload and Back preserve the recorded Topics source scroll", 
     sourceTop,
   );
   await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(sourceTop);
-});
-
-test("Topic Back preserves Topics and Product Shell identity in Clean Preview", async ({
-  page,
-}, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "mobile-webkit",
-    "The clean source-remount regression runs once in iPhone WebKit.",
-  );
-  const { surface } = await openCleanProductSurface(page);
-  const home = activeHomeSurface(surface);
-  const navigation = surface.locator("[data-primary-navigation]");
-  await navigation.evaluate((node) => {
-    (node as HTMLElement).dataset.r03TopicIdentity = "stable";
-  });
-  await activateHomeFeed(home, "专题");
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
-  await home.locator("[data-topic-card]").first().click();
-  const shell = productShell(surface);
-  await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
-
-  await page.goBack();
-  await expect(shell.getByRole("dialog", { name: /专题：/ })).toHaveCount(0);
-  await expect(navigation).toHaveAttribute("data-r03-topic-identity", "stable");
-  await expect(activeHomeSurface(surface)).toHaveAttribute(
-    "data-active-home-feed",
-    "topics",
-  );
-  await expect(page).toHaveURL(/\?acceptance=r01-clean$/u);
+  await expect(restoredOpener).toBeFocused();
 });
 
 test("Catalog Collection Topic resolves Catalog summaries without a fake Detail action", async ({

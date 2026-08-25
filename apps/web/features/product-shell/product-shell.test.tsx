@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,9 +48,16 @@ const renderProductShell = () => {
 };
 
 const TopicOpener = () => {
-  const { openTopic } = useProductShell();
+  const { activeTopicId, openTopic, registerTopicOpener } = useProductShell();
+  const openerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (activeTopicId !== null && openerRef.current !== null) {
+      registerTopicOpener(activeTopicId, openerRef.current);
+    }
+  }, [activeTopicId, registerTopicOpener]);
   return (
     <button
+      ref={openerRef}
       type="button"
       data-topic-test-opener=""
       onClick={(event) => openTopic("topic-one", event.currentTarget, 164)}
@@ -395,7 +402,7 @@ describe("ProductShell", () => {
       "/dev/t02p#topic-topic-one",
     );
     expect(replaceState).toHaveBeenCalledWith(
-      primaryHistoryState("home", 164),
+      primaryHistoryState("home", 164, "topic-one"),
       "",
       "/dev/t02p",
     );
@@ -418,7 +425,7 @@ describe("ProductShell", () => {
     act(() =>
       window.dispatchEvent(
         new PopStateEvent("popstate", {
-          state: primaryHistoryState("home", 164),
+          state: primaryHistoryState("home", 164, "topic-one"),
         }),
       ),
     );
@@ -472,7 +479,7 @@ describe("ProductShell", () => {
     act(() =>
       window.dispatchEvent(
         new PopStateEvent("popstate", {
-          state: primaryHistoryState("home", 164),
+          state: primaryHistoryState("home", 164, "topic-one"),
         }),
       ),
     );
@@ -480,6 +487,9 @@ describe("ProductShell", () => {
 
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(home.scrollTop).toBe(164);
+    expect(document.activeElement).toBe(
+      container.querySelector("[data-topic-test-opener]"),
+    );
   });
 
   it.each(["home", "inscriptions", "calligraphy"] as const)(

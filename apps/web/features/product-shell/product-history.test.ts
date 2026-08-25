@@ -28,9 +28,9 @@ describe("Product Shell history", () => {
   });
 
   it("preserves a bounded primary scroll checkpoint for an overlay source entry", () => {
-    expect(parseProductHistoryState(primaryHistoryState("home", 147))).toEqual(
-      primaryHistoryState("home", 147),
-    );
+    expect(
+      parseProductHistoryState(primaryHistoryState("home", 147, "topic-one")),
+    ).toEqual(primaryHistoryState("home", 147, "topic-one"));
     expect(primaryHistoryState("home", -10).scrollTop).toBe(0);
   });
 
@@ -53,6 +53,18 @@ describe("Product Shell history", () => {
     { kind: "primary", version: PRODUCT_SHELL_HISTORY_VERSION },
     {
       destination: "unknown",
+      kind: "primary",
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      destination: "home",
+      focusTopicId: "",
+      kind: "primary",
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      destination: "inscriptions",
+      focusTopicId: "topic-one",
       kind: "primary",
       version: PRODUCT_SHELL_HISTORY_VERSION,
     },

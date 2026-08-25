@@ -115,5 +115,9 @@ describe("T02 R03 architecture boundaries", () => {
     expect(styles).toMatch(
       /data-platform="pc"\]\) \.feed \.feedCard \{\s+margin-bottom: var\(--yoyi-space-5\);/u,
     );
+    expect(styles).toMatch(/\.screenHeader h2 \{[^}]*line-height: 1\.3;/u);
+    expect(styles).toMatch(
+      /:global\(html\[data-home-layout="single"\]\) \.feed \{\s+column-count: 1;/u,
+    );
   });
 });

@@ -278,6 +278,7 @@
 .screenHeader h2 {
   margin: 0;
   font-size: var(--yoyi-type-section-title-size);
+  line-height: 1.3;
 }
 
 .feed {
@@ -286,6 +287,10 @@
 }
 
 .feed[data-feed-layout="single"] {
+  column-count: 1;
+}
+
+:global(html[data-home-layout="single"]) .feed {
   column-count: 1;
 }
 

@@ -6,6 +6,7 @@ export interface PrimaryProductHistoryState {
   readonly kind: "primary";
   readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
   readonly destination: PrimaryDestination;
+  readonly focusTopicId?: string;
   readonly scrollTop?: number;
 }
 
@@ -44,8 +45,14 @@ export const isPrimaryDestination = (
 export const primaryHistoryState = (
   destination: PrimaryDestination,
   scrollTop?: number,
+  focusTopicId?: string,
 ): PrimaryProductHistoryState => ({
   destination,
+  ...(destination === "home" &&
+  focusTopicId !== undefined &&
+  focusTopicId.length > 0
+    ? { focusTopicId }
+    : {}),
   kind: "primary",
   ...(scrollTop === undefined
     ? {}
@@ -89,17 +96,27 @@ export const parseProductHistoryState = (
     candidate.kind === "primary" &&
     isPrimaryDestination(candidate.destination)
   ) {
-    if (candidate.scrollTop === undefined) {
-      return primaryHistoryState(candidate.destination);
+    if (
+      candidate.scrollTop !== undefined &&
+      (typeof candidate.scrollTop !== "number" ||
+        !Number.isFinite(candidate.scrollTop) ||
+        candidate.scrollTop < 0)
+    ) {
+      return null;
     }
     if (
-      typeof candidate.scrollTop === "number" &&
-      Number.isFinite(candidate.scrollTop) &&
-      candidate.scrollTop >= 0
+      candidate.focusTopicId !== undefined &&
+      (candidate.destination !== "home" ||
+        typeof candidate.focusTopicId !== "string" ||
+        candidate.focusTopicId.length === 0)
     ) {
-      return primaryHistoryState(candidate.destination, candidate.scrollTop);
+      return null;
     }
-    return null;
+    return primaryHistoryState(
+      candidate.destination,
+      candidate.scrollTop as number | undefined,
+      candidate.focusTopicId as string | undefined,
+    );
   }
 
   if (

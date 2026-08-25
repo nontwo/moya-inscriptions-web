@@ -74,6 +74,10 @@ export interface ProductShellContextValue {
   readonly orientation: PresentationOrientation;
   readonly platform: PresentationPlatform;
   readonly readActiveScrollTop: () => number;
+  readonly registerTopicOpener: (
+    topicId: string,
+    opener: HTMLButtonElement,
+  ) => void;
   readonly restoreActiveScrollTop: (top: number) => void;
   readonly theme: ThemePreference;
 }
@@ -144,9 +148,11 @@ export const ProductShell = ({
   const settingsBackRef = useRef<HTMLButtonElement>(null);
   const topicBackRef = useRef<HTMLButtonElement>(null);
   const topicOpenerRef = useRef<HTMLElement | null>(null);
+  const topicOpenerIdRef = useRef<string | null>(null);
   const topicSourceScrollTopRef = useRef(0);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
+  const topicFocusFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
   const navigationMinimizedRef = useRef(false);
   const navigationScrollStateRef = useRef(
@@ -279,6 +285,35 @@ export const ProductShell = ({
     [restoreScroll],
   );
 
+  const restoreTopicFocus = useCallback((topicId: string) => {
+    if (topicFocusFrameRef.current !== null) {
+      window.cancelAnimationFrame(topicFocusFrameRef.current);
+    }
+    topicFocusFrameRef.current = window.requestAnimationFrame(() => {
+      topicFocusFrameRef.current = window.requestAnimationFrame(() => {
+        topicFocusFrameRef.current = null;
+        const registered = topicOpenerRef.current;
+        const opener =
+          registered !== null && topicOpenerIdRef.current === topicId
+            ? registered
+            : Array.from(
+                rootRef.current?.querySelectorAll<HTMLButtonElement>(
+                  "[data-topic-id]",
+                ) ?? [],
+              ).find((button) => button.dataset.topicId === topicId);
+        if (opener !== undefined && opener !== null) {
+          topicOpenerRef.current = opener;
+          topicOpenerIdRef.current = topicId;
+          opener.focus({ preventScroll: true });
+          return;
+        }
+        rootRef.current
+          ?.querySelector<HTMLElement>("[data-home-surface]")
+          ?.focus({ preventScroll: true });
+      });
+    });
+  }, []);
+
   const commitDestination = useCallback(
     (destination: PrimaryDestination) => {
       const current = activeDestinationRef.current;
@@ -313,6 +348,16 @@ export const ProductShell = ({
     topicIdRef.current = topicId;
     setActiveTopicId(topicId);
   }, []);
+
+  const registerTopicOpener = useCallback(
+    (topicId: string, opener: HTMLButtonElement) => {
+      if (topicIdRef.current === topicId) {
+        topicOpenerRef.current = opener;
+        topicOpenerIdRef.current = topicId;
+      }
+    },
+    [],
+  );
 
   const openSettings = useCallback(
     (opener: HTMLElement) => {
@@ -363,8 +408,9 @@ export const ProductShell = ({
       topicSourceScrollTopRef.current = boundedScrollTop;
       scrollPositionsRef.current.home = boundedScrollTop;
       topicOpenerRef.current = opener;
+      topicOpenerIdRef.current = topicId;
       window.history.replaceState(
-        primaryHistoryState("home", boundedScrollTop),
+        primaryHistoryState("home", boundedScrollTop, topicId),
         "",
         primaryLocation(window.location),
       );
@@ -602,6 +648,9 @@ export const ProductShell = ({
         primaryHistoryState(
           destination,
           initialState?.kind === "primary" ? initialState.scrollTop : undefined,
+          initialState?.kind === "primary"
+            ? initialState.focusTopicId
+            : undefined,
         ),
         "",
         primaryLocation(window.location),
@@ -613,6 +662,12 @@ export const ProductShell = ({
         initialState.scrollTop !== undefined
       ) {
         restoreScroll(destination, platformRef.current);
+      }
+      if (
+        initialState?.kind === "primary" &&
+        initialState.focusTopicId !== undefined
+      ) {
+        restoreTopicFocus(initialState.focusTopicId);
       }
     }
 
@@ -662,10 +717,18 @@ export const ProductShell = ({
       restoreScroll(nextDestination, platformRef.current);
 
       if (wasSettingsOpen || wasTopicOpen) {
-        window.requestAnimationFrame(() => {
-          if (wasSettingsOpen) settingsOpenerRef.current?.focus();
-          else topicOpenerRef.current?.focus();
-        });
+        if (wasSettingsOpen) {
+          window.requestAnimationFrame(() =>
+            settingsOpenerRef.current?.focus(),
+          );
+        } else if (
+          state?.kind === "primary" &&
+          state.focusTopicId !== undefined
+        ) {
+          restoreTopicFocus(state.focusTopicId);
+        } else {
+          window.requestAnimationFrame(() => topicOpenerRef.current?.focus());
+        }
       }
     };
 
@@ -674,6 +737,7 @@ export const ProductShell = ({
   }, [
     expandNavigation,
     restoreScroll,
+    restoreTopicFocus,
     saveScroll,
     setSettingsVisibility,
     setTopicVisibility,
@@ -694,6 +758,9 @@ export const ProductShell = ({
     () => () => {
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
+      }
+      if (topicFocusFrameRef.current !== null) {
+        window.cancelAnimationFrame(topicFocusFrameRef.current);
       }
       if (navigationIdleTimerRef.current !== null) {
         window.clearTimeout(navigationIdleTimerRef.current);
@@ -730,6 +797,7 @@ export const ProductShell = ({
     orientation,
     platform,
     readActiveScrollTop,
+    registerTopicOpener,
     restoreActiveScrollTop,
     theme,
   };
