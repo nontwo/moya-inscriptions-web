@@ -36,6 +36,28 @@ pnpm install --frozen-lockfile
 
 Run `pnpm dev` only when the scoped work requires a local runtime.
 
+Before the first commit, annotated tag, push, pull request, issue, review,
+comment, or other GitHub metadata write in a task, install and verify the local
+privacy guard:
+
+```bash
+node scripts/setup-safe-git-identity.mjs --verify-and-apply
+node scripts/check-public-safety.mjs --current-identity
+```
+
+Use a GitHub ID-based noreply identity. Never publish personal email addresses,
+personal absolute paths, private repository or research locators, credentials,
+or unnecessary local source filenames. Before publishing any GitHub text, put
+the exact text in a temporary file and run:
+
+```bash
+node scripts/check-public-text.mjs <temporary-file>
+```
+
+Use the corresponding file-based GitHub CLI option and remove the temporary file
+after publication. Do not place unscanned long-form text directly in an inline
+command.
+
 ## Validate the scoped change
 
 Validation must be proportionate to the approved scope. Run formatting, lint,
@@ -46,6 +68,12 @@ documentation-only change does not require unrelated runtime checks.
 
 Do not hide, skip, or downgrade an applicable failure. Fix its cause and rerun
 the affected validation. Record each applicable command and result in the PR.
+
+Run `node scripts/check-public-safety.mjs --staged` before committing and the
+appropriate base/head scan before pushing. Disclose every changed binary file.
+New or modified images, PDFs, spreadsheets, and office documents must be
+metadata-scanned, and the PR must confirm that no unsafe content or metadata was
+added.
 
 ## Pull request, review, and merge
 

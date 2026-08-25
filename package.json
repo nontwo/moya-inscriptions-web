@@ -22,6 +22,10 @@
     "test:postgres": "pnpm --filter @moya/tests test:postgres",
     "generate:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs",
     "check:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --check",
+    "privacy:setup": "node scripts/setup-safe-git-identity.mjs --verify-and-apply",
+    "privacy:verify": "node scripts/setup-safe-git-identity.mjs --verify-only",
+    "privacy:check": "node scripts/check-public-safety.mjs",
+    "privacy:check-text": "node scripts/check-public-text.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

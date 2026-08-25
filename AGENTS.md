@@ -20,6 +20,13 @@ merged-head verification. Owner involvement is reserved for the amendment's
 visual/real-device, major-direction, production-authority, and unresolved STOP
 gates.
 
+The active
+[`2026-08-25 public privacy and identity amendment`](docs/governance/amendments/2026-08-25-public-privacy-and-identity.md)
+requires every agent to complete the safe Git identity preflight and the
+public-safety scan before any commit, annotated tag, push, pull request, issue,
+review, comment, or other GitHub metadata write. Public text must also pass the
+public-text scan before publication.
+
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
 
