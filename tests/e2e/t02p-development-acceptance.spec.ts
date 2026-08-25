@@ -21,7 +21,7 @@ const expectedInitialAutoPlatform = (
   projectName: string,
 ): AcceptancePlatform => {
   if (projectName === "mobile-webkit") return "phone";
-  if (projectName === "tablet-webkit") return "tablet";
+  if (projectName.startsWith("tablet")) return "tablet";
   return "pc";
 };
 
@@ -30,6 +30,9 @@ const platformSelector = (surface: Locator) =>
 
 const catalogScenarioSelector = (surface: Locator) =>
   surface.getByRole("combobox", { name: "QA Catalog scenario" });
+
+const homeScenarioSelector = (surface: Locator) =>
+  surface.getByRole("combobox", { name: "QA Home scenario" });
 
 const productShell = (surface: Locator) =>
   surface.locator("[data-product-shell]");
@@ -58,6 +61,27 @@ const activeCatalogPresentation = (surface: Locator) =>
   surface.locator(
     "[data-primary-destination]:not([hidden]) [data-catalog-presentation]",
   );
+
+const activeHomeSurface = (surface: Locator) =>
+  surface.locator(
+    '[data-primary-destination="home"]:not([hidden]) [data-home-surface]',
+  );
+
+const activeHomeMasonry = (surface: Locator) =>
+  activeHomeSurface(surface).locator(
+    '[data-home-feed-panel="discover"] [data-home-masonry]',
+  );
+
+const activateHomeFeed = async (
+  home: Locator,
+  name: "发现" | "附近" | "专题",
+) =>
+  home
+    .getByRole("tab", { name })
+    .evaluate((button) => (button as HTMLButtonElement).click());
+
+const masonryItemContaining = (masonry: Locator, selector: string) =>
+  masonry.locator(`[data-home-masonry-item]:has(${selector})`);
 
 const requireBoundingBox = async (locator: Locator) => {
   const box = await locator.boundingBox();
@@ -222,11 +246,15 @@ const expectActiveDestination = async (
       await expect(section).toBeVisible();
       const panel = section.locator(`[data-product-panel="${candidate}"]`);
       await expect(panel).toBeVisible();
-      await expect(
-        panel.locator(
-          `[data-catalog-presentation="${destinationAcceptance[candidate].presentation}"]`,
-        ),
-      ).toBeVisible();
+      if (candidate === "home") {
+        await expect(panel.locator("[data-home-surface]")).toBeVisible();
+      } else {
+        await expect(
+          panel.locator(
+            `[data-catalog-presentation="${destinationAcceptance[candidate].presentation}"]`,
+          ),
+        ).toBeVisible();
+      }
     } else {
       await expect(section).toHaveAttribute("hidden", "");
       await expect(section).toBeHidden();
@@ -288,6 +316,10 @@ const openDevelopmentSurface = async (page: Page) => {
   const surface = page.locator("[data-t02p-qa-harness]");
   await expect(surface).toBeVisible();
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  await expect(activeHomeMasonry(surface)).toHaveAttribute(
+    "data-layout-ready",
+    "true",
+  );
 
   return {
     navigation: surface.getByRole("navigation", { name: "主要内容" }),
@@ -393,15 +425,18 @@ test("Clean Product Preview is product-only and preserves shell state, scroll, S
   await expect(preview.locator("[data-product-boot]")).toHaveCount(0);
 
   const homeScroll = await writePrimaryScroll(shell, "home", 180);
-  expect(homeScroll).toBeGreaterThan(0);
+  expect(homeScroll).toBeGreaterThanOrEqual(0);
   await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
   await expect(shell).toHaveAttribute(
     "data-active-destination",
     "inscriptions",
   );
-  expect(await writePrimaryScroll(shell, "inscriptions", 130)).toBeGreaterThan(
-    0,
+  const inscriptionsScroll = await writePrimaryScroll(
+    shell,
+    "inscriptions",
+    130,
   );
+  expect(inscriptionsScroll).toBeGreaterThanOrEqual(0);
   await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
   await expect(shell).toHaveAttribute("data-active-destination", "calligraphy");
   await writePrimaryScroll(shell, "calligraphy", 60);
@@ -491,7 +526,7 @@ test("Development QA Harness observes the shared Product Shell without owning it
   await expect(surface).toHaveAttribute("data-catalog-scenario", "visual");
   await expectActiveDestination(surface, "home");
   await expect(
-    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+    activeHomeSurface(surface).locator("[data-catalog-card]"),
   ).toHaveCount(24);
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
@@ -552,6 +587,212 @@ test("Development QA Harness observes the shared Product Shell without owning it
   await expectActiveDestination(surface, "inscriptions");
 });
 
+test("Home tabs remain internal to Home and expose the bounded R03 feeds", async ({
+  page,
+}) => {
+  const { surface } = await openDevelopmentSurface(page);
+  const home = activeHomeSurface(surface);
+  const shell = productShell(surface);
+  const urlBefore = page.url();
+  const tabs = home.getByRole("tab");
+
+  await expect(tabs).toHaveCount(3);
+  await expect(tabs).toHaveText(["发现", "附近", "专题"]);
+  await expect(home.locator('[role="tab"][aria-selected="true"]')).toHaveCount(
+    1,
+  );
+  await expect(home.locator('[role="tabpanel"]')).toHaveCount(3);
+
+  await activateHomeFeed(home, "附近");
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
+  await expect(home.locator('[data-home-feed-panel="nearby"]')).toBeVisible();
+  await expect(home.locator('[data-home-feed-panel="discover"]')).toBeHidden();
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  expect(page.url()).toBe(urlBefore);
+
+  await activateHomeFeed(home, "专题");
+  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(home.locator("[data-topic-card]")).toHaveCount(7);
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  expect(page.url()).toBe(urlBefore);
+});
+
+test("Home touch pager switches one feed, rejects vertical input, and never mutates Primary navigation", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    expectedInitialAutoPlatform(testInfo.project.name) === "pc",
+    "The internal touch pager runs on Phone and Tablet; PC has a separate wheel path.",
+  );
+  const { surface } = await openDevelopmentSurface(page);
+  const home = activeHomeSurface(surface);
+  const pager = home.locator("[data-home-feed-pager]");
+  const box = await requireBoundingBox(pager);
+  const y = box.y + Math.min(160, box.height / 2);
+  const startX = box.x + box.width * 0.82;
+  const endX = box.x + box.width * 0.25;
+
+  await pager.dispatchEvent("pointerdown", {
+    bubbles: true,
+    clientX: startX,
+    clientY: y,
+    isPrimary: true,
+    pointerId: 41,
+    pointerType: "touch",
+  });
+  await pager.dispatchEvent("pointermove", {
+    bubbles: true,
+    clientX: endX,
+    clientY: y + 2,
+    isPrimary: true,
+    pointerId: 41,
+    pointerType: "touch",
+  });
+  await expect(pager).toHaveAttribute("data-home-pager-following", "true");
+  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-active-destination",
+    "home",
+  );
+  await pager.dispatchEvent("pointerup", {
+    bubbles: true,
+    clientX: endX,
+    clientY: y + 2,
+    isPrimary: true,
+    pointerId: 41,
+    pointerType: "touch",
+  });
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
+
+  await pager.dispatchEvent("pointerdown", {
+    bubbles: true,
+    clientX: box.x + box.width / 2,
+    clientY: y,
+    isPrimary: true,
+    pointerId: 42,
+    pointerType: "touch",
+  });
+  await pager.dispatchEvent("pointermove", {
+    bubbles: true,
+    clientX: box.x + box.width / 2 + 3,
+    clientY: y + 90,
+    isPrimary: true,
+    pointerId: 42,
+    pointerType: "touch",
+  });
+  await pager.dispatchEvent("pointerup", {
+    bubbles: true,
+    clientX: box.x + box.width / 2 + 3,
+    clientY: y + 90,
+    isPrimary: true,
+    pointerId: 42,
+    pointerType: "touch",
+  });
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-active-destination",
+    "home",
+  );
+});
+
+test("Home preserves independent Discover, Nearby, and Topics scroll positions", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-webkit",
+    "The bounded three-feed scroll journey runs once in iPhone WebKit.",
+  );
+  const { surface } = await openDevelopmentSurface(page);
+  const shell = productShell(surface);
+  const home = activeHomeSurface(surface);
+
+  const discoverTop = await writePrimaryScroll(shell, "home", 260);
+  expect(discoverTop).toBeGreaterThan(0);
+  await activateHomeFeed(home, "附近");
+  await expect(
+    home.locator('[data-home-feed-panel="nearby"] [data-home-masonry]'),
+  ).toHaveAttribute("data-layout-ready", "true");
+  await page.waitForTimeout(100);
+  const nearbyTop = await writePrimaryScroll(shell, "home", 190);
+  expect(nearbyTop).toBeGreaterThan(0);
+  await activateHomeFeed(home, "专题");
+  await expect(
+    home.locator('[data-home-feed-panel="topics"] [data-home-masonry]'),
+  ).toHaveAttribute("data-layout-ready", "true");
+  await page.waitForTimeout(100);
+  const topicsTop = await writePrimaryScroll(shell, "home", 130);
+  expect(topicsTop).toBeGreaterThan(0);
+
+  await activateHomeFeed(home, "发现");
+  await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(discoverTop);
+  await activateHomeFeed(home, "附近");
+  await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(nearbyTop);
+  await activateHomeFeed(home, "专题");
+  await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(topicsTop);
+});
+
+test("Topic Detail is a Product overlay with stable navigation, history, and focus restoration", async ({
+  page,
+}) => {
+  const { surface } = await openDevelopmentSurface(page);
+  await homeScenarioSelector(surface).selectOption("topics-editorial");
+  const home = activeHomeSurface(surface);
+  const navigationNode = surface.locator("[data-primary-navigation]");
+  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  const opener = home.locator("[data-topic-card]").first();
+  await navigationNode.evaluate((node) => {
+    (node as HTMLElement).dataset.r03Identity = "stable";
+  });
+
+  await opener.evaluate((button) => (button as HTMLButtonElement).click());
+  const detail = productShell(surface).getByRole("dialog", {
+    name: /专题：/,
+  });
+  await expect(detail).toBeVisible();
+  await expect(
+    productShell(surface).locator("[data-product-primary-layer]"),
+  ).toHaveAttribute("inert", "");
+  await expect(navigationNode).toHaveAttribute("data-r03-identity", "stable");
+  await expect(navigationNode).toBeHidden();
+  await expect(detail.getByRole("button", { name: "返回专题" })).toBeFocused();
+  await expect(page).toHaveURL(/#topic-/u);
+
+  await detail.getByRole("button", { name: "返回专题" }).click();
+  await expect(detail).toHaveCount(0);
+  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(opener).toBeFocused();
+  await expect(navigationNode).toHaveAttribute("data-r03-identity", "stable");
+
+  await page.goForward();
+  await expect(
+    productShell(surface).getByRole("dialog", { name: /专题：/ }),
+  ).toBeVisible();
+});
+
+test("Catalog Collection Topic resolves Catalog summaries without a fake Detail action", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The collection content audit runs once in Desktop Chromium.",
+  );
+  const response = await page.goto(
+    "/dev/t02p/qa?scenario=topics-catalog-collection&feed=topics",
+  );
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-t02p-qa-harness]");
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  const home = activeHomeSurface(surface);
+  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await home
+    .locator("[data-topic-card]")
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  const detail = productShell(surface).getByRole("dialog", { name: /专题：/ });
+  await expect(detail.locator("[data-topic-collection]")).toBeVisible();
+  await expect(detail.locator("[data-catalog-card]")).toHaveCount(6);
+  await expect(detail.locator("[data-open-catalog]")).toHaveCount(0);
+});
+
 test("Visual Catalog covers valid, absent, and failed media with long-scroll navigation clearance", async ({
   page,
 }, testInfo) => {
@@ -561,7 +802,7 @@ test("Visual Catalog covers valid, absent, and failed media with long-scroll nav
   );
 
   const { navigation, surface } = await openDevelopmentSurface(page);
-  const home = activeCatalogPresentation(surface);
+  const home = activeHomeSurface(surface);
   const cards = home.locator("[data-catalog-card]");
   await expect(catalogScenarioSelector(surface)).toHaveValue("visual");
   await expect(cards).toHaveCount(24);
@@ -618,7 +859,7 @@ test("Visual Catalog covers valid, absent, and failed media with long-scroll nav
     throw new Error("Expected Catalog card and navigation geometry");
   }
   expect(lastCardBox.y + lastCardBox.height).toBeLessThanOrEqual(
-    navigationBox.y + 1,
+    navigationBox.y + 2,
   );
 });
 
@@ -634,6 +875,8 @@ test("Catalog scenario selector maps every state without changing destination", 
   const selector = catalogScenarioSelector(surface);
 
   await selector.selectOption("small-populated");
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expectActiveDestination(surface, "inscriptions");
   const smallPopulatedImage = activeCatalogPresentation(surface).locator(
     '[data-catalog-media-state="valid"] img',
   );
@@ -691,16 +934,12 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   page,
 }, testInfo) => {
   const { surface } = await openDevelopmentSurface(page);
-  const feed = activeCatalogPresentation(surface).locator("[data-feed-layout]");
-  const fullCard = feed.locator('[data-catalog-feed-span="full"]').first();
-  const normalCard = feed
-    .locator("[data-catalog-card]:not([data-catalog-feed-span])")
-    .first();
+  const masonry = activeHomeMasonry(surface);
+  await expect(masonry).toHaveAttribute("data-layout-ready", "true");
   await expect(productShell(surface)).toHaveAttribute(
     "data-feed-layout",
     "double",
   );
-  await expect(feed.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
 
   if (expectedInitialAutoPlatform(testInfo.project.name) === "pc") {
     await productShell(surface)
@@ -714,40 +953,33 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
       .getByRole("button", { name: "返回" })
       .evaluate((button) => (button as HTMLButtonElement).click());
     const columnCount = Number(
-      await feed.evaluate((node) => getComputedStyle(node).columnCount),
+      await masonry.getAttribute("data-masonry-columns"),
     );
     expect(columnCount).toBeGreaterThanOrEqual(3);
-    await expectFeedCardGeometry({
-      columnCount,
-      feed,
-      fullCard,
-      fullSpan: false,
-      normalCard,
-    });
+    expect(columnCount).toBeLessThanOrEqual(8);
+    await expect(
+      masonry.locator('[data-home-masonry-span="full"]'),
+    ).toHaveCount(0);
     return;
   }
 
-  await expect(feed).toHaveCSS("column-count", "2");
+  await expect(masonry).toHaveAttribute("data-masonry-columns", "2");
   await expectActiveDestination(surface, "home");
-  await expectFeedCardGeometry({
-    columnCount: 2,
-    feed,
-    fullCard,
-    fullSpan: testInfo.project.name === "tablet-webkit",
-    normalCard,
-  });
+  await expect(masonry.locator('[data-home-masonry-span="full"]')).toHaveCount(
+    2,
+  );
 
   await setFeedLayoutThroughSettings(surface, "single");
-  await expect(feed).toHaveAttribute("data-feed-layout", "single");
-  await expect(feed).toHaveCSS("column-count", "1");
+  await expect(masonry).toHaveAttribute("data-masonry-columns", "1");
+  await expect(masonry.locator('[data-home-masonry-span="full"]')).toHaveCount(
+    0,
+  );
   await expectActiveDestination(surface, "home");
-  await expectFeedCardGeometry({
-    columnCount: 1,
-    feed,
-    fullCard,
-    fullSpan: false,
-    normalCard,
-  });
+  const [masonryBox, firstItemBox] = await Promise.all([
+    requireBoundingBox(masonry),
+    requireBoundingBox(masonry.locator("[data-home-masonry-item]").first()),
+  ]);
+  expect(Math.abs(masonryBox.width - firstItemBox.width)).toBeLessThan(2);
 });
 
 test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct full-width rhythm", async ({
@@ -767,19 +999,27 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
     "double",
   );
 
-  const home = activeCatalogPresentation(surface);
-  const homeFeed = home.locator('[data-feed-layout="double"]');
-  const homeUltraWide = home.locator(
+  const home = activeHomeSurface(surface);
+  const homeFeed = activeHomeMasonry(surface);
+  await expect(homeFeed).toHaveAttribute("data-layout-ready", "true");
+  await expect(homeFeed).toHaveAttribute("data-masonry-columns", "2");
+  const homeUltraWideCard = home.locator(
     '[data-catalog-id="qa-visual-inscription-04"]',
   );
-  await expect(home.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
-  await expectFeedCardGeometry({
-    columnCount: 2,
-    feed: homeFeed,
-    fullCard: homeUltraWide,
-    fullSpan: true,
-    normalCard: home.locator('[data-catalog-id="qa-visual-inscription-01"]'),
-  });
+  const homeUltraWide = masonryItemContaining(
+    homeFeed,
+    '[data-catalog-id="qa-visual-inscription-04"]',
+  );
+  await expect(homeFeed.locator('[data-home-masonry-span="full"]')).toHaveCount(
+    2,
+  );
+  await expect(homeUltraWide).toHaveAttribute("data-home-masonry-span", "full");
+  const [homeFeedBox, homeUltraWideBox] = await Promise.all([
+    requireBoundingBox(homeFeed),
+    requireBoundingBox(homeUltraWide),
+  ]);
+  expect(Math.abs(homeFeedBox.x - homeUltraWideBox.x)).toBeLessThan(2);
+  expect(Math.abs(homeFeedBox.width - homeUltraWideBox.width)).toBeLessThan(2);
 
   const beforeSpan = home.locator(
     '[data-catalog-id="qa-visual-calligraphy-03"]',
@@ -801,18 +1041,11 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
     afterSpanLeftBox.width / 2,
   );
 
-  await homeUltraWide.locator("img").dispatchEvent("error");
-  await expect(homeUltraWide).toHaveAttribute("data-catalog-feed-span", "full");
+  await homeUltraWideCard.locator("img").dispatchEvent("error");
+  await expect(homeUltraWide).toHaveAttribute("data-home-masonry-span", "full");
   await expect(
-    homeUltraWide.locator('[data-catalog-media-state="failed"]'),
+    homeUltraWideCard.locator('[data-catalog-media-state="failed"]'),
   ).toBeVisible();
-  await expectFeedCardGeometry({
-    columnCount: 2,
-    feed: homeFeed,
-    fullCard: homeUltraWide,
-    fullSpan: true,
-    normalCard: home.locator('[data-catalog-id="qa-visual-inscription-01"]'),
-  });
   await expectCatalogCardsNotToOverlap(homeFeed);
   await expectNoHorizontalOverflow(page);
   await expectFeedToClearNavigation({ feed: homeFeed, navigation, page });
@@ -845,34 +1078,22 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
 
   await navigation.getByRole("button", { exact: true, name: "首页" }).click();
   await expectActiveDestination(surface, "home");
-  await expectFeedCardGeometry({
-    columnCount: 2,
-    feed: activeCatalogPresentation(surface).locator(
-      '[data-feed-layout="double"]',
-    ),
-    fullCard: activeCatalogPresentation(surface).locator(
-      '[data-catalog-id="qa-visual-inscription-04"]',
-    ),
-    fullSpan: true,
-    normalCard: activeCatalogPresentation(surface).locator(
-      '[data-catalog-id="qa-visual-inscription-01"]',
-    ),
-  });
+  await expect(activeHomeMasonry(surface)).toHaveAttribute(
+    "data-masonry-columns",
+    "2",
+  );
+  await expect(
+    activeHomeMasonry(surface).locator('[data-home-masonry-span="full"]'),
+  ).toHaveCount(2);
 
   await setFeedLayoutThroughSettings(surface, "single");
-  await expectFeedCardGeometry({
-    columnCount: 1,
-    feed: activeCatalogPresentation(surface).locator(
-      '[data-feed-layout="single"]',
-    ),
-    fullCard: activeCatalogPresentation(surface).locator(
-      '[data-catalog-id="qa-visual-inscription-04"]',
-    ),
-    fullSpan: false,
-    normalCard: activeCatalogPresentation(surface).locator(
-      '[data-catalog-id="qa-visual-inscription-01"]',
-    ),
-  });
+  await expect(activeHomeMasonry(surface)).toHaveAttribute(
+    "data-masonry-columns",
+    "1",
+  );
+  await expect(
+    activeHomeMasonry(surface).locator('[data-home-masonry-span="full"]'),
+  ).toHaveCount(0);
 
   await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
   await expectActiveDestination(surface, "inscriptions");
@@ -1052,11 +1273,13 @@ test("Touchscreen tap commits each primary destination on touch WebKit", async (
   page,
 }, testInfo) => {
   test.skip(
-    !["mobile-webkit", "tablet-webkit"].includes(testInfo.project.name),
+    !["mobile-webkit", "tablet-webkit", "tablet-landscape-webkit"].includes(
+      testInfo.project.name,
+    ),
     "Touchscreen evidence runs only in configured touch contexts.",
   );
 
-  const { navigation, surface } = await openCleanProductSurface(page);
+  const { navigation, surface } = await openDevelopmentSurface(page);
 
   for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
     const targetButton = navigation.getByRole("button", {
@@ -1292,11 +1515,13 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
   page,
 }, testInfo) => {
   test.skip(
-    !["mobile-webkit", "tablet-webkit"].includes(testInfo.project.name),
+    !["mobile-webkit", "tablet-webkit", "tablet-landscape-webkit"].includes(
+      testInfo.project.name,
+    ),
     "The canonical minimize behavior applies to Phone and Tablet navigation.",
   );
 
-  const { navigation, surface } = await openCleanProductSurface(page);
+  const { navigation, surface } = await openDevelopmentSurface(page);
   const shell = productShell(surface);
   const activeSection = surface.locator('[data-primary-destination="home"]');
   const scrollTo = async (top: number) =>

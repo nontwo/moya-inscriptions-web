@@ -32,6 +32,14 @@ export default defineConfig({
       name: "tablet-webkit",
       use: { ...devices["iPad Pro 11"], browserName: "webkit" },
     },
+    {
+      name: "tablet-landscape-webkit",
+      use: {
+        ...devices["iPad Pro 11"],
+        browserName: "webkit",
+        viewport: { height: 834, width: 1194 },
+      },
+    },
   ],
   reporter: process.env.CI ? "github" : "list",
   retries: process.env.CI ? 1 : 0,

@@ -4,8 +4,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProductShell } from "./product-shell";
-import { primaryHistoryState, settingsHistoryState } from "./product-history";
+import { ProductShell, useProductShell } from "./product-shell";
+import {
+  primaryHistoryState,
+  settingsHistoryState,
+  topicHistoryState,
+} from "./product-history";
 
 const createMediaQueryList = (matches = false): MediaQueryList =>
   ({
@@ -37,6 +41,49 @@ const renderProductShell = () => {
         home={<p>home content</p>}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
+      />,
+    ),
+  );
+  return { container };
+};
+
+const TopicOpener = () => {
+  const { openTopic } = useProductShell();
+  return (
+    <button
+      type="button"
+      data-topic-test-opener=""
+      onClick={(event) => openTopic("topic-one", event.currentTarget, 164)}
+    >
+      Open topic
+    </button>
+  );
+};
+
+const renderTopicShell = () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push(root);
+  act(() =>
+    root.render(
+      <ProductShell
+        calligraphy={<p>calligraphy content</p>}
+        home={<TopicOpener />}
+        initialPlatform="phone"
+        inscriptions={<p>inscriptions content</p>}
+        renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
+          <section aria-label={`Topic ${topicId}`} role="dialog">
+            <button
+              ref={backButtonRef}
+              type="button"
+              aria-label="返回专题"
+              onClick={onClose}
+            >
+              Back
+            </button>
+          </section>
+        )}
       />,
     ),
   );
@@ -312,6 +359,83 @@ describe("ProductShell", () => {
     );
     await act(async () => vi.runAllTimers());
     expect(dialog(container)).not.toBeNull();
+  });
+
+  it("owns Topic history, inertness, navigation identity, Back/Forward, scroll, and focus", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    const { container } = renderTopicShell();
+    await act(async () => vi.runAllTimers());
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperty(home, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(home, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    home.scrollTop = 164;
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-topic-test-opener]",
+    )!;
+    const navigation = container.querySelector<HTMLElement>(
+      "[data-primary-navigation]",
+    )!;
+
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    expect(pushState).toHaveBeenCalledWith(
+      topicHistoryState("topic-one", 164),
+      "",
+      "/dev/t02p#topic-topic-one",
+    );
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+    expect(
+      navigation
+        .closest("[data-primary-navigation-layer]")
+        ?.hasAttribute("hidden"),
+    ).toBe(true);
+    expect(document.activeElement).toBe(buttonByLabel(container, "返回专题"));
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(home.scrollTop).toBe(164);
+    expect(document.activeElement).toBe(opener);
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: topicHistoryState("topic-one", 164),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-active-destination"),
+    ).toBe("home");
   });
 
   it.each(["home", "inscriptions", "calligraphy"] as const)(

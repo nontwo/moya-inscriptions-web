@@ -6,6 +6,8 @@ import {
   parseProductHistoryState,
   primaryHistoryState,
   settingsHistoryState,
+  topicHistoryState,
+  topicLocation,
 } from "./product-history";
 
 describe("Product Shell history", () => {
@@ -25,6 +27,19 @@ describe("Product Shell history", () => {
     ).toEqual(settingsHistoryState("inscriptions"));
   });
 
+  it("parses the bounded Topic layer and clamps its source scroll", () => {
+    expect(
+      parseProductHistoryState(topicHistoryState("topic-one", 147)),
+    ).toEqual(topicHistoryState("topic-one", 147));
+    expect(topicHistoryState("topic-one", -10).sourceScrollTop).toBe(0);
+    expect(
+      topicLocation(
+        { pathname: "/dev/t02p", search: "?feed=topics" } as Location,
+        "专题 一",
+      ),
+    ).toBe("/dev/t02p?feed=topics#topic-%E4%B8%93%E9%A2%98%20%E4%B8%80");
+  });
+
   it.each([
     null,
     {},
@@ -37,6 +52,22 @@ describe("Product Shell history", () => {
     {
       kind: "settings",
       sourceDestination: "viewer",
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      kind: "topic",
+      sourceDestination: "home",
+      sourceHomeFeed: "topics",
+      sourceScrollTop: -1,
+      topicId: "topic-invalid-scroll",
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      kind: "topic",
+      sourceDestination: "home",
+      sourceHomeFeed: "topics",
+      sourceScrollTop: 0,
+      topicId: "",
       version: PRODUCT_SHELL_HISTORY_VERSION,
     },
     { destination: "home", kind: "primary", version: 999 },

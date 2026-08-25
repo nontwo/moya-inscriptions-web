@@ -21,6 +21,8 @@ import {
   primaryLocation,
   settingsHistoryState,
   settingsLocation,
+  topicHistoryState,
+  topicLocation,
 } from "./product-history";
 import {
   FEED_LAYOUT_PREFERENCE_STORAGE_KEY,
@@ -48,7 +50,7 @@ import {
   synchronizePrimaryNavigationViewportInset,
 } from "../shell/primary-navigation-motion";
 
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { FeedLayoutPreference, ThemePreference } from "./preferences";
 import type {
   PresentationOrientation,
@@ -61,9 +63,18 @@ type ScrollPositions = Record<PrimaryDestination, number>;
 
 export interface ProductShellContextValue {
   readonly activeDestination: PrimaryDestination;
+  readonly activeTopicId: string | null;
+  readonly closeTopic: () => void;
   readonly feedLayout: FeedLayoutPreference;
+  readonly openTopic: (
+    topicId: string,
+    opener: HTMLElement,
+    sourceScrollTop: number,
+  ) => void;
   readonly orientation: PresentationOrientation;
   readonly platform: PresentationPlatform;
+  readonly readActiveScrollTop: () => number;
+  readonly restoreActiveScrollTop: (top: number) => void;
   readonly theme: ThemePreference;
 }
 
@@ -85,7 +96,16 @@ export interface ProductShellProps {
   readonly home: ReactNode;
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
+  readonly renderTopicOverlay?: (
+    properties: ProductShellTopicOverlayRenderProps,
+  ) => ReactNode;
   readonly showDevelopmentPagerControls?: boolean;
+}
+
+export interface ProductShellTopicOverlayRenderProps {
+  readonly backButtonRef: RefObject<HTMLButtonElement | null>;
+  readonly onClose: () => void;
+  readonly topicId: string;
 }
 
 type NavigatorWithUserAgentData = Navigator & RuntimeNavigatorLike;
@@ -117,10 +137,13 @@ export const ProductShell = ({
   home,
   initialPlatform,
   inscriptions,
+  renderTopicOverlay,
   showDevelopmentPagerControls = false,
 }: ProductShellProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const settingsBackRef = useRef<HTMLButtonElement>(null);
+  const topicBackRef = useRef<HTMLButtonElement>(null);
+  const topicOpenerRef = useRef<HTMLElement | null>(null);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
@@ -132,6 +155,7 @@ export const ProductShell = ({
   const activeDestinationRef = useRef<PrimaryDestination>("home");
   const platformRef = useRef<PresentationPlatform>(initialPlatform);
   const settingsOpenRef = useRef(false);
+  const topicIdRef = useRef<string | null>(null);
   const scrollPositionsRef = useRef<ScrollPositions>({
     calligraphy: 0,
     home: 0,
@@ -146,6 +170,7 @@ export const ProductShell = ({
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [feedLayout, setFeedLayout] = useState<FeedLayoutPreference>("double");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [navigationMinimized, setNavigationMinimized] = useState(false);
   const [bootPending, setBootPending] = useState(true);
 
@@ -231,10 +256,38 @@ export const ProductShell = ({
     [scrollElementFor],
   );
 
+  const readActiveScrollTop = useCallback(() => {
+    const element = scrollElementFor(
+      activeDestinationRef.current,
+      platformRef.current,
+    );
+    if (element === null) return 0;
+    return platformRef.current === "pc"
+      ? documentScrollElement().scrollTop
+      : (element as HTMLElement).scrollTop;
+  }, [scrollElementFor]);
+
+  const restoreActiveScrollTop = useCallback(
+    (top: number) => {
+      const destination = activeDestinationRef.current;
+      scrollPositionsRef.current[destination] = Number.isFinite(top)
+        ? Math.max(0, top)
+        : 0;
+      restoreScroll(destination, platformRef.current);
+    },
+    [restoreScroll],
+  );
+
   const commitDestination = useCallback(
     (destination: PrimaryDestination) => {
       const current = activeDestinationRef.current;
-      if (destination === current || settingsOpenRef.current) return;
+      if (
+        destination === current ||
+        settingsOpenRef.current ||
+        topicIdRef.current !== null
+      ) {
+        return;
+      }
 
       expandNavigation();
       saveScroll(current, platformRef.current);
@@ -255,9 +308,14 @@ export const ProductShell = ({
     setSettingsOpen(open);
   }, []);
 
+  const setTopicVisibility = useCallback((topicId: string | null) => {
+    topicIdRef.current = topicId;
+    setActiveTopicId(topicId);
+  }, []);
+
   const openSettings = useCallback(
     (opener: HTMLElement) => {
-      if (settingsOpenRef.current) return;
+      if (settingsOpenRef.current || topicIdRef.current !== null) return;
       const sourceDestination = activeDestinationRef.current;
       saveScroll(sourceDestination, platformRef.current);
       settingsOpenerRef.current = opener;
@@ -286,6 +344,47 @@ export const ProductShell = ({
     );
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
+
+  const openTopic = useCallback(
+    (topicId: string, opener: HTMLElement, sourceScrollTop: number) => {
+      if (
+        topicId.length === 0 ||
+        activeDestinationRef.current !== "home" ||
+        settingsOpenRef.current ||
+        topicIdRef.current !== null
+      ) {
+        return;
+      }
+      saveScroll("home", platformRef.current);
+      const boundedScrollTop = Number.isFinite(sourceScrollTop)
+        ? Math.max(0, sourceScrollTop)
+        : readActiveScrollTop();
+      scrollPositionsRef.current.home = boundedScrollTop;
+      topicOpenerRef.current = opener;
+      window.history.pushState(
+        topicHistoryState(topicId, boundedScrollTop),
+        "",
+        topicLocation(window.location, topicId),
+      );
+      setTopicVisibility(topicId);
+    },
+    [readActiveScrollTop, saveScroll, setTopicVisibility],
+  );
+
+  const closeTopic = useCallback(() => {
+    const state = parseProductHistoryState(window.history.state);
+    if (state?.kind === "topic") {
+      window.history.back();
+      return;
+    }
+    setTopicVisibility(null);
+    window.history.replaceState(
+      primaryHistoryState("home"),
+      "",
+      primaryLocation(window.location),
+    );
+    restoreScroll("home", platformRef.current);
+  }, [restoreScroll, setTopicVisibility]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -388,7 +487,7 @@ export const ProductShell = ({
   }, [developmentPlatformOverride, restoreScroll, saveScroll]);
 
   useEffect(() => {
-    if (settingsOpen) return undefined;
+    if (settingsOpen || activeTopicId !== null) return undefined;
     if (platform === "pc") {
       expandNavigation();
       return undefined;
@@ -440,6 +539,7 @@ export const ProductShell = ({
     };
   }, [
     activeDestination,
+    activeTopicId,
     expandNavigation,
     platform,
     scrollElementFor,
@@ -456,13 +556,20 @@ export const ProductShell = ({
       destination = initialState.destination;
     } else if (initialState?.kind === "settings") {
       destination = initialState.sourceDestination;
+    } else if (initialState?.kind === "topic") {
+      destination = "home";
     }
 
     activeDestinationRef.current = destination;
     setActiveDestination(destination);
 
-    if (initialState?.kind === "settings") {
+    if (initialState?.kind === "topic") {
+      scrollPositionsRef.current.home = initialState.sourceScrollTop;
+      setSettingsVisibility(false);
+      setTopicVisibility(initialState.topicId);
+    } else if (initialState?.kind === "settings") {
       setSettingsVisibility(true);
+      setTopicVisibility(null);
     } else if (directSettings) {
       window.history.replaceState(
         primaryHistoryState(destination),
@@ -475,6 +582,7 @@ export const ProductShell = ({
         settingsLocation(window.location),
       );
       setSettingsVisibility(true);
+      setTopicVisibility(null);
     } else {
       window.history.replaceState(
         primaryHistoryState(destination),
@@ -482,17 +590,29 @@ export const ProductShell = ({
         primaryLocation(window.location),
       );
       setSettingsVisibility(false);
+      setTopicVisibility(null);
     }
 
     const handlePopState = (event: PopStateEvent) => {
       const state = parseProductHistoryState(event.state);
       const wasSettingsOpen = settingsOpenRef.current;
+      const wasTopicOpen = topicIdRef.current !== null;
       saveScroll(activeDestinationRef.current, platformRef.current);
 
       if (state?.kind === "settings") {
         activeDestinationRef.current = state.sourceDestination;
         setActiveDestination(state.sourceDestination);
+        setTopicVisibility(null);
         setSettingsVisibility(true);
+        return;
+      }
+
+      if (state?.kind === "topic") {
+        activeDestinationRef.current = "home";
+        setActiveDestination("home");
+        scrollPositionsRef.current.home = state.sourceScrollTop;
+        setSettingsVisibility(false);
+        setTopicVisibility(state.topicId);
         return;
       }
 
@@ -506,29 +626,38 @@ export const ProductShell = ({
       }
       activeDestinationRef.current = nextDestination;
       setActiveDestination(nextDestination);
+      setTopicVisibility(null);
       setSettingsVisibility(false);
       restoreScroll(nextDestination, platformRef.current);
 
-      if (wasSettingsOpen) {
-        window.requestAnimationFrame(() => settingsOpenerRef.current?.focus());
+      if (wasSettingsOpen || wasTopicOpen) {
+        window.requestAnimationFrame(() => {
+          if (wasSettingsOpen) settingsOpenerRef.current?.focus();
+          else topicOpenerRef.current?.focus();
+        });
       }
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [expandNavigation, restoreScroll, saveScroll, setSettingsVisibility]);
+  }, [
+    expandNavigation,
+    restoreScroll,
+    saveScroll,
+    setSettingsVisibility,
+    setTopicVisibility,
+  ]);
 
   useLayoutEffect(() => {
-    if (settingsOpen) {
-      settingsBackRef.current?.focus();
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
-    }
-    return undefined;
-  }, [settingsOpen]);
+    if (!settingsOpen && activeTopicId === null) return undefined;
+    if (settingsOpen) settingsBackRef.current?.focus();
+    else topicBackRef.current?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [activeTopicId, settingsOpen]);
 
   useEffect(
     () => () => {
@@ -563,11 +692,17 @@ export const ProductShell = ({
 
   const contextValue: ProductShellContextValue = {
     activeDestination,
+    activeTopicId,
+    closeTopic,
     feedLayout,
+    openTopic,
     orientation,
     platform,
+    readActiveScrollTop,
+    restoreActiveScrollTop,
     theme,
   };
+  const ownedOverlayOpen = settingsOpen || activeTopicId !== null;
 
   return (
     <ProductShellContext.Provider value={contextValue}>
@@ -583,20 +718,21 @@ export const ProductShell = ({
         data-platform={platform}
         data-product-shell=""
         data-settings-open={settingsOpen ? "true" : "false"}
+        data-topic-open={activeTopicId === null ? "false" : "true"}
         data-theme-preference={theme}
       >
         <div
-          aria-hidden={settingsOpen || undefined}
+          aria-hidden={ownedOverlayOpen || undefined}
           className={styles.primaryLayer}
           data-product-primary-layer=""
-          inert={settingsOpen || undefined}
+          inert={ownedOverlayOpen || undefined}
         >
           <PrimaryNavigationPager
             activeDestination={activeDestination}
             calligraphy={calligraphy}
             home={home}
             inscriptions={inscriptions}
-            navigationHidden={settingsOpen}
+            navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
             onNavigationExpand={expandNavigation}
             onDestinationChange={commitDestination}
@@ -625,6 +761,14 @@ export const ProductShell = ({
             theme={theme}
           />
         ) : null}
+
+        {activeTopicId === null || renderTopicOverlay === undefined
+          ? null
+          : renderTopicOverlay({
+              backButtonRef: topicBackRef,
+              onClose: closeTopic,
+              topicId: activeTopicId,
+            })}
 
         <LoadingScreen
           active={bootPending}

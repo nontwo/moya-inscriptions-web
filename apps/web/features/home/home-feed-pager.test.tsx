@@ -1,0 +1,194 @@
+// @vitest-environment jsdom
+
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { HomeFeedPager } from "./home-feed-pager";
+
+import type { Root } from "react-dom/client";
+import type { HomeFeed } from "./home-feed";
+
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+const roots: Root[] = [];
+
+const renderPager = (
+  onCommit = vi.fn<(feed: HomeFeed) => void>(),
+  platform: "phone" | "tablet" | "pc" = "phone",
+) => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+  act(() => {
+    root.render(
+      <HomeFeedPager
+        activeFeed="discover"
+        onCommit={onCommit}
+        panels={{
+          discover: <button type="button">Discover action</button>,
+          nearby: <p>Nearby panel</p>,
+          topics: <p>Topics panel</p>,
+        }}
+        platform={platform}
+      />,
+    );
+  });
+  const frame = container.querySelector<HTMLElement>("[data-home-feed-pager]")!;
+  Object.defineProperty(frame, "clientWidth", {
+    configurable: true,
+    value: 400,
+  });
+  Object.defineProperty(frame, "setPointerCapture", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  return { container, frame, onCommit };
+};
+
+const dispatchPointer = (
+  target: HTMLElement,
+  type: string,
+  clientX: number,
+  clientY: number,
+  timeStamp: number,
+  pointerId = 1,
+  isPrimary = true,
+) => {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX,
+    clientY,
+  });
+  Object.defineProperties(event, {
+    isPrimary: { value: isPrimary },
+    pointerId: { value: pointerId },
+    timeStamp: { value: timeStamp },
+  });
+  act(() => target.dispatchEvent(event));
+  return event;
+};
+
+describe("HomeFeedPager", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) =>
+        window.setTimeout(() => callback(performance.now()), 0),
+    });
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: (id: number) => window.clearTimeout(id),
+    });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false })),
+    });
+  });
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) {
+      act(() => root.unmount());
+    }
+    document.body.replaceChildren();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it("follows only the Home content after horizontal lock and commits once after release", () => {
+    const { container, frame, onCommit } = renderPager();
+    const discover = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="discover"]',
+    )!;
+    const focus = container.querySelector<HTMLButtonElement>("button")!;
+    const activation = vi.fn();
+    focus.addEventListener("click", activation);
+    focus.focus();
+    const historyBefore = window.history.state;
+    const urlBefore = window.location.href;
+
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    dispatchPointer(frame, "pointermove", 120, 104, 110);
+
+    expect(frame.dataset.homePagerFollowing).toBe("true");
+    expect(discover.getAttribute("aria-hidden")).toBe("false");
+    expect(discover.hasAttribute("hidden")).toBe(false);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(window.history.state).toBe(historyBefore);
+    expect(window.location.href).toBe(urlBefore);
+    expect(document.activeElement).toBe(focus);
+
+    dispatchPointer(frame, "pointerup", 120, 104, 130);
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => focus.click());
+    expect(activation).not.toHaveBeenCalled();
+    act(() => focus.click());
+    expect(activation).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(380));
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+
+  it.each(["pointercancel", "lostpointercapture"])(
+    "rebounds with zero commit on %s",
+    (eventType) => {
+      const { frame, onCommit } = renderPager();
+      dispatchPointer(frame, "pointerdown", 320, 100, 10);
+      dispatchPointer(frame, "pointermove", 120, 102, 100);
+      act(() => frame.dispatchEvent(new Event(eventType, { bubbles: true })));
+      act(() => vi.runAllTimers());
+      expect(onCommit).not.toHaveBeenCalled();
+      expect(frame.dataset.homePagerFollowing).toBe("false");
+    },
+  );
+
+  it("interrupts on a second pointer and leaves diagonal input native", () => {
+    const { frame, onCommit } = renderPager();
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    dispatchPointer(frame, "pointerdown", 300, 100, 20, 2, false);
+    act(() => vi.runAllTimers());
+    expect(onCommit).not.toHaveBeenCalled();
+
+    dispatchPointer(frame, "pointerdown", 320, 100, 500);
+    const diagonal = dispatchPointer(frame, "pointermove", 270, 52, 550);
+    dispatchPointer(frame, "pointerup", 270, 52, 570);
+    expect(diagonal.defaultPrevented).toBe(false);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("settles immediately under reduced motion", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: true })),
+    });
+    const { frame, onCommit } = renderPager();
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    dispatchPointer(frame, "pointermove", 120, 100, 100);
+    dispatchPointer(frame, "pointerup", 120, 100, 120);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(frame.dataset.homePagerFollowing).toBe("false");
+  });
+
+  it("changes at most one feed for one explicit PC wheel gesture", () => {
+    const { frame, onCommit } = renderPager(vi.fn(), "pc");
+    for (const deltaX of [42, 31, 18]) {
+      act(() =>
+        frame.dispatchEvent(
+          new WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            deltaX,
+            deltaY: 2,
+          }),
+        ),
+      );
+    }
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+});

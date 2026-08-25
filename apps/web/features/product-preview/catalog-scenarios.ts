@@ -1,11 +1,12 @@
 import type { HomeCatalogState } from "../home/catalog-state";
+import type { HomeSurfaceData } from "../home/home-feed";
 
 export type T02pDevelopmentCatalogScenario =
   "visual" | "small-populated" | "empty" | "unavailable" | "unexpected-error";
 
 export interface T02pDevelopmentCatalogDestinationStates {
   readonly calligraphy: HomeCatalogState;
-  readonly home: HomeCatalogState;
+  readonly home: HomeSurfaceData;
   readonly inscriptions: HomeCatalogState;
 }
 

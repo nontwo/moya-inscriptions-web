@@ -8,11 +8,16 @@ const supportRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(supportRoot, "../../..");
 const sourceWebRoot = join(repositoryRoot, "apps/web");
 
-const uiBuild = spawnSync("pnpm", ["--filter", "@moya/ui", "build"], {
-  cwd: repositoryRoot,
-  env: process.env,
-  stdio: "inherit",
-});
+const typescriptCli = join(repositoryRoot, "node_modules/typescript/bin/tsc");
+const uiBuild = spawnSync(
+  process.execPath,
+  [typescriptCli, "-p", join(repositoryRoot, "packages/ui/tsconfig.json")],
+  {
+    cwd: repositoryRoot,
+    env: process.env,
+    stdio: "inherit",
+  },
+);
 
 if (uiBuild.error) throw uiBuild.error;
 if (uiBuild.status !== 0) {
