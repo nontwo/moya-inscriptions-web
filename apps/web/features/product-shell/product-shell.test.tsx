@@ -149,6 +149,128 @@ describe("ProductShell", () => {
     ).toBe(false);
   });
 
+  it("preserves navigation, icon, and label node identity across destination, Settings, and orientation updates", async () => {
+    const { container } = renderProductShell();
+    await act(async () => vi.runAllTimers());
+    const navigation = container.querySelector<HTMLElement>(
+      "[data-primary-navigation]",
+    )!;
+    const icons = Array.from(
+      navigation.querySelectorAll("[data-primary-navigation-inline-icon]"),
+    );
+    const labels = Array.from(
+      navigation.querySelectorAll("[data-primary-navigation-inline-label]"),
+    );
+
+    click(buttonByLabel(container, "碑刻"));
+    await act(async () => vi.runAllTimers());
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+    expect(
+      Array.from(
+        navigation.querySelectorAll("[data-primary-navigation-inline-icon]"),
+      ),
+    ).toEqual(icons);
+    expect(
+      Array.from(
+        navigation.querySelectorAll("[data-primary-navigation-inline-label]"),
+      ),
+    ).toEqual(labels);
+
+    click(buttonByLabel(container, "打开设置"));
+    await act(async () => vi.runAllTimers());
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+
+    act(() => window.dispatchEvent(new Event("orientationchange")));
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+  });
+
+  it("minimizes only after downward intent and expands after the canonical idle period", async () => {
+    const { container } = renderProductShell();
+    await act(async () => vi.runAllTimers());
+    const shell = container.querySelector<HTMLElement>("[data-product-shell]")!;
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+
+    act(() => {
+      home.scrollTop = 6;
+      home.dispatchEvent(new Event("scroll"));
+    });
+    expect(shell.dataset.primaryNavigationMinimized).toBe("false");
+
+    act(() => {
+      home.scrollTop = 18;
+      home.dispatchEvent(new Event("scroll"));
+    });
+    expect(shell.dataset.primaryNavigationMinimized).toBe("true");
+    expect(
+      container
+        .querySelector("[data-primary-navigation]")
+        ?.getAttribute("data-minimized"),
+    ).toBe("true");
+
+    act(() => vi.advanceTimersByTime(399));
+    expect(shell.dataset.primaryNavigationMinimized).toBe("true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(shell.dataset.primaryNavigationMinimized).toBe("false");
+  });
+
+  it("keeps keyboard focus on a visible current item when navigation minimizes", async () => {
+    const { container } = renderProductShell();
+    await act(async () => vi.runAllTimers());
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    buttonByLabel(container, "碑刻").focus();
+
+    act(() => {
+      home.scrollTop = 12;
+      home.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(document.activeElement).toBe(buttonByLabel(container, "首页"));
+    expect(
+      container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-primary-navigation-minimized"),
+    ).toBe("true");
+  });
+
+  it("expands the minimized current control without changing destination or history", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const { container } = renderProductShell();
+    await act(async () => vi.runAllTimers());
+    replaceState.mockClear();
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+
+    act(() => {
+      home.scrollTop = 12;
+      home.dispatchEvent(new Event("scroll"));
+    });
+    expect(
+      container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-primary-navigation-minimized"),
+    ).toBe("true");
+
+    click(buttonByLabel(container, "首页"));
+    expect(
+      container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-primary-navigation-minimized"),
+    ).toBe("false");
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(document.activeElement === document.body).toBe(true);
+  });
+
   it("owns Settings history, inertness, Back restoration, and opener focus", async () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const { container } = renderProductShell();

@@ -88,4 +88,30 @@ describe("design-system material boundary", () => {
     );
     expect(ids).toEqual(["home", "inscriptions", "calligraphy"]);
   });
+
+  it("keeps R02 navigation contours tied to the accepted repository assets", async () => {
+    const navigationSource = await readFile(
+      new URL(
+        "apps/web/features/shell/primary-bottom-navigation.tsx",
+        repoRoot,
+      ),
+      "utf8",
+    );
+
+    for (const name of ["home", "inscriptions", "calligraphy"] as const) {
+      const iconSource = await readFile(
+        new URL(`packages/ui/src/assets/icons/${name}.svg`, repoRoot),
+        "utf8",
+      );
+      const iconPath = iconSource.match(/<path d="([^"]+)"/u)?.[1];
+      if (iconPath === undefined) throw new Error(`Missing ${name} icon path`);
+      expect(navigationSource).toContain(JSON.stringify(iconPath));
+      expect(navigationSource).toContain(
+        `@moya/ui/assets/labels/nav-${name}.png`,
+      );
+    }
+
+    expect(navigationSource).not.toContain("<Icon name={icon}");
+    expect(navigationSource).not.toContain("<FixedLabelMark");
+  });
 });

@@ -16,7 +16,11 @@
     var(--primary-navigation-item-count),
     minmax(0, 1fr)
   );
-  width: auto;
+  box-sizing: border-box;
+  width: min(
+    calc(100% - (var(--primary-navigation-side-gap) * 2)),
+    var(--primary-navigation-max-width)
+  );
   max-width: var(--primary-navigation-max-width);
   min-height: var(--primary-navigation-min-height);
   margin-inline: auto;
@@ -24,11 +28,24 @@
   overflow: hidden;
   border-radius: calc(var(--yoyi-radius-full) / 2);
   touch-action: pan-y;
+  transition:
+    width 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    min-height 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    padding 520ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .bubble {
   position: absolute;
-  z-index: 0;
+  z-index: 1;
   top: var(--yoyi-space-2);
   bottom: var(--yoyi-space-2);
   left: var(--yoyi-space-2);
@@ -56,7 +73,7 @@
 
 .entry {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   width: 100%;
   min-width: 0;
   min-height: var(--primary-navigation-min-height);
@@ -82,28 +99,71 @@
   line-height: 0;
 }
 
-.iconWrap :global(.yoyi-icon) {
+.inlineIcon {
+  display: block;
   width: 23px;
   height: 23px;
+  overflow: visible;
 }
 
-.entry :global(.yoyi-fixed-label) {
+.labelMark {
+  display: block;
+  flex: 0 0 auto;
   width: 44px;
   height: 20px;
+  overflow: visible;
 }
 
-:global(html[data-theme="dark"])
-  .entry[data-selected="true"]
-  :global(.yoyi-fixed-label) {
+.labelMask {
+  mask-type: alpha;
+}
+
+:global(html[data-theme="dark"]) .entry[data-selected="true"] .labelMark {
   color: var(--yoyi-color-text-primary);
 }
 
 @media (prefers-color-scheme: dark) {
   :global(html:not([data-theme="light"]))
     .entry[data-selected="true"]
-    :global(.yoyi-fixed-label) {
+    .labelMark {
     color: var(--yoyi-color-text-primary);
   }
+}
+
+.navigation[data-minimized="true"] {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  grid-template-columns: 1fr;
+  border-radius: var(--yoyi-radius-full);
+  touch-action: manipulation;
+  transition-duration: 420ms;
+  transition-timing-function: cubic-bezier(0.33, 0, 0.2, 1);
+}
+
+.navigation[data-minimized="true"] .bubble,
+.navigation[data-minimized="true"] .entry:not([data-selected="true"]) {
+  display: none;
+}
+
+.navigation[data-minimized="true"] .entry[data-selected="true"] {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  gap: 0;
+  color: var(--yoyi-color-seal-red);
+  pointer-events: none;
+}
+
+.navigation[data-minimized="true"] .labelMark {
+  display: none;
+}
+
+.navigation[data-minimized="true"] .inlineIcon,
+.navigation[data-minimized="true"] .iconWrap {
+  width: 22px;
+  height: 22px;
 }
 
 @media (min-width: 48rem) {
@@ -114,13 +174,25 @@
   }
 
   .navigation[data-platform="tablet"] .iconWrap,
-  .navigation[data-platform="tablet"] .iconWrap :global(.yoyi-icon) {
+  .navigation[data-platform="tablet"] .inlineIcon {
     width: 21px;
     height: 21px;
+  }
+
+  .navigation[data-platform="tablet"][data-minimized="true"] .iconWrap,
+  .navigation[data-platform="tablet"][data-minimized="true"] .inlineIcon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .navigation[data-platform="tablet"][data-minimized="true"] {
+    height: 44px;
+    min-height: 44px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .navigation,
   .bubble {
     transition-duration: 1ms;
   }
