@@ -373,6 +373,42 @@ describe("public privacy scanner", () => {
     );
   });
 
+  it.each([
+    ["CLIENT", "SECRET"],
+    ["API", "TOKEN"],
+    ["DATABASE", "PASSWORD"],
+  ])("rejects prefixed credential key %s_%s", (prefix, suffix) => {
+    const key = [prefix, suffix].join("_");
+    const value = ["actual", "credential", "material", "123456"].join("-");
+    expect(scanText([key, value].join("="))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "credential-assignment" }),
+      ]),
+    );
+  });
+
+  it("rejects a credential value placed on the next line", () => {
+    const key = ["to", "ken"].join("");
+    const value = ["actual", "credential", "material", "123456"].join("-");
+    expect(
+      scanText([["const", key].join(" ") + " =", `"${value}"`].join("\n")),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "credential-assignment" }),
+      ]),
+    );
+  });
+
+  it("requires environment references to occupy the complete value", () => {
+    const key = ["to", "ken"].join("");
+    const value = ["process.env.PUBLIC_TOKEN", "actual-secret"].join("-");
+    expect(scanText([key, value].join(" = "))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "credential-assignment" }),
+      ]),
+    );
+  });
+
   it("rejects token-only authenticated URLs", () => {
     const userinfo = ["private", "access", "material"].join("-");
     const url = [`https://${userinfo}`, "10.0.0.2/archive"].join("@");
@@ -404,11 +440,22 @@ describe("public privacy scanner", () => {
     const storage = ["private storage: s3:/", "archive-bucket", "source"].join(
       "/",
     );
+    const bitbucket = [
+      "private repository: https://bitbucket.org",
+      "team",
+      "data",
+    ].join("/");
+    const researchExport = [
+      ["Private", "research", "export"].join(" "),
+      "research/raw/source-export.xlsx",
+    ].join(": ");
     const certificate = ["-----BEGIN", "CERTIFICATE-----"].join(" ");
     const text = [
       gitlab,
+      bitbucket,
       storage,
       ["private_export_path", "/srv/archive/export.xlsx"].join(": "),
+      researchExport,
       certificate,
     ].join("\n");
     expect(scanText(text)).toEqual(
@@ -560,6 +607,36 @@ describe("public privacy scanner", () => {
     );
   });
 
+  it("rejects renaming the frozen legacy boundary even when bytes are unchanged", () => {
+    const repository = createRepository();
+    const boundaryDirectory = path.join(
+      repository,
+      "docs",
+      "governance",
+      "privacy",
+    );
+    mkdirSync(boundaryDirectory, { recursive: true });
+    cpSync(
+      path.join(
+        sourceRepositoryRoot,
+        "docs/governance/privacy/legacy-public-ref-boundary.json",
+      ),
+      path.join(boundaryDirectory, "legacy-public-ref-boundary.json"),
+    );
+    runGit(repository, ["add", "docs/governance/privacy"]);
+    runGit(repository, ["commit", "-q", "-m", "test: add frozen boundary"]);
+    runGit(repository, [
+      "mv",
+      "docs/governance/privacy/legacy-public-ref-boundary.json",
+      "docs/governance/privacy/moved-boundary.json",
+    ]);
+    expect(scanStaged({ cwd: repository })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "legacy-boundary-modification" }),
+      ]),
+    );
+  });
+
   it("scans only added text when a safe edit touches accepted legacy text", () => {
     const repository = createRepository();
     writeFileSync(
@@ -577,6 +654,26 @@ describe("public privacy scanner", () => {
     runGit(repository, ["commit", "-q", "-m", "test: safe clarification"]);
     const head = runGit(repository, ["rev-parse", "HEAD"]);
     expect(scanRange(base, head, { cwd: repository })).toEqual([]);
+  });
+
+  it("scans an added content line that begins with two plus signs", () => {
+    const repository = createRepository();
+    writeFileSync(path.join(repository, "fixture.txt"), "safe baseline\n");
+    runGit(repository, ["add", "fixture.txt"]);
+    runGit(repository, ["commit", "-q", "-m", "test: text baseline"]);
+    const base = runGit(repository, ["rev-parse", "HEAD"]);
+    writeFileSync(
+      path.join(repository, "fixture.txt"),
+      `safe baseline\n++${macPath}\n`,
+    );
+    runGit(repository, ["add", "fixture.txt"]);
+    runGit(repository, ["commit", "-q", "-m", "test: plus-prefixed line"]);
+    const head = runGit(repository, ["rev-parse", "HEAD"]);
+    expect(scanRange(base, head, { cwd: repository })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "personal-path" }),
+      ]),
+    );
   });
 
   it("rejects a stale branch that reintroduces private provenance", () => {
@@ -635,6 +732,24 @@ describe("public privacy scanner", () => {
       );
       expect(protectedReport).not.toContain(protectedValue);
     }
+
+    const sensitiveTargets = [
+      [
+        ["private", "export", "path"].join("_"),
+        "/srv/private/export.xlsx",
+      ].join("="),
+      [["home", "address"].join(" "), "123 Main Street"].join("="),
+      [["passport", "number"].join(" "), "A12345678"].join("="),
+    ];
+    for (const sensitiveTarget of sensitiveTargets) {
+      const protectedReport = formatFindings(
+        scanFilename(`reports/${sensitiveTarget}.txt`),
+      );
+      expect(protectedReport).not.toContain(sensitiveTarget);
+      expect(protectedReport).not.toContain("Main Street");
+      expect(protectedReport).not.toContain("A12345678");
+      expect(protectedReport).not.toContain("/srv/private/export.xlsx");
+    }
   });
 
   it("reruns Public Safety when PR title or body metadata is edited", () => {
@@ -654,6 +769,15 @@ describe("public privacy scanner", () => {
       ]),
     );
     expect(scanBinaryMetadata(unsafePathPng, "artifact.png")).not.toEqual([]);
+  });
+
+  it.each(["Contact", "Account"])("rejects personal %s metadata", (keyword) => {
+    const image = pngWithText(keyword, "sample-owner");
+    expect(scanBinaryMetadata(image, "artifact.png")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "personal-document-author" }),
+      ]),
+    );
   });
 
   it("accepts clean image metadata", () => {

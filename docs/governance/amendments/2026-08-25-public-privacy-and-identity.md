@@ -125,6 +125,13 @@ request heads that existed when this amendment was introduced.
   commit.
 - Changed content must never reintroduce cleaned private paths or locators.
 
+GitHub resolves a tag-triggered workflow from the tagged revision, so a tag
+pointing to pre-amendment history cannot be made reliably self-scanning. The
+active repository tag ruleset therefore blocks creation, update, deletion, and
+non-fast-forward changes for all public tag refs with no bypass actor. New tags
+remain denied unless the Owner explicitly replaces that control with an equally
+enforceable default-branch-anchored validation mechanism.
+
 Before the next substantive update to a branch created before this amendment,
 the responsible agent must:
 

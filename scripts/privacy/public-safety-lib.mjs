@@ -249,7 +249,7 @@ export function scanText(text, options = {}) {
   }
 
   const assignmentExpression =
-    /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*(?:"([^",\r\n][^"\r\n]*)"(?=$|[ \t,;}])|'([^',\r\n][^'\r\n]*)'(?=$|[ \t,;}])|([^\s,"'`;}{][^\s,`;}{]*))/giu;
+    /\b((?:[A-Za-z0-9]+[_-])*(?:password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)(?:[_-][A-Za-z0-9]+)*)\b[ \t]*[:=](?:[ \t\r\n]*"([^",\r\n][^"\r\n]*)"(?=$|[ \t,;}])|[ \t\r\n]*'([^',\r\n][^'\r\n]*)'(?=$|[ \t,;}])|[ \t]*([^\s,"'`;}{][^\s,"'`;}{]*))/giu;
   for (const match of collectMatches(text, assignmentExpression)) {
     const value = match[2] ?? match[3] ?? match[4] ?? "";
     const safeSynthetic =
@@ -260,7 +260,9 @@ export function scanText(text, options = {}) {
       ) ||
       /^\$\{[A-Z_][A-Z0-9_]*\}$/u.test(value) ||
       /^<[^>]+>$|^\{\{[^}]+\}\}$/u.test(value) ||
-      /^(?:process|Deno)\.env(?:\.|\[)/u.test(value) ||
+      /^(?:process\.env(?:\.[A-Z_][A-Z0-9_]*|\[["'][A-Z_][A-Z0-9_]*["']\])|Deno\.env\.get\(["'][A-Z_][A-Z0-9_]*["']\))$/u.test(
+        value,
+      ) ||
       /^(?:example\.invalid|localhost|127\.0\.0\.1)$/iu.test(value);
     if (!safeSynthetic) {
       findings.push(
@@ -323,7 +325,21 @@ export function scanText(text, options = {}) {
 
   for (const match of collectMatches(
     text,
-    /(?:private|non[- ]public).{0,80}(?:github|gitlab)\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/giu,
+    /(?:private|non[- ]public).{0,80}(?:github\.com|gitlab\.com|bitbucket\.org)[A-Za-z0-9_.:/@-]*[/:][A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?/giu,
+  )) {
+    findings.push(
+      finding(
+        "private-repository-locator",
+        target,
+        lineNumberAt(text, match.index),
+        "replace the repository locator with neutral provenance",
+      ),
+    );
+  }
+
+  for (const match of collectMatches(
+    text,
+    /\b(?:private|non[- ]public)[ _-]+(?:source[ _-]+)?(?:repository|repo)(?:[ _-]+(?:locator|url|slug))?\b[ \t]*[:=][ \t]*(?:(?:https?|ssh):\/\/[^/\s"']+\/[^/\s"']+\/[^\s"']+|git@[^:\s"']+:[^/\s"']+\/[^\s"']+|[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/giu,
   )) {
     findings.push(
       finding(
@@ -351,7 +367,7 @@ export function scanText(text, options = {}) {
 
   for (const match of collectMatches(
     text,
-    /\bprivate[ _-](?:export|storage|dataset|artifact|source)[ _-](?:path|file|locator|url|bucket)\b[ \t]*[:=][ \t]*\S+/giu,
+    /\bprivate[ _-](?:research[ _-])?(?:export|evidence(?:[ _-]store)?|storage|dataset|artifact|database|sqlite|source)(?:[ _-](?:path|file|locator|url|bucket))?\b[ \t]*[:=][ \t]*(?:(?:s3:\/\/|file:\/\/|\/|[A-Z]:\\|(?:\.{0,2}\/)?[A-Za-z0-9_.-]+[/\\])[^\s"',]+|[^\s"',]+\.(?:csv|xlsx|xlsm|sqlite|db|zip|json))/giu,
   )) {
     findings.push(
       finding(
@@ -845,7 +861,7 @@ function scanMetadataText(text, target, privatePatterns) {
   const authorExpressions = [
     /<(?:dc:creator|cp:lastModifiedBy|Company|Manager)[^>]*>\s*([^<]+)\s*</giu,
     /\/(?:Author|Creator)\s*\(([^)]+)\)/giu,
-    /\b(?:Author|Artist|Creator|Owner(?:Name)?|DeviceOwner|Company|Manager)(?:\[\d+\])?\s*[:=]\s*([^\r\n;]+)/giu,
+    /\b(?:Author|Artist|Creator|Owner(?:Name)?|DeviceOwner|Company|Manager|Contact|Account(?:Name)?)(?:\[\d+\])?\s*[:=]\s*([^\r\n;]+)/giu,
   ];
   for (const expression of authorExpressions) {
     for (const match of text.matchAll(expression)) {
@@ -1187,11 +1203,20 @@ function addedTextForChange(change, revision, baseRevision, cwd) {
     ].filter(Boolean),
     { cwd },
   );
-  return result.stdout
-    .split("\n")
-    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
-    .map((line) => line.slice(1))
-    .join("\n");
+  const addedLines = [];
+  let inHunk = false;
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      continue;
+    }
+    if (inHunk && line.startsWith("+")) addedLines.push(line.slice(1));
+  }
+  return addedLines.join("\n");
 }
 
 function scanChanges(changes, revision, cwd, privatePatterns, baseRevision) {
@@ -1209,6 +1234,7 @@ function scanChanges(changes, revision, cwd, privatePatterns, baseRevision) {
       .some(
         (filename) => filename.replaceAll("\\", "/") === LEGACY_BOUNDARY_PATH,
       );
+    const renamesBoundary = change.status.startsWith("R") && touchesBoundary;
     if (change.status.startsWith("D")) {
       if (touchesBoundary) {
         findings.push(
@@ -1234,7 +1260,10 @@ function scanChanges(changes, revision, cwd, privatePatterns, baseRevision) {
       );
       continue;
     }
-    if (touchesBoundary && sha256(buffer) !== LEGACY_BOUNDARY_SHA256) {
+    if (
+      touchesBoundary &&
+      (renamesBoundary || sha256(buffer) !== LEGACY_BOUNDARY_SHA256)
+    ) {
       findings.push(
         finding(
           "legacy-boundary-modification",
@@ -1586,7 +1615,13 @@ export function formatFindings(findings) {
   if (findings.length === 0) return "PUBLIC-SAFETY PASS";
   const lines = ["PUBLIC-SAFETY FAIL"];
   for (const item of findings) {
-    const redactedTarget = redactForOutput(item.target);
+    const fullyRedactTarget =
+      /^(?:machine-local-pattern|personal-email|personal-path|private-key|credential-token|authenticated-url|credential-assignment|production-connection-string|regulated-personal-data|private-repository-locator|private-storage-locator|private-export-locator|private-research-commit|certificate-material|raw-environment-dump|unsafe-filename-|unsafe-screenshot-filename)/u.test(
+        item.kind,
+      );
+    const redactedTarget = fullyRedactTarget
+      ? "[REDACTED_TARGET]"
+      : redactForOutput(item.target);
     const location = item.line
       ? `${redactedTarget}:${item.line}`
       : redactedTarget;
@@ -1629,7 +1664,7 @@ function redactForOutput(value) {
     .replace(/\bxox[baprs]-[A-Za-z0-9-]{12,}\b/gu, "[REDACTED_TOKEN]")
     .replace(/\b[0-9a-f]{40,64}\b/giu, "[REDACTED_OBJECT]")
     .replace(
-      /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/giu,
+      /\b((?:[A-Za-z0-9]+[_-])*(?:password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)(?:[_-][A-Za-z0-9]+)*)\b[ \t]*[:=][ \t]*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/giu,
       "$1=[REDACTED_CREDENTIAL]",
     )
     .replace(/\+?[0-9][0-9 ()-]{7,}[0-9]/gu, (candidate) => {
