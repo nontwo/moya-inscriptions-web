@@ -642,6 +642,7 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
     pointerType: "touch",
   });
   await expect(pager).toHaveAttribute("data-home-pager-following", "true");
+  await expect(pager).toHaveAttribute("data-home-pager-dragging", "false");
   await expect(
     home.locator('[data-home-feed-panel="nearby"]'),
   ).not.toHaveAttribute("hidden", "");
@@ -657,6 +658,7 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
     pointerId: 41,
     pointerType: "touch",
   });
+  await expect(pager).toHaveAttribute("data-home-pager-dragging", "true");
   await expect(pager).toHaveAttribute("data-home-pager-following", "true");
   await expect(home).toHaveAttribute("data-active-home-feed", "discover");
   await expect(productShell(surface)).toHaveAttribute(
@@ -671,6 +673,7 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
     pointerId: 41,
     pointerType: "touch",
   });
+  await expect(pager).toHaveAttribute("data-home-pager-dragging", "false");
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
 
   await pager.dispatchEvent("pointerdown", {

@@ -64,6 +64,7 @@ export const HomeFeedPager = ({
   const wheelTimerRef = useRef<number | null>(null);
   const wheelCommittedRef = useRef(false);
   const suppressClickUntilRef = useRef(0);
+  const [dragging, setDragging] = useState(false);
   const [following, setFollowing] = useState(false);
   const [settling, setSettling] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -110,6 +111,7 @@ export const HomeFeedPager = ({
     clearSettleWork();
     const pendingFeed = pendingFeedRef.current;
     pendingFeedRef.current = null;
+    setDragging(false);
     setFollowing(false);
     setSettling(false);
     setOffset(0);
@@ -120,6 +122,7 @@ export const HomeFeedPager = ({
   };
 
   const clearPreparedGesture = () => {
+    setDragging(false);
     setFollowing(false);
     setSettling(false);
     setOffset(0);
@@ -142,6 +145,7 @@ export const HomeFeedPager = ({
     clearSettleWork();
     gestureRef.current = null;
     pendingFeedRef.current = null;
+    setDragging(false);
     setSettling(true);
     setOffset(0);
     settleFrameRef.current = window.requestAnimationFrame(() => {
@@ -176,6 +180,7 @@ export const HomeFeedPager = ({
         // Pointer capture is optional; window-level cancellation still rebounds.
       }
       const tracking = pointerTrackingRef.current;
+      setDragging(true);
       if (tracking !== null && tracking.mode === "peek") {
         window.removeEventListener("pointermove", tracking.move);
         tracking.mode = "active";
@@ -208,6 +213,7 @@ export const HomeFeedPager = ({
     if (gesture === null || gesture.pointerId !== event.pointerId) return;
     stopPointerTracking();
     gestureRef.current = null;
+    setDragging(false);
     try {
       if (frameRef.current?.hasPointerCapture?.(event.pointerId)) {
         frameRef.current.releasePointerCapture?.(event.pointerId);
@@ -269,6 +275,7 @@ export const HomeFeedPager = ({
       frameRef.current.style.height = `${height}px`;
     }
     setFollowing(true);
+    setDragging(false);
     setSettling(false);
     setOffset(0);
     const tracking: PointerTracking = {
@@ -304,6 +311,7 @@ export const HomeFeedPager = ({
       ref={frameRef}
       className={styles.pagerFrame}
       data-home-feed-pager=""
+      data-home-pager-dragging={dragging ? "true" : "false"}
       data-home-pager-following={following ? "true" : "false"}
       data-home-pager-settling={settling ? "true" : "false"}
       onClickCapture={(event) => {

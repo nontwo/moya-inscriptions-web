@@ -117,8 +117,10 @@ describe("HomeFeedPager", () => {
     const urlBefore = window.location.href;
 
     dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    expect(frame.dataset.homePagerDragging).toBe("false");
     dispatchPointer(frame, "pointermove", 120, 104, 110);
 
+    expect(frame.dataset.homePagerDragging).toBe("true");
     expect(frame.dataset.homePagerFollowing).toBe("true");
     expect(discover.getAttribute("aria-hidden")).toBe("false");
     expect(discover.hasAttribute("hidden")).toBe(false);
@@ -129,6 +131,7 @@ describe("HomeFeedPager", () => {
     expect(track.style.transform).toContain("-200px");
 
     dispatchPointer(frame, "pointerup", 120, 104, 130);
+    expect(frame.dataset.homePagerDragging).toBe("false");
     expect(onCommit).not.toHaveBeenCalled();
     act(() => focus.click());
     expect(activation).not.toHaveBeenCalled();
@@ -151,6 +154,7 @@ describe("HomeFeedPager", () => {
     dispatchPointer(frame, "pointerdown", 320, 100, 10);
 
     expect(frame.dataset.homePagerFollowing).toBe("true");
+    expect(frame.dataset.homePagerDragging).toBe("false");
     expect(nearby.hasAttribute("hidden")).toBe(false);
     expect(topics.hasAttribute("hidden")).toBe(false);
     expect(nearby.hasAttribute("inert")).toBe(true);

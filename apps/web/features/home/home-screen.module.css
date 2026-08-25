@@ -95,7 +95,7 @@
   will-change: transform;
 }
 
-.pagerFrame[data-home-pager-following="true"] .pagerTrack {
+.pagerFrame[data-home-pager-dragging="true"] .pagerTrack {
   user-select: none;
 }
 
