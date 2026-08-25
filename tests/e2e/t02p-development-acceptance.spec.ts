@@ -148,7 +148,44 @@ const readHomePanelEvidence = async (home: Locator, feed: HomeFeedName) =>
     const panelBox = panel.getBoundingClientRect();
     const masonryBox = masonry?.getBoundingClientRect();
     const anchorBox = anchor?.getBoundingClientRect();
-    return {
+    const items = Array.from(
+      masonry?.querySelectorAll<HTMLElement>("[data-home-masonry-item]") ?? [],
+    ).map((item) => {
+      const box = item.getBoundingClientRect();
+      return {
+        bottom: masonryBox === undefined ? null : box.bottom - masonryBox.top,
+        height: box.height,
+        left: masonryBox === undefined ? null : box.left - masonryBox.left,
+        top: masonryBox === undefined ? null : box.top - masonryBox.top,
+        width: box.width,
+      };
+    });
+    const images = Array.from(
+      panel.querySelectorAll<HTMLImageElement>("img"),
+    ).map((image) => ({
+      complete: image.complete,
+      currentSrc: image.currentSrc,
+      naturalHeight: image.naturalHeight,
+      naturalWidth: image.naturalWidth,
+    }));
+    const mediaStates = Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        "[data-catalog-media-state], [data-topic-cover-state]",
+      ),
+    ).map(
+      (element) =>
+        element.dataset.catalogMediaState ??
+        element.dataset.topicCoverState ??
+        "unknown",
+    );
+    const maxItemBottom = items.reduce(
+      (maximum, item) => Math.max(maximum, item.bottom ?? 0),
+      0,
+    );
+    const evidence = {
+      activeFeed:
+        panel.closest<HTMLElement>("[data-home-surface]")?.dataset
+          .activeHomeFeed ?? null,
       anchorX: anchorBox === undefined ? null : anchorBox.x - panelBox.x,
       anchorY:
         anchorBox === undefined
@@ -158,9 +195,38 @@ const readHomePanelEvidence = async (home: Locator, feed: HomeFeedName) =>
       layoutReady: masonry?.dataset.layoutReady ?? null,
       masonryColumns: masonry?.dataset.masonryColumns ?? null,
       masonryHeight: masonryBox?.height ?? null,
+      masonryHeightMinusMaxItemBottom:
+        masonryBox === undefined ? null : masonryBox.height - maxItemBottom,
       masonryWidth: masonryBox?.width ?? null,
+      maxItemBottom,
+      mediaStates,
+      images,
+      items,
+      layoutRetained: masonry?.hasAttribute("data-layout-retained") ?? false,
+      mediaTerminal: images.every(
+        (image) => image.complete && image.naturalWidth > 0,
+      ),
       scrollTop: panel.scrollTop,
       testIdentity: panel.dataset.testScrollIdentity ?? null,
+    };
+    return {
+      ...evidence,
+      structuralSignature: JSON.stringify({
+        activeFeed: evidence.activeFeed,
+        anchorX: evidence.anchorX,
+        anchorY: evidence.anchorY,
+        images: evidence.images,
+        items: evidence.items,
+        layoutReady: evidence.layoutReady,
+        layoutRetained: evidence.layoutRetained,
+        masonryColumns: evidence.masonryColumns,
+        masonryHeight: evidence.masonryHeight,
+        masonryHeightMinusMaxItemBottom:
+          evidence.masonryHeightMinusMaxItemBottom,
+        masonryWidth: evidence.masonryWidth,
+        mediaStates: evidence.mediaStates,
+        scrollTop: evidence.scrollTop,
+      }),
     };
   });
 
@@ -172,33 +238,51 @@ const waitForStableHomePanelEvidence = async (
   await panel.locator("img").evaluateAll((images) => {
     for (const image of images) (image as HTMLImageElement).loading = "eager";
   });
+  let previousSignature: string | null = null;
+  let stableFrameCount = 0;
   await expect
-    .poll(() =>
-      panel
-        .locator("img")
-        .evaluateAll((images) =>
-          images.every((image) => (image as HTMLImageElement).complete),
-        ),
+    .poll(
+      async () => {
+        await panel.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              requestAnimationFrame(() => resolve());
+            }),
+        );
+        const evidence = await readHomePanelEvidence(home, feed);
+        const geometrySettled =
+          evidence.masonryHeightMinusMaxItemBottom !== null &&
+          Math.abs(evidence.masonryHeightMinusMaxItemBottom) <= 2;
+        if (
+          evidence.activeFeed !== feed ||
+          evidence.layoutReady !== "true" ||
+          evidence.layoutRetained ||
+          !evidence.mediaTerminal ||
+          !geometrySettled
+        ) {
+          previousSignature = null;
+          stableFrameCount = 0;
+          return false;
+        }
+        stableFrameCount =
+          evidence.structuralSignature === previousSignature
+            ? stableFrameCount + 1
+            : 1;
+        previousSignature = evidence.structuralSignature;
+        return stableFrameCount >= 3;
+      },
+      { timeout: 15_000 },
     )
     .toBe(true);
-  let previousSignature: string | null = null;
-  await expect
-    .poll(async () => {
-      const evidence = await readHomePanelEvidence(home, feed);
-      if (evidence.layoutReady !== "true") return false;
-      const signature = JSON.stringify({
-        anchorX: evidence.anchorX,
-        anchorY: evidence.anchorY,
-        masonryColumns: evidence.masonryColumns,
-        masonryHeight: evidence.masonryHeight,
-        masonryWidth: evidence.masonryWidth,
-      });
-      const stable = signature === previousSignature;
-      previousSignature = signature;
-      return stable;
-    })
-    .toBe(true);
   return readHomePanelEvidence(home, feed);
+};
+
+const settleHomeFeedAndReadStableEvidence = async (
+  home: Locator,
+  feed: HomeFeedName,
+) => {
+  await nativeSettleHomeFeed(home, feed);
+  return waitForStableHomePanelEvidence(home, feed);
 };
 
 const masonryItemContaining = (masonry: Locator, selector: string) =>
@@ -1078,10 +1162,11 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   );
   await expect(home).toHaveAttribute("data-active-home-feed", "discover");
   const baseline = {
-    discover: await waitForStableHomePanelEvidence(home, "discover"),
-    nearby: await waitForStableHomePanelEvidence(home, "nearby"),
-    topics: await waitForStableHomePanelEvidence(home, "topics"),
+    discover: await settleHomeFeedAndReadStableEvidence(home, "discover"),
+    nearby: await settleHomeFeedAndReadStableEvidence(home, "nearby"),
+    topics: await settleHomeFeedAndReadStableEvidence(home, "topics"),
   };
+  await nativeSettleHomeFeed(home, "discover");
 
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
@@ -1164,11 +1249,15 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
     .toBe(saved.topics);
 
   const finalEvidence = {
-    discover: await waitForStableHomePanelEvidence(home, "discover"),
-    nearby: await waitForStableHomePanelEvidence(home, "nearby"),
-    topics: await waitForStableHomePanelEvidence(home, "topics"),
+    discover: await settleHomeFeedAndReadStableEvidence(home, "discover"),
+    nearby: await settleHomeFeedAndReadStableEvidence(home, "nearby"),
+    topics: await settleHomeFeedAndReadStableEvidence(home, "topics"),
   };
   for (const feed of feeds) {
+    const masonryHeightDelta = Math.abs(
+      (finalEvidence[feed].masonryHeight ?? 0) -
+        (baseline[feed].masonryHeight ?? 0),
+    );
     expect(
       Math.abs(finalEvidence[feed].scrollTop - saved[feed]),
     ).toBeLessThanOrEqual(2);
@@ -1183,12 +1272,7 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
           (baseline[feed].masonryWidth ?? 0),
       ),
     ).toBeLessThanOrEqual(2);
-    expect(
-      Math.abs(
-        (finalEvidence[feed].masonryHeight ?? 0) -
-          (baseline[feed].masonryHeight ?? 0),
-      ),
-    ).toBeLessThanOrEqual(2);
+    expect(masonryHeightDelta).toBeLessThanOrEqual(2);
     expect(
       Math.abs(
         (finalEvidence[feed].anchorX ?? 0) - (baseline[feed].anchorX ?? 0),
