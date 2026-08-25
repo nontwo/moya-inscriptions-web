@@ -641,6 +641,14 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
     pointerId: 41,
     pointerType: "touch",
   });
+  await expect(pager).toHaveAttribute("data-home-pager-following", "true");
+  await expect(
+    home.locator('[data-home-feed-panel="nearby"]'),
+  ).not.toHaveAttribute("hidden", "");
+  await expect(
+    home.locator('[data-home-feed-panel="topics"]'),
+  ).not.toHaveAttribute("hidden", "");
+  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
   await pointerContinuationTarget.dispatchEvent("pointermove", {
     bubbles: true,
     clientX: endX,

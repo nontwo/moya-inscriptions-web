@@ -54,6 +54,7 @@ export const HomeFeedPager = ({
   platform,
 }: HomeFeedPagerProps) => {
   const frameRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const activePanelRef = useRef<HTMLElement | null>(null);
   const gestureRef = useRef<PointerGesture | null>(null);
   const pointerTrackingRef = useRef<PointerTracking | null>(null);
@@ -118,6 +119,13 @@ export const HomeFeedPager = ({
     }
   };
 
+  const clearPreparedGesture = () => {
+    setFollowing(false);
+    setSettling(false);
+    setOffset(0);
+    if (frameRef.current !== null) frameRef.current.style.height = "";
+  };
+
   const cancelGesture = () => {
     const pointerId = gestureRef.current?.pointerId;
     stopPointerTracking();
@@ -159,13 +167,9 @@ export const HomeFeedPager = ({
       if (axis === "vertical") {
         gestureRef.current = null;
         stopPointerTracking();
+        clearPreparedGesture();
         return;
       }
-      const height = activePanelRef.current?.getBoundingClientRect().height;
-      if (frameRef.current !== null && height !== undefined && height > 0) {
-        frameRef.current.style.height = `${height}px`;
-      }
-      setFollowing(true);
       try {
         frameRef.current?.setPointerCapture(event.pointerId);
       } catch {
@@ -186,7 +190,17 @@ export const HomeFeedPager = ({
     if (trackingWasActive) event.preventDefault();
     gesture.lastX = event.clientX;
     gesture.lastTime = event.timeStamp;
-    setOffset(resistHomePagerEdge(deltaX, activeIndex, homeFeeds.length - 1));
+    const nextOffset = resistHomePagerEdge(
+      deltaX,
+      activeIndex,
+      homeFeeds.length - 1,
+    );
+    if (trackRef.current !== null) {
+      trackRef.current.style.transform = `translate3d(calc(${
+        -activeIndex * 100
+      }% + ${nextOffset}px), 0, 0)`;
+    }
+    setOffset(nextOffset);
   };
 
   const completeGesture = (event: PointerEvent) => {
@@ -201,7 +215,10 @@ export const HomeFeedPager = ({
     } catch {
       // Safari may release capture before pointerup reaches window.
     }
-    if (gesture.axis !== "horizontal") return;
+    if (gesture.axis !== "horizontal") {
+      clearPreparedGesture();
+      return;
+    }
     const width = Math.max(1, frameRef.current?.clientWidth ?? 1);
     const deltaX = event.clientX - gesture.startX;
     const elapsed = Math.max(1, event.timeStamp - gesture.startTime);
@@ -247,6 +264,13 @@ export const HomeFeedPager = ({
       startX: event.clientX,
       startY: event.clientY,
     };
+    const height = activePanelRef.current?.getBoundingClientRect().height;
+    if (frameRef.current !== null && height !== undefined && height > 0) {
+      frameRef.current.style.height = `${height}px`;
+    }
+    setFollowing(true);
+    setSettling(false);
+    setOffset(0);
     const tracking: PointerTracking = {
       cancel: () => cancelGesture(),
       down: (pointerEvent) => {
@@ -328,6 +352,7 @@ export const HomeFeedPager = ({
       }}
     >
       <div
+        ref={trackRef}
         className={styles.pagerTrack}
         data-home-feed-track=""
         onTransitionEnd={(event) => {

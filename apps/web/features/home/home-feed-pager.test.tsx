@@ -103,6 +103,9 @@ describe("HomeFeedPager", () => {
 
   it("follows only the Home content after horizontal lock and commits once after release", () => {
     const { container, frame, onCommit } = renderPager();
+    const track = container.querySelector<HTMLElement>(
+      "[data-home-feed-track]",
+    )!;
     const discover = container.querySelector<HTMLElement>(
       '[data-home-feed-panel="discover"]',
     )!;
@@ -123,6 +126,7 @@ describe("HomeFeedPager", () => {
     expect(window.history.state).toBe(historyBefore);
     expect(window.location.href).toBe(urlBefore);
     expect(document.activeElement).toBe(focus);
+    expect(track.style.transform).toContain("-200px");
 
     dispatchPointer(frame, "pointerup", 120, 104, 130);
     expect(onCommit).not.toHaveBeenCalled();
@@ -133,6 +137,31 @@ describe("HomeFeedPager", () => {
     act(() => vi.advanceTimersByTime(380));
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+
+  it("prepares the accepted neighboring track on pointerdown before movement", () => {
+    const { container, frame, onCommit } = renderPager();
+    const nearby = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="nearby"]',
+    )!;
+    const topics = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="topics"]',
+    )!;
+
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+
+    expect(frame.dataset.homePagerFollowing).toBe("true");
+    expect(nearby.hasAttribute("hidden")).toBe(false);
+    expect(topics.hasAttribute("hidden")).toBe(false);
+    expect(nearby.hasAttribute("inert")).toBe(true);
+    expect(topics.hasAttribute("inert")).toBe(true);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    dispatchPointer(frame, "pointerup", 320, 100, 20);
+    expect(frame.dataset.homePagerFollowing).toBe("false");
+    expect(nearby.hasAttribute("hidden")).toBe(true);
+    expect(topics.hasAttribute("hidden")).toBe(true);
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it("keeps tracking touch move and release after the pointer leaves the pager", () => {
