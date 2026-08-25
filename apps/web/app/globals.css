@@ -3,13 +3,54 @@
 }
 
 html {
-  font-family: system-ui, sans-serif;
+  min-width: 0;
+  min-height: 100%;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
 }
 
 body {
+  min-width: 0;
+  min-height: 100%;
   margin: 0;
 }
 
-main {
-  padding: 1rem;
+[data-t02p-qa-harness] > [data-qa-controls] {
+  position: fixed;
+  z-index: calc(var(--yoyi-z-index-navigation) + 10);
+  display: flex;
+  top: 0;
+  left: 0;
+  width: min(320px, calc(100% - 64px));
+  max-height: 100dvh;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--yoyi-space-4);
+  overflow: auto;
+  padding: var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-elevated);
+  border-bottom: 1px solid var(--yoyi-color-border-default);
+  border-right: 1px solid var(--yoyi-color-border-default);
+  border-radius: 0 0 var(--yoyi-radius-lg) 0;
+  box-shadow: var(--yoyi-shadow-dialog);
+  font-family: var(--yoyi-font-interface);
+}
+
+[data-t02p-qa-harness] > [data-qa-controls] h1 {
+  width: 100%;
+  margin: 0;
+  font-size: var(--yoyi-type-section-title-size);
+}
+
+[data-t02p-qa-harness] > [data-qa-controls] label {
+  display: grid;
+  gap: var(--yoyi-space-2);
+}
+
+[data-t02p-qa-harness] > [data-qa-controls] select {
+  min-height: 44px;
+  padding-inline: var(--yoyi-space-3);
+  font: inherit;
 }

@@ -25,6 +25,10 @@
   column-count: 1;
 }
 
+:global(html[data-home-layout="single"]) .feed {
+  column-count: 1;
+}
+
 .card {
   max-width: 100%;
   overflow: hidden;
@@ -203,6 +207,12 @@
   .feedCard[data-catalog-feed-span="full"] {
   display: flex;
   column-span: all;
+}
+
+:global([data-primary-shell][data-platform="tablet"])
+  .feed[data-feed-layout="single"]
+  .feedCard[data-catalog-feed-span="full"] {
+  column-span: none;
 }
 
 :global([data-primary-shell][data-platform="tablet"]) .inscriptionCard {

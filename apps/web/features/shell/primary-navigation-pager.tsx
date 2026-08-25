@@ -33,6 +33,8 @@ export interface PrimaryNavigationPagerProps {
   readonly home: ReactNode;
   readonly inscriptions: ReactNode;
   readonly calligraphy: ReactNode;
+  readonly navigationHidden?: boolean;
+  readonly showDevelopmentPagerControls?: boolean;
 }
 
 export const PrimaryNavigationPager = ({
@@ -42,6 +44,8 @@ export const PrimaryNavigationPager = ({
   home,
   inscriptions,
   calligraphy,
+  navigationHidden = false,
+  showDevelopmentPagerControls = false,
 }: PrimaryNavigationPagerProps) => {
   const previousDestination = resolveAdjacentPrimaryDestination(
     activeDestination,
@@ -65,40 +69,52 @@ export const PrimaryNavigationPager = ({
         calligraphy={calligraphy}
       />
 
-      <PrimaryBottomNavigation
-        activeDestination={activeDestination}
-        platform={platform}
-        onDestinationChange={onDestinationChange}
-      />
-
-      <div aria-label="主要内容分页" data-primary-pager="" role="group">
-        <button
-          type="button"
-          data-primary-pager-action="previous"
-          data-target-destination={previousDestination ?? undefined}
-          disabled={previousDestination === null}
-          onClick={() => {
-            if (previousDestination !== null) {
-              onDestinationChange(previousDestination);
-            }
-          }}
-        >
-          上一页
-        </button>
-        <button
-          type="button"
-          data-primary-pager-action="next"
-          data-target-destination={nextDestination ?? undefined}
-          disabled={nextDestination === null}
-          onClick={() => {
-            if (nextDestination !== null) {
-              onDestinationChange(nextDestination);
-            }
-          }}
-        >
-          下一页
-        </button>
+      <div
+        aria-hidden={navigationHidden || undefined}
+        data-primary-navigation-layer=""
+        hidden={navigationHidden}
+      >
+        <PrimaryBottomNavigation
+          activeDestination={activeDestination}
+          platform={platform}
+          onDestinationChange={onDestinationChange}
+        />
       </div>
+
+      {showDevelopmentPagerControls ? (
+        <div
+          aria-label="主要内容分页"
+          data-development-primary-pager=""
+          role="group"
+        >
+          <button
+            type="button"
+            data-primary-pager-action="previous"
+            data-target-destination={previousDestination ?? undefined}
+            disabled={previousDestination === null}
+            onClick={() => {
+              if (previousDestination !== null) {
+                onDestinationChange(previousDestination);
+              }
+            }}
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            data-primary-pager-action="next"
+            data-target-destination={nextDestination ?? undefined}
+            disabled={nextDestination === null}
+            onClick={() => {
+              if (nextDestination !== null) {
+                onDestinationChange(nextDestination);
+              }
+            }}
+          >
+            下一页
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 };

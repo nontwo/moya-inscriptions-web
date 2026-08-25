@@ -17,12 +17,6 @@ const destinationAcceptance = {
 type AcceptanceDestination = keyof typeof destinationAcceptance;
 type AcceptancePlatform = "phone" | "tablet" | "pc";
 
-const presentationPlatformLabels = {
-  pc: "PC",
-  phone: "Phone",
-  tablet: "Tablet",
-} as const satisfies Record<AcceptancePlatform, string>;
-
 const expectedInitialAutoPlatform = (
   projectName: string,
 ): AcceptancePlatform => {
@@ -37,8 +31,28 @@ const platformSelector = (surface: Locator) =>
 const catalogScenarioSelector = (surface: Locator) =>
   surface.getByRole("combobox", { name: "QA Catalog scenario" });
 
-const feedLayoutSelector = (surface: Locator) =>
-  surface.getByRole("combobox", { name: "QA phone/tablet feed layout" });
+const productShell = (surface: Locator) =>
+  surface.locator("[data-product-shell]");
+
+const setFeedLayoutThroughSettings = async (
+  surface: Locator,
+  layout: "single" | "double",
+) => {
+  const shell = productShell(surface);
+  if ((await shell.getAttribute("data-feed-layout")) === layout) return;
+
+  await shell.getByRole("button", { name: "打开设置" }).click();
+  const settings = shell.getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+  const toggle = settings.locator("[data-feed-layout-toggle]");
+  await expect(toggle).toBeVisible();
+  await toggle.evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(shell).toHaveAttribute("data-feed-layout", layout);
+  await settings
+    .getByRole("button", { name: "返回" })
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(settings).toHaveCount(0);
+};
 
 const activeCatalogPresentation = (surface: Locator) =>
   surface.locator(
@@ -64,6 +78,7 @@ const expectFeedCardGeometry = async ({
   readonly fullSpan: boolean;
   readonly normalCard: Locator;
 }) => {
+  await expect(fullCard).toHaveCSS("column-span", fullSpan ? "all" : "none");
   const [feedBox, fullCardBox, normalCardBox] = await Promise.all([
     requireBoundingBox(feed),
     requireBoundingBox(fullCard),
@@ -76,10 +91,6 @@ const expectFeedCardGeometry = async ({
     (feedBox.width - columnGap * Math.max(0, columnCount - 1)) / columnCount;
 
   expect(Math.abs(normalCardBox.width - expectedColumnWidth)).toBeLessThan(2);
-  expect(
-    await fullCard.evaluate((node) => getComputedStyle(node).columnSpan),
-  ).toBe(fullSpan ? "all" : "none");
-
   if (fullSpan) {
     expect(Math.abs(fullCardBox.x - feedBox.x)).toBeLessThan(2);
     expect(Math.abs(fullCardBox.width - feedBox.width)).toBeLessThan(2);
@@ -127,7 +138,17 @@ const expectFeedToClearNavigation = async ({
   readonly navigation: Locator;
   readonly page: Page;
 }) => {
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await feed.evaluate((node) => {
+    const destination = node.closest<HTMLElement>("[data-primary-destination]");
+    const platform = node.closest<HTMLElement>("[data-product-shell]")?.dataset
+      .platform;
+    if (platform === "pc") {
+      window.scrollTo(0, document.body.scrollHeight);
+    } else if (destination !== null) {
+      destination.scrollTop = destination.scrollHeight;
+    }
+  });
+  await page.waitForTimeout(50);
   const navigationBox = await requireBoundingBox(navigation);
   const finalCardBottom = await feed
     .locator("[data-catalog-card]")
@@ -142,7 +163,10 @@ const expectPresentationPlatform = async (
   surface: Locator,
   platform: AcceptancePlatform,
 ) => {
-  await expect(surface).toHaveAttribute("data-platform", platform);
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-platform",
+    platform,
+  );
   await expect(surface.locator("[data-primary-shell]")).toHaveAttribute(
     "data-platform",
     platform,
@@ -150,9 +174,6 @@ const expectPresentationPlatform = async (
   await expect(
     surface.getByRole("navigation", { name: "主要内容" }),
   ).toHaveAttribute("data-platform", platform);
-  await expect(surface.locator("[data-qa-effective-platform]")).toHaveText(
-    presentationPlatformLabels[platform],
-  );
 };
 
 const expectActiveDestination = async (
@@ -163,7 +184,10 @@ const expectActiveDestination = async (
   const shell = surface.locator("[data-primary-shell]");
   const navigation = surface.getByRole("navigation", { name: "主要内容" });
 
-  await expect(surface).toHaveAttribute("data-active-destination", destination);
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-active-destination",
+    destination,
+  );
   await expect(coordination).toHaveAttribute(
     "data-active-destination",
     destination,
@@ -196,7 +220,7 @@ const expectActiveDestination = async (
     if (active) {
       await expect(section).not.toHaveAttribute("hidden", "");
       await expect(section).toBeVisible();
-      const panel = section.locator(`[data-qa-panel="${candidate}"]`);
+      const panel = section.locator(`[data-product-panel="${candidate}"]`);
       await expect(panel).toBeVisible();
       await expect(
         panel.locator(
@@ -258,17 +282,70 @@ const trackPointerCaptureCalls = async (button: Locator) => {
 };
 
 const openDevelopmentSurface = async (page: Page) => {
-  const response = await page.goto("/dev/t02p");
+  const response = await page.goto("/dev/t02p/qa");
   expect(response?.status()).toBe(200);
 
-  const surface = page.locator("[data-t02p-development-acceptance]");
+  const surface = page.locator("[data-t02p-qa-harness]");
   await expect(surface).toBeVisible();
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
 
   return {
     navigation: surface.getByRole("navigation", { name: "主要内容" }),
     surface,
   };
 };
+
+const openCleanProductSurface = async (page: Page) => {
+  const response = await page.goto("/dev/t02p?acceptance=r01-clean");
+  expect(response?.status()).toBe(200);
+
+  const surface = page.locator("[data-clean-product-preview]");
+  await expect(surface).toBeVisible();
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+
+  return {
+    navigation: surface.getByRole("navigation", { name: "主要内容" }),
+    surface,
+  };
+};
+
+const writePrimaryScroll = async (
+  shell: Locator,
+  destination: AcceptanceDestination,
+  top: number,
+) =>
+  shell.evaluate(
+    (node, input) => {
+      const product = node as HTMLElement;
+      const section = product.querySelector<HTMLElement>(
+        `[data-primary-destination="${input.destination}"]`,
+      );
+      if (section === null) throw new Error("Missing primary destination");
+      if (product.dataset.platform === "pc") {
+        window.scrollTo(0, input.top);
+        return document.scrollingElement?.scrollTop ?? window.scrollY;
+      }
+      section.scrollTop = input.top;
+      return section.scrollTop;
+    },
+    { destination, top },
+  );
+
+const readPrimaryScroll = async (
+  shell: Locator,
+  destination: AcceptanceDestination,
+) =>
+  shell.evaluate((node, targetDestination) => {
+    const product = node as HTMLElement;
+    if (product.dataset.platform === "pc") {
+      return document.scrollingElement?.scrollTop ?? window.scrollY;
+    }
+    return (
+      product.querySelector<HTMLElement>(
+        `[data-primary-destination="${targetDestination}"]`,
+      )?.scrollTop ?? 0
+    );
+  }, destination);
 
 const confirmMouseNavigationReady = async (
   surface: Locator,
@@ -279,7 +356,7 @@ const confirmMouseNavigationReady = async (
       await navigation
         .getByRole("button", { exact: true, name: "碑刻" })
         .click();
-      return surface.getAttribute("data-active-destination");
+      return productShell(surface).getAttribute("data-active-destination");
     })
     .toBe("inscriptions");
   await expectActiveDestination(surface, "inscriptions");
@@ -288,19 +365,109 @@ const confirmMouseNavigationReady = async (
       await navigation
         .getByRole("button", { exact: true, name: "首页" })
         .click();
-      return surface.getAttribute("data-active-destination");
+      return productShell(surface).getAttribute("data-active-destination");
     })
     .toBe("home");
   await expectActiveDestination(surface, "home");
 };
 
-test("Development acceptance surface coordinates semantic navigation, pager, shell, and QA platform", async ({
+test("Clean Product Preview is product-only and preserves shell state, scroll, Settings, and preferences", async ({
   page,
 }, testInfo) => {
-  const response = await page.goto("/dev/t02p");
+  const response = await page.goto("/dev/t02p?acceptance=r01-clean");
   expect(response?.status()).toBe(200);
 
-  const surface = page.locator("[data-t02p-development-acceptance]");
+  const preview = page.locator("[data-clean-product-preview]");
+  const shell = preview.locator("[data-product-shell]");
+  const navigation = preview.getByRole("navigation", { name: "主要内容" });
+  await expect(preview).toBeVisible();
+  await expect(shell).toHaveAttribute(
+    "data-platform",
+    expectedInitialAutoPlatform(testInfo.project.name),
+  );
+  await expect(preview.locator("[data-qa-controls]")).toHaveCount(0);
+  await expect(preview.locator("[data-development-primary-pager]")).toHaveCount(
+    0,
+  );
+  await expect(preview).not.toContainText("T02P QA Harness");
+  await expect(preview.locator("[data-product-boot]")).toHaveCount(0);
+
+  const homeScroll = await writePrimaryScroll(shell, "home", 180);
+  expect(homeScroll).toBeGreaterThan(0);
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expect(shell).toHaveAttribute(
+    "data-active-destination",
+    "inscriptions",
+  );
+  expect(await writePrimaryScroll(shell, "inscriptions", 130)).toBeGreaterThan(
+    0,
+  );
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "calligraphy");
+  await writePrimaryScroll(shell, "calligraphy", 60);
+  await navigation.getByRole("button", { exact: true, name: "首页" }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  await expect
+    .poll(() => readPrimaryScroll(shell, "home"))
+    .toBeGreaterThanOrEqual(homeScroll - 1);
+
+  const opener = shell.getByRole("button", { name: "打开设置" });
+  await opener.click();
+  const settings = shell.getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+  await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
+    "inert",
+    "",
+  );
+  await expect(settings.getByRole("button", { name: "返回" })).toBeFocused();
+  await settings.getByRole("button", { name: /切换主题/ }).click();
+  await expect(shell).toHaveAttribute("data-theme-preference", "light");
+
+  if (testInfo.project.name === "desktop-chromium") {
+    await expect(settings.locator("[data-feed-layout-toggle]")).toHaveCount(0);
+  } else {
+    await settings.locator("[data-feed-layout-toggle]").click();
+    await expect(shell).toHaveAttribute("data-feed-layout", "single");
+  }
+
+  await settings.getByRole("button", { name: "返回" }).click();
+  await expect(settings).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dev\/t02p\?acceptance=r01-clean$/u);
+  await expect(opener).toBeFocused();
+
+  await page.reload();
+  const reloadedShell = page.locator("[data-product-shell]");
+  await expect(reloadedShell).toHaveAttribute("data-theme-preference", "light");
+  await expect(reloadedShell).toHaveAttribute(
+    "data-feed-layout",
+    testInfo.project.name === "desktop-chromium" ? "double" : "single",
+  );
+});
+
+test("Direct Settings history has a safe Back and Forward path", async ({
+  page,
+}) => {
+  const response = await page.goto("/dev/t02p?acceptance=r01-direct#settings");
+  expect(response?.status()).toBe(200);
+  const shell = page.locator("[data-product-shell]");
+  const settings = shell.getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+
+  await settings.getByRole("button", { name: "返回" }).click();
+  await expect(settings).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dev\/t02p\?acceptance=r01-direct$/u);
+
+  await page.goForward();
+  await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
+});
+
+test("Development QA Harness observes the shared Product Shell without owning it", async ({
+  page,
+}, testInfo) => {
+  const response = await page.goto("/dev/t02p/qa");
+  expect(response?.status()).toBe(200);
+
+  const surface = page.locator("[data-t02p-qa-harness]");
   await expect(surface).toBeVisible();
   const navigation = surface.getByRole("navigation", { name: "主要内容" });
   await expect(navigation).toBeVisible();
@@ -331,7 +498,7 @@ test("Development acceptance surface coordinates semantic navigation, pager, she
       await navigation
         .getByRole("button", { name: "碑刻", exact: true })
         .click();
-      return surface.getAttribute("data-active-destination");
+      return productShell(surface).getAttribute("data-active-destination");
     })
     .toBe("inscriptions");
   await expectActiveDestination(surface, "inscriptions");
@@ -522,17 +689,28 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   page,
 }, testInfo) => {
   const { surface } = await openDevelopmentSurface(page);
-  const selector = feedLayoutSelector(surface);
   const feed = activeCatalogPresentation(surface).locator("[data-feed-layout]");
   const fullCard = feed.locator('[data-catalog-feed-span="full"]').first();
   const normalCard = feed
     .locator("[data-catalog-card]:not([data-catalog-feed-span])")
     .first();
-  await expect(selector).toHaveValue("double");
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-feed-layout",
+    "double",
+  );
   await expect(feed.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
 
   if (testInfo.project.name === "desktop-chromium") {
-    await expect(selector).toBeDisabled();
+    await productShell(surface)
+      .getByRole("button", { name: "打开设置" })
+      .click();
+    const settings = productShell(surface).getByRole("dialog", {
+      name: "设置",
+    });
+    await expect(settings.locator("[data-feed-layout-toggle]")).toHaveCount(0);
+    await settings
+      .getByRole("button", { name: "返回" })
+      .evaluate((button) => (button as HTMLButtonElement).click());
     const columnCount = Number(
       await feed.evaluate((node) => getComputedStyle(node).columnCount),
     );
@@ -547,21 +725,6 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
     return;
   }
 
-  await expect(selector).toBeEnabled();
-  await selector.selectOption("single");
-  await expect(surface).toHaveAttribute("data-feed-layout", "single");
-  await expect(feed).toHaveCSS("column-count", "1");
-  await expectActiveDestination(surface, "home");
-  await expectFeedCardGeometry({
-    columnCount: 1,
-    feed,
-    fullCard,
-    fullSpan: false,
-    normalCard,
-  });
-
-  await selector.selectOption("double");
-  await expect(surface).toHaveAttribute("data-feed-layout", "double");
   await expect(feed).toHaveCSS("column-count", "2");
   await expectActiveDestination(surface, "home");
   await expectFeedCardGeometry({
@@ -569,6 +732,18 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
     feed,
     fullCard,
     fullSpan: testInfo.project.name === "tablet-webkit",
+    normalCard,
+  });
+
+  await setFeedLayoutThroughSettings(surface, "single");
+  await expect(feed).toHaveAttribute("data-feed-layout", "single");
+  await expect(feed).toHaveCSS("column-count", "1");
+  await expectActiveDestination(surface, "home");
+  await expectFeedCardGeometry({
+    columnCount: 1,
+    feed,
+    fullCard,
+    fullSpan: false,
     normalCard,
   });
 });
@@ -585,7 +760,10 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
   await page.setViewportSize({ height: 1194, width: 834 });
   await expect(platformSelector(surface)).toHaveValue("auto");
   await expectPresentationPlatform(surface, "tablet");
-  await expect(feedLayoutSelector(surface)).toHaveValue("double");
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-feed-layout",
+    "double",
+  );
 
   const home = activeCatalogPresentation(surface);
   const homeFeed = home.locator('[data-feed-layout="double"]');
@@ -679,8 +857,7 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
     ),
   });
 
-  await feedLayoutSelector(surface).selectOption("single");
-  await expect(surface).toHaveAttribute("data-feed-layout", "single");
+  await setFeedLayoutThroughSettings(surface, "single");
   await expectFeedCardGeometry({
     columnCount: 1,
     feed: activeCatalogPresentation(surface).locator(
@@ -831,10 +1008,42 @@ test("QA overrides survive runtime changes and returning Auto uses the current r
 
   await qaPlatformSelector.selectOption("phone");
   await page.reload();
-  const reloadedSurface = page.locator("[data-t02p-development-acceptance]");
+  const reloadedSurface = page.locator("[data-t02p-qa-harness]");
   await expect(reloadedSurface).toBeVisible();
   await expect(platformSelector(reloadedSurface)).toHaveValue("auto");
   await expectPresentationPlatform(reloadedSurface, "tablet");
+});
+
+test("Reduced motion preserves tap and release-only primary commits", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Reduced-motion Product semantics run once in Desktop Chromium.",
+  );
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { navigation, surface } = await openCleanProductSurface(page);
+  const inscriptionsButton = navigation.getByRole("button", {
+    exact: true,
+    name: "碑刻",
+  });
+  const calligraphyButton = navigation.getByRole("button", {
+    exact: true,
+    name: "书帖",
+  });
+
+  await inscriptionsButton.click();
+  await expectActiveDestination(surface, "inscriptions");
+
+  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+  const calligraphyCenter = await locatorCenter(calligraphyButton);
+  await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(calligraphyCenter.x, calligraphyCenter.y, { steps: 5 });
+  await expectActiveDestination(surface, "inscriptions");
+  await page.mouse.up();
+  await expectActiveDestination(surface, "calligraphy");
 });
 
 test("Touchscreen tap commits each primary destination on touch WebKit", async ({
@@ -845,15 +1054,24 @@ test("Touchscreen tap commits each primary destination on touch WebKit", async (
     "Touchscreen evidence runs only in configured touch contexts.",
   );
 
-  const { navigation, surface } = await openDevelopmentSurface(page);
+  const { navigation, surface } = await openCleanProductSurface(page);
 
   for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
-    const center = await locatorCenter(
-      navigation.getByRole("button", {
-        exact: true,
-        name: destinationAcceptance[destination].label,
-      }),
-    );
+    const targetButton = navigation.getByRole("button", {
+      exact: true,
+      name: destinationAcceptance[destination].label,
+    });
+    const center = await locatorCenter(targetButton);
+    expect(
+      await page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest("button")
+            ?.getAttribute("aria-label") ?? null,
+        center,
+      ),
+    ).toBe(destinationAcceptance[destination].label);
     await page.touchscreen.tap(center.x, center.y);
     await expectActiveDestination(surface, destination);
   }
@@ -867,7 +1085,7 @@ test("Mobile WebKit locator click commits each primary destination", async ({
     "Locator-click evidence is reported separately for Mobile WebKit.",
   );
 
-  const { navigation, surface } = await openDevelopmentSurface(page);
+  const { navigation, surface } = await openCleanProductSurface(page);
 
   for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
     await navigation
@@ -899,6 +1117,49 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
     '[data-primary-destination="home"]',
   );
   const committedPanelBeforeDrag = await committedHomePanel.boundingBox();
+  const frozenProductState = await page.evaluate(() => {
+    const calls = { push: 0, replace: 0 };
+    const initialState = window.history.state as {
+      destination?: unknown;
+      kind?: unknown;
+      version?: unknown;
+    } | null;
+    let lastPrimaryDestination =
+      initialState?.version === 1 && initialState.kind === "primary"
+        ? initialState.destination
+        : null;
+    const originalPushState = window.history.pushState.bind(window.history);
+    const originalReplaceState = window.history.replaceState.bind(
+      window.history,
+    );
+    window.history.pushState = (...args) => {
+      const state = args[0] as { kind?: unknown; version?: unknown } | null;
+      if (state?.version === 1 && state.kind === "settings") calls.push += 1;
+      return originalPushState(...args);
+    };
+    window.history.replaceState = (...args) => {
+      const state = args[0] as {
+        destination?: unknown;
+        kind?: unknown;
+        version?: unknown;
+      } | null;
+      if (state?.version === 1 && state.kind === "primary") {
+        if (state.destination !== lastPrimaryDestination) {
+          calls.replace += 1;
+          lastPrimaryDestination = state.destination;
+        }
+      }
+      return originalReplaceState(...args);
+    };
+    Object.assign(window, { __r01HistoryCalls: calls });
+    return {
+      ariaCurrent: document
+        .querySelector('[data-primary-navigation] [aria-current="page"]')
+        ?.getAttribute("aria-label"),
+      href: window.location.href,
+      state: JSON.stringify(window.history.state),
+    };
+  });
 
   await trackPointerCaptureCalls(homeButton);
 
@@ -934,6 +1195,25 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
   expect(await committedHomePanel.boundingBox()).toEqual(
     committedPanelBeforeDrag,
   );
+  expect(
+    await page.evaluate(() => ({
+      ariaCurrent: document
+        .querySelector('[data-primary-navigation] [aria-current="page"]')
+        ?.getAttribute("aria-label"),
+      calls: (
+        window as typeof window & {
+          __r01HistoryCalls: { push: number; replace: number };
+        }
+      ).__r01HistoryCalls,
+      href: window.location.href,
+      state: JSON.stringify(window.history.state),
+    })),
+  ).toEqual({
+    ariaCurrent: frozenProductState.ariaCurrent,
+    calls: { push: 0, replace: 0 },
+    href: frozenProductState.href,
+    state: frozenProductState.state,
+  });
 
   await page.mouse.up();
 
@@ -947,6 +1227,16 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
     "data-bubble-preview-index",
     /.+/,
   );
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __r01HistoryCalls: { push: number; replace: number };
+          }
+        ).__r01HistoryCalls,
+    ),
+  ).toEqual({ push: 0, replace: 1 });
 });
 
 test("Synthetic touch pointer logic: passive candidate, intent threshold, and drag-click isolation", async ({
@@ -1161,13 +1451,48 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
     "data-bubble-preview-index",
     /.+/,
   );
+
+  await homeButton.evaluate((button) => {
+    button.addEventListener(
+      "pointerdown",
+      (event) => {
+        button.dataset.testPointerId = String(
+          (event as PointerEvent).pointerId,
+        );
+      },
+      { once: true },
+    );
+  });
+  await page.mouse.move(homeCenter.x, homeCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y, {
+    steps: 5,
+  });
+  await expect(navigation).toHaveAttribute("data-dragging", "true");
+  const capturedPointerId = Number(
+    await homeButton.getAttribute("data-test-pointer-id"),
+  );
+  expect(Number.isFinite(capturedPointerId)).toBe(true);
+  await homeButton.dispatchEvent("lostpointercapture", {
+    button: 0,
+    clientX: inscriptionsCenter.x,
+    clientY: inscriptionsCenter.y,
+    isPrimary: true,
+    pointerId: capturedPointerId,
+    pointerType: "mouse",
+  });
+
+  await expectActiveDestination(surface, "home");
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await page.mouse.up();
+  await expectActiveDestination(surface, "home");
 });
 
 test("Mouse regression: horizontal drag over Primary content never switches destination", async ({
   page,
 }) => {
   const { navigation, surface } = await openDevelopmentSurface(page);
-  const homePanel = surface.locator('[data-qa-panel="home"]');
+  const homePanel = surface.locator('[data-product-panel="home"]');
   const panelCenter = await locatorCenter(homePanel);
 
   await page.mouse.move(panelCenter.x, panelCenter.y);
