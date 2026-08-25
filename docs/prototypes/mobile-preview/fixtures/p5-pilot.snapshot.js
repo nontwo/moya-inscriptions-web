@@ -1,18 +1,15 @@
 /**
  * T02 PROTOTYPE ONLY — NON-AUTHORITATIVE — NON-PRODUCTION.
  *
- * Deterministic content snapshot from nontwo/moya-catalog-research at export
- * commit d0ed010ba95942c8ef34bec558006e70ffe64794:
- * - research/p5/v1/export/catalog.csv
- * - research/p5/v1/export/aliases.csv
+ * Derived from an Owner-reviewed private research export.
  *
  * Canonical input SHA-256:
  * adb139588625a9447aadfa242efbd1bfd35de00befa99338ba265b7a9511d3ed
  * Record count: 28.
  *
- * Research remains authoritative. This checked-in development fixture is only
- * for the T02 mobile preview. apps/web and backend/production code must never
- * consume this file.
+ * Owner-approved private research evidence remains authoritative. This
+ * checked-in development fixture is only for the T02 mobile preview. apps/web
+ * and backend/production code must never consume this file.
  */
 
 (() => {

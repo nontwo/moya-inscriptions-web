@@ -55,14 +55,16 @@ describe("catalog importer remediation boundaries", () => {
     ]) {
       const source = await readFile(importerSource(file), "utf8");
       for (const forbidden of [
-        "Documents/Yoyi",
-        "moya-catalog-research",
+        "/Users/",
+        "/private/",
+        "Documents/",
         "ResearchRecord",
         "sqlite",
         "1658",
       ]) {
         expect(source).not.toContain(forbidden);
       }
+      expect(source).not.toMatch(/(?:^|[/_.-])research(?:[/_.-]|$)/i);
     }
   });
 
