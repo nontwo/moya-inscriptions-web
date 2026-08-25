@@ -31,6 +31,7 @@ interface PointerGesture {
 
 interface PointerTracking {
   readonly cancel: (event: PointerEvent) => void;
+  readonly down: (event: PointerEvent) => void;
   mode: "active" | "peek";
   readonly move: (event: PointerEvent) => void;
   readonly up: (event: PointerEvent) => void;
@@ -70,6 +71,7 @@ export const HomeFeedPager = ({
   const stopPointerTracking = () => {
     const tracking = pointerTrackingRef.current;
     if (tracking === null) return;
+    window.removeEventListener("pointerdown", tracking.down);
     window.removeEventListener("pointermove", tracking.move);
     window.removeEventListener("pointerup", tracking.up);
     window.removeEventListener("pointercancel", tracking.cancel);
@@ -228,6 +230,9 @@ export const HomeFeedPager = ({
 
   const armGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (platform === "pc" || event.pointerType !== "touch") return;
+    if (settleFrameRef.current !== null || settleTimerRef.current !== null) {
+      return;
+    }
     if (gestureRef.current !== null) {
       if (gestureRef.current.pointerId !== event.pointerId) cancelGesture();
       return;
@@ -244,11 +249,17 @@ export const HomeFeedPager = ({
     };
     const tracking: PointerTracking = {
       cancel: () => cancelGesture(),
+      down: (pointerEvent) => {
+        if (gestureRef.current?.pointerId !== pointerEvent.pointerId) {
+          cancelGesture();
+        }
+      },
       mode: "peek",
       move: (pointerEvent) => moveGesture(pointerEvent),
       up: (pointerEvent) => completeGesture(pointerEvent),
     };
     pointerTrackingRef.current = tracking;
+    window.addEventListener("pointerdown", tracking.down);
     window.addEventListener(
       "pointermove",
       tracking.move,

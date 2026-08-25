@@ -163,18 +163,68 @@ describe("HomeFeedPager", () => {
     },
   );
 
-  it("interrupts on a second pointer and leaves diagonal input native", () => {
+  it("interrupts on a second pointer outside the pager and cleans tracking", () => {
     const { frame, onCommit } = renderPager();
     dispatchPointer(frame, "pointerdown", 320, 100, 10);
-    dispatchPointer(frame, "pointerdown", 300, 100, 20, 2, false);
+    dispatchPointer(document.body, "pointermove", 220, 102, 20);
+    expect(frame.dataset.homePagerFollowing).toBe("true");
+
+    dispatchPointer(document.body, "pointerdown", 300, 100, 30, 2, false);
+    act(() => vi.runAllTimers());
+    dispatchPointer(document.body, "pointermove", 100, 102, 40);
+    dispatchPointer(document.body, "pointerup", 100, 102, 50);
     act(() => vi.runAllTimers());
     expect(onCommit).not.toHaveBeenCalled();
+    expect(frame.dataset.homePagerFollowing).toBe("false");
 
+    dispatchPointer(frame, "pointerdown", 320, 100, 500, 3);
+    dispatchPointer(document.body, "pointermove", 120, 102, 580, 3);
+    dispatchPointer(document.body, "pointerup", 120, 102, 600, 3);
+    act(() => vi.advanceTimersByTime(380));
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+
+  it("leaves diagonal input native", () => {
+    const { frame, onCommit } = renderPager();
     dispatchPointer(frame, "pointerdown", 320, 100, 500);
     const diagonal = dispatchPointer(frame, "pointermove", 270, 52, 550);
     dispatchPointer(frame, "pointerup", 270, 52, 570);
     expect(diagonal.defaultPrevented).toBe(false);
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("ignores a new swipe while cancellation is rebounding", () => {
+    const { frame, onCommit } = renderPager();
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    dispatchPointer(document.body, "pointermove", 220, 102, 30);
+    act(() =>
+      window.dispatchEvent(new Event("pointercancel", { bubbles: true })),
+    );
+
+    dispatchPointer(frame, "pointerdown", 320, 100, 40, 2);
+    dispatchPointer(document.body, "pointermove", 120, 102, 80, 2);
+    dispatchPointer(document.body, "pointerup", 120, 102, 100, 2);
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(frame.dataset.homePagerFollowing).toBe("false");
+  });
+
+  it("ignores a new swipe while a release is settling", () => {
+    const { frame, onCommit } = renderPager();
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    dispatchPointer(document.body, "pointermove", 120, 102, 90);
+    dispatchPointer(document.body, "pointerup", 120, 102, 110);
+
+    dispatchPointer(frame, "pointerdown", 320, 100, 120, 2);
+    dispatchPointer(document.body, "pointermove", 120, 102, 160, 2);
+    dispatchPointer(document.body, "pointerup", 120, 102, 180, 2);
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+    expect(frame.dataset.homePagerFollowing).toBe("false");
   });
 
   it("settles immediately under reduced motion", () => {
