@@ -68,15 +68,10 @@ Detail：返回隐藏主导航、保留来源滚动，并在 895 /
 首页「发现 / 附近 / 专题」仍是普通 Tab，不增加底部气泡。首页「发现」中的 28 条只是原型内容密度 / 压力测试 feed，不定义未来推荐、排序、策展、附近、专题或 T09 产品语义。
 
 `fixtures/p5-pilot.snapshot.js`
-是 T02 专用、非权威、非生产的确定性开发快照。来源为
-`nontwo/moya-catalog-research` 的提交
-`d0ed010ba95942c8ef34bec558006e70ffe64794`：
-
-- `research/p5/v1/export/catalog.csv`
-- `research/p5/v1/export/aliases.csv`
+是 T02 专用、非权威、非生产的确定性开发快照，来源为经 Owner 审核的私有研究导出。
 
 批准输入的 canonical SHA-256 为
-`adb139588625a9447aadfa242efbd1bfd35de00befa99338ba265b7a9511d3ed`，记录数为 28。Research 仓库始终是权威来源；该快照不得被
+`adb139588625a9447aadfa242efbd1bfd35de00befa99338ba265b7a9511d3ed`，记录数为 28。Owner 批准的私有研究证据始终是权威来源；该快照不得被
 `apps/web`、backend 或任何生产链路消费，也不构成 Public
 Contract、API、数据库或导入器集成。确定性快照仍忠实保留批准来源的无媒体语义：每条记录均为
 `media: []`，且没有

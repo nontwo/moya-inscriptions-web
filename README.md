@@ -115,3 +115,12 @@ promotion 后更新。禁止直接推送 shared branch、force-push 或改写历
 
 当前能力、活动任务和 production gaps 只在
 [当前项目状态](docs/project-status.md)维护；README 不复制动态 roadmap。
+
+## 许可
+
+- 代码与普通技术文档采用 [Apache License 2.0](LICENSE)。
+- 仓库中精确签入的公开 fixture 内容采用
+  [Creative Commons Attribution 4.0 International](LICENSE-DATA)。
+- Yoyi
+  / 由艺名称、徽标、字标与服务标识仍为保留品牌资产，不包含在上述许可授权中。
+- 本仓库不包含 production 数据或私有研究证据。
