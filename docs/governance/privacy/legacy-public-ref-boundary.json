@@ -1,0 +1,50 @@
+{
+  "policyVersion": 1,
+  "generatedAt": "2026-08-25T10:17:00Z",
+  "branchTips": {
+    "refs/heads/feat/catalog-detail-ui-t09-2": "ad2f401c1889cd7c85a309205f7c56517262f4d5",
+    "refs/heads/feat/t02-petal-quick-actions-rebuild": "7dac4abc1402354974175c8e770f431558f6020f",
+    "refs/heads/feat/t02-r03-home-nearby-topics-topic-detail": "5ad822416fd60eb4a02f666c69a241077fb8479e",
+    "refs/heads/feat/t02p-12-react-detail-gallery-viewer-acceptance": "4d2aadf548785a85448a74583703ebe24148ff55",
+    "refs/heads/fix/t02-development-composition": "e965558efcb9247f77b2a54913d9c93f818e3320",
+    "refs/heads/integration/mvp": "d76cbf5ef133d8f248f6d28bdadeb2b44a614999",
+    "refs/heads/main": "1d8567239bc59e9e67e08133164659bc3f8bed87"
+  },
+  "annotatedTags": [
+    {
+      "ref": "refs/tags/archive/integration-mvp-v2-20260807",
+      "objectId": "28e5d8d67420426e2a9882ab9eee81ff77de6b16",
+      "peeledTarget": "36f9751d08615c3ce078f781c37b6eb5150d3946"
+    },
+    {
+      "ref": "refs/tags/archive/t02-pre-consolidation-20260816",
+      "objectId": "fdb041b2f5fa97be59e6067158fe171ad509d053",
+      "peeledTarget": "8211a736c94ae5e54e901a814345f0b73ce4c060"
+    },
+    {
+      "ref": "refs/tags/mvp-foundation-v1",
+      "objectId": "0f35ed8dbd6b86513e9ed78a03a794447362dc9f",
+      "peeledTarget": "b31fa4e7c60b1387b0fa9bdf42ef819bc01a978a"
+    }
+  ],
+  "activePullRequests": [
+    {
+      "number": 69,
+      "baseRef": "integration/mvp",
+      "headRef": "feat/t02p-12-react-detail-gallery-viewer-acceptance",
+      "headSha": "4d2aadf548785a85448a74583703ebe24148ff55"
+    },
+    {
+      "number": 72,
+      "baseRef": "main",
+      "headRef": "feat/t02-petal-quick-actions-rebuild",
+      "headSha": "7dac4abc1402354974175c8e770f431558f6020f"
+    },
+    {
+      "number": 74,
+      "baseRef": "integration/mvp",
+      "headRef": "feat/t02-r03-home-nearby-topics-topic-detail",
+      "headSha": "5ad822416fd60eb4a02f666c69a241077fb8479e"
+    }
+  ]
+}

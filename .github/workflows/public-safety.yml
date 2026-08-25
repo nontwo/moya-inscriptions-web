@@ -1,0 +1,60 @@
+name: Public Safety
+
+on:
+  pull_request:
+    branches:
+      - main
+      - integration/mvp
+  push:
+    branches:
+      - main
+      - integration/mvp
+    tags:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  public-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install ExifTool
+        run: >-
+          sudo apt-get update && sudo apt-get install --yes
+          libimage-exiftool-perl
+
+      - name: Apply and verify safe repository identity
+        run: node scripts/setup-safe-git-identity.mjs --verify-and-apply
+
+      - name: Scan GitHub event, Git range, public text, and metadata
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          MOYA_USE_EXIFTOOL: "1"
+        run: node scripts/check-public-safety.mjs --event "$GITHUB_EVENT_PATH"
+
+      - name: Scan dispatched revision
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          MOYA_USE_EXIFTOOL: "1"
+        run: >-
+          node scripts/check-public-safety.mjs --base "$(git rev-parse
+          "$GITHUB_SHA^")" --head "$GITHUB_SHA"
