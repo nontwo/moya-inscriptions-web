@@ -107,16 +107,49 @@ describe("T02 R03 architecture boundaries", () => {
       ),
       "utf8",
     );
+    const home = await readFile(
+      path.join(repositoryRoot, "apps/web/features/home/home-screen.tsx"),
+      "utf8",
+    );
+    const productShell = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/product-shell/product-shell.tsx",
+      ),
+      "utf8",
+    );
+    const productStyles = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/product-shell/product-shell.module.css",
+      ),
+      "utf8",
+    );
 
     expect(pager).not.toMatch(
       /setPointerCapture|releasePointerCapture|pointermove|translate3d/u,
     );
+    expect(pager).not.toMatch(
+      /addEventListener\(["'](?:pointer|touch)|spring|resistance/u,
+    );
     expect(pager).not.toMatch(/primary-navigation|PrimaryNavigationPager/u);
+    expect(home).not.toMatch(/history|popstate/u);
+    expect(productShell).toContain("registerActiveHomeScrollElement");
+    expect(productShell).toContain('addEventListener("popstate"');
     expect(styles).toMatch(
       /\.pagerFrame \{[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;[^}]*touch-action: pan-x pan-y;/su,
     );
     expect(styles).toMatch(
       /\.feedPanel \{[^}]*scroll-snap-align: start;[^}]*scroll-snap-stop: always;/su,
+    );
+    expect(styles).toMatch(
+      /data-home-pager-platform="phone"\] \.feedPanel,[\s\S]*data-home-pager-platform="tablet"\] \.feedPanel \{[^}]*height: 100%;[^}]*overflow-y: auto;[^}]*overscroll-behavior-y: contain;[^}]*-webkit-overflow-scrolling: touch;/u,
+    );
+    expect(styles.match(/(?:^|\n)\.feedPanel \{[^}]*\}/u)?.[0]).not.toContain(
+      "overflow-y: auto",
+    );
+    expect(productStyles).toMatch(
+      /data-primary-destination="home"\][\s\S]*overflow: hidden;/u,
     );
   });
 

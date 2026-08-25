@@ -79,6 +79,9 @@ export interface ProductShellContextValue {
   readonly orientation: PresentationOrientation;
   readonly platform: PresentationPlatform;
   readonly readActiveScrollTop: () => number;
+  readonly registerActiveHomeScrollElement: (
+    element: HTMLElement,
+  ) => () => void;
   readonly registerTopicOpener: (
     topicId: string,
     opener: HTMLButtonElement,
@@ -156,6 +159,7 @@ export const ProductShell = ({
   const topicOpenerIdRef = useRef<string | null>(null);
   const topicSourceScrollTopRef = useRef(0);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
+  const activeHomeScrollElementRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const topicFocusFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
@@ -184,6 +188,8 @@ export const ProductShell = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [navigationMinimized, setNavigationMinimized] = useState(false);
+  const [activeHomeScrollElement, setActiveHomeScrollElement] =
+    useState<HTMLElement | null>(null);
   const [bootPending, setBootPending] = useState(true);
 
   const setNavigationMinimizedState = useCallback((minimized: boolean) => {
@@ -206,12 +212,35 @@ export const ProductShell = ({
     setNavigationMinimizedState(false);
   }, [setNavigationMinimizedState]);
 
+  const registerActiveHomeScrollElement = useCallback(
+    (element: HTMLElement) => {
+      activeHomeScrollElementRef.current = element;
+      setActiveHomeScrollElement((current) =>
+        current === element ? current : element,
+      );
+      return () => {
+        if (activeHomeScrollElementRef.current !== element) return;
+        activeHomeScrollElementRef.current = null;
+        setActiveHomeScrollElement((current) =>
+          current === element ? null : current,
+        );
+      };
+    },
+    [],
+  );
+
   const scrollElementFor = useCallback(
     (
       destination: PrimaryDestination,
       presentationPlatform: PresentationPlatform,
     ): Element | null => {
       if (presentationPlatform === "pc") return documentScrollElement();
+      if (
+        destination === "home" &&
+        activeHomeScrollElementRef.current !== null
+      ) {
+        return activeHomeScrollElementRef.current;
+      }
       return (
         rootRef.current?.querySelector(
           `[data-primary-destination="${destination}"]`,
@@ -557,7 +586,10 @@ export const ProductShell = ({
       return undefined;
     }
 
-    const scrollElement = scrollElementFor(activeDestination, platform);
+    const scrollElement =
+      activeDestination === "home" && activeHomeScrollElement !== null
+        ? activeHomeScrollElement
+        : scrollElementFor(activeDestination, platform);
     if (!(scrollElement instanceof HTMLElement)) return undefined;
 
     navigationScrollStateRef.current = createPrimaryNavigationScrollState(
@@ -603,6 +635,7 @@ export const ProductShell = ({
     };
   }, [
     activeDestination,
+    activeHomeScrollElement,
     activeTopicId,
     expandNavigation,
     platform,
@@ -812,6 +845,7 @@ export const ProductShell = ({
     orientation,
     platform,
     readActiveScrollTop,
+    registerActiveHomeScrollElement,
     registerTopicOpener,
     restoreActiveScrollTop,
     theme,

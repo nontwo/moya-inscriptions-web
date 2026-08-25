@@ -124,11 +124,13 @@ export const HomeScreen = ({
     topics: 0,
   });
   const {
+    activeDestination,
     activeTopicId,
     feedLayout,
     openTopic,
     platform,
     readActiveScrollTop,
+    registerActiveHomeScrollElement,
     registerTopicOpener,
     restoreActiveScrollTop,
   } = useProductShell();
@@ -153,11 +155,15 @@ export const HomeScreen = ({
   const commitFeed = useCallback(
     (feed: HomeFeed) => {
       if (feed === activeFeed) return;
-      scrollPositionsRef.current[activeFeed] = readActiveScrollTop();
+      if (platform === "pc") {
+        scrollPositionsRef.current[activeFeed] = readActiveScrollTop();
+      }
       setActiveFeed(feed);
-      restoreActiveScrollTop(scrollPositionsRef.current[feed]);
+      if (platform === "pc") {
+        restoreActiveScrollTop(scrollPositionsRef.current[feed]);
+      }
     },
-    [activeFeed, readActiveScrollTop, restoreActiveScrollTop],
+    [activeFeed, platform, readActiveScrollTop, restoreActiveScrollTop],
   );
 
   const openTopicFromCard = useCallback(
@@ -172,9 +178,11 @@ export const HomeScreen = ({
   useEffect(() => {
     if (activeTopicId !== null && activeFeed !== "topics") {
       setActiveFeed("topics");
-      restoreActiveScrollTop(scrollPositionsRef.current.topics);
+      if (platform === "pc") {
+        restoreActiveScrollTop(scrollPositionsRef.current.topics);
+      }
     }
-  }, [activeFeed, activeTopicId, restoreActiveScrollTop]);
+  }, [activeFeed, activeTopicId, platform, restoreActiveScrollTop]);
 
   useEffect(() => {
     if (activeTopicId === null) return;
@@ -280,6 +288,7 @@ export const HomeScreen = ({
       ref={rootRef}
       className={styles.homeSurface}
       data-active-home-feed={activeFeed}
+      data-home-platform={platform}
       data-home-surface=""
       tabIndex={-1}
     >
@@ -324,6 +333,8 @@ export const HomeScreen = ({
         onProgress={updateTabIndicator}
         panels={panels}
         platform={platform}
+        primaryVisible={activeDestination === "home"}
+        registerActiveScrollElement={registerActiveHomeScrollElement}
       />
     </div>
   );

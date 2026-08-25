@@ -11,6 +11,9 @@ import {
   topicHistoryState,
 } from "./product-history";
 
+import type { ReactNode } from "react";
+import type { ProductShellContextValue } from "./product-shell";
+
 const createMediaQueryList = (matches = false): MediaQueryList =>
   ({
     addEventListener: vi.fn(),
@@ -24,12 +27,18 @@ const createMediaQueryList = (matches = false): MediaQueryList =>
   }) as unknown as MediaQueryList;
 
 const mountedRoots: ReturnType<typeof createRoot>[] = [];
+let observedProductShell: ProductShellContextValue | null = null;
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const renderProductShell = () => {
+const ProductShellObserver = () => {
+  observedProductShell = useProductShell();
+  return null;
+};
+
+const renderProductShell = (home: ReactNode = <p>home content</p>) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -38,7 +47,7 @@ const renderProductShell = () => {
     root.render(
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
-        home={<p>home content</p>}
+        home={home}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
       />,
@@ -171,6 +180,7 @@ describe("ProductShell", () => {
     vi.useRealTimers();
     document.body.style.overflow = "";
     document.documentElement.removeAttribute("data-effective-theme");
+    observedProductShell = null;
   });
 
   it("keeps all destinations mounted and commits a tap through one history replacement", async () => {
@@ -294,6 +304,61 @@ describe("ProductShell", () => {
         .querySelector("[data-product-shell]")
         ?.getAttribute("data-primary-navigation-minimized"),
     ).toBe("true");
+  });
+
+  it("registers the active Home panel without copying scrollTop and ignores stale cleanup", async () => {
+    const { container } = renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const shell = container.querySelector<HTMLElement>("[data-product-shell]")!;
+    const discover = document.createElement("section");
+    const nearby = document.createElement("section");
+    for (const element of [discover, nearby]) {
+      Object.defineProperty(element, "scrollHeight", {
+        configurable: true,
+        value: 1_000,
+      });
+      Object.defineProperty(element, "clientHeight", {
+        configurable: true,
+        value: 400,
+      });
+    }
+    discover.scrollTop = 240;
+    nearby.scrollTop = 130;
+
+    let unregisterDiscover: () => void = () => undefined;
+    let unregisterNearby: () => void = () => undefined;
+    act(() => {
+      unregisterDiscover =
+        observedProductShell!.registerActiveHomeScrollElement(discover);
+    });
+    expect(observedProductShell!.readActiveScrollTop()).toBe(240);
+    act(() => {
+      unregisterNearby =
+        observedProductShell!.registerActiveHomeScrollElement(nearby);
+    });
+
+    expect(nearby.scrollTop).toBe(130);
+    act(() => unregisterDiscover());
+    expect(observedProductShell!.readActiveScrollTop()).toBe(130);
+
+    act(() => {
+      discover.scrollTop = 300;
+      discover.dispatchEvent(new Event("scroll"));
+    });
+    expect(shell.dataset.primaryNavigationMinimized).toBe("false");
+    act(() => {
+      nearby.scrollTop = 136;
+      nearby.dispatchEvent(new Event("scroll"));
+    });
+    expect(shell.dataset.primaryNavigationMinimized).toBe("false");
+    act(() => {
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.runAllTimers();
+    });
+    expect(nearby.scrollTop).toBe(175);
+    expect(discover.scrollTop).toBe(300);
+
+    act(() => unregisterNearby());
   });
 
   it("expands the minimized current control without changing destination or history", async () => {

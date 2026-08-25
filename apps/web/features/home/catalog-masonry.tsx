@@ -134,6 +134,10 @@ export const CatalogMasonry = <T,>({
     renderedLayout !== null &&
     renderedLayout.positions.length === items.length &&
     renderedLayout.signature.startsWith(`${width}:${columns}:`);
+  const retainedLayout =
+    renderedLayout !== null && renderedLayout.positions.length === items.length
+      ? renderedLayout
+      : null;
 
   return (
     <div
@@ -141,19 +145,20 @@ export const CatalogMasonry = <T,>({
       className={styles.masonry}
       data-home-masonry=""
       data-layout-ready={ready ? "true" : "false"}
+      data-layout-retained={!ready && retainedLayout !== null ? "" : undefined}
       data-masonry-columns={columns}
       role="list"
-      style={{ height: ready ? renderedLayout.height : 1 }}
+      style={{ height: retainedLayout?.height ?? 1 }}
     >
       {items.map((item, index) => {
         const key = getKey(item);
-        const position = ready ? renderedLayout.positions[index] : undefined;
+        const position = retainedLayout?.positions[index];
         const itemWidth = spans[index] ? width : columnWidth;
         const style = {
           left: position?.x ?? 0,
           top: position?.y ?? 0,
-          visibility: ready ? "visible" : "hidden",
-          width: position?.width ?? itemWidth,
+          visibility: retainedLayout === null ? "hidden" : "visible",
+          width: ready ? (position?.width ?? itemWidth) : itemWidth,
         } satisfies CSSProperties;
         return (
           <div

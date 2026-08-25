@@ -28,7 +28,7 @@ const mediaQuery = (): MediaQueryList =>
     removeEventListener: vi.fn(),
   }) as unknown as MediaQueryList;
 
-const renderHome = () => {
+const renderHome = (platform: "phone" | "tablet" | "pc" = "phone") => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -37,8 +37,9 @@ const renderHome = () => {
     root.render(
       <ProductShell
         calligraphy={<p>Calligraphy panel</p>}
+        developmentPlatformOverride={platform}
         home={<HomeScreen data={emptyHome} />}
-        initialPlatform="phone"
+        initialPlatform={platform}
         inscriptions={<p>Inscriptions panel</p>}
       />,
     );
@@ -135,7 +136,7 @@ describe("HomeScreen integration", () => {
     );
   });
 
-  it("switches feeds without Primary history and restores three independent scroll positions", async () => {
+  it("keeps three Phone feed scroll positions in their mounted native panels", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const container = renderHome();
     await act(async () => vi.runAllTimers());
@@ -144,33 +145,58 @@ describe("HomeScreen integration", () => {
     const home = container.querySelector<HTMLElement>(
       '[data-primary-destination="home"]',
     )!;
-    Object.defineProperty(home, "scrollHeight", {
-      configurable: true,
-      value: 2_000,
-    });
-    Object.defineProperty(home, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
+    const panels = {
+      discover: container.querySelector<HTMLElement>(
+        '[data-home-feed-panel="discover"]',
+      )!,
+      nearby: container.querySelector<HTMLElement>(
+        '[data-home-feed-panel="nearby"]',
+      )!,
+      topics: container.querySelector<HTMLElement>(
+        '[data-home-feed-panel="topics"]',
+      )!,
+    };
+    const identities = { ...panels };
+    for (const panel of Object.values(panels)) {
+      Object.defineProperty(panel, "scrollHeight", {
+        configurable: true,
+        value: 2_000,
+      });
+      Object.defineProperty(panel, "clientHeight", {
+        configurable: true,
+        value: 600,
+      });
+    }
 
-    home.scrollTop = 137;
+    panels.discover.scrollTop = 137;
     act(() => feedTab(container, "nearby").click());
     await act(async () => vi.runAllTimers());
     expect(home.scrollTop).toBe(0);
-    home.scrollTop = 88;
+    expect(panels.nearby.scrollTop).toBe(0);
+    panels.nearby.scrollTop = 88;
     act(() => feedTab(container, "topics").click());
     await act(async () => vi.runAllTimers());
-    home.scrollTop = 44;
+    panels.topics.scrollTop = 44;
 
     act(() => feedTab(container, "discover").click());
     await act(async () => vi.runAllTimers());
-    expect(home.scrollTop).toBe(137);
+    expect(panels.discover.scrollTop).toBe(137);
     act(() => feedTab(container, "nearby").click());
     await act(async () => vi.runAllTimers());
-    expect(home.scrollTop).toBe(88);
+    expect(panels.nearby.scrollTop).toBe(88);
     act(() => feedTab(container, "topics").click());
     await act(async () => vi.runAllTimers());
-    expect(home.scrollTop).toBe(44);
+    expect(panels.topics.scrollTop).toBe(44);
+    expect(home.scrollTop).toBe(0);
+    expect(
+      Object.fromEntries(
+        Object.keys(panels).map((feed) => [
+          feed,
+          container.querySelector(`[data-home-feed-panel="${feed}"]`) ===
+            identities[feed as keyof typeof identities],
+        ]),
+      ),
+    ).toEqual({ discover: true, nearby: true, topics: true });
     expect(shell.dataset.activeDestination).toBe("home");
     expect(replaceState).not.toHaveBeenCalled();
 
@@ -185,7 +211,40 @@ describe("HomeScreen integration", () => {
     expect(feedTab(container, "topics").getAttribute("aria-selected")).toBe(
       "true",
     );
-    expect(home.scrollTop).toBe(44);
+    expect(panels.topics.scrollTop).toBe(44);
+    expect(home.scrollTop).toBe(0);
+  });
+
+  it("keeps PC feed switching on the document scroll model", async () => {
+    const container = renderHome("pc");
+    await act(async () => vi.runAllTimers());
+    const scrollTo = vi.mocked(window.scrollTo);
+    const documentScroller = (document.scrollingElement ??
+      document.documentElement) as HTMLElement;
+    Object.defineProperty(documentScroller, "scrollHeight", {
+      configurable: true,
+      value: 2_000,
+    });
+    Object.defineProperty(documentScroller, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    scrollTo.mockClear();
+
+    documentScroller.scrollTop = 137;
+    act(() => feedTab(container, "nearby").click());
+    await act(async () => vi.runAllTimers());
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: 0 });
+
+    documentScroller.scrollTop = 88;
+    act(() => feedTab(container, "discover").click());
+    await act(async () => vi.runAllTimers());
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: 137 });
+    expect(
+      container
+        .querySelector('[data-home-feed-panel="discover"]')
+        ?.hasAttribute("data-home-feed-scroll-surface"),
+    ).toBe(false);
   });
 
   it("leaves orientation-time Primary scroll restoration with ProductShell", async () => {
@@ -194,11 +253,14 @@ describe("HomeScreen integration", () => {
     const home = container.querySelector<HTMLElement>(
       '[data-primary-destination="home"]',
     )!;
-    Object.defineProperty(home, "scrollHeight", {
+    const discover = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="discover"]',
+    )!;
+    Object.defineProperty(discover, "scrollHeight", {
       configurable: true,
       value: 2_000,
     });
-    Object.defineProperty(home, "clientHeight", {
+    Object.defineProperty(discover, "clientHeight", {
       configurable: true,
       value: 600,
     });
@@ -207,7 +269,7 @@ describe("HomeScreen integration", () => {
         (button) => button.getAttribute("aria-label") === label,
       )!;
 
-    home.scrollTop = 180;
+    discover.scrollTop = 180;
     act(() => primaryButton("碑刻").click());
     await act(async () => vi.runAllTimers());
     act(() => primaryButton("首页").click());
@@ -223,6 +285,7 @@ describe("HomeScreen integration", () => {
     act(() => window.dispatchEvent(new Event("orientationchange")));
     await act(async () => vi.runAllTimers());
 
-    expect(home.scrollTop).toBe(180);
+    expect(discover.scrollTop).toBe(180);
+    expect(home.scrollTop).toBe(0);
   });
 });

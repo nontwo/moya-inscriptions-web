@@ -44,6 +44,25 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.productShell[data-platform="phone"]
+  .primaryLayer
+  :global([data-primary-destination="home"]),
+.productShell[data-platform="tablet"]
+  .primaryLayer
+  :global([data-primary-destination="home"]) {
+  overflow: hidden;
+}
+
+.productShell[data-platform="phone"]
+  .primaryLayer
+  :global([data-primary-destination="home"] [data-product-panel="home"]),
+.productShell[data-platform="tablet"]
+  .primaryLayer
+  :global([data-primary-destination="home"] [data-product-panel="home"]) {
+  height: 100%;
+  min-height: 0;
+}
+
 .settingsButton {
   position: fixed;
   z-index: var(--yoyi-z-index-sticky);

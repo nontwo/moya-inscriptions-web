@@ -10,6 +10,15 @@
   outline: none;
 }
 
+.homeSurface[data-home-platform="phone"],
+.homeSurface[data-home-platform="tablet"] {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .homeHeader {
   position: sticky;
   z-index: var(--yoyi-z-index-sticky);
@@ -86,6 +95,12 @@
   height: 52px;
 }
 
+.homeSurface[data-home-platform="phone"] .homeHeader,
+.homeSurface[data-home-platform="tablet"] .homeHeader {
+  position: relative;
+  top: auto;
+}
+
 .pagerFrame {
   position: relative;
   width: 100%;
@@ -107,6 +122,12 @@
   overflow-x: hidden;
 }
 
+.pagerFrame[data-home-pager-platform="phone"],
+.pagerFrame[data-home-pager-platform="tablet"] {
+  height: 100%;
+  min-height: 0;
+}
+
 .pagerTrack {
   display: flex;
   width: 100%;
@@ -124,13 +145,29 @@
   scroll-snap-stop: always;
 }
 
+.pagerFrame[data-home-pager-platform="phone"] .pagerTrack,
+.pagerFrame[data-home-pager-platform="tablet"] .pagerTrack {
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.pagerFrame[data-home-pager-platform="phone"] .feedPanel,
+.pagerFrame[data-home-pager-platform="tablet"] .feedPanel {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .masonry {
   position: relative;
   width: 100%;
   min-height: 1px;
 }
 
-.masonry[data-layout-ready="false"] {
+.masonry[data-layout-ready="false"]:not([data-layout-retained]) {
   visibility: hidden;
 }
 

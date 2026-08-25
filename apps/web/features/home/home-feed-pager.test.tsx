@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HomeFeedPager } from "./home-feed-pager";
 import { HOME_PAGER_SCROLL_IDLE_MS } from "./home-feed-pager-motion";
+import { homeFeeds } from "./home-feed";
 
 import type { Root } from "react-dom/client";
 import type { HomeFeedPagerHandle } from "./home-feed-pager";
@@ -17,12 +18,16 @@ import type { HomeFeed } from "./home-feed";
 
 const roots: Root[] = [];
 let prefersReducedMotion = false;
+let pagerWidth = 400;
 let scrollToCalls: ScrollToOptions[] = [];
+const resizeObservers: TestResizeObserver[] = [];
 
 class TestResizeObserver implements ResizeObserver {
   readonly observed = new Set<Element>();
 
-  constructor(private readonly callback: ResizeObserverCallback) {}
+  constructor(private readonly callback: ResizeObserverCallback) {
+    resizeObservers.push(this);
+  }
 
   disconnect() {
     this.observed.clear();
@@ -45,30 +50,38 @@ const renderPager = (
   onCommit = vi.fn<(feed: HomeFeed) => void>(),
   platform: "phone" | "tablet" | "pc" = "phone",
   onProgress = vi.fn<(progress: number) => void>(),
+  registerActiveScrollElement?: (element: HTMLElement) => () => void,
 ) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const handle = createRef<HomeFeedPagerHandle>();
   roots.push(root);
-  act(() => {
-    root.render(
-      <HomeFeedPager
-        ref={handle}
-        activeFeed="discover"
-        onCommit={onCommit}
-        onProgress={onProgress}
-        panels={{
-          discover: <button type="button">Discover action</button>,
-          nearby: <p>Nearby panel</p>,
-          topics: <p>Topics panel</p>,
-        }}
-        platform={platform}
-      />,
-    );
-  });
+  const render = (activeFeed: HomeFeed = "discover", primaryVisible = true) => {
+    act(() => {
+      root.render(
+        <HomeFeedPager
+          ref={handle}
+          activeFeed={activeFeed}
+          onCommit={onCommit}
+          onProgress={onProgress}
+          panels={{
+            discover: <button type="button">Discover action</button>,
+            nearby: <p>Nearby panel</p>,
+            topics: <p>Topics panel</p>,
+          }}
+          platform={platform}
+          primaryVisible={primaryVisible}
+          {...(registerActiveScrollElement === undefined
+            ? {}
+            : { registerActiveScrollElement })}
+        />,
+      );
+    });
+  };
+  render();
   const frame = container.querySelector<HTMLElement>("[data-home-feed-pager]")!;
-  return { container, frame, handle, onCommit, onProgress };
+  return { container, frame, handle, onCommit, onProgress, render };
 };
 
 const nativeScroll = (frame: HTMLElement, scrollLeft: number) => {
@@ -86,12 +99,16 @@ describe("HomeFeedPager native scroll-snap", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     prefersReducedMotion = false;
+    pagerWidth = 400;
     scrollToCalls = [];
+    resizeObservers.length = 0;
     Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
       value: TestResizeObserver,
     });
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      () => pagerWidth,
+    );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
       function (this: HTMLElement) {
         const feed = this.dataset.homeFeedPanel;
@@ -147,6 +164,11 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(panels[0]?.hasAttribute("inert")).toBe(false);
     expect(panels[1]?.getAttribute("aria-hidden")).toBe("true");
     expect(panels[1]?.hasAttribute("inert")).toBe(true);
+    expect(
+      panels.every((panel) =>
+        panel.hasAttribute("data-home-feed-scroll-surface"),
+      ),
+    ).toBe(true);
   });
 
   it("publishes native progress without committing before scroll settles", () => {
@@ -209,11 +231,17 @@ describe("HomeFeedPager native scroll-snap", () => {
     settleFromIdle();
 
     expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.style.height).toBe("600px");
+    expect(frame.style.height).toBe("");
   });
 
-  it("holds source height during movement and switches height only after settle", () => {
-    const { frame } = renderPager();
+  it("keeps Phone height fixed while retaining the PC document-flow height model", () => {
+    const phone = renderPager();
+    expect(phone.frame.style.height).toBe("");
+    nativeScroll(phone.frame, 400);
+    act(() => phone.frame.dispatchEvent(new Event("scrollend")));
+    expect(phone.frame.style.height).toBe("");
+
+    const { frame } = renderPager(vi.fn(), "pc");
     expect(frame.style.height).toBe("600px");
 
     nativeScroll(frame, 400);
@@ -221,6 +249,72 @@ describe("HomeFeedPager native scroll-snap", () => {
     act(() => frame.dispatchEvent(new Event("scrollend")));
 
     expect(frame.style.height).toBe("900px");
+  });
+
+  it("registers the committed Phone panel without changing any panel scrollTop", () => {
+    const registered: HTMLElement[] = [];
+    const cleanups: ReturnType<typeof vi.fn>[] = [];
+    const register = vi.fn((element: HTMLElement) => {
+      registered.push(element);
+      const cleanup = vi.fn();
+      cleanups.push(cleanup);
+      return cleanup;
+    });
+    const { container, render } = renderPager(
+      vi.fn(),
+      "phone",
+      vi.fn(),
+      register,
+    );
+    const discover = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="discover"]',
+    )!;
+    const nearby = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="nearby"]',
+    )!;
+    discover.scrollTop = 137;
+    nearby.scrollTop = 88;
+
+    render("nearby");
+
+    expect(registered).toEqual([discover, nearby]);
+    expect(cleanups[0]).toHaveBeenCalledOnce();
+    expect(discover.scrollTop).toBe(137);
+    expect(nearby.scrollTop).toBe(88);
+    expect(container.querySelector('[data-home-feed-panel="discover"]')).toBe(
+      discover,
+    );
+    expect(container.querySelector('[data-home-feed-panel="nearby"]')).toBe(
+      nearby,
+    );
+  });
+
+  it("restores each native panel after a hidden Primary ancestor removes its scroll range", () => {
+    const { container, render } = renderPager();
+    const panels = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
+    );
+    const positions = [137, 88, 44];
+    for (const [index, panel] of panels.entries()) {
+      render(homeFeeds[index] ?? "discover");
+      act(() => {
+        panel.scrollTop = positions[index] ?? 0;
+        panel.dispatchEvent(new Event("scroll"));
+      });
+    }
+
+    pagerWidth = 0;
+    render("topics", false);
+    for (const panel of panels) {
+      act(() => {
+        panel.scrollTop = 0;
+        panel.dispatchEvent(new Event("scroll"));
+      });
+    }
+    pagerWidth = 400;
+    render("topics", true);
+
+    expect(panels.map((panel) => panel.scrollTop)).toEqual(positions);
   });
 
   it("allows a tab request to cross directly to a non-adjacent feed", () => {

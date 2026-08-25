@@ -37,6 +37,8 @@ export interface HomeFeedPagerProps {
   readonly activeFeed: HomeFeed;
   readonly onCommit: (feed: HomeFeed) => void;
   readonly onProgress?: (progress: number) => void;
+  readonly primaryVisible?: boolean;
+  readonly registerActiveScrollElement?: (element: HTMLElement) => () => void;
   readonly panels: Readonly<Record<HomeFeed, ReactNode>>;
   readonly platform: PresentationPlatform;
 }
@@ -54,7 +56,15 @@ export const HomeFeedPager = forwardRef<
   HomeFeedPagerHandle,
   HomeFeedPagerProps
 >(function HomeFeedPager(
-  { activeFeed, onCommit, onProgress, panels, platform },
+  {
+    activeFeed,
+    onCommit,
+    onProgress,
+    panels,
+    platform,
+    primaryVisible = true,
+    registerActiveScrollElement,
+  },
   ref,
 ) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -64,8 +74,10 @@ export const HomeFeedPager = forwardRef<
     topics: null,
   });
   const heightsRef = useRef(panelHeights());
+  const preservedPanelScrollTopsRef = useRef(panelHeights());
   const activeIndex = homeFeeds.indexOf(activeFeed);
   const activeIndexRef = useRef(activeIndex);
+  const primaryVisibleRef = useRef(primaryVisible);
   const onCommitRef = useRef(onCommit);
   const onProgressRef = useRef(onProgress);
   const sessionRef = useRef<ScrollSession | null>(null);
@@ -74,12 +86,14 @@ export const HomeFeedPager = forwardRef<
   const wheelTimerRef = useRef<number | null>(null);
   const wheelHandledRef = useRef(false);
   const frameWidthRef = useRef(0);
+  const frameWasUnavailableRef = useRef(false);
   const touchActiveRef = useRef(false);
   const touchStartScrollLeftRef = useRef<number | null>(null);
   const suppressClickUntilRef = useRef(0);
   const settleRef = useRef<() => void>(() => undefined);
 
   activeIndexRef.current = activeIndex;
+  primaryVisibleRef.current = primaryVisible;
   onCommitRef.current = onCommit;
   onProgressRef.current = onProgress;
 
@@ -105,6 +119,18 @@ export const HomeFeedPager = forwardRef<
     if (height > 0) heightsRef.current[feed] = height;
     return height;
   }, []);
+
+  const restorePreservedPanelScrollTops = useCallback(() => {
+    if (platform === "pc") return;
+    for (const feed of homeFeeds) {
+      const panel = panelRefs.current[feed];
+      if (panel === null) continue;
+      panel.scrollTop = Math.min(
+        preservedPanelScrollTopsRef.current[feed],
+        Math.max(0, panel.scrollHeight - panel.clientHeight),
+      );
+    }
+  }, [platform]);
 
   const applyPanelHeight = useCallback(
     (index: number) => {
@@ -168,14 +194,20 @@ export const HomeFeedPager = forwardRef<
       sessionRef.current = null;
       touchStartScrollLeftRef.current = null;
       setScrolling(false);
-      applyPanelHeight(targetIndex);
+      if (platform === "pc") applyPanelHeight(targetIndex);
       publishProgress(true);
       const targetFeed = homeFeeds[targetIndex];
       if (targetFeed !== undefined && targetIndex !== activeIndexRef.current) {
         onCommitRef.current(targetFeed);
       }
     },
-    [applyPanelHeight, clearQuietTimer, publishProgress, setScrolling],
+    [
+      applyPanelHeight,
+      clearQuietTimer,
+      platform,
+      publishProgress,
+      setScrolling,
+    ],
   );
 
   const settlePager = useCallback(() => {
@@ -211,9 +243,9 @@ export const HomeFeedPager = forwardRef<
         requestedIndex,
       };
       setScrolling(true);
-      applyPanelHeight(activeIndexRef.current);
+      if (platform === "pc") applyPanelHeight(activeIndexRef.current);
     },
-    [applyPanelHeight, setScrolling],
+    [applyPanelHeight, platform, setScrolling],
   );
 
   const requestFeed = useCallback(
@@ -338,25 +370,56 @@ export const HomeFeedPager = forwardRef<
     const width = Math.max(1, frame.clientWidth);
     frameWidthRef.current = width;
     frame.scrollLeft = activeIndex * width;
-    for (const feed of homeFeeds) readPanelHeight(feed);
-    applyPanelHeight(activeIndex);
+    if (platform === "pc") {
+      for (const feed of homeFeeds) readPanelHeight(feed);
+      applyPanelHeight(activeIndex);
+    } else {
+      frame.style.height = "";
+    }
     publishProgress(true);
   }, [
     activeFeed,
     activeIndex,
     applyPanelHeight,
     clearQuietTimer,
+    platform,
     publishProgress,
     readPanelHeight,
     setScrolling,
   ]);
 
   useLayoutEffect(() => {
+    if (platform === "pc" || registerActiveScrollElement === undefined) {
+      return undefined;
+    }
+    const panel = panelRefs.current[activeFeed];
+    if (panel === null) return undefined;
+    if (primaryVisibleRef.current) {
+      preservedPanelScrollTopsRef.current[activeFeed] = panel.scrollTop;
+    }
+    return registerActiveScrollElement(panel);
+  }, [activeFeed, platform, registerActiveScrollElement]);
+
+  useLayoutEffect(() => {
+    if (primaryVisible) restorePreservedPanelScrollTops();
+  }, [primaryVisible, restorePreservedPanelScrollTops]);
+
+  useLayoutEffect(() => {
     const frame = frameRef.current;
     if (frame === null || typeof ResizeObserver !== "function") return;
     const observer = new ResizeObserver(() => {
-      for (const feed of homeFeeds) readPanelHeight(feed);
+      if (platform === "pc") {
+        for (const feed of homeFeeds) readPanelHeight(feed);
+      }
       const width = frame.clientWidth;
+      if (width <= 0) {
+        frameWasUnavailableRef.current = true;
+        return;
+      }
+      if (frameWasUnavailableRef.current) {
+        frameWasUnavailableRef.current = false;
+        restorePreservedPanelScrollTops();
+      }
       if (width > 0 && Math.abs(width - frameWidthRef.current) > 0.5) {
         frameWidthRef.current = width;
         clearQuietTimer();
@@ -365,21 +428,25 @@ export const HomeFeedPager = forwardRef<
         frame.scrollLeft = activeIndexRef.current * width;
         publishProgress(true);
       }
-      if (sessionRef.current === null) {
+      if (platform === "pc" && sessionRef.current === null) {
         applyPanelHeight(activeIndexRef.current);
       }
     });
     observer.observe(frame);
-    for (const feed of homeFeeds) {
-      const panel = panelRefs.current[feed];
-      if (panel !== null) observer.observe(panel);
+    if (platform === "pc") {
+      for (const feed of homeFeeds) {
+        const panel = panelRefs.current[feed];
+        if (panel !== null) observer.observe(panel);
+      }
     }
     return () => observer.disconnect();
   }, [
     applyPanelHeight,
     clearQuietTimer,
+    platform,
     publishProgress,
     readPanelHeight,
+    restorePreservedPanelScrollTops,
     setScrolling,
   ]);
 
@@ -441,8 +508,21 @@ export const HomeFeedPager = forwardRef<
               aria-labelledby={`home-tab-${feed}`}
               className={styles.feedPanel}
               data-home-feed-panel={feed}
+              data-home-feed-scroll-surface={platform === "pc" ? undefined : ""}
               id={`home-panel-${feed}`}
               inert={!selected || undefined}
+              onScroll={(event) => {
+                if (
+                  platform === "pc" ||
+                  !primaryVisibleRef.current ||
+                  feed !== homeFeeds[activeIndexRef.current] ||
+                  frameRef.current?.clientWidth === 0
+                ) {
+                  return;
+                }
+                preservedPanelScrollTopsRef.current[feed] =
+                  event.currentTarget.scrollTop;
+              }}
               role="tabpanel"
               tabIndex={selected ? 0 : -1}
             >
