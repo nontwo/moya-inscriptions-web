@@ -5,9 +5,9 @@
 
 ## 品牌
 
-| 仓库文件              | 用途                       | 来源                                                                             | 路径修改 | 颜色修改                                | 授权说明               |
-| --------------------- | -------------------------- | -------------------------------------------------------------------------------- | -------- | --------------------------------------- | ---------------------- |
-| `brand/yoyi-logo.svg` | 桌面品牌区与 LoadingScreen | `/Users/jia/Downloads/yoyi-logo-vector-package/yoyi-logo-transparent-vector.svg` | 否       | 否；组件以 alpha mask/currentColor 着色 | 用户提供的正式品牌矢量 |
+| 仓库文件              | 用途                       | 来源                                              | 路径修改 | 颜色修改                                | 授权说明               |
+| --------------------- | -------------------------- | ------------------------------------------------- | -------- | --------------------------------------- | ---------------------- |
+| `brand/yoyi-logo.svg` | 桌面品牌区与 LoadingScreen | Owner 提供的原始品牌资产；私有源文件由 Owner 保留 | 否       | 否；组件以 alpha mask/currentColor 着色 | 用户提供的正式品牌矢量 |
 
 原文件和仓库文件 SHA-256 均为
 `3cef0221e44de2587ee153276417e38f702249c36bdf57d0db539236fd45bac3`。
@@ -21,8 +21,8 @@
 | `paper-dark-subtle.svg`  | 克制深色纸张       |   是 | 384×512 tile，opacity 0.045 |
 | `paper-dark-visible.svg` | 移动主界面深色纸张 |   是 | 384×512 tile，opacity 0.065 |
 
-参考 `/Users/jia/Downloads/GJ2304296.隸釋二十七卷.jpg`
-的色温、纵向纤维和低频斑驳；纤维噪声方向为 `0.16 0.008`，未复制或嵌入任何像素。
+参考 Owner 提供并私下保留的原始历史图像之色温、纵向纤维和低频斑驳；纤维噪声方向为
+`0.16 0.008`，未复制或嵌入任何像素。
 
 ## 图标
 
@@ -32,20 +32,15 @@
 `previous.svg`、`next.svg` 均逐字节恢复为首个 T02 提交 `616c9a5` 的 24×24
 currentColor 圆角线性图标。`settings.svg`
 是同一线宽和端点规范下新增的原创齿轮图标。 `theme.svg` 仅为 `ThemeCycleButton`
-的兼容资产，不再用于移动主预览。用户提供的 `/Users/jia/Downloads/IMG_5410.jpg`
-与 `/Users/jia/Downloads/IMG_5411.jpg`
-仅用于核对原版图标和底栏组合，未复制或嵌入其中像素。
+的兼容资产，不再用于移动主预览。Owner 提供并私下保留的原始界面参考图仅用于核对原版图标和底栏组合，未复制或嵌入其中像素。
 
 ## 固定字标
 
 底部三个固定字标直接使用用户提供 PNG 的字形像素。处理仅包括以 alpha≥32 确定边界、清除低透明度背景残影、等比缩放并居中到 264×120 透明画布；未重绘、矢量化、改色或改变内部纹理：
 
-- `nav-home.png` 来源
-  `/Users/jia/Downloads/标签名/ChatGPT Image 2026年8月7日 17_30_09.png`。
-- `nav-inscriptions.png` 来源
-  `/Users/jia/Downloads/标签名/ChatGPT Image 2026年8月7日 17_19_06.png`。
-- `nav-calligraphy.png` 来源
-  `/Users/jia/Downloads/标签名/ChatGPT Image 2026年8月7日 17_16_35.png`。
+- `nav-home.png`：Owner 提供的原始字标资产；私有源文件由 Owner 保留。
+- `nav-inscriptions.png`：Owner 提供的原始字标资产；私有源文件由 Owner 保留。
+- `nav-calligraphy.png`：Owner 提供的原始字标资产；私有源文件由 Owner 保留。
 
 这三个文件是本设计系统唯一允许的位图例外。顶部“发现、附近”和其他界面文字均使用系统字体。
 

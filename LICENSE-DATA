@@ -1,0 +1,30 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Scope
+
+The exact public fixture content checked into this repository is licensed under
+the Creative Commons Attribution 4.0 International Public License (CC BY 4.0).
+This includes checked-in prototype, sample, and test fixture content as data.
+
+This data license does not apply to:
+
+- software or ordinary technical documentation, which are licensed under the
+  Apache License 2.0 in LICENSE;
+- Yoyi / 由艺 names, logos, wordmarks, or service identity, which remain
+  reserved brand assets;
+- third-party material that is separately identified; or
+- production data or private research evidence, neither of which is included in
+  this repository.
+
+Attribution
+
+When sharing the licensed fixture content, attribute it as "Yoyi public fixture
+content", link to this repository and this license, and indicate whether changes
+were made.
+
+License text
+
+The complete CC BY 4.0 legal code is available at:
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+SPDX-License-Identifier: CC-BY-4.0
