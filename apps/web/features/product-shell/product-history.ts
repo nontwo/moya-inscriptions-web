@@ -128,8 +128,14 @@ export const parseProductHistoryState = (
 export const primaryLocation = (location: Location) =>
   `${location.pathname}${location.search}`;
 
+export const topicsFeedLocation = (location: Location) => {
+  const search = new URLSearchParams(location.search);
+  search.set("feed", "topics");
+  return `${location.pathname}?${search.toString()}`;
+};
+
 export const settingsLocation = (location: Location) =>
   `${primaryLocation(location)}#settings`;
 
 export const topicLocation = (location: Location, topicId: string) =>
-  `${primaryLocation(location)}#topic-${encodeURIComponent(topicId)}`;
+  `${topicsFeedLocation(location)}#topic-${encodeURIComponent(topicId)}`;

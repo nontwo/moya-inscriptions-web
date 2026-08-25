@@ -811,6 +811,30 @@ test("Topic Detail reload and Back preserve the recorded Topics source scroll", 
   await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(sourceTop);
 });
 
+test("Topic Back returns to Topics after a Clean Preview source remount", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-webkit",
+    "The clean source-remount regression runs once in iPhone WebKit.",
+  );
+  const { surface } = await openCleanProductSurface(page);
+  const home = activeHomeSurface(surface);
+  await activateHomeFeed(home, "专题");
+  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await home.locator("[data-topic-card]").first().click();
+  const shell = productShell(surface);
+  await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
+
+  await page.goBack();
+  await expect(shell.getByRole("dialog", { name: /专题：/ })).toHaveCount(0);
+  await expect(activeHomeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    "topics",
+  );
+  await expect(page).toHaveURL(/\?acceptance=r01-clean&feed=topics$/u);
+});
+
 test("Catalog Collection Topic resolves Catalog summaries without a fake Detail action", async ({
   page,
 }, testInfo) => {
