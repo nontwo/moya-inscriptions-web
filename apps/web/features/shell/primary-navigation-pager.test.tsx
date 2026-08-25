@@ -149,6 +149,8 @@ describe("PrimaryNavigationPager", () => {
       | "inscriptions"
       | "calligraphy"
       | "navigationHidden"
+      | "navigationMinimized"
+      | "onNavigationExpand"
       | "showDevelopmentPagerControls"
     >();
   });

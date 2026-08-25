@@ -423,7 +423,7 @@ test("Clean Product Preview is product-only and preserves shell state, scroll, S
   await settings.getByRole("button", { name: /切换主题/ }).click();
   await expect(shell).toHaveAttribute("data-theme-preference", "light");
 
-  if (testInfo.project.name === "desktop-chromium") {
+  if (expectedInitialAutoPlatform(testInfo.project.name) === "pc") {
     await expect(settings.locator("[data-feed-layout-toggle]")).toHaveCount(0);
   } else {
     await settings.locator("[data-feed-layout-toggle]").click();
@@ -440,7 +440,9 @@ test("Clean Product Preview is product-only and preserves shell state, scroll, S
   await expect(reloadedShell).toHaveAttribute("data-theme-preference", "light");
   await expect(reloadedShell).toHaveAttribute(
     "data-feed-layout",
-    testInfo.project.name === "desktop-chromium" ? "double" : "single",
+    expectedInitialAutoPlatform(testInfo.project.name) === "pc"
+      ? "double"
+      : "single",
   );
 });
 
@@ -700,7 +702,7 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   );
   await expect(feed.locator('[data-catalog-feed-span="full"]')).toHaveCount(2);
 
-  if (testInfo.project.name === "desktop-chromium") {
+  if (expectedInitialAutoPlatform(testInfo.project.name) === "pc") {
     await productShell(surface)
       .getByRole("button", { name: "打开设置" })
       .click();
@@ -1098,6 +1100,281 @@ test("Mobile WebKit locator click commits each primary destination", async ({
   }
 });
 
+test("R02 keeps one navigation tree and isolates accepted marks from the glass compositor", async ({
+  page,
+}) => {
+  const navigationAssetResponses: { status: number; url: string }[] = [];
+  const navigationAssetFailures: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("response", (response) => {
+    if (
+      /\/_next\/static\/media\/(?:home|inscriptions|calligraphy|nav-)/u.test(
+        response.url(),
+      )
+    ) {
+      navigationAssetResponses.push({
+        status: response.status(),
+        url: response.url(),
+      });
+    }
+  });
+  page.on("requestfailed", (request) => {
+    if (
+      /\/_next\/static\/media\/(?:home|inscriptions|calligraphy|nav-)/u.test(
+        request.url(),
+      )
+    ) {
+      navigationAssetFailures.push(request.url());
+    }
+  });
+  page.on("console", (message) => {
+    if (
+      message.type() === "error" &&
+      !message.location().url.includes("qa-visual-intentionally-missing.svg")
+    ) {
+      consoleErrors.push(message.text());
+    }
+  });
+
+  const { navigation, surface } = await openCleanProductSurface(page);
+  await expect(
+    navigation.locator("[data-primary-navigation-inline-icon]"),
+  ).toHaveCount(3);
+  await expect(
+    navigation.locator("[data-primary-navigation-inline-label]"),
+  ).toHaveCount(3);
+  await expect(
+    navigation.locator("[data-primary-navigation-inline-label] image"),
+  ).toHaveCount(3);
+
+  const initialRendering = await navigation.evaluate((node) => {
+    const navigationElement = node as HTMLElement;
+    const icons = Array.from(
+      navigationElement.querySelectorAll(
+        "[data-primary-navigation-inline-icon]",
+      ),
+    );
+    const labels = Array.from(
+      navigationElement.querySelectorAll(
+        "[data-primary-navigation-inline-label]",
+      ),
+    );
+    const glass = navigationElement.querySelector(
+      "[data-primary-navigation-glass]",
+    );
+    Object.assign(window, {
+      __r02NavigationIdentity: { glass, icons, labels, navigationElement },
+    });
+    return {
+      glassBackdrop:
+        glass instanceof HTMLElement
+          ? getComputedStyle(glass).getPropertyValue(
+              "-webkit-backdrop-filter",
+            ) ||
+            getComputedStyle(glass).backdropFilter ||
+            "none"
+          : "missing",
+      iconMasks: icons.map(
+        (icon) =>
+          getComputedStyle(icon).webkitMaskImage ||
+          getComputedStyle(icon).maskImage ||
+          "none",
+      ),
+      labelMasks: labels.map(
+        (label) =>
+          getComputedStyle(label).webkitMaskImage ||
+          getComputedStyle(label).maskImage ||
+          "none",
+      ),
+      navigationBackdrop:
+        getComputedStyle(navigationElement).getPropertyValue(
+          "-webkit-backdrop-filter",
+        ) ||
+        getComputedStyle(navigationElement).backdropFilter ||
+        "none",
+    };
+  });
+  expect(initialRendering.navigationBackdrop).toBe("none");
+  expect(initialRendering.glassBackdrop).not.toBe("none");
+  expect(initialRendering.glassBackdrop).not.toBe("missing");
+  expect(initialRendering.iconMasks).toEqual(["none", "none", "none"]);
+  expect(initialRendering.labelMasks).toEqual(["none", "none", "none"]);
+
+  for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
+    await navigation
+      .getByRole("button", {
+        exact: true,
+        name: destinationAcceptance[destination].label,
+      })
+      .click();
+    await expectActiveDestination(surface, destination);
+  }
+  await productShell(surface).getByRole("button", { name: "打开设置" }).click();
+  const settings = productShell(surface).getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "返回" }).click();
+  await expect(settings).toHaveCount(0);
+
+  const viewport = page.viewportSize();
+  if (viewport !== null) {
+    await page.setViewportSize({
+      height: viewport.width,
+      width: viewport.height,
+    });
+  }
+  await expect
+    .poll(async () => {
+      const [shellPlatform, navigationPlatform] = await Promise.all([
+        productShell(surface).getAttribute("data-platform"),
+        navigation.getAttribute("data-platform"),
+      ]);
+      return shellPlatform !== null && shellPlatform === navigationPlatform
+        ? shellPlatform
+        : null;
+    })
+    .toMatch(/^(?:phone|tablet|pc)$/u);
+  expect(
+    await navigation.evaluate((node) => {
+      const identity = (
+        window as typeof window & {
+          __r02NavigationIdentity: {
+            glass: Element | null;
+            icons: Element[];
+            labels: Element[];
+            navigationElement: Element;
+          };
+        }
+      ).__r02NavigationIdentity;
+      return (
+        identity.navigationElement === node &&
+        identity.glass ===
+          node.querySelector("[data-primary-navigation-glass]") &&
+        identity.icons.every(
+          (icon, index) =>
+            icon ===
+            node.querySelectorAll("[data-primary-navigation-inline-icon]")[
+              index
+            ],
+        ) &&
+        identity.labels.every(
+          (label, index) =>
+            label ===
+            node.querySelectorAll("[data-primary-navigation-inline-label]")[
+              index
+            ],
+        )
+      );
+    }),
+  ).toBe(true);
+
+  expect(navigationAssetFailures).toEqual([]);
+  expect(
+    navigationAssetResponses.some(({ url }) =>
+      /\/(?:home|inscriptions|calligraphy)\.[^.]+\.svg/u.test(url),
+    ),
+  ).toBe(false);
+  expect(
+    new Set(
+      navigationAssetResponses
+        .filter(({ url }) =>
+          /\/nav-(?:home|inscriptions|calligraphy)\.[^.]+\.png/u.test(url),
+        )
+        .map(({ url }) => new URL(url).pathname),
+    ).size,
+  ).toBe(3);
+  expect(navigationAssetResponses.every(({ status }) => status < 400)).toBe(
+    true,
+  );
+  expect(consoleErrors).toEqual([]);
+});
+
+test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and an expand-only tap", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    !["mobile-webkit", "tablet-webkit"].includes(testInfo.project.name),
+    "The canonical minimize behavior applies to Phone and Tablet navigation.",
+  );
+
+  const { navigation, surface } = await openCleanProductSurface(page);
+  const shell = productShell(surface);
+  const activeSection = surface.locator('[data-primary-destination="home"]');
+  const scrollTo = async (top: number) =>
+    activeSection.evaluate((node, nextTop) => {
+      const section = node as HTMLElement;
+      section.scrollTop = nextTop;
+      section.dispatchEvent(new Event("scroll"));
+      return section.scrollTop;
+    }, top);
+
+  expect(await scrollTo(20)).toBeGreaterThanOrEqual(12);
+  await expect(navigation).toHaveAttribute("data-minimized", "true");
+  await expect(shell).toHaveAttribute(
+    "data-primary-navigation-minimized",
+    "true",
+  );
+  await expect(
+    navigation.locator("[data-primary-navigation-bubble]"),
+  ).toBeHidden();
+  expect(
+    await navigation
+      .locator("[data-primary-navigation-inline-label]")
+      .evaluateAll((labels) =>
+        labels.every((label) => label.getClientRects().length === 0),
+      ),
+  ).toBe(true);
+  await expect(
+    navigation.locator("[data-primary-navigation-destination]:visible"),
+  ).toHaveCount(1);
+  await page.waitForTimeout(250);
+  await scrollTo(21);
+  await page.waitForTimeout(190);
+  const minimizedBox = await requireBoundingBox(navigation);
+  expect(Math.abs(minimizedBox.width - 44)).toBeLessThan(4);
+  expect(Math.abs(minimizedBox.height - 44)).toBeLessThan(2);
+
+  await expect(navigation).toHaveAttribute("data-minimized", "false");
+  await expect
+    .poll(() => requireBoundingBox(navigation).then((box) => box.width))
+    .toBeGreaterThan(300);
+
+  await scrollTo(40);
+  await expect(navigation).toHaveAttribute("data-minimized", "true");
+  await scrollTo(100);
+  await scrollTo(88);
+  await expect(navigation).toHaveAttribute("data-minimized", "true");
+  await scrollTo(76);
+  await expect(navigation).toHaveAttribute("data-minimized", "false");
+
+  await scrollTo(96);
+  await expect(navigation).toHaveAttribute("data-minimized", "true");
+  await page.waitForTimeout(250);
+  await scrollTo(97);
+  await page.waitForTimeout(190);
+  const beforeExpandTap = await page.evaluate(() => ({
+    active: document
+      .querySelector("[data-product-shell]")
+      ?.getAttribute("data-active-destination"),
+    href: window.location.href,
+    history: JSON.stringify(window.history.state),
+  }));
+  const minimizedTapBox = await requireBoundingBox(navigation);
+  await page.touchscreen.tap(
+    minimizedTapBox.x + minimizedTapBox.width / 2,
+    minimizedTapBox.y + minimizedTapBox.height / 2,
+  );
+  await expect(navigation).toHaveAttribute("data-minimized", "false");
+  expect(
+    await page.evaluate(() => ({
+      active: document
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-active-destination"),
+      href: window.location.href,
+      history: JSON.stringify(window.history.state),
+    })),
+  ).toEqual(beforeExpandTap);
+});
+
 test("Mouse regression: navigation drag previews only the bubble and commits on release", async ({
   page,
 }) => {
@@ -1156,7 +1433,16 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
       ariaCurrent: document
         .querySelector('[data-primary-navigation] [aria-current="page"]')
         ?.getAttribute("aria-label"),
+      focus:
+        document.activeElement instanceof HTMLElement
+          ? (document.activeElement.dataset.primaryNavigationDestination ??
+            document.activeElement.getAttribute("aria-label") ??
+            document.activeElement.tagName)
+          : null,
       href: window.location.href,
+      scrollTop:
+        document.querySelector<HTMLElement>('[data-primary-destination="home"]')
+          ?.scrollTop ?? null,
       state: JSON.stringify(window.history.state),
     };
   });
@@ -1205,13 +1491,24 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
           __r01HistoryCalls: { push: number; replace: number };
         }
       ).__r01HistoryCalls,
+      focus:
+        document.activeElement instanceof HTMLElement
+          ? (document.activeElement.dataset.primaryNavigationDestination ??
+            document.activeElement.getAttribute("aria-label") ??
+            document.activeElement.tagName)
+          : null,
       href: window.location.href,
+      scrollTop:
+        document.querySelector<HTMLElement>('[data-primary-destination="home"]')
+          ?.scrollTop ?? null,
       state: JSON.stringify(window.history.state),
     })),
   ).toEqual({
     ariaCurrent: frozenProductState.ariaCurrent,
     calls: { push: 0, replace: 0 },
+    focus: frozenProductState.focus,
     href: frozenProductState.href,
+    scrollTop: frozenProductState.scrollTop,
     state: frozenProductState.state,
   });
 
@@ -1451,6 +1748,46 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
     "data-bubble-preview-index",
     /.+/,
   );
+
+  await homeButton.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x,
+    clientY: homeCenter.y,
+    isPrimary: true,
+    pointerId: 72,
+    pointerType: "touch",
+  });
+  await navigation.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: inscriptionsCenter.x,
+    clientY: inscriptionsCenter.y,
+    isPrimary: true,
+    pointerId: 72,
+    pointerType: "touch",
+  });
+  await expect(navigation).toHaveAttribute("data-dragging", "true");
+  await homeButton.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: homeCenter.x,
+    clientY: homeCenter.y,
+    isPrimary: false,
+    pointerId: 73,
+    pointerType: "touch",
+  });
+  await expect(navigation).not.toHaveAttribute("data-dragging", "true");
+  await navigation.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: inscriptionsCenter.x,
+    clientY: inscriptionsCenter.y,
+    isPrimary: true,
+    pointerId: 72,
+    pointerType: "touch",
+  });
+  await expectActiveDestination(surface, "home");
 
   await homeButton.evaluate((button) => {
     button.addEventListener(

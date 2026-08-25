@@ -40,6 +40,13 @@ import {
   resolveRuntimePresentationPlatform,
 } from "../shell/device-platform";
 import { PrimaryNavigationPager } from "../shell/primary-navigation-pager";
+import {
+  createPrimaryNavigationScrollState,
+  PRIMARY_NAVIGATION_IDLE_EXPAND_MS,
+  resolvePrimaryNavigationScrollState,
+  resolvePrimaryNavigationViewportInset,
+  synchronizePrimaryNavigationViewportInset,
+} from "../shell/primary-navigation-motion";
 
 import type { ReactNode } from "react";
 import type { FeedLayoutPreference, ThemePreference } from "./preferences";
@@ -116,6 +123,12 @@ export const ProductShell = ({
   const settingsBackRef = useRef<HTMLButtonElement>(null);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
+  const navigationIdleTimerRef = useRef<number | null>(null);
+  const navigationMinimizedRef = useRef(false);
+  const navigationScrollStateRef = useRef(
+    createPrimaryNavigationScrollState(0),
+  );
+  const scrollRestorePendingRef = useRef(false);
   const activeDestinationRef = useRef<PrimaryDestination>("home");
   const platformRef = useRef<PresentationPlatform>(initialPlatform);
   const settingsOpenRef = useRef(false);
@@ -133,7 +146,28 @@ export const ProductShell = ({
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [feedLayout, setFeedLayout] = useState<FeedLayoutPreference>("double");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [navigationMinimized, setNavigationMinimized] = useState(false);
   const [bootPending, setBootPending] = useState(true);
+
+  const setNavigationMinimizedState = useCallback((minimized: boolean) => {
+    navigationMinimizedRef.current = minimized;
+    setNavigationMinimized((current) =>
+      current === minimized ? current : minimized,
+    );
+  }, []);
+
+  const expandNavigation = useCallback(() => {
+    if (navigationIdleTimerRef.current !== null) {
+      window.clearTimeout(navigationIdleTimerRef.current);
+      navigationIdleTimerRef.current = null;
+    }
+    navigationScrollStateRef.current = {
+      ...navigationScrollStateRef.current,
+      intent: 0,
+      minimized: false,
+    };
+    setNavigationMinimizedState(false);
+  }, [setNavigationMinimizedState]);
 
   const scrollElementFor = useCallback(
     (
@@ -182,11 +216,15 @@ export const ProductShell = ({
             element,
             scrollPositionsRef.current[destination],
           );
+          scrollRestorePendingRef.current = true;
           if (presentationPlatform === "pc") {
             window.scrollTo({ behavior: "auto", top });
           } else {
             (element as HTMLElement).scrollTop = top;
           }
+          window.requestAnimationFrame(() => {
+            scrollRestorePendingRef.current = false;
+          });
         });
       });
     },
@@ -198,6 +236,7 @@ export const ProductShell = ({
       const current = activeDestinationRef.current;
       if (destination === current || settingsOpenRef.current) return;
 
+      expandNavigation();
       saveScroll(current, platformRef.current);
       activeDestinationRef.current = destination;
       setActiveDestination(destination);
@@ -208,7 +247,7 @@ export const ProductShell = ({
       );
       restoreScroll(destination, platformRef.current);
     },
-    [restoreScroll, saveScroll],
+    [expandNavigation, restoreScroll, saveScroll],
   );
 
   const setSettingsVisibility = useCallback((open: boolean) => {
@@ -294,14 +333,15 @@ export const ProductShell = ({
       const root = document.documentElement;
       const viewport = window.visualViewport;
       if (platformRef.current === "pc" || viewport == null) {
-        root.style.removeProperty("--yoyi-bottom-nav-viewport-inset");
+        synchronizePrimaryNavigationViewportInset(root, null);
         return;
       }
-      const inset = Math.max(
-        0,
-        window.innerHeight - viewport.height - viewport.offsetTop,
+      const inset = resolvePrimaryNavigationViewportInset(
+        window.innerHeight,
+        viewport.height,
+        viewport.offsetTop,
       );
-      root.style.setProperty("--yoyi-bottom-nav-viewport-inset", `${inset}px`);
+      synchronizePrimaryNavigationViewportInset(root, inset);
     };
 
     const synchronizeRuntime = () => {
@@ -346,6 +386,66 @@ export const ProductShell = ({
       );
     };
   }, [developmentPlatformOverride, restoreScroll, saveScroll]);
+
+  useEffect(() => {
+    if (settingsOpen) return undefined;
+    if (platform === "pc") {
+      expandNavigation();
+      return undefined;
+    }
+
+    const scrollElement = scrollElementFor(activeDestination, platform);
+    if (!(scrollElement instanceof HTMLElement)) return undefined;
+
+    navigationScrollStateRef.current = createPrimaryNavigationScrollState(
+      scrollElement.scrollTop,
+      navigationMinimizedRef.current,
+    );
+
+    const clearIdleTimer = () => {
+      if (navigationIdleTimerRef.current === null) return;
+      window.clearTimeout(navigationIdleTimerRef.current);
+      navigationIdleTimerRef.current = null;
+    };
+    const scheduleIdleExpansion = () => {
+      clearIdleTimer();
+      if (!navigationScrollStateRef.current.minimized) return;
+      navigationIdleTimerRef.current = window.setTimeout(
+        expandNavigation,
+        PRIMARY_NAVIGATION_IDLE_EXPAND_MS,
+      );
+    };
+    const handleScroll = () => {
+      if (scrollRestorePendingRef.current) {
+        navigationScrollStateRef.current = createPrimaryNavigationScrollState(
+          scrollElement.scrollTop,
+          navigationMinimizedRef.current,
+        );
+        return;
+      }
+
+      const nextState = resolvePrimaryNavigationScrollState(
+        navigationScrollStateRef.current,
+        scrollElement.scrollTop,
+      );
+      navigationScrollStateRef.current = nextState;
+      setNavigationMinimizedState(nextState.minimized);
+      scheduleIdleExpansion();
+    };
+
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      clearIdleTimer();
+      scrollElement.removeEventListener("scroll", handleScroll);
+    };
+  }, [
+    activeDestination,
+    expandNavigation,
+    platform,
+    scrollElementFor,
+    setNavigationMinimizedState,
+    settingsOpen,
+  ]);
 
   useEffect(() => {
     const initialState = parseProductHistoryState(window.history.state);
@@ -398,6 +498,12 @@ export const ProductShell = ({
 
       const nextDestination =
         state?.kind === "primary" ? state.destination : "home";
+      if (
+        !wasSettingsOpen &&
+        nextDestination !== activeDestinationRef.current
+      ) {
+        expandNavigation();
+      }
       activeDestinationRef.current = nextDestination;
       setActiveDestination(nextDestination);
       setSettingsVisibility(false);
@@ -410,7 +516,7 @@ export const ProductShell = ({
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [restoreScroll, saveScroll, setSettingsVisibility]);
+  }, [expandNavigation, restoreScroll, saveScroll, setSettingsVisibility]);
 
   useLayoutEffect(() => {
     if (settingsOpen) {
@@ -429,9 +535,10 @@ export const ProductShell = ({
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
       }
-      document.documentElement.style.removeProperty(
-        "--yoyi-bottom-nav-viewport-inset",
-      );
+      if (navigationIdleTimerRef.current !== null) {
+        window.clearTimeout(navigationIdleTimerRef.current);
+      }
+      synchronizePrimaryNavigationViewportInset(document.documentElement, null);
     },
     [],
   );
@@ -470,6 +577,9 @@ export const ProductShell = ({
         data-active-destination={activeDestination}
         data-feed-layout={feedLayout}
         data-orientation={orientation}
+        data-primary-navigation-minimized={
+          navigationMinimized ? "true" : "false"
+        }
         data-platform={platform}
         data-product-shell=""
         data-settings-open={settingsOpen ? "true" : "false"}
@@ -487,6 +597,8 @@ export const ProductShell = ({
             home={home}
             inscriptions={inscriptions}
             navigationHidden={settingsOpen}
+            navigationMinimized={navigationMinimized}
+            onNavigationExpand={expandNavigation}
             onDestinationChange={commitDestination}
             platform={platform}
             showDevelopmentPagerControls={showDevelopmentPagerControls}

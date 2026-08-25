@@ -92,7 +92,9 @@ describe("PrimaryBottomNavigation", () => {
       expect(markup).toContain(`data-label="${labelMark}"`);
     }
 
-    expect(markup).not.toMatch(/upload|上传|profile|个人中心|user/i);
+    expect(markup).not.toMatch(
+      /data-primary-navigation-destination="(?:upload|profile|user)"|上传|个人中心/i,
+    );
   });
 
   it.each(destinations)(
@@ -144,7 +146,11 @@ describe("PrimaryBottomNavigation", () => {
     const markup = renderNavigation();
 
     expectTypeOf<keyof PrimaryBottomNavigationProps>().toEqualTypeOf<
-      "activeDestination" | "platform" | "onDestinationChange"
+      | "activeDestination"
+      | "minimized"
+      | "onDestinationChange"
+      | "onExpand"
+      | "platform"
     >();
     expect(markup).toContain("yoyi-functional-glass");
     expect(markup).toContain("yoyi-navigation-entry");
@@ -179,6 +185,36 @@ describe("PrimaryBottomNavigation", () => {
     expect(canArmPrimaryNavigationPointer(true, "mouse", 0)).toBe(true);
     expect(canArmPrimaryNavigationPointer(true, "mouse", 2)).toBe(false);
     expect(canArmPrimaryNavigationPointer(false, "touch", 0)).toBe(false);
+  });
+
+  it("renders inline marks with original asset provenance", () => {
+    for (const { labelMark } of destinations) {
+      expect(renderNavigation()).toContain(
+        `data-source-asset="packages/ui/src/assets/labels/${labelMark}.png"`,
+      );
+    }
+    expect(renderNavigation()).toContain("data-primary-navigation-inline-icon");
+    expect(renderNavigation()).toContain(
+      "data-primary-navigation-inline-label",
+    );
+    expect(renderNavigation()).not.toContain("yoyi-icon");
+    expect(renderNavigation()).not.toContain("yoyi-fixed-label");
+  });
+
+  it("renders only the active icon as an inert 44px minimized control", () => {
+    const markup = renderToStaticMarkup(
+      <PrimaryBottomNavigation
+        activeDestination="inscriptions"
+        minimized
+        onDestinationChange={vi.fn()}
+        onExpand={vi.fn()}
+        platform="phone"
+      />,
+    );
+
+    expect(markup).toContain('data-minimized="true"');
+    expect(markup).toContain('data-selected="true"');
+    expect(markup.match(/aria-current="page"/g)).toHaveLength(1);
   });
 
   it("derives continuous clamped bubble preview from rendered entry centers", () => {

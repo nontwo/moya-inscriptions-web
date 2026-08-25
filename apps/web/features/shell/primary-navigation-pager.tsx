@@ -34,6 +34,8 @@ export interface PrimaryNavigationPagerProps {
   readonly inscriptions: ReactNode;
   readonly calligraphy: ReactNode;
   readonly navigationHidden?: boolean;
+  readonly navigationMinimized?: boolean;
+  readonly onNavigationExpand?: () => void;
   readonly showDevelopmentPagerControls?: boolean;
 }
 
@@ -45,6 +47,8 @@ export const PrimaryNavigationPager = ({
   inscriptions,
   calligraphy,
   navigationHidden = false,
+  navigationMinimized = false,
+  onNavigationExpand = () => undefined,
   showDevelopmentPagerControls = false,
 }: PrimaryNavigationPagerProps) => {
   const previousDestination = resolveAdjacentPrimaryDestination(
@@ -76,6 +80,8 @@ export const PrimaryNavigationPager = ({
       >
         <PrimaryBottomNavigation
           activeDestination={activeDestination}
+          minimized={navigationMinimized}
+          onExpand={onNavigationExpand}
           platform={platform}
           onDestinationChange={onDestinationChange}
         />
