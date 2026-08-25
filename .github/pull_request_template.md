@@ -32,18 +32,6 @@ List only applicable checks and include command plus result.
 | E2E validation                           | `Not applicable` / command and result |
 | Other scoped validation                  |                                       |
 
-## Public safety
-
-- Git identity setup:
-  `node scripts/setup-safe-git-identity.mjs --verify-and-apply`
-- Public-safety range check:
-- PR title and body scanned with `node scripts/check-public-text.mjs`:
-- GitHub noreply identity confirmed:
-- Personal paths and private locators absent:
-- Changed binary files: `None` / list files
-- New or modified image/document metadata scanned: `Not applicable` / result
-- No unsafe public content or metadata added:
-
 ## Change boundaries
 
 - Dependencies: `None` / details and approval
