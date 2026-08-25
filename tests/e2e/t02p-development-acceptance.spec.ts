@@ -75,10 +75,13 @@ const activeHomeMasonry = (surface: Locator) =>
 const activateHomeFeed = async (
   home: Locator,
   name: "发现" | "附近" | "专题",
-) =>
-  home
+) => {
+  const feed = { 发现: "discover", 附近: "nearby", 专题: "topics" }[name];
+  await home
     .getByRole("tab", { name })
     .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
+};
 
 const masonryItemContaining = (masonry: Locator, selector: string) =>
   masonry.locator(`[data-home-masonry-item]:has(${selector})`);
@@ -606,7 +609,12 @@ test("Home tabs remain internal to Home and expose the bounded R03 feeds", async
   await activateHomeFeed(home, "附近");
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
   await expect(home.locator('[data-home-feed-panel="nearby"]')).toBeVisible();
-  await expect(home.locator('[data-home-feed-panel="discover"]')).toBeHidden();
+  await expect(
+    home.locator('[data-home-feed-panel="discover"]'),
+  ).toHaveAttribute("aria-hidden", "true");
+  await expect(
+    home.locator('[data-home-feed-panel="discover"]'),
+  ).toHaveAttribute("inert", "");
   await expect(shell).toHaveAttribute("data-active-destination", "home");
   expect(page.url()).toBe(urlBefore);
 
@@ -617,7 +625,7 @@ test("Home tabs remain internal to Home and expose the bounded R03 feeds", async
   expect(page.url()).toBe(urlBefore);
 });
 
-test("Home touch pager switches one feed, rejects vertical input, and never mutates Primary navigation", async ({
+test("Home native pager follows scroll progress and commits only after snap settle", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -627,78 +635,98 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
   const { surface } = await openDevelopmentSurface(page);
   const home = activeHomeSurface(surface);
   const pager = home.locator("[data-home-feed-pager]");
-  const pointerContinuationTarget = page.locator("body");
-  const box = await requireBoundingBox(pager);
-  const y = box.y + Math.min(160, box.height / 2);
-  const startX = box.x + box.width * 0.82;
-  const endX = box.x + box.width * 0.25;
+  const discover = home.locator('[data-home-feed-panel="discover"]');
+  const nearby = home.locator('[data-home-feed-panel="nearby"]');
+  const indicator = home.locator("[data-home-feed-indicator]");
 
-  await pager.dispatchEvent("pointerdown", {
-    bubbles: true,
-    clientX: startX,
-    clientY: y,
-    isPrimary: true,
-    pointerId: 41,
-    pointerType: "touch",
-  });
-  await expect(pager).toHaveAttribute("data-home-pager-following", "true");
-  await expect(pager).toHaveAttribute("data-home-pager-dragging", "false");
-  await expect(
-    home.locator('[data-home-feed-panel="nearby"]'),
-  ).not.toHaveAttribute("hidden", "");
+  await expect(pager).toHaveAttribute("data-home-pager-native", "");
+  await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
+  await expect(pager).toHaveCSS("touch-action", "pan-x pan-y");
+  await expect(nearby).not.toHaveAttribute("hidden", "");
   await expect(
     home.locator('[data-home-feed-panel="topics"]'),
   ).not.toHaveAttribute("hidden", "");
-  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
-  await pointerContinuationTarget.dispatchEvent("pointermove", {
-    bubbles: true,
-    clientX: endX,
-    clientY: y + 2,
-    isPrimary: true,
-    pointerId: 41,
-    pointerType: "touch",
+  const sourceHeight = await pager.evaluate(
+    (node) => (node as HTMLElement).style.height,
+  );
+  const beforeDiscover = await requireBoundingBox(discover);
+  const beforeNearby = await requireBoundingBox(nearby);
+
+  await pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    frame.dispatchEvent(new Event("touchstart", { bubbles: true }));
+    frame.style.scrollSnapType = "none";
+    frame.scrollLeft = frame.clientWidth / 2;
+    frame.dispatchEvent(new Event("scroll"));
   });
-  await expect(pager).toHaveAttribute("data-home-pager-dragging", "true");
-  await expect(pager).toHaveAttribute("data-home-pager-following", "true");
   await expect(home).toHaveAttribute("data-active-home-feed", "discover");
+  await expect(pager).toHaveAttribute("data-home-pager-scrolling", "true");
+  await expect
+    .poll(async () =>
+      Number(await indicator.getAttribute("data-home-feed-progress")),
+    )
+    .toBeCloseTo(0.5, 1);
+  expect(
+    await pager.evaluate((node) => (node as HTMLElement).style.height),
+  ).toBe(sourceHeight);
+  const duringDiscover = await requireBoundingBox(discover);
+  const duringNearby = await requireBoundingBox(nearby);
+  expect(duringDiscover.x).toBeLessThan(beforeDiscover.x);
+  expect(duringNearby.x).toBeLessThan(beforeNearby.x);
   await expect(productShell(surface)).toHaveAttribute(
     "data-active-destination",
     "home",
   );
-  await pointerContinuationTarget.dispatchEvent("pointerup", {
-    bubbles: true,
-    clientX: endX,
-    clientY: y + 2,
-    isPrimary: true,
-    pointerId: 41,
-    pointerType: "touch",
-  });
-  await expect(pager).toHaveAttribute("data-home-pager-dragging", "false");
-  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
 
-  await pager.dispatchEvent("pointerdown", {
-    bubbles: true,
-    clientX: box.x + box.width / 2,
-    clientY: y,
-    isPrimary: true,
-    pointerId: 42,
-    pointerType: "touch",
+  await pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    frame.scrollLeft = frame.clientWidth;
+    frame.dispatchEvent(new Event("scroll"));
+    frame.dispatchEvent(new Event("touchend", { bubbles: true }));
+    frame.dispatchEvent(new Event("scrollend"));
   });
-  await pager.dispatchEvent("pointermove", {
-    bubbles: true,
-    clientX: box.x + box.width / 2 + 3,
-    clientY: y + 90,
-    isPrimary: true,
-    pointerId: 42,
-    pointerType: "touch",
+  await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
+  await pager.evaluate((node) => {
+    (node as HTMLElement).style.scrollSnapType = "";
   });
-  await pager.dispatchEvent("pointerup", {
+  await expect(pager).toHaveAttribute("data-home-pager-scrolling", "false");
+  await expect(nearby).toHaveAttribute("aria-hidden", "false");
+  await expect(discover).toHaveAttribute("aria-hidden", "true");
+  await expect(home.getByRole("tab", { name: "附近" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(productShell(surface)).toHaveAttribute(
+    "data-active-destination",
+    "home",
+  );
+});
+
+test("Home PC pager accepts only explicit horizontal wheel input", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    expectedInitialAutoPlatform(testInfo.project.name) !== "pc",
+    "The explicit wheel path belongs to PC presentation.",
+  );
+  const { surface } = await openDevelopmentSurface(page);
+  const home = activeHomeSurface(surface);
+  const pager = home.locator("[data-home-feed-pager]");
+
+  await pager.dispatchEvent("wheel", {
     bubbles: true,
-    clientX: box.x + box.width / 2 + 3,
-    clientY: y + 90,
-    isPrimary: true,
-    pointerId: 42,
-    pointerType: "touch",
+    cancelable: true,
+    deltaX: 3,
+    deltaY: 70,
+  });
+  await page.waitForTimeout(180);
+  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
+
+  await pager.dispatchEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    deltaX: 70,
+    deltaY: 3,
   });
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
   await expect(productShell(surface)).toHaveAttribute(

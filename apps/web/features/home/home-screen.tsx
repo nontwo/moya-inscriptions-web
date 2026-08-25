@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { CatalogCard, isUltraWideCatalogMedia } from "./catalog-card";
 import { CatalogMasonry } from "./catalog-masonry";
@@ -13,6 +19,7 @@ import { TopicCard } from "../topics/topic-card";
 
 import type { ReactNode } from "react";
 import type { CatalogSummary } from "@moya/contracts";
+import type { HomeFeedPagerHandle } from "./home-feed-pager";
 import type {
   HomeFeed,
   HomeFeedState,
@@ -105,6 +112,9 @@ export const HomeScreen = ({
   initialTopicId = null,
 }: HomeScreenProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
+  const pagerRef = useRef<HomeFeedPagerHandle>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const tabIndicatorRef = useRef<HTMLSpanElement>(null);
   const initializedTopicRef = useRef(false);
   const initialTopicFrameRef = useRef<number | null>(null);
   const activeFeedRef = useRef<HomeFeed>(parseHomeFeed(initialFeed));
@@ -126,6 +136,19 @@ export const HomeScreen = ({
     parseHomeFeed(initialFeed),
   );
   activeFeedRef.current = activeFeed;
+
+  const updateTabIndicator = useCallback((progress: number) => {
+    const tabs = tabsRef.current;
+    const indicator = tabIndicatorRef.current;
+    if (tabs === null || indicator === null) return;
+    const tabWidth = tabs.getBoundingClientRect().width / homeFeeds.length;
+    indicator.style.transform = `translate3d(${progress * tabWidth}px, 0, 0)`;
+    indicator.dataset.homeFeedProgress = String(progress);
+  }, []);
+
+  useLayoutEffect(() => {
+    updateTabIndicator(homeFeeds.indexOf(activeFeed));
+  }, [activeFeed, updateTabIndicator]);
 
   const commitFeed = useCallback(
     (feed: HomeFeed) => {
@@ -261,7 +284,18 @@ export const HomeScreen = ({
       tabIndex={-1}
     >
       <header className={styles.homeHeader}>
-        <div aria-label="首页内容范围" className={styles.tabs} role="tablist">
+        <div
+          ref={tabsRef}
+          aria-label="首页内容范围"
+          className={styles.tabs}
+          role="tablist"
+        >
+          <span
+            ref={tabIndicatorRef}
+            aria-hidden="true"
+            className={styles.tabIndicator}
+            data-home-feed-indicator=""
+          />
           {homeFeeds.map((feed) => {
             const selected = activeFeed === feed;
             return (
@@ -273,7 +307,7 @@ export const HomeScreen = ({
                 className={selected ? styles.selectedTab : styles.tab}
                 data-home-feed-tab={feed}
                 id={`home-tab-${feed}`}
-                onClick={() => commitFeed(feed)}
+                onClick={() => pagerRef.current?.scrollToFeed(feed)}
                 role="tab"
               >
                 {feedLabels[feed]}
@@ -284,8 +318,10 @@ export const HomeScreen = ({
         <span aria-hidden="true" className={styles.settingsClearance} />
       </header>
       <HomeFeedPager
+        ref={pagerRef}
         activeFeed={activeFeed}
         onCommit={commitFeed}
+        onProgress={updateTabIndicator}
         panels={panels}
         platform={platform}
       />

@@ -95,6 +95,31 @@ describe("T02 R03 architecture boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps the Home pager native and independent from Primary gesture machinery", async () => {
+    const pager = await readFile(
+      path.join(repositoryRoot, "apps/web/features/home/home-feed-pager.tsx"),
+      "utf8",
+    );
+    const styles = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/home/home-screen.module.css",
+      ),
+      "utf8",
+    );
+
+    expect(pager).not.toMatch(
+      /setPointerCapture|releasePointerCapture|pointermove|translate3d/u,
+    );
+    expect(pager).not.toMatch(/primary-navigation|PrimaryNavigationPager/u);
+    expect(styles).toMatch(
+      /\.pagerFrame \{[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;[^}]*touch-action: pan-x pan-y;/su,
+    );
+    expect(styles).toMatch(
+      /\.feedPanel \{[^}]*scroll-snap-align: start;[^}]*scroll-snap-stop: always;/su,
+    );
+  });
+
   it("scopes the new PC card treatment to R03 masonry and preserves deferred browse spacing", async () => {
     const styles = await readFile(
       path.join(

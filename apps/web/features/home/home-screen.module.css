@@ -24,6 +24,7 @@
 }
 
 .tabs {
+  position: relative;
   display: grid;
   width: min(100%, 240px);
   height: 52px;
@@ -34,6 +35,7 @@
 .tab,
 .selectedTab {
   position: relative;
+  z-index: 2;
   display: grid;
   min-width: 72px;
   min-height: 44px;
@@ -52,16 +54,25 @@
   color: var(--yoyi-color-text-primary);
 }
 
-.selectedTab::after {
+.tabIndicator {
   position: absolute;
+  z-index: 1;
   bottom: 8px;
-  left: 50%;
+  left: 0;
+  display: grid;
+  width: calc(100% / 3);
+  height: 2px;
+  place-items: center;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+}
+
+.tabIndicator::after {
   width: 18px;
   height: 2px;
   background: var(--yoyi-color-seal-red);
   border-radius: 1px;
   content: "";
-  transform: translateX(-50%);
 }
 
 .tab:focus-visible,
@@ -79,35 +90,38 @@
   position: relative;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-x: none;
-  touch-action: pan-y;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pagerFrame::-webkit-scrollbar {
+  display: none;
+}
+
+.pagerFrame[data-home-pager-platform="pc"] {
+  overflow-x: hidden;
 }
 
 .pagerTrack {
   display: flex;
   width: 100%;
   min-width: 0;
-}
-
-.pagerFrame[data-home-pager-following="true"] .pagerTrack,
-.pagerFrame[data-home-pager-settling="true"] .pagerTrack {
-  will-change: transform;
-}
-
-.pagerFrame[data-home-pager-dragging="true"] .pagerTrack {
-  user-select: none;
-}
-
-.pagerFrame[data-home-pager-settling="true"] .pagerTrack {
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  align-items: flex-start;
 }
 
 .feedPanel {
   min-width: 100%;
+  box-sizing: border-box;
   flex: 0 0 100%;
   padding: var(--yoyi-space-4) var(--yoyi-space-3)
     calc(96px + env(safe-area-inset-bottom));
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .masonry {
@@ -499,7 +513,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pagerTrack,
   .masonry .feedCard,
   .masonry .feedCard .feedMedia,
   .masonry .feedCard .mediaFallback {

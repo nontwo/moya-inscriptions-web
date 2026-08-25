@@ -1,38 +1,37 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  HOME_PAGER_AXIS_LOCK_PX,
-  HOME_PAGER_DISTANCE_RATIO,
+  homePagerProgress,
   isExplicitHorizontalHomeWheel,
-  resistHomePagerEdge,
-  resolveHomePagerAxis,
-  resolveHomePagerTarget,
+  isHomePagerAtIndex,
+  resolveHomePagerSettledIndex,
 } from "./home-feed-pager-motion";
 
-describe("Home internal pager motion", () => {
-  it("waits for the intent threshold and rejects diagonal input", () => {
-    expect(resolveHomePagerAxis(HOME_PAGER_AXIS_LOCK_PX - 1, 0)).toBeNull();
-    expect(resolveHomePagerAxis(18, 4)).toBe("horizontal");
-    expect(resolveHomePagerAxis(4, 18)).toBe("vertical");
-    expect(resolveHomePagerAxis(18, 17)).toBeNull();
+describe("Home native pager motion", () => {
+  it("derives and clamps continuous tab progress from native scroll", () => {
+    expect(homePagerProgress(-20, 400, 2)).toBe(0);
+    expect(homePagerProgress(200, 400, 2)).toBe(0.5);
+    expect(homePagerProgress(1_200, 400, 2)).toBe(2);
+    expect(homePagerProgress(50, 0, 2)).toBe(2);
   });
 
-  it("uses edge resistance only beyond the first and last feed", () => {
-    expect(resistHomePagerEdge(100, 0, 2)).toBe(25);
-    expect(resistHomePagerEdge(-100, 2, 2)).toBe(-25);
-    expect(resistHomePagerEdge(-100, 0, 2)).toBe(-100);
-    expect(resistHomePagerEdge(100, 1, 2)).toBe(100);
+  it("settles a native gesture to at most one adjacent feed", () => {
+    expect(resolveHomePagerSettledIndex(0, 2, 390, 400)).toBe(1);
+    expect(resolveHomePagerSettledIndex(0, 2, 800, 400)).toBe(1);
+    expect(resolveHomePagerSettledIndex(1, 2, 0, 400)).toBe(0);
+    expect(resolveHomePagerSettledIndex(1, 2, 800, 400)).toBe(2);
+    expect(resolveHomePagerSettledIndex(2, 2, 0, 400)).toBe(1);
   });
 
-  it("commits at most one adjacent feed by distance or matching velocity", () => {
-    const width = 400;
-    const qualified = width * HOME_PAGER_DISTANCE_RATIO;
-    expect(resolveHomePagerTarget(1, 2, -qualified, width, 0)).toBe(2);
-    expect(resolveHomePagerTarget(1, 2, qualified, width, 0)).toBe(0);
-    expect(resolveHomePagerTarget(1, 2, -20, width, -0.8)).toBe(2);
-    expect(resolveHomePagerTarget(1, 2, -20, width, 0.8)).toBe(1);
-    expect(resolveHomePagerTarget(0, 2, qualified, width, 0)).toBe(0);
-    expect(resolveHomePagerTarget(2, 2, -qualified, width, 0)).toBe(2);
+  it("allows a tab request to target any valid feed", () => {
+    expect(resolveHomePagerSettledIndex(0, 2, 0, 400, 2)).toBe(2);
+    expect(resolveHomePagerSettledIndex(2, 2, 800, 400, -1)).toBe(0);
+    expect(resolveHomePagerSettledIndex(0, 2, 0, 400, 9)).toBe(2);
+  });
+
+  it("recognizes a settled snap point within the pixel tolerance", () => {
+    expect(isHomePagerAtIndex(399.4, 400, 1)).toBe(true);
+    expect(isHomePagerAtIndex(397, 400, 1)).toBe(false);
   });
 
   it("accepts only explicit horizontal PC wheel input", () => {

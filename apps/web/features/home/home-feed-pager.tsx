@@ -1,387 +1,446 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import styles from "./home-screen.module.css";
 import {
+  HOME_PAGER_CLICK_SUPPRESS_PX,
+  HOME_PAGER_SCROLL_IDLE_MS,
+  homePagerProgress,
   isExplicitHorizontalHomeWheel,
-  resistHomePagerEdge,
-  resolveHomePagerAxis,
-  resolveHomePagerTarget,
+  isHomePagerAtIndex,
+  resolveHomePagerSettledIndex,
 } from "./home-feed-pager-motion";
 import { homeFeeds } from "./home-feed";
 
-import type {
-  CSSProperties,
-  PointerEvent as ReactPointerEvent,
-  ReactNode,
-} from "react";
+import type { ReactNode, WheelEvent as ReactWheelEvent } from "react";
 import type { HomeFeed } from "./home-feed";
 import type { PresentationPlatform } from "../shell/device-platform";
 
-interface PointerGesture {
-  axis: "horizontal" | "vertical" | null;
-  lastTime: number;
-  lastX: number;
-  pointerId: number;
-  startTime: number;
-  startX: number;
-  startY: number;
+interface ScrollSession {
+  originIndex: number;
+  requestedIndex: number | null;
 }
 
-interface PointerTracking {
-  readonly cancel: (event: PointerEvent) => void;
-  readonly down: (event: PointerEvent) => void;
-  mode: "active" | "peek";
-  readonly move: (event: PointerEvent) => void;
-  readonly up: (event: PointerEvent) => void;
+export interface HomeFeedPagerHandle {
+  readonly scrollToFeed: (feed: HomeFeed) => void;
 }
-
-const homePagerPeekMoveOptions = { passive: true } as const;
-const homePagerActiveMoveOptions = { passive: false } as const;
 
 export interface HomeFeedPagerProps {
   readonly activeFeed: HomeFeed;
   readonly onCommit: (feed: HomeFeed) => void;
+  readonly onProgress?: (progress: number) => void;
   readonly panels: Readonly<Record<HomeFeed, ReactNode>>;
   readonly platform: PresentationPlatform;
 }
 
-export const HomeFeedPager = ({
-  activeFeed,
-  onCommit,
-  panels,
-  platform,
-}: HomeFeedPagerProps) => {
+const panelHeights = (): Record<HomeFeed, number> => ({
+  discover: 0,
+  nearby: 0,
+  topics: 0,
+});
+
+const reducedMotionPreferred = () =>
+  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+export const HomeFeedPager = forwardRef<
+  HomeFeedPagerHandle,
+  HomeFeedPagerProps
+>(function HomeFeedPager(
+  { activeFeed, onCommit, onProgress, panels, platform },
+  ref,
+) {
   const frameRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const activePanelRef = useRef<HTMLElement | null>(null);
-  const gestureRef = useRef<PointerGesture | null>(null);
-  const pointerTrackingRef = useRef<PointerTracking | null>(null);
-  const pendingFeedRef = useRef<HomeFeed | null>(null);
-  const settleFrameRef = useRef<number | null>(null);
-  const settleTimerRef = useRef<number | null>(null);
-  const wheelTimerRef = useRef<number | null>(null);
-  const wheelCommittedRef = useRef(false);
-  const suppressClickUntilRef = useRef(0);
-  const [dragging, setDragging] = useState(false);
-  const [following, setFollowing] = useState(false);
-  const [settling, setSettling] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const panelRefs = useRef<Record<HomeFeed, HTMLElement | null>>({
+    discover: null,
+    nearby: null,
+    topics: null,
+  });
+  const heightsRef = useRef(panelHeights());
   const activeIndex = homeFeeds.indexOf(activeFeed);
+  const activeIndexRef = useRef(activeIndex);
+  const onCommitRef = useRef(onCommit);
+  const onProgressRef = useRef(onProgress);
+  const sessionRef = useRef<ScrollSession | null>(null);
+  const quietTimerRef = useRef<number | null>(null);
+  const progressFrameRef = useRef<number | null>(null);
+  const wheelTimerRef = useRef<number | null>(null);
+  const wheelHandledRef = useRef(false);
+  const frameWidthRef = useRef(0);
+  const touchActiveRef = useRef(false);
+  const touchStartScrollLeftRef = useRef<number | null>(null);
+  const suppressClickUntilRef = useRef(0);
+  const settleRef = useRef<() => void>(() => undefined);
 
-  const stopPointerTracking = () => {
-    const tracking = pointerTrackingRef.current;
-    if (tracking === null) return;
-    window.removeEventListener("pointerdown", tracking.down);
-    window.removeEventListener("pointermove", tracking.move);
-    window.removeEventListener("pointerup", tracking.up);
-    window.removeEventListener("pointercancel", tracking.cancel);
-    pointerTrackingRef.current = null;
-  };
+  activeIndexRef.current = activeIndex;
+  onCommitRef.current = onCommit;
+  onProgressRef.current = onProgress;
 
-  useEffect(
-    () => () => {
-      if (wheelTimerRef.current !== null) {
-        window.clearTimeout(wheelTimerRef.current);
+  const clearQuietTimer = useCallback(() => {
+    if (quietTimerRef.current === null) return;
+    window.clearTimeout(quietTimerRef.current);
+    quietTimerRef.current = null;
+  }, []);
+
+  const setScrolling = useCallback((scrolling: boolean) => {
+    const frame = frameRef.current;
+    if (frame !== null) {
+      frame.dataset.homePagerScrolling = String(scrolling);
+    }
+  }, []);
+
+  const readPanelHeight = useCallback((feed: HomeFeed): number => {
+    const panel = panelRefs.current[feed];
+    if (panel === null) return heightsRef.current[feed];
+    const height = Math.ceil(
+      Math.max(panel.scrollHeight, panel.getBoundingClientRect().height),
+    );
+    if (height > 0) heightsRef.current[feed] = height;
+    return height;
+  }, []);
+
+  const applyPanelHeight = useCallback(
+    (index: number) => {
+      const frame = frameRef.current;
+      const feed = homeFeeds[index];
+      if (frame === null || feed === undefined) return;
+      const height = readPanelHeight(feed);
+      if (height > 0) frame.style.height = `${height}px`;
+    },
+    [readPanelHeight],
+  );
+
+  const publishProgress = useCallback((immediate = false) => {
+    const publish = () => {
+      progressFrameRef.current = null;
+      const frame = frameRef.current;
+      if (frame === null) return;
+      const width = Math.max(1, frame.clientWidth);
+      onProgressRef.current?.(
+        homePagerProgress(frame.scrollLeft, width, homeFeeds.length - 1),
+      );
+    };
+    if (immediate) {
+      if (progressFrameRef.current !== null) {
+        window.cancelAnimationFrame(progressFrameRef.current);
       }
-      if (settleFrameRef.current !== null) {
-        window.cancelAnimationFrame(settleFrameRef.current);
+      publish();
+      return;
+    }
+    if (progressFrameRef.current === null) {
+      progressFrameRef.current = window.requestAnimationFrame(publish);
+    }
+  }, []);
+
+  const scrollFrameTo = useCallback(
+    (index: number, behavior: ScrollBehavior) => {
+      const frame = frameRef.current;
+      if (frame === null) return;
+      const left = Math.max(1, frame.clientWidth) * index;
+      if (typeof frame.scrollTo === "function") {
+        frame.scrollTo({ behavior, left, top: 0 });
+      } else {
+        frame.scrollLeft = left;
+        frame.dispatchEvent(new Event("scroll"));
       }
-      if (settleTimerRef.current !== null) {
-        window.clearTimeout(settleTimerRef.current);
-      }
-      stopPointerTracking();
     },
     [],
   );
 
-  const clearSettleWork = () => {
-    if (settleFrameRef.current !== null) {
-      window.cancelAnimationFrame(settleFrameRef.current);
-      settleFrameRef.current = null;
-    }
-    if (settleTimerRef.current !== null) {
-      window.clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = null;
-    }
-  };
+  const scheduleSettle = useCallback(() => {
+    clearQuietTimer();
+    quietTimerRef.current = window.setTimeout(() => {
+      quietTimerRef.current = null;
+      settleRef.current();
+    }, HOME_PAGER_SCROLL_IDLE_MS);
+  }, [clearQuietTimer]);
 
-  const finishVisualState = () => {
-    clearSettleWork();
-    const pendingFeed = pendingFeedRef.current;
-    pendingFeedRef.current = null;
-    setDragging(false);
-    setFollowing(false);
-    setSettling(false);
-    setOffset(0);
-    if (frameRef.current !== null) frameRef.current.style.height = "";
-    if (pendingFeed !== null && pendingFeed !== activeFeed) {
-      onCommit(pendingFeed);
-    }
-  };
-
-  const clearPreparedGesture = () => {
-    setDragging(false);
-    setFollowing(false);
-    setSettling(false);
-    setOffset(0);
-    if (frameRef.current !== null) frameRef.current.style.height = "";
-  };
-
-  const cancelGesture = () => {
-    const pointerId = gestureRef.current?.pointerId;
-    stopPointerTracking();
-    try {
-      if (
-        pointerId !== undefined &&
-        frameRef.current?.hasPointerCapture?.(pointerId)
-      ) {
-        frameRef.current.releasePointerCapture?.(pointerId);
+  const finishSettle = useCallback(
+    (targetIndex: number) => {
+      clearQuietTimer();
+      sessionRef.current = null;
+      touchStartScrollLeftRef.current = null;
+      setScrolling(false);
+      applyPanelHeight(targetIndex);
+      publishProgress(true);
+      const targetFeed = homeFeeds[targetIndex];
+      if (targetFeed !== undefined && targetIndex !== activeIndexRef.current) {
+        onCommitRef.current(targetFeed);
       }
-    } catch {
-      // Safari may already have released capture while cancelling the gesture.
-    }
-    clearSettleWork();
-    gestureRef.current = null;
-    pendingFeedRef.current = null;
-    setDragging(false);
-    setSettling(true);
-    setOffset(0);
-    settleFrameRef.current = window.requestAnimationFrame(() => {
-      settleFrameRef.current = null;
-      settleTimerRef.current = window.setTimeout(finishVisualState, 260);
-    });
-  };
+    },
+    [applyPanelHeight, clearQuietTimer, publishProgress, setScrolling],
+  );
 
-  const moveGesture = (event: PointerEvent) => {
-    const gesture = gestureRef.current;
-    if (gesture === null || gesture.pointerId !== event.pointerId) return;
-    if (!event.isPrimary) {
-      cancelGesture();
+  const settlePager = useCallback(() => {
+    const frame = frameRef.current;
+    const session = sessionRef.current;
+    if (frame === null || session === null) return;
+    if (touchActiveRef.current) {
+      scheduleSettle();
       return;
     }
-    const deltaX = event.clientX - gesture.startX;
-    const deltaY = event.clientY - gesture.startY;
-    const trackingWasActive = pointerTrackingRef.current?.mode === "active";
-    if (gesture.axis === null) {
-      const axis = resolveHomePagerAxis(deltaX, deltaY);
-      if (axis === null) return;
-      gesture.axis = axis;
-      if (axis === "vertical") {
-        gestureRef.current = null;
-        stopPointerTracking();
-        clearPreparedGesture();
+    const width = Math.max(1, frame.clientWidth);
+    const targetIndex = resolveHomePagerSettledIndex(
+      session.originIndex,
+      homeFeeds.length - 1,
+      frame.scrollLeft,
+      width,
+      session.requestedIndex,
+    );
+    if (!isHomePagerAtIndex(frame.scrollLeft, width, targetIndex)) {
+      session.requestedIndex = targetIndex;
+      scrollFrameTo(targetIndex, reducedMotionPreferred() ? "auto" : "smooth");
+      scheduleSettle();
+      return;
+    }
+    finishSettle(targetIndex);
+  }, [finishSettle, scheduleSettle, scrollFrameTo]);
+  settleRef.current = settlePager;
+
+  const beginSession = useCallback(
+    (requestedIndex: number | null) => {
+      sessionRef.current = {
+        originIndex: activeIndexRef.current,
+        requestedIndex,
+      };
+      setScrolling(true);
+      applyPanelHeight(activeIndexRef.current);
+    },
+    [applyPanelHeight, setScrolling],
+  );
+
+  const requestFeed = useCallback(
+    (feed: HomeFeed) => {
+      const frame = frameRef.current;
+      const targetIndex = homeFeeds.indexOf(feed);
+      if (frame === null || targetIndex < 0) return;
+      const width = Math.max(1, frame.clientWidth);
+      if (
+        targetIndex === activeIndexRef.current &&
+        isHomePagerAtIndex(frame.scrollLeft, width, targetIndex)
+      ) {
+        publishProgress(true);
         return;
       }
-      try {
-        frameRef.current?.setPointerCapture(event.pointerId);
-      } catch {
-        // Pointer capture is optional; window-level cancellation still rebounds.
+      clearQuietTimer();
+      beginSession(targetIndex);
+      scrollFrameTo(targetIndex, reducedMotionPreferred() ? "auto" : "smooth");
+      scheduleSettle();
+    },
+    [
+      beginSession,
+      clearQuietTimer,
+      publishProgress,
+      scheduleSettle,
+      scrollFrameTo,
+    ],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToFeed: requestFeed,
+    }),
+    [requestFeed],
+  );
+
+  const handleScroll = useCallback(() => {
+    const frame = frameRef.current;
+    if (frame === null) return;
+    publishProgress();
+    const touchStart = touchStartScrollLeftRef.current;
+    if (
+      touchStart !== null &&
+      Math.abs(frame.scrollLeft - touchStart) > HOME_PAGER_CLICK_SUPPRESS_PX
+    ) {
+      suppressClickUntilRef.current = performance.now() + 500;
+    }
+    const width = Math.max(1, frame.clientWidth);
+    if (
+      sessionRef.current === null &&
+      isHomePagerAtIndex(frame.scrollLeft, width, activeIndexRef.current)
+    ) {
+      return;
+    }
+    if (sessionRef.current === null) beginSession(null);
+    scheduleSettle();
+  }, [beginSession, publishProgress, scheduleSettle]);
+
+  const handleTouchStart = useCallback(() => {
+    touchActiveRef.current = true;
+    suppressClickUntilRef.current = 0;
+    touchStartScrollLeftRef.current = frameRef.current?.scrollLeft ?? null;
+    const session = sessionRef.current;
+    if (session !== null && session.requestedIndex !== null) {
+      session.originIndex = activeIndexRef.current;
+      session.requestedIndex = null;
+    }
+  }, []);
+
+  const handleTouchFinish = useCallback(() => {
+    touchActiveRef.current = false;
+    if (sessionRef.current !== null) {
+      scheduleSettle();
+    } else {
+      touchStartScrollLeftRef.current = null;
+    }
+  }, [scheduleSettle]);
+
+  const handleWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      if (
+        platform !== "pc" ||
+        !isExplicitHorizontalHomeWheel(
+          event.deltaX,
+          event.deltaY,
+          event.ctrlKey,
+        )
+      ) {
+        return;
       }
-      const tracking = pointerTrackingRef.current;
-      setDragging(true);
-      if (tracking !== null && tracking.mode === "peek") {
-        window.removeEventListener("pointermove", tracking.move);
-        tracking.mode = "active";
-        window.addEventListener(
-          "pointermove",
-          tracking.move,
-          homePagerActiveMoveOptions,
+      event.preventDefault();
+      if (!wheelHandledRef.current) {
+        const direction = event.deltaX > 0 ? 1 : -1;
+        const targetIndex = Math.max(
+          0,
+          Math.min(homeFeeds.length - 1, activeIndexRef.current + direction),
         );
+        const targetFeed = homeFeeds[targetIndex];
+        if (targetFeed !== undefined) requestFeed(targetFeed);
+        wheelHandledRef.current = true;
       }
-    }
-    if (gesture.axis !== "horizontal") return;
-    if (trackingWasActive) event.preventDefault();
-    gesture.lastX = event.clientX;
-    gesture.lastTime = event.timeStamp;
-    const nextOffset = resistHomePagerEdge(
-      deltaX,
-      activeIndex,
-      homeFeeds.length - 1,
-    );
-    if (trackRef.current !== null) {
-      trackRef.current.style.transform = `translate3d(calc(${
-        -activeIndex * 100
-      }% + ${nextOffset}px), 0, 0)`;
-    }
-    setOffset(nextOffset);
-  };
-
-  const completeGesture = (event: PointerEvent) => {
-    const gesture = gestureRef.current;
-    if (gesture === null || gesture.pointerId !== event.pointerId) return;
-    stopPointerTracking();
-    gestureRef.current = null;
-    setDragging(false);
-    try {
-      if (frameRef.current?.hasPointerCapture?.(event.pointerId)) {
-        frameRef.current.releasePointerCapture?.(event.pointerId);
+      if (wheelTimerRef.current !== null) {
+        window.clearTimeout(wheelTimerRef.current);
       }
-    } catch {
-      // Safari may release capture before pointerup reaches window.
-    }
-    if (gesture.axis !== "horizontal") {
-      clearPreparedGesture();
-      return;
-    }
-    const width = Math.max(1, frameRef.current?.clientWidth ?? 1);
-    const deltaX = event.clientX - gesture.startX;
-    const elapsed = Math.max(1, event.timeStamp - gesture.startTime);
-    const velocityX = deltaX / elapsed;
-    const targetIndex = resolveHomePagerTarget(
-      activeIndex,
-      homeFeeds.length - 1,
-      deltaX,
-      width,
-      velocityX,
-    );
-    const targetFeed = homeFeeds[targetIndex];
-    pendingFeedRef.current = targetFeed ?? activeFeed;
-    suppressClickUntilRef.current = performance.now() + 400;
-    const reducedMotion = window.matchMedia?.(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    if (reducedMotion) {
-      finishVisualState();
-      return;
-    }
-    setSettling(true);
-    setOffset((activeIndex - targetIndex) * width);
-    settleTimerRef.current = window.setTimeout(finishVisualState, 380);
-  };
+      wheelTimerRef.current = window.setTimeout(() => {
+        wheelTimerRef.current = null;
+        wheelHandledRef.current = false;
+      }, 160);
+    },
+    [platform, requestFeed],
+  );
 
-  const armGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (platform === "pc" || event.pointerType !== "touch") return;
-    if (settleFrameRef.current !== null || settleTimerRef.current !== null) {
-      return;
-    }
-    if (gestureRef.current !== null) {
-      if (gestureRef.current.pointerId !== event.pointerId) cancelGesture();
-      return;
-    }
-    if (!event.isPrimary) return;
-    gestureRef.current = {
-      axis: null,
-      lastTime: event.timeStamp,
-      lastX: event.clientX,
-      pointerId: event.pointerId,
-      startTime: event.timeStamp,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-    const height = activePanelRef.current?.getBoundingClientRect().height;
-    if (frameRef.current !== null && height !== undefined && height > 0) {
-      frameRef.current.style.height = `${height}px`;
-    }
-    setFollowing(true);
-    setDragging(false);
-    setSettling(false);
-    setOffset(0);
-    const tracking: PointerTracking = {
-      cancel: () => cancelGesture(),
-      down: (pointerEvent) => {
-        if (gestureRef.current?.pointerId !== pointerEvent.pointerId) {
-          cancelGesture();
-        }
-      },
-      mode: "peek",
-      move: (pointerEvent) => moveGesture(pointerEvent),
-      up: (pointerEvent) => completeGesture(pointerEvent),
-    };
-    pointerTrackingRef.current = tracking;
-    window.addEventListener("pointerdown", tracking.down);
-    window.addEventListener(
-      "pointermove",
-      tracking.move,
-      homePagerPeekMoveOptions,
-    );
-    window.addEventListener("pointerup", tracking.up);
-    window.addEventListener("pointercancel", tracking.cancel);
-  };
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (frame === null) return;
+    clearQuietTimer();
+    sessionRef.current = null;
+    touchActiveRef.current = false;
+    touchStartScrollLeftRef.current = null;
+    setScrolling(false);
+    const width = Math.max(1, frame.clientWidth);
+    frameWidthRef.current = width;
+    frame.scrollLeft = activeIndex * width;
+    for (const feed of homeFeeds) readPanelHeight(feed);
+    applyPanelHeight(activeIndex);
+    publishProgress(true);
+  }, [
+    activeFeed,
+    activeIndex,
+    applyPanelHeight,
+    clearQuietTimer,
+    publishProgress,
+    readPanelHeight,
+    setScrolling,
+  ]);
 
-  const trackStyle = following
-    ? ({
-        transform: `translate3d(calc(${-activeIndex * 100}% + ${offset}px), 0, 0)`,
-      } satisfies CSSProperties)
-    : undefined;
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (frame === null || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(() => {
+      for (const feed of homeFeeds) readPanelHeight(feed);
+      const width = frame.clientWidth;
+      if (width > 0 && Math.abs(width - frameWidthRef.current) > 0.5) {
+        frameWidthRef.current = width;
+        clearQuietTimer();
+        sessionRef.current = null;
+        setScrolling(false);
+        frame.scrollLeft = activeIndexRef.current * width;
+        publishProgress(true);
+      }
+      if (sessionRef.current === null) {
+        applyPanelHeight(activeIndexRef.current);
+      }
+    });
+    observer.observe(frame);
+    for (const feed of homeFeeds) {
+      const panel = panelRefs.current[feed];
+      if (panel !== null) observer.observe(panel);
+    }
+    return () => observer.disconnect();
+  }, [
+    applyPanelHeight,
+    clearQuietTimer,
+    publishProgress,
+    readPanelHeight,
+    setScrolling,
+  ]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (frame === null) return;
+    const handleScrollEnd = () => settleRef.current();
+    frame.addEventListener("scrollend", handleScrollEnd);
+    return () => frame.removeEventListener("scrollend", handleScrollEnd);
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearQuietTimer();
+      if (progressFrameRef.current !== null) {
+        window.cancelAnimationFrame(progressFrameRef.current);
+      }
+      if (wheelTimerRef.current !== null) {
+        window.clearTimeout(wheelTimerRef.current);
+      }
+    },
+    [clearQuietTimer],
+  );
 
   return (
     <div
       ref={frameRef}
       className={styles.pagerFrame}
       data-home-feed-pager=""
-      data-home-pager-dragging={dragging ? "true" : "false"}
-      data-home-pager-following={following ? "true" : "false"}
-      data-home-pager-settling={settling ? "true" : "false"}
+      data-home-pager-native=""
+      data-home-pager-platform={platform}
+      data-home-pager-scrolling="false"
       onClickCapture={(event) => {
-        const suppressUntil = suppressClickUntilRef.current;
-        if (suppressUntil > 0 && performance.now() <= suppressUntil) {
+        if (
+          suppressClickUntilRef.current > 0 &&
+          performance.now() <= suppressClickUntilRef.current
+        ) {
           event.preventDefault();
           event.stopPropagation();
           suppressClickUntilRef.current = 0;
         }
       }}
-      onLostPointerCapture={() => {
-        if (gestureRef.current !== null) cancelGesture();
-      }}
-      onPointerDown={armGesture}
-      onWheel={(event) => {
-        if (platform !== "pc") return;
-        if (
-          !isExplicitHorizontalHomeWheel(
-            event.deltaX,
-            event.deltaY,
-            event.ctrlKey,
-          )
-        ) {
-          return;
-        }
-        event.preventDefault();
-        if (!wheelCommittedRef.current) {
-          const direction = event.deltaX > 0 ? 1 : -1;
-          const targetIndex = Math.max(
-            0,
-            Math.min(homeFeeds.length - 1, activeIndex + direction),
-          );
-          const targetFeed = homeFeeds[targetIndex];
-          if (targetFeed !== undefined && targetFeed !== activeFeed) {
-            onCommit(targetFeed);
-          }
-          wheelCommittedRef.current = true;
-        }
-        if (wheelTimerRef.current !== null) {
-          window.clearTimeout(wheelTimerRef.current);
-        }
-        wheelTimerRef.current = window.setTimeout(() => {
-          wheelTimerRef.current = null;
-          wheelCommittedRef.current = false;
-        }, 160);
-      }}
+      onScroll={handleScroll}
+      onTouchCancelCapture={handleTouchFinish}
+      onTouchEndCapture={handleTouchFinish}
+      onTouchStartCapture={handleTouchStart}
+      onWheel={handleWheel}
     >
-      <div
-        ref={trackRef}
-        className={styles.pagerTrack}
-        data-home-feed-track=""
-        onTransitionEnd={(event) => {
-          if (event.target === event.currentTarget && settling) {
-            finishVisualState();
-          }
-        }}
-        style={trackStyle}
-      >
+      <div className={styles.pagerTrack} data-home-feed-track="">
         {homeFeeds.map((feed) => {
           const selected = feed === activeFeed;
-          const visible = following || selected;
           return (
             <section
               key={feed}
-              ref={selected ? activePanelRef : undefined}
+              ref={(node) => {
+                panelRefs.current[feed] = node;
+              }}
               aria-hidden={!selected}
               aria-labelledby={`home-tab-${feed}`}
               className={styles.feedPanel}
               data-home-feed-panel={feed}
-              hidden={!visible}
               id={`home-panel-${feed}`}
               inert={!selected || undefined}
               role="tabpanel"
@@ -394,4 +453,4 @@ export const HomeFeedPager = ({
       </div>
     </div>
   );
-};
+});
