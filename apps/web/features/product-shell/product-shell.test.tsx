@@ -392,12 +392,12 @@ describe("ProductShell", () => {
     expect(pushState).toHaveBeenCalledWith(
       topicHistoryState("topic-one", 164),
       "",
-      "/dev/t02p?feed=topics#topic-topic-one",
+      "/dev/t02p#topic-topic-one",
     );
     expect(replaceState).toHaveBeenCalledWith(
       primaryHistoryState("home", 164),
       "",
-      "/dev/t02p?feed=topics",
+      "/dev/t02p",
     );
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
     expect(

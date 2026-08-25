@@ -8,7 +8,6 @@ import {
   settingsHistoryState,
   topicHistoryState,
   topicLocation,
-  topicsFeedLocation,
 } from "./product-history";
 
 describe("Product Shell history", () => {
@@ -42,16 +41,10 @@ describe("Product Shell history", () => {
     expect(topicHistoryState("topic-one", -10).sourceScrollTop).toBe(0);
     expect(
       topicLocation(
-        { pathname: "/dev/t02p", search: "?feed=topics" } as Location,
+        { pathname: "/dev/t02p", search: "?cb=exact-head" } as Location,
         "专题 一",
       ),
-    ).toBe("/dev/t02p?feed=topics#topic-%E4%B8%93%E9%A2%98%20%E4%B8%80");
-    expect(
-      topicsFeedLocation({
-        pathname: "/dev/t02p",
-        search: "?cb=exact-head",
-      } as Location),
-    ).toBe("/dev/t02p?cb=exact-head&feed=topics");
+    ).toBe("/dev/t02p?cb=exact-head#topic-%E4%B8%93%E9%A2%98%20%E4%B8%80");
   });
 
   it.each([

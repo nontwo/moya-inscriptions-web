@@ -23,7 +23,6 @@ import {
   settingsLocation,
   topicHistoryState,
   topicLocation,
-  topicsFeedLocation,
 } from "./product-history";
 import {
   FEED_LAYOUT_PREFERENCE_STORAGE_KEY,
@@ -367,7 +366,7 @@ export const ProductShell = ({
       window.history.replaceState(
         primaryHistoryState("home", boundedScrollTop),
         "",
-        topicsFeedLocation(window.location),
+        primaryLocation(window.location),
       );
       window.history.pushState(
         topicHistoryState(topicId, boundedScrollTop),
