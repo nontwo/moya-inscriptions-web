@@ -310,6 +310,18 @@ describe("public privacy scanner", () => {
     );
   });
 
+  it("does not treat source-code string delimiters as credential values", () => {
+    const sourceFragment = [
+      '"',
+      ["API", "KEY"].join("_"),
+      "=",
+      '", "',
+      "PASSWORD",
+      '="',
+    ].join("");
+    expect(scanText(sourceFragment)).toEqual([]);
+  });
+
   it("rejects a private-key header", () => {
     const header = ["-----BEGIN", "PRIVATE KEY-----"].join(" ");
     expect(scanText(header)).toEqual(

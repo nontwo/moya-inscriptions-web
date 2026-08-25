@@ -249,7 +249,7 @@ export function scanText(text, options = {}) {
   }
 
   const assignmentExpression =
-    /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,`;}{]+))/giu;
+    /\b(password|passwd|token|secret|credential|api[_-]?key|private[_-]?key)\b[ \t]*[:=][ \t]*(?:"([^",\r\n][^"\r\n]*)"(?=$|[ \t,;}])|'([^',\r\n][^'\r\n]*)'(?=$|[ \t,;}])|([^\s,"'`;}{][^\s,`;}{]*))/giu;
   for (const match of collectMatches(text, assignmentExpression)) {
     const value = match[2] ?? match[3] ?? match[4] ?? "";
     const safeSynthetic =
