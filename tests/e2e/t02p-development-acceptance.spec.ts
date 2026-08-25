@@ -627,6 +627,7 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
   const { surface } = await openDevelopmentSurface(page);
   const home = activeHomeSurface(surface);
   const pager = home.locator("[data-home-feed-pager]");
+  const pointerContinuationTarget = page.locator("body");
   const box = await requireBoundingBox(pager);
   const y = box.y + Math.min(160, box.height / 2);
   const startX = box.x + box.width * 0.82;
@@ -640,7 +641,7 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
     pointerId: 41,
     pointerType: "touch",
   });
-  await pager.dispatchEvent("pointermove", {
+  await pointerContinuationTarget.dispatchEvent("pointermove", {
     bubbles: true,
     clientX: endX,
     clientY: y + 2,
@@ -654,7 +655,7 @@ test("Home touch pager switches one feed, rejects vertical input, and never muta
     "data-active-destination",
     "home",
   );
-  await pager.dispatchEvent("pointerup", {
+  await pointerContinuationTarget.dispatchEvent("pointerup", {
     bubbles: true,
     clientX: endX,
     clientY: y + 2,

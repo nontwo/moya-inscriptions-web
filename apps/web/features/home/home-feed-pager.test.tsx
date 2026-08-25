@@ -67,6 +67,7 @@ const dispatchPointer = (
   Object.defineProperties(event, {
     isPrimary: { value: isPrimary },
     pointerId: { value: pointerId },
+    pointerType: { value: "touch" },
     timeStamp: { value: timeStamp },
   });
   act(() => target.dispatchEvent(event));
@@ -129,6 +130,21 @@ describe("HomeFeedPager", () => {
     expect(activation).not.toHaveBeenCalled();
     act(() => focus.click());
     expect(activation).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(380));
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("nearby");
+  });
+
+  it("keeps tracking touch move and release after the pointer leaves the pager", () => {
+    const { frame, onCommit } = renderPager();
+
+    dispatchPointer(frame, "pointerdown", 320, 100, 10);
+    dispatchPointer(document.body, "pointermove", 120, 102, 110);
+
+    expect(frame.dataset.homePagerFollowing).toBe("true");
+    expect(onCommit).not.toHaveBeenCalled();
+
+    dispatchPointer(document.body, "pointerup", 120, 102, 130);
     act(() => vi.advanceTimersByTime(380));
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("nearby");

@@ -29,6 +29,16 @@ interface PointerGesture {
   startY: number;
 }
 
+interface PointerTracking {
+  readonly cancel: (event: PointerEvent) => void;
+  mode: "active" | "peek";
+  readonly move: (event: PointerEvent) => void;
+  readonly up: (event: PointerEvent) => void;
+}
+
+const homePagerPeekMoveOptions = { passive: true } as const;
+const homePagerActiveMoveOptions = { passive: false } as const;
+
 export interface HomeFeedPagerProps {
   readonly activeFeed: HomeFeed;
   readonly onCommit: (feed: HomeFeed) => void;
@@ -45,6 +55,7 @@ export const HomeFeedPager = ({
   const frameRef = useRef<HTMLDivElement>(null);
   const activePanelRef = useRef<HTMLElement | null>(null);
   const gestureRef = useRef<PointerGesture | null>(null);
+  const pointerTrackingRef = useRef<PointerTracking | null>(null);
   const pendingFeedRef = useRef<HomeFeed | null>(null);
   const settleFrameRef = useRef<number | null>(null);
   const settleTimerRef = useRef<number | null>(null);
@@ -55,6 +66,15 @@ export const HomeFeedPager = ({
   const [settling, setSettling] = useState(false);
   const [offset, setOffset] = useState(0);
   const activeIndex = homeFeeds.indexOf(activeFeed);
+
+  const stopPointerTracking = () => {
+    const tracking = pointerTrackingRef.current;
+    if (tracking === null) return;
+    window.removeEventListener("pointermove", tracking.move);
+    window.removeEventListener("pointerup", tracking.up);
+    window.removeEventListener("pointercancel", tracking.cancel);
+    pointerTrackingRef.current = null;
+  };
 
   useEffect(
     () => () => {
@@ -67,6 +87,7 @@ export const HomeFeedPager = ({
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current);
       }
+      stopPointerTracking();
     },
     [],
   );
@@ -96,6 +117,18 @@ export const HomeFeedPager = ({
   };
 
   const cancelGesture = () => {
+    const pointerId = gestureRef.current?.pointerId;
+    stopPointerTracking();
+    try {
+      if (
+        pointerId !== undefined &&
+        frameRef.current?.hasPointerCapture?.(pointerId)
+      ) {
+        frameRef.current.releasePointerCapture?.(pointerId);
+      }
+    } catch {
+      // Safari may already have released capture while cancelling the gesture.
+    }
     clearSettleWork();
     gestureRef.current = null;
     pendingFeedRef.current = null;
@@ -107,25 +140,7 @@ export const HomeFeedPager = ({
     });
   };
 
-  const armGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (platform === "pc") return;
-    if (gestureRef.current !== null) {
-      if (gestureRef.current.pointerId !== event.pointerId) cancelGesture();
-      return;
-    }
-    if (!event.isPrimary) return;
-    gestureRef.current = {
-      axis: null,
-      lastTime: event.timeStamp,
-      lastX: event.clientX,
-      pointerId: event.pointerId,
-      startTime: event.timeStamp,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-  };
-
-  const moveGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const moveGesture = (event: PointerEvent) => {
     const gesture = gestureRef.current;
     if (gesture === null || gesture.pointerId !== event.pointerId) return;
     if (!event.isPrimary) {
@@ -134,12 +149,14 @@ export const HomeFeedPager = ({
     }
     const deltaX = event.clientX - gesture.startX;
     const deltaY = event.clientY - gesture.startY;
+    const trackingWasActive = pointerTrackingRef.current?.mode === "active";
     if (gesture.axis === null) {
       const axis = resolveHomePagerAxis(deltaX, deltaY);
       if (axis === null) return;
       gesture.axis = axis;
       if (axis === "vertical") {
         gestureRef.current = null;
+        stopPointerTracking();
         return;
       }
       const height = activePanelRef.current?.getBoundingClientRect().height;
@@ -148,22 +165,40 @@ export const HomeFeedPager = ({
       }
       setFollowing(true);
       try {
-        event.currentTarget.setPointerCapture(event.pointerId);
+        frameRef.current?.setPointerCapture(event.pointerId);
       } catch {
         // Pointer capture is optional; window-level cancellation still rebounds.
       }
+      const tracking = pointerTrackingRef.current;
+      if (tracking !== null && tracking.mode === "peek") {
+        window.removeEventListener("pointermove", tracking.move);
+        tracking.mode = "active";
+        window.addEventListener(
+          "pointermove",
+          tracking.move,
+          homePagerActiveMoveOptions,
+        );
+      }
     }
     if (gesture.axis !== "horizontal") return;
-    event.preventDefault();
+    if (trackingWasActive) event.preventDefault();
     gesture.lastX = event.clientX;
     gesture.lastTime = event.timeStamp;
     setOffset(resistHomePagerEdge(deltaX, activeIndex, homeFeeds.length - 1));
   };
 
-  const completeGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const completeGesture = (event: PointerEvent) => {
     const gesture = gestureRef.current;
     if (gesture === null || gesture.pointerId !== event.pointerId) return;
+    stopPointerTracking();
     gestureRef.current = null;
+    try {
+      if (frameRef.current?.hasPointerCapture?.(event.pointerId)) {
+        frameRef.current.releasePointerCapture?.(event.pointerId);
+      }
+    } catch {
+      // Safari may release capture before pointerup reaches window.
+    }
     if (gesture.axis !== "horizontal") return;
     const width = Math.max(1, frameRef.current?.clientWidth ?? 1);
     const deltaX = event.clientX - gesture.startX;
@@ -191,6 +226,38 @@ export const HomeFeedPager = ({
     settleTimerRef.current = window.setTimeout(finishVisualState, 380);
   };
 
+  const armGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (platform === "pc" || event.pointerType !== "touch") return;
+    if (gestureRef.current !== null) {
+      if (gestureRef.current.pointerId !== event.pointerId) cancelGesture();
+      return;
+    }
+    if (!event.isPrimary) return;
+    gestureRef.current = {
+      axis: null,
+      lastTime: event.timeStamp,
+      lastX: event.clientX,
+      pointerId: event.pointerId,
+      startTime: event.timeStamp,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    const tracking: PointerTracking = {
+      cancel: () => cancelGesture(),
+      mode: "peek",
+      move: (pointerEvent) => moveGesture(pointerEvent),
+      up: (pointerEvent) => completeGesture(pointerEvent),
+    };
+    pointerTrackingRef.current = tracking;
+    window.addEventListener(
+      "pointermove",
+      tracking.move,
+      homePagerPeekMoveOptions,
+    );
+    window.addEventListener("pointerup", tracking.up);
+    window.addEventListener("pointercancel", tracking.cancel);
+  };
+
   const trackStyle = following
     ? ({
         transform: `translate3d(calc(${-activeIndex * 100}% + ${offset}px), 0, 0)`,
@@ -215,10 +282,7 @@ export const HomeFeedPager = ({
       onLostPointerCapture={() => {
         if (gestureRef.current !== null) cancelGesture();
       }}
-      onPointerCancel={cancelGesture}
       onPointerDown={armGesture}
-      onPointerMove={moveGesture}
-      onPointerUp={completeGesture}
       onWheel={(event) => {
         if (platform !== "pc") return;
         if (
