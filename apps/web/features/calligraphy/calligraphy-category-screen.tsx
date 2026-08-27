@@ -42,10 +42,13 @@ const CategoryMessage = ({
     state === "classification-unavailable"
       ? [`${label}分类数据尚未接入`, "当前公开目录尚未提供规范分类。"]
       : state === "empty"
-        ? [`暂无${label}书帖`, "当前没有可展示的公开书帖。"]
+        ? [
+            category === "all" ? "暂无公开书帖" : `暂无${label}书帖`,
+            "当前没有可展示的公开书帖。",
+          ]
         : state === "unavailable"
           ? ["档案服务暂时不可用", "请稍后再试。"]
-          : ["无法加载公开书帖", "发生了未预期的错误。"];
+          : ["无法加载公开档案", "发生了未预期的错误。"];
   return (
     <section
       className={styles.stateMessage}
@@ -76,21 +79,23 @@ const renderCategory = (
     return <CategoryMessage category={category} state="empty" />;
   }
   return (
-    <CatalogMasonry<CatalogSummary>
-      feedLayout={feedLayout}
-      getKey={(item) => item.id}
-      isFullSpan={(item) => isUltraWideCatalogMedia(item.representativeMedia)}
-      items={items}
-      platform={platform}
-      renderItem={(item, onMediaSettled) => (
-        <CatalogCard
-          item={item}
-          onMediaSettled={onMediaSettled}
-          onOpenCatalog={(catalog, opener) => openCatalog(catalog.id, opener)}
-          variant="feed"
-        />
-      )}
-    />
+    <div className={styles.categoryFeed} data-feed-layout={feedLayout}>
+      <CatalogMasonry<CatalogSummary>
+        feedLayout={feedLayout}
+        getKey={(item) => item.id}
+        isFullSpan={(item) => isUltraWideCatalogMedia(item.representativeMedia)}
+        items={items}
+        platform={platform}
+        renderItem={(item, onMediaSettled) => (
+          <CatalogCard
+            item={item}
+            onMediaSettled={onMediaSettled}
+            onOpenCatalog={(catalog, opener) => openCatalog(catalog.id, opener)}
+            variant="feed"
+          />
+        )}
+      />
+    </div>
   );
 };
 
@@ -292,6 +297,11 @@ export const CalligraphyCategoryScreen = ({
         onCommit={commitCategory}
         onProgress={updateIndicator}
         panels={panels}
+        panelStates={{
+          all: data.categories.all.state,
+          ink: data.categories.ink.state,
+          rubbing: data.categories.rubbing.state,
+        }}
         platform={platform}
         primaryVisible={activeDestination === "calligraphy"}
       />

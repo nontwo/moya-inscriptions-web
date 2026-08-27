@@ -22,7 +22,10 @@ import styles from "./calligraphy-category.module.css";
 
 import type { ReactNode, WheelEvent as ReactWheelEvent } from "react";
 import type { PresentationPlatform } from "../shell/device-platform";
-import type { CalligraphyCategory } from "./calligraphy-category";
+import type {
+  CalligraphyCategory,
+  CalligraphyCategoryState,
+} from "./calligraphy-category";
 
 interface ScrollSession {
   readonly generation: number;
@@ -40,6 +43,9 @@ export interface CalligraphyCategoryPagerProps {
   readonly onCommit: (category: CalligraphyCategory) => void;
   readonly onProgress: (progress: number) => void;
   readonly panels: Readonly<Record<CalligraphyCategory, ReactNode>>;
+  readonly panelStates: Readonly<
+    Record<CalligraphyCategory, CalligraphyCategoryState["state"]>
+  >;
   readonly platform: PresentationPlatform;
   readonly primaryVisible: boolean;
 }
@@ -51,7 +57,15 @@ export const CalligraphyCategoryPager = forwardRef<
   CalligraphyCategoryPagerHandle,
   CalligraphyCategoryPagerProps
 >(function CalligraphyCategoryPager(
-  { activeCategory, onCommit, onProgress, panels, platform, primaryVisible },
+  {
+    activeCategory,
+    onCommit,
+    onProgress,
+    panels,
+    panelStates,
+    platform,
+    primaryVisible,
+  },
   ref,
 ) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -565,6 +579,9 @@ export const CalligraphyCategoryPager = forwardRef<
               className={styles.panel}
               data-calligraphy-category-panel={category}
               data-catalog-presentation={selected ? "calligraphy" : undefined}
+              data-catalog-presentation-state={
+                selected ? panelStates[category] : undefined
+              }
               id={`calligraphy-panel-${category}`}
               inert={!selected || undefined}
               role="tabpanel"

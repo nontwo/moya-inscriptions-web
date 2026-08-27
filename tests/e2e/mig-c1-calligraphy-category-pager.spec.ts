@@ -291,6 +291,9 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
 }) => {
   const { calligraphy, surface } = await openSurface(page);
   await settleCategory(calligraphy, "ink");
+  await expect
+    .poll(async () => (await primaryScrollEvidence(surface)).maximum)
+    .toBeGreaterThan(0);
   const recordedScroll = await writePrimaryScroll(surface, 180);
   expect(recordedScroll).toBeGreaterThan(0);
   const opener = calligraphy.locator(
@@ -337,6 +340,9 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
 }) => {
   const { calligraphy, surface } = await openSurface(page);
   await settleCategory(calligraphy, "rubbing");
+  await expect
+    .poll(async () => (await primaryScrollEvidence(surface)).maximum)
+    .toBeGreaterThan(0);
   const recordedScroll = await writePrimaryScroll(surface, 160);
   expect(recordedScroll).toBeGreaterThan(0);
   const viewport = page.viewportSize();

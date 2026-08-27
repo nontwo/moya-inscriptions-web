@@ -71,6 +71,11 @@ const renderPager = (
             ink: <p>Ink page</p>,
             rubbing: <p>Rubbing page</p>,
           }}
+          panelStates={{
+            all: "populated",
+            ink: "classification-unavailable",
+            rubbing: "classification-unavailable",
+          }}
           platform={platform}
           primaryVisible={primaryVisible}
         />,
@@ -166,6 +171,7 @@ describe("CalligraphyCategoryPager", () => {
     );
     expect(panels).toHaveLength(3);
     expect(panels[0]?.getAttribute("aria-hidden")).toBe("false");
+    expect(panels[0]?.dataset.catalogPresentationState).toBe("populated");
     expect(panels[1]?.hasAttribute("inert")).toBe(true);
 
     act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));

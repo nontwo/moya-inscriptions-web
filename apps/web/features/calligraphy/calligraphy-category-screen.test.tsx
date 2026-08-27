@@ -219,6 +219,16 @@ describe("CalligraphyCategoryScreen", () => {
         .querySelector('[data-calligraphy-category-panel="all"]')
         ?.getAttribute("data-catalog-presentation"),
     ).toBe("calligraphy");
+    expect(
+      container
+        .querySelector('[data-calligraphy-category-panel="all"]')
+        ?.getAttribute("data-catalog-presentation-state"),
+    ).toBe("populated");
+    expect(
+      container.querySelector(
+        '[data-calligraphy-category-panel="all"] [data-feed-layout="double"]',
+      ),
+    ).not.toBeNull();
     expect(container.querySelector("[data-test-masonry]")?.textContent).toBe(
       "运行时书帖",
     );
@@ -242,6 +252,27 @@ describe("CalligraphyCategoryScreen", () => {
     ).toBe("ink");
     expect(container.textContent).toContain("墨迹分类数据尚未接入");
     expect(container.textContent).toContain("当前公开目录尚未提供规范分类");
+  });
+
+  it("preserves accepted all-category state copy", () => {
+    const states = [
+      [{ page: page([]), state: "empty" }, "暂无公开书帖"],
+      [{ state: "unavailable" }, "档案服务暂时不可用"],
+      [{ state: "unexpected-error" }, "无法加载公开档案"],
+    ] as const;
+
+    for (const [catalogState, copy] of states) {
+      const { container } = renderScreen(
+        createRuntimeCalligraphyCategorySurface(catalogState),
+      );
+      const activePanel = container.querySelector(
+        '[data-calligraphy-category-panel="all"]',
+      );
+      expect(activePanel?.getAttribute("data-catalog-presentation-state")).toBe(
+        catalogState.state,
+      );
+      expect(activePanel?.textContent).toContain(copy);
+    }
   });
 
   it("preserves independent category scroll and opens the unchanged Catalog identity", () => {
