@@ -395,6 +395,24 @@ export const HomeFeedPager = forwardRef<
       suppressClickUntilRef.current = performance.now() + 500;
     }
     const offsets = readSnapOffsets();
+    const currentWidth = frame.clientWidth;
+    const previousWidth = frameWidthRef.current;
+    if (
+      previousWidth > 0 &&
+      currentWidth > 0 &&
+      Math.abs(currentWidth - previousWidth) > 0.5
+    ) {
+      invalidateSession();
+      const committedOffset = offsets[activeIndexRef.current];
+      if (
+        committedOffset !== undefined &&
+        !isHomePagerAtOffset(frame.scrollLeft, committedOffset)
+      ) {
+        frame.scrollLeft = committedOffset;
+      }
+      publishProgress(true);
+      return;
+    }
     const activeOffset = offsets[activeIndexRef.current];
     let session = sessionRef.current;
     if (
@@ -411,7 +429,13 @@ export const HomeFeedPager = forwardRef<
     session.scrollEndPending = false;
     publishProgress();
     scheduleFallback(session.generation);
-  }, [publishProgress, readSnapOffsets, scheduleFallback, startSession]);
+  }, [
+    invalidateSession,
+    publishProgress,
+    readSnapOffsets,
+    scheduleFallback,
+    startSession,
+  ]);
 
   const handleTouchStart = useCallback(() => {
     const frame = frameRef.current;

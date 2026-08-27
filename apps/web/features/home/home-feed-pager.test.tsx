@@ -487,4 +487,39 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(onCommit).not.toHaveBeenCalled();
     expect(scrollToCalls).toEqual([]);
   });
+
+  it("keeps the committed feed when resize clamping scrollLeft fires before ResizeObserver", () => {
+    const { frame, onCommit, render } = renderPager();
+
+    render("nearby");
+    expect(frame.scrollLeft).toBe(400);
+
+    pagerWidth = 1_200;
+    pagerOffsets = [0, 1_200, 2_400];
+    const observer = resizeObservers.find((candidate) =>
+      candidate.observed.has(frame),
+    );
+    act(() => {
+      observer?.trigger();
+    });
+    expect(frame.scrollLeft).toBe(1_200);
+
+    pagerWidth = 320;
+    pagerOffsets = [0, 320, 640];
+    nativeScroll(frame, 640);
+    act(() => {
+      frame.dispatchEvent(new Event("scrollend"));
+    });
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(frame.scrollLeft).toBe(320);
+    expect(frame.dataset["homePagerScrolling"]).toBe("false");
+
+    act(() => {
+      observer?.trigger();
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(frame.scrollLeft).toBe(320);
+    expect(frame.dataset["homePagerScrolling"]).toBe("false");
+  });
 });
