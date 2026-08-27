@@ -1,0 +1,473 @@
+.experience {
+  position: fixed;
+  z-index: var(--yoyi-z-index-overlay);
+  inset: 0;
+  background: var(--yoyi-color-background-page);
+}
+
+.detailScroller {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.detail {
+  min-height: 100%;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  font-family: var(--yoyi-font-interface);
+}
+
+.detailHeader {
+  position: sticky;
+  z-index: 6;
+  top: 0;
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px clamp(12px, 3vw, 32px);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  background: var(--yoyi-color-background-page);
+}
+
+.detailHeader button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  cursor: pointer;
+}
+
+.detailHeader button:hover {
+  background: var(--yoyi-color-background-muted);
+}
+
+.detailHeader button:focus-visible,
+.mediaDotTarget:focus-visible,
+.carouselEdge:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.detailContent {
+  width: min(100%, 1320px);
+  margin: 0 auto;
+  padding: 16px 16px 52px;
+}
+
+.hero {
+  display: grid;
+  gap: 20px;
+}
+
+.identityPanel,
+.readingSection,
+.missingMedia {
+  border-radius: 16px;
+  background: var(--yoyi-color-background-surface);
+  box-shadow: var(--yoyi-shadow-dialog);
+}
+
+.identityPanel {
+  align-self: start;
+  padding: 24px;
+}
+
+.identityPanel h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+.kindPeriod {
+  margin: 8px 0 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-metadata-size);
+  line-height: 1.5;
+}
+
+.summary {
+  margin: 14px 0 0;
+  line-height: 1.7;
+}
+
+.aliases,
+.factsSection {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.aliases > span,
+.factsSection h2,
+.readingSection h2 {
+  margin: 0 0 10px;
+  color: var(--yoyi-color-text-primary);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.aliases p,
+.readingSection p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.facts {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+}
+
+.facts > div {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.34fr) 1fr;
+  gap: 16px;
+}
+
+.facts dt {
+  color: var(--yoyi-color-text-secondary);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.carousel {
+  min-width: 0;
+}
+
+.mainStage {
+  position: relative;
+  height: min(46dvh, 360px);
+  min-height: 250px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--yoyi-color-background-muted);
+  box-shadow: var(--yoyi-shadow-dialog);
+  touch-action: pan-y;
+}
+
+.mediaTrack {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transform: translate3d(
+    calc((var(--carousel-index) * -100%) + var(--carousel-x)),
+    0,
+    0
+  );
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mainStage[data-dragging="true"] .mediaTrack {
+  transition: none;
+}
+
+.mediaSlide {
+  display: grid;
+  min-width: 100%;
+  min-height: 0;
+  height: 100%;
+  flex: 0 0 100%;
+  overflow: hidden;
+  place-items: center;
+}
+
+.mediaSlide img {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.mediaError,
+.missingMedia {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.mediaError {
+  min-height: 180px;
+}
+
+.missingMedia {
+  min-height: 280px;
+}
+
+.mediaDots {
+  position: absolute;
+  z-index: 4;
+  bottom: 10px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  padding: 2px 5px;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-overlay);
+  transform: translateX(-50%);
+}
+
+.mediaDotTarget {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mediaDotTarget > span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--yoyi-radius-full);
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-paper-light) 58%,
+    transparent
+  );
+  transition:
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mediaDotTarget[data-active="true"] > span {
+  width: 8px;
+  height: 8px;
+  background: var(--yoyi-color-paper-light);
+}
+
+.mediaCounter {
+  position: absolute;
+  z-index: 4;
+  right: 12px;
+  bottom: 12px;
+  padding: 4px 8px;
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-overlay);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-metadata-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.carouselEdge {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  display: none;
+  width: 24%;
+  height: 100%;
+  padding: 0;
+  color: var(--yoyi-color-text-primary);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.carouselEdge:disabled {
+  pointer-events: none;
+  cursor: default;
+}
+
+.carouselEdgePrevious {
+  left: 0;
+}
+
+.carouselEdgeNext {
+  right: 0;
+}
+
+.readingFlow {
+  display: grid;
+  width: min(100%, 820px);
+  margin: 24px auto 0;
+  gap: 20px;
+}
+
+.readingSection {
+  padding: 24px;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.sources {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sources li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.sources a {
+  color: var(--yoyi-color-seal-red);
+}
+
+.message,
+.skeleton {
+  display: grid;
+  width: min(100%, 680px);
+  min-height: 62dvh;
+  margin: 0 auto;
+  place-content: center;
+  text-align: center;
+}
+
+.message h1 {
+  margin: 0 0 12px;
+}
+
+.message p {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.skeleton {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.skeleton span {
+  display: block;
+  height: 18px;
+  border-radius: var(--yoyi-radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--yoyi-color-background-muted) 25%,
+    var(--yoyi-color-background-elevated) 50%,
+    var(--yoyi-color-background-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s linear infinite;
+}
+
+.skeleton .skeletonMedia {
+  height: min(42dvh, 360px);
+}
+
+.skeleton .skeletonTitle {
+  width: 62%;
+  height: 34px;
+  margin-top: 12px;
+}
+
+.detail[data-platform="tablet"] .detailContent {
+  padding: 24px 28px 64px;
+}
+
+.detail[data-platform="tablet"] .mainStage {
+  height: min(50dvh, 460px);
+  min-height: 340px;
+}
+
+.detail[data-detail-composition="tablet-portrait"] .identityPanel {
+  width: min(100%, 720px);
+  margin-inline: auto;
+}
+
+.detail[data-detail-composition="tablet-landscape"] .hero {
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 28px;
+}
+
+.detail[data-platform="pc"] .detailContent {
+  padding: 32px 48px 72px;
+}
+
+.detail[data-platform="pc"] .hero {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 36px;
+}
+
+.detail[data-platform="pc"] .mainStage {
+  height: min(62dvh, 560px);
+  min-height: 420px;
+  border-radius: 18px;
+}
+
+.detail[data-platform="pc"] .identityPanel,
+.detail[data-platform="pc"] .readingSection,
+.detail[data-platform="pc"] .missingMedia {
+  border-radius: 18px;
+}
+
+.detail[data-platform="pc"] .identityPanel {
+  position: sticky;
+  top: 88px;
+}
+
+.detail[data-platform="pc"] .identityPanel h1 {
+  font-size: 28px;
+}
+
+@media (min-width: 1100px) {
+  .carousel[data-platform="pc"] .carouselEdge {
+    display: block;
+  }
+
+  .carousel[data-platform="pc"] .carouselEdge::after {
+    position: absolute;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    border-top: 2px solid currentcolor;
+    border-right: 2px solid currentcolor;
+    content: "";
+  }
+
+  .carousel[data-platform="pc"] .carouselEdgePrevious::after {
+    left: 32px;
+    transform: rotate(-135deg);
+  }
+
+  .carousel[data-platform="pc"] .carouselEdgeNext::after {
+    right: 32px;
+    transform: rotate(45deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mediaTrack,
+  .mediaDotTarget > span {
+    transition-duration: 1ms;
+  }
+
+  .skeleton span {
+    animation: none;
+  }
+}
+
+@keyframes skeleton-pulse {
+  to {
+    background-position: -200% 0;
+  }
+}

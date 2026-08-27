@@ -127,6 +127,7 @@ export const HomeScreen = ({
     activeDestination,
     activeTopicId,
     feedLayout,
+    openCatalog,
     openTopic,
     platform,
     readActiveScrollTop,
@@ -239,6 +240,9 @@ export const HomeScreen = ({
             <CatalogCard
               item={item}
               onMediaSettled={onMediaSettled}
+              onOpenCatalog={(catalog, opener) =>
+                openCatalog(catalog.id, opener)
+              }
               variant="feed"
             />
           )}

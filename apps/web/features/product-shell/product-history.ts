@@ -6,8 +6,18 @@ export interface PrimaryProductHistoryState {
   readonly kind: "primary";
   readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
   readonly destination: PrimaryDestination;
+  readonly focusCatalogId?: string;
   readonly focusTopicId?: string;
   readonly scrollTop?: number;
+}
+
+export interface DetailProductHistoryState {
+  readonly catalogId: string;
+  readonly detailScrollTop: number;
+  readonly kind: "detail";
+  readonly sourceDestination: PrimaryDestination;
+  readonly sourceScrollTop: number;
+  readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
 }
 
 export interface SettingsProductHistoryState {
@@ -27,11 +37,15 @@ export interface TopicProductHistoryState {
 
 export type ProductHistoryState =
   | PrimaryProductHistoryState
+  | DetailProductHistoryState
   | SettingsProductHistoryState
   | TopicProductHistoryState;
 
 const productHistoryKeys = new Set([
   "destination",
+  "catalogId",
+  "detailScrollTop",
+  "focusCatalogId",
   "focusTopicId",
   "kind",
   "scrollTop",
@@ -75,8 +89,12 @@ export const primaryHistoryState = (
   destination: PrimaryDestination,
   scrollTop?: number,
   focusTopicId?: string,
+  focusCatalogId?: string,
 ): PrimaryProductHistoryState => ({
   destination,
+  ...(focusCatalogId !== undefined && focusCatalogId.length > 0
+    ? { focusCatalogId }
+    : {}),
   ...(destination === "home" &&
   focusTopicId !== undefined &&
   focusTopicId.length > 0
@@ -88,6 +106,23 @@ export const primaryHistoryState = (
     : {
         scrollTop: Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0,
       }),
+  version: PRODUCT_SHELL_HISTORY_VERSION,
+});
+
+const boundedScrollTop = (value: number) =>
+  Number.isFinite(value) ? Math.max(0, value) : 0;
+
+export const detailHistoryState = (
+  catalogId: string,
+  sourceDestination: PrimaryDestination,
+  sourceScrollTop: number,
+  detailScrollTop = 0,
+): DetailProductHistoryState => ({
+  catalogId,
+  detailScrollTop: boundedScrollTop(detailScrollTop),
+  kind: "detail",
+  sourceDestination,
+  sourceScrollTop: boundedScrollTop(sourceScrollTop),
   version: PRODUCT_SHELL_HISTORY_VERSION,
 });
 
@@ -106,9 +141,7 @@ export const topicHistoryState = (
   kind: "topic",
   sourceDestination: "home",
   sourceHomeFeed: "topics",
-  sourceScrollTop: Number.isFinite(sourceScrollTop)
-    ? Math.max(0, sourceScrollTop)
-    : 0,
+  sourceScrollTop: boundedScrollTop(sourceScrollTop),
   topicId,
   version: PRODUCT_SHELL_HISTORY_VERSION,
 });
@@ -141,10 +174,38 @@ export const parseProductHistoryState = (
     ) {
       return null;
     }
+    if (
+      candidate.focusCatalogId !== undefined &&
+      (typeof candidate.focusCatalogId !== "string" ||
+        candidate.focusCatalogId.length === 0)
+    ) {
+      return null;
+    }
     return primaryHistoryState(
       candidate.destination,
       candidate.scrollTop as number | undefined,
       candidate.focusTopicId as string | undefined,
+      candidate.focusCatalogId as string | undefined,
+    );
+  }
+
+  if (
+    candidate.kind === "detail" &&
+    typeof candidate.catalogId === "string" &&
+    candidate.catalogId.length > 0 &&
+    isPrimaryDestination(candidate.sourceDestination) &&
+    typeof candidate.sourceScrollTop === "number" &&
+    Number.isFinite(candidate.sourceScrollTop) &&
+    candidate.sourceScrollTop >= 0 &&
+    typeof candidate.detailScrollTop === "number" &&
+    Number.isFinite(candidate.detailScrollTop) &&
+    candidate.detailScrollTop >= 0
+  ) {
+    return detailHistoryState(
+      candidate.catalogId,
+      candidate.sourceDestination,
+      candidate.sourceScrollTop,
+      candidate.detailScrollTop,
     );
   }
 
@@ -171,11 +232,33 @@ export const parseProductHistoryState = (
   return null;
 };
 
-export const primaryLocation = (location: Location) =>
-  `${location.pathname}${location.search}`;
+export const primaryLocation = (location: Location) => {
+  const parameters = new URLSearchParams(location.search);
+  parameters.delete("catalogId");
+  const search = parameters.toString();
+  return `${location.pathname}${search.length === 0 ? "" : `?${search}`}`;
+};
 
 export const settingsLocation = (location: Location) =>
   `${primaryLocation(location)}#settings`;
 
 export const topicLocation = (location: Location, topicId: string) =>
   `${primaryLocation(location)}#topic-${encodeURIComponent(topicId)}`;
+
+export const detailLocation = (location: Location, catalogId: string) => {
+  const parameters = new URLSearchParams(location.search);
+  parameters.set("catalogId", catalogId);
+  return `${location.pathname}?${parameters.toString()}#detail`;
+};
+
+export const directCatalogIdFromLocation = (
+  location: Pick<Location, "search">,
+): string | null => {
+  const catalogId = new URLSearchParams(location.search).get("catalogId");
+  return catalogId !== null &&
+    catalogId.length > 0 &&
+    catalogId.length <= 128 &&
+    /^\S+$/u.test(catalogId)
+    ? catalogId
+    : null;
+};

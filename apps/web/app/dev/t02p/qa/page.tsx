@@ -38,6 +38,7 @@ export default async function T02pQaPage({
   return (
     <T02pQaHarness
       catalogScenarios={scenarios.catalog}
+      detailRecords={scenarios.detail}
       homeScenarios={scenarios.home}
       {...(initialHomeFeed === undefined ? {} : { initialHomeFeed })}
       initialHomeScenario={initialHomeScenario}

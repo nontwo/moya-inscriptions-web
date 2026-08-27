@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 import { homeScenarioNames } from "./home-scenario-contract";
+import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 
 import type { HomeFeed } from "../home/home-feed";
+import type { CatalogDetail } from "@moya/contracts";
 import type {
   T02pDevelopmentCatalogScenario,
   T02pDevelopmentCatalogScenarios,
@@ -54,10 +56,12 @@ export interface T02pQaHarnessProps {
   readonly initialHomeScenario?: HomeScenarioName;
   readonly initialPlatform: PresentationPlatform;
   readonly initialTopicId?: string | null;
+  readonly detailRecords: readonly CatalogDetail[];
 }
 
 export const T02pQaHarness = ({
   catalogScenarios,
+  detailRecords,
   homeScenarios,
   initialHomeFeed,
   initialHomeScenario = "discover-visual",
@@ -77,6 +81,24 @@ export const T02pQaHarness = ({
     home: home.data,
     inscriptions: catalog.inscriptions,
   };
+  const loadQaDetail = useCallback(
+    (catalogId: string, signal?: AbortSignal) =>
+      loadCatalogDetailPresentation(
+        catalogId,
+        signal,
+        async (requestedId, requestSignal) => {
+          if (requestSignal?.aborted === true) {
+            throw new DOMException("Aborted", "AbortError");
+          }
+          const detail = detailRecords.find(({ id }) => id === requestedId);
+          return detail === undefined
+            ? { state: "not-found" as const }
+            : { detail, state: "success" as const };
+        },
+        "qa",
+      ),
+    [detailRecords],
+  );
 
   return (
     <main
@@ -145,6 +167,7 @@ export const T02pQaHarness = ({
       </aside>
 
       <T02pProductPreview
+        catalogDetailLoader={loadQaDetail}
         key={`${homeScenario}:${catalogScenario}`}
         developmentPlatformOverride={
           platformMode === "auto" ? null : platformMode

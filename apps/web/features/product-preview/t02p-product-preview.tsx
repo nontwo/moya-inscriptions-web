@@ -2,11 +2,14 @@
 
 import { CatalogBrowseScreen } from "../home/catalog-screen";
 import { HomeScreen } from "../home/home-screen";
+import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
+import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
 import { ProductShell, useProductShell } from "../product-shell/product-shell";
 import { findTopic } from "../topics/topic";
 import { TopicDetail } from "../topics/topic-detail";
 
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
+import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
 import type { RefObject } from "react";
 import type { HomeCatalogState } from "../home/catalog-state";
 import type { HomeFeed, HomeSurfaceData } from "../home/home-feed";
@@ -39,19 +42,25 @@ const PreviewBrowse = ({
   readonly kind: "inscription" | "calligraphy";
   readonly state: HomeCatalogState;
 }) => {
-  const { feedLayout } = useProductShell();
+  const { feedLayout, openCatalog } = useProductShell();
   return (
     <div
       data-product-panel={
         kind === "inscription" ? "inscriptions" : "calligraphy"
       }
     >
-      <CatalogBrowseScreen feedLayout={feedLayout} kind={kind} state={state} />
+      <CatalogBrowseScreen
+        feedLayout={feedLayout}
+        kind={kind}
+        onOpenCatalog={(item, opener) => openCatalog(item.id, opener)}
+        state={state}
+      />
     </div>
   );
 };
 
 export interface T02pProductPreviewProps {
+  readonly catalogDetailLoader?: CatalogDetailPresentationLoader;
   readonly developmentPlatformOverride?: PresentationPlatform | null;
   readonly initialPlatform: PresentationPlatform;
   readonly initialHomeFeed?: HomeFeed;
@@ -61,6 +70,7 @@ export interface T02pProductPreviewProps {
 }
 
 export const T02pProductPreview = ({
+  catalogDetailLoader = loadCatalogDetailPresentation,
   developmentPlatformOverride = null,
   initialPlatform,
   initialHomeFeed = "discover",
@@ -86,6 +96,22 @@ export const T02pProductPreview = ({
         <PreviewBrowse kind="inscription" state={states.inscriptions} />
       }
       showDevelopmentPagerControls={showDevelopmentPagerControls}
+      renderDetailOverlay={({
+        backButtonRef,
+        catalogId,
+        initialScrollTop,
+        onClose,
+        onScrollTopChange,
+      }) => (
+        <PreviewCatalogDetailOverlay
+          backButtonRef={backButtonRef}
+          catalogId={catalogId}
+          initialScrollTop={initialScrollTop}
+          loader={catalogDetailLoader}
+          onClose={onClose}
+          onScrollTopChange={onScrollTopChange}
+        />
+      )}
       renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
         <PreviewTopicOverlay
           backButtonRef={backButtonRef}

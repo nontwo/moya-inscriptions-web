@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   PRODUCT_SHELL_HISTORY_VERSION,
+  detailHistoryState,
+  detailLocation,
+  directCatalogIdFromLocation,
   isPrimaryDestination,
   mergeProductHistoryState,
   parseProductHistoryState,
@@ -26,6 +29,34 @@ describe("Product Shell history", () => {
     expect(
       parseProductHistoryState(settingsHistoryState("inscriptions")),
     ).toEqual(settingsHistoryState("inscriptions"));
+  });
+
+  it("parses the bounded Detail layer and preserves source/detail scroll", () => {
+    const state = detailHistoryState("catalog-one", "inscriptions", 147, 63);
+    expect(parseProductHistoryState(state)).toEqual(state);
+    expect(detailHistoryState("catalog-one", "home", -1, -2)).toMatchObject({
+      detailScrollTop: 0,
+      sourceScrollTop: 0,
+    });
+    expect(
+      detailLocation(
+        {
+          pathname: "/dev/t02p",
+          search: "?cb=exact-head&catalogId=old",
+        } as Location,
+        "catalog one",
+      ),
+    ).toBe("/dev/t02p?cb=exact-head&catalogId=catalog+one#detail");
+  });
+
+  it("reads only a bounded direct Development CatalogId", () => {
+    expect(
+      directCatalogIdFromLocation({ search: "?catalogId=catalog-one" }),
+    ).toBe("catalog-one");
+    expect(
+      directCatalogIdFromLocation({ search: "?catalogId=invalid+id" }),
+    ).toBeNull();
+    expect(directCatalogIdFromLocation({ search: "" })).toBeNull();
   });
 
   it("preserves router history fields without retaining stale Product fields", () => {
@@ -97,6 +128,22 @@ describe("Product Shell history", () => {
       destination: "home",
       kind: "primary",
       scrollTop: -1,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      catalogId: "catalog-one",
+      detailScrollTop: -1,
+      kind: "detail",
+      sourceDestination: "home",
+      sourceScrollTop: 0,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      catalogId: "",
+      detailScrollTop: 0,
+      kind: "detail",
+      sourceDestination: "home",
+      sourceScrollTop: 0,
       version: PRODUCT_SHELL_HISTORY_VERSION,
     },
     {
