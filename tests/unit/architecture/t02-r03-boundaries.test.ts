@@ -28,6 +28,7 @@ describe("T02 R03 architecture boundaries", () => {
       path.join(repositoryRoot, "apps/web/features/topics"),
       path.join(repositoryRoot, "apps/web/features/product-shell"),
       path.join(repositoryRoot, "apps/web/features/product-preview"),
+      path.join(repositoryRoot, "apps/web/features/detail"),
       path.join(repositoryRoot, "apps/web/sources"),
     ];
     const violations: string[] = [];
@@ -44,7 +45,7 @@ describe("T02 R03 architecture boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps Catalog Detail, Carousel, and Viewer outside the R03 composition", async () => {
+  it("adds only the bounded MIG-D1 Detail composition without Viewer or Gallery", async () => {
     const preview = await readFile(
       path.join(
         repositoryRoot,
@@ -52,10 +53,30 @@ describe("T02 R03 architecture boundaries", () => {
       ),
       "utf8",
     );
-    expect(preview).not.toMatch(
-      /features\/detail|CatalogDetail|Carousel|Viewer/u,
-    );
+    expect(preview).toMatch(/CatalogDetail|renderDetailOverlay/u);
+    expect(preview).not.toMatch(/Viewer|Gallery/u);
     expect(preview).toContain("TopicDetail");
+
+    const detailRoot = path.join(repositoryRoot, "apps/web/features/detail");
+    const detailStyles = await readFile(
+      path.join(detailRoot, "catalog-detail.module.css"),
+      "utf8",
+    );
+    const violations: string[] = [];
+    for (const file of await collectSourceFiles(detailRoot)) {
+      const source = await readFile(file, "utf8");
+      if (
+        /CatalogViewer|viewer|gallery|transcription|historicalContext|scholarlyResearch|\bonRetry\b|>重试</u.test(
+          source,
+        )
+      ) {
+        violations.push(path.relative(repositoryRoot, file));
+      }
+    }
+    expect(violations).toEqual([]);
+    expect(detailStyles).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.mediaTrack,[\s\S]*transition-duration: 1ms;/u,
+    );
   });
 
   it("leaves Formal root and Catalog redirect outside the React preview", async () => {

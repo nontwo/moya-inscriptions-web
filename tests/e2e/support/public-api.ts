@@ -69,7 +69,7 @@ const summaries: readonly CatalogSummary[] = [
     kind: "inscription",
     periodLabel: "北魏",
     representativeMedia: inscriptionFront,
-    summary: "用于验证图库、查看器和响应式连续性。",
+    summary: "用于验证多媒体与响应式连续性。",
     title: "运行时多图碑刻",
   },
   {
@@ -111,7 +111,10 @@ const details = new Map<string, CatalogDetail>([
     {
       aliases: ["多图运行记录"],
       currentLocation: "测试陈列区",
-      description: "此记录提供两张公开图像。",
+      description:
+        "此记录提供两张公开图像，并用于验证详情独立纵向滚动与历史恢复。".repeat(
+          24,
+        ),
       dynasty: "北魏",
       id: catalogId("runtime-inscription-multi-media"),
       kind: "inscription",
@@ -119,7 +122,7 @@ const details = new Map<string, CatalogDetail>([
       periodLabel: "北魏",
       representativeMedia: inscriptionFront,
       sourceCitations: [{ label: "测试公开资料" }],
-      summary: "用于验证图库、查看器和响应式连续性。",
+      summary: "用于验证多媒体与响应式连续性。",
       title: "运行时多图碑刻",
     },
   ],

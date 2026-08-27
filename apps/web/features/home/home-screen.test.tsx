@@ -171,7 +171,8 @@ describe("HomeScreen", () => {
     expect(markup).toContain('data-catalog-media-state="valid"');
     expect(markup).not.toContain("objectKey");
     expect(markup).not.toContain("object_key");
-    expect(markup).not.toContain('data-open-catalog=""');
+    expect(markup).toContain('data-open-catalog=""');
+    expect(markup).toContain('aria-label="打开云峰山刻石"');
   });
 
   it("keeps the Catalog total out of presentation", () => {
@@ -244,6 +245,7 @@ describe("CatalogBrowseScreen", () => {
       <CatalogBrowseScreen
         feedLayout="double"
         kind="inscription"
+        onOpenCatalog={() => {}}
         state={mixedState}
       />,
     );
@@ -252,6 +254,7 @@ describe("CatalogBrowseScreen", () => {
     expect(markup).toContain('data-catalog-item-count="1"');
     expect(markup).toContain('data-catalog-card-variant="inscription"');
     expect(markup).toContain("合成碑刻");
+    expect(markup).toContain('data-open-catalog=""');
     expect(markup).not.toContain("合成书帖");
   });
 
@@ -260,6 +263,7 @@ describe("CatalogBrowseScreen", () => {
       <CatalogBrowseScreen
         feedLayout="single"
         kind="calligraphy"
+        onOpenCatalog={() => {}}
         state={mixedState}
       />,
     );
@@ -269,6 +273,7 @@ describe("CatalogBrowseScreen", () => {
     expect(markup).toContain('data-catalog-card-variant="feed"');
     expect(markup).toContain('data-feed-layout="single"');
     expect(markup).toContain("合成书帖");
+    expect(markup).toContain('data-open-catalog=""');
     expect(markup).not.toContain("合成碑刻");
   });
 });

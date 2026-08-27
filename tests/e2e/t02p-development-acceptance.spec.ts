@@ -730,6 +730,199 @@ test("Direct Settings history has a safe Back and Forward path", async ({
   await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
 });
 
+test("MIG-D1 opens one runtime Detail architecture from Home, Inscriptions, and Calligraphy", async ({
+  page,
+}) => {
+  const response = await page.goto("/dev/t02p?acceptance=mig-d1-runtime");
+  expect(response?.status()).toBe(200);
+  const preview = page.locator("[data-clean-product-preview]");
+  const shell = productShell(preview);
+  const navigation = preview.getByRole("navigation", { name: "主要内容" });
+  const detail = shell.getByRole("dialog", { name: "资料详情" });
+
+  const openAndReturn = async (catalogId: string, title: string) => {
+    const opener = shell
+      .locator("[data-primary-destination]:not([hidden])")
+      .locator(`[data-catalog-id="${catalogId}"] [data-open-catalog]`);
+    await opener.click();
+    await expect(detail).toBeVisible();
+    await expect(detail).toHaveAttribute("data-detail-source", "runtime");
+    await expect(detail.locator("[data-detail-title]"), title).toBeVisible();
+    await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
+      "inert",
+      "",
+    );
+    await expect(detail.getByRole("button", { name: "返回" })).toBeFocused();
+    await detail.getByRole("button", { name: "返回" }).click();
+    await expect(detail).toHaveCount(0);
+    await expect(opener).toBeFocused();
+  };
+
+  await openAndReturn("runtime-inscription-no-media", "运行时无图碑刻");
+  await ensurePrimaryNavigationExpanded(navigation);
+  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
+  await expect(shell).toHaveAttribute(
+    "data-active-destination",
+    "inscriptions",
+  );
+  await openAndReturn("runtime-inscription-multi-media", "运行时多图碑刻");
+  await ensurePrimaryNavigationExpanded(navigation);
+  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "calligraphy");
+  await openAndReturn("runtime-calligraphy", "运行时书帖");
+
+  await expect(shell.locator("[data-detail-experience]")).toHaveCount(0);
+  await expect(preview.locator("[data-qa-controls]")).toHaveCount(0);
+});
+
+test("MIG-D1 direct multi-media Detail preserves Carousel and scroll across resize and Back/Forward", async ({
+  page,
+}) => {
+  const response = await page.goto(
+    "/dev/t02p?catalogId=runtime-inscription-multi-media",
+  );
+  expect(response?.status()).toBe(200);
+  const shell = page.locator("[data-product-shell]");
+  const detail = shell.getByRole("dialog", { name: "资料详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail).toHaveAttribute("data-detail-source", "runtime");
+  await expect(detail.locator("[data-detail-media-dot]")).toHaveCount(2);
+  await expect(detail.locator("[data-detail-media-index]")).toContainText(
+    "1 / 2",
+  );
+
+  const stage = detail.locator("[data-detail-main-stage]");
+  const box = await stage.boundingBox();
+  if (box === null) throw new Error("Missing Detail Carousel geometry");
+  const startX = box.x + box.width * 0.62;
+  const endX = box.x + box.width * 0.38;
+  const centerY = box.y + box.height * 0.5;
+  await stage.dispatchEvent("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: startX,
+    clientY: centerY,
+    isPrimary: true,
+    pointerId: 301,
+    pointerType: "touch",
+  });
+  await stage.dispatchEvent("pointermove", {
+    button: 0,
+    buttons: 1,
+    clientX: endX,
+    clientY: centerY,
+    isPrimary: true,
+    pointerId: 301,
+    pointerType: "touch",
+  });
+  await stage.dispatchEvent("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: endX,
+    clientY: centerY,
+    isPrimary: true,
+    pointerId: 301,
+    pointerType: "touch",
+  });
+  await expect(detail.locator("[data-detail-media-index]")).toContainText(
+    "2 / 2",
+  );
+
+  const scroller = shell.locator("[data-detail-scroll]");
+  const recordedScroll = await scroller.evaluate((node) => {
+    const element = node as HTMLElement;
+    element.scrollTop = Math.min(
+      180,
+      Math.max(0, element.scrollHeight - element.clientHeight),
+    );
+    element.dispatchEvent(new Event("scroll"));
+    return element.scrollTop;
+  });
+  expect(recordedScroll).toBeGreaterThan(0);
+  await expect
+    .poll(() => scroller.evaluate((node) => (node as HTMLElement).scrollTop))
+    .toBe(recordedScroll);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        typeof history.state === "object" && history.state !== null
+          ? (history.state as { detailScrollTop?: number }).detailScrollTop
+          : undefined,
+      ),
+    )
+    .toBe(recordedScroll);
+
+  const viewport = page.viewportSize();
+  if (viewport !== null) {
+    await page.setViewportSize({
+      height: viewport.width,
+      width: viewport.height,
+    });
+    await expect(detail.locator("[data-detail-media-index]")).toContainText(
+      "2 / 2",
+    );
+    await page.setViewportSize(viewport);
+  }
+  await expect
+    .poll(() => scroller.evaluate((node) => (node as HTMLElement).scrollTop))
+    .toBe(recordedScroll);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        typeof history.state === "object" && history.state !== null
+          ? (history.state as { detailScrollTop?: number }).detailScrollTop
+          : undefined,
+      ),
+    )
+    .toBe(recordedScroll);
+
+  await page.goBack();
+  await expect(detail).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dev\/t02p$/u);
+  await page.goForward();
+  await expect(detail).toBeVisible();
+  await expect(detail.locator("[data-detail-media-index]")).toContainText(
+    "1 / 2",
+  );
+  await expect
+    .poll(() =>
+      shell.locator("[data-detail-scroll]").evaluate((node, desiredTop) => {
+        const element = node as HTMLElement;
+        const maximum = Math.max(
+          0,
+          element.scrollHeight - element.clientHeight,
+        );
+        return Math.abs(element.scrollTop - Math.min(desiredTop, maximum)) <= 2;
+      }, recordedScroll),
+    )
+    .toBe(true);
+});
+
+test("MIG-D1 QA direct entry keeps Catalog identity and a truthful no-media state", async ({
+  page,
+}) => {
+  const response = await page.goto(
+    "/dev/t02p/qa?catalogId=qa-visual-inscription-09",
+  );
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-t02p-qa-harness]");
+  const detail = productShell(surface).getByRole("dialog", {
+    name: "资料详情",
+  });
+  await expect(detail).toBeVisible();
+  await expect(detail).toHaveAttribute("data-detail-source", "qa");
+  await expect(detail.locator("[data-detail-title]")).toHaveText(
+    "无图碑刻甲（视觉 QA 合成）",
+  );
+  await expect(
+    detail.locator('[data-detail-media-state="missing"]'),
+  ).toBeVisible();
+  await expect(detail).toContainText("暂无公开图像");
+  await expect(detail).not.toContainText("重试");
+  await detail.getByRole("button", { name: "返回" }).click();
+  await expect(detail).toHaveCount(0);
+});
+
 test("Development QA Harness observes the shared Product Shell without owning it", async ({
   page,
 }, testInfo) => {

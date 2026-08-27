@@ -1,7 +1,7 @@
 import { CatalogCard } from "./catalog-card";
 import styles from "./home-screen.module.css";
 
-import type { CatalogKind } from "@moya/contracts";
+import type { CatalogKind, CatalogSummary } from "@moya/contracts";
 import type { HomeCatalogState } from "./catalog-state";
 
 export type CatalogFeedLayout = "single" | "double";
@@ -9,6 +9,10 @@ export type CatalogScreenPresentation = "home" | CatalogKind;
 
 export interface CatalogCollectionScreenProps {
   readonly feedLayout: CatalogFeedLayout;
+  readonly onOpenCatalog?: (
+    item: CatalogSummary,
+    opener: HTMLButtonElement,
+  ) => void;
   readonly presentation: CatalogScreenPresentation;
   readonly state: HomeCatalogState;
 }
@@ -72,6 +76,7 @@ const IconForState = ({
 
 const PopulatedCollection = ({
   feedLayout,
+  onOpenCatalog,
   presentation,
   state,
 }: CatalogCollectionScreenProps & {
@@ -101,7 +106,11 @@ const PopulatedCollection = ({
       >
         {items.map((item) => (
           <li key={item.id}>
-            <CatalogCard item={item} variant="inscription" />
+            <CatalogCard
+              item={item}
+              {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
+              variant="inscription"
+            />
           </li>
         ))}
       </ul>
@@ -116,7 +125,12 @@ const PopulatedCollection = ({
       role="list"
     >
       {items.map((item) => (
-        <CatalogCard key={item.id} item={item} variant="feed" />
+        <CatalogCard
+          key={item.id}
+          item={item}
+          {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
+          variant="feed"
+        />
       ))}
     </div>
   );
@@ -124,6 +138,7 @@ const PopulatedCollection = ({
 
 export const CatalogCollectionScreen = ({
   feedLayout,
+  onOpenCatalog,
   presentation,
   state,
 }: CatalogCollectionScreenProps) => {
@@ -135,6 +150,7 @@ export const CatalogCollectionScreen = ({
       content = (
         <PopulatedCollection
           feedLayout={feedLayout}
+          {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
           presentation={presentation}
           state={state}
         />
@@ -189,16 +205,22 @@ export const CatalogCollectionScreen = ({
 export interface CatalogBrowseScreenProps {
   readonly feedLayout: CatalogFeedLayout;
   readonly kind: CatalogKind;
+  readonly onOpenCatalog?: (
+    item: CatalogSummary,
+    opener: HTMLButtonElement,
+  ) => void;
   readonly state: HomeCatalogState;
 }
 
 export const CatalogBrowseScreen = ({
   feedLayout,
   kind,
+  onOpenCatalog,
   state,
 }: CatalogBrowseScreenProps) => (
   <CatalogCollectionScreen
     feedLayout={feedLayout}
+    {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
     presentation={kind}
     state={state}
   />

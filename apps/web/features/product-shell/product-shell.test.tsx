@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProductShell, useProductShell } from "./product-shell";
 import {
+  detailHistoryState,
+  parseProductHistoryState,
   primaryHistoryState,
   settingsHistoryState,
   topicHistoryState,
@@ -98,6 +100,65 @@ const renderTopicShell = () => {
             >
               Back
             </button>
+          </section>
+        )}
+      />,
+    ),
+  );
+  return { container };
+};
+
+const CatalogOpener = () => {
+  const { openCatalog } = useProductShell();
+  return (
+    <article data-catalog-id="catalog-one">
+      <button
+        type="button"
+        data-open-catalog=""
+        onClick={(event) => openCatalog("catalog-one", event.currentTarget)}
+      >
+        Open catalog
+      </button>
+    </article>
+  );
+};
+
+const renderDetailShell = () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push(root);
+  act(() =>
+    root.render(
+      <ProductShell
+        calligraphy={<p>calligraphy content</p>}
+        home={<CatalogOpener />}
+        initialPlatform="phone"
+        inscriptions={<p>inscriptions content</p>}
+        renderDetailOverlay={({
+          backButtonRef,
+          catalogId,
+          initialScrollTop,
+          onClose,
+          onScrollTopChange,
+        }) => (
+          <section aria-label={`Detail ${catalogId}`} role="dialog">
+            <button
+              ref={backButtonRef}
+              aria-label="返回资料"
+              onClick={onClose}
+              type="button"
+            >
+              Back
+            </button>
+            <button
+              data-detail-scroll-test=""
+              onClick={() => onScrollTopChange(73)}
+              type="button"
+            >
+              Scroll detail
+            </button>
+            <span data-detail-initial-scroll="">{initialScrollTop}</span>
           </section>
         )}
       />,
@@ -555,6 +616,89 @@ describe("ProductShell", () => {
     expect(document.activeElement).toBe(
       container.querySelector("[data-topic-test-opener]"),
     );
+  });
+
+  it("owns Detail history, source/detail scroll, opener focus, and overlay exclusion", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const { container } = renderDetailShell();
+    await act(async () => vi.runAllTimers());
+    replaceState.mockClear();
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperty(home, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(home, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    home.scrollTop = 146;
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-open-catalog]",
+    )!;
+
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    expect(replaceState).toHaveBeenCalledWith(
+      primaryHistoryState("home", 146, undefined, "catalog-one"),
+      "",
+      "/dev/t02p",
+    );
+    expect(pushState).toHaveBeenCalledWith(
+      detailHistoryState("catalog-one", "home", 146),
+      "",
+      "/dev/t02p?catalogId=catalog-one#detail",
+    );
+    expect(
+      container.querySelector('[aria-label="Detail catalog-one"]'),
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+    expect(document.activeElement).toBe(buttonByLabel(container, "返回资料"));
+
+    click(
+      container.querySelector<HTMLButtonElement>("[data-detail-scroll-test]")!,
+    );
+    await act(async () => vi.runAllTimers());
+    expect(parseProductHistoryState(window.history.state)).toEqual(
+      detailHistoryState("catalog-one", "home", 146, 73),
+    );
+
+    click(buttonByLabel(container, "打开设置"));
+    expect(dialog(container)).toBeNull();
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: primaryHistoryState("home", 146, undefined, "catalog-one"),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(
+      container.querySelector('[aria-label="Detail catalog-one"]'),
+    ).toBeNull();
+    expect(home.scrollTop).toBe(146);
+    expect(document.activeElement).toBe(opener);
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: detailHistoryState("catalog-one", "home", 146, 73),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(
+      container.querySelector("[data-detail-initial-scroll]")?.textContent,
+    ).toBe("73");
   });
 
   it.each(["home", "inscriptions", "calligraphy"] as const)(

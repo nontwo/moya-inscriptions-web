@@ -11,6 +11,7 @@ import {
   homeCatalogScenarioSources,
 } from "../../../qa/home-catalog-scenarios";
 import { loadDiscoverFeed } from "../../../sources/home/home-sources";
+import { createQaCatalogDetails } from "../../../qa/detail-catalog-scenarios";
 
 import type { HomeCatalogSource } from "../../../features/home/load-home-catalog";
 import type {
@@ -18,6 +19,7 @@ import type {
   T02pDevelopmentCatalogScenarios,
 } from "../../../features/product-preview/catalog-scenarios";
 import type { DevelopmentHomeScenarios } from "../../../features/qa/home-scenario-contract";
+import type { CatalogDetail } from "@moya/contracts";
 
 const loadBrowseStates = async (source?: HomeCatalogSource) => {
   const [inscriptions, calligraphy] = await Promise.all([
@@ -52,6 +54,7 @@ export const loadCleanPreviewStates = (mediaOrigin: string) =>
 
 export interface T02pQaScenarios {
   readonly catalog: T02pDevelopmentCatalogScenarios;
+  readonly detail: readonly CatalogDetail[];
   readonly home: DevelopmentHomeScenarios;
 }
 
@@ -100,5 +103,5 @@ export const loadQaScenarios = async (
     }),
   ) as DevelopmentHomeScenarios;
 
-  return { catalog, home };
+  return { catalog, detail: createQaCatalogDetails(mediaOrigin), home };
 };
