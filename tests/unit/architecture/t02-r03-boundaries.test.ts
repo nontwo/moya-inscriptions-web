@@ -45,7 +45,7 @@ describe("T02 R03 architecture boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("adds only the bounded MIG-D1 Detail composition without Viewer or Gallery", async () => {
+  it("adds only the bounded MIG-D1 Detail and MIG-D2 Viewer without Gallery", async () => {
     const preview = await readFile(
       path.join(
         repositoryRoot,
@@ -54,7 +54,7 @@ describe("T02 R03 architecture boundaries", () => {
       "utf8",
     );
     expect(preview).toMatch(/CatalogDetail|renderDetailOverlay/u);
-    expect(preview).not.toMatch(/Viewer|Gallery/u);
+    expect(preview).not.toMatch(/Gallery/u);
     expect(preview).toContain("TopicDetail");
 
     const detailRoot = path.join(repositoryRoot, "apps/web/features/detail");
@@ -66,7 +66,7 @@ describe("T02 R03 architecture boundaries", () => {
     for (const file of await collectSourceFiles(detailRoot)) {
       const source = await readFile(file, "utf8");
       if (
-        /CatalogViewer|viewer|gallery|transcription|historicalContext|scholarlyResearch|\bonRetry\b|>重试</u.test(
+        /gallery|transcription|historicalContext|scholarlyResearch|\bonRetry\b|>重试</u.test(
           source,
         )
       ) {
@@ -74,6 +74,12 @@ describe("T02 R03 architecture boundaries", () => {
       }
     }
     expect(violations).toEqual([]);
+    const viewer = await readFile(
+      path.join(detailRoot, "catalog-viewer.tsx"),
+      "utf8",
+    );
+    expect(viewer).toMatch(/CatalogViewer|data-detail-viewer/u);
+    expect(viewer).not.toMatch(/apps\/web\/qa|docs\/prototypes/u);
     expect(detailStyles).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.mediaTrack,[\s\S]*transition-duration: 1ms;/u,
     );

@@ -12,6 +12,7 @@ export interface CatalogDetailScreenProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly onActiveMediaIndexChange: (index: number) => void;
   readonly onBack: () => void;
+  readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
   readonly orientation: "landscape" | "portrait";
   readonly platform: PresentationPlatform;
   readonly state: CatalogDetailPresentationState;
@@ -37,6 +38,7 @@ export const CatalogDetailScreen = ({
   backButtonRef,
   onActiveMediaIndexChange,
   onBack,
+  onOpenViewer,
   orientation,
   platform,
   state,
@@ -89,6 +91,7 @@ export const CatalogDetailScreen = ({
             activeIndex={activeMediaIndex}
             media={detail.media}
             onActiveIndexChange={onActiveMediaIndexChange}
+            onOpenViewer={onOpenViewer}
             platform={platform}
           />
           <section className={styles.identityPanel} data-detail-info-panel="">

@@ -11,6 +11,7 @@ import {
   primaryHistoryState,
   settingsHistoryState,
   topicHistoryState,
+  viewerHistoryState,
 } from "./product-history";
 
 import type { ReactNode } from "react";
@@ -123,6 +124,33 @@ const CatalogOpener = () => {
   );
 };
 
+const ViewerControls = () => {
+  const { activeViewerMediaId, changeViewerMedia, closeViewer, openViewer } =
+    useProductShell();
+  return (
+    <>
+      <button
+        data-open-viewer-test=""
+        onClick={() => openViewer("media-one")}
+        type="button"
+      >
+        Open viewer
+      </button>
+      <button
+        data-change-viewer-test=""
+        onClick={() => changeViewerMedia("media-two")}
+        type="button"
+      >
+        Change viewer media
+      </button>
+      <button data-close-viewer-test="" onClick={closeViewer} type="button">
+        Close viewer
+      </button>
+      <span data-viewer-media-test="">{activeViewerMediaId ?? "closed"}</span>
+    </>
+  );
+};
+
 const renderDetailShell = () => {
   const container = document.createElement("div");
   document.body.append(container);
@@ -159,6 +187,7 @@ const renderDetailShell = () => {
               Scroll detail
             </button>
             <span data-detail-initial-scroll="">{initialScrollTop}</span>
+            <ViewerControls />
           </section>
         )}
       />,
@@ -699,6 +728,96 @@ describe("ProductShell", () => {
     expect(
       container.querySelector("[data-detail-initial-scroll]")?.textContent,
     ).toBe("73");
+  });
+
+  it("owns one Viewer history layer and replaces media navigation in place", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const { container } = renderDetailShell();
+    await act(async () => vi.runAllTimers());
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperties(home, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    });
+    home.scrollTop = 146;
+    click(container.querySelector<HTMLButtonElement>("[data-open-catalog]")!);
+    await act(async () => vi.runAllTimers());
+    click(
+      container.querySelector<HTMLButtonElement>("[data-detail-scroll-test]")!,
+    );
+    await act(async () => vi.runAllTimers());
+    pushState.mockClear();
+    replaceState.mockClear();
+
+    click(
+      container.querySelector<HTMLButtonElement>("[data-open-viewer-test]")!,
+    );
+
+    expect(replaceState).toHaveBeenCalledWith(
+      detailHistoryState("catalog-one", "home", 146, 73),
+      "",
+      "/dev/t02p?catalogId=catalog-one#detail",
+    );
+    expect(pushState).toHaveBeenCalledWith(
+      viewerHistoryState("catalog-one", "media-one", "home", 146, 73),
+      "",
+      "/dev/t02p?catalogId=catalog-one&image=media-one#viewer",
+    );
+    expect(
+      container.querySelector("[data-viewer-media-test]")?.textContent,
+    ).toBe("media-one");
+    expect(
+      container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-viewer-open"),
+    ).toBe("true");
+
+    replaceState.mockClear();
+    click(
+      container.querySelector<HTMLButtonElement>("[data-change-viewer-test]")!,
+    );
+    expect(replaceState).toHaveBeenCalledWith(
+      viewerHistoryState("catalog-one", "media-two", "home", 146, 73),
+      "",
+      "/dev/t02p?catalogId=catalog-one&image=media-two#viewer",
+    );
+    expect(pushState).toHaveBeenCalledOnce();
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: detailHistoryState("catalog-one", "home", 146, 73),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(
+      container.querySelector("[data-viewer-media-test]")?.textContent,
+    ).toBe("closed");
+    expect(
+      container.querySelector('[aria-label="Detail catalog-one"]'),
+    ).not.toBeNull();
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: viewerHistoryState(
+            "catalog-one",
+            "media-two",
+            "home",
+            146,
+            73,
+          ),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(
+      container.querySelector("[data-viewer-media-test]")?.textContent,
+    ).toBe("media-two");
   });
 
   it.each(["home", "inscriptions", "calligraphy"] as const)(

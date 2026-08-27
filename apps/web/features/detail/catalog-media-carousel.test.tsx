@@ -44,12 +44,14 @@ const renderCarousel = (activeIndex = 0) => {
   const root = createRoot(container);
   roots.push(root);
   const onActiveIndexChange = vi.fn();
+  const onOpenViewer = vi.fn();
   act(() =>
     root.render(
       <CatalogMediaCarousel
         activeIndex={activeIndex}
         media={media}
         onActiveIndexChange={onActiveIndexChange}
+        onOpenViewer={onOpenViewer}
         platform="phone"
       />,
     ),
@@ -61,7 +63,7 @@ const renderCarousel = (activeIndex = 0) => {
     configurable: true,
     value: () => ({ width: 300 }),
   });
-  return { container, onActiveIndexChange, stage };
+  return { container, onActiveIndexChange, onOpenViewer, stage };
 };
 
 afterEach(() => {
@@ -81,6 +83,7 @@ describe("CatalogMediaCarousel", () => {
           activeIndex={0}
           media={media.slice(0, 1)}
           onActiveIndexChange={vi.fn()}
+          onOpenViewer={vi.fn()}
           platform="phone"
         />,
       ),
@@ -189,6 +192,52 @@ describe("CatalogMediaCarousel", () => {
       );
     });
     expect(onActiveIndexChange).not.toHaveBeenCalled();
+  });
+
+  it("opens only the active image and suppresses a drag-generated click", () => {
+    const { container, onOpenViewer, stage } = renderCarousel();
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-detail-main-image]",
+    )!;
+    act(() => opener.click());
+    expect(onOpenViewer).toHaveBeenCalledWith(0, opener);
+    onOpenViewer.mockClear();
+
+    act(() => {
+      stage.dispatchEvent(
+        pointerEvent("pointerdown", {
+          button: 0,
+          clientX: 180,
+          clientY: 80,
+          isPrimary: true,
+          pointerId: 10,
+          timeStamp: 0,
+        }),
+      );
+      stage.dispatchEvent(
+        pointerEvent("pointermove", {
+          clientX: 100,
+          clientY: 82,
+          pointerId: 10,
+          timeStamp: 20,
+        }),
+      );
+      stage.dispatchEvent(
+        pointerEvent("pointerup", {
+          clientX: 100,
+          clientY: 82,
+          pointerId: 10,
+          timeStamp: 40,
+        }),
+      );
+      opener.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+      );
+    });
+    expect(onOpenViewer).not.toHaveBeenCalled();
+
+    act(() => opener.click());
+    expect(onOpenViewer).toHaveBeenCalledWith(0, opener);
   });
 
   it("keeps edge controls bounded and exposes dots, counter, and failed media", () => {

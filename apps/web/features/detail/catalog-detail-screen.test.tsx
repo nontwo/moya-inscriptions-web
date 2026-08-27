@@ -13,6 +13,7 @@ const renderState = (
       backButtonRef={createRef<HTMLButtonElement>()}
       onActiveMediaIndexChange={vi.fn()}
       onBack={vi.fn()}
+      onOpenViewer={vi.fn()}
       orientation="portrait"
       platform="phone"
       state={state}

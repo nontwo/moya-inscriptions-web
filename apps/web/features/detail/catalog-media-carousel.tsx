@@ -6,7 +6,11 @@ import { Icon } from "@moya/ui";
 
 import styles from "./catalog-detail.module.css";
 
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import type { PublicMedia } from "@moya/contracts";
 import type { PresentationPlatform } from "../shell/device-platform";
 
@@ -15,6 +19,7 @@ export const MEDIA_CAROUSEL_SWIPE_DISTANCE_PX = 48;
 export const MEDIA_CAROUSEL_FLING_PX_PER_MS = 0.55;
 export const MEDIA_CAROUSEL_HORIZONTAL_RATIO = 1.25;
 export const MEDIA_CAROUSEL_EDGE_RUBBER = 0.32;
+export const MEDIA_CAROUSEL_CLICK_SUPPRESSION_MS = 500;
 
 type CarouselAxis = "horizontal" | "vertical" | null;
 
@@ -62,6 +67,7 @@ export interface CatalogMediaCarouselProps {
   readonly activeIndex: number;
   readonly media: readonly PublicMedia[];
   readonly onActiveIndexChange: (index: number) => void;
+  readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
   readonly platform: PresentationPlatform;
 }
 
@@ -69,6 +75,7 @@ export const CatalogMediaCarousel = ({
   activeIndex,
   media,
   onActiveIndexChange,
+  onOpenViewer,
   platform,
 }: CatalogMediaCarouselProps) => {
   const [dragOffset, setDragOffset] = useState(0);
@@ -77,6 +84,27 @@ export const CatalogMediaCarousel = ({
     () => new Set(),
   );
   const gestureRef = useRef<CarouselGesture | null>(null);
+  const suppressClickRef = useRef(false);
+  const suppressClickTimerRef = useRef<number | null>(null);
+
+  const clearClickSuppression = () => {
+    if (suppressClickTimerRef.current !== null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+      suppressClickTimerRef.current = null;
+    }
+    suppressClickRef.current = false;
+  };
+
+  const suppressCompletedGestureClick = () => {
+    if (suppressClickTimerRef.current !== null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+    }
+    suppressClickRef.current = true;
+    suppressClickTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = false;
+      suppressClickTimerRef.current = null;
+    }, MEDIA_CAROUSEL_CLICK_SUPPRESSION_MS);
+  };
 
   useEffect(() => {
     setDragOffset(0);
@@ -87,6 +115,15 @@ export const CatalogMediaCarousel = ({
     gestureRef.current = null;
     setFailedMediaIds(new Set());
   }, [media]);
+
+  useEffect(
+    () => () => {
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const selectIndex = (index: number) => {
     const bounded = Math.min(Math.max(index, 0), media.length - 1);
@@ -110,6 +147,8 @@ export const CatalogMediaCarousel = ({
     const dx = event.clientX - gesture.startX;
     const elapsed = Math.max(event.timeStamp - gesture.lastTime, 1);
     const velocity = (event.clientX - gesture.lastX) / elapsed;
+    const moved = Math.hypot(dx, event.clientY - gesture.startY) >= 10;
+    if (moved) suppressCompletedGestureClick();
     setDragging(false);
     setDragOffset(0);
     if (
@@ -125,6 +164,7 @@ export const CatalogMediaCarousel = ({
     const gesture = gestureRef.current;
     if (gesture === null || gesture.id !== event.pointerId) return;
     gestureRef.current = null;
+    suppressCompletedGestureClick();
     setDragging(false);
     setDragOffset(0);
     releaseCapture(event);
@@ -160,6 +200,16 @@ export const CatalogMediaCarousel = ({
         className={styles.mainStage}
         data-detail-main-stage=""
         data-dragging={dragging ? "true" : undefined}
+        onClickCapture={(event: ReactMouseEvent<HTMLDivElement>) => {
+          if (!suppressClickRef.current) return;
+          if (event.detail === 0) {
+            clearClickSuppression();
+            return;
+          }
+          clearClickSuppression();
+          event.preventDefault();
+          event.stopPropagation();
+        }}
         onLostPointerCapture={(event) => {
           if (gestureRef.current?.id === event.pointerId) cancelGesture(event);
         }}
@@ -173,6 +223,7 @@ export const CatalogMediaCarousel = ({
           ) {
             return;
           }
+          clearClickSuppression();
           gestureRef.current = {
             axis: null,
             id: event.pointerId,
@@ -229,33 +280,45 @@ export const CatalogMediaCarousel = ({
                 inert={!active || undefined}
                 key={item.id}
               >
-                {failed ? (
-                  <span
-                    aria-label={`图像无法加载：${item.alt}`}
-                    className={styles.mediaError}
-                    data-detail-media-state="failed"
-                    role="img"
-                  >
-                    <Icon aria-hidden="true" name="error" />
-                    图像无法加载
-                  </span>
-                ) : (
-                  <img
-                    alt={item.alt}
-                    decoding="async"
-                    draggable={false}
-                    fetchPriority={active ? "high" : "auto"}
-                    height={item.height}
-                    loading={active ? "eager" : "lazy"}
-                    onError={() => {
-                      setFailedMediaIds((current) =>
-                        new Set(current).add(item.id),
-                      );
-                    }}
-                    src={item.src}
-                    width={item.width}
-                  />
-                )}
+                <button
+                  aria-label={failed ? "图像无法加载" : `查看图像：${item.alt}`}
+                  className={styles.mainImageButton}
+                  data-detail-main-image={active ? "" : undefined}
+                  disabled={failed}
+                  onClick={(event) => {
+                    if (!suppressClickRef.current && active) {
+                      onOpenViewer(index, event.currentTarget);
+                    }
+                  }}
+                  tabIndex={active ? 0 : -1}
+                  type="button"
+                >
+                  {failed ? (
+                    <span
+                      className={styles.mediaError}
+                      data-detail-media-state="failed"
+                    >
+                      <Icon aria-hidden="true" name="error" />
+                      图像无法加载
+                    </span>
+                  ) : (
+                    <img
+                      alt={item.alt}
+                      decoding="async"
+                      draggable={false}
+                      fetchPriority={active ? "high" : "auto"}
+                      height={item.height}
+                      loading={active ? "eager" : "lazy"}
+                      onError={() => {
+                        setFailedMediaIds((current) =>
+                          new Set(current).add(item.id),
+                        );
+                      }}
+                      src={item.src}
+                      width={item.width}
+                    />
+                  )}
+                </button>
               </div>
             );
           })}
