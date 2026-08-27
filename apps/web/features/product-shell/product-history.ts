@@ -6,6 +6,8 @@ export interface PrimaryProductHistoryState {
   readonly kind: "primary";
   readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
   readonly destination: PrimaryDestination;
+  readonly focusTopicId?: string;
+  readonly scrollTop?: number;
 }
 
 export interface SettingsProductHistoryState {
@@ -14,8 +16,48 @@ export interface SettingsProductHistoryState {
   readonly sourceDestination: PrimaryDestination;
 }
 
+export interface TopicProductHistoryState {
+  readonly kind: "topic";
+  readonly sourceDestination: "home";
+  readonly sourceHomeFeed: "topics";
+  readonly sourceScrollTop: number;
+  readonly topicId: string;
+  readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
+}
+
 export type ProductHistoryState =
-  PrimaryProductHistoryState | SettingsProductHistoryState;
+  | PrimaryProductHistoryState
+  | SettingsProductHistoryState
+  | TopicProductHistoryState;
+
+const productHistoryKeys = new Set([
+  "destination",
+  "focusTopicId",
+  "kind",
+  "scrollTop",
+  "sourceDestination",
+  "sourceHomeFeed",
+  "sourceScrollTop",
+  "topicId",
+  "version",
+]);
+
+export const mergeProductHistoryState = (
+  runtimeState: unknown,
+  productState: ProductHistoryState,
+): ProductHistoryState & Record<string, unknown> => {
+  const preserved =
+    typeof runtimeState === "object" &&
+    runtimeState !== null &&
+    !Array.isArray(runtimeState)
+      ? Object.fromEntries(
+          Object.entries(runtimeState).filter(
+            ([key]) => !productHistoryKeys.has(key),
+          ),
+        )
+      : {};
+  return { ...preserved, ...productState };
+};
 
 const primaryDestinations = new Set<PrimaryDestination>([
   "home",
@@ -31,9 +73,21 @@ export const isPrimaryDestination = (
 
 export const primaryHistoryState = (
   destination: PrimaryDestination,
+  scrollTop?: number,
+  focusTopicId?: string,
 ): PrimaryProductHistoryState => ({
   destination,
+  ...(destination === "home" &&
+  focusTopicId !== undefined &&
+  focusTopicId.length > 0
+    ? { focusTopicId }
+    : {}),
   kind: "primary",
+  ...(scrollTop === undefined
+    ? {}
+    : {
+        scrollTop: Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0,
+      }),
   version: PRODUCT_SHELL_HISTORY_VERSION,
 });
 
@@ -42,6 +96,20 @@ export const settingsHistoryState = (
 ): SettingsProductHistoryState => ({
   kind: "settings",
   sourceDestination,
+  version: PRODUCT_SHELL_HISTORY_VERSION,
+});
+
+export const topicHistoryState = (
+  topicId: string,
+  sourceScrollTop: number,
+): TopicProductHistoryState => ({
+  kind: "topic",
+  sourceDestination: "home",
+  sourceHomeFeed: "topics",
+  sourceScrollTop: Number.isFinite(sourceScrollTop)
+    ? Math.max(0, sourceScrollTop)
+    : 0,
+  topicId,
   version: PRODUCT_SHELL_HISTORY_VERSION,
 });
 
@@ -57,7 +125,27 @@ export const parseProductHistoryState = (
     candidate.kind === "primary" &&
     isPrimaryDestination(candidate.destination)
   ) {
-    return primaryHistoryState(candidate.destination);
+    if (
+      candidate.scrollTop !== undefined &&
+      (typeof candidate.scrollTop !== "number" ||
+        !Number.isFinite(candidate.scrollTop) ||
+        candidate.scrollTop < 0)
+    ) {
+      return null;
+    }
+    if (
+      candidate.focusTopicId !== undefined &&
+      (candidate.destination !== "home" ||
+        typeof candidate.focusTopicId !== "string" ||
+        candidate.focusTopicId.length === 0)
+    ) {
+      return null;
+    }
+    return primaryHistoryState(
+      candidate.destination,
+      candidate.scrollTop as number | undefined,
+      candidate.focusTopicId as string | undefined,
+    );
   }
 
   if (
@@ -65,6 +153,19 @@ export const parseProductHistoryState = (
     isPrimaryDestination(candidate.sourceDestination)
   ) {
     return settingsHistoryState(candidate.sourceDestination);
+  }
+
+  if (
+    candidate.kind === "topic" &&
+    candidate.sourceDestination === "home" &&
+    candidate.sourceHomeFeed === "topics" &&
+    typeof candidate.topicId === "string" &&
+    candidate.topicId.length > 0 &&
+    typeof candidate.sourceScrollTop === "number" &&
+    Number.isFinite(candidate.sourceScrollTop) &&
+    candidate.sourceScrollTop >= 0
+  ) {
+    return topicHistoryState(candidate.topicId, candidate.sourceScrollTop);
   }
 
   return null;
@@ -75,3 +176,6 @@ export const primaryLocation = (location: Location) =>
 
 export const settingsLocation = (location: Location) =>
   `${primaryLocation(location)}#settings`;
+
+export const topicLocation = (location: Location, topicId: string) =>
+  `${primaryLocation(location)}#topic-${encodeURIComponent(topicId)}`;

@@ -6,12 +6,18 @@ import { Icon } from "@moya/ui";
 
 import styles from "./home-screen.module.css";
 
+import type { CSSProperties } from "react";
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
 
 export type CatalogCardVariant = "feed" | "inscription";
 
 export interface CatalogCardProps {
   readonly item: CatalogSummary;
+  readonly onMediaSettled?: () => void;
+  readonly onOpenCatalog?: (
+    item: CatalogSummary,
+    opener: HTMLButtonElement,
+  ) => void;
   readonly variant: CatalogCardVariant;
 }
 
@@ -21,7 +27,6 @@ export const isUltraWideCatalogMedia = (
   media: CatalogMediaDimensions | undefined,
 ): boolean => {
   if (media === undefined) return false;
-
   const { height, width } = media;
   return (
     Number.isFinite(height) &&
@@ -38,9 +43,11 @@ const catalogKindLabels = {
 } as const satisfies Record<CatalogSummary["kind"], string>;
 
 const MediaFallback = ({
+  aspectRatio,
   label,
   state,
 }: {
+  readonly aspectRatio?: string;
   readonly label: string;
   readonly state: "failed" | "missing";
 }) => (
@@ -49,6 +56,11 @@ const MediaFallback = ({
     className={styles.mediaFallback}
     data-catalog-media-state={state}
     role="img"
+    style={
+      aspectRatio === undefined
+        ? undefined
+        : ({ aspectRatio } satisfies CSSProperties)
+    }
   >
     <Icon aria-hidden="true" name={state === "failed" ? "error" : "image"} />
     <span>{state === "failed" ? "图像无法加载" : "暂无公开图像"}</span>
@@ -57,10 +69,12 @@ const MediaFallback = ({
 
 const CatalogCardMedia = ({
   media,
+  onMediaSettled,
   title,
   variant,
 }: {
   readonly media: PublicMedia | undefined;
+  readonly onMediaSettled?: () => void;
   readonly title: string;
   readonly variant: CatalogCardVariant;
 }) => {
@@ -71,15 +85,23 @@ const CatalogCardMedia = ({
     const image = imageRef.current;
     if (image?.complete === true && image.naturalWidth === 0) {
       setFailed(true);
+      onMediaSettled?.();
     }
-  }, [media]);
+  }, [media, onMediaSettled]);
 
   if (media === undefined) {
     return <MediaFallback label={`暂无公开图像：${title}`} state="missing" />;
   }
-
   if (failed) {
-    return <MediaFallback label={`图像无法加载：${title}`} state="failed" />;
+    return (
+      <MediaFallback
+        {...(variant === "feed"
+          ? { aspectRatio: `${media.width} / ${media.height}` }
+          : {})}
+        label={`图像无法加载：${title}`}
+        state="failed"
+      />
+    );
   }
 
   return (
@@ -95,7 +117,11 @@ const CatalogCardMedia = ({
         decoding="async"
         height={media.height}
         loading="lazy"
-        onError={() => setFailed(true)}
+        onError={() => {
+          setFailed(true);
+          onMediaSettled?.();
+        }}
+        onLoad={onMediaSettled}
         src={media.src}
         width={media.width}
       />
@@ -103,8 +129,14 @@ const CatalogCardMedia = ({
   );
 };
 
-export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
-  const mediaKey = item.representativeMedia?.id ?? `${item.id}-missing-media`;
+export const CatalogCard = ({
+  item,
+  onMediaSettled,
+  onOpenCatalog,
+  variant,
+}: CatalogCardProps) => {
+  const pointerStartYRef = useRef<number | null>(null);
+  const suppressActivationRef = useRef(false);
   const feedSpan =
     variant === "feed" && isUltraWideCatalogMedia(item.representativeMedia)
       ? "full"
@@ -126,8 +158,8 @@ export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
       role={variant === "feed" ? "listitem" : undefined}
     >
       <CatalogCardMedia
-        key={mediaKey}
         media={item.representativeMedia}
+        {...(onMediaSettled === undefined ? {} : { onMediaSettled })}
         title={item.title}
         variant={variant}
       />
@@ -138,6 +170,39 @@ export const CatalogCard = ({ item, variant }: CatalogCardProps) => {
           <p className={styles.cardSummary}>{item.summary}</p>
         ) : null}
       </div>
+      {onOpenCatalog === undefined ? null : (
+        <button
+          type="button"
+          aria-label={`打开${item.title}`}
+          className={styles.cardAction}
+          data-open-catalog=""
+          onClick={(event) => {
+            if (suppressActivationRef.current) {
+              suppressActivationRef.current = false;
+              event.preventDefault();
+              return;
+            }
+            onOpenCatalog(item, event.currentTarget);
+          }}
+          onPointerCancel={() => {
+            pointerStartYRef.current = null;
+            suppressActivationRef.current = true;
+          }}
+          onPointerDown={(event) => {
+            pointerStartYRef.current = event.clientY;
+            suppressActivationRef.current = false;
+          }}
+          onPointerMove={(event) => {
+            const startY = pointerStartYRef.current;
+            if (startY !== null && Math.abs(event.clientY - startY) > 8) {
+              suppressActivationRef.current = true;
+            }
+          }}
+          onPointerUp={() => {
+            pointerStartYRef.current = null;
+          }}
+        />
+      )}
     </article>
   );
 };

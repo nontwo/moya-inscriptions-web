@@ -16,11 +16,14 @@ import styles from "./product-shell.module.css";
 
 import { PRODUCT_LOADING_MINIMUM_MS } from "./product-boot";
 import {
+  mergeProductHistoryState,
   parseProductHistoryState,
   primaryHistoryState,
   primaryLocation,
   settingsHistoryState,
   settingsLocation,
+  topicHistoryState,
+  topicLocation,
 } from "./product-history";
 import {
   FEED_LAYOUT_PREFERENCE_STORAGE_KEY,
@@ -48,7 +51,8 @@ import {
   synchronizePrimaryNavigationViewportInset,
 } from "../shell/primary-navigation-motion";
 
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
+import type { ProductHistoryState } from "./product-history";
 import type { FeedLayoutPreference, ThemePreference } from "./preferences";
 import type {
   PresentationOrientation,
@@ -59,11 +63,30 @@ import type { PrimaryDestination } from "../shell/primary-shell";
 
 type ScrollPositions = Record<PrimaryDestination, number>;
 
+const currentProductHistoryState = (state: ProductHistoryState) =>
+  mergeProductHistoryState(window.history.state, state);
+
 export interface ProductShellContextValue {
   readonly activeDestination: PrimaryDestination;
+  readonly activeTopicId: string | null;
+  readonly closeTopic: () => void;
   readonly feedLayout: FeedLayoutPreference;
+  readonly openTopic: (
+    topicId: string,
+    opener: HTMLElement,
+    sourceScrollTop: number,
+  ) => void;
   readonly orientation: PresentationOrientation;
   readonly platform: PresentationPlatform;
+  readonly readActiveScrollTop: () => number;
+  readonly registerActiveHomeScrollElement: (
+    element: HTMLElement,
+  ) => () => void;
+  readonly registerTopicOpener: (
+    topicId: string,
+    opener: HTMLButtonElement,
+  ) => void;
+  readonly restoreActiveScrollTop: (top: number) => void;
   readonly theme: ThemePreference;
 }
 
@@ -85,7 +108,16 @@ export interface ProductShellProps {
   readonly home: ReactNode;
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
+  readonly renderTopicOverlay?: (
+    properties: ProductShellTopicOverlayRenderProps,
+  ) => ReactNode;
   readonly showDevelopmentPagerControls?: boolean;
+}
+
+export interface ProductShellTopicOverlayRenderProps {
+  readonly backButtonRef: RefObject<HTMLButtonElement | null>;
+  readonly onClose: () => void;
+  readonly topicId: string;
 }
 
 type NavigatorWithUserAgentData = Navigator & RuntimeNavigatorLike;
@@ -117,12 +149,19 @@ export const ProductShell = ({
   home,
   initialPlatform,
   inscriptions,
+  renderTopicOverlay,
   showDevelopmentPagerControls = false,
 }: ProductShellProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const settingsBackRef = useRef<HTMLButtonElement>(null);
+  const topicBackRef = useRef<HTMLButtonElement>(null);
+  const topicOpenerRef = useRef<HTMLElement | null>(null);
+  const topicOpenerIdRef = useRef<string | null>(null);
+  const topicSourceScrollTopRef = useRef(0);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
+  const activeHomeScrollElementRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
+  const topicFocusFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
   const navigationMinimizedRef = useRef(false);
   const navigationScrollStateRef = useRef(
@@ -132,6 +171,7 @@ export const ProductShell = ({
   const activeDestinationRef = useRef<PrimaryDestination>("home");
   const platformRef = useRef<PresentationPlatform>(initialPlatform);
   const settingsOpenRef = useRef(false);
+  const topicIdRef = useRef<string | null>(null);
   const scrollPositionsRef = useRef<ScrollPositions>({
     calligraphy: 0,
     home: 0,
@@ -146,7 +186,10 @@ export const ProductShell = ({
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [feedLayout, setFeedLayout] = useState<FeedLayoutPreference>("double");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [navigationMinimized, setNavigationMinimized] = useState(false);
+  const [activeHomeScrollElement, setActiveHomeScrollElement] =
+    useState<HTMLElement | null>(null);
   const [bootPending, setBootPending] = useState(true);
 
   const setNavigationMinimizedState = useCallback((minimized: boolean) => {
@@ -169,12 +212,35 @@ export const ProductShell = ({
     setNavigationMinimizedState(false);
   }, [setNavigationMinimizedState]);
 
+  const registerActiveHomeScrollElement = useCallback(
+    (element: HTMLElement) => {
+      activeHomeScrollElementRef.current = element;
+      setActiveHomeScrollElement((current) =>
+        current === element ? current : element,
+      );
+      return () => {
+        if (activeHomeScrollElementRef.current !== element) return;
+        activeHomeScrollElementRef.current = null;
+        setActiveHomeScrollElement((current) =>
+          current === element ? null : current,
+        );
+      };
+    },
+    [],
+  );
+
   const scrollElementFor = useCallback(
     (
       destination: PrimaryDestination,
       presentationPlatform: PresentationPlatform,
     ): Element | null => {
       if (presentationPlatform === "pc") return documentScrollElement();
+      if (
+        destination === "home" &&
+        activeHomeScrollElementRef.current !== null
+      ) {
+        return activeHomeScrollElementRef.current;
+      }
       return (
         rootRef.current?.querySelector(
           `[data-primary-destination="${destination}"]`,
@@ -231,17 +297,74 @@ export const ProductShell = ({
     [scrollElementFor],
   );
 
+  const readActiveScrollTop = useCallback(() => {
+    const element = scrollElementFor(
+      activeDestinationRef.current,
+      platformRef.current,
+    );
+    if (element === null) return 0;
+    return platformRef.current === "pc"
+      ? documentScrollElement().scrollTop
+      : (element as HTMLElement).scrollTop;
+  }, [scrollElementFor]);
+
+  const restoreActiveScrollTop = useCallback(
+    (top: number) => {
+      const destination = activeDestinationRef.current;
+      scrollPositionsRef.current[destination] = Number.isFinite(top)
+        ? Math.max(0, top)
+        : 0;
+      restoreScroll(destination, platformRef.current);
+    },
+    [restoreScroll],
+  );
+
+  const restoreTopicFocus = useCallback((topicId: string) => {
+    if (topicFocusFrameRef.current !== null) {
+      window.cancelAnimationFrame(topicFocusFrameRef.current);
+    }
+    topicFocusFrameRef.current = window.requestAnimationFrame(() => {
+      topicFocusFrameRef.current = window.requestAnimationFrame(() => {
+        topicFocusFrameRef.current = null;
+        const registered = topicOpenerRef.current;
+        const opener =
+          registered !== null && topicOpenerIdRef.current === topicId
+            ? registered
+            : Array.from(
+                rootRef.current?.querySelectorAll<HTMLButtonElement>(
+                  "[data-topic-id]",
+                ) ?? [],
+              ).find((button) => button.dataset.topicId === topicId);
+        if (opener !== undefined && opener !== null) {
+          topicOpenerRef.current = opener;
+          topicOpenerIdRef.current = topicId;
+          opener.focus({ preventScroll: true });
+          return;
+        }
+        rootRef.current
+          ?.querySelector<HTMLElement>("[data-home-surface]")
+          ?.focus({ preventScroll: true });
+      });
+    });
+  }, []);
+
   const commitDestination = useCallback(
     (destination: PrimaryDestination) => {
       const current = activeDestinationRef.current;
-      if (destination === current || settingsOpenRef.current) return;
+      if (
+        destination === current ||
+        settingsOpenRef.current ||
+        topicIdRef.current !== null
+      ) {
+        return;
+      }
 
       expandNavigation();
       saveScroll(current, platformRef.current);
       activeDestinationRef.current = destination;
       setActiveDestination(destination);
       window.history.replaceState(
-        primaryHistoryState(destination),
+        currentProductHistoryState(primaryHistoryState(destination)),
         "",
         primaryLocation(window.location),
       );
@@ -255,14 +378,29 @@ export const ProductShell = ({
     setSettingsOpen(open);
   }, []);
 
+  const setTopicVisibility = useCallback((topicId: string | null) => {
+    topicIdRef.current = topicId;
+    setActiveTopicId(topicId);
+  }, []);
+
+  const registerTopicOpener = useCallback(
+    (topicId: string, opener: HTMLButtonElement) => {
+      if (topicIdRef.current === topicId) {
+        topicOpenerRef.current = opener;
+        topicOpenerIdRef.current = topicId;
+      }
+    },
+    [],
+  );
+
   const openSettings = useCallback(
     (opener: HTMLElement) => {
-      if (settingsOpenRef.current) return;
+      if (settingsOpenRef.current || topicIdRef.current !== null) return;
       const sourceDestination = activeDestinationRef.current;
       saveScroll(sourceDestination, platformRef.current);
       settingsOpenerRef.current = opener;
       window.history.pushState(
-        settingsHistoryState(sourceDestination),
+        currentProductHistoryState(settingsHistoryState(sourceDestination)),
         "",
         settingsLocation(window.location),
       );
@@ -280,12 +418,66 @@ export const ProductShell = ({
 
     setSettingsVisibility(false);
     window.history.replaceState(
-      primaryHistoryState(activeDestinationRef.current),
+      currentProductHistoryState(
+        primaryHistoryState(activeDestinationRef.current),
+      ),
       "",
       primaryLocation(window.location),
     );
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
+
+  const openTopic = useCallback(
+    (topicId: string, opener: HTMLElement, sourceScrollTop: number) => {
+      if (
+        topicId.length === 0 ||
+        activeDestinationRef.current !== "home" ||
+        settingsOpenRef.current ||
+        topicIdRef.current !== null
+      ) {
+        return;
+      }
+      saveScroll("home", platformRef.current);
+      const boundedScrollTop = Number.isFinite(sourceScrollTop)
+        ? Math.max(0, sourceScrollTop)
+        : readActiveScrollTop();
+      topicSourceScrollTopRef.current = boundedScrollTop;
+      scrollPositionsRef.current.home = boundedScrollTop;
+      topicOpenerRef.current = opener;
+      topicOpenerIdRef.current = topicId;
+      window.history.replaceState(
+        currentProductHistoryState(
+          primaryHistoryState("home", boundedScrollTop, topicId),
+        ),
+        "",
+        primaryLocation(window.location),
+      );
+      window.history.pushState(
+        currentProductHistoryState(
+          topicHistoryState(topicId, boundedScrollTop),
+        ),
+        "",
+        topicLocation(window.location, topicId),
+      );
+      setTopicVisibility(topicId);
+    },
+    [readActiveScrollTop, saveScroll, setTopicVisibility],
+  );
+
+  const closeTopic = useCallback(() => {
+    const state = parseProductHistoryState(window.history.state);
+    if (state?.kind === "topic") {
+      window.history.back();
+      return;
+    }
+    setTopicVisibility(null);
+    window.history.replaceState(
+      currentProductHistoryState(primaryHistoryState("home")),
+      "",
+      primaryLocation(window.location),
+    );
+    restoreScroll("home", platformRef.current);
+  }, [restoreScroll, setTopicVisibility]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -388,13 +580,16 @@ export const ProductShell = ({
   }, [developmentPlatformOverride, restoreScroll, saveScroll]);
 
   useEffect(() => {
-    if (settingsOpen) return undefined;
+    if (settingsOpen || activeTopicId !== null) return undefined;
     if (platform === "pc") {
       expandNavigation();
       return undefined;
     }
 
-    const scrollElement = scrollElementFor(activeDestination, platform);
+    const scrollElement =
+      activeDestination === "home" && activeHomeScrollElement !== null
+        ? activeHomeScrollElement
+        : scrollElementFor(activeDestination, platform);
     if (!(scrollElement instanceof HTMLElement)) return undefined;
 
     navigationScrollStateRef.current = createPrimaryNavigationScrollState(
@@ -440,6 +635,8 @@ export const ProductShell = ({
     };
   }, [
     activeDestination,
+    activeHomeScrollElement,
+    activeTopicId,
     expandNavigation,
     platform,
     scrollElementFor,
@@ -456,43 +653,95 @@ export const ProductShell = ({
       destination = initialState.destination;
     } else if (initialState?.kind === "settings") {
       destination = initialState.sourceDestination;
+    } else if (initialState?.kind === "topic") {
+      destination = "home";
     }
 
     activeDestinationRef.current = destination;
     setActiveDestination(destination);
+    if (
+      initialState?.kind === "primary" &&
+      initialState.scrollTop !== undefined
+    ) {
+      scrollPositionsRef.current[destination] = initialState.scrollTop;
+    }
 
-    if (initialState?.kind === "settings") {
+    if (initialState?.kind === "topic") {
+      topicSourceScrollTopRef.current = initialState.sourceScrollTop;
+      scrollPositionsRef.current.home = initialState.sourceScrollTop;
+      setSettingsVisibility(false);
+      setTopicVisibility(initialState.topicId);
+    } else if (initialState?.kind === "settings") {
       setSettingsVisibility(true);
+      setTopicVisibility(null);
     } else if (directSettings) {
       window.history.replaceState(
-        primaryHistoryState(destination),
+        currentProductHistoryState(primaryHistoryState(destination)),
         "",
         primaryLocation(window.location),
       );
       window.history.pushState(
-        settingsHistoryState(destination),
+        currentProductHistoryState(settingsHistoryState(destination)),
         "",
         settingsLocation(window.location),
       );
       setSettingsVisibility(true);
+      setTopicVisibility(null);
     } else {
       window.history.replaceState(
-        primaryHistoryState(destination),
+        currentProductHistoryState(
+          primaryHistoryState(
+            destination,
+            initialState?.kind === "primary"
+              ? initialState.scrollTop
+              : undefined,
+            initialState?.kind === "primary"
+              ? initialState.focusTopicId
+              : undefined,
+          ),
+        ),
         "",
         primaryLocation(window.location),
       );
       setSettingsVisibility(false);
+      setTopicVisibility(null);
+      if (
+        initialState?.kind === "primary" &&
+        initialState.scrollTop !== undefined
+      ) {
+        restoreScroll(destination, platformRef.current);
+      }
+      if (
+        initialState?.kind === "primary" &&
+        initialState.focusTopicId !== undefined
+      ) {
+        restoreTopicFocus(initialState.focusTopicId);
+      }
     }
 
     const handlePopState = (event: PopStateEvent) => {
       const state = parseProductHistoryState(event.state);
       const wasSettingsOpen = settingsOpenRef.current;
-      saveScroll(activeDestinationRef.current, platformRef.current);
+      const wasTopicOpen = topicIdRef.current !== null;
+      if (!wasTopicOpen) {
+        saveScroll(activeDestinationRef.current, platformRef.current);
+      }
 
       if (state?.kind === "settings") {
         activeDestinationRef.current = state.sourceDestination;
         setActiveDestination(state.sourceDestination);
+        setTopicVisibility(null);
         setSettingsVisibility(true);
+        return;
+      }
+
+      if (state?.kind === "topic") {
+        activeDestinationRef.current = "home";
+        setActiveDestination("home");
+        topicSourceScrollTopRef.current = state.sourceScrollTop;
+        scrollPositionsRef.current.home = state.sourceScrollTop;
+        setSettingsVisibility(false);
+        setTopicVisibility(state.topicId);
         return;
       }
 
@@ -506,34 +755,60 @@ export const ProductShell = ({
       }
       activeDestinationRef.current = nextDestination;
       setActiveDestination(nextDestination);
+      setTopicVisibility(null);
       setSettingsVisibility(false);
+      if (state?.kind === "primary" && state.scrollTop !== undefined) {
+        scrollPositionsRef.current[nextDestination] = state.scrollTop;
+      } else if (wasTopicOpen) {
+        scrollPositionsRef.current.home = topicSourceScrollTopRef.current;
+      }
       restoreScroll(nextDestination, platformRef.current);
 
-      if (wasSettingsOpen) {
-        window.requestAnimationFrame(() => settingsOpenerRef.current?.focus());
+      if (wasSettingsOpen || wasTopicOpen) {
+        if (wasSettingsOpen) {
+          window.requestAnimationFrame(() =>
+            settingsOpenerRef.current?.focus(),
+          );
+        } else if (
+          state?.kind === "primary" &&
+          state.focusTopicId !== undefined
+        ) {
+          restoreTopicFocus(state.focusTopicId);
+        } else {
+          window.requestAnimationFrame(() => topicOpenerRef.current?.focus());
+        }
       }
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [expandNavigation, restoreScroll, saveScroll, setSettingsVisibility]);
+  }, [
+    expandNavigation,
+    restoreScroll,
+    restoreTopicFocus,
+    saveScroll,
+    setSettingsVisibility,
+    setTopicVisibility,
+  ]);
 
   useLayoutEffect(() => {
-    if (settingsOpen) {
-      settingsBackRef.current?.focus();
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
-    }
-    return undefined;
-  }, [settingsOpen]);
+    if (!settingsOpen && activeTopicId === null) return undefined;
+    if (settingsOpen) settingsBackRef.current?.focus();
+    else topicBackRef.current?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [activeTopicId, settingsOpen]);
 
   useEffect(
     () => () => {
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
+      }
+      if (topicFocusFrameRef.current !== null) {
+        window.cancelAnimationFrame(topicFocusFrameRef.current);
       }
       if (navigationIdleTimerRef.current !== null) {
         window.clearTimeout(navigationIdleTimerRef.current);
@@ -563,11 +838,19 @@ export const ProductShell = ({
 
   const contextValue: ProductShellContextValue = {
     activeDestination,
+    activeTopicId,
+    closeTopic,
     feedLayout,
+    openTopic,
     orientation,
     platform,
+    readActiveScrollTop,
+    registerActiveHomeScrollElement,
+    registerTopicOpener,
+    restoreActiveScrollTop,
     theme,
   };
+  const ownedOverlayOpen = settingsOpen || activeTopicId !== null;
 
   return (
     <ProductShellContext.Provider value={contextValue}>
@@ -583,20 +866,21 @@ export const ProductShell = ({
         data-platform={platform}
         data-product-shell=""
         data-settings-open={settingsOpen ? "true" : "false"}
+        data-topic-open={activeTopicId === null ? "false" : "true"}
         data-theme-preference={theme}
       >
         <div
-          aria-hidden={settingsOpen || undefined}
+          aria-hidden={ownedOverlayOpen || undefined}
           className={styles.primaryLayer}
           data-product-primary-layer=""
-          inert={settingsOpen || undefined}
+          inert={ownedOverlayOpen || undefined}
         >
           <PrimaryNavigationPager
             activeDestination={activeDestination}
             calligraphy={calligraphy}
             home={home}
             inscriptions={inscriptions}
-            navigationHidden={settingsOpen}
+            navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
             onNavigationExpand={expandNavigation}
             onDestinationChange={commitDestination}
@@ -625,6 +909,14 @@ export const ProductShell = ({
             theme={theme}
           />
         ) : null}
+
+        {activeTopicId === null || renderTopicOverlay === undefined
+          ? null
+          : renderTopicOverlay({
+              backButtonRef: topicBackRef,
+              onClose: closeTopic,
+              topicId: activeTopicId,
+            })}
 
         <LoadingScreen
           active={bootPending}

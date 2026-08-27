@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProductShell } from "./product-shell";
-import { primaryHistoryState, settingsHistoryState } from "./product-history";
+import { ProductShell, useProductShell } from "./product-shell";
+import {
+  primaryHistoryState,
+  settingsHistoryState,
+  topicHistoryState,
+} from "./product-history";
+
+import type { ReactNode } from "react";
+import type { ProductShellContextValue } from "./product-shell";
 
 const createMediaQueryList = (matches = false): MediaQueryList =>
   ({
@@ -20,12 +27,18 @@ const createMediaQueryList = (matches = false): MediaQueryList =>
   }) as unknown as MediaQueryList;
 
 const mountedRoots: ReturnType<typeof createRoot>[] = [];
+let observedProductShell: ProductShellContextValue | null = null;
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const renderProductShell = () => {
+const ProductShellObserver = () => {
+  observedProductShell = useProductShell();
+  return null;
+};
+
+const renderProductShell = (home: ReactNode = <p>home content</p>) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -34,9 +47,59 @@ const renderProductShell = () => {
     root.render(
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
-        home={<p>home content</p>}
+        home={home}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
+      />,
+    ),
+  );
+  return { container };
+};
+
+const TopicOpener = () => {
+  const { activeTopicId, openTopic, registerTopicOpener } = useProductShell();
+  const openerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (activeTopicId !== null && openerRef.current !== null) {
+      registerTopicOpener(activeTopicId, openerRef.current);
+    }
+  }, [activeTopicId, registerTopicOpener]);
+  return (
+    <button
+      ref={openerRef}
+      type="button"
+      data-topic-test-opener=""
+      onClick={(event) => openTopic("topic-one", event.currentTarget, 164)}
+    >
+      Open topic
+    </button>
+  );
+};
+
+const renderTopicShell = () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push(root);
+  act(() =>
+    root.render(
+      <ProductShell
+        calligraphy={<p>calligraphy content</p>}
+        home={<TopicOpener />}
+        initialPlatform="phone"
+        inscriptions={<p>inscriptions content</p>}
+        renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
+          <section aria-label={`Topic ${topicId}`} role="dialog">
+            <button
+              ref={backButtonRef}
+              type="button"
+              aria-label="返回专题"
+              onClick={onClose}
+            >
+              Back
+            </button>
+          </section>
+        )}
       />,
     ),
   );
@@ -117,6 +180,7 @@ describe("ProductShell", () => {
     vi.useRealTimers();
     document.body.style.overflow = "";
     document.documentElement.removeAttribute("data-effective-theme");
+    observedProductShell = null;
   });
 
   it("keeps all destinations mounted and commits a tap through one history replacement", async () => {
@@ -242,6 +306,61 @@ describe("ProductShell", () => {
     ).toBe("true");
   });
 
+  it("registers the active Home panel without copying scrollTop and ignores stale cleanup", async () => {
+    const { container } = renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const shell = container.querySelector<HTMLElement>("[data-product-shell]")!;
+    const discover = document.createElement("section");
+    const nearby = document.createElement("section");
+    for (const element of [discover, nearby]) {
+      Object.defineProperty(element, "scrollHeight", {
+        configurable: true,
+        value: 1_000,
+      });
+      Object.defineProperty(element, "clientHeight", {
+        configurable: true,
+        value: 400,
+      });
+    }
+    discover.scrollTop = 240;
+    nearby.scrollTop = 130;
+
+    let unregisterDiscover: () => void = () => undefined;
+    let unregisterNearby: () => void = () => undefined;
+    act(() => {
+      unregisterDiscover =
+        observedProductShell!.registerActiveHomeScrollElement(discover);
+    });
+    expect(observedProductShell!.readActiveScrollTop()).toBe(240);
+    act(() => {
+      unregisterNearby =
+        observedProductShell!.registerActiveHomeScrollElement(nearby);
+    });
+
+    expect(nearby.scrollTop).toBe(130);
+    act(() => unregisterDiscover());
+    expect(observedProductShell!.readActiveScrollTop()).toBe(130);
+
+    act(() => {
+      discover.scrollTop = 300;
+      discover.dispatchEvent(new Event("scroll"));
+    });
+    expect(shell.dataset.primaryNavigationMinimized).toBe("false");
+    act(() => {
+      nearby.scrollTop = 136;
+      nearby.dispatchEvent(new Event("scroll"));
+    });
+    expect(shell.dataset.primaryNavigationMinimized).toBe("false");
+    act(() => {
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.runAllTimers();
+    });
+    expect(nearby.scrollTop).toBe(175);
+    expect(discover.scrollTop).toBe(300);
+
+    act(() => unregisterNearby());
+  });
+
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderProductShell();
@@ -312,6 +431,130 @@ describe("ProductShell", () => {
     );
     await act(async () => vi.runAllTimers());
     expect(dialog(container)).not.toBeNull();
+  });
+
+  it("owns Topic history, inertness, navigation identity, Back/Forward, scroll, and focus", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const { container } = renderTopicShell();
+    await act(async () => vi.runAllTimers());
+    replaceState.mockClear();
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperty(home, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(home, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    home.scrollTop = 164;
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-topic-test-opener]",
+    )!;
+    const navigation = container.querySelector<HTMLElement>(
+      "[data-primary-navigation]",
+    )!;
+
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    expect(pushState).toHaveBeenCalledWith(
+      topicHistoryState("topic-one", 164),
+      "",
+      "/dev/t02p#topic-topic-one",
+    );
+    expect(replaceState).toHaveBeenCalledWith(
+      primaryHistoryState("home", 164, "topic-one"),
+      "",
+      "/dev/t02p",
+    );
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+    expect(
+      navigation
+        .closest("[data-primary-navigation-layer]")
+        ?.hasAttribute("hidden"),
+    ).toBe(true);
+    expect(document.activeElement).toBe(buttonByLabel(container, "返回专题"));
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: primaryHistoryState("home", 164, "topic-one"),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(home.scrollTop).toBe(164);
+    expect(document.activeElement).toBe(opener);
+    expect(container.querySelector("[data-primary-navigation]")).toBe(
+      navigation,
+    );
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: topicHistoryState("topic-one", 164),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-active-destination"),
+    ).toBe("home");
+  });
+
+  it("restores the recorded Topic source scroll after a Topic-detail reload and Back", async () => {
+    window.history.replaceState(
+      topicHistoryState("topic-one", 164),
+      "",
+      "/dev/t02p#topic-topic-one",
+    );
+    const { container } = renderTopicShell();
+    await act(async () => vi.runAllTimers());
+    const home = container.querySelector<HTMLElement>(
+      '[data-primary-destination="home"]',
+    )!;
+    Object.defineProperty(home, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(home, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    home.scrollTop = 0;
+
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: primaryHistoryState("home", 164, "topic-one"),
+        }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(home.scrollTop).toBe(164);
+    expect(document.activeElement).toBe(
+      container.querySelector("[data-topic-test-opener]"),
+    );
   });
 
   it.each(["home", "inscriptions", "calligraphy"] as const)(

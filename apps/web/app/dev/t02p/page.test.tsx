@@ -32,7 +32,7 @@ describe("T02pDevelopmentPage", () => {
   it("keeps the Development acceptance route unavailable in Production", async () => {
     vi.stubEnv("NODE_ENV", "production");
 
-    await expect(T02pDevelopmentPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(T02pDevelopmentPage({})).rejects.toThrow("NEXT_NOT_FOUND");
     expect(notFoundMock).toHaveBeenCalledOnce();
     expect(headersMock).not.toHaveBeenCalled();
   });
@@ -40,7 +40,7 @@ describe("T02pDevelopmentPage", () => {
   it("renders the clean product preview without QA controls in Development", async () => {
     vi.stubEnv("NODE_ENV", "development");
 
-    const markup = renderToStaticMarkup(await T02pDevelopmentPage());
+    const markup = renderToStaticMarkup(await T02pDevelopmentPage({}));
 
     expect(markup).toContain("data-clean-product-preview");
     expect(markup).toContain("data-product-shell");
@@ -65,7 +65,7 @@ describe("T02pDevelopmentPage", () => {
       }),
     );
 
-    const markup = renderToStaticMarkup(await T02pDevelopmentPage());
+    const markup = renderToStaticMarkup(await T02pDevelopmentPage({}));
 
     expect(markup).toContain('data-platform="tablet"');
   });
@@ -74,6 +74,8 @@ describe("T02pDevelopmentPage", () => {
     vi.stubEnv("NODE_ENV", "development");
     headersMock.mockResolvedValue(new Headers());
 
-    await expect(T02pDevelopmentPage()).rejects.toThrow("Missing Host header");
+    await expect(T02pDevelopmentPage({})).rejects.toThrow(
+      "Missing Host header",
+    );
   });
 });
