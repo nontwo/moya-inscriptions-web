@@ -1,0 +1,151 @@
+.surface {
+  min-width: 0;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+}
+
+.header {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  min-height: 52px;
+  place-items: center;
+  padding-inline: var(--yoyi-space-3);
+  background: var(--yoyi-color-background-page);
+}
+
+.tabs {
+  position: relative;
+  display: grid;
+  width: min(100%, 360px);
+  height: 52px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.tab,
+.selectedTab {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-2);
+  place-items: center;
+  color: var(--yoyi-color-text-tertiary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selectedTab {
+  color: var(--yoyi-color-text-primary);
+}
+
+.tab:focus-visible,
+.selectedTab:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.indicator {
+  position: absolute;
+  z-index: 0;
+  bottom: 8px;
+  left: calc((100% / 3 - 18px) / 2);
+  width: 18px;
+  height: 2px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: 1px;
+  will-change: transform;
+}
+
+.pagerFrame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: none;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pagerFrame::-webkit-scrollbar {
+  display: none;
+}
+
+.pagerFrame[data-calligraphy-pager-platform="pc"] {
+  overflow-x: hidden;
+}
+
+.pagerTrack {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0;
+  padding: 0;
+}
+
+.panel {
+  min-width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 100%;
+  padding: var(--yoyi-space-4) var(--yoyi-space-3)
+    calc(96px + env(safe-area-inset-bottom));
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.stateMessage {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  align-content: center;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-8) var(--yoyi-space-5);
+  color: var(--yoyi-color-text-secondary);
+  text-align: center;
+}
+
+.stateMessage h2,
+.stateMessage p {
+  margin: 0;
+}
+
+.stateMessage h2 {
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-type-section-title-size);
+}
+
+.stateMark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-weight: 700;
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .header {
+  padding-inline: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="tablet"]) .panel,
+:global([data-primary-shell][data-platform="pc"]) .panel {
+  padding-inline: var(--yoyi-space-5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator {
+    transition-duration: 1ms;
+  }
+}
