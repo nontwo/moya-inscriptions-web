@@ -214,6 +214,11 @@ describe("CalligraphyCategoryScreen", () => {
       ),
     ).toEqual(["全部", "墨迹", "拓本"]);
     expect(container.querySelector('input[type="search"]')).toBeNull();
+    expect(
+      container
+        .querySelector('[data-calligraphy-category-panel="all"]')
+        ?.getAttribute("data-catalog-presentation"),
+    ).toBe("calligraphy");
     expect(container.querySelector("[data-test-masonry]")?.textContent).toBe(
       "运行时书帖",
     );

@@ -564,6 +564,7 @@ export const CalligraphyCategoryPager = forwardRef<
               aria-labelledby={`calligraphy-tab-${category}`}
               className={styles.panel}
               data-calligraphy-category-panel={category}
+              data-catalog-presentation={selected ? "calligraphy" : undefined}
               id={`calligraphy-panel-${category}`}
               inert={!selected || undefined}
               role="tabpanel"
