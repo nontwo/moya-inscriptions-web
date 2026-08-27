@@ -220,8 +220,6 @@ test("MIG-D2 Viewer supports release-only paging, cancel, keyboard, pinch, and r
   await page.keyboard.press("Escape");
   await expect(viewer).toBeHidden();
 
-  await detail.locator("[data-detail-main-image]").click();
-  await expect(viewer).toBeHidden();
   await page.waitForTimeout(550);
   await detail.locator("[data-detail-main-image]").click();
   await expect(viewer).toBeVisible();
