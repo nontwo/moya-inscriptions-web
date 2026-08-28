@@ -91,6 +91,7 @@ export const CatalogMediaCarousel = ({
   const nativeSettleTimerRef = useRef<number | null>(null);
   const nativeTouchActiveRef = useRef(false);
   const nativeTouchStartScrollLeftRef = useRef(0);
+  const nativeViewportWidthRef = useRef(0);
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
   const nativePaging = platform !== "pc";
@@ -154,8 +155,14 @@ export const CatalogMediaCarousel = ({
       if (Math.abs(stage.scrollLeft - target) > 1) stage.scrollLeft = target;
     };
     synchronize();
+    nativeViewportWidthRef.current = stage.clientWidth;
     if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(synchronize);
+    const observer = new ResizeObserver(() => {
+      const width = stage.clientWidth;
+      if (width === nativeViewportWidthRef.current) return;
+      nativeViewportWidthRef.current = width;
+      if (!nativeTouchActiveRef.current) synchronize();
+    });
     observer.observe(stage);
     return () => observer.disconnect();
   }, [activeIndex, media.length, nativePaging]);
@@ -298,7 +305,13 @@ export const CatalogMediaCarousel = ({
         }}
         onPointerCancel={cancelGesture}
         onPointerDown={(event) => {
-          if (nativePaging && event.pointerType === "touch") return;
+          if (
+            nativePaging &&
+            event.pointerType === "touch" &&
+            event.nativeEvent.isTrusted
+          ) {
+            return;
+          }
           if (!event.isPrimary || event.button !== 0) return;
           const target = event.target;
           if (
