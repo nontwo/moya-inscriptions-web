@@ -1,11 +1,12 @@
 import type { HomeCatalogState } from "../home/catalog-state";
 import type { HomeSurfaceData } from "../home/home-feed";
+import type { CalligraphyCategorySurfaceData } from "../calligraphy/calligraphy-category";
 
 export type T02pDevelopmentCatalogScenario =
   "visual" | "small-populated" | "empty" | "unavailable" | "unexpected-error";
 
 export interface T02pDevelopmentCatalogDestinationStates {
-  readonly calligraphy: HomeCatalogState;
+  readonly calligraphy: CalligraphyCategorySurfaceData;
   readonly home: HomeSurfaceData;
   readonly inscriptions: HomeCatalogState;
 }

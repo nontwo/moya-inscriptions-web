@@ -12,6 +12,8 @@ import {
 } from "../../../qa/home-catalog-scenarios";
 import { loadDiscoverFeed } from "../../../sources/home/home-sources";
 import { createQaCatalogDetails } from "../../../qa/detail-catalog-scenarios";
+import { createQaCalligraphyCategorySurface } from "../../../qa/calligraphy-category-scenarios";
+import { createRuntimeCalligraphyCategorySurface } from "../../../features/calligraphy/calligraphy-category";
 
 import type { HomeCatalogSource } from "../../../features/home/load-home-catalog";
 import type {
@@ -32,7 +34,10 @@ const loadBrowseStates = async (source?: HomeCatalogSource) => {
       source,
     ),
   ]);
-  return { calligraphy, inscriptions };
+  return {
+    calligraphy: createRuntimeCalligraphyCategorySurface(calligraphy),
+    inscriptions,
+  };
 };
 
 export const loadDevelopmentDestinationStates = async (
@@ -85,11 +90,36 @@ export const loadQaScenarios = async (
       ),
     ]);
   const catalog = {
-    empty,
-    "small-populated": smallPopulated,
-    unavailable,
-    "unexpected-error": unexpectedError,
-    visual,
+    empty: {
+      ...empty,
+      calligraphy: createQaCalligraphyCategorySurface(
+        empty.calligraphy.categories.all,
+      ),
+    },
+    "small-populated": {
+      ...smallPopulated,
+      calligraphy: createQaCalligraphyCategorySurface(
+        smallPopulated.calligraphy.categories.all,
+      ),
+    },
+    unavailable: {
+      ...unavailable,
+      calligraphy: createQaCalligraphyCategorySurface(
+        unavailable.calligraphy.categories.all,
+      ),
+    },
+    "unexpected-error": {
+      ...unexpectedError,
+      calligraphy: createQaCalligraphyCategorySurface(
+        unexpectedError.calligraphy.categories.all,
+      ),
+    },
+    visual: {
+      ...visual,
+      calligraphy: createQaCalligraphyCategorySurface(
+        visual.calligraphy.categories.all,
+      ),
+    },
   } satisfies T02pDevelopmentCatalogScenarios;
   const visualRecords = createVisualCatalogItems(mediaOrigin);
   const home = Object.fromEntries(

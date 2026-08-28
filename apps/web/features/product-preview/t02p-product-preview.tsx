@@ -1,6 +1,7 @@
 "use client";
 
 import { CatalogBrowseScreen } from "../home/catalog-screen";
+import { CalligraphyCategoryScreen } from "../calligraphy/calligraphy-category-screen";
 import { HomeScreen } from "../home/home-screen";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
@@ -35,23 +36,13 @@ const PreviewHome = ({
   );
 };
 
-const PreviewBrowse = ({
-  kind,
-  state,
-}: {
-  readonly kind: "inscription" | "calligraphy";
-  readonly state: HomeCatalogState;
-}) => {
+const PreviewBrowse = ({ state }: { readonly state: HomeCatalogState }) => {
   const { feedLayout, openCatalog } = useProductShell();
   return (
-    <div
-      data-product-panel={
-        kind === "inscription" ? "inscriptions" : "calligraphy"
-      }
-    >
+    <div data-product-panel="inscriptions">
       <CatalogBrowseScreen
         feedLayout={feedLayout}
-        kind={kind}
+        kind="inscription"
         onOpenCatalog={(item, opener) => openCatalog(item.id, opener)}
         state={state}
       />
@@ -81,7 +72,9 @@ export const T02pProductPreview = ({
   <div data-clean-product-preview="">
     <ProductShell
       calligraphy={
-        <PreviewBrowse kind="calligraphy" state={states.calligraphy} />
+        <div data-product-panel="calligraphy">
+          <CalligraphyCategoryScreen data={states.calligraphy} />
+        </div>
       }
       developmentPlatformOverride={developmentPlatformOverride}
       home={
@@ -92,9 +85,7 @@ export const T02pProductPreview = ({
         />
       }
       initialPlatform={initialPlatform}
-      inscriptions={
-        <PreviewBrowse kind="inscription" state={states.inscriptions} />
-      }
+      inscriptions={<PreviewBrowse state={states.inscriptions} />}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
       renderDetailOverlay={({
         backButtonRef,

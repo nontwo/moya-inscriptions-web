@@ -210,7 +210,7 @@
   border: 0;
   border-radius: inherit;
   cursor: pointer;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
 }
 
 .cardAction:focus {
