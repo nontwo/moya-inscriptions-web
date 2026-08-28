@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { devices, expect, test } from "@playwright/test";
 
-import type { Locator, Page } from "@playwright/test";
+import type { CDPSession, Locator, Page } from "@playwright/test";
 
 type Category = "all" | "ink" | "rubbing";
 
@@ -117,6 +117,89 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
     return element.scrollTop;
   }, desired);
 
+const trustedHorizontalCardDrag = async (
+  page: Page,
+  session: CDPSession,
+  pager: Locator,
+  card: Locator,
+) => {
+  const pagerWidth = await pager.evaluate((node) => node.clientWidth);
+  const startEvidence = await card.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const hits: string[] = [];
+    for (const xFactor of [0.9, 0.8, 0.7, 0.6]) {
+      for (const yFactor of [0.4, 0.25, 0.6]) {
+        const x = rect.left + rect.width * xFactor;
+        const y = rect.top + Math.min(rect.height * yFactor, 120);
+        const hit = document.elementFromPoint(x, y);
+        if (node.contains(hit)) return { hits, point: { x, y } };
+        hits.push(
+          `${hit?.tagName ?? "none"}.${hit?.className ?? ""}@${x},${y}`,
+        );
+      }
+    }
+    return { hits, point: null };
+  });
+  if (startEvidence.point === null) {
+    throw new Error(
+      `No hit-testable point inside swipe card: ${startEvidence.hits.join(" | ")}`,
+    );
+  }
+  const { x, y } = startEvidence.point;
+  const distance = Math.min(Math.max(64, pagerWidth * 0.58), x - 8);
+
+  await pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    frame.dataset.testMaximumScrollLeft = "0";
+    frame.dataset.testTrustedTouchEvents = "0";
+    frame.addEventListener(
+      "touchmove",
+      (event) => {
+        if (event.isTrusted) {
+          frame.dataset.testTrustedTouchEvents = String(
+            Number(frame.dataset.testTrustedTouchEvents ?? "0") + 1,
+          );
+        }
+      },
+      { capture: true },
+    );
+    frame.addEventListener("scroll", () => {
+      frame.dataset.testMaximumScrollLeft = String(
+        Math.max(
+          Number(frame.dataset.testMaximumScrollLeft ?? "0"),
+          frame.scrollLeft,
+        ),
+      );
+    });
+  });
+
+  await session.send("Input.dispatchTouchEvent", {
+    touchPoints: [{ x, y }],
+    type: "touchStart",
+  });
+  for (let step = 1; step <= 12; step += 1) {
+    await session.send("Input.dispatchTouchEvent", {
+      touchPoints: [{ x: x - (distance * step) / 12, y }],
+      type: "touchMove",
+    });
+    await page.waitForTimeout(12);
+  }
+  await session.send("Input.dispatchTouchEvent", {
+    touchPoints: [],
+    type: "touchEnd",
+  });
+  await page.waitForTimeout(50);
+};
+
+const trustedDragEvidence = (pager: Locator) =>
+  pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    return {
+      maximumScrollLeft: Number(frame.dataset.testMaximumScrollLeft ?? "0"),
+      trustedTouchEvents: Number(frame.dataset.testTrustedTouchEvents ?? "0"),
+    };
+  });
+
 test("MIG-C1 keeps runtime classification truthful and QA metadata isolated", async ({
   page,
 }) => {
@@ -177,6 +260,74 @@ test("MIG-C1 keeps runtime classification truthful and QA metadata isolated", as
   await expect(
     page.locator('[data-catalog-id^="qa-visual-calligraphy-"]'),
   ).toHaveCount(0);
+});
+
+test("MIG-C1 card actions preserve trusted horizontal compositor paging", async ({
+  browser,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Trusted compositor touch injection uses the Chromium protocol.",
+  );
+  const baseURL = testInfo.project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("Missing E2E base URL");
+  const context = await browser.newContext({
+    ...devices["iPhone 15"],
+    baseURL,
+  });
+  const page = await context.newPage();
+  const session = await context.newCDPSession(page);
+  const response = await gotoWithRetry(page, "/dev/t02p/qa");
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-t02p-qa-harness]");
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  await expect(productShell(surface)).toHaveAttribute("data-platform", "phone");
+  await surface
+    .locator("[data-qa-controls]")
+    .evaluate((node) => ((node as HTMLElement).style.display = "none"));
+
+  const homePager = surface.locator(
+    '[data-primary-destination="home"] [data-home-feed-pager]',
+  );
+  const homeCard = homePager
+    .locator('[data-home-feed-panel="discover"] [data-open-catalog]')
+    .nth(1);
+  await expect(homeCard).toBeVisible();
+  await expect(homeCard).toHaveCSS("touch-action", "pan-x pan-y");
+  await trustedHorizontalCardDrag(page, session, homePager, homeCard);
+  await expect(surface.locator("[data-home-surface]")).toHaveAttribute(
+    "data-active-home-feed",
+    "nearby",
+  );
+  const homeEvidence = await trustedDragEvidence(homePager);
+  expect(homeEvidence.trustedTouchEvents).toBeGreaterThan(0);
+  expect(homeEvidence.maximumScrollLeft).toBeGreaterThan(40);
+
+  await activateCalligraphy(surface);
+  const calligraphy = calligraphySurface(surface);
+  const calligraphyPager = calligraphy.locator(
+    "[data-calligraphy-category-pager]",
+  );
+  const calligraphyCard = calligraphyPager
+    .locator('[data-calligraphy-category-panel="all"] [data-open-catalog]')
+    .nth(1);
+  await expect(calligraphyCard).toBeVisible();
+  await expect(calligraphyCard).toHaveCSS("touch-action", "pan-x pan-y");
+  await trustedHorizontalCardDrag(
+    page,
+    session,
+    calligraphyPager,
+    calligraphyCard,
+  );
+  await expect(calligraphy).toHaveAttribute(
+    "data-active-calligraphy-category",
+    "ink",
+  );
+  const calligraphyEvidence = await trustedDragEvidence(calligraphyPager);
+  expect(calligraphyEvidence.trustedTouchEvents).toBeGreaterThan(0);
+  expect(calligraphyEvidence.maximumScrollLeft).toBeGreaterThan(40);
+  await session.detach();
+  await context.close();
 });
 
 test("MIG-C1 native pager follows progress and commits only on release", async ({
