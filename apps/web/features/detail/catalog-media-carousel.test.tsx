@@ -38,6 +38,15 @@ const pointerEvent = (
   return event;
 };
 
+const touchEvent = (type: string, activeTouches: number) => {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "touches", {
+    configurable: true,
+    value: Array.from({ length: activeTouches }, () => ({})),
+  });
+  return event;
+};
+
 const renderCarousel = (activeIndex = 0) => {
   const container = document.createElement("div");
   document.body.append(container);
@@ -63,10 +72,15 @@ const renderCarousel = (activeIndex = 0) => {
     configurable: true,
     value: () => ({ width: 300 }),
   });
+  Object.defineProperty(stage, "clientWidth", {
+    configurable: true,
+    value: 300,
+  });
   return { container, onActiveIndexChange, onOpenViewer, stage };
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const root of roots.splice(0)) act(() => root.unmount());
   document.body.replaceChildren();
 });
@@ -194,7 +208,7 @@ describe("CatalogMediaCarousel", () => {
     expect(onActiveIndexChange).not.toHaveBeenCalled();
   });
 
-  it("ignores a child capture-transfer loss and commits the touch swipe", () => {
+  it("ignores a child capture-transfer loss and commits the pointer swipe", () => {
     const { container, onActiveIndexChange } = renderCarousel();
     const opener = container.querySelector<HTMLButtonElement>(
       "[data-detail-main-image]",
@@ -247,6 +261,37 @@ describe("CatalogMediaCarousel", () => {
 
     expect(onActiveIndexChange).toHaveBeenCalledOnce();
     expect(onActiveIndexChange).toHaveBeenCalledWith(1);
+  });
+
+  it("commits native touch paging only after release and rolls back cancel", () => {
+    vi.useFakeTimers();
+    const first = renderCarousel();
+    expect(first.stage.dataset.nativePaging).toBe("true");
+
+    act(() => {
+      first.stage.dispatchEvent(touchEvent("touchstart", 1));
+      first.stage.scrollLeft = 300;
+      first.stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(first.onActiveIndexChange).not.toHaveBeenCalled();
+
+    act(() => {
+      first.stage.dispatchEvent(touchEvent("touchend", 0));
+      vi.advanceTimersByTime(121);
+    });
+    expect(first.onActiveIndexChange).toHaveBeenCalledOnce();
+    expect(first.onActiveIndexChange).toHaveBeenCalledWith(1);
+
+    const canceled = renderCarousel();
+    act(() => {
+      canceled.stage.dispatchEvent(touchEvent("touchstart", 1));
+      canceled.stage.scrollLeft = 300;
+      canceled.stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+      canceled.stage.dispatchEvent(touchEvent("touchcancel", 0));
+      vi.advanceTimersByTime(500);
+    });
+    expect(canceled.stage.scrollLeft).toBe(0);
+    expect(canceled.onActiveIndexChange).not.toHaveBeenCalled();
   });
 
   it("opens only the active image and suppresses a drag-generated click", () => {

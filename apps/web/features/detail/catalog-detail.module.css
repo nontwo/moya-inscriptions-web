@@ -163,6 +163,20 @@
   touch-action: pan-y;
 }
 
+.carousel:not([data-platform="pc"]) .mainStage {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: none;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.carousel:not([data-platform="pc"]) .mainStage::-webkit-scrollbar {
+  display: none;
+}
+
 .mediaTrack {
   display: flex;
   width: 100%;
@@ -173,6 +187,11 @@
     0
   );
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.carousel:not([data-platform="pc"]) .mediaTrack {
+  transform: none;
+  transition: none;
 }
 
 .mainStage[data-dragging="true"] .mediaTrack {
@@ -187,6 +206,11 @@
   flex: 0 0 100%;
   overflow: hidden;
   place-items: center;
+}
+
+.carousel:not([data-platform="pc"]) .mediaSlide {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .mainImageButton {

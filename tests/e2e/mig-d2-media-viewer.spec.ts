@@ -226,7 +226,66 @@ test("MIG-D2 Viewer supports release-only paging, cancel, keyboard, pinch, and r
   await expect(stage).toHaveAttribute("data-viewer-scale", "fit");
 });
 
-test("MIG-D2 Detail Carousel survives trusted touch capture transfer", async ({
+test("MIG-D2 mobile Detail Carousel uses native snap with release-only commit", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    !["mobile-webkit", "tablet-webkit", "tablet-landscape-webkit"].includes(
+      testInfo.project.name,
+    ),
+    "Native touch paging is owned by the phone and tablet compositions",
+  );
+  const { detail } = await openMultiMediaDetail(page);
+  const stage = detail.locator("[data-detail-main-stage]");
+  const counter = detail.locator("[data-detail-media-index]");
+  await expect(stage).toHaveAttribute("data-native-paging", "true");
+  await expect(stage).toHaveCSS("overflow-x", "auto");
+  await expect(stage).toHaveCSS("scroll-snap-type", "x mandatory");
+  await expect(stage).toHaveCSS("touch-action", "pan-x pan-y");
+
+  const dispatchTouch = (type: "touchstart" | "touchend" | "touchcancel") =>
+    stage.evaluate((node, eventType) => {
+      const event = new Event(eventType, {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "touches", {
+        configurable: true,
+        value: eventType === "touchstart" ? [{}] : [],
+      });
+      node.dispatchEvent(event);
+    }, type);
+
+  await dispatchTouch("touchstart");
+  await stage.evaluate((node) => {
+    const frame = node as HTMLElement;
+    frame.scrollLeft = frame.clientWidth;
+    frame.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(counter).toHaveText("1 / 3");
+  await dispatchTouch("touchend");
+  await expect(counter).toHaveText("2 / 3");
+
+  await dispatchTouch("touchstart");
+  await stage.evaluate((node) => {
+    const frame = node as HTMLElement;
+    frame.scrollLeft = frame.clientWidth * 2;
+    frame.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(counter).toHaveText("2 / 3");
+  await dispatchTouch("touchcancel");
+  await expect(counter).toHaveText("2 / 3");
+  await expect
+    .poll(() =>
+      stage.evaluate((node) => {
+        const frame = node as HTMLElement;
+        return Math.abs(frame.scrollLeft - frame.clientWidth);
+      }),
+    )
+    .toBeLessThanOrEqual(1);
+});
+
+test("MIG-D2 Detail Carousel accepts trusted diagonal native touch", async ({
   browser,
 }, testInfo) => {
   test.skip(
@@ -246,21 +305,31 @@ test("MIG-D2 Detail Carousel survives trusted touch capture transfer", async ({
     await expect(page.locator("[data-product-boot]")).toHaveCount(0);
     const stage = detail.locator("[data-detail-main-stage]");
     const counter = detail.locator("[data-detail-media-index]");
+    await expect(stage).toHaveAttribute("data-native-paging", "true");
+    await expect(stage).toHaveCSS("overflow-x", "auto");
+    await expect(stage).toHaveCSS("scroll-snap-type", "x mandatory");
+    await expect(stage).toHaveCSS("touch-action", "pan-x pan-y");
     const box = await stage.boundingBox();
     if (box === null) throw new Error("Missing Detail Carousel geometry");
     const session = await context.newCDPSession(page);
-    const y = box.y + box.height / 2;
+    const startY = box.y + box.height / 2;
+    const endY = startY + 26;
     const startX = box.x + box.width * 0.7;
     const endX = box.x + box.width * 0.2;
 
     try {
       await session.send("Input.dispatchTouchEvent", {
-        touchPoints: [{ x: startX, y }],
+        touchPoints: [{ x: startX, y: startY }],
         type: "touchStart",
       });
       for (let step = 1; step <= 8; step += 1) {
         await session.send("Input.dispatchTouchEvent", {
-          touchPoints: [{ x: startX + ((endX - startX) * step) / 8, y }],
+          touchPoints: [
+            {
+              x: startX + ((endX - startX) * step) / 8,
+              y: startY + ((endY - startY) * step) / 8,
+            },
+          ],
           type: "touchMove",
         });
         await page.waitForTimeout(16);
@@ -275,6 +344,59 @@ test("MIG-D2 Detail Carousel survives trusted touch capture transfer", async ({
     }
 
     await expect(counter).toHaveText("2 / 3");
+    const viewer = page.getByRole("dialog", { name: "图像查看" });
+    await expect(viewer).toBeHidden();
+
+    await page.waitForTimeout(550);
+    const tapBox = await stage.boundingBox();
+    if (tapBox === null)
+      throw new Error("Missing Detail Carousel tap geometry");
+    await page.touchscreen.tap(
+      tapBox.x + tapBox.width / 2,
+      tapBox.y + tapBox.height / 2,
+    );
+    await expect(viewer).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(viewer).toBeHidden();
+
+    const scroller = page.locator("[data-detail-scroll]");
+    const scrollBox = await stage.boundingBox();
+    if (scrollBox === null) {
+      throw new Error("Missing Detail Carousel vertical-scroll geometry");
+    }
+    const scrollStartX = scrollBox.x + scrollBox.width / 2;
+    const scrollStartY = scrollBox.y + scrollBox.height * 0.7;
+    const scrollEndY = Math.max(20, scrollStartY - 140);
+    const verticalSession = await context.newCDPSession(page);
+    try {
+      await verticalSession.send("Input.dispatchTouchEvent", {
+        touchPoints: [{ x: scrollStartX, y: scrollStartY }],
+        type: "touchStart",
+      });
+      for (let step = 1; step <= 8; step += 1) {
+        await verticalSession.send("Input.dispatchTouchEvent", {
+          touchPoints: [
+            {
+              x: scrollStartX + step,
+              y: scrollStartY + ((scrollEndY - scrollStartY) * step) / 8,
+            },
+          ],
+          type: "touchMove",
+        });
+        await page.waitForTimeout(16);
+      }
+      await verticalSession.send("Input.dispatchTouchEvent", {
+        touchPoints: [],
+        type: "touchEnd",
+      });
+    } finally {
+      await verticalSession.detach();
+    }
+    await expect
+      .poll(() => scroller.evaluate((node) => node.scrollTop))
+      .toBeGreaterThan(20);
+    await expect(counter).toHaveText("2 / 3");
+    await expect(viewer).toBeHidden();
   } finally {
     await context.close();
   }
