@@ -211,6 +211,7 @@ export const CatalogMediaCarousel = ({
           event.stopPropagation();
         }}
         onLostPointerCapture={(event) => {
+          if (event.target !== event.currentTarget) return;
           if (gestureRef.current?.id === event.pointerId) cancelGesture(event);
         }}
         onPointerCancel={cancelGesture}

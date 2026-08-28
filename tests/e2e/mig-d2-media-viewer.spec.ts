@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { devices, expect, test } from "@playwright/test";
 
 import type { Page } from "@playwright/test";
 
@@ -224,6 +224,60 @@ test("MIG-D2 Viewer supports release-only paging, cancel, keyboard, pinch, and r
   await detail.locator("[data-detail-main-image]").click();
   await expect(viewer).toBeVisible();
   await expect(stage).toHaveAttribute("data-viewer-scale", "fit");
+});
+
+test("MIG-D2 Detail Carousel survives trusted touch capture transfer", async ({
+  browser,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Trusted CDP touch input is Chromium-only",
+  );
+  const baseURL = testInfo.project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("Missing E2E base URL");
+  const context = await browser.newContext({
+    ...devices["iPhone 15"],
+    baseURL,
+  });
+  const page = await context.newPage();
+
+  try {
+    const { detail } = await openMultiMediaDetail(page);
+    await expect(page.locator("[data-product-boot]")).toHaveCount(0);
+    const stage = detail.locator("[data-detail-main-stage]");
+    const counter = detail.locator("[data-detail-media-index]");
+    const box = await stage.boundingBox();
+    if (box === null) throw new Error("Missing Detail Carousel geometry");
+    const session = await context.newCDPSession(page);
+    const y = box.y + box.height / 2;
+    const startX = box.x + box.width * 0.7;
+    const endX = box.x + box.width * 0.2;
+
+    try {
+      await session.send("Input.dispatchTouchEvent", {
+        touchPoints: [{ x: startX, y }],
+        type: "touchStart",
+      });
+      for (let step = 1; step <= 8; step += 1) {
+        await session.send("Input.dispatchTouchEvent", {
+          touchPoints: [{ x: startX + ((endX - startX) * step) / 8, y }],
+          type: "touchMove",
+        });
+        await page.waitForTimeout(16);
+      }
+      await expect(counter).toHaveText("1 / 3");
+      await session.send("Input.dispatchTouchEvent", {
+        touchPoints: [],
+        type: "touchEnd",
+      });
+    } finally {
+      await session.detach();
+    }
+
+    await expect(counter).toHaveText("2 / 3");
+  } finally {
+    await context.close();
+  }
 });
 
 test("MIG-D2 Viewer rejects foreign media and reports a valid broken image truthfully", async ({

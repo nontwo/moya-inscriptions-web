@@ -194,6 +194,61 @@ describe("CatalogMediaCarousel", () => {
     expect(onActiveIndexChange).not.toHaveBeenCalled();
   });
 
+  it("ignores a child capture-transfer loss and commits the touch swipe", () => {
+    const { container, onActiveIndexChange } = renderCarousel();
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-detail-main-image]",
+    )!;
+
+    act(() => {
+      opener.dispatchEvent(
+        pointerEvent("pointerdown", {
+          button: 0,
+          clientX: 180,
+          clientY: 80,
+          isPrimary: true,
+          pointerId: 4,
+          timeStamp: 0,
+        }),
+      );
+      opener.dispatchEvent(
+        pointerEvent("pointermove", {
+          clientX: 150,
+          clientY: 82,
+          pointerId: 4,
+          timeStamp: 10,
+        }),
+      );
+      opener.dispatchEvent(
+        pointerEvent("lostpointercapture", {
+          clientX: 150,
+          clientY: 82,
+          pointerId: 4,
+          timeStamp: 11,
+        }),
+      );
+      opener.dispatchEvent(
+        pointerEvent("pointermove", {
+          clientX: 100,
+          clientY: 82,
+          pointerId: 4,
+          timeStamp: 20,
+        }),
+      );
+      opener.dispatchEvent(
+        pointerEvent("pointerup", {
+          clientX: 100,
+          clientY: 82,
+          pointerId: 4,
+          timeStamp: 30,
+        }),
+      );
+    });
+
+    expect(onActiveIndexChange).toHaveBeenCalledOnce();
+    expect(onActiveIndexChange).toHaveBeenCalledWith(1);
+  });
+
   it("opens only the active image and suppresses a drag-generated click", () => {
     const { container, onOpenViewer, stage } = renderCarousel();
     const opener = container.querySelector<HTMLButtonElement>(
