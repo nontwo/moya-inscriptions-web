@@ -19,6 +19,7 @@ import {
   detailHistoryState,
   detailLocation,
   directCatalogIdFromLocation,
+  directMediaIdFromLocation,
   mergeProductHistoryState,
   parseProductHistoryState,
   primaryHistoryState,
@@ -27,6 +28,8 @@ import {
   settingsLocation,
   topicHistoryState,
   topicLocation,
+  viewerHistoryState,
+  viewerLocation,
 } from "./product-history";
 import {
   FEED_LAYOUT_PREFERENCE_STORAGE_KEY,
@@ -73,9 +76,13 @@ export interface ProductShellContextValue {
   readonly activeCatalogId: string | null;
   readonly activeDestination: PrimaryDestination;
   readonly activeTopicId: string | null;
+  readonly activeViewerMediaId: string | null;
   readonly closeTopic: () => void;
+  readonly closeViewer: () => void;
+  readonly changeViewerMedia: (mediaId: string) => void;
   readonly feedLayout: FeedLayoutPreference;
   readonly openCatalog: (catalogId: string, opener: HTMLElement) => void;
+  readonly openViewer: (mediaId: string) => void;
   readonly openTopic: (
     topicId: string,
     opener: HTMLElement,
@@ -196,6 +203,7 @@ export const ProductShell = ({
   const platformRef = useRef<PresentationPlatform>(initialPlatform);
   const settingsOpenRef = useRef(false);
   const catalogIdRef = useRef<string | null>(null);
+  const viewerMediaIdRef = useRef<string | null>(null);
   const topicIdRef = useRef<string | null>(null);
   const scrollPositionsRef = useRef<ScrollPositions>({
     calligraphy: 0,
@@ -212,6 +220,9 @@ export const ProductShell = ({
   const [feedLayout, setFeedLayout] = useState<FeedLayoutPreference>("double");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
+  const [activeViewerMediaId, setActiveViewerMediaId] = useState<string | null>(
+    null,
+  );
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [navigationMinimized, setNavigationMinimized] = useState(false);
   const [activeHomeScrollElement, setActiveHomeScrollElement] =
@@ -440,6 +451,11 @@ export const ProductShell = ({
     setActiveCatalogId(catalogId);
   }, []);
 
+  const setViewerVisibility = useCallback((mediaId: string | null) => {
+    viewerMediaIdRef.current = mediaId;
+    setActiveViewerMediaId(mediaId);
+  }, []);
+
   const setTopicVisibility = useCallback((topicId: string | null) => {
     topicIdRef.current = topicId;
     setActiveTopicId(topicId);
@@ -554,19 +570,34 @@ export const ProductShell = ({
     detailHistoryFrameRef.current = window.requestAnimationFrame(() => {
       detailHistoryFrameRef.current = null;
       const state = parseProductHistoryState(window.history.state);
-      if (state?.kind !== "detail") return;
-      window.history.replaceState(
-        currentProductHistoryState(
-          detailHistoryState(
-            state.catalogId,
-            state.sourceDestination,
-            state.sourceScrollTop,
-            detailScrollTopRef.current,
+      if (state?.kind === "detail") {
+        window.history.replaceState(
+          currentProductHistoryState(
+            detailHistoryState(
+              state.catalogId,
+              state.sourceDestination,
+              state.sourceScrollTop,
+              detailScrollTopRef.current,
+            ),
           ),
-        ),
-        "",
-        detailLocation(window.location, state.catalogId),
-      );
+          "",
+          detailLocation(window.location, state.catalogId),
+        );
+      } else if (state?.kind === "viewer") {
+        window.history.replaceState(
+          currentProductHistoryState(
+            viewerHistoryState(
+              state.catalogId,
+              state.mediaId,
+              state.sourceDestination,
+              state.sourceScrollTop,
+              detailScrollTopRef.current,
+            ),
+          ),
+          "",
+          viewerLocation(window.location, state.catalogId, state.mediaId),
+        );
+      }
     });
   }, []);
 
@@ -615,7 +646,110 @@ export const ProductShell = ({
     [readActiveScrollTop, saveScroll, setDetailVisibility],
   );
 
+  const openViewer = useCallback(
+    (mediaId: string) => {
+      const catalogId = catalogIdRef.current;
+      if (
+        catalogId === null ||
+        viewerMediaIdRef.current !== null ||
+        mediaId.length === 0 ||
+        mediaId.length > 128 ||
+        /\s/u.test(mediaId)
+      ) {
+        return;
+      }
+      const current = parseProductHistoryState(window.history.state);
+      const sourceDestination =
+        current?.kind === "detail"
+          ? current.sourceDestination
+          : detailSourceDestinationRef.current;
+      const sourceScrollTop =
+        current?.kind === "detail"
+          ? current.sourceScrollTop
+          : detailSourceScrollTopRef.current;
+      window.history.replaceState(
+        currentProductHistoryState(
+          detailHistoryState(
+            catalogId,
+            sourceDestination,
+            sourceScrollTop,
+            detailScrollTopRef.current,
+          ),
+        ),
+        "",
+        detailLocation(window.location, catalogId),
+      );
+      window.history.pushState(
+        currentProductHistoryState(
+          viewerHistoryState(
+            catalogId,
+            mediaId,
+            sourceDestination,
+            sourceScrollTop,
+            detailScrollTopRef.current,
+          ),
+        ),
+        "",
+        viewerLocation(window.location, catalogId, mediaId),
+      );
+      setViewerVisibility(mediaId);
+    },
+    [setViewerVisibility],
+  );
+
+  const changeViewerMedia = useCallback(
+    (mediaId: string) => {
+      if (mediaId.length === 0 || mediaId.length > 128 || /\s/u.test(mediaId)) {
+        return;
+      }
+      const state = parseProductHistoryState(window.history.state);
+      if (state?.kind !== "viewer" || state.mediaId === mediaId) return;
+      window.history.replaceState(
+        currentProductHistoryState(
+          viewerHistoryState(
+            state.catalogId,
+            mediaId,
+            state.sourceDestination,
+            state.sourceScrollTop,
+            detailScrollTopRef.current,
+          ),
+        ),
+        "",
+        viewerLocation(window.location, state.catalogId, mediaId),
+      );
+      setViewerVisibility(mediaId);
+    },
+    [setViewerVisibility],
+  );
+
+  const closeViewer = useCallback(() => {
+    const state = parseProductHistoryState(window.history.state);
+    if (state?.kind === "viewer") {
+      window.history.back();
+      return;
+    }
+    const catalogId = catalogIdRef.current;
+    setViewerVisibility(null);
+    if (catalogId === null) return;
+    window.history.replaceState(
+      currentProductHistoryState(
+        detailHistoryState(
+          catalogId,
+          detailSourceDestinationRef.current,
+          detailSourceScrollTopRef.current,
+          detailScrollTopRef.current,
+        ),
+      ),
+      "",
+      detailLocation(window.location, catalogId),
+    );
+  }, [setViewerVisibility]);
+
   const closeDetail = useCallback(() => {
+    if (viewerMediaIdRef.current !== null) {
+      closeViewer();
+      return;
+    }
     if (detailHistoryFrameRef.current !== null) {
       window.cancelAnimationFrame(detailHistoryFrameRef.current);
       detailHistoryFrameRef.current = null;
@@ -638,6 +772,7 @@ export const ProductShell = ({
       return;
     }
     const sourceDestination = detailSourceDestinationRef.current;
+    setViewerVisibility(null);
     setDetailVisibility(null);
     window.history.replaceState(
       currentProductHistoryState(
@@ -657,7 +792,13 @@ export const ProductShell = ({
     if (detailOpenerIdRef.current !== null) {
       restoreCatalogFocus(detailOpenerIdRef.current);
     }
-  }, [restoreCatalogFocus, restoreScroll, setDetailVisibility]);
+  }, [
+    closeViewer,
+    restoreCatalogFocus,
+    restoreScroll,
+    setDetailVisibility,
+    setViewerVisibility,
+  ]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -830,6 +971,7 @@ export const ProductShell = ({
   useEffect(() => {
     const initialState = parseProductHistoryState(window.history.state);
     const directCatalogId = directCatalogIdFromLocation(window.location);
+    const directMediaId = directMediaIdFromLocation(window.location);
     const directSettings = window.location.hash === "#settings";
     let destination: PrimaryDestination = "home";
 
@@ -837,7 +979,8 @@ export const ProductShell = ({
       destination = initialState.destination;
     } else if (
       initialState?.kind === "settings" ||
-      initialState?.kind === "detail"
+      initialState?.kind === "detail" ||
+      initialState?.kind === "viewer"
     ) {
       destination = initialState.sourceDestination;
     }
@@ -851,7 +994,7 @@ export const ProductShell = ({
       scrollPositionsRef.current[destination] = initialState.scrollTop;
     }
 
-    if (initialState?.kind === "detail") {
+    if (initialState?.kind === "detail" || initialState?.kind === "viewer") {
       detailSourceDestinationRef.current = initialState.sourceDestination;
       detailSourceScrollTopRef.current = initialState.sourceScrollTop;
       detailScrollTopRef.current = initialState.detailScrollTop;
@@ -861,15 +1004,20 @@ export const ProductShell = ({
       setSettingsVisibility(false);
       setTopicVisibility(null);
       setDetailVisibility(initialState.catalogId);
+      setViewerVisibility(
+        initialState.kind === "viewer" ? initialState.mediaId : null,
+      );
     } else if (initialState?.kind === "topic") {
       topicSourceScrollTopRef.current = initialState.sourceScrollTop;
       scrollPositionsRef.current.home = initialState.sourceScrollTop;
       setSettingsVisibility(false);
       setDetailVisibility(null);
+      setViewerVisibility(null);
       setTopicVisibility(initialState.topicId);
     } else if (initialState?.kind === "settings") {
       setSettingsVisibility(true);
       setDetailVisibility(null);
+      setViewerVisibility(null);
       setTopicVisibility(null);
     } else if (directCatalogId !== null) {
       const sourceScrollTop =
@@ -900,9 +1048,24 @@ export const ProductShell = ({
         "",
         detailLocation(window.location, directCatalogId),
       );
+      if (directMediaId !== null) {
+        window.history.pushState(
+          currentProductHistoryState(
+            viewerHistoryState(
+              directCatalogId,
+              directMediaId,
+              destination,
+              sourceScrollTop,
+            ),
+          ),
+          "",
+          viewerLocation(window.location, directCatalogId, directMediaId),
+        );
+      }
       setSettingsVisibility(false);
       setTopicVisibility(null);
       setDetailVisibility(directCatalogId);
+      setViewerVisibility(directMediaId);
     } else if (directSettings) {
       window.history.replaceState(
         currentProductHistoryState(primaryHistoryState(destination)),
@@ -916,6 +1079,7 @@ export const ProductShell = ({
       );
       setSettingsVisibility(true);
       setDetailVisibility(null);
+      setViewerVisibility(null);
       setTopicVisibility(null);
     } else {
       window.history.replaceState(
@@ -938,6 +1102,7 @@ export const ProductShell = ({
       );
       setSettingsVisibility(false);
       setDetailVisibility(null);
+      setViewerVisibility(null);
       setTopicVisibility(null);
       if (
         initialState?.kind === "primary" &&
@@ -967,7 +1132,7 @@ export const ProductShell = ({
         saveScroll(activeDestinationRef.current, platformRef.current);
       }
 
-      if (state?.kind === "detail") {
+      if (state?.kind === "detail" || state?.kind === "viewer") {
         activeDestinationRef.current = state.sourceDestination;
         setActiveDestination(state.sourceDestination);
         detailSourceDestinationRef.current = state.sourceDestination;
@@ -979,6 +1144,7 @@ export const ProductShell = ({
         setSettingsVisibility(false);
         setTopicVisibility(null);
         setDetailVisibility(state.catalogId);
+        setViewerVisibility(state.kind === "viewer" ? state.mediaId : null);
         return;
       }
 
@@ -986,6 +1152,7 @@ export const ProductShell = ({
         activeDestinationRef.current = state.sourceDestination;
         setActiveDestination(state.sourceDestination);
         setDetailVisibility(null);
+        setViewerVisibility(null);
         setTopicVisibility(null);
         setSettingsVisibility(true);
         return;
@@ -998,6 +1165,7 @@ export const ProductShell = ({
         scrollPositionsRef.current.home = state.sourceScrollTop;
         setSettingsVisibility(false);
         setDetailVisibility(null);
+        setViewerVisibility(null);
         setTopicVisibility(state.topicId);
         return;
       }
@@ -1014,6 +1182,7 @@ export const ProductShell = ({
       activeDestinationRef.current = nextDestination;
       setActiveDestination(nextDestination);
       setDetailVisibility(null);
+      setViewerVisibility(null);
       setTopicVisibility(null);
       setSettingsVisibility(false);
       if (state?.kind === "primary" && state.scrollTop !== undefined) {
@@ -1056,6 +1225,7 @@ export const ProductShell = ({
     setDetailVisibility,
     setSettingsVisibility,
     setTopicVisibility,
+    setViewerVisibility,
   ]);
 
   useLayoutEffect(() => {
@@ -1113,9 +1283,13 @@ export const ProductShell = ({
     activeCatalogId,
     activeDestination,
     activeTopicId,
+    activeViewerMediaId,
+    changeViewerMedia,
+    closeViewer,
     closeTopic,
     feedLayout,
     openCatalog,
+    openViewer,
     openTopic,
     orientation,
     platform,
@@ -1144,6 +1318,7 @@ export const ProductShell = ({
         data-product-shell=""
         data-settings-open={settingsOpen ? "true" : "false"}
         data-topic-open={activeTopicId === null ? "false" : "true"}
+        data-viewer-open={activeViewerMediaId === null ? "false" : "true"}
         data-theme-preference={theme}
       >
         <div

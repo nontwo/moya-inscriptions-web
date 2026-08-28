@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CatalogDetailExperience } from "./catalog-detail-experience";
 
 import type { Root } from "react-dom/client";
+import type { MediaId } from "@moya/contracts";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -55,11 +56,15 @@ describe("CatalogDetailExperience", () => {
     };
     const onScrollTopChange = vi.fn();
     const properties = {
+      activeViewerMediaId: null,
       backButtonRef: createRef<HTMLButtonElement>(),
       catalogId: "catalog-detail",
       initialScrollTop: 0,
       onBack: vi.fn(),
+      onCloseViewer: vi.fn(),
+      onOpenViewer: vi.fn(),
       onScrollTopChange,
+      onViewerMediaChange: vi.fn(),
       platform: "tablet" as const,
       state: { state: "loading" as const },
     };
@@ -120,5 +125,124 @@ describe("CatalogDetailExperience", () => {
     });
 
     expect(onScrollTopChange).toHaveBeenLastCalledWith(120);
+  });
+
+  it("opens the exact media and restores Detail scroll and current image focus", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false })),
+    });
+    const onOpenViewer = vi.fn();
+    const onCloseViewer = vi.fn();
+    const state = {
+      detail: {
+        aliases: [],
+        facts: [],
+        id: "catalog-detail",
+        kind: "inscription" as const,
+        media: [
+          {
+            alt: "详情图像",
+            height: 600,
+            id: "media-one" as MediaId,
+            kind: "image" as const,
+            src: "https://example.test/media-one.jpg",
+            width: 400,
+          },
+        ],
+        source: "qa" as const,
+        sourceCitations: [],
+        title: "资料",
+      },
+      state: "loaded" as const,
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const render = (activeViewerMediaId: string | null) =>
+      root.render(
+        <CatalogDetailExperience
+          activeViewerMediaId={activeViewerMediaId}
+          backButtonRef={createRef<HTMLButtonElement>()}
+          catalogId="catalog-detail"
+          initialScrollTop={0}
+          onBack={vi.fn()}
+          onCloseViewer={onCloseViewer}
+          onOpenViewer={onOpenViewer}
+          onScrollTopChange={vi.fn()}
+          onViewerMediaChange={vi.fn()}
+          orientation="portrait"
+          platform="phone"
+          state={state}
+        />,
+      );
+    act(() => render(null));
+    const scroller = container.querySelector<HTMLElement>(
+      "[data-detail-scroll]",
+    )!;
+    scroller.scrollTop = 90;
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-detail-main-image]",
+    )!;
+    act(() => opener.click());
+    expect(onOpenViewer).toHaveBeenCalledWith("media-one");
+
+    act(() => render("media-one"));
+    expect(
+      container.querySelector("[data-detail-viewer]")?.hasAttribute("open"),
+    ).toBe(true);
+    scroller.scrollTop = 0;
+    act(() => render(null));
+    expect(scroller.scrollTop).toBe(90);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("rejects a direct media identifier outside the loaded Catalog", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false })),
+    });
+    const onCloseViewer = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    act(() =>
+      root.render(
+        <CatalogDetailExperience
+          activeViewerMediaId="foreign-media"
+          backButtonRef={createRef<HTMLButtonElement>()}
+          catalogId="catalog-detail"
+          initialScrollTop={0}
+          onBack={vi.fn()}
+          onCloseViewer={onCloseViewer}
+          onOpenViewer={vi.fn()}
+          onScrollTopChange={vi.fn()}
+          onViewerMediaChange={vi.fn()}
+          orientation="portrait"
+          platform="phone"
+          state={{
+            detail: {
+              aliases: [],
+              facts: [],
+              id: "catalog-detail",
+              kind: "inscription",
+              media: [],
+              source: "qa",
+              sourceCitations: [],
+              title: "资料",
+            },
+            state: "loaded",
+          }}
+        />,
+      ),
+    );
+    expect(onCloseViewer).toHaveBeenCalledOnce();
   });
 });

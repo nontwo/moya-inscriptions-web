@@ -5,6 +5,7 @@ import {
   detailHistoryState,
   detailLocation,
   directCatalogIdFromLocation,
+  directMediaIdFromLocation,
   isPrimaryDestination,
   mergeProductHistoryState,
   parseProductHistoryState,
@@ -12,6 +13,8 @@ import {
   settingsHistoryState,
   topicHistoryState,
   topicLocation,
+  viewerHistoryState,
+  viewerLocation,
 } from "./product-history";
 
 describe("Product Shell history", () => {
@@ -57,6 +60,44 @@ describe("Product Shell history", () => {
       directCatalogIdFromLocation({ search: "?catalogId=invalid+id" }),
     ).toBeNull();
     expect(directCatalogIdFromLocation({ search: "" })).toBeNull();
+  });
+
+  it("parses the Viewer layer and keeps media navigation on one URL layer", () => {
+    const state = viewerHistoryState(
+      "catalog-one",
+      "media-two",
+      "inscriptions",
+      147,
+      63,
+    );
+    expect(parseProductHistoryState(state)).toEqual(state);
+    expect(
+      viewerLocation(
+        {
+          pathname: "/dev/t02p",
+          search: "?cb=exact-head&catalogId=old&image=old-media",
+        } as Location,
+        "catalog-one",
+        "media-two",
+      ),
+    ).toBe(
+      "/dev/t02p?cb=exact-head&catalogId=catalog-one&image=media-two#viewer",
+    );
+    expect(
+      detailLocation(
+        {
+          pathname: "/dev/t02p",
+          search: "?catalogId=catalog-one&image=media-two",
+        } as Location,
+        "catalog-one",
+      ),
+    ).toBe("/dev/t02p?catalogId=catalog-one#detail");
+    expect(directMediaIdFromLocation({ search: "?image=media-two" })).toBe(
+      "media-two",
+    );
+    expect(
+      directMediaIdFromLocation({ search: "?image=invalid+media" }),
+    ).toBeNull();
   });
 
   it("preserves router history fields without retaining stale Product fields", () => {
@@ -142,6 +183,24 @@ describe("Product Shell history", () => {
       catalogId: "",
       detailScrollTop: 0,
       kind: "detail",
+      sourceDestination: "home",
+      sourceScrollTop: 0,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      catalogId: "catalog-one",
+      detailScrollTop: 0,
+      kind: "viewer",
+      mediaId: "",
+      sourceDestination: "home",
+      sourceScrollTop: 0,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      catalogId: "catalog-one",
+      detailScrollTop: -1,
+      kind: "viewer",
+      mediaId: "media-one",
       sourceDestination: "home",
       sourceScrollTop: 0,
       version: PRODUCT_SHELL_HISTORY_VERSION,

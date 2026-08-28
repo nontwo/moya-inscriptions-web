@@ -51,8 +51,12 @@
 }
 
 .detailHeader button:focus-visible,
+.mainImageButton:focus-visible,
 .mediaDotTarget:focus-visible,
-.carouselEdge:focus-visible {
+.carouselEdge:focus-visible,
+.viewer:focus-visible,
+.viewerEdge:focus-visible,
+.viewerDots button:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
   outline-offset: 2px;
 }
@@ -159,6 +163,20 @@
   touch-action: pan-y;
 }
 
+.carousel:not([data-platform="pc"]) .mainStage {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: none;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.carousel:not([data-platform="pc"]) .mainStage::-webkit-scrollbar {
+  display: none;
+}
+
 .mediaTrack {
   display: flex;
   width: 100%;
@@ -171,7 +189,13 @@
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.mainStage[data-dragging="true"] .mediaTrack {
+.carousel:not([data-platform="pc"]) .mediaTrack {
+  transform: none;
+  transition: none;
+}
+
+.mainStage[data-dragging="true"] .mediaTrack,
+.mainStage[data-platform-realigning="true"] .mediaTrack {
   transition: none;
 }
 
@@ -185,7 +209,29 @@
   place-items: center;
 }
 
-.mediaSlide img {
+.carousel:not([data-platform="pc"]) .mediaSlide {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.mainImageButton {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  place-items: center;
+  overflow: hidden;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+}
+
+.mainImageButton:disabled {
+  cursor: default;
+}
+
+.mainImageButton img {
   display: block;
   width: 100%;
   min-width: 0;
@@ -197,6 +243,234 @@
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.viewer {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 12px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  border: 0;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.viewer:not([open]) {
+  display: none;
+}
+
+.viewer::backdrop {
+  background: var(--yoyi-color-background-page);
+}
+
+.viewerStage {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  align-items: stretch;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+
+.viewerStage[data-viewer-scale="zoomed"] {
+  cursor: grabbing;
+}
+
+.viewerTrack {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transform: translate3d(calc(-100% + var(--viewer-carousel-x, 0px)), 0, 0);
+  will-change: transform;
+}
+
+.viewerTrack[data-settling="true"] {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.viewerTrack[data-dragging="true"]:not([data-settling="true"]) {
+  transition: none;
+}
+
+.viewerSlide {
+  position: relative;
+  display: grid;
+  min-width: 100%;
+  min-height: 0;
+  height: 100%;
+  flex: 0 0 100%;
+  overflow: hidden;
+  place-items: center;
+}
+
+.viewer .viewerImage,
+.viewer .viewerPeerImage {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  overflow: visible;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.viewer .viewerImage {
+  transform: translate(var(--viewer-x, 0px), var(--viewer-y, 0px))
+    scale(var(--viewer-scale, 1));
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.viewerMediaError {
+  display: grid;
+  width: min(100%, 680px);
+  min-height: 50dvh;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+}
+
+.viewerCounter {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  right: 12px;
+  padding: 4px 9px;
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-overlay);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-metadata-size);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 180ms,
+    transform 180ms;
+  pointer-events: none;
+}
+
+.viewerCounter[data-visible="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+.viewerEdge {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  display: none;
+  width: 22%;
+  min-width: 44px;
+  padding: 0;
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.viewer[data-platform="pc"] .viewerEdge {
+  display: block;
+}
+
+.viewerEdge:disabled {
+  pointer-events: none;
+}
+
+.viewerEdge::after {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-top: 2px solid currentcolor;
+  border-right: 2px solid currentcolor;
+  content: "";
+}
+
+.viewerEdgePrevious {
+  left: 0;
+}
+
+.viewerEdgePrevious::after {
+  left: 32px;
+  transform: rotate(-135deg);
+}
+
+.viewerEdgeNext {
+  right: 0;
+}
+
+.viewerEdgeNext::after {
+  right: 32px;
+  transform: rotate(45deg);
+}
+
+.viewerDots {
+  display: none;
+  z-index: 4;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.viewer[data-platform="pc"] .viewerDots {
+  display: flex;
+}
+
+.viewerDots button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.viewerDots button::after {
+  width: 6px;
+  height: 6px;
+  background: currentcolor;
+  border-radius: var(--yoyi-radius-full);
+  content: "";
+  opacity: 0.35;
+}
+
+.viewerDots button[data-active="true"]::after {
+  width: 8px;
+  height: 8px;
+  opacity: 1;
+}
+
+@media (min-width: 768px) {
+  .viewer {
+    padding: 20px;
+  }
+}
+
+@media (min-width: 896px) {
+  .viewer {
+    padding: 32px;
+  }
 }
 
 .mediaError,
@@ -457,7 +731,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .mediaTrack,
-  .mediaDotTarget > span {
+  .mediaDotTarget > span,
+  .viewerCounter,
+  .viewerTrack[data-settling="true"] {
     transition-duration: 1ms;
   }
 

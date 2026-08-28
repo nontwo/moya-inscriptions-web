@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { CatalogDetailScreen } from "./catalog-detail-screen";
+import { CatalogViewer } from "./catalog-viewer";
 import styles from "./catalog-detail.module.css";
 
 import type {
@@ -22,11 +23,15 @@ import type { CatalogDetailPresentationState } from "./catalog-detail-presentati
 import type { PresentationPlatform } from "../shell/device-platform";
 
 export interface CatalogDetailExperienceProps {
+  readonly activeViewerMediaId: string | null;
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly catalogId: string;
   readonly initialScrollTop: number;
   readonly onBack: () => void;
+  readonly onCloseViewer: () => void;
+  readonly onOpenViewer: (mediaId: string) => void;
   readonly onScrollTopChange: (top: number) => void;
+  readonly onViewerMediaChange: (mediaId: string) => void;
   readonly orientation: "landscape" | "portrait";
   readonly platform: PresentationPlatform;
   readonly state: CatalogDetailPresentationState;
@@ -43,11 +48,15 @@ const SCROLL_KEYS = new Set([
 ]);
 
 export const CatalogDetailExperience = ({
+  activeViewerMediaId,
   backButtonRef,
   catalogId,
   initialScrollTop,
   onBack,
+  onCloseViewer,
+  onOpenViewer,
   onScrollTopChange,
+  onViewerMediaChange,
   orientation,
   platform,
   state,
@@ -66,7 +75,16 @@ export const CatalogDetailExperience = ({
   } | null>(null);
   const desiredScrollTopRef = useRef(initialScrollTop);
   const restoredCatalogIdRef = useRef(catalogId);
+  const viewerOpenerRef = useRef<HTMLElement | null>(null);
+  const viewerWasOpenRef = useRef(false);
+  const viewerOpenSuppressedUntilRef = useRef(0);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const media = state.state === "loaded" ? state.detail.media : [];
+  const requestedViewerIndex =
+    activeViewerMediaId === null
+      ? -1
+      : media.findIndex(({ id }) => id === activeViewerMediaId);
+  const viewerOpen = activeViewerMediaId !== null && requestedViewerIndex >= 0;
 
   const clearUserScrollIntent = useCallback(() => {
     userScrollIntentRef.current = false;
@@ -160,6 +178,37 @@ export const CatalogDetailExperience = ({
     setActiveMediaIndex(0);
   }, [catalogId]);
 
+  useEffect(() => {
+    if (activeViewerMediaId === null || state.state === "loading") return;
+    if (requestedViewerIndex < 0) {
+      onCloseViewer();
+      return;
+    }
+    setActiveMediaIndex(requestedViewerIndex);
+  }, [activeViewerMediaId, onCloseViewer, requestedViewerIndex, state.state]);
+
+  useLayoutEffect(() => {
+    if (viewerOpen) {
+      viewerWasOpenRef.current = true;
+      return;
+    }
+    if (!viewerWasOpenRef.current) return;
+    viewerWasOpenRef.current = false;
+    viewerOpenSuppressedUntilRef.current = performance.now() + 500;
+    restoreDesiredScroll();
+    const firstFrame = window.requestAnimationFrame(() => {
+      restoreDesiredScroll();
+      window.requestAnimationFrame(() => {
+        const currentOpener = scrollRef.current?.querySelector<HTMLElement>(
+          "[data-detail-main-image]",
+        );
+        const opener = currentOpener ?? viewerOpenerRef.current;
+        if (opener?.isConnected === true) opener.focus({ preventScroll: true });
+      });
+    });
+    return () => window.cancelAnimationFrame(firstFrame);
+  }, [restoreDesiredScroll, viewerOpen]);
+
   useEffect(
     () => () => {
       if (scrollSuppressionFrameRef.current !== null) {
@@ -242,11 +291,44 @@ export const CatalogDetailExperience = ({
           backButtonRef={backButtonRef}
           onActiveMediaIndexChange={setActiveMediaIndex}
           onBack={onBack}
+          onOpenViewer={(index, opener) => {
+            const item = media[index];
+            if (
+              item === undefined ||
+              performance.now() < viewerOpenSuppressedUntilRef.current
+            ) {
+              return;
+            }
+            const scroller = scrollRef.current;
+            if (scroller !== null) {
+              desiredScrollTopRef.current = scroller.scrollTop;
+              onScrollTopChange(scroller.scrollTop);
+            }
+            viewerOpenerRef.current = opener;
+            setActiveMediaIndex(index);
+            onOpenViewer(item.id);
+          }}
           orientation={orientation}
           platform={platform}
           state={state}
         />
       </div>
+      <CatalogViewer
+        index={activeMediaIndex}
+        media={media}
+        onClose={() => {
+          viewerOpenSuppressedUntilRef.current = performance.now() + 500;
+          onCloseViewer();
+        }}
+        onIndexChange={(index) => {
+          const item = media[index];
+          if (item === undefined) return;
+          setActiveMediaIndex(index);
+          onViewerMediaChange(item.id);
+        }}
+        open={viewerOpen}
+        platform={platform}
+      />
     </div>
   );
 };

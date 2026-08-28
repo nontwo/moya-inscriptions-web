@@ -20,6 +20,16 @@ export interface DetailProductHistoryState {
   readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
 }
 
+export interface ViewerProductHistoryState {
+  readonly catalogId: string;
+  readonly detailScrollTop: number;
+  readonly kind: "viewer";
+  readonly mediaId: string;
+  readonly sourceDestination: PrimaryDestination;
+  readonly sourceScrollTop: number;
+  readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
+}
+
 export interface SettingsProductHistoryState {
   readonly kind: "settings";
   readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
@@ -38,6 +48,7 @@ export interface TopicProductHistoryState {
 export type ProductHistoryState =
   | PrimaryProductHistoryState
   | DetailProductHistoryState
+  | ViewerProductHistoryState
   | SettingsProductHistoryState
   | TopicProductHistoryState;
 
@@ -48,6 +59,7 @@ const productHistoryKeys = new Set([
   "focusCatalogId",
   "focusTopicId",
   "kind",
+  "mediaId",
   "scrollTop",
   "sourceDestination",
   "sourceHomeFeed",
@@ -121,6 +133,22 @@ export const detailHistoryState = (
   catalogId,
   detailScrollTop: boundedScrollTop(detailScrollTop),
   kind: "detail",
+  sourceDestination,
+  sourceScrollTop: boundedScrollTop(sourceScrollTop),
+  version: PRODUCT_SHELL_HISTORY_VERSION,
+});
+
+export const viewerHistoryState = (
+  catalogId: string,
+  mediaId: string,
+  sourceDestination: PrimaryDestination,
+  sourceScrollTop: number,
+  detailScrollTop = 0,
+): ViewerProductHistoryState => ({
+  catalogId,
+  detailScrollTop: boundedScrollTop(detailScrollTop),
+  kind: "viewer",
+  mediaId,
   sourceDestination,
   sourceScrollTop: boundedScrollTop(sourceScrollTop),
   version: PRODUCT_SHELL_HISTORY_VERSION,
@@ -210,6 +238,29 @@ export const parseProductHistoryState = (
   }
 
   if (
+    candidate.kind === "viewer" &&
+    typeof candidate.catalogId === "string" &&
+    candidate.catalogId.length > 0 &&
+    typeof candidate.mediaId === "string" &&
+    candidate.mediaId.length > 0 &&
+    isPrimaryDestination(candidate.sourceDestination) &&
+    typeof candidate.sourceScrollTop === "number" &&
+    Number.isFinite(candidate.sourceScrollTop) &&
+    candidate.sourceScrollTop >= 0 &&
+    typeof candidate.detailScrollTop === "number" &&
+    Number.isFinite(candidate.detailScrollTop) &&
+    candidate.detailScrollTop >= 0
+  ) {
+    return viewerHistoryState(
+      candidate.catalogId,
+      candidate.mediaId,
+      candidate.sourceDestination,
+      candidate.sourceScrollTop,
+      candidate.detailScrollTop,
+    );
+  }
+
+  if (
     candidate.kind === "settings" &&
     isPrimaryDestination(candidate.sourceDestination)
   ) {
@@ -235,6 +286,7 @@ export const parseProductHistoryState = (
 export const primaryLocation = (location: Location) => {
   const parameters = new URLSearchParams(location.search);
   parameters.delete("catalogId");
+  parameters.delete("image");
   const search = parameters.toString();
   return `${location.pathname}${search.length === 0 ? "" : `?${search}`}`;
 };
@@ -247,18 +299,39 @@ export const topicLocation = (location: Location, topicId: string) =>
 
 export const detailLocation = (location: Location, catalogId: string) => {
   const parameters = new URLSearchParams(location.search);
+  parameters.delete("image");
   parameters.set("catalogId", catalogId);
   return `${location.pathname}?${parameters.toString()}#detail`;
 };
 
-export const directCatalogIdFromLocation = (
+export const viewerLocation = (
+  location: Location,
+  catalogId: string,
+  mediaId: string,
+) => {
+  const parameters = new URLSearchParams(location.search);
+  parameters.set("catalogId", catalogId);
+  parameters.set("image", mediaId);
+  return `${location.pathname}?${parameters.toString()}#viewer`;
+};
+
+const directIdentifierFromLocation = (
   location: Pick<Location, "search">,
+  name: string,
 ): string | null => {
-  const catalogId = new URLSearchParams(location.search).get("catalogId");
-  return catalogId !== null &&
-    catalogId.length > 0 &&
-    catalogId.length <= 128 &&
-    /^\S+$/u.test(catalogId)
-    ? catalogId
+  const identifier = new URLSearchParams(location.search).get(name);
+  return identifier !== null &&
+    identifier.length > 0 &&
+    identifier.length <= 128 &&
+    /^\S+$/u.test(identifier)
+    ? identifier
     : null;
 };
+
+export const directCatalogIdFromLocation = (
+  location: Pick<Location, "search">,
+): string | null => directIdentifierFromLocation(location, "catalogId");
+
+export const directMediaIdFromLocation = (
+  location: Pick<Location, "search">,
+): string | null => directIdentifierFromLocation(location, "image");

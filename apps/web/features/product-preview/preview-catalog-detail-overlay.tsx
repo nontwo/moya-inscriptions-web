@@ -26,7 +26,14 @@ export const PreviewCatalogDetailOverlay = ({
   onClose,
   onScrollTopChange,
 }: PreviewCatalogDetailOverlayProps) => {
-  const { orientation, platform } = useProductShell();
+  const {
+    activeViewerMediaId,
+    changeViewerMedia,
+    closeViewer,
+    openViewer,
+    orientation,
+    platform,
+  } = useProductShell();
   const generationRef = useRef(0);
   const [state, setState] = useState<CatalogDetailPresentationState>({
     state: "loading",
@@ -58,11 +65,15 @@ export const PreviewCatalogDetailOverlay = ({
 
   return (
     <CatalogDetailExperience
+      activeViewerMediaId={activeViewerMediaId}
       backButtonRef={backButtonRef}
       catalogId={catalogId}
       initialScrollTop={initialScrollTop}
       onBack={onClose}
+      onCloseViewer={closeViewer}
+      onOpenViewer={openViewer}
       onScrollTopChange={onScrollTopChange}
+      onViewerMediaChange={changeViewerMedia}
       orientation={orientation}
       platform={platform}
       state={state}
