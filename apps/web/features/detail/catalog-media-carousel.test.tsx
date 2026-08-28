@@ -282,15 +282,19 @@ describe("CatalogMediaCarousel", () => {
     expect(first.onActiveIndexChange).toHaveBeenCalledOnce();
     expect(first.onActiveIndexChange).toHaveBeenCalledWith(1);
 
-    const canceled = renderCarousel();
+    const canceled = renderCarousel(1);
     act(() => {
-      canceled.stage.dispatchEvent(touchEvent("touchstart", 1));
       canceled.stage.scrollLeft = 300;
+      canceled.stage.dispatchEvent(touchEvent("touchstart", 1));
+      canceled.stage.scrollLeft = 450;
       canceled.stage.dispatchEvent(new Event("scroll", { bubbles: true }));
       canceled.stage.dispatchEvent(touchEvent("touchcancel", 0));
-      vi.advanceTimersByTime(500);
+      // Native compositors can publish one final partial offset after cancel.
+      canceled.stage.scrollLeft = 150;
+      canceled.stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+      vi.advanceTimersByTime(121);
     });
-    expect(canceled.stage.scrollLeft).toBe(0);
+    expect(canceled.stage.scrollLeft).toBe(300);
     expect(canceled.onActiveIndexChange).not.toHaveBeenCalled();
   });
 

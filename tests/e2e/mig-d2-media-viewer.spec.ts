@@ -344,6 +344,55 @@ test("MIG-D2 Detail Carousel accepts trusted diagonal native touch", async ({
     }
 
     await expect(counter).toHaveText("2 / 3");
+    const cancelBox = await stage.boundingBox();
+    if (cancelBox === null) {
+      throw new Error("Missing Detail Carousel cancel geometry");
+    }
+    const cancelSession = await context.newCDPSession(page);
+    const cancelStartX = cancelBox.x + cancelBox.width * 0.7;
+    const cancelEndX = cancelBox.x + cancelBox.width * 0.2;
+    const cancelY = cancelBox.y + cancelBox.height / 2;
+    try {
+      await cancelSession.send("Input.dispatchTouchEvent", {
+        touchPoints: [{ x: cancelStartX, y: cancelY }],
+        type: "touchStart",
+      });
+      for (let step = 1; step <= 8; step += 1) {
+        await cancelSession.send("Input.dispatchTouchEvent", {
+          touchPoints: [
+            {
+              x: cancelStartX + ((cancelEndX - cancelStartX) * step) / 8,
+              y: cancelY,
+            },
+          ],
+          type: "touchMove",
+        });
+        await page.waitForTimeout(16);
+      }
+      await expect
+        .poll(() =>
+          stage.evaluate((node) => {
+            const frame = node as HTMLElement;
+            return Math.abs(frame.scrollLeft - frame.clientWidth);
+          }),
+        )
+        .toBeGreaterThan(20);
+      await cancelSession.send("Input.dispatchTouchEvent", {
+        touchPoints: [],
+        type: "touchCancel",
+      });
+    } finally {
+      await cancelSession.detach();
+    }
+    await expect(counter).toHaveText("2 / 3");
+    await expect
+      .poll(() =>
+        stage.evaluate((node) => {
+          const frame = node as HTMLElement;
+          return Math.abs(frame.scrollLeft - frame.clientWidth);
+        }),
+      )
+      .toBeLessThanOrEqual(1);
     const viewer = page.getByRole("dialog", { name: "图像查看" });
     await expect(viewer).toBeHidden();
 
@@ -400,6 +449,42 @@ test("MIG-D2 Detail Carousel accepts trusted diagonal native touch", async ({
   } finally {
     await context.close();
   }
+});
+
+test("MIG-D2 Detail Carousel clears native offset when resizing from Tablet to PC", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "The cross-platform composition threshold uses the desktop runtime class",
+  );
+  await page.setViewportSize({ height: 1180, width: 820 });
+  const { detail } = await openMultiMediaDetail(page);
+  const stage = detail.locator("[data-detail-main-stage]");
+  await expect(stage).toHaveAttribute("data-native-paging", "true");
+  await detail.getByRole("button", { name: /第 2 张图像/u }).click();
+  await expect(detail.locator("[data-detail-media-index]")).toHaveText("2 / 3");
+  await expect
+    .poll(() =>
+      stage.evaluate((node) => {
+        const frame = node as HTMLElement;
+        return Math.abs(frame.scrollLeft - frame.clientWidth);
+      }),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await page.setViewportSize({ height: 900, width: 1024 });
+  await expect(stage).toHaveAttribute("data-native-paging", "false");
+  await expect.poll(() => stage.evaluate((node) => node.scrollLeft)).toBe(0);
+  const [stageBox, activeImageBox] = await Promise.all([
+    stage.boundingBox(),
+    detail.locator("[data-detail-main-image]").boundingBox(),
+  ]);
+  if (stageBox === null || activeImageBox === null) {
+    throw new Error("Missing PC Detail Carousel geometry");
+  }
+  expect(activeImageBox.x).toBeCloseTo(stageBox.x, 0);
+  expect(activeImageBox.width).toBeCloseTo(stageBox.width, 0);
 });
 
 test("MIG-D2 Viewer rejects foreign media and reports a valid broken image truthfully", async ({

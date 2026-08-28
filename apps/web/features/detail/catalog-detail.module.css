@@ -194,7 +194,8 @@
   transition: none;
 }
 
-.mainStage[data-dragging="true"] .mediaTrack {
+.mainStage[data-dragging="true"] .mediaTrack,
+.mainStage[data-platform-realigning="true"] .mediaTrack {
   transition: none;
 }
 

@@ -84,17 +84,20 @@ export const CatalogMediaCarousel = ({
   const [failedMediaIds, setFailedMediaIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const nativePaging = platform !== "pc";
   const stageRef = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<CarouselGesture | null>(null);
   const activeIndexRef = useRef(activeIndex);
   const nativeProgrammaticIndexRef = useRef<number | null>(null);
+  const nativeCanceledIndexRef = useRef<number | null>(null);
+  const nativeRealignFrameRef = useRef<number | null>(null);
   const nativeSettleTimerRef = useRef<number | null>(null);
   const nativeTouchActiveRef = useRef(false);
   const nativeTouchStartScrollLeftRef = useRef(0);
   const nativeViewportWidthRef = useRef(0);
+  const previousNativePagingRef = useRef(nativePaging);
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
-  const nativePaging = platform !== "pc";
   activeIndexRef.current = activeIndex;
 
   const clearClickSuppression = () => {
@@ -123,6 +126,14 @@ export const CatalogMediaCarousel = ({
     }
   };
 
+  const clearNativeRealignFrame = () => {
+    if (nativeRealignFrameRef.current !== null) {
+      window.cancelAnimationFrame(nativeRealignFrameRef.current);
+      nativeRealignFrameRef.current = null;
+    }
+    delete stageRef.current?.dataset.platformRealigning;
+  };
+
   const writeNativeScrollLeft = (
     index: number,
     behavior: ScrollBehavior = "auto",
@@ -143,9 +154,29 @@ export const CatalogMediaCarousel = ({
   }, [activeIndex]);
 
   useLayoutEffect(() => {
-    if (!nativePaging) return;
     const stage = stageRef.current;
     if (stage === null) return;
+    const wasNativePaging = previousNativePagingRef.current;
+    previousNativePagingRef.current = nativePaging;
+    clearNativeRealignFrame();
+    if (!nativePaging) {
+      if (wasNativePaging) {
+        stage.dataset.platformRealigning = "true";
+        nativeRealignFrameRef.current = window.requestAnimationFrame(() => {
+          nativeRealignFrameRef.current = window.requestAnimationFrame(() => {
+            delete stage.dataset.platformRealigning;
+            nativeRealignFrameRef.current = null;
+          });
+        });
+      }
+      clearNativeSettleTimer();
+      nativeCanceledIndexRef.current = null;
+      nativeProgrammaticIndexRef.current = null;
+      nativeTouchActiveRef.current = false;
+      nativeViewportWidthRef.current = stage.clientWidth;
+      if (stage.scrollLeft !== 0) stage.scrollLeft = 0;
+      return;
+    }
     const synchronize = () => {
       if (nativeProgrammaticIndexRef.current === activeIndex) {
         nativeProgrammaticIndexRef.current = null;
@@ -177,6 +208,9 @@ export const CatalogMediaCarousel = ({
       if (nativeSettleTimerRef.current !== null) {
         window.clearTimeout(nativeSettleTimerRef.current);
       }
+      if (nativeRealignFrameRef.current !== null) {
+        window.cancelAnimationFrame(nativeRealignFrameRef.current);
+      }
       if (suppressClickTimerRef.current !== null) {
         window.clearTimeout(suppressClickTimerRef.current);
       }
@@ -202,6 +236,12 @@ export const CatalogMediaCarousel = ({
     if (!nativePaging || nativeTouchActiveRef.current) return;
     const stage = stageRef.current;
     if (stage === null || stage.clientWidth <= 0) return;
+    const canceledIndex = nativeCanceledIndexRef.current;
+    if (canceledIndex !== null) {
+      nativeCanceledIndexRef.current = null;
+      writeNativeScrollLeft(canceledIndex);
+      return;
+    }
     const index = Math.min(
       Math.max(Math.round(stage.scrollLeft / stage.clientWidth), 0),
       media.length - 1,
@@ -377,6 +417,7 @@ export const CatalogMediaCarousel = ({
           if (!nativePaging) return;
           nativeTouchActiveRef.current = false;
           clearNativeSettleTimer();
+          nativeCanceledIndexRef.current = activeIndexRef.current;
           const stage = stageRef.current;
           if (
             stage !== null &&
@@ -387,10 +428,12 @@ export const CatalogMediaCarousel = ({
             suppressCompletedGestureClick();
           }
           writeNativeScrollLeft(activeIndexRef.current);
+          scheduleNativeSettle();
         }}
         onTouchEndCapture={() => {
           if (!nativePaging) return;
           nativeTouchActiveRef.current = false;
+          nativeCanceledIndexRef.current = null;
           const stage = stageRef.current;
           if (
             stage !== null &&
@@ -406,6 +449,7 @@ export const CatalogMediaCarousel = ({
           if (!nativePaging || event.touches.length !== 1) return;
           clearClickSuppression();
           clearNativeSettleTimer();
+          nativeCanceledIndexRef.current = null;
           nativeTouchActiveRef.current = true;
           nativeTouchStartScrollLeftRef.current =
             stageRef.current?.scrollLeft ?? 0;
