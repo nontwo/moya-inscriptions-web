@@ -201,6 +201,23 @@ describe("CalligraphyCategoryPager", () => {
     expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 400 });
   });
 
+  it("commits before applying the shorter target panel height", () => {
+    let heightObservedByCommit: string | undefined;
+    const onCommit = vi.fn<(category: CalligraphyCategory) => void>(() => {
+      heightObservedByCommit = rendered.frame.style.height;
+    });
+    const rendered = renderPager("pc", onCommit);
+    expect(rendered.frame.style.height).toBe("900px");
+
+    act(() => rendered.handle.current?.scrollToCategory("ink"));
+    act(() => rendered.frame.dispatchEvent(new Event("scrollend")));
+
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("ink");
+    expect(heightObservedByCommit).toBe("900px");
+    expect(rendered.frame.style.height).toBe("600px");
+  });
+
   it("cancels an interrupted gesture without changing category", () => {
     const { frame, onCommit } = renderPager();
     act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));

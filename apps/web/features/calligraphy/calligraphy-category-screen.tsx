@@ -10,6 +10,8 @@ import {
 
 import { CatalogCard, isUltraWideCatalogMedia } from "../home/catalog-card";
 import { CatalogMasonry } from "../home/catalog-masonry";
+import { CatalogPagingControl } from "../catalog-paging/catalog-paging-control";
+import { useCatalogPaging } from "../catalog-paging/catalog-paging";
 import { useProductShell } from "../product-shell/product-shell";
 import { CalligraphyCategoryPager } from "./calligraphy-category-pager";
 import { calligraphyCategories } from "./calligraphy-category";
@@ -67,35 +69,56 @@ const CategoryMessage = ({
 const renderCategory = (
   category: CalligraphyCategory,
   state: CalligraphyCategoryState,
+  displayItems: readonly CatalogSummary[] | undefined,
+  afterContent: ReactNode,
   feedLayout: "single" | "double",
   platform: "phone" | "tablet" | "pc",
   openCatalog: (catalogId: string, opener: HTMLElement) => void,
 ): ReactNode => {
   if (state.state !== "populated") {
-    return <CategoryMessage category={category} state={state.state} />;
+    return (
+      <>
+        <CategoryMessage category={category} state={state.state} />
+        {afterContent}
+      </>
+    );
   }
-  const items = state.page.items.filter(({ kind }) => kind === "calligraphy");
+  const items = (displayItems ?? state.page.items).filter(
+    ({ kind }) => kind === "calligraphy",
+  );
   if (items.length === 0) {
-    return <CategoryMessage category={category} state="empty" />;
+    return (
+      <>
+        <CategoryMessage category={category} state="empty" />
+        {afterContent}
+      </>
+    );
   }
   return (
-    <div className={styles.categoryFeed} data-feed-layout={feedLayout}>
-      <CatalogMasonry<CatalogSummary>
-        feedLayout={feedLayout}
-        getKey={(item) => item.id}
-        isFullSpan={(item) => isUltraWideCatalogMedia(item.representativeMedia)}
-        items={items}
-        platform={platform}
-        renderItem={(item, onMediaSettled) => (
-          <CatalogCard
-            item={item}
-            onMediaSettled={onMediaSettled}
-            onOpenCatalog={(catalog, opener) => openCatalog(catalog.id, opener)}
-            variant="feed"
-          />
-        )}
-      />
-    </div>
+    <>
+      <div className={styles.categoryFeed} data-feed-layout={feedLayout}>
+        <CatalogMasonry<CatalogSummary>
+          feedLayout={feedLayout}
+          getKey={(item) => item.id}
+          isFullSpan={(item) =>
+            isUltraWideCatalogMedia(item.representativeMedia)
+          }
+          items={items}
+          platform={platform}
+          renderItem={(item, onMediaSettled) => (
+            <CatalogCard
+              item={item}
+              onMediaSettled={onMediaSettled}
+              onOpenCatalog={(catalog, opener) =>
+                openCatalog(catalog.id, opener)
+              }
+              variant="feed"
+            />
+          )}
+        />
+      </div>
+      {afterContent}
+    </>
   );
 };
 
@@ -130,6 +153,10 @@ export const CalligraphyCategoryScreen = ({
   } = useProductShell();
   const [activeCategory, setActiveCategory] =
     useState<CalligraphyCategory>("all");
+  const allPaging = useCatalogPaging({
+    initialState: data.categories.all,
+    kind: "calligraphy",
+  });
   activeCategoryRef.current = activeCategory;
 
   const updateIndicator = useCallback((progress: number) => {
@@ -236,16 +263,26 @@ export const CalligraphyCategoryScreen = ({
   );
 
   const panels = Object.fromEntries(
-    calligraphyCategories.map((category) => [
-      category,
-      renderCategory(
+    calligraphyCategories.map((category) => {
+      const paged = category === "all";
+      return [
         category,
-        data.categories[category],
-        feedLayout,
-        platform,
-        openCatalog,
-      ),
-    ]),
+        renderCategory(
+          category,
+          data.categories[category],
+          paged ? allPaging.items : undefined,
+          paged ? (
+            <CatalogPagingControl
+              onLoadNextPage={() => void allPaging.loadNextPage()}
+              state={allPaging.requestState}
+            />
+          ) : null,
+          feedLayout,
+          platform,
+          openCatalog,
+        ),
+      ];
+    }),
   ) as Record<CalligraphyCategory, ReactNode>;
 
   return (

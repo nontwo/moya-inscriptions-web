@@ -11,7 +11,7 @@ import type {
 import type { ServerResponse } from "node:http";
 
 const host = "127.0.0.1";
-const port = 3101;
+const port = Number(process.env.MOYA_E2E_PUBLIC_API_PORT ?? "3101");
 const baseUrl = `http://${host}:${port}`;
 
 const catalogId = (value: string) => value as CatalogId;
@@ -53,8 +53,36 @@ const calligraphyLeaf = publicMedia(
   1400,
   1000,
 );
+const pagingInscriptionFront = publicMedia(
+  "runtime-paging-inscription-22-front",
+  "inscription-front.svg",
+  "分页碑刻二十二正面",
+  1200,
+  1600,
+);
+const pagingInscriptionDetail = publicMedia(
+  "runtime-paging-inscription-22-detail",
+  "inscription-detail.svg",
+  "分页碑刻二十二局部",
+  1600,
+  900,
+);
+const pagingCalligraphyFront = publicMedia(
+  "runtime-paging-calligraphy-24-front",
+  "calligraphy-leaf.svg",
+  "分页书帖二十四正面",
+  1400,
+  1000,
+);
+const pagingCalligraphyDetail = publicMedia(
+  "runtime-paging-calligraphy-24-detail",
+  "inscription-detail.svg",
+  "分页书帖二十四局部",
+  1600,
+  900,
+);
 
-const summaries: readonly CatalogSummary[] = [
+const baseSummaries: readonly CatalogSummary[] = [
   {
     aliases: ["无图运行记录"],
     id: catalogId("runtime-inscription-no-media"),
@@ -88,6 +116,45 @@ const summaries: readonly CatalogSummary[] = [
     summary: "用于验证书帖运行时身份。",
     title: "运行时书帖",
   },
+];
+
+const pagingSummary = (
+  kind: "calligraphy" | "inscription",
+  number: number,
+): CatalogSummary => {
+  const sequence = String(number).padStart(2, "0");
+  const id = `runtime-paging-${kind}-${sequence}`;
+  const representativeMedia =
+    number % 3 === 0
+      ? undefined
+      : publicMedia(
+          `${id}-representative`,
+          kind === "inscription"
+            ? "inscription-front.svg"
+            : "calligraphy-leaf.svg",
+          `${kind === "inscription" ? "分页碑刻" : "分页书帖"}${number}代表图`,
+          kind === "inscription" ? 1200 : 1400,
+          kind === "inscription" ? 1600 : 1000,
+        );
+  return {
+    aliases: [],
+    id: catalogId(id),
+    kind,
+    periodLabel: number % 2 === 0 ? "唐" : "宋",
+    ...(representativeMedia === undefined ? {} : { representativeMedia }),
+    summary: `用于验证${kind === "inscription" ? "碑刻" : "书帖"}渐进加载第 ${number} 条记录。`,
+    title: `${kind === "inscription" ? "分页碑刻" : "分页书帖"} ${number}`,
+  };
+};
+
+const pagingSummaries: readonly CatalogSummary[] = [
+  ...baseSummaries,
+  ...Array.from({ length: 52 }, (_, index) =>
+    pagingSummary("inscription", index + 1),
+  ),
+  ...Array.from({ length: 54 }, (_, index) =>
+    pagingSummary("calligraphy", index + 1),
+  ),
 ];
 
 const details = new Map<string, CatalogDetail>([
@@ -142,6 +209,44 @@ const details = new Map<string, CatalogDetail>([
       title: "运行时书帖",
     },
   ],
+  [
+    "runtime-paging-inscription-22",
+    {
+      aliases: [],
+      description:
+        "此记录用于验证第二页碑刻进入详情、查看多媒体并准确返回列表位置。".repeat(
+          12,
+        ),
+      dynasty: "唐",
+      id: catalogId("runtime-paging-inscription-22"),
+      kind: "inscription",
+      media: [pagingInscriptionFront, pagingInscriptionDetail],
+      periodLabel: "唐",
+      representativeMedia: pagingInscriptionFront,
+      sourceCitations: [{ label: "测试公开资料" }],
+      summary: "用于验证碑刻分页往返。",
+      title: "分页碑刻 22",
+    },
+  ],
+  [
+    "runtime-paging-calligraphy-24",
+    {
+      aliases: [],
+      description:
+        "此记录用于验证第二页书帖进入详情、查看多媒体并准确返回全部分类位置。".repeat(
+          12,
+        ),
+      dynasty: "唐",
+      id: catalogId("runtime-paging-calligraphy-24"),
+      kind: "calligraphy",
+      media: [pagingCalligraphyFront, pagingCalligraphyDetail],
+      periodLabel: "唐",
+      representativeMedia: pagingCalligraphyFront,
+      sourceCitations: [{ label: "测试公开资料" }],
+      summary: "用于验证书帖分页往返。",
+      title: "分页书帖 24",
+    },
+  ],
 ]);
 
 const mismatchedDetail: CatalogDetail = {
@@ -185,23 +290,31 @@ const server = createServer((request, response) => {
     return;
   }
 
-  if (url.pathname === "/v1/catalog") {
+  if (url.pathname === "/v1/catalog" || url.pathname === "/paging/v1/catalog") {
+    const summaries = url.pathname.startsWith("/paging/")
+      ? pagingSummaries
+      : baseSummaries;
     const kind = url.searchParams.get("kind");
     const items = summaries.filter(
       (item) => kind === null || item.kind === kind,
     );
+    const pageNumber = Number(url.searchParams.get("page") ?? "1");
+    const pageSize = Number(url.searchParams.get("pageSize") ?? "20");
+    const offset = (pageNumber - 1) * pageSize;
     const page: CatalogPage = {
-      items: [...items],
-      page: 1,
-      pageSize: 20,
+      items: items.slice(offset, offset + pageSize),
+      page: pageNumber,
+      pageSize,
       total: items.length,
-      totalPages: items.length === 0 ? 0 : 1,
+      totalPages: items.length === 0 ? 0 : Math.ceil(items.length / pageSize),
     };
     sendJson(response, 200, page);
     return;
   }
 
-  const catalogDetailMatch = url.pathname.match(/^\/v1\/catalog\/([^/]+)$/);
+  const catalogDetailMatch = url.pathname.match(
+    /^\/(?:paging\/)?v1\/catalog\/([^/]+)$/,
+  );
   if (catalogDetailMatch) {
     const requestedId = decodeURIComponent(catalogDetailMatch[1] ?? "");
     if (requestedId === "runtime-identity-mismatch") {

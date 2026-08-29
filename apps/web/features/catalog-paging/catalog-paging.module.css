@@ -1,0 +1,31 @@
+.container {
+  display: grid;
+  width: 100%;
+  padding: var(--yoyi-space-5) 0 var(--yoyi-space-2);
+  place-items: center;
+}
+
+.button {
+  min-width: 136px;
+  min-height: 44px;
+  padding: var(--yoyi-space-2) var(--yoyi-space-5);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  box-shadow: var(--yoyi-shadow-subtle);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  color: var(--yoyi-color-text-secondary);
+  cursor: default;
+  opacity: 0.72;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}

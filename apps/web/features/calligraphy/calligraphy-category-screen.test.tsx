@@ -4,6 +4,15 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { fetchSameOriginCatalogPageMock } = vi.hoisted(() => ({
+  fetchSameOriginCatalogPageMock: vi.fn(),
+}));
+
+vi.mock("../../lib/public-api/catalog-list-client", async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchSameOriginCatalogPage: fetchSameOriginCatalogPageMock,
+}));
+
 import { createRuntimeCalligraphyCategorySurface } from "./calligraphy-category";
 import { CalligraphyCategoryScreen } from "./calligraphy-category-screen";
 
@@ -78,12 +87,15 @@ let scrollToCalls: ScrollToOptions[] = [];
 let viewportHeight = 800;
 let viewportWidth = 400;
 
-const page = (items: readonly CatalogSummary[]): CatalogPage => ({
+const page = (
+  items: readonly CatalogSummary[],
+  options: Partial<Pick<CatalogPage, "page" | "total" | "totalPages">> = {},
+): CatalogPage => ({
   items: [...items],
-  page: 1,
+  page: options.page ?? 1,
   pageSize: 24,
-  total: items.length,
-  totalPages: items.length === 0 ? 0 : 1,
+  total: options.total ?? items.length,
+  totalPages: options.totalPages ?? (items.length === 0 ? 0 : 1),
 });
 
 const item = (id: string, title: string): CatalogSummary => ({
@@ -130,6 +142,7 @@ describe("CalligraphyCategoryScreen", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     scrollToCalls = [];
+    fetchSameOriginCatalogPageMock.mockReset();
     openCatalog.mockReset();
     readActiveScrollTop.mockReset();
     readActiveScrollTop.mockReturnValue(0);
@@ -303,6 +316,77 @@ describe("CalligraphyCategoryScreen", () => {
     )!;
     act(() => opener.click());
     expect(openCatalog).toHaveBeenCalledWith("qa-ink", opener);
+  });
+
+  it("keeps appended all-category records across category switches and opens a page-2 identity", async () => {
+    const firstPageItems = Array.from({ length: 24 }, (_, index) =>
+      item(
+        `runtime-calligraphy-${String(index + 1).padStart(2, "0")}`,
+        `运行时书帖 ${index + 1}`,
+      ),
+    );
+    const secondPageItems = Array.from({ length: 24 }, (_, index) =>
+      item(
+        `runtime-calligraphy-${String(index + 25).padStart(2, "0")}`,
+        `运行时书帖 ${index + 25}`,
+      ),
+    );
+    fetchSameOriginCatalogPageMock.mockResolvedValue({
+      page: page(secondPageItems, { page: 2, total: 55, totalPages: 3 }),
+      state: "success",
+    });
+    readActiveScrollTop.mockReturnValueOnce(184).mockReturnValue(0);
+    const { container, frame } = renderScreen(
+      createRuntimeCalligraphyCategorySurface({
+        page: page(firstPageItems, { total: 55, totalPages: 3 }),
+        state: "populated",
+      }),
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-calligraphy-category-panel="all"] [data-catalog-id]',
+      ),
+    ).toHaveLength(24);
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>("[data-catalog-paging-control]")
+        ?.click();
+    });
+
+    expect(fetchSameOriginCatalogPageMock).toHaveBeenCalledWith(
+      { kind: "calligraphy", page: "2", pageSize: "24" },
+      expect.any(AbortSignal),
+    );
+    expect(
+      container.querySelectorAll(
+        '[data-calligraphy-category-panel="all"] [data-catalog-id]',
+      ),
+    ).toHaveLength(48);
+    expect(
+      container.querySelectorAll("[data-catalog-paging-control]"),
+    ).toHaveLength(1);
+
+    activateCategory(container, frame, "ink");
+    expect(container.textContent).toContain("墨迹分类数据尚未接入");
+    activateCategory(container, frame, "rubbing");
+    expect(container.textContent).toContain("拓本分类数据尚未接入");
+    activateCategory(container, frame, "all");
+    expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(184);
+    expect(
+      container.querySelectorAll(
+        '[data-calligraphy-category-panel="all"] [data-catalog-id]',
+      ),
+    ).toHaveLength(48);
+
+    const pageTwoOpener = container.querySelector<HTMLButtonElement>(
+      '[data-calligraphy-category-panel="all"] [data-catalog-id="runtime-calligraphy-25"]',
+    )!;
+    act(() => pageTwoOpener.click());
+    expect(openCatalog).toHaveBeenCalledWith(
+      "runtime-calligraphy-25",
+      pageTwoOpener,
+    );
   });
 
   it("reapplies the active category scroll after resize and orientation", () => {
