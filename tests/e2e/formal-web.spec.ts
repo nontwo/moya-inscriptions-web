@@ -38,7 +38,7 @@ const selectPrimaryDestination = async (
 ) => {
   await primaryNavigation(page)
     .getByRole("button", { exact: true, name })
-    .evaluate((button) => (button as HTMLButtonElement).click());
+    .click();
   await expect(productShell(page)).toHaveAttribute(
     "data-active-destination",
     destination,
