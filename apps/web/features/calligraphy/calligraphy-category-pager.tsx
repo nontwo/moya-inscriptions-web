@@ -521,7 +521,16 @@ export const CalligraphyCategoryPager = forwardRef<
     if (!primaryVisible) return;
     const frame = frameRef.current;
     const offset = readSnapOffsets()[activeIndexRef.current];
-    if (frame !== null && offset !== undefined) frame.scrollLeft = offset;
+    if (frame !== null) {
+      const width = frame.clientWidth;
+      if (width > 0) {
+        frameWidthRef.current = width;
+        frameWasUnavailableRef.current = false;
+      } else {
+        frameWasUnavailableRef.current = true;
+      }
+      if (offset !== undefined) frame.scrollLeft = offset;
+    }
     applyPanelHeight(activeIndexRef.current);
     publishProgress(true);
   }, [applyPanelHeight, primaryVisible, publishProgress, readSnapOffsets]);

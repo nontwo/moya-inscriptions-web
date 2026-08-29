@@ -28,6 +28,7 @@ describe("T02 R03 architecture boundaries", () => {
       path.join(repositoryRoot, "apps/web/features/topics"),
       path.join(repositoryRoot, "apps/web/features/product-shell"),
       path.join(repositoryRoot, "apps/web/features/product-preview"),
+      path.join(repositoryRoot, "apps/web/features/product-application"),
       path.join(repositoryRoot, "apps/web/features/detail"),
       path.join(repositoryRoot, "apps/web/sources"),
     ];
@@ -36,7 +37,9 @@ describe("T02 R03 architecture boundaries", () => {
       for (const file of await collectSourceFiles(root)) {
         const source = await readFile(file, "utf8");
         if (
-          /apps\/web\/qa|\.\.\/qa\/|features\/qa|docs\/prototypes/u.test(source)
+          /(?:^|[/])app\/dev|development-data|apps\/web\/qa|\.\.\/qa\/|features\/qa|docs\/prototypes/u.test(
+            source,
+          )
         ) {
           violations.push(path.relative(repositoryRoot, file));
         }
@@ -85,20 +88,24 @@ describe("T02 R03 architecture boundaries", () => {
     );
   });
 
-  it("leaves Formal root and Catalog redirect outside the React preview", async () => {
+  it("uses the accepted React preview at Formal root while preserving the Catalog redirect", async () => {
     const formal = await readFile(
-      path.join(repositoryRoot, "apps/web/app/route.ts"),
+      path.join(repositoryRoot, "apps/web/app/page.tsx"),
       "utf8",
     );
     const catalogRedirect = await readFile(
       path.join(repositoryRoot, "apps/web/app/catalog/[catalogId]/route.ts"),
       "utf8",
     );
-    for (const source of [formal, catalogRedirect]) {
-      expect(source).not.toMatch(/T02pProductPreview|HomeScreen|TopicDetail/u);
-      expect(source).not.toMatch(/apps\/web\/qa|features\/qa/u);
-    }
+    expect(formal).toContain("T02pProductPreview");
+    expect(formal).not.toMatch(
+      /readT02Document|t02-static-files|(?:^|[/])app\/dev|development-data|features\/qa|docs\/prototypes/u,
+    );
+    expect(catalogRedirect).not.toMatch(
+      /T02pProductPreview|HomeScreen|TopicDetail|apps\/web\/qa|features\/qa/u,
+    );
     expect(catalogRedirect).toContain("redirect");
+    expect(catalogRedirect).toContain("307");
   });
 
   it("contains no committed machine-specific IPv4 origin in R03 runtime composition", async () => {

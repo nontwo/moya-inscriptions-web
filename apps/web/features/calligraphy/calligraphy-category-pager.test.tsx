@@ -49,6 +49,7 @@ class TestResizeObserver implements ResizeObserver {
 const renderPager = (
   platform: "phone" | "tablet" | "pc" = "phone",
   onCommit = vi.fn<(category: CalligraphyCategory) => void>(),
+  initialPrimaryVisible = true,
 ) => {
   const container = document.createElement("div");
   document.body.append(container);
@@ -82,7 +83,7 @@ const renderPager = (
       );
     });
   };
-  render();
+  render("all", initialPrimaryVisible);
   const frame = container.querySelector<HTMLElement>(
     "[data-calligraphy-category-pager]",
   )!;
@@ -257,5 +258,24 @@ describe("CalligraphyCategoryPager", () => {
 
     expect(frame.scrollLeft).toBe(520);
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("preserves the first native gesture after becoming visible", () => {
+    pagerWidth = 0;
+    const onCommit = vi.fn<(category: CalligraphyCategory) => void>();
+    const { frame, render } = renderPager("phone", onCommit, false);
+    act(() => resizeObservers[0]?.trigger());
+
+    pagerWidth = 400;
+    render("all", true);
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 400);
+    act(() => resizeObservers[0]?.trigger());
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+
+    expect(frame.scrollLeft).toBe(400);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("ink");
   });
 });

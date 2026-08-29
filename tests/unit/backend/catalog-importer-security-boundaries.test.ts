@@ -72,7 +72,7 @@ describe("catalog importer remediation boundaries", () => {
     const guardedFiles = [
       path.join(repositoryRoot, "packages/contracts/src/index.ts"),
       path.join(repositoryRoot, "services/public-api/src/index.ts"),
-      path.join(repositoryRoot, "apps/web/app/route.ts"),
+      path.join(repositoryRoot, "apps/web/app/page.tsx"),
       path.join(repositoryRoot, "apps/admin/app/page.tsx"),
       path.join(repositoryRoot, "packages/ui/src/index.ts"),
     ];
