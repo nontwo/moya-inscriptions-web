@@ -117,35 +117,14 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
     return element.scrollTop;
   }, desired);
 
-const trustedHorizontalCardDrag = async (
+const trustedHorizontalPointDrag = async (
   page: Page,
   session: CDPSession,
   pager: Locator,
-  card: Locator,
+  point: { readonly x: number; readonly y: number },
 ) => {
   const pagerWidth = await pager.evaluate((node) => node.clientWidth);
-  const startEvidence = await card.evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    const hits: string[] = [];
-    for (const xFactor of [0.9, 0.8, 0.7, 0.6]) {
-      for (const yFactor of [0.4, 0.25, 0.6]) {
-        const x = rect.left + rect.width * xFactor;
-        const y = rect.top + Math.min(rect.height * yFactor, 120);
-        const hit = document.elementFromPoint(x, y);
-        if (node.contains(hit)) return { hits, point: { x, y } };
-        hits.push(
-          `${hit?.tagName ?? "none"}.${hit?.className ?? ""}@${x},${y}`,
-        );
-      }
-    }
-    return { hits, point: null };
-  });
-  if (startEvidence.point === null) {
-    throw new Error(
-      `No hit-testable point inside swipe card: ${startEvidence.hits.join(" | ")}`,
-    );
-  }
-  const { x, y } = startEvidence.point;
+  const { x, y } = point;
   const distance = Math.min(Math.max(64, pagerWidth * 0.58), x - 8);
 
   await pager.evaluate((node) => {
@@ -191,12 +170,60 @@ const trustedHorizontalCardDrag = async (
   await page.waitForTimeout(50);
 };
 
+const trustedHorizontalCardDrag = async (
+  page: Page,
+  session: CDPSession,
+  pager: Locator,
+  card: Locator,
+) => {
+  const startEvidence = await card.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const hits: string[] = [];
+    for (const xFactor of [0.9, 0.8, 0.7, 0.6]) {
+      for (const yFactor of [0.4, 0.25, 0.6]) {
+        const x = rect.left + rect.width * xFactor;
+        const y = rect.top + Math.min(rect.height * yFactor, 120);
+        const hit = document.elementFromPoint(x, y);
+        if (node.contains(hit)) return { hits, point: { x, y } };
+        hits.push(
+          `${hit?.tagName ?? "none"}.${hit?.className ?? ""}@${x},${y}`,
+        );
+      }
+    }
+    return { hits, point: null };
+  });
+  if (startEvidence.point === null) {
+    throw new Error(
+      `No hit-testable point inside swipe card: ${startEvidence.hits.join(" | ")}`,
+    );
+  }
+  const { x, y } = startEvidence.point;
+  await trustedHorizontalPointDrag(page, session, pager, { x, y });
+};
+
 const trustedDragEvidence = (pager: Locator) =>
   pager.evaluate((node) => {
     const frame = node as HTMLElement;
     return {
       maximumScrollLeft: Number(frame.dataset.testMaximumScrollLeft ?? "0"),
       trustedTouchEvents: Number(frame.dataset.testTrustedTouchEvents ?? "0"),
+    };
+  });
+
+const shortFeedBlankEvidence = (pager: Locator) =>
+  pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    const card = frame.querySelector<HTMLElement>(
+      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
+    );
+    if (card === null) throw new Error("Missing short Calligraphy feed card");
+    const x = window.innerWidth / 2;
+    const y = window.innerHeight - 180;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      belowCard: y > card.getBoundingClientRect().bottom + 24,
+      inPager: hit !== null && frame.contains(hit),
+      point: { x, y },
     };
   });
 
@@ -326,6 +353,77 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
   const calligraphyEvidence = await trustedDragEvidence(calligraphyPager);
   expect(calligraphyEvidence.trustedTouchEvents).toBeGreaterThan(0);
   expect(calligraphyEvidence.maximumScrollLeft).toBeGreaterThan(40);
+  await session.detach();
+  await context.close();
+});
+
+test("MIG-C1 keeps blank space below a short Calligraphy feed inside the phone and tablet pager", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name.startsWith("desktop"),
+    "PC keeps content-sized Calligraphy paging.",
+  );
+  const response = await gotoWithRetry(page, "/");
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-clean-product-preview]");
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  await activateCalligraphy(surface);
+  const calligraphy = calligraphySurface(surface);
+  const pager = calligraphy.locator("[data-calligraphy-category-pager]");
+  await expect(
+    pager.locator(
+      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
+    ),
+  ).toHaveCount(1);
+  await page.waitForTimeout(250);
+
+  const blank = await shortFeedBlankEvidence(pager);
+  expect(blank.belowCard).toBe(true);
+  expect(blank.inPager).toBe(true);
+});
+
+test("MIG-C1 accepts a trusted horizontal drag from blank space below a short Calligraphy feed", async ({
+  browser,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chromium",
+    "Trusted compositor touch injection uses the Chromium protocol.",
+  );
+  const baseURL = testInfo.project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("Missing E2E base URL");
+  const context = await browser.newContext({
+    ...devices["iPhone 15"],
+    baseURL,
+  });
+  const page = await context.newPage();
+  const session = await context.newCDPSession(page);
+  const response = await gotoWithRetry(page, "/");
+  expect(response?.status()).toBe(200);
+  const surface = page.locator("[data-clean-product-preview]");
+  await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
+  await activateCalligraphy(surface);
+  const calligraphy = calligraphySurface(surface);
+  const pager = calligraphy.locator("[data-calligraphy-category-pager]");
+  await expect(
+    pager.locator(
+      '[data-calligraphy-category-panel="all"] [data-catalog-card]',
+    ),
+  ).toHaveCount(1);
+  await page.waitForTimeout(250);
+
+  const blank = await shortFeedBlankEvidence(pager);
+  expect(blank.belowCard).toBe(true);
+  expect(blank.inPager).toBe(true);
+
+  await trustedHorizontalPointDrag(page, session, pager, blank.point);
+  await expect(calligraphy).toHaveAttribute(
+    "data-active-calligraphy-category",
+    "ink",
+  );
+  const evidence = await trustedDragEvidence(pager);
+  expect(evidence.trustedTouchEvents).toBeGreaterThan(0);
+  expect(evidence.maximumScrollLeft).toBeGreaterThan(40);
   await session.detach();
   await context.close();
 });

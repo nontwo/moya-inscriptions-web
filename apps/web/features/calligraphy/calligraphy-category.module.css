@@ -84,6 +84,11 @@
   overflow-x: hidden;
 }
 
+.pagerFrame[data-calligraphy-pager-platform="phone"],
+.pagerFrame[data-calligraphy-pager-platform="tablet"] {
+  min-height: calc(100dvh - 52px);
+}
+
 .pagerTrack {
   display: flex;
   width: 100%;
