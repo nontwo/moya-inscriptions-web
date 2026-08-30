@@ -200,13 +200,13 @@ export const CalligraphyCategoryPager = forwardRef<
       if (frameRef.current !== null) {
         frameRef.current.dataset.calligraphyPagerScrolling = "false";
       }
-      applyPanelHeight(targetIndex);
-      publishProgress(true);
       const target = calligraphyCategories[targetIndex];
       if (target !== undefined && targetIndex !== activeIndexRef.current) {
         internalCommitIndexRef.current = targetIndex;
         onCommitRef.current(target);
       }
+      applyPanelHeight(targetIndex);
+      publishProgress(true);
     },
     [applyPanelHeight, cancelFallback, publishProgress],
   );

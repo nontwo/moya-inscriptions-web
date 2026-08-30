@@ -129,6 +129,47 @@ describe("T02 R03 architecture boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps progressive Catalog paging same-origin, explicit, and feature-local", async () => {
+    const route = await readFile(
+      path.join(repositoryRoot, "apps/web/app/api/catalog/route.ts"),
+      "utf8",
+    );
+    const browserClient = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/lib/public-api/catalog-list-client.ts",
+      ),
+      "utf8",
+    );
+    const home = await readFile(
+      path.join(repositoryRoot, "apps/web/features/home/home-screen.tsx"),
+      "utf8",
+    );
+    const pagingRoot = path.join(
+      repositoryRoot,
+      "apps/web/features/catalog-paging",
+    );
+    const pagingSources = await Promise.all(
+      (await collectSourceFiles(pagingRoot)).map((file) =>
+        readFile(file, "utf8"),
+      ),
+    );
+    const paging = pagingSources.join("\n");
+
+    expect(route).toContain("fetchServerCatalogPage");
+    expect(route).not.toMatch(
+      /development-data|apps\/web\/qa|features\/qa|docs\/prototypes|database|storage/u,
+    );
+    expect(browserClient).toContain('"/api/catalog"');
+    expect(browserClient).not.toMatch(
+      /MOYA_PUBLIC_API_BASE_URL|\/v1\/catalog|development-data|apps\/web\/qa|features\/qa/u,
+    );
+    expect(home).not.toMatch(/catalog-paging|CatalogPaging/u);
+    expect(paging).not.toMatch(
+      /IntersectionObserver|sessionStorage|localStorage|indexedDB|history\.state|ProductHistory|createContext/u,
+    );
+  });
+
   it("keeps the Home pager native and independent from Primary gesture machinery", async () => {
     const pager = await readFile(
       path.join(repositoryRoot, "apps/web/features/home/home-feed-pager.tsx"),

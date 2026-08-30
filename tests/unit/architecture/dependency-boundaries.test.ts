@@ -552,6 +552,72 @@ describe("frontend and browser boundaries", () => {
     ).toContain("../../../../lib/public-api/server is server/runtime-only");
   });
 
+  it("allows only the Catalog list API route to call the page server adapter", () => {
+    const listRoute = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "app",
+      "api",
+      "catalog",
+      "route.ts",
+    );
+    const otherRoute = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "app",
+      "api",
+      "other",
+      "route.ts",
+    );
+    const featureModule = path.join(
+      repositoryRoot,
+      "apps",
+      "web",
+      "features",
+      "catalog-paging",
+      "example.ts",
+    );
+    const approvedImport =
+      'import { fetchServerCatalogPage } from "../../../lib/public-api/server";';
+    const expectedViolation =
+      "../../../lib/public-api/server crosses the frontend boundary";
+
+    expect(frontendBoundaryViolations(listRoute, approvedImport)).toEqual([]);
+    for (const source of [
+      'import { fetchServerCatalogDetail } from "../../../lib/public-api/server";',
+      'import { parsePublicApiBaseUrl } from "../../../lib/public-api/server";',
+      'import { fetchServerCatalogPage, fetchServerCatalogDetail } from "../../../lib/public-api/server";',
+      'import fetchServerCatalogPage from "../../../lib/public-api/server";',
+      'import * as adapter from "../../../lib/public-api/server";',
+      'import { fetchServerCatalogPage as pageLoader } from "../../../lib/public-api/server";',
+      'export { fetchServerCatalogPage } from "../../../lib/public-api/server";',
+    ]) {
+      expect(frontendBoundaryViolations(listRoute, source)).toContain(
+        expectedViolation,
+      );
+    }
+    expect(frontendBoundaryViolations(otherRoute, approvedImport)).toContain(
+      expectedViolation,
+    );
+    expect(
+      frontendBoundaryViolations(
+        featureModule,
+        'import { fetchServerCatalogPage } from "../../lib/public-api/server";',
+      ),
+    ).toContain("../../lib/public-api/server crosses the frontend boundary");
+    expect(
+      frontendBoundaryViolations(listRoute, `"use client";\n${approvedImport}`),
+    ).toContain("../../../lib/public-api/server is server/runtime-only");
+    expect(
+      frontendBoundaryViolations(
+        listRoute,
+        'const adapter = import("../../../lib/public-api/server");',
+      ),
+    ).toContain(expectedViolation);
+  });
+
   it("keeps all real Web, Admin and UI files outside server boundaries", async () => {
     const workspaces = await discoverWorkspaces();
     const guardedRoots = [

@@ -1,6 +1,11 @@
+"use client";
+
+import { CatalogPagingControl } from "../catalog-paging/catalog-paging-control";
+import { useCatalogPaging } from "../catalog-paging/catalog-paging";
 import { CatalogCard } from "./catalog-card";
 import styles from "./home-screen.module.css";
 
+import type { ReactNode } from "react";
 import type { CatalogKind, CatalogSummary } from "@moya/contracts";
 import type { HomeCatalogState } from "./catalog-state";
 
@@ -8,6 +13,8 @@ export type CatalogFeedLayout = "single" | "double";
 export type CatalogScreenPresentation = "home" | CatalogKind;
 
 export interface CatalogCollectionScreenProps {
+  readonly afterContent?: ReactNode;
+  readonly displayItems?: readonly CatalogSummary[];
   readonly feedLayout: CatalogFeedLayout;
   readonly onOpenCatalog?: (
     item: CatalogSummary,
@@ -79,13 +86,15 @@ const PopulatedCollection = ({
   onOpenCatalog,
   presentation,
   state,
+  displayItems,
 }: CatalogCollectionScreenProps & {
   readonly state: Extract<HomeCatalogState, { readonly state: "populated" }>;
 }) => {
+  const sourceItems = displayItems ?? state.page.items;
   const items =
     presentation === "home"
-      ? state.page.items
-      : state.page.items.filter(({ kind }) => kind === presentation);
+      ? sourceItems
+      : sourceItems.filter(({ kind }) => kind === presentation);
 
   if (items.length === 0) {
     const copy = screenCopy[presentation];
@@ -137,6 +146,8 @@ const PopulatedCollection = ({
 };
 
 export const CatalogCollectionScreen = ({
+  afterContent,
+  displayItems,
   feedLayout,
   onOpenCatalog,
   presentation,
@@ -151,6 +162,7 @@ export const CatalogCollectionScreen = ({
         <PopulatedCollection
           feedLayout={feedLayout}
           {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
+          {...(displayItems === undefined ? {} : { displayItems })}
           presentation={presentation}
           state={state}
         />
@@ -198,6 +210,7 @@ export const CatalogCollectionScreen = ({
         <h2 id={`catalog-${presentation}-heading`}>{copy.heading}</h2>
       </header>
       {content}
+      {state.state === "populated" ? afterContent : null}
     </section>
   );
 };
@@ -217,11 +230,21 @@ export const CatalogBrowseScreen = ({
   kind,
   onOpenCatalog,
   state,
-}: CatalogBrowseScreenProps) => (
-  <CatalogCollectionScreen
-    feedLayout={feedLayout}
-    {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
-    presentation={kind}
-    state={state}
-  />
-);
+}: CatalogBrowseScreenProps) => {
+  const paging = useCatalogPaging({ initialState: state, kind });
+  return (
+    <CatalogCollectionScreen
+      afterContent={
+        <CatalogPagingControl
+          onLoadNextPage={() => void paging.loadNextPage()}
+          state={paging.requestState}
+        />
+      }
+      displayItems={paging.items}
+      feedLayout={feedLayout}
+      {...(onOpenCatalog === undefined ? {} : { onOpenCatalog })}
+      presentation={kind}
+      state={state}
+    />
+  );
+};
