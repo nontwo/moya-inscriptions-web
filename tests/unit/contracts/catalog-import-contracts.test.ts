@@ -1044,6 +1044,99 @@ describe("catalog-import/v2 strict internal contract", () => {
     );
   });
 
+  it("keeps the three v2 identity namespaces distinct across the batch", () => {
+    const first = canonicalV2CatalogRow({
+      catalogId: "catalog-v2-001",
+    });
+    const second = canonicalV2CatalogRow({
+      catalogImportId: "row-v2-002",
+      sourceId: "source-v2-002",
+      catalogId: "catalog-v2-002",
+      title: "虚构目录 V2 二",
+    });
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({
+          catalogRows: [first, second],
+          provenanceRows: [
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "source-v2-001",
+            },
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "source-v2-extra",
+            },
+            {
+              catalogImportId: "row-v2-002",
+              sourceId: "source-v2-002",
+            },
+          ],
+        }),
+      ).success,
+    ).toBe(true);
+    const collisionCases = [
+      [
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ sourceId: "row-v2-002" }),
+            second,
+          ],
+        }),
+        ["catalogRows", 0, "sourceId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ catalogId: "row-v2-002" }),
+            second,
+          ],
+        }),
+        ["catalogRows", 0, "catalogId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ sourceId: "catalog-v2-002" }),
+            second,
+          ],
+        }),
+        ["catalogRows", 0, "sourceId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [first, second],
+          provenanceRows: [
+            { catalogImportId: "row-v2-001", sourceId: "row-v2-002" },
+          ],
+        }),
+        ["provenanceRows", 0, "sourceId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [first, second],
+          provenanceRows: [
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "catalog-v2-002",
+            },
+          ],
+        }),
+        ["provenanceRows", 0, "sourceId"],
+      ],
+    ] as const;
+
+    for (const [envelopeWithCollision, expectedPath] of collisionCases) {
+      const result = canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        envelopeWithCollision,
+      );
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.path).toEqual(expectedPath);
+      }
+    }
+  });
+
   it("validates contributor rows and collection-action consistency", () => {
     const contributor = canonicalizeCatalogContributorImportTableRow({
       catalogImportId: "row-v2-001",

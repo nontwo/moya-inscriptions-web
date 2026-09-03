@@ -678,6 +678,24 @@ describe("catalog-import/v1 CSV/XLSX convergence", () => {
     });
   });
 
+  it("preserves quoted CRLF inside v1 multiline values", async () => {
+    const description = "合成说明第一行\r\n合成说明第二行";
+    const parsed = await parseCatalogImportCsvBundle(
+      await writeCsvBundle({
+        newline: "\r\n",
+        catalog: [{ ...catalogRows[0], description }, catalogRows[1]],
+      }),
+    );
+    expect(
+      parsed.envelope.catalogRows.find(
+        ({ catalogImportId }) => catalogImportId === "item-z",
+      )?.description,
+    ).toEqual({
+      state: "VALUE",
+      value: description,
+    });
+  });
+
   it("rejects mixed LF/CRLF and malformed CSV", async () => {
     const mixed = await writeCsvBundle();
     const catalogPath = path.join(mixed, "catalog.csv");
@@ -1116,6 +1134,39 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
     ).toEqual([0, 2]);
   });
 
+  it("keeps quoted multiline content invariant across v2 CSV newline conventions", async () => {
+    const lf = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        newline: "\n",
+        catalog: [
+          { ...v2CatalogRows[0], transcription: "第一行\n第二行（synthetic）" },
+        ],
+      }),
+    );
+    const crlf = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        newline: "\r\n",
+        catalog: [
+          {
+            ...v2CatalogRows[0],
+            transcription: "第一行\r\n第二行（synthetic）",
+          },
+        ],
+      }),
+    );
+
+    expect(crlf.envelope).toEqual(lf.envelope);
+    expect(crlf.canonicalJson).toBe(lf.canonicalJson);
+    expect(crlf.canonicalInputSha256).toBe(lf.canonicalInputSha256);
+    if (crlf.envelope.importContractVersion !== "catalog-import/v2") {
+      throw new Error("Expected catalog-import/v2");
+    }
+    expect(crlf.envelope.catalogRows[0]?.transcription).toEqual({
+      state: "VALUE",
+      value: "第一行\n第二行（synthetic）",
+    });
+  });
+
   it("preserves the exact PostgreSQL INTEGER maximum across CSV and XLSX", async () => {
     const contributors = [
       v2ContributorRows[1],
@@ -1334,10 +1385,105 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       CATALOG_IMPORT_V2_CATALOG_HEADERS.indexOf("transcriptionState") + 1;
     invalidState.getWorksheet("01_Catalog")!.getCell(3, stateColumn).value =
       "UNKNOWN";
-    await expectDiagnostic(
+    const stateError = await expectDiagnostic(
       parseCatalogImportXlsxWorkbook(await workbookBytes(invalidState)),
       "TABULAR_ROW_INVALID",
     );
+    expect(stateError.diagnostics[0]).toMatchObject({
+      sheet: "01_Catalog",
+      row: 3,
+      machineHeader: "transcriptionState",
+      cellReference: "Y3",
+    });
+
+    const invalidAction = await validV2Workbook({
+      catalog: [{ ...v2CatalogRows[0], contributorsAction: "MERGE" }],
+    });
+    const actionError = await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(invalidAction)),
+      "TABULAR_ROW_INVALID",
+    );
+    expect(actionError.diagnostics[0]).toMatchObject({
+      sheet: "01_Catalog",
+      row: 3,
+      machineHeader: "contributorsAction",
+      cellReference: "AD3",
+    });
+
+    const clearState = await validV2Workbook({
+      catalog: [
+        {
+          ...v2CatalogRows[0],
+          transcription: "",
+          transcriptionState: "CLEAR",
+        },
+      ],
+    });
+    const clearStateError = await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(clearState)),
+      "TABULAR_ROW_INVALID",
+    );
+    expect(clearStateError.diagnostics[0]).toMatchObject({
+      sheet: "01_Catalog",
+      row: 3,
+      machineHeader: "transcriptionState",
+      cellReference: "Y3",
+    });
+  });
+
+  it("maps v2 CSV state and collection-action failures to machine headers", async () => {
+    for (const [catalog, machineHeader] of [
+      [
+        { ...v2CatalogRows[0], transcriptionState: "UNKNOWN" },
+        "transcriptionState",
+      ],
+      [
+        { ...v2CatalogRows[0], contributorsAction: "MERGE" },
+        "contributorsAction",
+      ],
+      [
+        {
+          ...v2CatalogRows[0],
+          transcription: "",
+          transcriptionState: "CLEAR",
+        },
+        "transcriptionState",
+      ],
+    ] as const) {
+      const error = await expectDiagnostic(
+        parseCatalogImportCsvBundle(
+          await writeV2CsvBundle({ catalog: [catalog] }),
+        ),
+        "TABULAR_ROW_INVALID",
+      );
+      expect(error.diagnostics[0]).toMatchObject({
+        file: "catalog.csv",
+        row: 2,
+        machineHeader,
+      });
+    }
+  });
+
+  it("maps v2 public-citation scalar failures to machine headers", async () => {
+    for (const [publicCitation, machineHeader] of [
+      [
+        { ...v2PublicCitationRows[0], citation: "文".repeat(2_001) },
+        "citation",
+      ],
+      [{ ...v2PublicCitationRows[0], url: "not-a-url" }, "url"],
+    ] as const) {
+      const error = await expectDiagnostic(
+        parseCatalogImportCsvBundle(
+          await writeV2CsvBundle({ publicCitations: [publicCitation] }),
+        ),
+        "TABULAR_ROW_INVALID",
+      );
+      expect(error.diagnostics[0]).toMatchObject({
+        file: "public_citations.csv",
+        row: 2,
+        machineHeader,
+      });
+    }
   });
 
   it.each([
@@ -1422,6 +1568,7 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       expect(error.diagnostics[0]?.message).toBe(
         "position must be an integer from 0 through 2147483647",
       );
+      expect(error.diagnostics[0]?.machineHeader).toBe("position");
     }
   });
 
@@ -1445,6 +1592,10 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       expect(error.diagnostics[0]?.message).toBe(
         "position must be an integer from 0 through 2147483647",
       );
+      expect(error.diagnostics[0]).toMatchObject({
+        machineHeader: "position",
+        cellReference: "B3",
+      });
     }
   });
 

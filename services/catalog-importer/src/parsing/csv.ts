@@ -272,7 +272,15 @@ const tableObjects = (
     }
     return {
       values: Object.fromEntries(
-        headers.map((header, index) => [header, csvRow.values[index] ?? ""]),
+        headers.map((header, index) => {
+          const value = csvRow.values[index] ?? "";
+          return [
+            header,
+            importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+              ? value.replaceAll("\r\n", "\n")
+              : value,
+          ];
+        }),
       ),
       location: {
         sourceFormat: "CSV",

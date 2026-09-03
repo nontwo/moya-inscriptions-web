@@ -388,6 +388,42 @@ export const canonicalCatalogImportV2EnvelopeSchema = z
     const catalogImportIds = new Map<string, number>();
     const sourceOwners = new Map<string, string>();
     const catalogIds = new Map<string, number>();
+    const allCatalogImportIds = new Set(
+      envelope.catalogRows.map((row) => String(row.catalogImportId)),
+    );
+    const allCatalogIds = new Set(
+      envelope.catalogRows.flatMap((row) =>
+        row.catalogId === undefined ? [] : [String(row.catalogId)],
+      ),
+    );
+
+    for (const [index, row] of envelope.catalogRows.entries()) {
+      const sourceId = String(row.sourceId);
+      if (allCatalogImportIds.has(sourceId)) {
+        addDuplicateIssue(
+          context,
+          ["catalogRows", index, "sourceId"],
+          "SourceId must be distinct from every catalogImportId",
+        );
+      }
+      if (allCatalogIds.has(sourceId)) {
+        addDuplicateIssue(
+          context,
+          ["catalogRows", index, "sourceId"],
+          "SourceId must be distinct from every CatalogId",
+        );
+      }
+      if (
+        row.catalogId !== undefined &&
+        allCatalogImportIds.has(String(row.catalogId))
+      ) {
+        addDuplicateIssue(
+          context,
+          ["catalogRows", index, "catalogId"],
+          "CatalogId must be distinct from every catalogImportId",
+        );
+      }
+    }
 
     for (const [index, row] of envelope.catalogRows.entries()) {
       const importId = String(row.catalogImportId);
@@ -459,6 +495,20 @@ export const canonicalCatalogImportV2EnvelopeSchema = z
           context,
           ["provenanceRows", index, "catalogImportId"],
           "Provenance row references an unknown catalogImportId",
+        );
+      }
+      if (catalogImportIds.has(sourceId)) {
+        addDuplicateIssue(
+          context,
+          ["provenanceRows", index, "sourceId"],
+          "SourceId must be distinct from every catalogImportId",
+        );
+      }
+      if (catalogIds.has(sourceId)) {
+        addDuplicateIssue(
+          context,
+          ["provenanceRows", index, "sourceId"],
+          "SourceId must be distinct from every CatalogId",
         );
       }
       const pair = `${importId}\u0000${sourceId}`;

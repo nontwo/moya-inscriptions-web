@@ -9,6 +9,7 @@ import {
   CATALOG_IMPORT_V2_CONTRACT_VERSION,
   CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
   CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+  CATALOG_IMPORT_V2_WORKBOOK_SPEC,
   CATALOG_IMPORT_WORKBOOK_SPEC,
   canonicalCatalogImportEnvelopeSchema,
   canonicalCatalogImportV2EnvelopeSchema,
@@ -178,6 +179,101 @@ const inferMachineHeader = (
       return stateHeader;
     }
   }
+  const v2Pairs: readonly (readonly [
+    string,
+    string,
+    readonly string[],
+    number,
+  ])[] = [
+    [
+      "scriptStyle",
+      "scriptStyleState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.fieldState,
+      2_000,
+    ],
+    [
+      "transcription",
+      "transcriptionState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+      100_000,
+    ],
+    [
+      "historicalContext",
+      "historicalContextState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+      20_000,
+    ],
+    [
+      "scholarlyResearch",
+      "scholarlyResearchState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+      20_000,
+    ],
+  ];
+  for (const [valueHeader, stateHeader, allowedStates, maximum] of v2Pairs) {
+    if (!headers.includes(stateHeader)) continue;
+    const value = values[valueHeader] ?? "";
+    const state = values[stateHeader] ?? "";
+    if (
+      (state !== "" && !allowedStates.includes(state)) ||
+      (value !== "" && state !== "" && state !== "VALUE") ||
+      (value === "" && state === "VALUE")
+    ) {
+      return stateHeader;
+    }
+    if (value !== "" && (value !== value.trim() || value.length > maximum)) {
+      return valueHeader;
+    }
+  }
+  for (const actionHeader of [
+    "contributorsAction",
+    "publicCitationsAction",
+  ] as const) {
+    const action = values[actionHeader] ?? "";
+    if (
+      headers.includes(actionHeader) &&
+      action !== "" &&
+      !CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.collectionAction.includes(
+        action as "PRESERVE" | "REPLACE" | "CLEAR",
+      )
+    ) {
+      return actionHeader;
+    }
+  }
+  if (headers.includes("citation") && values.citation !== "") {
+    const citation = values.citation ?? "";
+    if (citation !== citation.trim() || citation.length > 2_000) {
+      return "citation";
+    }
+  }
+  if (headers.includes("url") && values.url !== "") {
+    if (!URL.canParse((values.url ?? "").trim())) {
+      return "url";
+    }
+  }
+  if (headers.includes("appliesTo") && values.appliesTo !== "") {
+    const scopes = (values.appliesTo ?? "").split("|");
+    if (
+      new Set(scopes).size !== scopes.length ||
+      scopes.some(
+        (scope) =>
+          !CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.citationScope.includes(
+            scope as (typeof CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.citationScope)[number],
+          ),
+      )
+    ) {
+      return "appliesTo";
+    }
+  }
+  if (headers.includes("position")) {
+    const position = values.position ?? "";
+    if (
+      !/^(?:0|[1-9][0-9]*)$/.test(position) ||
+      Number(position) > 2_147_483_647
+    ) {
+      return "position";
+    }
+  }
   return undefined;
 };
 
@@ -198,8 +294,17 @@ const rowDiagnostics = (
         (item): item is string =>
           typeof item === "string" && headers.includes(item),
       );
+    const clearStateHeader =
+      issue.message === "CLEAR is invalid for a create candidate" &&
+      issueHeader !== undefined &&
+      headers.includes(`${issueHeader}State`) &&
+      row.values[`${issueHeader}State`] === "CLEAR"
+        ? `${issueHeader}State`
+        : undefined;
     const machineHeader =
-      issueHeader ?? inferMachineHeader(row.values, headers);
+      clearStateHeader ??
+      issueHeader ??
+      inferMachineHeader(row.values, headers);
     const reference = cellReference(row.location, headers, machineHeader);
     return {
       code: "TABULAR_ROW_INVALID",
