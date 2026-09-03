@@ -1,4 +1,10 @@
-import type { CatalogId, CatalogKind, MediaId } from "@moya/contracts";
+import type {
+  CatalogCitationScope,
+  CatalogContributorRole,
+  CatalogId,
+  CatalogKind,
+  MediaId,
+} from "@moya/contracts";
 
 export type CatalogFieldState =
   "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
@@ -29,10 +35,16 @@ export interface CatalogListItemProjection {
   readonly representativeMedia?: CatalogMediaProjection;
 }
 
+export interface CatalogContributorProjection {
+  readonly name: string;
+  readonly role: CatalogContributorRole;
+}
+
 export interface CatalogSourceCitationProjection {
   readonly label: string;
   readonly citation?: string;
   readonly url?: string;
+  readonly appliesTo?: readonly CatalogCitationScope[];
 }
 
 export interface CatalogDetailProjection extends CatalogListItemProjection {
@@ -44,6 +56,11 @@ export interface CatalogDetailProjection extends CatalogListItemProjection {
   readonly currentLocation?: CatalogStatefulTextProjection;
   readonly currentCustodian?: CatalogStatefulTextProjection;
   readonly description?: string;
+  readonly contributors?: readonly CatalogContributorProjection[];
+  readonly scriptStyle?: CatalogStatefulTextProjection;
+  readonly transcription?: CatalogStatefulTextProjection;
+  readonly historicalContext?: CatalogStatefulTextProjection;
+  readonly scholarlyResearch?: CatalogStatefulTextProjection;
   readonly sourceCitations: readonly CatalogSourceCitationProjection[];
   readonly media: readonly CatalogMediaProjection[];
 }

@@ -6,8 +6,8 @@ Decision date: 2026-09-03
 
 Implementation status:
 
-Contract freeze only; T09-B1 backend persistence/import/API population and
-T09-F1 frontend presentation are not implemented by this ADR.
+T09-B1A PostgreSQL persistence and Public read path implemented. T09-B1B
+importer v2 and T09-F1 frontend presentation remain pending.
 
 ## Context and relationship to existing decisions
 

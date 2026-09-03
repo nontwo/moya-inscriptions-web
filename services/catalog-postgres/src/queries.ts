@@ -21,7 +21,11 @@ export const findCatalogEntrySql = `
          dynasty, dynasty_state, date_text, date_text_state,
          province, province_state, prefecture, prefecture_state,
          county, county_state, current_location, current_location_state,
-         current_custodian, current_custodian_state
+         current_custodian, current_custodian_state,
+         script_style, script_style_state,
+         transcription, transcription_state,
+         historical_context, historical_context_state,
+         scholarly_research, scholarly_research_state
   FROM catalog_entries
   WHERE catalog_id = $1
 `;
@@ -38,6 +42,27 @@ export const listCatalogCitationsSql = `
   FROM catalog_source_citations
   WHERE catalog_id = $1
   ORDER BY position ASC
+`;
+
+export const listCatalogContributorsSql = `
+  SELECT catalog_id, position, name, role
+  FROM catalog_contributors
+  WHERE catalog_id = $1
+  ORDER BY position ASC
+`;
+
+export const listCatalogCitationScopesSql = `
+  SELECT catalog_id, citation_position, scope
+  FROM catalog_source_citation_scopes
+  WHERE catalog_id = $1
+  ORDER BY citation_position ASC,
+           CASE scope
+             WHEN 'record' THEN 1
+             WHEN 'description' THEN 2
+             WHEN 'transcription' THEN 3
+             WHEN 'historicalContext' THEN 4
+             WHEN 'scholarlyResearch' THEN 5
+           END ASC
 `;
 
 export const listRepresentativeCatalogMediaSql = `
