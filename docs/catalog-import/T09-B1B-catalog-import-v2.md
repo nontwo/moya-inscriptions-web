@@ -234,8 +234,11 @@ exact contract version, canonical-input hash, and dry-run-result hash.
 Apply parses the exact versioned canonical input, validates the supplied dry-run
 hash, recomputes dry-run inside the transaction, requires exact input, dry-run,
 approval hashes and matching versions, and performs all writes plus the
-operation audit in the existing single PostgreSQL transaction. It writes only
-the existing B1A scalar columns and contributor/citation/scope tables.
+operation audit in the existing single PostgreSQL transaction. V2 apply uses
+`SERIALIZABLE` isolation so a concurrent change to compared state or an
+exact-title predicate fails closed instead of being overwritten after
+recomputation; V1 transaction behavior is unchanged. Apply writes only the
+existing B1A scalar columns and contributor/citation/scope tables.
 
 Approved `REPLACE` deletes the old complete contributor or curated-citation
 collection and inserts the incoming rows by position; citation scope rows are

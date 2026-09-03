@@ -1600,7 +1600,11 @@ export const applyCatalogImport = async (
   const approvalSha256 = hashApproval(suppliedApproval);
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(
+      importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+        ? "BEGIN ISOLATION LEVEL SERIALIZABLE"
+        : "BEGIN",
+    );
     const replay = await loadExistingResult(
       client,
       input.operationId,

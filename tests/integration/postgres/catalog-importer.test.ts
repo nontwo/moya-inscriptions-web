@@ -328,6 +328,8 @@ const defaultV2Citations = [
 
 const buildV2ParsedBundle = (
   input: {
+    readonly catalogImportId?: string;
+    readonly sourceId?: string;
     readonly catalogId?: string;
     readonly title?: string;
     readonly scalarFields?: Partial<Pick<V2CatalogRow, V2ScalarFieldName>>;
@@ -338,6 +340,8 @@ const buildV2ParsedBundle = (
     readonly provenanceFields?: Partial<V2ProvenanceInput>;
   } = {},
 ): ParsedCatalogImportV2Bundle => {
+  const catalogImportId = input.catalogImportId ?? "v2-item-000001";
+  const sourceId = input.sourceId ?? "src_test_v2_001";
   const contributorsAction = input.contributorsAction ?? "REPLACE";
   const publicCitationsAction = input.publicCitationsAction ?? "REPLACE";
   const contributorRows =
@@ -350,8 +354,8 @@ const buildV2ParsedBundle = (
     importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
     catalogRows: [
       {
-        catalogImportId: "v2-item-000001",
-        sourceId: "src_test_v2_001",
+        catalogImportId,
+        sourceId,
         ...(input.catalogId === undefined
           ? {}
           : { catalogId: input.catalogId }),
@@ -386,8 +390,8 @@ const buildV2ParsedBundle = (
     aliasRows: [],
     provenanceRows: [
       {
-        catalogImportId: "v2-item-000001",
-        sourceId: "src_test_v2_001",
+        catalogImportId,
+        sourceId,
         sourceTitle: "V2 测试碑刻来源",
         sourceTypeRaw: "official-test",
         sourceUrl: "https://example.invalid/raw-source",
@@ -395,11 +399,11 @@ const buildV2ParsedBundle = (
       },
     ],
     contributorRows: contributorRows.map((row) => ({
-      catalogImportId: "v2-item-000001",
+      catalogImportId,
       ...row,
     })),
     publicCitationRows: publicCitationRows.map((row) => ({
-      catalogImportId: "v2-item-000001",
+      catalogImportId,
       ...row,
     })),
   });
@@ -1483,6 +1487,321 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     ]);
     expect(await runMigrations(pool, migrationsDirectory)).toEqual([]);
     await expect(operationVersions()).resolves.toEqual(beforeMigrationReplay);
+  });
+
+  it("runs V2 recomputation and writes at serializable isolation", async () => {
+    await pool.query(`
+      CREATE FUNCTION assert_v2_catalog_import_serializable()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF NEW.import_contract_version = 'catalog-import/v2'
+           AND current_setting('transaction_isolation') <> 'serializable' THEN
+          RAISE EXCEPTION 'catalog-import/v2 apply must be serializable';
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await pool.query(`
+      CREATE TRIGGER assert_v2_catalog_import_serializable
+      BEFORE INSERT ON catalog_import_operations
+      FOR EACH ROW
+      EXECUTE FUNCTION assert_v2_catalog_import_serializable()
+    `);
+    try {
+      const parsed = buildV2ParsedBundle({
+        contributorsAction: "PRESERVE",
+        publicCitationsAction: "PRESERVE",
+      });
+      const dryRun = await createV2DryRun(parsed, "2026-09-03T20:00:10.000Z");
+      await expect(
+        applyCatalogImport(pool, {
+          ...applyInput(parsed, dryRun, "v2-serializable-apply"),
+          catalogIdAllocator: fakeAllocator(v2CatalogId),
+        }),
+      ).resolves.toMatchObject({
+        status: "APPLIED",
+        created: 1,
+        updated: 0,
+        unchanged: 0,
+      });
+    } finally {
+      await pool.query(
+        "DROP TRIGGER assert_v2_catalog_import_serializable ON catalog_import_operations",
+      );
+      await pool.query("DROP FUNCTION assert_v2_catalog_import_serializable()");
+    }
+  });
+
+  it("fails concurrent V2 overwrites and duplicate-title creates closed", async () => {
+    type ApplyPool = Parameters<typeof applyCatalogImport>[0];
+    type ApplyResult = Awaited<ReturnType<typeof applyCatalogImport>>;
+
+    const runAtOperationInsertBarrier = async (
+      left: (barrierPool: ApplyPool) => Promise<ApplyResult>,
+      right: (barrierPool: ApplyPool) => Promise<ApplyResult>,
+    ) => {
+      let arrivals = 0;
+      let resolveAllArrived!: () => void;
+      const allArrived = new Promise<void>((resolve) => {
+        resolveAllArrived = resolve;
+      });
+      let releaseBarrier!: () => void;
+      const barrierReleased = new Promise<void>((resolve) => {
+        releaseBarrier = resolve;
+      });
+      const barrierPool = {
+        connect: async () => {
+          const client = await pool.connect();
+          let waited = false;
+          return {
+            query: async (text: string, values?: unknown[]) => {
+              if (
+                !waited &&
+                text.includes("INSERT INTO catalog_import_operations(")
+              ) {
+                waited = true;
+                arrivals += 1;
+                if (arrivals === 2) resolveAllArrived();
+                await barrierReleased;
+              }
+              return values === undefined
+                ? client.query(text)
+                : client.query(text, values);
+            },
+            release: () => client.release(),
+          };
+        },
+      } as unknown as ApplyPool;
+      const attempts = [left(barrierPool), right(barrierPool)] as const;
+      const prematureSettlement = new Promise<never>((_resolve, reject) => {
+        for (const [index, attempt] of attempts.entries()) {
+          void attempt.then(
+            () =>
+              reject(
+                new Error(
+                  `Concurrent V2 apply ${index} settled before both plans reached the write barrier`,
+                ),
+              ),
+            reject,
+          );
+        }
+      });
+      let barrierError: unknown;
+      try {
+        await Promise.race([allArrived, prematureSettlement]);
+        expect(arrivals).toBe(2);
+      } catch (error) {
+        barrierError = error;
+      } finally {
+        releaseBarrier();
+      }
+      const outcomes = await Promise.allSettled(attempts);
+      if (barrierError !== undefined) throw barrierError;
+      return outcomes;
+    };
+
+    const expectOneSerializableWinner = (
+      outcomes: readonly PromiseSettledResult<ApplyResult>[],
+    ) => {
+      const fulfilled = outcomes.filter(
+        (outcome): outcome is PromiseFulfilledResult<ApplyResult> =>
+          outcome.status === "fulfilled",
+      );
+      const rejected = outcomes.filter(
+        (outcome): outcome is PromiseRejectedResult =>
+          outcome.status === "rejected",
+      );
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toMatchObject({ code: "40001" });
+      const winner = fulfilled[0];
+      if (winner === undefined) {
+        throw new Error("Expected one concurrent V2 apply to commit");
+      }
+      return winner.value;
+    };
+
+    await seedV2Catalog("v2-concurrent-update-seed");
+    const updatePlans = [
+      {
+        operationId: "v2-concurrent-update-a",
+        transcription: "并发更新 A",
+      },
+      {
+        operationId: "v2-concurrent-update-b",
+        transcription: "并发更新 B",
+      },
+    ] as const;
+    const preparedUpdates = await Promise.all(
+      updatePlans.map(async ({ operationId, transcription }, index) => {
+        const parsed = buildV2ParsedBundle({
+          catalogId: v2CatalogId,
+          contributorsAction: "PRESERVE",
+          publicCitationsAction: "PRESERVE",
+          scalarFields: {
+            transcription: { state: "VALUE", value: transcription },
+          },
+        });
+        const dryRun = await createV2DryRun(
+          parsed,
+          `2026-09-03T20:00:2${index}.000Z`,
+        );
+        expect(dryRun.findings).toEqual([
+          expect.objectContaining({
+            field: "transcription",
+            operation: "SET",
+            requiresFieldApproval: true,
+          }),
+        ]);
+        return { operationId, transcription, parsed, dryRun };
+      }),
+    );
+    const updateAttempts = preparedUpdates.map(
+      ({ operationId, parsed, dryRun }) =>
+        (barrierPool: ApplyPool) =>
+          applyCatalogImport(barrierPool, {
+            ...applyInput(parsed, dryRun, operationId),
+            authorization: authorization(
+              dryRun,
+              [String(dryRun.findings[0]?.findingId)],
+              "PRODUCTION",
+            ),
+            catalogIdAllocator: undefined,
+          }),
+    );
+    const leftUpdateAttempt = updateAttempts[0];
+    const rightUpdateAttempt = updateAttempts[1];
+    if (leftUpdateAttempt === undefined || rightUpdateAttempt === undefined) {
+      throw new Error("Expected exactly two concurrent V2 update plans");
+    }
+    const updateOutcomes = await runAtOperationInsertBarrier(
+      leftUpdateAttempt,
+      rightUpdateAttempt,
+    );
+    const updateWinner = expectOneSerializableWinner(updateOutcomes);
+    const expectedTranscription = preparedUpdates.find(
+      ({ operationId }) => operationId === updateWinner.operationId,
+    )?.transcription;
+    expect(expectedTranscription).toBeDefined();
+    await expect(
+      pool.query(
+        "SELECT transcription FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ transcription: expectedTranscription }],
+    });
+    await expect(
+      pool.query(
+        `SELECT operation_id FROM catalog_import_operations
+          WHERE operation_id = ANY($1::text[]) ORDER BY operation_id`,
+        [updatePlans.map(({ operationId }) => operationId)],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ operation_id: updateWinner.operationId }],
+    });
+
+    await pool.query(
+      "TRUNCATE catalog_import_operations, catalog_entries CASCADE",
+    );
+    const duplicateTitle = "并发同名目录";
+    const createPlans = [
+      {
+        operationId: "v2-concurrent-create-a",
+        catalogImportId: "v2-concurrent-item-a",
+        sourceId: "v2-concurrent-source-a",
+        catalogId: "v2-concurrent-catalog-a",
+      },
+      {
+        operationId: "v2-concurrent-create-b",
+        catalogImportId: "v2-concurrent-item-b",
+        sourceId: "v2-concurrent-source-b",
+        catalogId: "v2-concurrent-catalog-b",
+      },
+    ] as const;
+    const preparedCreates = await Promise.all(
+      createPlans.map(async (plan, index) => {
+        const parsed = buildV2ParsedBundle({
+          catalogImportId: plan.catalogImportId,
+          sourceId: plan.sourceId,
+          title: duplicateTitle,
+          contributorsAction: "PRESERVE",
+          publicCitationsAction: "PRESERVE",
+        });
+        const dryRun = await createV2DryRun(
+          parsed,
+          `2026-09-03T20:00:4${index}.000Z`,
+        );
+        expect(dryRun).toMatchObject({
+          state: "PASSED",
+          findings: [],
+          duplicateCandidates: [],
+          applyReady: true,
+        });
+        return { ...plan, parsed, dryRun };
+      }),
+    );
+    const createAttempts = preparedCreates.map(
+      ({ operationId, catalogId, parsed, dryRun }) =>
+        (barrierPool: ApplyPool) =>
+          applyCatalogImport(barrierPool, {
+            ...applyInput(parsed, dryRun, operationId),
+            catalogIdAllocator: fakeAllocator(catalogId),
+          }),
+    );
+    const leftCreateAttempt = createAttempts[0];
+    const rightCreateAttempt = createAttempts[1];
+    if (leftCreateAttempt === undefined || rightCreateAttempt === undefined) {
+      throw new Error("Expected exactly two concurrent V2 create plans");
+    }
+    const createOutcomes = await runAtOperationInsertBarrier(
+      leftCreateAttempt,
+      rightCreateAttempt,
+    );
+    const createWinner = expectOneSerializableWinner(createOutcomes);
+    const winningCreate = preparedCreates.find(
+      ({ operationId }) => operationId === createWinner.operationId,
+    );
+    expect(winningCreate).toBeDefined();
+    await expect(
+      pool.query(
+        `SELECT catalog_id, title FROM catalog_entries
+          WHERE title=$1 ORDER BY catalog_id`,
+        [duplicateTitle],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          catalog_id: winningCreate?.catalogId,
+          title: duplicateTitle,
+        },
+      ],
+    });
+    await expect(
+      pool.query(
+        `SELECT source_id, catalog_id FROM catalog_import_sources
+          ORDER BY source_id`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          source_id: winningCreate?.sourceId,
+          catalog_id: winningCreate?.catalogId,
+        },
+      ],
+    });
+    await expect(
+      pool.query(
+        `SELECT operation_id FROM catalog_import_operations
+          WHERE operation_id = ANY($1::text[]) ORDER BY operation_id`,
+        [createPlans.map(({ operationId }) => operationId)],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ operation_id: createWinner.operationId }],
+    });
   });
 
   it("rejects oversized child positions before dry-run or apply mutation", async () => {
