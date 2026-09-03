@@ -15,6 +15,9 @@ import {
   CATALOG_IMPORT_ALIAS_HEADERS,
   CATALOG_IMPORT_CATALOG_HEADERS,
   CATALOG_IMPORT_PROVENANCE_HEADERS,
+  CATALOG_IMPORT_V2_CATALOG_HEADERS,
+  CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+  CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
 } from "@moya/contracts/internal/catalog-import";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
@@ -26,6 +29,10 @@ const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const templatePath = path.join(
   repositoryRoot,
   "docs/catalog-import/catalog-import-v1-template.xlsx",
+);
+const v2TemplatePath = path.join(
+  repositoryRoot,
+  "docs/catalog-import/catalog-import-v2-template.xlsx",
 );
 const temporaryDirectories: string[] = [];
 const realisticCatalogRowCount = 1_658;
@@ -121,6 +128,51 @@ const provenanceRows = [
   },
 ] as const;
 
+const v2CatalogRows = [
+  {
+    ...catalogRows[0],
+    catalogId: "",
+    currentCustodianState: "UNSUPPLIED",
+    scriptStyle: "楷书（synthetic）",
+    scriptStyleState: "VALUE",
+    transcription: "第一行\n第二行（synthetic）",
+    transcriptionState: "VALUE",
+    historicalContext: "纯合成历史背景",
+    historicalContextState: "VALUE",
+    scholarlyResearch: "纯合成研究说明",
+    scholarlyResearchState: "VALUE",
+    contributorsAction: "REPLACE",
+    publicCitationsAction: "REPLACE",
+  },
+] as const;
+
+const v2AliasRows = [aliasRows[0]] as const;
+const v2ProvenanceRows = [provenanceRows[0]] as const;
+const v2ContributorRows = [
+  {
+    catalogImportId: "item-z",
+    position: "1",
+    name: "合成书写者",
+    role: "calligrapher",
+  },
+  {
+    catalogImportId: "item-z",
+    position: "0",
+    name: "合成撰文者",
+    role: "textAuthor",
+  },
+] as const;
+const v2PublicCitationRows = [
+  {
+    catalogImportId: "item-z",
+    position: "0",
+    label: "合成公开引文",
+    citation: "仅用于自动化测试",
+    url: "https://example.invalid/public-citation",
+    appliesTo: "transcription|description",
+  },
+] as const;
+
 const csvCell = (value: string): string =>
   /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 
@@ -171,10 +223,84 @@ const writeCsvBundle = async (
   return directory;
 };
 
+const writeV2CsvBundle = async (
+  options: {
+    readonly newline?: "\n" | "\r\n";
+    readonly bom?: boolean;
+    readonly manifestVersion?: string;
+    readonly catalog?: readonly Readonly<Record<string, string>>[];
+    readonly aliases?: readonly Readonly<Record<string, string>>[];
+    readonly provenance?: readonly Readonly<Record<string, string>>[];
+    readonly contributors?: readonly Readonly<Record<string, string>>[];
+    readonly publicCitations?: readonly Readonly<Record<string, string>>[];
+  } = {},
+): Promise<string> => {
+  const directory = await mkdtemp(path.join(tmpdir(), "moya-parser-v2-csv-"));
+  temporaryDirectories.push(directory);
+  const newline = options.newline ?? "\n";
+  const bom = options.bom === true ? "\uFEFF" : "";
+  await Promise.all([
+    writeFile(
+      path.join(directory, "00_manifest.csv"),
+      `${bom}importContractVersion${newline}${options.manifestVersion ?? "catalog-import/v2"}${newline}`,
+    ),
+    writeFile(
+      path.join(directory, "catalog.csv"),
+      `${bom}${csvTable(
+        CATALOG_IMPORT_V2_CATALOG_HEADERS,
+        options.catalog ?? v2CatalogRows,
+        newline,
+      )}`,
+    ),
+    writeFile(
+      path.join(directory, "aliases.csv"),
+      `${bom}${csvTable(
+        CATALOG_IMPORT_ALIAS_HEADERS,
+        options.aliases ?? v2AliasRows,
+        newline,
+      )}`,
+    ),
+    writeFile(
+      path.join(directory, "provenance.csv"),
+      `${bom}${csvTable(
+        CATALOG_IMPORT_PROVENANCE_HEADERS,
+        options.provenance ?? v2ProvenanceRows,
+        newline,
+      )}`,
+    ),
+    writeFile(
+      path.join(directory, "contributors.csv"),
+      `${bom}${csvTable(
+        CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+        options.contributors ?? v2ContributorRows,
+        newline,
+      )}`,
+    ),
+    writeFile(
+      path.join(directory, "public_citations.csv"),
+      `${bom}${csvTable(
+        CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+        options.publicCitations ?? v2PublicCitationRows,
+        newline,
+      )}`,
+    ),
+  ]);
+  return directory;
+};
+
 const loadTemplate = async (): Promise<ExcelJS.Workbook> => {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(
     Uint8Array.from(await readFile(templatePath)).buffer,
+    { ignoreNodes: ["dataValidations"] },
+  );
+  return workbook;
+};
+
+const loadV2Template = async (): Promise<ExcelJS.Workbook> => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(
+    Uint8Array.from(await readFile(v2TemplatePath)).buffer,
     { ignoreNodes: ["dataValidations"] },
   );
   return workbook;
@@ -192,6 +318,25 @@ const setRows = (
         values[header] ?? "";
     }
   }
+};
+
+const setV2TableRows = (
+  worksheet: ExcelJS.Worksheet,
+  tableName: string,
+  headers: readonly string[],
+  rows: readonly Readonly<Record<string, string>>[],
+): void => {
+  setRows(worksheet, headers, rows);
+  const table = worksheet.getTable(tableName);
+  const model = (
+    table as unknown as {
+      readonly model: { tableRef: string; autoFilterRef: string };
+    }
+  ).model;
+  const lastRow = 2 + Math.max(1, rows.length);
+  const expandedRef = model.tableRef.replace(/\d+$/, String(lastRow));
+  model.tableRef = expandedRef;
+  model.autoFilterRef = expandedRef;
 };
 
 const validWorkbook = async (
@@ -224,6 +369,49 @@ const validWorkbook = async (
       color: { argb: "FF7A1F1F" },
     };
   }
+  return workbook;
+};
+
+const validV2Workbook = async (
+  options: {
+    readonly catalog?: readonly Readonly<Record<string, string>>[];
+    readonly aliases?: readonly Readonly<Record<string, string>>[];
+    readonly provenance?: readonly Readonly<Record<string, string>>[];
+    readonly contributors?: readonly Readonly<Record<string, string>>[];
+    readonly publicCitations?: readonly Readonly<Record<string, string>>[];
+  } = {},
+): Promise<ExcelJS.Workbook> => {
+  const workbook = await loadV2Template();
+  setV2TableRows(
+    workbook.getWorksheet("01_Catalog")!,
+    "CatalogImportTable",
+    CATALOG_IMPORT_V2_CATALOG_HEADERS,
+    options.catalog ?? v2CatalogRows,
+  );
+  setV2TableRows(
+    workbook.getWorksheet("02_Aliases")!,
+    "AliasImportTable",
+    CATALOG_IMPORT_ALIAS_HEADERS,
+    options.aliases ?? v2AliasRows,
+  );
+  setV2TableRows(
+    workbook.getWorksheet("03_Provenance")!,
+    "ProvenanceImportTable",
+    CATALOG_IMPORT_PROVENANCE_HEADERS,
+    options.provenance ?? v2ProvenanceRows,
+  );
+  setV2TableRows(
+    workbook.getWorksheet("04_Contributors")!,
+    "ContributorImportTable",
+    CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+    options.contributors ?? v2ContributorRows,
+  );
+  setV2TableRows(
+    workbook.getWorksheet("05_Public_Citations")!,
+    "PublicCitationImportTable",
+    CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+    options.publicCitations ?? v2PublicCitationRows,
+  );
   return workbook;
 };
 
@@ -854,5 +1042,460 @@ describe("XLSX security and structural validation", () => {
       applyReady: false,
       applyBlockers: ["IDENTITY_CONFLICT"],
     });
+  });
+});
+
+describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
+  it("preflights the generated template and converges complete CSV/XLSX input", async () => {
+    await expect(
+      preflightCatalogImportXlsxWorkbook(await readFile(v2TemplatePath)),
+    ).resolves.toMatchObject({
+      sheets: [
+        "01_Catalog",
+        "02_Aliases",
+        "03_Provenance",
+        "04_Contributors",
+        "05_Public_Citations",
+        "99_Instructions",
+      ],
+    });
+    const citationRows = [
+      ...v2PublicCitationRows,
+      {
+        catalogImportId: "item-z",
+        position: "2",
+        label: "第二条合成公开引文",
+        citation: "仅用于重排测试",
+        url: "",
+        appliesTo: "record|scholarlyResearch",
+      },
+    ];
+    const csv = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({ publicCitations: citationRows }),
+    );
+    const xlsx = await parseCatalogImportXlsxWorkbook(
+      await workbookBytes(
+        await validV2Workbook({
+          contributors: [...v2ContributorRows].reverse(),
+          publicCitations: [...citationRows].reverse(),
+        }),
+      ),
+    );
+
+    expect(csv.envelope.importContractVersion).toBe("catalog-import/v2");
+    expect(xlsx.envelope).toEqual(csv.envelope);
+    expect(xlsx.canonicalJson).toBe(csv.canonicalJson);
+    expect(xlsx.canonicalInputSha256).toBe(csv.canonicalInputSha256);
+    expect(xlsx.rowCounts).toEqual({
+      catalog: 1,
+      aliases: 1,
+      provenance: 1,
+      contributors: 2,
+      publicCitations: 2,
+    });
+    if (xlsx.envelope.importContractVersion !== "catalog-import/v2") {
+      throw new Error("Expected catalog-import/v2");
+    }
+    expect(xlsx.envelope.catalogRows[0]?.transcription).toEqual({
+      state: "VALUE",
+      value: "第一行\n第二行（synthetic）",
+    });
+    expect(
+      (
+        JSON.parse(xlsx.canonicalJson) as {
+          readonly contributorRows: readonly { readonly position: number }[];
+        }
+      ).contributorRows.map(({ position }) => position),
+    ).toEqual([0, 1]);
+    expect(xlsx.envelope.publicCitationRows[0]?.appliesTo).toEqual([
+      "description",
+      "transcription",
+    ]);
+    expect(
+      xlsx.envelope.publicCitationRows.map(({ position }) => position),
+    ).toEqual([0, 2]);
+  });
+
+  it("preserves the exact PostgreSQL INTEGER maximum across CSV and XLSX", async () => {
+    const contributors = [
+      v2ContributorRows[1],
+      { ...v2ContributorRows[0], position: "2147483647" },
+    ];
+    const publicCitations = [
+      { ...v2PublicCitationRows[0], position: "2147483647" },
+    ];
+    const csv = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({ contributors, publicCitations }),
+    );
+    const xlsx = await parseCatalogImportXlsxWorkbook(
+      await workbookBytes(
+        await validV2Workbook({ contributors, publicCitations }),
+      ),
+    );
+
+    expect(xlsx.envelope).toEqual(csv.envelope);
+    expect(xlsx.canonicalJson).toBe(csv.canonicalJson);
+    expect(xlsx.canonicalInputSha256).toBe(csv.canonicalInputSha256);
+    if (xlsx.envelope.importContractVersion !== "catalog-import/v2") {
+      throw new Error("Expected catalog-import/v2");
+    }
+    expect(
+      xlsx.envelope.contributorRows.map(({ position }) => position),
+    ).toEqual([0, 2_147_483_647]);
+    expect(
+      xlsx.envelope.publicCitationRows.map(({ position }) => position),
+    ).toEqual([2_147_483_647]);
+  });
+
+  it("accepts exact empty child files when both collection actions preserve", async () => {
+    const catalog = [
+      {
+        ...v2CatalogRows[0],
+        contributorsAction: "",
+        publicCitationsAction: "PRESERVE",
+      },
+    ];
+    const parsed = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog,
+        contributors: [],
+        publicCitations: [],
+      }),
+    );
+    expect(parsed.rowCounts).toEqual({
+      catalog: 1,
+      aliases: 1,
+      provenance: 1,
+      contributors: 0,
+      publicCitations: 0,
+    });
+    if (parsed.envelope.importContractVersion !== "catalog-import/v2") {
+      throw new Error("Expected catalog-import/v2");
+    }
+    expect(parsed.envelope.catalogRows[0]).toMatchObject({
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+    });
+  });
+
+  it.each([
+    ["LF", "\n" as const, false],
+    ["CRLF", "\r\n" as const, false],
+    ["UTF-8 BOM", "\n" as const, true],
+  ])("keeps valid v2 %s CSV input", async (_label, newline, bom) => {
+    await expect(
+      parseCatalogImportCsvBundle(
+        await writeV2CsvBundle({
+          newline,
+          bom,
+          catalog: [{ ...v2CatalogRows[0], transcription: "单行合成文本" }],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      envelope: { importContractVersion: "catalog-import/v2" },
+      rowCounts: { contributors: 2, publicCitations: 1 },
+    });
+  });
+
+  it("selects CSV layout only after validating explicit manifest metadata", async () => {
+    const v1ManifestWithV2Files = await writeV2CsvBundle({
+      manifestVersion: "catalog-import/v1",
+    });
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(v1ManifestWithV2Files),
+      "CSV_BUNDLE_LAYOUT_MISMATCH",
+    );
+
+    const unknownManifest = await writeV2CsvBundle({
+      manifestVersion: "catalog-import/v99",
+    });
+    await writeFile(path.join(unknownManifest, "catalog.csv"), "broken");
+    const unknownError = await expectDiagnostic(
+      parseCatalogImportCsvBundle(unknownManifest),
+      "CSV_BUNDLE_LAYOUT_MISMATCH",
+    );
+    expect(unknownError.diagnostics[0]?.category).toBe("VERSION_METADATA");
+
+    const missingFile = await writeV2CsvBundle();
+    await rm(path.join(missingFile, "contributors.csv"));
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(missingFile),
+      "CSV_BUNDLE_LAYOUT_MISMATCH",
+    );
+
+    const extraFile = await writeV2CsvBundle();
+    await writeFile(path.join(extraFile, "unexpected.csv"), "unexpected\n");
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(extraFile),
+      "CSV_BUNDLE_LAYOUT_MISMATCH",
+    );
+
+    const missingVersion = await writeV2CsvBundle();
+    await writeFile(
+      path.join(missingVersion, "00_manifest.csv"),
+      "importContractVersion\n\n",
+    );
+    const missingVersionError = await expectDiagnostic(
+      parseCatalogImportCsvBundle(missingVersion),
+      "CSV_BUNDLE_LAYOUT_MISMATCH",
+    );
+    expect(missingVersionError.diagnostics[0]?.category).toBe(
+      "VERSION_METADATA",
+    );
+  });
+
+  it.each([
+    ["duplicate", "catalogImportId,catalogImportId,name,role"],
+    ["unknown", "catalogImportId,position,name,unknown"],
+  ])("rejects v2 %s CSV headers", async (_label, headers) => {
+    const directory = await writeV2CsvBundle();
+    await writeFile(path.join(directory, "contributors.csv"), `${headers}\n`);
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(directory),
+      "CSV_HEADER_MISMATCH",
+    );
+  });
+
+  it("rejects a v2 CSV row with the wrong width", async () => {
+    const directory = await writeV2CsvBundle();
+    await writeFile(
+      path.join(directory, "contributors.csv"),
+      `${CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS.join(",")}\nitem-z,0,合成作者,textAuthor,extra\n`,
+    );
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(directory),
+      "CSV_MALFORMED",
+    );
+  });
+
+  it("rejects mismatched XLSX version pairs before selected-layout parsing", async () => {
+    const v2Workbook = await validV2Workbook();
+    v2Workbook.getWorksheet("99_Instructions")!.getCell("B93").value =
+      "catalog-import/v1";
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(v2Workbook)),
+      "XLSX_WORKBOOK_VERSION_MISMATCH",
+    );
+
+    const v1Workbook = await validWorkbook();
+    v1Workbook.getWorksheet("99_Instructions")!.getCell("B70").value =
+      "catalog-import/v2";
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(v1Workbook)),
+      "XLSX_WORKBOOK_VERSION_MISMATCH",
+    );
+  });
+
+  it("preserves v1 fixed-cell metadata behavior", async () => {
+    const workbook = await validWorkbook();
+    workbook.getWorksheet("99_Instructions")!.getCell("A71").value =
+      "workbookLayoutVersion";
+    await expect(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(workbook)),
+    ).resolves.toMatchObject({
+      envelope: { importContractVersion: "catalog-import/v1" },
+    });
+  });
+
+  it("preserves v2 sheet, active-content, cell-type, and state protections", async () => {
+    const extraSheet = await validV2Workbook();
+    extraSheet.addWorksheet("06_Extra");
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(extraSheet)),
+      "XLSX_SHEET_LAYOUT_MISMATCH",
+    );
+
+    const hiddenSheet = await validV2Workbook();
+    hiddenSheet.getWorksheet("04_Contributors")!.state = "hidden";
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(hiddenSheet)),
+      "XLSX_SHEET_LAYOUT_MISMATCH",
+    );
+
+    const formula = await validV2Workbook();
+    formula.getWorksheet("01_Catalog")!.getCell("D3").value = {
+      formula: '="synthetic"',
+      result: "synthetic",
+    };
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(formula)),
+      "XLSX_ACTIVE_CONTENT",
+    );
+
+    const unsupportedCell = await validV2Workbook();
+    unsupportedCell.getWorksheet("04_Contributors")!.getCell("B3").value = 0;
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(unsupportedCell)),
+      "XLSX_UNSUPPORTED_CELL_TYPE",
+    );
+
+    const invalidState = await validV2Workbook();
+    const stateColumn =
+      CATALOG_IMPORT_V2_CATALOG_HEADERS.indexOf("transcriptionState") + 1;
+    invalidState.getWorksheet("01_Catalog")!.getCell(3, stateColumn).value =
+      "UNKNOWN";
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(invalidState)),
+      "TABULAR_ROW_INVALID",
+    );
+  });
+
+  it.each([
+    [
+      "malformed contributor position",
+      { contributors: [{ ...v2ContributorRows[0], position: "01" }] },
+    ],
+    [
+      "invalid contributor role",
+      { contributors: [{ ...v2ContributorRows[0], role: "editor" }] },
+    ],
+    [
+      "invalid scalar state/value pair",
+      {
+        catalog: [
+          {
+            ...v2CatalogRows[0],
+            transcription: "supplied",
+            transcriptionState: "CLEAR",
+          },
+        ],
+      },
+    ],
+    [
+      "invalid collection action",
+      { catalog: [{ ...v2CatalogRows[0], contributorsAction: "MERGE" }] },
+    ],
+    [
+      "inconsistent collection action",
+      {
+        catalog: [{ ...v2CatalogRows[0], contributorsAction: "PRESERVE" }],
+      },
+    ],
+    [
+      "malformed citation scope",
+      {
+        publicCitations: [
+          { ...v2PublicCitationRows[0], appliesTo: "record||description" },
+        ],
+      },
+    ],
+    [
+      "duplicate citation scope",
+      {
+        publicCitations: [
+          { ...v2PublicCitationRows[0], appliesTo: "record|record" },
+        ],
+      },
+    ],
+    [
+      "unknown citation scope",
+      {
+        publicCitations: [
+          { ...v2PublicCitationRows[0], appliesTo: "record|title" },
+        ],
+      },
+    ],
+  ])("rejects %s", async (_label, options) => {
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(await writeV2CsvBundle(options)),
+      _label === "inconsistent collection action"
+        ? "CANONICAL_INVARIANT"
+        : "TABULAR_ROW_INVALID",
+    );
+  });
+
+  it("rejects the first out-of-range position in both v2 CSV child files", async () => {
+    for (const options of [
+      {
+        contributors: [{ ...v2ContributorRows[0], position: "2147483648" }],
+      },
+      {
+        publicCitations: [
+          { ...v2PublicCitationRows[0], position: "2147483648" },
+        ],
+      },
+    ]) {
+      const error = await expectDiagnostic(
+        parseCatalogImportCsvBundle(await writeV2CsvBundle(options)),
+        "TABULAR_ROW_INVALID",
+      );
+      expect(error.diagnostics[0]?.message).toBe(
+        "position must be an integer from 0 through 2147483647",
+      );
+    }
+  });
+
+  it("rejects the first out-of-range position in both v2 XLSX child sheets", async () => {
+    for (const options of [
+      {
+        contributors: [{ ...v2ContributorRows[0], position: "2147483648" }],
+      },
+      {
+        publicCitations: [
+          { ...v2PublicCitationRows[0], position: "2147483648" },
+        ],
+      },
+    ]) {
+      const error = await expectDiagnostic(
+        parseCatalogImportXlsxWorkbook(
+          await workbookBytes(await validV2Workbook(options)),
+        ),
+        "TABULAR_ROW_INVALID",
+      );
+      expect(error.diagnostics[0]?.message).toBe(
+        "position must be an integer from 0 through 2147483647",
+      );
+    }
+  });
+
+  it("supports the 100,000-character CSV transcription maximum and rejects overflow", async () => {
+    const atLimit = "文".repeat(100_000);
+    const parsed = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog: [{ ...v2CatalogRows[0], transcription: atLimit }],
+      }),
+    );
+    if (parsed.envelope.importContractVersion !== "catalog-import/v2") {
+      throw new Error("Expected catalog-import/v2");
+    }
+    expect(parsed.envelope.catalogRows[0]?.transcription).toEqual({
+      state: "VALUE",
+      value: atLimit,
+    });
+    await expectDiagnostic(
+      parseCatalogImportCsvBundle(
+        await writeV2CsvBundle({
+          catalog: [{ ...v2CatalogRows[0], transcription: `${atLimit}文` }],
+        }),
+      ),
+      "TABULAR_ROW_INVALID",
+    );
+  });
+
+  it("enforces selected v2 table metadata and the XLSX physical cell limit", async () => {
+    const wrongTable = await validV2Workbook();
+    wrongTable
+      .getWorksheet("04_Contributors")!
+      .getTable("ContributorImportTable").name = "UnexpectedContributorTable";
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(wrongTable)),
+      "XLSX_SHEET_LAYOUT_MISMATCH",
+    );
+
+    const outsideTable = await validV2Workbook();
+    outsideTable.getWorksheet("01_Catalog")!.getCell("A4").value =
+      "outside-declared-table";
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(outsideTable)),
+      "XLSX_SHEET_LAYOUT_MISMATCH",
+    );
+
+    const oversized = await validV2Workbook({
+      catalog: [{ ...v2CatalogRows[0], transcription: "文".repeat(32_768) }],
+    });
+    await expectDiagnostic(
+      parseCatalogImportXlsxWorkbook(await workbookBytes(oversized)),
+      "OOXML_RESOURCE_LIMIT",
+    );
   });
 });

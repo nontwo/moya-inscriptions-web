@@ -64,7 +64,9 @@ describe("catalog importer remediation boundaries", () => {
       ]) {
         expect(source).not.toContain(forbidden);
       }
-      expect(source).not.toMatch(/(?:^|[/_.-])research(?:[/_.-]|$)/i);
+      expect(
+        source.replaceAll(/\bscholarly_research(?:_state)?\b/g, ""),
+      ).not.toMatch(/(?:^|[/_.-])research(?:[/_.-]|$)/i);
     }
   });
 

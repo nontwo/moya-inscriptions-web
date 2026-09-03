@@ -12,9 +12,21 @@ import {
   CATALOG_IMPORT_WORKBOOK_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_VERSION,
+  CATALOG_IMPORT_V2_CATALOG_HEADERS,
+  CATALOG_IMPORT_V2_CONTRACT_VERSION,
+  CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+  CATALOG_IMPORT_V2_CSV_SPEC,
+  CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+  CATALOG_IMPORT_V2_SHEET_NAMES,
+  CATALOG_IMPORT_V2_WORKBOOK_SPEC,
+  CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC,
+  CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION,
   canonicalizeAliasImportTableRow,
+  canonicalizeCatalogContributorImportTableRow,
+  canonicalizeCatalogImportV2TableRow,
   canonicalizeCatalogImportTableRow,
   canonicalizeProvenanceImportTableRow,
+  canonicalizePublicCitationImportTableRow,
   formatCatalogImportPresentationHeader,
   serializeCanonicalCatalogImportEnvelope,
 } from "@moya/contracts/internal/catalog-import";
@@ -366,6 +378,204 @@ describe("Catalog Import XLSX layout authority", () => {
     }
     expect(references).toEqual([
       "services/catalog-importer/src/parsing/xlsx.ts",
+    ]);
+  });
+});
+
+describe("Catalog Import V2 XLSX layout authority", () => {
+  it("freezes the explicit v2 layout, sheets and visible metadata", () => {
+    expect(CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION).toBe(
+      "catalog-import-xlsx/v2",
+    );
+    expect(CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC).toMatchObject({
+      workbookLayoutVersion: "catalog-import-xlsx/v2",
+      importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+      sheetOrder: CATALOG_IMPORT_V2_SHEET_NAMES,
+      rowRoles: {
+        presentationHeader: 1,
+        machineHeader: 2,
+        firstEditableRow: 3,
+        lastEditableRow: 1_048_576,
+      },
+      instructions: {
+        metadata: {
+          sectionCell: "A91",
+          workbookLayoutVersion: {
+            keyCell: "A92",
+            valueCell: "B92",
+            value: "catalog-import-xlsx/v2",
+          },
+          importContractVersion: {
+            keyCell: "A93",
+            valueCell: "B93",
+            value: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+          },
+        },
+      },
+    });
+    expect(CATALOG_IMPORT_V2_SHEET_NAMES).toEqual([
+      "01_Catalog",
+      "02_Aliases",
+      "03_Provenance",
+      "04_Contributors",
+      "05_Public_Citations",
+      "99_Instructions",
+    ]);
+    expect(CATALOG_IMPORT_V2_WORKBOOK_SPEC.importContractVersion).toBe(
+      CATALOG_IMPORT_V2_CONTRACT_VERSION,
+    );
+  });
+
+  it("binds all five data sheets to exact headers, tables and frozen panes", () => {
+    const dataSheets = CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.dataSheets;
+    expect(
+      dataSheets["01_Catalog"].fields.map((field) => field.machineHeader),
+    ).toEqual(CATALOG_IMPORT_V2_CATALOG_HEADERS);
+    expect(
+      dataSheets["02_Aliases"].fields.map((field) => field.machineHeader),
+    ).toEqual(CATALOG_IMPORT_ALIAS_HEADERS);
+    expect(
+      dataSheets["03_Provenance"].fields.map((field) => field.machineHeader),
+    ).toEqual(CATALOG_IMPORT_PROVENANCE_HEADERS);
+    expect(
+      dataSheets["04_Contributors"].fields.map((field) => field.machineHeader),
+    ).toEqual(CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS);
+    expect(
+      dataSheets["05_Public_Citations"].fields.map(
+        (field) => field.machineHeader,
+      ),
+    ).toEqual(CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS);
+    expect(
+      Object.fromEntries(
+        Object.entries(dataSheets).map(([name, layout]) => [
+          name,
+          layout.tableRef,
+        ]),
+      ),
+    ).toEqual({
+      "01_Catalog": "A2:AF3",
+      "02_Aliases": "A2:C3",
+      "03_Provenance": "A2:F3",
+      "04_Contributors": "A2:D3",
+      "05_Public_Citations": "A2:F3",
+    });
+    for (const layout of Object.values(dataSheets)) {
+      expect(layout.freeze.ySplit).toBe(2);
+      expect(layout.fields).toHaveLength(
+        Number(
+          layout.tableRef
+            .match(/:([A-Z]+)3$/)?.[1]
+            ?.split("")
+            .reduce(
+              (total, character) => total * 26 + character.charCodeAt(0) - 64,
+              0,
+            ),
+        ),
+      );
+    }
+  });
+
+  it("binds v2 categorical controls to exact machine values", () => {
+    const dataSheets = CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.dataSheets;
+    expect(
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.validations.fieldState.values,
+    ).toBe(CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.fieldState);
+    expect(
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.validations.longFormState.values,
+    ).toBe(CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState);
+    expect(
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.validations.collectionAction.values,
+    ).toEqual(["PRESERVE", "REPLACE", "CLEAR"]);
+    expect(
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.validations.contributorRole.values,
+    ).toEqual(["textAuthor", "calligrapher"]);
+    expect(CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.citationScope).toEqual(
+      [
+        "record",
+        "description",
+        "transcription",
+        "historicalContext",
+        "scholarlyResearch",
+      ],
+    );
+    const validations = new Map<string, string>();
+    for (const layout of Object.values(
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.dataSheets,
+    )) {
+      for (const field of layout.fields) {
+        if ("validation" in field) {
+          validations.set(field.machineHeader, field.validation);
+        }
+      }
+    }
+    expect(validations.get("contributorsAction")).toBe("collectionAction");
+    expect(validations.get("publicCitationsAction")).toBe("collectionAction");
+    expect(validations.get("role")).toBe("contributorRole");
+    expect(validations.get("transcriptionState")).toBe("longFormState");
+    expect(dataSheets["04_Contributors"].fields[1]?.guidance).toBe(
+      "0–2147483647（含）之间的整数；仅 position 决定显示顺序。",
+    );
+    expect(dataSheets["05_Public_Citations"].fields[1]?.guidance).toBe(
+      "0–2147483647（含）之间的整数；仅 position 决定显示顺序。",
+    );
+  });
+
+  it("keeps presentation metadata synthetic and executable", () => {
+    for (const [sheetName, layout] of Object.entries(
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.dataSheets,
+    )) {
+      for (const field of layout.fields) {
+        expect(
+          formatCatalogImportPresentationHeader(
+            field.presentationHeader,
+            field.requiredness,
+          ),
+        ).not.toBe("");
+        expect(field.guidance).not.toBe("");
+        expect(field.example).toMatch(
+          /synthetic|合成|example\.invalid|^(?:0|VALUE|PRESERVE|textAuthor|alternate|historical|inscription|calligraphy|description\|transcription)$/,
+        );
+      }
+      expect(sheetName).not.toMatch(/media|summary|period/i);
+    }
+
+    const catalog = Object.fromEntries(
+      CATALOG_IMPORT_V2_CATALOG_HEADERS.map((header) => [header, ""]),
+    );
+    expect(() =>
+      canonicalizeCatalogImportV2TableRow({
+        ...catalog,
+        catalogImportId: "row-v2",
+        sourceId: "source-v2",
+        title: "合成条目",
+        catalogKind: "inscription",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      canonicalizeCatalogContributorImportTableRow({
+        catalogImportId: "row-v2",
+        position: "0",
+        name: "合成作者",
+        role: "textAuthor",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      canonicalizePublicCitationImportTableRow({
+        catalogImportId: "row-v2",
+        position: "0",
+        label: "合成来源",
+        citation: "",
+        url: "",
+        appliesTo: "record|transcription",
+      }),
+    ).not.toThrow();
+    expect(Object.keys(CATALOG_IMPORT_V2_CSV_SPEC.files)).toEqual([
+      "00_manifest.csv",
+      "catalog.csv",
+      "aliases.csv",
+      "provenance.csv",
+      "contributors.csv",
+      "public_citations.csv",
     ]);
   });
 });
