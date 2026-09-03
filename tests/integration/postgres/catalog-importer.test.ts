@@ -300,6 +300,10 @@ type V2CitationInput = Omit<
   CanonicalCatalogImportV2Envelope["publicCitationRows"][number],
   "catalogImportId"
 >;
+type V2ProvenanceInput = Omit<
+  CanonicalCatalogImportV2Envelope["provenanceRows"][number],
+  "catalogImportId" | "sourceId"
+>;
 
 const defaultV2Contributors = [
   { position: 1, name: "欧阳询", role: "calligrapher" },
@@ -331,6 +335,7 @@ const buildV2ParsedBundle = (
     readonly contributorRows?: readonly V2ContributorInput[];
     readonly publicCitationsAction?: "PRESERVE" | "REPLACE" | "CLEAR";
     readonly publicCitationRows?: readonly V2CitationInput[];
+    readonly provenanceFields?: Partial<V2ProvenanceInput>;
   } = {},
 ): ParsedCatalogImportV2Bundle => {
   const contributorsAction = input.contributorsAction ?? "REPLACE";
@@ -386,6 +391,7 @@ const buildV2ParsedBundle = (
         sourceTitle: "V2 测试碑刻来源",
         sourceTypeRaw: "official-test",
         sourceUrl: "https://example.invalid/raw-source",
+        ...input.provenanceFields,
       },
     ],
     contributorRows: contributorRows.map((row) => ({
@@ -1883,6 +1889,335 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
         },
       ],
     });
+  });
+
+  it("binds approved V2 mutations to the existing scalar and collection state", async () => {
+    await seedV2Catalog("v2-stale-state-seed");
+
+    const scalarUpdate = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+      scalarFields: {
+        transcription: {
+          state: "VALUE",
+          value: "Owner 批准的释文修订",
+        },
+      },
+    });
+    const scalarDryRun = await createV2DryRun(
+      scalarUpdate,
+      "2026-09-03T20:02:10.000Z",
+    );
+    expect(scalarDryRun.findings).toEqual([
+      expect.objectContaining({ field: "transcription", operation: "SET" }),
+    ]);
+    await pool.query(
+      `UPDATE catalog_entries
+          SET transcription=$2, transcription_state='VALUE'
+        WHERE catalog_id=$1`,
+      [v2CatalogId, "dry-run 后写入的较新释文"],
+    );
+    const recomputedScalarDryRun = await createV2DryRun(
+      scalarUpdate,
+      scalarDryRun.completedAt,
+    );
+    expect(recomputedScalarDryRun.findings[0]?.findingId).not.toBe(
+      scalarDryRun.findings[0]?.findingId,
+    );
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(scalarUpdate, scalarDryRun, "v2-stale-scalar-state"),
+        authorization: authorization(
+          scalarDryRun,
+          [String(scalarDryRun.findings[0]?.findingId)],
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        "SELECT transcription FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ transcription: "dry-run 后写入的较新释文" }],
+    });
+
+    const contributorUpdate = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      scalarFields: { transcription: { state: "UNSUPPLIED" } },
+      contributorsAction: "REPLACE",
+      contributorRows: [
+        { position: 0, name: "韩愈", role: "textAuthor" },
+        { position: 4, name: "颜真卿", role: "calligrapher" },
+      ],
+      publicCitationsAction: "PRESERVE",
+    });
+    const contributorDryRun = await createV2DryRun(
+      contributorUpdate,
+      "2026-09-03T20:02:11.000Z",
+    );
+    expect(contributorDryRun.findings).toEqual([
+      expect.objectContaining({ field: "contributors", operation: "SET" }),
+    ]);
+    await pool.query(
+      `UPDATE catalog_contributors
+          SET name=$3
+        WHERE catalog_id=$1 AND position=$2`,
+      [v2CatalogId, 0, "dry-run 后写入的较新作者"],
+    );
+    const recomputedContributorDryRun = await createV2DryRun(
+      contributorUpdate,
+      contributorDryRun.completedAt,
+    );
+    expect(recomputedContributorDryRun.findings[0]?.findingId).not.toBe(
+      contributorDryRun.findings[0]?.findingId,
+    );
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(
+          contributorUpdate,
+          contributorDryRun,
+          "v2-stale-contributor-state",
+        ),
+        authorization: authorization(
+          contributorDryRun,
+          [String(contributorDryRun.findings[0]?.findingId)],
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        `SELECT name FROM catalog_contributors
+          WHERE catalog_id=$1 AND position=$2`,
+        [v2CatalogId, 0],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ name: "dry-run 后写入的较新作者" }],
+    });
+    await expect(
+      pool.query(
+        `SELECT operation_id FROM catalog_import_operations
+          WHERE operation_id = ANY($1::text[])`,
+        [["v2-stale-scalar-state", "v2-stale-contributor-state"]],
+      ),
+    ).resolves.toMatchObject({ rows: [] });
+  });
+
+  it("binds approved V2 provenance and citation mutations to their full existing state", async () => {
+    await seedV2Catalog("v2-stale-related-state-seed");
+
+    const citationUpdate = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "REPLACE",
+      publicCitationRows: [
+        defaultV2Citations[0],
+        { ...defaultV2Citations[1], label: "Owner 批准的修订来源" },
+      ],
+    });
+    const citationDryRun = await createV2DryRun(
+      citationUpdate,
+      "2026-09-03T20:02:20.000Z",
+    );
+    expect(citationDryRun.findings).toEqual([
+      expect.objectContaining({ field: "publicCitations", operation: "SET" }),
+    ]);
+    await pool.query(
+      `UPDATE catalog_source_citation_scopes
+          SET scope='description'
+        WHERE catalog_id=$1 AND citation_position=$2 AND scope='transcription'`,
+      [v2CatalogId, 2],
+    );
+    const recomputedCitationDryRun = await createV2DryRun(
+      citationUpdate,
+      citationDryRun.completedAt,
+    );
+    expect(recomputedCitationDryRun.findings[0]?.findingId).not.toBe(
+      citationDryRun.findings[0]?.findingId,
+    );
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(
+          citationUpdate,
+          citationDryRun,
+          "v2-stale-citation-state",
+        ),
+        authorization: authorization(
+          citationDryRun,
+          [String(citationDryRun.findings[0]?.findingId)],
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        `SELECT scope FROM catalog_source_citation_scopes
+          WHERE catalog_id=$1 AND citation_position=$2 ORDER BY scope`,
+        [v2CatalogId, 2],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        { scope: "description" },
+        { scope: "record" },
+        { scope: "scholarlyResearch" },
+      ],
+    });
+
+    const provenanceUpdate = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+      provenanceFields: { sourceTitle: "Owner 批准的来源名称" },
+    });
+    const provenanceDryRun = await createV2DryRun(
+      provenanceUpdate,
+      "2026-09-03T20:02:21.000Z",
+    );
+    expect(provenanceDryRun.findings).toEqual([
+      expect.objectContaining({ field: "sourceTitle", operation: "SET" }),
+    ]);
+    await pool.query(
+      `UPDATE catalog_import_sources
+          SET source_title=$2
+        WHERE source_id=$1`,
+      ["src_test_v2_001", "dry-run 后写入的较新来源名称"],
+    );
+    const recomputedProvenanceDryRun = await createV2DryRun(
+      provenanceUpdate,
+      provenanceDryRun.completedAt,
+    );
+    expect(recomputedProvenanceDryRun.findings[0]?.findingId).not.toBe(
+      provenanceDryRun.findings[0]?.findingId,
+    );
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(
+          provenanceUpdate,
+          provenanceDryRun,
+          "v2-stale-provenance-state",
+        ),
+        authorization: authorization(
+          provenanceDryRun,
+          [String(provenanceDryRun.findings[0]?.findingId)],
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        "SELECT source_title FROM catalog_import_sources WHERE source_id=$1",
+        ["src_test_v2_001"],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ source_title: "dry-run 后写入的较新来源名称" }],
+    });
+
+    const identicalProvenance = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+      provenanceFields: { sourceTitle: "dry-run 后写入的较新来源名称" },
+    });
+    const identicalProvenanceDryRun = await createV2DryRun(
+      identicalProvenance,
+      "2026-09-03T20:02:22.000Z",
+    );
+    expect(identicalProvenanceDryRun).toMatchObject({
+      findings: [],
+      resultCounts: { unchanged: 1, update: 0 },
+      applyReady: true,
+    });
+    await pool.query("DELETE FROM catalog_import_sources WHERE source_id=$1", [
+      "src_test_v2_001",
+    ]);
+    const missingProvenanceDryRun = await createV2DryRun(
+      identicalProvenance,
+      identicalProvenanceDryRun.completedAt,
+    );
+    expect(missingProvenanceDryRun.findings).toEqual([
+      expect.objectContaining({
+        category: "CRITICAL_CHANGE",
+        protectionLevel: "LEVEL_B",
+        operation: "SET",
+        requiresFieldApproval: true,
+        message: "The update creates a provenance source mapping",
+      }),
+    ]);
+    expect(missingProvenanceDryRun.dryRunResultSha256).not.toBe(
+      identicalProvenanceDryRun.dryRunResultSha256,
+    );
+    await expect(
+      applyCatalogImport(
+        pool,
+        applyInput(
+          identicalProvenance,
+          identicalProvenanceDryRun,
+          "v2-stale-provenance-existence",
+        ),
+      ),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        "SELECT source_id FROM catalog_import_sources WHERE source_id=$1",
+        ["src_test_v2_001"],
+      ),
+    ).resolves.toMatchObject({ rows: [] });
+    await pool.query(
+      `INSERT INTO catalog_import_sources(
+         source_id, catalog_id, source_title, source_type_raw, source_url, source_note
+       ) VALUES ($1,$2,$3,$4,$5,NULL)`,
+      [
+        "src_test_v2_001",
+        v2CatalogId,
+        "dry-run 后写入的较新来源名称",
+        "official-test",
+        "https://example.invalid/raw-source",
+      ],
+    );
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(
+          identicalProvenance,
+          missingProvenanceDryRun,
+          "v2-stale-provenance-created",
+        ),
+        authorization: authorization(
+          missingProvenanceDryRun,
+          [String(missingProvenanceDryRun.findings[0]?.findingId)],
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        "SELECT source_title FROM catalog_import_sources WHERE source_id=$1",
+        ["src_test_v2_001"],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ source_title: "dry-run 后写入的较新来源名称" }],
+    });
+    await expect(
+      pool.query(
+        `SELECT operation_id FROM catalog_import_operations
+          WHERE operation_id = ANY($1::text[])`,
+        [
+          [
+            "v2-stale-citation-state",
+            "v2-stale-provenance-state",
+            "v2-stale-provenance-existence",
+            "v2-stale-provenance-created",
+          ],
+        ],
+      ),
+    ).resolves.toMatchObject({ rows: [] });
   });
 
   it("applies contributor PRESERVE, no-op REPLACE, approved replacement/CLEAR, and rollback atomically", async () => {

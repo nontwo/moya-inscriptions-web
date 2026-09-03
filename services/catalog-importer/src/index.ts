@@ -6,6 +6,7 @@ import {
   CATALOG_IMPORT_V2_CONTRACT_VERSION,
   canonicalCatalogImportEnvelopeSchema,
   canonicalCatalogImportV2EnvelopeSchema,
+  catalogImportIdSchema,
   catalogImportDryRunSchema,
   catalogImportV2DryRunSchema,
   dryRunFindingIdSchema,
@@ -768,6 +769,118 @@ const existingCitationsForCatalog = (
     .sort((left, right) => left.position - right.position);
 };
 
+const compareText = (left: string, right: string) =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const v2MutationFindingId = (
+  sourceId: string,
+  field: string,
+  operation: "SET" | "CLEAR",
+  existingSemanticState: unknown,
+) =>
+  dryRunFindingIdSchema.parse(
+    `finding-${textSha256(
+      `${sourceId}\0${field}\0${operation}\0${textSha256(
+        stableJson(existingSemanticState),
+      )}`,
+    ).slice(0, 32)}`,
+  );
+
+const v2ExistingCatalogMemberReference = (
+  catalogId: string,
+  occupiedReferences: Set<string>,
+) => {
+  const candidates = [
+    `existing-${catalogId}`,
+    `existing-${textSha256(catalogId)}`,
+  ];
+  for (let collisionIndex = 0; ; collisionIndex += 1) {
+    const candidate =
+      candidates[collisionIndex] ??
+      `existing-${textSha256(`${catalogId}\0${collisionIndex}`)}`;
+    const parsed = catalogImportIdSchema.safeParse(candidate);
+    if (!parsed.success || occupiedReferences.has(parsed.data)) continue;
+    occupiedReferences.add(parsed.data);
+    return parsed.data;
+  }
+};
+
+const analyzeV2TitleDuplicates = (
+  rows: CanonicalCatalogImportV2Envelope["catalogRows"],
+  titleMatches: readonly CatalogIdentityRow[],
+  allIncomingCatalogImportIds: readonly string[],
+) => {
+  const rowsByTitle = new Map<string, CanonicalV2Row[]>();
+  for (const row of rows) {
+    rowsByTitle.set(row.title, [...(rowsByTitle.get(row.title) ?? []), row]);
+  }
+
+  const existingCatalogIdsByTitle = new Map<string, string[]>();
+  for (const match of titleMatches) {
+    existingCatalogIdsByTitle.set(match.title, [
+      ...(existingCatalogIdsByTitle.get(match.title) ?? []),
+      match.catalog_id,
+    ]);
+  }
+
+  const duplicateCatalogImportIds = new Set<string>();
+  const occupiedCandidateMemberReferences = new Set(
+    allIncomingCatalogImportIds,
+  );
+  const duplicateCandidates: CatalogImportV2DryRun["duplicateCandidates"] = [];
+  for (const [title, titleRows] of [...rowsByTitle.entries()].sort(
+    ([left], [right]) => compareText(left, right),
+  )) {
+    const incomingCatalogImportIds = titleRows
+      .map(({ catalogImportId }) => String(catalogImportId))
+      .sort(compareText);
+    const representedTargetCatalogIds = new Set(
+      titleRows.flatMap(({ catalogId }) =>
+        catalogId === undefined ? [] : [String(catalogId)],
+      ),
+    );
+    // A target represented in this title group is that update's own record.
+    // Targets of peer updates moving elsewhere remain current-state matches.
+    const existingCatalogIds = [
+      ...new Set(existingCatalogIdsByTitle.get(title) ?? []),
+    ]
+      .filter((catalogId) => !representedTargetCatalogIds.has(catalogId))
+      .sort(compareText);
+    if (incomingCatalogImportIds.length + existingCatalogIds.length < 2) {
+      continue;
+    }
+
+    for (const catalogImportId of incomingCatalogImportIds) {
+      duplicateCatalogImportIds.add(catalogImportId);
+    }
+    const catalogImportIds = [
+      ...incomingCatalogImportIds,
+      ...existingCatalogIds.map((catalogId) =>
+        v2ExistingCatalogMemberReference(
+          catalogId,
+          occupiedCandidateMemberReferences,
+        ),
+      ),
+    ];
+    duplicateCandidates.push(
+      duplicateCandidateSchema.parse({
+        candidateId: `duplicate-${textSha256(
+          stableJson({
+            title,
+            incomingCatalogImportIds,
+            existingCatalogIds,
+          }),
+        ).slice(0, 32)}`,
+        catalogImportIds,
+        signals: ["exact title match"],
+        disposition: "UNRESOLVED",
+      }),
+    );
+  }
+
+  return { duplicateCandidates, duplicateCatalogImportIds };
+};
+
 const createCatalogImportV2DryRun = async (
   queryPort: QueryPort,
   parsed: ParsedCatalogImportV2Bundle,
@@ -852,11 +965,41 @@ const createCatalogImportV2DryRun = async (
 
   const sourceMap = new Map(sources.rows.map((row) => [row.source_id, row]));
   const catalogMap = new Map(catalogs.rows.map((row) => [row.catalog_id, row]));
-  const titleMap = new Map(
-    titleMatches.rows.map((row) => [row.title, row.catalog_id]),
-  );
+  const duplicateEligibleRows = canonical.envelope.catalogRows.filter((row) => {
+    const sourceId = String(row.sourceId);
+    const targetId =
+      row.catalogId === undefined ? undefined : String(row.catalogId);
+    const provenance = canonical.envelope.provenanceRows.filter(
+      ({ catalogImportId }) =>
+        String(catalogImportId) === String(row.catalogImportId),
+    );
+    if (
+      !provenance.some(
+        ({ sourceId: candidate }) => String(candidate) === sourceId,
+      )
+    ) {
+      return false;
+    }
+    if (
+      provenance.some((item) => {
+        const existing = sourceMap.get(String(item.sourceId));
+        return existing !== undefined && targetId !== existing.catalog_id;
+      })
+    ) {
+      return false;
+    }
+    if (targetId !== undefined && !catalogMap.has(targetId)) return false;
+    return ownerNotePersistenceFinding(row) === undefined;
+  });
+  const { duplicateCandidates, duplicateCatalogImportIds } =
+    analyzeV2TitleDuplicates(
+      duplicateEligibleRows,
+      titleMatches.rows,
+      canonical.envelope.catalogRows.map(({ catalogImportId }) =>
+        String(catalogImportId),
+      ),
+    );
   const findings: CatalogImportV2DryRun["findings"] = [];
-  const duplicateCandidates: CatalogImportV2DryRun["duplicateCandidates"] = [];
   let add = 0;
   let update = 0;
   let unchanged = 0;
@@ -866,6 +1009,7 @@ const createCatalogImportV2DryRun = async (
   for (const row of canonical.envelope.catalogRows) {
     const sourceId = String(row.sourceId);
     const importId = String(row.catalogImportId);
+    const hasTitleDuplicate = duplicateCatalogImportIds.has(importId);
     const targetId =
       row.catalogId === undefined ? undefined : String(row.catalogId);
     const provenance = canonical.envelope.provenanceRows.filter(
@@ -939,6 +1083,21 @@ const createCatalogImportV2DryRun = async (
       continue;
     }
 
+    if (hasTitleDuplicate) {
+      findings.push({
+        findingId: findingId(sourceId, "title", "duplicate"),
+        catalogImportId: row.catalogImportId,
+        sourceId: row.sourceId,
+        ...(row.catalogId === undefined ? {} : { catalogId: row.catalogId }),
+        category: "DUPLICATE_CANDIDATE",
+        field: "title",
+        applyBlocker: "DUPLICATE_CANDIDATE_UNRESOLVED",
+        approvable: false,
+        requiresFieldApproval: false,
+        message: "An existing or incoming Catalog entry has the same title",
+      });
+    }
+
     if (target !== undefined) {
       assertDefinedAliasUpdate(
         importId,
@@ -949,7 +1108,12 @@ const createCatalogImportV2DryRun = async (
       const before = findings.length;
       if (row.title !== target.title) {
         findings.push({
-          findingId: findingId(sourceId, "title", "SET"),
+          findingId: v2MutationFindingId(
+            sourceId,
+            "title",
+            "SET",
+            target.title,
+          ),
           catalogImportId: row.catalogImportId,
           sourceId: row.sourceId,
           catalogId: row.catalogId,
@@ -965,7 +1129,12 @@ const createCatalogImportV2DryRun = async (
       }
       if (row.catalogKind !== target.kind) {
         findings.push({
-          findingId: findingId(sourceId, "catalogKind", "SET"),
+          findingId: v2MutationFindingId(
+            sourceId,
+            "catalogKind",
+            "SET",
+            target.kind,
+          ),
           catalogImportId: row.catalogImportId,
           sourceId: row.sourceId,
           catalogId: row.catalogId,
@@ -987,7 +1156,12 @@ const createCatalogImportV2DryRun = async (
         const isClear = incoming.state === "CLEAR";
         const level = v2FieldProtection(field);
         findings.push({
-          findingId: findingId(sourceId, field, isClear ? "CLEAR" : "SET"),
+          findingId: v2MutationFindingId(
+            sourceId,
+            field,
+            isClear ? "CLEAR" : "SET",
+            existing,
+          ),
           catalogImportId: row.catalogImportId,
           sourceId: row.sourceId,
           catalogId: row.catalogId,
@@ -1008,7 +1182,27 @@ const createCatalogImportV2DryRun = async (
       }
       for (const item of provenance) {
         const existing = sourceMap.get(String(item.sourceId));
-        if (existing === undefined) continue;
+        if (existing === undefined) {
+          findings.push({
+            findingId: v2MutationFindingId(
+              String(item.sourceId),
+              "provenance",
+              "SET",
+              { exists: false },
+            ),
+            catalogImportId: row.catalogImportId,
+            sourceId: item.sourceId,
+            catalogId: row.catalogId,
+            category: "CRITICAL_CHANGE",
+            protectionLevel: "LEVEL_B",
+            persistenceDisposition: "SUPPORTED_NOW",
+            operation: "SET",
+            approvable: true,
+            requiresFieldApproval: true,
+            message: "The update creates a provenance source mapping",
+          });
+          continue;
+        }
         const incoming = canonicalProvenance(item);
         const pairs = [
           ["sourceTitle", incoming.sourceTitle, existing.source_title],
@@ -1019,7 +1213,12 @@ const createCatalogImportV2DryRun = async (
         for (const [field, next, current] of pairs) {
           if (next === current) continue;
           findings.push({
-            findingId: findingId(String(item.sourceId), field, "SET"),
+            findingId: v2MutationFindingId(
+              String(item.sourceId),
+              field,
+              "SET",
+              current,
+            ),
             catalogImportId: row.catalogImportId,
             sourceId: item.sourceId,
             catalogId: row.catalogId,
@@ -1047,10 +1246,11 @@ const createCatalogImportV2DryRun = async (
             : stableJson(incoming) !== stableJson(existing);
         if (changed) {
           findings.push({
-            findingId: findingId(
+            findingId: v2MutationFindingId(
               sourceId,
               "contributors",
               row.contributorsAction === "CLEAR" ? "CLEAR" : "SET",
+              existing,
             ),
             catalogImportId: row.catalogImportId,
             sourceId: row.sourceId,
@@ -1079,10 +1279,11 @@ const createCatalogImportV2DryRun = async (
             : stableJson(incoming) !== stableJson(existing);
         if (changed) {
           findings.push({
-            findingId: findingId(
+            findingId: v2MutationFindingId(
               sourceId,
               "publicCitations",
               row.publicCitationsAction === "CLEAR" ? "CLEAR" : "SET",
+              existing,
             ),
             catalogImportId: row.catalogImportId,
             sourceId: row.sourceId,
@@ -1099,38 +1300,19 @@ const createCatalogImportV2DryRun = async (
         }
       }
 
-      if (findings.length === before) unchanged += 1;
+      if (hasTitleDuplicate) conflict += 1;
+      else if (findings.length === before) unchanged += 1;
       else update += 1;
       continue;
     }
 
+    if (hasTitleDuplicate) {
+      conflict += 1;
+      continue;
+    }
     const existingPrimary = sourceMap.get(sourceId);
     if (existingPrimary !== undefined) {
       unchanged += 1;
-      continue;
-    }
-    const titleCatalogId = titleMap.get(row.title);
-    if (titleCatalogId !== undefined) {
-      conflict += 1;
-      const candidateId = `duplicate-${textSha256(`${sourceId}\0${titleCatalogId}`).slice(0, 32)}`;
-      duplicateCandidates.push(
-        duplicateCandidateSchema.parse({
-          candidateId,
-          catalogImportIds: [row.catalogImportId, `existing-${titleCatalogId}`],
-          signals: ["exact title match"],
-          disposition: "UNRESOLVED",
-        }),
-      );
-      findings.push({
-        findingId: findingId(sourceId, "title", "duplicate"),
-        catalogImportId: row.catalogImportId,
-        sourceId: row.sourceId,
-        category: "DUPLICATE_CANDIDATE",
-        applyBlocker: "DUPLICATE_CANDIDATE_UNRESOLVED",
-        approvable: false,
-        requiresFieldApproval: false,
-        message: "An existing Catalog entry has the same title",
-      });
       continue;
     }
     add += 1;

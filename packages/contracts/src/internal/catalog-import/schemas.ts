@@ -156,6 +156,20 @@ export const provenanceImportRowSchema = z.strictObject({
   sourceNote: exactTextSchema(2_000).optional(),
 });
 
+const addV2NulIssue = (
+  context: z.RefinementCtx,
+  path: (string | number)[],
+  value: string | undefined,
+) => {
+  if (value?.includes("\u0000")) {
+    context.addIssue({
+      code: "custom",
+      path,
+      message: "NUL characters are not allowed",
+    });
+  }
+};
+
 const v2StatefulFieldNames = [
   "dynasty",
   "dateText",
@@ -186,6 +200,20 @@ export const canonicalCatalogImportV2RowSchema = z
     const sourceId = String(row.sourceId);
     const catalogId =
       row.catalogId === undefined ? undefined : String(row.catalogId);
+    for (const [field, value] of [
+      ["catalogImportId", importId],
+      ["sourceId", sourceId],
+      ["catalogId", catalogId],
+      ["title", row.title],
+    ] as const) {
+      addV2NulIssue(context, [field], value);
+    }
+    for (const field of v2StatefulFieldNames) {
+      const value = row[field];
+      if (value.state === "VALUE") {
+        addV2NulIssue(context, [field, "value"], value.value);
+      }
+    }
     if (importId === sourceId) {
       context.addIssue({
         code: "custom",
@@ -468,6 +496,8 @@ export const canonicalCatalogImportV2EnvelopeSchema = z
     const aliases = new Set<string>();
     for (const [index, row] of envelope.aliasRows.entries()) {
       const importId = String(row.catalogImportId);
+      addV2NulIssue(context, ["aliasRows", index, "catalogImportId"], importId);
+      addV2NulIssue(context, ["aliasRows", index, "alias"], row.alias);
       if (!catalogImportIds.has(importId)) {
         addDuplicateIssue(
           context,
@@ -490,6 +520,16 @@ export const canonicalCatalogImportV2EnvelopeSchema = z
     for (const [index, row] of envelope.provenanceRows.entries()) {
       const importId = String(row.catalogImportId);
       const sourceId = String(row.sourceId);
+      for (const [field, value] of [
+        ["catalogImportId", importId],
+        ["sourceId", sourceId],
+        ["sourceTitle", row.sourceTitle],
+        ["sourceTypeRaw", row.sourceTypeRaw],
+        ["sourceUrl", row.sourceUrl],
+        ["sourceNote", row.sourceNote],
+      ] as const) {
+        addV2NulIssue(context, ["provenanceRows", index, field], value);
+      }
       if (!catalogImportIds.has(importId)) {
         addDuplicateIssue(
           context,
@@ -537,6 +577,12 @@ export const canonicalCatalogImportV2EnvelopeSchema = z
     const contributorIdentities = new Set<string>();
     for (const [index, row] of envelope.contributorRows.entries()) {
       const importId = String(row.catalogImportId);
+      addV2NulIssue(
+        context,
+        ["contributorRows", index, "catalogImportId"],
+        importId,
+      );
+      addV2NulIssue(context, ["contributorRows", index, "name"], row.name);
       if (!catalogImportIds.has(importId)) {
         addDuplicateIssue(
           context,
@@ -577,6 +623,14 @@ export const canonicalCatalogImportV2EnvelopeSchema = z
     const citationPositions = new Set<string>();
     for (const [index, row] of envelope.publicCitationRows.entries()) {
       const importId = String(row.catalogImportId);
+      for (const [field, value] of [
+        ["catalogImportId", importId],
+        ["label", row.label],
+        ["citation", row.citation],
+        ["url", row.url],
+      ] as const) {
+        addV2NulIssue(context, ["publicCitationRows", index, field], value);
+      }
       if (!catalogImportIds.has(importId)) {
         addDuplicateIssue(
           context,
@@ -1121,13 +1175,13 @@ export const catalogImportV2DryRunSchema = z
         result.resultCounts.update +
         result.resultCounts.unchanged +
         result.resultCounts.conflict +
-        result.resultCounts.error >
+        result.resultCounts.error !==
       result.rowCounts.catalog
     ) {
       context.addIssue({
         code: "custom",
         path: ["resultCounts"],
-        message: "Catalog row outcomes cannot exceed the Catalog row count",
+        message: "Catalog row outcomes must equal the Catalog row count",
       });
     }
     const expectedReady =

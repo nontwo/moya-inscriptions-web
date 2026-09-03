@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -145,6 +146,36 @@ const v2CatalogRows = [
     publicCitationsAction: "REPLACE",
   },
 ] as const;
+
+const v2IdentityOnlyCatalogRow = {
+  ...v2CatalogRows[0],
+  dynasty: "",
+  dynastyState: "UNSUPPLIED",
+  dateText: "",
+  dateTextState: "UNSUPPLIED",
+  province: "",
+  provinceState: "UNSUPPLIED",
+  prefecture: "",
+  prefectureState: "UNSUPPLIED",
+  county: "",
+  countyState: "UNSUPPLIED",
+  currentLocation: "",
+  currentLocationState: "UNSUPPLIED",
+  currentCustodian: "",
+  currentCustodianState: "UNSUPPLIED",
+  description: "",
+  descriptionState: "UNSUPPLIED",
+  scriptStyle: "",
+  scriptStyleState: "UNSUPPLIED",
+  transcription: "",
+  transcriptionState: "UNSUPPLIED",
+  historicalContext: "",
+  historicalContextState: "UNSUPPLIED",
+  scholarlyResearch: "",
+  scholarlyResearchState: "UNSUPPLIED",
+  contributorsAction: "PRESERVE",
+  publicCitationsAction: "PRESERVE",
+} as const;
 
 const v2AliasRows = [aliasRows[0]] as const;
 const v2ProvenanceRows = [provenanceRows[0]] as const;
@@ -1165,6 +1196,403 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       state: "VALUE",
       value: "第一行\n第二行（synthetic）",
     });
+  });
+
+  it("reports same-title v2 creates as one deterministic unresolved candidate and two conflicts", async () => {
+    const catalog = [
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-z",
+        sourceId: "source-same-title-z",
+        title: "批内同名合成条目",
+      },
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-a",
+        sourceId: "source-same-title-a",
+        title: "批内同名合成条目",
+      },
+    ];
+    const provenance = catalog.map(({ catalogImportId, sourceId }) => ({
+      ...v2ProvenanceRows[0],
+      catalogImportId,
+      sourceId,
+    }));
+    const forward = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog,
+        aliases: [],
+        provenance,
+        contributors: [],
+        publicCitations: [],
+      }),
+    );
+    const reversed = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog: [...catalog].reverse(),
+        aliases: [],
+        provenance: [...provenance].reverse(),
+        contributors: [],
+        publicCitations: [],
+      }),
+    );
+    const queryPort = {
+      query: <T>() =>
+        Promise.resolve({ rows: [] as T[], rowCount: 0 as number | null }),
+    };
+    const completedAt = "2026-08-15T00:00:00.000Z";
+    const forwardDryRun = await createCatalogImportDryRun(
+      queryPort,
+      forward,
+      completedAt,
+    );
+    const reversedDryRun = await createCatalogImportDryRun(
+      queryPort,
+      reversed,
+      completedAt,
+    );
+
+    expect(forward.canonicalInputSha256).toBe(reversed.canonicalInputSha256);
+    expect(forwardDryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      resultCounts: {
+        add: 0,
+        update: 0,
+        unchanged: 0,
+        conflict: 2,
+        identityConflict: 0,
+        error: 0,
+        duplicateCandidate: 1,
+      },
+      applyBlockers: ["DUPLICATE_CANDIDATE_UNRESOLVED"],
+    });
+    expect(forwardDryRun.duplicateCandidates).toHaveLength(1);
+    expect(forwardDryRun.duplicateCandidates[0]).toMatchObject({
+      catalogImportIds: ["item-a", "item-z"],
+      signals: ["exact title match"],
+      disposition: "UNRESOLVED",
+    });
+    expect(forwardDryRun.duplicateCandidates[0]?.candidateId).toMatch(
+      /^duplicate-[a-f0-9]{32}$/,
+    );
+    expect(
+      forwardDryRun.findings
+        .filter(({ category }) => category === "DUPLICATE_CANDIDATE")
+        .map(
+          ({
+            catalogImportId,
+            field,
+            applyBlocker,
+            approvable,
+            requiresFieldApproval,
+          }) => ({
+            catalogImportId,
+            field,
+            applyBlocker,
+            approvable,
+            requiresFieldApproval,
+          }),
+        ),
+    ).toEqual([
+      {
+        catalogImportId: "item-a",
+        field: "title",
+        applyBlocker: "DUPLICATE_CANDIDATE_UNRESOLVED",
+        approvable: false,
+        requiresFieldApproval: false,
+      },
+      {
+        catalogImportId: "item-z",
+        field: "title",
+        applyBlocker: "DUPLICATE_CANDIDATE_UNRESOLVED",
+        approvable: false,
+        requiresFieldApproval: false,
+      },
+    ]);
+    expect(reversedDryRun.duplicateCandidates).toEqual(
+      forwardDryRun.duplicateCandidates,
+    );
+    expect(reversedDryRun.findings).toEqual(forwardDryRun.findings);
+    expect(reversedDryRun.resultCounts).toEqual(forwardDryRun.resultCounts);
+    expect(reversedDryRun.dryRunResultSha256).toBe(
+      forwardDryRun.dryRunResultSha256,
+    );
+  });
+
+  it("blocks a title-changing v2 update that collides with another incoming row", async () => {
+    const existingCatalogId = "catalog-existing-title-update";
+    const sharedTitle = "批内更新同名合成条目";
+    const catalog = [
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-update",
+        sourceId: "source-title-update",
+        catalogId: existingCatalogId,
+        title: sharedTitle,
+      },
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-create",
+        sourceId: "source-title-create",
+        catalogId: "",
+        title: sharedTitle,
+      },
+    ];
+    const parsed = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog,
+        aliases: [],
+        provenance: catalog.map(({ catalogImportId, sourceId }) => ({
+          ...v2ProvenanceRows[0],
+          catalogImportId,
+          sourceId,
+        })),
+        contributors: [],
+        publicCitations: [],
+      }),
+    );
+    const queryPort = {
+      query: <T>(text: string) => {
+        const rows = text.includes(
+          "FROM catalog_entries WHERE catalog_id = ANY",
+        )
+          ? [
+              {
+                catalog_id: existingCatalogId,
+                kind: v2IdentityOnlyCatalogRow.catalogKind,
+                title: "更新前合成标题",
+                dynasty: null,
+                dynasty_state: "UNSUPPLIED",
+                date_text: null,
+                date_text_state: "UNSUPPLIED",
+                province: null,
+                province_state: "UNSUPPLIED",
+                prefecture: null,
+                prefecture_state: "UNSUPPLIED",
+                county: null,
+                county_state: "UNSUPPLIED",
+                current_location: null,
+                current_location_state: "UNSUPPLIED",
+                current_custodian: null,
+                current_custodian_state: "UNSUPPLIED",
+                description: null,
+                description_state: "UNSUPPLIED",
+                script_style: null,
+                script_style_state: "UNSUPPLIED",
+                transcription: null,
+                transcription_state: "UNSUPPLIED",
+                historical_context: null,
+                historical_context_state: "UNSUPPLIED",
+                scholarly_research: null,
+                scholarly_research_state: "UNSUPPLIED",
+              },
+            ]
+          : [];
+        return Promise.resolve({
+          rows: rows as unknown as T[],
+          rowCount: rows.length,
+        });
+      },
+    };
+    const dryRun = await createCatalogImportDryRun(
+      queryPort,
+      parsed,
+      "2026-08-15T00:00:00.000Z",
+    );
+
+    expect(dryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      resultCounts: {
+        add: 0,
+        update: 0,
+        unchanged: 0,
+        conflict: 2,
+        identityConflict: 0,
+        error: 0,
+        duplicateCandidate: 1,
+      },
+      applyBlockers: ["DUPLICATE_CANDIDATE_UNRESOLVED"],
+    });
+    expect(dryRun.duplicateCandidates).toHaveLength(1);
+    expect(dryRun.duplicateCandidates[0]).toMatchObject({
+      catalogImportIds: ["item-create", "item-update"],
+      signals: ["exact title match"],
+      disposition: "UNRESOLVED",
+    });
+    expect(
+      dryRun.findings.filter(
+        ({ category }) => category === "DUPLICATE_CANDIDATE",
+      ),
+    ).toHaveLength(2);
+    expect(dryRun.findings).toContainEqual(
+      expect.objectContaining({
+        catalogImportId: "item-update",
+        catalogId: existingCatalogId,
+        category: "CRITICAL_CHANGE",
+        field: "title",
+        protectionLevel: "LEVEL_B",
+        operation: "SET",
+        approvable: true,
+        requiresFieldApproval: true,
+      }),
+    );
+  });
+
+  it("does not let an identity-invalid update create a duplicate conflict for a valid peer", async () => {
+    const sharedTitle = "无效更新不污染同名分析";
+    const catalog = [
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-valid-create",
+        sourceId: "source-valid-create",
+        catalogId: "",
+        title: sharedTitle,
+      },
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-missing-update",
+        sourceId: "source-missing-update",
+        catalogId: "catalog-target-does-not-exist",
+        title: sharedTitle,
+      },
+    ];
+    const parsed = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog,
+        aliases: [],
+        provenance: catalog.map(({ catalogImportId, sourceId }) => ({
+          ...v2ProvenanceRows[0],
+          catalogImportId,
+          sourceId,
+        })),
+        contributors: [],
+        publicCitations: [],
+      }),
+    );
+    const queryPort = {
+      query: <T>() =>
+        Promise.resolve({ rows: [] as T[], rowCount: 0 as number | null }),
+    };
+    const dryRun = await createCatalogImportDryRun(
+      queryPort,
+      parsed,
+      "2026-08-15T00:00:00.000Z",
+    );
+
+    expect(dryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      resultCounts: {
+        add: 1,
+        update: 0,
+        unchanged: 0,
+        conflict: 1,
+        identityConflict: 1,
+        error: 0,
+        duplicateCandidate: 0,
+      },
+      duplicateCandidates: [],
+      applyBlockers: ["IDENTITY_CONFLICT"],
+    });
+    expect(dryRun.findings).toEqual([
+      expect.objectContaining({
+        catalogImportId: "item-missing-update",
+        field: "catalogId",
+        category: "IDENTITY_CONFLICT",
+        identityConflictReason: "CATALOG_ID_NOT_FOUND",
+        applyBlocker: "IDENTITY_CONFLICT",
+      }),
+    ]);
+  });
+
+  it("bounds existing exact-title candidate evidence for a maximum-length CatalogId", async () => {
+    const maximumCatalogId = "c".repeat(128);
+    const expectedExistingReference = `existing-${createHash("sha256")
+      .update(maximumCatalogId, "utf8")
+      .digest("hex")}`;
+    const catalog = [
+      {
+        ...v2IdentityOnlyCatalogRow,
+        catalogImportId: "item-existing-title-match",
+        sourceId: "source-existing-title-match",
+        title: "数据库同名合成条目",
+      },
+    ];
+    const parsed = await parseCatalogImportCsvBundle(
+      await writeV2CsvBundle({
+        catalog,
+        aliases: [],
+        provenance: [
+          {
+            ...v2ProvenanceRows[0],
+            catalogImportId: catalog[0]!.catalogImportId,
+            sourceId: catalog[0]!.sourceId,
+          },
+        ],
+        contributors: [],
+        publicCitations: [],
+      }),
+    );
+    const queryPort = {
+      query: <T>(text: string) => {
+        const rows = text.includes("FROM catalog_entries WHERE title = ANY")
+          ? [{ catalog_id: maximumCatalogId, title: catalog[0]!.title }]
+          : [];
+        return Promise.resolve({
+          rows: rows as unknown as T[],
+          rowCount: rows.length,
+        });
+      },
+    };
+    const dryRun = await createCatalogImportDryRun(
+      queryPort,
+      parsed,
+      "2026-08-15T00:00:00.000Z",
+    );
+
+    expect(dryRun).toMatchObject({
+      state: "FAILED",
+      applyReady: false,
+      resultCounts: {
+        add: 0,
+        update: 0,
+        unchanged: 0,
+        conflict: 1,
+        identityConflict: 0,
+        error: 0,
+        duplicateCandidate: 1,
+      },
+      applyBlockers: ["DUPLICATE_CANDIDATE_UNRESOLVED"],
+    });
+    expect(dryRun.duplicateCandidates).toEqual([
+      {
+        candidateId: expect.stringMatching(/^duplicate-[a-f0-9]{32}$/),
+        catalogImportIds: [
+          "item-existing-title-match",
+          expectedExistingReference,
+        ],
+        signals: ["exact title match"],
+        disposition: "UNRESOLVED",
+      },
+    ]);
+    expect(expectedExistingReference).toHaveLength(73);
+    expect(
+      dryRun.duplicateCandidates[0]?.catalogImportIds.every(
+        (catalogImportId) => String(catalogImportId).length <= 128,
+      ),
+    ).toBe(true);
+    expect(dryRun.findings).toContainEqual(
+      expect.objectContaining({
+        catalogImportId: "item-existing-title-match",
+        category: "DUPLICATE_CANDIDATE",
+        field: "title",
+        applyBlocker: "DUPLICATE_CANDIDATE_UNRESOLVED",
+        approvable: false,
+        requiresFieldApproval: false,
+      }),
+    );
   });
 
   it("preserves the exact PostgreSQL INTEGER maximum across CSV and XLSX", async () => {

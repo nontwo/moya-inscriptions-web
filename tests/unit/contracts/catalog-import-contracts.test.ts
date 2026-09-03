@@ -1044,6 +1044,152 @@ describe("catalog-import/v2 strict internal contract", () => {
     );
   });
 
+  it("rejects NUL in every persisted v2 canonical text field", () => {
+    const expectNulIssue = (
+      input: unknown,
+      expectedPath: readonly (string | number)[],
+    ) => {
+      const result = canonicalCatalogImportV2EnvelopeSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: [...expectedPath],
+              message: "NUL characters are not allowed",
+            }),
+          ]),
+        );
+      }
+    };
+    const catalogRow = canonicalV2CatalogRow({
+      catalogId: "catalog-v2-001",
+    });
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["sourceId", "source-v2-\u0000001"],
+      ["catalogId", "catalog-v2-\u0000001"],
+      ["title", "虚构\u0000目录 V2"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({ catalogRows: [{ ...catalogRow, [field]: value }] }),
+        ["catalogRows", 0, field],
+      );
+    }
+
+    for (const field of [
+      "dynasty",
+      "dateText",
+      "province",
+      "prefecture",
+      "county",
+      "currentLocation",
+      "currentCustodian",
+      "description",
+      "scriptStyle",
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          catalogRows: [
+            {
+              ...catalogRow,
+              [field]: { state: "VALUE", value: "合成\u0000文本" },
+            },
+          ],
+        }),
+        ["catalogRows", 0, field, "value"],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["alias", "别\u0000名"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          aliasRows: [
+            {
+              catalogImportId: "row-v2-001",
+              alias: "合成别名",
+              aliasType: "alternate",
+              [field]: value,
+            },
+          ],
+        }),
+        ["aliasRows", 0, field],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["sourceId", "source-v2-\u0000001"],
+      ["sourceTitle", "来\u0000源"],
+      ["sourceTypeRaw", "类\u0000型"],
+      ["sourceUrl", "https://example.invalid/source\u0000tail"],
+      ["sourceNote", "备\u0000注"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          provenanceRows: [
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "source-v2-001",
+              [field]: value,
+            },
+          ],
+        }),
+        ["provenanceRows", 0, field],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["name", "作\u0000者"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          catalogRows: [{ ...catalogRow, contributorsAction: "REPLACE" }],
+          contributorRows: [
+            {
+              catalogImportId: "row-v2-001",
+              position: 0,
+              name: "合成作者",
+              role: "textAuthor",
+              [field]: value,
+            },
+          ],
+        }),
+        ["contributorRows", 0, field],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["label", "来\u0000源"],
+      ["citation", "引\u0000文"],
+      ["url", "https://example.invalid/citation\u0000tail"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          catalogRows: [{ ...catalogRow, publicCitationsAction: "REPLACE" }],
+          publicCitationRows: [
+            {
+              catalogImportId: "row-v2-001",
+              position: 0,
+              label: "合成来源",
+              [field]: value,
+            },
+          ],
+        }),
+        ["publicCitationRows", 0, field],
+      );
+    }
+  });
+
   it("keeps the three v2 identity namespaces distinct across the batch", () => {
     const first = canonicalV2CatalogRow({
       catalogId: "catalog-v2-001",
@@ -1612,6 +1758,23 @@ describe("catalog-import/v2 strict internal contract", () => {
       applyReady: true,
     } as const;
     expect(catalogImportV2DryRunSchema.safeParse(v2DryRun).success).toBe(true);
+    for (const update of [0, 2]) {
+      const result = catalogImportV2DryRunSchema.safeParse({
+        ...v2DryRun,
+        resultCounts: { ...v2DryRun.resultCounts, update },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: ["resultCounts"],
+              message: "Catalog row outcomes must equal the Catalog row count",
+            }),
+          ]),
+        );
+      }
+    }
     expect(catalogImportDryRunSchema.safeParse(v2DryRun).success).toBe(false);
     const v2Approval = {
       importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
