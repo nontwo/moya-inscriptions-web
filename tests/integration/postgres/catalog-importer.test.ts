@@ -2134,6 +2134,14 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
       resultCounts: { unchanged: 1, update: 0 },
       applyReady: true,
     });
+    await pool.query(
+      "DELETE FROM catalog_import_operation_items WHERE operation_id=$1",
+      ["v2-stale-related-state-seed"],
+    );
+    await pool.query(
+      "DELETE FROM catalog_import_operations WHERE operation_id=$1",
+      ["v2-stale-related-state-seed"],
+    );
     await pool.query("DELETE FROM catalog_import_sources WHERE source_id=$1", [
       "src_test_v2_001",
     ]);
