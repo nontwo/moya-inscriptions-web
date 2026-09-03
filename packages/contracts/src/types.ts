@@ -3,6 +3,9 @@ import type { z } from "zod";
 import type {
   apiErrorCodeSchema,
   apiErrorSchema,
+  catalogCitationScopeSchema,
+  catalogContributorRoleSchema,
+  catalogContributorSchema,
   catalogDetailSchema,
   catalogIdSchema,
   catalogKindSchema,
@@ -17,6 +20,11 @@ import type {
 
 export type CatalogId = z.infer<typeof catalogIdSchema>;
 export type CatalogKind = z.infer<typeof catalogKindSchema>;
+export type CatalogContributorRole = z.infer<
+  typeof catalogContributorRoleSchema
+>;
+export type CatalogContributor = z.infer<typeof catalogContributorSchema>;
+export type CatalogCitationScope = z.infer<typeof catalogCitationScopeSchema>;
 export type MediaId = z.infer<typeof mediaIdSchema>;
 export type PublicMedia = z.infer<typeof publicMediaSchema>;
 export type PublicSourceCitation = z.infer<typeof publicSourceCitationSchema>;

@@ -16,6 +16,24 @@ export const mediaIdSchema = platformIdentitySchema().brand<"MediaId">();
 
 export const catalogKindSchema = z.enum(["inscription", "calligraphy"]);
 
+export const catalogContributorRoleSchema = z.enum([
+  "textAuthor",
+  "calligrapher",
+]);
+
+export const catalogContributorSchema = z.strictObject({
+  name: exactTextSchema(500),
+  role: catalogContributorRoleSchema,
+});
+
+export const catalogCitationScopeSchema = z.enum([
+  "record",
+  "description",
+  "transcription",
+  "historicalContext",
+  "scholarlyResearch",
+]);
+
 const titleSchema = exactTextSchema(500);
 const aliasSchema = exactTextSchema(500);
 const summarySchema = exactTextSchema(2_000);
@@ -38,6 +56,15 @@ export const publicSourceCitationSchema = z.strictObject({
   label: displayLabelSchema,
   citation: exactTextSchema(2_000).optional(),
   url: z.url().optional(),
+  appliesTo: z
+    .array(catalogCitationScopeSchema)
+    .min(1)
+    .max(5)
+    .refine((scopes) => new Set(scopes).size === scopes.length, {
+      message: "Citation scopes must be unique",
+    })
+    .meta({ uniqueItems: true })
+    .optional(),
 });
 
 export const catalogSummarySchema = z.strictObject({
@@ -54,12 +81,32 @@ export const catalogDetailSchema = z.strictObject({
   ...catalogSummarySchema.shape,
   dynasty: exactTextSchema(500).optional(),
   dateText: exactTextSchema(500).optional(),
+  contributors: z
+    .array(catalogContributorSchema)
+    .min(1)
+    .max(50)
+    .refine(
+      (contributors) => {
+        const pairs = contributors.map(({ name, role }) =>
+          JSON.stringify([name, role]),
+        );
+
+        return new Set(pairs).size === pairs.length;
+      },
+      { message: "Contributor name and role pairs must be unique" },
+    )
+    .meta({ uniqueItems: true })
+    .optional(),
+  scriptStyle: exactTextSchema(2_000).optional(),
   province: exactTextSchema(500).optional(),
   prefecture: exactTextSchema(500).optional(),
   county: exactTextSchema(500).optional(),
   currentLocation: exactTextSchema(500).optional(),
   currentCustodian: exactTextSchema(500).optional(),
   description: exactTextSchema(20_000).optional(),
+  transcription: exactTextSchema(100_000).optional(),
+  historicalContext: exactTextSchema(20_000).optional(),
+  scholarlyResearch: exactTextSchema(20_000).optional(),
   sourceCitations: z.array(publicSourceCitationSchema),
   media: z.array(publicMediaSchema),
 });

@@ -1,6 +1,9 @@
 export type {
   ApiError,
   ApiErrorCode,
+  CatalogCitationScope,
+  CatalogContributor,
+  CatalogContributorRole,
   CatalogDetail,
   CatalogId,
   CatalogKind,

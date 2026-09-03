@@ -16,6 +16,9 @@ describe("contracts package surface", () => {
     const approved = [
       "ApiError",
       "ApiErrorCode",
+      "CatalogCitationScope",
+      "CatalogContributor",
+      "CatalogContributorRole",
       "CatalogDetail",
       "CatalogId",
       "CatalogKind",
