@@ -35,6 +35,39 @@
         "required": ["error"],
         "type": "object"
       },
+      "CatalogCitationScope": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "record",
+          "description",
+          "transcription",
+          "historicalContext",
+          "scholarlyResearch"
+        ],
+        "type": "string"
+      },
+      "CatalogContributor": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": ["textAuthor", "calligrapher"],
+            "type": "string"
+          }
+        },
+        "required": ["name", "role"],
+        "type": "object"
+      },
+      "CatalogContributorRole": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": ["textAuthor", "calligrapher"],
+        "type": "string"
+      },
       "CatalogDetail": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46,6 +79,28 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "contributors": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "role": {
+                  "enum": ["textAuthor", "calligrapher"],
+                  "type": "string"
+                }
+              },
+              "required": ["name", "role"],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "county": {
             "maxLength": 500,
@@ -74,6 +129,11 @@
           },
           "dynasty": {
             "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "historicalContext": {
+            "maxLength": 20000,
             "minLength": 1,
             "type": "string"
           },
@@ -193,10 +253,36 @@
             "required": ["id", "kind", "src", "alt", "width", "height"],
             "type": "object"
           },
+          "scholarlyResearch": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scriptStyle": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
           "sourceCitations": {
             "items": {
               "additionalProperties": false,
               "properties": {
+                "appliesTo": {
+                  "items": {
+                    "enum": [
+                      "record",
+                      "description",
+                      "transcription",
+                      "historicalContext",
+                      "scholarlyResearch"
+                    ],
+                    "type": "string"
+                  },
+                  "maxItems": 5,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
                 "citation": {
                   "maxLength": 2000,
                   "minLength": 1,
@@ -224,6 +310,11 @@
           },
           "title": {
             "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "transcription": {
+            "maxLength": 100000,
             "minLength": 1,
             "type": "string"
           }
@@ -518,6 +609,22 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "appliesTo": {
+            "items": {
+              "enum": [
+                "record",
+                "description",
+                "transcription",
+                "historicalContext",
+                "scholarlyResearch"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
           "citation": {
             "maxLength": 2000,
             "minLength": 1,

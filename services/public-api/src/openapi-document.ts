@@ -1,6 +1,9 @@
 import type { ApiErrorCode } from "@moya/contracts";
 import {
   apiErrorJsonSchema,
+  catalogCitationScopeJsonSchema,
+  catalogContributorJsonSchema,
+  catalogContributorRoleJsonSchema,
   catalogDetailJsonSchema,
   catalogIdJsonSchema,
   catalogKindJsonSchema,
@@ -134,6 +137,9 @@ export const openApiDocument: JsonObject = {
     schemas: {
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
+      CatalogContributorRole: catalogContributorRoleJsonSchema,
+      CatalogContributor: catalogContributorJsonSchema,
+      CatalogCitationScope: catalogCitationScopeJsonSchema,
       MediaId: mediaIdJsonSchema,
       PublicMedia: publicMediaJsonSchema,
       PublicSourceCitation: publicSourceCitationJsonSchema,

@@ -10,6 +10,7 @@
 | [0006](0006-long-term-data-governance-and-runtime-source.md) | Accepted             | 长期数据治理、runtime source与写入边界     |
 | [0007](0007-yoyi-progressive-web-glass.md)                   | Accepted             | Progressive Web Glass 与语义导航边界       |
 | [0008](0008-catalog-kind-governed-extensible-vocabulary.md)  | Accepted             | CatalogKind 受治理且可扩展的顶层词汇       |
+| [0009](0009-catalog-content-v1-contract.md)                  | Accepted             | Catalog Content V1与citation scope契约冻结 |
 
 ADR 记录已经接受的架构决定；每份 ADR 必须单独声明 implementation status。
 `Accepted` 表示决策已冻结，不自动表示代码已经实现；implementation

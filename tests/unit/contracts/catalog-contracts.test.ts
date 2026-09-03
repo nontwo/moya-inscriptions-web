@@ -1,6 +1,9 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type {
+  CatalogCitationScope,
+  CatalogContributor,
+  CatalogContributorRole,
   CatalogDetail,
   CatalogId,
   CatalogKind,
@@ -9,8 +12,12 @@ import type {
   CatalogSummary,
   MediaId,
   PublicMedia,
+  PublicSourceCitation,
 } from "@moya/contracts";
 import {
+  catalogCitationScopeJsonSchema,
+  catalogContributorJsonSchema,
+  catalogContributorRoleJsonSchema,
   catalogDetailJsonSchema,
   catalogIdJsonSchema,
   catalogKindJsonSchema,
@@ -20,8 +27,12 @@ import {
   mediaIdJsonSchema,
   noQueryTransportJsonSchema,
   publicMediaJsonSchema,
+  publicSourceCitationJsonSchema,
 } from "@moya/contracts/json-schema";
 import {
+  catalogCitationScopeSchema,
+  catalogContributorRoleSchema,
+  catalogContributorSchema,
   catalogDetailSchema,
   catalogIdSchema,
   catalogKindSchema,
@@ -31,6 +42,7 @@ import {
   mediaIdSchema,
   noQueryTransportSchema,
   publicMediaSchema,
+  publicSourceCitationSchema,
 } from "@moya/contracts/schemas";
 
 describe("canonical Catalog identity", () => {
@@ -360,5 +372,445 @@ describe("Catalog public contracts", () => {
         kind: { enum: ["inscription", "calligraphy"], type: "string" },
       },
     });
+  });
+});
+
+describe("Catalog Content V1 detail contract", () => {
+  const legacyDetail = {
+    id: catalogId,
+    kind: "inscription" as const,
+    title: "示例碑刻",
+    aliases: [],
+    sourceCitations: [{ label: "示例来源" }],
+    media: [],
+  };
+
+  const contentFields = [
+    ["scriptStyle", 2_000],
+    ["transcription", 100_000],
+    ["historicalContext", 20_000],
+    ["scholarlyResearch", 20_000],
+  ] as const;
+
+  it("keeps old Detail payloads and citations valid without injecting optional properties", () => {
+    const parsed = catalogDetailSchema.parse(legacyDetail);
+
+    expect(parsed).toEqual(legacyDetail);
+    for (const property of [
+      "contributors",
+      "scriptStyle",
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ]) {
+      expect(parsed).not.toHaveProperty(property);
+      expect(Object.hasOwn(parsed, property)).toBe(false);
+    }
+    expect(parsed.sourceCitations[0]).not.toHaveProperty("appliesTo");
+    expect(Object.hasOwn(parsed.sourceCitations[0] ?? {}, "appliesTo")).toBe(
+      false,
+    );
+  });
+
+  it("accepts a full Detail and preserves curated contributor and text order", () => {
+    const fullDetail = {
+      ...legacyDetail,
+      contributors: [
+        { name: "魏徵", role: "textAuthor" as const },
+        { name: "欧阳询", role: "calligrapher" as const },
+      ],
+      scriptStyle: "楷书",
+      description: "简介内容",
+      transcription: "第一行释文\n第二行释文",
+      historicalContext: "第一段历史背景\n第二段历史背景",
+      scholarlyResearch: "第一段学术研究\n第二段学术研究",
+      sourceCitations: [
+        {
+          label: "示例著录",
+          appliesTo: ["record", "description"] as const,
+        },
+        {
+          label: "示例释文研究",
+          citation: "第 10–20 页",
+          appliesTo: ["transcription"] as const,
+        },
+      ],
+    };
+
+    const parsed = catalogDetailSchema.parse(fullDetail);
+
+    expect(parsed).toEqual(fullDetail);
+    expect(parsed.contributors).toEqual(fullDetail.contributors);
+    expect(parsed.transcription).toBe("第一行释文\n第二行释文");
+    expect(parsed.historicalContext).toBe("第一段历史背景\n第二段历史背景");
+    expect(parsed.scholarlyResearch).toBe("第一段学术研究\n第二段学术研究");
+  });
+
+  it("keeps citation applicability independent from content completeness", () => {
+    expect(
+      catalogDetailSchema.safeParse({
+        ...legacyDetail,
+        sourceCitations: [
+          { label: "仅有范围的来源", appliesTo: ["transcription"] },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      catalogDetailSchema.safeParse({
+        ...legacyDetail,
+        transcription: "已有释文但尚无对应范围来源",
+        sourceCitations: [],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("exports the exact contributor roles and inferred public types", () => {
+    const roles: CatalogContributorRole[] = ["textAuthor", "calligrapher"];
+    const contributor: CatalogContributor = {
+      name: "欧阳询",
+      role: "calligrapher",
+    };
+    const scopes: CatalogCitationScope[] = [
+      "record",
+      "description",
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ];
+
+    expect(catalogContributorRoleSchema.options).toEqual(roles);
+    expect(catalogCitationScopeSchema.options).toEqual(scopes);
+    expect(catalogContributorSchema.parse(contributor)).toEqual(contributor);
+    expectTypeOf<CatalogDetail["contributors"]>().toEqualTypeOf<
+      CatalogContributor[] | undefined
+    >();
+    expectTypeOf<PublicSourceCitation["appliesTo"]>().toEqualTypeOf<
+      CatalogCitationScope[] | undefined
+    >();
+  });
+
+  it("accepts both roles and the same name under different roles", () => {
+    const contributors: CatalogContributor[] = [
+      { name: "同名人物", role: "textAuthor" },
+      { name: "同名人物", role: "calligrapher" },
+    ];
+
+    expect(
+      catalogDetailSchema.parse({ ...legacyDetail, contributors }).contributors,
+    ).toEqual(contributors);
+  });
+
+  it("enforces contributor name and array boundaries", () => {
+    const maximumName = "名".repeat(500);
+    const maximumContributors: CatalogContributor[] = Array.from(
+      { length: 50 },
+      (_, index) => ({ name: `贡献者${index}`, role: "textAuthor" }),
+    );
+
+    expect(
+      catalogDetailSchema.safeParse({
+        ...legacyDetail,
+        contributors: [{ name: maximumName, role: "textAuthor" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      catalogDetailSchema.safeParse({
+        ...legacyDetail,
+        contributors: maximumContributors,
+      }).success,
+    ).toBe(true);
+
+    for (const contributors of [
+      [],
+      null,
+      [null],
+      [{ name: "", role: "textAuthor" }],
+      [{ name: " 撰者", role: "textAuthor" }],
+      [{ name: "撰者 ", role: "textAuthor" }],
+      [{ name: "名".repeat(501), role: "textAuthor" }],
+      [{ name: "撰者", role: "author" }],
+      [{ name: "撰者", role: "textAuthor", biography: "内部字段" }],
+      [
+        { name: "重复人物", role: "textAuthor" },
+        { role: "textAuthor", name: "重复人物" },
+      ],
+      [
+        ...maximumContributors,
+        { name: "第 51 位贡献者", role: "calligrapher" },
+      ],
+    ]) {
+      expect(
+        catalogDetailSchema.safeParse({ ...legacyDetail, contributors })
+          .success,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects generic top-level attribution properties", () => {
+    for (const property of ["author", "calligrapher"]) {
+      expect(
+        catalogDetailSchema.safeParse({
+          ...legacyDetail,
+          [property]: "未经许可的泛化署名",
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("accepts internal newlines in long-form plain text", () => {
+    for (const property of [
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ]) {
+      const value = "第一行\n第二行";
+      expect(
+        catalogDetailSchema.parse({ ...legacyDetail, [property]: value }),
+      ).toHaveProperty(property, value);
+    }
+  });
+
+  it.each(contentFields)(
+    "enforces the exact %s length limit",
+    (property, maximum) => {
+      expect(
+        catalogDetailSchema.safeParse({
+          ...legacyDetail,
+          [property]: "文".repeat(maximum),
+        }).success,
+      ).toBe(true);
+      expect(
+        catalogDetailSchema.safeParse({
+          ...legacyDetail,
+          [property]: "文".repeat(maximum + 1),
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it.each(contentFields)(
+    "rejects empty, padded, and null %s values",
+    (property) => {
+      for (const invalid of ["", " padded", "padded ", null]) {
+        expect(
+          catalogDetailSchema.safeParse({
+            ...legacyDetail,
+            [property]: invalid,
+          }).success,
+        ).toBe(false);
+      }
+    },
+  );
+
+  it("rejects arbitrary extra Detail content fields", () => {
+    expect(
+      catalogDetailSchema.safeParse({
+        ...legacyDetail,
+        transcriptionRichText: { type: "document" },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("Catalog Content V1 citation scopes", () => {
+  const citationScopes = [
+    "record",
+    "description",
+    "transcription",
+    "historicalContext",
+    "scholarlyResearch",
+  ] as const satisfies readonly CatalogCitationScope[];
+
+  it("accepts omission without mutation", () => {
+    const legacyCitation = { label: "旧有来源" } satisfies PublicSourceCitation;
+    const parsed = publicSourceCitationSchema.parse(legacyCitation);
+
+    expect(parsed).toEqual(legacyCitation);
+    expect(parsed).not.toHaveProperty("appliesTo");
+    expect(Object.hasOwn(parsed, "appliesTo")).toBe(false);
+  });
+
+  it.each(citationScopes)("accepts the exact %s scope", (scope) => {
+    expect(
+      publicSourceCitationSchema.parse({
+        label: "范围来源",
+        appliesTo: [scope],
+      }).appliesTo,
+    ).toEqual([scope]);
+  });
+
+  it("accepts all five unique scopes on one citation", () => {
+    expect(
+      publicSourceCitationSchema.parse({
+        label: "全范围来源",
+        appliesTo: citationScopes,
+      }).appliesTo,
+    ).toEqual(citationScopes);
+  });
+
+  it("rejects invalid citation scope arrays", () => {
+    for (const appliesTo of [
+      [],
+      null,
+      ["unknown"],
+      ["record", "record"],
+      [...citationScopes, "record"],
+    ]) {
+      expect(
+        publicSourceCitationSchema.safeParse({
+          label: "无效范围来源",
+          appliesTo,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("keeps internal citation metadata out of the public Contract", () => {
+    for (const property of [
+      "citationId",
+      "sourceId",
+      "paragraphAnchor",
+      "sentenceAnchor",
+      "fieldPath",
+      "footnoteNumber",
+      "bibliographyId",
+    ]) {
+      expect(
+        publicSourceCitationSchema.safeParse({
+          label: "内部字段测试",
+          [property]: "internal-only",
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("Catalog Content V1 summary and JSON Schema boundaries", () => {
+  const newDetailFields = [
+    "contributors",
+    "scriptStyle",
+    "transcription",
+    "historicalContext",
+    "scholarlyResearch",
+  ] as const;
+
+  it("keeps every new field out of CatalogSummary", () => {
+    expect(catalogSummarySchema.parse(catalogSummary)).toEqual(catalogSummary);
+
+    for (const property of newDetailFields) {
+      expect(
+        catalogSummarySchema.safeParse({
+          ...catalogSummary,
+          [property]: property === "contributors" ? [] : "not-summary-data",
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("exports strict standalone Draft 2020-12 contributor and scope schemas", () => {
+    expect(catalogContributorRoleJsonSchema).toMatchObject({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "string",
+      enum: ["textAuthor", "calligrapher"],
+    });
+    expect(catalogCitationScopeJsonSchema).toMatchObject({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "string",
+      enum: [
+        "record",
+        "description",
+        "transcription",
+        "historicalContext",
+        "scholarlyResearch",
+      ],
+    });
+    expect(catalogContributorJsonSchema).toMatchObject({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "role"],
+      properties: {
+        name: { type: "string", minLength: 1, maxLength: 500 },
+        role: { type: "string", enum: ["textAuthor", "calligrapher"] },
+      },
+    });
+  });
+
+  it("represents all Detail-only fields as optional with exact JSON Schema bounds", () => {
+    expect(catalogDetailJsonSchema).toMatchObject({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contributors: {
+          type: "array",
+          minItems: 1,
+          maxItems: 50,
+          uniqueItems: true,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["name", "role"],
+          },
+        },
+        scriptStyle: { type: "string", minLength: 1, maxLength: 2_000 },
+        transcription: {
+          type: "string",
+          minLength: 1,
+          maxLength: 100_000,
+        },
+        historicalContext: {
+          type: "string",
+          minLength: 1,
+          maxLength: 20_000,
+        },
+        scholarlyResearch: {
+          type: "string",
+          minLength: 1,
+          maxLength: 20_000,
+        },
+      },
+      required: ["id", "kind", "title", "aliases", "sourceCitations", "media"],
+    });
+
+    const summaryProperties = Object.keys(
+      catalogSummaryJsonSchema.properties ?? {},
+    );
+    const detailRequired = catalogDetailJsonSchema.required ?? [];
+    for (const property of newDetailFields) {
+      expect(summaryProperties).not.toContain(property);
+      expect(detailRequired).not.toContain(property);
+    }
+  });
+
+  it("keeps label required and appliesTo optional with exact JSON Schema bounds", () => {
+    expect(publicSourceCitationJsonSchema).toMatchObject({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      required: ["label"],
+      properties: {
+        appliesTo: {
+          type: "array",
+          minItems: 1,
+          maxItems: 5,
+          uniqueItems: true,
+          items: {
+            type: "string",
+            enum: [
+              "record",
+              "description",
+              "transcription",
+              "historicalContext",
+              "scholarlyResearch",
+            ],
+          },
+        },
+      },
+    });
+    expect(publicSourceCitationJsonSchema.required).not.toContain("appliesTo");
+    expect(publicSourceCitationJsonSchema).not.toHaveProperty(
+      "properties.appliesTo.default",
+    );
   });
 });

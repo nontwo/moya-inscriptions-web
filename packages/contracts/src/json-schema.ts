@@ -3,6 +3,9 @@ import { z } from "zod";
 import {
   apiErrorCodeSchema,
   apiErrorSchema,
+  catalogCitationScopeSchema,
+  catalogContributorRoleSchema,
+  catalogContributorSchema,
   catalogDetailSchema,
   catalogIdSchema,
   catalogKindSchema,
@@ -21,6 +24,15 @@ const toJsonSchema = (schema: z.ZodType) =>
 
 export const catalogIdJsonSchema = toJsonSchema(catalogIdSchema);
 export const catalogKindJsonSchema = toJsonSchema(catalogKindSchema);
+export const catalogContributorRoleJsonSchema = toJsonSchema(
+  catalogContributorRoleSchema,
+);
+export const catalogContributorJsonSchema = toJsonSchema(
+  catalogContributorSchema,
+);
+export const catalogCitationScopeJsonSchema = toJsonSchema(
+  catalogCitationScopeSchema,
+);
 export const mediaIdJsonSchema = toJsonSchema(mediaIdSchema);
 export const publicMediaJsonSchema = toJsonSchema(publicMediaSchema);
 export const catalogSummaryJsonSchema = toJsonSchema(catalogSummarySchema);
