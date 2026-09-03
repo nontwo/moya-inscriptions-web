@@ -64,6 +64,9 @@ const mapCatalogSourceCitation = (
   if (projection.url !== undefined) {
     citation.url = projection.url;
   }
+  if (projection.appliesTo !== undefined) {
+    citation.appliesTo = [...projection.appliesTo];
+  }
 
   return publicSourceCitationSchema.parse(citation);
 };
@@ -141,6 +144,31 @@ export const mapCatalogDetail = (
   }
   if (projection.description !== undefined) {
     detail.description = projection.description;
+  }
+  if (
+    projection.contributors !== undefined &&
+    projection.contributors.length > 0
+  ) {
+    detail.contributors = projection.contributors.map(({ name, role }) => ({
+      name,
+      role,
+    }));
+  }
+  const scriptStyle = projectPublicText(projection.scriptStyle);
+  if (scriptStyle !== undefined) {
+    detail.scriptStyle = scriptStyle;
+  }
+  const transcription = projectPublicText(projection.transcription);
+  if (transcription !== undefined) {
+    detail.transcription = transcription;
+  }
+  const historicalContext = projectPublicText(projection.historicalContext);
+  if (historicalContext !== undefined) {
+    detail.historicalContext = historicalContext;
+  }
+  const scholarlyResearch = projectPublicText(projection.scholarlyResearch);
+  if (scholarlyResearch !== undefined) {
+    detail.scholarlyResearch = scholarlyResearch;
   }
 
   return catalogDetailSchema.parse(detail);

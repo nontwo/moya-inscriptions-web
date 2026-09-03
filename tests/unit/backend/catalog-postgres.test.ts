@@ -24,6 +24,38 @@ import { describe, expect, it } from "vitest";
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const migrationsDirectory = path.join(repositoryRoot, "database", "migrations");
 
+const catalogDetailRow = (overrides: Record<string, unknown> = {}) => ({
+  catalog_id: "test-catalog-content",
+  kind: "inscription",
+  title: "Test content",
+  summary: null,
+  description: null,
+  period_label: null,
+  dynasty: null,
+  dynasty_state: "UNSUPPLIED",
+  date_text: null,
+  date_text_state: "UNSUPPLIED",
+  province: null,
+  province_state: "UNSUPPLIED",
+  prefecture: null,
+  prefecture_state: "UNSUPPLIED",
+  county: null,
+  county_state: "UNSUPPLIED",
+  current_location: null,
+  current_location_state: "UNSUPPLIED",
+  current_custodian: null,
+  current_custodian_state: "UNSUPPLIED",
+  script_style: "楷书",
+  script_style_state: "VALUE",
+  transcription: "第一行\n第二行",
+  transcription_state: "VALUE",
+  historical_context: "历史背景",
+  historical_context_state: "VALUE",
+  scholarly_research: "学术研究",
+  scholarly_research_state: "VALUE",
+  ...overrides,
+});
+
 describe("PostgreSQL configuration and availability", () => {
   it("parses the minimal DATABASE_URL without exposing it in the result shape", () => {
     const connectionString =
@@ -102,21 +134,50 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       current_location_state: "VALUE",
       current_custodian: "碑林博物馆",
       current_custodian_state: "VALUE",
+      script_style: "碑额篆书，正文楷书",
+      script_style_state: "VALUE",
+      transcription: "第一行释文\n第二行释文",
+      transcription_state: "VALUE",
+      historical_context: "历史背景",
+      historical_context_state: "VALUE",
+      scholarly_research: "学术研究",
+      scholarly_research_state: "VALUE",
       raw_source: "must remain private",
       review_state: "pending",
     };
     const aliases = mapAliasRows([
       { catalog_id: row.catalog_id, position: 0, alias: "Alias" },
     ]);
-    const citations = mapCitationRows([
-      {
-        catalog_id: row.catalog_id,
-        position: 0,
-        label: "Public citation",
-        citation: null,
-        url: null,
-      },
-    ]);
+    const citations = mapCitationRows(
+      [
+        {
+          catalog_id: row.catalog_id,
+          position: 0,
+          label: "Public citation",
+          citation: null,
+          url: null,
+        },
+        {
+          catalog_id: row.catalog_id,
+          position: 1,
+          label: "Scoped citation",
+          citation: null,
+          url: null,
+        },
+      ],
+      [
+        {
+          catalog_id: row.catalog_id,
+          citation_position: 1,
+          scope: "record",
+        },
+        {
+          catalog_id: row.catalog_id,
+          citation_position: 1,
+          scope: "transcription",
+        },
+      ],
+    );
 
     expect(mapCatalogEntryRow(row, aliases.get(row.catalog_id) ?? [])).toEqual({
       id: row.catalog_id,
@@ -130,6 +191,21 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       row,
       aliases.get(row.catalog_id) ?? [],
       citations,
+      [],
+      [
+        {
+          catalog_id: row.catalog_id,
+          position: 0,
+          name: "魏徵",
+          role: "textAuthor",
+        },
+        {
+          catalog_id: row.catalog_id,
+          position: 1,
+          name: "欧阳询",
+          role: "calligrapher",
+        },
+      ],
     );
 
     expect(detail).toMatchObject({
@@ -141,8 +217,212 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       county: { state: "UNSUPPLIED" },
       currentLocation: { state: "VALUE", value: "陕西省碑林区" },
       currentCustodian: { state: "VALUE", value: "碑林博物馆" },
+      scriptStyle: { state: "VALUE", value: "碑额篆书，正文楷书" },
+      transcription: {
+        state: "VALUE",
+        value: "第一行释文\n第二行释文",
+      },
+      historicalContext: { state: "VALUE", value: "历史背景" },
+      scholarlyResearch: { state: "VALUE", value: "学术研究" },
+      contributors: [
+        { name: "魏徵", role: "textAuthor" },
+        { name: "欧阳询", role: "calligrapher" },
+      ],
+      sourceCitations: [
+        { label: "Public citation" },
+        {
+          label: "Scoped citation",
+          appliesTo: ["record", "transcription"],
+        },
+      ],
     });
-    expect(JSON.stringify(detail)).not.toContain("raw_source");
+    const serialized = JSON.stringify(detail);
+    for (const databaseField of [
+      "raw_source",
+      "review_state",
+      "script_style",
+      "historical_context",
+      "scholarly_research",
+      "position",
+    ]) {
+      expect(serialized).not.toContain(databaseField);
+    }
+  });
+
+  it("keeps every allowed non-VALUE Content V1 state without a renderable value", () => {
+    for (const state of [
+      "UNSUPPLIED",
+      "CLEAR",
+      "UNKNOWN",
+      "NOT_APPLICABLE",
+    ] as const) {
+      const detail = mapCatalogDetailRow(
+        catalogDetailRow({ script_style: null, script_style_state: state }),
+        [],
+        [],
+      );
+      expect(detail.scriptStyle).toEqual({ state });
+      expect(detail.scriptStyle).not.toHaveProperty("value");
+    }
+
+    for (const state of ["UNSUPPLIED", "CLEAR"] as const) {
+      const detail = mapCatalogDetailRow(
+        catalogDetailRow({
+          transcription: null,
+          transcription_state: state,
+          historical_context: null,
+          historical_context_state: state,
+          scholarly_research: null,
+          scholarly_research_state: state,
+        }),
+        [],
+        [],
+      );
+      expect(detail.transcription).toEqual({ state });
+      expect(detail.historicalContext).toEqual({ state });
+      expect(detail.scholarlyResearch).toEqual({ state });
+      expect(detail.transcription).not.toHaveProperty("value");
+      expect(detail.historicalContext).not.toHaveProperty("value");
+      expect(detail.scholarlyResearch).not.toHaveProperty("value");
+    }
+  });
+
+  it("fails closed for Content V1 state mismatches and invalid exact text", () => {
+    for (const overrides of [
+      { script_style: "楷书", script_style_state: "CLEAR" },
+      { script_style: null, script_style_state: "VALUE" },
+      { transcription: "释文", transcription_state: "UNSUPPLIED" },
+      { historical_context: null, historical_context_state: "VALUE" },
+      { scholarly_research: null, scholarly_research_state: "UNKNOWN" },
+    ]) {
+      expect(() =>
+        mapCatalogDetailRow(catalogDetailRow(overrides), [], []),
+      ).toThrow();
+    }
+
+    for (const overrides of [
+      { script_style: "", script_style_state: "VALUE" },
+      { script_style: " 楷书 ", script_style_state: "VALUE" },
+      { transcription: "", transcription_state: "VALUE" },
+      { historical_context: " padded ", historical_context_state: "VALUE" },
+      { scholarly_research: "x".repeat(20_001) },
+    ]) {
+      expect(() =>
+        mapCatalogDetailRow(catalogDetailRow(overrides), [], []),
+      ).toThrow("Invalid PostgreSQL Catalog");
+    }
+  });
+
+  it("maps contributors in curated order and rejects invalid identities", () => {
+    const contributorRows = [
+      {
+        catalog_id: "test-catalog-content",
+        position: 0,
+        name: "魏徵",
+        role: "textAuthor",
+      },
+      {
+        catalog_id: "test-catalog-content",
+        position: 4,
+        name: "欧阳询",
+        role: "calligrapher",
+      },
+    ];
+    const detail = mapCatalogDetailRow(
+      catalogDetailRow(),
+      [],
+      [],
+      [],
+      contributorRows,
+    );
+    expect(detail.contributors).toEqual([
+      { name: "魏徵", role: "textAuthor" },
+      { name: "欧阳询", role: "calligrapher" },
+    ]);
+
+    expect(() =>
+      mapCatalogDetailRow(
+        catalogDetailRow(),
+        [],
+        [],
+        [],
+        [{ ...contributorRows[0]!, role: "editor" }],
+      ),
+    ).toThrow("contributor role");
+    expect(() =>
+      mapCatalogDetailRow(
+        catalogDetailRow(),
+        [],
+        [],
+        [],
+        [contributorRows[0]!, { ...contributorRows[0]!, position: 1 }],
+      ),
+    ).toThrow("contributor identity");
+    expect(() =>
+      mapCatalogDetailRow(
+        catalogDetailRow(),
+        [],
+        [],
+        [],
+        [{ ...contributorRows[0]!, name: " padded " }],
+      ),
+    ).toThrow("contributor name");
+  });
+
+  it("omits legacy citation scopes and validates explicit canonical scopes", () => {
+    const citationRows = [
+      {
+        catalog_id: "test-catalog-content",
+        position: 0,
+        label: "Legacy citation",
+        citation: null,
+        url: null,
+      },
+      {
+        catalog_id: "test-catalog-content",
+        position: 1,
+        label: "Scoped citation",
+        citation: null,
+        url: null,
+      },
+    ];
+    const citations = mapCitationRows(citationRows, [
+      {
+        catalog_id: "test-catalog-content",
+        citation_position: 1,
+        scope: "record",
+      },
+      {
+        catalog_id: "test-catalog-content",
+        citation_position: 1,
+        scope: "scholarlyResearch",
+      },
+    ]);
+
+    expect(citations[0]).toEqual({ label: "Legacy citation" });
+    expect(citations[0]).not.toHaveProperty("appliesTo");
+    expect(citations[1]).toEqual({
+      label: "Scoped citation",
+      appliesTo: ["record", "scholarlyResearch"],
+    });
+    expect(() =>
+      mapCitationRows(citationRows, [
+        {
+          catalog_id: "test-catalog-content",
+          citation_position: 1,
+          scope: "bibliography",
+        },
+      ]),
+    ).toThrow("citation scope");
+    expect(() =>
+      mapCitationRows(citationRows, [
+        {
+          catalog_id: "test-catalog-content",
+          citation_position: 3,
+          scope: "record",
+        },
+      ]),
+    ).toThrow("orphan citation scope");
   });
 
   it("maps ordered Media projections and explicit representatives only", () => {

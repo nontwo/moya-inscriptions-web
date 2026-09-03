@@ -46,6 +46,40 @@ const internalDetail = {
     state: "VALUE" as const,
     value: "碑林博物馆",
   },
+  contributors: [
+    {
+      name: "魏徵",
+      role: "textAuthor" as const,
+      position: 0,
+      sourceId: "source-internal-contributor-001",
+    },
+    {
+      name: "欧阳询",
+      role: "calligrapher" as const,
+      position: 1,
+      sourceId: "source-internal-contributor-002",
+    },
+  ],
+  scriptStyle: {
+    state: "VALUE" as const,
+    value: "楷书",
+    databaseColumn: "script_style",
+  },
+  transcription: {
+    state: "VALUE" as const,
+    value: "第一行释文\n第二行释文",
+    databaseColumn: "transcription",
+  },
+  historicalContext: {
+    state: "VALUE" as const,
+    value: "历史背景内容",
+    databaseColumn: "historical_context",
+  },
+  scholarlyResearch: {
+    state: "VALUE" as const,
+    value: "学术研究内容",
+    databaseColumn: "scholarly_research",
+  },
   rawSource: { sourcePath: "private/raw-source.json" },
   sourceCitations: [
     {
@@ -57,6 +91,13 @@ const internalDetail = {
       internalNotes: "not public",
       internalRightsNotes: "private rights note",
       storagePath: "/private/storage/path",
+    },
+    {
+      label: "虚构释文研究",
+      citation: "第 10–20 页",
+      appliesTo: ["transcription", "historicalContext"] as const,
+      sourceId: "source-internal-002",
+      citationPosition: 1,
     },
   ],
   media: [],
@@ -117,6 +158,14 @@ describe("Catalog public-contract mapper", () => {
       currentLocation: "陕西省碑林区",
       currentCustodian: "碑林博物馆",
       description: "公开详情",
+      contributors: [
+        { name: "魏徵", role: "textAuthor" },
+        { name: "欧阳询", role: "calligrapher" },
+      ],
+      scriptStyle: "楷书",
+      transcription: "第一行释文\n第二行释文",
+      historicalContext: "历史背景内容",
+      scholarlyResearch: "学术研究内容",
       media: [],
       sourceCitations: [
         {
@@ -124,8 +173,23 @@ describe("Catalog public-contract mapper", () => {
           citation: "第 2 页",
           url: "https://example.com/catalogue",
         },
+        {
+          label: "虚构释文研究",
+          citation: "第 10–20 页",
+          appliesTo: ["transcription", "historicalContext"],
+        },
       ],
     });
+    expect(detail.contributors).not.toBe(internalDetail.contributors);
+    expect(detail.contributors?.[0]).not.toBe(internalDetail.contributors[0]);
+    expect(detail.sourceCitations).not.toBe(internalDetail.sourceCitations);
+    expect(detail.sourceCitations[0]).not.toBe(
+      internalDetail.sourceCitations[0],
+    );
+    expect(detail.sourceCitations[0]).not.toHaveProperty("appliesTo");
+    expect(detail.sourceCitations[1]?.appliesTo).not.toBe(
+      internalDetail.sourceCitations[1]?.appliesTo,
+    );
     expect(catalogDetailSchema.parse(detail)).toEqual(detail);
 
     const serialized = JSON.stringify(detail);
@@ -140,6 +204,9 @@ describe("Catalog public-contract mapper", () => {
       "internalNotes",
       "internalRightsNotes",
       "storagePath",
+      "position",
+      "databaseColumn",
+      "citationPosition",
     ]) {
       expect(serialized).not.toContain(internalField);
     }
@@ -249,5 +316,46 @@ describe("Catalog public-contract mapper", () => {
         aliases: [],
       } as never),
     ).toThrow();
+  });
+
+  it("omits empty contributors and every non-VALUE content projection", () => {
+    const detail = mapCatalogDetail({
+      ...internalDetail,
+      contributors: [],
+      scriptStyle: { state: "UNKNOWN", value: "must-not-leak-script" },
+      transcription: { state: "CLEAR", value: "must-not-leak-transcription" },
+      historicalContext: { state: "UNSUPPLIED" },
+      scholarlyResearch: {
+        state: "NOT_APPLICABLE",
+        value: "must-not-leak-research",
+      },
+    });
+
+    for (const property of [
+      "contributors",
+      "scriptStyle",
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ]) {
+      expect(detail).not.toHaveProperty(property);
+    }
+    expect(JSON.stringify(detail)).not.toContain("must-not-leak");
+    expect(catalogDetailSchema.parse(detail)).toEqual(detail);
+  });
+
+  it("keeps every Content V1 Detail field out of CatalogSummary", () => {
+    const summary = mapCatalogSummary(internalDetail);
+
+    for (const property of [
+      "contributors",
+      "scriptStyle",
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ]) {
+      expect(summary).not.toHaveProperty(property);
+    }
+    expect(catalogSummarySchema.parse(summary)).toEqual(summary);
   });
 });

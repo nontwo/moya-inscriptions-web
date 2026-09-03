@@ -4,7 +4,9 @@ import {
   countCatalogEntriesSql,
   findCatalogEntrySql,
   listCatalogAliasesSql,
+  listCatalogCitationScopesSql,
   listCatalogCitationsSql,
+  listCatalogContributorsSql,
   listCatalogEntriesSql,
   listCatalogMediaSql,
   listRepresentativeCatalogMediaSql,
@@ -20,7 +22,9 @@ import {
 
 import type {
   CatalogAliasRow,
+  CatalogCitationScopeRow,
   CatalogCitationRow,
+  CatalogContributorRow,
   CatalogEntryRow,
   CatalogMediaRow,
 } from "./row-mapper.js";
@@ -143,9 +147,19 @@ export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
       const entry = entryResult.rows[0];
       if (entry === undefined) return null;
 
-      const [aliasesResult, citationsResult, mediaResult] = await Promise.all([
+      const [
+        aliasesResult,
+        contributorsResult,
+        citationsResult,
+        citationScopesResult,
+        mediaResult,
+      ] = await Promise.all([
         client.query<CatalogAliasRow>(listCatalogAliasesSql, [[id]]),
+        client.query<CatalogContributorRow>(listCatalogContributorsSql, [id]),
         client.query<CatalogCitationRow>(listCatalogCitationsSql, [id]),
+        client.query<CatalogCitationScopeRow>(listCatalogCitationScopesSql, [
+          id,
+        ]),
         client.query<CatalogMediaRow>(listCatalogMediaSql, [id]),
       ]);
       const aliases = mapAliasRows(aliasesResult.rows);
@@ -153,8 +167,9 @@ export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
       return mapCatalogDetailRow(
         entry,
         aliases.get(id) ?? [],
-        mapCitationRows(citationsResult.rows),
+        mapCitationRows(citationsResult.rows, citationScopesResult.rows),
         mapCatalogMediaRows(mediaResult.rows),
+        contributorsResult.rows,
       );
     });
   }

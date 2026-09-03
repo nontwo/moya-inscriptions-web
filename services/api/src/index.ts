@@ -24,6 +24,7 @@ export type {
 export type { CatalogListQuery } from "./modules/catalog/application/queries/catalog-list-query.js";
 export type {
   CatalogFieldState,
+  CatalogContributorProjection,
   CatalogDetailProjection,
   CatalogListItemProjection,
   CatalogListPageProjection,
