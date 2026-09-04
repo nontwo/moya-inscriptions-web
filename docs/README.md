@@ -17,15 +17,16 @@ chain. They cannot amend it.
 ## 1. Normative and current authority
 
 - [`../AGENTS.md`](../AGENTS.md) is the short repository entrypoint. It requires
-  the Constitution and all active amendments to be read before planning or
+  the Constitution and every active amendment to be read before planning or
   modification.
-- [Owner amendments](governance/amendments/) record explicit current Owner
-  amendments. The active machine-verified review and merge amendment reserves
-  Owner involvement for visual or real-device, major-direction,
-  production-authority, and unresolved STOP gates. An independent review agent
-  handles routine machine-verifiable review and merge.
+- [Owner amendments](governance/amendments/) currently include:
+  - the machine-verified review and merge amendment, which defines routine
+    review/merge authority and Owner decision gates;
+  - the React Product current-authority amendment, which records the merged
+    Formal React root, the non-production Prototype boundary, and implemented
+    Catalog Content V1 state.
 - The [Owner Development Constitution][constitution] is normative below active
-  Owner amendments.
+  Owner instructions and amendments.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) is the subordinate operational
   contributor guide.
 - [`branching-strategy.md`](branching-strategy.md) defines branch topology and
@@ -36,10 +37,10 @@ chain. They cannot amend it.
 ## 2. Current architecture and status
 
 - [`project-status.md`](project-status.md) is the only dynamic source for task,
-  roadmap, milestone, and completion status.
+  roadmap, milestone, completion, and Production-gap status.
 - [`architecture.md`](architecture.md) and accepted entries in
-  [`adr/`](adr/README.md) describe the active system and its approved
-  architecture boundaries.
+  [`adr/`](adr/README.md) describe the active system and approved architecture
+  boundaries.
 - Current domain and implementation specifications live in areas such as
   [`catalog-import/`](catalog-import/), [`design-system/`](design-system/), and
   the relevant package or service README files.
@@ -50,7 +51,7 @@ dynamic status reporting or the authority chain.
 ## 3. Historical records
 
 - [`governance/history/`](governance/history/) contains completed governance
-  audits and superseded evidence.
+  audits, rule classifications, and superseded evidence.
 - [`audits/`](audits/) contains retained technical audit evidence.
 - [`history/`](history/) contains detailed milestone narration removed from the
   concise dynamic status.
@@ -62,17 +63,17 @@ Historical audits and superseded evidence do not override current rules.
 
 ## 4. Prototype and archived designs
 
-- [`deployment/`](deployment/) contains only active provider-neutral readiness,
-  release-safety, migration and rollback guidance. It does not select a
-  production provider or authorize real infrastructure operations.
+- [`deployment/`](deployment/) contains active provider-neutral readiness,
+  release-safety, migration, backup, and rollback guidance. It does not select a
+  provider or authorize real infrastructure operations.
 - [`archive/deployment/`](archive/deployment/) contains historical provider
   candidates, including T03 CloudBase evidence. Archived material is
-  non-executable and non-authoritative for current configuration or deployment.
-- [`prototypes/`](prototypes/) contains non-production prototypes and reference
-  material. Repository presence does not authorize Production consumption or a
-  replacement of the canonical T02 presentation.
+  non-executable and non-authoritative.
+- [`prototypes/`](prototypes/) contains non-production visual/interaction
+  references and fixtures. It is not the current Formal React implementation,
+  a Production data source, or permission to replace the current Product Shell.
 
-Candidate and archived material becomes current only through an explicitly
-approved task and the applicable authority process.
+Candidate, archived, or Prototype material becomes current only through an
+explicitly approved task and the applicable authority process.
 
 [constitution]: governance/OWNER-DEVELOPMENT-CONSTITUTION.md

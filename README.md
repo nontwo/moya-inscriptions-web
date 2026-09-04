@@ -1,38 +1,75 @@
 # 由艺（Yoyi）
 
-由艺是来源无关的中国文化艺术 Catalog 与社区产品工程。当前已实现的公开 Catalog 范围严格为
-`inscription | calligraphy`；这不预先授权其他 CatalogKind、社区域或未来产品能力。
+由艺是来源无关的中国文化艺术 Catalog 与社区产品工程。当前正式公开的
+Catalog 范围严格为 `inscription | calligraphy`；这不预先授权其他
+CatalogKind、社区域或未来产品能力。
 
-本仓库通过显式边界组织 Public Web、最小 Admin、Public HTTP API、backend
-application、PostgreSQL persistence、Catalog importer、Media URL
-resolution 与共享设计系统。正式 Web 只通过 Public HTTP
-API 消费业务数据，Frontend 只使用 `PublicMedia.src`
-等已解析运行时 URL，不接收 object key 或存储 provider 配置。
+项目的唯一动态进度来源是
+[当前项目状态](docs/project-status.md)。当前架构见
+[Architecture](docs/architecture.md)。
 
-项目的唯一动态进度来源是 [当前项目状态](docs/project-status.md)。
+## 当前产品入口
+
+Formal `/` 是 request-rendered React 应用：
+
+```text
+apps/web/app/page.tsx
+  → loadProductionProductStates()
+  → T02pProductPreview
+  → ProductShell
+```
+
+正式 Web 只通过 Public HTTP API 获取业务数据。Frontend 消费已验证的 Public
+DTO 和 `PublicMedia.src`，不接触 PostgreSQL、object key、bucket、存储
+provider 配置或 raw research data。
+
+`/docs/prototypes/mobile-preview/` 是独立的非生产 Prototype；
+`/dev/t02p` 与 `/dev/t02p/qa` 只在 Development 提供验收场景，Production
+返回 404。Prototype 和 QA fixture 的仓库存在不授权 Production 使用。
 
 ## Monorepo 结构
 
-- `apps/web`：Next.js App Router 公开站点；Formal Root 由 `app/route.ts`
-  在请求时加载 Catalog，再组合当前 T02 权威界面。
-- `apps/admin`：独立的最小 Next.js 管理端骨架。
-- `services/backend-runtime`：Node.js HTTP listener、router、runtime
-  config、graceful shutdown 与 Catalog handlers。
+- `apps/web`：Next.js App Router Public Web、React Product Shell、same-origin
+  API boundary 与用户交互。
+- `apps/admin`：独立的最小 Admin 工程骨架；尚无管理业务。
+- `services/backend-runtime`：Node.js listener、router、handlers、runtime
+  config 与 graceful shutdown。
 - `services/backend-production`：PostgreSQL-backed production composition
   root；启动时只读验证 migration ledger。
 - `services/api`：backend-only Catalog application boundary。
-- `services/catalog-postgres`：private PostgreSQL 18 adapter 与显式 migration
-  runner。
-- `services/catalog-importer`：受控 CSV/XLSX validation、dry-run 与 hash-bound
-  transactional apply。
-- `services/public-api`：Public OpenAPI
-  contract 与确定性生成入口，不启动 listener。
-- `packages/contracts`：Public DTO、query 与 runtime schema。
-- `packages/design-tokens`、`packages/ui`：共享视觉 token、组件与正式资产。
+- `services/catalog-postgres`：private PostgreSQL 18 adapter、queries、
+  migrations/readiness integration。
+- `services/catalog-importer`：受控 CSV/XLSX parsing、canonical convergence、
+  dry-run、hash-bound approval 与 transactional apply。
+- `services/public-api`：Public OpenAPI contract 与确定性生成入口，不启动
+  listener。
+- `packages/contracts`：Public DTO、query、error、ID 与 runtime schema 的唯一
+  来源，并隔离 server-only Catalog Import contract。
+- `packages/design-tokens`、`packages/ui`：共享视觉 token、semantic
+  components 与正式 assets。
 - `packages/image`：backend-owned `StorageUrlResolver` implementations。
-- `packages/search`：尚未实现业务搜索的隔离边界。
-- `database/migrations`：数据库结构变更的唯一入口。
-- `docs`：文档权威地图、当前架构、动态状态、历史与非生产原型。
+- `packages/search`：Search V1 的隔离边界；业务搜索尚未实现。
+- `database/migrations`：数据库结构演进的唯一入口。
+- `docs`：当前状态、架构、治理、ADR、历史和非生产原型。
+
+## 已实现的核心链路
+
+```text
+Owner-approved CSV/XLSX
+  → catalog-import/v1 or catalog-import/v2
+  → validation and dry-run
+  → hash-bound approval
+  → one PostgreSQL transaction
+  → CatalogQueryPort
+  → explicit Public mapper
+  → Public HTTP API
+  → React Product presentation
+```
+
+当前支持 Catalog list/detail、分页、Content V1、媒体读取边界、Detail
+Carousel、full-screen Viewer、history、focus/scroll restoration，以及
+Development/Production 数据隔离。正式数据、正式媒体和部署状态以
+`docs/project-status.md` 为准。
 
 ## 环境要求
 
@@ -48,16 +85,22 @@ pnpm install --frozen-lockfile
 
 ## 本地开发
 
-端口所有权固定为：Public Web `3000`、Backend Runtime/API `3001`、Admin `3002`。
+端口所有权固定为：
+
+```text
+Public Web      3000
+Backend/API     3001
+Admin           3002
+```
 
 ```bash
-pnpm dev         # Public Web only, port 3000
-pnpm dev:web     # Public Web only, port 3000
-pnpm dev:admin   # Admin only, port 3002
+pnpm dev         # Public Web only
+pnpm dev:web     # Public Web only
+pnpm dev:admin   # Admin only
 pnpm dev:all     # Public Web + Admin
 ```
 
-Backend 不由任何根 `dev` 脚本隐式启动：
+Backend 不由根 `dev` 脚本隐式启动：
 
 ```bash
 pnpm --filter @moya/backend-runtime build
@@ -65,20 +108,10 @@ HOST=127.0.0.1 PORT=3001 NODE_ENV=development \
   pnpm --filter @moya/backend-runtime start
 ```
 
-## 环境变量
+复制 `.env.example` 后仅填写当前入口实际需要的值。不得提交 `.env`、真实
+API key、数据库连接串、云密钥或其他 Production credential。
 
-复制 `.env.example` 后仅按实际运行入口填写。模板只列出当前代码已实现的变量：
-
-- `NODE_ENV`：`development | test | production`；
-- `HOST`、`PORT`：Backend listener，development 默认 `127.0.0.1:3001`；
-- `MOYA_PUBLIC_API_BASE_URL`：Web server-side Public API base URL；
-- `DATABASE_URL`：PostgreSQL migration、importer 与 production composition；
-- `TEST_DATABASE_URL`：显式 PostgreSQL integration tests。
-
-模板不承诺存储、CDN、地图或其他尚未实现的 provider 配置。不得提交
-`.env`、真实密钥、连接串或生产凭据。
-
-## 常用验证
+## 验证
 
 ```bash
 pnpm format:check
@@ -89,38 +122,24 @@ pnpm build
 pnpm test:e2e
 ```
 
-PostgreSQL integration tests 另需已迁移的 PostgreSQL 18 test instance，并通过
-`TEST_DATABASE_URL` 显式提供连接。
+PostgreSQL integration tests 需要显式迁移的 PostgreSQL 18 test instance
+和 `TEST_DATABASE_URL`。
 
-## 当前入口与数据边界
+## 分支与发布
 
-- `/` 是 Formal Root：`apps/web/app/route.ts` 在 request
-  time 分别读取全部 Catalog、 `inscription` 和 `calligraphy`，再交给 T02
-  document composition。
-- `/docs/prototypes/mobile-preview/` 是直接 Prototype
-  route；它保留非生产 fixture，不是 Formal Root 的 canonical data source。
-- `/dev/t02p` 仅在 Development 提供 React T02P machine/visual acceptance
-  surface；Production 返回 404。
-- repository 内的 28 条 P5
-  snapshot 只用于 Prototype 压力测试，不自动进入 PostgreSQL，也不是 Production
-  runtime source。
-- Production canonical data path 固定为 approved importer → PostgreSQL → Public
-  API → Web presentation。
+所有短期任务从实时解析的最新 `origin/integration/mvp` 创建独立分支，并通过
+Draft PR、CI、actual-diff review、expected-head squash merge 和 merged-head
+verification 返回主线。不得从历史功能分支继续开发，不得直接推送 shared
+branch，也不得 force-push 或改写历史。
 
-## 分支与文档
-
-短期任务分支通过 PR 合入 `integration/mvp`；`main` 只在明确的 milestone
-promotion 后更新。禁止直接推送 shared branch、force-push 或改写历史。贡献流程见
-[贡献指南](CONTRIBUTING.md)，架构与文档权威见 [文档地图](docs/README.md)。
-
-当前能力、活动任务和 production gaps 只在
-[当前项目状态](docs/project-status.md)维护；README 不复制动态 roadmap。
+`main` 只在明确的 milestone promotion 后更新；它不是当前日常开发基线。
+详细流程见 [CONTRIBUTING.md](CONTRIBUTING.md) 和
+[分支策略](docs/branching-strategy.md)。
 
 ## 许可
 
 - 代码与普通技术文档采用 [Apache License 2.0](LICENSE)。
-- 仓库中精确签入的公开 fixture 内容采用
+- 精确签入的公开 fixture 内容采用
   [Creative Commons Attribution 4.0 International](LICENSE-DATA)。
-- Yoyi
-  / 由艺名称、徽标、字标与服务标识仍为保留品牌资产，不包含在上述许可授权中。
-- 本仓库不包含 production 数据或私有研究证据。
+- Yoyi / 由艺名称、徽标、字标与服务标识仍为保留品牌资产。
+- 本仓库不包含 Production 数据或私有研究证据。

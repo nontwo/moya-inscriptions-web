@@ -1,21 +1,35 @@
 # Historical project milestones
 
-本文件保存不适合留在动态 `docs/project-status.md`
-的详细历史。它是记录，不是当前 roadmap 或新的架构权威；当前事实以
-[项目状态](../project-status.md) 与 [架构](../architecture.md) 为准。
+This file preserves detailed completed delivery history that does not belong in
+dynamic `docs/project-status.md`. It is historical narration, not a roadmap or a
+second current-status authority.
 
-| Milestone       | Historical outcome                                                                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T00–T02         | 建立 pnpm/Turborepo monorepo、Web/Admin/API skeleton、CI、来源无关 Public contracts、design tokens、UI assets 与 T02 responsive prototype authority。   |
-| T03             | 记录 CloudBase 中国大陆 candidate architecture 与非执行示例；CLEAN-02 后仅作为 archived candidate evidence。                                            |
-| T04.0-R–T04.3   | 从旧 Archive compatibility 迁移到 canonical Catalog contracts、application-owned Query Port、strict transport mapping 与两值 `CatalogKind`。            |
-| T05.0–T05.3     | 建立真实 Node.js HTTP runtime、Catalog list/detail boundary、PostgreSQL adapter、migration/readiness lifecycle 与 governed read service。               |
-| T05.4-A/B       | 冻结 Catalog Import contract/Owner workbook，并实现 CSV/XLSX parser convergence、PostgreSQL dry-run 与 hash-bound apply。                               |
-| PILOT-IMPORT-01 | 在 disposable PostgreSQL 18.4 中验证 28 条 Owner workbook 的 apply、idempotent replay 与 Public API readback；未进入 production 或 repository runtime。 |
-| MEDIA-01        | 建立 Catalog Media identity、persistence、representative/gallery projection 与 backend-owned runtime URL resolution boundary。                          |
-| T06             | PR #44、#45、#49 建立 Public Web HTTP boundary、request-time orchestration，并采用 T02 authority 作为 Formal Root。                                     |
-| T07             | PR #50 将碑刻/书帖 Browse titles 接入 Public Catalog API。                                                                                              |
-| T09             | PR #51 扩展 CatalogDetail read model；PR #55 将 runtime detail 接入现有 T02 Detail。                                                                    |
-| T02P-01–11      | PR #56–#66 建立 regression harness、React data/presentation/platform/shell/navigation seams 与 Development acceptance；Production T02 bridge 仍保留。   |
-| CLEAN-01        | PR #68 consolidates repository governance authority and active amendment discovery.                                                                     |
-| CLEAN-03        | PR #67 removes the retired empty `@moya/data-access` workspace while preserving historical ADR/audit evidence.                                          |
+| Milestone | Historical outcome |
+| --- | --- |
+| T00–T02 | Established the pnpm/Turborepo monorepo, Web/Admin/API skeleton, CI, source-independent contracts, design tokens, shared assets, and the original responsive T02 visual/interaction authority. |
+| T03 | Recorded a CloudBase mainland-China candidate architecture. CLEAN-02 later archived it as non-executable historical evidence. |
+| T04.0-R–T04.3 | Migrated from transitional Archive compatibility to canonical Catalog contracts, application-owned `CatalogQueryPort`, strict transport mapping, and `CatalogKind = inscription | calligraphy`. |
+| T05.0–T05.3 | Established the Node.js HTTP runtime, Catalog list/detail boundary, PostgreSQL adapter, migration/readiness lifecycle, and governed Public read service. |
+| T05.4-A/B | Froze `catalog-import/v1`, the Owner workbook, CSV/XLSX convergence, diagnostics, dry-run, and hash-bound apply. |
+| PILOT-IMPORT-01 / P5 | Validated 28 approved records through disposable PostgreSQL 18.4 import, idempotent replay, rollback, and Public API readback; no Production dataset was retained. |
+| MEDIA-01 | Added Catalog media identity, persistence, representative/gallery projection, and backend-owned runtime URL resolution. |
+| T06–T07 | Established the Web Public HTTP boundary and connected Home/Browse data to real Catalog list states. |
+| T09.1–T09.2 | Expanded the Catalog Detail read projection and connected runtime Detail data to the then-current T02 presentation. |
+| T02P-01–11 | Established browser regression, typed data scenarios, device/platform policy, React shell/navigation seams, and Development acceptance. |
+| T02 R01–R03 | Merged the React Product Shell, preferences/history/Settings, stable Safari navigation, Home feeds, masonry, Topics presentation, and Product-owned restoration. |
+| MIG-D1 / MIG-C1 / MIG-D2 | Merged the shared React Catalog Detail, Calligraphy category pager, bounded Carousel, full-screen Viewer, media gestures, and canonical history ownership. |
+| MIG-CUTOVER | Replaced the Formal static root with the request-rendered React Product Shell while preserving Production-only data composition and Catalog redirect compatibility. |
+| CATALOG-BROWSE-PAGING-01 | Added explicit progressive loading for Inscriptions and Calligraphy `全部`, including retry and Detail/Viewer return restoration. |
+| P2-00 | Reconciled current Phase 2 status, retired PR #69 as an implementation lineage, and retained PR #72 only as design reference. |
+| T09-C0 | Froze Catalog Content V1 contributors, script style, transcription, historical context, scholarly research, and citation-scope contracts. |
+| T09-B1A | Added append-only Content V1 PostgreSQL persistence, contributor/citation-scope reads, internal projection, and explicit Public mapping. |
+| T09-B1B | Added `catalog-import/v2` XLSX/CSV support, collection actions, canonical hashing, dry-run, approval, serializable apply, rollback, replay, and v1 compatibility. |
+| CLEAN-01 | Consolidated repository governance authority and active-amendment discovery. |
+| CLEAN-02 | Reconciled then-current documentation/configuration, fixed development port ownership, and archived the CloudBase candidate. |
+| CLEAN-03 | Removed the retired empty `@moya/data-access` workspace. |
+| OPEN-MIN-01 | Added public licensing/security policy and removed local provenance from the checked-in file tree. |
+| PRIVACY-GUARD-01 rollback | Retired the overextended repository privacy guard while preserving the minimal open-source cleanup. |
+| STATUS-AND-LINEAGE-RESET | Reconciled the React Formal root, Content V1 state, current documentation, governance authority, PR/Issue disposition, and anti-drift tests after PR #86. |
+
+Exact implementation, validation, acceptance, and merge evidence remains in the
+corresponding PRs, ADRs, audits, and closure records.
