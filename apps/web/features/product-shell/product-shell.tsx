@@ -99,6 +99,7 @@ export interface ProductShellContextValue {
     opener: HTMLButtonElement,
   ) => void;
   readonly restoreActiveScrollTop: (top: number) => void;
+  readonly settingsOpen: boolean;
   readonly theme: ThemePreference;
 }
 
@@ -120,6 +121,7 @@ export interface ProductShellProps {
   readonly home: ReactNode;
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
+  readonly primaryUtility?: ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
@@ -172,6 +174,7 @@ export const ProductShell = ({
   home,
   initialPlatform,
   inscriptions,
+  primaryUtility,
   renderDetailOverlay,
   renderTopicOverlay,
   showDevelopmentPagerControls = false,
@@ -1297,6 +1300,7 @@ export const ProductShell = ({
     registerActiveHomeScrollElement,
     registerTopicOpener,
     restoreActiveScrollTop,
+    settingsOpen,
     theme,
   };
   const ownedOverlayOpen =
@@ -1339,6 +1343,7 @@ export const ProductShell = ({
             platform={platform}
             showDevelopmentPagerControls={showDevelopmentPagerControls}
           />
+          {primaryUtility}
           <button
             type="button"
             aria-label="打开设置"

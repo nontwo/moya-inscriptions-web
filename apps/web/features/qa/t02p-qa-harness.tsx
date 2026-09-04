@@ -5,6 +5,8 @@ import { useCallback, useState } from "react";
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 import { homeScenarioNames } from "./home-scenario-contract";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
+import { QaProductUtilities } from "./inscription-filter-presentation";
+import { qaSearchScenarioNames, qaSearchScenarios } from "./search-scenarios";
 
 import type { HomeFeed } from "../home/home-feed";
 import type { CatalogDetail } from "@moya/contracts";
@@ -17,6 +19,7 @@ import type {
   DevelopmentHomeScenarios,
   HomeScenarioName,
 } from "./home-scenario-contract";
+import type { QaSearchScenarioName } from "./search-scenarios";
 
 type PresentationPlatformMode = "auto" | PresentationPlatform;
 
@@ -49,6 +52,13 @@ const platformOptions = [
   ["pc", "PC"],
 ] as const satisfies readonly (readonly [PresentationPlatformMode, string])[];
 
+const searchScenarioLabels = {
+  "search-default": "Search default",
+  "search-open": "Search open",
+  "search-typing": "Search typing",
+  "search-empty": "Search empty",
+} as const satisfies Record<QaSearchScenarioName, string>;
+
 export interface T02pQaHarnessProps {
   readonly catalogScenarios: T02pDevelopmentCatalogScenarios;
   readonly homeScenarios: DevelopmentHomeScenarios;
@@ -74,8 +84,11 @@ export const T02pQaHarness = ({
     useState<HomeScenarioName>(initialHomeScenario);
   const [platformMode, setPlatformMode] =
     useState<PresentationPlatformMode>("auto");
+  const [searchScenario, setSearchScenario] =
+    useState<QaSearchScenarioName>("search-default");
   const home = homeScenarios[homeScenario];
   const catalog = catalogScenarios[catalogScenario];
+  const search = qaSearchScenarios[searchScenario];
   const states = {
     calligraphy: catalog.calligraphy,
     home: home.data,
@@ -104,6 +117,7 @@ export const T02pQaHarness = ({
     <main
       data-catalog-scenario={catalogScenario}
       data-home-scenario={homeScenario}
+      data-search-scenario={searchScenario}
       data-t02p-qa-harness=""
     >
       <aside aria-label="T02P QA controls" data-qa-controls="">
@@ -123,6 +137,25 @@ export const T02pQaHarness = ({
           {platformOptions.map(([value, label]) => (
             <option key={value} value={value}>
               {label}
+            </option>
+          ))}
+        </select>
+
+        <label htmlFor="t02p-qa-search-scenario">QA Search scenario</label>
+        <select
+          id="t02p-qa-search-scenario"
+          data-qa-search-scenario-selector=""
+          value={searchScenario}
+          onChange={(event) => {
+            const next = qaSearchScenarioNames.find(
+              (candidate) => candidate === event.currentTarget.value,
+            );
+            if (next !== undefined) setSearchScenario(next);
+          }}
+        >
+          {qaSearchScenarioNames.map((value) => (
+            <option key={value} value={value}>
+              {searchScenarioLabels[value]}
             </option>
           ))}
         </select>
@@ -175,6 +208,14 @@ export const T02pQaHarness = ({
         initialHomeFeed={initialHomeFeed ?? home.initialFeed}
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
+        productUtility={
+          <QaProductUtilities
+            initialKeyword={search.initialKeyword}
+            initialSearchOpen={search.initialOpen}
+            key={searchScenario}
+            showEmptyState={search.showEmptyState}
+          />
+        }
         showDevelopmentPagerControls
         states={states}
       />

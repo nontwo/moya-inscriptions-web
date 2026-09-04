@@ -52,6 +52,10 @@ describe("current repository truth and local configuration", () => {
       "",
       "MOYA_PUBLIC_API_BASE_URL=http://127.0.0.1:3001",
       "",
+      "# Optional comma-separated hostnames for Next.js LAN device QA.",
+      "# Example: MOYA_ALLOWED_DEV_ORIGINS=192.168.1.25,dev.yoyi.local",
+      "MOYA_ALLOWED_DEV_ORIGINS=",
+      "",
       "DATABASE_URL=",
       "TEST_DATABASE_URL=",
     ]);
