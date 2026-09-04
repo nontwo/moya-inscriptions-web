@@ -70,8 +70,8 @@ Historical audits and superseded evidence do not override current rules.
   candidates, including T03 CloudBase evidence. Archived material is
   non-executable and non-authoritative.
 - [`prototypes/`](prototypes/) contains non-production visual/interaction
-  references and fixtures. It is not the current Formal React implementation,
-  a Production data source, or permission to replace the current Product Shell.
+  references and fixtures. It is not the current Formal React implementation, a
+  Production data source, or permission to replace the current Product Shell.
 
 Candidate, archived, or Prototype material becomes current only through an
 explicitly approved task and the applicable authority process.
