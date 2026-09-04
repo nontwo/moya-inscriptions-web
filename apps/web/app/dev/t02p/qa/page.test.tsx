@@ -52,6 +52,10 @@ describe("T02pQaPage", () => {
     expect(markup).toContain("data-t02p-qa-search");
     expect(markup).toContain("data-search-trigger");
     expect(markup).toContain("data-qa-search-scenario-selector");
+    expect(markup).toContain("data-qa-user-interface");
+    expect(markup).toContain("data-user-trigger");
+    expect(markup).toContain("data-qa-user-scenario-selector");
+    expect(markup).not.toContain("data-open-settings");
     expect(markup).toContain(
       '<option value="visual" selected="">Visual</option>',
     );

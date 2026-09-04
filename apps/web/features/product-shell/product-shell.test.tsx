@@ -41,7 +41,27 @@ const ProductShellObserver = () => {
   return null;
 };
 
-const renderProductShell = (home: ReactNode = <p>home content</p>) => {
+const SettingsRequester = () => {
+  const { requestSettings } = useProductShell();
+  return (
+    <button
+      aria-label="从用户页打开设置"
+      data-settings-request-test=""
+      onClick={(event) => requestSettings(event.currentTarget)}
+      type="button"
+    >
+      Settings
+    </button>
+  );
+};
+
+const renderProductShell = (
+  home: ReactNode = <p>home content</p>,
+  options: {
+    readonly primaryUtility?: ReactNode;
+    readonly showSettingsEntry?: boolean;
+  } = {},
+) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -53,6 +73,7 @@ const renderProductShell = (home: ReactNode = <p>home content</p>) => {
         home={home}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
+        {...options}
       />,
     ),
   );
@@ -521,6 +542,36 @@ describe("ProductShell", () => {
     );
     await act(async () => vi.runAllTimers());
     expect(dialog(container)).not.toBeNull();
+  });
+
+  it("can hide the external Settings entry while preserving the owned Settings seam", async () => {
+    const { container } = renderProductShell(<p>home content</p>, {
+      primaryUtility: <SettingsRequester />,
+      showSettingsEntry: false,
+    });
+    await act(async () => vi.runAllTimers());
+
+    expect(container.querySelector("[data-open-settings]")).toBeNull();
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    opener.focus();
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    expect(dialog(container)).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(dialog(container)).toBeNull();
+    expect(document.activeElement).toBe(opener);
   });
 
   it("owns Topic history, inertness, navigation identity, Back/Forward, scroll, and focus", async () => {

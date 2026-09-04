@@ -98,6 +98,7 @@ export interface ProductShellContextValue {
     topicId: string,
     opener: HTMLButtonElement,
   ) => void;
+  readonly requestSettings: (opener?: HTMLElement) => void;
   readonly restoreActiveScrollTop: (top: number) => void;
   readonly settingsOpen: boolean;
   readonly theme: ThemePreference;
@@ -128,6 +129,7 @@ export interface ProductShellProps {
   readonly renderTopicOverlay?: (
     properties: ProductShellTopicOverlayRenderProps,
   ) => ReactNode;
+  readonly showSettingsEntry?: boolean;
   readonly showDevelopmentPagerControls?: boolean;
 }
 
@@ -177,6 +179,7 @@ export const ProductShell = ({
   primaryUtility,
   renderDetailOverlay,
   renderTopicOverlay,
+  showSettingsEntry = true,
   showDevelopmentPagerControls = false,
 }: ProductShellProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -513,6 +516,18 @@ export const ProductShell = ({
     );
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
+
+  const requestSettings = useCallback(
+    (requestedOpener?: HTMLElement) => {
+      const opener =
+        requestedOpener ??
+        (document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : rootRef.current);
+      if (opener !== null) openSettings(opener);
+    },
+    [openSettings],
+  );
 
   const openTopic = useCallback(
     (topicId: string, opener: HTMLElement, sourceScrollTop: number) => {
@@ -1299,6 +1314,7 @@ export const ProductShell = ({
     readActiveScrollTop,
     registerActiveHomeScrollElement,
     registerTopicOpener,
+    requestSettings,
     restoreActiveScrollTop,
     settingsOpen,
     theme,
@@ -1344,15 +1360,17 @@ export const ProductShell = ({
             showDevelopmentPagerControls={showDevelopmentPagerControls}
           />
           {primaryUtility}
-          <button
-            type="button"
-            aria-label="打开设置"
-            className={`${styles.settingsButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
-            data-open-settings=""
-            onClick={(event) => openSettings(event.currentTarget)}
-          >
-            <Icon name="settings" />
-          </button>
+          {showSettingsEntry ? (
+            <button
+              type="button"
+              aria-label="打开设置"
+              className={`${styles.settingsButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
+              data-open-settings=""
+              onClick={(event) => openSettings(event.currentTarget)}
+            >
+              <Icon name="settings" />
+            </button>
+          ) : null}
         </div>
 
         {settingsOpen ? (

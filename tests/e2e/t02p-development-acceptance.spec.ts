@@ -37,6 +37,39 @@ const homeScenarioSelector = (surface: Locator) =>
 const productShell = (surface: Locator) =>
   surface.locator("[data-product-shell]");
 
+const openSettingsThroughAvailableEntry = async (surface: Locator) => {
+  const shell = productShell(surface);
+  const externalSettings = shell.locator("[data-open-settings]");
+  let userPage: Locator | null = null;
+
+  if ((await externalSettings.count()) === 1) {
+    await externalSettings.click();
+  } else {
+    await shell.locator("[data-user-trigger]").click();
+    userPage = shell.getByRole("dialog", { name: "用户页" });
+    await expect(userPage).toBeVisible();
+    await userPage.getByRole("button", { name: "打开设置" }).click();
+  }
+
+  const settings = shell.getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+  return { settings, userPage };
+};
+
+const closeSettingsAndUserPage = async (
+  settings: Locator,
+  userPage: Locator | null,
+) => {
+  await settings
+    .getByRole("button", { name: "返回" })
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(settings).toHaveCount(0);
+  if (userPage !== null) {
+    await userPage.getByRole("button", { name: "关闭用户页" }).click();
+    await expect(userPage).toHaveCount(0);
+  }
+};
+
 const setFeedLayoutThroughSettings = async (
   surface: Locator,
   layout: "single" | "double",
@@ -44,17 +77,13 @@ const setFeedLayoutThroughSettings = async (
   const shell = productShell(surface);
   if ((await shell.getAttribute("data-feed-layout")) === layout) return;
 
-  await shell.getByRole("button", { name: "打开设置" }).click();
-  const settings = shell.getByRole("dialog", { name: "设置" });
-  await expect(settings).toBeVisible();
+  const { settings, userPage } =
+    await openSettingsThroughAvailableEntry(surface);
   const toggle = settings.locator("[data-feed-layout-toggle]");
   await expect(toggle).toBeVisible();
   await toggle.evaluate((button) => (button as HTMLButtonElement).click());
   await expect(shell).toHaveAttribute("data-feed-layout", layout);
-  await settings
-    .getByRole("button", { name: "返回" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(settings).toHaveCount(0);
+  await closeSettingsAndUserPage(settings, userPage);
 };
 
 const activeCatalogPresentation = (surface: Locator) =>
@@ -1469,11 +1498,9 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
     topics: (await readHomePanelEvidence(home, "topics")).scrollTop,
   }).toEqual(beforeRebound);
 
-  await shell.getByRole("button", { name: "打开设置" }).click();
-  const settings = shell.getByRole("dialog", { name: "设置" });
-  await expect(settings).toBeVisible();
-  await settings.getByRole("button", { name: "返回" }).click();
-  await expect(settings).toHaveCount(0);
+  const { settings, userPage } =
+    await openSettingsThroughAvailableEntry(surface);
+  await closeSettingsAndUserPage(settings, userPage);
   await expect(home).toHaveAttribute("data-active-home-feed", "topics");
   expect((await readHomePanelEvidence(home, "topics")).scrollTop).toBe(
     saved.topics,
@@ -1819,16 +1846,10 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   );
 
   if (expectedInitialAutoPlatform(testInfo.project.name) === "pc") {
-    await productShell(surface)
-      .getByRole("button", { name: "打开设置" })
-      .click();
-    const settings = productShell(surface).getByRole("dialog", {
-      name: "设置",
-    });
+    const { settings, userPage } =
+      await openSettingsThroughAvailableEntry(surface);
     await expect(settings.locator("[data-feed-layout-toggle]")).toHaveCount(0);
-    await settings
-      .getByRole("button", { name: "返回" })
-      .evaluate((button) => (button as HTMLButtonElement).click());
+    await closeSettingsAndUserPage(settings, userPage);
     const columnCount = Number(
       await masonry.getAttribute("data-masonry-columns"),
     );
@@ -2343,11 +2364,9 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
       .click();
     await expectActiveDestination(surface, destination);
   }
-  await productShell(surface).getByRole("button", { name: "打开设置" }).click();
-  const settings = productShell(surface).getByRole("dialog", { name: "设置" });
-  await expect(settings).toBeVisible();
-  await settings.getByRole("button", { name: "返回" }).click();
-  await expect(settings).toHaveCount(0);
+  const { settings, userPage } =
+    await openSettingsThroughAvailableEntry(surface);
+  await closeSettingsAndUserPage(settings, userPage);
 
   const viewport = page.viewportSize();
   if (viewport !== null) {

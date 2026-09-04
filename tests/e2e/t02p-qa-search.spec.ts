@@ -177,6 +177,9 @@ test("search intents preserve Catalog identity, data and order while close actio
   await page.keyboard.press("Escape");
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
   await expect(trigger).toBeFocused();
+
+  await expect(shell.locator("[data-open-settings]")).toHaveCount(0);
+  await expect(shell.locator("[data-user-trigger]")).toBeVisible();
   await expect(shell).toHaveAttribute(
     "data-platform",
     expectedPlatform(testInfo.project.name),
@@ -307,7 +310,7 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
   await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
 });
 
-test("all approved viewport matrices keep Search left of Settings and in bounds", async ({
+test("all approved viewport matrices keep Search left of User and in bounds", async ({
   page,
 }, testInfo) => {
   const matrices = {
@@ -347,24 +350,18 @@ test("all approved viewport matrices keep Search left of Settings and in bounds"
       "data-platform",
       expectedPlatform(testInfo.project.name),
     );
-    const settingsBox = await shell
-      .getByRole("button", { name: "打开设置" })
-      .boundingBox();
+    const userBox = await shell.locator("[data-user-trigger]").boundingBox();
     const searchBox = await trigger.boundingBox();
     const filterBox = await filterTrigger.boundingBox();
-    if (settingsBox === null || searchBox === null || filterBox === null) {
+    if (userBox === null || searchBox === null || filterBox === null) {
       throw new Error(
         `Missing utility geometry at ${viewport.width}x${viewport.height}`,
       );
     }
-    expect(Math.abs(settingsBox.y - searchBox.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(settingsBox.height - searchBox.height)).toBeLessThanOrEqual(
-      1,
-    );
-    expect(Math.abs(settingsBox.width - searchBox.width)).toBeLessThanOrEqual(
-      1,
-    );
-    expect(settingsBox.x - (searchBox.x + searchBox.width)).toBe(8);
+    expect(Math.abs(userBox.y - searchBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(userBox.height - searchBox.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(userBox.width - searchBox.width)).toBeLessThanOrEqual(1);
+    expect(userBox.x - (searchBox.x + searchBox.width)).toBe(8);
     expect(filterBox.x).toBeGreaterThanOrEqual(0);
     expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(
       viewport.width + 1,
@@ -394,7 +391,6 @@ test("Search remains legible through themes and respects reduced motion", async 
   test.skip(testInfo.project.name !== "desktop-chromium");
   const { search, shell } = await openQa(page);
   const trigger = search.locator("[data-search-trigger]");
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
 
   for (const preference of ["system", "light", "dark"] as const) {
     await expect(shell).toHaveAttribute("data-theme-preference", preference);
@@ -410,13 +406,18 @@ test("Search remains legible through themes and respects reduced motion", async 
     await expect(trigger).toBeFocused();
 
     if (preference === "dark") break;
-    await settingsTrigger.click();
+    await shell.locator("[data-user-trigger]").click();
+    const userPage = shell.getByRole("dialog", { name: "用户页" });
+    await userPage.getByRole("button", { name: "打开设置" }).click();
     const settings = shell.getByRole("dialog", { name: "设置" });
     await expect(settings).toBeVisible();
     await settings.getByRole("button", { name: /切换主题/ }).click();
     await settings.getByRole("button", { name: "返回" }).click();
     await expect(settings).toHaveCount(0);
-    await expect(settingsTrigger).toBeFocused();
+    await expect(
+      userPage.getByRole("button", { name: "打开设置" }),
+    ).toBeFocused();
+    await userPage.getByRole("button", { name: "关闭用户页" }).click();
   }
 
   await page.emulateMedia({ reducedMotion: "reduce" });

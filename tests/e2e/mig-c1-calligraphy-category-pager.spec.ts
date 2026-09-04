@@ -567,7 +567,10 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
 
   const shell = productShell(surface);
   if ((await shell.getAttribute("data-platform")) === "pc") return;
-  await shell.getByRole("button", { name: "打开设置" }).click();
+  await shell.locator("[data-user-trigger]").click();
+  const userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  await userPage.getByRole("button", { name: "打开设置" }).click();
   const settings = shell.getByRole("dialog", { name: "设置" });
   await expect(settings).toBeVisible();
   await settings
@@ -577,6 +580,8 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
   await settings
     .getByRole("button", { name: "返回" })
     .evaluate((button) => (button as HTMLButtonElement).click());
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
   await expect(
     calligraphy.locator(
       '[data-calligraphy-category-panel="ink"] [data-home-masonry]',

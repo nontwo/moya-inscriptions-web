@@ -58,6 +58,7 @@ export interface T02pProductPreviewProps {
   readonly initialTopicId?: string | null;
   readonly productUtility?: ReactNode;
   readonly showDevelopmentPagerControls?: boolean;
+  readonly showSettingsEntry?: boolean;
   readonly states: T02pDevelopmentCatalogDestinationStates;
 }
 
@@ -69,6 +70,7 @@ export const T02pProductPreview = ({
   initialTopicId = null,
   productUtility,
   showDevelopmentPagerControls = false,
+  showSettingsEntry = true,
   states,
 }: T02pProductPreviewProps) => (
   <div data-clean-product-preview="">
@@ -114,6 +116,7 @@ export const T02pProductPreview = ({
           topicsState={states.home.topics}
         />
       )}
+      showSettingsEntry={showSettingsEntry}
     />
   </div>
 );

@@ -368,25 +368,21 @@ test("all approved viewport matrices keep Filter in bounds and compact landscape
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await expect(shell).toHaveAttribute("data-platform", platform);
-    const settingsBox = await shell
-      .getByRole("button", { name: "打开设置" })
-      .boundingBox();
+    const userBox = await shell.locator("[data-user-trigger]").boundingBox();
     const filterBox = await filter
       .getByRole("button", { name: "打开筛选" })
       .boundingBox();
-    if (settingsBox === null || filterBox === null) {
+    if (userBox === null || filterBox === null) {
       throw new Error(
         `Missing utility geometry at ${viewport.width}x${viewport.height}`,
       );
     }
     expect(
       Math.abs(
-        settingsBox.x +
-          settingsBox.width / 2 -
-          (filterBox.x + filterBox.width / 2),
+        userBox.x + userBox.width / 2 - (filterBox.x + filterBox.width / 2),
       ),
     ).toBeLessThanOrEqual(1);
-    expect(filterBox.y - (settingsBox.y + settingsBox.height)).toBe(8);
+    expect(filterBox.y - (userBox.y + userBox.height)).toBe(8);
     expect(filterBox.x).toBeGreaterThanOrEqual(0);
     expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(
       viewport.width + 1,

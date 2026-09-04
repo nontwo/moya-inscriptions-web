@@ -6,6 +6,12 @@ import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 import { homeScenarioNames } from "./home-scenario-contract";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { QaProductUtilities } from "./inscription-filter-presentation";
+import { QaUserUtility } from "./qa-user-utility";
+import {
+  defaultQaUserScenarioName,
+  qaUserScenarioLabels,
+  qaUserScenarioNames,
+} from "./user-scenarios";
 import { qaSearchScenarioNames, qaSearchScenarios } from "./search-scenarios";
 
 import type { HomeFeed } from "../home/home-feed";
@@ -20,6 +26,7 @@ import type {
   HomeScenarioName,
 } from "./home-scenario-contract";
 import type { QaSearchScenarioName } from "./search-scenarios";
+import type { QaUserScenarioName } from "./user-scenarios";
 
 type PresentationPlatformMode = "auto" | PresentationPlatform;
 
@@ -86,9 +93,20 @@ export const T02pQaHarness = ({
     useState<PresentationPlatformMode>("auto");
   const [searchScenario, setSearchScenario] =
     useState<QaSearchScenarioName>("search-default");
+  const [userScenario, setUserScenario] = useState<QaUserScenarioName>(
+    defaultQaUserScenarioName,
+  );
   const home = homeScenarios[homeScenario];
   const catalog = catalogScenarios[catalogScenario];
   const search = qaSearchScenarios[searchScenario];
+  const visualCatalogItems = [
+    ...(catalogScenarios.visual.inscriptions.state === "populated"
+      ? catalogScenarios.visual.inscriptions.page.items
+      : []),
+    ...(catalogScenarios.visual.calligraphy.categories.all.state === "populated"
+      ? catalogScenarios.visual.calligraphy.categories.all.page.items
+      : []),
+  ];
   const states = {
     calligraphy: catalog.calligraphy,
     home: home.data,
@@ -179,6 +197,25 @@ export const T02pQaHarness = ({
           ))}
         </select>
 
+        <label htmlFor="t02p-qa-user-scenario">QA User scenario</label>
+        <select
+          id="t02p-qa-user-scenario"
+          data-qa-user-scenario-selector=""
+          value={userScenario}
+          onChange={(event) => {
+            const next = qaUserScenarioNames.find(
+              (candidate) => candidate === event.currentTarget.value,
+            );
+            if (next !== undefined) setUserScenario(next);
+          }}
+        >
+          {qaUserScenarioNames.map((value) => (
+            <option key={value} value={value}>
+              {qaUserScenarioLabels[value]}
+            </option>
+          ))}
+        </select>
+
         <label htmlFor="t02p-qa-catalog-scenario">QA Catalog scenario</label>
         <select
           id="t02p-qa-catalog-scenario"
@@ -209,14 +246,22 @@ export const T02pQaHarness = ({
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
         productUtility={
-          <QaProductUtilities
-            initialKeyword={search.initialKeyword}
-            initialSearchOpen={search.initialOpen}
-            key={searchScenario}
-            showEmptyState={search.showEmptyState}
-          />
+          <>
+            <QaProductUtilities
+              initialKeyword={search.initialKeyword}
+              initialSearchOpen={search.initialOpen}
+              key={searchScenario}
+              showEmptyState={search.showEmptyState}
+            />
+            <QaUserUtility
+              catalogItems={visualCatalogItems}
+              key={userScenario}
+              scenarioName={userScenario}
+            />
+          </>
         }
         showDevelopmentPagerControls
+        showSettingsEntry={false}
         states={states}
       />
     </main>
