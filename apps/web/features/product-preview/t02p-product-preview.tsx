@@ -11,7 +11,7 @@ import { TopicDetail } from "../topics/topic-detail";
 
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { HomeCatalogState } from "../home/catalog-state";
 import type { HomeFeed, HomeSurfaceData } from "../home/home-feed";
 import type { PresentationPlatform } from "../shell/device-platform";
@@ -56,6 +56,7 @@ export interface T02pProductPreviewProps {
   readonly initialPlatform: PresentationPlatform;
   readonly initialHomeFeed?: HomeFeed;
   readonly initialTopicId?: string | null;
+  readonly productUtility?: ReactNode;
   readonly showDevelopmentPagerControls?: boolean;
   readonly states: T02pDevelopmentCatalogDestinationStates;
 }
@@ -66,6 +67,7 @@ export const T02pProductPreview = ({
   initialPlatform,
   initialHomeFeed = "discover",
   initialTopicId = null,
+  productUtility,
   showDevelopmentPagerControls = false,
   states,
 }: T02pProductPreviewProps) => (
@@ -85,6 +87,7 @@ export const T02pProductPreview = ({
         />
       }
       initialPlatform={initialPlatform}
+      primaryUtility={productUtility}
       inscriptions={<PreviewBrowse state={states.inscriptions} />}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
       renderDetailOverlay={({

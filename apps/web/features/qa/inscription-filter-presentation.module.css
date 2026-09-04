@@ -1,0 +1,284 @@
+.root {
+  position: fixed;
+  z-index: calc(var(--yoyi-z-index-navigation) + 11);
+  top: calc(max(var(--yoyi-space-3), env(safe-area-inset-top)) + 52px);
+  right: calc(var(--yoyi-space-4) - 14px);
+  font-family: var(--yoyi-font-interface);
+}
+
+.trigger {
+  display: flex;
+  width: 72px;
+  height: 44px;
+  margin-left: auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yoyi-space-2);
+  color: var(--yoyi-color-text-primary);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  font-size: var(--yoyi-type-label-size);
+  cursor: pointer;
+}
+
+.trigger svg {
+  width: 18px;
+  height: 18px;
+}
+
+.trigger:focus-visible,
+.chip:focus-visible,
+.popover button:focus-visible,
+.sheet button:focus-visible,
+.sheet input:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + var(--yoyi-space-3));
+  right: 14px;
+  width: min(560px, calc(100vw - var(--yoyi-space-7)));
+  padding: var(--yoyi-space-3);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-lg);
+  animation: appear var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+
+.panel:global(.yoyi-functional-glass) {
+  overflow: visible;
+}
+
+.chips {
+  display: flex;
+  gap: var(--yoyi-space-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-elevated);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  font-size: var(--yoyi-type-label-size);
+  cursor: pointer;
+}
+
+.chip[aria-pressed="true"],
+.chip[data-selected] {
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-seal-red-muted);
+  border-color: var(--yoyi-color-seal-red);
+  font-weight: 650;
+}
+
+.popover {
+  display: grid;
+  position: absolute;
+  top: calc(100% + var(--yoyi-space-3));
+  right: 0;
+  width: 210px;
+  max-height: min(420px, calc(100vh - 180px));
+  overflow-y: auto;
+  padding: var(--yoyi-space-3);
+  gap: var(--yoyi-space-2);
+  background: var(--yoyi-color-background-elevated);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-lg);
+  box-shadow: var(--yoyi-shadow-dialog);
+  animation: appear var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+
+.popover button {
+  min-height: 40px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-md);
+  font: inherit;
+  cursor: pointer;
+}
+
+.popover button[aria-selected="true"] {
+  background: var(--yoyi-color-seal-red-muted);
+  font-weight: 650;
+}
+
+.backdrop {
+  display: flex;
+  position: fixed;
+  z-index: var(--yoyi-z-index-overlay);
+  inset: 0;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--yoyi-space-4);
+  padding-bottom: max(var(--yoyi-space-4), env(safe-area-inset-bottom));
+  background: var(--yoyi-color-overlay);
+  animation: fadeIn var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+
+.sheet {
+  width: min(100%, 560px);
+  max-height: min(72dvh, 640px);
+  overflow-y: auto;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-elevated);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-lg);
+  box-shadow: var(--yoyi-shadow-dialog);
+  animation: slideUp var(--yoyi-duration-normal) var(--yoyi-easing-emphasized);
+}
+
+.sheetHeader,
+.sheetActions {
+  display: flex;
+  min-height: 52px;
+  padding: var(--yoyi-space-3) var(--yoyi-space-5);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yoyi-space-4);
+}
+
+.sheetHeader {
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.sheetHeader h2 {
+  margin: 0;
+  font-size: var(--yoyi-type-card-title-size);
+}
+
+.sheetHeader button,
+.sheetActions button {
+  min-height: 36px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+}
+
+.sheetActions {
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.sheetActions button:last-child {
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-seal-red);
+  border-color: var(--yoyi-color-seal-red);
+}
+
+.options {
+  margin: 0;
+  padding: var(--yoyi-space-3) var(--yoyi-space-5);
+  border: 0;
+}
+
+.options label {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yoyi-space-4);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  cursor: pointer;
+}
+
+.options label:last-child {
+  border-bottom: 0;
+}
+
+.options input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--yoyi-color-seal-red);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(var(--yoyi-space-5));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .trigger:hover,
+  .chip:hover,
+  .popover button:hover,
+  .sheet button:hover {
+    border-color: var(--yoyi-color-border-strong);
+  }
+
+  .popover button:hover {
+    background: var(--yoyi-color-background-muted);
+  }
+}
+
+@media (min-width: 56rem) {
+  .root {
+    top: calc(var(--yoyi-space-5) + 52px);
+    right: calc(var(--yoyi-space-6) - 14px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .popover,
+  .backdrop,
+  .sheet {
+    animation: none;
+  }
+}

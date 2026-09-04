@@ -52,6 +52,12 @@ describe("FormalPage", () => {
       initialTopicId: null,
       states,
     });
+    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "inscriptionUtility",
+    );
+    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "productUtility",
+    );
   });
 
   it.each(["discover", "nearby", "topics"] as const)(
