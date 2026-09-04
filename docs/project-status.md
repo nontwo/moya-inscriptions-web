@@ -2,8 +2,8 @@
 
 最后审计：2026-09-04
 
-本文件是 current project status、active Phase 2 work、Production gaps 与远端
-lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
+本文件是 current project status、active Phase 2 work、Production
+gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
 `docs/history/`，不作为当前任务状态。
 
 ## 基线读取规则
@@ -17,8 +17,8 @@ Audited capability baseline:
 feat(import): add Catalog import v2 (#86)
 ```
 
-该 SHA 是本次全仓审计所依据的不可变能力基线，不是一个会自动更新的
-“current head”字段。每个新任务开始前必须 fetch 并实时解析最新
+该 SHA 是本次全仓审计所依据的不可变能力基线，不是一个会自动更新的“current
+head”字段。每个新任务开始前必须 fetch 并实时解析最新
 `origin/integration/mvp`；不得复制本文件中的历史审计 SHA 作为分支起点。
 
 `main` 仍是待 Owner milestone promotion 的稳定基线，不是当前开发主线。
@@ -32,9 +32,10 @@ Phase 2 — trustworthy read-only digital Catalog MVP
 目标是发布具有受治理内容、真实媒体、正式搜索、最小 Operator
 governance 和可恢复 Production operations 的只读 Catalog。
 
-Phase 2 当前不扩展到普通 public-user identity、favorites/likes、comments、
-posts、user upload、social following、messaging、native mobile apps、
-transactions、AI recommendation、OCR 或 knowledge graph。
+Phase 2 当前不扩展到普通 public-user
+identity、favorites/likes、comments、posts、user upload、social
+following、messaging、native mobile apps、transactions、AI
+recommendation、OCR 或 knowledge graph。
 
 ## 已完成的 Formal Web
 
@@ -124,7 +125,8 @@ Completed foundation includes:
 - `catalog-import/v1` backward compatibility；
 - `catalog-import/v2` Content V1 support；
 - deterministic JSON Schema and OpenAPI generation；
-- format、lint、typecheck、unit/integration、PostgreSQL、build and browser E2E CI。
+- format、lint、typecheck、unit/integration、PostgreSQL、build and browser E2E
+  CI。
 
 ## P2-01 — Catalog Content V1
 
@@ -153,8 +155,8 @@ Current Content V1 fields are:
 - `scholarlyResearch`;
 - source-citation `appliesTo`.
 
-The backend and importer support these fields. Current React Detail still renders
-the earlier field set, so T09-F1 is the next bounded Product task.
+The backend and importer support these fields. Current React Detail still
+renders the earlier field set, so T09-F1 is the next bounded Product task.
 
 ## Production gaps
 
@@ -254,12 +256,12 @@ infrastructure without a concrete Pilot blocker.
 
 No historical feature branch is an active implementation base.
 
-| Branch | PR | Current disposition |
-| --- | ---: | --- |
-| `fix/t02-development-composition` | #54 | MERGED HISTORY; squash result is already in `integration/mvp`. |
-| `feat/catalog-detail-ui-t09-2` | #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage. |
-| `feat/t02p-12-react-detail-gallery-viewer-acceptance` | #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented. |
-| `feat/t02-petal-quick-actions-rebuild` | #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick. |
+| Branch                                                |  PR | Current disposition                                                               |
+| ----------------------------------------------------- | --: | --------------------------------------------------------------------------------- |
+| `fix/t02-development-composition`                     | #54 | MERGED HISTORY; squash result is already in `integration/mvp`.                    |
+| `feat/catalog-detail-ui-t09-2`                        | #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage. |
+| `feat/t02p-12-react-detail-gallery-viewer-acceptance` | #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.  |
+| `feat/t02-petal-quick-actions-rebuild`                | #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick. |
 
 Remote refs may remain for traceability. Their existence does not grant
 implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as
