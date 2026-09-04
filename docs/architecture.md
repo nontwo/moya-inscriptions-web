@@ -236,7 +236,7 @@ separate Owner authority.
 - Current React Product behavior is not duplicated or replaced by ordinary data
   or backend work.
 - Formal Production states omit absent optional content and never invent facts.
-- Every new task starts from a freshly resolved latest `origin/integration/mvp`.
+- Every new task starts from a freshly resolved latest `origin/main`.
 
 Accepted and superseded decisions are indexed in [`adr/`](adr/README.md).
 Dynamic milestone and next-task truth exists only in

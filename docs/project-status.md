@@ -10,7 +10,7 @@ gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保
 
 ```text
 Shared development branch:
-integration/mvp
+main
 
 Audited capability baseline:
 14ee3c0c57a73ee3a3995e9d64c698243c0a2447
@@ -19,9 +19,9 @@ feat(import): add Catalog import v2 (#86)
 
 该 SHA 是本次全仓审计所依据的不可变能力基线，不是一个会自动更新的“current
 head”字段。每个新任务开始前必须 fetch 并实时解析最新
-`origin/integration/mvp`；不得复制本文件中的历史审计 SHA 作为分支起点。
+`origin/main`；不得复制本文件中的历史审计 SHA 作为分支起点。
 
-`main` 仍是待 Owner milestone promotion 的稳定基线，不是当前开发主线。
+`main` 是唯一长期 shared branch、默认分支和当前开发主线。
 
 ## 当前阶段
 
@@ -236,7 +236,8 @@ Bounded scope:
 - backup/restore；
 - deployment rollback；
 - real-device Production smoke；
-- explicit `integration/mvp → main` milestone promotion。
+- verified `main` commit → explicit Owner milestone decision → annotated tag →
+  GitHub Release。
 
 ## Next task
 
@@ -245,7 +246,7 @@ Next Product task:
 T09-F1 — Catalog Content V1 React Detail presentation
 
 Required branch origin:
-fresh latest origin/integration/mvp
+fresh latest origin/main
 ```
 
 After T09-F1, the next backend/operations milestone is the bounded P2-02
@@ -258,7 +259,7 @@ No historical feature branch is an active implementation base.
 
 | Branch                                                |  PR | Current disposition                                                               |
 | ----------------------------------------------------- | --: | --------------------------------------------------------------------------------- |
-| `fix/t02-development-composition`                     | #54 | MERGED HISTORY; squash result is already in `integration/mvp`.                    |
+| `fix/t02-development-composition`                     | #54 | MERGED HISTORY; squash result is already in the current `main` lineage.           |
 | `feat/catalog-detail-ui-t09-2`                        | #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage. |
 | `feat/t02p-12-react-detail-gallery-viewer-acceptance` | #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.  |
 | `feat/t02-petal-quick-actions-rebuild`                | #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick. |
@@ -302,12 +303,14 @@ Phase 2 critical path excludes:
 
 ## Branch and release policy
 
-- shared branches are `integration/mvp` and `main`；
-- task branches start from a freshly fetched latest `integration/mvp`；
+- `main` is the sole long-lived, default, and shared development branch；
+- task branches start from a freshly fetched latest `origin/main`；
 - each task uses an isolated worktree and bounded branch；
-- each task passes Draft PR、CI、actual-diff review、expected-head merge and
-  merged-head verification；
-- no direct push to shared branches；
+- each task returns to `main` through Draft PR、CI、actual-diff
+  review、expected-head squash merge and merged-head verification；
+- no direct push to `main`；
 - no force-push or history rewrite；
-- `main` changes only after an explicit Owner milestone decision；
-- Production release requires the P2-R2 gate。
+- a stable milestone uses a verified `main` commit, explicit Owner decision,
+  annotated tag, and GitHub Release；
+- Production release requires an approved tag and the P2-R2 protected
+  environment, deployment, smoke, and rollback gates。

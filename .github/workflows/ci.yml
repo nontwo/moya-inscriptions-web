@@ -4,11 +4,9 @@ on:
   pull_request:
     branches:
       - main
-      - integration/mvp
   push:
     branches:
       - main
-      - integration/mvp
 
 permissions:
   contents: read

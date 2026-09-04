@@ -98,14 +98,17 @@ machine-managed workflow.
 
 ## 4. Branch authority
 
-- Short-lived task pull requests targeting `integration/mvp` may be merged by an
-  authorized independent review agent after all applicable gates pass.
-- Promotion from `integration/mvp` to `main` requires an explicit Owner
-  milestone decision because it establishes a public or stable baseline. After
-  approval, an authorized review agent may execute the merge and merged-head
-  verification.
+- Short-lived task pull requests targeting `main` may be merged by an authorized
+  independent review agent after all applicable gates pass.
+- A stable milestone requires an explicit Owner decision selecting a verified
+  `main` commit. After approval, an authorized agent creates the annotated tag
+  and GitHub Release. Production operations remain separately Owner-controlled.
 - Direct pushes to shared branches, force-pushes, and history rewriting remain
   prohibited.
+
+The single-main topology and release model are defined by the active
+[`2026-09-04 single-main trunk unification`](2026-09-04-single-main-trunk-unification.md)
+amendment.
 
 ## 5. Definition of Done
 

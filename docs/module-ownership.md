@@ -97,17 +97,18 @@ Independent review and proportionate validation are mandatory.
 
 ## Merge authority
 
-### Short-lived task pull requests into `integration/mvp`
+### Short-lived task pull requests into `main`
 
 An authorized independent review agent executes the merge after all applicable
 gates pass. Routine Owner action is not required. The agent must pin the
 expected head SHA and complete merged-head verification.
 
-### Promotion from `integration/mvp` to `main`
+### Stable milestones and Production releases
 
-An explicit Owner milestone decision is required because the promotion creates a
-stable baseline. After approval, an authorized independent review agent executes
-the promotion merge and merged-head verification.
+An explicit Owner milestone decision selects a verified `main` commit. After
+approval, an authorized independent agent creates the annotated tag and GitHub
+Release. Production deployment remains a separate Owner-authorized operation
+from an approved tag through the protected environment and release gates.
 
 ## Protected Owner-local files
 

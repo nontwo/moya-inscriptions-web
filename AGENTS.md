@@ -21,6 +21,9 @@ The active amendments are:
 - [`2026-09-04 React Product current authority`](docs/governance/amendments/2026-09-04-react-product-current-authority.md),
   which records the merged React Formal Root, the non-production Prototype
   boundary, and the implemented Catalog Content V1 state.
+- [`2026-09-04 single-main trunk unification`](docs/governance/amendments/2026-09-04-single-main-trunk-unification.md),
+  which establishes `main` as the sole shared development branch and defines
+  tag- and release-based stable milestones.
 
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
