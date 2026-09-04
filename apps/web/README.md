@@ -21,8 +21,8 @@ app/page.tsx
 ```
 
 `loadProductionProductStates()` 只通过 `lib/public-api/` 的 server-side HTTP
-boundary 获取 validated Public Catalog states。React Product Shell 负责当前
-Home、Browse、Settings、Detail、Carousel、Viewer、history、focus 与 scroll
+boundary 获取 validated Public Catalog states。React Product
+Shell 负责当前 Home、Browse、Settings、Detail、Carousel、Viewer、history、focus 与 scroll
 restoration。
 
 Formal root 不执行旧的静态 T02 document composition。E2E 明确要求 `/`
@@ -36,8 +36,9 @@ Formal root 不执行旧的静态 T02 document composition。E2E 明确要求 `/
 - `GET /catalog/[catalogId]`：保留 307 redirect 到 Formal root 的 canonical
   Detail query/history journey。
 
-Web business reads 必须位于 `lib/public-api/`。Frontend 不得导入 backend、
-PostgreSQL、Importer、storage internals 或 raw datasets。
+Web business reads 必须位于
+`lib/public-api/`。Frontend 不得导入 backend、PostgreSQL、Importer、storage
+internals 或 raw datasets。
 
 ## Content and media
 
