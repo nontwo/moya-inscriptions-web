@@ -51,8 +51,8 @@ current-status authority.
 - **T09-B1B:** Added `catalog-import/v2` XLSX/CSV support, collection actions,
   canonical hashing, dry-run, approval, serializable apply, rollback, replay,
   and v1 compatibility.
-- **CLEAN-01:** Consolidated repository governance authority and active-amendment
-  discovery.
+- **CLEAN-01:** Consolidated repository governance authority and
+  active-amendment discovery.
 - **CLEAN-02:** Reconciled then-current documentation and configuration, fixed
   development port ownership, and archived the CloudBase candidate.
 - **CLEAN-03:** Removed the retired empty `@moya/data-access` workspace.
