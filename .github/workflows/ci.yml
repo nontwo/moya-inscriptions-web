@@ -8,10 +8,70 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
+  classify_e2e:
+    name: classify-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      scope: ${{ steps.classify.outputs.scope }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Classify browser-test scope
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          fallback="smoke"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            fallback="full"
+          fi
+
+          if [[ -z "${BASE_SHA:-}" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "No usable base SHA; using conservative scope: $fallback"
+            scope="$fallback"
+          elif ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null ||
+            ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            echo "Comparison commits are unavailable; using conservative scope: $fallback"
+            scope="$fallback"
+          else
+            changed_paths="$RUNNER_TEMP/e2e-changed-paths.txt"
+            git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" >"$changed_paths"
+            scope="$(node scripts/ci-e2e-scope.mjs "$EVENT_NAME" "$changed_paths")"
+          fi
+
+          case "$scope" in
+            none | smoke | full) ;;
+            *)
+              echo "Unexpected E2E scope: $scope" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "E2E scope: $scope"
+          echo "scope=$scope" >>"$GITHUB_OUTPUT"
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -133,9 +193,12 @@ jobs:
       - name: Build
         run: pnpm build
 
-  e2e:
+  e2e_smoke:
+    name: e2e-smoke
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.scope == 'smoke'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 8
 
     steps:
       - name: Check out repository
@@ -153,10 +216,100 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install browser engines
+      - name: Install Chromium headless shell
         run: >-
-          pnpm --filter @moya/tests exec playwright install --with-deps chromium
-          webkit
+          pnpm --filter @moya/tests exec playwright install --with-deps
+          --only-shell chromium
+
+      - name: Browser smoke tests
+        run: pnpm test:e2e:smoke
+
+  e2e_full:
+    name: e2e-full (${{ matrix.project }})
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.scope == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: desktop-chromium
+            install_args: --only-shell chromium
+          - project: desktop-webkit
+            install_args: webkit
+          - project: mobile-webkit
+            install_args: webkit
+          - project: tablet-webkit
+            install_args: webkit
+          - project: tablet-landscape-webkit
+            install_args: webkit
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser engine
+        run: >-
+          pnpm --filter @moya/tests exec playwright install --with-deps
+          ${{ matrix.install_args }}
 
       - name: Browser regression tests
-        run: pnpm test:e2e
+        run: >-
+          pnpm --filter @moya/tests exec playwright test
+          --config e2e/playwright.config.ts
+          --project="${{ matrix.project }}"
+
+  e2e:
+    if: always()
+    needs:
+      - classify_e2e
+      - e2e_smoke
+      - e2e_full
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Verify proportionate browser gate
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify_e2e.result }}
+          FULL_RESULT: ${{ needs.e2e_full.result }}
+          SCOPE: ${{ needs.classify_e2e.outputs.scope }}
+          SMOKE_RESULT: ${{ needs.e2e_smoke.result }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
+            echo "E2E scope classification failed."
+            exit 1
+          fi
+
+          case "$SCOPE" in
+            none)
+              echo "No browser-relevant paths changed."
+              ;;
+            smoke)
+              test "$SMOKE_RESULT" = "success"
+              echo "Required Chromium smoke suite passed."
+              ;;
+            full)
+              test "$FULL_RESULT" = "success"
+              echo "Required five-project browser matrix passed."
+              ;;
+            *)
+              echo "Unknown E2E scope: $SCOPE"
+              exit 1
+              ;;
+          esac

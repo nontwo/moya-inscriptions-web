@@ -1,0 +1,63 @@
+name: Full Browser Regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 7 * * *"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e_full:
+    name: e2e-full (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: desktop-chromium
+            install_args: --only-shell chromium
+          - project: desktop-webkit
+            install_args: webkit
+          - project: mobile-webkit
+            install_args: webkit
+          - project: tablet-webkit
+            install_args: webkit
+          - project: tablet-landscape-webkit
+            install_args: webkit
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser engine
+        run: >-
+          pnpm --filter @moya/tests exec playwright install --with-deps
+          ${{ matrix.install_args }}
+
+      - name: Browser regression tests
+        run: >-
+          pnpm --filter @moya/tests exec playwright test
+          --config e2e/playwright.config.ts
+          --project="${{ matrix.project }}"
