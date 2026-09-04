@@ -399,15 +399,15 @@ describe("Catalog Import V2 XLSX layout authority", () => {
       },
       instructions: {
         metadata: {
-          sectionCell: "A91",
+          sectionCell: "A93",
           workbookLayoutVersion: {
-            keyCell: "A92",
-            valueCell: "B92",
+            keyCell: "A94",
+            valueCell: "B94",
             value: "catalog-import-xlsx/v2",
           },
           importContractVersion: {
-            keyCell: "A93",
-            valueCell: "B93",
+            keyCell: "A95",
+            valueCell: "B95",
             value: CATALOG_IMPORT_V2_CONTRACT_VERSION,
           },
         },
@@ -453,7 +453,7 @@ describe("Catalog Import V2 XLSX layout authority", () => {
         ]),
       ),
     ).toEqual({
-      "01_Catalog": "A2:AF3",
+      "01_Catalog": "A2:AH3",
       "02_Aliases": "A2:C3",
       "03_Provenance": "A2:F3",
       "04_Contributors": "A2:D3",
@@ -537,6 +537,19 @@ describe("Catalog Import V2 XLSX layout authority", () => {
         );
       }
       expect(sheetName).not.toMatch(/media|summary|period/i);
+    }
+
+    const catalogFields =
+      CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC.dataSheets["01_Catalog"].fields;
+    for (const machineHeader of ["summary", "periodLabel"] as const) {
+      const field = catalogFields.find(
+        (candidate) => candidate.machineHeader === machineHeader,
+      );
+      expect(field).toMatchObject({ requiredness: "OPTIONAL" });
+      expect(field?.guidance).toContain("无 state / CLEAR 语义");
+      expect(
+        catalogFields.map((candidate) => candidate.machineHeader),
+      ).not.toContain(`${machineHeader}State`);
     }
 
     const catalog = Object.fromEntries(

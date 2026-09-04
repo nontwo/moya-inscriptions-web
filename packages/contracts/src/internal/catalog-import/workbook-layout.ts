@@ -276,9 +276,30 @@ const catalogFields = [
 >[];
 
 const v2CatalogFields = [
-  ...catalogFields.slice(0, -1),
+  ...catalogFields.slice(0, 5),
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[21],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[5],
+    presentationHeader: "标题下导语",
+    requiredness: "OPTIONAL",
+    guidance:
+      "直接可选文本，最多 2,000 字符；留空会省略且不清除既有值，无 state / CLEAR 语义。",
+    example: "纯合成标题下导语",
+    width: 40,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[6],
+    presentationHeader: "年代标签",
+    requiredness: "OPTIONAL",
+    guidance:
+      "标题区展示的简短年代标签，最多 200 字符；留空会省略且不清除既有值，无 state / CLEAR 语义。",
+    example: "唐代（synthetic）",
+    width: 24,
+    wrap: true,
+  },
+  ...catalogFields.slice(5, -1),
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[23],
     presentationHeader: "书体",
     requiredness: "OPTIONAL",
     guidance: "纯文本书体说明；与右侧状态配对，最多 2,000 字符。",
@@ -287,7 +308,7 @@ const v2CatalogFields = [
     wrap: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[22],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[24],
     presentationHeader: "书体状态",
     requiredness: "OPTIONAL",
     guidance: "VALUE / UNSUPPLIED / UNKNOWN / NOT_APPLICABLE / CLEAR。",
@@ -297,7 +318,7 @@ const v2CatalogFields = [
     stateColumn: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[23],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[25],
     presentationHeader: "释文",
     requiredness: "OPTIONAL",
     guidance: "纯文本，可保留内部换行；与右侧状态配对。",
@@ -306,7 +327,7 @@ const v2CatalogFields = [
     wrap: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[24],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[26],
     presentationHeader: "释文状态",
     requiredness: "OPTIONAL",
     guidance: "仅允许 VALUE / UNSUPPLIED / CLEAR；blank 不删除。",
@@ -316,7 +337,7 @@ const v2CatalogFields = [
     stateColumn: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[25],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[27],
     presentationHeader: "历史背景",
     requiredness: "OPTIONAL",
     guidance: "纯文本，可保留内部换行；与右侧状态配对。",
@@ -325,7 +346,7 @@ const v2CatalogFields = [
     wrap: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[26],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[28],
     presentationHeader: "历史背景状态",
     requiredness: "OPTIONAL",
     guidance: "仅允许 VALUE / UNSUPPLIED / CLEAR；blank 不删除。",
@@ -335,7 +356,7 @@ const v2CatalogFields = [
     stateColumn: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[27],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[29],
     presentationHeader: "学术研究",
     requiredness: "OPTIONAL",
     guidance: "纯文本，可保留内部换行；与右侧状态配对。",
@@ -344,7 +365,7 @@ const v2CatalogFields = [
     wrap: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[28],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[30],
     presentationHeader: "学术研究状态",
     requiredness: "OPTIONAL",
     guidance: "仅允许 VALUE / UNSUPPLIED / CLEAR；blank 不删除。",
@@ -354,7 +375,7 @@ const v2CatalogFields = [
     stateColumn: true,
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[29],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[31],
     presentationHeader: "贡献者操作",
     requiredness: "OPTIONAL",
     guidance: "留空等同 PRESERVE；REPLACE 或 CLEAR 表示完整集合意图。",
@@ -363,7 +384,7 @@ const v2CatalogFields = [
     validation: "collectionAction",
   },
   {
-    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[30],
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[32],
     presentationHeader: "公开引文操作",
     requiredness: "OPTIONAL",
     guidance: "留空等同 PRESERVE；REPLACE 或 CLEAR 表示完整集合意图。",
@@ -683,7 +704,7 @@ export const CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC = {
   dataSheets: {
     "01_Catalog": {
       tableName: "CatalogImportTable",
-      tableRef: "A2:AF3",
+      tableRef: "A2:AH3",
       freeze: { xSplit: 4, ySplit: 2, topLeftCell: "E3" },
       fields: v2CatalogFields,
     },
@@ -723,17 +744,17 @@ export const CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC = {
       "Technical Metadata",
     ],
     metadata: {
-      sectionCell: "A91",
+      sectionCell: "A93",
       sectionLabel: "Technical Metadata",
       workbookLayoutVersion: {
-        keyCell: "A92",
-        valueCell: "B92",
+        keyCell: "A94",
+        valueCell: "B94",
         key: "workbookLayoutVersion",
         value: CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION,
       },
       importContractVersion: {
-        keyCell: "A93",
-        valueCell: "B93",
+        keyCell: "A95",
+        valueCell: "B95",
         key: "importContractVersion",
         value: CATALOG_IMPORT_V2_WORKBOOK_SPEC.importContractVersion,
       },

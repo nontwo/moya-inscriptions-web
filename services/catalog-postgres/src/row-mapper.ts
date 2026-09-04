@@ -182,11 +182,11 @@ const readContentTextProjection = (
   return { state };
 };
 
-const legacyPeriodLabelProjection = (
+const storedPeriodLabelProjection = (
   row: CatalogEntryRow,
-): { readonly legacyPeriodLabel: string } | Record<string, never> => {
-  const legacyPeriodLabel = optionalString(row.period_label, "period label");
-  return legacyPeriodLabel === undefined ? {} : { legacyPeriodLabel };
+): { readonly storedPeriodLabel: string } | Record<string, never> => {
+  const storedPeriodLabel = optionalString(row.period_label, "period label");
+  return storedPeriodLabel === undefined ? {} : { storedPeriodLabel };
 };
 
 const positiveInteger = (value: unknown, field: string): number => {
@@ -239,7 +239,7 @@ export const mapCatalogEntryRow = (
       "date_text_state",
       "date text",
     ),
-    ...legacyPeriodLabelProjection(row),
+    ...storedPeriodLabelProjection(row),
   });
 
   return {

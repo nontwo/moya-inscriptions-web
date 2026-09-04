@@ -80,8 +80,12 @@ const renderableTextField = (
 export const deriveCatalogPeriodLabel = (input: {
   readonly dynasty?: CatalogStatefulTextProjection;
   readonly dateText?: CatalogStatefulTextProjection;
-  readonly legacyPeriodLabel?: string;
+  readonly storedPeriodLabel?: string;
 }): string | undefined => {
+  if (input.storedPeriodLabel !== undefined) {
+    return input.storedPeriodLabel;
+  }
+
   const dynasty = renderableTextField(input.dynasty);
   const dateText = renderableTextField(input.dateText);
 
@@ -94,5 +98,5 @@ export const deriveCatalogPeriodLabel = (input: {
   if (dateText !== undefined) {
     return dateText;
   }
-  return input.legacyPeriodLabel;
+  return undefined;
 };
