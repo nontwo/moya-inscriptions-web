@@ -9,9 +9,13 @@ import type { QaUserScenarioName } from "./user-scenarios";
 
 export const QaUserUtility = ({
   catalogItems,
+  onOpenChange,
+  open,
   scenarioName,
 }: {
   readonly catalogItems: readonly CatalogSummary[];
+  readonly onOpenChange?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly scenarioName: QaUserScenarioName;
 }) => {
   const { requestSettings } = useProductShell();
@@ -26,6 +30,8 @@ export const QaUserUtility = ({
       published={scenario.published}
       saved={scenario.saved}
       user={scenario.user}
+      {...(onOpenChange === undefined ? {} : { onOpenChange })}
+      {...(open === undefined ? {} : { open })}
     />
   );
 };

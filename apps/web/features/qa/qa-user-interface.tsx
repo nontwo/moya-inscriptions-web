@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@moya/ui";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import styles from "./qa-user-interface.module.css";
 
@@ -26,6 +26,7 @@ export interface QaUserContentItem {
   readonly imageSrc?: string;
   readonly imageWidth?: number;
   readonly metadata?: string;
+  readonly presentationKey?: string;
   readonly title: string;
 }
 
@@ -38,11 +39,13 @@ export interface QaUserInterfaceProps {
   readonly onContentOpenIntent?: (itemId: string) => void;
   readonly onCreateIntent?: () => void;
   readonly onEditProfileIntent?: () => void;
+  readonly onOpenChange?: (open: boolean) => void;
   readonly onOpenIntent?: () => void;
   readonly onSettingsIntent?: (opener: HTMLButtonElement) => void;
   readonly onTabChangeIntent?: (tab: QaUserTab) => void;
   readonly published?: readonly QaUserContentItem[];
   readonly saved?: readonly QaUserContentItem[];
+  readonly open?: boolean;
   readonly user: QaUserPresentation;
 }
 
@@ -63,7 +66,7 @@ const tabPresentation = {
 const fallbackInitial = (name: string) => name.trim().slice(0, 1) || "艺";
 
 const focusableSelector =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
 
 export const QaUserInterface = ({
   history = [],
@@ -74,30 +77,42 @@ export const QaUserInterface = ({
   onContentOpenIntent,
   onCreateIntent,
   onEditProfileIntent,
+  onOpenChange,
   onOpenIntent,
   onSettingsIntent,
   onTabChangeIntent,
   published = [],
   saved = [],
+  open: controlledOpen,
   user,
 }: QaUserInterfaceProps) => {
   const [activeTab, setActiveTab] = useState<QaUserTab>(initialTab);
   const [intentStatus, setIntentStatus] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const overlayRef = useRef<HTMLElement>(null);
+  const restoreTriggerAfterCloseRef = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const tabIdPrefix = useId();
   const itemsByTab = { history, liked, published, saved } as const;
   const items = itemsByTab[activeTab];
   const activePresentation = tabPresentation[activeTab];
+  const isOpen = controlledOpen ?? localOpen;
 
-  const close = () => {
-    setIsOpen(false);
+  const requestOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (controlledOpen === undefined) setLocalOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [controlledOpen, onOpenChange],
+  );
+
+  const close = useCallback(() => {
+    restoreTriggerAfterCloseRef.current = true;
+    requestOpenChange(false);
     onCloseIntent?.();
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
-  };
+  }, [onCloseIntent, requestOpenChange]);
 
   const selectTab = (tab: QaUserTab) => {
     setActiveTab(tab);
@@ -125,16 +140,23 @@ export const QaUserInterface = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const controlledTargets = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        "[data-primary-navigation-pager], [data-t02p-qa-search], [data-inscription-filter]",
-      ),
-    ).filter((element) => !overlayRef.current?.contains(element));
+    const harness = overlayRef.current?.closest<HTMLElement>(
+      "[data-t02p-qa-harness]",
+    );
+    const controlledTargets =
+      harness === undefined || harness === null
+        ? []
+        : Array.from(
+            harness.querySelectorAll<HTMLElement>(
+              "[data-qa-controls], [data-primary-navigation-pager], [data-t02p-qa-search], [data-inscription-filter], [data-user-trigger]",
+            ),
+          ).filter((element) => !overlayRef.current?.contains(element));
     const previousBodyOverflow = document.body.style.overflow;
     const previousStates = controlledTargets.map((element) => ({
       ariaHidden: element.getAttribute("aria-hidden"),
       element,
       inert: element.inert,
+      inertAttribute: element.getAttribute("inert"),
     }));
     document.body.style.overflow = "hidden";
     controlledTargets.forEach((element) => {
@@ -174,12 +196,25 @@ export const QaUserInterface = ({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousBodyOverflow;
-      previousStates.forEach(({ ariaHidden, element, inert }) => {
-        element.inert = inert;
-        if (ariaHidden === null) element.removeAttribute("aria-hidden");
-        else element.setAttribute("aria-hidden", ariaHidden);
-      });
+      previousStates.forEach(
+        ({ ariaHidden, element, inert, inertAttribute }) => {
+          element.inert = inert;
+          if (inertAttribute === null) element.removeAttribute("inert");
+          else element.setAttribute("inert", inertAttribute);
+          if (ariaHidden === null) element.removeAttribute("aria-hidden");
+          else element.setAttribute("aria-hidden", ariaHidden);
+        },
+      );
     };
+  }, [close, isOpen]);
+
+  useEffect(() => {
+    if (isOpen || !restoreTriggerAfterCloseRef.current) return;
+    restoreTriggerAfterCloseRef.current = false;
+    const focusFrame = window.requestAnimationFrame(() =>
+      triggerRef.current?.focus(),
+    );
+    return () => window.cancelAnimationFrame(focusFrame);
   }, [isOpen]);
 
   return (
@@ -187,11 +222,11 @@ export const QaUserInterface = ({
       <button
         aria-controls={panelId}
         aria-expanded={isOpen}
-        aria-label="打开用户页"
+        aria-label={isOpen ? "关闭用户页" : "打开用户页"}
         className={`${styles.trigger} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
         data-user-trigger=""
         onClick={() => {
-          setIsOpen(true);
+          requestOpenChange(true);
           onOpenIntent?.();
         }}
         ref={triggerRef}
@@ -255,7 +290,7 @@ export const QaUserInterface = ({
             </div>
           </header>
 
-          <div className={styles.scroller}>
+          <div className={styles.scroller} data-user-scroller="">
             <div className={styles.content}>
               <section aria-label="用户资料" className={styles.profile}>
                 <button
@@ -349,7 +384,10 @@ export const QaUserInterface = ({
                       role="list"
                     >
                       {items.map((item) => (
-                        <div className={styles.contentItem} key={item.id}>
+                        <div
+                          className={styles.contentItem}
+                          key={item.presentationKey ?? item.id}
+                        >
                           <article role="listitem">
                             {item.imageSrc === undefined ? (
                               <div

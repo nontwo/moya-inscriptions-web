@@ -6,7 +6,6 @@ import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 import { homeScenarioNames } from "./home-scenario-contract";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { QaProductUtilities } from "./inscription-filter-presentation";
-import { QaUserUtility } from "./qa-user-utility";
 import {
   defaultQaUserScenarioName,
   qaUserScenarioLabels,
@@ -246,19 +245,14 @@ export const T02pQaHarness = ({
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
         productUtility={
-          <>
-            <QaProductUtilities
-              initialKeyword={search.initialKeyword}
-              initialSearchOpen={search.initialOpen}
-              key={searchScenario}
-              showEmptyState={search.showEmptyState}
-            />
-            <QaUserUtility
-              catalogItems={visualCatalogItems}
-              key={userScenario}
-              scenarioName={userScenario}
-            />
-          </>
+          <QaProductUtilities
+            catalogItems={visualCatalogItems}
+            initialKeyword={search.initialKeyword}
+            initialSearchOpen={search.initialOpen}
+            key={`${searchScenario}:${userScenario}`}
+            showEmptyState={search.showEmptyState}
+            userScenarioName={userScenario}
+          />
         }
         showDevelopmentPagerControls
         showSettingsEntry={false}

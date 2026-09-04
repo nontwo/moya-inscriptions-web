@@ -33,22 +33,53 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
-const visibleCatalogSnapshot = (shell: Locator) =>
-  shell
-    .locator(
-      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+const visibleCatalogCards = (shell: Locator) =>
+  shell.locator(
+    '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+  );
+
+const waitForVisibleCatalogMedia = async (shell: Locator) => {
+  const cards = visibleCatalogCards(shell);
+  const count = await cards.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await cards.nth(index).scrollIntoViewIfNeeded();
+  }
+  const media = cards.locator("[data-catalog-media-state]");
+  await expect(media).toHaveCount(count);
+  await expect
+    .poll(() =>
+      media.evaluateAll((nodes) =>
+        nodes.every((node) => {
+          const state = (node as HTMLElement).dataset.catalogMediaState;
+          if (state === "failed" || state === "missing") return true;
+          const image = node.querySelector("img");
+          return image?.complete === true && image.naturalWidth > 0;
+        }),
+      ),
     )
-    .evaluateAll((cards) =>
-      cards.map((card) => ({
-        id: (card as HTMLElement).dataset.catalogId ?? "",
-        kind: (card as HTMLElement).dataset.catalogKind ?? "",
-        media: Array.from(card.querySelectorAll("img")).map((image) => ({
-          alt: image.alt,
-          src: image.getAttribute("src") ?? "",
-        })),
-        text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    .toBe(true);
+  await expect(
+    shell.locator(
+      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+    ),
+  ).toHaveCount(1);
+};
+
+const visibleCatalogSnapshot = async (shell: Locator) => {
+  await waitForVisibleCatalogMedia(shell);
+  return visibleCatalogCards(shell).evaluateAll((cards) =>
+    cards.map((card) => ({
+      id: (card as HTMLElement).dataset.catalogId ?? "",
+      kind: (card as HTMLElement).dataset.catalogKind ?? "",
+      media: Array.from(card.querySelectorAll("img")).map((image) => ({
+        alt: image.alt,
+        src: image.getAttribute("src") ?? "",
       })),
-    );
+      text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  );
+};
 
 const expectOpaqueSurface = async (surface: Locator) => {
   const colors = await surface.evaluate((node) => {
@@ -227,7 +258,7 @@ test("the seeded empty scenario returns to ordinary suggestions after every user
   );
 });
 
-test("pointer and keyboard utility switches preserve the newly requested focus owner", async ({
+test("keyboard utility switches keep one owner and Settings returns through User", async ({
   page,
 }) => {
   const { search, shell, surface } = await openQa(page);
@@ -235,79 +266,57 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
   const searchTrigger = search.locator("[data-search-trigger]");
   const filter = shell.locator("[data-inscription-filter]");
   const filterTrigger = filter.locator("[data-filter-trigger]");
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
+  const userTrigger = shell.locator("[data-user-trigger]");
 
   await searchTrigger.click();
   await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await settingsTrigger.click();
+  await userTrigger.focus();
+  await page.keyboard.press("Space");
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  let userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  await expect(
+    userPage.getByRole("button", { name: "关闭用户页" }),
+  ).toBeFocused();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
+
+  await filterTrigger.click();
+  await expect(filter.locator("[data-filter-panel]")).toBeVisible();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
+
+  await userTrigger.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(
+    userPage.getByRole("button", { name: "关闭用户页" }),
+  ).toBeFocused();
+  const userSettings = userPage.getByRole("button", { name: "打开设置" });
+  await userSettings.click();
   const settings = shell.getByRole("dialog", { name: "设置" });
   await expect(settings).toBeVisible();
-  await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
-    "inert",
-    "",
-  );
-  const settingsBack = settings.getByRole("button", { name: "返回" });
-  await expect(settingsBack).toBeFocused();
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-  await expect(settingsBack).toBeFocused();
-  await settingsBack.click();
+  await expect(settings.getByRole("button", { name: "返回" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
-  await expect(settingsTrigger).toBeFocused();
+  await expect(userPage).toBeVisible();
+  await expect(userSettings).toBeFocused();
 
-  await searchTrigger.click();
-  await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await filterTrigger.click();
+  await page.keyboard.press("Escape");
+  await expect(userPage).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
-  await expect(filter.locator("[data-filter-panel]")).toBeVisible();
-  await expect(filterTrigger).toBeFocused();
-
-  await searchTrigger.click();
   await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
-  await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await expect(
-    search.getByRole("searchbox", { name: "搜索关键词" }),
-  ).toBeFocused();
-
-  await search.locator("[data-search-close]").click();
-  await searchTrigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await settingsTrigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
-  await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
-  await expect(
-    shell.getByRole("dialog", { name: "设置" }).getByRole("button", {
-      name: "返回",
-    }),
-  ).toBeFocused();
-  await shell
-    .getByRole("dialog", { name: "设置" })
-    .getByRole("button", { name: "返回" })
-    .click();
-  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
-  await expect(shell.getByRole("dialog", { name: "设置" })).toHaveCount(0);
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-  await expect(settingsTrigger).toBeFocused();
-
-  await filterTrigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(filter.locator("[data-filter-panel]")).toBeVisible();
-  await settingsTrigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
-  await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
+  await expect(shell.locator("[data-open-settings]")).toHaveCount(0);
 });
 
 test("all approved viewport matrices keep Search left of User and in bounds", async ({
@@ -408,6 +417,9 @@ test("Search remains legible through themes and respects reduced motion", async 
     if (preference === "dark") break;
     await shell.locator("[data-user-trigger]").click();
     const userPage = shell.getByRole("dialog", { name: "用户页" });
+    await expect(
+      userPage.getByRole("button", { name: "关闭用户页" }),
+    ).toBeFocused();
     await userPage.getByRole("button", { name: "打开设置" }).click();
     const settings = shell.getByRole("dialog", { name: "设置" });
     await expect(settings).toBeVisible();

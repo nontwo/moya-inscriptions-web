@@ -10,6 +10,29 @@ const expectedPlatform = (projectName: string): PresentationPlatform => {
   return "pc";
 };
 
+const contrastRatio = (foreground: string, background: string) => {
+  const luminance = (color: string) => {
+    const channels = color
+      .match(/[\d.]+/g)
+      ?.slice(0, 3)
+      .map(Number);
+    if (channels?.length !== 3) throw new Error(`Unsupported color: ${color}`);
+    const [red = 0, green = 0, blue = 0] = channels.map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045
+        ? value / 12.92
+        : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  );
+};
+
 const openQa = async (page: Page) => {
   const response = await page.goto("/dev/t02p/qa");
   expect(response?.status()).toBe(200);
@@ -24,6 +47,9 @@ const openUser = async (shell: Locator, trigger: Locator) => {
   await trigger.click();
   const userPage = shell.getByRole("dialog", { name: "用户页" });
   await expect(userPage).toBeVisible();
+  await expect(
+    userPage.getByRole("button", { name: "关闭用户页" }),
+  ).toBeFocused();
   return userPage;
 };
 
@@ -72,17 +98,99 @@ test("User opens on published content and reuses the ProductShell Settings owner
     "inert",
     "",
   );
-  await settings.getByRole("button", { name: "返回" }).click();
+  await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
+  await expect(userPage).toBeVisible();
   await expect(settingsEntry).toBeFocused();
 
-  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await page.keyboard.press("Escape");
   await expect(userPage).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await expect(shell).toHaveAttribute(
     "data-platform",
     expectedPlatform(testInfo.project.name),
   );
+});
+
+test("User traps focus and restores only its nearest QA harness exactly", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  const { shell, surface, trigger } = await openQa(page);
+  await surface
+    .getByRole("navigation", { name: "主要内容" })
+    .getByRole("button", { exact: true, name: "碑刻" })
+    .click();
+  await expect(shell).toHaveAttribute(
+    "data-active-destination",
+    "inscriptions",
+  );
+
+  const targets = surface.locator(
+    "[data-qa-controls], [data-primary-navigation-pager], [data-t02p-qa-search], [data-inscription-filter], [data-user-trigger]",
+  );
+  await expect(targets).toHaveCount(5);
+  await surface.locator("[data-qa-controls]").evaluate((node) => {
+    node.setAttribute("aria-hidden", "menu");
+    (node as HTMLElement).inert = true;
+  });
+  await surface
+    .locator("[data-t02p-qa-search]")
+    .evaluate((node) => node.setAttribute("aria-hidden", "false"));
+  await page.evaluate(() => {
+    document.body.style.overflow = "clip";
+    const outside = document.createElement("div");
+    outside.dataset.t02pQaSearch = "";
+    outside.id = "outside-qa-utility";
+    outside.setAttribute("aria-hidden", "outside");
+    document.body.append(outside);
+  });
+  const state = (nodes: Element[]) =>
+    nodes.map((node) => ({
+      ariaHidden: node.getAttribute("aria-hidden"),
+      inert: (node as HTMLElement).inert,
+      inertAttribute: node.getAttribute("inert"),
+    }));
+  const before = await targets.evaluateAll(state);
+
+  const userPage = await openUser(shell, trigger);
+  expect(
+    await targets.evaluateAll((nodes) =>
+      nodes.every(
+        (node) =>
+          node.getAttribute("aria-hidden") === "true" &&
+          (node as HTMLElement).inert,
+      ),
+    ),
+  ).toBe(true);
+  await expect(page.locator("#outside-qa-utility")).toHaveAttribute(
+    "aria-hidden",
+    "outside",
+  );
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe(
+    "hidden",
+  );
+
+  const focusable = userPage.locator(
+    'button:not([disabled]):not([tabindex="-1"])',
+  );
+  const first = focusable.first();
+  const last = focusable.last();
+  await expect(first).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(last).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(first).toBeFocused();
+
+  await first.click();
+  await expect(userPage).toHaveCount(0);
+  expect(await targets.evaluateAll(state)).toEqual(before);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("clip");
+  await expect(trigger).toBeFocused();
+  await page.evaluate(() => {
+    document.body.style.overflow = "";
+    document.querySelector("#outside-qa-utility")?.remove();
+  });
 });
 
 test("Published, saved, liked and history remain presentation-only", async ({
@@ -105,9 +213,27 @@ test("Published, saved, liked and history remain presentation-only", async ({
   }
 
   const firstContent = userPage.locator("[data-user-content-id]").first();
+  await expect(firstContent).toHaveAttribute(
+    "data-user-content-id",
+    "qa-visual-inscription-01",
+  );
   await firstContent.click();
   await expect(userPage.locator("[data-user-intent-status]")).toContainText(
     "已记录内容打开意图",
+  );
+  await expect(page).toHaveURL(/\/dev\/t02p\/qa$/u);
+
+  await userPage.locator("[data-user-avatar]").click();
+  await expect(userPage.locator("[data-user-intent-status]")).toHaveText(
+    "已记录更换头像意图",
+  );
+  await userPage.locator("[data-user-edit-profile]").click();
+  await expect(userPage.locator("[data-user-intent-status]")).toHaveText(
+    "已记录编辑资料意图",
+  );
+  await userPage.locator("[data-user-create]").click();
+  await expect(userPage.locator("[data-user-intent-status]")).toHaveText(
+    "已记录发布内容意图",
   );
   await expect(page).toHaveURL(/\/dev\/t02p\/qa$/u);
 });
@@ -143,6 +269,76 @@ test("QA scenarios expose saved, liked, history, empty and avatar fallback", asy
   await selector.selectOption("user-avatar-fallback");
   userPage = await openUser(shell, shell.locator("[data-user-trigger]"));
   await expect(userPage.locator("[data-user-avatar]")).toHaveText("访");
+  await expect(userPage.locator("[data-user-avatar] img")).toHaveCount(0);
+  await expect(shell.locator("[data-user-trigger] img")).toHaveCount(0);
+});
+
+test("User stays legible across themes and respects reduced motion", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  const { shell, trigger } = await openQa(page);
+
+  for (const preference of ["system", "light", "dark"] as const) {
+    await expect(shell).toHaveAttribute("data-theme-preference", preference);
+    const userPage = await openUser(shell, trigger);
+    const [profileColors, cardColors] = await Promise.all([
+      userPage.evaluate((node) => {
+        const heading = node.querySelector("h1");
+        if (heading === null) throw new Error("Missing User heading");
+        return {
+          background: getComputedStyle(node).backgroundColor,
+          foreground: getComputedStyle(heading).color,
+        };
+      }),
+      userPage
+        .locator("article")
+        .first()
+        .evaluate((node) => {
+          const heading = node.querySelector("h3");
+          if (heading === null) throw new Error("Missing User card heading");
+          return {
+            background: getComputedStyle(node).backgroundColor,
+            foreground: getComputedStyle(heading).color,
+          };
+        }),
+    ]);
+    expect(profileColors.background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(
+      contrastRatio(profileColors.foreground, profileColors.background),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRatio(cardColors.foreground, cardColors.background),
+    ).toBeGreaterThanOrEqual(4.5);
+
+    if (preference !== "dark") {
+      const userSettings = userPage.getByRole("button", {
+        name: "打开设置",
+      });
+      await userSettings.click();
+      const settings = shell.getByRole("dialog", { name: "设置" });
+      await settings.getByRole("button", { name: /切换主题/ }).click();
+      await settings.getByRole("button", { name: "返回" }).click();
+      await expect(userPage).toBeVisible();
+      await expect(userSettings).toBeFocused();
+    }
+    await userPage.getByRole("button", { name: "关闭用户页" }).click();
+    await expect(trigger).toBeFocused();
+  }
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const userPage = await openUser(shell, trigger);
+  const motion = await userPage
+    .locator("[data-user-avatar]")
+    .evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        animationName: style.animationName,
+        transitionDuration: style.transitionDuration,
+      };
+    });
+  expect(motion.animationName).toBe("none");
+  expect(["0s", "0.001s", "1ms"]).toContain(motion.transitionDuration);
 });
 
 test("approved viewport matrices keep the single-layer User UI in bounds", async ({
@@ -182,13 +378,41 @@ test("approved viewport matrices keep the single-layer User UI in bounds", async
     const userPage = await openUser(shell, trigger);
     const box = await userPage.boundingBox();
     if (box === null) throw new Error("Missing User page geometry");
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.y).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
-    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+    expect(Math.abs(box.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.width - viewport.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.height - viewport.height)).toBeLessThanOrEqual(1);
+    const scroller = userPage.locator("[data-user-scroller]");
+    const overflow = await scroller.evaluate((node) => ({
+      clientHeight: node.clientHeight,
+      clientWidth: node.clientWidth,
+      overflowX: getComputedStyle(node).overflowX,
+      overflowY: getComputedStyle(node).overflowY,
+      scrollHeight: node.scrollHeight,
+      scrollWidth: node.scrollWidth,
+    }));
+    expect(overflow.overflowX).toBe("hidden");
+    expect(["auto", "scroll"]).toContain(overflow.overflowY);
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+    if (
+      testInfo.project.name === "mobile-webkit" &&
+      viewport.width > viewport.height
+    ) {
+      expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight);
+    }
+    const documentOverflow = await page.evaluate(() => ({
+      body: document.body.scrollWidth <= document.body.clientWidth,
+      root:
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    }));
+    expect(documentOverflow).toEqual({ body: true, root: true });
     await expect(
       userPage.getByRole("tablist", { name: "用户内容分类" }),
     ).toBeVisible();
     await userPage.getByRole("button", { name: "关闭用户页" }).click();
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
+      "hidden",
+    );
   }
 });

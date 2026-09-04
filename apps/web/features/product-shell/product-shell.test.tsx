@@ -574,6 +574,39 @@ describe("ProductShell", () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it("closes owned Settings with Escape and restores its exact opener", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    const { container } = renderProductShell(<p>home content</p>, {
+      primaryUtility: <SettingsRequester />,
+      showSettingsEntry: false,
+    });
+    await act(async () => vi.runAllTimers());
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    opener.focus();
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    const escape = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Escape",
+    });
+    act(() => document.dispatchEvent(escape));
+    expect(escape.defaultPrevented).toBe(true);
+    expect(back).toHaveBeenCalledOnce();
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(dialog(container)).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it("owns Topic history, inertness, navigation identity, Back/Forward, scroll, and focus", async () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const replaceState = vi.spyOn(window.history, "replaceState");

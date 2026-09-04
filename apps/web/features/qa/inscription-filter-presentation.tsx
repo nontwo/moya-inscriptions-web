@@ -4,11 +4,16 @@ import { Icon } from "@moya/ui";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useProductShell } from "../product-shell/product-shell";
+import { QaUserUtility } from "./qa-user-utility";
 import { T02pQaSearch } from "./t02p-qa-search";
 import styles from "./inscription-filter-presentation.module.css";
 
+import type { CatalogSummary } from "@moya/contracts";
+import type { QaUserScenarioName } from "./user-scenarios";
+
 type FilterKey = "dynasty" | "script" | "inscriptionType" | "region";
-type QaProductUtility = "filter" | "search";
+
+export type ActiveQaUtility = "filter" | "search" | "user" | null;
 
 export interface QaFilterPresentationState {
   readonly dynasty?: string;
@@ -60,16 +65,20 @@ const withoutSelection = (state: QaFilterPresentationState, key: FilterKey) => {
 };
 
 export const QaProductUtilities = ({
+  catalogItems,
   initialKeyword,
   initialSearchOpen,
   showEmptyState,
+  userScenarioName,
 }: {
+  readonly catalogItems: readonly CatalogSummary[];
   readonly initialKeyword: string;
   readonly initialSearchOpen: boolean;
   readonly showEmptyState: boolean;
+  readonly userScenarioName: QaUserScenarioName;
 }) => {
-  const { activeDestination, settingsOpen } = useProductShell();
-  const [activeUtility, setActiveUtility] = useState<QaProductUtility | null>(
+  const { activeDestination } = useProductShell();
+  const [activeUtility, setActiveUtility] = useState<ActiveQaUtility>(
     initialSearchOpen ? "search" : null,
   );
 
@@ -79,11 +88,10 @@ export const QaProductUtilities = ({
     }
   }, [activeDestination]);
 
-  useEffect(() => {
-    if (settingsOpen) setActiveUtility(null);
-  }, [settingsOpen]);
-
-  const updateUtility = (utility: QaProductUtility, open: boolean) => {
+  const updateUtility = (
+    utility: Exclude<ActiveQaUtility, null>,
+    open: boolean,
+  ) => {
     setActiveUtility((current) => {
       if (open) return utility;
       return current === utility ? null : current;
@@ -104,6 +112,12 @@ export const QaProductUtilities = ({
           open={activeUtility === "filter"}
         />
       ) : null}
+      <QaUserUtility
+        catalogItems={catalogItems}
+        onOpenChange={(open) => updateUtility("user", open)}
+        open={activeUtility === "user"}
+        scenarioName={userScenarioName}
+      />
     </>
   );
 };

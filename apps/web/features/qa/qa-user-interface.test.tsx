@@ -24,15 +24,23 @@ const renderUser = (
   document.body.append(container);
   const root = createRoot(container);
   mountedRoots.push(root);
-  act(() =>
+  act(() => {
     root.render(
-      <QaUserInterface
-        published={[item("qa-published-01", "山门题记")]}
-        user={{ id: "qa-user-01", name: "访碑者", bio: "记录碑刻。" }}
-        {...properties}
-      />,
-    ),
-  );
+      <main data-t02p-qa-harness="">
+        <div data-product-shell="" data-settings-open="false">
+          <div data-qa-controls="" />
+          <nav data-primary-navigation-pager="" />
+          <div data-t02p-qa-search="" />
+          <div data-inscription-filter="" />
+          <QaUserInterface
+            published={[item("catalog-inscription-001", "山门题记")]}
+            user={{ id: "qa-user-01", name: "访碑者", bio: "记录碑刻。" }}
+            {...properties}
+          />
+        </div>
+      </main>,
+    );
+  });
   return container;
 };
 
@@ -118,8 +126,12 @@ describe("QaUserInterface", () => {
       "published",
     ]);
 
-    click(container.querySelector('[data-user-content-id="qa-published-01"]'));
-    expect(onContentOpenIntent).toHaveBeenCalledWith("qa-published-01");
+    click(
+      container.querySelector(
+        '[data-user-content-id="catalog-inscription-001"]',
+      ),
+    );
+    expect(onContentOpenIntent).toHaveBeenCalledWith("catalog-inscription-001");
     expect(container.textContent).toContain("已记录内容打开意图：山门题记");
   });
 
@@ -134,6 +146,8 @@ describe("QaUserInterface", () => {
     expect(container.querySelector("[data-user-avatar]")?.textContent).toBe(
       "访",
     );
+    expect(container.querySelector("[data-user-avatar] img")).toBeNull();
+    expect(container.querySelector("[data-user-trigger] img")).toBeNull();
   });
 
   it("emits edit, avatar, create and Settings intents without persistence", () => {
@@ -191,5 +205,136 @@ describe("QaUserInterface", () => {
     await act(async () => vi.runAllTimers());
     expect(container.querySelector("[data-user-page]")).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("supports controlled open and close requests without mutating ownership", () => {
+    const onClosedChange = vi.fn();
+    const closed = renderUser({ onOpenChange: onClosedChange, open: false });
+
+    click(closed.querySelector("[data-user-trigger]"));
+    expect(onClosedChange).toHaveBeenCalledWith(true);
+    expect(closed.querySelector("[data-user-page]")).toBeNull();
+
+    const onOpenChange = vi.fn();
+    const opened = renderUser({ onOpenChange, open: true });
+    click(opened.querySelector("[data-user-close]"));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(opened.querySelector("[data-user-page]")).not.toBeNull();
+  });
+
+  it("isolates only its QA harness, traps focus and restores exact state", async () => {
+    document.body.style.overflow = "clip";
+    const container = renderUser();
+    const controls = container.querySelector<HTMLElement>("[data-qa-controls]");
+    const pager = container.querySelector<HTMLElement>(
+      "[data-primary-navigation-pager]",
+    );
+    const search = container.querySelector<HTMLElement>(
+      "[data-t02p-qa-search]",
+    );
+    const filter = container.querySelector<HTMLElement>(
+      "[data-inscription-filter]",
+    );
+    if (
+      controls === null ||
+      pager === null ||
+      search === null ||
+      filter === null
+    ) {
+      throw new Error("Missing modal isolation fixture");
+    }
+    controls.setAttribute("aria-hidden", "menu");
+    pager.inert = true;
+    pager.setAttribute("inert", "");
+    search.setAttribute("aria-hidden", "false");
+    const trigger = container.querySelector<HTMLButtonElement>(
+      "[data-user-trigger]",
+    );
+
+    click(trigger);
+    await act(async () => vi.runAllTimers());
+
+    const targets = [controls, pager, search, filter, trigger];
+    for (const target of targets) {
+      expect(target?.getAttribute("aria-hidden")).toBe("true");
+      expect(target?.inert).toBe(true);
+    }
+    expect(document.body.style.overflow).toBe("hidden");
+
+    const overlay = container.querySelector<HTMLElement>("[data-user-page]");
+    const focusable = Array.from(
+      overlay?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]):not([tabindex="-1"])',
+      ) ?? [],
+    );
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (first === undefined || last === undefined) {
+      throw new Error("Missing modal focus targets");
+    }
+    first.focus();
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          key: "Tab",
+          shiftKey: true,
+        }),
+      ),
+    );
+    expect(document.activeElement).toBe(last);
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Tab" }),
+      ),
+    );
+    expect(document.activeElement).toBe(first);
+
+    click(container.querySelector("[data-user-close]"));
+    await act(async () => vi.runAllTimers());
+    expect(controls.getAttribute("aria-hidden")).toBe("menu");
+    expect(controls.inert).toBeUndefined();
+    expect(pager.getAttribute("aria-hidden")).toBeNull();
+    expect(pager.inert).toBe(true);
+    expect(pager.getAttribute("inert")).toBe("");
+    expect(search.getAttribute("aria-hidden")).toBe("false");
+    expect(search.inert).toBeUndefined();
+    expect(filter.getAttribute("aria-hidden")).toBeNull();
+    expect(filter.inert).toBeUndefined();
+    expect(trigger?.getAttribute("aria-hidden")).toBeNull();
+    expect(trigger?.inert).toBeUndefined();
+    expect(document.body.style.overflow).toBe("clip");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("lets ProductShell consume Escape before closing User", async () => {
+    const container = renderUser();
+    click(container.querySelector("[data-user-trigger]"));
+    await act(async () => vi.runAllTimers());
+    const shell = container.querySelector<HTMLElement>("[data-product-shell]");
+    const settings = container.querySelector<HTMLButtonElement>(
+      "[data-user-settings]",
+    );
+    settings?.focus();
+    click(settings);
+    if (shell === null) throw new Error("Missing product shell fixture");
+    shell.dataset.settingsOpen = "true";
+
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+      ),
+    );
+    expect(container.querySelector("[data-user-page]")).not.toBeNull();
+    expect(document.activeElement).toBe(settings);
+
+    shell.dataset.settingsOpen = "false";
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(container.querySelector("[data-user-page]")).toBeNull();
   });
 });

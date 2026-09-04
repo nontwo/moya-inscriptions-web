@@ -517,6 +517,17 @@ export const ProductShell = ({
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeSettings();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeSettings, settingsOpen]);
+
   const requestSettings = useCallback(
     (requestedOpener?: HTMLElement) => {
       const opener =
@@ -1220,7 +1231,11 @@ export const ProductShell = ({
           restoreCatalogFocus(focusCatalogId);
         }
       } else if (wasSettingsOpen) {
-        window.requestAnimationFrame(() => settingsOpenerRef.current?.focus());
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(() =>
+            settingsOpenerRef.current?.focus(),
+          ),
+        );
       } else if (
         wasTopicOpen &&
         state?.kind === "primary" &&
