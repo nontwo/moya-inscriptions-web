@@ -14,12 +14,12 @@ dependencies, lockfiles, Production resources, or release authority.
 
 The completed `main` workflow run `33914729580` provided the current baseline:
 
-| Job | Approximate wall time |
-| --- | ---: |
-| `lint` | 41 seconds |
-| `typecheck` | 47 seconds |
-| `test` including PostgreSQL | 1 minute 48 seconds |
-| `e2e` | 16 minutes 11 seconds |
+| Job                         | Approximate wall time |
+| --------------------------- | --------------------: |
+| `lint`                      |            41 seconds |
+| `typecheck`                 |            47 seconds |
+| `test` including PostgreSQL |   1 minute 48 seconds |
+| `e2e`                       | 16 minutes 11 seconds |
 
 Inside `e2e`:
 
@@ -34,15 +34,15 @@ merge because the workflow had no scope classification.
 
 ## Existing-rule audit
 
-| Existing protection | Classification | Result |
-| --- | --- | --- |
-| Required `e2e` check on protected `main` | PRESERVE | The aggregate required check remains exactly `e2e`. |
-| Full browser evidence for Web/UI changes | PRESERVE | Browser-surface pull requests still run all five projects. |
-| One worker per browser project in CI | PRESERVE | Stability is retained; parallelism moves to independent jobs. |
-| Browser validation for every repository change | MODERNIZE | Unknown code defaults to smoke; docs/governance-only changes launch no browser. |
-| Five projects serialized in one job | MODERNIZE | Five independent matrix jobs reduce wall-clock critical path. |
-| Full matrix repeated immediately on merged `main` | MODERNIZE | Exact-head PR matrix is followed by merged-head smoke, not a duplicate full run. |
-| Stale pull-request runs continue after new commits | RETIRE | PR concurrency cancels superseded runs; `main` runs are not cancelled. |
+| Existing protection                                | Classification | Result                                                                           |
+| -------------------------------------------------- | -------------- | -------------------------------------------------------------------------------- |
+| Required `e2e` check on protected `main`           | PRESERVE       | The aggregate required check remains exactly `e2e`.                              |
+| Full browser evidence for Web/UI changes           | PRESERVE       | Browser-surface pull requests still run all five projects.                       |
+| One worker per browser project in CI               | PRESERVE       | Stability is retained; parallelism moves to independent jobs.                    |
+| Browser validation for every repository change     | MODERNIZE      | Unknown code defaults to smoke; docs/governance-only changes launch no browser.  |
+| Five projects serialized in one job                | MODERNIZE      | Five independent matrix jobs reduce wall-clock critical path.                    |
+| Full matrix repeated immediately on merged `main`  | MODERNIZE      | Exact-head PR matrix is followed by merged-head smoke, not a duplicate full run. |
+| Stale pull-request runs continue after new commits | RETIRE         | PR concurrency cancels superseded runs; `main` runs are not cancelled.           |
 
 No protection was silently discarded. The Constitution already requires
 validation proportionate to affected scope, while user-visible work continues to

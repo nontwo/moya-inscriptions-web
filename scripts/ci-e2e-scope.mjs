@@ -45,16 +45,16 @@ const noBrowserPrefixes = [
 ];
 
 const normalizePath = (value) =>
-  value.trim().replaceAll("\\", "/").replace(/^\.\/+/, "");
+  value
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\.\/+/, "");
 
 const matchesPathGroup = (filePath, exactPaths, prefixes) =>
   exactPaths.has(filePath) ||
   prefixes.some((prefix) => filePath.startsWith(prefix));
 
-export const classifyE2eScope = (
-  changedPaths,
-  eventName = "pull_request",
-) => {
+export const classifyE2eScope = (changedPaths, eventName = "pull_request") => {
   const paths = [
     ...new Set(changedPaths.map(normalizePath).filter(Boolean)),
   ].sort();

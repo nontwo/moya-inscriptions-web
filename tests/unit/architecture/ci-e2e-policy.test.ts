@@ -5,11 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const classifierPath = path.join(
-  repositoryRoot,
-  "scripts",
-  "ci-e2e-scope.mjs",
-);
+const classifierPath = path.join(repositoryRoot, "scripts", "ci-e2e-scope.mjs");
 
 type E2eScope = "full" | "none" | "smoke";
 type ClassifyE2eScope = (
@@ -49,23 +45,19 @@ describe("proportionate browser CI policy", () => {
   });
 
   it("keeps one stable required check and a parallel five-project matrix", async () => {
-    const [
-      ciWorkflow,
-      fullWorkflow,
-      rootManifestText,
-      testsManifestText,
-    ] = await Promise.all([
-      readFile(
-        path.join(repositoryRoot, ".github", "workflows", "ci.yml"),
-        "utf8",
-      ),
-      readFile(
-        path.join(repositoryRoot, ".github", "workflows", "e2e-full.yml"),
-        "utf8",
-      ),
-      readFile(path.join(repositoryRoot, "package.json"), "utf8"),
-      readFile(path.join(repositoryRoot, "tests", "package.json"), "utf8"),
-    ]);
+    const [ciWorkflow, fullWorkflow, rootManifestText, testsManifestText] =
+      await Promise.all([
+        readFile(
+          path.join(repositoryRoot, ".github", "workflows", "ci.yml"),
+          "utf8",
+        ),
+        readFile(
+          path.join(repositoryRoot, ".github", "workflows", "e2e-full.yml"),
+          "utf8",
+        ),
+        readFile(path.join(repositoryRoot, "package.json"), "utf8"),
+        readFile(path.join(repositoryRoot, "tests", "package.json"), "utf8"),
+      ]);
     const rootManifest = JSON.parse(rootManifestText) as {
       scripts: Record<string, string>;
     };
