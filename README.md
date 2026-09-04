@@ -126,13 +126,17 @@ PostgreSQL integration tests 需要显式迁移的 PostgreSQL 18 test instance �
 
 ## 分支与发布
 
-所有短期任务从实时解析的最新 `origin/integration/mvp` 创建独立分支，并通过 Draft
-PR、CI、actual-diff review、expected-head squash merge 和 merged-head
-verification 返回主线。不得从历史功能分支继续开发，不得直接推送 shared
-branch，也不得 force-push 或改写历史。
+`main` 是唯一长期 shared branch 和日常开发基线。所有短期任务从实时解析的最新
+`origin/main` 创建独立分支，并通过 Draft PR、CI、actual-diff
+review、expected-head squash merge 和 merged-head verification 返回
+`main`。不得从历史功能分支继续开发，不得直接推送
+`main`，也不得 force-push 或改写历史。
 
-`main` 只在明确的 milestone promotion 后更新；它不是当前日常开发基线。详细流程见
-[CONTRIBUTING.md](CONTRIBUTING.md) 和 [分支策略](docs/branching-strategy.md)。
+稳定里程碑从已验证的 `main` commit 出发，经明确 Owner
+milestone 决定后创建 annotated tag 和 GitHub
+Release。Production 发布只能从已批准的 tag 进入受保护环境和 deployment/smoke/rollback
+gates。详细流程见 [CONTRIBUTING.md](CONTRIBUTING.md) 和
+[分支策略](docs/branching-strategy.md)。
 
 ## 许可
 

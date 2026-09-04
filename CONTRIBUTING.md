@@ -13,15 +13,15 @@ allowlist.
 2. Freeze the goal, non-goals, allowed paths, and preserved behavior. Freeze a
    Behavior Matrix before implementation whenever user-visible behavior is in
    scope.
-3. Sync `integration/mvp`, record its exact base SHA, and create a short-lived
-   task branch such as `feat/<reference>-<name>`, `fix/<reference>-<name>`, or
-   `chore/<reference>-<name>`.
+3. Sync `main`, record its exact `origin/main` base SHA, and create a
+   short-lived task branch such as `feat/<reference>-<name>`,
+   `fix/<reference>-<name>`, or `chore/<reference>-<name>`.
 4. Check [module ownership][3]. Stop for an Owner decision only when the task
    crosses an unfrozen ownership or scope boundary, or triggers another active
    Owner-decision gate.
 
-Never push directly to `main` or `integration/mvp`. Never force-push a shared
-branch or rewrite another contributor's history.
+Never push directly to `main`. Never force-push the shared branch or rewrite
+another contributor's history.
 
 ## Local setup
 
@@ -49,7 +49,7 @@ the affected validation. Record each applicable command and result in the PR.
 
 ## Pull request, review, and merge
 
-- Open a Draft PR to `integration/mvp` and complete the repository PR template.
+- Open a Draft PR to `main` and complete the repository PR template.
 - Keep commits and the diff scoped and reviewable. List every modified file and
   disclose deviations, risks, and deferred work.
 - An independent reviewer must inspect the actual GitHub diff, exact head SHA,
@@ -82,7 +82,8 @@ required scope or direction has not already been approved.
 Contributor, local, CI, and PR or test environments must not use production
 credentials or a production database. Any production deployment is a separate
 Owner-approved operation performed by an authorized operator from an approved
-`main` baseline. Repository candidate deployment documents do not authorize it.
+release tag created from a verified `main` commit. Repository candidate
+deployment documents do not authorize it.
 
 [1]: docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md
 [2]: docs/governance/amendments/

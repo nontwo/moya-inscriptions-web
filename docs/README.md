@@ -25,6 +25,8 @@ chain. They cannot amend it.
   - the React Product current-authority amendment, which records the merged
     Formal React root, the non-production Prototype boundary, and implemented
     Catalog Content V1 state.
+  - the single-main trunk amendment, which establishes `main` as the sole shared
+    development branch and defines tag- and release-based milestones.
 - The [Owner Development Constitution][constitution] is normative below active
   Owner instructions and amendments.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) is the subordinate operational

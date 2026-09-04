@@ -15,9 +15,9 @@ data beyond the minimum needed to reproduce the issue.
 
 ## Supported code
 
-Security fixes target the current default branch, `integration/mvp`. Historical
-milestone branches and tags are retained as evidence and are not separately
-supported release lines.
+Security fixes target the sole current default branch, `main`. Historical
+branches and tags are retained as evidence and are not separately supported
+release lines.
 
 General bugs and feature requests that do not disclose a vulnerability may use
 the repository's public issue tracker.

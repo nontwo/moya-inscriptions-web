@@ -178,4 +178,114 @@ describe("current repository truth and local configuration", () => {
     expect(currentAuthorityAmendment).toContain("apps/web/app/page.tsx");
     expect(currentAuthorityAmendment).toContain("T09-F1");
   });
+
+  it("keeps current authority on the single main trunk", async () => {
+    const currentAuthorityPaths = [
+      "AGENTS.md",
+      "README.md",
+      "SECURITY.md",
+      "CONTRIBUTING.md",
+      ".github/workflows/ci.yml",
+      "docs/README.md",
+      "docs/project-status.md",
+      "docs/branching-strategy.md",
+      "docs/module-ownership.md",
+      "docs/architecture.md",
+      "docs/governance/amendments/2026-08-24-machine-verified-review-and-merge.md",
+      "docs/governance/amendments/2026-09-04-react-product-current-authority.md",
+    ];
+    const currentAuthorityDocuments = await Promise.all(
+      currentAuthorityPaths.map((relativePath) =>
+        readFile(path.join(repositoryRoot, relativePath), "utf8"),
+      ),
+    );
+
+    for (const currentDocument of currentAuthorityDocuments) {
+      expect(currentDocument).not.toContain("integration/mvp");
+      expect(currentDocument).not.toContain("origin/integration/mvp");
+    }
+
+    const [
+      rootReadme,
+      security,
+      contributing,
+      workflow,
+      projectStatus,
+      branchingStrategy,
+      architecture,
+      singleMainAmendment,
+      historicalContractAdr,
+      historicalLineageAudit,
+    ] = await Promise.all([
+      readFile(path.join(repositoryRoot, "README.md"), "utf8"),
+      readFile(path.join(repositoryRoot, "SECURITY.md"), "utf8"),
+      readFile(path.join(repositoryRoot, "CONTRIBUTING.md"), "utf8"),
+      readFile(
+        path.join(repositoryRoot, ".github", "workflows", "ci.yml"),
+        "utf8",
+      ),
+      readFile(path.join(repositoryRoot, "docs", "project-status.md"), "utf8"),
+      readFile(
+        path.join(repositoryRoot, "docs", "branching-strategy.md"),
+        "utf8",
+      ),
+      readFile(path.join(repositoryRoot, "docs", "architecture.md"), "utf8"),
+      readFile(
+        path.join(
+          repositoryRoot,
+          "docs",
+          "governance",
+          "amendments",
+          "2026-09-04-single-main-trunk-unification.md",
+        ),
+        "utf8",
+      ),
+      readFile(
+        path.join(
+          repositoryRoot,
+          "docs",
+          "adr",
+          "0004-catalog-contract-design-freeze.md",
+        ),
+        "utf8",
+      ),
+      readFile(
+        path.join(
+          repositoryRoot,
+          "docs",
+          "governance",
+          "history",
+          "2026-09-04-status-and-lineage-reset-rule-audit.md",
+        ),
+        "utf8",
+      ),
+    ]);
+
+    expect(rootReadme).toMatch(/最新\s+`origin\/main`/);
+    expect(security).toContain("current default branch, `main`");
+    expect(contributing).toContain("Sync `main`");
+    expect(contributing).toContain("Draft PR to `main`");
+    expect(workflow.match(/^\s+- main$/gm)).toHaveLength(2);
+    expect(projectStatus).toContain("Shared development branch:\nmain");
+    expect(projectStatus).toContain("fresh latest origin/main");
+    expect(branchingStrategy).toContain("verified `main` commit");
+    expect(branchingStrategy).toContain("annotated tag");
+    expect(branchingStrategy).toContain("GitHub Release");
+    expect(architecture).toContain("latest `origin/main`");
+
+    expect(singleMainAmendment).toContain(
+      "The following are no longer current operations:",
+    );
+    expect(singleMainAmendment).toContain(
+      "`integration/mvp` as a live shared branch",
+    );
+    expect(singleMainAmendment).toContain(
+      "`origin/integration/mvp` as a task baseline",
+    );
+
+    expect(historicalContractAdr).toContain(
+      "integration/mvp@9e99bb6d01afe3e4f7d7778a5cd2975787fd53bc",
+    );
+    expect(historicalLineageAudit).toContain("latest `origin/integration/mvp`");
+  });
 });
