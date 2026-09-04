@@ -52,6 +52,8 @@ export const catalogImportTableRowSchema = z.strictObject(catalogTableRowShape);
 
 export const catalogImportV2TableRowSchema = z.strictObject({
   ...catalogTableRowShape,
+  summary: z.string(),
+  periodLabel: z.string(),
   scriptStyle: z.string(),
   scriptStyleState: z.string(),
   transcription: z.string(),
@@ -190,8 +192,12 @@ const canonicalizeCollectionAction = (value: string) =>
 
 export const canonicalizeCatalogImportV2TableRow = (input: unknown) => {
   const row = catalogImportV2TableRowSchema.parse(input);
+  const summary = row.summary === "" ? undefined : row.summary;
+  const periodLabel = row.periodLabel === "" ? undefined : row.periodLabel;
   return canonicalCatalogImportV2RowSchema.parse({
     ...canonicalizeCatalogFields(row),
+    ...(summary === undefined ? {} : { summary }),
+    ...(periodLabel === undefined ? {} : { periodLabel }),
     scriptStyle: canonicalizeField(
       row.scriptStyle,
       row.scriptStyleState,

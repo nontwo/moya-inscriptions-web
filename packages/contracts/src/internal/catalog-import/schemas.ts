@@ -188,6 +188,8 @@ const v2StatefulFieldNames = [
 export const canonicalCatalogImportV2RowSchema = z
   .strictObject({
     ...canonicalCatalogImportRowSchema.shape,
+    summary: exactTextSchema(2_000).optional(),
+    periodLabel: exactTextSchema(200).optional(),
     scriptStyle: canonicalScriptStyleImportFieldSchema,
     transcription: canonicalTranscriptionImportFieldSchema,
     historicalContext: canonicalHistoricalContextImportFieldSchema,
@@ -205,6 +207,8 @@ export const canonicalCatalogImportV2RowSchema = z
       ["sourceId", sourceId],
       ["catalogId", catalogId],
       ["title", row.title],
+      ["summary", row.summary],
+      ["periodLabel", row.periodLabel],
     ] as const) {
       addV2NulIssue(context, [field], value);
     }
@@ -771,6 +775,8 @@ export const catalogImportFieldNameSchema = z.enum([
 
 export const catalogImportV2FieldNameSchema = z.enum([
   ...catalogImportFieldNameSchema.options,
+  "summary",
+  "periodLabel",
   "scriptStyle",
   "transcription",
   "historicalContext",

@@ -681,28 +681,30 @@ describe("safe Catalog Import v2 workbook template", () => {
     const sharedStrings = sharedStringValues(
       await v2Archive.readText("xl/sharedStrings.xml"),
     );
-    expect(instructions).toContain('<dimension ref="A1:F93"/>');
-    expect(cellValue(instructions, "A80", sharedStrings)).toBe(
+    expect(instructions).toContain('<dimension ref="A1:F95"/>');
+    expect(cellValue(instructions, "A82", sharedStrings)).toBe(
       "D. Advanced persistence / approval / hash notes",
     );
-    expect(cellValue(instructions, "A91", sharedStrings)).toBe(
+    expect(cellValue(instructions, "A93", sharedStrings)).toBe(
       "Technical Metadata",
     );
-    expect(cellValue(instructions, "A92", sharedStrings)).toBe(
+    expect(cellValue(instructions, "A94", sharedStrings)).toBe(
       "workbookLayoutVersion",
     );
-    expect(cellValue(instructions, "B92", sharedStrings)).toBe(
+    expect(cellValue(instructions, "B94", sharedStrings)).toBe(
       CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION,
     );
-    expect(cellValue(instructions, "A93", sharedStrings)).toBe(
+    expect(cellValue(instructions, "A95", sharedStrings)).toBe(
       "importContractVersion",
     );
-    expect(cellValue(instructions, "B93", sharedStrings)).toBe(
+    expect(cellValue(instructions, "B95", sharedStrings)).toBe(
       CATALOG_IMPORT_V2_CONTRACT_VERSION,
     );
     const literalText = sharedStrings.join("\n");
     for (const evidence of [
       "contributorsAction / publicCitationsAction",
+      "summary / periodLabel 是无 state 的直接可选文本",
+      "留空表示省略且不清除既有值",
       "留空等同 PRESERVE",
       "REPLACE 必须提供子表行",
       "appliesTo 留空表示省略",

@@ -298,8 +298,8 @@ const addInstructionsSheet = (workbook, spec) => {
         "2. 新建 Catalog：catalogId 留空；更新 Catalog：catalogId 必须填写既有且不可变的目标 ID。",
         "3. 每条 01_Catalog 都要填写 catalogImportId、sourceId、title、catalogKind。",
         "4. 五个数据表都用 catalogImportId 关联 01_Catalog；catalogImportId ≠ sourceId ≠ catalogId。",
-        "5. value 有内容时，state 留空或选 VALUE；state 与 action 的英文 machine value 不翻译。",
-        "6. blank 或 UNSUPPLIED 表示本批次未提供；允许 UNKNOWN / NOT_APPLICABLE 的字段可用相应状态。",
+        "5. summary / periodLabel 是无 state 的直接可选文本；留空表示省略且不清除既有值。",
+        "6. 其余 value 有内容时，state 留空或选 VALUE；state 与 action 的英文 machine value 不翻译。blank 或 UNSUPPLIED 表示本批次未提供。",
         "7. CLEAR 才表示请求清除，并需要逐字段审批；blank ≠ delete。",
         "8. contributorsAction / publicCitationsAction 留空等同 PRESERVE；REPLACE 必须提供子表行。",
         "9. duplicate 只产生候选，不自动 merge、改写 CatalogId 或解除 blocker。",
@@ -325,7 +325,7 @@ const addInstructionsSheet = (workbook, spec) => {
   const identityGuidance = isV2
     ? [
         "Identity：catalogImportId 是 batch-local 关联键；sourceId 是来源记录身份；catalogId 是 Catalog 身份。三者不可互换。CatalogId / SourceId linkage conflict 不可审批、不可 Apply。",
-        "State：一般事实字段与 scriptStyle 可用五种 state；description 与三个长文本字段仅用 VALUE / UNSUPPLIED / CLEAR。非 VALUE state 时 value 必须为空。",
+        "State：summary / periodLabel 没有 state 或 CLEAR；一般事实字段与 scriptStyle 可用五种 state；description 与三个长文本字段仅用 VALUE / UNSUPPLIED / CLEAR。非 VALUE state 时 value 必须为空。",
         "Location：province / prefecture / county 是行政区；currentLocation 是具体地点或遗址；currentCustodian 是当前管理或保管机构。",
         "纯 synthetic 示例：province=福建省，prefecture=泉州市，county=洛江区，currentLocation=万安某处，currentCustodian=某文物管理机构。该示例不是 production data。",
         "SourceId persistence：每条 01_Catalog 在 Apply 时都需要一条相同 catalogImportId + sourceId 的 03_Provenance 主来源行；可另加其他来源。重复 pair 或跨 Catalog 绑定冲突会失败。",
@@ -397,7 +397,7 @@ const addInstructionsSheet = (workbook, spec) => {
     }
   }
 
-  const advancedSectionRow = isV2 ? 80 : 61;
+  const advancedSectionRow = isV2 ? 82 : 61;
   addSectionHeading(
     worksheet,
     advancedSectionRow,
@@ -405,7 +405,7 @@ const addInstructionsSheet = (workbook, spec) => {
   );
   const advanced = isV2
     ? [
-        "V2 Apply 支持既有字段、四个内容字段、contributors 与 curated public citations；ownerNote 与既有 alias-update ambiguity 仍然 fail closed。",
+        "V2 Apply 支持 summary / periodLabel、既有字段、四个 stateful 内容字段、contributors 与 curated public citations；ownerNote 与既有 alias-update ambiguity 仍然 fail closed。",
         "PRESERVE 不改集合；REPLACE 以完整子表集合取代旧集合；CLEAR 删除完整集合。Create candidate 不允许 CLEAR。",
         "Public citation 的 appliesTo 留空表示省略（semantic scope=record）；非空只用 | 连接无空格、无重复的精确 machine scope。",
         "Identity conflict 始终不可 approval；Level A/B critical changes 与每个 CLEAR 需要 field-level approval；Level C 普通变更可用 batch approval。",
@@ -505,6 +505,8 @@ const v2SyntheticRows = {
     null,
     "纯合成测试条目",
     "inscription",
+    "纯合成标题下导语",
+    "唐代（synthetic）",
     null,
     "UNSUPPLIED",
     null,
