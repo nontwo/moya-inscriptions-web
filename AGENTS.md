@@ -13,12 +13,14 @@ The authority order is:
 4. approved Plan and implementation prompt;
 5. model, agent, or tool inference.
 
-The active
-[`2026-08-24 machine-verified review and merge amendment`](docs/governance/amendments/2026-08-24-machine-verified-review-and-merge.md)
-requires agents to complete routine machine-verifiable review, merge, and
-merged-head verification. Owner involvement is reserved for the amendment's
-visual/real-device, major-direction, production-authority, and unresolved STOP
-gates.
+The active amendments are:
+
+- [`2026-08-24 machine-verified review and merge`](docs/governance/amendments/2026-08-24-machine-verified-review-and-merge.md),
+  which reserves Owner involvement for visual or real-device judgment,
+  major-direction decisions, production authority, and unresolved STOP gates;
+- [`2026-09-04 React Product current authority`](docs/governance/amendments/2026-09-04-react-product-current-authority.md),
+  which records the merged React Formal Root, the non-production Prototype
+  boundary, and the implemented Catalog Content V1 state.
 
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.

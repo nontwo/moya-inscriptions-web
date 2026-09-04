@@ -1,51 +1,91 @@
 # 由艺（Yoyi）Public Web
 
-Public Web 是 Next.js App Router 应用。`app/route.ts` 是当前 Formal
-Root 的明确 route handler composition root。
+Public Web 是 Next.js App Router 应用。当前 Formal `/` 由
+`apps/web/app/page.tsx` request-render，并使用已合并的 React Product Shell。
 
 ## Formal Root composition
 
-`GET /` 在 `connection()` 之后并行加载三份 validated Public Catalog state：
+```text
+app/page.tsx
+  ├── readFormalRequestContext()
+  └── loadProductionProductStates()
+        ├── Home Discover
+        ├── truthful unavailable Nearby
+        ├── truthful unavailable Topics
+        ├── kind=inscription page 1
+        └── kind=calligraphy page 1
+      ↓
+  T02pProductPreview
+      ↓
+  ProductShell
+```
 
-- 全部 Catalog，用于 Home/Discover；
-- `kind=inscription`，用于碑刻 Browse；
-- `kind=calligraphy`，用于书帖 Browse。
+`loadProductionProductStates()` 只通过 `lib/public-api/` 的 server-side HTTP
+boundary 获取 validated Public Catalog states。React Product
+Shell 负责当前 Home、Browse、Settings、Detail、Carousel、Viewer、history、focus 与 scroll
+restoration。
 
-`features/home/load-home-catalog.ts` 只通过 `lib/public-api/` 的 server-side
-HTTP boundary 读取数据。`app/route.ts` 将 populated items 交给
-`lib/t02-static-files.ts`，由它把 runtime Catalog cards 组合进当前 T02 authority
-document。Development Formal Root 保留明确 QA/Prototype coverage；Production
-composition 会先移除 Prototype records，再只追加真实 runtime records。
+Formal root 不执行旧的静态 T02 document composition。E2E 明确要求 `/`
+返回 request-rendered React Product Shell，并拒绝旧 `data-formal-root` /
+`data-mobile-app` DOM。
 
-直接访问 `/docs/prototypes/mobile-preview/` 时使用 Prototype
-composition，不加载 Public API，也不构成 Formal Root 的 canonical data
-source。两条 route 复用同一份 T02 document，不等于具有相同数据权威。
+## Browser-facing API boundaries
 
-## React T02P boundary
+- `GET /api/catalog`：same-origin Catalog list boundary；
+- `GET /api/catalog/[catalogId]`：same-origin Catalog detail boundary；
+- `GET /catalog/[catalogId]`：保留 307 redirect 到 Formal root 的 canonical
+  Detail query/history journey。
 
-React `PrimaryShell`、navigation/pager、platform observation 与 Home/Browse
-presentation 已在 T02P-01 至 T02P-11 建立。`/dev/t02p` 是 Development-only
-acceptance surface；Production 返回 404。Production Formal Root 仍使用上述 T02
-document bridge，尚未执行另一个 React Production cutover。
+Web business reads 必须位于
+`lib/public-api/`。Frontend 不得导入 backend、PostgreSQL、Importer、storage
+internals 或 raw datasets。
 
-## Public API and Media
+## Content and media
 
-`MOYA_PUBLIC_API_BASE_URL` 必须是无 credentials、query 和 hash 的 absolute
-HTTP(S) URL；允许固定 path prefix。Web business HTTP 请求必须位于
-`lib/public-api/`。
+Current Detail consumes the strict `CatalogDetail` Public Contract. Backend
+controls canonical meaning and optionality. Frontend must omit absent Production
+content rather than invent values.
 
-Frontend 不得导入 backend、PostgreSQL、Importer、storage internals 或 raw
-datasets。Media 只消费 Public API 已解析的 `PublicMedia.src`；不得接收 object
-key，也不得自行推导 provider/CDN URL。
+Media only consumes Public API-resolved `PublicMedia.src`. Frontend does not
+receive object keys and must not derive provider/CDN URLs.
+
+Catalog Content V1 Contract, PostgreSQL/API read support, and
+`catalog-import/v2` are implemented. Frontend presentation of contributors,
+script style, transcription, historical context, scholarly research, and scoped
+citations remains the bounded `T09-F1` task.
+
+## Development, QA, and Prototype
+
+- `/dev/t02p`：Development Product acceptance surface；
+- `/dev/t02p/qa`：Development QA harness；
+- `/docs/prototypes/mobile-preview/`：direct non-production static Prototype；
+- Production：前两条返回 404，Formal `/` 只使用 truthful runtime states。
+
+The static Prototype, its fixtures, P5 snapshot, demo media, and the legacy
+`lib/t02-static-files.ts` composition test seam are not current Formal runtime
+authority. They remain isolated reference and regression evidence.
 
 ## Local commands
 
-从 repository root 运行：
+From the repository root:
 
-```sh
+```bash
 pnpm dev
 pnpm dev:web
 ```
 
-两者均只启动 Public Web，端口固定为 `3000`。需要同时启动最小 Admin 时使用
-`pnpm dev:all`；Backend Runtime/API 必须单独显式启动在 `3001`。
+Both start only Public Web on port `3000`. Use `pnpm dev:all` for Web plus the
+minimal Admin. Backend/API must be started explicitly on port `3001`.
+
+## Required checks
+
+Apply checks proportionate to the change:
+
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm test:e2e
+```

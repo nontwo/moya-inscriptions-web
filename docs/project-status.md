@@ -1,367 +1,313 @@
 # 当前项目状态
 
-最后更新：2026-08-31（Asia/Shanghai）
+最后审计：2026-09-04
 
-本文件是 `current project status`、`active Phase 2 work` 与 `Production gaps`
-的单一当前来源。历史计划与实现过程保留在既有历史文档和 PR 中，不作为当前事实。
+本文件是 current project status、active Phase 2 work、Production
+gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
+`docs/history/`，不作为当前任务状态。
 
-## 当前基线
+## 基线读取规则
 
 ```text
-Current shared development branch:
+Shared development branch:
 integration/mvp
 
-Current verified commit:
-02de3c1f1d1baeb5eb938d88030c56bc37a2cadc
-
-Current verified tree:
-cefd28f8522a63582510444a728beb17ce6ad652
+Audited capability baseline:
+14ee3c0c57a73ee3a3995e9d64c698243c0a2447
+feat(import): add Catalog import v2 (#86)
 ```
 
-该基线已包含：
+该 SHA 是本次全仓审计所依据的不可变能力基线，不是一个会自动更新的“current
+head”字段。每个新任务开始前必须 fetch 并实时解析最新
+`origin/integration/mvp`；不得复制本文件中的历史审计 SHA 作为分支起点。
 
-- accepted React Product Shell；
-- Formal React root Cutover；
-- Catalog Detail；
-- bounded media Carousel；
-- full-screen media Viewer；
-- Calligraphy `全部 / 墨迹 / 拓本` Pager；
-- Inscriptions progressive loading；
-- Calligraphy `全部` progressive loading；
-- page 2 Detail/Viewer 返回后的精确恢复；
-- Production 与 Development、QA surfaces 的隔离。
+`main` 仍是待 Owner milestone promotion 的稳定基线，不是当前开发主线。
 
 ## 当前阶段
 
 ```text
-Current phase:
-Phase 2 — read-only digital Catalog MVP
+Phase 2 — trustworthy read-only digital Catalog MVP
 ```
 
-当前 Phase 2 目标是：
+目标是发布具有受治理内容、真实媒体、正式搜索、最小 Operator
+governance 和可恢复 Production operations 的只读 Catalog。
 
-> Publish a trustworthy read-only Catalog using governed data, real media,
-> formal search, controlled publication and recoverable Production operations.
-
-Phase 2 不扩展到普通 public-user
+Phase 2 当前不扩展到普通 public-user
 identity、favorites/likes、comments、posts、user upload、social
-following、messaging、native mobile applications、transactions、AI
-recommendation、OCR 或 knowledge graphs。
+following、messaging、native mobile apps、transactions、AI
+recommendation、OCR 或 knowledge graph。
 
-## 已完成的公开产品能力
+## 已完成的 Formal Web
 
-### Formal Web
+### Formal root
 
 ```text
-Formal `/`
-→ React Server Page
-→ Production-only state composition
-→ accepted React Product Shell
+apps/web/app/page.tsx
+  → request-rendered Production states
+  → T02pProductPreview
+  → ProductShell
 ```
 
-Formal `/` 已不再是旧的 static T02 document。
+Formal `/` 已完成 React cutover。旧 static T02 document 不再是 Formal
+runtime；它只保留为 direct Prototype 和 legacy regression evidence。
 
 ### Product Shell
 
-当前 Product Shell 包含：
+当前正式 React Product 包含：
 
-- Home；
-- Inscriptions；
-- Calligraphy；
-- Settings；
-- Back/Forward；
-- source scroll restoration；
+- Home、Inscriptions、Calligraphy；
+- Settings、theme 与 feed-layout preference；
+- platform/orientation handling；
+- Back/Forward 与 canonical query/history；
+- per-destination scroll restoration；
 - Detail scroll restoration；
 - opener focus restoration；
-- mutually exclusive primary、Detail、Viewer、Topic 与 Settings layers。
+- mutually exclusive Topic、Detail、Viewer 与 Settings layers；
+- Development/QA 与 Production isolation。
 
-### Home
-
-```text
-Discover:
-real Public Catalog data, first bounded page
-
-Nearby:
-truthful unavailable in Production
-
-Topics:
-truthful unavailable in Production
-```
-
-Development 仍可保留明确的 synthetic Nearby 与 Topic
-scenarios；它们不是 Production data。
-
-### Browse
+### Home and Browse
 
 ```text
+Home Discover:
+real Public Catalog first page
+
+Home Nearby:
+truthful unavailable in Production
+
+Home Topics:
+truthful unavailable in Production
+
 Inscriptions:
-real kind=inscription Catalog data
-+ explicit progressive loading
+kind=inscription + explicit progressive loading
 
 Calligraphy 全部:
-real kind=calligraphy Catalog data
-+ explicit progressive loading
+kind=calligraphy + explicit progressive loading
 
-Calligraphy 墨迹:
-classification-unavailable
-
-Calligraphy 拓本:
-classification-unavailable
+Calligraphy 墨迹 / 拓本:
+truthful classification-unavailable
 ```
 
-当前不存在 canonical `ink/rubbing` field。Formal/canonical
-UI 不得根据 title、alias、summary、period、media 或 hard-coded Catalog
-IDs 推断分类。
+Initial server page is `page=1&pageSize=24`. Later pages use explicit
+“继续加载”, preserve existing records on failure, support same-page retry, and
+retain mounted list/scroll/opener state across Detail/Viewer journeys. Home
+Discover does not yet progressively load.
 
-### Detail 与 media
+No canonical `ink/rubbing` field exists. Formal UI must not infer classification
+from titles, aliases, summaries, periods, media, or hard-coded IDs.
 
-共享 Catalog Detail 与 Viewer 当前支持：
+### Detail and media
 
-- 当前 `CatalogDetail` Contract fields；
-- truthful loading、not-found、unavailable 与 unexpected-error states；
-- no-media、single-media 与 multiple-media records；
+One shared Catalog Detail and Viewer currently support:
+
+- truthful loading/not-found/unavailable/unexpected-error states；
+- current pre-Content-V1 Detail presentation；
+- no-media、single-media、multiple-media and failed-media states；
 - bounded Detail Carousel；
 - full-screen Viewer；
-- zoom、pan 与 pinch；
+- fit、zoom、pan、pinch and media paging；
 - owned-media validation；
-- direct Detail 与 Viewer query entry；
-- 精确的 Back/Forward 与 focus restoration。
+- direct Detail/Viewer query entry；
+- Back/Forward、scroll and focus restoration。
 
-### Pagination
+## Backend, data, and import capabilities
 
-```text
-Initial server page:
-page=1
-pageSize=24
+Completed foundation includes:
 
-Later pages:
-explicit “继续加载”
+- strict Public Catalog list/detail Contracts；
+- `CatalogKind = inscription | calligraphy`；
+- page-based list query and error contracts；
+- Public Catalog list/detail HTTP API；
+- backend application boundary and `CatalogQueryPort`；
+- PostgreSQL 18.4 adapter、queries、migrations and readiness ledger；
+- backend-owned `StorageUrlResolver` boundary；
+- controlled CSV/XLSX importer；
+- dry-run、hash-bound approval、transactional apply and idempotent replay；
+- `catalog-import/v1` backward compatibility；
+- `catalog-import/v2` Content V1 support；
+- deterministic JSON Schema and OpenAPI generation；
+- format、lint、typecheck、unit/integration、PostgreSQL、build and browser E2E
+  CI。
 
-Failure:
-existing records remain
-manual same-page retry
-
-Completion:
-active load control is removed
-```
-
-已加载页面在当前 Product Shell 保持 mounted 时保留在内存中；full document
-reload 会回到 server-rendered first page。Home Discover 当前没有 progressive
-loading。
-
-## 当前后端与数据基础
-
-现有基础包括：
-
-- strict Public Catalog list 与 Detail Contracts；
-- Public Catalog list 与 Detail API；
-- `kind=inscription|calligraphy`；
-- page-based Catalog listing；
-- PostgreSQL Catalog read adapter；
-- append-only migrations；
-- strict CSV/XLSX importer；
-- dry-run；
-- authorization-bound apply；
-- transactional、idempotent import behavior；
-- backend-owned `StorageUrlResolver`；
-- Development 与 QA media mappings；
-- Production readiness checks。
+## P2-01 — Catalog Content V1
 
 ```text
-The repository does not currently contain a persistent Production Catalog
-dataset, Production credentials or a configured Production media provider.
+T09-C0:  CLOSED / PASS
+Contract, roles, content fields, citation scopes, JSON Schema, OpenAPI, ADR
+
+T09-B1A: CLOSED / PASS
+PostgreSQL persistence, ordered contributors, citation scopes, read projection,
+explicit Public mapping and Detail API readback
+
+T09-B1B: CLOSED / PASS
+catalog-import/v2 XLSX/CSV, canonical hash, dry-run, approval, transactional
+apply, rollback, replay and v1 compatibility
+
+T09-F1:  PENDING
+React Detail presentation for all Content V1 fields and scoped citations
 ```
 
-此前的 28-record Pilot verification 使用 disposable
-infrastructure，不构成 persistent Production dataset。Production
-media 在配置真实 `StorageUrlResolver` 前继续 fail closed。
+Current Content V1 fields are:
 
-当前 Production gaps 仍包括持久化 PostgreSQL 与正式数据/媒体、formal
-search、minimal Operator
-governance，以及可恢复的 Production 发布与运维能力；它们分别由下述 P2-02、P2-03、P2-04 与 P2-R2
-gates 约束，不能把当前仓库描述为 Production-ready。
+- `contributors`;
+- `scriptStyle`;
+- `transcription`;
+- `historicalContext`;
+- `scholarlyResearch`;
+- source-citation `appliesTo`.
 
-## 当前团队分工
+The backend and importer support these fields. Current React Detail still
+renders the earlier field set, so T09-F1 is the next bounded Product task.
 
-### Frontend partner
+## Production gaps
 
-Frontend partner 负责：
+The repository does not currently contain:
 
-- accepted Product presentation；
-- React components；
-- CSS 与 design tokens；
-- responsive behavior；
-- gestures；
-- accessibility；
-- visual QA；
-- frontend component tests；
-- frontend interaction E2E；
-- bounded extraction of Owner-approved visual behavior from PR #72。
+- a persistent Production PostgreSQL dataset；
+- Production database credentials；
+- a configured Production media provider；
+- a real Production media manifest and URLs；
+- formal Search V1；
+- Operator identity/publication governance；
+- deployment automation or a Production release；
+- verified backup/restore and release rollback evidence；
+- Production domain、HTTPS、logs or monitoring。
 
-每个真实实现都必须从最新 fetched `origin/integration/mvp`
-创建新的独立 branch/worktree。PR #72 不是当前产品的 implementation branch。
+The earlier 28-record P5 validation used disposable PostgreSQL and backend
+infrastructure. It proved importer/API correctness but did not create a
+persistent Production dataset or publication.
 
-### Owner/backend track
+## Remaining Phase 2 roadmap
 
-Owner/backend track 负责：
+### P2-01 remaining — T09-F1
 
-- `packages/contracts/**`；
-- `services/**`；
-- `services/catalog-postgres/**`；
-- `services/catalog-importer/**`；
-- `database/**`；
-- `packages/image/**`；
-- `packages/search/**`；
-- `infra/**`；
-- Production data；
-- media storage；
-- search semantics；
-- Operator authorization；
-- publication；
-- backup、restore 与 release operations；
-- Web same-origin API boundaries 与 Production server loaders。
-
-> Frontend decides how governed data is presented. Backend decides what the data
-> means, how it is validated, stored, queried and published.
-
-## 当前 Phase 2 路线图
-
-### P2-01 — T09 Content V1
-
-```text
-T09-C0:
-freeze description / historicalContext / scholarlyResearch Contract semantics
-
-T09-B1:
-database, importer, read projection and Public API implementation
-
-T09-F1:
-frontend presentation by the frontend partner after Contract freeze
-```
-
-字段语义为：
-
-```text
-description = 简介
-historicalContext = 历史背景
-scholarlyResearch = 学术研究
-```
-
-本文件不定义这些阶段的具体实现。
+Present contributors, script style, transcription, historical context, scholarly
+research, and scoped citations in the existing React Detail without creating a
+second Detail implementation or inventing missing Production values.
 
 ### P2-02 — Production Data and Media Pilot
 
-范围仅包括：
+Bounded scope:
 
 - persistent PostgreSQL environment；
-- approved 28-record import；
-- readback 与 replay；
-- rollback rehearsal；
+- approved 10–30 record initial import；
+- readback and replay；
 - real media manifest；
-- configured Production storage resolver；
+- approved storage resolver；
 - real Public media URLs；
-- backup 与 recovery evidence。
+- backup and restore rehearsal；
+- rollback and Production smoke evidence。
 
-Pilot 不以先完成全部 1658 records 为前提。
+The Pilot does not require all 1658 SourceRecords to be researched first.
 
-### P2-03 — T08 Search V1
+### P2-03 — Search V1
 
-范围仅包括：
+Bounded scope:
 
 - governed Search Contract；
 - Chinese normalization；
-- PostgreSQL search 与 ranking；
+- PostgreSQL search/ranking；
 - deterministic pagination；
 - Golden Query Set；
 - Public Search API；
-- frontend partner 的 frontend search presentation。
+- frontend Search presentation。
 
-Local array filtering 不是 T08 Search。本路线图不预先授权 Elasticsearch、vector
-databases 或 AI embeddings。
+Local array filtering is not Search V1. Elasticsearch, vector databases, and AI
+embeddings are not pre-authorized.
 
 ### P2-04 — Minimal Operator Governance
 
-范围仅包括：
+Bounded scope:
 
 - Operator identity；
-- import-batch visibility；
-- validation-error review；
+- import-batch and validation visibility；
 - publication approval；
 - withdrawal；
-- audit identity 与 timestamps。
+- audit identity and timestamps。
 
-这不是普通 public-user identity system。
+This is not ordinary public-user authentication or a full CMS.
 
 ### P2-R2 — Production Release Gate
 
-范围仅包括：
+Bounded scope:
 
-- Web；
-- backend；
-- PostgreSQL；
-- object storage；
-- domain 与 HTTPS；
-- secrets；
-- logs 与 basic monitoring；
-- database backup；
-- restore rehearsal；
+- Web、backend、PostgreSQL and object storage；
+- domain、HTTPS and secrets；
+- logs and basic monitoring；
+- backup/restore；
 - deployment rollback；
 - real-device Production smoke；
-- eventual `integration/mvp → main` promotion。
+- explicit `integration/mvp → main` milestone promotion。
 
-## 下一后端任务
-
-```text
-Next backend task after P2-00:
-T09-C0 — Content Contract Freeze
-```
-
-P2-00 不开始 T09-C0。
-
-## 当前前端工作
+## Next task
 
 ```text
-The frontend partner may continue bounded, Owner-approved Product presentation
-tasks in independent branches from the latest integration baseline.
+Next Product task:
+T09-F1 — Catalog Content V1 React Detail presentation
+
+Required branch origin:
+fresh latest origin/integration/mvp
 ```
 
-PR #72 仅是 read-only visual/behavior reference，不属于 active merge
-lineage。Favorites、likes 或其他 quick actions 当前不承诺已有 backend behavior。
+After T09-F1, the next backend/operations milestone is the bounded P2-02
+Production Data and Media Pilot. Do not extend importer or persistence
+infrastructure without a concrete Pilot blocker.
 
-## 明确延期
+## Current remote lineage disposition
 
-当前 Phase 2 critical path 不包括：
+No historical feature branch is an active implementation base.
+
+| Branch                                                |  PR | Current disposition                                                               |
+| ----------------------------------------------------- | --: | --------------------------------------------------------------------------------- |
+| `fix/t02-development-composition`                     | #54 | MERGED HISTORY; squash result is already in `integration/mvp`.                    |
+| `feat/catalog-detail-ui-t09-2`                        | #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage. |
+| `feat/t02p-12-react-detail-gallery-viewer-acceptance` | #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.  |
+| `feat/t02-petal-quick-actions-rebuild`                | #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick. |
+
+Remote refs may remain for traceability. Their existence does not grant
+implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as
+completed.
+
+## Research relationship
+
+`moya-catalog-research` remains an independent private research/evidence system.
+
+Its P5 software delivery is CLOSED / PASS:
+
+- 1658 immutable SourceRecords were ingested and validated；
+- the Pilot resolved and researched a bounded subset；
+- 28 canonically ready records were exported；
+- 5 title-blocked PART records were safely excluded；
+- 28 records passed disposable PostgreSQL import and Public API readback；
+- zero silent loss and zero silent invention were recorded。
+
+The current Research export target remains `catalog-import/v1`. A future
+separately scoped research delivery is required to produce approved Content V1
+data through `catalog-import/v2`.
+
+## Explicitly deferred
+
+Phase 2 critical path excludes:
 
 - public-user authentication；
-- favorites 与 likes backend；
-- comments；
-- posts；
-- user uploads；
-- follow relationships；
-- notifications；
-- Nearby implementation；
-- Production Topics provider；
-- native iOS、Android 或 HarmonyOS applications；
+- favorites、likes、comments and posts；
+- user uploads and social graph；
+- notifications and messaging；
+- native iOS、Android、HarmonyOS or visionOS apps；
 - transactions；
-- OCR；
-- recommendation；
+- OCR and recommendation；
 - knowledge graph；
 - generic taxonomy framework；
-- broad directory refactoring；
-- cosmetic cleanliness 的 component renaming；
-- full Prototype/bridge cleanup。
+- broad Prototype/static-seam cleanup；
+- cosmetic directory or component renaming。
 
-Bridge 与 Prototype cleanup 只能在 Production stability 之后，经单独 reference
-audit 再考虑。
+## Branch and release policy
 
-## 分支与发布政策
-
-- shared branches 为 `main` 与 `integration/mvp`；
-- short-lived tasks 从最新 fetched `origin/integration/mvp` 开始；
-- 每个任务使用 isolated worktree 与 bounded branch；
-- 每个任务经过 Draft PR、CI、actual-diff review、expected-head
-  merge 与 merged-head verification；
-- 禁止 direct push shared branches；
-- 禁止 force-push 或 history rewrite；
-- `main` 保持 stable milestone branch；
-- Production Release Gate 前不执行 `integration/mvp → main` promotion。
+- shared branches are `integration/mvp` and `main`；
+- task branches start from a freshly fetched latest `integration/mvp`；
+- each task uses an isolated worktree and bounded branch；
+- each task passes Draft PR、CI、actual-diff review、expected-head merge and
+  merged-head verification；
+- no direct push to shared branches；
+- no force-push or history rewrite；
+- `main` changes only after an explicit Owner milestone decision；
+- Production release requires the P2-R2 gate。
