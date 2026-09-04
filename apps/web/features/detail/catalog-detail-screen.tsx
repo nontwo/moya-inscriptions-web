@@ -77,6 +77,7 @@ export const CatalogDetailScreen = ({
     );
   } else {
     const detail = state.detail;
+    const sections = detail.sections ?? [];
     const identity = [
       detail.kind === "calligraphy" ? "书帖" : "碑刻",
       detail.periodLabel,
@@ -110,8 +111,8 @@ export const CatalogDetailScreen = ({
               <section className={styles.factsSection} data-detail-facts="">
                 <h2>基本资料</h2>
                 <dl className={styles.facts}>
-                  {detail.facts.map((fact) => (
-                    <div key={`${fact.label}-${fact.value}`}>
+                  {detail.facts.map((fact, index) => (
+                    <div key={`${fact.label}-${fact.value}-${index}`}>
                       <dt>{fact.label}</dt>
                       <dd>{fact.value}</dd>
                     </div>
@@ -122,18 +123,18 @@ export const CatalogDetailScreen = ({
           </section>
         </div>
 
-        {detail.description === undefined &&
-        detail.sourceCitations.length === 0 ? null : (
+        {sections.length === 0 && detail.sourceCitations.length === 0 ? null : (
           <div className={styles.readingFlow}>
-            {detail.description === undefined ? null : (
+            {sections.map((section) => (
               <section
+                key={section.key}
                 className={styles.readingSection}
-                data-detail-section="description"
+                data-detail-section={section.key}
               >
-                <h2>简介</h2>
-                <p>{detail.description}</p>
+                <h2>{section.title}</h2>
+                <p>{section.text}</p>
               </section>
-            )}
+            ))}
             {detail.sourceCitations.length === 0 ? null : (
               <section
                 className={styles.readingSection}
@@ -152,6 +153,9 @@ export const CatalogDetailScreen = ({
                           查看来源
                         </a>
                       )}
+                      <span className={styles.citationScope}>
+                        适用于：{citation.scopeLabel}
+                      </span>
                     </li>
                   ))}
                 </ul>

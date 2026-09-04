@@ -146,6 +146,8 @@
 
 .facts dd {
   margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .carousel {
@@ -588,6 +590,11 @@
   line-height: 1.8;
 }
 
+.readingSection p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .sources {
   display: grid;
   gap: 14px;
@@ -597,13 +604,21 @@
 }
 
 .sources li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  overflow-wrap: anywhere;
 }
 
 .sources a {
+  width: fit-content;
   color: var(--yoyi-color-seal-red);
+}
+
+.citationScope {
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-metadata-size);
+  line-height: 1.5;
 }
 
 .message,
