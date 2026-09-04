@@ -6,8 +6,8 @@ Decision date: 2026-09-03
 
 Implementation status:
 
-T09-B1A PostgreSQL persistence and Public read path implemented. T09-B1B
-importer v2 and T09-F1 frontend presentation remain pending.
+T09-B1A persistence/read path and T09-B1B catalog-import/v2 are implemented.
+T09-F1 frontend presentation remains pending.
 
 ## Context and relationship to existing decisions
 

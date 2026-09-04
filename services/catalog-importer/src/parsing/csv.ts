@@ -2,12 +2,11 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  CATALOG_IMPORT_ALIAS_HEADERS,
-  CATALOG_IMPORT_CATALOG_HEADERS,
   CATALOG_IMPORT_CSV_SPEC,
   CATALOG_IMPORT_MANIFEST_HEADERS,
-  CATALOG_IMPORT_PROVENANCE_HEADERS,
-  parseCatalogImportManifestTableRow,
+  CATALOG_IMPORT_V2_CONTRACT_VERSION,
+  CATALOG_IMPORT_V2_CSV_SPEC,
+  parseSupportedCatalogImportManifestTableRow,
 } from "@moya/contracts/internal/catalog-import";
 
 import {
@@ -17,6 +16,7 @@ import {
 import { buildParsedCatalogImportBundle } from "./canonical-bundle.js";
 
 import type { CatalogImportDiagnostic } from "../diagnostics.js";
+import type { SupportedImportContractVersion } from "@moya/contracts/internal/catalog-import";
 import type {
   LocatedCatalogImportTableRow,
   ParsedCatalogImportBundle,
@@ -214,6 +214,7 @@ const tableObjects = (
   input: string,
   expectedHeaders: readonly string[],
   filename: string,
+  importContractVersion = "catalog-import/v1",
 ): LocatedCatalogImportTableRow[] => {
   const rows = parseCsv(input, filename);
   const headers = rows[0]?.values;
@@ -250,7 +251,7 @@ const tableObjects = (
       diagnostic(
         "CSV_HEADER_MISMATCH",
         "HEADER_LAYOUT",
-        `${filename} headers do not match catalog-import/v1`,
+        `${filename} headers do not match ${importContractVersion}`,
         filename,
         1,
         expectedHeaders[mismatchIndex],
@@ -271,7 +272,15 @@ const tableObjects = (
     }
     return {
       values: Object.fromEntries(
-        headers.map((header, index) => [header, csvRow.values[index] ?? ""]),
+        headers.map((header, index) => {
+          const value = csvRow.values[index] ?? "";
+          return [
+            header,
+            importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+              ? value.replaceAll("\r\n", "\n")
+              : value,
+          ];
+        }),
       ),
       location: {
         sourceFormat: "CSV",
@@ -343,57 +352,22 @@ export const parseCatalogImportCsvBundle = async (
       ),
     );
   }
-  const expectedFiles = Object.keys(CATALOG_IMPORT_CSV_SPEC.files).sort();
   const actualFiles = (await readdir(directory)).sort();
-  if (
-    actualFiles.length !== expectedFiles.length ||
-    actualFiles.some((name, index) => name !== expectedFiles[index])
-  ) {
-    failCatalogImport(
+  const manifestFilename = "00_manifest.csv";
+  if (!actualFiles.includes(manifestFilename)) {
+    return failCatalogImport(
       diagnostic(
         "CSV_BUNDLE_LAYOUT_MISMATCH",
-        "CONTAINER_CSV",
-        "CSV bundle must contain exactly the four catalog-import/v1 files",
+        "VERSION_METADATA",
+        "CSV bundle is missing the explicit import contract manifest",
+        manifestFilename,
       ),
     );
   }
-  const [manifestFilename, catalogFilename, aliasFilename, provenanceFilename] =
-    Object.keys(CATALOG_IMPORT_CSV_SPEC.files);
-  if (
-    manifestFilename === undefined ||
-    catalogFilename === undefined ||
-    aliasFilename === undefined ||
-    provenanceFilename === undefined
-  ) {
-    throw new Error("catalog-import/v1 CSV specification is incomplete");
-  }
-  const bytes = await Promise.all(
-    [manifestFilename, catalogFilename, aliasFilename, provenanceFilename].map(
-      (filename) => readRegularFile(directory, filename),
-    ),
-  );
-  if (
-    bytes.reduce((total, item) => total + item.byteLength, 0) >
-    CATALOG_IMPORT_CSV_LIMITS.maximumBundleBytes
-  ) {
-    failCatalogImport(
-      diagnostic(
-        "CSV_RESOURCE_LIMIT",
-        "CONTAINER_CSV",
-        "CSV bundle exceeds the total size limit",
-      ),
-    );
-  }
-  const texts = bytes.map((item, index) =>
-    strictUtf8(
-      item,
-      [manifestFilename, catalogFilename, aliasFilename, provenanceFilename][
-        index
-      ] ?? "catalog import CSV",
-    ),
-  );
+  const manifestBytes = await readRegularFile(directory, manifestFilename);
+  const manifestText = strictUtf8(manifestBytes, manifestFilename);
   const manifest = tableObjects(
-    texts[0] ?? "",
+    manifestText,
     CATALOG_IMPORT_MANIFEST_HEADERS,
     manifestFilename,
   );
@@ -407,8 +381,11 @@ export const parseCatalogImportCsvBundle = async (
       ),
     );
   }
+  let importContractVersion: SupportedImportContractVersion;
   try {
-    parseCatalogImportManifestTableRow(manifest[0]?.values);
+    importContractVersion = parseSupportedCatalogImportManifestTableRow(
+      manifest[0]?.values,
+    );
   } catch (error) {
     throw new CatalogImportDiagnosticError([
       diagnostic(
@@ -423,22 +400,71 @@ export const parseCatalogImportCsvBundle = async (
       ),
     ]);
   }
+
+  const csvSpec =
+    importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+      ? CATALOG_IMPORT_V2_CSV_SPEC
+      : CATALOG_IMPORT_CSV_SPEC;
+  const expectedFiles = Object.keys(csvSpec.files).sort();
+  if (
+    actualFiles.length !== expectedFiles.length ||
+    actualFiles.some((name, index) => name !== expectedFiles[index])
+  ) {
+    failCatalogImport(
+      diagnostic(
+        "CSV_BUNDLE_LAYOUT_MISMATCH",
+        "CONTAINER_CSV",
+        `CSV bundle does not match the exact ${importContractVersion} file layout`,
+      ),
+    );
+  }
+  const dataFilenames = Object.keys(csvSpec.files).filter(
+    (filename) => filename !== manifestFilename,
+  );
+  const dataBytes = await Promise.all(
+    dataFilenames.map((filename) => readRegularFile(directory, filename)),
+  );
+  if (
+    manifestBytes.byteLength +
+      dataBytes.reduce((total, item) => total + item.byteLength, 0) >
+    CATALOG_IMPORT_CSV_LIMITS.maximumBundleBytes
+  ) {
+    failCatalogImport(
+      diagnostic(
+        "CSV_RESOURCE_LIMIT",
+        "CONTAINER_CSV",
+        "CSV bundle exceeds the total size limit",
+      ),
+    );
+  }
+  const textByFilename = new Map(
+    dataFilenames.map((filename, index) => [
+      filename,
+      strictUtf8(dataBytes[index] ?? new Uint8Array(), filename),
+    ]),
+  );
+  const rows = (filename: string) =>
+    tableObjects(
+      textByFilename.get(filename) ?? "",
+      csvSpec.files[filename as keyof typeof csvSpec.files],
+      filename,
+      importContractVersion,
+    );
+
+  const catalogRows = rows("catalog.csv");
+  const aliasRows = rows("aliases.csv");
+  const provenanceRows = rows("provenance.csv");
   return buildParsedCatalogImportBundle({
     sourceFormat: "CSV",
-    catalogRows: tableObjects(
-      texts[1] ?? "",
-      CATALOG_IMPORT_CATALOG_HEADERS,
-      catalogFilename,
-    ),
-    aliasRows: tableObjects(
-      texts[2] ?? "",
-      CATALOG_IMPORT_ALIAS_HEADERS,
-      aliasFilename,
-    ),
-    provenanceRows: tableObjects(
-      texts[3] ?? "",
-      CATALOG_IMPORT_PROVENANCE_HEADERS,
-      provenanceFilename,
-    ),
+    importContractVersion,
+    catalogRows,
+    aliasRows,
+    provenanceRows,
+    ...(importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+      ? {
+          contributorRows: rows("contributors.csv"),
+          publicCitationRows: rows("public_citations.csv"),
+        }
+      : {}),
   });
 };

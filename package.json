@@ -22,6 +22,8 @@
     "test:postgres": "pnpm --filter @moya/tests test:postgres",
     "generate:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs",
     "check:catalog-import-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --check",
+    "generate:catalog-import-v2-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --version v2",
+    "check:catalog-import-v2-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --version v2 --check",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

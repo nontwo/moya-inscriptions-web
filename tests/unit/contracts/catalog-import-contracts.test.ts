@@ -8,21 +8,42 @@ import {
   CATALOG_IMPORT_FIELD_POLICY,
   CATALOG_IMPORT_PROVENANCE_HEADERS,
   CATALOG_IMPORT_SHEET_NAMES,
+  CATALOG_IMPORT_V2_CATALOG_HEADERS,
+  CATALOG_IMPORT_V2_CONTRACT_VERSION,
+  CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+  CATALOG_IMPORT_V2_CSV_SPEC,
+  CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+  CATALOG_IMPORT_V2_SHEET_NAMES,
   aliasImportTableRowSchema,
   applyBlockerCodeSchema,
+  canonicalCatalogImportV2EnvelopeSchema,
   canonicalCatalogImportEnvelopeJsonSchema,
   canonicalCatalogImportEnvelopeSchema,
   canonicalizeAliasImportTableRow,
+  canonicalizeCatalogContributorImportTableRow,
+  canonicalizeCatalogImportV2TableRow,
   canonicalizeCatalogImportTableRow,
   canonicalizeProvenanceImportTableRow,
+  canonicalizePublicCitationImportTableRow,
+  catalogContributorImportRowSchema,
+  catalogContributorImportTableRowSchema,
   catalogImportDryRunSchema,
+  catalogImportV2DryRunSchema,
+  catalogImportV2TableRowSchema,
   catalogImportTableRowSchema,
   dryRunFindingSchema,
   importApprovalSchema,
   importBatchSchema,
+  importV2ApprovalSchema,
+  importV2BatchSchema,
   parseCanonicalCatalogImportEnvelope,
   parseCatalogImportManifestTableRow,
+  parseSupportedCatalogImportManifestTableRow,
+  parseVersionedCanonicalCatalogImportEnvelope,
   provenanceImportTableRowSchema,
+  publicCitationImportRowSchema,
+  publicCitationImportTableRowSchema,
+  serializeCanonicalCatalogImportV2Envelope,
   serializeCanonicalCatalogImportEnvelope,
 } from "@moya/contracts/internal/catalog-import";
 import { describe, expect, it } from "vitest";
@@ -59,6 +80,42 @@ const envelope = (
   catalogRows: [canonicalCatalogRow()],
   aliasRows: [],
   provenanceRows: [],
+  ...overrides,
+});
+
+const emptyV2CatalogTableRow = () =>
+  Object.fromEntries(
+    CATALOG_IMPORT_V2_CATALOG_HEADERS.map((header) => [header, ""]),
+  );
+
+const v2CatalogTableRow = (overrides: Record<string, string> = {}) => ({
+  ...emptyV2CatalogTableRow(),
+  catalogImportId: "row-v2-001",
+  sourceId: "source-v2-001",
+  title: "虚构目录 V2",
+  catalogKind: "inscription",
+  ...overrides,
+});
+
+const canonicalV2CatalogRow = (overrides: Record<string, string> = {}) =>
+  canonicalizeCatalogImportV2TableRow(v2CatalogTableRow(overrides));
+
+const v2Envelope = (
+  overrides: Partial<{
+    importContractVersion: string;
+    catalogRows: unknown[];
+    aliasRows: unknown[];
+    provenanceRows: unknown[];
+    contributorRows: unknown[];
+    publicCitationRows: unknown[];
+  }> = {},
+) => ({
+  importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+  catalogRows: [canonicalV2CatalogRow()],
+  aliasRows: [],
+  provenanceRows: [],
+  contributorRows: [],
+  publicCitationRows: [],
   ...overrides,
 });
 
@@ -812,6 +869,948 @@ describe("Dry-run, persistence blockers and approval", () => {
         ...baseBatch,
         state: "AWAITING_APPROVAL",
         approval: approval(),
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("catalog-import/v2 strict internal contract", () => {
+  it("dispatches only by the explicit supported version while v1 stays strict", () => {
+    expect(
+      parseSupportedCatalogImportManifestTableRow({
+        importContractVersion: CATALOG_IMPORT_CONTRACT_VERSION,
+      }),
+    ).toBe(CATALOG_IMPORT_CONTRACT_VERSION);
+    expect(
+      parseSupportedCatalogImportManifestTableRow({
+        importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+      }),
+    ).toBe(CATALOG_IMPORT_V2_CONTRACT_VERSION);
+    expect(() =>
+      parseCatalogImportManifestTableRow({
+        importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+      }),
+    ).toThrow();
+    for (const importContractVersion of [undefined, "", "catalog-import/v3"]) {
+      expect(() =>
+        parseSupportedCatalogImportManifestTableRow({ importContractVersion }),
+      ).toThrow();
+    }
+
+    expect(
+      parseVersionedCanonicalCatalogImportEnvelope(envelope())
+        .importContractVersion,
+    ).toBe(CATALOG_IMPORT_CONTRACT_VERSION);
+    expect(
+      parseVersionedCanonicalCatalogImportEnvelope(v2Envelope())
+        .importContractVersion,
+    ).toBe(CATALOG_IMPORT_V2_CONTRACT_VERSION);
+    expect(
+      canonicalCatalogImportEnvelopeSchema.safeParse({
+        ...envelope(),
+        contributorRows: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("freezes the exact v2 sheets, CSV files and machine headers", () => {
+    expect(CATALOG_IMPORT_V2_SHEET_NAMES).toEqual([
+      "01_Catalog",
+      "02_Aliases",
+      "03_Provenance",
+      "04_Contributors",
+      "05_Public_Citations",
+      "99_Instructions",
+    ]);
+    expect(Object.keys(CATALOG_IMPORT_V2_CSV_SPEC.files)).toEqual([
+      "00_manifest.csv",
+      "catalog.csv",
+      "aliases.csv",
+      "provenance.csv",
+      "contributors.csv",
+      "public_citations.csv",
+    ]);
+    expect(CATALOG_IMPORT_V2_CATALOG_HEADERS).toEqual([
+      "catalogImportId",
+      "sourceId",
+      "catalogId",
+      "title",
+      "catalogKind",
+      "dynasty",
+      "dynastyState",
+      "dateText",
+      "dateTextState",
+      "province",
+      "provinceState",
+      "prefecture",
+      "prefectureState",
+      "county",
+      "countyState",
+      "currentLocation",
+      "currentLocationState",
+      "currentCustodian",
+      "currentCustodianState",
+      "description",
+      "descriptionState",
+      "scriptStyle",
+      "scriptStyleState",
+      "transcription",
+      "transcriptionState",
+      "historicalContext",
+      "historicalContextState",
+      "scholarlyResearch",
+      "scholarlyResearchState",
+      "contributorsAction",
+      "publicCitationsAction",
+      "ownerNote",
+    ]);
+    expect(CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS).toEqual([
+      "catalogImportId",
+      "position",
+      "name",
+      "role",
+    ]);
+    expect(CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS).toEqual([
+      "catalogImportId",
+      "position",
+      "label",
+      "citation",
+      "url",
+      "appliesTo",
+    ]);
+    expect(
+      catalogImportV2TableRowSchema.safeParse({
+        ...v2CatalogTableRow(),
+        summary: "forbidden",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("canonicalizes exact v2 scalar states and rejects invalid create CLEAR", () => {
+    const row = canonicalV2CatalogRow({
+      scriptStyleState: "UNKNOWN",
+      transcription: "第一行\n第二行",
+      historicalContext: "历史\n背景",
+      scholarlyResearchState: "CLEAR",
+      catalogId: "catalog-v2-001",
+    });
+    expect(row).toMatchObject({
+      scriptStyle: { state: "UNKNOWN" },
+      transcription: { state: "VALUE", value: "第一行\n第二行" },
+      historicalContext: { state: "VALUE", value: "历史\n背景" },
+      scholarlyResearch: { state: "CLEAR" },
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+    });
+
+    expect(() =>
+      canonicalV2CatalogRow({ transcriptionState: "UNKNOWN" }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ historicalContextState: "NOT_APPLICABLE" }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ scholarlyResearch: " value " }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ scriptStyle: "x".repeat(2_001) }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ transcription: "x".repeat(100_001) }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ historicalContext: "x".repeat(20_001) }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ scholarlyResearch: "x".repeat(20_001) }),
+    ).toThrow();
+    expect(() =>
+      canonicalV2CatalogRow({ transcriptionState: "CLEAR" }),
+    ).toThrow(/CLEAR is invalid for a create candidate/);
+    expect(() =>
+      canonicalV2CatalogRow({ contributorsAction: "CLEAR" }),
+    ).toThrow(/CLEAR is invalid for a create candidate/);
+  });
+
+  it("keeps the three identities distinct in every v2 row", () => {
+    expect(() => canonicalV2CatalogRow({ sourceId: "row-v2-001" })).toThrow(
+      /must be distinct/,
+    );
+    expect(() => canonicalV2CatalogRow({ catalogId: "row-v2-001" })).toThrow(
+      /must be distinct/,
+    );
+    expect(() => canonicalV2CatalogRow({ catalogId: "source-v2-001" })).toThrow(
+      /must be distinct/,
+    );
+  });
+
+  it("rejects NUL in every persisted v2 canonical text field", () => {
+    const expectNulIssue = (
+      input: unknown,
+      expectedPath: readonly (string | number)[],
+    ) => {
+      const result = canonicalCatalogImportV2EnvelopeSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: [...expectedPath],
+              message: "NUL characters are not allowed",
+            }),
+          ]),
+        );
+      }
+    };
+    const catalogRow = canonicalV2CatalogRow({
+      catalogId: "catalog-v2-001",
+    });
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["sourceId", "source-v2-\u0000001"],
+      ["catalogId", "catalog-v2-\u0000001"],
+      ["title", "虚构\u0000目录 V2"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({ catalogRows: [{ ...catalogRow, [field]: value }] }),
+        ["catalogRows", 0, field],
+      );
+    }
+
+    for (const field of [
+      "dynasty",
+      "dateText",
+      "province",
+      "prefecture",
+      "county",
+      "currentLocation",
+      "currentCustodian",
+      "description",
+      "scriptStyle",
+      "transcription",
+      "historicalContext",
+      "scholarlyResearch",
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          catalogRows: [
+            {
+              ...catalogRow,
+              [field]: { state: "VALUE", value: "合成\u0000文本" },
+            },
+          ],
+        }),
+        ["catalogRows", 0, field, "value"],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["alias", "别\u0000名"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          aliasRows: [
+            {
+              catalogImportId: "row-v2-001",
+              alias: "合成别名",
+              aliasType: "alternate",
+              [field]: value,
+            },
+          ],
+        }),
+        ["aliasRows", 0, field],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["sourceId", "source-v2-\u0000001"],
+      ["sourceTitle", "来\u0000源"],
+      ["sourceTypeRaw", "类\u0000型"],
+      ["sourceUrl", "https://example.invalid/source\u0000tail"],
+      ["sourceNote", "备\u0000注"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          provenanceRows: [
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "source-v2-001",
+              [field]: value,
+            },
+          ],
+        }),
+        ["provenanceRows", 0, field],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["name", "作\u0000者"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          catalogRows: [{ ...catalogRow, contributorsAction: "REPLACE" }],
+          contributorRows: [
+            {
+              catalogImportId: "row-v2-001",
+              position: 0,
+              name: "合成作者",
+              role: "textAuthor",
+              [field]: value,
+            },
+          ],
+        }),
+        ["contributorRows", 0, field],
+      );
+    }
+
+    for (const [field, value] of [
+      ["catalogImportId", "row-v2-\u0000001"],
+      ["label", "来\u0000源"],
+      ["citation", "引\u0000文"],
+      ["url", "https://example.invalid/citation\u0000tail"],
+    ] as const) {
+      expectNulIssue(
+        v2Envelope({
+          catalogRows: [{ ...catalogRow, publicCitationsAction: "REPLACE" }],
+          publicCitationRows: [
+            {
+              catalogImportId: "row-v2-001",
+              position: 0,
+              label: "合成来源",
+              [field]: value,
+            },
+          ],
+        }),
+        ["publicCitationRows", 0, field],
+      );
+    }
+  });
+
+  it("keeps the three v2 identity namespaces distinct across the batch", () => {
+    const first = canonicalV2CatalogRow({
+      catalogId: "catalog-v2-001",
+    });
+    const second = canonicalV2CatalogRow({
+      catalogImportId: "row-v2-002",
+      sourceId: "source-v2-002",
+      catalogId: "catalog-v2-002",
+      title: "虚构目录 V2 二",
+    });
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({
+          catalogRows: [first, second],
+          provenanceRows: [
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "source-v2-001",
+            },
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "source-v2-extra",
+            },
+            {
+              catalogImportId: "row-v2-002",
+              sourceId: "source-v2-002",
+            },
+          ],
+        }),
+      ).success,
+    ).toBe(true);
+    const collisionCases = [
+      [
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ sourceId: "row-v2-002" }),
+            second,
+          ],
+        }),
+        ["catalogRows", 0, "sourceId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ catalogId: "row-v2-002" }),
+            second,
+          ],
+        }),
+        ["catalogRows", 0, "catalogId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ sourceId: "catalog-v2-002" }),
+            second,
+          ],
+        }),
+        ["catalogRows", 0, "sourceId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [first, second],
+          provenanceRows: [
+            { catalogImportId: "row-v2-001", sourceId: "row-v2-002" },
+          ],
+        }),
+        ["provenanceRows", 0, "sourceId"],
+      ],
+      [
+        v2Envelope({
+          catalogRows: [first, second],
+          provenanceRows: [
+            {
+              catalogImportId: "row-v2-001",
+              sourceId: "catalog-v2-002",
+            },
+          ],
+        }),
+        ["provenanceRows", 0, "sourceId"],
+      ],
+    ] as const;
+
+    for (const [envelopeWithCollision, expectedPath] of collisionCases) {
+      const result = canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        envelopeWithCollision,
+      );
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.path).toEqual(expectedPath);
+      }
+    }
+  });
+
+  it("validates contributor rows and collection-action consistency", () => {
+    const contributor = canonicalizeCatalogContributorImportTableRow({
+      catalogImportId: "row-v2-001",
+      position: "0",
+      name: "合成作者",
+      role: "textAuthor",
+    });
+    expect(contributor).toEqual({
+      catalogImportId: "row-v2-001",
+      position: 0,
+      name: "合成作者",
+      role: "textAuthor",
+    });
+    expect(
+      canonicalizeCatalogContributorImportTableRow({
+        catalogImportId: "row-v2-001",
+        position: "2147483647",
+        name: "合成作者",
+        role: "textAuthor",
+      }).position,
+    ).toBe(2_147_483_647);
+    for (const position of [
+      "",
+      "-1",
+      "01",
+      "1.0",
+      "2147483648",
+      "9007199254740992",
+    ]) {
+      expect(() =>
+        canonicalizeCatalogContributorImportTableRow({
+          catalogImportId: "row-v2-001",
+          position,
+          name: "合成作者",
+          role: "textAuthor",
+        }),
+      ).toThrow();
+    }
+    expect(
+      catalogContributorImportTableRowSchema.safeParse({
+        catalogImportId: "row-v2-001",
+        position: "0",
+        name: "合成作者",
+        role: "textAuthor",
+        biography: "forbidden",
+      }).success,
+    ).toBe(false);
+    expect(() =>
+      canonicalizeCatalogContributorImportTableRow({
+        catalogImportId: "row-v2-001",
+        position: "0",
+        name: "合成作者",
+        role: "engraver",
+      }),
+    ).toThrow();
+
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({ contributorRows: [contributor] }),
+      ).success,
+    ).toBe(false);
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ contributorsAction: "REPLACE" }),
+          ],
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ contributorsAction: "REPLACE" }),
+          ],
+          contributorRows: [contributor],
+        }),
+      ).success,
+    ).toBe(true);
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ contributorsAction: "REPLACE" }),
+          ],
+          contributorRows: [contributor, { ...contributor, position: 1 }],
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      canonicalCatalogImportV2EnvelopeSchema.safeParse(
+        v2Envelope({
+          catalogRows: [
+            canonicalV2CatalogRow({ contributorsAction: "REPLACE" }),
+          ],
+          contributorRows: Array.from({ length: 51 }, (_, position) => ({
+            ...contributor,
+            position,
+            name: `合成作者 ${position}`,
+          })),
+        }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("canonicalizes public citation scopes without inventing record scope", () => {
+    const unscoped = canonicalizePublicCitationImportTableRow({
+      catalogImportId: "row-v2-001",
+      position: "0",
+      label: "合成来源",
+      citation: "",
+      url: "",
+      appliesTo: "",
+    });
+    expect(unscoped).toEqual({
+      catalogImportId: "row-v2-001",
+      position: 0,
+      label: "合成来源",
+    });
+    const scoped = canonicalizePublicCitationImportTableRow({
+      catalogImportId: "row-v2-001",
+      position: "1",
+      label: "合成来源二",
+      citation: "合成引文",
+      url: "https://example.invalid/source",
+      appliesTo: "scholarlyResearch|record|description",
+    });
+    expect(scoped.appliesTo).toEqual([
+      "record",
+      "description",
+      "scholarlyResearch",
+    ]);
+    expect(
+      canonicalizePublicCitationImportTableRow({
+        catalogImportId: "row-v2-001",
+        position: "2147483647",
+        label: "合成来源",
+        citation: "",
+        url: "",
+        appliesTo: "",
+      }).position,
+    ).toBe(2_147_483_647);
+    expect(() =>
+      canonicalizePublicCitationImportTableRow({
+        catalogImportId: "row-v2-001",
+        position: "2147483648",
+        label: "合成来源",
+        citation: "",
+        url: "",
+        appliesTo: "",
+      }),
+    ).toThrow();
+    for (const position of ["-1", "1.5", "9007199254740991"]) {
+      expect(() =>
+        canonicalizePublicCitationImportTableRow({
+          catalogImportId: "row-v2-001",
+          position,
+          label: "合成来源",
+          citation: "",
+          url: "",
+          appliesTo: "",
+        }),
+      ).toThrow();
+    }
+    for (const appliesTo of [
+      "record,description",
+      "record / description",
+      "record |description",
+      "record||description",
+      "record|record",
+      "unknown",
+    ]) {
+      expect(() =>
+        canonicalizePublicCitationImportTableRow({
+          catalogImportId: "row-v2-001",
+          position: "0",
+          label: "合成来源",
+          citation: "",
+          url: "",
+          appliesTo,
+        }),
+      ).toThrow();
+    }
+    expect(
+      publicCitationImportTableRowSchema.safeParse({
+        catalogImportId: "row-v2-001",
+        position: "0",
+        label: "合成来源",
+        citation: "",
+        url: "",
+        appliesTo: "record",
+        sourceId: "forbidden",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds both canonical v2 child positions to PostgreSQL INTEGER", () => {
+    const contributor = {
+      catalogImportId: "row-v2-001",
+      name: "合成作者",
+      role: "textAuthor",
+    } as const;
+    const citation = {
+      catalogImportId: "row-v2-001",
+      label: "合成来源",
+    } as const;
+
+    for (const position of [0, 2_147_483_647]) {
+      expect(
+        catalogContributorImportRowSchema.safeParse({
+          ...contributor,
+          position,
+        }).success,
+      ).toBe(true);
+      expect(
+        publicCitationImportRowSchema.safeParse({ ...citation, position })
+          .success,
+      ).toBe(true);
+    }
+    for (const position of [
+      -1,
+      1.5,
+      2_147_483_648,
+      Number.MAX_SAFE_INTEGER,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(
+        catalogContributorImportRowSchema.safeParse({
+          ...contributor,
+          position,
+        }).success,
+      ).toBe(false);
+      expect(
+        publicCitationImportRowSchema.safeParse({ ...citation, position })
+          .success,
+      ).toBe(false);
+    }
+  });
+
+  it("freezes the v2 canonical business-key and scope-order golden vector", () => {
+    const rowZ = canonicalV2CatalogRow({
+      catalogImportId: "row-z",
+      sourceId: "source-z",
+      title: "虚构乙",
+    });
+    const rowA = canonicalV2CatalogRow({
+      catalogImportId: "row-a",
+      sourceId: "source-a",
+      title: "虚构甲",
+      catalogKind: "calligraphy",
+      scriptStyle: "楷书",
+      contributorsAction: "REPLACE",
+      publicCitationsAction: "REPLACE",
+    });
+    const contributorZero = {
+      catalogImportId: "row-a",
+      position: 0,
+      name: "合成书者",
+      role: "calligrapher",
+    } as const;
+    const contributorTwo = {
+      catalogImportId: "row-a",
+      position: 2,
+      name: "合成文作者",
+      role: "textAuthor",
+    } as const;
+    const citationZero = {
+      catalogImportId: "row-a",
+      position: 0,
+      label: "来源甲",
+    } as const;
+    const citationTwo = {
+      catalogImportId: "row-a",
+      position: 2,
+      label: "来源乙",
+      citation: "第二条",
+      appliesTo: ["scholarlyResearch", "record", "transcription"],
+    } as const;
+    const submitted = v2Envelope({
+      catalogRows: [rowZ, rowA],
+      aliasRows: [
+        { catalogImportId: "row-z", alias: "乙别名", aliasType: "historical" },
+        { catalogImportId: "row-a", alias: "甲别名", aliasType: "alternate" },
+      ],
+      provenanceRows: [
+        { catalogImportId: "row-z", sourceId: "source-z" },
+        { catalogImportId: "row-a", sourceId: "source-a" },
+      ],
+      contributorRows: [contributorTwo, contributorZero],
+      publicCitationRows: [citationTwo, citationZero],
+    });
+    const reordered = v2Envelope({
+      catalogRows: [rowA, rowZ],
+      aliasRows: [
+        { catalogImportId: "row-a", alias: "甲别名", aliasType: "alternate" },
+        { catalogImportId: "row-z", alias: "乙别名", aliasType: "historical" },
+      ],
+      provenanceRows: [
+        { catalogImportId: "row-a", sourceId: "source-a" },
+        { catalogImportId: "row-z", sourceId: "source-z" },
+      ],
+      contributorRows: [contributorZero, contributorTwo],
+      publicCitationRows: [
+        citationZero,
+        {
+          ...citationTwo,
+          appliesTo: ["transcription", "record", "scholarlyResearch"],
+        },
+      ],
+    });
+    const serialized = serializeCanonicalCatalogImportV2Envelope(submitted);
+    const representation = JSON.parse(serialized) as {
+      catalogRows: { catalogImportId: string }[];
+      contributorRows: { position: number }[];
+      publicCitationRows: { position: number; appliesTo?: string[] }[];
+    };
+    expect(
+      representation.catalogRows.map((row) => row.catalogImportId),
+    ).toEqual(["row-a", "row-z"]);
+    expect(representation.contributorRows.map((row) => row.position)).toEqual([
+      0, 2,
+    ]);
+    expect(representation.publicCitationRows[1]?.appliesTo).toEqual([
+      "record",
+      "transcription",
+      "scholarlyResearch",
+    ]);
+    expect(serializeCanonicalCatalogImportV2Envelope(reordered)).toBe(
+      serialized,
+    );
+    expect(createHash("sha256").update(serialized, "utf8").digest("hex")).toBe(
+      "ded555774778e86c9d55d5a0057b24276ace2dd497feced9f1d67f1f8f179388",
+    );
+    expect(serialized).not.toBe(
+      serializeCanonicalCatalogImportEnvelope(envelope()),
+    );
+    const contributorPositionChanged =
+      serializeCanonicalCatalogImportV2Envelope({
+        ...submitted,
+        contributorRows: [{ ...contributorTwo, position: 3 }, contributorZero],
+      });
+    const citationPositionChanged = serializeCanonicalCatalogImportV2Envelope({
+      ...submitted,
+      publicCitationRows: [citationZero, { ...citationTwo, position: 3 }],
+    });
+    for (const changed of [
+      contributorPositionChanged,
+      citationPositionChanged,
+    ]) {
+      expect(changed).not.toBe(serialized);
+      expect(
+        createHash("sha256").update(changed, "utf8").digest("hex"),
+      ).not.toBe(createHash("sha256").update(serialized, "utf8").digest("hex"));
+    }
+
+    const scalarValueChanged = v2Envelope({
+      ...submitted,
+      catalogRows: [rowZ, { ...rowA, title: "虚构甲（修订）" }],
+    });
+    const scalarStateChanged = v2Envelope({
+      ...submitted,
+      catalogRows: [
+        rowZ,
+        { ...rowA, scriptStyle: { state: "UNKNOWN" as const } },
+      ],
+    });
+    const contributorMembershipChanged = v2Envelope({
+      ...submitted,
+      contributorRows: [
+        contributorZero,
+        { ...contributorTwo, name: "另一位合成文作者" },
+      ],
+    });
+    const citationMembershipChanged = v2Envelope({
+      ...submitted,
+      publicCitationRows: [
+        { ...citationZero, label: "另一条来源甲" },
+        citationTwo,
+      ],
+    });
+    const citationScopeChanged = v2Envelope({
+      ...submitted,
+      publicCitationRows: [
+        citationZero,
+        {
+          ...citationTwo,
+          appliesTo: [
+            "record" as const,
+            "description" as const,
+            "transcription" as const,
+            "scholarlyResearch" as const,
+          ],
+        },
+      ],
+    });
+    for (const changed of [
+      scalarValueChanged,
+      scalarStateChanged,
+      contributorMembershipChanged,
+      citationMembershipChanged,
+      citationScopeChanged,
+    ]) {
+      expect(serializeCanonicalCatalogImportV2Envelope(changed)).not.toBe(
+        serialized,
+      );
+    }
+
+    const preserveActionEnvelope = v2Envelope({
+      catalogRows: [
+        canonicalV2CatalogRow({
+          catalogId: "catalog-v2-action",
+          contributorsAction: "PRESERVE",
+        }),
+      ],
+    });
+    const clearActionEnvelope = v2Envelope({
+      catalogRows: [
+        canonicalV2CatalogRow({
+          catalogId: "catalog-v2-action",
+          contributorsAction: "CLEAR",
+        }),
+      ],
+    });
+    expect(
+      serializeCanonicalCatalogImportV2Envelope(clearActionEnvelope),
+    ).not.toBe(
+      serializeCanonicalCatalogImportV2Envelope(preserveActionEnvelope),
+    );
+  });
+
+  it("keeps v2 dry-run, approval and batch versions and row counts bound", () => {
+    const collectionFinding = {
+      findingId: "finding-v2-contributors",
+      catalogImportId: "row-v2-001",
+      sourceId: "source-v2-001",
+      catalogId: "catalog-v2-001",
+      category: "CRITICAL_CHANGE",
+      field: "contributors",
+      protectionLevel: "LEVEL_B",
+      persistenceDisposition: "SUPPORTED_NOW",
+      operation: "SET",
+      approvable: true,
+      requiresFieldApproval: true,
+      message: "The update replaces contributors",
+    } as const;
+    const v2DryRun = {
+      importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+      canonicalInputSha256: hashA,
+      dryRunResultSha256: hashB,
+      state: "PASSED",
+      completedAt: "2026-09-03T20:00:00.000Z",
+      rowCounts: {
+        catalog: 1,
+        aliases: 0,
+        provenance: 1,
+        contributors: 2,
+        publicCitations: 1,
+      },
+      resultCounts: {
+        add: 0,
+        update: 1,
+        unchanged: 0,
+        conflict: 0,
+        identityConflict: 0,
+        error: 0,
+        duplicateCandidate: 0,
+      },
+      findings: [collectionFinding],
+      duplicateCandidates: [],
+      applyBlockers: [],
+      applyReady: true,
+    } as const;
+    expect(catalogImportV2DryRunSchema.safeParse(v2DryRun).success).toBe(true);
+    for (const update of [0, 2]) {
+      const result = catalogImportV2DryRunSchema.safeParse({
+        ...v2DryRun,
+        resultCounts: { ...v2DryRun.resultCounts, update },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: ["resultCounts"],
+              message: "Catalog row outcomes must equal the Catalog row count",
+            }),
+          ]),
+        );
+      }
+    }
+    expect(catalogImportDryRunSchema.safeParse(v2DryRun).success).toBe(false);
+    const v2Approval = {
+      importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+      canonicalInputSha256: hashA,
+      dryRunResultSha256: hashB,
+      state: "APPROVED",
+      approvedFindingIds: [collectionFinding.findingId],
+      decidedBy: "Owner",
+      decidedAt: "2026-09-03T20:01:00.000Z",
+    } as const;
+    expect(importV2ApprovalSchema.safeParse(v2Approval).success).toBe(true);
+    expect(importApprovalSchema.safeParse(v2Approval).success).toBe(false);
+    expect(
+      importV2BatchSchema.safeParse({
+        batchId: "batch-v2-001",
+        importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+        state: "APPROVED",
+        inputFormat: "CSV",
+        canonicalInputSha256: hashA,
+        createdAt: "2026-09-03T20:00:00.000Z",
+        rowCounts: v2DryRun.rowCounts,
+        dryRun: v2DryRun,
+        approval: v2Approval,
+      }).success,
+    ).toBe(true);
+    expect(
+      importV2BatchSchema.safeParse({
+        batchId: "batch-v2-001",
+        importContractVersion: CATALOG_IMPORT_V2_CONTRACT_VERSION,
+        state: "APPROVED",
+        inputFormat: "CSV",
+        canonicalInputSha256: hashA,
+        createdAt: "2026-09-03T20:00:00.000Z",
+        rowCounts: { ...v2DryRun.rowCounts, contributors: 0 },
+        dryRun: v2DryRun,
+        approval: v2Approval,
       }).success,
     ).toBe(false);
   });

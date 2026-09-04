@@ -3,11 +3,18 @@ import {
   CATALOG_IMPORT_CATALOG_HEADERS,
   CATALOG_IMPORT_PROVENANCE_HEADERS,
   CATALOG_IMPORT_SHEET_NAMES,
+  CATALOG_IMPORT_V2_CATALOG_HEADERS,
+  CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+  CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+  CATALOG_IMPORT_V2_SHEET_NAMES,
+  CATALOG_IMPORT_V2_WORKBOOK_SPEC,
   CATALOG_IMPORT_WORKBOOK_SPEC,
 } from "./specification.js";
 
 export const CATALOG_IMPORT_XLSX_LAYOUT_VERSION =
   "catalog-import-xlsx/v1" as const;
+export const CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION =
+  "catalog-import-xlsx/v2" as const;
 
 export const CATALOG_IMPORT_PRESENTATION_REQUIREDNESS = [
   "REQUIRED",
@@ -39,7 +46,13 @@ export const formatCatalogImportPresentationHeader = (
 ): string => `${presentationHeader}${presentationHeaderSuffixes[requiredness]}`;
 
 type ValidationName =
-  "catalogKind" | "fieldState" | "descriptionState" | "aliasType";
+  | "catalogKind"
+  | "fieldState"
+  | "descriptionState"
+  | "longFormState"
+  | "aliasType"
+  | "collectionAction"
+  | "contributorRole";
 
 interface WorkbookFieldLayout<Header extends string> {
   readonly machineHeader: Header;
@@ -262,6 +275,107 @@ const catalogFields = [
   (typeof CATALOG_IMPORT_CATALOG_HEADERS)[number]
 >[];
 
+const v2CatalogFields = [
+  ...catalogFields.slice(0, -1),
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[21],
+    presentationHeader: "书体",
+    requiredness: "OPTIONAL",
+    guidance: "纯文本书体说明；与右侧状态配对，最多 2,000 字符。",
+    example: "楷书（synthetic）",
+    width: 28,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[22],
+    presentationHeader: "书体状态",
+    requiredness: "OPTIONAL",
+    guidance: "VALUE / UNSUPPLIED / UNKNOWN / NOT_APPLICABLE / CLEAR。",
+    example: "VALUE",
+    width: 20,
+    validation: "fieldState",
+    stateColumn: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[23],
+    presentationHeader: "释文",
+    requiredness: "OPTIONAL",
+    guidance: "纯文本，可保留内部换行；与右侧状态配对。",
+    example: "纯合成释文示例",
+    width: 48,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[24],
+    presentationHeader: "释文状态",
+    requiredness: "OPTIONAL",
+    guidance: "仅允许 VALUE / UNSUPPLIED / CLEAR；blank 不删除。",
+    example: "VALUE",
+    width: 20,
+    validation: "longFormState",
+    stateColumn: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[25],
+    presentationHeader: "历史背景",
+    requiredness: "OPTIONAL",
+    guidance: "纯文本，可保留内部换行；与右侧状态配对。",
+    example: "纯合成历史背景示例",
+    width: 42,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[26],
+    presentationHeader: "历史背景状态",
+    requiredness: "OPTIONAL",
+    guidance: "仅允许 VALUE / UNSUPPLIED / CLEAR；blank 不删除。",
+    example: "VALUE",
+    width: 20,
+    validation: "longFormState",
+    stateColumn: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[27],
+    presentationHeader: "学术研究",
+    requiredness: "OPTIONAL",
+    guidance: "纯文本，可保留内部换行；与右侧状态配对。",
+    example: "纯合成学术研究示例",
+    width: 42,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[28],
+    presentationHeader: "学术研究状态",
+    requiredness: "OPTIONAL",
+    guidance: "仅允许 VALUE / UNSUPPLIED / CLEAR；blank 不删除。",
+    example: "VALUE",
+    width: 20,
+    validation: "longFormState",
+    stateColumn: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[29],
+    presentationHeader: "贡献者操作",
+    requiredness: "OPTIONAL",
+    guidance: "留空等同 PRESERVE；REPLACE 或 CLEAR 表示完整集合意图。",
+    example: "PRESERVE",
+    width: 22,
+    validation: "collectionAction",
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CATALOG_HEADERS[30],
+    presentationHeader: "公开引文操作",
+    requiredness: "OPTIONAL",
+    guidance: "留空等同 PRESERVE；REPLACE 或 CLEAR 表示完整集合意图。",
+    example: "PRESERVE",
+    width: 22,
+    validation: "collectionAction",
+  },
+  catalogFields[21],
+] as const satisfies readonly WorkbookFieldLayout<
+  (typeof CATALOG_IMPORT_V2_CATALOG_HEADERS)[number]
+>[];
+
 const aliasFields = [
   {
     machineHeader: CATALOG_IMPORT_ALIAS_HEADERS[0],
@@ -353,6 +467,106 @@ const provenanceFields = [
   (typeof CATALOG_IMPORT_PROVENANCE_HEADERS)[number]
 >[];
 
+const contributorFields = [
+  {
+    machineHeader: CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS[0],
+    presentationHeader: "批次内关联 ID",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "必须指向 01_Catalog 的 catalogImportId。",
+    example: "synthetic-item-001",
+    width: 22,
+    textPreserving: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS[1],
+    presentationHeader: "显示顺序",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "0–2147483647（含）之间的整数；仅 position 决定显示顺序。",
+    example: "0",
+    width: 16,
+    textPreserving: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS[2],
+    presentationHeader: "姓名",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "完整、精确修剪的贡献者姓名，最多 500 字符。",
+    example: "合成示例作者",
+    width: 30,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS[3],
+    presentationHeader: "角色",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "只选择 textAuthor 或 calligrapher。",
+    example: "textAuthor",
+    width: 20,
+    validation: "contributorRole",
+  },
+] as const satisfies readonly WorkbookFieldLayout<
+  (typeof CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS)[number]
+>[];
+
+const publicCitationFields = [
+  {
+    machineHeader: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS[0],
+    presentationHeader: "批次内关联 ID",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "必须指向 01_Catalog 的 catalogImportId。",
+    example: "synthetic-item-001",
+    width: 22,
+    textPreserving: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS[1],
+    presentationHeader: "显示顺序",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "0–2147483647（含）之间的整数；仅 position 决定显示顺序。",
+    example: "0",
+    width: 16,
+    textPreserving: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS[2],
+    presentationHeader: "来源标签",
+    requiredness: "CHILD_ROW_REQUIRED",
+    guidance: "公开来源标签，最多 500 字符。",
+    example: "合成示例来源",
+    width: 30,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS[3],
+    presentationHeader: "引文",
+    requiredness: "OPTIONAL",
+    guidance: "公开引文纯文本，最多 2,000 字符。",
+    example: "纯合成引文示例",
+    width: 42,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS[4],
+    presentationHeader: "链接",
+    requiredness: "OPTIONAL",
+    guidance: "如填写，必须是完整 URL。",
+    example: "https://example.invalid/citation",
+    width: 38,
+    wrap: true,
+  },
+  {
+    machineHeader: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS[5],
+    presentationHeader: "适用范围",
+    requiredness: "OPTIONAL",
+    guidance: "留空表示省略；非空仅用 | 连接精确 machine scope。",
+    example: "description|transcription",
+    width: 38,
+    wrap: true,
+  },
+] as const satisfies readonly WorkbookFieldLayout<
+  (typeof CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS)[number]
+>[];
+
 const validationDefinitions = {
   catalogKind: {
     values: CATALOG_IMPORT_WORKBOOK_SPEC.allowedValues.catalogKind,
@@ -375,6 +589,25 @@ const validationDefinitions = {
     values: CATALOG_IMPORT_WORKBOOK_SPEC.allowedValues.aliasType,
     promptTitle: "别名类型 / aliasType",
     prompt: "请选择英文 machine value：alternate 或 historical。",
+  },
+} as const;
+
+const v2ValidationDefinitions = {
+  ...validationDefinitions,
+  longFormState: {
+    values: CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+    promptTitle: "长文本状态",
+    prompt: "有值时留空或选 VALUE；空值可选 UNSUPPLIED 或 CLEAR。",
+  },
+  collectionAction: {
+    values: CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.collectionAction,
+    promptTitle: "集合操作",
+    prompt: "留空等同 PRESERVE；仅选择 PRESERVE、REPLACE 或 CLEAR。",
+  },
+  contributorRole: {
+    values: CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.contributorRole,
+    promptTitle: "贡献者角色",
+    prompt: "请选择英文 machine value：textAuthor 或 calligrapher。",
   },
 } as const;
 
@@ -432,6 +665,77 @@ export const CATALOG_IMPORT_XLSX_LAYOUT_SPEC = {
         valueCell: "B70",
         key: "importContractVersion",
         value: CATALOG_IMPORT_WORKBOOK_SPEC.importContractVersion,
+      },
+    },
+  },
+} as const;
+
+export const CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC = {
+  workbookLayoutVersion: CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION,
+  importContractVersion: CATALOG_IMPORT_V2_WORKBOOK_SPEC.importContractVersion,
+  sheetOrder: CATALOG_IMPORT_V2_SHEET_NAMES,
+  rowRoles: {
+    presentationHeader: 1,
+    machineHeader: 2,
+    firstEditableRow: 3,
+    lastEditableRow: 1_048_576,
+  },
+  dataSheets: {
+    "01_Catalog": {
+      tableName: "CatalogImportTable",
+      tableRef: "A2:AF3",
+      freeze: { xSplit: 4, ySplit: 2, topLeftCell: "E3" },
+      fields: v2CatalogFields,
+    },
+    "02_Aliases": {
+      tableName: "AliasImportTable",
+      tableRef: "A2:C3",
+      freeze: { xSplit: 1, ySplit: 2, topLeftCell: "B3" },
+      fields: aliasFields,
+    },
+    "03_Provenance": {
+      tableName: "ProvenanceImportTable",
+      tableRef: "A2:F3",
+      freeze: { xSplit: 2, ySplit: 2, topLeftCell: "C3" },
+      fields: provenanceFields,
+    },
+    "04_Contributors": {
+      tableName: "ContributorImportTable",
+      tableRef: "A2:D3",
+      freeze: { xSplit: 2, ySplit: 2, topLeftCell: "C3" },
+      fields: contributorFields,
+    },
+    "05_Public_Citations": {
+      tableName: "PublicCitationImportTable",
+      tableRef: "A2:F3",
+      freeze: { xSplit: 2, ySplit: 2, topLeftCell: "C3" },
+      fields: publicCitationFields,
+    },
+  },
+  validations: v2ValidationDefinitions,
+  instructions: {
+    title: "摩崖目录导入模板 V2 — Owner 使用说明",
+    sectionOrder: [
+      "Owner 快速开始",
+      "Identity / State / Location guidance",
+      "Field Guide",
+      "Advanced persistence / approval / hash notes",
+      "Technical Metadata",
+    ],
+    metadata: {
+      sectionCell: "A91",
+      sectionLabel: "Technical Metadata",
+      workbookLayoutVersion: {
+        keyCell: "A92",
+        valueCell: "B92",
+        key: "workbookLayoutVersion",
+        value: CATALOG_IMPORT_V2_XLSX_LAYOUT_VERSION,
+      },
+      importContractVersion: {
+        keyCell: "A93",
+        valueCell: "B93",
+        key: "importContractVersion",
+        value: CATALOG_IMPORT_V2_WORKBOOK_SPEC.importContractVersion,
       },
     },
   },

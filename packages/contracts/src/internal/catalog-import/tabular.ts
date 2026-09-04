@@ -3,13 +3,23 @@ import { z } from "zod";
 import {
   aliasImportRowSchema,
   aliasTypeSchema,
+  canonicalCatalogImportV2RowSchema,
   canonicalCatalogImportRowSchema,
   canonicalDescriptionImportFieldSchema,
   canonicalFactualImportFieldSchema,
+  canonicalHistoricalContextImportFieldSchema,
+  canonicalScholarlyResearchImportFieldSchema,
+  canonicalScriptStyleImportFieldSchema,
+  canonicalTranscriptionImportFieldSchema,
+  canonicalizeCatalogImportCitationScopes,
+  catalogContributorImportRowSchema,
+  catalogImportCollectionActionSchema,
   catalogImportIdSchema,
   importContractVersionSchema,
   provenanceImportRowSchema,
+  publicCitationImportRowSchema,
   sourceIdSchema,
+  supportedImportContractVersionSchema,
 } from "./schemas.js";
 import { catalogIdSchema, catalogKindSchema } from "../../schemas.js";
 
@@ -40,6 +50,20 @@ const catalogTableRowShape = {
 
 export const catalogImportTableRowSchema = z.strictObject(catalogTableRowShape);
 
+export const catalogImportV2TableRowSchema = z.strictObject({
+  ...catalogTableRowShape,
+  scriptStyle: z.string(),
+  scriptStyleState: z.string(),
+  transcription: z.string(),
+  transcriptionState: z.string(),
+  historicalContext: z.string(),
+  historicalContextState: z.string(),
+  scholarlyResearch: z.string(),
+  scholarlyResearchState: z.string(),
+  contributorsAction: z.string(),
+  publicCitationsAction: z.string(),
+});
+
 export const aliasImportTableRowSchema = z.strictObject({
   catalogImportId: z.string(),
   alias: z.string(),
@@ -53,6 +77,22 @@ export const provenanceImportTableRowSchema = z.strictObject({
   sourceTypeRaw: z.string(),
   sourceUrl: z.string(),
   sourceNote: z.string(),
+});
+
+export const catalogContributorImportTableRowSchema = z.strictObject({
+  catalogImportId: z.string(),
+  position: z.string(),
+  name: z.string(),
+  role: z.string(),
+});
+
+export const publicCitationImportTableRowSchema = z.strictObject({
+  catalogImportId: z.string(),
+  position: z.string(),
+  label: z.string(),
+  citation: z.string(),
+  url: z.string(),
+  appliesTo: z.string(),
 });
 
 export const catalogImportManifestTableRowSchema = z.strictObject({
@@ -87,9 +127,15 @@ const canonicalizeField = (
 
 export const canonicalizeCatalogImportTableRow = (input: unknown) => {
   const row = catalogImportTableRowSchema.parse(input);
+  return canonicalCatalogImportRowSchema.parse(canonicalizeCatalogFields(row));
+};
+
+const canonicalizeCatalogFields = (
+  row: z.output<typeof catalogImportTableRowSchema>,
+) => {
   const catalogId = optionalText(row.catalogId, catalogIdSchema);
   const ownerNote = optionalText(row.ownerNote, z.string().min(1).max(2_000));
-  return canonicalCatalogImportRowSchema.parse({
+  return {
     catalogImportId: catalogImportIdSchema.parse(row.catalogImportId),
     sourceId: sourceIdSchema.parse(row.sourceId),
     ...(catalogId === undefined ? {} : { catalogId }),
@@ -136,6 +182,40 @@ export const canonicalizeCatalogImportTableRow = (input: unknown) => {
       canonicalDescriptionImportFieldSchema,
     ),
     ...(ownerNote === undefined ? {} : { ownerNote }),
+  };
+};
+
+const canonicalizeCollectionAction = (value: string) =>
+  catalogImportCollectionActionSchema.parse(value === "" ? "PRESERVE" : value);
+
+export const canonicalizeCatalogImportV2TableRow = (input: unknown) => {
+  const row = catalogImportV2TableRowSchema.parse(input);
+  return canonicalCatalogImportV2RowSchema.parse({
+    ...canonicalizeCatalogFields(row),
+    scriptStyle: canonicalizeField(
+      row.scriptStyle,
+      row.scriptStyleState,
+      canonicalScriptStyleImportFieldSchema,
+    ),
+    transcription: canonicalizeField(
+      row.transcription,
+      row.transcriptionState,
+      canonicalTranscriptionImportFieldSchema,
+    ),
+    historicalContext: canonicalizeField(
+      row.historicalContext,
+      row.historicalContextState,
+      canonicalHistoricalContextImportFieldSchema,
+    ),
+    scholarlyResearch: canonicalizeField(
+      row.scholarlyResearch,
+      row.scholarlyResearchState,
+      canonicalScholarlyResearchImportFieldSchema,
+    ),
+    contributorsAction: canonicalizeCollectionAction(row.contributorsAction),
+    publicCitationsAction: canonicalizeCollectionAction(
+      row.publicCitationsAction,
+    ),
   });
 };
 
@@ -167,7 +247,53 @@ export const canonicalizeProvenanceImportTableRow = (input: unknown) => {
   });
 };
 
+const canonicalizePosition = (value: string): number => {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
+    throw new Error("position must be an integer from 0 through 2147483647");
+  }
+  const position = Number(value);
+  if (!Number.isSafeInteger(position) || position > 2_147_483_647) {
+    throw new Error("position must be an integer from 0 through 2147483647");
+  }
+  return position;
+};
+
+export const canonicalizeCatalogContributorImportTableRow = (
+  input: unknown,
+) => {
+  const row = catalogContributorImportTableRowSchema.parse(input);
+  return catalogContributorImportRowSchema.parse({
+    catalogImportId: row.catalogImportId,
+    position: canonicalizePosition(row.position),
+    name: row.name,
+    role: row.role,
+  });
+};
+
+export const canonicalizePublicCitationImportTableRow = (input: unknown) => {
+  const row = publicCitationImportTableRowSchema.parse(input);
+  const citation = optionalText(row.citation, z.string().min(1).max(2_000));
+  const url = optionalText(row.url, z.url());
+  const appliesTo =
+    row.appliesTo === ""
+      ? undefined
+      : canonicalizeCatalogImportCitationScopes(row.appliesTo.split("|"));
+  return publicCitationImportRowSchema.parse({
+    catalogImportId: row.catalogImportId,
+    position: canonicalizePosition(row.position),
+    label: row.label,
+    ...(citation === undefined ? {} : { citation }),
+    ...(url === undefined ? {} : { url }),
+    ...(appliesTo === undefined ? {} : { appliesTo }),
+  });
+};
+
 export const parseCatalogImportManifestTableRow = (input: unknown) => {
   const row = catalogImportManifestTableRowSchema.parse(input);
   return importContractVersionSchema.parse(row.importContractVersion);
+};
+
+export const parseSupportedCatalogImportManifestTableRow = (input: unknown) => {
+  const row = catalogImportManifestTableRowSchema.parse(input);
+  return supportedImportContractVersionSchema.parse(row.importContractVersion);
 };

@@ -3,7 +3,11 @@ import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  CATALOG_IMPORT_CONTRACT_VERSION,
   CATALOG_IMPORT_SHEET_NAMES,
+  CATALOG_IMPORT_V2_CONTRACT_VERSION,
+  CATALOG_IMPORT_V2_SHEET_NAMES,
+  CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC,
   CATALOG_IMPORT_XLSX_LAYOUT_SPEC,
 } from "@moya/contracts/internal/catalog-import";
 import ExcelJS from "exceljs";
@@ -19,6 +23,7 @@ import {
 } from "./ooxml-preflight.js";
 
 import type { CatalogImportDiagnostic } from "../diagnostics.js";
+import type { SupportedImportContractVersion } from "@moya/contracts/internal/catalog-import";
 import type {
   LocatedCatalogImportTableRow,
   ParsedCatalogImportBundle,
@@ -66,7 +71,7 @@ const assertNoWorkbookPayload = (workbook: ExcelJS.Workbook): void => {
         ),
       );
     }
-    for (const column of worksheet.columns) {
+    for (const column of worksheet.columns ?? []) {
       if (column.hidden) {
         failCatalogImport(
           diagnostic(
@@ -162,7 +167,24 @@ const plainCellText = (
 ): string => {
   const value = cell.value;
   if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    if (value.length > 32_767) {
+      return failCatalogImport(
+        diagnostic(
+          "OOXML_RESOURCE_LIMIT",
+          "UNSAFE_WORKBOOK_CONTENT",
+          "Plain-text XLSX cells may not exceed 32,767 UTF-16 code units",
+          {
+            sheet: worksheet.name,
+            row: Number(cell.row),
+            ...(machineHeader === undefined ? {} : { machineHeader }),
+            cellReference: cell.address,
+          },
+        ),
+      );
+    }
+    return value;
+  }
   return failCatalogImport(
     diagnostic(
       "XLSX_UNSUPPORTED_CELL_TYPE",
@@ -178,35 +200,92 @@ const plainCellText = (
   );
 };
 
-const assertExactSheets = (workbook: ExcelJS.Workbook): void => {
+type CatalogImportXlsxLayoutSpec =
+  | typeof CATALOG_IMPORT_XLSX_LAYOUT_SPEC
+  | typeof CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC;
+
+const layoutForVersion = (
+  importContractVersion: SupportedImportContractVersion,
+): CatalogImportXlsxLayoutSpec =>
+  importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+    ? CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC
+    : CATALOG_IMPORT_XLSX_LAYOUT_SPEC;
+
+const assertExactSheets = (
+  workbook: ExcelJS.Workbook,
+  importContractVersion: SupportedImportContractVersion,
+): void => {
   const actual = workbook.worksheets.map(({ name }) => name);
-  const expected = new Set<string>(CATALOG_IMPORT_SHEET_NAMES);
+  const expectedSheetNames =
+    importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+      ? CATALOG_IMPORT_V2_SHEET_NAMES
+      : CATALOG_IMPORT_SHEET_NAMES;
+  const expected = new Set<string>(expectedSheetNames);
   if (
-    actual.length !== CATALOG_IMPORT_SHEET_NAMES.length ||
+    actual.length !== expectedSheetNames.length ||
     actual.some((name) => !expected.has(name))
   ) {
     failCatalogImport(
       diagnostic(
         "XLSX_SHEET_LAYOUT_MISMATCH",
         "HEADER_LAYOUT",
-        "Workbook must contain exactly the four catalog-import-xlsx/v1 sheets",
+        `Workbook sheets do not match the exact ${importContractVersion} layout`,
       ),
     );
   }
 };
 
-const assertMetadata = (workbook: ExcelJS.Workbook): void => {
-  const instructions = workbook.getWorksheet("99_Instructions");
-  if (instructions === undefined) {
+const instructionsSheet = (workbook: ExcelJS.Workbook): ExcelJS.Worksheet => {
+  const matches = workbook.worksheets.filter(
+    ({ name }) => name === "99_Instructions",
+  );
+  if (matches.length !== 1 || matches[0] === undefined) {
     return failCatalogImport(
       diagnostic(
         "XLSX_SHEET_LAYOUT_MISMATCH",
-        "HEADER_LAYOUT",
-        "Workbook is missing 99_Instructions",
+        "VERSION_METADATA",
+        "Workbook requires exactly one visible 99_Instructions sheet",
       ),
     );
   }
-  const metadata = CATALOG_IMPORT_XLSX_LAYOUT_SPEC.instructions.metadata;
+  return matches[0];
+};
+
+const readDeclaredVersion = (
+  workbook: ExcelJS.Workbook,
+): SupportedImportContractVersion => {
+  const instructions = instructionsSheet(workbook);
+  const declares = (layout: CatalogImportXlsxLayoutSpec) => {
+    const metadata = layout.instructions.metadata;
+    return (
+      instructions.getCell(metadata.workbookLayoutVersion.valueCell).value ===
+        layout.workbookLayoutVersion &&
+      instructions.getCell(metadata.importContractVersion.valueCell).value ===
+        layout.importContractVersion
+    );
+  };
+  if (declares(CATALOG_IMPORT_XLSX_LAYOUT_SPEC)) {
+    return CATALOG_IMPORT_CONTRACT_VERSION;
+  }
+  if (declares(CATALOG_IMPORT_V2_XLSX_LAYOUT_SPEC)) {
+    return CATALOG_IMPORT_V2_CONTRACT_VERSION;
+  }
+  return failCatalogImport(
+    diagnostic(
+      "XLSX_WORKBOOK_VERSION_MISMATCH",
+      "VERSION_METADATA",
+      "Workbook declares an unsupported or mismatched layout/import contract version pair",
+      { sheet: instructions.name },
+    ),
+  );
+};
+
+const assertMetadata = (
+  workbook: ExcelJS.Workbook,
+  layout: CatalogImportXlsxLayoutSpec,
+): void => {
+  const instructions = instructionsSheet(workbook);
+  const metadata = layout.instructions.metadata;
   const expectedCells = [
     [metadata.sectionCell, metadata.sectionLabel],
     [
@@ -256,7 +335,7 @@ const assertMetadata = (workbook: ExcelJS.Workbook): void => {
           "VERSION_METADATA",
           versionCell
             ? "Workbook declares an unsupported layout or import contract version"
-            : "Workbook technical metadata does not match catalog-import-xlsx/v1",
+            : `Workbook technical metadata does not match ${layout.workbookLayoutVersion}`,
           {
             sheet: instructions.name,
             row: rowNumber,
@@ -268,13 +347,81 @@ const assertMetadata = (workbook: ExcelJS.Workbook): void => {
   }
 };
 
+interface LoadedTableModel {
+  readonly name?: unknown;
+  readonly displayName?: unknown;
+  readonly tableRef?: unknown;
+  readonly autoFilterRef?: unknown;
+  readonly headerRow?: unknown;
+  readonly totalsRow?: unknown;
+  readonly columns?: readonly { readonly name?: unknown }[];
+}
+
+const assertExactTable = (
+  worksheet: ExcelJS.Worksheet,
+  expected: {
+    readonly tableName: string;
+    readonly tableRef: string;
+    readonly fields: readonly { readonly machineHeader: string }[];
+  },
+): number => {
+  const tables = worksheet.getTables() as unknown as readonly ExcelJS.Table[];
+  const table = tables[0];
+  const model = (table as unknown as { readonly model?: LoadedTableModel })
+    ?.model;
+  const expectedHeaders = expected.fields.map(
+    ({ machineHeader }) => machineHeader,
+  );
+  const actualHeaders = model?.columns?.map(({ name }) => name);
+  const expectedReference = /^([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)$/.exec(
+    expected.tableRef,
+  );
+  const actualReference =
+    typeof model?.tableRef === "string"
+      ? /^([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)$/.exec(model.tableRef)
+      : null;
+  const referenceMatches =
+    expectedReference !== null &&
+    actualReference !== null &&
+    actualReference[1] === expectedReference[1] &&
+    actualReference[2] === expectedReference[2] &&
+    actualReference[3] === expectedReference[3] &&
+    Number(actualReference[4]) >= Number(expectedReference[4]) &&
+    Number(actualReference[4]) <=
+      CATALOG_IMPORT_XLSX_LIMITS.maximumWorksheetRows;
+  if (
+    tables.length !== 1 ||
+    table === undefined ||
+    model === undefined ||
+    model.name !== expected.tableName ||
+    model.displayName !== expected.tableName ||
+    !referenceMatches ||
+    model.autoFilterRef !== model.tableRef ||
+    model.headerRow !== true ||
+    model.totalsRow !== false ||
+    actualHeaders?.length !== expectedHeaders.length ||
+    actualHeaders.some((header, index) => header !== expectedHeaders[index])
+  ) {
+    failCatalogImport(
+      diagnostic(
+        "XLSX_SHEET_LAYOUT_MISMATCH",
+        "HEADER_LAYOUT",
+        `Worksheet table must use ${expected.tableName} and the ${expected.tableRef} column boundary`,
+        { sheet: worksheet.name },
+      ),
+    );
+  }
+  return Number(actualReference?.[4]);
+};
+
 const dataRows = (
   worksheet: ExcelJS.Worksheet,
   fields: readonly { readonly machineHeader: string }[],
+  layout: CatalogImportXlsxLayoutSpec,
+  tableLastRow?: number,
 ): LocatedCatalogImportTableRow[] => {
   if (
-    worksheet.rowCount -
-      CATALOG_IMPORT_XLSX_LAYOUT_SPEC.rowRoles.machineHeader >
+    worksheet.rowCount - layout.rowRoles.machineHeader >
     CATALOG_IMPORT_XLSX_LIMITS.maximumDataRowsPerSheet
   ) {
     failCatalogImport(
@@ -287,8 +434,7 @@ const dataRows = (
     );
   }
   const expectedHeaders = fields.map(({ machineHeader }) => machineHeader);
-  const machineHeaderRow =
-    CATALOG_IMPORT_XLSX_LAYOUT_SPEC.rowRoles.machineHeader;
+  const machineHeaderRow = layout.rowRoles.machineHeader;
   const actualHeaders = expectedHeaders.map((_, index) =>
     plainCellText(worksheet, worksheet.getCell(machineHeaderRow, index + 1)),
   );
@@ -308,7 +454,7 @@ const dataRows = (
         diagnostic(
           "XLSX_HEADER_MISMATCH",
           "HEADER_LAYOUT",
-          "Workbook machine headers do not match catalog-import/v1",
+          `Workbook machine headers do not match ${layout.importContractVersion}`,
           {
             sheet: worksheet.name,
             row: machineHeaderRow,
@@ -339,11 +485,28 @@ const dataRows = (
         ),
       );
     }
+    if (
+      tableLastRow !== undefined &&
+      rowNumber > tableLastRow &&
+      expectedHeaders.some(
+        (_, index) => !cellIsBlank(worksheet.getCell(rowNumber, index + 1)),
+      )
+    ) {
+      failCatalogImport(
+        diagnostic(
+          "XLSX_SHEET_LAYOUT_MISMATCH",
+          "HEADER_LAYOUT",
+          "Workbook contains data outside the declared import table",
+          { sheet: worksheet.name, row: rowNumber },
+        ),
+      );
+    }
   }
   const output: LocatedCatalogImportTableRow[] = [];
+  const lastDataRow = tableLastRow ?? worksheet.rowCount;
   for (
-    let rowNumber = CATALOG_IMPORT_XLSX_LAYOUT_SPEC.rowRoles.firstEditableRow;
-    rowNumber <= worksheet.rowCount;
+    let rowNumber = layout.rowRoles.firstEditableRow;
+    rowNumber <= lastDataRow;
     rowNumber += 1
   ) {
     const values = Object.fromEntries(
@@ -375,6 +538,8 @@ const loadValidatedWorkbook = async (
   readonly workbook: ExcelJS.Workbook;
   readonly container: CatalogImportOoxmlPreflightResult;
   readonly sourceArtifactSha256: string;
+  readonly importContractVersion: SupportedImportContractVersion;
+  readonly layout: CatalogImportXlsxLayoutSpec;
 }> => {
   const sourceArtifactSha256 = createHash("sha256").update(input).digest("hex");
   const container = await preflightCatalogImportOoxmlContainer(input);
@@ -397,12 +562,12 @@ const loadValidatedWorkbook = async (
       ),
     );
   }
-  assertExactSheets(workbook);
   assertNoWorkbookPayload(workbook);
-  assertMetadata(workbook);
-  for (const [name, layout] of Object.entries(
-    CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets,
-  )) {
+  const importContractVersion = readDeclaredVersion(workbook);
+  const layout = layoutForVersion(importContractVersion);
+  assertExactSheets(workbook, importContractVersion);
+  assertMetadata(workbook, layout);
+  for (const [name, sheetLayout] of Object.entries(layout.dataSheets)) {
     const worksheet = workbook.getWorksheet(name);
     if (worksheet === undefined) {
       return failCatalogImport(
@@ -414,9 +579,19 @@ const loadValidatedWorkbook = async (
         ),
       );
     }
-    dataRows(worksheet, layout.fields);
+    const tableLastRow =
+      importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+        ? assertExactTable(worksheet, sheetLayout)
+        : undefined;
+    dataRows(worksheet, sheetLayout.fields, layout, tableLastRow);
   }
-  return { workbook, container, sourceArtifactSha256 };
+  return {
+    workbook,
+    container,
+    sourceArtifactSha256,
+    importContractVersion,
+    layout,
+  };
 };
 
 export const preflightCatalogImportXlsxWorkbook = async (
@@ -434,23 +609,44 @@ export const parseCatalogImportXlsxWorkbook = async (
   input: Uint8Array,
 ): Promise<ParsedCatalogImportBundle> => {
   const validated = await loadValidatedWorkbook(input);
-  const dataSheet = <
-    Name extends keyof typeof CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets,
-  >(
-    name: Name,
-  ) => {
+  const dataSheet = (name: string) => {
     const worksheet = validated.workbook.getWorksheet(name);
     if (worksheet === undefined) {
       throw new Error(`Validated workbook is missing ${name}`);
     }
+    const sheetLayout = Object.entries(validated.layout.dataSheets).find(
+      ([sheetName]) => sheetName === name,
+    )?.[1];
+    if (sheetLayout === undefined) {
+      throw new Error(`Validated layout is missing ${name}`);
+    }
+    const tableLastRow =
+      validated.importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+        ? assertExactTable(worksheet, sheetLayout)
+        : undefined;
     return dataRows(
       worksheet,
-      CATALOG_IMPORT_XLSX_LAYOUT_SPEC.dataSheets[name].fields,
+      sheetLayout.fields,
+      validated.layout,
+      tableLastRow,
     );
   };
+  if (validated.importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION) {
+    return buildParsedCatalogImportBundle({
+      sourceFormat: "XLSX",
+      sourceArtifactSha256: validated.sourceArtifactSha256,
+      importContractVersion: validated.importContractVersion,
+      catalogRows: dataSheet("01_Catalog"),
+      aliasRows: dataSheet("02_Aliases"),
+      provenanceRows: dataSheet("03_Provenance"),
+      contributorRows: dataSheet("04_Contributors"),
+      publicCitationRows: dataSheet("05_Public_Citations"),
+    });
+  }
   return buildParsedCatalogImportBundle({
     sourceFormat: "XLSX",
     sourceArtifactSha256: validated.sourceArtifactSha256,
+    importContractVersion: validated.importContractVersion,
     catalogRows: dataSheet("01_Catalog"),
     aliasRows: dataSheet("02_Aliases"),
     provenanceRows: dataSheet("03_Provenance"),

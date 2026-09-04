@@ -5,12 +5,22 @@ import {
   CATALOG_IMPORT_CATALOG_HEADERS,
   CATALOG_IMPORT_CONTRACT_VERSION,
   CATALOG_IMPORT_PROVENANCE_HEADERS,
+  CATALOG_IMPORT_V2_CATALOG_HEADERS,
+  CATALOG_IMPORT_V2_CONTRACT_VERSION,
+  CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+  CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+  CATALOG_IMPORT_V2_WORKBOOK_SPEC,
   CATALOG_IMPORT_WORKBOOK_SPEC,
   canonicalCatalogImportEnvelopeSchema,
+  canonicalCatalogImportV2EnvelopeSchema,
   canonicalizeAliasImportTableRow,
+  canonicalizeCatalogContributorImportTableRow,
+  canonicalizeCatalogImportV2TableRow,
   canonicalizeCatalogImportTableRow,
   canonicalizeProvenanceImportTableRow,
+  canonicalizePublicCitationImportTableRow,
   serializeCanonicalCatalogImportEnvelope,
+  serializeCanonicalCatalogImportV2Envelope,
 } from "@moya/contracts/internal/catalog-import";
 
 import {
@@ -18,7 +28,11 @@ import {
   sortCatalogImportDiagnostics,
 } from "../diagnostics.js";
 
-import type { CanonicalCatalogImportEnvelope } from "@moya/contracts/internal/catalog-import";
+import type {
+  CanonicalCatalogImportEnvelope,
+  CanonicalCatalogImportV2Envelope,
+  SupportedImportContractVersion,
+} from "@moya/contracts/internal/catalog-import";
 import type { CatalogImportDiagnostic } from "../diagnostics.js";
 
 export interface CatalogImportSourceLocation {
@@ -33,19 +47,36 @@ export interface LocatedCatalogImportTableRow {
   readonly location: CatalogImportSourceLocation;
 }
 
-export interface ParsedCatalogImportBundle {
-  readonly envelope: CanonicalCatalogImportEnvelope;
+interface ParsedCatalogImportBundleBase {
   readonly canonicalJson: string;
   readonly canonicalInputSha256: string;
+  readonly sourceFormat?: "CSV" | "XLSX";
+  readonly sourceArtifactSha256?: string;
+  readonly diagnostics?: readonly CatalogImportDiagnostic[];
+}
+
+export interface ParsedCatalogImportV1Bundle extends ParsedCatalogImportBundleBase {
+  readonly envelope: CanonicalCatalogImportEnvelope;
   readonly rowCounts: {
     readonly catalog: number;
     readonly aliases: number;
     readonly provenance: number;
   };
-  readonly sourceFormat?: "CSV" | "XLSX";
-  readonly sourceArtifactSha256?: string;
-  readonly diagnostics?: readonly CatalogImportDiagnostic[];
 }
+
+export interface ParsedCatalogImportV2Bundle extends ParsedCatalogImportBundleBase {
+  readonly envelope: CanonicalCatalogImportV2Envelope;
+  readonly rowCounts: {
+    readonly catalog: number;
+    readonly aliases: number;
+    readonly provenance: number;
+    readonly contributors: number;
+    readonly publicCitations: number;
+  };
+}
+
+export type ParsedCatalogImportBundle =
+  ParsedCatalogImportV1Bundle | ParsedCatalogImportV2Bundle;
 
 interface ValidationIssue {
   readonly path: readonly PropertyKey[];
@@ -148,6 +179,101 @@ const inferMachineHeader = (
       return stateHeader;
     }
   }
+  const v2Pairs: readonly (readonly [
+    string,
+    string,
+    readonly string[],
+    number,
+  ])[] = [
+    [
+      "scriptStyle",
+      "scriptStyleState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.fieldState,
+      2_000,
+    ],
+    [
+      "transcription",
+      "transcriptionState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+      100_000,
+    ],
+    [
+      "historicalContext",
+      "historicalContextState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+      20_000,
+    ],
+    [
+      "scholarlyResearch",
+      "scholarlyResearchState",
+      CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.longFormState,
+      20_000,
+    ],
+  ];
+  for (const [valueHeader, stateHeader, allowedStates, maximum] of v2Pairs) {
+    if (!headers.includes(stateHeader)) continue;
+    const value = values[valueHeader] ?? "";
+    const state = values[stateHeader] ?? "";
+    if (
+      (state !== "" && !allowedStates.includes(state)) ||
+      (value !== "" && state !== "" && state !== "VALUE") ||
+      (value === "" && state === "VALUE")
+    ) {
+      return stateHeader;
+    }
+    if (value !== "" && (value !== value.trim() || value.length > maximum)) {
+      return valueHeader;
+    }
+  }
+  for (const actionHeader of [
+    "contributorsAction",
+    "publicCitationsAction",
+  ] as const) {
+    const action = values[actionHeader] ?? "";
+    if (
+      headers.includes(actionHeader) &&
+      action !== "" &&
+      !CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.collectionAction.includes(
+        action as "PRESERVE" | "REPLACE" | "CLEAR",
+      )
+    ) {
+      return actionHeader;
+    }
+  }
+  if (headers.includes("citation") && values.citation !== "") {
+    const citation = values.citation ?? "";
+    if (citation !== citation.trim() || citation.length > 2_000) {
+      return "citation";
+    }
+  }
+  if (headers.includes("url") && values.url !== "") {
+    if (!URL.canParse((values.url ?? "").trim())) {
+      return "url";
+    }
+  }
+  if (headers.includes("appliesTo") && values.appliesTo !== "") {
+    const scopes = (values.appliesTo ?? "").split("|");
+    if (
+      new Set(scopes).size !== scopes.length ||
+      scopes.some(
+        (scope) =>
+          !CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.citationScope.includes(
+            scope as (typeof CATALOG_IMPORT_V2_WORKBOOK_SPEC.allowedValues.citationScope)[number],
+          ),
+      )
+    ) {
+      return "appliesTo";
+    }
+  }
+  if (headers.includes("position")) {
+    const position = values.position ?? "";
+    if (
+      !/^(?:0|[1-9][0-9]*)$/.test(position) ||
+      Number(position) > 2_147_483_647
+    ) {
+      return "position";
+    }
+  }
   return undefined;
 };
 
@@ -168,8 +294,17 @@ const rowDiagnostics = (
         (item): item is string =>
           typeof item === "string" && headers.includes(item),
       );
+    const clearStateHeader =
+      issue.message === "CLEAR is invalid for a create candidate" &&
+      issueHeader !== undefined &&
+      headers.includes(`${issueHeader}State`) &&
+      row.values[`${issueHeader}State`] === "CLEAR"
+        ? `${issueHeader}State`
+        : undefined;
     const machineHeader =
-      issueHeader ?? inferMachineHeader(row.values, headers);
+      clearStateHeader ??
+      issueHeader ??
+      inferMachineHeader(row.values, headers);
     const reference = cellReference(row.location, headers, machineHeader);
     return {
       code: "TABULAR_ROW_INVALID",
@@ -207,15 +342,21 @@ const crossRowDiagnostics = (
   error: unknown,
   tables: {
     readonly sourceFormat: "CSV" | "XLSX";
+    readonly importContractVersion?: SupportedImportContractVersion;
     readonly catalogRows: readonly LocatedCatalogImportTableRow[];
     readonly aliasRows: readonly LocatedCatalogImportTableRow[];
     readonly provenanceRows: readonly LocatedCatalogImportTableRow[];
+    readonly contributorRows?: readonly LocatedCatalogImportTableRow[];
+    readonly publicCitationRows?: readonly LocatedCatalogImportTableRow[];
   },
 ): CatalogImportDiagnostic[] => {
   const tableLocations = {
     catalogRows: {
       rows: tables.catalogRows,
-      headers: CATALOG_IMPORT_CATALOG_HEADERS,
+      headers:
+        tables.importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION
+          ? CATALOG_IMPORT_V2_CATALOG_HEADERS
+          : CATALOG_IMPORT_CATALOG_HEADERS,
     },
     aliasRows: {
       rows: tables.aliasRows,
@@ -224,6 +365,14 @@ const crossRowDiagnostics = (
     provenanceRows: {
       rows: tables.provenanceRows,
       headers: CATALOG_IMPORT_PROVENANCE_HEADERS,
+    },
+    contributorRows: {
+      rows: tables.contributorRows ?? [],
+      headers: CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+    },
+    publicCitationRows: {
+      rows: tables.publicCitationRows ?? [],
+      headers: CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
     },
   } as const;
   const issues = validationIssues(error);
@@ -277,10 +426,82 @@ const crossRowDiagnostics = (
 export const buildParsedCatalogImportBundle = (input: {
   readonly sourceFormat: "CSV" | "XLSX";
   readonly sourceArtifactSha256?: string;
+  readonly importContractVersion?: SupportedImportContractVersion;
   readonly catalogRows: readonly LocatedCatalogImportTableRow[];
   readonly aliasRows: readonly LocatedCatalogImportTableRow[];
   readonly provenanceRows: readonly LocatedCatalogImportTableRow[];
+  readonly contributorRows?: readonly LocatedCatalogImportTableRow[];
+  readonly publicCitationRows?: readonly LocatedCatalogImportTableRow[];
 }): ParsedCatalogImportBundle => {
+  const importContractVersion =
+    input.importContractVersion ?? CATALOG_IMPORT_CONTRACT_VERSION;
+  if (importContractVersion === CATALOG_IMPORT_V2_CONTRACT_VERSION) {
+    const catalogRows = canonicalizeRows(
+      input.catalogRows,
+      CATALOG_IMPORT_V2_CATALOG_HEADERS,
+      canonicalizeCatalogImportV2TableRow,
+    );
+    const aliasRows = canonicalizeRows(
+      input.aliasRows,
+      CATALOG_IMPORT_ALIAS_HEADERS,
+      canonicalizeAliasImportTableRow,
+    );
+    const provenanceRows = canonicalizeRows(
+      input.provenanceRows,
+      CATALOG_IMPORT_PROVENANCE_HEADERS,
+      canonicalizeProvenanceImportTableRow,
+    );
+    const contributorRows = canonicalizeRows(
+      input.contributorRows ?? [],
+      CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
+      canonicalizeCatalogContributorImportTableRow,
+    );
+    const publicCitationRows = canonicalizeRows(
+      input.publicCitationRows ?? [],
+      CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
+      canonicalizePublicCitationImportTableRow,
+    );
+    let submittedEnvelope: CanonicalCatalogImportV2Envelope;
+    try {
+      submittedEnvelope = canonicalCatalogImportV2EnvelopeSchema.parse({
+        importContractVersion,
+        catalogRows,
+        aliasRows,
+        provenanceRows,
+        contributorRows,
+        publicCitationRows,
+      });
+    } catch (error) {
+      throw new CatalogImportDiagnosticError(
+        sortCatalogImportDiagnostics(crossRowDiagnostics(error, input)),
+      );
+    }
+    const canonicalJson =
+      serializeCanonicalCatalogImportV2Envelope(submittedEnvelope);
+    const envelope = canonicalCatalogImportV2EnvelopeSchema.parse(
+      JSON.parse(canonicalJson),
+    );
+    return {
+      envelope,
+      canonicalJson,
+      canonicalInputSha256: createHash("sha256")
+        .update(canonicalJson, "utf8")
+        .digest("hex"),
+      rowCounts: {
+        catalog: catalogRows.length,
+        aliases: aliasRows.length,
+        provenance: provenanceRows.length,
+        contributors: contributorRows.length,
+        publicCitations: publicCitationRows.length,
+      },
+      sourceFormat: input.sourceFormat,
+      ...(input.sourceArtifactSha256 === undefined
+        ? {}
+        : { sourceArtifactSha256: input.sourceArtifactSha256 }),
+      diagnostics: [],
+    };
+  }
+
   const catalogRows = canonicalizeRows(
     input.catalogRows,
     CATALOG_IMPORT_CATALOG_HEADERS,

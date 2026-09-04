@@ -1069,6 +1069,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     );
     const previousMigrations = requiredMigrations.slice(0, 4);
     const contentMigration = requiredMigrations[4];
+    const importV2Migration = requiredMigrations[5];
     let upgradeHandle: BackendProcessHandle | undefined;
 
     try {
@@ -1076,6 +1077,11 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       if (contentMigration === undefined) {
         throw new Error("T09-B1A Content V1 migration is required");
       }
+      if (importV2Migration === undefined) {
+        throw new Error("T09-B1B Catalog Import V2 migration is required");
+      }
+      expect(contentMigration.migrationId).toBe("20260903173554");
+      expect(importV2Migration.migrationId).toBe("20260903193318");
 
       for (const migration of previousMigrations) {
         await upgradePool.query(
@@ -1220,6 +1226,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
 
       expect(await runMigrations(upgradePool, migrationsDirectory)).toEqual([
         contentMigration.migrationId,
+        importV2Migration.migrationId,
       ]);
       expect(await runMigrations(upgradePool, migrationsDirectory)).toEqual([]);
       await expect(
