@@ -25,7 +25,7 @@
     "generate:catalog-import-v2-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --version v2",
     "check:catalog-import-v2-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --version v2 --check",
     "format": "prettier --write .",
-    "format:check": "prettier --write apps/web/README.md docs/architecture.md docs/governance/amendments/2026-09-04-react-product-current-authority.md docs/governance/history/2026-09-04-status-and-lineage-reset-rule-audit.md docs/history/milestones.md docs/project-status.md docs/README.md README.md tests/unit/architecture/current-truth-config.test.ts && echo FORMAT_DIFF_BEGIN && git diff --no-ext-diff --no-color -- apps/web/README.md docs/architecture.md docs/governance/amendments/2026-09-04-react-product-current-authority.md docs/governance/history/2026-09-04-status-and-lineage-reset-rule-audit.md docs/history/milestones.md docs/project-status.md docs/README.md README.md tests/unit/architecture/current-truth-config.test.ts && echo FORMAT_DIFF_END && exit 1"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
