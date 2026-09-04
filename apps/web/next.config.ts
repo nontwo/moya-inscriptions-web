@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
+const allowedDevOrigins =
+  process.env.NODE_ENV === "development"
+    ? (process.env.MOYA_ALLOWED_DEV_ORIGINS ?? "")
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0)
+    : [];
+
 const nextConfig: NextConfig = {
+  ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
   outputFileTracingRoot: new URL("../../", import.meta.url).pathname,
   outputFileTracingIncludes: {
     "/": [
