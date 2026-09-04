@@ -35,23 +35,23 @@ bounded Home, Browse, Detail, Carousel, Viewer, Settings, history, focus,
 scroll-restoration, gesture, accessibility, and responsive behavior.
 
 This React implementation preserves the accepted T02 product behavior that was
-progressively extracted, independently validated, accepted where visual
-judgment applied, and merged through the R01–R03 and MIG delivery lineage. It is
-now the single current Formal Web implementation. No task may create a second
-Formal Product Shell, Detail, Carousel, Viewer, navigation, or history owner.
+progressively extracted, independently validated, accepted where visual judgment
+applied, and merged through the R01–R03 and MIG delivery lineage. It is now the
+single current Formal Web implementation. No task may create a second Formal
+Product Shell, Detail, Carousel, Viewer, navigation, or history owner.
 
 ## 3. Prototype and legacy static boundary
 
-`/docs/prototypes/mobile-preview/` remains a direct, non-production Prototype and
-visual/interaction reference. Its fixtures, local state, demo media, P5
+`/docs/prototypes/mobile-preview/` remains a direct, non-production Prototype
+and visual/interaction reference. Its fixtures, local state, demo media, P5
 snapshot, and static document are not Production data or current Formal Web
 runtime composition.
 
 `apps/web/lib/t02-static-files.ts` and its `formal-root` test seam are retained
-legacy compatibility and regression evidence. The current `apps/web/app/page.tsx`
-Formal route does not call that seam. Repository presence must not be described
-as current Formal runtime authority and does not authorize Prototype
-consumption by Production.
+legacy compatibility and regression evidence. The current
+`apps/web/app/page.tsx` Formal route does not call that seam. Repository
+presence must not be described as current Formal runtime authority and does not
+authorize Prototype consumption by Production.
 
 Development and QA may continue using explicit synthetic scenarios that remain
 semantically distinct from real runtime records. Production continues to use
@@ -80,17 +80,16 @@ superseded as a deferred example. Person, Institution, generic Place, generic
 taxonomy, CMS, knowledge graph, OCR/annotation, and other unapproved domains
 remain deferred unless separately authorized.
 
-The remaining Content V1 task is bounded frontend presentation (`T09-F1`).
-This amendment does not implement or visually specify that task.
+The remaining Content V1 task is bounded frontend presentation (`T09-F1`). This
+amendment does not implement or visually specify that task.
 
 ## 5. Future presentation changes
 
 The former future `T02 Productionization` migration has already occurred through
 the accepted React cutover lineage. Any future material replacement, second
-implementation, architecture migration, or redesign of the current React
-Product presentation still requires its own explicit Scope, Behavior Matrix,
-Plan, applicable Owner visual judgment, independent review, and merge
-verification.
+implementation, architecture migration, or redesign of the current React Product
+presentation still requires its own explicit Scope, Behavior Matrix, Plan,
+applicable Owner visual judgment, independent review, and merge verification.
 
 Ordinary data, API, content, or backend work must change the approved data or
 function path without duplicating or silently replacing the current React UI.
