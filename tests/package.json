@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit --project e2e/tsconfig.json",
     "test": "vitest run --exclude 'integration/postgres/**' --exclude 'e2e/**'",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:smoke": "playwright test --config e2e/playwright.config.ts formal-web.spec.ts --project=desktop-chromium --workers=1",
     "test:postgres": "vitest run integration/postgres"
   },
   "devDependencies": {
