@@ -1,0 +1,51 @@
+name: Format Preview
+
+on:
+  push:
+    branches:
+      - chore/ci-e2e-fast-path
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Emit Prettier output
+        run: |
+          set -euo pipefail
+          pnpm format
+
+          files=(
+            ".github/workflows/ci.yml"
+            ".github/workflows/e2e-full.yml"
+            "docs/governance/history/2026-09-04-proportionate-browser-ci-audit.md"
+            "scripts/ci-e2e-scope.mjs"
+            "tests/e2e/README.md"
+            "tests/unit/architecture/ci-e2e-policy.test.ts"
+          )
+
+          for file in "${files[@]}"; do
+            echo "FORMAT_FILE_BEGIN:$file"
+            base64 -w0 "$file"
+            echo
+            echo "FORMAT_FILE_END:$file"
+          done
