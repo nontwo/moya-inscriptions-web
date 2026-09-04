@@ -5,8 +5,7 @@ import { useCallback, useState } from "react";
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 import { homeScenarioNames } from "./home-scenario-contract";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
-import { QaInscriptionFilter } from "./inscription-filter-presentation";
-import { T02pQaSearch } from "./t02p-qa-search";
+import { QaProductUtilities } from "./inscription-filter-presentation";
 import { qaSearchScenarioNames, qaSearchScenarios } from "./search-scenarios";
 
 import type { HomeFeed } from "../home/home-feed";
@@ -210,15 +209,12 @@ export const T02pQaHarness = ({
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
         productUtility={
-          <>
-            <T02pQaSearch
-              initialKeyword={search.initialKeyword}
-              initialOpen={search.initialOpen}
-              key={searchScenario}
-              showEmptyState={search.showEmptyState}
-            />
-            <QaInscriptionFilter />
-          </>
+          <QaProductUtilities
+            initialKeyword={search.initialKeyword}
+            initialSearchOpen={search.initialOpen}
+            key={searchScenario}
+            showEmptyState={search.showEmptyState}
+          />
         }
         showDevelopmentPagerControls
         states={states}

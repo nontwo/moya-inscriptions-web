@@ -99,6 +99,7 @@ export interface ProductShellContextValue {
     opener: HTMLButtonElement,
   ) => void;
   readonly restoreActiveScrollTop: (top: number) => void;
+  readonly settingsOpen: boolean;
   readonly theme: ThemePreference;
 }
 
@@ -1299,6 +1300,7 @@ export const ProductShell = ({
     registerActiveHomeScrollElement,
     registerTopicOpener,
     restoreActiveScrollTop,
+    settingsOpen,
     theme,
   };
   const ownedOverlayOpen =

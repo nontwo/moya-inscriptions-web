@@ -1,10 +1,15 @@
 .root {
   --qa-utility-size: 44px;
+  --qa-compact-filter-reserve: calc(
+    max(var(--yoyi-space-4), env(safe-area-inset-right)) + 68px +
+      var(--yoyi-space-3)
+  );
   position: fixed;
   z-index: calc(var(--yoyi-z-index-navigation) + 12);
   top: max(var(--yoyi-space-3), env(safe-area-inset-top));
   right: calc(
-    var(--yoyi-space-4) + var(--qa-utility-size) + var(--yoyi-space-3)
+    max(var(--yoyi-space-4), env(safe-area-inset-right)) +
+      var(--qa-utility-size) + var(--yoyi-space-3)
   );
   width: var(--qa-utility-size);
   font-family: var(--yoyi-font-interface);
@@ -69,7 +74,7 @@
 
 .group h2 {
   margin: 0 0 var(--yoyi-space-3);
-  color: var(--yoyi-color-text-tertiary);
+  color: var(--yoyi-color-text-secondary);
   font-size: var(--yoyi-type-caption-size);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -133,7 +138,7 @@
 .intentStatus {
   min-height: 1.4em;
   margin: var(--yoyi-space-4) 0 0;
-  color: var(--yoyi-color-text-tertiary);
+  color: var(--yoyi-color-text-secondary);
   font-size: var(--yoyi-type-caption-size);
 }
 
@@ -171,16 +176,26 @@
 
 @media (min-width: 56rem) {
   .root {
-    top: var(--yoyi-space-5);
+    --qa-compact-filter-reserve: calc(
+      max(var(--yoyi-space-6), env(safe-area-inset-right)) + 72px +
+        var(--yoyi-space-3)
+    );
+    top: max(var(--yoyi-space-5), env(safe-area-inset-top));
     right: calc(
-      var(--yoyi-space-6) + var(--qa-utility-size) + var(--yoyi-space-3)
+      max(var(--yoyi-space-6), env(safe-area-inset-right)) +
+        var(--qa-utility-size) + var(--yoyi-space-3)
     );
   }
 }
 
+.root[data-platform="pc"] .panel {
+  right: var(--yoyi-space-3);
+}
+
 .root[data-platform="phone"][data-open],
 .root[data-platform="tablet"][data-open] {
-  left: var(--yoyi-space-4);
+  right: var(--qa-compact-filter-reserve);
+  left: max(var(--yoyi-space-4), env(safe-area-inset-left));
   width: auto;
 }
 

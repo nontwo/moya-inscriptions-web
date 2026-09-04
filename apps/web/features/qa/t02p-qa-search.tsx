@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@moya/ui";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
   qaRecentSearches,
@@ -14,9 +14,11 @@ import styles from "./t02p-qa-search.module.css";
 export interface QaSearchPresentationProps {
   readonly initialKeyword?: string;
   readonly initialOpen?: boolean;
+  readonly open?: boolean;
   readonly onSearchIntent?: (keyword: string) => void;
   readonly onSuggestionIntent?: (keyword: string) => void;
   readonly onClearIntent?: () => void;
+  readonly onOpenChange?: (open: boolean) => void;
   readonly showEmptyState?: boolean;
 }
 
@@ -24,24 +26,42 @@ export const T02pQaSearch = ({
   initialKeyword = "",
   initialOpen = false,
   onClearIntent,
+  onOpenChange,
   onSearchIntent,
   onSuggestionIntent,
+  open: controlledOpen,
   showEmptyState = false,
 }: QaSearchPresentationProps) => {
   const { platform } = useProductShell();
-  const [isOpen, setIsOpen] = useState(initialOpen);
+  const [localOpen, setLocalOpen] = useState(initialOpen);
   const [keyword, setKeyword] = useState(initialKeyword);
   const [lastIntent, setLastIntent] = useState<string | null>(null);
+  const [isSeededEmpty, setIsSeededEmpty] = useState(showEmptyState);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelId = useId();
+  const inputId = useId();
   const isCompact = platform !== "pc";
+  const isOpen = controlledOpen ?? localOpen;
 
-  const close = () => {
-    setIsOpen(false);
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
-  };
+  const updateOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (controlledOpen === undefined) setLocalOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [controlledOpen, onOpenChange],
+  );
+
+  const close = useCallback(
+    (restoreTriggerFocus: boolean) => {
+      updateOpen(false);
+      if (restoreTriggerFocus) {
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+    },
+    [updateOpen],
+  );
 
   const submit = () => {
     const value = keyword.trim();
@@ -53,6 +73,7 @@ export const T02pQaSearch = ({
   const chooseSuggestion = (value: string) => {
     setKeyword(value);
     setLastIntent(`已记录建议意图：${value}`);
+    setIsSeededEmpty(false);
     onSuggestionIntent?.(value);
     window.requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -60,25 +81,37 @@ export const T02pQaSearch = ({
   const clear = () => {
     setKeyword("");
     setLastIntent(null);
+    setIsSeededEmpty(false);
     onClearIntent?.();
     window.requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   useEffect(() => {
     if (!isOpen) return;
-    window.requestAnimationFrame(() => inputRef.current?.focus());
+    const activeElementWhenScheduled = document.activeElement;
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (
+        document.activeElement !== activeElementWhenScheduled &&
+        document.activeElement !== triggerRef.current
+      ) {
+        return;
+      }
+      inputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (rootRef.current?.contains(event.target as Node) !== true) close();
+      if (rootRef.current?.contains(event.target as Node) !== true)
+        close(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      close();
+      close(true);
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -87,7 +120,7 @@ export const T02pQaSearch = ({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen]);
+  }, [close, isOpen]);
 
   const suggestionItems =
     keyword.length === 0 ? qaSuggestedSearches : qaTypingSuggestions;
@@ -103,12 +136,12 @@ export const T02pQaSearch = ({
       <button
         aria-controls={panelId}
         aria-expanded={isOpen}
-        aria-label="打开搜索"
+        aria-label={isOpen ? "关闭搜索" : "打开搜索"}
         className={`${styles.trigger} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
         data-search-trigger=""
         onClick={() => {
-          if (isOpen) close();
-          else setIsOpen(true);
+          if (isOpen) close(true);
+          else updateOpen(true);
         }}
         ref={triggerRef}
         type="button"
@@ -136,21 +169,24 @@ export const T02pQaSearch = ({
                 aria-label="关闭搜索"
                 className="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
                 data-search-close=""
-                onClick={close}
+                onClick={() => close(true)}
                 type="button"
               >
                 <Icon aria-hidden="true" name="back" />
               </button>
             ) : null}
-            <label className={`${styles.input} yoyi-search-input`}>
+            <div className={`${styles.input} yoyi-search-input`}>
               <Icon aria-hidden="true" name="search" />
-              <span className={styles.visuallyHidden}>搜索关键词</span>
+              <label className={styles.visuallyHidden} htmlFor={inputId}>
+                搜索关键词
+              </label>
               <input
-                aria-label="搜索关键词"
                 autoComplete="off"
+                id={inputId}
                 onChange={(event) => {
                   setKeyword(event.currentTarget.value);
                   setLastIntent(null);
+                  setIsSeededEmpty(false);
                 }}
                 placeholder="搜索碑刻、书帖……"
                 ref={inputRef}
@@ -168,7 +204,7 @@ export const T02pQaSearch = ({
                   <Icon aria-hidden="true" name="close" />
                 </button>
               )}
-            </label>
+            </div>
             <button
               aria-label="提交搜索"
               className={`${styles.submit} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md`}
@@ -182,7 +218,7 @@ export const T02pQaSearch = ({
                 aria-label="关闭搜索"
                 className="yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md"
                 data-search-close=""
-                onClick={close}
+                onClick={() => close(true)}
                 type="button"
               >
                 <Icon aria-hidden="true" name="close" />
@@ -191,7 +227,7 @@ export const T02pQaSearch = ({
           </form>
 
           <div className={styles.content} data-search-content="">
-            {showEmptyState ? (
+            {isSeededEmpty ? (
               <div className={styles.empty} data-search-empty="" role="status">
                 <Icon aria-hidden="true" name="empty" />
                 <strong>没有找到相关内容</strong>

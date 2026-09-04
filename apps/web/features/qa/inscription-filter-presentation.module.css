@@ -2,13 +2,13 @@
   position: fixed;
   z-index: calc(var(--yoyi-z-index-navigation) + 11);
   top: calc(max(var(--yoyi-space-3), env(safe-area-inset-top)) + 52px);
-  right: calc(var(--yoyi-space-4) - 14px);
+  right: max(0px, env(safe-area-inset-right));
   font-family: var(--yoyi-font-interface);
 }
 
 .trigger {
   display: flex;
-  width: 72px;
+  width: 68px;
   height: 44px;
   margin-left: auto;
   align-items: center;
@@ -112,7 +112,7 @@
   cursor: pointer;
 }
 
-.popover button[aria-selected="true"] {
+.popover button[aria-pressed="true"] {
   background: var(--yoyi-color-seal-red-muted);
   font-weight: 650;
 }
@@ -125,7 +125,9 @@
   align-items: flex-end;
   justify-content: center;
   padding: var(--yoyi-space-4);
+  padding-right: max(var(--yoyi-space-4), env(safe-area-inset-right));
   padding-bottom: max(var(--yoyi-space-4), env(safe-area-inset-bottom));
+  padding-left: max(var(--yoyi-space-4), env(safe-area-inset-left));
   background: var(--yoyi-color-overlay);
   animation: fadeIn var(--yoyi-duration-normal) var(--yoyi-easing-standard);
 }
@@ -177,7 +179,7 @@
 }
 
 .sheetActions button:last-child {
-  color: var(--yoyi-color-text-inverse);
+  color: var(--qa-filter-confirm-foreground, var(--yoyi-color-text-inverse));
   background: var(--yoyi-color-seal-red);
   border-color: var(--yoyi-color-seal-red);
 }
@@ -269,8 +271,22 @@
 
 @media (min-width: 56rem) {
   .root {
-    top: calc(var(--yoyi-space-5) + 52px);
-    right: calc(var(--yoyi-space-6) - 14px);
+    top: calc(max(var(--yoyi-space-5), env(safe-area-inset-top)) + 52px);
+    right: max(calc(var(--yoyi-space-6) - 14px), env(safe-area-inset-right));
+  }
+
+  .trigger {
+    width: 72px;
+  }
+}
+
+:global(:root[data-theme="dark"]) .root {
+  --qa-filter-confirm-foreground: var(--yoyi-color-background-page);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .root {
+    --qa-filter-confirm-foreground: var(--yoyi-color-background-page);
   }
 }
 

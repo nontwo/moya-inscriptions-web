@@ -47,8 +47,8 @@ describe("T02pQaPage", () => {
     expect(markup).toContain("data-clean-product-preview");
     expect(markup).toContain("data-product-shell");
     expect(markup).toContain("data-development-primary-pager");
-    expect(markup).toContain("data-inscription-filter");
-    expect(markup).toContain("data-filter-trigger");
+    expect(markup).not.toContain("data-inscription-filter");
+    expect(markup).not.toContain("data-filter-trigger");
     expect(markup).toContain("data-t02p-qa-search");
     expect(markup).toContain("data-search-trigger");
     expect(markup).toContain("data-qa-search-scenario-selector");
