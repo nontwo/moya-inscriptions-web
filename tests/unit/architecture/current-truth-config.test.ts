@@ -174,12 +174,8 @@ describe("current repository truth and local configuration", () => {
     expect(milestones).toContain("T09-B1B");
     expect(milestones).not.toContain("Production T02 bridge 仍保留");
 
-    expect(agents).toContain(
-      "2026-09-04-react-product-current-authority.md",
-    );
+    expect(agents).toContain("2026-09-04-react-product-current-authority.md");
     expect(currentAuthorityAmendment).toContain("apps/web/app/page.tsx");
-    expect(currentAuthorityAmendment).toContain(
-      "T09-F1",
-    );
+    expect(currentAuthorityAmendment).toContain("T09-F1");
   });
 });
