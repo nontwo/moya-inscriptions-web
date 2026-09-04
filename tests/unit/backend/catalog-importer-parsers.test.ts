@@ -1119,12 +1119,23 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
         appliesTo: "record|scholarlyResearch",
       },
     ];
+    const catalogRowsWithDisplayFields = [
+      {
+        ...v2CatalogRows[0],
+        summary: "标题下的合成短导语",
+        periodLabel: "唐代（synthetic）",
+      },
+    ];
     const csv = await parseCatalogImportCsvBundle(
-      await writeV2CsvBundle({ publicCitations: citationRows }),
+      await writeV2CsvBundle({
+        catalog: catalogRowsWithDisplayFields,
+        publicCitations: citationRows,
+      }),
     );
     const xlsx = await parseCatalogImportXlsxWorkbook(
       await workbookBytes(
         await validV2Workbook({
+          catalog: catalogRowsWithDisplayFields,
           contributors: [...v2ContributorRows].reverse(),
           publicCitations: [...citationRows].reverse(),
         }),
@@ -1149,6 +1160,8 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       state: "VALUE",
       value: "第一行\n第二行（synthetic）",
     });
+    expect(xlsx.envelope.catalogRows[0]?.summary).toBe("标题下的合成短导语");
+    expect(xlsx.envelope.catalogRows[0]?.periodLabel).toBe("唐代（synthetic）");
     expect(
       (
         JSON.parse(xlsx.canonicalJson) as {
@@ -1749,7 +1762,7 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
 
   it("rejects mismatched XLSX version pairs before selected-layout parsing", async () => {
     const v2Workbook = await validV2Workbook();
-    v2Workbook.getWorksheet("99_Instructions")!.getCell("B93").value =
+    v2Workbook.getWorksheet("99_Instructions")!.getCell("B95").value =
       "catalog-import/v1";
     await expectDiagnostic(
       parseCatalogImportXlsxWorkbook(await workbookBytes(v2Workbook)),
@@ -1821,7 +1834,7 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       sheet: "01_Catalog",
       row: 3,
       machineHeader: "transcriptionState",
-      cellReference: "Y3",
+      cellReference: "AA3",
     });
 
     const invalidAction = await validV2Workbook({
@@ -1835,7 +1848,7 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       sheet: "01_Catalog",
       row: 3,
       machineHeader: "contributorsAction",
-      cellReference: "AD3",
+      cellReference: "AF3",
     });
 
     const clearState = await validV2Workbook({
@@ -1855,12 +1868,15 @@ describe("catalog-import/v2 CSV/XLSX versioned parsing", () => {
       sheet: "01_Catalog",
       row: 3,
       machineHeader: "transcriptionState",
-      cellReference: "Y3",
+      cellReference: "AA3",
     });
   });
 
-  it("maps v2 CSV state and collection-action failures to machine headers", async () => {
+  it("maps v2 CSV scalar, state and collection-action failures to machine headers", async () => {
     for (const [catalog, machineHeader] of [
+      [{ ...v2CatalogRows[0], summary: "x".repeat(2_001) }, "summary"],
+      [{ ...v2CatalogRows[0], periodLabel: " 唐代" }, "periodLabel"],
+      [{ ...v2CatalogRows[0], summary: "合成\u0000导语" }, "summary"],
       [
         { ...v2CatalogRows[0], transcriptionState: "UNKNOWN" },
         "transcriptionState",

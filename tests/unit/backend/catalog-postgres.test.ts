@@ -119,7 +119,7 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       title: "Test inscription",
       summary: "Summary",
       description: "Description",
-      period_label: "Legacy period",
+      period_label: "唐贞观十年（636）",
       dynasty: "唐",
       dynasty_state: "VALUE",
       date_text: "贞观十年",
@@ -185,7 +185,7 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       title: row.title,
       aliases: ["Alias"],
       summary: row.summary,
-      periodLabel: "唐 · 贞观十年",
+      periodLabel: "唐贞观十年（636）",
     });
     const detail = mapCatalogDetailRow(
       row,
@@ -209,7 +209,7 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
     );
 
     expect(detail).toMatchObject({
-      periodLabel: "唐 · 贞观十年",
+      periodLabel: "唐贞观十年（636）",
       dynasty: { state: "VALUE", value: "唐" },
       dateText: { state: "VALUE", value: "贞观十年" },
       province: { state: "VALUE", value: "陕西" },
@@ -236,6 +236,9 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
         },
       ],
     });
+    expect(
+      mapCatalogEntryRow({ ...row, period_label: null }, []),
+    ).toMatchObject({ periodLabel: "唐 · 贞观十年" });
     const serialized = JSON.stringify(detail);
     for (const databaseField of [
       "raw_source",

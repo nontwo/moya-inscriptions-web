@@ -291,7 +291,12 @@ const applyInput = (
 
 type V2CatalogRow = CanonicalCatalogImportV2Envelope["catalogRows"][number];
 type V2ScalarFieldName =
-  "scriptStyle" | "transcription" | "historicalContext" | "scholarlyResearch";
+  | "summary"
+  | "periodLabel"
+  | "scriptStyle"
+  | "transcription"
+  | "historicalContext"
+  | "scholarlyResearch";
 type V2ContributorInput = Omit<
   CanonicalCatalogImportV2Envelope["contributorRows"][number],
   "catalogImportId"
@@ -1856,6 +1861,10 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
 
   it("creates the full V2 content graph and exposes only the approved Detail projection", async () => {
     const parsed = buildV2ParsedBundle({
+      scalarFields: {
+        summary: "用于目录列表的公开摘要",
+        periodLabel: "唐贞观十年（636）",
+      },
       contributorRows: [
         defaultV2Contributors[1],
         { ...defaultV2Contributors[0], position: 2_147_483_647 },
@@ -1924,8 +1933,8 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
         catalog_id: v2CatalogId,
         kind: "inscription",
         title: "V2 测试碑刻",
-        summary: null,
-        period_label: null,
+        summary: "用于目录列表的公开摘要",
+        period_label: "唐贞观十年（636）",
         dynasty: "唐",
         dynasty_state: "VALUE",
         description: "V2 测试说明",
@@ -2044,7 +2053,8 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
         kind: "inscription",
         title: "V2 测试碑刻",
         aliases: [],
-        periodLabel: "唐",
+        summary: "用于目录列表的公开摘要",
+        periodLabel: "唐贞观十年（636）",
         dynasty: "唐",
         contributors: [
           { name: "魏徵", role: "textAuthor" },
@@ -2077,7 +2087,8 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
             kind: "inscription",
             title: "V2 测试碑刻",
             aliases: [],
-            periodLabel: "唐",
+            summary: "用于目录列表的公开摘要",
+            periodLabel: "唐贞观十年（636）",
           },
         ],
         page: 1,
@@ -2112,6 +2123,256 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     } finally {
       await backend.shutdown();
     }
+  });
+
+  it("stores omitted V2 display fields as NULL on create", async () => {
+    const parsed = buildV2ParsedBundle();
+    const dryRun = await createV2DryRun(parsed, "2026-09-03T20:01:05.000Z");
+    await applyCatalogImport(pool, {
+      ...applyInput(parsed, dryRun, "v2-display-omitted-create"),
+      catalogIdAllocator: fakeAllocator(v2CatalogId),
+    });
+    await expect(
+      pool.query(
+        "SELECT summary, period_label FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ summary: null, period_label: null }],
+    });
+  });
+
+  it("preserves, classifies, stale-checks, rolls back, and replays V2 display fields", async () => {
+    const initialSummary = "初始公开摘要";
+    const initialPeriodLabel = "唐代（初始标签）";
+    const seed = buildV2ParsedBundle({
+      scalarFields: {
+        summary: initialSummary,
+        periodLabel: initialPeriodLabel,
+      },
+    });
+    const seedDryRun = await createV2DryRun(seed, "2026-09-03T20:01:10.000Z");
+    await applyCatalogImport(pool, {
+      ...applyInput(seed, seedDryRun, "v2-display-seed"),
+      catalogIdAllocator: fakeAllocator(v2CatalogId),
+    });
+
+    const omitted = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+    });
+    const omittedDryRun = await createV2DryRun(
+      omitted,
+      "2026-09-03T20:01:11.000Z",
+    );
+    expect(omittedDryRun).toMatchObject({
+      findings: [],
+      resultCounts: { update: 0, unchanged: 1 },
+    });
+    await applyCatalogImport(
+      pool,
+      applyInput(omitted, omittedDryRun, "v2-display-omitted"),
+    );
+    await expect(
+      pool.query(
+        "SELECT summary, period_label FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ summary: initialSummary, period_label: initialPeriodLabel }],
+    });
+
+    const identical = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      scalarFields: {
+        summary: initialSummary,
+        periodLabel: initialPeriodLabel,
+      },
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+    });
+    const identicalDryRun = await createV2DryRun(
+      identical,
+      "2026-09-03T20:01:12.000Z",
+    );
+    expect(identicalDryRun).toMatchObject({
+      findings: [],
+      resultCounts: { update: 0, unchanged: 1 },
+    });
+
+    const summaryOnly = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      scalarFields: { summary: "无需字段级批准的摘要修订" },
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+    });
+    const summaryDryRun = await createV2DryRun(
+      summaryOnly,
+      "2026-09-03T20:01:13.000Z",
+    );
+    expect(summaryDryRun.findings).toEqual([
+      expect.objectContaining({
+        field: "summary",
+        category: "ORDINARY_CHANGE",
+        protectionLevel: "LEVEL_C",
+        operation: "SET",
+        requiresFieldApproval: false,
+      }),
+    ]);
+    await applyCatalogImport(pool, {
+      ...applyInput(summaryOnly, summaryDryRun, "v2-display-summary"),
+      authorization: authorization(summaryDryRun, [], "PRODUCTION"),
+      catalogIdAllocator: undefined,
+    });
+
+    const changed = buildV2ParsedBundle({
+      catalogId: v2CatalogId,
+      scalarFields: {
+        summary: "最终公开摘要",
+        periodLabel: "唐贞观十年（636）",
+      },
+      contributorsAction: "PRESERVE",
+      publicCitationsAction: "PRESERVE",
+    });
+    const staleDryRun = await createV2DryRun(
+      changed,
+      "2026-09-03T20:01:14.000Z",
+    );
+    expect(staleDryRun.findings).toEqual([
+      expect.objectContaining({
+        field: "summary",
+        category: "ORDINARY_CHANGE",
+        protectionLevel: "LEVEL_C",
+        requiresFieldApproval: false,
+      }),
+      expect.objectContaining({
+        field: "periodLabel",
+        category: "CRITICAL_CHANGE",
+        protectionLevel: "LEVEL_B",
+        requiresFieldApproval: true,
+      }),
+    ]);
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(changed, staleDryRun, "v2-display-unapproved"),
+        authorization: authorization(staleDryRun, [], "PRODUCTION"),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("required field-level finding");
+    await expect(
+      pool.query(
+        "SELECT summary, period_label FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          summary: "无需字段级批准的摘要修订",
+          period_label: initialPeriodLabel,
+        },
+      ],
+    });
+
+    await pool.query(
+      `UPDATE catalog_entries
+          SET summary=$2, period_label=$3
+        WHERE catalog_id=$1`,
+      [v2CatalogId, "并发摘要", "并发年代标签"],
+    );
+    const recomputed = await createV2DryRun(changed, staleDryRun.completedAt);
+    for (const field of ["summary", "periodLabel"] as const) {
+      expect(
+        recomputed.findings.find((finding) => finding.field === field)
+          ?.findingId,
+      ).not.toBe(
+        staleDryRun.findings.find((finding) => finding.field === field)
+          ?.findingId,
+      );
+    }
+    await expect(
+      applyCatalogImport(pool, {
+        ...applyInput(changed, staleDryRun, "v2-display-stale"),
+        authorization: authorization(
+          staleDryRun,
+          staleDryRun.findings
+            .filter(({ requiresFieldApproval }) => requiresFieldApproval)
+            .map(({ findingId }) => String(findingId)),
+          "PRODUCTION",
+        ),
+        catalogIdAllocator: undefined,
+      }),
+    ).rejects.toThrow("transactionally recomputed plan");
+    await expect(
+      pool.query(
+        "SELECT summary, period_label FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ summary: "并发摘要", period_label: "并发年代标签" }],
+    });
+
+    await pool.query(
+      `UPDATE catalog_entries
+          SET summary=$2, period_label=$3
+        WHERE catalog_id=$1`,
+      [v2CatalogId, "无需字段级批准的摘要修订", initialPeriodLabel],
+    );
+    const dryRun = await createV2DryRun(changed, "2026-09-03T20:01:15.000Z");
+    const approvedFindingIds = dryRun.findings
+      .filter(({ requiresFieldApproval }) => requiresFieldApproval)
+      .map(({ findingId }) => String(findingId));
+    const approvedInput = {
+      ...applyInput(changed, dryRun, "v2-display-approved"),
+      authorization: authorization(dryRun, approvedFindingIds, "PRODUCTION"),
+      catalogIdAllocator: undefined,
+    };
+    await expect(
+      applyCatalogImport(pool, {
+        ...approvedInput,
+        operationId: "v2-display-rollback",
+        failureAfterCatalogRows: 1,
+      }),
+    ).rejects.toThrow("Synthetic mid-transaction failure");
+    await expect(
+      pool.query(
+        "SELECT summary, period_label FROM catalog_entries WHERE catalog_id=$1",
+        [v2CatalogId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          summary: "无需字段级批准的摘要修订",
+          period_label: initialPeriodLabel,
+        },
+      ],
+    });
+    await expect(
+      pool.query(
+        "SELECT operation_id FROM catalog_import_operations WHERE operation_id=$1",
+        ["v2-display-rollback"],
+      ),
+    ).resolves.toMatchObject({ rows: [] });
+
+    const applied = await applyCatalogImport(pool, approvedInput);
+    const beforeReplay = await pool.query(
+      `SELECT summary, period_label, xmin::text AS revision
+         FROM catalog_entries WHERE catalog_id=$1`,
+      [v2CatalogId],
+    );
+    const replay = await applyCatalogImport(pool, approvedInput);
+    expect(applied).toMatchObject({ status: "APPLIED", updated: 1 });
+    expect(replay).toMatchObject({ status: "ALREADY_APPLIED", updated: 1 });
+    await expect(
+      pool.query(
+        `SELECT summary, period_label, xmin::text AS revision
+           FROM catalog_entries WHERE catalog_id=$1`,
+        [v2CatalogId],
+      ),
+    ).resolves.toEqual(beforeReplay);
+    expect(beforeReplay.rows).toMatchObject([
+      { summary: "最终公开摘要", period_label: "唐贞观十年（636）" },
+    ]);
   });
 
   it("preserves UNSUPPLIED scalars and enforces VALUE/CLEAR protection levels", async () => {

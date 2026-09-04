@@ -1371,7 +1371,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
         {
           id: "test-catalog-001",
           aliases: ["First alias", "Second alias"],
-          periodLabel: "唐 · 贞观十年",
+          periodLabel: "Legacy period",
         },
         { id: "test-catalog-002", aliases: [] },
       ],
@@ -1406,7 +1406,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
         {
           id: "test-catalog-001",
           kind: "calligraphy",
-          periodLabel: "唐 · 贞观十年",
+          periodLabel: "Legacy period",
         },
       ],
       total: 1,
@@ -1419,7 +1419,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     expect(catalogDetailSchema.parse(await detail.json())).toMatchObject({
       id: "test-catalog-001",
       aliases: ["First alias", "Second alias"],
-      periodLabel: "唐 · 贞观十年",
+      periodLabel: "Legacy period",
       dynasty: "唐",
       dateText: "贞观十年",
       province: "陕西",
@@ -1497,7 +1497,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       title: "Test Calligraphy",
       aliases: ["First alias", "Second alias"],
       summary: "First summary",
-      periodLabel: "唐 · 贞观十年",
+      periodLabel: "Legacy period",
       dynasty: "唐",
       dateText: "贞观十年",
       contributors: [
@@ -1535,7 +1535,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       title: "Test Calligraphy",
       aliases: ["First alias", "Second alias"],
       summary: "First summary",
-      periodLabel: "唐 · 贞观十年",
+      periodLabel: "Legacy period",
     });
     for (const property of [
       "contributors",

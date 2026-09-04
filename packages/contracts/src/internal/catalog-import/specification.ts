@@ -55,6 +55,8 @@ export const CATALOG_IMPORT_V2_CATALOG_HEADERS = [
   "catalogId",
   "title",
   "catalogKind",
+  "summary",
+  "periodLabel",
   "dynasty",
   "dynastyState",
   "dateText",
@@ -150,6 +152,8 @@ export const CATALOG_IMPORT_FIELD_POLICY = {
 
 export const CATALOG_IMPORT_V2_FIELD_POLICY = {
   ...CATALOG_IMPORT_FIELD_POLICY,
+  summary: { persistence: "SUPPORTED_NOW", protection: "LEVEL_C" },
+  periodLabel: { persistence: "SUPPORTED_NOW", protection: "LEVEL_B" },
   scriptStyle: { persistence: "SUPPORTED_NOW", protection: "LEVEL_B" },
   transcription: { persistence: "SUPPORTED_NOW", protection: "LEVEL_B" },
   historicalContext: {

@@ -12,6 +12,7 @@ import {
   CATALOG_IMPORT_V2_CONTRACT_VERSION,
   CATALOG_IMPORT_V2_CONTRIBUTOR_HEADERS,
   CATALOG_IMPORT_V2_CSV_SPEC,
+  CATALOG_IMPORT_V2_FIELD_POLICY,
   CATALOG_IMPORT_V2_PUBLIC_CITATION_HEADERS,
   CATALOG_IMPORT_V2_SHEET_NAMES,
   aliasImportTableRowSchema,
@@ -29,6 +30,7 @@ import {
   catalogContributorImportTableRowSchema,
   catalogImportDryRunSchema,
   catalogImportV2DryRunSchema,
+  catalogImportV2FieldNameSchema,
   catalogImportV2TableRowSchema,
   catalogImportTableRowSchema,
   dryRunFindingSchema,
@@ -936,6 +938,8 @@ describe("catalog-import/v2 strict internal contract", () => {
       "catalogId",
       "title",
       "catalogKind",
+      "summary",
+      "periodLabel",
       "dynasty",
       "dynastyState",
       "dateText",
@@ -979,11 +983,54 @@ describe("catalog-import/v2 strict internal contract", () => {
       "appliesTo",
     ]);
     expect(
-      catalogImportV2TableRowSchema.safeParse({
-        ...v2CatalogTableRow(),
-        summary: "forbidden",
-      }).success,
-    ).toBe(false);
+      catalogImportV2TableRowSchema.safeParse(v2CatalogTableRow()).success,
+    ).toBe(true);
+  });
+
+  it("canonicalizes direct display fields without adding state or clear semantics", () => {
+    expect(canonicalV2CatalogRow()).not.toHaveProperty("summary");
+    expect(canonicalV2CatalogRow()).not.toHaveProperty("periodLabel");
+
+    const row = canonicalV2CatalogRow({
+      summary: "标题下的合成短导语",
+      periodLabel: "唐代（synthetic）",
+    });
+    expect(row.summary).toBe("标题下的合成短导语");
+    expect(row.periodLabel).toBe("唐代（synthetic）");
+    expect(row).not.toHaveProperty("summaryState");
+    expect(row).not.toHaveProperty("periodLabelState");
+
+    for (const overrides of [
+      { summary: " x" },
+      { summary: "x ".repeat(1) },
+      { summary: "x".repeat(2_001) },
+      { summary: "合成\u0000导语" },
+      { periodLabel: " 唐" },
+      { periodLabel: "唐 ".repeat(1) },
+      { periodLabel: "x".repeat(201) },
+      { periodLabel: "唐\u0000代" },
+    ]) {
+      expect(() => canonicalV2CatalogRow(overrides)).toThrow();
+    }
+  });
+
+  it("exposes both direct display fields to v2 dry-run policy only", () => {
+    expect(CATALOG_IMPORT_V2_FIELD_POLICY.summary).toEqual({
+      persistence: "SUPPORTED_NOW",
+      protection: "LEVEL_C",
+    });
+    expect(CATALOG_IMPORT_V2_FIELD_POLICY.periodLabel).toEqual({
+      persistence: "SUPPORTED_NOW",
+      protection: "LEVEL_B",
+    });
+    expect(catalogImportV2FieldNameSchema.safeParse("summary").success).toBe(
+      true,
+    );
+    expect(
+      catalogImportV2FieldNameSchema.safeParse("periodLabel").success,
+    ).toBe(true);
+    expect(CATALOG_IMPORT_FIELD_POLICY).not.toHaveProperty("summary");
+    expect(CATALOG_IMPORT_FIELD_POLICY).not.toHaveProperty("periodLabel");
   });
 
   it("canonicalizes exact v2 scalar states and rejects invalid create CLEAR", () => {
@@ -1071,6 +1118,8 @@ describe("catalog-import/v2 strict internal contract", () => {
       ["sourceId", "source-v2-\u0000001"],
       ["catalogId", "catalog-v2-\u0000001"],
       ["title", "虚构\u0000目录 V2"],
+      ["summary", "合成\u0000导语"],
+      ["periodLabel", "唐\u0000代"],
     ] as const) {
       expectNulIssue(
         v2Envelope({ catalogRows: [{ ...catalogRow, [field]: value }] }),
@@ -1651,6 +1700,13 @@ describe("catalog-import/v2 strict internal contract", () => {
         { ...rowA, scriptStyle: { state: "UNKNOWN" as const } },
       ],
     });
+    const directDisplayFieldsChanged = v2Envelope({
+      ...submitted,
+      catalogRows: [
+        rowZ,
+        { ...rowA, summary: "合成导语", periodLabel: "唐代（synthetic）" },
+      ],
+    });
     const contributorMembershipChanged = v2Envelope({
       ...submitted,
       contributorRows: [
@@ -1683,6 +1739,7 @@ describe("catalog-import/v2 strict internal contract", () => {
     for (const changed of [
       scalarValueChanged,
       scalarStateChanged,
+      directDisplayFieldsChanged,
       contributorMembershipChanged,
       citationMembershipChanged,
       citationScopeChanged,

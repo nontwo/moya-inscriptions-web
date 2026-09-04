@@ -3,10 +3,10 @@
 ## Purpose
 
 `catalog-import/v2` extends the controlled Catalog import path to the approved
-Content V1 fields: contributors, script style, transcription, historical
-context, scholarly research, curated public citations, and citation scopes. It
-retains the existing XLSX/CSV → canonical input → dry-run → Owner approval →
-single-transaction PostgreSQL apply flow.
+Content V1 fields: `summary`, `periodLabel`, contributors, script style,
+transcription, historical context, scholarly research, curated public citations,
+and citation scopes. It retains the existing XLSX/CSV → canonical input →
+dry-run → Owner approval → single-transaction PostgreSQL apply flow.
 
 ## V1 compatibility
 
@@ -16,6 +16,35 @@ hash, dry-run and approval semantics, apply/replay behavior, and committed XLSX
 artifact remain unchanged. A manifest and workbook layout must both identify the
 same explicit version; a missing, unknown, or mismatched version is rejected
 before canonicalization. Version is never inferred from a filename or shape.
+
+`catalog-import/v2` had not been used for any operational import before this
+change. Therefore, its two already-persisted display fields are added in place
+to the V2 row shape and exact header order while the explicit
+`catalog-import/v2` and `catalog-import-xlsx/v2` markers remain unchanged. Any
+earlier draft V2 workbook or CSV bundle must be regenerated; it fails strict
+version, layout, or header validation rather than being shape-guessed or
+silently upgraded. This pre-first-use choice does not alter any V1 byte, shape,
+hash, or behavior.
+
+## Bounded pre-first-use scope
+
+The goal is limited to making the already-approved `summary` and `periodLabel`
+fields authorable through the controlled V2 import path and observable through
+the existing Public read projection. There is no database migration, Public
+Contract expansion, new endpoint, frontend layout change, or new content field.
+
+| Scenario                       | Development                                             | Production                                              | Must preserve                                                      |
+| ------------------------------ | ------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| supplied `summary` on create   | store and return the exact value                        | store and return the exact value                        | existing `summary` meaning and 2,000-character limit               |
+| omitted `summary` on create    | store `NULL` and omit publicly                          | store `NULL` and omit publicly                          | no placeholder or inferred summary                                 |
+| omitted direct field on update | preserve stored value                                   | preserve stored value                                   | blank never clears data                                            |
+| supplied stored `periodLabel`  | return the exact stored label                           | return the exact stored label                           | title-area chronology remains separate from `dynasty` / `dateText` |
+| no stored `periodLabel`        | derive from renderable `dynasty` / `dateText` as before | derive from renderable `dynasty` / `dateText` as before | existing fallback and omission behavior                            |
+| earlier V2 raw layout          | reject during strict version/layout/header validation   | reject during strict version/layout/header validation   | never infer, auto-upgrade, or reinterpret a versioned input        |
+
+No visual or interaction behavior changes. The only user-visible read change is
+that an explicitly stored `period_label` is authoritative; chronology is derived
+only when that column is `NULL`.
 
 ## Exact V2 inputs
 
@@ -49,6 +78,8 @@ sourceId
 catalogId
 title
 catalogKind
+summary
+periodLabel
 dynasty
 dynastyState
 dateText
@@ -113,7 +144,26 @@ appliesTo
 `catalog-import/v2`. The workbook metadata pairs that contract version with
 `catalog-import-xlsx/v2`.
 
-## Scalar state semantics
+## Direct optional display fields
+
+`summary` and `periodLabel` are direct optional scalar fields. They have no
+companion state columns and do not support `CLEAR`:
+
+- a blank cell canonicalizes to an omitted property;
+- omission on create stores no value;
+- omission on update preserves the existing value;
+- a nonblank cell canonicalizes to the exact supplied string and requests a
+  `SET` when it differs from stored state.
+
+Both values must be non-empty when supplied, exactly trimmed, valid text without
+NUL, and retain internal line breaks. `summary` permits at most 2,000 characters
+and is the title-area short lead; `periodLabel` permits at most 200 characters
+and is the title-area display period. Neither field is a substitute for
+`description`, `dynasty`, or `dateText`. `summary` is Level C and `periodLabel`
+is Level B for dry-run protection. A V2 canonical envelope and its semantic hash
+include either property exactly when it is supplied.
+
+## Stateful scalar semantics
 
 `dynasty`, `dateText`, `province`, `prefecture`, `county`, `currentLocation`,
 `currentCustodian`, and `scriptStyle` permit `VALUE`, `UNSUPPLIED`, `UNKNOWN`,
@@ -208,12 +258,13 @@ contributorRows:     [catalogImportId, position]
 publicCitationRows:  [catalogImportId, position]
 ```
 
-The canonical hash includes the version, every scalar value/state, both
-normalized collection actions, aliases, provenance, contributors, public
-citations, and canonicalized scopes. It excludes XLSX styling, ZIP timestamps,
-input row order, CSV quoting/BOM/newline details, and other source-container
-details. Semantically equivalent V2 XLSX and CSV inputs produce identical
-canonical envelopes, JSON, and `canonicalInputSha256`.
+The canonical hash includes the version, supplied direct `summary` and
+`periodLabel` values, every scalar value/state, both normalized collection
+actions, aliases, provenance, contributors, public citations, and canonicalized
+scopes. It excludes XLSX styling, ZIP timestamps, input row order, CSV
+quoting/BOM/newline details, and other source-container details. Semantically
+equivalent V2 XLSX and CSV inputs produce identical canonical envelopes, JSON,
+and `canonicalInputSha256`.
 
 ## Dry-run and approval
 
@@ -224,10 +275,12 @@ before writes.
 
 Dry-run extends the existing identity, duplicate-candidate, protection-level,
 provenance, owner-note, and alias-update behavior. It emits scalar findings for
-the four new content fields. A changed collection emits one Level B critical
-finding for the entire collection, using `SET` for `REPLACE` and `CLEAR` for
-`CLEAR`. Identity conflicts remain non-approvable. Approval remains bound to the
-exact contract version, canonical-input hash, and dry-run-result hash.
+supplied changes to `summary` and `periodLabel` and for the four stateful
+content fields. Omitted direct display fields produce no finding and never clear
+stored data. A changed collection emits one Level B critical finding for the
+entire collection, using `SET` for `REPLACE` and `CLEAR` for `CLEAR`. Identity
+conflicts remain non-approvable. Approval remains bound to the exact contract
+version, canonical-input hash, and dry-run-result hash.
 
 ## Transactional apply
 
@@ -238,7 +291,8 @@ operation audit in the existing single PostgreSQL transaction. V2 apply uses
 `SERIALIZABLE` isolation so a concurrent change to compared state or an
 exact-title predicate fails closed instead of being overwritten after
 recomputation; V1 transaction behavior is unchanged. Apply writes only the
-existing B1A scalar columns and contributor/citation/scope tables.
+existing B1A scalar columns, including `summary` and `period_label`, and
+contributor/citation/scope tables.
 
 Approved `REPLACE` deletes the old complete contributor or curated-citation
 collection and inserts the incoming rows by position; citation scope rows are
@@ -249,10 +303,10 @@ audit writes. Replay remains idempotent.
 
 ## Non-goals
 
-- No `summary` or `periodLabel` import.
+- No `summary` or `periodLabel` state columns or clear operation.
 - No media or Production-data import.
-- No frontend, Search, CMS, Admin, ordinary-user identity, or publication
-  behavior.
+- No frontend layout, Search, CMS, Admin, ordinary-user identity, or
+  publication-lifecycle behavior.
 - No Person, Site, Institution, taxonomy, OCR, rich text, sidecar-file system,
   multiple transcription editions, inline anchors, or bibliography entities.
 - No Public Contract or HTTP-route expansion and no redesign of v1 alias-update
