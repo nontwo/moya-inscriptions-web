@@ -53,11 +53,10 @@ jobs:
 
       - name: Install browser engine
         run: >-
-          pnpm --filter @moya/tests exec playwright install --with-deps
-          ${{ matrix.install_args }}
+          pnpm --filter @moya/tests exec playwright install --with-deps ${{
+          matrix.install_args }}
 
       - name: Browser regression tests
         run: >-
-          pnpm --filter @moya/tests exec playwright test
-          --config e2e/playwright.config.ts
-          --project="${{ matrix.project }}"
+          pnpm --filter @moya/tests exec playwright test --config
+          e2e/playwright.config.ts --project="${{ matrix.project }}"

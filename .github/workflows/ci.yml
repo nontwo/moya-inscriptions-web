@@ -9,7 +9,8 @@ on:
       - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group:
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -38,8 +39,12 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA:
+            ${{ github.event_name == 'pull_request' &&
+            github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA:
+            ${{ github.event_name == 'pull_request' &&
+            github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
 
@@ -263,14 +268,13 @@ jobs:
 
       - name: Install browser engine
         run: >-
-          pnpm --filter @moya/tests exec playwright install --with-deps
-          ${{ matrix.install_args }}
+          pnpm --filter @moya/tests exec playwright install --with-deps ${{
+          matrix.install_args }}
 
       - name: Browser regression tests
         run: >-
-          pnpm --filter @moya/tests exec playwright test
-          --config e2e/playwright.config.ts
-          --project="${{ matrix.project }}"
+          pnpm --filter @moya/tests exec playwright test --config
+          e2e/playwright.config.ts --project="${{ matrix.project }}"
 
   e2e:
     if: always()
