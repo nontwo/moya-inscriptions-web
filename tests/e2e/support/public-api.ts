@@ -177,20 +177,36 @@ const details = new Map<string, CatalogDetail>([
     "runtime-inscription-multi-media",
     {
       aliases: ["多图运行记录"],
+      contributors: [
+        { name: "运行时撰文者", role: "textAuthor" },
+        { name: "运行时书者", role: "calligrapher" },
+      ],
       currentLocation: "测试陈列区",
+      dateText: "太和年间",
       description:
         "此记录提供两张公开图像，并用于验证详情独立纵向滚动与历史恢复。".repeat(
           24,
         ),
       dynasty: "北魏",
+      historicalContext: "运行时历史背景内容。",
       id: catalogId("runtime-inscription-multi-media"),
       kind: "inscription",
       media: [inscriptionFront, inscriptionDetail],
       periodLabel: "北魏",
       representativeMedia: inscriptionFront,
-      sourceCitations: [{ label: "测试公开资料" }],
+      scholarlyResearch: "运行时学术研究内容。",
+      scriptStyle: "碑额篆书，正文楷书",
+      sourceCitations: [
+        { label: "测试公开资料" },
+        {
+          appliesTo: ["transcription", "historicalContext"],
+          citation: "运行时多范围公开引文",
+          label: "测试分区资料",
+        },
+      ],
       summary: "用于验证多媒体与响应式连续性。",
       title: "运行时多图碑刻",
+      transcription: "运行时释文第一行\n运行时释文第二行",
     },
   ],
   [

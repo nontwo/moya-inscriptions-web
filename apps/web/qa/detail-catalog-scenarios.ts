@@ -55,6 +55,10 @@ export const createQaCatalogDetails = (
       ...summary,
       ...(summary.id === "qa-visual-inscription-01"
         ? {
+            contributors: [
+              { name: "QA 合成撰文者", role: "textAuthor" },
+              { name: "QA 合成书者", role: "calligrapher" },
+            ],
             county: "QA 合成县",
             currentCustodian: "QA 合成保管单位",
             currentLocation: "QA 合成现址",
@@ -62,14 +66,27 @@ export const createQaCatalogDetails = (
             description:
               "这是仅用于 Development QA 的当前 CatalogDetail Contract 长文本展示，不代表任何真实档案事实。",
             dynasty: "QA 合成朝代",
+            historicalContext:
+              "这是仅用于 Development QA 的合成历史背景，不代表真实碑刻事实。",
             prefecture: "QA 合成府",
             province: "QA 合成省",
+            scholarlyResearch:
+              "这是仅用于 Development QA 的合成学术研究，不代表真实研究结论。",
+            scriptStyle: "QA 合成书体说明，不代表真实书体判断",
             sourceCitations: [
               {
-                citation: "Development QA current-Contract citation",
-                label: "QA 合成来源",
+                citation: "Development QA legacy citation without appliesTo",
+                label: "QA 合成旧来源",
+              },
+              {
+                appliesTo: ["transcription", "historicalContext"],
+                citation:
+                  "Development-QA-scoped-citation-with-an-intentionally-long-unbroken-token-for-overflow-check-only-not-real-source-data",
+                label: "QA 合成分区来源",
               },
             ],
+            transcription:
+              "第一行：Development QA 合成释文。\n第二行：不代表真实碑刻事实。\n第三行：不得进入 Production。",
           }
         : summary.id === "qa-visual-inscription-02"
           ? {

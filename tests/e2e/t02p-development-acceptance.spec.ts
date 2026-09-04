@@ -748,6 +748,13 @@ test("MIG-D1 opens one runtime Detail architecture from Home, Inscriptions, and 
     await expect(detail).toBeVisible();
     await expect(detail).toHaveAttribute("data-detail-source", "runtime");
     await expect(detail.locator("[data-detail-title]"), title).toBeVisible();
+    if (catalogId === "runtime-inscription-no-media") {
+      await expect(
+        detail.locator(
+          '[data-detail-section="transcription"], [data-detail-section="historicalContext"], [data-detail-section="scholarlyResearch"]',
+        ),
+      ).toHaveCount(0);
+    }
     await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
       "inert",
       "",
@@ -790,6 +797,50 @@ test("MIG-D1 direct multi-media Detail preserves Carousel and scroll across resi
   await expect(detail.locator("[data-detail-media-index]")).toContainText(
     "1 / 2",
   );
+  await expect(detail.getByText("运行时撰文者", { exact: true })).toBeVisible();
+  await expect(detail.getByText("运行时书者", { exact: true })).toBeVisible();
+  await expect(
+    detail.getByText("碑额篆书，正文楷书", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    detail.locator("[data-detail-facts]"),
+    "periodLabel de-dup",
+  ).not.toContainText(/朝代|年代/u);
+  await expect(
+    detail.getByText("用于验证多媒体与响应式连续性。", { exact: true }),
+  ).toHaveCount(1);
+  const sectionOrder = await detail
+    .locator("[data-detail-section]")
+    .evaluateAll((sections) =>
+      sections.map((section) =>
+        (section as HTMLElement).getAttribute("data-detail-section"),
+      ),
+    );
+  expect(sectionOrder).toEqual([
+    "description",
+    "transcription",
+    "historicalContext",
+    "scholarlyResearch",
+    "sources",
+  ]);
+  const transcription = detail.locator(
+    '[data-detail-section="transcription"] p',
+  );
+  await expect(transcription).toHaveText("运行时释文第一行\n运行时释文第二行");
+  await expect(transcription).toHaveCSS("white-space", "pre-wrap");
+  await expect(
+    detail.getByText("适用于：整体资料", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    detail.getByText("适用于：释文、历史背景", { exact: true }),
+  ).toBeVisible();
+  await expect(detail.getByText("测试公开资料", { exact: true })).toHaveCount(
+    1,
+  );
+  await expect(detail.getByText("测试分区资料", { exact: true })).toHaveCount(
+    1,
+  );
+  await expect(detail).not.toContainText("QA 合成");
 
   const stage = detail.locator("[data-detail-main-stage]");
   const box = await stage.boundingBox();
