@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, useEffect, useRef } from "react";
+import { act, useEffect, useLayoutEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -508,6 +508,117 @@ describe("ProductShell", () => {
 
     act(() => unregister());
   });
+
+  it.each(["before first write", "during retry"])(
+    "does not transfer a pending restore to a different Home panel: %s",
+    async (timing) => {
+      renderProductShell(<ProductShellObserver />);
+      await act(async () => vi.runAllTimers());
+      const discover = document.createElement("section");
+      const nearby = document.createElement("section");
+      Object.defineProperties(discover, {
+        clientHeight: { value: 400 },
+        scrollHeight: { value: 400 },
+      });
+      Object.defineProperties(nearby, {
+        clientHeight: { value: 400 },
+        scrollHeight: { value: 1_000 },
+      });
+      nearby.scrollTop = 300;
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(discover);
+        observedProductShell!.restoreActiveScrollTop(175);
+        if (timing === "during retry") {
+          vi.advanceTimersToNextTimer();
+          vi.advanceTimersToNextTimer();
+        }
+      });
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(nearby);
+        vi.runAllTimers();
+      });
+      expect(nearby.scrollTop).toBe(300);
+      expect(discover.scrollTop).toBe(0);
+    },
+  );
+
+  it("restores Home into the panel registered by a document-to-panel resize", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1280,
+    });
+    const panel = document.createElement("section");
+    Object.defineProperties(panel, {
+      clientHeight: { value: 400 },
+      scrollHeight: { value: 1_000 },
+    });
+    const ResponsiveHomeOwner = () => {
+      const state = useProductShell();
+      useLayoutEffect(() => {
+        if (state.platform === "pc") return undefined;
+        return state.registerActiveHomeScrollElement(panel);
+      }, [state.platform, state.registerActiveHomeScrollElement]);
+      return <ProductShellObserver />;
+    };
+    renderProductShell(<ResponsiveHomeOwner />);
+    await act(async () => vi.runAllTimers());
+    expect(observedProductShell!.platform).toBe("pc");
+    document.documentElement.scrollTop = 175;
+    act(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 390,
+      });
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(observedProductShell!.platform).toBe("phone");
+    act(() => vi.runAllTimers());
+    expect(panel.scrollTop).toBe(175);
+    document.documentElement.scrollTop = 0;
+  });
+
+  it.each(["exhausted", "replaced", "unmounted"])(
+    "finishes pending restoration without stale writes when %s",
+    async (ending) => {
+      renderProductShell(<ProductShellObserver />);
+      await act(async () => vi.runAllTimers());
+      const scroller = document.createElement("section");
+      let range = 0;
+      let top = 0;
+      const writeTop = vi.fn((value: number) => {
+        top = value;
+      });
+      Object.defineProperties(scroller, {
+        clientHeight: { value: 400 },
+        scrollHeight: { get: () => 400 + range },
+        scrollTop: { get: () => top, set: writeTop },
+      });
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(scroller);
+        observedProductShell!.restoreActiveScrollTop(175);
+        vi.advanceTimersToNextTimer();
+        vi.advanceTimersToNextTimer();
+      });
+      expect(writeTop).toHaveBeenCalledTimes(1);
+      act(() => {
+        if (ending === "replaced") {
+          range = 600;
+          observedProductShell!.restoreActiveScrollTop(40);
+        } else if (ending === "unmounted") {
+          mountedRoots.pop()!.unmount();
+          range = 600;
+        }
+        vi.runAllTimers();
+      });
+      expect(top).toBe(ending === "replaced" ? 40 : 0);
+      expect(writeTop).toHaveBeenCalledTimes(
+        ending === "exhausted" ? 13 : ending === "replaced" ? 2 : 1,
+      );
+      const writes = writeTop.mock.calls.length;
+      act(() => vi.runAllTimers());
+      expect(writeTop).toHaveBeenCalledTimes(writes);
+    },
+  );
 
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
