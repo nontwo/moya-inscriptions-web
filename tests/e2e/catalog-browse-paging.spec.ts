@@ -469,9 +469,9 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
   await calligraphyOpener.scrollIntoViewIfNeeded();
   const calligraphyReturnTop = await readDestinationScroll(page, "calligraphy");
   await openViewerAndReturn(page, calligraphyOpener, "分页书帖 24");
-  expect(await readDestinationScroll(page, "calligraphy")).toBe(
-    calligraphyReturnTop,
-  );
+  await expect
+    .poll(() => readDestinationScroll(page, "calligraphy"))
+    .toBe(calligraphyReturnTop);
   await selectDestination(page, "碑刻", "inscriptions");
   await selectDestination(page, "书帖", "calligraphy");
   await expect(allCards).toHaveCount(48);
