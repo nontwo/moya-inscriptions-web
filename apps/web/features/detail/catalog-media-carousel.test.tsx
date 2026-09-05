@@ -166,6 +166,40 @@ describe("CatalogMediaCarousel", () => {
     expect(view.writes).not.toHaveBeenCalled();
   });
 
+  it("clears a late native compositor offset during the bounded PC realignment", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(300);
+    act(() => vi.runAllTimers());
+    view.render({ platform: "pc" });
+    expect(view.stage.scrollLeft).toBe(0);
+    // A native compositor can publish its final fractional offset after the
+    // synchronous platform layout effect but before the existing frame handoff.
+    view.position(1);
+    act(() => vi.runAllTimers());
+    expect(view.stage.scrollLeft).toBe(0);
+    expect(view.changes.mock.calls).toEqual([[1]]);
+  });
+
+  it.each(["unmount", "return-native"])(
+    "cancels the PC handoff before %s",
+    (next) => {
+      vi.useFakeTimers();
+      const view = renderControlledCarousel();
+      view.select(1);
+      view.position(300);
+      act(() => vi.runAllTimers());
+      view.render({ platform: "pc" });
+      if (next === "unmount") act(() => view.root.render(null));
+      else view.render({ platform: "phone" });
+      view.writes.mockClear();
+      act(() => vi.runAllTimers());
+      expect(view.writes).not.toHaveBeenCalled();
+      if (next === "return-native") expect(view.stage.scrollLeft).toBe(300);
+    },
+  );
+
   it("does not restart a canceled programmatic request on native touch cancel", () => {
     vi.useFakeTimers();
     const view = renderControlledCarousel();

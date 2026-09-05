@@ -196,6 +196,9 @@ export const CatalogMediaCarousel = ({
         stage.dataset.platformRealigning = "true";
         nativeRealignFrameRef.current = window.requestAnimationFrame(() => {
           nativeRealignFrameRef.current = window.requestAnimationFrame(() => {
+            // Native scrolling can publish one final offset after the layout
+            // effect. Finish the existing bounded platform handoff at zero.
+            if (stage.scrollLeft !== 0) stage.scrollLeft = 0;
             delete stage.dataset.platformRealigning;
             nativeRealignFrameRef.current = null;
           });
