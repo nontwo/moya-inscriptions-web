@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-import { Icon, LoadingScreen } from "@moya/ui";
+import { LoadingScreen } from "@moya/ui";
 
 import styles from "./product-shell.module.css";
 
@@ -69,6 +69,8 @@ import type { PrimaryDestination } from "../shell/primary-shell";
 
 type ScrollPositions = Record<PrimaryDestination, number>;
 
+const SCROLL_RESTORE_RETRY_FRAMES = 12;
+
 const currentProductHistoryState = (state: ProductHistoryState) =>
   mergeProductHistoryState(window.history.state, state);
 
@@ -98,6 +100,7 @@ export interface ProductShellContextValue {
     topicId: string,
     opener: HTMLButtonElement,
   ) => void;
+  readonly requestSettings: (opener?: HTMLElement) => void;
   readonly restoreActiveScrollTop: (top: number) => void;
   readonly settingsOpen: boolean;
   readonly theme: ThemePreference;
@@ -122,6 +125,7 @@ export interface ProductShellProps {
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
   readonly primaryUtility?: ReactNode;
+  readonly navigationAction?: ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
@@ -175,6 +179,7 @@ export const ProductShell = ({
   initialPlatform,
   inscriptions,
   primaryUtility,
+  navigationAction,
   renderDetailOverlay,
   renderTopicOverlay,
   showDevelopmentPagerControls = false,
@@ -193,8 +198,11 @@ export const ProductShell = ({
   const topicOpenerIdRef = useRef<string | null>(null);
   const topicSourceScrollTopRef = useRef(0);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
+  const settingsFocusFrameRef = useRef<number | null>(null);
+  const settingsFocusCleanupRef = useRef<(() => void) | null>(null);
   const activeHomeScrollElementRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
+  const restoreInputCleanupRef = useRef<(() => void) | null>(null);
   const topicFocusFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
   const navigationMinimizedRef = useRef(false);
@@ -305,36 +313,130 @@ export const ProductShell = ({
     [scrollElementFor],
   );
 
+  const cancelScrollRestore = useCallback(() => {
+    if (restoreFrameRef.current !== null) {
+      window.cancelAnimationFrame(restoreFrameRef.current);
+      restoreFrameRef.current = null;
+    }
+    scrollRestorePendingRef.current = false;
+    restoreInputCleanupRef.current?.();
+    restoreInputCleanupRef.current = null;
+  }, []);
+
   const restoreScroll = useCallback(
     (
       destination: PrimaryDestination,
       presentationPlatform: PresentationPlatform,
     ) => {
-      if (restoreFrameRef.current !== null) {
-        window.cancelAnimationFrame(restoreFrameRef.current);
-      }
-      restoreFrameRef.current = window.requestAnimationFrame(() => {
+      cancelScrollRestore();
+      const desired = scrollPositionsRef.current[destination];
+      // During document-to-panel layout changes, Home registers its first
+      // panel in the upcoming layout effect. Bind it when it becomes available.
+      let targetElement =
+        destination === "home" &&
+        presentationPlatform !== "pc" &&
+        activeHomeScrollElementRef.current === null
+          ? null
+          : scrollElementFor(destination, presentationPlatform);
+      let retryFrames = SCROLL_RESTORE_RETRY_FRAMES;
+      const applyScroll = () => {
+        restoreFrameRef.current = null;
+        const element = scrollElementFor(destination, presentationPlatform);
+        if (targetElement === null) targetElement = element;
+        // A Home feed switch can replace the registered scroll owner without
+        // issuing another restore. Never transfer this request to that panel.
+        if (element === null || element !== targetElement) {
+          cancelScrollRestore();
+          return;
+        }
+        const top = clampScrollTop(element, desired);
+        scrollRestorePendingRef.current = true;
+        if (presentationPlatform === "pc") {
+          window.scrollTo({ behavior: "auto", top });
+        } else {
+          (element as HTMLElement).scrollTop = top;
+        }
         restoreFrameRef.current = window.requestAnimationFrame(() => {
           restoreFrameRef.current = null;
-          const element = scrollElementFor(destination, presentationPlatform);
-          if (element === null) return;
-          const top = clampScrollTop(
-            element,
-            scrollPositionsRef.current[destination],
+          const currentElement = scrollElementFor(
+            destination,
+            presentationPlatform,
           );
-          scrollRestorePendingRef.current = true;
-          if (presentationPlatform === "pc") {
-            window.scrollTo({ behavior: "auto", top });
-          } else {
-            (element as HTMLElement).scrollTop = top;
+          if (currentElement === null || currentElement !== targetElement) {
+            cancelScrollRestore();
+            return;
           }
-          window.requestAnimationFrame(() => {
-            scrollRestorePendingRef.current = false;
-          });
+          const currentTop =
+            presentationPlatform === "pc"
+              ? documentScrollElement().scrollTop
+              : (currentElement as HTMLElement).scrollTop;
+          const clampedDesired = clampScrollTop(currentElement, desired);
+          if (
+            retryFrames > 0 &&
+            (clampedDesired < desired || currentTop !== clampedDesired)
+          ) {
+            retryFrames -= 1;
+            applyScroll();
+            return;
+          }
+          cancelScrollRestore();
+        });
+      };
+      // Scroll events alone cannot distinguish layout drift from user input.
+      // Relinquish this bounded restore before the user's default scroll action.
+      const cancelOnScrollInput = (event: Event) => {
+        if (
+          event instanceof KeyboardEvent &&
+          (![
+            "ArrowUp",
+            "ArrowDown",
+            "PageUp",
+            "PageDown",
+            "Home",
+            "End",
+            " ",
+          ].includes(event.key) ||
+            (event.target instanceof HTMLElement &&
+              event.target.closest(
+                'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+              ) !== null))
+        ) {
+          return;
+        }
+        const element = scrollElementFor(destination, presentationPlatform);
+        if (
+          element === null ||
+          !(event.target instanceof Node) ||
+          !element.contains(event.target)
+        ) {
+          return;
+        }
+        cancelScrollRestore();
+      };
+      const inputEvents = [
+        "wheel",
+        "touchstart",
+        "pointerdown",
+        "keydown",
+      ] as const;
+      for (const type of inputEvents) {
+        window.addEventListener(type, cancelOnScrollInput, {
+          capture: true,
+          passive: true,
+        });
+      }
+      restoreInputCleanupRef.current = () => {
+        for (const type of inputEvents) {
+          window.removeEventListener(type, cancelOnScrollInput, true);
+        }
+      };
+      restoreFrameRef.current = window.requestAnimationFrame(() => {
+        restoreFrameRef.current = window.requestAnimationFrame(() => {
+          applyScroll();
         });
       });
     },
-    [scrollElementFor],
+    [cancelScrollRestore, scrollElementFor],
   );
 
   const readActiveScrollTop = useCallback(() => {
@@ -418,6 +520,64 @@ export const ProductShell = ({
     });
   }, []);
 
+  const cancelSettingsFocus = useCallback(() => {
+    if (settingsFocusFrameRef.current !== null) {
+      window.cancelAnimationFrame(settingsFocusFrameRef.current);
+      settingsFocusFrameRef.current = null;
+    }
+    settingsFocusCleanupRef.current?.();
+    settingsFocusCleanupRef.current = null;
+  }, []);
+
+  const restoreSettingsFocus = useCallback(() => {
+    cancelSettingsFocus();
+    const opener = settingsOpenerRef.current;
+    const destination = activeDestinationRef.current;
+    // QA can fulfill this return on its own resume frame. Once the exact
+    // opener receives focus, this shell must not reclaim subsequent focus.
+    const onFocus = (event: FocusEvent) => {
+      if (event.target === opener) cancelSettingsFocus();
+    };
+    const onInput = (event: Event) => {
+      if (
+        !settingsOpenRef.current &&
+        catalogIdRef.current === null &&
+        topicIdRef.current === null &&
+        event.target instanceof Node &&
+        (rootRef.current?.contains(event.target) ||
+          event.target === document.body ||
+          event.target === document.documentElement)
+      ) {
+        cancelSettingsFocus();
+      }
+    };
+    window.addEventListener("focusin", onFocus, true);
+    window.addEventListener("keydown", onInput, true);
+    window.addEventListener("pointerdown", onInput, true);
+    settingsFocusCleanupRef.current = () => {
+      window.removeEventListener("focusin", onFocus, true);
+      window.removeEventListener("keydown", onInput, true);
+      window.removeEventListener("pointerdown", onInput, true);
+    };
+    settingsFocusFrameRef.current = window.requestAnimationFrame(() => {
+      settingsFocusFrameRef.current = window.requestAnimationFrame(() => {
+        settingsFocusFrameRef.current = null;
+        cancelSettingsFocus();
+        if (
+          activeDestinationRef.current !== destination ||
+          settingsOpenRef.current ||
+          catalogIdRef.current !== null ||
+          topicIdRef.current !== null ||
+          !opener?.isConnected ||
+          opener.closest('[inert], [hidden], [aria-hidden="true"]') !== null
+        ) {
+          return;
+        }
+        opener.focus({ preventScroll: true });
+      });
+    });
+  }, [cancelSettingsFocus]);
+
   const commitDestination = useCallback(
     (destination: PrimaryDestination) => {
       const current = activeDestinationRef.current;
@@ -431,6 +591,7 @@ export const ProductShell = ({
       }
 
       expandNavigation();
+      cancelSettingsFocus();
       saveScroll(current, platformRef.current);
       activeDestinationRef.current = destination;
       setActiveDestination(destination);
@@ -441,7 +602,7 @@ export const ProductShell = ({
       );
       restoreScroll(destination, platformRef.current);
     },
-    [expandNavigation, restoreScroll, saveScroll],
+    [cancelSettingsFocus, expandNavigation, restoreScroll, saveScroll],
   );
 
   const setSettingsVisibility = useCallback((open: boolean) => {
@@ -513,6 +674,29 @@ export const ProductShell = ({
     );
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeSettings();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeSettings, settingsOpen]);
+
+  const requestSettings = useCallback(
+    (requestedOpener?: HTMLElement) => {
+      const opener =
+        requestedOpener ??
+        (document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : rootRef.current);
+      if (opener !== null) openSettings(opener);
+    },
+    [openSettings],
+  );
 
   const openTopic = useCallback(
     (topicId: string, opener: HTMLElement, sourceScrollTop: number) => {
@@ -1127,6 +1311,7 @@ export const ProductShell = ({
     }
 
     const handlePopState = (event: PopStateEvent) => {
+      cancelSettingsFocus();
       const state = parseProductHistoryState(event.state);
       const wasDetailOpen = catalogIdRef.current !== null;
       const wasSettingsOpen = settingsOpenRef.current;
@@ -1205,7 +1390,7 @@ export const ProductShell = ({
           restoreCatalogFocus(focusCatalogId);
         }
       } else if (wasSettingsOpen) {
-        window.requestAnimationFrame(() => settingsOpenerRef.current?.focus());
+        restoreSettingsFocus();
       } else if (
         wasTopicOpen &&
         state?.kind === "primary" &&
@@ -1220,9 +1405,11 @@ export const ProductShell = ({
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [
+    cancelSettingsFocus,
     expandNavigation,
     restoreCatalogFocus,
     restoreScroll,
+    restoreSettingsFocus,
     restoreTopicFocus,
     saveScroll,
     setDetailVisibility,
@@ -1235,6 +1422,8 @@ export const ProductShell = ({
     if (!settingsOpen && activeCatalogId === null && activeTopicId === null) {
       return undefined;
     }
+    cancelScrollRestore();
+    cancelSettingsFocus();
     if (settingsOpen) settingsBackRef.current?.focus();
     else if (activeCatalogId !== null) detailBackRef.current?.focus();
     else topicBackRef.current?.focus();
@@ -1243,13 +1432,18 @@ export const ProductShell = ({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [activeCatalogId, activeTopicId, settingsOpen]);
+  }, [
+    activeCatalogId,
+    activeTopicId,
+    cancelScrollRestore,
+    cancelSettingsFocus,
+    settingsOpen,
+  ]);
 
   useEffect(
     () => () => {
-      if (restoreFrameRef.current !== null) {
-        window.cancelAnimationFrame(restoreFrameRef.current);
-      }
+      cancelScrollRestore();
+      cancelSettingsFocus();
       if (topicFocusFrameRef.current !== null) {
         window.cancelAnimationFrame(topicFocusFrameRef.current);
       }
@@ -1261,7 +1455,7 @@ export const ProductShell = ({
       }
       synchronizePrimaryNavigationViewportInset(document.documentElement, null);
     },
-    [],
+    [cancelScrollRestore, cancelSettingsFocus],
   );
 
   const cycleTheme = () => {
@@ -1299,6 +1493,7 @@ export const ProductShell = ({
     readActiveScrollTop,
     registerActiveHomeScrollElement,
     registerTopicOpener,
+    requestSettings,
     restoreActiveScrollTop,
     settingsOpen,
     theme,
@@ -1336,6 +1531,7 @@ export const ProductShell = ({
             calligraphy={calligraphy}
             home={home}
             inscriptions={inscriptions}
+            navigationAction={navigationAction}
             navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
             onNavigationExpand={expandNavigation}
@@ -1344,15 +1540,6 @@ export const ProductShell = ({
             showDevelopmentPagerControls={showDevelopmentPagerControls}
           />
           {primaryUtility}
-          <button
-            type="button"
-            aria-label="打开设置"
-            className={`${styles.settingsButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
-            data-open-settings=""
-            onClick={(event) => openSettings(event.currentTarget)}
-          >
-            <Icon name="settings" />
-          </button>
         </div>
 
         {settingsOpen ? (

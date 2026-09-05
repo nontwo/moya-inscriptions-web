@@ -50,6 +50,7 @@ export const CatalogMasonry = <T,>({
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
   const settleFrameRef = useRef<number | null>(null);
+  const measurementAvailableRef = useRef(false);
   const [width, setWidth] = useState(0);
   const [revision, setRevision] = useState(0);
   const [renderedLayout, setRenderedLayout] = useState<RenderedLayout | null>(
@@ -75,24 +76,44 @@ export const CatalogMasonry = <T,>({
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (container === null) return undefined;
+    let disposed = false;
     const measure = () => {
+      if (disposed || !container.isConnected) return;
       const nextWidth = container.getBoundingClientRect().width;
-      if (Number.isFinite(nextWidth) && nextWidth >= 32) {
-        setWidth((current) =>
-          Math.abs(current - nextWidth) <= 0.5 ? current : nextWidth,
-        );
+      if (!Number.isFinite(nextWidth) || nextWidth < 32) {
+        measurementAvailableRef.current = false;
+        return;
       }
+      const becameAvailable = !measurementAvailableRef.current;
+      measurementAvailableRef.current = true;
+      setWidth((current) =>
+        Math.abs(current - nextWidth) <= 0.5 ? current : nextWidth,
+      );
+      if (becameAvailable) setRevision((current) => current + 1);
     };
 
     measure();
-    if (typeof ResizeObserver !== "function") return undefined;
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
+    const observer =
+      typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(container);
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+    };
   }, []);
 
   useLayoutEffect(() => {
     if (width < 32 || columnWidth <= 0) return;
+    const measuredWidth = containerRef.current?.getBoundingClientRect().width;
+    if (
+      measuredWidth === undefined ||
+      !Number.isFinite(measuredWidth) ||
+      measuredWidth < 32
+    ) {
+      measurementAvailableRef.current = false;
+      return;
+    }
+    if (Math.abs(measuredWidth - width) > 0.5) return;
     const heights = items.map((item) => {
       const element = itemRefs.current.get(getKey(item));
       return element?.getBoundingClientRect().height ?? 0;
