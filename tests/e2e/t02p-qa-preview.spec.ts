@@ -378,9 +378,21 @@ test("hidden QA preserves existing scenario feed and topic entry parameters", as
 test("Formal and clean Development do not consume the QA chrome parameter", async ({
   page,
 }) => {
-  for (const path of ["/", "/dev/t02p"]) {
+  const paths = ["/", "/dev/t02p"] as const;
+  const queries = ["", "?qaChrome=hidden"] as const;
+
+  // Compile both development routes before a browser page subscribes to HMR.
+  // Otherwise the first /dev/t02p compilation can reload the previous route in
+  // WebKit and interrupt the next navigation rather than testing query isolation.
+  for (const path of paths) {
+    for (const query of queries) {
+      expect((await page.request.get(`${path}${query}`)).status()).toBe(200);
+    }
+  }
+
+  for (const path of paths) {
     const snapshots = [];
-    for (const query of ["", "?qaChrome=hidden"]) {
+    for (const query of queries) {
       expect((await page.goto(`${path}${query}`))?.status()).toBe(200);
       await expect(
         page.locator(
