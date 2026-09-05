@@ -77,6 +77,7 @@ export interface T02pQaHarnessProps {
   readonly initialPlatform: PresentationPlatform;
   readonly initialTopicId?: string | null;
   readonly detailRecords: readonly CatalogDetail[];
+  readonly qaChrome?: "visible" | "hidden";
 }
 
 export const T02pQaHarness = ({
@@ -87,6 +88,7 @@ export const T02pQaHarness = ({
   initialHomeScenario = "discover-visual",
   initialPlatform,
   initialTopicId,
+  qaChrome = "visible",
 }: T02pQaHarnessProps) => {
   const [catalogScenario, setCatalogScenario] =
     useState<T02pDevelopmentCatalogScenario>("visual");
@@ -138,106 +140,109 @@ export const T02pQaHarness = ({
     <main
       data-catalog-scenario={catalogScenario}
       data-home-scenario={homeScenario}
+      data-qa-chrome={qaChrome}
       data-search-scenario={searchScenario}
       data-t02p-qa-harness=""
     >
-      <aside aria-label="T02P QA controls" data-qa-controls="">
-        <h1>T02P QA Harness</h1>
-        <label htmlFor="t02p-qa-platform">QA presentation platform</label>
-        <select
-          id="t02p-qa-platform"
-          data-qa-platform-selector=""
-          value={platformMode}
-          onChange={(event) => {
-            const next = platformOptions.find(
-              ([candidate]) => candidate === event.currentTarget.value,
-            )?.[0];
-            if (next !== undefined) setPlatformMode(next);
-          }}
-        >
-          {platformOptions.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+      {qaChrome === "visible" ? (
+        <aside aria-label="T02P QA controls" data-qa-controls="">
+          <h1>T02P QA Harness</h1>
+          <label htmlFor="t02p-qa-platform">QA presentation platform</label>
+          <select
+            id="t02p-qa-platform"
+            data-qa-platform-selector=""
+            value={platformMode}
+            onChange={(event) => {
+              const next = platformOptions.find(
+                ([candidate]) => candidate === event.currentTarget.value,
+              )?.[0];
+              if (next !== undefined) setPlatformMode(next);
+            }}
+          >
+            {platformOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
 
-        <label htmlFor="t02p-qa-search-scenario">QA Search scenario</label>
-        <select
-          id="t02p-qa-search-scenario"
-          data-qa-search-scenario-selector=""
-          value={searchScenario}
-          onChange={(event) => {
-            const next = qaSearchScenarioNames.find(
-              (candidate) => candidate === event.currentTarget.value,
-            );
-            if (next !== undefined) setSearchScenario(next);
-          }}
-        >
-          {qaSearchScenarioNames.map((value) => (
-            <option key={value} value={value}>
-              {searchScenarioLabels[value]}
-            </option>
-          ))}
-        </select>
+          <label htmlFor="t02p-qa-search-scenario">QA Search scenario</label>
+          <select
+            id="t02p-qa-search-scenario"
+            data-qa-search-scenario-selector=""
+            value={searchScenario}
+            onChange={(event) => {
+              const next = qaSearchScenarioNames.find(
+                (candidate) => candidate === event.currentTarget.value,
+              );
+              if (next !== undefined) setSearchScenario(next);
+            }}
+          >
+            {qaSearchScenarioNames.map((value) => (
+              <option key={value} value={value}>
+                {searchScenarioLabels[value]}
+              </option>
+            ))}
+          </select>
 
-        <label htmlFor="t02p-qa-home-scenario">QA Home scenario</label>
-        <select
-          id="t02p-qa-home-scenario"
-          data-qa-home-scenario-selector=""
-          value={homeScenario}
-          onChange={(event) => {
-            const next = homeScenarioNames.find(
-              (candidate) => candidate === event.currentTarget.value,
-            );
-            if (next !== undefined) setHomeScenario(next);
-          }}
-        >
-          {homeScenarioNames.map((value) => (
-            <option key={value} value={value}>
-              {homeScenarioLabels[value]}
-            </option>
-          ))}
-        </select>
+          <label htmlFor="t02p-qa-home-scenario">QA Home scenario</label>
+          <select
+            id="t02p-qa-home-scenario"
+            data-qa-home-scenario-selector=""
+            value={homeScenario}
+            onChange={(event) => {
+              const next = homeScenarioNames.find(
+                (candidate) => candidate === event.currentTarget.value,
+              );
+              if (next !== undefined) setHomeScenario(next);
+            }}
+          >
+            {homeScenarioNames.map((value) => (
+              <option key={value} value={value}>
+                {homeScenarioLabels[value]}
+              </option>
+            ))}
+          </select>
 
-        <label htmlFor="t02p-qa-user-scenario">QA User scenario</label>
-        <select
-          id="t02p-qa-user-scenario"
-          data-qa-user-scenario-selector=""
-          value={userScenario}
-          onChange={(event) => {
-            const next = qaUserScenarioNames.find(
-              (candidate) => candidate === event.currentTarget.value,
-            );
-            if (next !== undefined) setUserScenario(next);
-          }}
-        >
-          {qaUserScenarioNames.map((value) => (
-            <option key={value} value={value}>
-              {qaUserScenarioLabels[value]}
-            </option>
-          ))}
-        </select>
+          <label htmlFor="t02p-qa-user-scenario">QA User scenario</label>
+          <select
+            id="t02p-qa-user-scenario"
+            data-qa-user-scenario-selector=""
+            value={userScenario}
+            onChange={(event) => {
+              const next = qaUserScenarioNames.find(
+                (candidate) => candidate === event.currentTarget.value,
+              );
+              if (next !== undefined) setUserScenario(next);
+            }}
+          >
+            {qaUserScenarioNames.map((value) => (
+              <option key={value} value={value}>
+                {qaUserScenarioLabels[value]}
+              </option>
+            ))}
+          </select>
 
-        <label htmlFor="t02p-qa-catalog-scenario">QA Catalog scenario</label>
-        <select
-          id="t02p-qa-catalog-scenario"
-          data-qa-catalog-scenario-selector=""
-          value={catalogScenario}
-          onChange={(event) => {
-            const next = catalogScenarioOptions.find(
-              ([candidate]) => candidate === event.currentTarget.value,
-            )?.[0];
-            if (next !== undefined) setCatalogScenario(next);
-          }}
-        >
-          {catalogScenarioOptions.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </aside>
+          <label htmlFor="t02p-qa-catalog-scenario">QA Catalog scenario</label>
+          <select
+            id="t02p-qa-catalog-scenario"
+            data-qa-catalog-scenario-selector=""
+            value={catalogScenario}
+            onChange={(event) => {
+              const next = catalogScenarioOptions.find(
+                ([candidate]) => candidate === event.currentTarget.value,
+              )?.[0];
+              if (next !== undefined) setCatalogScenario(next);
+            }}
+          >
+            {catalogScenarioOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </aside>
+      ) : null}
 
       <QaUtilitiesProvider
         initialSearchOpen={search.initialOpen}
@@ -263,7 +268,7 @@ export const T02pQaHarness = ({
               userScenarioName={userScenario}
             />
           }
-          showDevelopmentPagerControls
+          showDevelopmentPagerControls={qaChrome !== "hidden"}
           states={states}
         />
       </QaUtilitiesProvider>
