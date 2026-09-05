@@ -2473,6 +2473,21 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
     "data-primary-navigation-minimized",
     "true",
   );
+
+  // The 420 ms collapse transition is slightly longer than the 400 ms idle
+  // deadline. Restart that deadline partway through the transition so the
+  // fully collapsed geometry has a deterministic observation window.
+  await page.waitForTimeout(250);
+  await scrollTo(40);
+  await expect(navigation).toHaveAttribute("data-minimized", "true");
+  await page.waitForTimeout(190);
+  const minimizedBox = await requireBoundingBox(navigation);
+  expect(Math.abs(minimizedBox.width - 44)).toBeLessThan(4);
+  expect(Math.abs(minimizedBox.height - 44)).toBeLessThan(2);
+  const minimizedSearchBox = await requireBoundingBox(searchAction);
+  expect(Math.abs(minimizedSearchBox.width - 44)).toBeLessThan(2);
+  expect(Math.abs(minimizedSearchBox.height - 44)).toBeLessThan(2);
+  expect(Math.abs(minimizedSearchBox.y - minimizedBox.y)).toBeLessThan(2);
   await expect(
     navigation.locator("[data-primary-navigation-bubble]"),
   ).toBeHidden();
@@ -2486,16 +2501,6 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
   await expect(
     navigation.locator("[data-primary-navigation-destination]:visible"),
   ).toHaveCount(1);
-  await page.waitForTimeout(250);
-  await scrollTo(21);
-  await page.waitForTimeout(190);
-  const minimizedBox = await requireBoundingBox(navigation);
-  expect(Math.abs(minimizedBox.width - 44)).toBeLessThan(4);
-  expect(Math.abs(minimizedBox.height - 44)).toBeLessThan(2);
-  const minimizedSearchBox = await requireBoundingBox(searchAction);
-  expect(Math.abs(minimizedSearchBox.width - 44)).toBeLessThan(2);
-  expect(Math.abs(minimizedSearchBox.height - 44)).toBeLessThan(2);
-  expect(Math.abs(minimizedSearchBox.y - minimizedBox.y)).toBeLessThan(2);
 
   await expect(navigation).toHaveAttribute("data-minimized", "false");
   await expect
@@ -2506,7 +2511,7 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
     )
     .toBeLessThan(1);
 
-  await scrollTo(40);
+  await scrollTo(60);
   await expect(navigation).toHaveAttribute("data-minimized", "true");
   await scrollTo(100);
   await scrollTo(88);
@@ -2516,9 +2521,6 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
 
   await scrollTo(96);
   await expect(navigation).toHaveAttribute("data-minimized", "true");
-  await page.waitForTimeout(250);
-  await scrollTo(97);
-  await page.waitForTimeout(190);
   const beforeExpandTap = await page.evaluate(() => ({
     active: document
       .querySelector("[data-product-shell]")
