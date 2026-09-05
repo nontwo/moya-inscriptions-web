@@ -1,0 +1,157 @@
+import { expect, test } from "@playwright/test";
+
+for (const query of ["", "?qaChrome=hidden"] as const) {
+  test(`Forward Detail owns keyboard above retained QA Search (${query || "normal"})`, async ({
+    page,
+    browserName,
+  }, testInfo) => {
+    const tabAll = browserName === "webkit" ? "Alt+Tab" : "Tab";
+    const shiftTabAll =
+      browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab";
+    const pageErrors: string[] = [];
+    const keys: { key: string; trusted: boolean; prevented: boolean }[] = [];
+    let recordKeys = false;
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+    await page.exposeFunction(
+      "recordQaHistoryKey",
+      (record: (typeof keys)[number]) => {
+        if (recordKeys) keys.push(record);
+      },
+    );
+    await page.addInitScript(() => {
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Tab" && event.key !== "Escape") return;
+          void (
+            window as typeof window & {
+              recordQaHistoryKey: (record: {
+                key: string;
+                trusted: boolean;
+                prevented: boolean;
+              }) => Promise<void>;
+            }
+          ).recordQaHistoryKey({
+            key: event.key,
+            trusted: event.isTrusted,
+            prevented: event.defaultPrevented,
+          });
+        },
+        { passive: true },
+      );
+    });
+    try {
+      expect((await page.goto(`/dev/t02p/qa${query}`))?.status()).toBe(200);
+      const shell = page.locator("[data-product-shell]");
+      await expect(shell.locator("[data-product-boot]")).toHaveCount(0);
+      await shell
+        .getByRole("navigation", { name: "主要内容" })
+        .getByRole("button", { name: "书帖", exact: true })
+        .click();
+      const opener = shell.locator(
+        '[data-calligraphy-category-panel="all"] [data-catalog-id="qa-visual-calligraphy-01"] [data-open-catalog]',
+      );
+      if (query === "") {
+        // The ordinary QA controls intentionally occupy the first card's hit
+        // area. Reach it using native keyboard navigation, not forced clicks,
+        // manual focus, or hidden controls.
+        for (let step = 0; step < 80; step += 1) {
+          if (await opener.evaluate((node) => node === document.activeElement))
+            break;
+          await page.keyboard.press(tabAll);
+        }
+        await expect(opener).toBeFocused();
+        await page.keyboard.press("Enter");
+      } else {
+        await opener.click();
+      }
+      const detail = shell.getByRole("dialog", { name: "资料详情" });
+      const back = detail.getByRole("button", { name: "返回", exact: true });
+      await expect(back).toBeFocused();
+      await back.click();
+      await expect(detail).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      const trigger = shell.locator("[data-search-trigger]");
+      await trigger.click();
+      const search = shell.locator("[data-search-panel]");
+      const input = search.getByRole("searchbox", { name: "搜索关键词" });
+      await expect(input).toBeFocused();
+
+      recordKeys = true;
+      await page.goForward();
+      await expect(detail).toBeVisible();
+      await expect(back).toBeFocused();
+      await expect(search).toHaveCount(1);
+      await expect(
+        shell.locator("[data-product-primary-layer]"),
+      ).toHaveAttribute("inert", "");
+      await page.keyboard.press("Tab");
+      await expect(
+        back,
+        "inert Search must not swallow Detail Tab",
+      ).not.toBeFocused();
+      const image = detail.locator('[data-detail-main-image][tabindex="0"]');
+      await expect(image).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      if (browserName === "webkit") {
+        // Native WebKit's default policy skips implicit-tabindex buttons, also
+        // without Search underneath: Shift+Tab from the explicit image target
+        // goes to body. Option-Tab includes the existing Back button. Assert
+        // both native paths; do not change browser settings or force focus.
+        // At the native document boundary body is activeElement without being
+        // a focused control; toBeFocused() is not the corresponding assertion.
+        await expect
+          .poll(() =>
+            page.evaluate(() => document.activeElement === document.body),
+          )
+          .toBe(true);
+        await page.keyboard.press("Tab");
+        await expect(image).toBeFocused();
+        await page.keyboard.press("Alt+Shift+Tab");
+      }
+      await expect(back).toBeFocused();
+      // Detail itself does not close on Escape. The isolated Search must not
+      // consume it or close underneath the visible owner either.
+      await page.keyboard.press("Escape");
+      await expect(detail).toBeVisible();
+      await expect(search).toHaveCount(1);
+      await expect(back).toBeFocused();
+      await expect
+        .poll(() => keys.length)
+        .toBe(browserName === "webkit" ? 5 : 3);
+      expect(keys).toEqual([
+        { key: "Tab", trusted: true, prevented: false },
+        { key: "Tab", trusted: true, prevented: false },
+        ...(browserName === "webkit"
+          ? [
+              { key: "Tab", trusted: true, prevented: false },
+              { key: "Tab", trusted: true, prevented: false },
+            ]
+          : []),
+        { key: "Escape", trusted: true, prevented: false },
+      ]);
+
+      await back.click();
+      await expect(detail).toHaveCount(0);
+      await expect(input).toBeFocused();
+      // The same still-open Search resumes its normal keyboard loop.
+      await page.keyboard.press(shiftTabAll);
+      await expect(search.locator("[data-search-submit]")).toBeFocused();
+      await page.keyboard.press(shiftTabAll);
+      await expect(search.locator("[data-search-close]")).toBeFocused();
+      await page.keyboard.press(tabAll);
+      await expect(search.locator("[data-search-submit]")).toBeFocused();
+      await page.keyboard.press(tabAll);
+      await expect(input).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(search).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      expect(pageErrors).toEqual([]);
+    } finally {
+      await testInfo.attach("qa-history-keyboard", {
+        body: JSON.stringify({ keys, pageErrors }),
+        contentType: "application/json",
+      });
+    }
+  });
+}

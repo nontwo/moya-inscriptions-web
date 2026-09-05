@@ -48,7 +48,7 @@ const Modal = ({
     onRequestClose: onClose,
   });
   return open ? (
-    <section ref={overlayRef} role="dialog" aria-label={name}>
+    <section ref={overlayRef} role="dialog" aria-label={name} tabIndex={-1}>
       <button ref={initialFocusRef} data-close={name} onClick={close}>
         关闭{name}
       </button>
@@ -216,6 +216,21 @@ describe("shared QA modal isolation", () => {
     expect(document.body.style.overflow).toBe("clip");
   });
 
+  it("releases a waiting upper-owner lock when the entire shell unmounts", async () => {
+    click('[data-open="search"]');
+    get("[data-product-shell]").setAttribute("data-detail-open", "true");
+    click('[data-close="search"]');
+    flushFrames();
+    expect(document.body.style.overflow).toBe("hidden");
+    await act(async () => root?.render(null));
+    flushFrames();
+    expect(document.body.style.overflow).toBe("clip");
+    expect(frames.size).toBe(0);
+    const completedFrameId = frameId;
+    await act(async () => document.body.append(document.createElement("div")));
+    expect(frameId).toBe(completedFrameId);
+  });
+
   it("excludes negative-tabindex and inert descendants from the Tab loop", () => {
     click('[data-open="user"]');
     get('[data-settings="user"]').focus();
@@ -235,5 +250,94 @@ describe("shared QA modal isolation", () => {
       ),
     );
     expect(document.activeElement).toBe(get('[data-settings="user"]'));
+  });
+
+  it.each(["detail", "topic", "viewer"])(
+    "leaves keys and initial/opener focus to an upper %s owner",
+    async (kind) => {
+      const shell = get("[data-product-shell]");
+      const upper = document.createElement("button");
+      shell.append(upper);
+      shell.setAttribute(`data-${kind}-open`, "true");
+      upper.focus();
+      click('[data-open="search"]');
+      expect(document.activeElement).toBe(upper);
+      for (const [key, shiftKey] of [
+        ["Tab", false],
+        ["Tab", true],
+        ["Escape", false],
+      ] as const) {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          shiftKey,
+          cancelable: true,
+        });
+        act(() => document.dispatchEvent(event));
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(upper);
+        expect(get('[data-close="search"]')).toBeTruthy();
+      }
+      click('[data-close="search"]');
+      flushFrames();
+      expect(document.activeElement).toBe(upper);
+      expect(document.body.style.overflow).toBe("hidden");
+      await act(async () => shell.setAttribute(`data-${kind}-open`, "false"));
+      flushFrames();
+      expect(document.body.style.overflow).toBe("clip");
+    },
+  );
+
+  it("suspends on inherited isolation, resumes focus, and cancels a stale resume frame", async () => {
+    click('[data-open="search"]');
+    const lower = get("[data-t02p-qa-search]");
+    const upper = document.createElement("button");
+    get("[data-product-shell]").append(upper);
+    await act(async () => lower.setAttribute("inert", ""));
+    upper.focus();
+    const tab = new KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+    act(() => document.dispatchEvent(tab));
+    expect(tab.defaultPrevented).toBe(false);
+    await act(async () => lower.removeAttribute("inert"));
+    // Upper reopens before the queued resume gets its frame, even before the
+    // MutationObserver delivers that change. The callback must recheck now.
+    lower.setAttribute("inert", "");
+    flushFrames();
+    expect(document.activeElement).toBe(upper);
+    await act(async () => {});
+    await act(async () => lower.removeAttribute("inert"));
+    flushFrames();
+    expect(document.activeElement).toBe(get('[data-close="search"]'));
+    await act(async () => lower.setAttribute("inert", ""));
+    upper.focus();
+    await act(async () => lower.removeAttribute("inert"));
+    click('[data-close="search"]');
+    flushFrames();
+    expect(document.activeElement).toBe(get('[data-open="search"]'));
+    expect(frames.size).toBe(0);
+  });
+
+  it("still traps an interactive empty modal and removes its listener on unmount", () => {
+    click('[data-open="search"]');
+    const overlay = get('[aria-label="search"]');
+    overlay.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab",
+      cancelable: true,
+    });
+    act(() => document.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(overlay);
+    act(() => root?.render(null));
+    flushFrames();
+    const after = new KeyboardEvent("keydown", {
+      key: "Tab",
+      cancelable: true,
+    });
+    document.dispatchEvent(after);
+    expect(after.defaultPrevented).toBe(false);
+    expect(document.body.style.overflow).toBe("clip");
+    expect(frames.size).toBe(0);
   });
 });
