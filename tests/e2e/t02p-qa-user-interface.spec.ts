@@ -533,15 +533,20 @@ test("User content follows trusted horizontal input and vertical reading never c
   browserName,
 }, testInfo) => {
   // Mobile WebKit does not expose wheel or touch-drag injection in Playwright.
-  // This case uses desktop WebKit input on the QA phone presentation; the
-  // separate mobile matrices retain their actual mobile context and tap paths.
+  // Chromium covers native Phone touch. WebKit covers the distinct PC wheel
+  // path; separate mobile matrices retain their mobile context and tap paths.
+  const inputPlatform = browserName === "chromium" ? "phone" : "pc";
+  const viewport = {
+    width: inputPlatform === "phone" ? 390 : 1512,
+    height: 600,
+  };
   const wheelContext =
     browserName === "webkit" && testInfo.project.use.isMobile === true
       ? await browser.newContext({
           baseURL: testInfo.project.use.baseURL as string,
           isMobile: false,
           hasTouch: false,
-          viewport: { width: 390, height: 600 },
+          viewport,
         })
       : null;
   const context = wheelContext ?? projectContext;
@@ -551,18 +556,24 @@ test("User content follows trusted horizontal input and vertical reading never c
     description:
       browserName === "chromium"
         ? "Chromium trusted CDP touch injection; no physical iPhone evidence"
-        : "Desktop WebKit trusted wheel input; no mobile WebKit touch or physical iPhone evidence",
+        : "Desktop WebKit trusted wheel input on PC presentation; mobile WebKit touch and physical iPhone touch NOT RUN",
   });
-  await page.setViewportSize({ width: 390, height: 600 });
+  await page.setViewportSize(viewport);
   const { shell, surface, trigger } = await openQa(page);
-  if (browserName === "chromium" || wheelContext !== null) {
-    await surface
-      .getByRole("combobox", { name: "QA presentation platform" })
-      .selectOption("phone");
-  }
+  await surface
+    .getByRole("combobox", { name: "QA presentation platform" })
+    .selectOption(inputPlatform);
+  await expect(shell).toHaveAttribute("data-platform", inputPlatform);
   const userPage = await openUser(shell, trigger);
   const pager = userPage.locator("[data-user-pager]");
-  const committedKeys: string[] = [];
+  await expect(pager).toHaveAttribute(
+    "data-horizontal-pager-platform",
+    inputPlatform,
+  );
+  await expect(pager).toHaveAttribute(
+    "data-horizontal-pager-scroll-owner",
+    "panel",
+  );
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
     frame.dataset.testProgressSamples = "[]";
@@ -619,6 +630,11 @@ test("User content follows trusted horizontal input and vertical reading never c
     "data-horizontal-pager-active-key",
     "published",
   );
+  expect(
+    await pager.evaluate((node) =>
+      JSON.parse((node as HTMLElement).dataset.testCommitSamples ?? "[]"),
+    ),
+  ).toEqual([]);
 
   if (browserName === "chromium") {
     const session = await context.newCDPSession(page);
@@ -643,13 +659,29 @@ test("User content follows trusted horizontal input and vertical reading never c
           ),
       );
     }
+    const dragging = await pager.evaluate((node) => {
+      const frame = node as HTMLElement;
+      return {
+        activeKey: frame.dataset.horizontalPagerActiveKey,
+        commits: JSON.parse(frame.dataset.testCommitSamples ?? "[]"),
+        progress: JSON.parse(
+          frame.dataset.testProgressSamples ?? "[]",
+        ) as number[],
+      };
+    });
+    expect(dragging.activeKey).toBe("published");
+    expect(dragging.commits).toEqual([]);
+    expect(dragging.progress.some((value) => value > 0 && value < 1)).toBe(
+      true,
+    );
     await session.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
     });
     await session.detach();
   } else {
-    // Playwright WebKit exposes trusted wheel input, not native iPhone touch injection.
+    // The PC handler must consume a large explicit horizontal wheel as one
+    // adjacent-category request, not let native overflow cross several panels.
     await page.mouse.wheel(box.width * 0.8, 0);
   }
   await expect(pager).toHaveAttribute(
@@ -661,20 +693,80 @@ test("User content follows trusted horizontal input and vertical reading never c
     "aria-selected",
     "true",
   );
-  const evidence = await pager.evaluate((node) => {
-    const frame = node as HTMLElement;
+  // Complete another genuine vertical-reading input after the horizontal
+  // settle, then sample key, selected tab, geometry and commit history together.
+  // A transient saved state followed by a second commit must not pass.
+  const saved = userPage.locator('[data-user-panel="saved"]');
+  await expect(saved).toHaveAttribute("aria-hidden", "false");
+  await expect(saved.locator("[data-user-content-list]")).toHaveAttribute(
+    "data-user-layout-ready",
+    "true",
+  );
+  await expect
+    .poll(() => saved.evaluate((node) => node.scrollHeight - node.clientHeight))
+    .toBeGreaterThan(0);
+  const savedBox = await saved.boundingBox();
+  if (savedBox === null) throw new Error("Missing saved panel geometry");
+  const readingPoint = {
+    x: savedBox.x + savedBox.width * 0.5,
+    y: savedBox.y + savedBox.height * 0.5,
+  };
+  await page.mouse.move(readingPoint.x, readingPoint.y);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest<HTMLElement>("[data-user-panel]")?.dataset.userPanel,
+        readingPoint,
+      ),
+    )
+    .toBe("saved");
+  const savedScrollBefore = await saved.evaluate((node) => node.scrollTop);
+  await page.mouse.wheel(0, 120);
+  await expect
+    .poll(() => saved.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(savedScrollBefore);
+  const evidence = await userPage.evaluate((node) => {
+    const frame = node.querySelector<HTMLElement>("[data-user-pager]");
+    const savedPanel = node.querySelector<HTMLElement>(
+      '[data-user-panel="saved"]',
+    );
+    if (frame === null || savedPanel === null)
+      throw new Error("Missing User pager or saved panel");
     return {
+      activeKey: frame.dataset.horizontalPagerActiveKey,
       commits: JSON.parse(frame.dataset.testCommitSamples ?? "[]") as string[],
       progress: JSON.parse(
         frame.dataset.testProgressSamples ?? "[]",
       ) as number[],
+      currentProgress: Number(frame.dataset.horizontalPagerProgress),
+      panelAlignment:
+        savedPanel.getBoundingClientRect().left -
+        frame.getBoundingClientRect().left,
+      scrolling: frame.dataset.userPagerScrolling,
+      selectedTabs: Array.from(
+        node.querySelectorAll<HTMLElement>(
+          '[data-user-tab][aria-selected="true"]',
+        ),
+        (tab) => tab.dataset.userTab,
+      ),
       trustedInputs: Number(frame.dataset.testTrustedInputs ?? "0"),
     };
   });
-  committedKeys.push(...evidence.commits);
-  expect(committedKeys).toEqual(["saved"]);
+  expect(evidence.activeKey).toBe("saved");
+  expect(evidence.selectedTabs).toEqual(["saved"]);
+  expect(evidence.scrolling).toBe("false");
+  expect(evidence.currentProgress).toBeCloseTo(1, 2);
+  expect(Math.abs(evidence.panelAlignment)).toBeLessThanOrEqual(2);
+  expect(evidence.commits).toEqual(["saved"]);
   expect(evidence.trustedInputs).toBeGreaterThan(0);
-  expect(evidence.progress.some((value) => value > 0 && value < 1)).toBe(true);
+  if (browserName === "chromium") {
+    expect(evidence.progress.some((value) => value > 0 && value < 1)).toBe(
+      true,
+    );
+  }
   await expect(userPage.locator("[data-user-intent-status]")).not.toContainText(
     "内容打开",
   );

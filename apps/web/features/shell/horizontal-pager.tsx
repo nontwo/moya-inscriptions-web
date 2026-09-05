@@ -625,6 +625,7 @@ function HorizontalPagerImplementation<Key extends string>(
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (frame === null || typeof ResizeObserver !== "function") return;
+    let heightFrame: number | null = null;
     const observer = new ResizeObserver(() => {
       if (scrollOwner === "document") {
         for (const feed of keys) readPanelHeight(feed);
@@ -646,7 +647,15 @@ function HorizontalPagerImplementation<Key extends string>(
         publishProgress(true);
       }
       if (scrollOwner === "document" && sessionRef.current === null) {
-        applyPanelHeight(activeIndexRef.current);
+        // The frame is itself observed. Defer its height write out of the
+        // observer delivery cycle so WebKit can finish delivering panel sizes.
+        if (heightFrame !== null) window.cancelAnimationFrame(heightFrame);
+        heightFrame = window.requestAnimationFrame(() => {
+          heightFrame = null;
+          if (sessionRef.current === null) {
+            applyPanelHeight(activeIndexRef.current);
+          }
+        });
       }
     });
     observer.observe(frame);
@@ -656,7 +665,10 @@ function HorizontalPagerImplementation<Key extends string>(
         if (panel !== null) observer.observe(panel);
       }
     }
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (heightFrame !== null) window.cancelAnimationFrame(heightFrame);
+    };
   }, [
     applyPanelHeight,
     invalidateSession,
