@@ -33,22 +33,28 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
-const visibleCatalogSnapshot = (shell: Locator) =>
-  shell
-    .locator(
-      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
-    )
-    .evaluateAll((cards) =>
-      cards.map((card) => ({
-        id: (card as HTMLElement).dataset.catalogId ?? "",
-        kind: (card as HTMLElement).dataset.catalogKind ?? "",
-        media: Array.from(card.querySelectorAll("img")).map((image) => ({
-          alt: image.alt,
-          src: image.getAttribute("src") ?? "",
-        })),
-        text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+const visibleCatalogSnapshot = async (shell: Locator) => {
+  const visibleCatalog = shell.locator(
+    '[data-primary-destination="inscriptions"]:not([hidden])',
+  );
+  await expect(
+    visibleCatalog.locator(
+      '[data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+    ),
+  ).toHaveCount(1);
+
+  return visibleCatalog.locator("[data-catalog-card]").evaluateAll((cards) =>
+    cards.map((card) => ({
+      id: (card as HTMLElement).dataset.catalogId ?? "",
+      kind: (card as HTMLElement).dataset.catalogKind ?? "",
+      media: Array.from(card.querySelectorAll("img")).map((image) => ({
+        alt: image.alt,
+        src: image.getAttribute("src") ?? "",
       })),
-    );
+      text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  );
+};
 
 const expectOpaqueSurface = async (surface: Locator) => {
   const colors = await surface.evaluate((node) => {
@@ -235,12 +241,16 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
   const searchTrigger = search.locator("[data-search-trigger]");
   const filter = shell.locator("[data-inscription-filter]");
   const filterTrigger = filter.locator("[data-filter-trigger]");
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
+  const userTrigger = shell.locator("[data-user-trigger]");
 
   await searchTrigger.click();
   await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await settingsTrigger.click();
+  await userTrigger.click();
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  let userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  let settingsTrigger = userPage.getByRole("button", { name: "打开设置" });
+  await settingsTrigger.click();
   const settings = shell.getByRole("dialog", { name: "设置" });
   await expect(settings).toBeVisible();
   await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
@@ -259,6 +269,9 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
   await settingsBack.click();
   await expect(settings).toHaveCount(0);
   await expect(settingsTrigger).toBeFocused();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
 
   await searchTrigger.click();
   await expect(search.locator("[data-search-panel]")).toBeVisible();
@@ -278,9 +291,16 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
   await searchTrigger.focus();
   await page.keyboard.press("Enter");
   await expect(search.locator("[data-search-panel]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(searchTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  settingsTrigger = userPage.getByRole("button", { name: "打开设置" });
   await settingsTrigger.focus();
   await page.keyboard.press("Enter");
-  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
   await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
   await expect(
     shell.getByRole("dialog", { name: "设置" }).getByRole("button", {
@@ -300,13 +320,23 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
       ),
   );
   await expect(settingsTrigger).toBeFocused();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
 
   await filterTrigger.focus();
   await page.keyboard.press("Enter");
   await expect(filter.locator("[data-filter-panel]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  await expect(filterTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  settingsTrigger = userPage.getByRole("button", { name: "打开设置" });
   await settingsTrigger.focus();
   await page.keyboard.press("Enter");
-  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
   await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
 });
 

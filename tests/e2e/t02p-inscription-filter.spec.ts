@@ -33,22 +33,28 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
-const visibleCatalogSnapshot = (shell: Locator) =>
-  shell
-    .locator(
-      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
-    )
-    .evaluateAll((cards) =>
-      cards.map((card) => ({
-        id: (card as HTMLElement).dataset.catalogId ?? "",
-        kind: (card as HTMLElement).dataset.catalogKind ?? "",
-        media: Array.from(card.querySelectorAll("img")).map((image) => ({
-          alt: image.alt,
-          src: image.getAttribute("src") ?? "",
-        })),
-        text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+const visibleCatalogSnapshot = async (shell: Locator) => {
+  const visibleCatalog = shell.locator(
+    '[data-primary-destination="inscriptions"]:not([hidden])',
+  );
+  await expect(
+    visibleCatalog.locator(
+      '[data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+    ),
+  ).toHaveCount(1);
+
+  return visibleCatalog.locator("[data-catalog-card]").evaluateAll((cards) =>
+    cards.map((card) => ({
+      id: (card as HTMLElement).dataset.catalogId ?? "",
+      kind: (card as HTMLElement).dataset.catalogKind ?? "",
+      media: Array.from(card.querySelectorAll("img")).map((image) => ({
+        alt: image.alt,
+        src: image.getAttribute("src") ?? "",
       })),
-    );
+      text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  );
+};
 
 const openQaInscriptions = async (page: Page) => {
   const { shell, surface } = await openQa(page);
@@ -467,7 +473,7 @@ test("Filter remains legible through themes and respects reduced motion", async 
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium");
   const { filter, shell, surface } = await openQaInscriptions(page);
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
+  const userTrigger = shell.locator("[data-user-trigger]");
 
   for (const preference of ["system", "light", "dark"] as const) {
     await expect(shell).toHaveAttribute("data-theme-preference", preference);
@@ -478,6 +484,12 @@ test("Filter remains legible through themes and respects reduced motion", async 
     await expect(trigger).toBeFocused();
 
     if (preference === "dark") break;
+    await userTrigger.click();
+    const userPage = shell.getByRole("dialog", { name: "用户页" });
+    await expect(userPage).toBeVisible();
+    const settingsTrigger = userPage.getByRole("button", {
+      name: "打开设置",
+    });
     await settingsTrigger.click();
     const settings = shell.getByRole("dialog", { name: "设置" });
     await expect(settings).toBeVisible();
@@ -485,6 +497,9 @@ test("Filter remains legible through themes and respects reduced motion", async 
     await settings.getByRole("button", { name: "返回" }).click();
     await expect(settings).toHaveCount(0);
     await expect(settingsTrigger).toBeFocused();
+    await userPage.getByRole("button", { name: "关闭用户页" }).click();
+    await expect(userPage).toHaveCount(0);
+    await expect(userTrigger).toBeFocused();
   }
 
   await surface
