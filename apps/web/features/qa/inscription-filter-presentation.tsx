@@ -206,13 +206,26 @@ export const QaInscriptionFilter = ({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionTriggerRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const restoreFocusFrameRef = useRef<number | null>(null);
   const titleId = useId();
   const isOpen = open ?? localOpen;
   const isCompact = platform !== "pc";
   const category = categories.find(({ key }) => key === activeCategory);
   const hasSelection = Object.values(selection).some(Boolean);
 
+  const cancelFocusRestore = useCallback(() => {
+    if (restoreFocusFrameRef.current === null) return;
+    window.cancelAnimationFrame(restoreFocusFrameRef.current);
+    restoreFocusFrameRef.current = null;
+  }, []);
+
+  useEffect(() => cancelFocusRestore, [cancelFocusRestore]);
+  useEffect(() => {
+    if (isOpen) cancelFocusRestore();
+  }, [cancelFocusRestore, isOpen]);
+
   const requestOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) cancelFocusRestore();
     if (open === undefined) setLocalOpen(nextOpen);
     onOpenChange?.(nextOpen);
   };
@@ -226,11 +239,25 @@ export const QaInscriptionFilter = ({
   };
 
   const closeAll = (restoreFocus: boolean) => {
+    const focusAtClose = document.activeElement;
+    cancelFocusRestore();
     requestOpenChange(false);
     setActiveCategory(null);
     setDraftValue(undefined);
     if (restoreFocus) {
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
+      restoreFocusFrameRef.current = window.requestAnimationFrame(() => {
+        restoreFocusFrameRef.current = null;
+        const activeElement = document.activeElement;
+        // A later external focus handoff supersedes this close's restoration.
+        if (
+          activeElement === focusAtClose ||
+          activeElement === document.body ||
+          activeElement === null ||
+          rootRef.current?.contains(activeElement) === true
+        ) {
+          triggerRef.current?.focus();
+        }
+      });
     }
   };
 
