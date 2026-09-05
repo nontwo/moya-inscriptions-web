@@ -42,30 +42,42 @@ const contentKindLabel = {
   inscription: "碑刻",
 } as const satisfies Record<CatalogSummary["kind"], string>;
 
+export const toQaUserContentItem = (
+  item: CatalogSummary,
+  id: string = item.id,
+): QaUserContentItem => {
+  const media = item.representativeMedia;
+  return {
+    id,
+    ...(media === undefined
+      ? {}
+      : {
+          imageAlt: media.alt,
+          imageHeight: media.height,
+          imageSrc: media.src,
+          imageWidth: media.width,
+        }),
+    metadata: [contentKindLabel[item.kind], item.periodLabel]
+      .filter((value) => value !== undefined)
+      .join(" · "),
+    title: item.title,
+  };
+};
+
 const toContentItems = (
   source: readonly CatalogSummary[],
   group: string,
   count: number,
   offset = 0,
 ): readonly QaUserContentItem[] =>
-  source.slice(offset, offset + count).map((item, index) => {
-    const media = item.representativeMedia;
-    return {
-      id: `qa-${group}-${String(index + 1).padStart(2, "0")}`,
-      ...(media === undefined
-        ? {}
-        : {
-            imageAlt: media.alt,
-            imageHeight: media.height,
-            imageSrc: media.src,
-            imageWidth: media.width,
-          }),
-      metadata: [contentKindLabel[item.kind], item.periodLabel]
-        .filter((value) => value !== undefined)
-        .join(" · "),
-      title: item.title,
-    };
-  });
+  source
+    .slice(offset, offset + count)
+    .map((item, index) =>
+      toQaUserContentItem(
+        item,
+        `qa-${group}-${String(index + 1).padStart(2, "0")}`,
+      ),
+    );
 
 const scenario = (
   user: QaUserPresentation,

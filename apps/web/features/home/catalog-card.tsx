@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@moya/ui";
 
 import styles from "./home-screen.module.css";
+import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 
 import type { CSSProperties } from "react";
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
@@ -135,8 +136,6 @@ export const CatalogCard = ({
   onOpenCatalog,
   variant,
 }: CatalogCardProps) => {
-  const pointerStartYRef = useRef<number | null>(null);
-  const suppressActivationRef = useRef(false);
   const feedSpan =
     variant === "feed" && isUltraWideCatalogMedia(item.representativeMedia)
       ? "full"
@@ -171,36 +170,11 @@ export const CatalogCard = ({
         ) : null}
       </div>
       {onOpenCatalog === undefined ? null : (
-        <button
-          type="button"
-          aria-label={`打开${item.title}`}
+        <QuickActionCardAction
           className={styles.cardAction}
-          data-open-catalog=""
-          onClick={(event) => {
-            if (suppressActivationRef.current) {
-              suppressActivationRef.current = false;
-              event.preventDefault();
-              return;
-            }
-            onOpenCatalog(item, event.currentTarget);
-          }}
-          onPointerCancel={() => {
-            pointerStartYRef.current = null;
-            suppressActivationRef.current = true;
-          }}
-          onPointerDown={(event) => {
-            pointerStartYRef.current = event.clientY;
-            suppressActivationRef.current = false;
-          }}
-          onPointerMove={(event) => {
-            const startY = pointerStartYRef.current;
-            if (startY !== null && Math.abs(event.clientY - startY) > 8) {
-              suppressActivationRef.current = true;
-            }
-          }}
-          onPointerUp={() => {
-            pointerStartYRef.current = null;
-          }}
+          enabled={variant === "feed"}
+          item={item}
+          onOpenCatalog={onOpenCatalog}
         />
       )}
     </article>

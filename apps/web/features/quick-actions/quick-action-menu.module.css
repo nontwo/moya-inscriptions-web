@@ -1,0 +1,148 @@
+.overlay {
+  position: fixed;
+  z-index: calc(var(--yoyi-z-index-overlay) + 20);
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.deadZone {
+  position: fixed;
+  left: var(--quick-action-anchor-x);
+  top: var(--quick-action-anchor-y);
+  width: 48px;
+  height: 48px;
+  border: 1px solid
+    color-mix(in srgb, var(--yoyi-color-border-strong) 48%, transparent);
+  border-radius: var(--yoyi-radius-full);
+  opacity: 0.54;
+  transform: translate3d(-50%, -50%, 0) scale(0.88);
+  animation: quick-action-enter var(--yoyi-duration-fast)
+    var(--yoyi-easing-standard) forwards;
+}
+
+.hitTarget {
+  position: fixed;
+  display: grid;
+  left: clamp(
+    calc(env(safe-area-inset-left) + 32px),
+    var(--quick-action-x),
+    calc(100vw - env(safe-area-inset-right) - 32px)
+  );
+  top: clamp(
+    calc(env(safe-area-inset-top) + 32px),
+    var(--quick-action-y),
+    calc(100dvh - env(safe-area-inset-bottom) - 32px)
+  );
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  place-items: center;
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-50%, -50%, 0);
+  animation: quick-action-enter var(--yoyi-duration-fast)
+    var(--yoyi-easing-emphasized) forwards;
+  animation-delay: var(--quick-action-delay);
+}
+
+.bubble {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: inherit;
+  border-radius: var(--yoyi-radius-full);
+  transform: translate3d(
+      var(--quick-action-magnet-x, 0),
+      var(--quick-action-magnet-y, 0),
+      0
+    )
+    scale(1);
+  transition:
+    color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    border-color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    opacity var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-emphasized);
+}
+
+.hitTarget[data-candidate="true"] {
+  color: var(--yoyi-color-seal-red);
+}
+
+.hitTarget[data-candidate="true"] .bubble {
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-seal-red-muted) 82%,
+    var(--yoyi-color-background-elevated)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--yoyi-color-seal-red) 56%,
+    var(--yoyi-color-border-default)
+  );
+  transform: translate3d(
+      var(--quick-action-magnet-x, 0),
+      var(--quick-action-magnet-y, -3px),
+      0
+    )
+    scale(1.1);
+}
+
+.overlay[data-has-candidate="true"] .hitTarget[data-candidate="false"] .bubble {
+  opacity: 0.72;
+}
+
+.icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+
+.icon[data-filled="true"] {
+  fill: currentColor;
+}
+
+:global(html[data-platform="tablet"]) .bubble {
+  width: 46px;
+  height: 46px;
+}
+
+:global(html[data-platform="pc"]) .bubble {
+  width: 42px;
+  height: 42px;
+}
+
+@keyframes quick-action-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deadZone,
+  .hitTarget {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .bubble {
+    transition-duration: 1ms;
+  }
+}

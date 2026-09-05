@@ -210,11 +210,36 @@
   border: 0;
   border-radius: inherit;
   cursor: pointer;
-  touch-action: pan-x pan-y;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.cardAction[data-quick-actions="enabled"] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .cardAction:focus {
   outline: none;
+}
+
+.card[data-quick-action-phase="holding"] {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.card[data-quick-action-phase="menu-open"],
+.card[data-quick-action-phase="selecting"] {
+  transform: translateY(-2px) scale(0.98);
+  box-shadow: var(--yoyi-shadow-dialog);
+}
+
+.card[data-quick-action-phase="holding"],
+.card[data-quick-action-phase="menu-open"],
+.card[data-quick-action-phase="selecting"] {
+  transition:
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
 .media {

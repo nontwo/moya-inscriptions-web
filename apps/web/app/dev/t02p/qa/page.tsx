@@ -34,6 +34,12 @@ export default async function T02pQaPage({
     typeof query.topic === "string" && query.topic.length <= 160
       ? query.topic
       : null;
+  const initialPlatformMode =
+    query.platform === "phone" ||
+    query.platform === "tablet" ||
+    query.platform === "pc"
+      ? query.platform
+      : "auto";
 
   return (
     <T02pQaHarness
@@ -43,6 +49,7 @@ export default async function T02pQaPage({
       {...(initialHomeFeed === undefined ? {} : { initialHomeFeed })}
       initialHomeScenario={initialHomeScenario}
       initialPlatform={initialPlatform}
+      initialPlatformMode={initialPlatformMode}
       initialTopicId={initialTopicId}
     />
   );

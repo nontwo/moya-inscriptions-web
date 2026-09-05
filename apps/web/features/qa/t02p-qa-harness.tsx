@@ -13,6 +13,7 @@ import {
   qaUserScenarioNames,
 } from "./user-scenarios";
 import { qaSearchScenarioNames, qaSearchScenarios } from "./search-scenarios";
+import { useMockContentActionStore } from "./mock-content-action-store";
 
 import type { HomeFeed } from "../home/home-feed";
 import type { CatalogDetail } from "@moya/contracts";
@@ -72,6 +73,7 @@ export interface T02pQaHarnessProps {
   readonly initialHomeFeed?: HomeFeed;
   readonly initialHomeScenario?: HomeScenarioName;
   readonly initialPlatform: PresentationPlatform;
+  readonly initialPlatformMode?: PresentationPlatformMode;
   readonly initialTopicId?: string | null;
   readonly detailRecords: readonly CatalogDetail[];
 }
@@ -83,6 +85,7 @@ export const T02pQaHarness = ({
   initialHomeFeed,
   initialHomeScenario = "discover-visual",
   initialPlatform,
+  initialPlatformMode = "auto",
   initialTopicId,
 }: T02pQaHarnessProps) => {
   const [catalogScenario, setCatalogScenario] =
@@ -90,12 +93,13 @@ export const T02pQaHarness = ({
   const [homeScenario, setHomeScenario] =
     useState<HomeScenarioName>(initialHomeScenario);
   const [platformMode, setPlatformMode] =
-    useState<PresentationPlatformMode>("auto");
+    useState<PresentationPlatformMode>(initialPlatformMode);
   const [searchScenario, setSearchScenario] =
     useState<QaSearchScenarioName>("search-default");
   const [userScenario, setUserScenario] = useState<QaUserScenarioName>(
     defaultQaUserScenarioName,
   );
+  const quickActionStore = useMockContentActionStore();
   const home = homeScenarios[homeScenario];
   const catalog = catalogScenarios[catalogScenario];
   const search = qaSearchScenarios[searchScenario];
@@ -234,6 +238,18 @@ export const T02pQaHarness = ({
             </option>
           ))}
         </select>
+        <section aria-label="Quick action QA log" data-quick-action-qa-log="">
+          <strong>Quick action log</strong>
+          {quickActionStore.state.qaLog.length === 0 ? (
+            <span data-quick-action-qa-empty="">No interactions</span>
+          ) : (
+            <ol>
+              {quickActionStore.state.qaLog.map((entry, index) => (
+                <li key={`${entry}:${index}`}>{entry}</li>
+              ))}
+            </ol>
+          )}
+        </section>
       </aside>
 
       <T02pProductPreview
@@ -255,11 +271,14 @@ export const T02pQaHarness = ({
             />
             <QaUserUtility
               catalogItems={visualCatalogItems}
+              favoriteItems={quickActionStore.state.favoriteItems}
               key={userScenario}
+              likedItems={quickActionStore.state.likedItems}
               scenarioName={userScenario}
             />
           </>
         }
+        quickActions={quickActionStore.environment}
         showDevelopmentPagerControls
         showSettingsEntry={false}
         states={states}

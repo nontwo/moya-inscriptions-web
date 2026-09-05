@@ -60,4 +60,20 @@ describe("T02pQaPage", () => {
       '<option value="visual" selected="">Visual</option>',
     );
   });
+
+  it("supports direct QA links for phone and tablet presentation modes", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+
+    for (const platform of ["phone", "tablet"] as const) {
+      const markup = renderToStaticMarkup(
+        await T02pQaPage({ searchParams: Promise.resolve({ platform }) }),
+      );
+
+      expect(markup).toContain(
+        `<option value="${platform}" selected="">${
+          platform === "phone" ? "Phone" : "Tablet"
+        }</option>`,
+      );
+    }
+  });
 });
