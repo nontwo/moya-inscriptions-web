@@ -327,10 +327,11 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
   await expect(panel).toHaveAttribute("tabindex", "0");
   await panel.focus();
   await expect(panel).toBeFocused();
-  await page.keyboard.press("Home");
-  await expectScroll(shell, 0);
+  // Focusing the existing panel can natively reveal its top below the header.
+  // Home is not a product scroll-to-zero command; test actual reading movement
+  // from the browser's observed starting offset instead.
   const before = await readScroll(shell);
-  expect(before.maximum).toBeGreaterThan(0);
+  expect(before.maximum).toBeGreaterThan(before.top);
   expect(before.owner).toBe(
     platform === "pc" ? "document" : "calligraphy-destination",
   );
@@ -372,7 +373,7 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
   }
   await expect
     .poll(async () => (await readScroll(shell)).top)
-    .toBeGreaterThan(0);
+    .toBeGreaterThan(before.top);
   await expect
     .poll(() =>
       page.evaluate(
