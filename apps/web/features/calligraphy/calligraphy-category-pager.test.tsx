@@ -199,14 +199,82 @@ describe("CalligraphyCategoryPager", () => {
   it("uses immediate tab paging for reduced motion and PC", () => {
     prefersReducedMotion = true;
     const phone = renderPager();
+    const phoneEvents = vi.spyOn(phone.frame, "dispatchEvent");
     act(() => phone.handle.current?.scrollToCategory("rubbing"));
-    expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 800 });
+    expect(phone.frame.scrollLeft).toBe(800);
+    expect(scrollToCalls).toEqual([]);
+    expect(phoneEvents).not.toHaveBeenCalled();
+    expect(phone.onCommit).not.toHaveBeenCalled();
+    nativeScroll(phone.frame, 800);
+    expect(phone.onCommit).not.toHaveBeenCalled();
+    act(() => phone.frame.dispatchEvent(new Event("scrollend")));
+    expect(phone.onCommit).toHaveBeenCalledExactlyOnceWith("rubbing");
 
-    scrollToCalls = [];
+    prefersReducedMotion = false;
     const pc = renderPager("pc");
+    const pcEvents = vi.spyOn(pc.frame, "dispatchEvent");
     act(() => pc.handle.current?.scrollToCategory("ink"));
-    expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 400 });
+    expect(pc.frame.scrollLeft).toBe(400);
+    expect(scrollToCalls).toEqual([]);
+    expect(pcEvents).not.toHaveBeenCalled();
+    expect(pc.onCommit).not.toHaveBeenCalled();
+    nativeScroll(pc.frame, 400);
+    expect(pc.onCommit).not.toHaveBeenCalled();
+    act(() => pc.frame.dispatchEvent(new Event("scrollend")));
+    expect(pc.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
   });
+
+  it("uses native offset assignment after a PC hide and reveal without pre-committing", () => {
+    const { frame, handle, onCommit, render } = renderPager("pc");
+    render("rubbing");
+    render("rubbing", false);
+    render("rubbing", true);
+    expect(frame.scrollLeft).toBe(800);
+    // The observed WebKit state accepts the method call without moving.
+    const ignoredScrollTo = vi
+      .spyOn(frame, "scrollTo")
+      .mockImplementation(() => {});
+    const dispatched = vi.spyOn(frame, "dispatchEvent");
+
+    act(() => handle.current?.scrollToCategory("all"));
+
+    expect(ignoredScrollTo).not.toHaveBeenCalled();
+    expect(frame.scrollLeft).toBe(0);
+    expect(dispatched).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("true");
+    nativeScroll(frame, 0);
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("all");
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+  });
+
+  it.each(["phone", "tablet"] as const)(
+    "retains native smooth scrolling and actual-settle commits on %s",
+    (platform) => {
+      const { frame, handle, onCommit } = renderPager(platform);
+      const nativeSmoothScroll = vi
+        .spyOn(frame, "scrollTo")
+        .mockImplementation(() => {});
+
+      act(() => handle.current?.scrollToCategory("ink"));
+
+      expect(nativeSmoothScroll).toHaveBeenCalledExactlyOnceWith({
+        behavior: "smooth",
+        left: 400,
+        top: 0,
+      });
+      expect(frame.scrollLeft).toBe(0);
+      expect(onCommit).not.toHaveBeenCalled();
+      nativeScroll(frame, 200);
+      act(() => frame.dispatchEvent(new Event("scrollend")));
+      expect(onCommit).not.toHaveBeenCalled();
+      nativeScroll(frame, 400);
+      act(() => frame.dispatchEvent(new Event("scrollend")));
+      expect(onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+    },
+  );
 
   it("commits before applying the shorter target panel height", () => {
     let heightObservedByCommit: string | undefined;

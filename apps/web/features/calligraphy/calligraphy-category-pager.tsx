@@ -297,7 +297,9 @@ export const CalligraphyCategoryPager = forwardRef<
       const frame = frameRef.current;
       const offset = readSnapOffsets()[index];
       if (frame === null || offset === undefined) return;
-      if (typeof frame.scrollTo === "function") {
+      if (behavior === "auto") {
+        frame.scrollLeft = offset;
+      } else if (typeof frame.scrollTo === "function") {
         frame.scrollTo({ behavior, left: offset, top: 0 });
       } else {
         frame.scrollLeft = offset;

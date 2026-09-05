@@ -249,6 +249,8 @@ const readScroll = (shell: Locator) =>
       owner: platform === "pc" ? "document" : "calligraphy-destination",
       maximum: Math.max(0, owner.scrollHeight - owner.clientHeight),
       top: owner.scrollTop,
+      ownerScrollEnds: (window as ObservationWindow).__calligraphyStability!
+        .ownerScrollEnds,
       otherTop:
         platform === "pc"
           ? destination.scrollTop
@@ -325,19 +327,30 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
   await observeConvergence(shell, testInfo, "reading-resize");
   const panel = activePanel(shell);
   await expect(panel).toHaveAttribute("tabindex", "0");
+  const beforeFocus = await readScroll(shell);
   await panel.focus();
   await expect(panel).toBeFocused();
+  const afterFocus = await readScroll(shell);
   // Focusing the existing panel can natively reveal its top below the header.
+  // Its scrollend may arrive after focus() returns: finish that scroll before
+  // sending reading input, so its event cannot complete the PageDown assertion.
+  if (afterFocus.top !== beforeFocus.top) {
+    await expect
+      .poll(async () => (await readScroll(shell)).ownerScrollEnds)
+      .toBeGreaterThan(beforeFocus.ownerScrollEnds);
+  }
   // Home is not a product scroll-to-zero command; test actual reading movement
   // from the browser's observed starting offset instead.
   const before = await readScroll(shell);
+  await testInfo.attach("native-focus-before-reading", {
+    body: JSON.stringify({ beforeFocus, afterFocus, settled: before }, null, 2),
+    contentType: "application/json",
+  });
   expect(before.maximum).toBeGreaterThan(before.top);
   expect(before.owner).toBe(
     platform === "pc" ? "document" : "calligraphy-destination",
   );
-  const scrollEnds = await page.evaluate(
-    () => (window as ObservationWindow).__calligraphyStability!.ownerScrollEnds,
-  );
+  const scrollEnds = before.ownerScrollEnds;
 
   if (platform === "pc") {
     testInfo.annotations.push({
