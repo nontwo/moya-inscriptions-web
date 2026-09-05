@@ -517,6 +517,7 @@ test("Filter remains legible through themes and respects reduced motion", async 
     if (preference === "dark") break;
     await userTrigger.click();
     const userPage = shell.getByRole("dialog", { name: "用户页" });
+    await expect(userPage).toBeVisible();
     await expect(
       userPage.getByRole("button", { name: "关闭用户页" }),
     ).toBeFocused();
@@ -532,6 +533,7 @@ test("Filter remains legible through themes and respects reduced motion", async 
     await expect(userPage).toBeVisible();
     await expect(userSettings).toBeFocused();
     await userPage.getByRole("button", { name: "关闭用户页" }).click();
+    await expect(userPage).toHaveCount(0);
     await expect(userTrigger).toBeFocused();
   }
 

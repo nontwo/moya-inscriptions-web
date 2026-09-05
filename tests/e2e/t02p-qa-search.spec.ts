@@ -348,6 +348,60 @@ test("keyboard utility switches keep one owner and Settings returns through User
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
   await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
   await expect(shell.locator("[data-open-settings]")).toHaveCount(0);
+
+  // Fullscreen Search must close before its inert background can open User.
+  await searchTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(search.locator("[data-search-panel]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(searchTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  const settingsTrigger = userPage.getByRole("button", { name: "打开设置" });
+  await settingsTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
+  await expect(
+    shell.getByRole("dialog", { name: "设置" }).getByRole("button", {
+      name: "返回",
+    }),
+  ).toBeFocused();
+  await shell
+    .getByRole("dialog", { name: "设置" })
+    .getByRole("button", { name: "返回" })
+    .click();
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(shell.getByRole("dialog", { name: "设置" })).toHaveCount(0);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(settingsTrigger).toBeFocused();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
+
+  await filterTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(filter.locator("[data-filter-panel]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  await expect(filterTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  const reopenedSettingsTrigger = userPage.getByRole("button", {
+    name: "打开设置",
+  });
+  await reopenedSettingsTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
 });
 
 test("all approved viewport matrices keep the three-item capsule and independent Search aligned with a fullscreen scene", async ({
