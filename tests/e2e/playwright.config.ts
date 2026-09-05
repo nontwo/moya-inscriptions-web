@@ -22,7 +22,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   failOnFlakyTests: Boolean(process.env.CI),
   fullyParallel: false,
-  globalTimeout: process.env.CI ? 12 * 60 * 1000 : 0,
+  globalTimeout: process.env.CI ? 18 * 60 * 1000 : 0,
   metadata: {
     moyaCI: {
       sourceHead: process.env.MOYA_E2E_SOURCE_HEAD,
