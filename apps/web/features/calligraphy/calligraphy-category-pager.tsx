@@ -108,16 +108,26 @@ export const CalligraphyCategoryPager = forwardRef<
     return offsets;
   }, []);
 
-  const applyPanelHeight = useCallback((index: number) => {
-    const frame = frameRef.current;
+  const readPanelHeight = useCallback((index: number) => {
     const category = calligraphyCategories[index];
     const panel = category === undefined ? null : panelRefs.current[category];
-    if (frame === null || panel === null) return;
+    if (panel === null) return null;
     const height = Math.ceil(
       Math.max(panel.scrollHeight, panel.getBoundingClientRect().height),
     );
-    if (height > 0) frame.style.height = `${height}px`;
+    return height > 0 ? `${height}px` : null;
   }, []);
+
+  const applyPanelHeight = useCallback(
+    (index: number) => {
+      const frame = frameRef.current;
+      const height = readPanelHeight(index);
+      if (frame !== null && height !== null && frame.style.height !== height) {
+        frame.style.height = height;
+      }
+    },
+    [readPanelHeight],
+  );
 
   const cancelProgressFrame = useCallback(() => {
     if (progressFrameRef.current === null) return;
@@ -491,11 +501,26 @@ export const CalligraphyCategoryPager = forwardRef<
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    if (frame === null || typeof ResizeObserver !== "function") return;
+    if (
+      !primaryVisible ||
+      frame === null ||
+      typeof ResizeObserver !== "function"
+    ) {
+      return;
+    }
+    let disposed = false;
+    let heightFrame: number | null = null;
+    const cancelHeightFrame = () => {
+      if (heightFrame === null) return;
+      window.cancelAnimationFrame(heightFrame);
+      heightFrame = null;
+    };
     const observer = new ResizeObserver(() => {
+      if (disposed || frameRef.current !== frame || !frame.isConnected) return;
       const width = frame.clientWidth;
       if (width <= 0) {
         frameWasUnavailableRef.current = true;
+        cancelHeightFrame();
         return;
       }
       const becameAvailable = frameWasUnavailableRef.current;
@@ -507,15 +532,50 @@ export const CalligraphyCategoryPager = forwardRef<
         if (offset !== undefined) frame.scrollLeft = offset;
         publishProgress(true);
       }
-      if (sessionRef.current === null) applyPanelHeight(activeIndexRef.current);
+      const height = readPanelHeight(activeIndexRef.current);
+      if (
+        sessionRef.current !== null ||
+        height === null ||
+        frame.style.height === height
+      ) {
+        cancelHeightFrame();
+        return;
+      }
+      // This observer also watches the frame: writing its height during
+      // delivery would resize an observed ancestor again in the same cycle.
+      if (heightFrame !== null) return;
+      heightFrame = window.requestAnimationFrame(() => {
+        heightFrame = null;
+        if (
+          disposed ||
+          frameRef.current !== frame ||
+          !frame.isConnected ||
+          frame.clientWidth <= 0 ||
+          sessionRef.current !== null
+        ) {
+          return;
+        }
+        applyPanelHeight(activeIndexRef.current);
+      });
     });
     observer.observe(frame);
     for (const category of calligraphyCategories) {
       const panel = panelRefs.current[category];
       if (panel !== null) observer.observe(panel);
     }
-    return () => observer.disconnect();
-  }, [applyPanelHeight, invalidateSession, publishProgress, readSnapOffsets]);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      cancelHeightFrame();
+    };
+  }, [
+    applyPanelHeight,
+    invalidateSession,
+    primaryVisible,
+    publishProgress,
+    readPanelHeight,
+    readSnapOffsets,
+  ]);
 
   useLayoutEffect(() => {
     if (!primaryVisible) return;
