@@ -575,6 +575,8 @@ describe("catalog-import/v1 CSV/XLSX convergence", () => {
     expect(parsed.envelope.catalogRows[0]?.catalogImportId).toBe("item-z");
   });
 
+  // Allow 15 s for fixture serialization and both public APIs in this capacity
+  // regression; the execution budget is not a performance SLA.
   it("accepts a realistic 1,658-row synthetic workbook within every OOXML resource bound", async () => {
     const syntheticCatalogRows = Array.from(
       { length: realisticCatalogRowCount },

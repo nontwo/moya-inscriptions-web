@@ -4,17 +4,37 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig, devices } from "@playwright/test";
 
+import { readE2ePorts } from "./support/e2e-ports";
+
 const e2eRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(e2eRoot, "../..");
-const webBaseUrl = "http://127.0.0.1:3100";
-const publicApiBaseUrl = "http://127.0.0.1:3101";
+const ports = readE2ePorts();
+const webBaseUrl = `http://127.0.0.1:${ports.web}`;
+const publicApiBaseUrl = `http://127.0.0.1:${ports.publicApi}`;
+const artifactRoot = resolve(
+  process.env.MOYA_E2E_ARTIFACT_DIR ??
+    resolve(repositoryRoot, ".local/e2e-ci/unsharded"),
+);
 
 export default defineConfig({
   ...(process.env.CI ? { workers: 1 } : {}),
   expect: { timeout: 10_000 },
   forbidOnly: Boolean(process.env.CI),
+  failOnFlakyTests: Boolean(process.env.CI),
   fullyParallel: false,
-  outputDir: resolve(tmpdir(), "moya-t02p01-playwright-results"),
+  globalTimeout: process.env.CI ? 12 * 60 * 1000 : 0,
+  metadata: {
+    moyaCI: {
+      sourceHead: process.env.MOYA_E2E_SOURCE_HEAD,
+      checkoutSha: process.env.MOYA_E2E_CHECKOUT_SHA,
+      tree: process.env.MOYA_E2E_CHECKOUT_TREE,
+      runId: process.env.GITHUB_RUN_ID,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+    },
+  },
+  outputDir: process.env.MOYA_E2E_ARTIFACT_DIR
+    ? resolve(artifactRoot, "test-results")
+    : resolve(tmpdir(), "moya-t02p01-playwright-results"),
   projects: [
     {
       name: "desktop-chromium",
@@ -41,7 +61,13 @@ export default defineConfig({
       },
     },
   ],
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI
+    ? [
+        ["github"],
+        ["blob", { outputDir: resolve(artifactRoot, "blob") }],
+        ["json", { outputFile: resolve(artifactRoot, "report.json") }],
+      ]
+    : "list",
   retries: process.env.CI ? 1 : 0,
   testDir: e2eRoot,
   testIgnore: ["support/**"],
@@ -50,17 +76,23 @@ export default defineConfig({
   use: {
     baseURL: webBaseUrl,
     screenshot: "only-on-failure",
-    trace: "on-first-retry",
+    trace: "retain-on-failure-and-retries",
   },
   webServer: [
     {
       command: "node tests/e2e/support/public-api.ts",
+      name: "Public API fixture",
+      stdout: "pipe",
+      stderr: "pipe",
       cwd: repositoryRoot,
       timeout: 30_000,
       url: `${publicApiBaseUrl}/health`,
     },
     {
       command: "node tests/e2e/support/start-formal-web.ts",
+      name: "Formal Web fixture",
+      stdout: "pipe",
+      stderr: "pipe",
       cwd: repositoryRoot,
       env: {
         ...process.env,

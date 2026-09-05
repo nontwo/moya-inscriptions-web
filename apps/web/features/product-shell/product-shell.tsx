@@ -319,11 +319,25 @@ export const ProductShell = ({
         window.cancelAnimationFrame(restoreFrameRef.current);
       }
       const desired = scrollPositionsRef.current[destination];
+      // During document-to-panel layout changes, Home registers its first
+      // panel in the upcoming layout effect. Bind it when it becomes available.
+      let targetElement =
+        destination === "home" &&
+        presentationPlatform !== "pc" &&
+        activeHomeScrollElementRef.current === null
+          ? null
+          : scrollElementFor(destination, presentationPlatform);
       let retryFrames = SCROLL_RESTORE_RETRY_FRAMES;
       const applyScroll = () => {
         restoreFrameRef.current = null;
         const element = scrollElementFor(destination, presentationPlatform);
-        if (element === null) return;
+        if (targetElement === null) targetElement = element;
+        // A Home feed switch can replace the registered scroll owner without
+        // issuing another restore. Never transfer this request to that panel.
+        if (element === null || element !== targetElement) {
+          scrollRestorePendingRef.current = false;
+          return;
+        }
         const top = clampScrollTop(element, desired);
         scrollRestorePendingRef.current = true;
         if (presentationPlatform === "pc") {
@@ -336,7 +350,8 @@ export const ProductShell = ({
           restoreFrameRef.current = window.requestAnimationFrame(applyScroll);
           return;
         }
-        window.requestAnimationFrame(() => {
+        restoreFrameRef.current = window.requestAnimationFrame(() => {
+          restoreFrameRef.current = null;
           scrollRestorePendingRef.current = false;
         });
       };
