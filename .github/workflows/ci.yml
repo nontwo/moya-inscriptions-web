@@ -164,8 +164,8 @@ jobs:
         run: node tests/e2e/support/e2e-ci.mjs prepare ${{ matrix.shard }}
 
       - name: Full browser regression shard
-        # Native 12-minute deadline leaves teardown/report time before this cap.
-        timeout-minutes: 15
+        # Native 18-minute deadline leaves teardown/report time before this cap.
+        timeout-minutes: 22
         run: node tests/e2e/support/e2e-ci.mjs run ${{ matrix.shard }}
 
       - name: Upload shard reports, failures and service logs

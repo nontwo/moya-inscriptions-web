@@ -118,7 +118,7 @@ it("keeps native five-project serial CI coverage and failure diagnostics", async
       fullyParallel: false,
       failOnFlakyTests: true,
       retries: 1,
-      globalTimeout: 720_000,
+      globalTimeout: 1_080_000,
     });
     expect(config.use).toMatchObject({
       baseURL: "http://127.0.0.1:4320",

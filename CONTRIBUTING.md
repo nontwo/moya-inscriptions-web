@@ -68,10 +68,11 @@ the affected validation. Record each applicable command and result in the PR.
   timings together with GitHub job wall time and total runner usage before
   claiming a speed improvement.
 
-CI has a 12-minute native suite deadline within each 30-minute shard job, with
-bounded installation, teardown/report and upload windows. Ordinary failures
-still upload diagnostics; hard cancellation or runner loss can leave incomplete
-evidence and must never be reported as a complete pass.
+CI has an 18-minute native suite deadline within each 22-minute test step and
+30-minute shard job, with bounded installation, teardown/report and upload
+windows. Ordinary failures still upload diagnostics; hard cancellation or runner
+loss can leave incomplete evidence and must never be reported as a complete
+pass.
 
 ## Pull request, review, and merge
 
