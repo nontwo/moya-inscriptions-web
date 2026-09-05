@@ -620,6 +620,38 @@ describe("ProductShell", () => {
     },
   );
 
+  it("corrects a post-restore scroll drift before releasing the scroll owner", async () => {
+    renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    let top = 0;
+    const writeTop = vi.fn((value: number) => {
+      top = value;
+    });
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 400 },
+      scrollHeight: { value: 1_000 },
+      scrollTop: { get: () => top, set: writeTop },
+    });
+
+    act(() => {
+      observedProductShell!.registerActiveHomeScrollElement(scroller);
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.advanceTimersToNextTimer();
+      vi.advanceTimersToNextTimer();
+    });
+    expect(top).toBe(175);
+    expect(writeTop).toHaveBeenCalledTimes(1);
+
+    top = 182;
+    act(() => vi.advanceTimersToNextTimer());
+    expect(top).toBe(175);
+    expect(writeTop).toHaveBeenCalledTimes(2);
+
+    act(() => vi.runAllTimers());
+    expect(writeTop).toHaveBeenCalledTimes(2);
+  });
+
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderProductShell();
