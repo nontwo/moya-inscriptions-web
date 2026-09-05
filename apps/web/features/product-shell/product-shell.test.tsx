@@ -652,6 +652,170 @@ describe("ProductShell", () => {
     expect(writeTop).toHaveBeenCalledTimes(2);
   });
 
+  it.each(
+    ["before first write", "after first write", "during retry"].flatMap(
+      (timing) =>
+        ["wheel", "touchstart", "pointerdown", "PageDown"].map((input) => ({
+          timing,
+          input,
+        })),
+    ),
+  )("yields a pending restore to $input $timing", async ({ timing, input }) => {
+    const { container } = renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    container.append(scroller);
+    let top = 0;
+    let range = timing === "during retry" ? 0 : 600;
+    const writeTop = vi.fn((value: number) => {
+      top = value;
+    });
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 400 },
+      scrollHeight: { get: () => 400 + range },
+      scrollTop: { get: () => top, set: writeTop },
+    });
+    act(() => {
+      observedProductShell!.registerActiveHomeScrollElement(scroller);
+      observedProductShell!.restoreActiveScrollTop(175);
+      if (timing !== "before first write") {
+        vi.advanceTimersToNextTimer();
+        vi.advanceTimersToNextTimer();
+      }
+    });
+    const writes = writeTop.mock.calls.length;
+    const event =
+      input === "PageDown"
+        ? new KeyboardEvent("keydown", {
+            key: input,
+            bubbles: true,
+            cancelable: true,
+          })
+        : new Event(input, { bubbles: true, cancelable: true });
+    act(() => {
+      scroller.dispatchEvent(event);
+      range = 600;
+      top = 182;
+      vi.runAllTimers();
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(top).toBe(182);
+    expect(writeTop).toHaveBeenCalledTimes(writes);
+    act(() => vi.runAllTimers());
+    expect(writeTop).toHaveBeenCalledTimes(writes);
+  });
+
+  it.each([
+    "completed",
+    "replaced",
+    "unmounted",
+    "detail",
+    "settings",
+    "topic",
+  ])(
+    "removes scroll-input listeners when restoration is %s",
+    async (ending) => {
+      const { container } = renderProductShell(<ProductShellObserver />);
+      await act(async () => vi.runAllTimers());
+      const scroller = document.createElement("section");
+      container.append(scroller);
+      Object.defineProperties(scroller, {
+        clientHeight: { value: 400 },
+        scrollHeight: { value: 1_000 },
+      });
+      const addListener = vi.spyOn(window, "addEventListener");
+      const removeListener = vi.spyOn(window, "removeEventListener");
+      addListener.mockClear();
+      removeListener.mockClear();
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(scroller);
+        observedProductShell!.restoreActiveScrollTop(175);
+        vi.advanceTimersToNextTimer();
+        vi.advanceTimersToNextTimer();
+      });
+      const inputTypes = ["wheel", "touchstart", "pointerdown", "keydown"];
+      const registrations = addListener.mock.calls.filter(([type]) =>
+        inputTypes.includes(type),
+      );
+      expect(registrations).toHaveLength(4);
+      act(() => {
+        if (ending === "replaced") {
+          observedProductShell!.restoreActiveScrollTop(40);
+        } else if (ending === "unmounted") {
+          mountedRoots.pop()!.unmount();
+        } else if (ending === "detail") {
+          observedProductShell!.openCatalog("catalog-one", scroller);
+        } else if (ending === "settings") {
+          observedProductShell!.requestSettings(scroller);
+        } else if (ending === "topic") {
+          observedProductShell!.openTopic("topic-one", scroller, 175);
+        }
+      });
+      // A now-hidden primary surface must not be corrected under an overlay.
+      if (["detail", "settings", "topic", "unmounted"].includes(ending)) {
+        scroller.scrollTop = 182;
+      }
+      act(() => vi.runAllTimers());
+      for (const [type, listener] of registrations) {
+        expect(removeListener).toHaveBeenCalledWith(type, listener, true);
+      }
+      expect(scroller.scrollTop).toBe(
+        ending === "completed" ? 175 : ending === "replaced" ? 40 : 182,
+      );
+      addListener.mockRestore();
+      removeListener.mockRestore();
+    },
+  );
+
+  it("ignores unrelated input without dropping the pending restore", async () => {
+    const { container } = renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    const editor = document.createElement("input");
+    scroller.append(editor);
+    container.append(scroller);
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 400 },
+      scrollHeight: { value: 1_000 },
+    });
+    act(() => {
+      observedProductShell!.registerActiveHomeScrollElement(scroller);
+      observedProductShell!.restoreActiveScrollTop(175);
+      container.dispatchEvent(new Event("wheel", { bubbles: true }));
+      scroller.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+      );
+      editor.dispatchEvent(
+        new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+      );
+      vi.runAllTimers();
+    });
+    expect(scroller.scrollTop).toBe(175);
+  });
+
+  it("keeps drift correction bounded when the scroll position never settles", async () => {
+    renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    let top = 0;
+    const writeTop = vi.fn((value: number) => {
+      top = value + 7;
+    });
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 400 },
+      scrollHeight: { value: 1_000 },
+      scrollTop: { get: () => top, set: writeTop },
+    });
+    act(() => {
+      observedProductShell!.registerActiveHomeScrollElement(scroller);
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.runAllTimers();
+    });
+    expect(writeTop).toHaveBeenCalledTimes(13);
+    act(() => vi.runAllTimers());
+    expect(writeTop).toHaveBeenCalledTimes(13);
+  });
+
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderProductShell();

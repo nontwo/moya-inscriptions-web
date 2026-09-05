@@ -200,6 +200,7 @@ export const ProductShell = ({
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
   const activeHomeScrollElementRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
+  const restoreInputCleanupRef = useRef<(() => void) | null>(null);
   const topicFocusFrameRef = useRef<number | null>(null);
   const navigationIdleTimerRef = useRef<number | null>(null);
   const navigationMinimizedRef = useRef(false);
@@ -310,14 +311,22 @@ export const ProductShell = ({
     [scrollElementFor],
   );
 
+  const cancelScrollRestore = useCallback(() => {
+    if (restoreFrameRef.current !== null) {
+      window.cancelAnimationFrame(restoreFrameRef.current);
+      restoreFrameRef.current = null;
+    }
+    scrollRestorePendingRef.current = false;
+    restoreInputCleanupRef.current?.();
+    restoreInputCleanupRef.current = null;
+  }, []);
+
   const restoreScroll = useCallback(
     (
       destination: PrimaryDestination,
       presentationPlatform: PresentationPlatform,
     ) => {
-      if (restoreFrameRef.current !== null) {
-        window.cancelAnimationFrame(restoreFrameRef.current);
-      }
+      cancelScrollRestore();
       const desired = scrollPositionsRef.current[destination];
       // During document-to-panel layout changes, Home registers its first
       // panel in the upcoming layout effect. Bind it when it becomes available.
@@ -335,7 +344,7 @@ export const ProductShell = ({
         // A Home feed switch can replace the registered scroll owner without
         // issuing another restore. Never transfer this request to that panel.
         if (element === null || element !== targetElement) {
-          scrollRestorePendingRef.current = false;
+          cancelScrollRestore();
           return;
         }
         const top = clampScrollTop(element, desired);
@@ -352,7 +361,7 @@ export const ProductShell = ({
             presentationPlatform,
           );
           if (currentElement === null || currentElement !== targetElement) {
-            scrollRestorePendingRef.current = false;
+            cancelScrollRestore();
             return;
           }
           const currentTop =
@@ -368,8 +377,59 @@ export const ProductShell = ({
             applyScroll();
             return;
           }
-          scrollRestorePendingRef.current = false;
+          cancelScrollRestore();
         });
+      };
+      // Scroll events alone cannot distinguish layout drift from user input.
+      // Relinquish this bounded restore before the user's default scroll action.
+      const cancelOnScrollInput = (event: Event) => {
+        if (
+          event instanceof KeyboardEvent &&
+          (![
+            "ArrowUp",
+            "ArrowDown",
+            "PageUp",
+            "PageDown",
+            "Home",
+            "End",
+            " ",
+          ].includes(event.key) ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey ||
+            (event.target instanceof HTMLElement &&
+              event.target.closest(
+                'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+              ) !== null))
+        ) {
+          return;
+        }
+        const element = scrollElementFor(destination, presentationPlatform);
+        if (
+          element === null ||
+          !(event.target instanceof Node) ||
+          !element.contains(event.target)
+        ) {
+          return;
+        }
+        cancelScrollRestore();
+      };
+      const inputEvents = [
+        "wheel",
+        "touchstart",
+        "pointerdown",
+        "keydown",
+      ] as const;
+      for (const type of inputEvents) {
+        window.addEventListener(type, cancelOnScrollInput, {
+          capture: true,
+          passive: true,
+        });
+      }
+      restoreInputCleanupRef.current = () => {
+        for (const type of inputEvents) {
+          window.removeEventListener(type, cancelOnScrollInput, true);
+        }
       };
       restoreFrameRef.current = window.requestAnimationFrame(() => {
         restoreFrameRef.current = window.requestAnimationFrame(() => {
@@ -377,7 +437,7 @@ export const ProductShell = ({
         });
       });
     },
-    [scrollElementFor],
+    [cancelScrollRestore, scrollElementFor],
   );
 
   const readActiveScrollTop = useCallback(() => {
@@ -1305,6 +1365,7 @@ export const ProductShell = ({
     if (!settingsOpen && activeCatalogId === null && activeTopicId === null) {
       return undefined;
     }
+    cancelScrollRestore();
     if (settingsOpen) settingsBackRef.current?.focus();
     else if (activeCatalogId !== null) detailBackRef.current?.focus();
     else topicBackRef.current?.focus();
@@ -1313,13 +1374,11 @@ export const ProductShell = ({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [activeCatalogId, activeTopicId, settingsOpen]);
+  }, [activeCatalogId, activeTopicId, cancelScrollRestore, settingsOpen]);
 
   useEffect(
     () => () => {
-      if (restoreFrameRef.current !== null) {
-        window.cancelAnimationFrame(restoreFrameRef.current);
-      }
+      cancelScrollRestore();
       if (topicFocusFrameRef.current !== null) {
         window.cancelAnimationFrame(topicFocusFrameRef.current);
       }
@@ -1331,7 +1390,7 @@ export const ProductShell = ({
       }
       synchronizePrimaryNavigationViewportInset(document.documentElement, null);
     },
-    [],
+    [cancelScrollRestore],
   );
 
   const cycleTheme = () => {
