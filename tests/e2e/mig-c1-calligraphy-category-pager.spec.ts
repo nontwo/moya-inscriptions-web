@@ -117,11 +117,14 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
     return element.scrollTop;
   }, desired);
 
-const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
+const waitForInitialCategoryScroll = async (
+  calligraphy: Locator,
+  category: Category = "ink",
+) => {
   // A committed category attribute precedes its queued scroll restoration.
   // Observe settled geometry and the initial offset, not a fixed time delay.
   await calligraphy.evaluate(
-    (node) =>
+    (node, targetCategory) =>
       new Promise<void>((resolve) => {
         const root = node as HTMLElement;
         const shell = root.closest<HTMLElement>("[data-product-shell]")!;
@@ -136,7 +139,7 @@ const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
           "[data-calligraphy-category-pager]",
         )!;
         const panel = root.querySelector<HTMLElement>(
-          '[data-calligraphy-category-panel="ink"]',
+          `[data-calligraphy-category-panel="${targetCategory}"]`,
         )!;
         const masonry = panel.querySelector<HTMLElement>(
           "[data-home-masonry]",
@@ -165,6 +168,7 @@ const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
         };
         requestAnimationFrame(sample);
       }),
+    category,
   );
 };
 
@@ -658,6 +662,7 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
 }) => {
   const { calligraphy, surface } = await openSurface(page);
   await settleCategory(calligraphy, "rubbing");
+  await waitForInitialCategoryScroll(calligraphy, "rubbing");
   await expect
     .poll(async () => (await primaryScrollEvidence(surface)).maximum)
     .toBeGreaterThan(0);
@@ -674,6 +679,7 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
         }
       : { height: viewport.width, width: viewport.height };
 
+  expect((await primaryScrollEvidence(surface)).top).toBe(recordedScroll);
   await page.setViewportSize(resizedViewport);
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
