@@ -59,7 +59,6 @@ const renderProductShell = (
   home: ReactNode = <p>home content</p>,
   options: {
     readonly primaryUtility?: ReactNode;
-    readonly showSettingsEntry?: boolean;
   } = {},
 ) => {
   const container = document.createElement("div");
@@ -73,6 +72,7 @@ const renderProductShell = (
         home={home}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
+        primaryUtility={<SettingsRequester />}
         {...options}
       />,
     ),
@@ -110,6 +110,7 @@ const renderTopicShell = () => {
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
         home={<TopicOpener />}
+        primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
         renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
@@ -182,6 +183,7 @@ const renderDetailShell = () => {
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
         home={<CatalogOpener />}
+        primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
         renderDetailOverlay={({
@@ -353,7 +355,7 @@ describe("ProductShell", () => {
       ),
     ).toEqual(labels);
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     await act(async () => vi.runAllTimers());
     expect(container.querySelector("[data-primary-navigation]")).toBe(
       navigation,
@@ -505,7 +507,7 @@ describe("ProductShell", () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const { container } = renderProductShell();
     await act(async () => vi.runAllTimers());
-    const opener = buttonByLabel(container, "打开设置");
+    const opener = buttonByLabel(container, "从用户页打开设置");
 
     click(opener);
     await act(async () => vi.runAllTimers());
@@ -544,10 +546,9 @@ describe("ProductShell", () => {
     expect(dialog(container)).not.toBeNull();
   });
 
-  it("can hide the external Settings entry while preserving the owned Settings seam", async () => {
+  it("has no external Settings entry while preserving the owned Settings seam", async () => {
     const { container } = renderProductShell(<p>home content</p>, {
       primaryUtility: <SettingsRequester />,
-      showSettingsEntry: false,
     });
     await act(async () => vi.runAllTimers());
 
@@ -580,7 +581,6 @@ describe("ProductShell", () => {
       .mockImplementation(() => undefined);
     const { container } = renderProductShell(<p>home content</p>, {
       primaryUtility: <SettingsRequester />,
-      showSettingsEntry: false,
     });
     await act(async () => vi.runAllTimers());
     const opener = buttonByLabel(container, "从用户页打开设置");
@@ -784,7 +784,7 @@ describe("ProductShell", () => {
       detailHistoryState("catalog-one", "home", 146, 73),
     );
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     expect(dialog(container)).toBeNull();
 
     act(() =>
@@ -922,7 +922,7 @@ describe("ProductShell", () => {
       }
       pushState.mockClear();
 
-      click(buttonByLabel(container, "打开设置"));
+      click(buttonByLabel(container, "从用户页打开设置"));
       await act(async () => vi.runAllTimers());
 
       expect(pushState).toHaveBeenCalledOnce();
@@ -983,7 +983,7 @@ describe("ProductShell", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.homeLayout).toBe("single");
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     click(buttonByLabel(container, /切换主题/));
     click(buttonByLabel(container, /切换布局/));
 

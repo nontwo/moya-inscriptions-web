@@ -62,7 +62,8 @@ test("QA user UI is isolated from clean Development and formal routes", async ({
     const response = await page.goto(path);
     expect(response?.status()).toBe(200);
     await expect(page.locator("[data-qa-user-interface]")).toHaveCount(0);
-    await expect(page.locator("[data-open-settings]")).toHaveCount(1);
+    await expect(page.locator("[data-open-settings]")).toHaveCount(0);
+    await expect(page.locator("[data-search-trigger]")).toHaveCount(0);
   }
 
   const { shell } = await openQa(page);
@@ -83,9 +84,9 @@ test("User opens on published content and reuses the ProductShell Settings owner
   await expect(
     userPage.getByRole("heading", { name: "我发布过的内容" }),
   ).toBeVisible();
-  await expect(userPage.locator("[data-user-content-list] > div")).toHaveCount(
-    8,
-  );
+  await expect(
+    userPage.locator('[data-user-panel="published"] [data-user-content-id]'),
+  ).toHaveCount(8);
   await expect(
     userPage.getByRole("button", { name: "关闭用户页" }),
   ).toBeFocused();
@@ -127,9 +128,9 @@ test("User traps focus and restores only its nearest QA harness exactly", async 
   );
 
   const targets = surface.locator(
-    "[data-qa-controls], [data-primary-navigation-pager], [data-t02p-qa-search], [data-inscription-filter], [data-user-trigger]",
+    "[data-qa-controls], [data-primary-navigation-pager], [data-primary-navigation-dock], [data-primary-navigation], [data-t02p-qa-search], [data-inscription-filter], [data-user-trigger]",
   );
-  await expect(targets).toHaveCount(5);
+  await expect(targets).toHaveCount(7);
   await surface.locator("[data-qa-controls]").evaluate((node) => {
     node.setAttribute("aria-hidden", "menu");
     (node as HTMLElement).inert = true;
@@ -172,7 +173,7 @@ test("User traps focus and restores only its nearest QA harness exactly", async 
   );
 
   const focusable = userPage.locator(
-    'button:not([disabled]):not([tabindex="-1"])',
+    'button:not([disabled]):not([tabindex="-1"]):not([inert] *):visible',
   );
   const first = focusable.first();
   const last = focusable.last();
@@ -185,8 +186,10 @@ test("User traps focus and restores only its nearest QA harness exactly", async 
   await first.click();
   await expect(userPage).toHaveCount(0);
   expect(await targets.evaluateAll(state)).toEqual(before);
-  expect(await page.evaluate(() => document.body.style.overflow)).toBe("clip");
   await expect(trigger).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("clip");
   await page.evaluate(() => {
     document.body.style.overflow = "";
     document.querySelector("#outside-qa-utility")?.remove();
@@ -212,7 +215,9 @@ test("Published, saved, liked and history remain presentation-only", async ({
     ).toBeVisible();
   }
 
-  const firstContent = userPage.locator("[data-user-content-id]").first();
+  const firstContent = userPage
+    .locator('[data-user-panel="published"] [data-user-content-id]')
+    .first();
   await expect(firstContent).toHaveAttribute(
     "data-user-content-id",
     "qa-visual-inscription-01",
@@ -410,9 +415,270 @@ test("approved viewport matrices keep the single-layer User UI in bounds", async
     await expect(
       userPage.getByRole("tablist", { name: "用户内容分类" }),
     ).toBeVisible();
+    if (testInfo.project.name === "mobile-webkit") {
+      for (const [key, label] of [
+        ["published", "发布"],
+        ["saved", "收藏"],
+        ["liked", "喜欢"],
+        ["history", "历史"],
+      ] as const) {
+        await userPage.getByRole("tab", { name: label }).click();
+        await expect(userPage.locator("[data-user-pager]")).toHaveAttribute(
+          "data-horizontal-pager-active-key",
+          key,
+        );
+        const list = userPage.locator(
+          `[data-user-panel="${key}"] [data-user-content-list]`,
+        );
+        await expect(list).toHaveAttribute("data-user-columns", "2");
+        const columns = await list.evaluate((node) => {
+          const lefts = Array.from(
+            node.querySelectorAll<HTMLElement>("[data-user-content-id]"),
+          ).map((card) => Math.round(card.getBoundingClientRect().left));
+          return new Set(lefts).size;
+        });
+        expect(columns).toBe(2);
+      }
+    }
     await userPage.getByRole("button", { name: "关闭用户页" }).click();
-    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
-      "hidden",
-    );
+    await expect(userPage).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect
+      .poll(() => page.evaluate(() => document.body.style.overflow))
+      .not.toBe("hidden");
   }
+});
+
+test("User tabs preserve independent panel scroll and Settings returns to the same tab, scroll and opener", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  const { shell, trigger } = await openQa(page);
+  const userPage = await openUser(shell, trigger);
+  const pager = userPage.locator("[data-user-pager]");
+  const readScroll = (key: string) =>
+    userPage
+      .locator(`[data-user-panel="${key}"]`)
+      .evaluate((node) => node.scrollTop);
+  const positions: Record<string, number> = {};
+  for (const [key, label, desired] of [
+    ["published", "发布", 220],
+    ["saved", "收藏", 150],
+    ["liked", "喜欢", 80],
+    ["history", "历史", 110],
+  ] as const) {
+    await userPage.getByRole("tab", { name: label }).click();
+    await expect(pager).toHaveAttribute(
+      "data-horizontal-pager-active-key",
+      key,
+    );
+    positions[key] = await userPage
+      .locator(`[data-user-panel="${key}"]`)
+      .evaluate((node, top) => {
+        node.scrollTop = top;
+        node.dispatchEvent(new Event("scroll"));
+        return node.scrollTop;
+      }, desired);
+    expect(positions[key]).toBeGreaterThan(0);
+  }
+  for (const [key, label] of [
+    ["published", "发布"],
+    ["saved", "收藏"],
+    ["liked", "喜欢"],
+    ["history", "历史"],
+  ] as const) {
+    await userPage.getByRole("tab", { name: label }).click();
+    await expect(pager).toHaveAttribute(
+      "data-horizontal-pager-active-key",
+      key,
+    );
+    await expect.poll(() => readScroll(key)).toBe(positions[key]);
+  }
+  const sourceScroll = await page.evaluate(() => window.scrollY);
+  const settingsEntry = userPage.locator("[data-user-settings]");
+  await settingsEntry.click();
+  const settings = shell.getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(settingsEntry).toBeFocused();
+  await expect(pager).toHaveAttribute(
+    "data-horizontal-pager-active-key",
+    "history",
+  );
+  await expect.poll(() => readScroll("history")).toBe(positions.history);
+  expect(await page.evaluate(() => window.scrollY)).toBe(sourceScroll);
+
+  await userPage.getByRole("tab", { name: "历史" }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(pager).toHaveAttribute(
+    "data-horizontal-pager-active-key",
+    "liked",
+  );
+  await expect(userPage.getByRole("tab", { name: "喜欢" })).toBeFocused();
+  await expect(userPage.locator('[data-user-panel="history"]')).toHaveAttribute(
+    "inert",
+    "",
+  );
+  await expect(userPage.locator('[data-user-panel="liked"]')).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+});
+
+test("User content follows trusted horizontal input and vertical reading never changes category", async ({
+  page: projectPage,
+  context: projectContext,
+  browser,
+  browserName,
+}, testInfo) => {
+  // Mobile WebKit does not expose wheel or touch-drag injection in Playwright.
+  // This case uses desktop WebKit input on the QA phone presentation; the
+  // separate mobile matrices retain their actual mobile context and tap paths.
+  const wheelContext =
+    browserName === "webkit" && testInfo.project.use.isMobile === true
+      ? await browser.newContext({
+          baseURL: testInfo.project.use.baseURL as string,
+          isMobile: false,
+          hasTouch: false,
+          viewport: { width: 390, height: 600 },
+        })
+      : null;
+  const context = wheelContext ?? projectContext;
+  const page = wheelContext === null ? projectPage : await context.newPage();
+  testInfo.annotations.push({
+    type: "input-evidence",
+    description:
+      browserName === "chromium"
+        ? "Chromium trusted CDP touch injection; no physical iPhone evidence"
+        : "Desktop WebKit trusted wheel input; no mobile WebKit touch or physical iPhone evidence",
+  });
+  await page.setViewportSize({ width: 390, height: 600 });
+  const { shell, surface, trigger } = await openQa(page);
+  if (browserName === "chromium" || wheelContext !== null) {
+    await surface
+      .getByRole("combobox", { name: "QA presentation platform" })
+      .selectOption("phone");
+  }
+  const userPage = await openUser(shell, trigger);
+  const pager = userPage.locator("[data-user-pager]");
+  const committedKeys: string[] = [];
+  await pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    frame.dataset.testProgressSamples = "[]";
+    frame.dataset.testCommitSamples = "[]";
+    frame.dataset.testTrustedInputs = "0";
+    for (const type of ["wheel", "touchmove"]) {
+      frame.addEventListener(
+        type,
+        (event) => {
+          if (event.isTrusted)
+            frame.dataset.testTrustedInputs = String(
+              Number(frame.dataset.testTrustedInputs ?? "0") + 1,
+            );
+        },
+        { capture: true },
+      );
+    }
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.attributeName === "data-horizontal-pager-progress") {
+          const samples = JSON.parse(
+            frame.dataset.testProgressSamples ?? "[]",
+          ) as number[];
+          samples.push(Number(frame.dataset.horizontalPagerProgress));
+          frame.dataset.testProgressSamples = JSON.stringify(samples);
+        }
+        if (record.attributeName === "data-horizontal-pager-active-key") {
+          const samples = JSON.parse(
+            frame.dataset.testCommitSamples ?? "[]",
+          ) as string[];
+          samples.push(frame.dataset.horizontalPagerActiveKey ?? "");
+          frame.dataset.testCommitSamples = JSON.stringify(samples);
+        }
+      }
+    }).observe(frame, {
+      attributes: true,
+      attributeFilter: [
+        "data-horizontal-pager-progress",
+        "data-horizontal-pager-active-key",
+      ],
+    });
+  });
+  const box = await pager.boundingBox();
+  if (box === null) throw new Error("Missing User pager geometry");
+  const x = box.x + box.width * 0.8;
+  const y = box.y + Math.min(box.height * 0.5, 120);
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(0, 120);
+  const published = userPage.locator('[data-user-panel="published"]');
+  await expect
+    .poll(() => published.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(pager).toHaveAttribute(
+    "data-horizontal-pager-active-key",
+    "published",
+  );
+
+  if (browserName === "chromium") {
+    const session = await context.newCDPSession(page);
+    await session.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 1,
+    });
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y }],
+    });
+    for (let step = 1; step <= 12; step += 1) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x - (box.width * 0.66 * step) / 12, y }],
+      });
+      // Frame-by-frame input samples preserve the continuous browser gesture path.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+    }
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await session.detach();
+  } else {
+    // Playwright WebKit exposes trusted wheel input, not native iPhone touch injection.
+    await page.mouse.wheel(box.width * 0.8, 0);
+  }
+  await expect(pager).toHaveAttribute(
+    "data-horizontal-pager-active-key",
+    "saved",
+  );
+  await expect(pager).toHaveAttribute("data-user-pager-scrolling", "false");
+  await expect(userPage.getByRole("tab", { name: "收藏" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const evidence = await pager.evaluate((node) => {
+    const frame = node as HTMLElement;
+    return {
+      commits: JSON.parse(frame.dataset.testCommitSamples ?? "[]") as string[],
+      progress: JSON.parse(
+        frame.dataset.testProgressSamples ?? "[]",
+      ) as number[],
+      trustedInputs: Number(frame.dataset.testTrustedInputs ?? "0"),
+    };
+  });
+  committedKeys.push(...evidence.commits);
+  expect(committedKeys).toEqual(["saved"]);
+  expect(evidence.trustedInputs).toBeGreaterThan(0);
+  expect(evidence.progress.some((value) => value > 0 && value < 1)).toBe(true);
+  await expect(userPage.locator("[data-user-intent-status]")).not.toContainText(
+    "内容打开",
+  );
+  await expect(page).toHaveURL(/\/dev\/t02p\/qa$/u);
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  await wheelContext?.close();
 });

@@ -20,7 +20,9 @@ vi.mock("../product-shell/product-shell", () => ({
 
 import {
   QaInscriptionFilter,
+  QaNavigationSearchAction,
   QaProductUtilities,
+  QaUtilitiesProvider,
 } from "./inscription-filter-presentation";
 
 import type { Root } from "react-dom/client";
@@ -398,18 +400,34 @@ describe("QaProductUtilities", () => {
     roots.push(root);
     act(() => {
       root.render(
-        <QaProductUtilities
-          catalogItems={[]}
-          initialKeyword=""
-          initialSearchOpen={false}
-          showEmptyState={false}
-          userScenarioName="user-default-published"
-        />,
+        <QaUtilitiesProvider initialSearchOpen={false} resetKey="default">
+          <div data-primary-navigation-pager="">
+            <QaNavigationSearchAction />
+          </div>
+          <QaProductUtilities
+            catalogItems={[]}
+            initialKeyword=""
+            showEmptyState={false}
+            showRecentSearches={false}
+            userScenarioName="user-default-published"
+          />
+        </QaUtilitiesProvider>,
       );
     });
 
     click(container.querySelector("[data-search-trigger]"));
     expect(container.querySelector("[data-search-panel]")).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-primary-navigation-pager]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+    click(container.querySelector("[data-search-close]"));
+    expect(
+      container
+        .querySelector("[data-primary-navigation-pager]")
+        ?.hasAttribute("inert"),
+    ).toBe(false);
     click(container.querySelector("[data-user-trigger]"));
     expect(container.querySelector("[data-search-panel]")).toBeNull();
     expect(container.querySelector("[data-user-page]")).not.toBeNull();

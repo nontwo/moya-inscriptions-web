@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { QaUserInterface } from "./qa-user-interface";
+import { QaUserInterface, qaUserTabs } from "./qa-user-interface";
 
 import type { ComponentProps } from "react";
 import type { QaUserContentItem } from "./qa-user-interface";
@@ -49,9 +49,54 @@ const click = (element: Element | null) => {
   act(() => element.click());
 };
 
+const settlePager = (container: HTMLElement) => {
+  act(() =>
+    container
+      .querySelector("[data-user-pager]")
+      ?.dispatchEvent(new Event("scrollend")),
+  );
+};
+
+const scrollPager = (container: HTMLElement, left: number) => {
+  const frame = container.querySelector<HTMLElement>("[data-user-pager]")!;
+  act(() => {
+    frame.scrollLeft = left;
+    frame.dispatchEvent(new Event("scroll"));
+  });
+  return frame;
+};
+
 describe("QaUserInterface", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(
+      1400,
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
+      function (this: HTMLElement) {
+        const key = this.dataset.horizontalPanelKey;
+        return key === undefined
+          ? 0
+          : qaUserTabs.indexOf(key as (typeof qaUserTabs)[number]) * 400;
+      },
+    );
+    Object.defineProperty(HTMLElement.prototype, "onscrollend", {
+      configurable: true,
+      value: null,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value(this: HTMLElement, options: ScrollToOptions) {
+        this.scrollLeft = Number(options.left ?? 0);
+        this.dispatchEvent(new Event("scroll"));
+      },
+    });
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: (id: number) => window.clearTimeout(id),
+    });
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: (callback: FrameRequestCallback) =>
@@ -65,6 +110,9 @@ describe("QaUserInterface", () => {
     document.body.style.overflow = "";
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   });
 
   it("opens on published content and restores focus when closed", async () => {
@@ -117,6 +165,7 @@ describe("QaUserInterface", () => {
       ["published", "山门题记"],
     ] as const) {
       click(container.querySelector(`[data-user-tab="${tab}"]`));
+      settlePager(container);
       expect(container.textContent).toContain(visibleText);
     }
     expect(onTabChangeIntent.mock.calls.map(([tab]) => tab)).toEqual([
@@ -191,6 +240,7 @@ describe("QaUserInterface", () => {
         new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }),
       ),
     );
+    settlePager(container);
     expect(
       container
         .querySelector('[data-user-tab="saved"]')
@@ -336,5 +386,165 @@ describe("QaUserInterface", () => {
     );
     await act(async () => vi.runAllTimers());
     expect(container.querySelector("[data-user-page]")).toBeNull();
+  });
+
+  it("keeps four mounted panels and only commits a tab after native settling", () => {
+    const onTabChangeIntent = vi.fn();
+    const container = renderUser({
+      onTabChangeIntent,
+      saved: [item("saved-original", "收藏")],
+    });
+    click(container.querySelector("[data-user-trigger]"));
+    const panels = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-user-panel]"),
+    );
+    expect(panels).toHaveLength(4);
+    const frame = scrollPager(container, 180);
+    act(() => vi.runOnlyPendingTimers());
+    expect(Number(frame.dataset.horizontalPagerProgress)).toBeCloseTo(0.45);
+    expect(frame.dataset.horizontalPagerActiveKey).toBe("published");
+    expect(onTabChangeIntent).not.toHaveBeenCalled();
+    scrollPager(container, 400);
+    settlePager(container);
+    settlePager(container);
+    expect(frame.dataset.horizontalPagerActiveKey).toBe("saved");
+    expect(onTabChangeIntent.mock.calls).toEqual([["saved"]]);
+    expect(Array.from(container.querySelectorAll("[data-user-panel]"))).toEqual(
+      panels,
+    );
+    expect(panels[0]?.hasAttribute("inert")).toBe(true);
+    expect(panels[1]?.getAttribute("aria-hidden")).toBe("false");
+  });
+
+  it("cancels an interrupted drag and does not emit a bounced or duplicate tab intent", () => {
+    const onTabChangeIntent = vi.fn();
+    const onContentOpenIntent = vi.fn();
+    const container = renderUser({ onTabChangeIntent, onContentOpenIntent });
+    click(container.querySelector("[data-user-trigger]"));
+    const frame = container.querySelector<HTMLElement>("[data-user-pager]")!;
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    scrollPager(container, 220);
+    act(() => frame.dispatchEvent(new Event("touchcancel", { bubbles: true })));
+    settlePager(container);
+    expect(frame.scrollLeft).toBe(0);
+    expect(onTabChangeIntent).not.toHaveBeenCalled();
+    click(container.querySelector("[data-user-content-id]"));
+    expect(onContentOpenIntent).not.toHaveBeenCalled();
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    scrollPager(container, 130);
+    scrollPager(container, 0);
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    settlePager(container);
+    click(container.querySelector('[data-user-tab="published"]'));
+    expect(onTabChangeIntent).not.toHaveBeenCalled();
+  });
+
+  it("supersedes rapid tab requests and clamps keyboard navigation at both ends", () => {
+    const onTabChangeIntent = vi.fn();
+    const container = renderUser({ onTabChangeIntent });
+    click(container.querySelector("[data-user-trigger]"));
+    click(container.querySelector('[data-user-tab="saved"]'));
+    click(container.querySelector('[data-user-tab="liked"]'));
+    click(container.querySelector('[data-user-tab="history"]'));
+    expect(onTabChangeIntent).not.toHaveBeenCalled();
+    settlePager(container);
+    expect(onTabChangeIntent.mock.calls).toEqual([["history"]]);
+    const historyTab = container.querySelector('[data-user-tab="history"]')!;
+    act(() =>
+      historyTab.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }),
+      ),
+    );
+    settlePager(container);
+    expect(onTabChangeIntent).toHaveBeenCalledOnce();
+    act(() =>
+      historyTab.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "Home" }),
+      ),
+    );
+    settlePager(container);
+    const publishedTab = container.querySelector(
+      '[data-user-tab="published"]',
+    )!;
+    act(() =>
+      publishedTab.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, key: "ArrowLeft" }),
+      ),
+    );
+    settlePager(container);
+    expect(onTabChangeIntent.mock.calls).toEqual([["history"], ["published"]]);
+  });
+
+  it("keeps each PC modal panel as its own vertical scroll owner across tabs and Settings", () => {
+    const container = renderUser({
+      platform: "pc",
+      saved: [item("saved-original", "收藏")],
+    });
+    click(container.querySelector("[data-user-trigger]"));
+    const published = container.querySelector<HTMLElement>(
+      '[data-user-panel="published"]',
+    )!;
+    const frame = container.querySelector<HTMLElement>("[data-user-pager]")!;
+    const publishedCard = published.querySelector("[data-user-content-id]");
+    act(() => {
+      published.scrollTop = 280;
+      published.dispatchEvent(new Event("scroll"));
+    });
+    click(container.querySelector('[data-user-tab="saved"]'));
+    settlePager(container);
+    const saved = container.querySelector<HTMLElement>(
+      '[data-user-panel="saved"]',
+    )!;
+    act(() => {
+      saved.scrollTop = 175;
+      saved.dispatchEvent(new Event("scroll"));
+    });
+    click(container.querySelector("[data-user-settings]"));
+    expect(frame.dataset.horizontalPagerActiveKey).toBe("saved");
+    expect(saved.scrollTop).toBe(175);
+    click(container.querySelector('[data-user-tab="published"]'));
+    settlePager(container);
+    expect(published.scrollTop).toBe(280);
+    expect(published.querySelector("[data-user-content-id]")).toBe(
+      publishedCard,
+    );
+    expect(frame.style.height).toBe("");
+    expect(frame.dataset.horizontalPagerScrollOwner).toBe("panel");
+    expect(document.documentElement.scrollTop).toBe(0);
+  });
+
+  it("uses two source-preserving content columns in every phone tab without a feed preference", () => {
+    const records = [item("original-1", "一"), item("original-2", "二")];
+    const container = renderUser({
+      platform: "phone",
+      published: records,
+      saved: records,
+      liked: records,
+      history: records,
+    });
+    click(container.querySelector("[data-user-trigger]"));
+    for (const tab of qaUserTabs) {
+      const panel = container.querySelector(`[data-user-panel="${tab}"]`)!;
+      expect(
+        panel
+          .querySelector("[data-user-content-list]")
+          ?.getAttribute("data-user-columns"),
+      ).toBe("2");
+      expect(
+        Array.from(panel.querySelectorAll("[data-user-content-id]")).map(
+          (item) => item.getAttribute("data-user-content-id"),
+        ),
+      ).toEqual(["original-1", "original-2"]);
+    }
+    const header = container.querySelector("[data-user-page] header");
+    expect(header?.lastElementChild?.hasAttribute("data-user-settings")).toBe(
+      true,
+    );
+    expect(header?.querySelector("[data-user-edit-profile]")).toBeNull();
+    expect(
+      container.querySelector(
+        '[aria-label="用户资料"] [data-user-edit-profile]',
+      ),
+    ).not.toBeNull();
   });
 });

@@ -58,6 +58,9 @@ describe("FormalPage", () => {
     expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
       "productUtility",
     );
+    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "navigationAction",
+    );
   });
 
   it.each(["discover", "nearby", "topics"] as const)(

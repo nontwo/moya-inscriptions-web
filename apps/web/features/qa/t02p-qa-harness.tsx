@@ -5,7 +5,11 @@ import { useCallback, useState } from "react";
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 import { homeScenarioNames } from "./home-scenario-contract";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
-import { QaProductUtilities } from "./inscription-filter-presentation";
+import {
+  QaNavigationSearchAction,
+  QaProductUtilities,
+  QaUtilitiesProvider,
+} from "./inscription-filter-presentation";
 import {
   defaultQaUserScenarioName,
   qaUserScenarioLabels,
@@ -235,29 +239,34 @@ export const T02pQaHarness = ({
         </select>
       </aside>
 
-      <T02pProductPreview
-        catalogDetailLoader={loadQaDetail}
-        key={`${homeScenario}:${catalogScenario}`}
-        developmentPlatformOverride={
-          platformMode === "auto" ? null : platformMode
-        }
-        initialHomeFeed={initialHomeFeed ?? home.initialFeed}
-        initialPlatform={initialPlatform}
-        initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
-        productUtility={
-          <QaProductUtilities
-            catalogItems={visualCatalogItems}
-            initialKeyword={search.initialKeyword}
-            initialSearchOpen={search.initialOpen}
-            key={`${searchScenario}:${userScenario}`}
-            showEmptyState={search.showEmptyState}
-            userScenarioName={userScenario}
-          />
-        }
-        showDevelopmentPagerControls
-        showSettingsEntry={false}
-        states={states}
-      />
+      <QaUtilitiesProvider
+        initialSearchOpen={search.initialOpen}
+        resetKey={`${searchScenario}:${userScenario}`}
+      >
+        <T02pProductPreview
+          catalogDetailLoader={loadQaDetail}
+          key={`${homeScenario}:${catalogScenario}`}
+          developmentPlatformOverride={
+            platformMode === "auto" ? null : platformMode
+          }
+          initialHomeFeed={initialHomeFeed ?? home.initialFeed}
+          initialPlatform={initialPlatform}
+          initialTopicId={initialTopicId ?? home.initialTopicId ?? null}
+          navigationAction={<QaNavigationSearchAction />}
+          productUtility={
+            <QaProductUtilities
+              catalogItems={visualCatalogItems}
+              initialKeyword={search.initialKeyword}
+              key={`${searchScenario}:${userScenario}`}
+              showEmptyState={search.showEmptyState}
+              showRecentSearches={search.showRecentSearches}
+              userScenarioName={userScenario}
+            />
+          }
+          showDevelopmentPagerControls
+          states={states}
+        />
+      </QaUtilitiesProvider>
     </main>
   );
 };

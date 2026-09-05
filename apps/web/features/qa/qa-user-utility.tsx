@@ -18,7 +18,7 @@ export const QaUserUtility = ({
   readonly open?: boolean;
   readonly scenarioName: QaUserScenarioName;
 }) => {
-  const { requestSettings } = useProductShell();
+  const { platform, requestSettings, settingsOpen } = useProductShell();
   const scenario = createQaUserScenarios(catalogItems)[scenarioName];
 
   return (
@@ -27,8 +27,10 @@ export const QaUserUtility = ({
       initialTab={scenario.initialTab}
       liked={scenario.liked}
       onSettingsIntent={requestSettings}
+      platform={platform}
       published={scenario.published}
       saved={scenario.saved}
+      settingsOpen={settingsOpen}
       user={scenario.user}
       {...(onOpenChange === undefined ? {} : { onOpenChange })}
       {...(open === undefined ? {} : { open })}

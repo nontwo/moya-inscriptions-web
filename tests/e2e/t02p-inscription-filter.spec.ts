@@ -184,7 +184,9 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   }
 
   const { shell, surface } = await openQa(page);
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "碑刻", "inscriptions");
@@ -202,14 +204,18 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
 
   await navigateTo(surface, shell, "书帖", "calligraphy");
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
   await expect(page.locator("[data-filter-panel]")).toHaveCount(0);
   await expect(page.locator("[data-filter-popover]")).toHaveCount(0);
   await expect(page.locator("[data-filter-sheet]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "首页", "home");
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "碑刻", "inscriptions");

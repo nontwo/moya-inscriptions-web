@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-import { Icon, LoadingScreen } from "@moya/ui";
+import { LoadingScreen } from "@moya/ui";
 
 import styles from "./product-shell.module.css";
 
@@ -123,13 +123,13 @@ export interface ProductShellProps {
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
   readonly primaryUtility?: ReactNode;
+  readonly navigationAction?: ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
   readonly renderTopicOverlay?: (
     properties: ProductShellTopicOverlayRenderProps,
   ) => ReactNode;
-  readonly showSettingsEntry?: boolean;
   readonly showDevelopmentPagerControls?: boolean;
 }
 
@@ -177,9 +177,9 @@ export const ProductShell = ({
   initialPlatform,
   inscriptions,
   primaryUtility,
+  navigationAction,
   renderDetailOverlay,
   renderTopicOverlay,
-  showSettingsEntry = true,
   showDevelopmentPagerControls = false,
 }: ProductShellProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1367,6 +1367,7 @@ export const ProductShell = ({
             calligraphy={calligraphy}
             home={home}
             inscriptions={inscriptions}
+            navigationAction={navigationAction}
             navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
             onNavigationExpand={expandNavigation}
@@ -1375,17 +1376,6 @@ export const ProductShell = ({
             showDevelopmentPagerControls={showDevelopmentPagerControls}
           />
           {primaryUtility}
-          {showSettingsEntry ? (
-            <button
-              type="button"
-              aria-label="打开设置"
-              className={`${styles.settingsButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
-              data-open-settings=""
-              onClick={(event) => openSettings(event.currentTarget)}
-            >
-              <Icon name="settings" />
-            </button>
-          ) : null}
         </div>
 
         {settingsOpen ? (

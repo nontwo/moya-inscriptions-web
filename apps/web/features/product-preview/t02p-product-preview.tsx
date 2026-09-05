@@ -57,8 +57,8 @@ export interface T02pProductPreviewProps {
   readonly initialHomeFeed?: HomeFeed;
   readonly initialTopicId?: string | null;
   readonly productUtility?: ReactNode;
+  readonly navigationAction?: ReactNode;
   readonly showDevelopmentPagerControls?: boolean;
-  readonly showSettingsEntry?: boolean;
   readonly states: T02pDevelopmentCatalogDestinationStates;
 }
 
@@ -69,8 +69,8 @@ export const T02pProductPreview = ({
   initialHomeFeed = "discover",
   initialTopicId = null,
   productUtility,
+  navigationAction,
   showDevelopmentPagerControls = false,
-  showSettingsEntry = true,
   states,
 }: T02pProductPreviewProps) => (
   <div data-clean-product-preview="">
@@ -90,6 +90,7 @@ export const T02pProductPreview = ({
       }
       initialPlatform={initialPlatform}
       primaryUtility={productUtility}
+      navigationAction={navigationAction}
       inscriptions={<PreviewBrowse state={states.inscriptions} />}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
       renderDetailOverlay={({
@@ -116,7 +117,6 @@ export const T02pProductPreview = ({
           topicsState={states.home.topics}
         />
       )}
-      showSettingsEntry={showSettingsEntry}
     />
   </div>
 );
