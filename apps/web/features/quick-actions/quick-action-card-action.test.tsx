@@ -135,6 +135,40 @@ describe("bounded QA gesture", () => {
     click(v.button);
     expect(v.onOpen).toHaveBeenCalledOnce();
   });
+  it.each(["tap", "hold"])(
+    "keeps a %s when pointer focus leaves the previous control",
+    (gesture) => {
+      const v = render();
+      const previous = document.createElement("button");
+      document.body.append(previous);
+      previous.focus();
+      send(v.button, "pointerdown");
+      act(() => v.button.focus());
+      if (gesture === "hold") {
+        wait();
+        expect(menu()).not.toBeNull();
+      } else {
+        send(window, "pointerup");
+        click(v.button);
+        expect(v.onOpen).toHaveBeenCalledOnce();
+      }
+    },
+  );
+  it.each([200, 450])("cancels the card's own blur at %sms", (elapsed) => {
+    const v = render();
+    v.button.focus();
+    send(v.button, "pointerdown");
+    wait(elapsed);
+    const next = document.createElement("button");
+    document.body.append(next);
+    act(() => next.focus());
+    wait();
+    expect(menu()).toBeNull();
+    send(window, "pointerup");
+    click(v.button);
+    expect(v.onAction).not.toHaveBeenCalled();
+    expect(v.onOpen).not.toHaveBeenCalled();
+  });
   it.each(["like", "favorite", "share"])(
     "commits %s once on release, not on candidate selection",
     (action) => {

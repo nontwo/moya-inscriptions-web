@@ -230,6 +230,11 @@ export const QuickActionCardAction = ({
             }
             if (active() && session.layout && e.cancelable) e.preventDefault();
           };
+          const blur = (e: FocusEvent) => {
+            // Focusing this button after pointerdown blurs the previous
+            // control. Only this card or the window losing focus cancels it.
+            if (e.target === e.currentTarget || e.target === button) cancel();
+          };
           const visibility = () => {
             if (document.visibilityState !== "visible") cancel();
           };
@@ -258,8 +263,8 @@ export const QuickActionCardAction = ({
           button.addEventListener("touchmove", touchMove, { passive: false });
           button.addEventListener("lostpointercapture", pointerCancel);
           document.addEventListener("visibilitychange", visibility);
+          window.addEventListener("blur", blur, true);
           const interruptions = [
-            "blur",
             "pagehide",
             "resize",
             "orientationchange",
@@ -283,6 +288,7 @@ export const QuickActionCardAction = ({
             button.removeEventListener("touchmove", touchMove);
             button.removeEventListener("lostpointercapture", pointerCancel);
             document.removeEventListener("visibilitychange", visibility);
+            window.removeEventListener("blur", blur, true);
             for (const type of interruptions)
               window.removeEventListener(type, cancel, true);
             window.visualViewport?.removeEventListener("resize", cancel);
