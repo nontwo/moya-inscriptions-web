@@ -17,6 +17,7 @@ import {
 } from "./user-scenarios";
 import { qaSearchScenarioNames, qaSearchScenarios } from "./search-scenarios";
 
+import type { ContentQuickActionEnvironment } from "../quick-actions/quick-action-types";
 import type { HomeFeed } from "../home/home-feed";
 import type { CatalogDetail } from "@moya/contracts";
 import type {
@@ -101,6 +102,18 @@ export const T02pQaHarness = ({
   const [userScenario, setUserScenario] = useState<QaUserScenarioName>(
     defaultQaUserScenarioName,
   );
+  const [likedIds, setLikedIds] = useState<readonly string[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<readonly string[]>([]);
+  const quickActions: ContentQuickActionEnvironment = {
+    likedIds,
+    favoriteIds,
+    onAction: (action, id) => {
+      const toggle = (ids: readonly string[]) =>
+        ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id];
+      if (action === "like") setLikedIds(toggle);
+      if (action === "favorite") setFavoriteIds(toggle);
+    },
+  };
   const home = homeScenarios[homeScenario];
   const catalog = catalogScenarios[catalogScenario];
   const search = qaSearchScenarios[searchScenario];
@@ -249,6 +262,7 @@ export const T02pQaHarness = ({
         resetKey={`${searchScenario}:${userScenario}`}
       >
         <T02pProductPreview
+          quickActions={quickActions}
           catalogDetailLoader={loadQaDetail}
           key={`${homeScenario}:${catalogScenario}`}
           developmentPlatformOverride={

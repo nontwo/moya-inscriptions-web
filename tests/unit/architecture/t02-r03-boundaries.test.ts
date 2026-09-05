@@ -25,6 +25,7 @@ describe("T02 R03 architecture boundaries", () => {
   it("keeps Product Home, Topics, and source composition independent from Development QA", async () => {
     const roots = [
       path.join(repositoryRoot, "apps/web/features/home"),
+      path.join(repositoryRoot, "apps/web/features/quick-actions"),
       path.join(repositoryRoot, "apps/web/features/topics"),
       path.join(repositoryRoot, "apps/web/features/product-shell"),
       path.join(repositoryRoot, "apps/web/features/product-preview"),
@@ -46,6 +47,18 @@ describe("T02 R03 architecture boundaries", () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it("keeps quick actions independent of business services and persistent state", async () => {
+    const files = await collectSourceFiles(
+      path.join(repositoryRoot, "apps/web/features/quick-actions"),
+    );
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      expect(source).not.toMatch(
+        /localStorage|sessionStorage|indexedDB|navigator\.share|clipboard|\bfetch\s*\(|mock-content-action-store|qa-user/u,
+      );
+    }
   });
 
   it("keeps one bounded Content V1 Detail and the existing Viewer without Gallery", async () => {

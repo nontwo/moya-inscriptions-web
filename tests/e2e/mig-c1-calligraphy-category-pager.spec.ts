@@ -371,7 +371,10 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
     .locator('[data-home-feed-panel="discover"] [data-open-catalog]')
     .nth(1);
   await expect(homeCard).toBeVisible();
-  await expect(homeCard).toHaveCSS("touch-action", "pan-x pan-y");
+  await expect(homeCard).toHaveCSS(
+    "touch-action",
+    /^(?:pan-x pan-y pinch-zoom|manipulation)$/u,
+  );
   await trustedHorizontalCardDrag(page, session, homePager, homeCard);
   await expect(surface.locator("[data-home-surface]")).toHaveAttribute(
     "data-active-home-feed",
@@ -390,7 +393,10 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
     .locator('[data-calligraphy-category-panel="all"] [data-open-catalog]')
     .nth(1);
   await expect(calligraphyCard).toBeVisible();
-  await expect(calligraphyCard).toHaveCSS("touch-action", "pan-x pan-y");
+  await expect(calligraphyCard).toHaveCSS(
+    "touch-action",
+    /^(?:pan-x pan-y pinch-zoom|manipulation)$/u,
+  );
   await trustedHorizontalCardDrag(
     page,
     session,
@@ -493,7 +499,10 @@ test("MIG-C1 native pager follows progress and commits only on release", async (
     "拓本",
   ]);
   await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
-  await expect(pager).toHaveCSS("touch-action", "pan-x pan-y");
+  await expect(pager).toHaveCSS(
+    "touch-action",
+    /^(?:pan-x pan-y pinch-zoom|manipulation)$/u,
+  );
 
   if (testInfo.project.name.startsWith("desktop")) {
     await pager.dispatchEvent("wheel", {

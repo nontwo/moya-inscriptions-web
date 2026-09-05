@@ -1,0 +1,74 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--yoyi-z-index-overlay) + 20);
+  pointer-events: none;
+}
+
+.target {
+  position: fixed;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%) scale(var(--quick-action-inverse-scale, 1));
+}
+
+.bubble {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--yoyi-radius-full);
+  color: var(--yoyi-color-text-primary);
+}
+
+.target[data-candidate="true"] .bubble {
+  color: var(--yoyi-color-seal-red);
+  transform: scale(1.1);
+}
+
+.center {
+  position: fixed;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--yoyi-color-border-strong);
+  border-radius: var(--yoyi-radius-full);
+  transform: translate(-50%, -50%) scale(var(--quick-action-inverse-scale, 1));
+}
+
+.feedback {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-elevated);
+}
+
+.icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon[data-filled="true"] {
+  fill: currentColor;
+}
+
+.bubble {
+  transition:
+    transform var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    transition: none;
+  }
+}
