@@ -33,22 +33,53 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
-const visibleCatalogSnapshot = (shell: Locator) =>
-  shell
-    .locator(
-      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+const visibleCatalogCards = (shell: Locator) =>
+  shell.locator(
+    '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+  );
+
+const waitForVisibleCatalogMedia = async (shell: Locator) => {
+  const cards = visibleCatalogCards(shell);
+  const count = await cards.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await cards.nth(index).scrollIntoViewIfNeeded();
+  }
+  const media = cards.locator("[data-catalog-media-state]");
+  await expect(media).toHaveCount(count);
+  await expect
+    .poll(() =>
+      media.evaluateAll((nodes) =>
+        nodes.every((node) => {
+          const state = (node as HTMLElement).dataset.catalogMediaState;
+          if (state === "failed" || state === "missing") return true;
+          const image = node.querySelector("img");
+          return image?.complete === true && image.naturalWidth > 0;
+        }),
+      ),
     )
-    .evaluateAll((cards) =>
-      cards.map((card) => ({
-        id: (card as HTMLElement).dataset.catalogId ?? "",
-        kind: (card as HTMLElement).dataset.catalogKind ?? "",
-        media: Array.from(card.querySelectorAll("img")).map((image) => ({
-          alt: image.alt,
-          src: image.getAttribute("src") ?? "",
-        })),
-        text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    .toBe(true);
+  await expect(
+    shell.locator(
+      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+    ),
+  ).toHaveCount(1);
+};
+
+const visibleCatalogSnapshot = async (shell: Locator) => {
+  await waitForVisibleCatalogMedia(shell);
+  return visibleCatalogCards(shell).evaluateAll((cards) =>
+    cards.map((card) => ({
+      id: (card as HTMLElement).dataset.catalogId ?? "",
+      kind: (card as HTMLElement).dataset.catalogKind ?? "",
+      media: Array.from(card.querySelectorAll("img")).map((image) => ({
+        alt: image.alt,
+        src: image.getAttribute("src") ?? "",
       })),
-    );
+      text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  );
+};
 
 const openQaInscriptions = async (page: Page) => {
   const { shell, surface } = await openQa(page);
@@ -153,7 +184,9 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   }
 
   const { shell, surface } = await openQa(page);
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "碑刻", "inscriptions");
@@ -171,14 +204,18 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
 
   await navigateTo(surface, shell, "书帖", "calligraphy");
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
   await expect(page.locator("[data-filter-panel]")).toHaveCount(0);
   await expect(page.locator("[data-filter-popover]")).toHaveCount(0);
   await expect(page.locator("[data-filter-sheet]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "首页", "home");
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "碑刻", "inscriptions");
@@ -368,25 +405,21 @@ test("all approved viewport matrices keep Filter in bounds and compact landscape
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await expect(shell).toHaveAttribute("data-platform", platform);
-    const settingsBox = await shell
-      .getByRole("button", { name: "打开设置" })
-      .boundingBox();
+    const userBox = await shell.locator("[data-user-trigger]").boundingBox();
     const filterBox = await filter
       .getByRole("button", { name: "打开筛选" })
       .boundingBox();
-    if (settingsBox === null || filterBox === null) {
+    if (userBox === null || filterBox === null) {
       throw new Error(
         `Missing utility geometry at ${viewport.width}x${viewport.height}`,
       );
     }
     expect(
       Math.abs(
-        settingsBox.x +
-          settingsBox.width / 2 -
-          (filterBox.x + filterBox.width / 2),
+        userBox.x + userBox.width / 2 - (filterBox.x + filterBox.width / 2),
       ),
     ).toBeLessThanOrEqual(1);
-    expect(filterBox.y - (settingsBox.y + settingsBox.height)).toBe(8);
+    expect(filterBox.y - (userBox.y + userBox.height)).toBe(8);
     expect(filterBox.x).toBeGreaterThanOrEqual(0);
     expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(
       viewport.width + 1,
@@ -471,7 +504,7 @@ test("Filter remains legible through themes and respects reduced motion", async 
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium");
   const { filter, shell, surface } = await openQaInscriptions(page);
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
+  const userTrigger = shell.locator("[data-user-trigger]");
 
   for (const preference of ["system", "light", "dark"] as const) {
     await expect(shell).toHaveAttribute("data-theme-preference", preference);
@@ -482,13 +515,26 @@ test("Filter remains legible through themes and respects reduced motion", async 
     await expect(trigger).toBeFocused();
 
     if (preference === "dark") break;
-    await settingsTrigger.click();
+    await userTrigger.click();
+    const userPage = shell.getByRole("dialog", { name: "用户页" });
+    await expect(userPage).toBeVisible();
+    await expect(
+      userPage.getByRole("button", { name: "关闭用户页" }),
+    ).toBeFocused();
+    const userSettings = userPage.getByRole("button", {
+      name: "打开设置",
+    });
+    await userSettings.click();
     const settings = shell.getByRole("dialog", { name: "设置" });
     await expect(settings).toBeVisible();
     await settings.getByRole("button", { name: /切换主题/ }).click();
     await settings.getByRole("button", { name: "返回" }).click();
     await expect(settings).toHaveCount(0);
-    await expect(settingsTrigger).toBeFocused();
+    await expect(userPage).toBeVisible();
+    await expect(userSettings).toBeFocused();
+    await userPage.getByRole("button", { name: "关闭用户页" }).click();
+    await expect(userPage).toHaveCount(0);
+    await expect(userTrigger).toBeFocused();
   }
 
   await surface

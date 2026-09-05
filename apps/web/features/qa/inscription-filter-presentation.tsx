@@ -1,14 +1,94 @@
 "use client";
 
 import { Icon } from "@moya/ui";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { useProductShell } from "../product-shell/product-shell";
-import { T02pQaSearch } from "./t02p-qa-search";
+import { QaUserUtility } from "./qa-user-utility";
+import { QaSearchTrigger, T02pQaSearch } from "./t02p-qa-search";
 import styles from "./inscription-filter-presentation.module.css";
 
+import type { CatalogSummary } from "@moya/contracts";
+import type { ReactNode, RefObject } from "react";
+import type { QaUserScenarioName } from "./user-scenarios";
+
 type FilterKey = "dynasty" | "script" | "inscriptionType" | "region";
-type QaProductUtility = "filter" | "search";
+
+export type ActiveQaUtility = "filter" | "search" | "user" | null;
+
+interface QaUtilitiesContextValue {
+  readonly activeUtility: ActiveQaUtility;
+  readonly updateUtility: (
+    utility: Exclude<ActiveQaUtility, null>,
+    open: boolean,
+  ) => void;
+  readonly searchTriggerRef: RefObject<HTMLButtonElement | null>;
+  readonly searchInputRef: RefObject<HTMLInputElement | null>;
+}
+
+const QaUtilitiesContext = createContext<QaUtilitiesContextValue | null>(null);
+
+const useQaUtilities = () => {
+  const value = useContext(QaUtilitiesContext);
+  if (value === null) throw new Error("QA utilities require their coordinator");
+  return value;
+};
+
+// QA composition owns one utility state; ProductShell only accepts a node slot.
+export const QaUtilitiesProvider = ({
+  children,
+  initialSearchOpen,
+  resetKey,
+}: {
+  readonly children: ReactNode;
+  readonly initialSearchOpen: boolean;
+  readonly resetKey: string;
+}) => {
+  const [activeUtility, setActiveUtility] = useState<ActiveQaUtility>(
+    initialSearchOpen ? "search" : null,
+  );
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setActiveUtility(initialSearchOpen ? "search" : null);
+  }, [initialSearchOpen, resetKey]);
+  const updateUtility = useCallback(
+    (utility: Exclude<ActiveQaUtility, null>, open: boolean) => {
+      setActiveUtility((current) =>
+        open ? utility : current === utility ? null : current,
+      );
+    },
+    [],
+  );
+  return (
+    <QaUtilitiesContext.Provider
+      value={{ activeUtility, updateUtility, searchTriggerRef, searchInputRef }}
+    >
+      {children}
+    </QaUtilitiesContext.Provider>
+  );
+};
+
+export const QaNavigationSearchAction = () => {
+  const { activeUtility, updateUtility, searchTriggerRef, searchInputRef } =
+    useQaUtilities();
+  return (
+    <QaSearchTrigger
+      open={activeUtility === "search"}
+      onOpenChange={(open) => updateUtility("search", open)}
+      openerRef={searchTriggerRef}
+      searchInputRef={searchInputRef}
+    />
+  );
+};
 
 export interface QaFilterPresentationState {
   readonly dynasty?: string;
@@ -60,35 +140,31 @@ const withoutSelection = (state: QaFilterPresentationState, key: FilterKey) => {
 };
 
 export const QaProductUtilities = ({
+  catalogItems,
+  favoriteItems = [],
   initialKeyword,
-  initialSearchOpen,
+  likedItems = [],
   showEmptyState,
+  showRecentSearches,
+  userScenarioName,
 }: {
+  readonly catalogItems: readonly CatalogSummary[];
+  readonly favoriteItems?: readonly CatalogSummary[];
   readonly initialKeyword: string;
-  readonly initialSearchOpen: boolean;
+  readonly likedItems?: readonly CatalogSummary[];
   readonly showEmptyState: boolean;
+  readonly showRecentSearches: boolean;
+  readonly userScenarioName: QaUserScenarioName;
 }) => {
-  const { activeDestination, settingsOpen } = useProductShell();
-  const [activeUtility, setActiveUtility] = useState<QaProductUtility | null>(
-    initialSearchOpen ? "search" : null,
-  );
+  const { activeDestination } = useProductShell();
+  const { activeUtility, updateUtility, searchTriggerRef, searchInputRef } =
+    useQaUtilities();
 
   useEffect(() => {
     if (activeDestination !== "inscriptions") {
-      setActiveUtility((current) => (current === "filter" ? null : current));
+      updateUtility("filter", false);
     }
-  }, [activeDestination]);
-
-  useEffect(() => {
-    if (settingsOpen) setActiveUtility(null);
-  }, [settingsOpen]);
-
-  const updateUtility = (utility: QaProductUtility, open: boolean) => {
-    setActiveUtility((current) => {
-      if (open) return utility;
-      return current === utility ? null : current;
-    });
-  };
+  }, [activeDestination, updateUtility]);
 
   return (
     <>
@@ -96,7 +172,10 @@ export const QaProductUtilities = ({
         initialKeyword={initialKeyword}
         onOpenChange={(open) => updateUtility("search", open)}
         open={activeUtility === "search"}
+        openerRef={searchTriggerRef}
+        searchInputRef={searchInputRef}
         showEmptyState={showEmptyState}
+        showRecentSearches={showRecentSearches}
       />
       {activeDestination === "inscriptions" ? (
         <QaInscriptionFilter
@@ -104,6 +183,14 @@ export const QaProductUtilities = ({
           open={activeUtility === "filter"}
         />
       ) : null}
+      <QaUserUtility
+        catalogItems={catalogItems}
+        favoriteItems={favoriteItems}
+        likedItems={likedItems}
+        onOpenChange={(open) => updateUtility("user", open)}
+        open={activeUtility === "user"}
+        scenarioName={userScenarioName}
+      />
     </>
   );
 };

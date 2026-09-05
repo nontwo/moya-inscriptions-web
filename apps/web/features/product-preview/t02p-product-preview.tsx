@@ -8,9 +8,11 @@ import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
 import { ProductShell, useProductShell } from "../product-shell/product-shell";
 import { findTopic } from "../topics/topic";
 import { TopicDetail } from "../topics/topic-detail";
+import { ContentQuickActionsProvider } from "../quick-actions/content-quick-actions";
 
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
+import type { ContentQuickActionEnvironment } from "../quick-actions/quick-action-types";
 import type { ReactNode, RefObject } from "react";
 import type { HomeCatalogState } from "../home/catalog-state";
 import type { HomeFeed, HomeSurfaceData } from "../home/home-feed";
@@ -57,6 +59,8 @@ export interface T02pProductPreviewProps {
   readonly initialHomeFeed?: HomeFeed;
   readonly initialTopicId?: string | null;
   readonly productUtility?: ReactNode;
+  readonly navigationAction?: ReactNode;
+  readonly quickActions?: ContentQuickActionEnvironment;
   readonly showDevelopmentPagerControls?: boolean;
   readonly states: T02pDevelopmentCatalogDestinationStates;
 }
@@ -68,10 +72,12 @@ export const T02pProductPreview = ({
   initialHomeFeed = "discover",
   initialTopicId = null,
   productUtility,
+  navigationAction,
+  quickActions,
   showDevelopmentPagerControls = false,
   states,
-}: T02pProductPreviewProps) => (
-  <div data-clean-product-preview="">
+}: T02pProductPreviewProps) => {
+  const product = (
     <ProductShell
       calligraphy={
         <div data-product-panel="calligraphy">
@@ -88,6 +94,7 @@ export const T02pProductPreview = ({
       }
       initialPlatform={initialPlatform}
       primaryUtility={productUtility}
+      navigationAction={navigationAction}
       inscriptions={<PreviewBrowse state={states.inscriptions} />}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
       renderDetailOverlay={({
@@ -115,8 +122,20 @@ export const T02pProductPreview = ({
         />
       )}
     />
-  </div>
-);
+  );
+
+  return (
+    <div data-clean-product-preview="">
+      {quickActions === undefined ? (
+        product
+      ) : (
+        <ContentQuickActionsProvider environment={quickActions}>
+          {product}
+        </ContentQuickActionsProvider>
+      )}
+    </div>
+  );
+};
 
 const PreviewTopicOverlay = ({
   backButtonRef,

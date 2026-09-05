@@ -4,15 +4,26 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type MockDestination = "home" | "inscriptions" | "calligraphy";
+
 const { shellState } = vi.hoisted(() => ({
-  shellState: { platform: "pc" as "phone" | "tablet" | "pc" },
+  shellState: {
+    activeDestination: "inscriptions" as MockDestination,
+    platform: "pc" as "phone" | "tablet" | "pc",
+    requestSettings: vi.fn(),
+  },
 }));
 
 vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => shellState,
 }));
 
-import { QaInscriptionFilter } from "./inscription-filter-presentation";
+import {
+  QaInscriptionFilter,
+  QaNavigationSearchAction,
+  QaProductUtilities,
+  QaUtilitiesProvider,
+} from "./inscription-filter-presentation";
 
 import type { Root } from "react-dom/client";
 
@@ -72,7 +83,9 @@ describe("QaInscriptionFilter", () => {
   afterEach(() => {
     for (const root of roots.splice(0)) act(() => root.unmount());
     document.body.replaceChildren();
+    shellState.activeDestination = "inscriptions";
     shellState.platform = "pc";
+    shellState.requestSettings.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -349,6 +362,88 @@ describe("QaInscriptionFilter", () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(true);
     expect(trigger).toBe(document.activeElement);
+    expect(container.querySelector("[data-filter-panel]")).toBeNull();
+  });
+});
+
+describe("QaProductUtilities", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+  });
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) act(() => root.unmount());
+    document.body.replaceChildren();
+    document.body.style.overflow = "";
+    shellState.activeDestination = "inscriptions";
+    shellState.platform = "pc";
+    shellState.requestSettings.mockReset();
+    vi.restoreAllMocks();
+  });
+
+  it("coordinates Search, Filter and User as one mutually exclusive state", () => {
+    const container = document.createElement("div");
+    const harness = document.createElement("main");
+    const shell = document.createElement("div");
+    const mount = document.createElement("div");
+    harness.dataset.t02pQaHarness = "";
+    shell.dataset.productShell = "";
+    shell.dataset.settingsOpen = "false";
+    shell.append(mount);
+    harness.append(shell);
+    container.append(harness);
+    document.body.append(container);
+    const root = createRoot(mount);
+    roots.push(root);
+    act(() => {
+      root.render(
+        <QaUtilitiesProvider initialSearchOpen={false} resetKey="default">
+          <div data-primary-navigation-pager="">
+            <QaNavigationSearchAction />
+          </div>
+          <QaProductUtilities
+            catalogItems={[]}
+            initialKeyword=""
+            showEmptyState={false}
+            showRecentSearches={false}
+            userScenarioName="user-default-published"
+          />
+        </QaUtilitiesProvider>,
+      );
+    });
+
+    click(container.querySelector("[data-search-trigger]"));
+    expect(container.querySelector("[data-search-panel]")).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-primary-navigation-pager]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+    click(container.querySelector("[data-search-close]"));
+    expect(
+      container
+        .querySelector("[data-primary-navigation-pager]")
+        ?.hasAttribute("inert"),
+    ).toBe(false);
+    click(container.querySelector("[data-user-trigger]"));
+    expect(container.querySelector("[data-search-panel]")).toBeNull();
+    expect(container.querySelector("[data-user-page]")).not.toBeNull();
+
+    click(container.querySelector("[data-user-close]"));
+    expect(container.querySelector("[data-user-page]")).toBeNull();
+    expect(container.querySelector("[data-search-panel]")).toBeNull();
+
+    click(container.querySelector("[data-filter-trigger]"));
+    expect(container.querySelector("[data-filter-panel]")).not.toBeNull();
+    click(container.querySelector("[data-user-trigger]"));
+    expect(container.querySelector("[data-filter-panel]")).toBeNull();
+    expect(container.querySelector("[data-user-page]")).not.toBeNull();
+
+    click(container.querySelector("[data-user-close]"));
+    expect(container.querySelector("[data-user-page]")).toBeNull();
     expect(container.querySelector("[data-filter-panel]")).toBeNull();
   });
 });

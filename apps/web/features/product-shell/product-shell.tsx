@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-import { Icon, LoadingScreen } from "@moya/ui";
+import { LoadingScreen } from "@moya/ui";
 
 import styles from "./product-shell.module.css";
 
@@ -69,6 +69,8 @@ import type { PrimaryDestination } from "../shell/primary-shell";
 
 type ScrollPositions = Record<PrimaryDestination, number>;
 
+const SCROLL_RESTORE_RETRY_FRAMES = 12;
+
 const currentProductHistoryState = (state: ProductHistoryState) =>
   mergeProductHistoryState(window.history.state, state);
 
@@ -98,6 +100,7 @@ export interface ProductShellContextValue {
     topicId: string,
     opener: HTMLButtonElement,
   ) => void;
+  readonly requestSettings: (opener?: HTMLElement) => void;
   readonly restoreActiveScrollTop: (top: number) => void;
   readonly settingsOpen: boolean;
   readonly theme: ThemePreference;
@@ -122,6 +125,7 @@ export interface ProductShellProps {
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
   readonly primaryUtility?: ReactNode;
+  readonly navigationAction?: ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
@@ -175,6 +179,7 @@ export const ProductShell = ({
   initialPlatform,
   inscriptions,
   primaryUtility,
+  navigationAction,
   renderDetailOverlay,
   renderTopicOverlay,
   showDevelopmentPagerControls = false,
@@ -313,24 +318,62 @@ export const ProductShell = ({
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
       }
-      restoreFrameRef.current = window.requestAnimationFrame(() => {
+      const desired = scrollPositionsRef.current[destination];
+      // During document-to-panel layout changes, Home registers its first
+      // panel in the upcoming layout effect. Bind it when it becomes available.
+      let targetElement =
+        destination === "home" &&
+        presentationPlatform !== "pc" &&
+        activeHomeScrollElementRef.current === null
+          ? null
+          : scrollElementFor(destination, presentationPlatform);
+      let retryFrames = SCROLL_RESTORE_RETRY_FRAMES;
+      const applyScroll = () => {
+        restoreFrameRef.current = null;
+        const element = scrollElementFor(destination, presentationPlatform);
+        if (targetElement === null) targetElement = element;
+        // A Home feed switch can replace the registered scroll owner without
+        // issuing another restore. Never transfer this request to that panel.
+        if (element === null || element !== targetElement) {
+          scrollRestorePendingRef.current = false;
+          return;
+        }
+        const top = clampScrollTop(element, desired);
+        scrollRestorePendingRef.current = true;
+        if (presentationPlatform === "pc") {
+          window.scrollTo({ behavior: "auto", top });
+        } else {
+          (element as HTMLElement).scrollTop = top;
+        }
         restoreFrameRef.current = window.requestAnimationFrame(() => {
           restoreFrameRef.current = null;
-          const element = scrollElementFor(destination, presentationPlatform);
-          if (element === null) return;
-          const top = clampScrollTop(
-            element,
-            scrollPositionsRef.current[destination],
+          const currentElement = scrollElementFor(
+            destination,
+            presentationPlatform,
           );
-          scrollRestorePendingRef.current = true;
-          if (presentationPlatform === "pc") {
-            window.scrollTo({ behavior: "auto", top });
-          } else {
-            (element as HTMLElement).scrollTop = top;
-          }
-          window.requestAnimationFrame(() => {
+          if (currentElement === null || currentElement !== targetElement) {
             scrollRestorePendingRef.current = false;
-          });
+            return;
+          }
+          const currentTop =
+            presentationPlatform === "pc"
+              ? documentScrollElement().scrollTop
+              : (currentElement as HTMLElement).scrollTop;
+          const clampedDesired = clampScrollTop(currentElement, desired);
+          if (
+            retryFrames > 0 &&
+            (clampedDesired < desired || currentTop !== clampedDesired)
+          ) {
+            retryFrames -= 1;
+            applyScroll();
+            return;
+          }
+          scrollRestorePendingRef.current = false;
+        });
+      };
+      restoreFrameRef.current = window.requestAnimationFrame(() => {
+        restoreFrameRef.current = window.requestAnimationFrame(() => {
+          applyScroll();
         });
       });
     },
@@ -513,6 +556,29 @@ export const ProductShell = ({
     );
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeSettings();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeSettings, settingsOpen]);
+
+  const requestSettings = useCallback(
+    (requestedOpener?: HTMLElement) => {
+      const opener =
+        requestedOpener ??
+        (document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : rootRef.current);
+      if (opener !== null) openSettings(opener);
+    },
+    [openSettings],
+  );
 
   const openTopic = useCallback(
     (topicId: string, opener: HTMLElement, sourceScrollTop: number) => {
@@ -1205,7 +1271,11 @@ export const ProductShell = ({
           restoreCatalogFocus(focusCatalogId);
         }
       } else if (wasSettingsOpen) {
-        window.requestAnimationFrame(() => settingsOpenerRef.current?.focus());
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(() =>
+            settingsOpenerRef.current?.focus(),
+          ),
+        );
       } else if (
         wasTopicOpen &&
         state?.kind === "primary" &&
@@ -1299,6 +1369,7 @@ export const ProductShell = ({
     readActiveScrollTop,
     registerActiveHomeScrollElement,
     registerTopicOpener,
+    requestSettings,
     restoreActiveScrollTop,
     settingsOpen,
     theme,
@@ -1336,6 +1407,7 @@ export const ProductShell = ({
             calligraphy={calligraphy}
             home={home}
             inscriptions={inscriptions}
+            navigationAction={navigationAction}
             navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
             onNavigationExpand={expandNavigation}
@@ -1344,15 +1416,6 @@ export const ProductShell = ({
             showDevelopmentPagerControls={showDevelopmentPagerControls}
           />
           {primaryUtility}
-          <button
-            type="button"
-            aria-label="打开设置"
-            className={`${styles.settingsButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
-            data-open-settings=""
-            onClick={(event) => openSettings(event.currentTarget)}
-          >
-            <Icon name="settings" />
-          </button>
         </div>
 
         {settingsOpen ? (

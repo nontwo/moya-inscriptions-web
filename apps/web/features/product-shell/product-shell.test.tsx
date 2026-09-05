@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, useEffect, useRef } from "react";
+import { act, useEffect, useLayoutEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,7 +41,26 @@ const ProductShellObserver = () => {
   return null;
 };
 
-const renderProductShell = (home: ReactNode = <p>home content</p>) => {
+const SettingsRequester = () => {
+  const { requestSettings } = useProductShell();
+  return (
+    <button
+      aria-label="从用户页打开设置"
+      data-settings-request-test=""
+      onClick={(event) => requestSettings(event.currentTarget)}
+      type="button"
+    >
+      Settings
+    </button>
+  );
+};
+
+const renderProductShell = (
+  home: ReactNode = <p>home content</p>,
+  options: {
+    readonly primaryUtility?: ReactNode;
+  } = {},
+) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -53,6 +72,8 @@ const renderProductShell = (home: ReactNode = <p>home content</p>) => {
         home={home}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
+        primaryUtility={<SettingsRequester />}
+        {...options}
       />,
     ),
   );
@@ -89,6 +110,7 @@ const renderTopicShell = () => {
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
         home={<TopicOpener />}
+        primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
         renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
@@ -161,6 +183,7 @@ const renderDetailShell = () => {
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
         home={<CatalogOpener />}
+        primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
         renderDetailOverlay={({
@@ -332,7 +355,7 @@ describe("ProductShell", () => {
       ),
     ).toEqual(labels);
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     await act(async () => vi.runAllTimers());
     expect(container.querySelector("[data-primary-navigation]")).toBe(
       navigation,
@@ -451,6 +474,184 @@ describe("ProductShell", () => {
     act(() => unregisterNearby());
   });
 
+  it("retries scroll restoration while a hidden view rebuilds its scroll range", async () => {
+    renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    let rangeAvailable = false;
+    Object.defineProperties(scroller, {
+      clientHeight: {
+        configurable: true,
+        value: 400,
+      },
+      scrollHeight: {
+        configurable: true,
+        get: () => (rangeAvailable ? 1_000 : 400),
+      },
+    });
+    let unregister: () => void = () => undefined;
+    act(() => {
+      unregister =
+        observedProductShell!.registerActiveHomeScrollElement(scroller);
+    });
+
+    act(() => {
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.advanceTimersToNextTimer();
+      vi.advanceTimersToNextTimer();
+    });
+    expect(scroller.scrollTop).toBe(0);
+
+    rangeAvailable = true;
+    act(() => vi.runAllTimers());
+    expect(scroller.scrollTop).toBe(175);
+
+    act(() => unregister());
+  });
+
+  it.each(["before first write", "during retry"])(
+    "does not transfer a pending restore to a different Home panel: %s",
+    async (timing) => {
+      renderProductShell(<ProductShellObserver />);
+      await act(async () => vi.runAllTimers());
+      const discover = document.createElement("section");
+      const nearby = document.createElement("section");
+      Object.defineProperties(discover, {
+        clientHeight: { value: 400 },
+        scrollHeight: { value: 400 },
+      });
+      Object.defineProperties(nearby, {
+        clientHeight: { value: 400 },
+        scrollHeight: { value: 1_000 },
+      });
+      nearby.scrollTop = 300;
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(discover);
+        observedProductShell!.restoreActiveScrollTop(175);
+        if (timing === "during retry") {
+          vi.advanceTimersToNextTimer();
+          vi.advanceTimersToNextTimer();
+        }
+      });
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(nearby);
+        vi.runAllTimers();
+      });
+      expect(nearby.scrollTop).toBe(300);
+      expect(discover.scrollTop).toBe(0);
+    },
+  );
+
+  it("restores Home into the panel registered by a document-to-panel resize", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1280,
+    });
+    const panel = document.createElement("section");
+    Object.defineProperties(panel, {
+      clientHeight: { value: 400 },
+      scrollHeight: { value: 1_000 },
+    });
+    const ResponsiveHomeOwner = () => {
+      const state = useProductShell();
+      useLayoutEffect(() => {
+        if (state.platform === "pc") return undefined;
+        return state.registerActiveHomeScrollElement(panel);
+      }, [state.platform, state.registerActiveHomeScrollElement]);
+      return <ProductShellObserver />;
+    };
+    renderProductShell(<ResponsiveHomeOwner />);
+    await act(async () => vi.runAllTimers());
+    expect(observedProductShell!.platform).toBe("pc");
+    document.documentElement.scrollTop = 175;
+    act(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 390,
+      });
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(observedProductShell!.platform).toBe("phone");
+    act(() => vi.runAllTimers());
+    expect(panel.scrollTop).toBe(175);
+    document.documentElement.scrollTop = 0;
+  });
+
+  it.each(["exhausted", "replaced", "unmounted"])(
+    "finishes pending restoration without stale writes when %s",
+    async (ending) => {
+      renderProductShell(<ProductShellObserver />);
+      await act(async () => vi.runAllTimers());
+      const scroller = document.createElement("section");
+      let range = 0;
+      let top = 0;
+      const writeTop = vi.fn((value: number) => {
+        top = value;
+      });
+      Object.defineProperties(scroller, {
+        clientHeight: { value: 400 },
+        scrollHeight: { get: () => 400 + range },
+        scrollTop: { get: () => top, set: writeTop },
+      });
+      act(() => {
+        observedProductShell!.registerActiveHomeScrollElement(scroller);
+        observedProductShell!.restoreActiveScrollTop(175);
+        vi.advanceTimersToNextTimer();
+        vi.advanceTimersToNextTimer();
+      });
+      expect(writeTop).toHaveBeenCalledTimes(1);
+      act(() => {
+        if (ending === "replaced") {
+          range = 600;
+          observedProductShell!.restoreActiveScrollTop(40);
+        } else if (ending === "unmounted") {
+          mountedRoots.pop()!.unmount();
+          range = 600;
+        }
+        vi.runAllTimers();
+      });
+      expect(top).toBe(ending === "replaced" ? 40 : 0);
+      expect(writeTop).toHaveBeenCalledTimes(
+        ending === "exhausted" ? 13 : ending === "replaced" ? 2 : 1,
+      );
+      const writes = writeTop.mock.calls.length;
+      act(() => vi.runAllTimers());
+      expect(writeTop).toHaveBeenCalledTimes(writes);
+    },
+  );
+
+  it("corrects a post-restore scroll drift before releasing the scroll owner", async () => {
+    renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    let top = 0;
+    const writeTop = vi.fn((value: number) => {
+      top = value;
+    });
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 400 },
+      scrollHeight: { value: 1_000 },
+      scrollTop: { get: () => top, set: writeTop },
+    });
+
+    act(() => {
+      observedProductShell!.registerActiveHomeScrollElement(scroller);
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.advanceTimersToNextTimer();
+      vi.advanceTimersToNextTimer();
+    });
+    expect(top).toBe(175);
+    expect(writeTop).toHaveBeenCalledTimes(1);
+
+    top = 182;
+    act(() => vi.advanceTimersToNextTimer());
+    expect(top).toBe(175);
+    expect(writeTop).toHaveBeenCalledTimes(2);
+
+    act(() => vi.runAllTimers());
+    expect(writeTop).toHaveBeenCalledTimes(2);
+  });
+
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderProductShell();
@@ -484,7 +685,7 @@ describe("ProductShell", () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const { container } = renderProductShell();
     await act(async () => vi.runAllTimers());
-    const opener = buttonByLabel(container, "打开设置");
+    const opener = buttonByLabel(container, "从用户页打开设置");
 
     click(opener);
     await act(async () => vi.runAllTimers());
@@ -521,6 +722,67 @@ describe("ProductShell", () => {
     );
     await act(async () => vi.runAllTimers());
     expect(dialog(container)).not.toBeNull();
+  });
+
+  it("has no external Settings entry while preserving the owned Settings seam", async () => {
+    const { container } = renderProductShell(<p>home content</p>, {
+      primaryUtility: <SettingsRequester />,
+    });
+    await act(async () => vi.runAllTimers());
+
+    expect(container.querySelector("[data-open-settings]")).toBeNull();
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    opener.focus();
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    expect(dialog(container)).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(dialog(container)).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("closes owned Settings with Escape and restores its exact opener", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    const { container } = renderProductShell(<p>home content</p>, {
+      primaryUtility: <SettingsRequester />,
+    });
+    await act(async () => vi.runAllTimers());
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    opener.focus();
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    const escape = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Escape",
+    });
+    act(() => document.dispatchEvent(escape));
+    expect(escape.defaultPrevented).toBe(true);
+    expect(back).toHaveBeenCalledOnce();
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(dialog(container)).toBeNull();
+    expect(document.activeElement).toBe(opener);
   });
 
   it("owns Topic history, inertness, navigation identity, Back/Forward, scroll, and focus", async () => {
@@ -700,7 +962,7 @@ describe("ProductShell", () => {
       detailHistoryState("catalog-one", "home", 146, 73),
     );
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     expect(dialog(container)).toBeNull();
 
     act(() =>
@@ -838,7 +1100,7 @@ describe("ProductShell", () => {
       }
       pushState.mockClear();
 
-      click(buttonByLabel(container, "打开设置"));
+      click(buttonByLabel(container, "从用户页打开设置"));
       await act(async () => vi.runAllTimers());
 
       expect(pushState).toHaveBeenCalledOnce();
@@ -899,7 +1161,7 @@ describe("ProductShell", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.homeLayout).toBe("single");
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     click(buttonByLabel(container, /切换主题/));
     click(buttonByLabel(container, /切换布局/));
 

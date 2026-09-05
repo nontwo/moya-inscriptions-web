@@ -34,21 +34,25 @@ export const qaSearchScenarios = {
     initialKeyword: "",
     initialOpen: false,
     showEmptyState: false,
+    showRecentSearches: false,
   },
   "search-open": {
     initialKeyword: "",
     initialOpen: true,
     showEmptyState: false,
+    showRecentSearches: true,
   },
   "search-typing": {
     initialKeyword: "龙门",
     initialOpen: true,
     showEmptyState: false,
+    showRecentSearches: false,
   },
   "search-empty": {
     initialKeyword: "未收录题刻",
     initialOpen: true,
     showEmptyState: true,
+    showRecentSearches: false,
   },
 } as const satisfies Record<
   QaSearchScenarioName,
@@ -56,5 +60,6 @@ export const qaSearchScenarios = {
     readonly initialKeyword: string;
     readonly initialOpen: boolean;
     readonly showEmptyState: boolean;
+    readonly showRecentSearches: boolean;
   }
 >;

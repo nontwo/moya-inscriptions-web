@@ -133,13 +133,22 @@ jobs:
       - name: Build
         run: pnpm build
 
-  e2e:
+  e2e-shards:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      MOYA_E2E_SOURCE_HEAD:
+        ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -150,13 +159,78 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install dependencies
+      - name: Install dependencies and browser engines
+        timeout-minutes: 10
+        run: node tests/e2e/support/e2e-ci.mjs prepare ${{ matrix.shard }}
+
+      - name: Full browser regression shard
+        # Native 18-minute deadline leaves teardown/report time before this cap.
+        timeout-minutes: 21
+        run: node tests/e2e/support/e2e-ci.mjs run ${{ matrix.shard }}
+
+      - name: Upload shard reports, failures and service logs
+        if: ${{ always() }}
+        timeout-minutes: 3
+        uses: actions/upload-artifact@v4
+        with:
+          name:
+            e2e-shard-${{ matrix.shard }}-${{ github.run_id }}-${{
+            github.run_attempt }}
+          path: .local/e2e-ci/shard-${{ matrix.shard }}/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  # Keep the existing required-check name. Success requires real shard job success
+  # AND complete native report identity, outcome and exact collection validation.
+  e2e:
+    if: ${{ always() }}
+    needs: [e2e-shards]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MOYA_E2E_SOURCE_HEAD:
+        ${{ github.event.pull_request.head.sha || github.sha }}
+      MOYA_E2E_SHARD_JOB_RESULT: ${{ needs.e2e-shards.result }}
+
+    steps:
+      - name: Check out exact workflow commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install report tooling
+        timeout-minutes: 5
         run: pnpm install --frozen-lockfile
 
-      - name: Install browser engines
-        run: >-
-          pnpm --filter @moya/tests exec playwright install --with-deps chromium
-          webkit
+      - name: Download this attempt's shard evidence
+        if: ${{ always() }}
+        uses: actions/download-artifact@v5
+        with:
+          pattern: e2e-shard-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/e2e-ci/downloaded
 
-      - name: Browser regression tests
-        run: pnpm test:e2e
+      - name: Merge native reports and enforce complete result gate
+        if: ${{ always() }}
+        timeout-minutes: 5
+        run: node tests/e2e/support/e2e-ci.mjs merge
+
+      - name: Upload merged HTML, JSON and gate result
+        if: ${{ always() }}
+        timeout-minutes: 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-aggregate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/e2e-ci/aggregate/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
