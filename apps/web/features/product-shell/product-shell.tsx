@@ -394,9 +394,6 @@ export const ProductShell = ({
             "End",
             " ",
           ].includes(event.key) ||
-            event.altKey ||
-            event.ctrlKey ||
-            event.metaKey ||
             (event.target instanceof HTMLElement &&
               event.target.closest(
                 'input, textarea, select, [contenteditable]:not([contenteditable="false"])',

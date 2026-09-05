@@ -655,10 +655,15 @@ describe("ProductShell", () => {
   it.each(
     ["before first write", "after first write", "during retry"].flatMap(
       (timing) =>
-        ["wheel", "touchstart", "pointerdown", "PageDown"].map((input) => ({
-          timing,
-          input,
-        })),
+        [
+          "wheel",
+          "touchstart",
+          "pointerdown",
+          "PageDown",
+          "Meta+ArrowUp",
+          "Meta+ArrowDown",
+          "Control+End",
+        ].map((input) => ({ timing, input })),
     ),
   )("yields a pending restore to $input $timing", async ({ timing, input }) => {
     const { container } = renderProductShell(<ProductShellObserver />);
@@ -685,9 +690,11 @@ describe("ProductShell", () => {
     });
     const writes = writeTop.mock.calls.length;
     const event =
-      input === "PageDown"
+      input === "PageDown" || input.includes("+")
         ? new KeyboardEvent("keydown", {
-            key: input,
+            key: input.split("+").at(-1) ?? input,
+            metaKey: input.startsWith("Meta+"),
+            ctrlKey: input.startsWith("Control+"),
             bubbles: true,
             cancelable: true,
           })
