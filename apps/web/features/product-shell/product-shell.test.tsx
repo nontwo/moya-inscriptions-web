@@ -474,6 +474,41 @@ describe("ProductShell", () => {
     act(() => unregisterNearby());
   });
 
+  it("retries scroll restoration while a hidden view rebuilds its scroll range", async () => {
+    renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    let rangeAvailable = false;
+    Object.defineProperties(scroller, {
+      clientHeight: {
+        configurable: true,
+        value: 400,
+      },
+      scrollHeight: {
+        configurable: true,
+        get: () => (rangeAvailable ? 1_000 : 400),
+      },
+    });
+    let unregister: () => void = () => undefined;
+    act(() => {
+      unregister =
+        observedProductShell!.registerActiveHomeScrollElement(scroller);
+    });
+
+    act(() => {
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.advanceTimersToNextTimer();
+      vi.advanceTimersToNextTimer();
+    });
+    expect(scroller.scrollTop).toBe(0);
+
+    rangeAvailable = true;
+    act(() => vi.runAllTimers());
+    expect(scroller.scrollTop).toBe(175);
+
+    act(() => unregister());
+  });
+
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderProductShell();

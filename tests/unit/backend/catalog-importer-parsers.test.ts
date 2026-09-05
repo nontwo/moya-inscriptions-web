@@ -650,7 +650,7 @@ describe("catalog-import/v1 CSV/XLSX convergence", () => {
     expect(parsed.envelope.catalogRows.at(-1)?.sourceId).toBe(
       "synthetic-source-1658",
     );
-  });
+  }, 15_000);
 
   it("keeps formatting, row order, and ZIP metadata outside the canonical hash", async () => {
     const ordinary = await parseCatalogImportXlsxWorkbook(

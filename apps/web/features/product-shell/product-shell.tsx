@@ -69,6 +69,8 @@ import type { PrimaryDestination } from "../shell/primary-shell";
 
 type ScrollPositions = Record<PrimaryDestination, number>;
 
+const SCROLL_RESTORE_RETRY_FRAMES = 12;
+
 const currentProductHistoryState = (state: ProductHistoryState) =>
   mergeProductHistoryState(window.history.state, state);
 
@@ -316,24 +318,31 @@ export const ProductShell = ({
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
       }
+      const desired = scrollPositionsRef.current[destination];
+      let retryFrames = SCROLL_RESTORE_RETRY_FRAMES;
+      const applyScroll = () => {
+        restoreFrameRef.current = null;
+        const element = scrollElementFor(destination, presentationPlatform);
+        if (element === null) return;
+        const top = clampScrollTop(element, desired);
+        scrollRestorePendingRef.current = true;
+        if (presentationPlatform === "pc") {
+          window.scrollTo({ behavior: "auto", top });
+        } else {
+          (element as HTMLElement).scrollTop = top;
+        }
+        if (top < desired && retryFrames > 0) {
+          retryFrames -= 1;
+          restoreFrameRef.current = window.requestAnimationFrame(applyScroll);
+          return;
+        }
+        window.requestAnimationFrame(() => {
+          scrollRestorePendingRef.current = false;
+        });
+      };
       restoreFrameRef.current = window.requestAnimationFrame(() => {
         restoreFrameRef.current = window.requestAnimationFrame(() => {
-          restoreFrameRef.current = null;
-          const element = scrollElementFor(destination, presentationPlatform);
-          if (element === null) return;
-          const top = clampScrollTop(
-            element,
-            scrollPositionsRef.current[destination],
-          );
-          scrollRestorePendingRef.current = true;
-          if (presentationPlatform === "pc") {
-            window.scrollTo({ behavior: "auto", top });
-          } else {
-            (element as HTMLElement).scrollTop = top;
-          }
-          window.requestAnimationFrame(() => {
-            scrollRestorePendingRef.current = false;
-          });
+          applyScroll();
         });
       });
     },
