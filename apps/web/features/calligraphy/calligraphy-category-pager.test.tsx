@@ -278,7 +278,7 @@ describe("CalligraphyCategoryPager", () => {
     pagerWidth = 520;
     offsets = [0, 520, 1040];
     render("ink", true);
-    act(() => resizeObservers[0]?.trigger());
+    act(() => resizeObservers.at(-1)?.trigger());
 
     expect(frame.scrollLeft).toBe(520);
     expect(onCommit).not.toHaveBeenCalled();
@@ -369,6 +369,37 @@ describe("CalligraphyCategoryPager", () => {
     expect(frame.style.height).toBe("900px");
     act(() => frame.dispatchEvent(new Event("touchcancel", { bubbles: true })));
     expect(frame.style.height).toBe("1200px");
+  });
+
+  it("reconciles a deferred height after a touch ends without horizontal movement", () => {
+    const { frame, onCommit } = renderPager();
+    panelHeights.all = 1200;
+    act(() => resizeObservers[0]?.trigger());
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    act(() => vi.runOnlyPendingTimers());
+    expect(frame.style.height).toBe("900px");
+
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+
+    expect(frame.style.height).toBe("1200px");
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("discards an unfinished session when hidden and revealed at the same width", () => {
+    const { frame, onCommit, render } = renderPager();
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 200);
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("true");
+
+    render("all", false);
+    panelHeights.all = 1200;
+    render("all", true);
+
+    expect(frame.scrollLeft).toBe(0);
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+    expect(frame.style.height).toBe("1200px");
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it("cancels height work at zero width and realigns the committed category on reveal", () => {

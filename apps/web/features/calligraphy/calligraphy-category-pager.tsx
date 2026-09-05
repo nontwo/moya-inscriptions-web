@@ -406,13 +406,14 @@ export const CalligraphyCategoryPager = forwardRef<
     }
     if (!session.hasScrolled) {
       invalidateSession(false);
+      applyPanelHeight(activeIndexRef.current);
     } else if (session.scrollEndPending) {
       session.scrollEndPending = false;
       settleRef.current(session.generation);
     } else {
       scheduleFallback(session.generation);
     }
-  }, [invalidateSession, scheduleFallback]);
+  }, [applyPanelHeight, invalidateSession, scheduleFallback]);
 
   const cancelToCommitted = useCallback(() => {
     const frame = frameRef.current;
@@ -578,7 +579,10 @@ export const CalligraphyCategoryPager = forwardRef<
   ]);
 
   useLayoutEffect(() => {
-    if (!primaryVisible) return;
+    if (!primaryVisible) {
+      invalidateSession();
+      return;
+    }
     const frame = frameRef.current;
     const offset = readSnapOffsets()[activeIndexRef.current];
     if (frame !== null) {
@@ -593,7 +597,13 @@ export const CalligraphyCategoryPager = forwardRef<
     }
     applyPanelHeight(activeIndexRef.current);
     publishProgress(true);
-  }, [applyPanelHeight, primaryVisible, publishProgress, readSnapOffsets]);
+  }, [
+    applyPanelHeight,
+    invalidateSession,
+    primaryVisible,
+    publishProgress,
+    readSnapOffsets,
+  ]);
 
   useEffect(
     () => () => {
