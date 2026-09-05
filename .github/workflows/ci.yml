@@ -8,10 +8,42 @@ on:
     branches:
       - main
 
+concurrency:
+  group:
+    ${{ github.workflow }}-${{ github.event_name }}-${{
+    github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
+  classify_e2e:
+    name: classify-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      scope: ${{ steps.classify.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Conservatively classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA:
+            ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          scope="$(node scripts/ci-e2e-scope.mjs)" || scope=full
+          case "$scope" in none|smoke|full) ;; *) scope=full ;; esac
+          echo "scope=$scope" >>"$GITHUB_OUTPUT"
+          echo "Browser validation scope: $scope" >>"$GITHUB_STEP_SUMMARY"
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -134,6 +166,8 @@ jobs:
         run: pnpm build
 
   e2e-shards:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.scope == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -181,11 +215,50 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  e2e_smoke:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.scope == 'smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      MOYA_E2E_SOURCE_HEAD:
+        ${{ github.event.pull_request.head.sha || github.sha }}
+      MOYA_E2E_CHECKOUT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install smoke dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @moya/tests exec playwright install --with-deps --only-shell chromium
+      - name: Run existing Formal Web smoke and verify native evidence
+        run: |
+          export MOYA_E2E_CHECKOUT_TREE="$(git rev-parse HEAD^{tree})"
+          export MOYA_E2E_ARTIFACT_DIR="$GITHUB_WORKSPACE/.local/e2e-ci/smoke"
+          mkdir -p "$MOYA_E2E_ARTIFACT_DIR"
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$MOYA_E2E_ARTIFACT_DIR/planned.json" pnpm --filter @moya/tests exec playwright test --config e2e/playwright.config.ts formal-web.spec.ts --project=desktop-chromium --workers=1 --list --reporter=json
+          pnpm --filter @moya/tests exec playwright test --config e2e/playwright.config.ts formal-web.spec.ts --project=desktop-chromium --workers=1
+          node scripts/ci-e2e-gate.mjs smoke "$MOYA_E2E_ARTIFACT_DIR/planned.json" "$MOYA_E2E_ARTIFACT_DIR/report.json"
+      - name: Preserve native smoke reports and failure diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/e2e-ci/smoke/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
   # Keep the existing required-check name. Success requires real shard job success
   # AND complete native report identity, outcome and exact collection validation.
   e2e:
     if: ${{ always() }}
-    needs: [e2e-shards]
+    needs: [classify_e2e, e2e_smoke, e2e-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -200,32 +273,44 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Set up pnpm
+        if: ${{ always() && needs.classify_e2e.outputs.scope == 'full' }}
         uses: pnpm/action-setup@v4
 
       - name: Set up Node.js
+        if: ${{ always() }}
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          cache:
+            ${{ needs.classify_e2e.outputs.scope == 'full' && 'pnpm' || '' }}
+
+      - name: Require the selected browser execution
+        env:
+          SCOPE: ${{ needs.classify_e2e.outputs.scope }}
+          CLASSIFY_RESULT: ${{ needs.classify_e2e.result }}
+          SMOKE_RESULT: ${{ needs.e2e_smoke.result }}
+          FULL_RESULT: ${{ needs.e2e-shards.result }}
+        run: node scripts/ci-e2e-gate.mjs gate >>"$GITHUB_STEP_SUMMARY"
 
       - name: Install report tooling
+        if: ${{ always() && needs.classify_e2e.outputs.scope == 'full' }}
         timeout-minutes: 5
         run: pnpm install --frozen-lockfile
 
       - name: Download this attempt's shard evidence
-        if: ${{ always() }}
+        if: ${{ always() && needs.classify_e2e.outputs.scope == 'full' }}
         uses: actions/download-artifact@v5
         with:
           pattern: e2e-shard-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: .local/e2e-ci/downloaded
 
       - name: Merge native reports and enforce complete result gate
-        if: ${{ always() }}
+        if: ${{ always() && needs.classify_e2e.outputs.scope == 'full' }}
         timeout-minutes: 5
         run: node tests/e2e/support/e2e-ci.mjs merge
 
       - name: Upload merged HTML, JSON and gate result
-        if: ${{ always() }}
+        if: ${{ always() && needs.classify_e2e.outputs.scope == 'full' }}
         timeout-minutes: 3
         uses: actions/upload-artifact@v4
         with:

@@ -1,103 +1,227 @@
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
-const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const classifierPath = path.join(repositoryRoot, "scripts", "ci-e2e-scope.mjs");
-
-type E2eScope = "full" | "none" | "smoke";
-type ClassifyE2eScope = (
-  changedPaths: readonly string[],
-  eventName?: string,
-) => E2eScope;
-
-const loadClassifier = async (): Promise<ClassifyE2eScope> => {
-  const module = (await import(pathToFileURL(classifierPath).href)) as {
-    classifyE2eScope: ClassifyE2eScope;
-  };
-  return module.classifyE2eScope;
+const root = fileURLToPath(new URL("../../../", import.meta.url));
+const scopeModule = (await import(
+  pathToFileURL(root + "scripts/ci-e2e-scope.mjs").href
+)) as {
+  classifyE2eScope: (paths: unknown, event?: string) => string;
+  classifyGitDiff: (
+    event: string,
+    base: string,
+    head: string,
+    git: (...args: string[]) => unknown,
+  ) => string;
 };
+const gateModule = (await import(
+  pathToFileURL(root + "scripts/ci-e2e-gate.mjs").href
+)) as {
+  assertBrowserGate: (
+    scope: string,
+    classified: string,
+    smoke: string,
+    full: string,
+  ) => string;
+  assertSmokeReport: (
+    planned: unknown,
+    report: unknown,
+    identity: unknown,
+  ) => unknown;
+};
+const { classifyE2eScope: classify, classifyGitDiff } = scopeModule;
+const { assertBrowserGate: gate, assertSmokeReport } = gateModule;
 
-describe("proportionate browser CI policy", () => {
-  it("runs the full matrix only for browser-surface pull requests", async () => {
-    const classify = await loadClassifier();
-
-    expect(classify(["apps/web/app/page.tsx"])).toBe("full");
-    expect(classify(["packages/ui/src/index.ts"])).toBe("full");
-    expect(classify(["tests/e2e/formal-web.spec.ts"])).toBe("full");
-    expect(classify(["docs/design-system/assets/example.svg"])).toBe("full");
-    expect(classify(["apps/web/app/page.tsx"], "push")).toBe("smoke");
+describe("small conservative browser selection", () => {
+  it.each([
+    [
+      ["README.md", "docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md"],
+      "none",
+    ],
+    [["services/catalog-importer/src/cli.ts"], "smoke"],
+    [["tests/unit/backend/parser.test.ts"], "smoke"],
+    [["apps/web/app/page.tsx"], "full"],
+    [["packages/contracts/src/catalog.ts"], "full"],
+    [["packages/ui/README.md"], "full"],
+    [["docs/prototypes/mobile-preview/README.md"], "full"],
+    [["docs/design-system/assets/card.svg"], "full"],
+    [["pnpm-lock.yaml"], "full"],
+    [[".github/workflows/ci.yml"], "full"],
+    [["README.md", "services/catalog-importer/src/cli.ts"], "full"],
+    [["docs/new-runtime-data.md"], "full"],
+    [["unknown.ts"], "full"],
+    [[], "full"],
+    [["README.md", ""], "full"],
+    [["../README.md"], "full"],
+    [[" README.md"], "full"],
+    [["docs/governance/a.md\napps/web/b.ts"], "full"],
+    [null, "full"],
+  ])("%j => %s for both PR and main", (paths, expected) => {
+    for (const event of ["pull_request", "push"])
+      expect(classify(paths, event)).toBe(expected);
   });
 
-  it("uses smoke or no-browser validation for narrower changes", async () => {
-    const classify = await loadClassifier();
-
-    expect(classify(["services/catalog-importer/src/index.ts"])).toBe("smoke");
-    expect(classify(["packages/contracts/src/catalog.ts"])).toBe("smoke");
-    expect(classify(["database/migrations/example.sql"])).toBe("smoke");
-    expect(classify(["README.md", "docs/architecture.md"])).toBe("none");
+  it("handles NUL boundaries, renames and comparison errors without a fast fallback", () => {
+    const a = "a".repeat(40),
+      b = "b".repeat(40);
+    const calls: string[][] = [];
+    const git = (...args: string[]) => {
+      calls.push(args);
+      return "README.md\0";
+    };
+    expect(classifyGitDiff("pull_request", a, b, git)).toBe("none");
+    expect(calls[0]).toEqual([
+      "diff",
+      "--no-renames",
+      "--name-only",
+      "-z",
+      a + "..." + b,
+      "--",
+    ]);
+    expect(classifyGitDiff("push", a, b, git)).toBe("none");
+    expect(calls[1]).toContain(a + ".." + b);
+    for (const output of [
+      "",
+      "README.md",
+      "README.md\0apps/web/page.tsx\0",
+      "README.md\0\0",
+      null,
+    ]) {
+      expect(classifyGitDiff("push", a, b, () => output)).toBe("full");
+    }
     expect(
-      classify(["docs/architecture.md", "services/api/src/index.ts"]),
-    ).toBe("smoke");
-    expect(classify([])).toBe("smoke");
+      classifyGitDiff("push", a, b, () => {
+        throw new Error("git failed");
+      }),
+    ).toBe("full");
+    expect(classifyGitDiff("push", "0".repeat(40), b, git)).toBe("full");
+    expect(classifyGitDiff("push", "--bad", b, git)).toBe("full");
+    expect(classify([], "unknown")).toBe("full");
   });
+});
 
-  it("keeps one stable required check and a parallel five-project matrix", async () => {
-    const [ciWorkflow, fullWorkflow, rootManifestText, testsManifestText] =
-      await Promise.all([
-        readFile(
-          path.join(repositoryRoot, ".github", "workflows", "ci.yml"),
-          "utf8",
-        ),
-        readFile(
-          path.join(repositoryRoot, ".github", "workflows", "e2e-full.yml"),
-          "utf8",
-        ),
-        readFile(path.join(repositoryRoot, "package.json"), "utf8"),
-        readFile(path.join(repositoryRoot, "tests", "package.json"), "utf8"),
-      ]);
-    const rootManifest = JSON.parse(rootManifestText) as {
-      scripts: Record<string, string>;
-    };
-    const testsManifest = JSON.parse(testsManifestText) as {
-      scripts: Record<string, string>;
-    };
+const identity = {
+  sourceHead: "a",
+  checkoutSha: "b",
+  tree: "c",
+  runId: "1",
+  runAttempt: "1",
+};
+const nativeReport = (list = false) => ({
+  config: {
+    metadata: { moyaCI: { ...identity } },
+    workers: 1,
+    fullyParallel: false,
+    failOnFlakyTests: true,
+    shard: null,
+  },
+  suites: [
+    {
+      title: "formal-web.spec.ts",
+      suites: [],
+      specs: [
+        {
+          title: "Formal root",
+          file: "formal-web.spec.ts",
+          tests: [
+            {
+              projectName: "desktop-chromium",
+              expectedStatus: "passed",
+              status: list ? "skipped" : "expected",
+              results: list ? [] : [{ retry: 0, status: "passed", errors: [] }],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  errors: [],
+  stats: {
+    expected: list ? 0 : 1,
+    skipped: list ? 1 : 0,
+    unexpected: 0,
+    flaky: 0,
+  },
+});
 
-    expect(ciWorkflow).toContain("  classify_e2e:");
-    expect(ciWorkflow).toContain("  e2e_smoke:");
-    expect(ciWorkflow).toContain("  e2e_full:");
-    expect(ciWorkflow).toContain("\n  e2e:\n");
-    expect(ciWorkflow).toContain(
+describe("stable e2e result gate", () => {
+  it("distinguishes no-browser from successfully executed browser tests", () => {
+    expect(gate("none", "success", "skipped", "skipped")).toContain("NOT RUN");
+    expect(gate("smoke", "success", "success", "skipped")).toContain("smoke");
+    expect(gate("full", "success", "skipped", "success")).toContain("full");
+  });
+  it.each(["failure", "cancelled", "skipped", ""])(
+    "blocks missing/failed selected execution: %s",
+    (result) => {
+      expect(() => gate("smoke", "success", result, "skipped")).toThrow();
+      expect(() => gate("full", "success", "skipped", result)).toThrow();
+      expect(() => gate("none", result, "skipped", "skipped")).toThrow();
+    },
+  );
+  it("rejects malformed scopes and unexpected jobs", () => {
+    expect(() => gate("", "success", "skipped", "skipped")).toThrow();
+    expect(() => gate("none", "success", "failure", "skipped")).toThrow();
+  });
+  it("requires actual matching native smoke results", () => {
+    expect(
+      assertSmokeReport(nativeReport(true), nativeReport(), identity),
+    ).toEqual({
+      passed: 1,
+      skipped: 0,
+      total: 1,
+      retries: 0,
+    });
+    const badReports = [
+      { ...nativeReport(), suites: [] },
+      { ...nativeReport(), errors: ["global failure"] },
+      { ...nativeReport(), stats: { ...nativeReport().stats, flaky: 1 } },
+      { ...nativeReport(), stats: { ...nativeReport().stats, expected: 2 } },
+      nativeReport(true),
+    ];
+    for (const report of badReports)
+      expect(() =>
+        assertSmokeReport(nativeReport(true), report, identity),
+      ).toThrow();
+    for (const outcome of ["failed", "timedOut", "interrupted", "skipped"]) {
+      const report = nativeReport();
+      report.suites[0]!.specs[0]!.tests[0]!.results[0]!.status = outcome;
+      expect(() =>
+        assertSmokeReport(nativeReport(true), report, identity),
+      ).toThrow();
+    }
+    const report = nativeReport();
+    report.suites[0]!.specs[0]!.tests[0]!.projectName = "desktop-webkit";
+    expect(() =>
+      assertSmokeReport(nativeReport(true), report, identity),
+    ).toThrow();
+    expect(() =>
+      assertSmokeReport(nativeReport(true), nativeReport(), {
+        ...identity,
+        tree: "wrong",
+      }),
+    ).toThrow();
+    expect(() =>
+      assertSmokeReport(nativeReport(true), undefined, identity),
+    ).toThrow();
+  });
+  it("retains #92 full execution and wraps only selection", async () => {
+    const workflow = await readFile(root + ".github/workflows/ci.yml", "utf8");
+    expect(workflow).toContain(
+      "github.event.pull_request.number || github.run_id",
+    );
+    expect(workflow).toContain(
       "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
     );
-    expect(ciWorkflow).not.toContain("run: pnpm test:e2e\n");
-
-    for (const project of [
-      "desktop-chromium",
-      "desktop-webkit",
-      "mobile-webkit",
-      "tablet-webkit",
-      "tablet-landscape-webkit",
-    ]) {
-      expect(ciWorkflow).toContain(`project: ${project}`);
-      expect(fullWorkflow).toContain(`project: ${project}`);
-    }
-
-    expect(fullWorkflow).toContain("workflow_dispatch:");
-    expect(fullWorkflow).toContain('cron: "23 7 * * *"');
-    expect(fullWorkflow).toContain('- "v*"');
-
-    expect(rootManifest.scripts["test:e2e:smoke"]).toBe(
-      "pnpm --filter @moya/tests test:e2e:smoke",
-    );
-    expect(testsManifest.scripts["test:e2e:smoke"]).toContain(
-      "formal-web.spec.ts",
-    );
-    expect(testsManifest.scripts["test:e2e:smoke"]).toContain(
-      "--project=desktop-chromium",
-    );
-    expect(testsManifest.scripts["test:e2e:smoke"]).toContain("--workers=1");
+    expect(workflow).toContain("needs: [classify_e2e, e2e_smoke, e2e-shards]");
+    expect(workflow).toContain("shard: [1, 2, 3]");
+    expect(workflow).toContain("timeout-minutes: 30");
+    expect(workflow).toContain("timeout-minutes: 22");
+    for (const mode of ["prepare", "run", "merge"])
+      expect(workflow).toContain("node tests/e2e/support/e2e-ci.mjs " + mode);
+    expect(workflow).toContain("node scripts/ci-e2e-gate.mjs smoke");
+    expect(workflow).toContain("node scripts/ci-e2e-gate.mjs gate");
+    expect(workflow).toContain("if-no-files-found: error");
+    expect(workflow).not.toContain("continue-on-error");
+    expect(workflow).not.toContain("schedule:");
   });
 });
