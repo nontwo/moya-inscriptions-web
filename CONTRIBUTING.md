@@ -47,6 +47,32 @@ documentation-only change does not require unrelated runtime checks.
 Do not hide, skip, or downgrade an applicable failure. Fix its cause and rerun
 the affected validation. Record each applicable command and result in the PR.
 
+### Test feedback loop
+
+- Daily work: run the related unit file and browser spec/project, for example
+  `pnpm --filter @moya/tests exec vitest run unit/e2e-report-integrity.test.ts`
+  and
+  `pnpm test:e2e mig-c1-calligraphy-category-pager.spec.ts --project=desktop-chromium`.
+- Investigate a failure with its exact title (`-g`), `--retries=0` and
+  optionally `--max-failures=1`; verify a timing fix with `--repeat-each=10`.
+  Preserve every failed attempt, not only the successful rerun.
+- `pnpm test:e2e` still explicitly runs the complete local suite. If another
+  approved preview owns the default ports, set `MOYA_E2E_WEB_PORT=4320` and
+  `MOYA_E2E_PUBLIC_API_PORT=4321` together; do not start competing runtimes.
+- Final PR CI runs all five projects in three native shards, one worker per
+  runner with `fullyParallel=false`. The stable `e2e` check requires every shard
+  job to succeed and validates the exact collection union and complete results.
+  Flaky retry outcomes fail the gate. Artifacts contain native JSON/blob
+  reports, failure screenshots, failure/retry traces and service logs; the
+  aggregate includes merged JSON/HTML. Inspect per-shard install/readiness/test
+  timings together with GitHub job wall time and total runner usage before
+  claiming a speed improvement.
+
+CI has a 12-minute native suite deadline within each 30-minute shard job, with
+bounded installation, teardown/report and upload windows. Ordinary failures
+still upload diagnostics; hard cancellation or runner loss can leave incomplete
+evidence and must never be reported as a complete pass.
+
 ## Pull request, review, and merge
 
 - Open a Draft PR to `main` and complete the repository PR template.
