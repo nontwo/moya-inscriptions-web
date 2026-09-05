@@ -167,7 +167,7 @@ describe("HomeScreen integration", () => {
     expect(panels[1]?.hasAttribute("hidden")).toBe(false);
     expect(panels[1]?.getAttribute("aria-hidden")).toBe("true");
     expect(panels[1]?.hasAttribute("inert")).toBe(true);
-    expect(container.querySelectorAll("[data-open-settings]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-open-settings]")).toHaveLength(0);
     expect(container.querySelectorAll("h1, h2")).not.toContainEqual(
       expect.objectContaining({ textContent: "发现" }),
     );

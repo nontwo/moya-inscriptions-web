@@ -11,12 +11,19 @@ const expectedPlatform = (projectName: string): PresentationPlatform => {
 };
 
 const openQa = async (page: Page) => {
+  // Next's development badge occupies the same corner as the bottom composer.
+  // Use its supported local preference so the real submit hit target is tested;
+  // this writes only the disposable server's generated .next cache.
+  const devtools = await page.request.post("/__nextjs_devtools_config", {
+    data: { disableDevIndicator: true },
+  });
+  expect(devtools.status()).toBe(204);
   const response = await page.goto("/dev/t02p/qa");
   expect(response?.status()).toBe(200);
   const surface = page.locator("[data-t02p-qa-harness]");
   const shell = surface.locator("[data-product-shell]");
   const search = shell.locator("[data-t02p-qa-search]");
-  await expect(search).toBeVisible();
+  await expect(shell.locator("[data-search-trigger]")).toBeVisible();
   return { search, shell, surface };
 };
 
@@ -33,22 +40,53 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
-const visibleCatalogSnapshot = (shell: Locator) =>
-  shell
-    .locator(
-      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+const visibleCatalogCards = (shell: Locator) =>
+  shell.locator(
+    '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+  );
+
+const waitForVisibleCatalogMedia = async (shell: Locator) => {
+  const cards = visibleCatalogCards(shell);
+  const count = await cards.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await cards.nth(index).scrollIntoViewIfNeeded();
+  }
+  const media = cards.locator("[data-catalog-media-state]");
+  await expect(media).toHaveCount(count);
+  await expect
+    .poll(() =>
+      media.evaluateAll((nodes) =>
+        nodes.every((node) => {
+          const state = (node as HTMLElement).dataset.catalogMediaState;
+          if (state === "failed" || state === "missing") return true;
+          const image = node.querySelector("img");
+          return image?.complete === true && image.naturalWidth > 0;
+        }),
+      ),
     )
-    .evaluateAll((cards) =>
-      cards.map((card) => ({
-        id: (card as HTMLElement).dataset.catalogId ?? "",
-        kind: (card as HTMLElement).dataset.catalogKind ?? "",
-        media: Array.from(card.querySelectorAll("img")).map((image) => ({
-          alt: image.alt,
-          src: image.getAttribute("src") ?? "",
-        })),
-        text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    .toBe(true);
+  await expect(
+    shell.locator(
+      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+    ),
+  ).toHaveCount(1);
+};
+
+const visibleCatalogSnapshot = async (shell: Locator, settleMedia = true) => {
+  if (settleMedia) await waitForVisibleCatalogMedia(shell);
+  return visibleCatalogCards(shell).evaluateAll((cards) =>
+    cards.map((card) => ({
+      id: (card as HTMLElement).dataset.catalogId ?? "",
+      kind: (card as HTMLElement).dataset.catalogKind ?? "",
+      media: Array.from(card.querySelectorAll("img")).map((image) => ({
+        alt: image.alt,
+        src: image.getAttribute("src") ?? "",
       })),
-    );
+      text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+    })),
+  );
+};
 
 const expectOpaqueSurface = async (surface: Locator) => {
   const colors = await surface.evaluate((node) => {
@@ -109,10 +147,13 @@ test("QA Search and Filter stay isolated from Formal and clean Development", asy
     expect(response?.status()).toBe(200);
     await expect(page.locator("[data-t02p-qa-search]")).toHaveCount(0);
     await expect(page.locator("[data-inscription-filter]")).toHaveCount(0);
+    await expect(page.locator("[data-search-trigger]")).toHaveCount(0);
+    await expect(page.locator("[data-open-settings]")).toHaveCount(0);
   }
 
   const { search, shell } = await openQa(page);
-  await expect(search).toBeVisible();
+  await expect(search).toHaveCount(1);
+  await expect(shell.locator("[data-search-trigger]")).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 });
 
@@ -127,7 +168,8 @@ test("Search remains global while Filter follows the active destination", async 
     ["书帖", "calligraphy", false],
   ] as const) {
     await navigateTo(surface, shell, label, destination);
-    await expect(search).toBeVisible();
+    await expect(search).toHaveCount(1);
+    await expect(shell.locator("[data-search-trigger]")).toBeVisible();
     await expect(shell.locator("[data-inscription-filter]")).toHaveCount(
       filterVisible ? 1 : 0,
     );
@@ -142,12 +184,15 @@ test("search intents preserve Catalog identity, data and order while close actio
   const initialSnapshot = await visibleCatalogSnapshot(shell);
   expect(initialSnapshot.length).toBeGreaterThan(0);
 
-  const trigger = search.locator("[data-search-trigger]");
+  const trigger = shell.locator("[data-search-trigger]");
   await expect(trigger).toHaveAttribute("aria-label", "打开搜索");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
-  await expect(trigger).toHaveAttribute("aria-label", "关闭搜索");
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(search.getByText("暂无搜索记录", { exact: true })).toBeVisible();
+  await expect(
+    search.getByText("最近搜索会显示在这里", { exact: true }),
+  ).toBeVisible();
   const input = search.getByRole("searchbox", { name: "搜索关键词" });
   await expect(input).toBeFocused();
   await input.fill("  龙门石窟  ");
@@ -155,17 +200,18 @@ test("search intents preserve Catalog identity, data and order while close actio
   await expect(search.locator("[data-search-intent-status]")).toHaveText(
     "已记录搜索意图：龙门石窟",
   );
-  expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
+  expect(await visibleCatalogSnapshot(shell, false)).toEqual(initialSnapshot);
 
   await search.locator("[data-search-clear]").click();
   await expect(input).toHaveValue("");
-  await expect(search.getByText("最近搜索", { exact: true })).toBeVisible();
-  await search.locator('[data-search-suggestion="碑刻"]').click();
-  await expect(input).toHaveValue("碑刻");
+  await expect(search.getByText("暂无搜索记录", { exact: true })).toBeVisible();
+  await input.fill("龙门");
+  await search.locator('[data-search-suggestion="龙门石窟"]').click();
+  await expect(input).toHaveValue("龙门石窟");
   await expect(search.locator("[data-search-intent-status]")).toHaveText(
-    "已记录建议意图：碑刻",
+    "已记录建议意图：龙门石窟",
   );
-  expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
+  expect(await visibleCatalogSnapshot(shell, false)).toEqual(initialSnapshot);
 
   await search.locator("[data-search-close]").click();
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
@@ -177,6 +223,9 @@ test("search intents preserve Catalog identity, data and order while close actio
   await page.keyboard.press("Escape");
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
   await expect(trigger).toBeFocused();
+
+  await expect(shell.locator("[data-open-settings]")).toHaveCount(0);
+  await expect(shell.locator("[data-user-trigger]")).toBeVisible();
   await expect(shell).toHaveAttribute(
     "data-platform",
     expectedPlatform(testInfo.project.name),
@@ -192,8 +241,20 @@ test("the seeded empty scenario returns to ordinary suggestions after every user
   const selector = surface.getByRole("combobox", {
     name: "QA Search scenario",
   });
+  await selector.selectOption("search-open");
+  await expect(search.getByText("QA 最近搜索", { exact: true })).toBeVisible();
+  await search.locator('[data-search-suggestion="碑刻"]').click();
+  await expect(
+    search.getByRole("searchbox", { name: "搜索关键词" }),
+  ).toHaveValue("碑刻");
+  await expect(search.locator("[data-search-intent-status]")).toHaveText(
+    "已记录建议意图：碑刻",
+  );
 
   const seedEmptyScenario = async () => {
+    if ((await search.locator("[data-search-panel]").count()) === 1) {
+      await search.locator("[data-search-close]").click();
+    }
     await selector.selectOption("search-default");
     await expect(search.locator("[data-search-panel]")).toHaveCount(0);
     await selector.selectOption("search-empty");
@@ -212,7 +273,7 @@ test("the seeded empty scenario returns to ordinary suggestions after every user
   await search.locator("[data-search-clear]").click();
   await expect(input).toHaveValue("");
   await expect(search.locator("[data-search-empty]")).toHaveCount(0);
-  await expect(search.getByText("最近搜索", { exact: true })).toBeVisible();
+  await expect(search.getByText("暂无搜索记录", { exact: true })).toBeVisible();
 
   input = await seedEmptyScenario();
   await input.fill("龙门");
@@ -224,60 +285,84 @@ test("the seeded empty scenario returns to ordinary suggestions after every user
   );
 });
 
-test("pointer and keyboard utility switches preserve the newly requested focus owner", async ({
+test("keyboard utility switches keep one owner and Settings returns through User", async ({
   page,
 }) => {
   const { search, shell, surface } = await openQa(page);
   await navigateTo(surface, shell, "碑刻", "inscriptions");
-  const searchTrigger = search.locator("[data-search-trigger]");
+  const searchTrigger = shell.locator("[data-search-trigger]");
   const filter = shell.locator("[data-inscription-filter]");
   const filterTrigger = filter.locator("[data-filter-trigger]");
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
+  const userTrigger = shell.locator("[data-user-trigger]");
 
   await searchTrigger.click();
   await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await settingsTrigger.click();
+  await expect(userTrigger).toHaveAttribute("inert", "");
+  await page.keyboard.press("Escape");
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(searchTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Space");
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  let userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  await expect(
+    userPage.getByRole("button", { name: "关闭用户页" }),
+  ).toBeFocused();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
+
+  await filterTrigger.click();
+  await expect(filter.locator("[data-filter-panel]")).toBeVisible();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
+
+  await userTrigger.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(
+    userPage.getByRole("button", { name: "关闭用户页" }),
+  ).toBeFocused();
+  const userSettings = userPage.getByRole("button", { name: "打开设置" });
+  await userSettings.click();
   const settings = shell.getByRole("dialog", { name: "设置" });
   await expect(settings).toBeVisible();
-  await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
-    "inert",
-    "",
-  );
-  const settingsBack = settings.getByRole("button", { name: "返回" });
-  await expect(settingsBack).toBeFocused();
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-  await expect(settingsBack).toBeFocused();
-  await settingsBack.click();
+  await expect(settings.getByRole("button", { name: "返回" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
-  await expect(settingsTrigger).toBeFocused();
+  await expect(userPage).toBeVisible();
+  await expect(userSettings).toBeFocused();
 
-  await searchTrigger.click();
-  await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await filterTrigger.click();
+  await page.keyboard.press("Escape");
+  await expect(userPage).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
   await expect(search.locator("[data-search-panel]")).toHaveCount(0);
-  await expect(filter.locator("[data-filter-panel]")).toBeVisible();
-  await expect(filterTrigger).toBeFocused();
-
-  await searchTrigger.click();
   await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
-  await expect(search.locator("[data-search-panel]")).toBeVisible();
-  await expect(
-    search.getByRole("searchbox", { name: "搜索关键词" }),
-  ).toBeFocused();
+  await expect(shell.locator("[data-open-settings]")).toHaveCount(0);
 
-  await search.locator("[data-search-close]").click();
+  // Fullscreen Search must close before its inert background can open User.
   await searchTrigger.focus();
   await page.keyboard.press("Enter");
   await expect(search.locator("[data-search-panel]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(searchTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  const settingsTrigger = userPage.getByRole("button", { name: "打开设置" });
   await settingsTrigger.focus();
   await page.keyboard.press("Enter");
-  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
   await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
   await expect(
     shell.getByRole("dialog", { name: "设置" }).getByRole("button", {
@@ -297,17 +382,29 @@ test("pointer and keyboard utility switches preserve the newly requested focus o
       ),
   );
   await expect(settingsTrigger).toBeFocused();
+  await userPage.getByRole("button", { name: "关闭用户页" }).click();
+  await expect(userPage).toHaveCount(0);
+  await expect(userTrigger).toBeFocused();
 
   await filterTrigger.focus();
   await page.keyboard.press("Enter");
   await expect(filter.locator("[data-filter-panel]")).toBeVisible();
-  await settingsTrigger.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
   await expect(filter.locator("[data-filter-panel]")).toHaveCount(0);
+  await expect(filterTrigger).toBeFocused();
+  await userTrigger.focus();
+  await page.keyboard.press("Enter");
+  userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  const reopenedSettingsTrigger = userPage.getByRole("button", {
+    name: "打开设置",
+  });
+  await reopenedSettingsTrigger.focus();
+  await page.keyboard.press("Enter");
   await expect(shell.getByRole("dialog", { name: "设置" })).toBeVisible();
 });
 
-test("all approved viewport matrices keep Search left of Settings and in bounds", async ({
+test("all approved viewport matrices keep the three-item capsule and independent Search aligned with a fullscreen scene", async ({
   page,
 }, testInfo) => {
   const matrices = {
@@ -339,7 +436,16 @@ test("all approved viewport matrices keep Search left of Settings and in bounds"
 
   const { search, shell, surface } = await openQa(page);
   await navigateTo(surface, shell, "碑刻", "inscriptions");
-  const trigger = search.locator("[data-search-trigger]");
+  const trigger = shell.locator("[data-search-trigger]");
+  const dock = shell.locator("[data-primary-navigation-dock]");
+  const navigation = shell.locator("[data-primary-navigation]");
+  await expect(dock).toHaveCount(1);
+  await expect(navigation).toHaveCount(1);
+  await expect(
+    navigation.locator("[data-primary-navigation-destination]"),
+  ).toHaveCount(3);
+  await expect(navigation.locator("[data-search-trigger]")).toHaveCount(0);
+  await expect(dock.locator("[data-search-trigger]")).toHaveCount(1);
   const filterTrigger = shell.locator("[data-filter-trigger]");
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
@@ -347,40 +453,56 @@ test("all approved viewport matrices keep Search left of Settings and in bounds"
       "data-platform",
       expectedPlatform(testInfo.project.name),
     );
-    const settingsBox = await shell
-      .getByRole("button", { name: "打开设置" })
-      .boundingBox();
+    const navigationBox = await navigation.boundingBox();
     const searchBox = await trigger.boundingBox();
     const filterBox = await filterTrigger.boundingBox();
-    if (settingsBox === null || searchBox === null || filterBox === null) {
+    if (navigationBox === null || searchBox === null || filterBox === null) {
       throw new Error(
         `Missing utility geometry at ${viewport.width}x${viewport.height}`,
       );
     }
-    expect(Math.abs(settingsBox.y - searchBox.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(settingsBox.height - searchBox.height)).toBeLessThanOrEqual(
-      1,
-    );
-    expect(Math.abs(settingsBox.width - searchBox.width)).toBeLessThanOrEqual(
-      1,
-    );
-    expect(settingsBox.x - (searchBox.x + searchBox.width)).toBe(8);
+    expect(Math.abs(navigationBox.y - searchBox.y)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(navigationBox.height - searchBox.height),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(searchBox.width - searchBox.height)).toBeLessThanOrEqual(1);
+    expect(
+      searchBox.x - (navigationBox.x + navigationBox.width),
+    ).toBeGreaterThanOrEqual(8);
+    expect(
+      searchBox.x - (navigationBox.x + navigationBox.width),
+    ).toBeLessThanOrEqual(12);
+    expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(viewport.width);
     expect(filterBox.x).toBeGreaterThanOrEqual(0);
     expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(
       viewport.width + 1,
     );
 
     await trigger.click();
+    await expect(shell).toHaveAttribute(
+      "data-active-destination",
+      "inscriptions",
+    );
     const panel = search.locator("[data-search-panel]");
+    await expect(panel).toHaveAttribute("role", "dialog");
+    await expect(dock).toHaveAttribute("inert", "");
     const panelBox = await panel.boundingBox();
     if (panelBox === null) throw new Error("Missing search panel geometry");
-    expect(panelBox.x).toBeGreaterThanOrEqual(0);
-    expect(panelBox.y).toBeGreaterThanOrEqual(0);
-    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width + 1);
-    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(
+    expect(Math.abs(panelBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panelBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panelBox.width - viewport.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panelBox.height - viewport.height)).toBeLessThanOrEqual(1);
+    const composer = await search
+      .locator("[data-search-composer]")
+      .boundingBox();
+    const close = await search.locator("[data-search-close]").boundingBox();
+    if (composer === null || close === null)
+      throw new Error("Missing composer geometry");
+    expect(composer.y).toBeGreaterThan(viewport.height / 2);
+    expect(composer.y + composer.height).toBeLessThanOrEqual(
       viewport.height + 1,
     );
-    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(filterBox.x + 1);
+    expect(Math.abs(close.width - close.height)).toBeLessThanOrEqual(1);
 
     await search.locator("[data-search-close]").click();
     await expect(panel).toHaveCount(0);
@@ -393,30 +515,36 @@ test("Search remains legible through themes and respects reduced motion", async 
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium");
   const { search, shell } = await openQa(page);
-  const trigger = search.locator("[data-search-trigger]");
-  const settingsTrigger = shell.getByRole("button", { name: "打开设置" });
+  const trigger = shell.locator("[data-search-trigger]");
 
   for (const preference of ["system", "light", "dark"] as const) {
     await expect(shell).toHaveAttribute("data-theme-preference", preference);
     await trigger.click();
-    await expectOpaqueSurface(trigger);
     const panel = search.locator("[data-search-panel]");
     await expectOpaqueSurface(panel);
     await expectTextContrast(
-      search.getByRole("heading", { name: "最近搜索" }),
-      search.locator("[data-search-content]"),
+      search.getByText("暂无搜索记录", { exact: true }),
+      panel,
     );
     await search.locator("[data-search-close]").click();
     await expect(trigger).toBeFocused();
 
     if (preference === "dark") break;
-    await settingsTrigger.click();
+    await shell.locator("[data-user-trigger]").click();
+    const userPage = shell.getByRole("dialog", { name: "用户页" });
+    await expect(
+      userPage.getByRole("button", { name: "关闭用户页" }),
+    ).toBeFocused();
+    await userPage.getByRole("button", { name: "打开设置" }).click();
     const settings = shell.getByRole("dialog", { name: "设置" });
     await expect(settings).toBeVisible();
     await settings.getByRole("button", { name: /切换主题/ }).click();
     await settings.getByRole("button", { name: "返回" }).click();
     await expect(settings).toHaveCount(0);
-    await expect(settingsTrigger).toBeFocused();
+    await expect(
+      userPage.getByRole("button", { name: "打开设置" }),
+    ).toBeFocused();
+    await userPage.getByRole("button", { name: "关闭用户页" }).click();
   }
 
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -428,4 +556,110 @@ test("Search remains legible through themes and respects reduced motion", async 
         .evaluate((node) => getComputedStyle(node).animationName),
     )
     .toBe("none");
+});
+
+test("Search respects composition, trimmed submission, distinct clear and close, and source scroll", async ({
+  page,
+}) => {
+  const { search, shell, surface } = await openQa(page);
+  await navigateTo(surface, shell, "碑刻", "inscriptions");
+  await waitForVisibleCatalogMedia(shell);
+  const source = shell.locator('[data-primary-destination="inscriptions"]');
+  const sourceScroll = await source.evaluate((node) => ({
+    panel: node.scrollTop,
+    window: window.scrollY,
+  }));
+  const trigger = shell.locator("[data-search-trigger]");
+  await trigger.click();
+  const panel = search.locator("[data-search-panel]");
+  const input = search.getByRole("searchbox", { name: "搜索关键词" });
+  await expect(input).toBeFocused();
+  await input.fill("   ");
+  await input.press("Enter");
+  await expect(search.locator("[data-search-intent-status]")).toHaveText("");
+
+  // This exercises browser-dispatched IME events, not a real software keyboard.
+  await input.dispatchEvent("compositionstart", { data: "龙" });
+  await input.fill("  龙门  ");
+  await input.press("Enter");
+  await expect(search.locator("[data-search-intent-status]")).toHaveText("");
+  await input.dispatchEvent("compositionend", { data: "龙门" });
+  await input.press("Enter");
+  await expect(search.locator("[data-search-intent-status]")).toHaveText(
+    "已记录搜索意图：龙门",
+  );
+  const clear = search.locator("[data-search-clear]");
+  const close = search.locator("[data-search-close]");
+  expect(await clear.getAttribute("aria-label")).not.toBe(
+    await close.getAttribute("aria-label"),
+  );
+  await clear.click();
+  await expect(input).toHaveValue("");
+  await expect(panel).toBeVisible();
+  await expect(search.locator("[data-search-no-recent]")).toBeVisible();
+  await expect(
+    search.locator('[data-search-no-recent] [data-icon="search"]'),
+  ).toHaveCSS("width", "50px");
+  await close.focus();
+  await page.keyboard.press("Tab");
+  await expect(search.locator("[data-search-submit]")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(close).toBeFocused();
+  await close.click();
+  await expect(panel).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(shell).toHaveAttribute(
+    "data-active-destination",
+    "inscriptions",
+  );
+  await expect
+    .poll(() =>
+      source.evaluate((node) => ({
+        panel: node.scrollTop,
+        window: window.scrollY,
+      })),
+    )
+    .toEqual(sourceScroll);
+  await expect(
+    shell.locator("[data-filter-panel], [data-user-page]"),
+  ).toHaveCount(0);
+});
+
+test("dragging the primary capsule into the independent Search action never opens Search", async ({
+  page,
+}) => {
+  const { search, shell } = await openQa(page);
+  const navigation = shell.locator("[data-primary-navigation]");
+  const home = await navigation
+    .getByRole("button", { exact: true, name: "首页" })
+    .boundingBox();
+  const searchButton = await shell
+    .locator("[data-search-trigger]")
+    .boundingBox();
+  if (home === null || searchButton === null)
+    throw new Error("Missing dock controls");
+  await page.mouse.move(home.x + home.width / 2, home.y + home.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    searchButton.x + searchButton.width / 2,
+    searchButton.y + searchButton.height / 2,
+    { steps: 12 },
+  );
+  await page.mouse.up();
+  await expect(search.locator("[data-search-panel]")).toHaveCount(0);
+  await expect(shell.locator("[data-search-trigger]")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(
+    navigation.locator("[data-primary-navigation-destination]"),
+  ).toHaveCount(3);
+  const destination = await shell.getAttribute("data-active-destination");
+  expect(["home", "inscriptions", "calligraphy"]).toContain(destination);
+  await shell.locator("[data-search-trigger]").click();
+  await expect(search.locator("[data-search-panel]")).toBeVisible();
+  await expect(shell).toHaveAttribute(
+    "data-active-destination",
+    destination ?? "",
+  );
 });

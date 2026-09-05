@@ -21,6 +21,7 @@ let prefersReducedMotion = false;
 let pagerWidth = 400;
 let offsets = [0, 400, 800];
 let scrollToCalls: ScrollToOptions[] = [];
+let panelHeights: Record<CalligraphyCategory, number>;
 
 class TestResizeObserver implements ResizeObserver {
   readonly observed = new Set<Element>();
@@ -87,7 +88,11 @@ const renderPager = (
   const frame = container.querySelector<HTMLElement>(
     "[data-calligraphy-category-pager]",
   )!;
-  return { container, frame, handle, onCommit, render };
+  const unmount = () => {
+    roots.splice(roots.indexOf(root), 1);
+    act(() => root.unmount());
+  };
+  return { container, frame, handle, onCommit, render, unmount };
 };
 
 const nativeScroll = (frame: HTMLElement, left: number) => {
@@ -104,6 +109,7 @@ describe("CalligraphyCategoryPager", () => {
     pagerWidth = 400;
     offsets = [0, 400, 800];
     scrollToCalls = [];
+    panelHeights = { all: 900, ink: 600, rubbing: 720 };
     resizeObservers.length = 0;
     Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
@@ -123,8 +129,9 @@ describe("CalligraphyCategoryPager", () => {
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
       function (this: HTMLElement) {
-        const category = this.dataset.calligraphyCategoryPanel;
-        return category === "all" ? 900 : category === "ink" ? 600 : 720;
+        const category = this.dataset.calligraphyCategoryPanel as
+          CalligraphyCategory | undefined;
+        return category === undefined ? 720 : panelHeights[category];
       },
     );
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -192,14 +199,82 @@ describe("CalligraphyCategoryPager", () => {
   it("uses immediate tab paging for reduced motion and PC", () => {
     prefersReducedMotion = true;
     const phone = renderPager();
+    const phoneEvents = vi.spyOn(phone.frame, "dispatchEvent");
     act(() => phone.handle.current?.scrollToCategory("rubbing"));
-    expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 800 });
+    expect(phone.frame.scrollLeft).toBe(800);
+    expect(scrollToCalls).toEqual([]);
+    expect(phoneEvents).not.toHaveBeenCalled();
+    expect(phone.onCommit).not.toHaveBeenCalled();
+    nativeScroll(phone.frame, 800);
+    expect(phone.onCommit).not.toHaveBeenCalled();
+    act(() => phone.frame.dispatchEvent(new Event("scrollend")));
+    expect(phone.onCommit).toHaveBeenCalledExactlyOnceWith("rubbing");
 
-    scrollToCalls = [];
+    prefersReducedMotion = false;
     const pc = renderPager("pc");
+    const pcEvents = vi.spyOn(pc.frame, "dispatchEvent");
     act(() => pc.handle.current?.scrollToCategory("ink"));
-    expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 400 });
+    expect(pc.frame.scrollLeft).toBe(400);
+    expect(scrollToCalls).toEqual([]);
+    expect(pcEvents).not.toHaveBeenCalled();
+    expect(pc.onCommit).not.toHaveBeenCalled();
+    nativeScroll(pc.frame, 400);
+    expect(pc.onCommit).not.toHaveBeenCalled();
+    act(() => pc.frame.dispatchEvent(new Event("scrollend")));
+    expect(pc.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
   });
+
+  it("uses native offset assignment after a PC hide and reveal without pre-committing", () => {
+    const { frame, handle, onCommit, render } = renderPager("pc");
+    render("rubbing");
+    render("rubbing", false);
+    render("rubbing", true);
+    expect(frame.scrollLeft).toBe(800);
+    // The observed WebKit state accepts the method call without moving.
+    const ignoredScrollTo = vi
+      .spyOn(frame, "scrollTo")
+      .mockImplementation(() => {});
+    const dispatched = vi.spyOn(frame, "dispatchEvent");
+
+    act(() => handle.current?.scrollToCategory("all"));
+
+    expect(ignoredScrollTo).not.toHaveBeenCalled();
+    expect(frame.scrollLeft).toBe(0);
+    expect(dispatched).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("true");
+    nativeScroll(frame, 0);
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => frame.dispatchEvent(new Event("scrollend")));
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("all");
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+  });
+
+  it.each(["phone", "tablet"] as const)(
+    "retains native smooth scrolling and actual-settle commits on %s",
+    (platform) => {
+      const { frame, handle, onCommit } = renderPager(platform);
+      const nativeSmoothScroll = vi
+        .spyOn(frame, "scrollTo")
+        .mockImplementation(() => {});
+
+      act(() => handle.current?.scrollToCategory("ink"));
+
+      expect(nativeSmoothScroll).toHaveBeenCalledExactlyOnceWith({
+        behavior: "smooth",
+        left: 400,
+        top: 0,
+      });
+      expect(frame.scrollLeft).toBe(0);
+      expect(onCommit).not.toHaveBeenCalled();
+      nativeScroll(frame, 200);
+      act(() => frame.dispatchEvent(new Event("scrollend")));
+      expect(onCommit).not.toHaveBeenCalled();
+      nativeScroll(frame, 400);
+      act(() => frame.dispatchEvent(new Event("scrollend")));
+      expect(onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+    },
+  );
 
   it("commits before applying the shorter target panel height", () => {
     let heightObservedByCommit: string | undefined;
@@ -271,7 +346,7 @@ describe("CalligraphyCategoryPager", () => {
     pagerWidth = 520;
     offsets = [0, 520, 1040];
     render("ink", true);
-    act(() => resizeObservers[0]?.trigger());
+    act(() => resizeObservers.at(-1)?.trigger());
 
     expect(frame.scrollLeft).toBe(520);
     expect(onCommit).not.toHaveBeenCalled();
@@ -294,5 +369,171 @@ describe("CalligraphyCategoryPager", () => {
     expect(frame.scrollLeft).toBe(400);
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("ink");
+  });
+
+  it("does not write or queue a height frame for an unchanged measurement", () => {
+    const { frame } = renderPager("pc");
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame");
+
+    act(() => resizeObservers[0]?.trigger());
+    act(() => resizeObservers[0]?.trigger());
+
+    expect(writeHeight).not.toHaveBeenCalled();
+    expect(requestFrame).not.toHaveBeenCalled();
+    expect(frame.style.height).toBe("900px");
+  });
+
+  it("coalesces observer changes into one latest-height write and then stabilizes", () => {
+    const { frame } = renderPager("pc");
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame");
+    panelHeights.all = 1200;
+    act(() => resizeObservers[0]?.trigger());
+    panelHeights.all = 1400;
+    act(() => resizeObservers[0]?.trigger());
+
+    expect(frame.style.height).toBe("900px");
+    expect(writeHeight).not.toHaveBeenCalled();
+    expect(requestFrame).toHaveBeenCalledOnce();
+
+    act(() => vi.runOnlyPendingTimers());
+    expect(frame.style.height).toBe("1400px");
+    expect(writeHeight).toHaveBeenCalledExactlyOnceWith("1400px");
+    act(() => resizeObservers[0]?.trigger());
+    act(() => vi.runOnlyPendingTimers());
+    expect(writeHeight).toHaveBeenCalledOnce();
+    expect(requestFrame).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels a queued height write when the current measurement already matches", () => {
+    const { frame } = renderPager("pc");
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame");
+    panelHeights.all = 1200;
+    act(() => resizeObservers[0]?.trigger());
+    panelHeights.all = 900;
+    act(() => resizeObservers[0]?.trigger());
+    act(() => vi.runOnlyPendingTimers());
+
+    expect(cancelFrame).toHaveBeenCalledOnce();
+    expect(writeHeight).not.toHaveBeenCalled();
+    expect(frame.style.height).toBe("900px");
+  });
+
+  it("does not apply a queued or new observer height during an active gesture", () => {
+    const { frame } = renderPager();
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame");
+    panelHeights.all = 1200;
+    act(() => resizeObservers[0]?.trigger());
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    act(() => vi.runOnlyPendingTimers());
+    act(() => resizeObservers[0]?.trigger());
+
+    expect(requestFrame).toHaveBeenCalledOnce();
+    expect(writeHeight).not.toHaveBeenCalled();
+    expect(frame.style.height).toBe("900px");
+    act(() => frame.dispatchEvent(new Event("touchcancel", { bubbles: true })));
+    expect(frame.style.height).toBe("1200px");
+  });
+
+  it("reconciles a deferred height after a touch ends without horizontal movement", () => {
+    const { frame, onCommit } = renderPager();
+    panelHeights.all = 1200;
+    act(() => resizeObservers[0]?.trigger());
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    act(() => vi.runOnlyPendingTimers());
+    expect(frame.style.height).toBe("900px");
+
+    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+
+    expect(frame.style.height).toBe("1200px");
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("discards an unfinished session when hidden and revealed at the same width", () => {
+    const { frame, onCommit, render } = renderPager();
+    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    nativeScroll(frame, 200);
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("true");
+
+    render("all", false);
+    panelHeights.all = 1200;
+    render("all", true);
+
+    expect(frame.scrollLeft).toBe(0);
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+    expect(frame.style.height).toBe("1200px");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("cancels height work at zero width and realigns the committed category on reveal", () => {
+    const { frame, onCommit, render } = renderPager();
+    render("ink");
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    panelHeights.ink = 1000;
+    act(() => resizeObservers[0]?.trigger());
+    pagerWidth = 0;
+    act(() => resizeObservers[0]?.trigger());
+    act(() => vi.runOnlyPendingTimers());
+    expect(writeHeight).not.toHaveBeenCalled();
+
+    pagerWidth = 520;
+    offsets = [0, 520, 1040];
+    act(() => resizeObservers[0]?.trigger());
+    expect(frame.scrollLeft).toBe(520);
+    expect(frame.style.height).toBe("600px");
+    act(() => vi.runOnlyPendingTimers());
+    expect(frame.style.height).toBe("1000px");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("disconnects and cancels pending height work while hidden, then observes again", () => {
+    const { frame, render } = renderPager();
+    const previousObserver = resizeObservers[0]!;
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame");
+    panelHeights.all = 1200;
+    act(() => previousObserver.trigger());
+    render("all", false);
+    act(() => previousObserver.trigger());
+    act(() => vi.runOnlyPendingTimers());
+
+    expect(previousObserver.observed.size).toBe(0);
+    expect(writeHeight).not.toHaveBeenCalled();
+    expect(requestFrame).toHaveBeenCalledOnce();
+    expect(frame.style.height).toBe("900px");
+
+    render("all", true);
+    expect(frame.style.height).toBe("1200px");
+    expect(resizeObservers[1]?.observed.has(frame)).toBe(true);
+    act(() => resizeObservers[1]?.trigger());
+    expect(requestFrame).toHaveBeenCalledOnce();
+  });
+
+  it("rejects observer and animation callbacks retained past unmount", () => {
+    const { frame, unmount } = renderPager();
+    const observer = resizeObservers[0]!;
+    const writeHeight = vi.spyOn(frame.style, "height", "set");
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame");
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame");
+    panelHeights.all = 1200;
+    act(() => observer.trigger());
+    const staleFrameCallback = requestFrame.mock.calls[0]![0];
+
+    unmount();
+    act(() => observer.trigger());
+    act(() => staleFrameCallback(performance.now()));
+    act(() => vi.runOnlyPendingTimers());
+
+    expect(observer.observed.size).toBe(0);
+    expect(cancelFrame).toHaveBeenCalledOnce();
+    expect(requestFrame).toHaveBeenCalledOnce();
+    expect(writeHeight).not.toHaveBeenCalled();
+    expect(frame.style.height).toBe("900px");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +12,7 @@ vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => shellState,
 }));
 
-import { T02pQaSearch } from "./t02p-qa-search";
+import { QaSearchTrigger, T02pQaSearch } from "./t02p-qa-search";
 
 import type { Root } from "react-dom/client";
 
@@ -31,8 +31,48 @@ const renderNode = (node: React.ReactNode) => {
   return container;
 };
 
+const SearchFixture = (props: React.ComponentProps<typeof T02pQaSearch>) => {
+  const [localOpen, setLocalOpen] = useState(props.initialOpen ?? false);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const open = props.open ?? localOpen;
+  const update = (next: boolean) => {
+    if (props.open === undefined) setLocalOpen(next);
+    props.onOpenChange?.(next);
+  };
+  return (
+    <div
+      data-t02p-qa-harness=""
+      data-product-shell=""
+      data-settings-open="false"
+    >
+      <aside data-qa-controls="">
+        <button>场景</button>
+      </aside>
+      <div data-primary-navigation-pager="">
+        <div data-primary-destination="inscriptions">来源内容</div>
+      </div>
+      <nav data-primary-navigation-dock="">
+        <QaSearchTrigger
+          open={open}
+          onOpenChange={update}
+          openerRef={openerRef}
+          searchInputRef={inputRef}
+        />
+      </nav>
+      <button data-user-trigger="">用户</button>
+      <T02pQaSearch
+        {...props}
+        open={open}
+        onOpenChange={update}
+        openerRef={openerRef}
+        searchInputRef={inputRef}
+      />
+    </div>
+  );
+};
 const renderSearch = (props: React.ComponentProps<typeof T02pQaSearch> = {}) =>
-  renderNode(<T02pQaSearch {...props} />);
+  renderNode(<SearchFixture {...props} />);
 
 const element = <T extends Element>(
   container: ParentNode,
@@ -75,7 +115,7 @@ describe("T02pQaSearch", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens locally with a dynamic trigger name and focuses the input", () => {
+  it("opens from the dock and focuses a mounted input within the same click", () => {
     const container = renderSearch();
     const trigger = element<HTMLButtonElement>(
       container,
@@ -87,8 +127,20 @@ describe("T02pQaSearch", () => {
     click(trigger);
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(trigger.getAttribute("aria-label")).toBe("关闭搜索");
-    expect(element(container, "[data-search-panel]")).toBeTruthy();
+    expect(trigger.getAttribute("aria-label")).toBe("打开搜索");
+    expect(trigger.closest("[data-primary-navigation-dock]")).not.toBeNull();
+    expect(
+      element(container, "[data-search-panel]").getAttribute("aria-modal"),
+    ).toBe("true");
+    expect(element(container, "[data-search-panel]").getAttribute("role")).toBe(
+      "dialog",
+    );
+    expect(container.querySelectorAll("[data-search-trigger]")).toHaveLength(1);
+    expect(element(container, "[data-search-no-recent]").textContent).toContain(
+      "暂无搜索记录",
+    );
+    expect(container.textContent).toContain("最近搜索会显示在这里");
+    expect(container.querySelector("[data-search-suggestion]")).toBeNull();
     expect(element<HTMLInputElement>(container, 'input[type="search"]')).toBe(
       document.activeElement,
     );
@@ -150,7 +202,11 @@ describe("T02pQaSearch", () => {
 
   it("treats QA suggestions as intent without searching records", () => {
     const onSuggestionIntent = vi.fn();
-    const container = renderSearch({ initialOpen: true, onSuggestionIntent });
+    const container = renderSearch({
+      initialOpen: true,
+      onSuggestionIntent,
+      showRecentSearches: true,
+    });
     const catalogIds = ["catalog-a", "catalog-b"];
 
     click(
@@ -197,7 +253,10 @@ describe("T02pQaSearch", () => {
     click(element(clearingContainer, "[data-search-clear]"));
     expect(clearingContainer.querySelector("[data-search-empty]")).toBeNull();
     expect(clearingContainer.textContent).toContain("最近搜索");
-    expect(clearingContainer.textContent).toContain("搜索建议");
+    expect(clearingContainer.textContent).toContain("暂无搜索记录");
+    expect(
+      clearingContainer.querySelector("[data-search-suggestion]"),
+    ).toBeNull();
   });
 
   it("restores trigger focus after explicit close", () => {
@@ -226,7 +285,7 @@ describe("T02pQaSearch", () => {
     );
   });
 
-  it("closes on outside pointer without reclaiming focus", () => {
+  it("keeps a fullscreen modal open on unrelated outside pointer events", () => {
     const container = renderSearch({ initialOpen: true });
     const outside = document.createElement("button");
     outside.textContent = "设置";
@@ -235,12 +294,12 @@ describe("T02pQaSearch", () => {
 
     pointerDown(outside);
 
-    expect(container.querySelector("[data-search-panel]")).toBeNull();
+    expect(container.querySelector("[data-search-panel]")).not.toBeNull();
     expect(outside).toBe(document.activeElement);
   });
 
   it.each(["phone", "tablet"] as const)(
-    "uses the compact search surface on %s",
+    "uses the same fullscreen search composition on %s",
     (platform) => {
       shellState.platform = platform;
       const container = renderSearch({ initialOpen: true });
@@ -254,4 +313,225 @@ describe("T02pQaSearch", () => {
       ).toBe(1);
     },
   );
+
+  it("submits only trimmed nonempty input and keeps clear distinct from close", () => {
+    const onSearchIntent = vi.fn();
+    const container = renderSearch({ initialOpen: true, onSearchIntent });
+    const input = element<HTMLInputElement>(container, "input");
+    typeInto(input, "   ");
+    click(element(container, "[data-search-submit]"));
+    expect(onSearchIntent).not.toHaveBeenCalled();
+    typeInto(input, "  魏碑  ");
+    act(() =>
+      element(container, "form").dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(onSearchIntent).toHaveBeenCalledExactlyOnceWith("魏碑");
+    expect(
+      element(container, "[data-search-clear]").getAttribute("aria-label"),
+    ).not.toBe(
+      element(container, "[data-search-close]").getAttribute("aria-label"),
+    );
+    click(element(container, "[data-search-clear]"));
+    expect(container.querySelector("[data-search-panel]")).not.toBeNull();
+    expect(document.activeElement).toBe(input);
+    expect(input.getAttribute("enterkeyhint")).toBe("search");
+  });
+
+  it("does not submit during Chinese composition and accepts Enter after it ends", () => {
+    const onSearchIntent = vi.fn();
+    const container = renderSearch({ initialOpen: true, onSearchIntent });
+    const input = element<HTMLInputElement>(container, "input");
+    typeInto(input, "龙门");
+    act(() =>
+      input.dispatchEvent(
+        new CompositionEvent("compositionstart", { bubbles: true }),
+      ),
+    );
+    const enter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+    });
+    act(() => input.dispatchEvent(enter));
+    expect(enter.defaultPrevented).toBe(true);
+    click(element(container, "[data-search-submit]"));
+    expect(onSearchIntent).not.toHaveBeenCalled();
+    act(() =>
+      input.dispatchEvent(
+        new CompositionEvent("compositionend", { bubbles: true }),
+      ),
+    );
+    act(() =>
+      element(container, "form").dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(onSearchIntent).toHaveBeenCalledExactlyOnceWith("龙门");
+    const legacyImeEnter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      keyCode: 229,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => input.dispatchEvent(legacyImeEnter));
+    expect(legacyImeEnter.defaultPrevented).toBe(true);
+  });
+
+  it("starts a new composition session after closing before compositionend", () => {
+    const onSearchIntent = vi.fn();
+    const container = renderSearch({ initialOpen: true, onSearchIntent });
+    const input = element<HTMLInputElement>(container, "input");
+    typeInto(input, "魏碑");
+    act(() =>
+      input.dispatchEvent(
+        new CompositionEvent("compositionstart", { bubbles: true }),
+      ),
+    );
+    click(element(container, "[data-search-close]"));
+    click(element(container, "[data-search-trigger]"));
+    click(element(container, "[data-search-submit]"));
+    expect(onSearchIntent).toHaveBeenCalledExactlyOnceWith("魏碑");
+  });
+
+  it("isolates only the nearest harness, restores exact attributes and source scroll", () => {
+    document.body.style.overflow = "clip";
+    const outside = document.createElement("aside");
+    outside.dataset.qaControls = "";
+    outside.setAttribute("aria-hidden", "false");
+    document.body.append(outside);
+    const container = renderSearch();
+    const controls = element<HTMLElement>(container, "[data-qa-controls]");
+    controls.inert = true;
+    controls.setAttribute("inert", "already");
+    controls.setAttribute("aria-hidden", "false");
+    const source = element<HTMLElement>(
+      container,
+      "[data-primary-destination]",
+    );
+    source.scrollTop = 218;
+    click(element(container, "[data-search-trigger]"));
+    for (const selector of [
+      "[data-qa-controls]",
+      "[data-primary-navigation-pager]",
+      "[data-primary-navigation-dock]",
+      "[data-user-trigger]",
+    ]) {
+      expect(element<HTMLElement>(container, selector).inert).toBe(true);
+      expect(element(container, selector).getAttribute("aria-hidden")).toBe(
+        "true",
+      );
+    }
+    expect(outside.hasAttribute("inert")).toBe(false);
+    expect(outside.getAttribute("aria-hidden")).toBe("false");
+    expect(document.body.style.overflow).toBe("hidden");
+    source.scrollTop = 0;
+    click(element(container, "[data-search-close]"));
+    expect(source.scrollTop).toBe(218);
+    expect(controls.inert).toBe(true);
+    expect(controls.getAttribute("inert")).toBe("already");
+    expect(controls.getAttribute("aria-hidden")).toBe("false");
+    expect(
+      element(container, "[data-primary-navigation-dock]").hasAttribute(
+        "inert",
+      ),
+    ).toBe(false);
+    expect(document.body.style.overflow).toBe("clip");
+    document.body.style.overflow = "";
+  });
+
+  it("traps forward and backward Tab inside the surface", () => {
+    const container = renderSearch({ initialOpen: true });
+    const first = element<HTMLElement>(container, "[data-search-submit]");
+    const last = element<HTMLElement>(container, "[data-search-close]");
+    last.focus();
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", cancelable: true }),
+      ),
+    );
+    expect(document.activeElement).toBe(first);
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Tab",
+          shiftKey: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(document.activeElement).toBe(last);
+  });
+
+  it("tracks simulated VisualViewport resize, pan and orientation without a second keyboard inset", () => {
+    const viewport = Object.assign(new EventTarget(), {
+      height: 450,
+      width: 390,
+      offsetTop: 42,
+      offsetLeft: 0,
+    });
+    vi.stubGlobal("visualViewport", viewport);
+    const remove = vi.spyOn(viewport, "removeEventListener");
+    const removeWindow = vi.spyOn(window, "removeEventListener");
+    const cancel = vi.spyOn(window, "cancelAnimationFrame");
+    const container = renderSearch({ initialOpen: true });
+    const panel = element<HTMLElement>(container, "[data-search-panel]");
+    expect(panel.style.getPropertyValue("--qa-search-viewport-height")).toBe(
+      "450px",
+    );
+    expect(panel.style.getPropertyValue("--qa-search-viewport-top")).toBe(
+      "42px",
+    );
+    expect(panel.style.getPropertyValue("--qa-search-bottom-safe-area")).toBe(
+      "0px",
+    );
+    viewport.height = 390;
+    viewport.offsetTop = 80;
+    act(() => viewport.dispatchEvent(new Event("scroll")));
+    expect(panel.style.getPropertyValue("--qa-search-viewport-height")).toBe(
+      "390px",
+    );
+    expect(panel.style.getPropertyValue("--qa-search-viewport-top")).toBe(
+      "80px",
+    );
+    viewport.height = window.innerHeight;
+    viewport.offsetTop = 0;
+    act(() => viewport.dispatchEvent(new Event("resize")));
+    expect(panel.style.getPropertyValue("--qa-search-bottom-safe-area")).toBe(
+      "env(safe-area-inset-bottom)",
+    );
+    viewport.width = 844;
+    act(() => window.dispatchEvent(new Event("orientationchange")));
+    expect(panel.style.getPropertyValue("--qa-search-viewport-width")).toBe(
+      "844px",
+    );
+    vi.mocked(window.requestAnimationFrame).mockReturnValueOnce(987);
+    act(() => viewport.dispatchEvent(new Event("resize")));
+    click(element(container, "[data-search-close]"));
+    expect(cancel).toHaveBeenCalledWith(987);
+    expect(remove).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("scroll", expect.any(Function));
+    expect(removeWindow).toHaveBeenCalledWith(
+      "orientationchange",
+      expect.any(Function),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to the changing browser height without VisualViewport", () => {
+    vi.stubGlobal("visualViewport", undefined);
+    const container = renderSearch({ initialOpen: true });
+    const panel = element<HTMLElement>(container, "[data-search-panel]");
+    expect(panel.style.getPropertyValue("--qa-search-viewport-height")).toBe(
+      `${window.innerHeight}px`,
+    );
+    vi.stubGlobal("innerHeight", 360);
+    act(() => window.dispatchEvent(new Event("resize")));
+    expect(panel.style.getPropertyValue("--qa-search-viewport-height")).toBe(
+      "360px",
+    );
+    vi.unstubAllGlobals();
+  });
 });

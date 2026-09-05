@@ -63,29 +63,10 @@
   min-height: 0;
 }
 
-.settingsButton {
-  position: fixed;
-  z-index: var(--yoyi-z-index-sticky);
-  top: max(var(--yoyi-space-3), env(safe-area-inset-top));
-  right: var(--yoyi-space-4);
-  width: 44px;
-  height: 44px;
-  color: var(--yoyi-color-text-primary);
-  border-color: var(--yoyi-color-border-subtle);
-  border-radius: var(--yoyi-radius-full);
-}
-
 .loading {
   z-index: calc(var(--yoyi-z-index-overlay) + 10);
 }
 
 :global(html[data-yoyi-boot="ready"]) .loading {
   display: none;
-}
-
-@media (min-width: 56rem) {
-  .settingsButton {
-    top: var(--yoyi-space-5);
-    right: var(--yoyi-space-6);
-  }
 }

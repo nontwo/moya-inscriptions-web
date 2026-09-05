@@ -490,6 +490,9 @@ test("MIG-D2 Detail Carousel clears native offset when resizing from Tablet to P
 test("MIG-D2 Viewer rejects foreign media and reports a valid broken image truthfully", async ({
   page,
 }) => {
+  // Register before the first Detail load because its carousel eagerly loads
+  // peer media; routing later can leave WebKit serving that image from cache.
+  await page.route("**/rubbing-fragment.svg", (route) => route.abort());
   await page.goto(`${detailUrl}&image=foreign-media#viewer`);
   const viewer = page.getByRole("dialog", { name: "图像查看" });
   const detail = page.getByRole("dialog", { name: "资料详情" });
@@ -497,7 +500,6 @@ test("MIG-D2 Viewer rejects foreign media and reports a valid broken image truth
   await expect(viewer).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]image=/u);
 
-  await page.route("**/rubbing-fragment.svg", (route) => route.abort());
   await page.goto(
     `${detailUrl}&image=qa-visual-inscription-02-detail-media-2#viewer`,
   );

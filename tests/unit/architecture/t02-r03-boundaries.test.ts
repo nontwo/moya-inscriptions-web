@@ -175,14 +175,18 @@ describe("T02 R03 architecture boundaries", () => {
   });
 
   it("keeps the Home pager native and independent from Primary gesture machinery", async () => {
-    const pager = await readFile(
+    const homeAdapter = await readFile(
       path.join(repositoryRoot, "apps/web/features/home/home-feed-pager.tsx"),
+      "utf8",
+    );
+    const pager = await readFile(
+      path.join(repositoryRoot, "apps/web/features/shell/horizontal-pager.tsx"),
       "utf8",
     );
     const styles = await readFile(
       path.join(
         repositoryRoot,
-        "apps/web/features/home/home-screen.module.css",
+        "apps/web/features/shell/horizontal-pager.module.css",
       ),
       "utf8",
     );
@@ -205,6 +209,13 @@ describe("T02 R03 architecture boundaries", () => {
       "utf8",
     );
 
+    expect(homeAdapter).toContain(
+      'import { HorizontalPager } from "../shell/horizontal-pager"',
+    );
+    expect(homeAdapter).toContain("keys={homeFeeds}");
+    expect(pager).not.toMatch(
+      /home-feed|discover|nearby|topics|user-scenarios/u,
+    );
     expect(pager).not.toMatch(
       /setPointerCapture|releasePointerCapture|pointermove|translate3d/u,
     );
@@ -212,29 +223,32 @@ describe("T02 R03 architecture boundaries", () => {
       /addEventListener\(["'](?:pointer|touch)|spring|resistance/u,
     );
     expect(pager).not.toMatch(
-      /HOME_PAGER_SCROLL_IDLE_MS|setTimeout\([^)]*settle/u,
+      /HORIZONTAL_PAGER_SCROLL_IDLE_MS|setTimeout\([^)]*settle/u,
     );
     expect(pager).not.toMatch(/clientWidth\s*\*\s*(?:index|targetIndex)/u);
     expect(pager).toContain('"onscrollend" in frame');
     expect(pager).toContain("panel.offsetLeft");
     expect(pager).toContain("internalCommitIndexRef");
     expect(pager).toContain("generationRef");
-    expect(pager).toContain("HOME_PAGER_FALLBACK_STABLE_FRAMES");
+    expect(pager).toContain("HORIZONTAL_PAGER_FALLBACK_STABLE_FRAMES");
     expect(pager).not.toMatch(/primary-navigation|PrimaryNavigationPager/u);
     expect(home).not.toMatch(/history|popstate/u);
     expect(productShell).toContain("registerActiveHomeScrollElement");
     expect(productShell).toContain('addEventListener("popstate"');
     expect(styles).toMatch(
-      /\.pagerFrame \{[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;[^}]*touch-action: pan-x pan-y;/su,
+      /\.frame \{[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;[^}]*touch-action: pan-x pan-y pinch-zoom;/su,
     );
     expect(styles).toMatch(
-      /\.feedPanel \{[^}]*scroll-snap-align: start;[^}]*scroll-snap-stop: always;/su,
+      /\.panel \{[^}]*scroll-snap-align: start;[^}]*scroll-snap-stop: always;/su,
     );
-    expect(styles).toMatch(/\.pagerTrack \{[^}]*gap: 0;[^}]*padding: 0;/su);
+    expect(styles).toMatch(/\.track \{[^}]*gap: 0;[^}]*padding: 0;/su);
     expect(styles).toMatch(
-      /data-home-pager-platform="phone"\] \.feedPanel,[\s\S]*data-home-pager-platform="tablet"\] \.feedPanel \{[^}]*height: 100%;[^}]*overflow-y: auto;[^}]*overscroll-behavior-y: contain;[^}]*-webkit-overflow-scrolling: touch;/u,
+      /data-horizontal-pager-scroll-owner="panel"\] \.panel \{[^}]*height: 100%;/u,
     );
-    expect(styles.match(/(?:^|\n)\.feedPanel \{[^}]*\}/u)?.[0]).not.toContain(
+    expect(styles).toMatch(
+      /data-horizontal-pager-scroll-owner="panel"\] \.panel \{[^}]*overflow-y: auto;[^}]*overscroll-behavior-y: contain;[^}]*-webkit-overflow-scrolling: touch;/u,
+    );
+    expect(styles.match(/(?:^|\n)\.panel \{[^}]*\}/u)?.[0]).not.toContain(
       "overflow-y: auto",
     );
     expect(productStyles).toMatch(
