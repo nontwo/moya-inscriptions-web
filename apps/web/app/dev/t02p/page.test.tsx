@@ -52,6 +52,8 @@ describe("T02pDevelopmentPage", () => {
     expect(markup).not.toContain("data-development-primary-pager");
     expect(markup).not.toContain("data-inscription-filter");
     expect(markup).not.toContain("data-t02p-qa-search");
+    expect(markup).not.toContain("data-open-settings");
+    expect(markup).not.toContain("data-primary-navigation-action");
     expect(markup).toContain(
       'src="http://192.0.2.44:3102/docs/design-system/assets/demo/',
     );

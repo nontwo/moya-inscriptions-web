@@ -1,0 +1,49 @@
+.frame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: none;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+.frame::-webkit-scrollbar {
+  display: none;
+}
+.frame[data-horizontal-pager-platform="pc"] {
+  overflow-x: hidden;
+}
+.track {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0;
+  padding: 0;
+}
+.panel {
+  min-width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.frame[data-horizontal-pager-scroll-owner="panel"],
+.frame[data-horizontal-pager-scroll-owner="panel"] .track,
+.frame[data-horizontal-pager-scroll-owner="panel"] .panel {
+  height: 100%;
+  min-height: 0;
+}
+.frame[data-horizontal-pager-scroll-owner="panel"] .track {
+  align-items: stretch;
+}
+.frame[data-horizontal-pager-scroll-owner="panel"] .panel {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}

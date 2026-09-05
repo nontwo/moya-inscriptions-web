@@ -148,6 +148,7 @@ describe("PrimaryNavigationPager", () => {
       | "home"
       | "inscriptions"
       | "calligraphy"
+      | "navigationAction"
       | "navigationHidden"
       | "navigationMinimized"
       | "onNavigationExpand"

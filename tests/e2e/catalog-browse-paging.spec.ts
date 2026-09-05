@@ -281,7 +281,20 @@ const openViewerAndReturn = async (
   opener: Locator,
   title: string,
 ) => {
-  await opener.evaluate((button) => (button as HTMLButtonElement).click());
+  // Record the actual entry offset atomically with opening Detail. Native
+  // scrolling/layout may still move between separate Playwright round trips.
+  const sourceTop = await opener.evaluate((button) => {
+    const shell = button.closest<HTMLElement>("[data-product-shell]");
+    const section = button.closest<HTMLElement>("[data-primary-destination]");
+    if (shell === null || section === null) throw new Error("Missing source");
+    const target =
+      shell.dataset.platform === "pc"
+        ? (document.scrollingElement as HTMLElement)
+        : section;
+    const top = target.scrollTop;
+    (button as HTMLButtonElement).click();
+    return top;
+  });
   const detail = productShell(page).getByRole("dialog", { name: "资料详情" });
   await expect(detail).toBeVisible();
   await expect(detail.locator("[data-detail-title]")).toHaveText(title);
@@ -294,6 +307,7 @@ const openViewerAndReturn = async (
   await detail.getByRole("button", { exact: true, name: "返回" }).click();
   await expect(detail).toHaveCount(0);
   await expect(opener).toBeFocused();
+  return sourceTop;
 };
 
 test.describe.configure({ mode: "serial" });
@@ -357,11 +371,11 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
     '[data-catalog-id="runtime-paging-inscription-22"] [data-open-catalog]',
   );
   await inscriptionOpener.scrollIntoViewIfNeeded();
-  const inscriptionReturnTop = await readDestinationScroll(
+  const inscriptionReturnTop = await openViewerAndReturn(
     page,
-    "inscriptions",
+    inscriptionOpener,
+    "分页碑刻 22",
   );
-  await openViewerAndReturn(page, inscriptionOpener, "分页碑刻 22");
   expect(await readDestinationScroll(page, "inscriptions")).toBe(
     inscriptionReturnTop,
   );
@@ -467,11 +481,14 @@ test("Formal Inscriptions and Calligraphy all progressively load and retain late
     '[data-catalog-id="runtime-paging-calligraphy-24"] [data-open-catalog]',
   );
   await calligraphyOpener.scrollIntoViewIfNeeded();
-  const calligraphyReturnTop = await readDestinationScroll(page, "calligraphy");
-  await openViewerAndReturn(page, calligraphyOpener, "分页书帖 24");
-  expect(await readDestinationScroll(page, "calligraphy")).toBe(
-    calligraphyReturnTop,
+  const calligraphyReturnTop = await openViewerAndReturn(
+    page,
+    calligraphyOpener,
+    "分页书帖 24",
   );
+  await expect
+    .poll(() => readDestinationScroll(page, "calligraphy"))
+    .toBe(calligraphyReturnTop);
   await selectDestination(page, "碑刻", "inscriptions");
   await selectDestination(page, "书帖", "calligraphy");
   await expect(allCards).toHaveCount(48);

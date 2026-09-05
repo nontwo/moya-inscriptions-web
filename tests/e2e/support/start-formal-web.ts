@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const supportRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(supportRoot, "../../..");
 const sourceWebRoot = join(repositoryRoot, "apps/web");
+// Playwright validates these test-only ports before launching either service.
+const webPort = process.env.MOYA_E2E_WEB_PORT ?? "3100";
 
 const typescriptCli = join(repositoryRoot, "node_modules/typescript/bin/tsc");
 const uiBuild = spawnSync(
@@ -81,7 +83,15 @@ try {
 const nextCli = join(sourceWebRoot, "node_modules/next/dist/bin/next");
 const nextProcess = spawn(
   process.execPath,
-  [nextCli, "dev", "--webpack", "--hostname", "127.0.0.1", "--port", "3100"],
+  [
+    nextCli,
+    "dev",
+    "--webpack",
+    "--hostname",
+    "127.0.0.1",
+    "--port",
+    String(webPort),
+  ],
   {
     cwd: temporaryWebRoot,
     env: process.env,
