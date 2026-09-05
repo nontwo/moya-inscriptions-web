@@ -48,9 +48,22 @@ for (const query of ["", "?qaChrome=hidden"] as const) {
         .getByRole("navigation", { name: "主要内容" })
         .getByRole("button", { name: "书帖", exact: true })
         .click();
+      // Destinations are pre-mounted. Attached cards do not prove that the
+      // asynchronous primary navigation has committed and released isolation.
+      await expect(shell).toHaveAttribute(
+        "data-active-destination",
+        "calligraphy",
+      );
+      await expect(
+        shell.locator('[data-primary-destination="calligraphy"]'),
+      ).not.toHaveAttribute("inert", "");
       const opener = shell.locator(
         '[data-calligraphy-category-panel="all"] [data-catalog-id="qa-visual-calligraphy-01"] [data-open-catalog]',
       );
+      // Masonry cards are attached before their first measured layout, with
+      // visibility:hidden. Keyboard traversal must start after that real UI
+      // precondition, not consume its bounded steps on invisible cards.
+      await expect(opener).toBeVisible();
       if (query === "") {
         // The ordinary QA controls intentionally occupy the first card's hit
         // area. Reach it using native keyboard navigation, not forced clicks,
