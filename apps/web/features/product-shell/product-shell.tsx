@@ -345,13 +345,29 @@ export const ProductShell = ({
         } else {
           (element as HTMLElement).scrollTop = top;
         }
-        if (top < desired && retryFrames > 0) {
-          retryFrames -= 1;
-          restoreFrameRef.current = window.requestAnimationFrame(applyScroll);
-          return;
-        }
         restoreFrameRef.current = window.requestAnimationFrame(() => {
           restoreFrameRef.current = null;
+          const currentElement = scrollElementFor(
+            destination,
+            presentationPlatform,
+          );
+          if (currentElement === null || currentElement !== targetElement) {
+            scrollRestorePendingRef.current = false;
+            return;
+          }
+          const currentTop =
+            presentationPlatform === "pc"
+              ? documentScrollElement().scrollTop
+              : (currentElement as HTMLElement).scrollTop;
+          const clampedDesired = clampScrollTop(currentElement, desired);
+          if (
+            retryFrames > 0 &&
+            (clampedDesired < desired || currentTop !== clampedDesired)
+          ) {
+            retryFrames -= 1;
+            applyScroll();
+            return;
+          }
           scrollRestorePendingRef.current = false;
         });
       };
