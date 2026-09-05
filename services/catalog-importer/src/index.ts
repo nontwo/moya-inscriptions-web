@@ -115,6 +115,8 @@ interface CatalogIdentityRow extends QueryResultRow {
 }
 
 interface CatalogV2IdentityRow extends CatalogIdentityRow {
+  readonly summary: string | null;
+  readonly period_label: string | null;
   readonly script_style: string | null;
   readonly script_style_state: string;
   readonly transcription: string | null;
@@ -240,6 +242,9 @@ type V2OptionalFieldName = (typeof v2FieldNames)[number];
 type CanonicalV2Row = CanonicalCatalogImportV2Envelope["catalogRows"][number];
 type CanonicalV2Field = CanonicalV2Row[V2OptionalFieldName];
 
+const v2DisplayFieldNames = ["summary", "periodLabel"] as const;
+type V2DisplayFieldName = (typeof v2DisplayFieldNames)[number];
+
 const databaseField = {
   dynasty: "dynasty",
   dateText: "date_text",
@@ -257,6 +262,11 @@ const v2DatabaseField = {
   transcription: "transcription",
   historicalContext: "historical_context",
   scholarlyResearch: "scholarly_research",
+} as const;
+
+const v2DisplayDatabaseField = {
+  summary: "summary",
+  periodLabel: "period_label",
 } as const;
 
 const existingField = (
@@ -282,6 +292,15 @@ const existingV2Field = (
     value: record[column] ?? null,
   };
 };
+
+const existingV2DisplayField = (
+  row: CatalogV2IdentityRow,
+  field: V2DisplayFieldName,
+): string | null => row[v2DisplayDatabaseField[field]];
+
+const v2DisplayFieldProtection = (
+  field: V2DisplayFieldName,
+): "LEVEL_B" | "LEVEL_C" => (field === "summary" ? "LEVEL_C" : "LEVEL_B");
 
 const fieldValue = (field: {
   readonly state: string;
@@ -914,7 +933,8 @@ const createCatalogImportV2DryRun = async (
     [sourceIds],
   );
   const catalogs = await queryPort.query<CatalogV2IdentityRow>(
-    `SELECT catalog_id, kind, title, dynasty, dynasty_state, date_text,
+    `SELECT catalog_id, kind, title, summary, period_label,
+        dynasty, dynasty_state, date_text,
         date_text_state, province, province_state, prefecture, prefecture_state,
         county, county_state, current_location, current_location_state,
         current_custodian, current_custodian_state, description, description_state,
@@ -1146,6 +1166,27 @@ const createCatalogImportV2DryRun = async (
           approvable: true,
           requiresFieldApproval: true,
           message: "The update changes the Catalog kind",
+        });
+      }
+      for (const field of v2DisplayFieldNames) {
+        const incoming = row[field];
+        if (incoming === undefined) continue;
+        const existing = existingV2DisplayField(target, field);
+        if (incoming === existing) continue;
+        const level = v2DisplayFieldProtection(field);
+        findings.push({
+          findingId: v2MutationFindingId(sourceId, field, "SET", existing),
+          catalogImportId: row.catalogImportId,
+          sourceId: row.sourceId,
+          catalogId: row.catalogId,
+          category: level === "LEVEL_C" ? "ORDINARY_CHANGE" : "CRITICAL_CHANGE",
+          field,
+          protectionLevel: level,
+          persistenceDisposition: "SUPPORTED_NOW",
+          operation: "SET",
+          approvable: true,
+          requiresFieldApproval: level !== "LEVEL_C",
+          message: `The update changes ${field}`,
         });
       }
       for (const field of v2FieldNames) {
@@ -1757,14 +1798,16 @@ export const applyCatalogImport = async (
                historical_context, historical_context_state,
                scholarly_research, scholarly_research_state
              ) VALUES (
-               $1,$2,$3,NULL,$4,NULL,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-               $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+               $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+               $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
              )`,
             [
               catalogId,
               v2Row.catalogKind,
               v2Row.title,
+              v2Row.summary ?? null,
               fieldValue(v2Row.description),
+              v2Row.periodLabel ?? null,
               fieldValue(v2Row.dynasty),
               v2Row.dynasty.state,
               fieldValue(v2Row.dateText),
@@ -1888,6 +1931,7 @@ export const applyCatalogImport = async (
             const catalogMutationFields = new Set<string>([
               "title",
               "catalogKind",
+              ...v2DisplayFieldNames,
               ...v2FieldNames,
             ]);
             if (
@@ -1908,6 +1952,18 @@ export const applyCatalogImport = async (
               }
               if (changedFields.has("title")) {
                 assignments.push(`title=$${values.push(v2Row.title)}`);
+              }
+              for (const field of v2DisplayFieldNames) {
+                if (!changedFields.has(field)) continue;
+                const incoming = v2Row[field];
+                if (incoming === undefined) {
+                  throw new Error(
+                    `Validated v2 ${field} mutation value is unavailable`,
+                  );
+                }
+                assignments.push(
+                  `${v2DisplayDatabaseField[field]}=$${values.push(incoming)}`,
+                );
               }
               for (const field of v2FieldNames) {
                 if (!changedFields.has(field)) continue;

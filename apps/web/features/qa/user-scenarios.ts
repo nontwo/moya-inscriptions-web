@@ -44,11 +44,11 @@ const contentKindLabel = {
 
 export const toQaUserContentItem = (
   item: CatalogSummary,
-  id: string = item.id,
+  presentationKey?: string,
 ): QaUserContentItem => {
   const media = item.representativeMedia;
   return {
-    id,
+    id: item.id,
     ...(media === undefined
       ? {}
       : {
@@ -60,6 +60,7 @@ export const toQaUserContentItem = (
     metadata: [contentKindLabel[item.kind], item.periodLabel]
       .filter((value) => value !== undefined)
       .join(" · "),
+    ...(presentationKey === undefined ? {} : { presentationKey }),
     title: item.title,
   };
 };
@@ -97,22 +98,16 @@ export const createQaUserScenarios = (
   const saved = toContentItems(source, "saved", 5, 2);
   const liked = toContentItems(source, "liked", 4, 4);
   const history = toContentItems(source, "history", 6, 1);
-  const avatarMedia = source[0]?.representativeMedia;
   const user: QaUserPresentation = {
-    avatarAlt: "访碑者 QA 头像",
-    avatarSrc: avatarMedia?.src ?? null,
+    avatarSrc: null,
     bio: "记录碑刻、书法与古迹。",
     id: "qa-user-01",
     name: "访碑者",
   };
-  const fallbackUser: QaUserPresentation = {
-    ...user,
-    avatarSrc: null,
-  };
   const content = { history, liked, published, saved };
 
   return {
-    "user-avatar-fallback": scenario(fallbackUser, content),
+    "user-avatar-fallback": scenario(user, content),
     "user-default-published": scenario(user, content),
     "user-empty-published": scenario(user, { ...content, published: [] }),
     "user-history": scenario(user, content, "history"),

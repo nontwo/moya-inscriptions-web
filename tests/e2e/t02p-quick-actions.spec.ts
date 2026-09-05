@@ -76,8 +76,9 @@ test("QA long-press favorite is reversible and shares the User library store", a
   await page.locator("[data-user-trigger]").click();
   const userPage = page.getByRole("dialog", { name: "用户页" });
   await userPage.getByRole("tab", { name: "收藏" }).click();
+  const savedPanel = userPage.getByRole("tabpanel", { name: "收藏" });
   await expect(
-    userPage.locator(`[data-user-content-id="${cardId}"]`),
+    savedPanel.locator(`[data-user-content-id="${cardId}"]`),
   ).toHaveCount(1);
   await expect(userPage).toContainText(title);
   await userPage.getByRole("button", { name: "关闭用户页" }).click();
@@ -86,8 +87,11 @@ test("QA long-press favorite is reversible and shares the User library store", a
   await page.locator("[data-user-trigger]").click();
   const reopenedUserPage = page.getByRole("dialog", { name: "用户页" });
   await reopenedUserPage.getByRole("tab", { name: "收藏" }).click();
+  const reopenedSavedPanel = reopenedUserPage.getByRole("tabpanel", {
+    name: "收藏",
+  });
   await expect(
-    reopenedUserPage.locator(`[data-user-content-id="${cardId}"]`),
+    reopenedSavedPanel.locator(`[data-user-content-id="${cardId}"]`),
   ).toHaveCount(0);
 });
 

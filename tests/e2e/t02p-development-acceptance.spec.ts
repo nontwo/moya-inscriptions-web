@@ -39,17 +39,11 @@ const productShell = (surface: Locator) =>
 
 const openSettingsThroughAvailableEntry = async (surface: Locator) => {
   const shell = productShell(surface);
-  const externalSettings = shell.locator("[data-open-settings]");
-  let userPage: Locator | null = null;
-
-  if ((await externalSettings.count()) === 1) {
-    await externalSettings.click();
-  } else {
-    await shell.locator("[data-user-trigger]").click();
-    userPage = shell.getByRole("dialog", { name: "用户页" });
-    await expect(userPage).toBeVisible();
-    await userPage.getByRole("button", { name: "打开设置" }).click();
-  }
+  await expect(shell.locator("[data-open-settings]")).toHaveCount(0);
+  await shell.locator("[data-user-trigger]").click();
+  const userPage = shell.getByRole("dialog", { name: "用户页" });
+  await expect(userPage).toBeVisible();
+  await userPage.getByRole("button", { name: "打开设置" }).click();
 
   const settings = shell.getByRole("dialog", { name: "设置" });
   await expect(settings).toBeVisible();
@@ -60,9 +54,7 @@ const closeSettingsAndUserPage = async (
   settings: Locator,
   userPage: Locator | null,
 ) => {
-  await settings
-    .getByRole("button", { name: "返回" })
-    .evaluate((button) => (button as HTMLButtonElement).click());
+  await settings.getByRole("button", { name: "返回" }).click();
   await expect(settings).toHaveCount(0);
   if (userPage !== null) {
     await userPage.getByRole("button", { name: "关闭用户页" }).click();
@@ -81,7 +73,7 @@ const setFeedLayoutThroughSettings = async (
     await openSettingsThroughAvailableEntry(surface);
   const toggle = settings.locator("[data-feed-layout-toggle]");
   await expect(toggle).toBeVisible();
-  await toggle.evaluate((button) => (button as HTMLButtonElement).click());
+  await toggle.click();
   await expect(shell).toHaveAttribute("data-feed-layout", layout);
   await closeSettingsAndUserPage(settings, userPage);
 };
@@ -664,9 +656,27 @@ const ensurePrimaryNavigationExpanded = async (navigation: Locator) => {
   await expect(navigation).toHaveAttribute("data-minimized", "false");
 };
 
-test("Clean Product Preview is product-only and preserves shell state, scroll, Settings, and preferences", async ({
+test("Clean Product Preview preserves shell state, scroll, and preferences set through QA User Settings", async ({
   page,
 }, testInfo) => {
+  const { surface: qa } = await openDevelopmentSurface(page);
+  const { settings, userPage } = await openSettingsThroughAvailableEntry(qa);
+  await expect(settings.getByRole("button", { name: "返回" })).toBeFocused();
+  await settings.getByRole("button", { name: /切换主题/ }).click();
+  await expect(productShell(qa)).toHaveAttribute(
+    "data-theme-preference",
+    "light",
+  );
+  if (expectedInitialAutoPlatform(testInfo.project.name) === "pc") {
+    await expect(settings.locator("[data-feed-layout-toggle]")).toHaveCount(0);
+  } else {
+    await settings.locator("[data-feed-layout-toggle]").click();
+    await expect(productShell(qa)).toHaveAttribute(
+      "data-feed-layout",
+      "single",
+    );
+  }
+  await closeSettingsAndUserPage(settings, userPage);
   const response = await page.goto("/dev/t02p?acceptance=r01-clean");
   expect(response?.status()).toBe(200);
 
@@ -684,6 +694,12 @@ test("Clean Product Preview is product-only and preserves shell state, scroll, S
   );
   await expect(preview).not.toContainText("T02P QA Harness");
   await expect(preview.locator("[data-product-boot]")).toHaveCount(0);
+  await expect(
+    preview.locator(
+      "[data-open-settings], [data-search-trigger], [data-user-trigger]",
+    ),
+  ).toHaveCount(0);
+  await expect(shell).toHaveAttribute("data-theme-preference", "light");
 
   const homeScroll = await writePrimaryScroll(shell, "home", 180);
   expect(homeScroll).toBeGreaterThanOrEqual(0);
@@ -707,29 +723,7 @@ test("Clean Product Preview is product-only and preserves shell state, scroll, S
     .poll(() => readPrimaryScroll(shell, "home"))
     .toBeGreaterThanOrEqual(homeScroll - 1);
 
-  const opener = shell.getByRole("button", { name: "打开设置" });
-  await opener.click();
-  const settings = shell.getByRole("dialog", { name: "设置" });
-  await expect(settings).toBeVisible();
-  await expect(shell.locator("[data-product-primary-layer]")).toHaveAttribute(
-    "inert",
-    "",
-  );
-  await expect(settings.getByRole("button", { name: "返回" })).toBeFocused();
-  await settings.getByRole("button", { name: /切换主题/ }).click();
-  await expect(shell).toHaveAttribute("data-theme-preference", "light");
-
-  if (expectedInitialAutoPlatform(testInfo.project.name) === "pc") {
-    await expect(settings.locator("[data-feed-layout-toggle]")).toHaveCount(0);
-  } else {
-    await settings.locator("[data-feed-layout-toggle]").click();
-    await expect(shell).toHaveAttribute("data-feed-layout", "single");
-  }
-
-  await settings.getByRole("button", { name: "返回" }).click();
-  await expect(settings).toHaveCount(0);
   await expect(page).toHaveURL(/\/dev\/t02p\?acceptance=r01-clean$/u);
-  await expect(opener).toBeFocused();
 
   await page.reload();
   const reloadedShell = page.locator("[data-product-shell]");
@@ -1013,7 +1007,11 @@ test("Development QA Harness observes the shared Product Shell without owning it
   await expect(surface).toBeVisible();
   const navigation = surface.getByRole("navigation", { name: "主要内容" });
   await expect(navigation).toBeVisible();
-  await expect(navigation).toHaveCSS("position", "fixed");
+  await expect(surface.locator("[data-primary-navigation-dock]")).toHaveCSS(
+    "position",
+    "fixed",
+  );
+  await expect(navigation).toHaveCSS("position", "relative");
   await expect(
     navigation.locator("[data-primary-navigation-destination]"),
   ).toHaveCount(3);
@@ -1143,7 +1141,8 @@ test("Home native pager follows scroll progress and commits only after snap sett
 
   await expect(pager).toHaveAttribute("data-home-pager-native", "");
   await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
-  await expect(pager).toHaveCSS("touch-action", "pan-x pan-y");
+  // The shared native pager retains both pan axes and explicitly allows zoom.
+  await expect(pager).toHaveCSS("touch-action", "pan-x pan-y pinch-zoom");
   await expect(nearby).not.toHaveAttribute("hidden", "");
   await expect(
     home.locator('[data-home-feed-panel="topics"]'),
@@ -2291,7 +2290,7 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
     }
   });
 
-  const { navigation, surface } = await openCleanProductSurface(page);
+  const { navigation, surface } = await openDevelopmentSurface(page);
   await expect(
     navigation.locator("[data-primary-navigation-inline-icon]"),
   ).toHaveCount(3);
@@ -2453,6 +2452,8 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
 
   const { navigation, surface } = await openDevelopmentSurface(page);
   const shell = productShell(surface);
+  const expandedBox = await requireBoundingBox(navigation);
+  const searchAction = surface.locator("[data-search-trigger]");
   const activeSection = surface.locator('[data-primary-destination="home"]');
   const scrollTo = async (top: number) =>
     activeSection.evaluate((node, nextTop) => {
@@ -2491,11 +2492,19 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
   const minimizedBox = await requireBoundingBox(navigation);
   expect(Math.abs(minimizedBox.width - 44)).toBeLessThan(4);
   expect(Math.abs(minimizedBox.height - 44)).toBeLessThan(2);
+  const minimizedSearchBox = await requireBoundingBox(searchAction);
+  expect(Math.abs(minimizedSearchBox.width - 44)).toBeLessThan(2);
+  expect(Math.abs(minimizedSearchBox.height - 44)).toBeLessThan(2);
+  expect(Math.abs(minimizedSearchBox.y - minimizedBox.y)).toBeLessThan(2);
 
   await expect(navigation).toHaveAttribute("data-minimized", "false");
   await expect
-    .poll(() => requireBoundingBox(navigation).then((box) => box.width))
-    .toBeGreaterThan(300);
+    .poll(() =>
+      requireBoundingBox(navigation).then((box) =>
+        Math.abs(box.width - expandedBox.width),
+      ),
+    )
+    .toBeLessThan(1);
 
   await scrollTo(40);
   await expect(navigation).toHaveAttribute("data-minimized", "true");

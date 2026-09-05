@@ -522,4 +522,35 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(frame.scrollLeft).toBe(320);
     expect(frame.dataset["homePagerScrolling"]).toBe("false");
   });
+
+  it("defers observed PC height writes and cancels pending writes on unmount", () => {
+    const { container, frame } = renderPager(vi.fn(), "pc");
+    const panel = container.querySelector<HTMLElement>(
+      '[data-home-feed-panel="discover"]',
+    )!;
+    const observer = resizeObservers.find((candidate) =>
+      candidate.observed.has(frame),
+    )!;
+    expect(frame.style.height).toBe("600px");
+
+    Object.defineProperty(panel, "scrollHeight", {
+      configurable: true,
+      value: 980,
+    });
+    act(() => observer.trigger());
+    expect(frame.style.height).toBe("600px");
+    act(() => vi.runAllTimers());
+    expect(frame.style.height).toBe("980px");
+
+    Object.defineProperty(panel, "scrollHeight", {
+      configurable: true,
+      value: 1250,
+    });
+    act(() => observer.trigger());
+    const root = roots.pop()!;
+    act(() => root.unmount());
+    act(() => vi.runAllTimers());
+    expect(observer.observed.size).toBe(0);
+    expect(frame.style.height).toBe("980px");
+  });
 });

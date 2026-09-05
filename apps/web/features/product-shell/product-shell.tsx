@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-import { Icon, LoadingScreen } from "@moya/ui";
+import { LoadingScreen } from "@moya/ui";
 
 import styles from "./product-shell.module.css";
 
@@ -69,6 +69,8 @@ import type { PrimaryDestination } from "../shell/primary-shell";
 
 type ScrollPositions = Record<PrimaryDestination, number>;
 
+const SCROLL_RESTORE_RETRY_FRAMES = 12;
+
 const currentProductHistoryState = (state: ProductHistoryState) =>
   mergeProductHistoryState(window.history.state, state);
 
@@ -123,13 +125,13 @@ export interface ProductShellProps {
   readonly initialPlatform: PresentationPlatform;
   readonly inscriptions: ReactNode;
   readonly primaryUtility?: ReactNode;
+  readonly navigationAction?: ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
   readonly renderTopicOverlay?: (
     properties: ProductShellTopicOverlayRenderProps,
   ) => ReactNode;
-  readonly showSettingsEntry?: boolean;
   readonly showDevelopmentPagerControls?: boolean;
 }
 
@@ -177,9 +179,9 @@ export const ProductShell = ({
   initialPlatform,
   inscriptions,
   primaryUtility,
+  navigationAction,
   renderDetailOverlay,
   renderTopicOverlay,
-  showSettingsEntry = true,
   showDevelopmentPagerControls = false,
 }: ProductShellProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -316,24 +318,31 @@ export const ProductShell = ({
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
       }
+      const desired = scrollPositionsRef.current[destination];
+      let retryFrames = SCROLL_RESTORE_RETRY_FRAMES;
+      const applyScroll = () => {
+        restoreFrameRef.current = null;
+        const element = scrollElementFor(destination, presentationPlatform);
+        if (element === null) return;
+        const top = clampScrollTop(element, desired);
+        scrollRestorePendingRef.current = true;
+        if (presentationPlatform === "pc") {
+          window.scrollTo({ behavior: "auto", top });
+        } else {
+          (element as HTMLElement).scrollTop = top;
+        }
+        if (top < desired && retryFrames > 0) {
+          retryFrames -= 1;
+          restoreFrameRef.current = window.requestAnimationFrame(applyScroll);
+          return;
+        }
+        window.requestAnimationFrame(() => {
+          scrollRestorePendingRef.current = false;
+        });
+      };
       restoreFrameRef.current = window.requestAnimationFrame(() => {
         restoreFrameRef.current = window.requestAnimationFrame(() => {
-          restoreFrameRef.current = null;
-          const element = scrollElementFor(destination, presentationPlatform);
-          if (element === null) return;
-          const top = clampScrollTop(
-            element,
-            scrollPositionsRef.current[destination],
-          );
-          scrollRestorePendingRef.current = true;
-          if (presentationPlatform === "pc") {
-            window.scrollTo({ behavior: "auto", top });
-          } else {
-            (element as HTMLElement).scrollTop = top;
-          }
-          window.requestAnimationFrame(() => {
-            scrollRestorePendingRef.current = false;
-          });
+          applyScroll();
         });
       });
     },
@@ -516,6 +525,17 @@ export const ProductShell = ({
     );
     restoreScroll(activeDestinationRef.current, platformRef.current);
   }, [restoreScroll, setSettingsVisibility]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeSettings();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeSettings, settingsOpen]);
 
   const requestSettings = useCallback(
     (requestedOpener?: HTMLElement) => {
@@ -1220,7 +1240,11 @@ export const ProductShell = ({
           restoreCatalogFocus(focusCatalogId);
         }
       } else if (wasSettingsOpen) {
-        window.requestAnimationFrame(() => settingsOpenerRef.current?.focus());
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(() =>
+            settingsOpenerRef.current?.focus(),
+          ),
+        );
       } else if (
         wasTopicOpen &&
         state?.kind === "primary" &&
@@ -1352,6 +1376,7 @@ export const ProductShell = ({
             calligraphy={calligraphy}
             home={home}
             inscriptions={inscriptions}
+            navigationAction={navigationAction}
             navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
             onNavigationExpand={expandNavigation}
@@ -1360,17 +1385,6 @@ export const ProductShell = ({
             showDevelopmentPagerControls={showDevelopmentPagerControls}
           />
           {primaryUtility}
-          {showSettingsEntry ? (
-            <button
-              type="button"
-              aria-label="打开设置"
-              className={`${styles.settingsButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md yoyi-functional-glass`}
-              data-open-settings=""
-              onClick={(event) => openSettings(event.currentTarget)}
-            >
-              <Icon name="settings" />
-            </button>
-          ) : null}
         </div>
 
         {settingsOpen ? (

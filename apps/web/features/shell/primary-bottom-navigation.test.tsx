@@ -147,6 +147,7 @@ describe("PrimaryBottomNavigation", () => {
 
     expectTypeOf<keyof PrimaryBottomNavigationProps>().toEqualTypeOf<
       | "activeDestination"
+      | "navigationAction"
       | "minimized"
       | "onDestinationChange"
       | "onExpand"
@@ -159,6 +160,26 @@ describe("PrimaryBottomNavigation", () => {
     expect(markup).not.toContain("yoyi-responsive-navigation");
     expect(markup).not.toContain("yoyi-desktop-navigation");
     expect(markup).not.toContain("data-primary-pager");
+  });
+
+  it("composes one optional sibling action without creating a fourth destination", () => {
+    const markup = renderToStaticMarkup(
+      <PrimaryBottomNavigation
+        activeDestination="home"
+        navigationAction={<button data-search-test="">搜索</button>}
+        onDestinationChange={vi.fn()}
+        platform="phone"
+      />,
+    );
+    expect(markup.match(/data-primary-navigation-dock=/g)).toHaveLength(1);
+    expect(markup.match(/data-primary-navigation-destination=/g)).toHaveLength(
+      3,
+    );
+    expect(markup.match(/data-primary-navigation-action=/g)).toHaveLength(1);
+    expect(markup.indexOf("data-search-test")).toBeGreaterThan(
+      markup.indexOf("</nav>"),
+    );
+    expect(renderNavigation()).not.toContain("data-primary-navigation-action");
   });
 
   it("starts drag only beyond the strict horizontal intent threshold", () => {

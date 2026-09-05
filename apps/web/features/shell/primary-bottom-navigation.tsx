@@ -7,6 +7,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
+  ReactNode,
 } from "react";
 import type { StaticImageData } from "next/image";
 
@@ -157,6 +158,7 @@ export const resolvePrimaryNavigationReleaseIndex = (
 
 export interface PrimaryBottomNavigationProps {
   readonly activeDestination: PrimaryDestination;
+  readonly navigationAction?: ReactNode;
   readonly minimized?: boolean;
   readonly onExpand?: () => void;
   readonly platform: PresentationPlatform;
@@ -325,6 +327,7 @@ const releasePrimaryNavigationPointer = (
 
 export const PrimaryBottomNavigation = ({
   activeDestination,
+  navigationAction,
   minimized = false,
   onExpand = () => undefined,
   platform,
@@ -552,40 +555,60 @@ export const PrimaryBottomNavigation = ({
           type="image/png"
         />
       ))}
-      <nav
-        ref={navigationRef}
-        aria-label="主要内容"
-        className={styles.navigation}
-        data-active-index={activeIndex}
-        data-bubble-preview-index={dragPreviewIndex ?? undefined}
-        data-dragging={dragPreviewIndex === null ? undefined : "true"}
-        data-item-count={primaryNavigationItems.length}
+      <div
+        className={styles.dock}
+        data-primary-navigation-dock=""
+        data-has-action={navigationAction == null ? "false" : "true"}
         data-minimized={minimized ? "true" : "false"}
         data-platform={platform}
-        data-primary-navigation=""
-        onClickCapture={handleClickCapture}
-        onLostPointerCapture={handleLostPointerCapture}
-        onPointerCancel={handlePointerCancel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        style={navigationStyle}
+        onClickCapture={(event) => {
+          // A release outside the capsule must not activate its sibling action.
+          if (!suppressClickRef.current || event.detail === 0) return;
+          suppressClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
-        <span
-          aria-hidden="true"
-          className={`${styles.glass} yoyi-functional-glass`}
-          data-primary-navigation-glass=""
-        />
-        <span
-          aria-hidden="true"
-          className={`${styles.bubble} yoyi-nav-bubble`}
-          data-primary-navigation-bubble=""
-        />
-        {createPrimaryNavigationEntryElements(
-          activeDestination,
-          onDestinationChange,
+        <nav
+          ref={navigationRef}
+          aria-label="主要内容"
+          className={styles.navigation}
+          data-active-index={activeIndex}
+          data-bubble-preview-index={dragPreviewIndex ?? undefined}
+          data-dragging={dragPreviewIndex === null ? undefined : "true"}
+          data-item-count={primaryNavigationItems.length}
+          data-minimized={minimized ? "true" : "false"}
+          data-platform={platform}
+          data-primary-navigation=""
+          onClickCapture={handleClickCapture}
+          onLostPointerCapture={handleLostPointerCapture}
+          onPointerCancel={handlePointerCancel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          style={navigationStyle}
+        >
+          <span
+            aria-hidden="true"
+            className={`${styles.glass} yoyi-functional-glass`}
+            data-primary-navigation-glass=""
+          />
+          <span
+            aria-hidden="true"
+            className={`${styles.bubble} yoyi-nav-bubble`}
+            data-primary-navigation-bubble=""
+          />
+          {createPrimaryNavigationEntryElements(
+            activeDestination,
+            onDestinationChange,
+          )}
+        </nav>
+        {navigationAction == null ? null : (
+          <div className={styles.action} data-primary-navigation-action="">
+            {navigationAction}
+          </div>
         )}
-      </nav>
+      </div>
     </>
   );
 };

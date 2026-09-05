@@ -59,7 +59,6 @@ const renderProductShell = (
   home: ReactNode = <p>home content</p>,
   options: {
     readonly primaryUtility?: ReactNode;
-    readonly showSettingsEntry?: boolean;
   } = {},
 ) => {
   const container = document.createElement("div");
@@ -73,6 +72,7 @@ const renderProductShell = (
         home={home}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
+        primaryUtility={<SettingsRequester />}
         {...options}
       />,
     ),
@@ -110,6 +110,7 @@ const renderTopicShell = () => {
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
         home={<TopicOpener />}
+        primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
         renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
@@ -182,6 +183,7 @@ const renderDetailShell = () => {
       <ProductShell
         calligraphy={<p>calligraphy content</p>}
         home={<CatalogOpener />}
+        primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
         inscriptions={<p>inscriptions content</p>}
         renderDetailOverlay={({
@@ -353,7 +355,7 @@ describe("ProductShell", () => {
       ),
     ).toEqual(labels);
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     await act(async () => vi.runAllTimers());
     expect(container.querySelector("[data-primary-navigation]")).toBe(
       navigation,
@@ -472,6 +474,41 @@ describe("ProductShell", () => {
     act(() => unregisterNearby());
   });
 
+  it("retries scroll restoration while a hidden view rebuilds its scroll range", async () => {
+    renderProductShell(<ProductShellObserver />);
+    await act(async () => vi.runAllTimers());
+    const scroller = document.createElement("section");
+    let rangeAvailable = false;
+    Object.defineProperties(scroller, {
+      clientHeight: {
+        configurable: true,
+        value: 400,
+      },
+      scrollHeight: {
+        configurable: true,
+        get: () => (rangeAvailable ? 1_000 : 400),
+      },
+    });
+    let unregister: () => void = () => undefined;
+    act(() => {
+      unregister =
+        observedProductShell!.registerActiveHomeScrollElement(scroller);
+    });
+
+    act(() => {
+      observedProductShell!.restoreActiveScrollTop(175);
+      vi.advanceTimersToNextTimer();
+      vi.advanceTimersToNextTimer();
+    });
+    expect(scroller.scrollTop).toBe(0);
+
+    rangeAvailable = true;
+    act(() => vi.runAllTimers());
+    expect(scroller.scrollTop).toBe(175);
+
+    act(() => unregister());
+  });
+
   it("expands the minimized current control without changing destination or history", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderProductShell();
@@ -505,7 +542,7 @@ describe("ProductShell", () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const { container } = renderProductShell();
     await act(async () => vi.runAllTimers());
-    const opener = buttonByLabel(container, "打开设置");
+    const opener = buttonByLabel(container, "从用户页打开设置");
 
     click(opener);
     await act(async () => vi.runAllTimers());
@@ -544,10 +581,9 @@ describe("ProductShell", () => {
     expect(dialog(container)).not.toBeNull();
   });
 
-  it("can hide the external Settings entry while preserving the owned Settings seam", async () => {
+  it("has no external Settings entry while preserving the owned Settings seam", async () => {
     const { container } = renderProductShell(<p>home content</p>, {
       primaryUtility: <SettingsRequester />,
-      showSettingsEntry: false,
     });
     await act(async () => vi.runAllTimers());
 
@@ -563,6 +599,38 @@ describe("ProductShell", () => {
         .querySelector("[data-product-primary-layer]")
         ?.hasAttribute("inert"),
     ).toBe(true);
+
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(dialog(container)).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("closes owned Settings with Escape and restores its exact opener", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    const { container } = renderProductShell(<p>home content</p>, {
+      primaryUtility: <SettingsRequester />,
+    });
+    await act(async () => vi.runAllTimers());
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    opener.focus();
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    const escape = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Escape",
+    });
+    act(() => document.dispatchEvent(escape));
+    expect(escape.defaultPrevented).toBe(true);
+    expect(back).toHaveBeenCalledOnce();
 
     act(() =>
       window.dispatchEvent(
@@ -751,7 +819,7 @@ describe("ProductShell", () => {
       detailHistoryState("catalog-one", "home", 146, 73),
     );
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     expect(dialog(container)).toBeNull();
 
     act(() =>
@@ -889,7 +957,7 @@ describe("ProductShell", () => {
       }
       pushState.mockClear();
 
-      click(buttonByLabel(container, "打开设置"));
+      click(buttonByLabel(container, "从用户页打开设置"));
       await act(async () => vi.runAllTimers());
 
       expect(pushState).toHaveBeenCalledOnce();
@@ -950,7 +1018,7 @@ describe("ProductShell", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.homeLayout).toBe("single");
 
-    click(buttonByLabel(container, "打开设置"));
+    click(buttonByLabel(container, "从用户页打开设置"));
     click(buttonByLabel(container, /切换主题/));
     click(buttonByLabel(container, /切换布局/));
 

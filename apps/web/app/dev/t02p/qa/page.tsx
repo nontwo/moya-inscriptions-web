@@ -51,6 +51,7 @@ export default async function T02pQaPage({
       initialPlatform={initialPlatform}
       initialPlatformMode={initialPlatformMode}
       initialTopicId={initialTopicId}
+      qaChrome={query.qaChrome === "hidden" ? "hidden" : "visible"}
     />
   );
 }

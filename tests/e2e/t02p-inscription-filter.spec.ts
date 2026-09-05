@@ -33,17 +33,42 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
-const visibleCatalogSnapshot = async (shell: Locator) => {
-  const visibleCatalog = shell.locator(
-    '[data-primary-destination="inscriptions"]:not([hidden])',
+const visibleCatalogCards = (shell: Locator) =>
+  shell.locator(
+    '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
   );
+
+const waitForVisibleCatalogMedia = async (shell: Locator) => {
+  const cards = visibleCatalogCards(shell);
+  const count = await cards.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await cards.nth(index).scrollIntoViewIfNeeded();
+  }
+  const media = cards.locator("[data-catalog-media-state]");
+  await expect(media).toHaveCount(count);
+  await expect
+    .poll(() =>
+      media.evaluateAll((nodes) =>
+        nodes.every((node) => {
+          const state = (node as HTMLElement).dataset.catalogMediaState;
+          if (state === "failed" || state === "missing") return true;
+          const image = node.querySelector("img");
+          return image?.complete === true && image.naturalWidth > 0;
+        }),
+      ),
+    )
+    .toBe(true);
   await expect(
-    visibleCatalog.locator(
-      '[data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+    shell.locator(
+      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
     ),
   ).toHaveCount(1);
+};
 
-  return visibleCatalog.locator("[data-catalog-card]").evaluateAll((cards) =>
+const visibleCatalogSnapshot = async (shell: Locator) => {
+  await waitForVisibleCatalogMedia(shell);
+  return visibleCatalogCards(shell).evaluateAll((cards) =>
     cards.map((card) => ({
       id: (card as HTMLElement).dataset.catalogId ?? "",
       kind: (card as HTMLElement).dataset.catalogKind ?? "",
@@ -159,7 +184,9 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   }
 
   const { shell, surface } = await openQa(page);
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "碑刻", "inscriptions");
@@ -177,14 +204,18 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
 
   await navigateTo(surface, shell, "书帖", "calligraphy");
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
   await expect(page.locator("[data-filter-panel]")).toHaveCount(0);
   await expect(page.locator("[data-filter-popover]")).toHaveCount(0);
   await expect(page.locator("[data-filter-sheet]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "首页", "home");
-  await expect(shell.locator("[data-t02p-qa-search]")).toBeVisible();
+  await expect(
+    shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
+  ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
   await navigateTo(surface, shell, "碑刻", "inscriptions");
@@ -487,16 +518,20 @@ test("Filter remains legible through themes and respects reduced motion", async 
     await userTrigger.click();
     const userPage = shell.getByRole("dialog", { name: "用户页" });
     await expect(userPage).toBeVisible();
-    const settingsTrigger = userPage.getByRole("button", {
+    await expect(
+      userPage.getByRole("button", { name: "关闭用户页" }),
+    ).toBeFocused();
+    const userSettings = userPage.getByRole("button", {
       name: "打开设置",
     });
-    await settingsTrigger.click();
+    await userSettings.click();
     const settings = shell.getByRole("dialog", { name: "设置" });
     await expect(settings).toBeVisible();
     await settings.getByRole("button", { name: /切换主题/ }).click();
     await settings.getByRole("button", { name: "返回" }).click();
     await expect(settings).toHaveCount(0);
-    await expect(settingsTrigger).toBeFocused();
+    await expect(userPage).toBeVisible();
+    await expect(userSettings).toBeFocused();
     await userPage.getByRole("button", { name: "关闭用户页" }).click();
     await expect(userPage).toHaveCount(0);
     await expect(userTrigger).toBeFocused();
