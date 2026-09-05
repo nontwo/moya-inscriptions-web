@@ -117,6 +117,57 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
     return element.scrollTop;
   }, desired);
 
+const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
+  // A committed category attribute precedes its queued scroll restoration.
+  // Observe settled geometry and the initial offset, not a fixed time delay.
+  await calligraphy.evaluate(
+    (node) =>
+      new Promise<void>((resolve) => {
+        const root = node as HTMLElement;
+        const shell = root.closest<HTMLElement>("[data-product-shell]")!;
+        const section = root.closest<HTMLElement>(
+          "[data-primary-destination]",
+        )!;
+        const scroller =
+          shell.dataset.platform === "pc"
+            ? document.scrollingElement!
+            : section;
+        const pager = root.querySelector<HTMLElement>(
+          "[data-calligraphy-category-pager]",
+        )!;
+        const panel = root.querySelector<HTMLElement>(
+          '[data-calligraphy-category-panel="ink"]',
+        )!;
+        const masonry = panel.querySelector<HTMLElement>(
+          "[data-home-masonry]",
+        )!;
+        let previous = "";
+        let stableFrames = 0;
+        const sample = () => {
+          const ready =
+            masonry.dataset.layoutReady === "true" &&
+            [...panel.querySelectorAll("img")].every(
+              (image) => image.complete,
+            ) &&
+            pager.dataset.calligraphyPagerScrolling === "false" &&
+            pager.scrollLeft === panel.offsetLeft &&
+            scroller.scrollTop === 0;
+          const geometry = JSON.stringify([
+            scroller.scrollHeight,
+            scroller.clientHeight,
+            pager.getBoundingClientRect().height,
+            masonry.getBoundingClientRect().height,
+          ]);
+          stableFrames = ready && geometry === previous ? stableFrames + 1 : 0;
+          previous = geometry;
+          if (stableFrames >= 3) resolve();
+          else requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
+};
+
 const trustedHorizontalPointDrag = async (
   page: Page,
   session: CDPSession,
@@ -540,6 +591,7 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
 }) => {
   const { calligraphy, surface } = await openSurface(page);
   await settleCategory(calligraphy, "ink");
+  await waitForInitialCategoryScroll(calligraphy);
   await expect
     .poll(async () => (await primaryScrollEvidence(surface)).maximum)
     .toBeGreaterThan(0);
@@ -554,6 +606,9 @@ test("MIG-C1 restores category scroll and exact opener focus after Detail Back",
   });
   await expect(detail).toBeVisible();
   await expect(detail).toHaveAttribute("data-detail-source", "qa");
+  expect(await page.evaluate(() => window.history.state.sourceScrollTop)).toBe(
+    recordedScroll,
+  );
   await detail.getByRole("button", { name: "返回" }).click();
   await expect(detail).toHaveCount(0);
   await expect(calligraphy).toHaveAttribute(
