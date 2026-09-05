@@ -903,6 +903,24 @@ test("MIG-D1 direct multi-media Detail preserves Carousel and scroll across resi
   );
 
   const scroller = shell.locator("[data-detail-scroll]");
+  // The index records intent before native smooth paging reaches its target.
+  // Resize the completed page, not an in-flight synthetic swipe.
+  await expect
+    .poll(() =>
+      stage.evaluate((node) => {
+        const element = node as HTMLElement;
+        if (
+          element.closest<HTMLElement>("[data-product-shell]")?.dataset
+            .platform === "pc"
+        )
+          return true;
+        return (
+          element.clientWidth > 0 &&
+          Math.abs(element.scrollLeft - element.clientWidth) <= 1
+        );
+      }),
+    )
+    .toBe(true);
   const recordedScroll = await scroller.evaluate((node) => {
     const element = node as HTMLElement;
     element.scrollTop = Math.min(
@@ -1382,9 +1400,13 @@ test("Home PC feeds keep document scroll restoration without nested scrollers", 
     );
   }
 
+  await waitForStableHomePanelEvidence(home, "discover");
   const discoverTop = await writePrimaryScroll(shell, "home", 260);
   expect(discoverTop).toBeGreaterThan(0);
   await activateHomeFeed(home, "附近");
+  // A first zero sample can precede the queued feed restoration. Await the
+  // existing frame/geometry readiness before writing the next saved offset.
+  await waitForStableHomePanelEvidence(home, "nearby");
   await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(0);
   const nearbyTop = await writePrimaryScroll(shell, "home", 190);
   expect(nearbyTop).toBeGreaterThan(0);

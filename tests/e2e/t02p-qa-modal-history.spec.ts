@@ -5,9 +5,9 @@ for (const query of ["", "?qaChrome=hidden"] as const) {
     page,
     browserName,
   }, testInfo) => {
-    const tabAll = browserName === "webkit" ? "Alt+Tab" : "Tab";
-    const shiftTabAll =
-      browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab";
+    const macWebKit = browserName === "webkit" && process.platform === "darwin";
+    const tabAll = macWebKit ? "Alt+Tab" : "Tab";
+    const shiftTabAll = macWebKit ? "Alt+Shift+Tab" : "Shift+Tab";
     const pageErrors: string[] = [];
     const keys: { key: string; trusted: boolean; prevented: boolean }[] = [];
     let recordKeys = false;
@@ -93,11 +93,12 @@ for (const query of ["", "?qaChrome=hidden"] as const) {
       const image = detail.locator('[data-detail-main-image][tabindex="0"]');
       await expect(image).toBeFocused();
       await page.keyboard.press("Shift+Tab");
-      if (browserName === "webkit") {
-        // Native WebKit's default policy skips implicit-tabindex buttons, also
+      if (macWebKit) {
+        // Native macOS WebKit skips implicit-tabindex buttons, also
         // without Search underneath: Shift+Tab from the explicit image target
         // goes to body. Option-Tab includes the existing Back button. Assert
-        // both native paths; do not change browser settings or force focus.
+        // both native paths; Linux WebKit returns directly to Back instead.
+        // Do not change browser settings or force focus.
         // At the native document boundary body is activeElement without being
         // a focused control; toBeFocused() is not the corresponding assertion.
         await expect
@@ -116,13 +117,11 @@ for (const query of ["", "?qaChrome=hidden"] as const) {
       await expect(detail).toBeVisible();
       await expect(search).toHaveCount(1);
       await expect(back).toBeFocused();
-      await expect
-        .poll(() => keys.length)
-        .toBe(browserName === "webkit" ? 5 : 3);
+      await expect.poll(() => keys.length).toBe(macWebKit ? 5 : 3);
       expect(keys).toEqual([
         { key: "Tab", trusted: true, prevented: false },
         { key: "Tab", trusted: true, prevented: false },
-        ...(browserName === "webkit"
+        ...(macWebKit
           ? [
               { key: "Tab", trusted: true, prevented: false },
               { key: "Tab", trusted: true, prevented: false },

@@ -198,6 +198,8 @@ export const ProductShell = ({
   const topicOpenerIdRef = useRef<string | null>(null);
   const topicSourceScrollTopRef = useRef(0);
   const settingsOpenerRef = useRef<HTMLElement | null>(null);
+  const settingsFocusFrameRef = useRef<number | null>(null);
+  const settingsFocusCleanupRef = useRef<(() => void) | null>(null);
   const activeHomeScrollElementRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const restoreInputCleanupRef = useRef<(() => void) | null>(null);
@@ -518,6 +520,64 @@ export const ProductShell = ({
     });
   }, []);
 
+  const cancelSettingsFocus = useCallback(() => {
+    if (settingsFocusFrameRef.current !== null) {
+      window.cancelAnimationFrame(settingsFocusFrameRef.current);
+      settingsFocusFrameRef.current = null;
+    }
+    settingsFocusCleanupRef.current?.();
+    settingsFocusCleanupRef.current = null;
+  }, []);
+
+  const restoreSettingsFocus = useCallback(() => {
+    cancelSettingsFocus();
+    const opener = settingsOpenerRef.current;
+    const destination = activeDestinationRef.current;
+    // QA can fulfill this return on its own resume frame. Once the exact
+    // opener receives focus, this shell must not reclaim subsequent focus.
+    const onFocus = (event: FocusEvent) => {
+      if (event.target === opener) cancelSettingsFocus();
+    };
+    const onInput = (event: Event) => {
+      if (
+        !settingsOpenRef.current &&
+        catalogIdRef.current === null &&
+        topicIdRef.current === null &&
+        event.target instanceof Node &&
+        (rootRef.current?.contains(event.target) ||
+          event.target === document.body ||
+          event.target === document.documentElement)
+      ) {
+        cancelSettingsFocus();
+      }
+    };
+    window.addEventListener("focusin", onFocus, true);
+    window.addEventListener("keydown", onInput, true);
+    window.addEventListener("pointerdown", onInput, true);
+    settingsFocusCleanupRef.current = () => {
+      window.removeEventListener("focusin", onFocus, true);
+      window.removeEventListener("keydown", onInput, true);
+      window.removeEventListener("pointerdown", onInput, true);
+    };
+    settingsFocusFrameRef.current = window.requestAnimationFrame(() => {
+      settingsFocusFrameRef.current = window.requestAnimationFrame(() => {
+        settingsFocusFrameRef.current = null;
+        cancelSettingsFocus();
+        if (
+          activeDestinationRef.current !== destination ||
+          settingsOpenRef.current ||
+          catalogIdRef.current !== null ||
+          topicIdRef.current !== null ||
+          !opener?.isConnected ||
+          opener.closest('[inert], [hidden], [aria-hidden="true"]') !== null
+        ) {
+          return;
+        }
+        opener.focus({ preventScroll: true });
+      });
+    });
+  }, [cancelSettingsFocus]);
+
   const commitDestination = useCallback(
     (destination: PrimaryDestination) => {
       const current = activeDestinationRef.current;
@@ -531,6 +591,7 @@ export const ProductShell = ({
       }
 
       expandNavigation();
+      cancelSettingsFocus();
       saveScroll(current, platformRef.current);
       activeDestinationRef.current = destination;
       setActiveDestination(destination);
@@ -541,7 +602,7 @@ export const ProductShell = ({
       );
       restoreScroll(destination, platformRef.current);
     },
-    [expandNavigation, restoreScroll, saveScroll],
+    [cancelSettingsFocus, expandNavigation, restoreScroll, saveScroll],
   );
 
   const setSettingsVisibility = useCallback((open: boolean) => {
@@ -1250,6 +1311,7 @@ export const ProductShell = ({
     }
 
     const handlePopState = (event: PopStateEvent) => {
+      cancelSettingsFocus();
       const state = parseProductHistoryState(event.state);
       const wasDetailOpen = catalogIdRef.current !== null;
       const wasSettingsOpen = settingsOpenRef.current;
@@ -1328,11 +1390,7 @@ export const ProductShell = ({
           restoreCatalogFocus(focusCatalogId);
         }
       } else if (wasSettingsOpen) {
-        window.requestAnimationFrame(() =>
-          window.requestAnimationFrame(() =>
-            settingsOpenerRef.current?.focus(),
-          ),
-        );
+        restoreSettingsFocus();
       } else if (
         wasTopicOpen &&
         state?.kind === "primary" &&
@@ -1347,9 +1405,11 @@ export const ProductShell = ({
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [
+    cancelSettingsFocus,
     expandNavigation,
     restoreCatalogFocus,
     restoreScroll,
+    restoreSettingsFocus,
     restoreTopicFocus,
     saveScroll,
     setDetailVisibility,
@@ -1363,6 +1423,7 @@ export const ProductShell = ({
       return undefined;
     }
     cancelScrollRestore();
+    cancelSettingsFocus();
     if (settingsOpen) settingsBackRef.current?.focus();
     else if (activeCatalogId !== null) detailBackRef.current?.focus();
     else topicBackRef.current?.focus();
@@ -1371,11 +1432,18 @@ export const ProductShell = ({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [activeCatalogId, activeTopicId, cancelScrollRestore, settingsOpen]);
+  }, [
+    activeCatalogId,
+    activeTopicId,
+    cancelScrollRestore,
+    cancelSettingsFocus,
+    settingsOpen,
+  ]);
 
   useEffect(
     () => () => {
       cancelScrollRestore();
+      cancelSettingsFocus();
       if (topicFocusFrameRef.current !== null) {
         window.cancelAnimationFrame(topicFocusFrameRef.current);
       }
@@ -1387,7 +1455,7 @@ export const ProductShell = ({
       }
       synchronizePrimaryNavigationViewportInset(document.documentElement, null);
     },
-    [cancelScrollRestore],
+    [cancelScrollRestore, cancelSettingsFocus],
   );
 
   const cycleTheme = () => {

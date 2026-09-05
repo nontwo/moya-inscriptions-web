@@ -895,6 +895,122 @@ describe("ProductShell", () => {
     expect(dialog(container)).not.toBeNull();
   });
 
+  it.each(["before first frame", "between frames"])(
+    "does not reclaim focus after Settings return %s",
+    async (timing) => {
+      const { container } = renderProductShell(
+        <button aria-label="Continue reading">Continue reading</button>,
+      );
+      await act(async () => vi.runAllTimers());
+      const opener = buttonByLabel(container, "从用户页打开设置");
+      const next = buttonByLabel(container, "Continue reading");
+      click(opener);
+      await act(async () => vi.runAllTimers());
+      act(() =>
+        window.dispatchEvent(
+          new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+        ),
+      );
+      act(() => {
+        if (timing === "between frames") vi.advanceTimersToNextTimer();
+        // QA can already return the opener on its own first resume frame.
+        opener.focus();
+        next.focus();
+        vi.runAllTimers();
+      });
+      expect(document.activeElement).toBe(next);
+    },
+  );
+
+  it("restores the exact Settings opener when QA resumes another old control", async () => {
+    const { container } = renderProductShell(
+      <button aria-label="Continue reading">Continue reading</button>,
+    );
+    await act(async () => vi.runAllTimers());
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    const previous = buttonByLabel(container, "Continue reading");
+    click(opener);
+    await act(async () => vi.runAllTimers());
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    act(() => {
+      vi.advanceTimersToNextTimer();
+      // WebKit clicks need not focus the Settings entry; QA may remember a tab.
+      previous.focus();
+      vi.runAllTimers();
+    });
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it.each([
+    ["keydown", "before first frame"],
+    ["keydown", "between frames"],
+    ["pointerdown", "before first frame"],
+    ["pointerdown", "between frames"],
+  ])("yields Settings focus to %s %s", async (type, timing) => {
+    const { container } = renderProductShell(
+      <button aria-label="Continue reading">Continue reading</button>,
+    );
+    await act(async () => vi.runAllTimers());
+    const opener = buttonByLabel(container, "从用户页打开设置");
+    const next = buttonByLabel(container, "Continue reading");
+    click(opener);
+    await act(async () => vi.runAllTimers());
+    act(() =>
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+      ),
+    );
+    const input =
+      type === "keydown"
+        ? new KeyboardEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            key: "Tab",
+          })
+        : new Event(type!, { bubbles: true, cancelable: true });
+    act(() => {
+      if (timing === "between frames") vi.advanceTimersToNextTimer();
+      next.dispatchEvent(input);
+      next.focus();
+      vi.runAllTimers();
+    });
+    expect(document.activeElement).toBe(next);
+    expect(input.defaultPrevented).toBe(false);
+  });
+
+  it.each(["unmounted", "settings", "detail", "destination"])(
+    "cancels stale Settings focus when %s takes over",
+    async (ending) => {
+      const { container } = renderProductShell(<ProductShellObserver />);
+      await act(async () => vi.runAllTimers());
+      const opener = buttonByLabel(container, "从用户页打开设置");
+      click(opener);
+      await act(async () => vi.runAllTimers());
+      act(() =>
+        window.dispatchEvent(
+          new PopStateEvent("popstate", { state: primaryHistoryState("home") }),
+        ),
+      );
+      act(() => vi.advanceTimersToNextTimer());
+      const focus = vi.spyOn(opener, "focus");
+      act(() => {
+        if (ending === "unmounted") mountedRoots.pop()!.unmount();
+        else if (ending === "settings") {
+          observedProductShell!.requestSettings(opener);
+        } else if (ending === "detail") {
+          observedProductShell!.openCatalog("catalog-one", opener);
+        } else click(buttonByLabel(container, "碑刻"));
+      });
+      act(() => vi.runAllTimers());
+      expect(focus).not.toHaveBeenCalled();
+      focus.mockRestore();
+    },
+  );
+
   it("has no external Settings entry while preserving the owned Settings seam", async () => {
     const { container } = renderProductShell(<p>home content</p>, {
       primaryUtility: <SettingsRequester />,
