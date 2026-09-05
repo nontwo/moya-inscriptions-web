@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,7 @@ import {
 
 import type { Root } from "react-dom/client";
 import type { MediaId, PublicMedia } from "@moya/contracts";
+import type { CatalogMediaCarouselProps } from "./catalog-media-carousel";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -79,13 +80,345 @@ const renderCarousel = (activeIndex = 0) => {
   return { container, onActiveIndexChange, onOpenViewer, stage };
 };
 
+const renderControlledCarousel = () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+  const changes = vi.fn();
+  const Controlled = (props: Partial<CatalogMediaCarouselProps>) => {
+    const [index, setIndex] = useState(0);
+    return (
+      <CatalogMediaCarousel
+        activeIndex={index}
+        media={media}
+        onActiveIndexChange={(value) => {
+          changes(value);
+          setIndex(value);
+        }}
+        onOpenViewer={vi.fn()}
+        platform="phone"
+        {...props}
+      />
+    );
+  };
+  const render = (props: Partial<CatalogMediaCarouselProps> = {}) =>
+    act(() => root.render(<Controlled {...props} />));
+  render();
+  const stage = container.querySelector<HTMLElement>(
+    "[data-detail-main-stage]",
+  )!;
+  let width = 300;
+  let left = 0;
+  const writes = vi.fn((value: number) => {
+    left = value;
+  });
+  Object.defineProperty(stage, "clientWidth", { get: () => width });
+  Object.defineProperty(stage, "scrollLeft", { get: () => left, set: writes });
+  Object.defineProperty(stage, "getBoundingClientRect", {
+    value: () => ({ width }),
+  });
+  const smooth = vi.fn();
+  Object.defineProperty(stage, "scrollTo", { value: smooth });
+  const position = (value: number) =>
+    act(() => {
+      left = value;
+      stage.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+  const select = (index: number) =>
+    act(() => {
+      const dots = container.querySelectorAll<HTMLButtonElement>(
+        "[data-detail-media-dot]",
+      );
+      dots[index]!.click();
+    });
+  return {
+    container,
+    stage,
+    root,
+    changes,
+    writes,
+    smooth,
+    position,
+    select,
+    render,
+    resize: (value: number) => {
+      width = value;
+    },
+  };
+};
+
 afterEach(() => {
   vi.useRealTimers();
   for (const root of roots.splice(0)) act(() => root.unmount());
   document.body.replaceChildren();
+  vi.unstubAllGlobals();
 });
 
 describe("CatalogMediaCarousel", () => {
+  it("accepts normal smooth completion without corrective writes", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(300);
+    act(() => vi.runAllTimers());
+    expect(view.changes.mock.calls).toEqual([[1]]);
+    expect(view.writes).not.toHaveBeenCalled();
+  });
+
+  it("does not restart a canceled programmatic request on native touch cancel", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    act(() => view.stage.dispatchEvent(touchEvent("touchstart", 1)));
+    view.position(150);
+    act(() => view.stage.dispatchEvent(touchEvent("touchcancel", 0)));
+    act(() => vi.runAllTimers());
+    expect(view.stage.scrollLeft).toBe(0);
+    expect(view.changes.mock.calls).toEqual([[1], [0]]);
+  });
+
+  it("never repeatedly corrects a target if the compositor remains short of it", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    // Simulate a compositor that rejects the corrective write itself.
+    view.writes.mockImplementation(() => {});
+    act(() => vi.runAllTimers());
+    view.position(108);
+    act(() => vi.runAllTimers());
+    view.position(108);
+    act(() => vi.runAllTimers());
+    expect(view.writes.mock.calls).toEqual([[300]]);
+    expect(view.changes.mock.calls).toEqual([[1]]);
+  });
+
+  it("delivers a current dot selected by a real pointer sequence during smooth paging", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    const dot = view.container.querySelectorAll<HTMLButtonElement>(
+      "[data-detail-media-dot]",
+    )[1]!;
+    act(() => {
+      dot.dispatchEvent(
+        pointerEvent("pointerdown", {
+          isPrimary: true,
+          button: 0,
+          pointerId: 1,
+        }),
+      );
+      dot.click();
+      vi.runAllTimers();
+    });
+    expect(view.stage.scrollLeft).toBe(300);
+    expect(view.changes.mock.calls).toEqual([[1]]);
+  });
+
+  it("realigns after a corrective landing followed immediately by resize", () => {
+    vi.useFakeTimers();
+    let resized = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resized = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    act(() => vi.advanceTimersByTime(121));
+    view.resize(450);
+    act(() => {
+      resized();
+      vi.runAllTimers();
+    });
+    expect(view.stage.scrollLeft).toBe(450);
+  });
+
+  it.each(["wheel", "touchcancel"])(
+    "does not let a completed page's %s disable later resize",
+    (kind) => {
+      vi.useFakeTimers();
+      let resized = () => {};
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(callback: () => void) {
+            resized = callback;
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      const view = renderControlledCarousel();
+      view.select(1);
+      view.position(300);
+      act(() => vi.runAllTimers());
+      act(() => {
+        if (kind === "touchcancel") {
+          view.stage.dispatchEvent(touchEvent("touchstart", 1));
+          view.stage.dispatchEvent(touchEvent("touchcancel", 0));
+        } else view.stage.dispatchEvent(new Event("wheel", { bubbles: true }));
+        vi.runAllTimers();
+      });
+      view.resize(450);
+      act(() => {
+        resized();
+        vi.runAllTimers();
+      });
+      expect(view.stage.scrollLeft).toBe(450);
+    },
+  );
+
+  it("cancels an old request when navigation supplies a different active index", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    view.render({ activeIndex: 0 });
+    view.writes.mockClear();
+    act(() => vi.runAllTimers());
+    expect(view.stage.scrollLeft).toBe(0);
+    expect(view.writes).not.toHaveBeenCalled();
+  });
+
+  it.each(["wheel", "keydown", "pointerdown", "touchstart"])(
+    "yields an unfinished request to %s",
+    (kind) => {
+      vi.useFakeTimers();
+      const view = renderControlledCarousel();
+      view.select(1);
+      view.position(108);
+      const event =
+        kind === "keydown"
+          ? new KeyboardEvent(kind, { bubbles: true, key: "ArrowRight" })
+          : kind === "pointerdown"
+            ? pointerEvent(kind, { isPrimary: true, button: 0, pointerId: 1 })
+            : kind === "touchstart"
+              ? touchEvent(kind, 1)
+              : new Event(kind, { bubbles: true });
+      act(() => view.stage.dispatchEvent(event));
+      view.writes.mockClear();
+      act(() => vi.runAllTimers());
+      // A released input can settle to the native nearest page, never the old target.
+      expect(view.stage.scrollLeft).toBe(kind === "touchstart" ? 108 : 0);
+      expect(view.writes).not.toHaveBeenCalledWith(300);
+      if (kind === "touchstart")
+        act(() => view.stage.dispatchEvent(touchEvent("touchend", 0)));
+      view.position(0);
+      act(() => vi.runAllTimers());
+      expect(view.changes.mock.calls).toEqual([[1], [0]]);
+    },
+  );
+
+  it("replaces old requests when selecting another image", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    view.select(2);
+    act(() => vi.runAllTimers());
+    expect(view.stage.scrollLeft).toBe(600);
+    expect(view.changes.mock.calls).toEqual([[1], [2]]);
+    expect(view.writes.mock.calls).toEqual([[600]]);
+  });
+
+  it("uses the current viewport for a pending target but does not revive user-canceled requests", () => {
+    vi.useFakeTimers();
+    let resized = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resized = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const view = renderControlledCarousel();
+    view.select(1);
+    view.position(108);
+    view.resize(450);
+    act(() => {
+      resized();
+      vi.runAllTimers();
+    });
+    expect(view.stage.scrollLeft).toBe(450);
+    view.position(450);
+    act(() => vi.runAllTimers());
+    view.select(2);
+    view.position(500);
+    act(() => view.stage.dispatchEvent(new Event("wheel", { bubbles: true })));
+    view.writes.mockClear();
+    view.resize(600);
+    act(() => {
+      view.stage.dispatchEvent(new Event("wheel", { bubbles: true }));
+      resized();
+      vi.runAllTimers();
+    });
+    expect(view.writes.mock.calls).toEqual([[600]]);
+    expect(view.changes.mock.calls).toEqual([[1], [2], [1]]);
+  });
+
+  it.each(["media", "platform", "unmount"])(
+    "clears old work on %s changes",
+    (kind) => {
+      vi.useFakeTimers();
+      const view = renderControlledCarousel();
+      view.select(1);
+      view.position(108);
+      if (kind === "media")
+        view.render({
+          media: media.map((item) => ({
+            ...item,
+            id: `${item.id}-new` as MediaId,
+          })),
+        });
+      else if (kind === "platform") view.render({ platform: "pc" });
+      else act(() => view.root.render(null));
+      view.writes.mockClear();
+      act(() => vi.runAllTimers());
+      expect(view.writes).not.toHaveBeenCalled();
+      expect(view.changes.mock.calls).toEqual([[1]]);
+    },
+  );
+
+  it("keeps reduced-motion navigation immediate and free of delayed corrections", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
+    const view = renderControlledCarousel();
+    view.select(1);
+    act(() => vi.runAllTimers());
+    expect(view.smooth).not.toHaveBeenCalled();
+    expect(view.writes.mock.calls).toEqual([[300]]);
+    expect(view.changes.mock.calls).toEqual([[1]]);
+  });
+  it("does not round an unfinished programmatic page back to the previous image", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    view.select(1);
+    expect(view.smooth).toHaveBeenCalledWith({ behavior: "smooth", left: 300 });
+    view.position(108);
+    act(() => vi.advanceTimersByTime(121));
+    expect(view.changes.mock.calls).toEqual([[1]]);
+    expect(view.stage.scrollLeft).toBe(300);
+    expect(view.writes).toHaveBeenCalledTimes(1);
+    view.position(300);
+    act(() => vi.runAllTimers());
+    expect(view.writes).toHaveBeenCalledTimes(1);
+  });
   it("keeps the single-media state free of inactive Carousel controls", () => {
     const container = document.createElement("div");
     document.body.append(container);

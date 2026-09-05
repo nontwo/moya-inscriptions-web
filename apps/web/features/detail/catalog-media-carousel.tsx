@@ -89,11 +89,14 @@ export const CatalogMediaCarousel = ({
   const gestureRef = useRef<CarouselGesture | null>(null);
   const activeIndexRef = useRef(activeIndex);
   const nativeProgrammaticIndexRef = useRef<number | null>(null);
+  const nativeCorrectionUsedRef = useRef(false);
+  const nativeUserScrollRef = useRef(false);
   const nativeCanceledIndexRef = useRef<number | null>(null);
   const nativeRealignFrameRef = useRef<number | null>(null);
   const nativeSettleTimerRef = useRef<number | null>(null);
   const nativeTouchActiveRef = useRef(false);
   const nativeTouchStartScrollLeftRef = useRef(0);
+  const nativeTouchStartIndexRef = useRef(activeIndex);
   const nativeViewportWidthRef = useRef(0);
   const previousNativePagingRef = useRef(nativePaging);
   const suppressClickRef = useRef(false);
@@ -126,6 +129,27 @@ export const CatalogMediaCarousel = ({
     }
   };
 
+  const cancelNativeRequest = () => {
+    clearNativeSettleTimer();
+    nativeProgrammaticIndexRef.current = null;
+    nativeCorrectionUsedRef.current = false;
+  };
+
+  const takeOverNativeScroll = () => {
+    if (!nativePaging) return;
+    const pending = nativeProgrammaticIndexRef.current !== null;
+    cancelNativeRequest();
+    nativeCanceledIndexRef.current = null;
+    nativeUserScrollRef.current = nativeUserScrollRef.current || pending;
+    const stage = stageRef.current;
+    // Stop the old smooth animation at its current position, not its target.
+    if (pending && stage !== null) {
+      const currentLeft = stage.scrollLeft;
+      stage.scrollLeft = currentLeft;
+    }
+    scheduleNativeSettle();
+  };
+
   const clearNativeRealignFrame = () => {
     if (nativeRealignFrameRef.current !== null) {
       window.cancelAnimationFrame(nativeRealignFrameRef.current);
@@ -154,6 +178,14 @@ export const CatalogMediaCarousel = ({
   }, [activeIndex]);
 
   useLayoutEffect(() => {
+    cancelNativeRequest();
+    nativeCanceledIndexRef.current = null;
+    nativeUserScrollRef.current = false;
+    nativeTouchActiveRef.current = false;
+    return cancelNativeRequest;
+  }, [media, platform]);
+
+  useLayoutEffect(() => {
     const stage = stageRef.current;
     if (stage === null) return;
     const wasNativePaging = previousNativePagingRef.current;
@@ -179,9 +211,10 @@ export const CatalogMediaCarousel = ({
     }
     const synchronize = () => {
       if (nativeProgrammaticIndexRef.current === activeIndex) {
-        nativeProgrammaticIndexRef.current = null;
         return;
       }
+      if (nativeProgrammaticIndexRef.current !== null) cancelNativeRequest();
+      if (nativeUserScrollRef.current) return;
       const target = activeIndex * stage.clientWidth;
       if (Math.abs(stage.scrollLeft - target) > 1) stage.scrollLeft = target;
     };
@@ -192,11 +225,14 @@ export const CatalogMediaCarousel = ({
       const width = stage.clientWidth;
       if (width === nativeViewportWidthRef.current) return;
       nativeViewportWidthRef.current = width;
-      if (!nativeTouchActiveRef.current) synchronize();
+      if (!nativeTouchActiveRef.current) {
+        if (nativeProgrammaticIndexRef.current !== null) scheduleNativeSettle();
+        else synchronize();
+      }
     });
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [activeIndex, media.length, nativePaging]);
+  }, [activeIndex, media, nativePaging]);
 
   useEffect(() => {
     gestureRef.current = null;
@@ -220,15 +256,28 @@ export const CatalogMediaCarousel = ({
 
   const selectIndex = (index: number, animateNative = true) => {
     const bounded = Math.min(Math.max(index, 0), media.length - 1);
-    if (bounded === activeIndexRef.current) return;
+    const unchanged = bounded === activeIndexRef.current;
+    if (
+      unchanged &&
+      (!nativePaging ||
+        !animateNative ||
+        Math.abs(
+          (stageRef.current?.scrollLeft ?? 0) -
+            bounded * (stageRef.current?.clientWidth ?? 0),
+        ) <= 1)
+    )
+      return;
     if (nativePaging && animateNative) {
+      cancelNativeRequest();
+      nativeUserScrollRef.current = false;
       nativeProgrammaticIndexRef.current = bounded;
       const reducedMotion =
         typeof window.matchMedia === "function" &&
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       writeNativeScrollLeft(bounded, reducedMotion ? "auto" : "smooth");
+      scheduleNativeSettle();
     }
-    onActiveIndexChange(bounded);
+    if (!unchanged) onActiveIndexChange(bounded);
   };
 
   const settleNativeScroll = () => {
@@ -236,9 +285,27 @@ export const CatalogMediaCarousel = ({
     if (!nativePaging || nativeTouchActiveRef.current) return;
     const stage = stageRef.current;
     if (stage === null || stage.clientWidth <= 0) return;
+    const requestedIndex = nativeProgrammaticIndexRef.current;
+    if (requestedIndex !== null) {
+      if (
+        Math.abs(stage.scrollLeft - requestedIndex * stage.clientWidth) <= 1
+      ) {
+        cancelNativeRequest();
+      } else if (!nativeCorrectionUsedRef.current) {
+        nativeCorrectionUsedRef.current = true;
+        writeNativeScrollLeft(requestedIndex);
+        if (
+          Math.abs(stage.scrollLeft - requestedIndex * stage.clientWidth) <= 1
+        ) {
+          cancelNativeRequest();
+        }
+      }
+      return;
+    }
     const canceledIndex = nativeCanceledIndexRef.current;
     if (canceledIndex !== null) {
       nativeCanceledIndexRef.current = null;
+      nativeUserScrollRef.current = false;
       writeNativeScrollLeft(canceledIndex);
       return;
     }
@@ -246,6 +313,7 @@ export const CatalogMediaCarousel = ({
       Math.max(Math.round(stage.scrollLeft / stage.clientWidth), 0),
       media.length - 1,
     );
+    nativeUserScrollRef.current = false;
     selectIndex(index, false);
   };
 
@@ -345,6 +413,7 @@ export const CatalogMediaCarousel = ({
         }}
         onPointerCancel={cancelGesture}
         onPointerDown={(event) => {
+          if (event.isPrimary && event.button === 0) takeOverNativeScroll();
           if (
             nativePaging &&
             event.pointerType === "touch" &&
@@ -400,6 +469,24 @@ export const CatalogMediaCarousel = ({
           );
         }}
         onPointerUp={finishGesture}
+        onWheelCapture={takeOverNativeScroll}
+        onKeyDownCapture={(event) => {
+          if (
+            [
+              "ArrowLeft",
+              "ArrowRight",
+              "ArrowUp",
+              "ArrowDown",
+              "PageUp",
+              "PageDown",
+              "Home",
+              "End",
+              " ",
+            ].includes(event.key)
+          ) {
+            takeOverNativeScroll();
+          }
+        }}
         onScroll={() => {
           if (!nativePaging) return;
           if (
@@ -417,7 +504,7 @@ export const CatalogMediaCarousel = ({
           if (!nativePaging) return;
           nativeTouchActiveRef.current = false;
           clearNativeSettleTimer();
-          nativeCanceledIndexRef.current = activeIndexRef.current;
+          nativeCanceledIndexRef.current = nativeTouchStartIndexRef.current;
           const stage = stageRef.current;
           if (
             stage !== null &&
@@ -427,7 +514,8 @@ export const CatalogMediaCarousel = ({
           ) {
             suppressCompletedGestureClick();
           }
-          writeNativeScrollLeft(activeIndexRef.current);
+          writeNativeScrollLeft(nativeTouchStartIndexRef.current);
+          selectIndex(nativeTouchStartIndexRef.current, false);
           scheduleNativeSettle();
         }}
         onTouchEndCapture={() => {
@@ -447,12 +535,24 @@ export const CatalogMediaCarousel = ({
         }}
         onTouchStartCapture={(event) => {
           if (!nativePaging || event.touches.length !== 1) return;
+          takeOverNativeScroll();
           clearClickSuppression();
           clearNativeSettleTimer();
           nativeCanceledIndexRef.current = null;
           nativeTouchActiveRef.current = true;
           nativeTouchStartScrollLeftRef.current =
             stageRef.current?.scrollLeft ?? 0;
+          const width = stageRef.current?.clientWidth ?? 0;
+          nativeTouchStartIndexRef.current =
+            width > 0
+              ? Math.min(
+                  media.length - 1,
+                  Math.max(
+                    0,
+                    Math.round(nativeTouchStartScrollLeftRef.current / width),
+                  ),
+                )
+              : activeIndexRef.current;
         }}
       >
         <div
