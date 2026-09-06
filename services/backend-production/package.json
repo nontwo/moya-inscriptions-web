@@ -9,15 +9,29 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./internal/cos-https": {
+      "types": "./src/storage/cos-https.ts",
+      "import": "./dist/storage/cos-https.js"
+    },
+    "./internal/cos-signature": {
+      "types": "./src/storage/cos-signature.ts",
+      "import": "./dist/storage/cos-signature.js"
+    },
+    "./internal/pilot-cos": {
+      "types": "./src/storage/pilot-cos.ts",
+      "import": "./dist/storage/pilot-cos.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "start": "node dist/main.js",
+    "pilot": "node dist/pilot-cli.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@moya/catalog-importer": "workspace:*",
     "@moya/backend-runtime": "workspace:*",
     "@moya/catalog-postgres": "workspace:*",
     "@moya/image": "workspace:*"

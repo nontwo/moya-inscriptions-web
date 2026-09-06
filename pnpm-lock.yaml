@@ -155,6 +155,9 @@ importers:
       '@moya/backend-runtime':
         specifier: workspace:*
         version: link:../backend-runtime
+      '@moya/catalog-importer':
+        specifier: workspace:*
+        version: link:../catalog-importer
       '@moya/catalog-postgres':
         specifier: workspace:*
         version: link:../catalog-postgres

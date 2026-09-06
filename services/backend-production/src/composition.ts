@@ -12,6 +12,7 @@ import {
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
+import { loadPilotConfiguration, openPilotPool } from "./pilot-config.js";
 
 import type {
   BackendProcessHandle,
@@ -34,12 +35,21 @@ export const prepareProductionBackend = async (
   if (runtimeConfig.nodeEnv !== "production") {
     throw new Error("NODE_ENV must be production for the production backend");
   }
+  const pilot =
+    environment.MOYA_PILOT_SCOPE_FILE === undefined &&
+    environment.MOYA_PILOT_MEDIA_FILE === undefined
+      ? undefined
+      : await loadPilotConfiguration(environment);
   const postgresConfig = parsePostgresConfig(environment);
-  const pool = createPostgresPool(postgresConfig, {
-    onUnexpectedIdleError: () => {
-      console.error("[backend-production] unexpected PostgreSQL pool error");
-    },
-  });
+  const pool = pilot
+    ? openPilotPool(environment, pilot.scope)
+    : createPostgresPool(postgresConfig, {
+        onUnexpectedIdleError: () => {
+          console.error(
+            "[backend-production] unexpected PostgreSQL pool error",
+          );
+        },
+      });
 
   try {
     await assertPostgresStartupReady(pool);
@@ -57,7 +67,9 @@ export const prepareProductionBackend = async (
     requestListener: createBackendApplication({
       nodeEnv: runtimeConfig.nodeEnv,
       catalogQueryPort,
-      storageUrlResolver: new UnconfiguredStorageUrlResolver(),
+      storageUrlResolver:
+        pilot?.storage.createStorageUrlResolver() ??
+        new UnconfiguredStorageUrlResolver(),
       healthReadinessCheck: readinessCheck,
     }),
     closeResources: async () => closePostgresPool(pool),

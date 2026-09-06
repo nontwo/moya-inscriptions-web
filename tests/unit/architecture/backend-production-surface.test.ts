@@ -27,19 +27,21 @@ const collectTypeScript = async (directory: string): Promise<string[]> => {
 };
 
 describe("@moya/backend-production composition boundary", () => {
-  it("is a thin root with exactly the runtime and adapter dependencies", async () => {
+  it("declares exactly the runtime, adapter and Pilot operation dependencies", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(productionRoot, "package.json"), "utf8"),
     ) as { dependencies?: Record<string, string> };
     expect(manifest.dependencies).toEqual({
+      "@moya/catalog-importer": "workspace:*",
       "@moya/backend-runtime": "workspace:*",
       "@moya/catalog-postgres": "workspace:*",
       "@moya/image": "workspace:*",
     });
   });
 
-  it("imports only the two approved workspace roots", async () => {
+  it("imports only the approved backend workspace roots", async () => {
     const approved = new Set([
+      "@moya/catalog-importer",
       "@moya/backend-runtime",
       "@moya/catalog-postgres",
       "@moya/image",

@@ -159,6 +159,7 @@ describe("workspace dependency boundaries", () => {
     expect(moyaDependencies("@moya/api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/backend-production")).toEqual([
       "@moya/backend-runtime",
+      "@moya/catalog-importer",
       "@moya/catalog-postgres",
       "@moya/image",
     ]);
