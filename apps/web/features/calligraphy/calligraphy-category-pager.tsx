@@ -56,6 +56,10 @@ export interface CalligraphyCategoryPagerProps {
   >;
   readonly platform: PresentationPlatform;
   readonly primaryVisible: boolean;
+  readonly readCurrentScrollTop: () => number;
+  readonly readSavedCategoryScrollTop: (
+    category: CalligraphyCategory,
+  ) => number;
 }
 
 export const CalligraphyCategoryPager = forwardRef<
@@ -70,6 +74,8 @@ export const CalligraphyCategoryPager = forwardRef<
     panelStates,
     platform,
     primaryVisible,
+    readCurrentScrollTop,
+    readSavedCategoryScrollTop,
   },
   ref,
 ) {
@@ -85,6 +91,14 @@ export const CalligraphyCategoryPager = forwardRef<
   const activeIndexRef = useRef(activeIndex);
   const onCommitRef = useRef(onCommit);
   const onProgressRef = useRef(onProgress);
+  const scrollReadersRef = useRef({
+    readCurrentScrollTop,
+    readSavedCategoryScrollTop,
+  });
+  // Only this gesture/tail owns these display offsets. Screen retains the
+  // actual per-category reading positions and Shell retains restoration.
+  const readingTransitionRef = useRef<number[] | null>(null);
+  const readingMotionRef = useRef(false);
   const sessionRef = useRef<ScrollSession | null>(null);
   const generationRef = useRef(0);
   const fallbackFrameRef = useRef<number | null>(null);
@@ -104,6 +118,10 @@ export const CalligraphyCategoryPager = forwardRef<
   activeIndexRef.current = activeIndex;
   onCommitRef.current = onCommit;
   onProgressRef.current = onProgress;
+  scrollReadersRef.current = {
+    readCurrentScrollTop,
+    readSavedCategoryScrollTop,
+  };
 
   const readSnapOffsets = useCallback((): number[] => {
     const offsets: number[] = [];
@@ -135,6 +153,77 @@ export const CalligraphyCategoryPager = forwardRef<
     },
     [readPanelHeight],
   );
+
+  const scrollOwner = useCallback(
+    () =>
+      frameRef.current?.closest<HTMLElement>(
+        '[data-primary-destination="calligraphy"]',
+      ) ?? null,
+    [],
+  );
+
+  const readTargetScrollTop = useCallback(
+    (index: number) => {
+      const category = calligraphyCategories[index];
+      const frame = frameRef.current;
+      const owner = scrollOwner();
+      if (category === undefined || frame === null || owner === null) return 0;
+      const panelHeight = Number.parseFloat(readPanelHeight(index) ?? "0");
+      const minimumHeight =
+        Number.parseFloat(window.getComputedStyle(frame).minHeight) || 0;
+      const targetHeight = Math.max(panelHeight, minimumHeight);
+      const maximum = Math.max(
+        0,
+        owner.scrollHeight -
+          frame.getBoundingClientRect().height +
+          targetHeight -
+          owner.clientHeight,
+      );
+      const saved =
+        scrollReadersRef.current.readSavedCategoryScrollTop(category);
+      return Number.isFinite(saved) ? Math.max(0, Math.min(saved, maximum)) : 0;
+    },
+    [readPanelHeight, scrollOwner],
+  );
+
+  const prepareReadingTransition = useCallback(() => {
+    if (readingTransitionRef.current !== null) return;
+    const currentTop = scrollReadersRef.current.readCurrentScrollTop();
+    readingTransitionRef.current = calligraphyCategories.map((_, index) =>
+      index === activeIndexRef.current
+        ? currentTop
+        : readTargetScrollTop(index),
+    );
+  }, [readTargetScrollTop]);
+
+  const clearReadingTransition = useCallback(() => {
+    readingTransitionRef.current = null;
+    readingMotionRef.current = false;
+    // A visibility update can detach callback refs before layout cleanup,
+    // while the existing track and its panels remain mounted.
+    const track = frameRef.current?.firstElementChild;
+    for (const panel of Array.from(track?.children ?? [])) {
+      if (panel instanceof HTMLElement) panel.style.transform = "";
+    }
+  }, []);
+
+  const updateReadingPresentation = useCallback(() => {
+    const positions = readingTransitionRef.current;
+    if (positions === null || !readingMotionRef.current) return;
+    const currentTop = scrollReadersRef.current.readCurrentScrollTop();
+    for (const [index, category] of calligraphyCategories.entries()) {
+      const panel = panelRefs.current[category];
+      if (panel === null) continue;
+      // The interactive page always uses the real native scroll position.
+      // Only its neighbours retain their own reading view during the X tail.
+      const offset =
+        index === activeIndexRef.current
+          ? 0
+          : currentTop - (positions[index] ?? 0);
+      panel.style.transform =
+        offset === 0 ? "" : `translate3d(0, ${offset}px, 0)`;
+    }
+  }, []);
 
   const cancelProgressFrame = useCallback(() => {
     if (progressFrameRef.current === null) return;
@@ -320,6 +409,8 @@ export const CalligraphyCategoryPager = forwardRef<
   const requestCategory = useCallback(
     (category: CalligraphyCategory) => {
       if (usesEmbla) {
+        if (category !== calligraphyCategories[activeIndexRef.current])
+          prepareReadingTransition();
         engineRef.current?.scrollTo(calligraphyCategories.indexOf(category));
         return;
       }
@@ -341,6 +432,7 @@ export const CalligraphyCategoryPager = forwardRef<
     },
     [
       usesEmbla,
+      prepareReadingTransition,
       publishProgress,
       readSnapOffsets,
       scrollFrameToIndex,
@@ -405,14 +497,17 @@ export const CalligraphyCategoryPager = forwardRef<
       const frame = frameRef.current;
       if (frame === null) return;
       touchActiveRef.current = true;
-      if (usesEmbla) return;
+      if (usesEmbla) {
+        prepareReadingTransition();
+        return;
+      }
       suppressClickUntilRef.current = 0;
       touchStartScrollLeftRef.current = frame.scrollLeft;
       startSession(
         resolveHomePagerSettledIndex(frame.scrollLeft, readSnapOffsets()),
       );
     },
-    [usesEmbla, readSnapOffsets, startSession],
+    [usesEmbla, prepareReadingTransition, readSnapOffsets, startSession],
   );
 
   const handleTouchFinish = useCallback(
@@ -420,6 +515,7 @@ export const CalligraphyCategoryPager = forwardRef<
       if (event.touches.length > 0) return;
       touchActiveRef.current = false;
       if (usesEmbla) {
+        if (!readingMotionRef.current) clearReadingTransition();
         applyPanelHeight(activeIndexRef.current);
         return;
       }
@@ -438,12 +534,19 @@ export const CalligraphyCategoryPager = forwardRef<
         scheduleFallback(session.generation);
       }
     },
-    [usesEmbla, applyPanelHeight, invalidateSession, scheduleFallback],
+    [
+      usesEmbla,
+      applyPanelHeight,
+      clearReadingTransition,
+      invalidateSession,
+      scheduleFallback,
+    ],
   );
 
   const cancelToCommitted = useCallback(() => {
     if (usesEmbla) {
       touchActiveRef.current = false;
+      clearReadingTransition();
       applyPanelHeight(activeIndexRef.current);
       return;
     }
@@ -456,6 +559,7 @@ export const CalligraphyCategoryPager = forwardRef<
   }, [
     usesEmbla,
     applyPanelHeight,
+    clearReadingTransition,
     invalidateSession,
     publishProgress,
     readSnapOffsets,
@@ -506,22 +610,59 @@ export const CalligraphyCategoryPager = forwardRef<
       onCommit: (index) => {
         const category = calligraphyCategories[index];
         if (category === undefined) return;
+        prepareReadingTransition();
+        const positions = readingTransitionRef.current;
+        if (positions !== null)
+          positions[activeIndexRef.current] =
+            scrollReadersRef.current.readCurrentScrollTop();
+        const targetTop = readTargetScrollTop(index);
         internalCommitIndexRef.current = index;
         // Save the departing page's scroll before a shorter target height can
         // clamp it. The category and inert ownership change in this input task.
         flushSync(() => onCommitRef.current(category));
         applyPanelHeight(index);
+        // The next input can cancel Shell's queued restoration. Hand off the
+        // same native owner now, after Screen saved the departing position and
+        // the target's real height is in place. No temporary height extends its
+        // scroll range, so Shell's later bounded restore sees that same range.
+        const owner = scrollOwner();
+        if (owner !== null) {
+          owner.scrollTop = Math.min(
+            targetTop,
+            Math.max(0, owner.scrollHeight - owner.clientHeight),
+          );
+        }
+        // A reduced-motion tab jump emits settle before select, so there is
+        // no later visual tail to clear these neighbouring display offsets.
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          clearReadingTransition();
+        } else {
+          readingMotionRef.current = true;
+          updateReadingPresentation();
+        }
       },
-      onProgress: (progress) => onProgressRef.current(progress),
+      onProgress: (progress) => {
+        updateReadingPresentation();
+        onProgressRef.current(progress);
+      },
       onMotion: (moving) => {
         frame.dataset.calligraphyPagerScrolling = String(moving);
+        if (moving) {
+          prepareReadingTransition();
+          readingMotionRef.current = true;
+        } else clearReadingTransition();
       },
     });
     engineRef.current = engine;
+    const owner = scrollOwner();
+    owner?.addEventListener("scroll", updateReadingPresentation, {
+      passive: true,
+    });
     // The engine cleans its input session, while this host separately owns
     // the page-height freeze. Interrupted touches may never deliver touchend.
     const releaseHeight = () => {
       touchActiveRef.current = false;
+      clearReadingTransition();
       applyPanelHeight(activeIndexRef.current);
     };
     const hidden = () => {
@@ -536,13 +677,24 @@ export const CalligraphyCategoryPager = forwardRef<
       engineRef.current = null;
       touchActiveRef.current = false;
       engine.destroy();
+      clearReadingTransition();
+      owner?.removeEventListener("scroll", updateReadingPresentation);
       document.removeEventListener("visibilitychange", hidden);
       window.removeEventListener("pagehide", releaseHeight);
       window.removeEventListener("blur", releaseHeight);
       window.removeEventListener("orientationchange", releaseHeight);
       window.visualViewport?.removeEventListener("resize", releaseHeight);
     };
-  }, [usesEmbla, primaryVisible, applyPanelHeight]);
+  }, [
+    usesEmbla,
+    primaryVisible,
+    applyPanelHeight,
+    clearReadingTransition,
+    prepareReadingTransition,
+    readTargetScrollTop,
+    scrollOwner,
+    updateReadingPresentation,
+  ]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;

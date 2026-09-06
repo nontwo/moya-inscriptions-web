@@ -16,6 +16,7 @@ import type { CalligraphyCategoryPagerHandle } from "./calligraphy-category-page
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: Root[] = [];
+const readingHostCleanups: (() => void)[] = [];
 const resizeObservers: TestResizeObserver[] = [];
 let prefersReducedMotion = false;
 let pagerWidth = 400;
@@ -52,8 +53,16 @@ const renderPager = (
   onCommit = vi.fn<(category: CalligraphyCategory) => void>(),
   initialPrimaryVisible = true,
   commitRenders = false,
+  scrollReaders?: {
+    readonly readCurrentScrollTop: () => number;
+    readonly readSavedCategoryScrollTop: (
+      category: CalligraphyCategory,
+    ) => number;
+  },
+  prepareOwner?: (owner: HTMLDivElement) => void,
 ) => {
   const container = document.createElement("div");
+  prepareOwner?.(container);
   document.body.append(container);
   const root = createRoot(container);
   const handle = createRef<CalligraphyCategoryPagerHandle>();
@@ -85,6 +94,9 @@ const renderPager = (
           }}
           platform={platform}
           primaryVisible={primaryVisible}
+          readCurrentScrollTop={() => 0}
+          readSavedCategoryScrollTop={() => 0}
+          {...scrollReaders}
         />,
       );
     });
@@ -152,6 +164,141 @@ const drag = (frame: HTMLElement, dx = -220, dy = 0) => {
 const trackLeft = (track: HTMLElement) =>
   Number(track.style.transform.match(/translate3d\(([-\d.]+)px/)?.[1] ?? 0);
 
+// JSDOM has no layout engine. Read the panel's actual inline presentation
+// translation, just as trackLeft reads Embla's actual inline X transform.
+const panelTranslationY = (panel: HTMLElement) => {
+  const transform = panel.style.transform;
+  const translated =
+    transform.match(/translate3d\([^,]+,\s*([-\d.]+)px/) ??
+    transform.match(/translateY\(([-\d.]+)px/);
+  return Number(translated?.[1] ?? 0);
+};
+
+// This boundary double retains Shell's public two-frame restore and capture
+// input cancellation. Actual Shell cancellation/retry implementation is covered
+// by product-shell.test.tsx; this host observes pager writes separately.
+const renderReadingPager = ({
+  platform = "phone",
+  savedTarget = 0,
+}: {
+  readonly platform?: "phone" | "tablet" | "pc";
+  readonly savedTarget?: number;
+} = {}) => {
+  let top = 225;
+  let active: CalligraphyCategory = "rubbing";
+  let owner: HTMLDivElement;
+  let pendingFrame: number | null = null;
+  let restoring = false;
+  const saved: Record<CalligraphyCategory, number> = {
+    all: 0,
+    ink: savedTarget,
+    rubbing: 225,
+  };
+  const writes: {
+    origin: "pager" | "restore";
+    requested: number;
+    top: number;
+    height: string;
+  }[] = [];
+  const commitReadings: { top: number; height: string }[] = [];
+  const height = () =>
+    owner.querySelector<HTMLElement>("[data-calligraphy-category-pager]")?.style
+      .height ?? "720px";
+  const clamp = (value: number) =>
+    Math.max(0, Math.min(value, owner.scrollHeight - owner.clientHeight));
+  const cancelRestore = () => {
+    if (pendingFrame !== null) window.cancelAnimationFrame(pendingFrame);
+    pendingFrame = null;
+    for (const input of ["touchstart", "pointerdown"])
+      window.removeEventListener(input, cancelOnInput, true);
+  };
+  const cancelOnInput = (event: Event) => {
+    if (event.target instanceof Node && owner.contains(event.target))
+      cancelRestore();
+  };
+  const queueRestore = (desired: number) => {
+    cancelRestore();
+    for (const input of ["touchstart", "pointerdown"])
+      window.addEventListener(input, cancelOnInput, {
+        capture: true,
+        passive: true,
+      });
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = window.requestAnimationFrame(() => {
+        pendingFrame = null;
+        restoring = true;
+        owner.scrollTop = clamp(desired);
+        restoring = false;
+        cancelRestore();
+      });
+    });
+  };
+  const onCommit = vi.fn((category: CalligraphyCategory) => {
+    commitReadings.push({ top: owner.scrollTop, height: height() });
+    saved[active] = owner.scrollTop;
+    active = category;
+    queueRestore(saved[category]);
+  });
+  const v = renderPager(
+    platform,
+    onCommit,
+    true,
+    true,
+    {
+      readCurrentScrollTop: () => owner.scrollTop,
+      readSavedCategoryScrollTop: (category) => saved[category],
+    },
+    (element) => {
+      owner = element;
+      owner.dataset.primaryDestination = "calligraphy";
+      Object.defineProperties(owner, {
+        clientHeight: { configurable: true, get: () => 400 },
+        scrollHeight: {
+          configurable: true,
+          get: () =>
+            Math.max(
+              400,
+              Number.parseFloat(height()),
+              Number.parseFloat(
+                owner.querySelector<HTMLElement>(
+                  "[data-calligraphy-category-pager]",
+                )?.style.minHeight ?? "0",
+              ) || 0,
+            ),
+        },
+        scrollTop: {
+          configurable: true,
+          get: () => top,
+          set: (requested: number) => {
+            top = clamp(requested);
+            writes.push({
+              origin: restoring ? "restore" : "pager",
+              requested,
+              top,
+              height: height(),
+            });
+          },
+        },
+      });
+    },
+  );
+  v.render("rubbing");
+  readingHostCleanups.push(cancelRestore);
+  return {
+    ...v,
+    owner: v.container,
+    saved,
+    writes,
+    commitReadings,
+    visibleY: (panel: HTMLElement) => panelTranslationY(panel) - top,
+    nativeScrollTo: (value: number) =>
+      act(() => {
+        top = clamp(value);
+        owner.dispatchEvent(new Event("scroll"));
+      }),
+  };
+};
+
 describe("CalligraphyCategoryPager", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -178,6 +325,31 @@ describe("CalligraphyCategoryPager", () => {
       document.body,
     );
     vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(0);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const category = this.dataset.calligraphyCategoryPanel as
+          CalligraphyCategory | undefined;
+        const height = this.hasAttribute("data-calligraphy-category-pager")
+          ? Math.max(
+              Number.parseFloat(this.style.height) || 0,
+              Number.parseFloat(this.style.minHeight) || 0,
+            )
+          : category === undefined
+            ? 0
+            : panelHeights[category];
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: pagerWidth,
+          bottom: height,
+          width: pagerWidth,
+          height,
+          toJSON: () => undefined,
+        };
+      },
+    );
     Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
       value: TestResizeObserver,
@@ -233,6 +405,7 @@ describe("CalligraphyCategoryPager", () => {
   });
 
   afterEach(() => {
+    for (const cleanup of readingHostCleanups.splice(0)) cleanup();
     for (const root of roots.splice(0)) act(() => root.unmount());
     document.body.replaceChildren();
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
@@ -265,6 +438,228 @@ describe("CalligraphyCategoryPager", () => {
     expect(trackLeft(v.track)).toBeCloseTo(-400, 2);
     expect(v.onCommit).toHaveBeenCalledOnce();
     expect([...v.track.children]).toEqual(oldPanels);
+  });
+
+  it.each(["phone", "tablet"] as const)(
+    "hands off actual Y before the next paint while preserving both visible panels on %s",
+    (platform) => {
+      const v = renderReadingPager({ platform });
+      const source = v.panels[2]!;
+      const target = v.panels[1]!;
+      const oldPanels = [...v.panels];
+      drag(v.frame, 220);
+      expect(v.visibleY(source)).toBe(-225);
+      expect(v.visibleY(target)).toBe(0);
+      const beforeRelease = [v.visibleY(source), v.visibleY(target)];
+
+      touch(v.frame, "touchend");
+
+      expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+      expect(v.saved.rubbing).toBe(225);
+      expect(v.commitReadings).toEqual([{ top: 225, height: "720px" }]);
+      expect(source.hasAttribute("inert")).toBe(true);
+      expect(target.hasAttribute("inert")).toBe(false);
+      expect(v.frame.style.height).toBe("600px");
+      expect(v.writes).toEqual([
+        { origin: "pager", requested: 0, top: 0, height: "600px" },
+      ]);
+      expect(panelTranslationY(target)).toBe(0);
+      expect([v.visibleY(source), v.visibleY(target)]).toEqual(beforeRelease);
+      expect(trackLeft(v.track)).toBeLessThan(-400);
+
+      act(() => vi.advanceTimersByTime(32));
+      expect(v.writes.map(({ origin, top }) => ({ origin, top }))).toEqual([
+        { origin: "pager", top: 0 },
+        { origin: "restore", top: 0 },
+      ]);
+      expect([v.visibleY(source), v.visibleY(target)]).toEqual(beforeRelease);
+      expect(trackLeft(v.track)).toBeLessThan(-400);
+      act(() => vi.advanceTimersByTime(3000));
+      expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+      expect(v.frame.style.height).toBe("600px");
+      expect(v.owner.scrollTop).toBe(0);
+      expect(v.writes).toHaveLength(2);
+      expect([...v.track.children]).toEqual(oldPanels);
+    },
+  );
+
+  it.each([
+    { savedTarget: 135, expectedTop: 135, targetHeight: 600, minimumHeight: 0 },
+    { savedTarget: 480, expectedTop: 200, targetHeight: 600, minimumHeight: 0 },
+    {
+      savedTarget: 480,
+      expectedTop: 250,
+      targetHeight: 600,
+      minimumHeight: 650,
+    },
+    {
+      savedTarget: 480,
+      expectedTop: 480,
+      targetHeight: 1200,
+      minimumHeight: 0,
+    },
+  ])(
+    "clamps saved Y $savedTarget to $expectedTop using actual target height $targetHeight and minimum $minimumHeight",
+    ({ savedTarget, expectedTop, targetHeight, minimumHeight }) => {
+      panelHeights.ink = targetHeight;
+      const expectedHeight = `${targetHeight}px`;
+      const v = renderReadingPager({ savedTarget });
+      v.frame.style.minHeight = `${minimumHeight}px`;
+      const source = v.panels[2]!;
+      const target = v.panels[1]!;
+      drag(v.frame, 220);
+      expect(v.visibleY(target)).toBe(-expectedTop);
+      touch(v.frame, "touchend");
+      expect(v.owner.scrollTop).toBe(expectedTop);
+      expect(v.frame.style.height).toBe(expectedHeight);
+      expect(v.frame.getBoundingClientRect().height).toBe(
+        Math.max(targetHeight, minimumHeight),
+      );
+      expect(panelTranslationY(target)).toBe(0);
+      expect(v.visibleY(source)).toBe(-225);
+      expect(v.writes).toEqual([
+        {
+          origin: "pager",
+          requested: expectedTop,
+          top: expectedTop,
+          height: expectedHeight,
+        },
+      ]);
+      act(() => vi.advanceTimersByTime(32));
+      expect(v.owner.scrollTop).toBe(expectedTop);
+      expect(v.writes[1]).toEqual({
+        origin: "restore",
+        requested: expectedTop,
+        top: expectedTop,
+        height: expectedHeight,
+      });
+      act(() => vi.advanceTimersByTime(3000));
+      expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+      expect(v.saved.ink).toBe(savedTarget);
+    },
+  );
+
+  it.each(["pointerdown", "touchstart"] as const)(
+    "lets new %s cancel the queued restore while native vertical movement remains visible",
+    (input) => {
+      const v = renderReadingPager();
+      drag(v.frame, 220);
+      touch(v.frame, "touchend");
+      const target = v.panels[1]!;
+      expect(v.owner.scrollTop).toBe(0);
+      expect(v.writes).toHaveLength(1);
+      if (input === "touchstart") touch(v.frame, input);
+      else
+        act(() => v.frame.dispatchEvent(new Event(input, { bubbles: true })));
+      const beforeScroll = v.visibleY(target);
+      v.nativeScrollTo(80);
+      expect(panelTranslationY(target)).toBe(0);
+      expect(v.visibleY(target)).toBe(beforeScroll - 80);
+      if (input === "touchstart") {
+        expect(touch(v.frame, "touchmove", 304, 260).defaultPrevented).toBe(
+          false,
+        );
+        touch(v.frame, "touchend");
+      }
+      act(() => vi.advanceTimersByTime(3000));
+      expect(v.owner.scrollTop).toBe(80);
+      expect(v.writes).toHaveLength(1);
+      expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+      expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+    },
+  );
+
+  it("preserves the new source Y and saved target on an immediate reverse drag", () => {
+    const v = renderReadingPager();
+    drag(v.frame, 220);
+    touch(v.frame, "touchend");
+    expect(v.owner.scrollTop).toBe(0);
+    expect(trackLeft(v.track)).toBeLessThan(-400);
+    // A new touch cancels the first pending restore before either frame runs.
+    drag(v.frame, -220);
+    expect(v.visibleY(v.panels[2]!)).toBe(-225);
+    touch(v.frame, "touchend");
+    expect(v.onCommit.mock.calls.map(([category]) => category)).toEqual([
+      "ink",
+      "rubbing",
+    ]);
+    expect(v.owner.scrollTop).toBe(225);
+    expect(panelTranslationY(v.panels[2]!)).toBe(0);
+    expect(v.visibleY(v.panels[1]!)).toBe(0);
+    expect(v.writes.map(({ origin, top }) => ({ origin, top }))).toEqual([
+      { origin: "pager", top: 0 },
+      { origin: "pager", top: 225 },
+    ]);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(v.writes.map(({ origin, top }) => ({ origin, top }))).toEqual([
+      { origin: "pager", top: 0 },
+      { origin: "pager", top: 225 },
+      { origin: "restore", top: 225 },
+    ]);
+    expect(v.saved).toEqual({ all: 0, ink: 0, rubbing: 225 });
+    expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+  });
+
+  it.each([
+    "ordinary",
+    "vertical",
+    "second finger",
+    "cancel",
+    "hidden",
+  ] as const)(
+    "does not write Y or retain presentation offsets for %s input",
+    (input) => {
+      const v = renderReadingPager();
+      if (input === "second finger" || input === "cancel" || input === "hidden")
+        drag(v.frame, 220);
+      else touch(v.frame, "touchstart");
+      if (input === "vertical") {
+        expect(touch(v.frame, "touchmove", 304, 260).defaultPrevented).toBe(
+          false,
+        );
+        v.nativeScrollTo(245);
+        expect(v.visibleY(v.panels[2]!)).toBe(-245);
+      }
+      if (input === "second finger") touch(v.frame, "touchstart", 80, 300, 2);
+      if (input === "hidden") v.render("rubbing", false);
+      else touch(v.frame, input === "cancel" ? "touchcancel" : "touchend");
+      act(() => vi.advanceTimersByTime(3000));
+      expect(v.writes).toEqual([]);
+      expect(v.onCommit).not.toHaveBeenCalled();
+      expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+    },
+  );
+
+  it("clears reading offsets synchronously for a reduced-motion tab change", () => {
+    prefersReducedMotion = true;
+    const v = renderReadingPager({ savedTarget: 135 });
+    act(() => v.handle.current?.scrollToCategory("ink"));
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+    expect(v.owner.scrollTop).toBe(135);
+    expect(trackLeft(v.track)).toBe(-400);
+    expect(v.panels[1]!.hasAttribute("inert")).toBe(false);
+    expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+    expect(v.writes).toEqual([
+      { origin: "pager", requested: 135, top: 135, height: "600px" },
+    ]);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(v.owner.scrollTop).toBe(135);
+    expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+    expect(v.onCommit).toHaveBeenCalledOnce();
+  });
+
+  it("keeps PC category changes on the original delayed restore without a pager Y write", () => {
+    const v = renderReadingPager({ platform: "pc" });
+    act(() => v.handle.current?.scrollToCategory("ink"));
+    act(() => v.frame.dispatchEvent(new Event("scrollend")));
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+    expect(v.owner.scrollTop).toBe(225);
+    expect(v.writes).toEqual([]);
+    expect(v.panels.map(panelTranslationY)).toEqual([0, 0, 0]);
+    act(() => vi.advanceTimersByTime(32));
+    expect(v.writes.map(({ origin, top }) => ({ origin, top }))).toEqual([
+      { origin: "restore", top: 0 },
+    ]);
   });
 
   it("uses immediate tab paging for reduced motion and PC", () => {
