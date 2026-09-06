@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -39,8 +40,8 @@ jobs:
             ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          scope="$(node scripts/ci-e2e-scope.mjs)" || scope=full
-          case "$scope" in none|smoke|full) ;; *) scope=full ;; esac
+          scope="$(node scripts/ci-e2e-scope.mjs)"
+          case "$scope" in none|smoke|full) ;; *) exit 1 ;; esac
           echo "scope=$scope" >>"$GITHUB_OUTPUT"
           echo "Browser validation scope: $scope" >>"$GITHUB_STEP_SUMMARY"
 
@@ -64,11 +65,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check formatting
-        run: pnpm format:check
-
-      - name: Lint
-        run: pnpm lint
+      - name: Formatting and lint within 120 seconds
+        run: node scripts/verify.mjs lint
 
   typecheck:
     runs-on: ubuntu-latest
@@ -91,7 +89,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: pnpm typecheck
+        run: node scripts/verify.mjs typecheck
 
   test:
     runs-on: ubuntu-latest
@@ -128,19 +126,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build database integration dependencies
-        run: >-
-          pnpm --filter @moya/backend-production... --filter
-          @moya/catalog-importer... build
-
-      - name: Apply database migrations
-        run: pnpm db:migrate
-
-      - name: PostgreSQL integration tests
-        run: pnpm test:postgres
-
-      - name: Test
-        run: pnpm test
+      - name: PostgreSQL and ordinary tests within 120 seconds
+        run: node scripts/verify.mjs test
 
   build:
     runs-on: ubuntu-latest
@@ -163,7 +150,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: node scripts/verify.mjs build
 
   e2e-shards:
     needs: classify_e2e
@@ -236,14 +223,10 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @moya/tests exec playwright install --with-deps --only-shell chromium
-      - name: Run existing Formal Web smoke and verify native evidence
-        run: |
-          export MOYA_E2E_CHECKOUT_TREE="$(git rev-parse HEAD^{tree})"
-          export MOYA_E2E_ARTIFACT_DIR="$GITHUB_WORKSPACE/.local/e2e-ci/smoke"
-          mkdir -p "$MOYA_E2E_ARTIFACT_DIR"
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$MOYA_E2E_ARTIFACT_DIR/planned.json" pnpm --filter @moya/tests exec playwright test --config e2e/playwright.config.ts formal-web.spec.ts --project=desktop-chromium --workers=1 --list --reporter=json
-          pnpm --filter @moya/tests exec playwright test --config e2e/playwright.config.ts formal-web.spec.ts --project=desktop-chromium --workers=1
-          node scripts/ci-e2e-gate.mjs smoke "$MOYA_E2E_ARTIFACT_DIR/planned.json" "$MOYA_E2E_ARTIFACT_DIR/report.json"
+      - name: Daily browser smoke within 120 seconds
+        env:
+          MOYA_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.local/e2e-ci/smoke
+        run: node scripts/verify.mjs e2e
       - name: Preserve native smoke reports and failure diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
