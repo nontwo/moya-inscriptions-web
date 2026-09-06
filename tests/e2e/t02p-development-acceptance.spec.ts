@@ -1143,7 +1143,7 @@ test("Home tabs remain internal to Home and expose the bounded R03 feeds", async
   expect(page.url()).toBe(urlBefore);
 });
 
-test("Home native pager follows scroll progress and commits only after snap settle", async ({
+test("Home pager follows scroll progress and commits only after settle", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -1159,8 +1159,8 @@ test("Home native pager follows scroll progress and commits only after snap sett
 
   await expect(pager).toHaveAttribute("data-home-pager-native", "");
   await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
-  // The shared native pager retains both pan axes and explicitly allows zoom.
-  await expect(pager).toHaveCSS("touch-action", "pan-x pan-y pinch-zoom");
+  // Horizontal input is local; browser vertical scrolling and pinch remain enabled.
+  await expect(pager).toHaveCSS("touch-action", "pan-y pinch-zoom");
   await expect(nearby).not.toHaveAttribute("hidden", "");
   await expect(
     home.locator('[data-home-feed-panel="topics"]'),

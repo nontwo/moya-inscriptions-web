@@ -72,12 +72,12 @@
   overscroll-behavior-x: none;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  touch-action: pan-x pan-y;
+  touch-action: pan-x pan-y pinch-zoom;
   -webkit-overflow-scrolling: touch;
 }
 
-.pagerFrame:has([data-quick-actions="enabled"]) {
-  touch-action: pan-x pan-y pinch-zoom;
+.pagerFrame:not([data-calligraphy-pager-platform="pc"]) {
+  touch-action: pan-y pinch-zoom;
 }
 
 .pagerFrame::-webkit-scrollbar {

@@ -155,6 +155,11 @@
   touch-action: pan-x pan-y;
 }
 
+:global([data-horizontal-pager]) .cardAction,
+:global([data-calligraphy-category-pager]) .cardAction {
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
 .cardAction:focus {
   outline: none;
 }

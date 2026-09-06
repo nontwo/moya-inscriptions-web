@@ -344,7 +344,7 @@ test("MIG-C1 keeps runtime classification truthful and QA metadata isolated", as
   ).toHaveCount(0);
 });
 
-test("MIG-C1 card actions preserve trusted horizontal compositor paging", async ({
+test("MIG-C1 card actions preserve trusted touch paging with local horizontal control", async ({
   browser,
 }, testInfo) => {
   test.skip(
@@ -489,7 +489,7 @@ test("MIG-C1 accepts a trusted horizontal drag from blank space below a short Ca
   await context.close();
 });
 
-test("MIG-C1 native pager follows progress and commits only on release", async ({
+test("MIG-C1 pager follows progress and commits only on release", async ({
   page,
 }, testInfo) => {
   const { calligraphy } = await openSurface(page);
@@ -505,7 +505,9 @@ test("MIG-C1 native pager follows progress and commits only on release", async (
   await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
   await expect(pager).toHaveCSS(
     "touch-action",
-    /^(?:pan-x pan-y pinch-zoom|manipulation)$/u,
+    (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc"
+      ? /^(?:pan-x pan-y pinch-zoom|manipulation)$/u
+      : "pan-y pinch-zoom",
   );
 
   if (testInfo.project.name.startsWith("desktop")) {
@@ -698,3 +700,221 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
     })
     .toBeLessThanOrEqual(2);
 });
+
+for (const chrome of ["default", "hidden"] as const) {
+  test(`Controlled category touch preserves vertical intent, interruption and native pinch (${chrome})`, async ({
+    browser,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop-chromium",
+      "Continuous trusted touch injection requires Chromium CDP; Safari physical input remains an Owner gate.",
+    );
+    const context = await browser.newContext({
+      ...devices["iPhone 15"],
+      baseURL: testInfo.project.use.baseURL as string,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    const evidence: unknown[] = [];
+    const touch = (
+      type: "touchStart" | "touchMove" | "touchEnd",
+      points: { id: number; x: number; y: number }[],
+    ) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const move = async (
+      from: { x: number; y: number },
+      dx: number,
+      dy: number,
+    ) => {
+      for (let step = 1; step <= 10; step++) {
+        await touch("touchMove", [
+          { id: 1, x: from.x + (dx * step) / 10, y: from.y + (dy * step) / 10 },
+        ]);
+        await page.waitForTimeout(16);
+      }
+    };
+    try {
+      for (const surface of ["home", "calligraphy", "user"] as const) {
+        await page.goto(
+          chrome === "hidden" ? "/dev/t02p/qa?qaChrome=hidden" : "/dev/t02p/qa",
+        );
+        await expect(page.locator("[data-product-boot]")).toHaveCount(0);
+        if (surface === "calligraphy")
+          await page
+            .getByRole("navigation", { name: "主要内容" })
+            .getByRole("button", { name: "书帖", exact: true })
+            .click();
+        if (surface === "user")
+          await page.locator("[data-user-trigger]").click();
+        const frame = page.locator(
+          surface === "home"
+            ? "[data-home-feed-pager]"
+            : surface === "user"
+              ? "[data-user-pager]"
+              : "[data-calligraphy-category-pager]",
+        );
+        const panelSelector =
+          surface === "home"
+            ? "[data-home-feed-panel]"
+            : surface === "user"
+              ? "[data-user-panel]"
+              : "[data-calligraphy-category-panel]";
+        const panels = frame.locator(panelSelector);
+        const scroller =
+          surface === "calligraphy"
+            ? page.locator('[data-primary-destination="calligraphy"]')
+            : panels.first();
+        await expect(frame).toHaveCSS("touch-action", "pan-y pinch-zoom");
+        if (surface === "calligraphy")
+          await waitForInitialCategoryScroll(
+            page.locator("[data-calligraphy-category-surface]"),
+            "all",
+          );
+        const box = await frame.boundingBox();
+        if (!box) throw new Error("Missing pager");
+        const point = await frame.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const x = box.x + box.width * 0.8;
+          for (
+            let y = Math.min(innerHeight - 120, box.bottom - 24);
+            y > Math.max(box.top + 60, 240);
+            y -= 16
+          ) {
+            if (node.contains(document.elementFromPoint(x, y))) return { x, y };
+          }
+          throw new Error(
+            "No exposed pager point beneath the existing QA controls",
+          );
+        });
+        const beforeY = await scroller.evaluate((n) => n.scrollTop);
+        await touch("touchStart", [{ id: 1, ...point }]);
+        await move(point, -60, -180);
+        await touch("touchEnd", []);
+        await expect
+          .poll(() => scroller.evaluate((n) => n.scrollTop))
+          .toBeGreaterThan(beforeY + 20);
+        expect(await frame.evaluate((n) => n.scrollLeft)).toBeLessThanOrEqual(
+          2,
+        );
+        await expect(panels.first()).toHaveAttribute("aria-hidden", "false");
+        // Observe actual release -> committed, interactive target. No scrollend synthesis.
+        await frame.evaluate((node, selector) => {
+          const f = node as HTMLElement;
+          const data = {
+            released: 0,
+            committed: 0,
+            trusted: 0,
+            maximum: 0,
+            commitCount: 0,
+          };
+          Object.assign(f, { controlledEvidence: data });
+          f.addEventListener(
+            "pointermove",
+            (e) => {
+              if (e.isTrusted) data.trusted++;
+              data.maximum = Math.max(data.maximum, f.scrollLeft);
+            },
+            true,
+          );
+          f.addEventListener(
+            "pointerup",
+            () => {
+              data.released = performance.now();
+            },
+            true,
+          );
+          const observer = new MutationObserver(() => {
+            const target = f.querySelectorAll<HTMLElement>(selector)[1];
+            if (
+              target &&
+              !target.inert &&
+              target.getAttribute("aria-hidden") === "false"
+            ) {
+              data.committed = performance.now();
+              data.commitCount++;
+              observer.disconnect();
+            }
+          });
+          observer.observe(f, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["inert", "aria-hidden"],
+          });
+        }, panelSelector);
+        await touch("touchStart", [{ id: 1, ...point }]);
+        await move(point, -240, 4);
+        expect(await frame.evaluate((n) => n.scrollLeft)).toBeGreaterThan(100);
+        await expect(panels.first()).toHaveAttribute("aria-hidden", "false");
+        await touch("touchEnd", []);
+        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        const timing = await frame.evaluate(
+          (n) =>
+            (
+              n as HTMLElement & {
+                controlledEvidence: {
+                  released: number;
+                  committed: number;
+                  trusted: number;
+                  maximum: number;
+                  commitCount: number;
+                };
+              }
+            ).controlledEvidence,
+        );
+        expect(timing.trusted).toBeGreaterThan(0);
+        expect(timing.maximum).toBeGreaterThan(100);
+        expect(timing.commitCount).toBe(1);
+        expect(timing.committed - timing.released).toBeGreaterThanOrEqual(0);
+        // The 150ms logical settle leaves a rendering-frame budget inside 180ms.
+        expect(timing.committed - timing.released).toBeLessThanOrEqual(180);
+        // A new opposite input during the next settle supersedes that animation.
+        const reverse = { x: box.x + box.width * 0.25, y: point.y };
+        await touch("touchStart", [{ id: 1, ...reverse }]);
+        await move(reverse, 220, 0);
+        await touch("touchEnd", []);
+        await touch("touchStart", [{ id: 1, ...point }]);
+        await move(point, -240, 0);
+        await touch("touchEnd", []);
+        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        const committedLeft = await frame.evaluate((n) => n.scrollLeft);
+        // Second finger joins an already controlled horizontal drag. Neither finger lifts before scale proof.
+        await touch("touchStart", [{ id: 1, x: 150, y: point.y }]);
+        await touch("touchMove", [{ id: 1, x: 120, y: point.y }]);
+        const initialScale = await page.evaluate(() => visualViewport!.scale);
+        await touch("touchStart", [
+          { id: 1, x: 120, y: point.y },
+          { id: 2, x: 210, y: point.y },
+        ]);
+        await expect(frame).toHaveAttribute(
+          surface === "calligraphy"
+            ? "data-calligraphy-pager-scrolling"
+            : "data-horizontal-pager-scrolling",
+          "false",
+        );
+        for (let step = 1; step <= 12; step++) {
+          await touch("touchMove", [
+            { id: 1, x: 120 - step * 4, y: point.y },
+            { id: 2, x: 210 + step * 10, y: point.y },
+          ]);
+          await page.waitForTimeout(30);
+        }
+        await expect
+          .poll(() => page.evaluate(() => visualViewport!.scale))
+          .toBeGreaterThan(initialScale + 0.2);
+        const afterScale = await page.evaluate(() => visualViewport!.scale);
+        await touch("touchEnd", []);
+        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        expect(
+          Math.abs((await frame.evaluate((n) => n.scrollLeft)) - committedLeft),
+        ).toBeLessThanOrEqual(2);
+        await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
+        evidence.push({ surface, chrome, timing, initialScale, afterScale });
+      }
+    } finally {
+      await testInfo.attach("controlled-pager-input", {
+        body: JSON.stringify(evidence, null, 2),
+        contentType: "application/json",
+      });
+      await context.close();
+    }
+  });
+}

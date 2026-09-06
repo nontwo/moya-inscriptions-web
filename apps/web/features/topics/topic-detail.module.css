@@ -269,3 +269,10 @@
     transition-duration: 1ms;
   }
 }
+
+.topicCard[data-quick-actions="enabled"] {
+  touch-action: pan-x pan-y pinch-zoom;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}

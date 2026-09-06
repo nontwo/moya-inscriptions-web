@@ -187,7 +187,7 @@ describe("T02 R03 architecture boundaries", () => {
     );
   });
 
-  it("keeps the Home pager native and independent from Primary gesture machinery", async () => {
+  it("keeps local category touch paging independent from Primary gesture machinery", async () => {
     const homeAdapter = await readFile(
       path.join(repositoryRoot, "apps/web/features/home/home-feed-pager.tsx"),
       "utf8",
@@ -229,12 +229,18 @@ describe("T02 R03 architecture boundaries", () => {
     expect(pager).not.toMatch(
       /home-feed|discover|nearby|topics|user-scenarios/u,
     );
-    expect(pager).not.toMatch(
-      /setPointerCapture|releasePointerCapture|pointermove|translate3d/u,
+    // Category paging owns horizontal touch locally; browser vertical scroll and pinch remain available.
+    expect(pager).toContain(
+      'window.addEventListener("pointermove", move, true)',
     );
-    expect(pager).not.toMatch(
-      /addEventListener\(["'](?:pointer|touch)|spring|resistance/u,
+    expect(pager).toContain(
+      'window.removeEventListener("pointermove", move, true)',
     );
+    expect(pager).toContain("frame.setPointerCapture?.(event.pointerId)");
+    expect(pager).toContain("resolvePagerDirection");
+    expect(pager).toContain("cancelAnimation");
+    expect(pager).not.toMatch(/translate3d|spring|resistance/u);
+    expect(styles).toContain("touch-action: pan-y pinch-zoom;");
     expect(pager).not.toMatch(
       /HORIZONTAL_PAGER_SCROLL_IDLE_MS|setTimeout\([^)]*settle/u,
     );

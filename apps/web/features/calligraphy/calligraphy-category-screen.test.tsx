@@ -135,6 +135,7 @@ const activateCategory = (
       )
       ?.click(),
   );
+  act(() => vi.advanceTimersByTime(180));
   act(() => frame.dispatchEvent(new Event("scrollend")));
 };
 

@@ -204,9 +204,10 @@ describe("CalligraphyCategoryPager", () => {
     expect(phone.frame.scrollLeft).toBe(800);
     expect(scrollToCalls).toEqual([]);
     expect(phoneEvents).not.toHaveBeenCalled();
-    expect(phone.onCommit).not.toHaveBeenCalled();
+    expect(phone.onCommit).toHaveBeenCalledExactlyOnceWith("rubbing");
+    phone.render("rubbing");
     nativeScroll(phone.frame, 800);
-    expect(phone.onCommit).not.toHaveBeenCalled();
+    expect(phone.onCommit).toHaveBeenCalledOnce();
     act(() => phone.frame.dispatchEvent(new Event("scrollend")));
     expect(phone.onCommit).toHaveBeenCalledExactlyOnceWith("rubbing");
 
@@ -251,28 +252,24 @@ describe("CalligraphyCategoryPager", () => {
   });
 
   it.each(["phone", "tablet"] as const)(
-    "retains native smooth scrolling and actual-settle commits on %s",
+    "controls the bounded settle and commits exactly once at the target on %s",
     (platform) => {
       const { frame, handle, onCommit } = renderPager(platform);
-      const nativeSmoothScroll = vi
-        .spyOn(frame, "scrollTo")
-        .mockImplementation(() => {});
-
+      const nativeSmoothScroll = vi.spyOn(frame, "scrollTo");
       act(() => handle.current?.scrollToCategory("ink"));
-
-      expect(nativeSmoothScroll).toHaveBeenCalledExactlyOnceWith({
-        behavior: "smooth",
-        left: 400,
-        top: 0,
-      });
+      expect(nativeSmoothScroll).not.toHaveBeenCalled();
       expect(frame.scrollLeft).toBe(0);
       expect(onCommit).not.toHaveBeenCalled();
-      nativeScroll(frame, 200);
+      act(() => vi.advanceTimersByTime(90));
+      expect(frame.scrollLeft).toBeGreaterThan(0);
+      expect(frame.scrollLeft).toBeLessThan(400);
       act(() => frame.dispatchEvent(new Event("scrollend")));
       expect(onCommit).not.toHaveBeenCalled();
-      nativeScroll(frame, 400);
-      act(() => frame.dispatchEvent(new Event("scrollend")));
+      act(() => vi.advanceTimersByTime(90));
+      expect(frame.scrollLeft).toBe(400);
       expect(onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+      act(() => frame.dispatchEvent(new Event("scrollend")));
+      expect(onCommit).toHaveBeenCalledOnce();
     },
   );
 
@@ -291,6 +288,37 @@ describe("CalligraphyCategoryPager", () => {
     expect(onCommit).toHaveBeenCalledWith("ink");
     expect(heightObservedByCommit).toBe("900px");
     expect(rendered.frame.style.height).toBe("600px");
+  });
+
+  it("keeps a second-finger cancellation cleared across pointerdown and touchstart", () => {
+    const { frame, onCommit } = renderPager();
+    const pointer = (type: string, x: number, primary = true) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: x,
+        clientY: 200,
+      });
+      Object.defineProperties(event, {
+        pointerType: { value: "touch" },
+        pointerId: { value: primary ? 9 : 10 },
+        isPrimary: { value: primary },
+      });
+      act(() => frame.dispatchEvent(event));
+    };
+    pointer("pointerdown", 300);
+    pointer("pointermove", 80);
+    expect(frame.scrollLeft).toBe(220);
+    pointer("pointerdown", 350, false);
+    const event = new Event("touchstart", { bubbles: true });
+    Object.defineProperty(event, "touches", {
+      value: [{ identifier: 9 }, { identifier: 10 }],
+    });
+    act(() => frame.dispatchEvent(event));
+    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+    pointer("pointerup", 80);
+    act(() => vi.runAllTimers());
+    expect(frame.scrollLeft).toBe(0);
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it("cancels an interrupted gesture without changing category", () => {

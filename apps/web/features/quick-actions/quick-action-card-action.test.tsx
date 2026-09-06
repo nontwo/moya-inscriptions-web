@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { quickActionContentKey } from "./quick-action-types";
 import { QuickActionCardAction } from "./quick-action-card-action";
 import type { CatalogId, CatalogSummary } from "@moya/contracts";
 
@@ -51,9 +52,15 @@ const render = (likedIds: readonly string[] = []) => {
     root.render(
       <QuickActionCardAction
         className="card"
-        item={item}
-        environment={{ likedIds, favoriteIds: [], onAction }}
-        onOpenCatalog={onOpen}
+        content={{ kind: "catalog", id: item.id, title: item.title }}
+        environment={{
+          likedIds: likedIds.map((id) =>
+            quickActionContentKey({ kind: "catalog", id, title: "" }),
+          ),
+          favoriteIds: [],
+          onAction,
+        }}
+        onActivate={onOpen}
       />,
     ),
   );
@@ -186,7 +193,11 @@ describe("bounded QA gesture", () => {
       send(window, "pointerup", target);
       send(window, "pointerup", target);
       click(v.button);
-      expect(v.onAction).toHaveBeenCalledExactlyOnceWith(action, item.id);
+      expect(v.onAction).toHaveBeenCalledExactlyOnceWith(action, {
+        kind: "catalog",
+        id: item.id,
+        title: item.title,
+      });
       expect(v.onOpen).not.toHaveBeenCalled();
       expect(menu()).toBeNull();
       expect(v.button.releasePointerCapture).toHaveBeenCalledOnce();
@@ -394,13 +405,17 @@ describe("bounded QA gesture", () => {
         v.root.render(
           <QuickActionCardAction
             className="card"
-            item={replacement}
+            content={{
+              kind: "catalog",
+              id: replacement.id,
+              title: replacement.title,
+            }}
             environment={{
               likedIds: [],
               favoriteIds: [],
               onAction: v.onAction,
             }}
-            onOpenCatalog={v.onOpen}
+            onActivate={v.onOpen}
           />,
         ),
       );
@@ -414,7 +429,7 @@ describe("bounded QA gesture", () => {
       send(v.button, "pointerdown");
       send(window, "pointerup");
       click(v.button);
-      expect(v.onOpen).toHaveBeenCalledExactlyOnceWith(replacement, v.button);
+      expect(v.onOpen).toHaveBeenCalledExactlyOnceWith(v.button);
     },
   );
 });

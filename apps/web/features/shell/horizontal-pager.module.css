@@ -47,3 +47,8 @@
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+.frame:not([data-horizontal-pager-platform="pc"]),
+.frame:not([data-horizontal-pager-platform="pc"]) .panel {
+  touch-action: pan-y pinch-zoom;
+}

@@ -8,10 +8,11 @@ import {
 } from "./quick-action-layout";
 import styles from "./quick-action-menu.module.css";
 
-import type { CSSProperties } from "react";
-import type { CatalogSummary } from "@moya/contracts";
+import type { CSSProperties, ReactNode } from "react";
+import { quickActionContentKey } from "./quick-action-types";
 import type {
   ContentQuickActionEnvironment,
+  QuickActionContent,
   QuickActionName,
 } from "./quick-action-types";
 import type {
@@ -35,23 +36,25 @@ export const QUICK_ACTION_GESTURE_TIMING = {
 
 export const QuickActionCardAction = ({
   className,
-  item,
+  content,
   environment,
-  onOpenCatalog,
+  onActivate,
+  children,
+  topicKind,
 }: {
   readonly className: string | undefined;
-  readonly item: CatalogSummary;
+  readonly content: QuickActionContent;
+  readonly children?: ReactNode;
+  readonly topicKind?: string;
   readonly environment: ContentQuickActionEnvironment;
-  readonly onOpenCatalog: (
-    item: CatalogSummary,
-    opener: HTMLButtonElement,
-  ) => void;
+  readonly onActivate?: (opener: HTMLButtonElement) => void;
 }) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const sessionRef = useRef<Session | null>(null);
   const suppressPointerClick = useRef(false);
-  const latest = useRef({ item, environment });
-  latest.current = { item, environment };
+  const latest = useRef({ content, environment });
+  latest.current = { content, environment };
+  const contentKey = quickActionContentKey(content);
   const [view, setView] = useState<{
     layout: QuickActionLayout;
     candidate: QuickActionName | null;
@@ -78,7 +81,7 @@ export const QuickActionCardAction = ({
       session?.dispose();
       if (session) suppressPointerClick.current = true;
     };
-  }, [item.id]);
+  }, [contentKey]);
 
   useEffect(() => {
     if (!shareFeedback) return;
@@ -92,8 +95,16 @@ export const QuickActionCardAction = ({
         ref={buttonRef}
         type="button"
         className={className}
-        aria-label={`打开${item.title}`}
-        data-open-catalog=""
+        aria-label={
+          onActivate
+            ? `打开${content.title}`
+            : `长按${content.title}使用快捷操作`
+        }
+        data-open-catalog={content.kind === "catalog" ? "" : undefined}
+        data-topic-card={content.kind === "topic" ? "" : undefined}
+        data-topic-id={content.kind === "topic" ? content.id : undefined}
+        data-topic-kind={topicKind}
+        data-quick-action-content-kind={content.kind}
         data-quick-actions="enabled"
         data-quick-action-phase={
           view ? "menu-open" : holding ? "holding" : "idle"
@@ -107,7 +118,7 @@ export const QuickActionCardAction = ({
           }
           finish(false);
           suppressPointerClick.current = false;
-          onOpenCatalog(item, event.currentTarget);
+          onActivate?.(event.currentTarget);
         }}
         onKeyDown={() => {
           finish();
@@ -209,7 +220,7 @@ export const QuickActionCardAction = ({
             if (action) {
               latest.current.environment.onAction(
                 action,
-                latest.current.item.id,
+                latest.current.content,
               );
               if (action === "share") setShareFeedback(true);
             }
@@ -297,7 +308,9 @@ export const QuickActionCardAction = ({
               button.releasePointerCapture(session.pointerId);
           };
         }}
-      />
+      >
+        {children}
+      </button>
       {view &&
         createPortal(
           <div
@@ -319,9 +332,9 @@ export const QuickActionCardAction = ({
               const selected = p.action === view.candidate;
               const active =
                 p.action === "like"
-                  ? environment.likedIds.includes(item.id)
+                  ? environment.likedIds.includes(contentKey)
                   : p.action === "favorite"
-                    ? environment.favoriteIds.includes(item.id)
+                    ? environment.favoriteIds.includes(contentKey)
                     : false;
               const label =
                 p.action === "like"

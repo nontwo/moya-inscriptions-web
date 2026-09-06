@@ -50,6 +50,7 @@ const click = (element: Element | null) => {
 };
 
 const settlePager = (container: HTMLElement) => {
+  act(() => vi.advanceTimersByTime(180));
   act(() =>
     container
       .querySelector("[data-user-pager]")
@@ -428,7 +429,11 @@ describe("QaUserInterface", () => {
     settlePager(container);
     expect(frame.scrollLeft).toBe(0);
     expect(onTabChangeIntent).not.toHaveBeenCalled();
-    click(container.querySelector("[data-user-content-id]"));
+    act(() =>
+      container
+        .querySelector("[data-user-content-id]")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })),
+    );
     expect(onContentOpenIntent).not.toHaveBeenCalled();
     act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
     scrollPager(container, 130);

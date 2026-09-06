@@ -177,9 +177,9 @@ export const CatalogCard = ({
         variant === "feed" ? (
         <QuickActionCardAction
           className={styles.cardAction}
-          item={item}
+          content={{ kind: "catalog", id: item.id, title: item.title }}
           environment={quickActions}
-          onOpenCatalog={onOpenCatalog}
+          onActivate={(opener) => onOpenCatalog(item, opener)}
         />
       ) : (
         <button

@@ -17,6 +17,7 @@ import {
 } from "./user-scenarios";
 import { qaSearchScenarioNames, qaSearchScenarios } from "./search-scenarios";
 
+import { quickActionContentKey } from "../quick-actions/quick-action-types";
 import type { ContentQuickActionEnvironment } from "../quick-actions/quick-action-types";
 import type { HomeFeed } from "../home/home-feed";
 import type { CatalogDetail } from "@moya/contracts";
@@ -107,7 +108,8 @@ export const T02pQaHarness = ({
   const quickActions: ContentQuickActionEnvironment = {
     likedIds,
     favoriteIds,
-    onAction: (action, id) => {
+    onAction: (action, content) => {
+      const id = quickActionContentKey(content);
       const toggle = (ids: readonly string[]) =>
         ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id];
       if (action === "like") setLikedIds(toggle);

@@ -91,6 +91,49 @@ const nativeScroll = (frame: HTMLElement, scrollLeft: number) => {
   });
 };
 
+const controlledClock = () => {
+  let time = 0,
+    id = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  vi.spyOn(performance, "now").mockImplementation(() => time);
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    frames.set(++id, callback);
+    return id;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((key) => {
+    frames.delete(key);
+  });
+  return {
+    advance(next: number) {
+      time = next;
+      const current = [...frames.values()];
+      frames.clear();
+      act(() => current.forEach((callback) => callback(time)));
+    },
+    pointer(
+      target: EventTarget,
+      type: string,
+      x: number,
+      y: number,
+      primary = true,
+    ) {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: x,
+        clientY: y,
+        button: 0,
+      });
+      Object.defineProperties(event, {
+        pointerType: { value: "touch" },
+        pointerId: { value: primary ? 9 : 10 },
+        isPrimary: { value: primary },
+        timeStamp: { value: time },
+      });
+      act(() => target.dispatchEvent(event));
+    },
+  };
+};
+
 describe("HomeFeedPager native scroll-snap", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -336,13 +379,12 @@ describe("HomeFeedPager native scroll-snap", () => {
     const { frame, handle, onCommit } = renderPager();
 
     act(() => handle.current?.scrollToFeed("topics"));
-    expect(scrollToCalls.at(-1)).toMatchObject({
-      behavior: "smooth",
-      left: 830,
-    });
+    expect(scrollToCalls).toEqual([]);
+    expect(frame.scrollLeft).toBe(0);
     expect(onCommit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(180));
+    expect(frame.scrollLeft).toBe(830);
     act(() => frame.dispatchEvent(new Event("scrollend")));
-
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith("topics");
   });
@@ -352,7 +394,8 @@ describe("HomeFeedPager native scroll-snap", () => {
     const { frame, handle, onCommit } = renderPager();
 
     act(() => handle.current?.scrollToFeed("nearby"));
-    expect(scrollToCalls.at(-1)?.behavior).toBe("auto");
+    expect(scrollToCalls).toEqual([]);
+    expect(frame.scrollLeft).toBe(400);
     act(() => frame.dispatchEvent(new Event("scrollend")));
     expect(onCommit).toHaveBeenCalledWith("nearby");
   });
@@ -378,7 +421,11 @@ describe("HomeFeedPager native scroll-snap", () => {
     nativeScroll(frame, 400);
     act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
     act(() => frame.dispatchEvent(new Event("scrollend")));
-    act(() => action.click());
+    act(() =>
+      action.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 1 }),
+      ),
+    );
 
     expect(activated).not.toHaveBeenCalled();
 
@@ -445,15 +492,17 @@ describe("HomeFeedPager native scroll-snap", () => {
     const { frame, handle, onCommit } = renderPager();
 
     act(() => handle.current?.scrollToFeed("topics"));
-    expect(scrollToCalls).toHaveLength(1);
+    expect(scrollToCalls).toHaveLength(0);
 
     act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
     nativeScroll(frame, 0);
     act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
     act(() => frame.dispatchEvent(new Event("scrollend")));
 
+    act(() => vi.advanceTimersByTime(200));
+    expect(frame.scrollLeft).toBe(0);
     expect(onCommit).not.toHaveBeenCalled();
-    expect(scrollToCalls).toHaveLength(1);
+    expect(scrollToCalls).toHaveLength(0);
   });
 
   it("cancels an unsupported-browser fallback when a newer touch starts", () => {
@@ -552,5 +601,155 @@ describe("HomeFeedPager native scroll-snap", () => {
     act(() => vi.runAllTimers());
     expect(observer.observed.size).toBe(0);
     expect(frame.style.height).toBe("980px");
+  });
+  it("locks vertical intent, but lets a later new touch page horizontally and complete at 150ms", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    clock.pointer(v.frame, "pointerdown", 300, 300);
+    clock.pointer(window, "pointermove", 280, 250);
+    clock.pointer(window, "pointermove", 30, 245);
+    clock.pointer(window, "pointerup", 30, 245);
+    expect(v.frame.scrollLeft).toBe(0);
+    expect(v.onCommit).not.toHaveBeenCalled();
+    clock.pointer(v.frame, "pointerdown", 300, 300);
+    clock.advance(20);
+    clock.pointer(window, "pointermove", 60, 300);
+    expect(v.frame.scrollLeft).toBe(240);
+    clock.pointer(window, "pointerup", 60, 300);
+    clock.advance(169);
+    expect(v.frame.scrollLeft).toBeLessThan(400);
+    expect(v.onCommit).not.toHaveBeenCalled();
+    clock.advance(170);
+    expect(v.frame.scrollLeft).toBe(400);
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
+    expect(v.frame.dataset.horizontalPagerScrolling).toBe("false");
+    expect(v.frame.style.scrollSnapType).toBe("");
+  });
+
+  it("does not mistake a child's released implicit capture for a cancelled pager drag", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    const child = v.container.querySelector("button")!;
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.advance(20);
+    clock.pointer(window, "pointermove", 100, 200);
+    clock.pointer(child, "lostpointercapture", 100, 200);
+    clock.pointer(window, "pointermove", 50, 200);
+    expect(v.frame.scrollLeft).toBe(250);
+    clock.pointer(window, "pointerup", 50, 200);
+    clock.advance(200);
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
+  });
+
+  it("gives an open quick-action menu the pointer and cancels an external second finger without committing", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    const child = v.container.querySelector("button")!;
+    child.dataset.quickActions = "enabled";
+    clock.pointer(child, "pointerdown", 300, 200);
+    child.dataset.quickActionPhase = "menu-open";
+    clock.pointer(window, "pointermove", 80, 200);
+    clock.pointer(window, "pointerup", 80, 200);
+    expect(v.frame.scrollLeft).toBe(0);
+    delete child.dataset.quickActionPhase;
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.advance(20);
+    clock.pointer(window, "pointermove", 60, 200);
+    clock.pointer(document.body, "pointerdown", 350, 200, false);
+    clock.pointer(window, "pointerup", 60, 200);
+    clock.advance(250);
+    expect(v.frame.scrollLeft).toBe(0);
+    expect(v.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("does not recreate a cancelled multi-touch session through React touchstart", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    clock.pointer(v.frame, "pointerdown", 300, 200);
+    clock.pointer(window, "pointermove", 80, 200);
+    clock.pointer(v.frame, "pointerdown", 350, 200, false);
+    const event = new Event("touchstart", { bubbles: true });
+    Object.defineProperty(event, "touches", {
+      value: [{ identifier: 9 }, { identifier: 10 }],
+    });
+    act(() => v.frame.dispatchEvent(event));
+    expect(v.frame.dataset.horizontalPagerScrolling).toBe("false");
+    clock.pointer(window, "pointerup", 80, 200);
+    clock.advance(500);
+    expect(v.frame.scrollLeft).toBe(0);
+    expect(v.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("suppresses a drag tail even after holding still longer than 500ms", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    const child = v.container.querySelector("button")!;
+    const activate = vi.fn();
+    child.addEventListener("click", activate);
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.pointer(window, "pointermove", 260, 200);
+    clock.advance(800);
+    clock.pointer(window, "pointerup", 260, 200);
+    act(() =>
+      child.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 1 }),
+      ),
+    );
+    expect(activate).not.toHaveBeenCalled();
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.pointer(window, "pointerup", 300, 200);
+    act(() =>
+      child.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 1 }),
+      ),
+    );
+    expect(activate).toHaveBeenCalledOnce();
+  });
+
+  it("cancels stale animation work on a new request and on unmount", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    act(() => v.handle.current?.scrollToFeed("topics"));
+    clock.advance(40);
+    act(() => v.handle.current?.scrollToFeed("nearby"));
+    clock.advance(180);
+    expect(v.onCommit).not.toHaveBeenCalled();
+    clock.advance(220);
+    expect(v.frame.scrollLeft).toBe(400);
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
+    v.onCommit.mockClear();
+    act(() => v.handle.current?.scrollToFeed("topics"));
+    act(() => roots.pop()!.unmount());
+    clock.advance(500);
+    expect(v.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("suppresses only the drag tail, preserving a fresh tap and keyboard activation", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    const child = v.container.querySelector("button")!;
+    const activate = vi.fn();
+    child.addEventListener("click", activate);
+    const pointerClick = () =>
+      act(() =>
+        child.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, detail: 1 }),
+        ),
+      );
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.advance(20);
+    clock.pointer(window, "pointermove", 270, 200);
+    clock.pointer(window, "pointercancel", 270, 200);
+    pointerClick();
+    expect(activate).not.toHaveBeenCalled();
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.pointer(window, "pointerup", 300, 200);
+    pointerClick();
+    expect(activate).toHaveBeenCalledOnce();
+    clock.pointer(child, "pointerdown", 300, 200);
+    clock.pointer(window, "pointermove", 270, 200);
+    clock.pointer(window, "pointercancel", 270, 200);
+    act(() => child.click());
+    expect(activate).toHaveBeenCalledTimes(2);
   });
 });

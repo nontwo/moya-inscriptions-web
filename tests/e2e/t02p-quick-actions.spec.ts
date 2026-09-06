@@ -156,7 +156,9 @@ for (const path of [
     );
     await expect(pager).toHaveCSS(
       "touch-action",
-      enabled ? /^(manipulation|pan-x pan-y pinch-zoom)$/u : "pan-x pan-y",
+      (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc"
+        ? /^(?:manipulation|pan-x pan-y pinch-zoom)$/u
+        : "pan-y pinch-zoom",
     );
     if (!enabled) {
       await expect(page.locator("[data-quick-actions]")).toHaveCount(0);
@@ -765,6 +767,276 @@ for (const surface of ["home", "calligraphy"] as const) {
         contentType: "application/json",
       });
     } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const chrome of ["default", "hidden"] as const) {
+  test(`Nearby and Topic QA actions retain layout and activation, chrome ${chrome}`, async ({
+    page,
+  }) => {
+    await ready(
+      page,
+      chrome === "hidden" ? "/dev/t02p/qa?qaChrome=hidden" : "/dev/t02p/qa",
+    );
+    // Deep links keep both QA chrome variants visible while selecting each feed.
+    for (const [feed, kind] of [
+      ["附近", "nearby"],
+      ["专题", "topic"],
+    ] as const) {
+      await ready(
+        page,
+        `/dev/t02p/qa?feed=${kind === "nearby" ? "nearby" : "topics"}${chrome === "hidden" ? "&qaChrome=hidden" : ""}`,
+      );
+      await expect(
+        page.getByRole("tab", { name: feed, exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
+      const buttons = page.locator(
+        `[data-quick-action-content-kind="${kind}"]`,
+      );
+      const exposed = await buttons.evaluateAll((nodes) => {
+        for (const [index, node] of nodes.entries()) {
+          const box = node.getBoundingClientRect();
+          const x = box.x + box.width / 2;
+          for (
+            let y = Math.max(box.top + 12, 24);
+            y < Math.min(box.bottom - 12, innerHeight - 110);
+            y += 20
+          ) {
+            const hit = document.elementFromPoint(x, y);
+            if (hit && node.contains(hit)) return { index, point: { x, y } };
+          }
+        }
+        throw new Error("No exposed QA card");
+      });
+      const button = buttons.nth(exposed.index);
+      const card = button.locator("..");
+      // Compare the same settled hover state; existing desktop cards translate -2px on hover.
+      await page.mouse.move(exposed.point.x, exposed.point.y);
+      await card.evaluate(async (node) => {
+        await Promise.all(
+          node.getAnimations().map((animation) => animation.finished),
+        );
+      });
+      const before = await card.boundingBox();
+      const nodes = await card.locator("button button").count();
+      expect(nodes).toBe(0);
+      for (const action of ["like", "favorite", "share"] as const) {
+        const point = exposed.point;
+        await page.mouse.move(point.x, point.y);
+        await page.mouse.down();
+        await expect(page.locator("[data-quick-action-menu]")).toBeVisible();
+        const target = await targetFor(page, action);
+        await page.mouse.move(target.x, target.y, { steps: 6 });
+        await expect(
+          page.locator(`[data-quick-action="${action}"]`),
+        ).toHaveAttribute("data-candidate", "true");
+        await page.mouse.up();
+        await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
+        await expect(page.locator("[data-topic-detail]")).toHaveCount(0);
+        await expect(page.locator("[data-product-shell]")).toHaveAttribute(
+          "data-detail-open",
+          "false",
+        );
+        await page.mouse.move(exposed.point.x, exposed.point.y);
+        await card.evaluate(async (node) => {
+          await Promise.all(
+            node.getAnimations().map((animation) => animation.finished),
+          );
+        });
+        expect(await card.boundingBox()).toEqual(before);
+        if (action === "share")
+          await expect(card.getByRole("status")).toHaveText(
+            "QA：分享动作已触发（未分享）",
+          );
+        else {
+          await page.mouse.move(point.x, point.y);
+          await page.mouse.down();
+          await expect(
+            page.locator(`[data-quick-action="${action}"]`),
+          ).toHaveAttribute("data-state-active", "true");
+          const again = await targetFor(page, action);
+          await page.mouse.move(again.x, again.y);
+          await page.mouse.up();
+          await page.mouse.move(point.x, point.y);
+          await page.mouse.down();
+          await expect(
+            page.locator(`[data-quick-action="${action}"]`),
+          ).toHaveAttribute("data-state-active", "false");
+          await page.mouse.up();
+        }
+      }
+      await page.mouse.click(exposed.point.x, exposed.point.y);
+      if (kind === "topic") {
+        const detail = page.locator("[data-topic-detail]");
+        await expect(detail).toBeVisible();
+        await detail
+          .getByRole("button", { name: "返回专题", exact: true })
+          .focus();
+        await page.keyboard.press("Enter");
+        await expect(detail).toHaveCount(0);
+      } else {
+        await expect(page.locator("[data-topic-detail]")).toHaveCount(0);
+        await expect(page.locator("[data-product-shell]")).toHaveAttribute(
+          "data-detail-open",
+          "false",
+        );
+      }
+      await button.focus();
+      await page.keyboard.press("Enter");
+      if (kind === "nearby") {
+        await expect(page.locator("[data-topic-detail]")).toHaveCount(0);
+        await expect(page.locator("[data-product-shell]")).toHaveAttribute(
+          "data-detail-open",
+          "false",
+        );
+      } else {
+        const topic = page.locator("[data-topic-detail]");
+        await expect(topic).toBeVisible();
+        await topic
+          .getByRole("button", { name: "返回专题", exact: true })
+          .focus();
+        await page.keyboard.press("Enter");
+        await expect(topic).toHaveCount(0);
+        await expect(button).toBeFocused();
+      }
+    }
+  });
+}
+
+for (const chrome of ["default", "hidden"] as const) {
+  test(`Chromium nearby and topic continuous touch cancels for native pinch, ${chrome}`, async ({
+    browser,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop-chromium",
+      "Continuous compositor input requires Chromium CDP; physical Safari is a separate Owner gate.",
+    );
+    const baseURL = testInfo.project.use.baseURL;
+    if (typeof baseURL !== "string") throw new Error("Missing base URL");
+    const context = await browser.newContext({
+      ...devices["iPhone 15"],
+      baseURL,
+    });
+    const evidence: unknown[] = [];
+    try {
+      const page = await context.newPage();
+      const session = await context.newCDPSession(page);
+      for (const kind of ["nearby", "topic"] as const) {
+        for (const phase of ["pending", "open"] as const) {
+          await ready(
+            page,
+            `/dev/t02p/qa?feed=${kind === "nearby" ? "nearby" : "topics"}${chrome === "hidden" ? "&qaChrome=hidden" : ""}`,
+          );
+          const buttons = page.locator(
+            `[data-quick-action-content-kind="${kind}"]`,
+          );
+          const hit = await buttons.evaluateAll((nodes) => {
+            for (const [index, node] of nodes.entries()) {
+              const box = node.getBoundingClientRect(),
+                x = box.x + box.width / 2;
+              if (x > innerWidth - 130) continue;
+              for (
+                let y = Math.max(30, box.top + 12);
+                y < Math.min(innerHeight - 110, box.bottom - 12);
+                y += 20
+              ) {
+                const target = document.elementFromPoint(x, y);
+                if (target && node.contains(target)) return { index, x, y };
+              }
+            }
+            throw new Error("Missing exposed native card");
+          });
+          const button = buttons.nth(hit.index);
+          const ancestors = await button.evaluate((node) => {
+            const result: { tag: string; touchAction: string }[] = [];
+            for (let e: Element | null = node; e; e = e.parentElement)
+              result.push({
+                tag: e.tagName,
+                touchAction: getComputedStyle(e).touchAction,
+              });
+            return result;
+          });
+          for (const ancestor of ancestors)
+            expect(ancestor.touchAction).toMatch(
+              /^(?:auto|manipulation|.*pinch-zoom.*)$/,
+            );
+          const first = { id: 1, x: hit.x, y: hit.y };
+          await touch(session, "touchStart", [first]);
+          if (phase === "open")
+            await expect(
+              page.locator("[data-quick-action-menu]"),
+            ).toBeVisible();
+          const beforeScale = await page.evaluate(() => visualViewport!.scale);
+          await touch(session, "touchStart", [
+            first,
+            { id: 2, x: first.x + 80, y: first.y },
+          ]);
+          await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
+          await expect(page.locator("[data-home-feed-pager]")).toHaveAttribute(
+            "data-horizontal-pager-scrolling",
+            "false",
+          );
+          for (let step = 1; step <= 12; step++) {
+            await touch(session, "touchMove", [
+              { id: 1, x: first.x - step * 3, y: first.y },
+              { id: 2, x: first.x + 80 + step * 10, y: first.y },
+            ]);
+            await page.waitForTimeout(30);
+          }
+          await expect
+            .poll(() => page.evaluate(() => visualViewport!.scale))
+            .toBeGreaterThan(beforeScale + 0.2);
+          const afterScale = await page.evaluate(() => visualViewport!.scale);
+          await touch(session, "touchEnd", []);
+          await touch(session, "touchStart", [
+            { id: 1, x: 60, y: 300 },
+            { id: 2, x: 330, y: 300 },
+          ]);
+          for (let step = 1; step <= 12; step++) {
+            await touch(session, "touchMove", [
+              { id: 1, x: 60 + (125 * step) / 12, y: 300 },
+              { id: 2, x: 330 - (125 * step) / 12, y: 300 },
+            ]);
+            await page.waitForTimeout(30);
+          }
+          await touch(session, "touchEnd", []);
+          await expect
+            .poll(() => page.evaluate(() => visualViewport!.scale))
+            .toBeCloseTo(beforeScale, 1);
+          await touch(session, "touchStart", [first]);
+          for (const action of ["like", "favorite"])
+            await expect(
+              page.locator(`[data-quick-action="${action}"]`),
+            ).toHaveAttribute("data-state-active", "false");
+          await touch(session, "touchEnd", []);
+          await expect(
+            page.locator("[data-quick-action-feedback]"),
+          ).toHaveCount(0);
+          await page.touchscreen.tap(first.x, first.y);
+          await expect(page.locator("[data-product-shell]")).toHaveAttribute(
+            "data-detail-open",
+            "false",
+          );
+          if (kind === "topic")
+            await expect(page.locator("[data-topic-detail]")).toBeVisible();
+          else await expect(page.locator("[data-topic-detail]")).toHaveCount(0);
+          evidence.push({
+            chrome,
+            kind,
+            phase,
+            ancestors,
+            beforeScale,
+            afterScale,
+          });
+        }
+      }
+    } finally {
+      await testInfo.attach("nearby-topic-native-pinch", {
+        body: JSON.stringify(evidence, null, 2),
+        contentType: "application/json",
+      });
       await context.close();
     }
   });
