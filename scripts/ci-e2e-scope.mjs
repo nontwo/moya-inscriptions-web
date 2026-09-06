@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-// A small allowlist, not a dependency graph. Everything unlisted is full.
+// Only known documentation can omit browser checks. Every runtime/unknown or
+// mixed change runs daily smoke; full coverage is explicitly dispatched.
 const documentation = new Set([
   "AGENTS.md",
   "CONTRIBUTING.md",
@@ -30,27 +31,20 @@ const scopeForPath = (file) => {
     /^docs\/governance\/(?:[\w-]+\/)*[\w-]+\.md$/u.test(file)
   )
     return "none";
-  // Importer-only implementation and backend-only tests are not browser inputs.
-  // Their manifests/configuration and shared runtime packages are deliberately excluded.
-  if (
-    /^(?:services\/catalog-importer\/src\/|tests\/unit\/backend\/|tests\/integration\/postgres\/).+\.ts$/u.test(
-      file,
-    )
-  )
-    return "smoke";
-  return "full";
+  return "smoke";
 };
 
 export const classifyE2eScope = (paths, eventName = "pull_request") => {
+  if (eventName === "workflow_dispatch") return "full";
   if (
     !["pull_request", "push"].includes(eventName) ||
     !Array.isArray(paths) ||
     paths.length === 0 ||
     !paths.every(validPath)
   )
-    return "full";
+    throw new Error("Cannot classify daily browser scope");
   const scopes = new Set(paths.map(scopeForPath));
-  return scopes.size === 1 ? [...scopes][0] : "full";
+  return scopes.size === 1 ? [...scopes][0] : "smoke";
 };
 
 export const classifyGitDiff = (
@@ -60,6 +54,7 @@ export const classifyGitDiff = (
   runGit = (...args) =>
     execFileSync("git", args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }),
 ) => {
+  if (eventName === "workflow_dispatch") return "full";
   try {
     if (
       !["pull_request", "push"].includes(eventName) ||
@@ -70,7 +65,7 @@ export const classifyGitDiff = (
           !/^0+$/u.test(sha),
       )
     )
-      return "full";
+      throw new Error("Invalid event or comparison SHA");
     // PRs compare the merge base; main pushes compare the entire before..after span.
     const range =
       eventName === "pull_request" ? `${base}...${head}` : `${base}..${head}`;
@@ -82,10 +77,14 @@ export const classifyGitDiff = (
       range,
       "--",
     );
-    if (typeof output !== "string" || !output.endsWith("\0")) return "full";
+    if (typeof output !== "string" || !output.endsWith("\0"))
+      throw new Error("Missing NUL-delimited changed paths");
     return classifyE2eScope(output.slice(0, -1).split("\0"), eventName);
-  } catch {
-    return "full";
+  } catch (error) {
+    throw new Error(
+      "Changed-path comparison failed; daily acceptance cannot pass",
+      { cause: error },
+    );
   }
 };
 

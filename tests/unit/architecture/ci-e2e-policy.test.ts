@@ -32,7 +32,7 @@ const gateModule = (await import(
 const { classifyE2eScope: classify, classifyGitDiff } = scopeModule;
 const { assertBrowserGate: gate, assertSmokeReport } = gateModule;
 
-describe("small conservative browser selection", () => {
+describe("bounded daily browser selection", () => {
   it.each([
     [
       ["README.md", "docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md"],
@@ -40,28 +40,29 @@ describe("small conservative browser selection", () => {
     ],
     [["services/catalog-importer/src/cli.ts"], "smoke"],
     [["tests/unit/backend/parser.test.ts"], "smoke"],
-    [["apps/web/app/page.tsx"], "full"],
-    [["packages/contracts/src/catalog.ts"], "full"],
-    [["packages/ui/README.md"], "full"],
-    [["docs/prototypes/mobile-preview/README.md"], "full"],
-    [["docs/design-system/assets/card.svg"], "full"],
-    [["pnpm-lock.yaml"], "full"],
-    [[".github/workflows/ci.yml"], "full"],
-    [["README.md", "services/catalog-importer/src/cli.ts"], "full"],
-    [["docs/new-runtime-data.md"], "full"],
-    [["unknown.ts"], "full"],
-    [[], "full"],
-    [["README.md", ""], "full"],
-    [["../README.md"], "full"],
-    [[" README.md"], "full"],
-    [["docs/governance/a.md\napps/web/b.ts"], "full"],
-    [null, "full"],
+    [["apps/web/app/page.tsx"], "smoke"],
+    [["packages/contracts/src/catalog.ts"], "smoke"],
+    [["docs/prototypes/mobile-preview/README.md"], "smoke"],
+    [["docs/design-system/assets/card.svg"], "smoke"],
+    [["pnpm-lock.yaml"], "smoke"],
+    [[".github/workflows/ci.yml"], "smoke"],
+    [["README.md", "services/catalog-importer/src/cli.ts"], "smoke"],
+    [["unknown.ts"], "smoke"],
   ])("%j => %s for both PR and main", (paths, expected) => {
     for (const event of ["pull_request", "push"])
       expect(classify(paths, event)).toBe(expected);
   });
 
-  it("handles NUL boundaries, renames and comparison errors without a fast fallback", () => {
+  it("reserves full regression for an explicit dispatch", () => {
+    expect(classify([], "workflow_dispatch")).toBe("full");
+    expect(
+      classifyGitDiff("workflow_dispatch", "", "", () => {
+        throw new Error("manual regression does not need a diff");
+      }),
+    ).toBe("full");
+  });
+
+  it("fails closed on bad comparisons without starting an unbounded regression", () => {
     const a = "a".repeat(40),
       b = "b".repeat(40);
     const calls: string[][] = [];
@@ -80,23 +81,28 @@ describe("small conservative browser selection", () => {
     ]);
     expect(classifyGitDiff("push", a, b, git)).toBe("none");
     expect(calls[1]).toContain(a + ".." + b);
-    for (const output of [
-      "",
-      "README.md",
-      "README.md\0apps/web/page.tsx\0",
-      "README.md\0\0",
-      null,
-    ]) {
-      expect(classifyGitDiff("push", a, b, () => output)).toBe("full");
-    }
     expect(
+      classifyGitDiff("push", a, b, () => "README.md\0apps/web/page.tsx\0"),
+    ).toBe("smoke");
+    for (const output of ["", "README.md", "README.md\0\0", null])
+      expect(() => classifyGitDiff("push", a, b, () => output)).toThrow();
+    expect(() =>
       classifyGitDiff("push", a, b, () => {
         throw new Error("git failed");
       }),
-    ).toBe("full");
-    expect(classifyGitDiff("push", "0".repeat(40), b, git)).toBe("full");
-    expect(classifyGitDiff("push", "--bad", b, git)).toBe("full");
-    expect(classify([], "unknown")).toBe("full");
+    ).toThrow();
+    expect(() => classifyGitDiff("push", "0".repeat(40), b, git)).toThrow();
+    expect(() => classifyGitDiff("push", "--bad", b, git)).toThrow();
+    for (const paths of [
+      [],
+      [""],
+      ["../README.md"],
+      [" README.md"],
+      ["docs/governance/a.md\napps/web/b.ts"],
+      null,
+    ])
+      expect(() => classify(paths)).toThrow();
+    expect(() => classify([], "unknown")).toThrow();
   });
 });
 
@@ -204,7 +210,7 @@ describe("stable e2e result gate", () => {
       assertSmokeReport(nativeReport(true), undefined, identity),
     ).toThrow();
   });
-  it("retains #92 full execution and wraps only selection", async () => {
+  it("keeps explicit full regression and bounds the daily checks", async () => {
     const workflow = await readFile(root + ".github/workflows/ci.yml", "utf8");
     expect(workflow).toContain(
       "github.event.pull_request.number || github.run_id",
@@ -218,7 +224,10 @@ describe("stable e2e result gate", () => {
     expect(workflow).toContain("timeout-minutes: 22");
     for (const mode of ["prepare", "run", "merge"])
       expect(workflow).toContain("node tests/e2e/support/e2e-ci.mjs " + mode);
-    expect(workflow).toContain("node scripts/ci-e2e-gate.mjs smoke");
+    expect(workflow).toContain("workflow_dispatch:");
+    for (const mode of ["lint", "typecheck", "test", "build", "e2e"])
+      expect(workflow).toContain("node scripts/verify.mjs " + mode);
+    expect(workflow).not.toContain("|| scope=full");
     expect(workflow).toContain("node scripts/ci-e2e-gate.mjs gate");
     expect(workflow).toContain("if-no-files-found: error");
     expect(workflow).not.toContain("continue-on-error");
