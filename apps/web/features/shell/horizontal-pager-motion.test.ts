@@ -31,12 +31,12 @@ describe("shared horizontal pager motion over arbitrary panel counts", () => {
     expect(resolvePagerRelease(-100, fourOffsets, 0, -2)).toBe(0);
   });
 
-  it("has a monotonic bounded 150ms settle without a second trailing wait", () => {
+  it("has a monotonic bounded 120ms settle without a second trailing wait", () => {
     expect(pagerSettleProgress(-1)).toBe(0);
     expect(pagerSettleProgress(0)).toBe(0);
-    expect(pagerSettleProgress(75)).toBe(0.875);
-    expect(pagerSettleProgress(149)).toBeLessThan(1);
-    expect(pagerSettleProgress(150)).toBe(1);
+    expect(pagerSettleProgress(60)).toBe(0.875);
+    expect(pagerSettleProgress(119)).toBeLessThan(1);
+    expect(pagerSettleProgress(120)).toBe(1);
     expect(pagerSettleProgress(500)).toBe(1);
   });
 

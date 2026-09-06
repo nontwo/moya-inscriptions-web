@@ -1,7 +1,7 @@
 export const HORIZONTAL_PAGER_FALLBACK_STABLE_FRAMES = 4;
 export const HORIZONTAL_PAGER_CLICK_SUPPRESS_PX = 8;
 export const HORIZONTAL_PAGER_SCROLL_TOLERANCE_PX = 2;
-export const HORIZONTAL_PAGER_SETTLE_MS = 150;
+export const HORIZONTAL_PAGER_SETTLE_MS = 120;
 
 export type PagerDirection = "pending" | "horizontal" | "vertical";
 

@@ -602,7 +602,7 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(observer.observed.size).toBe(0);
     expect(frame.style.height).toBe("980px");
   });
-  it("locks vertical intent, but lets a later new touch page horizontally and complete at 150ms", () => {
+  it("locks vertical intent, but lets a later new touch page horizontally and complete at 120ms", () => {
     const clock = controlledClock();
     const v = renderPager();
     clock.pointer(v.frame, "pointerdown", 300, 300);
@@ -616,10 +616,10 @@ describe("HomeFeedPager native scroll-snap", () => {
     clock.pointer(window, "pointermove", 60, 300);
     expect(v.frame.scrollLeft).toBe(240);
     clock.pointer(window, "pointerup", 60, 300);
-    clock.advance(169);
+    clock.advance(139);
     expect(v.frame.scrollLeft).toBeLessThan(400);
     expect(v.onCommit).not.toHaveBeenCalled();
-    clock.advance(170);
+    clock.advance(140);
     expect(v.frame.scrollLeft).toBe(400);
     expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
     expect(v.frame.dataset.horizontalPagerScrolling).toBe("false");
@@ -712,9 +712,9 @@ describe("HomeFeedPager native scroll-snap", () => {
     act(() => v.handle.current?.scrollToFeed("topics"));
     clock.advance(40);
     act(() => v.handle.current?.scrollToFeed("nearby"));
-    clock.advance(180);
+    clock.advance(159);
     expect(v.onCommit).not.toHaveBeenCalled();
-    clock.advance(220);
+    clock.advance(160);
     expect(v.frame.scrollLeft).toBe(400);
     expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
     v.onCommit.mockClear();
