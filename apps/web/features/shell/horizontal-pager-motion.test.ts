@@ -24,6 +24,8 @@ describe("shared horizontal pager motion over arbitrary panel counts", () => {
 
   it("uses the nearest page for slow releases and bounds a flick to one adjacent page", () => {
     expect(resolvePagerRelease(500, fourOffsets, 1, 0)).toBe(1);
+    expect(resolvePagerRelease(188.5, [0, 393, 786], 0, 0.47)).toBe(1);
+    expect(resolvePagerRelease(188.5, [0, 393, 786], 0, 0.3)).toBe(0);
     expect(resolvePagerRelease(600, fourOffsets, 1, 0)).toBe(2);
     expect(resolvePagerRelease(420, fourOffsets, 1, 0.6)).toBe(2);
     expect(resolvePagerRelease(390, fourOffsets, 1, 0.6)).toBe(1);
@@ -31,12 +33,12 @@ describe("shared horizontal pager motion over arbitrary panel counts", () => {
     expect(resolvePagerRelease(-100, fourOffsets, 0, -2)).toBe(0);
   });
 
-  it("has a monotonic bounded 120ms settle without a second trailing wait", () => {
+  it("has a monotonic bounded 60ms settle without a second trailing wait", () => {
     expect(pagerSettleProgress(-1)).toBe(0);
     expect(pagerSettleProgress(0)).toBe(0);
-    expect(pagerSettleProgress(60)).toBe(0.875);
-    expect(pagerSettleProgress(119)).toBeLessThan(1);
-    expect(pagerSettleProgress(120)).toBe(1);
+    expect(pagerSettleProgress(30)).toBe(0.875);
+    expect(pagerSettleProgress(59)).toBeLessThan(1);
+    expect(pagerSettleProgress(60)).toBe(1);
     expect(pagerSettleProgress(500)).toBe(1);
   });
 

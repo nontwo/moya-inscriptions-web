@@ -260,12 +260,12 @@ describe("CalligraphyCategoryPager", () => {
       expect(nativeSmoothScroll).not.toHaveBeenCalled();
       expect(frame.scrollLeft).toBe(0);
       expect(onCommit).not.toHaveBeenCalled();
-      act(() => vi.advanceTimersByTime(90));
+      act(() => vi.advanceTimersByTime(30));
       expect(frame.scrollLeft).toBeGreaterThan(0);
       expect(frame.scrollLeft).toBeLessThan(400);
       act(() => frame.dispatchEvent(new Event("scrollend")));
       expect(onCommit).not.toHaveBeenCalled();
-      act(() => vi.advanceTimersByTime(90));
+      act(() => vi.advanceTimersByTime(30));
       expect(frame.scrollLeft).toBe(400);
       expect(onCommit).toHaveBeenCalledExactlyOnceWith("ink");
       act(() => frame.dispatchEvent(new Event("scrollend")));

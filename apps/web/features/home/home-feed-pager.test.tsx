@@ -104,11 +104,11 @@ const controlledClock = () => {
     frames.delete(key);
   });
   return {
-    advance(next: number) {
+    advance(next: number, frameTime = next) {
       time = next;
       const current = [...frames.values()];
       frames.clear();
-      act(() => current.forEach((callback) => callback(time)));
+      act(() => current.forEach((callback) => callback(frameTime)));
     },
     pointer(
       target: EventTarget,
@@ -602,7 +602,7 @@ describe("HomeFeedPager native scroll-snap", () => {
     expect(observer.observed.size).toBe(0);
     expect(frame.style.height).toBe("980px");
   });
-  it("locks vertical intent, but lets a later new touch page horizontally and complete at 120ms", () => {
+  it("locks vertical intent, but lets a later new touch page horizontally and complete at 60ms", () => {
     const clock = controlledClock();
     const v = renderPager();
     clock.pointer(v.frame, "pointerdown", 300, 300);
@@ -616,14 +616,26 @@ describe("HomeFeedPager native scroll-snap", () => {
     clock.pointer(window, "pointermove", 60, 300);
     expect(v.frame.scrollLeft).toBe(240);
     clock.pointer(window, "pointerup", 60, 300);
-    clock.advance(139);
+    clock.advance(79);
     expect(v.frame.scrollLeft).toBeLessThan(400);
     expect(v.onCommit).not.toHaveBeenCalled();
-    clock.advance(140);
+    clock.advance(80);
     expect(v.frame.scrollLeft).toBe(400);
     expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
     expect(v.frame.dataset.horizontalPagerScrolling).toBe("false");
     expect(v.frame.style.scrollSnapType).toBe("");
+  });
+
+  it("finishes against elapsed time when a compositor frame timestamp arrives late", () => {
+    const clock = controlledClock();
+    const v = renderPager();
+    clock.pointer(v.frame, "pointerdown", 300, 200);
+    clock.advance(20);
+    clock.pointer(window, "pointermove", 60, 200);
+    clock.pointer(window, "pointerup", 60, 200);
+    clock.advance(80, 50);
+    expect(v.frame.scrollLeft).toBe(400);
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
   });
 
   it("does not mistake a child's released implicit capture for a cancelled pager drag", () => {
@@ -712,9 +724,9 @@ describe("HomeFeedPager native scroll-snap", () => {
     act(() => v.handle.current?.scrollToFeed("topics"));
     clock.advance(40);
     act(() => v.handle.current?.scrollToFeed("nearby"));
-    clock.advance(159);
+    clock.advance(99);
     expect(v.onCommit).not.toHaveBeenCalled();
-    clock.advance(160);
+    clock.advance(100);
     expect(v.frame.scrollLeft).toBe(400);
     expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("nearby");
     v.onCommit.mockClear();

@@ -1,7 +1,7 @@
 export const HORIZONTAL_PAGER_FALLBACK_STABLE_FRAMES = 4;
 export const HORIZONTAL_PAGER_CLICK_SUPPRESS_PX = 8;
 export const HORIZONTAL_PAGER_SCROLL_TOLERANCE_PX = 2;
-export const HORIZONTAL_PAGER_SETTLE_MS = 120;
+export const HORIZONTAL_PAGER_SETTLE_MS = 60;
 
 export type PagerDirection = "pending" | "horizontal" | "vertical";
 
@@ -34,7 +34,7 @@ export const resolvePagerRelease = (
 ): number => {
   const distance = left - (offsets[origin] ?? 0);
   const target =
-    Math.abs(velocity) >= 0.5 && Math.abs(distance) >= 24
+    Math.abs(velocity) >= 0.35 && Math.abs(distance) >= 24
       ? origin + Math.sign(velocity)
       : resolveHorizontalPagerSettledIndex(left, offsets);
   return Math.max(

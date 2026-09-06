@@ -385,7 +385,8 @@ export const CalligraphyCategoryPager = forwardRef<
         complete();
         return;
       }
-      const tick = (time: number) => {
+      const tick = () => {
+        const time = performance.now();
         animationFrameRef.current = null;
         if (sessionRef.current?.generation !== generation) return;
         if (time - began >= HORIZONTAL_PAGER_SETTLE_MS) {

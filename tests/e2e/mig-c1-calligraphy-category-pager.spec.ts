@@ -864,7 +864,7 @@ for (const chrome of ["default", "hidden"] as const) {
         expect(timing.maximum).toBeGreaterThan(100);
         expect(timing.commitCount).toBe(1);
         expect(timing.committed - timing.released).toBeGreaterThanOrEqual(0);
-        // The 120ms logical settle leaves a compositor-frame budget inside 180ms.
+        // The 60ms logical settle reserves time for the synchronous category/inert commit within 180ms.
         expect(timing.committed - timing.released).toBeLessThanOrEqual(180);
         // A new opposite input during the next settle supersedes that animation.
         const reverse = { x: box.x + box.width * 0.25, y: point.y };
