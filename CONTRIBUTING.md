@@ -49,30 +49,24 @@ the affected validation. Record each applicable command and result in the PR.
 
 ### Test feedback loop
 
-- Daily work: run the related unit file and browser spec/project, for example
-  `pnpm --filter @moya/tests exec vitest run unit/e2e-report-integrity.test.ts`
-  and
-  `pnpm test:e2e mig-c1-calligraphy-category-pager.spec.ts --project=desktop-chromium`.
-- Investigate a failure with its exact title (`-g`), `--retries=0` and
-  optionally `--max-failures=1`; verify a timing fix with `--repeat-each=10`.
-  Preserve every failed attempt, not only the successful rerun.
-- `pnpm test:e2e` still explicitly runs the complete local suite. If another
-  approved preview owns the default ports, set `MOYA_E2E_WEB_PORT=4320` and
-  `MOYA_E2E_PUBLIC_API_PORT=4321` together; do not start competing runtimes.
-- Final PR CI runs all five projects in three native shards, one worker per
-  runner with `fullyParallel=false`. The stable `e2e` check requires every shard
-  job to succeed and validates the exact collection union and complete results.
-  Flaky retry outcomes fail the gate. Artifacts contain native JSON/blob
-  reports, failure screenshots, failure/retry traces and service logs; the
-  aggregate includes merged JSON/HTML. Inspect per-shard install/readiness/test
-  timings together with GitHub job wall time and total runner usage before
-  claiming a speed improvement.
+- Daily mandatory acceptance: `pnpm verify`, with dependencies and Chromium
+  already installed. Formatting, lint, typecheck, ordinary tests, build and
+  existing Formal browser smoke share a 120-second budget. PostgreSQL also runs
+  locally when `TEST_DATABASE_URL` is set and always runs in CI.
+- Browser-only daily check: `pnpm test:e2e:smoke`; five existing Formal cases,
+  desktop Chromium, one worker, zero retries, first failure stops execution.
+- During implementation, run relevant unit files and targeted browser cases for
+  the behavior being changed. Preserve failures; do not automatically repeat an
+  unchanged full suite. A timing investigation may request targeted repetition.
+- Full cross-browser regression is explicit: `pnpm test:e2e`, or **CI → Run
+  workflow** for the intended branch. It retains all five projects, three CI
+  shards and the strict complete-report gate. It is not a daily prerequisite.
+- A timeout is a failed time budget, never a successful acceptance. Daily smoke
+  does not certify full cross-browser coverage or erase existing release
+  failures. Scoped feature tests and Owner visual/device gates still apply.
 
-CI has an 18-minute native suite deadline within each 22-minute test step and
-30-minute shard job, with bounded installation, teardown/report and upload
-windows. Ordinary failures still upload diagnostics; hard cancellation or runner
-loss can leave incomplete evidence and must never be reported as a complete
-pass.
+See [the browser validation guide](tests/e2e/README.md) for deadlines, setup
+exclusions, evidence locations, free test ports and the full regression policy.
 
 ## Pull request, review, and merge
 
