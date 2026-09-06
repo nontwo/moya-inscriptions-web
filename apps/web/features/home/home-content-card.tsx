@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { Icon } from "@moya/ui";
+import { useContentQuickActions } from "../quick-actions/content-quick-actions";
+import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 
 import styles from "./home-screen.module.css";
 
@@ -16,6 +18,7 @@ export const HomeContentCard = ({
   readonly item: NearbyCard;
   readonly onMediaSettled?: () => void;
 }) => {
+  const quickActions = useContentQuickActions();
   const [failed, setFailed] = useState(false);
   const media = item.media;
 
@@ -68,6 +71,13 @@ export const HomeContentCard = ({
           <p className={styles.cardMetadata}>{item.metadata}</p>
         )}
       </div>
+      {quickActions === null ? null : (
+        <QuickActionCardAction
+          className={styles.cardAction}
+          content={{ kind: "nearby", id: item.id, title: item.title }}
+          environment={quickActions}
+        />
+      )}
     </article>
   );
 };

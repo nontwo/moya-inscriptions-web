@@ -59,22 +59,47 @@ const openSurface = async (page: Page, qa = true) => {
 
 const settleCategory = async (calligraphy: Locator, category: Category) => {
   const pager = calligraphy.locator("[data-calligraphy-category-pager]");
-  await pager.evaluate((node, targetCategory) => {
-    const frame = node as HTMLElement;
-    const panel = frame.querySelector<HTMLElement>(
-      `[data-calligraphy-category-panel="${targetCategory}"]`,
-    );
-    if (panel === null) throw new Error("Missing Calligraphy category panel");
-    frame.style.scrollSnapType = "none";
-    frame.scrollLeft = panel.offsetLeft;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new Event("scrollend"));
-    frame.style.scrollSnapType = "";
-  }, category);
+  const pc =
+    (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc";
+  if (pc) {
+    await pager.evaluate((node, targetCategory) => {
+      const frame = node as HTMLElement;
+      const panel = frame.querySelector<HTMLElement>(
+        `[data-calligraphy-category-panel="${targetCategory}"]`,
+      );
+      if (panel === null) throw new Error("Missing Calligraphy category panel");
+      frame.style.scrollSnapType = "none";
+      frame.scrollLeft = panel.offsetLeft;
+      frame.dispatchEvent(new Event("scroll"));
+      frame.dispatchEvent(new Event("scrollend"));
+      frame.style.scrollSnapType = "";
+    }, category);
+  } else {
+    await calligraphy
+      .locator(`[data-calligraphy-category-tab="${category}"]`)
+      .evaluate((button) => (button as HTMLButtonElement).click());
+  }
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
     category,
   );
+  if (!pc) {
+    await expect
+      .poll(() =>
+        pager.evaluate((node, targetCategory) => {
+          const panel = node.querySelector<HTMLElement>(
+            `[data-calligraphy-category-panel="${targetCategory}"]`,
+          );
+          if (panel === null)
+            throw new Error("Missing Calligraphy category panel");
+          return Math.abs(
+            panel.getBoundingClientRect().left -
+              node.getBoundingClientRect().left,
+          );
+        }, category),
+      )
+      .toBeLessThanOrEqual(2);
+  }
 };
 
 const primaryScrollEvidence = async (surface: Locator) =>
@@ -117,11 +142,14 @@ const writePrimaryScroll = async (surface: Locator, desired: number) =>
     return element.scrollTop;
   }, desired);
 
-const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
+const waitForInitialCategoryScroll = async (
+  calligraphy: Locator,
+  category: Category = "ink",
+) => {
   // A committed category attribute precedes its queued scroll restoration.
   // Observe settled geometry and the initial offset, not a fixed time delay.
   await calligraphy.evaluate(
-    (node) =>
+    (node, targetCategory) =>
       new Promise<void>((resolve) => {
         const root = node as HTMLElement;
         const shell = root.closest<HTMLElement>("[data-product-shell]")!;
@@ -136,7 +164,7 @@ const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
           "[data-calligraphy-category-pager]",
         )!;
         const panel = root.querySelector<HTMLElement>(
-          '[data-calligraphy-category-panel="ink"]',
+          `[data-calligraphy-category-panel="${targetCategory}"]`,
         )!;
         const masonry = panel.querySelector<HTMLElement>(
           "[data-home-masonry]",
@@ -150,7 +178,10 @@ const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
               (image) => image.complete,
             ) &&
             pager.dataset.calligraphyPagerScrolling === "false" &&
-            pager.scrollLeft === panel.offsetLeft &&
+            Math.abs(
+              panel.getBoundingClientRect().left -
+                pager.getBoundingClientRect().left,
+            ) <= 2 &&
             scroller.scrollTop === 0;
           const geometry = JSON.stringify([
             scroller.scrollHeight,
@@ -165,6 +196,7 @@ const waitForInitialCategoryScroll = async (calligraphy: Locator) => {
         };
         requestAnimationFrame(sample);
       }),
+    category,
   );
 };
 
@@ -178,9 +210,9 @@ const trustedHorizontalPointDrag = async (
   const { x, y } = point;
   const distance = Math.min(Math.max(64, pagerWidth * 0.58), x - 8);
 
-  await pager.evaluate((node) => {
+  const initialPanelLeft = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.dataset.testMaximumScrollLeft = "0";
+    frame.dataset.testMaximumHorizontalDisplacement = "0";
     frame.dataset.testTrustedTouchEvents = "0";
     frame.addEventListener(
       "touchmove",
@@ -193,14 +225,8 @@ const trustedHorizontalPointDrag = async (
       },
       { capture: true },
     );
-    frame.addEventListener("scroll", () => {
-      frame.dataset.testMaximumScrollLeft = String(
-        Math.max(
-          Number(frame.dataset.testMaximumScrollLeft ?? "0"),
-          frame.scrollLeft,
-        ),
-      );
-    });
+    return frame.firstElementChild!.firstElementChild!.getBoundingClientRect()
+      .left;
   });
 
   await session.send("Input.dispatchTouchEvent", {
@@ -213,6 +239,18 @@ const trustedHorizontalPointDrag = async (
       type: "touchMove",
     });
     await page.waitForTimeout(12);
+    await pager.evaluate((node, initialLeft) => {
+      const frame = node as HTMLElement;
+      const currentLeft =
+        frame.firstElementChild!.firstElementChild!.getBoundingClientRect()
+          .left;
+      frame.dataset.testMaximumHorizontalDisplacement = String(
+        Math.max(
+          Number(frame.dataset.testMaximumHorizontalDisplacement ?? "0"),
+          Math.abs(currentLeft - initialLeft),
+        ),
+      );
+    }, initialPanelLeft);
   }
   await session.send("Input.dispatchTouchEvent", {
     touchPoints: [],
@@ -256,7 +294,9 @@ const trustedDragEvidence = (pager: Locator) =>
   pager.evaluate((node) => {
     const frame = node as HTMLElement;
     return {
-      maximumScrollLeft: Number(frame.dataset.testMaximumScrollLeft ?? "0"),
+      maximumHorizontalDisplacement: Number(
+        frame.dataset.testMaximumHorizontalDisplacement ?? "0",
+      ),
       trustedTouchEvents: Number(frame.dataset.testTrustedTouchEvents ?? "0"),
     };
   });
@@ -340,7 +380,7 @@ test("MIG-C1 keeps runtime classification truthful and QA metadata isolated", as
   ).toHaveCount(0);
 });
 
-test("MIG-C1 card actions preserve trusted horizontal compositor paging", async ({
+test("MIG-C1 card actions preserve trusted touch paging with local horizontal control", async ({
   browser,
 }, testInfo) => {
   test.skip(
@@ -371,7 +411,10 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
     .locator('[data-home-feed-panel="discover"] [data-open-catalog]')
     .nth(1);
   await expect(homeCard).toBeVisible();
-  await expect(homeCard).toHaveCSS("touch-action", "pan-x pan-y");
+  await expect(homeCard).toHaveCSS(
+    "touch-action",
+    /^(?:pan-x pan-y pinch-zoom|manipulation)$/u,
+  );
   await trustedHorizontalCardDrag(page, session, homePager, homeCard);
   await expect(surface.locator("[data-home-surface]")).toHaveAttribute(
     "data-active-home-feed",
@@ -379,7 +422,7 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
   );
   const homeEvidence = await trustedDragEvidence(homePager);
   expect(homeEvidence.trustedTouchEvents).toBeGreaterThan(0);
-  expect(homeEvidence.maximumScrollLeft).toBeGreaterThan(40);
+  expect(homeEvidence.maximumHorizontalDisplacement).toBeGreaterThan(40);
 
   await activateCalligraphy(surface);
   const calligraphy = calligraphySurface(surface);
@@ -390,7 +433,10 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
     .locator('[data-calligraphy-category-panel="all"] [data-open-catalog]')
     .nth(1);
   await expect(calligraphyCard).toBeVisible();
-  await expect(calligraphyCard).toHaveCSS("touch-action", "pan-x pan-y");
+  await expect(calligraphyCard).toHaveCSS(
+    "touch-action",
+    /^(?:pan-x pan-y pinch-zoom|manipulation)$/u,
+  );
   await trustedHorizontalCardDrag(
     page,
     session,
@@ -403,7 +449,7 @@ test("MIG-C1 card actions preserve trusted horizontal compositor paging", async 
   );
   const calligraphyEvidence = await trustedDragEvidence(calligraphyPager);
   expect(calligraphyEvidence.trustedTouchEvents).toBeGreaterThan(0);
-  expect(calligraphyEvidence.maximumScrollLeft).toBeGreaterThan(40);
+  expect(calligraphyEvidence.maximumHorizontalDisplacement).toBeGreaterThan(40);
   await session.detach();
   await context.close();
 });
@@ -474,12 +520,12 @@ test("MIG-C1 accepts a trusted horizontal drag from blank space below a short Ca
   );
   const evidence = await trustedDragEvidence(pager);
   expect(evidence.trustedTouchEvents).toBeGreaterThan(0);
-  expect(evidence.maximumScrollLeft).toBeGreaterThan(40);
+  expect(evidence.maximumHorizontalDisplacement).toBeGreaterThan(40);
   await session.detach();
   await context.close();
 });
 
-test("MIG-C1 native pager follows progress and commits only on release", async ({
+test("MIG-C1 pager follows progress and commits only on release", async ({
   page,
 }, testInfo) => {
   const { calligraphy } = await openSurface(page);
@@ -492,8 +538,16 @@ test("MIG-C1 native pager follows progress and commits only on release", async (
     "墨迹",
     "拓本",
   ]);
-  await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
-  await expect(pager).toHaveCSS("touch-action", "pan-x pan-y");
+  const pc =
+    (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc";
+  await expect(pager).toHaveCSS(
+    "scroll-snap-type",
+    pc ? "x mandatory" : "none",
+  );
+  await expect(pager).toHaveCSS(
+    "touch-action",
+    pc ? /^(?:pan-x pan-y pinch-zoom|manipulation)$/u : "pan-y pinch-zoom",
+  );
 
   if (testInfo.project.name.startsWith("desktop")) {
     await pager.dispatchEvent("wheel", {
@@ -520,12 +574,30 @@ test("MIG-C1 native pager follows progress and commits only on release", async (
     return;
   }
 
+  await expect(pager).toHaveAttribute("data-category-pager-engine", "embla");
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.style.scrollSnapType = "none";
-    frame.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
-    frame.scrollLeft = frame.clientWidth / 2;
-    frame.dispatchEvent(new Event("scroll"));
+    // Controlled touch delivery exercises the actual core. Trusted browser
+    // input, vertical scrolling and native pinch are covered separately below.
+    for (const [type, progress] of [
+      ["touchstart", 0],
+      ["touchmove", 0.5],
+    ] as const) {
+      const point = {
+        identifier: 1,
+        target: frame,
+        clientX:
+          frame.getBoundingClientRect().left +
+          frame.clientWidth * (0.75 - progress),
+        clientY: 300,
+      };
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: [point] },
+        changedTouches: { value: [point] },
+      });
+      frame.dispatchEvent(event);
+    }
   });
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
@@ -541,49 +613,136 @@ test("MIG-C1 native pager follows progress and commits only on release", async (
 
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.scrollLeft = frame.clientWidth;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new Event("scrollend"));
+    const point = {
+      identifier: 1,
+      target: frame,
+      clientX: frame.getBoundingClientRect().left - frame.clientWidth * 0.25,
+      clientY: 300,
+    };
+    const event = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+      touches: { value: [point] },
+      changedTouches: { value: [point] },
+    });
+    frame.dispatchEvent(event);
   });
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
     "all",
   );
-  await pager.evaluate((node) => {
+  const release = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.dispatchEvent(new TouchEvent("touchend", { bubbles: true }));
-    frame.style.scrollSnapType = "";
+    const point = {
+      identifier: 1,
+      target: frame,
+      clientX: frame.getBoundingClientRect().left - frame.clientWidth * 0.25,
+      clientY: 300,
+    };
+    const event = new Event("touchend", { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+      touches: { value: [] },
+      changedTouches: { value: [point] },
+    });
+    frame.dispatchEvent(event);
+    const all = frame.querySelector<HTMLElement>(
+      '[data-calligraphy-category-panel="all"]',
+    )!;
+    const ink = frame.querySelector<HTMLElement>(
+      '[data-calligraphy-category-panel="ink"]',
+    )!;
+    return {
+      active: frame.closest<HTMLElement>("[data-calligraphy-category-surface]")!
+        .dataset.activeCalligraphyCategory,
+      allInert: all.inert,
+      allHidden: all.getAttribute("aria-hidden"),
+      inkInert: ink.inert,
+      inkHidden: ink.getAttribute("aria-hidden"),
+    };
+  });
+  expect(release).toEqual({
+    active: "ink",
+    allInert: true,
+    allHidden: "true",
+    inkInert: false,
+    inkHidden: "false",
   });
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
     "ink",
   );
 
-  await pager.evaluate((node) => {
+  const beforeCancelledDrag = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.style.scrollSnapType = "none";
-    frame.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
-    frame.scrollLeft += frame.clientWidth * 0.6;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new TouchEvent("touchcancel", { bubbles: true }));
-    frame.dispatchEvent(new Event("scrollend"));
-    frame.style.scrollSnapType = "";
+    const panel = frame.querySelector<HTMLElement>(
+      '[data-calligraphy-category-panel="ink"]',
+    )!;
+    const before =
+      panel.getBoundingClientRect().left - frame.getBoundingClientRect().left;
+    for (const [type, progress] of [
+      ["touchstart", 0],
+      ["touchmove", 0.6],
+    ] as const) {
+      const point = {
+        identifier: 1,
+        target: frame,
+        clientX:
+          frame.getBoundingClientRect().left +
+          frame.clientWidth * (0.75 - progress),
+        clientY: 300,
+      };
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: [point] },
+        changedTouches: { value: [point] },
+      });
+      frame.dispatchEvent(event);
+    }
+    return before;
+  });
+  await expect
+    .poll(() =>
+      pager.evaluate((node) => {
+        const panel = node.querySelector<HTMLElement>(
+          '[data-calligraphy-category-panel="ink"]',
+        )!;
+        return (
+          panel.getBoundingClientRect().left - node.getBoundingClientRect().left
+        );
+      }),
+    )
+    .toBeLessThan(beforeCancelledDrag - 40);
+  await expect(calligraphy).toHaveAttribute(
+    "data-active-calligraphy-category",
+    "ink",
+  );
+  await pager.evaluate((node) => {
+    const point = {
+      identifier: 1,
+      target: node,
+      clientX: node.getBoundingClientRect().left + node.clientWidth * 0.15,
+      clientY: 300,
+    };
+    const event = new Event("touchcancel", { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+      touches: { value: [] },
+      changedTouches: { value: [point] },
+    });
+    node.dispatchEvent(event);
   });
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
     "ink",
   );
-  await expect(pager).toHaveJSProperty(
-    "scrollLeft",
+  expect(
     await pager.evaluate((node) => {
-      const frame = node as HTMLElement;
-      return (
-        frame.querySelector<HTMLElement>(
-          '[data-calligraphy-category-panel="ink"]',
-        )?.offsetLeft ?? -1
+      const panel = node.querySelector<HTMLElement>(
+        '[data-calligraphy-category-panel="ink"]',
+      )!;
+      return Math.abs(
+        panel.getBoundingClientRect().left - node.getBoundingClientRect().left,
       );
     }),
-  );
+  ).toBeLessThanOrEqual(2);
 });
 
 test("MIG-C1 restores category scroll and exact opener focus after Detail Back", async ({
@@ -649,6 +808,7 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
 }) => {
   const { calligraphy, surface } = await openSurface(page);
   await settleCategory(calligraphy, "rubbing");
+  await waitForInitialCategoryScroll(calligraphy, "rubbing");
   await expect
     .poll(async () => (await primaryScrollEvidence(surface)).maximum)
     .toBeGreaterThan(0);
@@ -665,6 +825,7 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
         }
       : { height: viewport.width, width: viewport.height };
 
+  expect((await primaryScrollEvidence(surface)).top).toBe(recordedScroll);
   await page.setViewportSize(resizedViewport);
   await expect(calligraphy).toHaveAttribute(
     "data-active-calligraphy-category",
@@ -683,3 +844,246 @@ test("MIG-C1 preserves active category and bounded scroll across resize and rota
     })
     .toBeLessThanOrEqual(2);
 });
+
+for (const chrome of ["default", "hidden"] as const) {
+  test(`Controlled category touch preserves vertical intent, interruption and native pinch (${chrome})`, async ({
+    browser,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop-chromium",
+      "Continuous trusted touch injection requires Chromium CDP; Safari physical input remains an Owner gate.",
+    );
+    const context = await browser.newContext({
+      ...devices["iPhone 15"],
+      baseURL: testInfo.project.use.baseURL as string,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    const evidence: unknown[] = [];
+    const touch = (
+      type: "touchStart" | "touchMove" | "touchEnd",
+      points: { id: number; x: number; y: number }[],
+    ) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const move = async (
+      from: { x: number; y: number },
+      dx: number,
+      dy: number,
+    ) => {
+      for (let step = 1; step <= 10; step++) {
+        await touch("touchMove", [
+          { id: 1, x: from.x + (dx * step) / 10, y: from.y + (dy * step) / 10 },
+        ]);
+        await page.waitForTimeout(16);
+      }
+    };
+    try {
+      for (const surface of ["home", "calligraphy", "user"] as const) {
+        await page.goto(
+          chrome === "hidden" ? "/dev/t02p/qa?qaChrome=hidden" : "/dev/t02p/qa",
+        );
+        await expect(page.locator("[data-product-boot]")).toHaveCount(0);
+        if (surface === "calligraphy")
+          await page
+            .getByRole("navigation", { name: "主要内容" })
+            .getByRole("button", { name: "书帖", exact: true })
+            .click();
+        if (surface === "user")
+          await page.locator("[data-user-trigger]").click();
+        const frame = page.locator(
+          surface === "home"
+            ? "[data-home-feed-pager]"
+            : surface === "user"
+              ? "[data-user-pager]"
+              : "[data-calligraphy-category-pager]",
+        );
+        const panelSelector =
+          surface === "home"
+            ? "[data-home-feed-panel]"
+            : surface === "user"
+              ? "[data-user-panel]"
+              : "[data-calligraphy-category-panel]";
+        const panels = frame.locator(panelSelector);
+        const scroller =
+          surface === "calligraphy"
+            ? page.locator('[data-primary-destination="calligraphy"]')
+            : panels.first();
+        await expect(frame).toHaveCSS("touch-action", "pan-y pinch-zoom");
+        if (surface === "calligraphy")
+          await waitForInitialCategoryScroll(
+            page.locator("[data-calligraphy-category-surface]"),
+            "all",
+          );
+        const box = await frame.boundingBox();
+        if (!box) throw new Error("Missing pager");
+        const point = await frame.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const x = box.x + box.width * 0.8;
+          for (
+            let y = Math.min(innerHeight - 120, box.bottom - 24);
+            y > Math.max(box.top + 60, 240);
+            y -= 16
+          ) {
+            if (node.contains(document.elementFromPoint(x, y))) return { x, y };
+          }
+          throw new Error(
+            "No exposed pager point beneath the existing QA controls",
+          );
+        });
+        await expect(frame).toHaveAttribute(
+          "data-category-pager-engine",
+          "embla",
+        );
+        const horizontalOffset = () =>
+          frame.evaluate(
+            (n) =>
+              n.getBoundingClientRect().left -
+              n.firstElementChild!.firstElementChild!.getBoundingClientRect()
+                .left,
+          );
+        const beforeY = await scroller.evaluate((n) => n.scrollTop);
+        await touch("touchStart", [{ id: 1, ...point }]);
+        // A few initial diagonal pixels must not turn the following vertical
+        // input into category paging. Keep the original move cadence below.
+        await touch("touchMove", [{ id: 1, x: point.x + 3, y: point.y + 2 }]);
+        await move(point, -60, -180);
+        await touch("touchEnd", []);
+        await expect
+          .poll(() => scroller.evaluate((n) => n.scrollTop))
+          .toBeGreaterThan(beforeY + 20);
+        expect(await horizontalOffset()).toBeLessThanOrEqual(2);
+        await expect(panels.first()).toHaveAttribute("aria-hidden", "false");
+        // Observe actual release -> committed, interactive target. No scrollend synthesis.
+        await frame.evaluate((node, selector) => {
+          const f = node as HTMLElement;
+          const data = {
+            released: 0,
+            committed: 0,
+            trusted: 0,
+            maximum: 0,
+            commitCount: 0,
+            remainingAtCommit: 0,
+          };
+          Object.assign(f, { controlledEvidence: data });
+          f.addEventListener(
+            "pointermove",
+            (e) => {
+              if (e.isTrusted) data.trusted++;
+              data.maximum = Math.max(
+                data.maximum,
+                f.getBoundingClientRect().left -
+                  f.firstElementChild!.firstElementChild!.getBoundingClientRect()
+                    .left,
+              );
+            },
+            true,
+          );
+          f.addEventListener(
+            "pointerup",
+            () => {
+              data.released = performance.now();
+            },
+            true,
+          );
+          const observer = new MutationObserver(() => {
+            const target = f.querySelectorAll<HTMLElement>(selector)[1];
+            if (
+              target &&
+              !target.inert &&
+              target.getAttribute("aria-hidden") === "false"
+            ) {
+              data.committed = performance.now();
+              data.remainingAtCommit = Math.abs(
+                target.getBoundingClientRect().left -
+                  f.getBoundingClientRect().left,
+              );
+              data.commitCount++;
+              observer.disconnect();
+            }
+          });
+          observer.observe(f, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["inert", "aria-hidden"],
+          });
+        }, panelSelector);
+        await touch("touchStart", [{ id: 1, ...point }]);
+        await move(point, -240, 4);
+        expect(await horizontalOffset()).toBeGreaterThan(100);
+        await expect(panels.first()).toHaveAttribute("aria-hidden", "false");
+        await touch("touchEnd", []);
+        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        const timing = await frame.evaluate(
+          (n) =>
+            (
+              n as HTMLElement & {
+                controlledEvidence: {
+                  released: number;
+                  committed: number;
+                  trusted: number;
+                  maximum: number;
+                  commitCount: number;
+                  remainingAtCommit: number;
+                };
+              }
+            ).controlledEvidence,
+        );
+        expect(timing.trusted).toBeGreaterThan(0);
+        expect(timing.maximum).toBeGreaterThan(100);
+        expect(timing.commitCount).toBe(1);
+        expect(timing.committed - timing.released).toBeGreaterThanOrEqual(0);
+        // Every category pager hands interaction over before its visual tail ends.
+        expect(timing.remainingAtCommit).toBeGreaterThan(2);
+        // A new opposite input during the next settle supersedes that animation.
+        const reverse = { x: box.x + box.width * 0.25, y: point.y };
+        await touch("touchStart", [{ id: 1, ...reverse }]);
+        await move(reverse, 220, 0);
+        await touch("touchEnd", []);
+        await touch("touchStart", [{ id: 1, ...point }]);
+        await move(point, -240, 0);
+        await touch("touchEnd", []);
+        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        const committedLeft = await panels
+          .nth(1)
+          .evaluate((n) => (n as HTMLElement).offsetLeft);
+        // Second finger joins an already controlled horizontal drag. Neither finger lifts before scale proof.
+        await touch("touchStart", [{ id: 1, x: 150, y: point.y }]);
+        await touch("touchMove", [{ id: 1, x: 120, y: point.y }]);
+        const initialScale = await page.evaluate(() => visualViewport!.scale);
+        await touch("touchStart", [
+          { id: 1, x: 120, y: point.y },
+          { id: 2, x: 210, y: point.y },
+        ]);
+        await expect(frame).toHaveAttribute(
+          surface === "calligraphy"
+            ? "data-calligraphy-pager-scrolling"
+            : "data-horizontal-pager-scrolling",
+          "false",
+        );
+        for (let step = 1; step <= 12; step++) {
+          await touch("touchMove", [
+            { id: 1, x: 120 - step * 4, y: point.y },
+            { id: 2, x: 210 + step * 10, y: point.y },
+          ]);
+          await page.waitForTimeout(30);
+        }
+        await expect
+          .poll(() => page.evaluate(() => visualViewport!.scale))
+          .toBeGreaterThan(initialScale + 0.2);
+        const afterScale = await page.evaluate(() => visualViewport!.scale);
+        await touch("touchEnd", []);
+        await expect(panels.nth(1)).toHaveAttribute("aria-hidden", "false");
+        expect(
+          Math.abs((await horizontalOffset()) - committedLeft),
+        ).toBeLessThanOrEqual(2);
+        await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
+        evidence.push({ surface, chrome, timing, initialScale, afterScale });
+      }
+    } finally {
+      await testInfo.attach("controlled-pager-input", {
+        body: JSON.stringify(evidence, null, 2),
+        contentType: "application/json",
+      });
+      await context.close();
+    }
+  });
+}

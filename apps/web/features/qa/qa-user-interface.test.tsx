@@ -50,6 +50,7 @@ const click = (element: Element | null) => {
 };
 
 const settlePager = (container: HTMLElement) => {
+  act(() => vi.advanceTimersByTime(180));
   act(() =>
     container
       .querySelector("[data-user-pager]")
@@ -57,18 +58,54 @@ const settlePager = (container: HTMLElement) => {
   );
 };
 
-const scrollPager = (container: HTMLElement, left: number) => {
-  const frame = container.querySelector<HTMLElement>("[data-user-pager]")!;
-  act(() => {
-    frame.scrollLeft = left;
-    frame.dispatchEvent(new Event("scroll"));
+const touch = (node: HTMLElement, type: string, x = 300, y = 200) => {
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: (type === "touchend" || type === "touchcancel"
+      ? []
+      : [{ clientX: x, clientY: y }]) as Touch[],
   });
-  return frame;
+  Object.defineProperty(event, "timeStamp", { value: performance.now() });
+  act(() => node.dispatchEvent(event));
+  return event;
+};
+
+const dragPager = (frame: HTMLElement, dx = -220) => {
+  touch(frame, "touchstart");
+  for (let i = 1; i <= 10; i++) {
+    act(() => vi.advanceTimersByTime(16));
+    touch(frame, "touchmove", 300 + (dx * i) / 10);
+  }
 };
 
 describe("QaUserInterface", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    for (const name of ["ResizeObserver", "IntersectionObserver"])
+      vi.stubGlobal(
+        name,
+        class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(0);
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(
+      () => document.body,
+    );
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(
@@ -100,7 +137,7 @@ describe("QaUserInterface", () => {
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: (callback: FrameRequestCallback) =>
-        window.setTimeout(() => callback(performance.now()), 0),
+        window.setTimeout(() => callback(performance.now()), 16),
     });
   });
 
@@ -111,6 +148,7 @@ describe("QaUserInterface", () => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   });
@@ -388,7 +426,7 @@ describe("QaUserInterface", () => {
     expect(container.querySelector("[data-user-page]")).toBeNull();
   });
 
-  it("keeps four mounted panels and only commits a tab after native settling", () => {
+  it("keeps four mounted panels and opens the selected tab on release before visual settlement", () => {
     const onTabChangeIntent = vi.fn();
     const container = renderUser({
       onTabChangeIntent,
@@ -399,14 +437,16 @@ describe("QaUserInterface", () => {
       container.querySelectorAll<HTMLElement>("[data-user-panel]"),
     );
     expect(panels).toHaveLength(4);
-    const frame = scrollPager(container, 180);
-    act(() => vi.runOnlyPendingTimers());
-    expect(Number(frame.dataset.horizontalPagerProgress)).toBeCloseTo(0.45);
+    const frame = container.querySelector<HTMLElement>("[data-user-pager]")!;
+    const track = frame.firstElementChild as HTMLElement;
+    expect(frame.dataset.categoryPagerEngine).toBe("embla");
+    dragPager(frame);
+    expect(Number(frame.dataset.horizontalPagerProgress)).toBeGreaterThan(0.1);
+    expect(Number(frame.dataset.horizontalPagerProgress)).toBeLessThan(1);
+    expect(track.style.transform).not.toBe("translate3d(0px,0px,0px)");
     expect(frame.dataset.horizontalPagerActiveKey).toBe("published");
     expect(onTabChangeIntent).not.toHaveBeenCalled();
-    scrollPager(container, 400);
-    settlePager(container);
-    settlePager(container);
+    touch(frame, "touchend");
     expect(frame.dataset.horizontalPagerActiveKey).toBe("saved");
     expect(onTabChangeIntent.mock.calls).toEqual([["saved"]]);
     expect(Array.from(container.querySelectorAll("[data-user-panel]"))).toEqual(
@@ -414,6 +454,10 @@ describe("QaUserInterface", () => {
     );
     expect(panels[0]?.hasAttribute("inert")).toBe(true);
     expect(panels[1]?.getAttribute("aria-hidden")).toBe("false");
+    expect(track.style.transform).not.toBe("translate3d(-400px,0px,0px)");
+    act(() => vi.runAllTimers());
+    expect(onTabChangeIntent.mock.calls).toEqual([["saved"]]);
+    expect(frame.dataset.horizontalPagerScrolling).toBe("false");
   });
 
   it("cancels an interrupted drag and does not emit a bounced or duplicate tab intent", () => {
@@ -422,18 +466,23 @@ describe("QaUserInterface", () => {
     const container = renderUser({ onTabChangeIntent, onContentOpenIntent });
     click(container.querySelector("[data-user-trigger]"));
     const frame = container.querySelector<HTMLElement>("[data-user-pager]")!;
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    scrollPager(container, 220);
-    act(() => frame.dispatchEvent(new Event("touchcancel", { bubbles: true })));
+    dragPager(frame);
+    touch(frame, "touchcancel");
     settlePager(container);
-    expect(frame.scrollLeft).toBe(0);
+    expect((frame.firstElementChild as HTMLElement).style.transform).toBe(
+      "translate3d(0px,0px,0px)",
+    );
     expect(onTabChangeIntent).not.toHaveBeenCalled();
-    click(container.querySelector("[data-user-content-id]"));
+    act(() =>
+      container
+        .querySelector("[data-user-content-id]")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })),
+    );
     expect(onContentOpenIntent).not.toHaveBeenCalled();
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    scrollPager(container, 130);
-    scrollPager(container, 0);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    touch(frame, "touchstart");
+    expect(touch(frame, "touchmove", 296, 175).defaultPrevented).toBe(false);
+    expect(touch(frame, "touchmove", 100, 170).defaultPrevented).toBe(false);
+    touch(frame, "touchend");
     settlePager(container);
     click(container.querySelector('[data-user-tab="published"]'));
     expect(onTabChangeIntent).not.toHaveBeenCalled();
@@ -446,9 +495,17 @@ describe("QaUserInterface", () => {
     click(container.querySelector('[data-user-tab="saved"]'));
     click(container.querySelector('[data-user-tab="liked"]'));
     click(container.querySelector('[data-user-tab="history"]'));
-    expect(onTabChangeIntent).not.toHaveBeenCalled();
+    expect(onTabChangeIntent.mock.calls).toEqual([
+      ["saved"],
+      ["liked"],
+      ["history"],
+    ]);
     settlePager(container);
-    expect(onTabChangeIntent.mock.calls).toEqual([["history"]]);
+    expect(onTabChangeIntent.mock.calls).toEqual([
+      ["saved"],
+      ["liked"],
+      ["history"],
+    ]);
     const historyTab = container.querySelector('[data-user-tab="history"]')!;
     act(() =>
       historyTab.dispatchEvent(
@@ -456,7 +513,7 @@ describe("QaUserInterface", () => {
       ),
     );
     settlePager(container);
-    expect(onTabChangeIntent).toHaveBeenCalledOnce();
+    expect(onTabChangeIntent).toHaveBeenCalledTimes(3);
     act(() =>
       historyTab.dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, key: "Home" }),
@@ -472,7 +529,12 @@ describe("QaUserInterface", () => {
       ),
     );
     settlePager(container);
-    expect(onTabChangeIntent.mock.calls).toEqual([["history"], ["published"]]);
+    expect(onTabChangeIntent.mock.calls).toEqual([
+      ["saved"],
+      ["liked"],
+      ["history"],
+      ["published"],
+    ]);
   });
 
   it("keeps each PC modal panel as its own vertical scroll owner across tabs and Settings", () => {

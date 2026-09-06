@@ -334,6 +334,140 @@ describe("QaInscriptionFilter", () => {
     expect(trigger).toBe(document.activeElement);
   });
 
+  const queueRestoreFrames = () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextId = 0;
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      const id = ++nextId;
+      frames.set(id, callback);
+      return id;
+    });
+    const cancel = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation((id) => {
+        frames.delete(id);
+      });
+    return {
+      frames,
+      cancel,
+      flush: () =>
+        act(() => {
+          const pending = [...frames.values()];
+          frames.clear();
+          for (const callback of pending) callback(0);
+        }),
+    };
+  };
+
+  it.each(["before", "after"] as const)(
+    "distinguishes external focus moved %s Escape from the queued restore",
+    (handoff) => {
+      const queued = queueRestoreFrames();
+      const container = renderFilter();
+      const trigger = element<HTMLButtonElement>(
+        container,
+        "[data-filter-trigger]",
+      );
+      click(trigger);
+      const outside = document.createElement("button");
+      outside.textContent = "User";
+      document.body.append(outside);
+      if (handoff === "before") outside.focus();
+
+      pressEscape();
+      expect(container.querySelector("[data-filter-panel]")).toBeNull();
+      expect(queued.frames.size).toBe(1);
+      if (handoff === "after") outside.focus();
+      expect(document.activeElement).toBe(outside);
+      queued.flush();
+
+      expect(document.activeElement).toBe(
+        handoff === "after" ? outside : trigger,
+      );
+    },
+  );
+
+  it("restores from a removed panel after the queued Escape frame", () => {
+    const queued = queueRestoreFrames();
+    const container = renderFilter();
+    const trigger = element<HTMLButtonElement>(
+      container,
+      "[data-filter-trigger]",
+    );
+    click(trigger);
+    element<HTMLButtonElement>(container, "[data-filter-panel] button").focus();
+
+    pressEscape();
+    expect(container.querySelector("[data-filter-panel]")).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+    expect(queued.frames.size).toBe(1);
+    queued.flush();
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("cancels the queued close restore when the filter is reopened", () => {
+    const queued = queueRestoreFrames();
+    const container = renderFilter();
+    const trigger = element<HTMLButtonElement>(
+      container,
+      "[data-filter-trigger]",
+    );
+    click(trigger);
+    pressEscape();
+    expect(queued.frames.size).toBe(1);
+    click(trigger);
+    const chip = element<HTMLButtonElement>(
+      container,
+      "[data-filter-panel] button",
+    );
+    chip.focus();
+
+    expect(queued.cancel).toHaveBeenCalledWith(1);
+    expect(queued.frames.size).toBe(0);
+    queued.flush();
+    expect(document.activeElement).toBe(chip);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("cancels the queued close restore when the parent reopens the filter", () => {
+    const queued = queueRestoreFrames();
+    const container = renderFilter({ open: true });
+    const root = roots.at(-1);
+    if (root === undefined) throw new Error("Missing filter root");
+    pressEscape();
+    act(() => root.render(<QaInscriptionFilter open={false} />));
+    expect(container.querySelector("[data-filter-panel]")).toBeNull();
+    expect(queued.frames.size).toBe(1);
+
+    act(() => root.render(<QaInscriptionFilter open />));
+    const chip = element<HTMLButtonElement>(
+      container,
+      "[data-filter-panel] button",
+    );
+    chip.focus();
+    expect(queued.cancel).toHaveBeenCalledWith(1);
+    expect(queued.frames.size).toBe(0);
+    queued.flush();
+    expect(document.activeElement).toBe(chip);
+  });
+
+  it("cancels the queued close restore on unmount", () => {
+    const queued = queueRestoreFrames();
+    const container = renderFilter();
+    click(container.querySelector("[data-filter-trigger]"));
+    pressEscape();
+    expect(queued.frames.size).toBe(1);
+    const root = roots.pop();
+    if (root === undefined) throw new Error("Missing filter root");
+    act(() => root.unmount());
+
+    expect(queued.cancel).toHaveBeenCalledWith(1);
+    expect(queued.frames.size).toBe(0);
+    queued.flush();
+    expect(container.childElementCount).toBe(0);
+  });
+
   it("closes on outside pointer without stealing focus from its target", () => {
     const onOpenChange = vi.fn();
     const container = renderFilter({ onOpenChange });

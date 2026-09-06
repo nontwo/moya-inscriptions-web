@@ -32,6 +32,28 @@ describe("T02pQaHarness QA chrome", () => {
     };
   });
 
+  it("enables only Home and Calligraphy cards with either chrome setting", () => {
+    for (const chrome of ["visible", "hidden"] as const) {
+      const container = renderHarness(chrome);
+      for (const destination of ["home", "calligraphy"]) {
+        expect(
+          container.querySelectorAll(
+            `[data-product-panel="${destination}"] [data-quick-actions="enabled"]`,
+          ).length,
+        ).toBeGreaterThan(0);
+      }
+      expect(
+        container.querySelector(
+          '[data-product-panel="inscriptions"] [data-quick-actions]',
+        ),
+      ).toBeNull();
+      expect(container.querySelector("[data-quick-action-menu]")).toBeNull();
+      expect(
+        container.querySelector("[data-quick-action-feedback]"),
+      ).toBeNull();
+    }
+  });
+
   it("keeps all scenario and platform controls visible by default", () => {
     const container = renderHarness();
     const harness = container.querySelector("[data-t02p-qa-harness]");

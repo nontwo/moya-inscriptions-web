@@ -1,398 +1,401 @@
 // @vitest-environment jsdom
-
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { HomeFeedPager } from "./home-feed-pager";
 import { homeFeeds } from "./home-feed";
-
-import type { Root } from "react-dom/client";
 import type { HomeFeedPagerHandle } from "./home-feed-pager";
 import type { HomeFeed } from "./home-feed";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
-
-const roots: Root[] = [];
-let prefersReducedMotion = false;
-let pagerWidth = 400;
-let pagerOffsets = [0, 400, 800];
-let scrollToCalls: ScrollToOptions[] = [];
-const resizeObservers: TestResizeObserver[] = [];
-
-class TestResizeObserver implements ResizeObserver {
+let time = 0,
+  id = 0,
+  width = 400,
+  reduce = false;
+let offsets = [0, 400, 800];
+let heights: Record<HomeFeed, number> = {
+  discover: 600,
+  nearby: 900,
+  topics: 700,
+};
+const frames = new Map<number, FrameRequestCallback>();
+const cleanups: (() => void)[] = [];
+const observers: TestResizeObserver[] = [];
+class TestResizeObserver {
   readonly observed = new Set<Element>();
-
-  constructor(private readonly callback: ResizeObserverCallback) {
-    resizeObservers.push(this);
+  constructor(readonly callback: ResizeObserverCallback) {
+    observers.push(this);
   }
-
+  observe(node: Element) {
+    this.observed.add(node);
+  }
+  unobserve(node: Element) {
+    this.observed.delete(node);
+  }
   disconnect() {
     this.observed.clear();
   }
-
-  observe(target: Element) {
-    this.observed.add(target);
-  }
-
-  unobserve(target: Element) {
-    this.observed.delete(target);
-  }
-
   trigger() {
     this.callback([], this);
   }
 }
-
-const renderPager = (
-  onCommit = vi.fn<(feed: HomeFeed) => void>(),
+const advance = (count = 1) => {
+  for (let i = 0; i < count; i++) {
+    time += 16.667;
+    const batch = [...frames.values()];
+    frames.clear();
+    act(() => batch.forEach((callback) => callback(time)));
+  }
+};
+const touch = (
+  node: HTMLElement,
+  type: string,
+  x = 300,
+  y = 300,
+  multiple = false,
+) => {
+  const points =
+    type === "touchend" || type === "touchcancel"
+      ? []
+      : [
+          { clientX: x, clientY: y },
+          ...(multiple ? [{ clientX: x + 80, clientY: y }] : []),
+        ];
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: points as Touch[],
+  });
+  Object.defineProperty(event, "timeStamp", { value: time });
+  act(() => node.dispatchEvent(event));
+  return event;
+};
+const nativeScroll = (frame: HTMLElement, left: number) =>
+  act(() => {
+    frame.scrollLeft = left;
+    frame.dispatchEvent(new Event("scroll"));
+  });
+const setup = (
   platform: "phone" | "tablet" | "pc" = "phone",
-  onProgress = vi.fn<(progress: number) => void>(),
-  registerActiveScrollElement?: (element: HTMLElement) => () => void,
+  register?: (node: HTMLElement) => () => void,
 ) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
+  cleanups.push(() => act(() => root.unmount()));
   const handle = createRef<HomeFeedPagerHandle>();
-  roots.push(root);
-  const render = (activeFeed: HomeFeed = "discover", primaryVisible = true) => {
-    act(() => {
+  const commits = vi.fn(),
+    progress = vi.fn();
+  let active: HomeFeed = "discover";
+  const render = (feed: HomeFeed = active, visible = true) => {
+    active = feed;
+    act(() =>
       root.render(
         <HomeFeedPager
           ref={handle}
-          activeFeed={activeFeed}
-          onCommit={onCommit}
-          onProgress={onProgress}
-          panels={{
-            discover: <button type="button">Discover action</button>,
-            nearby: <p>Nearby panel</p>,
-            topics: <p>Topics panel</p>,
-          }}
+          activeFeed={feed}
           platform={platform}
-          primaryVisible={primaryVisible}
-          {...(registerActiveScrollElement === undefined
-            ? {}
-            : { registerActiveScrollElement })}
+          primaryVisible={visible}
+          onCommit={(next) => {
+            commits(next);
+            render(next);
+          }}
+          onProgress={progress}
+          panels={{
+            discover: <button type="button">Discover</button>,
+            nearby: <button type="button">Nearby</button>,
+            topics: <button type="button">Topics</button>,
+          }}
+          {...(register ? { registerActiveScrollElement: register } : {})}
         />,
-      );
-    });
+      ),
+    );
   };
   render();
   const frame = container.querySelector<HTMLElement>("[data-home-feed-pager]")!;
-  return { container, frame, handle, onCommit, onProgress, render };
+  const track = frame.firstElementChild as HTMLElement;
+  const panels = [...track.children] as HTMLElement[];
+  const drag = (dx = -220, dy = 0) => {
+    touch(frame, "touchstart");
+    for (let i = 1; i <= 10; i++) {
+      advance();
+      touch(frame, "touchmove", 300 + (dx * i) / 10, 300 + (dy * i) / 10);
+    }
+  };
+  return {
+    container,
+    frame,
+    track,
+    panels,
+    handle,
+    commits,
+    progress,
+    render,
+    drag,
+  };
 };
 
-const nativeScroll = (frame: HTMLElement, scrollLeft: number) => {
-  act(() => {
-    frame.scrollLeft = scrollLeft;
-    frame.dispatchEvent(new Event("scroll"));
-  });
-};
-
-describe("HomeFeedPager native scroll-snap", () => {
+describe("HomeFeedPager category engine integration", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    prefersReducedMotion = false;
-    pagerWidth = 400;
-    pagerOffsets = [0, 400, 800];
-    scrollToCalls = [];
-    resizeObservers.length = 0;
-    Object.defineProperty(globalThis, "ResizeObserver", {
-      configurable: true,
-      value: TestResizeObserver,
+    time = 0;
+    id = 0;
+    width = 400;
+    reduce = false;
+    offsets = [0, 400, 800];
+    heights = { discover: 600, nearby: 900, topics: 700 };
+    frames.clear();
+    observers.length = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => time);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      frames.set(++id, cb);
+      return id;
     });
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
-      () => pagerWidth,
-    );
-    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
-      function (this: HTMLElement) {
-        const feed = this.dataset.homeFeedPanel as HomeFeed | undefined;
-        return feed === undefined
-          ? 0
-          : (pagerOffsets[homeFeeds.indexOf(feed)] ?? 0);
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((key) => {
+      frames.delete(key);
+    });
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
       },
     );
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: reduce,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    for (const name of ["offsetWidth", "clientWidth"] as const)
+      vi.spyOn(HTMLElement.prototype, name, "get").mockImplementation(
+        () => width,
+      );
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(
+      () => document.body,
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(0);
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return (
+          offsets[homeFeeds.indexOf(this.dataset.homeFeedPanel as HomeFeed)] ??
+          0
+        );
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
       function (this: HTMLElement) {
-        const feed = this.dataset.homeFeedPanel;
-        if (feed === "discover") return 600;
-        if (feed === "nearby") return 900;
-        if (feed === "topics") return 700;
-        return 0;
+        return heights[this.dataset.homeFeedPanel as HomeFeed] ?? 600;
       },
     );
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
       value(this: HTMLElement, options: ScrollToOptions) {
-        scrollToCalls.push(options);
         this.scrollLeft = Number(options.left ?? 0);
         this.dispatchEvent(new Event("scroll"));
       },
-    });
-    Object.defineProperty(window, "requestAnimationFrame", {
-      configurable: true,
-      value: (callback: FrameRequestCallback) =>
-        window.setTimeout(() => callback(performance.now()), 0),
-    });
-    Object.defineProperty(window, "cancelAnimationFrame", {
-      configurable: true,
-      value: (id: number) => window.clearTimeout(id),
-    });
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: vi.fn(() => ({ matches: prefersReducedMotion })),
     });
     Object.defineProperty(HTMLElement.prototype, "onscrollend", {
       configurable: true,
       value: null,
     });
   });
-
   afterEach(() => {
-    for (const root of roots.splice(0)) {
-      act(() => root.unmount());
-    }
+    cleanups.splice(0).forEach((cleanup) => cleanup());
     document.body.replaceChildren();
+    frames.clear();
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     vi.restoreAllMocks();
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it("keeps all feeds mounted and exposes only the committed panel", () => {
-    const { container, frame } = renderPager();
-    const panels = Array.from(
-      container.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
-    );
-
-    expect(frame.getAttribute("data-home-pager-native")).toBe("");
-    expect(panels).toHaveLength(3);
-    expect(panels.every((panel) => !panel.hasAttribute("hidden"))).toBe(true);
-    expect(panels[0]?.getAttribute("aria-hidden")).toBe("false");
-    expect(panels[0]?.hasAttribute("inert")).toBe(false);
-    expect(panels[1]?.getAttribute("aria-hidden")).toBe("true");
-    expect(panels[1]?.hasAttribute("inert")).toBe(true);
+  it("keeps the same three mounted panels, native vertical surfaces and selected accessibility", () => {
+    const v = setup();
+    expect(v.frame.dataset.categoryPagerEngine).toBe("embla");
+    expect(v.panels).toHaveLength(3);
     expect(
-      panels.every((panel) =>
-        panel.hasAttribute("data-home-feed-scroll-surface"),
+      v.panels.every(
+        (p) => !p.hidden && p.hasAttribute("data-home-feed-scroll-surface"),
       ),
     ).toBe(true);
+    expect(v.panels.map((p) => p.hasAttribute("inert"))).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    expect(v.panels.map((p) => p.getAttribute("aria-hidden"))).toEqual([
+      "false",
+      "true",
+      "true",
+    ]);
   });
-
-  it("publishes native progress without committing before scroll settles", () => {
-    const { frame, onCommit, onProgress } = renderPager();
-
-    nativeScroll(frame, 200);
-    act(() => vi.advanceTimersByTime(0));
-
-    expect(onProgress).toHaveBeenLastCalledWith(0.5);
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.dataset.homePagerScrolling).toBe("true");
+  it("publishes following motion, then commits and opens interaction on release without scrollend", () => {
+    const v = setup();
+    v.drag();
+    expect(v.progress.mock.calls.at(-1)![0]).toBeGreaterThan(0.3);
+    expect(v.commits).not.toHaveBeenCalled();
+    touch(v.frame, "touchend");
+    expect(v.commits).toHaveBeenCalledExactlyOnceWith("nearby");
+    expect(v.panels.map((p) => p.hasAttribute("inert"))).toEqual([
+      true,
+      false,
+      true,
+    ]);
+    const releasePosition = v.track.style.transform;
+    advance(180);
+    expect(v.track.style.transform).not.toBe(releasePosition);
+    expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(1, 2));
+    act(() => v.frame.dispatchEvent(new Event("scrollend")));
+    expect(v.commits).toHaveBeenCalledOnce();
+    expect(v.frame.scrollLeft).toBe(0);
   });
-
-  it("uses native scrollend as the only settle path when supported", () => {
-    const { frame, onCommit } = renderPager();
-
-    nativeScroll(frame, 400);
-    act(() => vi.advanceTimersByTime(1_000));
-    expect(onCommit).not.toHaveBeenCalled();
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("nearby");
-    expect(frame.dataset.homePagerScrolling).toBe("false");
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    expect(onCommit).toHaveBeenCalledOnce();
-  });
-
-  it("defers an observed scrollend until the native touch is no longer active", () => {
-    const { frame, onCommit } = renderPager();
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    expect(onCommit).not.toHaveBeenCalled();
-
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("nearby");
-  });
-
-  it("uses stable animation frames only when scrollend is unsupported", () => {
+  it("works without native scrollend support and does not use native horizontal scroll events", () => {
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
-    const { frame, onCommit } = renderPager();
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => vi.runAllTimers());
-
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("nearby");
-    expect(scrollToCalls).toEqual([]);
-    expect(frame.dataset.homePagerSettleMode).toBe("stable-frames");
+    const v = setup();
+    nativeScroll(v.frame, 200);
+    expect(v.commits).not.toHaveBeenCalled();
+    v.frame.scrollLeft = 0;
+    v.drag();
+    touch(v.frame, "touchend");
+    advance(180);
+    expect(v.commits).toHaveBeenCalledExactlyOnceWith("nearby");
   });
-
-  it("returns to the current snap point with zero commit", () => {
-    const { frame, onCommit } = renderPager();
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 80);
-    nativeScroll(frame, 0);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.style.height).toBe("");
+  it("keeps a vertical gesture vertical, permits a new horizontal gesture, and ignores implicit pointer capture changes", () => {
+    const v = setup();
+    v.drag(-30, -180);
+    touch(v.frame, "touchend");
+    advance(120);
+    expect(v.commits).not.toHaveBeenCalled();
+    v.drag();
+    act(() =>
+      v.panels[0]!.dispatchEvent(
+        new Event("lostpointercapture", { bubbles: true }),
+      ),
+    );
+    touch(v.frame, "touchend");
+    expect(v.commits).toHaveBeenCalledExactlyOnceWith("nearby");
   });
-
-  it("keeps Phone height fixed while retaining the PC document-flow height model", () => {
-    const phone = renderPager();
+  it("returns a small stationary release to the same page without a commit", () => {
+    const v = setup();
+    touch(v.frame, "touchstart");
+    touch(v.frame, "touchmove", 280, 300);
+    advance(20);
+    touch(v.frame, "touchend");
+    advance(180);
+    expect(v.commits).not.toHaveBeenCalled();
+    expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(0, 2));
+  });
+  it("keeps Phone height fixed and retains the PC document-flow model and exact offsets", () => {
+    const phone = setup();
+    act(() => phone.handle.current?.scrollToFeed("nearby"));
     expect(phone.frame.style.height).toBe("");
-    nativeScroll(phone.frame, 400);
-    act(() => phone.frame.dispatchEvent(new Event("scrollend")));
-    expect(phone.frame.style.height).toBe("");
-
-    const { frame } = renderPager(vi.fn(), "pc");
-    expect(frame.style.height).toBe("600px");
-
-    nativeScroll(frame, 400);
-    expect(frame.style.height).toBe("600px");
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(frame.style.height).toBe("900px");
+    offsets = [0, 412, 830];
+    const pc = setup("pc");
+    expect(pc.frame.style.height).toBe("600px");
+    act(() => pc.handle.current?.scrollToFeed("nearby"));
+    act(() => pc.frame.dispatchEvent(new Event("scrollend")));
+    expect(pc.frame.scrollLeft).toBe(412);
+    expect(pc.frame.style.height).toBe("900px");
+    expect(pc.commits).toHaveBeenCalledExactlyOnceWith("nearby");
+    expect(pc.frame.hasAttribute("data-category-pager-engine")).toBe(false);
   });
-
-  it("registers the committed Phone panel without changing any panel scrollTop", () => {
+  it("registers the selected panel and preserves the actual panel nodes and scroll positions", () => {
     const registered: HTMLElement[] = [];
-    const cleanups: ReturnType<typeof vi.fn>[] = [];
-    const register = vi.fn((element: HTMLElement) => {
-      registered.push(element);
-      const cleanup = vi.fn();
-      cleanups.push(cleanup);
-      return cleanup;
+    const release = vi.fn();
+    const v = setup("phone", (node) => {
+      registered.push(node);
+      return release;
     });
-    const { container, render } = renderPager(
-      vi.fn(),
-      "phone",
-      vi.fn(),
-      register,
-    );
-    const discover = container.querySelector<HTMLElement>(
-      '[data-home-feed-panel="discover"]',
-    )!;
-    const nearby = container.querySelector<HTMLElement>(
-      '[data-home-feed-panel="nearby"]',
-    )!;
-    discover.scrollTop = 137;
-    nearby.scrollTop = 88;
-
-    render("nearby");
-
-    expect(registered).toEqual([discover, nearby]);
-    expect(cleanups[0]).toHaveBeenCalledOnce();
-    expect(discover.scrollTop).toBe(137);
-    expect(nearby.scrollTop).toBe(88);
-    expect(container.querySelector('[data-home-feed-panel="discover"]')).toBe(
-      discover,
-    );
-    expect(container.querySelector('[data-home-feed-panel="nearby"]')).toBe(
-      nearby,
-    );
+    v.panels[0]!.scrollTop = 137;
+    v.panels[1]!.scrollTop = 88;
+    v.render("nearby");
+    expect(registered).toEqual([v.panels[0], v.panels[1]]);
+    expect(release).toHaveBeenCalledOnce();
+    expect(v.panels.map((p) => p.scrollTop)).toEqual([137, 88, 0]);
+    expect([...v.track.children]).toEqual(v.panels);
   });
-
-  it("restores each native panel after a hidden Primary ancestor removes its scroll range", () => {
-    const { container, render } = renderPager();
-    const panels = Array.from(
-      container.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
-    );
+  it("restores independent panel positions after a hidden ancestor removes their range", () => {
+    const v = setup();
     const positions = [137, 88, 44];
-    for (const [index, panel] of panels.entries()) {
-      render(homeFeeds[index] ?? "discover");
+    v.panels.forEach((p, i) => {
+      v.render(homeFeeds[i]!);
       act(() => {
-        panel.scrollTop = positions[index] ?? 0;
-        panel.dispatchEvent(new Event("scroll"));
+        p.scrollTop = positions[i]!;
+        p.dispatchEvent(new Event("scroll"));
       });
-    }
-
-    pagerWidth = 0;
-    render("topics", false);
-    for (const panel of panels) {
-      act(() => {
-        panel.scrollTop = 0;
-        panel.dispatchEvent(new Event("scroll"));
-      });
-    }
-    pagerWidth = 400;
-    render("topics", true);
-
-    expect(panels.map((panel) => panel.scrollTop)).toEqual(positions);
-  });
-
-  it("allows a tab request to cross directly to a non-adjacent feed", () => {
-    pagerOffsets = [0, 412, 830];
-    const { frame, handle, onCommit } = renderPager();
-
-    act(() => handle.current?.scrollToFeed("topics"));
-    expect(scrollToCalls.at(-1)).toMatchObject({
-      behavior: "smooth",
-      left: 830,
     });
-    expect(onCommit).not.toHaveBeenCalled();
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("topics");
+    width = 0;
+    v.render("topics", false);
+    v.panels.forEach((p) => {
+      p.scrollTop = 0;
+      p.dispatchEvent(new Event("scroll"));
+    });
+    width = 400;
+    v.render("topics", true);
+    expect(v.panels.map((p) => p.scrollTop)).toEqual(positions);
+    expect([...v.track.children]).toEqual(v.panels);
   });
-
-  it("settles tab requests without decorative motion when reduced motion is set", () => {
-    prefersReducedMotion = true;
-    const { frame, handle, onCommit } = renderPager();
-
-    act(() => handle.current?.scrollToFeed("nearby"));
-    expect(scrollToCalls.at(-1)?.behavior).toBe("auto");
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    expect(onCommit).toHaveBeenCalledWith("nearby");
+  it("supports non-adjacent tab requests and immediate reduced-motion positioning", () => {
+    const v = setup();
+    act(() => v.handle.current?.scrollToFeed("topics"));
+    expect(v.commits).toHaveBeenCalledExactlyOnceWith("topics");
+    advance(180);
+    expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(2, 2));
+    reduce = true;
+    act(() => v.handle.current?.scrollToFeed("nearby"));
+    expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(1, 4));
   });
-
-  it("uses an immediate actual-offset request for PC browser parity", () => {
-    pagerOffsets = [0, 412, 830];
-    const { frame, handle, onCommit } = renderPager(vi.fn(), "pc");
-
-    act(() => handle.current?.scrollToFeed("nearby"));
-    expect(scrollToCalls.at(-1)).toMatchObject({ behavior: "auto", left: 412 });
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("nearby");
+  it("does not reset the moving engine or its panels during its internal commit render", () => {
+    const v = setup();
+    v.drag();
+    const before = v.track.style.transform;
+    touch(v.frame, "touchend");
+    expect(v.track.style.transform).toBe(before);
+    expect([...v.track.children]).toEqual(v.panels);
+    v.render("nearby");
+    expect(v.track.style.transform).toBe(before);
   });
-
-  it("suppresses the click synthesized by a completed touch scroll", () => {
-    const { container, frame, handle } = renderPager();
-    const action = container.querySelector<HTMLButtonElement>("button")!;
-    const activated = vi.fn();
-    action.addEventListener("click", activated);
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    act(() => action.click());
-
-    expect(activated).not.toHaveBeenCalled();
-
-    act(() => vi.advanceTimersByTime(501));
-    act(() => handle.current?.scrollToFeed("topics"));
-    act(() => action.click());
-    expect(activated).toHaveBeenCalledOnce();
+  it("lets a new reverse touch replace a pending programmatic animation", () => {
+    const v = setup();
+    act(() => v.handle.current?.scrollToFeed("nearby"));
+    advance(4);
+    const before = v.track.style.transform;
+    touch(v.frame, "touchstart", 100, 300);
+    expect(v.track.style.transform).toBe(before);
+    for (let i = 1; i <= 10; i++) {
+      advance();
+      touch(v.frame, "touchmove", 100 + i * 20, 300);
+    }
+    touch(v.frame, "touchend");
+    advance(180);
+    expect(v.commits.mock.calls.map((c) => c[0])).toEqual([
+      "nearby",
+      "discover",
+    ]);
   });
-
-  it("changes at most one feed for one explicit PC wheel gesture", () => {
-    const { frame, onCommit } = renderPager(vi.fn(), "pc");
-    for (const deltaX of [42, 31, 18]) {
+  it("resizes from committed state, ignores native clamp events and does not commit stale motion", () => {
+    const v = setup();
+    v.drag();
+    width = 500;
+    offsets = [0, 500, 1000];
+    act(() => observers.forEach((o) => o.trigger()));
+    nativeScroll(v.frame, 0);
+    touch(v.frame, "touchend");
+    advance(180);
+    expect(v.commits).not.toHaveBeenCalled();
+    expect(v.progress).toHaveBeenLastCalledWith(0);
+  });
+  it("retains the PC one-page wheel rule", () => {
+    const v = setup("pc");
+    for (const deltaX of [42, 31, 18])
       act(() =>
-        frame.dispatchEvent(
+        v.frame.dispatchEvent(
           new WheelEvent("wheel", {
             bubbles: true,
             cancelable: true,
@@ -401,156 +404,26 @@ describe("HomeFeedPager native scroll-snap", () => {
           }),
         ),
       );
-    }
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("nearby");
+    act(() => v.frame.dispatchEvent(new Event("scrollend")));
+    expect(v.commits).toHaveBeenCalledExactlyOnceWith("nearby");
   });
-
-  it("consumes an internal commit without aligning scrollLeft a second time", () => {
-    pagerOffsets = [0, 412, 830];
-    const { frame, onCommit, render } = renderPager();
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 411.5);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).toHaveBeenCalledWith("nearby");
-    expect(scrollToCalls).toEqual([]);
-    render("nearby");
-    expect(frame.scrollLeft).toBe(411.5);
-    expect(scrollToCalls).toEqual([]);
-  });
-
-  it("invalidates a stale native session when a new touch reverses direction", () => {
-    const { frame, onCommit } = renderPager();
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 0);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(scrollToCalls).toEqual([]);
-  });
-
-  it("lets a reverse touch replace a pending programmatic request", () => {
-    const { frame, handle, onCommit } = renderPager();
-
-    act(() => handle.current?.scrollToFeed("topics"));
-    expect(scrollToCalls).toHaveLength(1);
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 0);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(scrollToCalls).toHaveLength(1);
-  });
-
-  it("cancels an unsupported-browser fallback when a newer touch starts", () => {
-    Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
-    const { frame, onCommit } = renderPager();
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 0);
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    act(() => vi.runAllTimers());
-
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(scrollToCalls).toEqual([]);
-  });
-
-  it("invalidates settle work on resize and aligns from current panel offsets", () => {
-    const { frame, onCommit } = renderPager();
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
-
-    pagerWidth = 500;
-    pagerOffsets = [0, 500, 1_000];
-    act(() => resizeObservers[0]?.trigger());
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-
-    expect(frame.scrollLeft).toBe(0);
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(scrollToCalls).toEqual([]);
-  });
-
-  it("keeps the committed feed when resize clamping scrollLeft fires before ResizeObserver", () => {
-    const { frame, onCommit, render } = renderPager();
-
-    render("nearby");
-    expect(frame.scrollLeft).toBe(400);
-
-    pagerWidth = 1_200;
-    pagerOffsets = [0, 1_200, 2_400];
-    const observer = resizeObservers.find((candidate) =>
-      candidate.observed.has(frame),
-    );
-    act(() => {
-      observer?.trigger();
-    });
-    expect(frame.scrollLeft).toBe(1_200);
-
-    pagerWidth = 320;
-    pagerOffsets = [0, 320, 640];
-    nativeScroll(frame, 640);
-    act(() => {
-      frame.dispatchEvent(new Event("scrollend"));
-    });
-
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.scrollLeft).toBe(320);
-    expect(frame.dataset["homePagerScrolling"]).toBe("false");
-
-    act(() => {
-      observer?.trigger();
-    });
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.scrollLeft).toBe(320);
-    expect(frame.dataset["homePagerScrolling"]).toBe("false");
-  });
-
-  it("defers observed PC height writes and cancels pending writes on unmount", () => {
-    const { container, frame } = renderPager(vi.fn(), "pc");
-    const panel = container.querySelector<HTMLElement>(
-      '[data-home-feed-panel="discover"]',
-    )!;
-    const observer = resizeObservers.find((candidate) =>
-      candidate.observed.has(frame),
-    )!;
-    expect(frame.style.height).toBe("600px");
-
-    Object.defineProperty(panel, "scrollHeight", {
-      configurable: true,
-      value: 980,
-    });
+  it("defers PC height changes and never writes a queued height after unmount", () => {
+    const v = setup("pc");
+    const observer = observers.find((o) => o.observed.has(v.frame))!;
+    expect(observer).toBeDefined();
+    expect(v.frame.style.height).toBe("600px");
+    heights.discover = 980;
     act(() => observer.trigger());
-    expect(frame.style.height).toBe("600px");
-    act(() => vi.runAllTimers());
-    expect(frame.style.height).toBe("980px");
-
-    Object.defineProperty(panel, "scrollHeight", {
-      configurable: true,
-      value: 1250,
-    });
+    expect(v.frame.style.height).toBe("600px");
+    advance();
+    expect(v.frame.style.height).toBe("980px");
+    heights.discover = 1250;
     act(() => observer.trigger());
-    const root = roots.pop()!;
-    act(() => root.unmount());
-    act(() => vi.runAllTimers());
+    expect(v.frame.style.height).toBe("980px");
+    cleanups.splice(0).forEach((cleanup) => cleanup());
     expect(observer.observed.size).toBe(0);
-    expect(frame.style.height).toBe("980px");
+    advance();
+    expect(v.frame.style.height).toBe("980px");
+    expect(frames.size).toBe(0);
   });
 });

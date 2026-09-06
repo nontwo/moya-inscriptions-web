@@ -105,7 +105,10 @@ const item = (id: string, title: string): CatalogSummary => ({
   title,
 });
 
-const renderScreen = (data: CalligraphyCategorySurfaceData) => {
+const renderScreen = (
+  data: CalligraphyCategorySurfaceData,
+  initialScrollTop?: number,
+) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -120,7 +123,48 @@ const renderScreen = (data: CalligraphyCategorySurfaceData) => {
   const frame = container.querySelector<HTMLElement>(
     "[data-calligraphy-category-pager]",
   )!;
-  return { container, frame };
+  const destination = container.querySelector<HTMLElement>(
+    '[data-primary-destination="calligraphy"]',
+  )!;
+  let top = initialScrollTop ?? 0;
+  const scrollWrites: number[] = [];
+  Object.defineProperties(destination, {
+    clientHeight: { configurable: true, get: () => 200 },
+    scrollHeight: {
+      configurable: true,
+      get: () => Math.max(200, Number.parseFloat(frame.style.height)),
+    },
+    scrollTop: {
+      configurable: true,
+      get: () => top,
+      set: (requested: number) => {
+        top = Math.max(
+          0,
+          Math.min(
+            requested,
+            destination.scrollHeight - destination.clientHeight,
+          ),
+        );
+        scrollWrites.push(top);
+      },
+    },
+  });
+  if (initialScrollTop !== undefined) {
+    // Reads describe actual owner state, independent of how many consumers
+    // inspect it before a category commit.
+    readActiveScrollTop.mockImplementation(() => destination.scrollTop);
+  }
+  return {
+    container,
+    frame,
+    destination,
+    scrollWrites,
+    nativeScrollTo: (value: number) =>
+      act(() => {
+        top = value;
+        destination.dispatchEvent(new Event("scroll"));
+      }),
+  };
 };
 
 const activateCategory = (
@@ -135,12 +179,33 @@ const activateCategory = (
       )
       ?.click(),
   );
-  act(() => frame.dispatchEvent(new Event("scrollend")));
+  expect(frame.scrollLeft).toBe(0);
+};
+
+const touch = (frame: HTMLElement, type: string, x = 300) => {
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: (type === "touchend"
+      ? []
+      : [{ clientX: x, clientY: 300 }]) as Touch[],
+  });
+  Object.defineProperty(event, "timeStamp", { value: performance.now() });
+  act(() => frame.dispatchEvent(event));
 };
 
 describe("CalligraphyCategoryScreen", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     scrollToCalls = [];
     fetchSameOriginCatalogPageMock.mockReset();
     openCatalog.mockReset();
@@ -156,6 +221,12 @@ describe("CalligraphyCategoryScreen", () => {
       () => viewportWidth,
     );
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(0);
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(
+      document.body,
+    );
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
       function (this: HTMLElement) {
         return (
@@ -190,7 +261,7 @@ describe("CalligraphyCategoryScreen", () => {
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: (callback: FrameRequestCallback) =>
-        window.setTimeout(() => callback(performance.now()), 0),
+        window.setTimeout(() => callback(performance.now()), 16),
     });
     Object.defineProperty(window, "cancelAnimationFrame", {
       configurable: true,
@@ -198,7 +269,11 @@ describe("CalligraphyCategoryScreen", () => {
     });
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
-      value: vi.fn(() => ({ matches: false })),
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
     });
     Object.defineProperty(HTMLElement.prototype, "onscrollend", {
       configurable: true,
@@ -211,6 +286,7 @@ describe("CalligraphyCategoryScreen", () => {
     document.body.replaceChildren();
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });
@@ -246,16 +322,25 @@ describe("CalligraphyCategoryScreen", () => {
       "运行时书帖",
     );
 
-    act(() => {
-      frame.scrollLeft = 200;
-      frame.dispatchEvent(new Event("scroll"));
-      vi.advanceTimersByTime(0);
-    });
+    touch(frame, "touchstart");
+    touch(frame, "touchmove", 100);
+    act(() => vi.advanceTimersByTime(32));
+    const track = frame.firstElementChild as HTMLElement;
+    const translatedLeft = Number(
+      track.style.transform.match(/translate3d\(([-\d.]+)px/)?.[1],
+    );
+    expect(translatedLeft).toBeLessThan(-100);
+    expect(translatedLeft).toBeGreaterThan(-200);
+    // The indicator follows the rendered track during Embla's physical
+    // response, instead of assuming an immediate native scrollLeft write.
     expect(
-      container
-        .querySelector("[data-calligraphy-category-indicator]")
-        ?.getAttribute("data-calligraphy-category-progress"),
-    ).toBe("0.5");
+      Number(
+        container
+          .querySelector("[data-calligraphy-category-indicator]")
+          ?.getAttribute("data-calligraphy-category-progress"),
+      ),
+    ).toBe(-translatedLeft / 400);
+    touch(frame, "touchend");
 
     activateCategory(container, frame, "ink");
     expect(
@@ -301,15 +386,24 @@ describe("CalligraphyCategoryScreen", () => {
       },
       classificationSource: "qa-synthetic",
     };
-    readActiveScrollTop.mockReturnValueOnce(137).mockReturnValueOnce(88);
-    const { container, frame } = renderScreen(data);
+    const { container, frame, destination, nativeScrollTo } = renderScreen(
+      data,
+      137,
+    );
 
     activateCategory(container, frame, "ink");
     expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(0);
+    expect(destination.scrollTop).toBe(0);
+    nativeScrollTo(88);
     activateCategory(container, frame, "rubbing");
     expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(0);
+    expect(destination.scrollTop).toBe(0);
+    activateCategory(container, frame, "ink");
+    expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(88);
+    expect(destination.scrollTop).toBe(88);
     activateCategory(container, frame, "all");
     expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(137);
+    expect(destination.scrollTop).toBe(137);
 
     const opener = container.querySelector<HTMLButtonElement>(
       '[data-calligraphy-category-panel="all"] [data-catalog-id="qa-ink"]',
@@ -335,12 +429,12 @@ describe("CalligraphyCategoryScreen", () => {
       page: page(secondPageItems, { page: 2, total: 55, totalPages: 3 }),
       state: "success",
     });
-    readActiveScrollTop.mockReturnValueOnce(184).mockReturnValue(0);
     const { container, frame } = renderScreen(
       createRuntimeCalligraphyCategorySurface({
         page: page(firstPageItems, { total: 55, totalPages: 3 }),
         state: "populated",
       }),
+      184,
     );
 
     expect(
@@ -387,6 +481,60 @@ describe("CalligraphyCategoryScreen", () => {
       "runtime-calligraphy-25",
       pageTwoOpener,
     );
+  });
+
+  it("passes existing category snapshots to the entering panel without rebuilding Catalog cards", () => {
+    const allItems = [
+      item("qa-ink", "墨迹（视觉 QA 合成）"),
+      item("qa-rubbing", "拓本（视觉 QA 合成）"),
+    ];
+    const data: CalligraphyCategorySurfaceData = {
+      categories: {
+        all: { page: page(allItems), state: "populated" },
+        ink: { page: page([allItems[0]!]), state: "populated" },
+        rubbing: { page: page([allItems[1]!]), state: "populated" },
+      },
+      classificationSource: "qa-synthetic",
+    };
+    const { container, frame, destination, nativeScrollTo } = renderScreen(
+      data,
+      137,
+    );
+    activateCategory(container, frame, "ink");
+    nativeScrollTo(88);
+    activateCategory(container, frame, "rubbing");
+    act(() => vi.advanceTimersByTime(3000));
+    nativeScrollTo(225);
+    const inkPanel = container.querySelector<HTMLElement>(
+      '[data-calligraphy-category-panel="ink"]',
+    )!;
+    const rubbingPanel = container.querySelector<HTMLElement>(
+      '[data-calligraphy-category-panel="rubbing"]',
+    )!;
+    const oldCards = [...container.querySelectorAll("[data-catalog-id]")];
+    touch(frame, "touchstart");
+    for (let index = 1; index <= 10; index++) {
+      act(() => vi.advanceTimersByTime(16));
+      touch(frame, "touchmove", 300 + index * 22);
+    }
+    const incomingOffset = Number(
+      inkPanel.style.transform.match(/translate3d\(0,\s*([-\d.]+)px/)?.[1] ?? 0,
+    );
+    expect(incomingOffset - destination.scrollTop).toBe(-88);
+    touch(frame, "touchend");
+    expect(destination.scrollTop).toBe(88);
+    expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(88);
+    expect(inkPanel.hasAttribute("inert")).toBe(false);
+    expect(rubbingPanel.hasAttribute("inert")).toBe(true);
+    expect([...container.querySelectorAll("[data-catalog-id]")]).toEqual(
+      oldCards,
+    );
+    activateCategory(container, frame, "rubbing");
+    expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(225);
+    expect(destination.scrollTop).toBe(225);
+    activateCategory(container, frame, "all");
+    expect(restoreActiveScrollTop).toHaveBeenLastCalledWith(137);
+    expect(destination.scrollTop).toBe(137);
   });
 
   it("reapplies the active category scroll after resize and orientation", () => {

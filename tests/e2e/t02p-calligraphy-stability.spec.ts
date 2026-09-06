@@ -396,11 +396,35 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
     )
     .toBeGreaterThan(scrollEnds);
   await expectCategory(shell, "all");
+  // WebKit can deliver scrollend while native PageDown motion is still running.
+  // Record stable reading before resize; this does not test rotation mid-scroll.
+  const readingSamples = await shell.evaluate(
+    (node) =>
+      new Promise<number[]>((resolve) => {
+        const owner =
+          (node as HTMLElement).dataset.platform === "pc"
+            ? document.scrollingElement!
+            : node.querySelector('[data-primary-destination="calligraphy"]')!;
+        let previous = owner.scrollTop;
+        const samples = [previous];
+        let stableFrames = 0;
+        const sample = () => {
+          const current = owner.scrollTop;
+          samples.push(current);
+          stableFrames = current === previous ? stableFrames + 1 : 0;
+          previous = current;
+          if (stableFrames >= 3) resolve(samples);
+          else requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
   const read = await readScroll(shell);
+  expect(read.top).toBeGreaterThan(before.top);
   expect(read.owner).toBe(before.owner);
   expect(read.otherTop).toBe(before.otherTop);
   await testInfo.attach("native-reading-owner", {
-    body: JSON.stringify({ before, after: read }, null, 2),
+    body: JSON.stringify({ before, readingSamples, after: read }, null, 2),
     contentType: "application/json",
   });
 

@@ -57,6 +57,16 @@ const feedTab = (container: ParentNode, feed: string) =>
 describe("HomeScreen integration", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(390);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
     window.history.replaceState(null, "", "/dev/t02p");
     window.localStorage.clear();
     document.documentElement.dataset.yoyiBootStarted = String(
@@ -122,6 +132,7 @@ describe("HomeScreen integration", () => {
     }
     document.body.replaceChildren();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     if (elementScrollToDescriptor === undefined) {
       Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
     } else {

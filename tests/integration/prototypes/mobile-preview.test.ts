@@ -1116,8 +1116,15 @@ describe("mobile application preview", () => {
     expect(Number.parseFloat(card.style.width)).toBeLessThan(390);
   });
 
-  it("follows the finger and settles home pages at the 50 percent boundary", async () => {
+  it("follows the finger and settles home pages at the 50 percent boundary", () => {
     const dom = renderPreview();
+    const frames = installControlledAnimationFrames(dom.window);
+    const advanceFortyFrames = () => {
+      for (let frame = 0; frame < 40; frame += 1) {
+        frames.step((frame * 1000) / 60);
+      }
+      expect(frames.pending()).toBe(0);
+    };
     const document = dom.window.document;
     const homeScroll = document.querySelector<HTMLElement>(
       '[data-scroll-view="home"]',
@@ -1162,21 +1169,21 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
-    await waitForAnimationFrames(dom.window, 40);
+    advanceFortyFrames();
 
     swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 108.9, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
-    await waitForAnimationFrames(dom.window, 40);
+    advanceFortyFrames();
 
     swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 105, y: 160 });
     expect(
       document.querySelector<HTMLElement>('[data-home-feed="discover"]')
         ?.classList,
     ).toContain("is-selected");
-    await waitForAnimationFrames(dom.window, 40);
+    advanceFortyFrames();
 
     swipe(dom.window, discoverCard, { x: 300, y: 160 }, { x: 101.1, y: 160 });
     expect(
@@ -1187,7 +1194,7 @@ describe("mobile application preview", () => {
     expect(
       document.querySelector<HTMLElement>('[data-view="detail"]')?.hidden,
     ).toBe(true);
-    await waitForAnimationFrames(dom.window, 40);
+    advanceFortyFrames();
     expect(pagerTranslateX(homeTrack)).toBeCloseTo(-390);
 
     swipe(dom.window, homeScroll, { x: 390, y: 160 }, { x: 0, y: 160 });
@@ -1195,7 +1202,7 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.classList,
     ).toContain("is-selected");
-    await waitForAnimationFrames(dom.window, 40);
+    advanceFortyFrames();
     dispatchPointer(dom.window, homeScroll, "pointerdown", {
       clientX: 300,
       clientY: 160,
@@ -1216,7 +1223,7 @@ describe("mobile application preview", () => {
       document.querySelector<HTMLElement>('[data-home-feed="topics"]')
         ?.classList,
     ).toContain("is-selected");
-    await waitForAnimationFrames(dom.window, 40);
+    advanceFortyFrames();
 
     swipe(dom.window, homeScroll, { x: 0, y: 160 }, { x: 390, y: 160 });
     expect(

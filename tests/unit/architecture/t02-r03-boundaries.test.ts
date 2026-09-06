@@ -25,6 +25,7 @@ describe("T02 R03 architecture boundaries", () => {
   it("keeps Product Home, Topics, and source composition independent from Development QA", async () => {
     const roots = [
       path.join(repositoryRoot, "apps/web/features/home"),
+      path.join(repositoryRoot, "apps/web/features/quick-actions"),
       path.join(repositoryRoot, "apps/web/features/topics"),
       path.join(repositoryRoot, "apps/web/features/product-shell"),
       path.join(repositoryRoot, "apps/web/features/product-preview"),
@@ -46,6 +47,18 @@ describe("T02 R03 architecture boundaries", () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it("keeps quick actions independent of business services and persistent state", async () => {
+    const files = await collectSourceFiles(
+      path.join(repositoryRoot, "apps/web/features/quick-actions"),
+    );
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      expect(source).not.toMatch(
+        /localStorage|sessionStorage|indexedDB|navigator\.share|clipboard|\bfetch\s*\(|mock-content-action-store|qa-user/u,
+      );
+    }
   });
 
   it("keeps one bounded Content V1 Detail and the existing Viewer without Gallery", async () => {
@@ -174,7 +187,7 @@ describe("T02 R03 architecture boundaries", () => {
     );
   });
 
-  it("keeps the Home pager native and independent from Primary gesture machinery", async () => {
+  it("keeps local category touch paging independent from Primary gesture machinery", async () => {
     const homeAdapter = await readFile(
       path.join(repositoryRoot, "apps/web/features/home/home-feed-pager.tsx"),
       "utf8",
@@ -216,12 +229,25 @@ describe("T02 R03 architecture boundaries", () => {
     expect(pager).not.toMatch(
       /home-feed|discover|nearby|topics|user-scenarios/u,
     );
-    expect(pager).not.toMatch(
-      /setPointerCapture|releasePointerCapture|pointermove|translate3d/u,
+    // Category hosts retain state/scroll ownership; the approved core owns
+    // touch motion, without a second direction or animation implementation.
+    const engine = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/shell/category-pager-engine.ts",
+      ),
+      "utf8",
     );
+    expect(pager).toContain("createCategoryPagerEngine(frame, {");
+    expect(pager).toContain("engine.destroy()");
     expect(pager).not.toMatch(
-      /addEventListener\(["'](?:pointer|touch)|spring|resistance/u,
+      /resolvePagerDirection|setPointerCapture|pagerSettleProgress/u,
     );
+    expect(engine).toContain('from "embla-carousel"');
+    expect(engine).toContain("api.destroy()");
+    expect(engine).not.toContain("internalEngine");
+    expect(pager).not.toMatch(/translate3d|spring|resistance/u);
+    expect(styles).toContain("touch-action: pan-y pinch-zoom;");
     expect(pager).not.toMatch(
       /HORIZONTAL_PAGER_SCROLL_IDLE_MS|setTimeout\([^)]*settle/u,
     );

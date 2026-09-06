@@ -46,6 +46,8 @@ describe("T02pDevelopmentPage", () => {
     expect(markup).toContain("data-product-shell");
     expect(markup).toContain('data-platform="phone"');
     expect(markup).not.toContain("T02P QA Harness");
+    expect(markup).not.toContain("data-quick-actions");
+    expect(markup).not.toContain("data-quick-action-feedback");
     expect(markup).not.toContain("data-qa-controls");
     expect(markup).not.toContain("data-qa-platform-selector");
     expect(markup).not.toContain("data-qa-catalog-scenario-selector");

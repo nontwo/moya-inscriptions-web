@@ -7,6 +7,9 @@ import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import { PreviewCatalogDetailOverlay } from "./preview-catalog-detail-overlay";
 import { ProductShell, useProductShell } from "../product-shell/product-shell";
 import { findTopic } from "../topics/topic";
+import { ContentQuickActionsProvider } from "../quick-actions/content-quick-actions";
+import type { ContentQuickActionEnvironment } from "../quick-actions/quick-action-types";
+
 import { TopicDetail } from "../topics/topic-detail";
 
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
@@ -58,6 +61,7 @@ export interface T02pProductPreviewProps {
   readonly initialTopicId?: string | null;
   readonly productUtility?: ReactNode;
   readonly navigationAction?: ReactNode;
+  readonly quickActions?: ContentQuickActionEnvironment;
   readonly showDevelopmentPagerControls?: boolean;
   readonly states: T02pDevelopmentCatalogDestinationStates;
 }
@@ -71,22 +75,27 @@ export const T02pProductPreview = ({
   productUtility,
   navigationAction,
   showDevelopmentPagerControls = false,
+  quickActions,
   states,
 }: T02pProductPreviewProps) => (
   <div data-clean-product-preview="">
     <ProductShell
       calligraphy={
         <div data-product-panel="calligraphy">
-          <CalligraphyCategoryScreen data={states.calligraphy} />
+          <ContentQuickActionsProvider environment={quickActions}>
+            <CalligraphyCategoryScreen data={states.calligraphy} />
+          </ContentQuickActionsProvider>
         </div>
       }
       developmentPlatformOverride={developmentPlatformOverride}
       home={
-        <PreviewHome
-          data={states.home}
-          initialFeed={initialHomeFeed}
-          initialTopicId={initialTopicId}
-        />
+        <ContentQuickActionsProvider environment={quickActions}>
+          <PreviewHome
+            data={states.home}
+            initialFeed={initialHomeFeed}
+            initialTopicId={initialTopicId}
+          />
+        </ContentQuickActionsProvider>
       }
       initialPlatform={initialPlatform}
       primaryUtility={productUtility}

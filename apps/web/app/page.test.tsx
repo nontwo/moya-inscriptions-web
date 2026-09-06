@@ -44,6 +44,9 @@ describe("FormalPage", () => {
     const markup = renderToStaticMarkup(await FormalPage({}));
 
     expect(markup).toContain("data-formal-product-application");
+    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "quickActions",
+    );
     expect(readFormalRequestContextMock).toHaveBeenCalledOnce();
     expect(loadProductionProductStatesMock).toHaveBeenCalledOnce();
     expect(t02pProductPreviewMock.mock.calls[0]?.[0]).toEqual({

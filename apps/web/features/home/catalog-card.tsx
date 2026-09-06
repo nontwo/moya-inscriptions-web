@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@moya/ui";
 
 import styles from "./home-screen.module.css";
+import { useContentQuickActions } from "../quick-actions/content-quick-actions";
+import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 
 import type { CSSProperties } from "react";
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
@@ -135,6 +137,7 @@ export const CatalogCard = ({
   onOpenCatalog,
   variant,
 }: CatalogCardProps) => {
+  const quickActions = useContentQuickActions();
   const pointerStartYRef = useRef<number | null>(null);
   const suppressActivationRef = useRef(false);
   const feedSpan =
@@ -170,7 +173,15 @@ export const CatalogCard = ({
           <p className={styles.cardSummary}>{item.summary}</p>
         ) : null}
       </div>
-      {onOpenCatalog === undefined ? null : (
+      {onOpenCatalog === undefined ? null : quickActions !== null &&
+        variant === "feed" ? (
+        <QuickActionCardAction
+          className={styles.cardAction}
+          content={{ kind: "catalog", id: item.id, title: item.title }}
+          environment={quickActions}
+          onActivate={(opener) => onOpenCatalog(item, opener)}
+        />
+      ) : (
         <button
           type="button"
           aria-label={`打开${item.title}`}

@@ -1,5 +1,7 @@
 "use client";
 
+import { flushSync } from "react-dom";
+
 import {
   forwardRef,
   useCallback,
@@ -10,6 +12,8 @@ import {
 } from "react";
 
 import styles from "./horizontal-pager.module.css";
+import { createCategoryPagerEngine } from "./category-pager-engine";
+import type { CategoryPagerEngine } from "./category-pager-engine";
 import {
   HORIZONTAL_PAGER_CLICK_SUPPRESS_PX,
   HORIZONTAL_PAGER_FALLBACK_STABLE_FRAMES,
@@ -23,6 +27,7 @@ import type {
   ForwardedRef,
   ReactNode,
   RefAttributes,
+  TouchEvent as ReactTouchEvent,
   WheelEvent as ReactWheelEvent,
 } from "react";
 import type { PresentationPlatform } from "./device-platform";
@@ -66,9 +71,6 @@ const initialValues = <Key extends string, Value>(
 ): Record<Key, Value> =>
   Object.fromEntries(keys.map((key) => [key, value])) as Record<Key, Value>;
 
-const reducedMotionPreferred = () =>
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-
 function HorizontalPagerImplementation<Key extends string>(
   {
     keys,
@@ -92,6 +94,8 @@ function HorizontalPagerImplementation<Key extends string>(
   }: HorizontalPagerProps<Key>,
   ref: ForwardedRef<HorizontalPagerHandle<Key>>,
 ) {
+  const usesEmbla = platform !== "pc";
+  const engineRef = useRef<CategoryPagerEngine | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const panelRefs = useRef(initialValues<Key, HTMLElement | null>(keys, null));
   const heightsRef = useRef(initialValues(keys, 0));
@@ -187,6 +191,7 @@ function HorizontalPagerImplementation<Key extends string>(
 
   const publishProgress = useCallback(
     (immediate = false) => {
+      if (usesEmbla) return;
       const publish = () => {
         progressFrameRef.current = null;
         const frame = frameRef.current;
@@ -205,7 +210,7 @@ function HorizontalPagerImplementation<Key extends string>(
         progressFrameRef.current = window.requestAnimationFrame(publish);
       }
     },
-    [cancelProgressFrame, readSnapOffsets],
+    [cancelProgressFrame, readSnapOffsets, usesEmbla],
   );
 
   const cancelFallback = useCallback(() => {
@@ -266,6 +271,7 @@ function HorizontalPagerImplementation<Key extends string>(
     (generation: number, targetIndex: number) => {
       const session = sessionRef.current;
       if (session === null || session.generation !== generation) return;
+      if (frameRef.current) frameRef.current.style.scrollSnapType = "";
       cancelFallback();
       sessionRef.current = null;
       touchStartScrollLeftRef.current = null;
@@ -377,6 +383,10 @@ function HorizontalPagerImplementation<Key extends string>(
 
   const requestFeed = useCallback(
     (feed: Key) => {
+      if (usesEmbla) {
+        engineRef.current?.scrollTo(keys.indexOf(feed));
+        return;
+      }
       const frame = frameRef.current;
       const targetIndex = keys.indexOf(feed);
       const offsets = readSnapOffsets();
@@ -395,12 +405,10 @@ function HorizontalPagerImplementation<Key extends string>(
         offsets,
       );
       startSession("programmatic", targetIndex, originIndex);
-      scrollFrameToIndex(
-        targetIndex,
-        platform === "pc" || reducedMotionPreferred() ? "auto" : "smooth",
-      );
+      scrollFrameToIndex(targetIndex, "auto");
     },
     [
+      usesEmbla,
       keys,
       platform,
       publishProgress,
@@ -419,6 +427,7 @@ function HorizontalPagerImplementation<Key extends string>(
   );
 
   const handleScroll = useCallback(() => {
+    if (usesEmbla) return;
     const frame = frameRef.current;
     if (frame === null) return;
     const touchStart = touchStartScrollLeftRef.current;
@@ -465,6 +474,7 @@ function HorizontalPagerImplementation<Key extends string>(
     publishProgress();
     scheduleFallback(session.generation);
   }, [
+    usesEmbla,
     invalidateSession,
     publishProgress,
     readSnapOffsets,
@@ -472,19 +482,23 @@ function HorizontalPagerImplementation<Key extends string>(
     startSession,
   ]);
 
-  const handleTouchStart = useCallback(() => {
-    const frame = frameRef.current;
-    if (frame === null) return;
-    touchActiveRef.current = true;
-    suppressClickUntilRef.current = 0;
-    touchStartScrollLeftRef.current = frame.scrollLeft;
-    const offsets = readSnapOffsets();
-    const originIndex = resolveHorizontalPagerSettledIndex(
-      frame.scrollLeft,
-      offsets,
-    );
-    startSession("native", null, originIndex);
-  }, [readSnapOffsets, startSession]);
+  const handleTouchStart = useCallback(
+    (event: ReactTouchEvent) => {
+      if (event.touches?.length > 1) return;
+      const frame = frameRef.current;
+      if (frame === null) return;
+      touchActiveRef.current = true;
+      suppressClickUntilRef.current = 0;
+      touchStartScrollLeftRef.current = frame.scrollLeft;
+      const offsets = readSnapOffsets();
+      const originIndex = resolveHorizontalPagerSettledIndex(
+        frame.scrollLeft,
+        offsets,
+      );
+      startSession("native", null, originIndex);
+    },
+    [platform, readSnapOffsets, startSession],
+  );
 
   const handleTouchFinish = useCallback(() => {
     touchActiveRef.current = false;
@@ -503,7 +517,7 @@ function HorizontalPagerImplementation<Key extends string>(
       return;
     }
     scheduleFallback(session.generation);
-  }, [invalidateSession, scheduleFallback]);
+  }, [platform, invalidateSession, scheduleFallback]);
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -537,7 +551,39 @@ function HorizontalPagerImplementation<Key extends string>(
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
+    if (!usesEmbla || !visible || !frame) return;
+    frame.scrollLeft = 0;
+    const engine = createCategoryPagerEngine(frame, {
+      getCommittedIndex: () => activeIndexRef.current,
+      onCommit: (index) => {
+        const key = keys[index];
+        if (key === undefined) return;
+        internalCommitIndexRef.current = index;
+        if (scrollOwner === "document") applyPanelHeight(index);
+        flushSync(() => onCommitRef.current(key));
+      },
+      onProgress: (progress) => {
+        frame.dataset.horizontalPagerProgress = String(progress);
+        onProgressRef.current?.(progress);
+      },
+      onMotion: setScrolling,
+    });
+    engineRef.current = engine;
+    return () => {
+      engineRef.current = null;
+      engine.destroy();
+    };
+  }, [usesEmbla, visible, keys, scrollOwner, applyPanelHeight, setScrolling]);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
     if (frame === null) return;
+    if (usesEmbla) {
+      engineRef.current?.sync(activeIndex);
+      internalCommitIndexRef.current = null;
+      if (scrollOwner === "document") applyPanelHeight(activeIndex);
+      return;
+    }
     const internalCommit = internalCommitIndexRef.current === activeIndex;
     if (internalCommit) {
       internalCommitIndexRef.current = null;
@@ -560,6 +606,7 @@ function HorizontalPagerImplementation<Key extends string>(
     }
     publishProgress(true);
   }, [
+    usesEmbla,
     activeKey,
     activeIndex,
     keys,
@@ -592,9 +639,10 @@ function HorizontalPagerImplementation<Key extends string>(
       restorePreservedPanelScrollTops();
     } else {
       invalidateSession();
-      scrollFrameToIndex(activeIndexRef.current, "auto");
+      if (!usesEmbla) scrollFrameToIndex(activeIndexRef.current, "auto");
     }
   }, [
+    usesEmbla,
     invalidateSession,
     scrollFrameToIndex,
     visible,
@@ -603,7 +651,7 @@ function HorizontalPagerImplementation<Key extends string>(
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    if (frame === null) return undefined;
+    if (frame === null || usesEmbla) return undefined;
     supportsScrollEndRef.current = "onscrollend" in frame;
     frame.setAttribute(
       `data-${diagnosticPrefix}-pager-settle-mode`,
@@ -620,7 +668,7 @@ function HorizontalPagerImplementation<Key extends string>(
     };
     frame.addEventListener("scrollend", handleScrollEnd);
     return () => frame.removeEventListener("scrollend", handleScrollEnd);
-  }, [diagnosticPrefix]);
+  }, [diagnosticPrefix, usesEmbla]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -643,7 +691,8 @@ function HorizontalPagerImplementation<Key extends string>(
         frameWidthRef.current = width;
         invalidateSession();
         const offset = readSnapOffsets()[activeIndexRef.current];
-        if (offset !== undefined) frame.scrollLeft = offset;
+        if (usesEmbla) engineRef.current?.resize();
+        else if (offset !== undefined) frame.scrollLeft = offset;
         publishProgress(true);
       }
       if (scrollOwner === "document" && sessionRef.current === null) {
@@ -670,6 +719,7 @@ function HorizontalPagerImplementation<Key extends string>(
       if (heightFrame !== null) window.cancelAnimationFrame(heightFrame);
     };
   }, [
+    usesEmbla,
     applyPanelHeight,
     invalidateSession,
     scrollOwner,
@@ -697,12 +747,14 @@ function HorizontalPagerImplementation<Key extends string>(
       {...frameAttributes}
       className={`${styles.frame} ${frameClassName ?? ""}`}
       data-horizontal-pager=""
+      data-category-pager-engine={usesEmbla ? "embla" : undefined}
       data-horizontal-pager-platform={platform}
       data-horizontal-pager-scroll-owner={scrollOwner}
       data-horizontal-pager-active-key={activeKey}
       data-horizontal-pager-scrolling="false"
       onClickCapture={(event) => {
         if (
+          event.detail !== 0 &&
           suppressClickUntilRef.current > 0 &&
           performance.now() <= suppressClickUntilRef.current
         ) {
@@ -712,13 +764,17 @@ function HorizontalPagerImplementation<Key extends string>(
         }
       }}
       onScroll={handleScroll}
-      onTouchCancelCapture={() => {
-        invalidateSession();
-        scrollFrameToIndex(activeIndexRef.current, "auto");
-        publishProgress(true);
-      }}
-      onTouchEndCapture={handleTouchFinish}
-      onTouchStartCapture={handleTouchStart}
+      onTouchCancelCapture={
+        usesEmbla
+          ? undefined
+          : () => {
+              invalidateSession();
+              scrollFrameToIndex(activeIndexRef.current, "auto");
+              publishProgress(true);
+            }
+      }
+      onTouchEndCapture={usesEmbla ? undefined : handleTouchFinish}
+      onTouchStartCapture={usesEmbla ? undefined : handleTouchStart}
       onWheel={handleWheel}
     >
       <div

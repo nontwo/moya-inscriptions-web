@@ -65,3 +65,47 @@ describe("CatalogCard failed media geometry", () => {
     expect(renderCard("inscription").style.aspectRatio).toBe("");
   });
 });
+
+describe("CatalogCard unchanged activation without quick actions", () => {
+  const renderButton = () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    let opened = 0;
+    act(() =>
+      root.render(
+        <CatalogCard
+          item={item}
+          variant="feed"
+          onOpenCatalog={() => {
+            opened += 1;
+          }}
+        />,
+      ),
+    );
+    return { button: container.querySelector("button")!, count: () => opened };
+  };
+  const send = (button: HTMLButtonElement, name: string, x = 0, y = 0) => {
+    const event = new MouseEvent(name, {
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+    });
+    act(() => button.dispatchEvent(event));
+  };
+  it("keeps the 8px vertical guard and leaves horizontal-only clicks unchanged", () => {
+    const view = renderButton();
+    send(view.button, "pointerdown");
+    send(view.button, "pointermove", 0, 9);
+    send(view.button, "pointerup", 0, 9);
+    act(() => view.button.click());
+    expect(view.count()).toBe(0);
+    send(view.button, "pointerdown");
+    send(view.button, "pointermove", 40, 0);
+    send(view.button, "pointerup", 40, 0);
+    act(() => view.button.click());
+    expect(view.count()).toBe(1);
+    expect(view.button.hasAttribute("data-quick-actions")).toBe(false);
+  });
+});

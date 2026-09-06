@@ -341,6 +341,10 @@ export const CalligraphyCategoryScreen = ({
         }}
         platform={platform}
         primaryVisible={activeDestination === "calligraphy"}
+        readCurrentScrollTop={readActiveScrollTop}
+        readSavedCategoryScrollTop={(category) =>
+          scrollPositionsRef.current[category]
+        }
       />
     </div>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { flushSync } from "react-dom";
+
 import {
   forwardRef,
   useCallback,
@@ -17,10 +19,16 @@ import {
   isHomePagerAtOffset,
   resolveHomePagerSettledIndex,
 } from "../home/home-feed-pager-motion";
+import { createCategoryPagerEngine } from "../shell/category-pager-engine";
+import type { CategoryPagerEngine } from "../shell/category-pager-engine";
 import { calligraphyCategories } from "./calligraphy-category";
 import styles from "./calligraphy-category.module.css";
 
-import type { ReactNode, WheelEvent as ReactWheelEvent } from "react";
+import type {
+  ReactNode,
+  TouchEvent as ReactTouchEvent,
+  WheelEvent as ReactWheelEvent,
+} from "react";
 import type { PresentationPlatform } from "../shell/device-platform";
 import type {
   CalligraphyCategory,
@@ -48,10 +56,11 @@ export interface CalligraphyCategoryPagerProps {
   >;
   readonly platform: PresentationPlatform;
   readonly primaryVisible: boolean;
+  readonly readCurrentScrollTop: () => number;
+  readonly readSavedCategoryScrollTop: (
+    category: CalligraphyCategory,
+  ) => number;
 }
-
-const reducedMotionPreferred = () =>
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 export const CalligraphyCategoryPager = forwardRef<
   CalligraphyCategoryPagerHandle,
@@ -65,9 +74,13 @@ export const CalligraphyCategoryPager = forwardRef<
     panelStates,
     platform,
     primaryVisible,
+    readCurrentScrollTop,
+    readSavedCategoryScrollTop,
   },
   ref,
 ) {
+  const usesEmbla = platform !== "pc";
+  const engineRef = useRef<CategoryPagerEngine | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const panelRefs = useRef<Record<CalligraphyCategory, HTMLElement | null>>({
     all: null,
@@ -78,6 +91,14 @@ export const CalligraphyCategoryPager = forwardRef<
   const activeIndexRef = useRef(activeIndex);
   const onCommitRef = useRef(onCommit);
   const onProgressRef = useRef(onProgress);
+  const scrollReadersRef = useRef({
+    readCurrentScrollTop,
+    readSavedCategoryScrollTop,
+  });
+  // Only this gesture/tail owns these display offsets. Screen retains the
+  // actual per-category reading positions and Shell retains restoration.
+  const readingTransitionRef = useRef<number[] | null>(null);
+  const readingMotionRef = useRef(false);
   const sessionRef = useRef<ScrollSession | null>(null);
   const generationRef = useRef(0);
   const fallbackFrameRef = useRef<number | null>(null);
@@ -97,6 +118,10 @@ export const CalligraphyCategoryPager = forwardRef<
   activeIndexRef.current = activeIndex;
   onCommitRef.current = onCommit;
   onProgressRef.current = onProgress;
+  scrollReadersRef.current = {
+    readCurrentScrollTop,
+    readSavedCategoryScrollTop,
+  };
 
   const readSnapOffsets = useCallback((): number[] => {
     const offsets: number[] = [];
@@ -129,6 +154,77 @@ export const CalligraphyCategoryPager = forwardRef<
     [readPanelHeight],
   );
 
+  const scrollOwner = useCallback(
+    () =>
+      frameRef.current?.closest<HTMLElement>(
+        '[data-primary-destination="calligraphy"]',
+      ) ?? null,
+    [],
+  );
+
+  const readTargetScrollTop = useCallback(
+    (index: number) => {
+      const category = calligraphyCategories[index];
+      const frame = frameRef.current;
+      const owner = scrollOwner();
+      if (category === undefined || frame === null || owner === null) return 0;
+      const panelHeight = Number.parseFloat(readPanelHeight(index) ?? "0");
+      const minimumHeight =
+        Number.parseFloat(window.getComputedStyle(frame).minHeight) || 0;
+      const targetHeight = Math.max(panelHeight, minimumHeight);
+      const maximum = Math.max(
+        0,
+        owner.scrollHeight -
+          frame.getBoundingClientRect().height +
+          targetHeight -
+          owner.clientHeight,
+      );
+      const saved =
+        scrollReadersRef.current.readSavedCategoryScrollTop(category);
+      return Number.isFinite(saved) ? Math.max(0, Math.min(saved, maximum)) : 0;
+    },
+    [readPanelHeight, scrollOwner],
+  );
+
+  const prepareReadingTransition = useCallback(() => {
+    if (readingTransitionRef.current !== null) return;
+    const currentTop = scrollReadersRef.current.readCurrentScrollTop();
+    readingTransitionRef.current = calligraphyCategories.map((_, index) =>
+      index === activeIndexRef.current
+        ? currentTop
+        : readTargetScrollTop(index),
+    );
+  }, [readTargetScrollTop]);
+
+  const clearReadingTransition = useCallback(() => {
+    readingTransitionRef.current = null;
+    readingMotionRef.current = false;
+    // A visibility update can detach callback refs before layout cleanup,
+    // while the existing track and its panels remain mounted.
+    const track = frameRef.current?.firstElementChild;
+    for (const panel of Array.from(track?.children ?? [])) {
+      if (panel instanceof HTMLElement) panel.style.transform = "";
+    }
+  }, []);
+
+  const updateReadingPresentation = useCallback(() => {
+    const positions = readingTransitionRef.current;
+    if (positions === null || !readingMotionRef.current) return;
+    const currentTop = scrollReadersRef.current.readCurrentScrollTop();
+    for (const [index, category] of calligraphyCategories.entries()) {
+      const panel = panelRefs.current[category];
+      if (panel === null) continue;
+      // The interactive page always uses the real native scroll position.
+      // Only its neighbours retain their own reading view during the X tail.
+      const offset =
+        index === activeIndexRef.current
+          ? 0
+          : currentTop - (positions[index] ?? 0);
+      panel.style.transform =
+        offset === 0 ? "" : `translate3d(0, ${offset}px, 0)`;
+    }
+  }, []);
+
   const cancelProgressFrame = useCallback(() => {
     if (progressFrameRef.current === null) return;
     window.cancelAnimationFrame(progressFrameRef.current);
@@ -137,6 +233,7 @@ export const CalligraphyCategoryPager = forwardRef<
 
   const publishProgress = useCallback(
     (immediate = false) => {
+      if (usesEmbla) return;
       const publish = () => {
         progressFrameRef.current = null;
         const frame = frameRef.current;
@@ -152,7 +249,7 @@ export const CalligraphyCategoryPager = forwardRef<
         progressFrameRef.current = window.requestAnimationFrame(publish);
       }
     },
-    [cancelProgressFrame, readSnapOffsets],
+    [cancelProgressFrame, readSnapOffsets, usesEmbla],
   );
 
   const cancelFallback = useCallback(() => {
@@ -311,6 +408,12 @@ export const CalligraphyCategoryPager = forwardRef<
 
   const requestCategory = useCallback(
     (category: CalligraphyCategory) => {
+      if (usesEmbla) {
+        if (category !== calligraphyCategories[activeIndexRef.current])
+          prepareReadingTransition();
+        engineRef.current?.scrollTo(calligraphyCategories.indexOf(category));
+        return;
+      }
       const frame = frameRef.current;
       const targetIndex = calligraphyCategories.indexOf(category);
       const offsets = readSnapOffsets();
@@ -325,13 +428,11 @@ export const CalligraphyCategoryPager = forwardRef<
         return;
       }
       startSession(resolveHomePagerSettledIndex(frame.scrollLeft, offsets));
-      scrollFrameToIndex(
-        targetIndex,
-        platform === "pc" || reducedMotionPreferred() ? "auto" : "smooth",
-      );
+      scrollFrameToIndex(targetIndex, "auto");
     },
     [
-      platform,
+      usesEmbla,
+      prepareReadingTransition,
       publishProgress,
       readSnapOffsets,
       scrollFrameToIndex,
@@ -344,6 +445,7 @@ export const CalligraphyCategoryPager = forwardRef<
   ]);
 
   const handleScroll = useCallback(() => {
+    if (usesEmbla) return;
     const frame = frameRef.current;
     if (frame === null) return;
     const touchStart = touchStartScrollLeftRef.current;
@@ -381,6 +483,7 @@ export const CalligraphyCategoryPager = forwardRef<
     publishProgress();
     scheduleFallback(session.generation);
   }, [
+    usesEmbla,
     invalidateSession,
     publishProgress,
     readSnapOffsets,
@@ -388,43 +491,79 @@ export const CalligraphyCategoryPager = forwardRef<
     startSession,
   ]);
 
-  const handleTouchStart = useCallback(() => {
-    const frame = frameRef.current;
-    if (frame === null) return;
-    touchActiveRef.current = true;
-    suppressClickUntilRef.current = 0;
-    touchStartScrollLeftRef.current = frame.scrollLeft;
-    startSession(
-      resolveHomePagerSettledIndex(frame.scrollLeft, readSnapOffsets()),
-    );
-  }, [readSnapOffsets, startSession]);
+  const handleTouchStart = useCallback(
+    (event: ReactTouchEvent) => {
+      if (event.touches?.length > 1) return;
+      const frame = frameRef.current;
+      if (frame === null) return;
+      touchActiveRef.current = true;
+      if (usesEmbla) {
+        prepareReadingTransition();
+        return;
+      }
+      suppressClickUntilRef.current = 0;
+      touchStartScrollLeftRef.current = frame.scrollLeft;
+      startSession(
+        resolveHomePagerSettledIndex(frame.scrollLeft, readSnapOffsets()),
+      );
+    },
+    [usesEmbla, prepareReadingTransition, readSnapOffsets, startSession],
+  );
 
-  const handleTouchFinish = useCallback(() => {
-    touchActiveRef.current = false;
-    const session = sessionRef.current;
-    if (session === null) {
-      touchStartScrollLeftRef.current = null;
-      return;
-    }
-    if (!session.hasScrolled) {
-      invalidateSession(false);
-      applyPanelHeight(activeIndexRef.current);
-    } else if (session.scrollEndPending) {
-      session.scrollEndPending = false;
-      settleRef.current(session.generation);
-    } else {
-      scheduleFallback(session.generation);
-    }
-  }, [applyPanelHeight, invalidateSession, scheduleFallback]);
+  const handleTouchFinish = useCallback(
+    (event: ReactTouchEvent) => {
+      if (event.touches.length > 0) return;
+      touchActiveRef.current = false;
+      if (usesEmbla) {
+        if (!readingMotionRef.current) clearReadingTransition();
+        applyPanelHeight(activeIndexRef.current);
+        return;
+      }
+      const session = sessionRef.current;
+      if (session === null) {
+        touchStartScrollLeftRef.current = null;
+        return;
+      }
+      if (!session.hasScrolled) {
+        invalidateSession(false);
+        applyPanelHeight(activeIndexRef.current);
+      } else if (session.scrollEndPending) {
+        session.scrollEndPending = false;
+        settleRef.current(session.generation);
+      } else {
+        scheduleFallback(session.generation);
+      }
+    },
+    [
+      usesEmbla,
+      applyPanelHeight,
+      clearReadingTransition,
+      invalidateSession,
+      scheduleFallback,
+    ],
+  );
 
   const cancelToCommitted = useCallback(() => {
+    if (usesEmbla) {
+      touchActiveRef.current = false;
+      clearReadingTransition();
+      applyPanelHeight(activeIndexRef.current);
+      return;
+    }
     const frame = frameRef.current;
     const offset = readSnapOffsets()[activeIndexRef.current];
     invalidateSession();
     if (frame !== null && offset !== undefined) frame.scrollLeft = offset;
     applyPanelHeight(activeIndexRef.current);
     publishProgress(true);
-  }, [applyPanelHeight, invalidateSession, publishProgress, readSnapOffsets]);
+  }, [
+    usesEmbla,
+    applyPanelHeight,
+    clearReadingTransition,
+    invalidateSession,
+    publishProgress,
+    readSnapOffsets,
+  ]);
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -464,7 +603,109 @@ export const CalligraphyCategoryPager = forwardRef<
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
+    if (!usesEmbla || !primaryVisible || frame === null) return;
+    frame.scrollLeft = 0;
+    const engine = createCategoryPagerEngine(frame, {
+      getCommittedIndex: () => activeIndexRef.current,
+      onCommit: (index) => {
+        const category = calligraphyCategories[index];
+        if (category === undefined) return;
+        prepareReadingTransition();
+        const positions = readingTransitionRef.current;
+        if (positions !== null)
+          positions[activeIndexRef.current] =
+            scrollReadersRef.current.readCurrentScrollTop();
+        const targetTop = readTargetScrollTop(index);
+        internalCommitIndexRef.current = index;
+        // Save the departing page's scroll before a shorter target height can
+        // clamp it. The category and inert ownership change in this input task.
+        flushSync(() => onCommitRef.current(category));
+        applyPanelHeight(index);
+        // The next input can cancel Shell's queued restoration. Hand off the
+        // same native owner now, after Screen saved the departing position and
+        // the target's real height is in place. No temporary height extends its
+        // scroll range, so Shell's later bounded restore sees that same range.
+        const owner = scrollOwner();
+        if (owner !== null) {
+          owner.scrollTop = Math.min(
+            targetTop,
+            Math.max(0, owner.scrollHeight - owner.clientHeight),
+          );
+        }
+        // A reduced-motion tab jump emits settle before select, so there is
+        // no later visual tail to clear these neighbouring display offsets.
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          clearReadingTransition();
+        } else {
+          readingMotionRef.current = true;
+          updateReadingPresentation();
+        }
+      },
+      onProgress: (progress) => {
+        updateReadingPresentation();
+        onProgressRef.current(progress);
+      },
+      onMotion: (moving) => {
+        frame.dataset.calligraphyPagerScrolling = String(moving);
+        if (moving) {
+          prepareReadingTransition();
+          readingMotionRef.current = true;
+        } else clearReadingTransition();
+      },
+    });
+    engineRef.current = engine;
+    const owner = scrollOwner();
+    owner?.addEventListener("scroll", updateReadingPresentation, {
+      passive: true,
+    });
+    // The engine cleans its input session, while this host separately owns
+    // the page-height freeze. Interrupted touches may never deliver touchend.
+    const releaseHeight = () => {
+      touchActiveRef.current = false;
+      clearReadingTransition();
+      applyPanelHeight(activeIndexRef.current);
+    };
+    const hidden = () => {
+      if (document.hidden) releaseHeight();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("pagehide", releaseHeight);
+    window.addEventListener("blur", releaseHeight);
+    window.addEventListener("orientationchange", releaseHeight);
+    window.visualViewport?.addEventListener("resize", releaseHeight);
+    return () => {
+      engineRef.current = null;
+      touchActiveRef.current = false;
+      engine.destroy();
+      clearReadingTransition();
+      owner?.removeEventListener("scroll", updateReadingPresentation);
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("pagehide", releaseHeight);
+      window.removeEventListener("blur", releaseHeight);
+      window.removeEventListener("orientationchange", releaseHeight);
+      window.visualViewport?.removeEventListener("resize", releaseHeight);
+    };
+  }, [
+    usesEmbla,
+    primaryVisible,
+    applyPanelHeight,
+    clearReadingTransition,
+    prepareReadingTransition,
+    readTargetScrollTop,
+    scrollOwner,
+    updateReadingPresentation,
+  ]);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
     if (frame === null) return;
+    if (usesEmbla) {
+      engineRef.current?.sync(activeIndex);
+      internalCommitIndexRef.current = null;
+      frameWidthRef.current = frame.clientWidth;
+      applyPanelHeight(activeIndex);
+      return;
+    }
     if (internalCommitIndexRef.current === activeIndex) {
       internalCommitIndexRef.current = null;
     } else {
@@ -476,6 +717,7 @@ export const CalligraphyCategoryPager = forwardRef<
     applyPanelHeight(activeIndex);
     publishProgress(true);
   }, [
+    usesEmbla,
     activeCategory,
     activeIndex,
     applyPanelHeight,
@@ -487,7 +729,7 @@ export const CalligraphyCategoryPager = forwardRef<
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    if (frame === null) return undefined;
+    if (frame === null || usesEmbla) return undefined;
     supportsScrollEndRef.current = "onscrollend" in frame;
     frame.dataset.calligraphyPagerSettleMode = supportsScrollEndRef.current
       ? "scrollend"
@@ -500,7 +742,7 @@ export const CalligraphyCategoryPager = forwardRef<
     };
     frame.addEventListener("scrollend", handleScrollEnd);
     return () => frame.removeEventListener("scrollend", handleScrollEnd);
-  }, []);
+  }, [usesEmbla]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -532,12 +774,14 @@ export const CalligraphyCategoryPager = forwardRef<
         frameWidthRef.current = width;
         invalidateSession();
         const offset = readSnapOffsets()[activeIndexRef.current];
-        if (offset !== undefined) frame.scrollLeft = offset;
+        if (usesEmbla) engineRef.current?.resize();
+        else if (offset !== undefined) frame.scrollLeft = offset;
         publishProgress(true);
       }
       const height = readPanelHeight(activeIndexRef.current);
       if (
         sessionRef.current !== null ||
+        touchActiveRef.current ||
         height === null ||
         frame.style.height === height
       ) {
@@ -554,7 +798,8 @@ export const CalligraphyCategoryPager = forwardRef<
           frameRef.current !== frame ||
           !frame.isConnected ||
           frame.clientWidth <= 0 ||
-          sessionRef.current !== null
+          sessionRef.current !== null ||
+          touchActiveRef.current
         ) {
           return;
         }
@@ -572,6 +817,7 @@ export const CalligraphyCategoryPager = forwardRef<
       cancelHeightFrame();
     };
   }, [
+    usesEmbla,
     applyPanelHeight,
     invalidateSession,
     primaryVisible,
@@ -595,11 +841,12 @@ export const CalligraphyCategoryPager = forwardRef<
       } else {
         frameWasUnavailableRef.current = true;
       }
-      if (offset !== undefined) frame.scrollLeft = offset;
+      if (!usesEmbla && offset !== undefined) frame.scrollLeft = offset;
     }
     applyPanelHeight(activeIndexRef.current);
     publishProgress(true);
   }, [
+    usesEmbla,
     applyPanelHeight,
     invalidateSession,
     primaryVisible,
@@ -624,11 +871,14 @@ export const CalligraphyCategoryPager = forwardRef<
       ref={frameRef}
       className={styles.pagerFrame}
       data-calligraphy-category-pager=""
-      data-calligraphy-pager-native=""
+      data-calligraphy-pager-native={usesEmbla ? undefined : ""}
+      data-category-pager-engine={usesEmbla ? "embla" : undefined}
       data-calligraphy-pager-platform={platform}
       data-calligraphy-pager-scrolling="false"
       onClickCapture={(event) => {
         if (
+          !usesEmbla &&
+          event.detail !== 0 &&
           suppressClickUntilRef.current > 0 &&
           performance.now() <= suppressClickUntilRef.current
         ) {
@@ -638,7 +888,7 @@ export const CalligraphyCategoryPager = forwardRef<
         }
       }}
       onPointerCancelCapture={(event) => {
-        if (event.pointerType !== "touch") cancelToCommitted();
+        if (!usesEmbla && event.pointerType !== "touch") cancelToCommitted();
       }}
       onScroll={handleScroll}
       onTouchCancelCapture={cancelToCommitted}
