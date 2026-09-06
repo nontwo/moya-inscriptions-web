@@ -163,6 +163,9 @@ export interface CatalogViewerProps {
   readonly platform: PresentationPlatform;
 }
 
+const viewerResourceKey = (item: PublicMedia): string =>
+  JSON.stringify([item.id, item.src]);
+
 export const CatalogViewer = ({
   index,
   media,
@@ -185,7 +188,7 @@ export const CatalogViewer = ({
   const wheelTimerRef = useRef<number | null>(null);
   const wheelIgnoreUntilRef = useRef(0);
   const [carouselX, setCarouselX] = useState(0);
-  const [failedMediaIds, setFailedMediaIds] = useState<ReadonlySet<string>>(
+  const [failedMediaKeys, setFailedMediaKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [pagerVisible, setPagerVisible] = useState(false);
@@ -355,7 +358,11 @@ export const CatalogViewer = ({
   }, [active?.id, open, resetCarousel, resetTransform]);
 
   useEffect(() => {
-    setFailedMediaIds(new Set());
+    const currentKeys = new Set(media.map(viewerResourceKey));
+    setFailedMediaKeys((present) => {
+      if ([...present].every((key) => currentKeys.has(key))) return present;
+      return new Set([...present].filter((key) => currentKeys.has(key)));
+    });
   }, [media]);
 
   useEffect(() => {
@@ -730,7 +737,9 @@ export const CatalogViewer = ({
         >
           {peers.map((item, peerIndex) => {
             const current = peerIndex === 1;
-            const failed = item === undefined || failedMediaIds.has(item.id);
+            const failed =
+              item === undefined ||
+              failedMediaKeys.has(viewerResourceKey(item));
             return (
               <div
                 aria-hidden={!current}
@@ -755,9 +764,17 @@ export const CatalogViewer = ({
                     data-detail-viewer-image={current ? "" : undefined}
                     draggable={false}
                     height={item.height}
-                    onError={() => {
-                      setFailedMediaIds((present) =>
-                        new Set(present).add(item.id),
+                    key={viewerResourceKey(item)}
+                    onError={(event) => {
+                      const image = event.currentTarget;
+                      if (
+                        !image.isConnected ||
+                        image.getAttribute("src") !== item.src
+                      )
+                        return;
+                      const key = viewerResourceKey(item);
+                      setFailedMediaKeys((present) =>
+                        present.has(key) ? present : new Set(present).add(key),
                       );
                     }}
                     src={item.src}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,28 +41,34 @@ const pointerEvent = (
   return event;
 };
 
-const renderViewer = (properties?: {
+interface ViewerTestProperties {
   readonly index?: number;
+  readonly open?: boolean;
   readonly selectedMedia?: readonly PublicMedia[];
-}) => {
+}
+
+const renderViewer = (properties?: ViewerTestProperties) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   roots.push(root);
   const onClose = vi.fn();
   const onIndexChange = vi.fn();
-  act(() =>
-    root.render(
-      <CatalogViewer
-        index={properties?.index ?? 0}
-        media={properties?.selectedMedia ?? media}
-        onClose={onClose}
-        onIndexChange={onIndexChange}
-        open
-        platform="phone"
-      />,
-    ),
-  );
+  const rerender = (next: ViewerTestProperties = properties ?? {}) => {
+    act(() =>
+      root.render(
+        <CatalogViewer
+          index={next.index ?? 0}
+          media={next.selectedMedia ?? media}
+          onClose={onClose}
+          onIndexChange={onIndexChange}
+          open={next.open ?? true}
+          platform="phone"
+        />,
+      ),
+    );
+  };
+  rerender();
   const viewer = container.querySelector<HTMLDialogElement>(
     "[data-detail-viewer]",
   )!;
@@ -84,7 +90,19 @@ const renderViewer = (properties?: {
       }),
     },
   });
-  return { container, onClose, onIndexChange, stage, viewer };
+  const unmount = () => {
+    act(() => root.unmount());
+    roots.splice(roots.indexOf(root), 1);
+  };
+  return {
+    container,
+    onClose,
+    onIndexChange,
+    rerender,
+    stage,
+    unmount,
+    viewer,
+  };
 };
 
 beforeEach(() => {
@@ -154,6 +172,241 @@ describe("CatalogViewer", () => {
         ?.textContent,
     ).toContain("图像无法加载");
     expect(container.querySelector("[data-detail-viewer-image]")).toBeNull();
+  });
+
+  it("retains an image error delivered after DOM commit but before passive media effects", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    let delivered = false;
+    const Parent = () => {
+      useLayoutEffect(() => {
+        const image = container.querySelector<HTMLImageElement>(
+          "[data-detail-viewer-image]",
+        )!;
+        expect(image.isConnected).toBe(true);
+        delivered = true;
+        image.dispatchEvent(new Event("error"));
+      }, []);
+      return (
+        <CatalogViewer
+          index={0}
+          media={media.slice(0, 1)}
+          onClose={() => undefined}
+          onIndexChange={() => undefined}
+          open
+          platform="phone"
+        />
+      );
+    };
+    act(() => root.render(<Parent />));
+    expect(delivered).toBe(true);
+    expect(container.querySelector("[data-detail-viewer-image]")).toBeNull();
+    expect(
+      container.querySelector("[data-detail-viewer-media-state='failed']")
+        ?.textContent,
+    ).toBe("图像无法加载");
+  });
+
+  it("preserves a known failure when a parent rebuilds equivalent media data", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const render = (selectedMedia: readonly PublicMedia[]) =>
+      act(() =>
+        root.render(
+          <CatalogViewer
+            index={0}
+            media={selectedMedia}
+            onClose={() => undefined}
+            onIndexChange={() => undefined}
+            open
+            platform="phone"
+          />,
+        ),
+      );
+    render(media.slice(0, 1));
+    const image = container.querySelector<HTMLImageElement>(
+      "[data-detail-viewer-image]",
+    )!;
+    act(() => image.dispatchEvent(new Event("error")));
+    expect(container.querySelector("[data-detail-viewer-image]")).toBeNull();
+    render(media.slice(0, 1).map((item) => ({ ...item })));
+    expect(container.querySelector("[data-detail-viewer-image]")).toBeNull();
+    expect(
+      container.querySelector("[data-detail-viewer-media-state='failed']")
+        ?.textContent,
+    ).toBe("图像无法加载");
+  });
+
+  it.each([
+    { complete: false, naturalWidth: 0, label: "pending" },
+    { complete: true, naturalWidth: 320, label: "healthy" },
+  ])(
+    "does not invent failure for a $label resource",
+    ({ complete, naturalWidth }) => {
+      const selectedMedia = media.slice(0, 1);
+      const v = renderViewer({ selectedMedia });
+      const image = v.container.querySelector<HTMLImageElement>(
+        "[data-detail-viewer-image]",
+      )!;
+      Object.defineProperties(image, {
+        complete: { configurable: true, value: complete },
+        naturalWidth: { configurable: true, value: naturalWidth },
+      });
+      v.rerender({ selectedMedia: selectedMedia.map((item) => ({ ...item })) });
+      expect(v.container.querySelector("[data-detail-viewer-image]")).toBe(
+        image,
+      );
+      expect(
+        v.container.querySelector("[data-detail-viewer-media-state='failed']"),
+      ).toBeNull();
+    },
+  );
+
+  it("does not carry failed identity across changed resources, IDs or removal", () => {
+    const original = media[0]!;
+    const v = renderViewer({ selectedMedia: [original] });
+    const failCurrent = () =>
+      act(() =>
+        v.container
+          .querySelector("[data-detail-viewer-image]")!
+          .dispatchEvent(new Event("error")),
+      );
+    const replacement = {
+      ...original,
+      src: "https://example.test/replacement.jpg",
+    };
+    failCurrent();
+    expect(v.container.querySelector("[data-detail-viewer-image]")).toBeNull();
+    v.rerender({ selectedMedia: [replacement] });
+    expect(
+      v.container
+        .querySelector("[data-detail-viewer-image]")
+        ?.getAttribute("src"),
+    ).toBe(replacement.src);
+    expect(
+      v.container.querySelector("[data-detail-viewer-media-state='failed']"),
+    ).toBeNull();
+    failCurrent();
+    v.rerender({
+      selectedMedia: [{ ...replacement, id: "new-media" as MediaId }],
+    });
+    expect(
+      v.container.querySelector("[data-detail-viewer-image]"),
+    ).not.toBeNull();
+    expect(
+      v.container.querySelector("[data-detail-viewer-media-state='failed']"),
+    ).toBeNull();
+    v.rerender({ selectedMedia: [original] });
+    expect(
+      v.container.querySelector("[data-detail-viewer-image]"),
+    ).not.toBeNull();
+    failCurrent();
+    v.rerender({ selectedMedia: [] });
+    v.rerender({ selectedMedia: [original] });
+    expect(
+      v.container.querySelector("[data-detail-viewer-image]"),
+    ).not.toBeNull();
+    expect(
+      v.container.querySelector("[data-detail-viewer-media-state='failed']"),
+    ).toBeNull();
+  });
+
+  it("ignores late errors from replaced resource nodes and after unmount", () => {
+    const original = media[0]!;
+    const v = renderViewer({ selectedMedia: [original] });
+    const oldImage = v.container.querySelector<HTMLImageElement>(
+      "[data-detail-viewer-image]",
+    )!;
+    const replacement = {
+      ...original,
+      src: "https://example.test/new-resource.jpg",
+    };
+    v.rerender({ selectedMedia: [replacement] });
+    const currentImage = v.container.querySelector<HTMLImageElement>(
+      "[data-detail-viewer-image]",
+    )!;
+    expect(oldImage.isConnected).toBe(false);
+    expect(currentImage).not.toBe(oldImage);
+    act(() => oldImage.dispatchEvent(new Event("error")));
+    expect(v.container.querySelector("[data-detail-viewer-image]")).toBe(
+      currentImage,
+    );
+    expect(
+      v.container.querySelector("[data-detail-viewer-media-state='failed']"),
+    ).toBeNull();
+    v.unmount();
+    act(() => {
+      oldImage.dispatchEvent(new Event("error"));
+      currentImage.dispatchEvent(new Event("error"));
+    });
+    expect(v.container.childElementCount).toBe(0);
+    expect(v.onClose).not.toHaveBeenCalled();
+    expect(v.onIndexChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps peer failures scoped while switching, closing and reopening", () => {
+    const v = renderViewer({ index: 1 });
+    const activeSlide = () =>
+      v.container.querySelector(
+        "[data-detail-viewer-track] > [aria-hidden='false']",
+      )!;
+    const peer =
+      v.container.querySelector<HTMLImageElement>('img[alt="查看图像 1"]')!;
+    act(() => peer.dispatchEvent(new Event("error")));
+    expect(
+      activeSlide().querySelector("[data-detail-viewer-media-state='failed']"),
+    ).toBeNull();
+    expect(activeSlide().querySelector("img")?.getAttribute("src")).toBe(
+      media[1]!.src,
+    );
+    v.rerender({ index: 0 });
+    expect(activeSlide().querySelector("img")).toBeNull();
+    expect(activeSlide().textContent).toBe("图像无法加载");
+    v.rerender({ index: 0, open: false });
+    expect(v.viewer.open).toBe(false);
+    v.rerender({ index: 0 });
+    expect(v.viewer.open).toBe(true);
+    expect(activeSlide().querySelector("img")).toBeNull();
+    expect(activeSlide().textContent).toBe("图像无法加载");
+    v.rerender({ index: 1 });
+    expect(activeSlide().querySelector("img")?.getAttribute("src")).toBe(
+      media[1]!.src,
+    );
+    expect(v.onClose).not.toHaveBeenCalled();
+    expect(v.onIndexChange).not.toHaveBeenCalled();
+  });
+
+  it("does not apply an old closed resource error after reopening new media", () => {
+    const original = media[0]!;
+    const v = renderViewer({ selectedMedia: [original] });
+    const oldImage = v.container.querySelector<HTMLImageElement>(
+      "[data-detail-viewer-image]",
+    )!;
+    v.rerender({ selectedMedia: [original], open: false });
+    v.rerender({
+      selectedMedia: [
+        { ...original, src: "https://example.test/reopened.jpg" },
+      ],
+      open: false,
+    });
+    act(() => oldImage.dispatchEvent(new Event("error")));
+    v.rerender({
+      selectedMedia: [
+        { ...original, src: "https://example.test/reopened.jpg" },
+      ],
+    });
+    expect(
+      v.container
+        .querySelector("[data-detail-viewer-image]")
+        ?.getAttribute("src"),
+    ).toBe("https://example.test/reopened.jpg");
+    expect(
+      v.container.querySelector("[data-detail-viewer-media-state='failed']"),
+    ).toBeNull();
   });
 
   it("cancels interrupted paging without changing media or closing", () => {
