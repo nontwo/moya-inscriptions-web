@@ -135,13 +135,33 @@ const activateCategory = (
       )
       ?.click(),
   );
-  act(() => vi.advanceTimersByTime(180));
-  act(() => frame.dispatchEvent(new Event("scrollend")));
+  expect(frame.scrollLeft).toBe(0);
+};
+
+const touch = (frame: HTMLElement, type: string, x = 300) => {
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: (type === "touchend"
+      ? []
+      : [{ clientX: x, clientY: 300 }]) as Touch[],
+  });
+  Object.defineProperty(event, "timeStamp", { value: performance.now() });
+  act(() => frame.dispatchEvent(event));
 };
 
 describe("CalligraphyCategoryScreen", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     scrollToCalls = [];
     fetchSameOriginCatalogPageMock.mockReset();
     openCatalog.mockReset();
@@ -157,6 +177,12 @@ describe("CalligraphyCategoryScreen", () => {
       () => viewportWidth,
     );
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(0);
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(
+      document.body,
+    );
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
       function (this: HTMLElement) {
         return (
@@ -191,7 +217,7 @@ describe("CalligraphyCategoryScreen", () => {
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: (callback: FrameRequestCallback) =>
-        window.setTimeout(() => callback(performance.now()), 0),
+        window.setTimeout(() => callback(performance.now()), 16),
     });
     Object.defineProperty(window, "cancelAnimationFrame", {
       configurable: true,
@@ -199,7 +225,11 @@ describe("CalligraphyCategoryScreen", () => {
     });
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
-      value: vi.fn(() => ({ matches: false })),
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
     });
     Object.defineProperty(HTMLElement.prototype, "onscrollend", {
       configurable: true,
@@ -212,6 +242,7 @@ describe("CalligraphyCategoryScreen", () => {
     document.body.replaceChildren();
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });
@@ -247,16 +278,25 @@ describe("CalligraphyCategoryScreen", () => {
       "运行时书帖",
     );
 
-    act(() => {
-      frame.scrollLeft = 200;
-      frame.dispatchEvent(new Event("scroll"));
-      vi.advanceTimersByTime(0);
-    });
+    touch(frame, "touchstart");
+    touch(frame, "touchmove", 100);
+    act(() => vi.advanceTimersByTime(32));
+    const track = frame.firstElementChild as HTMLElement;
+    const translatedLeft = Number(
+      track.style.transform.match(/translate3d\(([-\d.]+)px/)?.[1],
+    );
+    expect(translatedLeft).toBeLessThan(-100);
+    expect(translatedLeft).toBeGreaterThan(-200);
+    // The indicator follows the rendered track during Embla's physical
+    // response, instead of assuming an immediate native scrollLeft write.
     expect(
-      container
-        .querySelector("[data-calligraphy-category-indicator]")
-        ?.getAttribute("data-calligraphy-category-progress"),
-    ).toBe("0.5");
+      Number(
+        container
+          .querySelector("[data-calligraphy-category-indicator]")
+          ?.getAttribute("data-calligraphy-category-progress"),
+      ),
+    ).toBe(-translatedLeft / 400);
+    touch(frame, "touchend");
 
     activateCategory(container, frame, "ink");
     expect(

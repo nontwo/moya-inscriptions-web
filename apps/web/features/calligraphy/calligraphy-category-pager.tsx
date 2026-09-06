@@ -19,6 +19,8 @@ import {
   isHomePagerAtOffset,
   resolveHomePagerSettledIndex,
 } from "../home/home-feed-pager-motion";
+import { createCategoryPagerEngine } from "../shell/category-pager-engine";
+import type { CategoryPagerEngine } from "../shell/category-pager-engine";
 import { calligraphyCategories } from "./calligraphy-category";
 import styles from "./calligraphy-category.module.css";
 
@@ -33,31 +35,9 @@ import type {
   CalligraphyCategoryState,
 } from "./calligraphy-category";
 
-import {
-  HORIZONTAL_PAGER_SETTLE_MS,
-  pagerSettleProgress,
-  resolvePagerDirection,
-  resolvePagerRelease,
-} from "../shell/horizontal-pager-motion";
-import type { PagerDirection } from "../shell/horizontal-pager-motion";
-
-interface PagerTouch {
-  readonly pointerId: number;
-  readonly x: number;
-  readonly y: number;
-  readonly left: number;
-  readonly origin: number;
-  readonly target: Element | null;
-  direction: PagerDirection;
-  lastX: number;
-  lastTime: number;
-  velocity: number;
-}
-
 interface ScrollSession {
   readonly generation: number;
   hasScrolled: boolean;
-  controlled?: boolean;
   readonly originIndex: number;
   scrollEndPending: boolean;
 }
@@ -78,9 +58,6 @@ export interface CalligraphyCategoryPagerProps {
   readonly primaryVisible: boolean;
 }
 
-const reducedMotionPreferred = () =>
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-
 export const CalligraphyCategoryPager = forwardRef<
   CalligraphyCategoryPagerHandle,
   CalligraphyCategoryPagerProps
@@ -96,6 +73,8 @@ export const CalligraphyCategoryPager = forwardRef<
   },
   ref,
 ) {
+  const usesEmbla = platform !== "pc";
+  const engineRef = useRef<CategoryPagerEngine | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const panelRefs = useRef<Record<CalligraphyCategory, HTMLElement | null>>({
     all: null,
@@ -107,8 +86,6 @@ export const CalligraphyCategoryPager = forwardRef<
   const onCommitRef = useRef(onCommit);
   const onProgressRef = useRef(onProgress);
   const sessionRef = useRef<ScrollSession | null>(null);
-  const pagerTouchRef = useRef<PagerTouch | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const fallbackFrameRef = useRef<number | null>(null);
   const fallbackTokenRef = useRef(0);
@@ -167,6 +144,7 @@ export const CalligraphyCategoryPager = forwardRef<
 
   const publishProgress = useCallback(
     (immediate = false) => {
+      if (usesEmbla) return;
       const publish = () => {
         progressFrameRef.current = null;
         const frame = frameRef.current;
@@ -182,7 +160,7 @@ export const CalligraphyCategoryPager = forwardRef<
         progressFrameRef.current = window.requestAnimationFrame(publish);
       }
     },
-    [cancelProgressFrame, readSnapOffsets],
+    [cancelProgressFrame, readSnapOffsets, usesEmbla],
   );
 
   const cancelFallback = useCallback(() => {
@@ -193,25 +171,9 @@ export const CalligraphyCategoryPager = forwardRef<
     }
   }, []);
 
-  const cancelAnimation = useCallback(() => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-  }, []);
-
   const invalidateSession = useCallback(
     (resetTouch = true) => {
       generationRef.current += 1;
-      cancelAnimation();
-      const capturedPointer = pagerTouchRef.current?.pointerId;
-      pagerTouchRef.current = null;
-      if (
-        capturedPointer !== undefined &&
-        frameRef.current?.hasPointerCapture?.(capturedPointer)
-      )
-        frameRef.current.releasePointerCapture(capturedPointer);
-      if (frameRef.current) frameRef.current.style.scrollSnapType = "";
       cancelFallback();
       cancelProgressFrame();
       sessionRef.current = null;
@@ -222,12 +184,11 @@ export const CalligraphyCategoryPager = forwardRef<
         frameRef.current.dataset.calligraphyPagerScrolling = "false";
       }
     },
-    [cancelAnimation, cancelFallback, cancelProgressFrame],
+    [cancelFallback, cancelProgressFrame],
   );
 
   const startSession = useCallback(
     (originIndex: number): ScrollSession => {
-      cancelAnimation();
       generationRef.current += 1;
       cancelFallback();
       cancelProgressFrame();
@@ -244,15 +205,13 @@ export const CalligraphyCategoryPager = forwardRef<
       }
       return session;
     },
-    [cancelAnimation, cancelFallback, cancelProgressFrame],
+    [cancelFallback, cancelProgressFrame],
   );
 
   const finishSettle = useCallback(
     (generation: number, targetIndex: number) => {
       const session = sessionRef.current;
       if (session === null || session.generation !== generation) return;
-      cancelAnimation();
-      if (frameRef.current) frameRef.current.style.scrollSnapType = "";
       cancelFallback();
       sessionRef.current = null;
       touchStartScrollLeftRef.current = null;
@@ -267,7 +226,7 @@ export const CalligraphyCategoryPager = forwardRef<
       applyPanelHeight(targetIndex);
       publishProgress(true);
     },
-    [cancelAnimation, applyPanelHeight, cancelFallback, publishProgress],
+    [applyPanelHeight, cancelFallback, publishProgress],
   );
 
   const settlePager = useCallback(
@@ -278,7 +237,6 @@ export const CalligraphyCategoryPager = forwardRef<
         frame === null ||
         session === null ||
         session.generation !== generation ||
-        session.controlled ||
         touchActiveRef.current
       ) {
         return;
@@ -359,52 +317,12 @@ export const CalligraphyCategoryPager = forwardRef<
     [readSnapOffsets],
   );
 
-  const animateToIndex = useCallback(
-    (targetIndex: number, generation: number) => {
-      const frame = frameRef.current;
-      const session = sessionRef.current;
-      const offset = readSnapOffsets()[targetIndex];
-      if (
-        !frame ||
-        !session ||
-        session.generation !== generation ||
-        offset === undefined
-      )
-        return;
-      cancelAnimation();
-      session.controlled = true;
-      frame.style.scrollSnapType = "none";
-      const from = frame.scrollLeft;
-      const began = performance.now();
-      const complete = () => {
-        frame.scrollLeft = offset;
-        // Position, active category and inert ownership change in the same frame.
-        flushSync(() => finishSettle(generation, targetIndex));
-      };
-      if (reducedMotionPreferred() || Math.abs(from - offset) <= 2) {
-        complete();
-        return;
-      }
-      const tick = () => {
-        const time = performance.now();
-        animationFrameRef.current = null;
-        if (sessionRef.current?.generation !== generation) return;
-        if (time - began >= HORIZONTAL_PAGER_SETTLE_MS) {
-          complete();
-          return;
-        }
-        frame.scrollLeft =
-          from + (offset - from) * pagerSettleProgress(time - began);
-        publishProgress(true);
-        animationFrameRef.current = window.requestAnimationFrame(tick);
-      };
-      animationFrameRef.current = window.requestAnimationFrame(tick);
-    },
-    [cancelAnimation, finishSettle, publishProgress, readSnapOffsets],
-  );
-
   const requestCategory = useCallback(
     (category: CalligraphyCategory) => {
+      if (usesEmbla) {
+        engineRef.current?.scrollTo(calligraphyCategories.indexOf(category));
+        return;
+      }
       const frame = frameRef.current;
       const targetIndex = calligraphyCategories.indexOf(category);
       const offsets = readSnapOffsets();
@@ -418,15 +336,11 @@ export const CalligraphyCategoryPager = forwardRef<
         publishProgress(true);
         return;
       }
-      const session = startSession(
-        resolveHomePagerSettledIndex(frame.scrollLeft, offsets),
-      );
-      if (platform === "pc") scrollFrameToIndex(targetIndex, "auto");
-      else animateToIndex(targetIndex, session.generation);
+      startSession(resolveHomePagerSettledIndex(frame.scrollLeft, offsets));
+      scrollFrameToIndex(targetIndex, "auto");
     },
     [
-      animateToIndex,
-      platform,
+      usesEmbla,
       publishProgress,
       readSnapOffsets,
       scrollFrameToIndex,
@@ -439,12 +353,9 @@ export const CalligraphyCategoryPager = forwardRef<
   ]);
 
   const handleScroll = useCallback(() => {
+    if (usesEmbla) return;
     const frame = frameRef.current;
     if (frame === null) return;
-    if (sessionRef.current?.controlled) {
-      publishProgress();
-      return;
-    }
     const touchStart = touchStartScrollLeftRef.current;
     if (
       touchStart !== null &&
@@ -480,6 +391,7 @@ export const CalligraphyCategoryPager = forwardRef<
     publishProgress();
     scheduleFallback(session.generation);
   }, [
+    usesEmbla,
     invalidateSession,
     publishProgress,
     readSnapOffsets,
@@ -493,198 +405,60 @@ export const CalligraphyCategoryPager = forwardRef<
       const frame = frameRef.current;
       if (frame === null) return;
       touchActiveRef.current = true;
+      if (usesEmbla) return;
       suppressClickUntilRef.current = 0;
       touchStartScrollLeftRef.current = frame.scrollLeft;
       startSession(
         resolveHomePagerSettledIndex(frame.scrollLeft, readSnapOffsets()),
       );
     },
-    [platform, readSnapOffsets, startSession],
+    [usesEmbla, readSnapOffsets, startSession],
   );
 
-  const handleTouchFinish = useCallback(() => {
-    touchActiveRef.current = false;
-    if (sessionRef.current?.controlled) return;
-    const session = sessionRef.current;
-    if (session === null) {
-      touchStartScrollLeftRef.current = null;
-      return;
-    }
-    if (!session.hasScrolled) {
-      invalidateSession(false);
-      applyPanelHeight(activeIndexRef.current);
-    } else if (session.scrollEndPending) {
-      session.scrollEndPending = false;
-      settleRef.current(session.generation);
-    } else {
-      scheduleFallback(session.generation);
-    }
-  }, [platform, applyPanelHeight, invalidateSession, scheduleFallback]);
+  const handleTouchFinish = useCallback(
+    (event: ReactTouchEvent) => {
+      if (event.touches.length > 0) return;
+      touchActiveRef.current = false;
+      if (usesEmbla) {
+        applyPanelHeight(activeIndexRef.current);
+        return;
+      }
+      const session = sessionRef.current;
+      if (session === null) {
+        touchStartScrollLeftRef.current = null;
+        return;
+      }
+      if (!session.hasScrolled) {
+        invalidateSession(false);
+        applyPanelHeight(activeIndexRef.current);
+      } else if (session.scrollEndPending) {
+        session.scrollEndPending = false;
+        settleRef.current(session.generation);
+      } else {
+        scheduleFallback(session.generation);
+      }
+    },
+    [usesEmbla, applyPanelHeight, invalidateSession, scheduleFallback],
+  );
 
   const cancelToCommitted = useCallback(() => {
+    if (usesEmbla) {
+      touchActiveRef.current = false;
+      applyPanelHeight(activeIndexRef.current);
+      return;
+    }
     const frame = frameRef.current;
     const offset = readSnapOffsets()[activeIndexRef.current];
     invalidateSession();
     if (frame !== null && offset !== undefined) frame.scrollLeft = offset;
     applyPanelHeight(activeIndexRef.current);
     publishProgress(true);
-  }, [applyPanelHeight, invalidateSession, publishProgress, readSnapOffsets]);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || platform === "pc" || !primaryVisible) return;
-    const cancel = () => {
-      const touch = pagerTouchRef.current;
-      const capture = touch?.pointerId;
-      invalidateSession();
-      const offset = readSnapOffsets()[activeIndexRef.current];
-      if (offset !== undefined) frame.scrollLeft = offset;
-      publishProgress(true);
-      if (capture !== undefined && frame.hasPointerCapture?.(capture))
-        frame.releasePointerCapture(capture);
-    };
-    const down = (event: PointerEvent) => {
-      if (event.pointerType === "mouse") return;
-      if (!event.isPrimary) {
-        cancel();
-        return;
-      }
-      if (!frame.contains(event.target as Node)) return;
-      if (animationFrameRef.current !== null) {
-        const index = resolveHomePagerSettledIndex(
-          frame.scrollLeft,
-          readSnapOffsets(),
-        );
-        const generation = sessionRef.current?.generation;
-        if (generation !== undefined) {
-          cancelAnimation();
-          frame.scrollLeft = readSnapOffsets()[index] ?? frame.scrollLeft;
-          flushSync(() => finishSettle(generation, index));
-        }
-      }
-      suppressClickUntilRef.current = 0;
-      pagerTouchRef.current = {
-        pointerId: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-        left: frame.scrollLeft,
-        origin: activeIndexRef.current,
-        target: event.target instanceof Element ? event.target : null,
-        direction: "pending",
-        lastX: event.clientX,
-        lastTime: event.timeStamp,
-        velocity: 0,
-      };
-    };
-    const move = (event: PointerEvent) => {
-      const touch = pagerTouchRef.current;
-      if (!touch || touch.pointerId !== event.pointerId) return;
-      if (
-        touch.target
-          ?.closest("[data-quick-actions]")
-          ?.getAttribute("data-quick-action-phase") === "menu-open"
-      ) {
-        pagerTouchRef.current = null;
-        return;
-      }
-      const dx = event.clientX - touch.x,
-        dy = event.clientY - touch.y;
-      const direction = resolvePagerDirection(touch.direction, dx, dy);
-      if (direction === "horizontal" && touch.direction !== "horizontal") {
-        const session = startSession(touch.origin);
-        session.controlled = true;
-        frame.style.scrollSnapType = "none";
-        frame.setPointerCapture?.(event.pointerId);
-      }
-      touch.direction = direction;
-      if (direction !== "horizontal") return;
-      const elapsed = event.timeStamp - touch.lastTime;
-      if (elapsed > 0) touch.velocity = (touch.lastX - event.clientX) / elapsed;
-      touch.lastX = event.clientX;
-      touch.lastTime = event.timeStamp;
-      const offsets = readSnapOffsets();
-      frame.scrollLeft = Math.max(
-        offsets[Math.max(0, touch.origin - 1)] ?? 0,
-        Math.min(
-          offsets[Math.min(offsets.length - 1, touch.origin + 1)] ??
-            frame.scrollWidth,
-          touch.left - dx,
-        ),
-      );
-      suppressClickUntilRef.current = performance.now() + 500;
-      publishProgress(true);
-    };
-    const up = (event: PointerEvent) => {
-      const touch = pagerTouchRef.current;
-      if (!touch || touch.pointerId !== event.pointerId) return;
-      pagerTouchRef.current = null;
-      if (touch.direction === "horizontal") {
-        suppressClickUntilRef.current = performance.now() + 500;
-        const generation = sessionRef.current?.generation;
-        const target = resolvePagerRelease(
-          frame.scrollLeft,
-          readSnapOffsets(),
-          touch.origin,
-          event.timeStamp - touch.lastTime > 80 ? 0 : touch.velocity,
-        );
-        if (generation !== undefined) animateToIndex(target, generation);
-      }
-      if (frame.hasPointerCapture?.(event.pointerId))
-        frame.releasePointerCapture(event.pointerId);
-    };
-    const interrupted = (event: PointerEvent) => {
-      if (event.type === "lostpointercapture" && event.target !== frame) return;
-      if (pagerTouchRef.current?.pointerId !== event.pointerId) return;
-      if (sessionRef.current?.controlled) cancel();
-      else pagerTouchRef.current = null;
-    };
-    const touches = (event: TouchEvent) => {
-      if (event.touches?.length > 1) cancel();
-    };
-    const hidden = () => {
-      if (document.hidden) cancel();
-    };
-    const blur = (event: FocusEvent) => {
-      if (event.target === window) cancel();
-    };
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("pointermove", move, true);
-    window.addEventListener("pointerup", up, true);
-    window.addEventListener("pointercancel", interrupted, true);
-    frame.addEventListener("lostpointercapture", interrupted);
-    window.addEventListener("touchstart", touches, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener("blur", blur);
-    window.addEventListener("pagehide", cancel);
-    window.addEventListener("resize", cancel);
-    window.visualViewport?.addEventListener("resize", cancel);
-    document.addEventListener("visibilitychange", hidden);
-    return () => {
-      cancel();
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", up, true);
-      window.removeEventListener("pointercancel", interrupted, true);
-      frame.removeEventListener("lostpointercapture", interrupted);
-      window.removeEventListener("touchstart", touches, true);
-      window.removeEventListener("blur", blur);
-      window.removeEventListener("pagehide", cancel);
-      window.removeEventListener("resize", cancel);
-      window.visualViewport?.removeEventListener("resize", cancel);
-      document.removeEventListener("visibilitychange", hidden);
-    };
   }, [
-    animateToIndex,
-    cancelAnimation,
-    finishSettle,
+    usesEmbla,
+    applyPanelHeight,
     invalidateSession,
-    platform,
-    primaryVisible,
     publishProgress,
     readSnapOffsets,
-    startSession,
   ]);
 
   const handleWheel = useCallback(
@@ -725,7 +499,61 @@ export const CalligraphyCategoryPager = forwardRef<
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
+    if (!usesEmbla || !primaryVisible || frame === null) return;
+    frame.scrollLeft = 0;
+    const engine = createCategoryPagerEngine(frame, {
+      getCommittedIndex: () => activeIndexRef.current,
+      onCommit: (index) => {
+        const category = calligraphyCategories[index];
+        if (category === undefined) return;
+        internalCommitIndexRef.current = index;
+        // Save the departing page's scroll before a shorter target height can
+        // clamp it. The category and inert ownership change in this input task.
+        flushSync(() => onCommitRef.current(category));
+        applyPanelHeight(index);
+      },
+      onProgress: (progress) => onProgressRef.current(progress),
+      onMotion: (moving) => {
+        frame.dataset.calligraphyPagerScrolling = String(moving);
+      },
+    });
+    engineRef.current = engine;
+    // The engine cleans its input session, while this host separately owns
+    // the page-height freeze. Interrupted touches may never deliver touchend.
+    const releaseHeight = () => {
+      touchActiveRef.current = false;
+      applyPanelHeight(activeIndexRef.current);
+    };
+    const hidden = () => {
+      if (document.hidden) releaseHeight();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("pagehide", releaseHeight);
+    window.addEventListener("blur", releaseHeight);
+    window.addEventListener("orientationchange", releaseHeight);
+    window.visualViewport?.addEventListener("resize", releaseHeight);
+    return () => {
+      engineRef.current = null;
+      touchActiveRef.current = false;
+      engine.destroy();
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("pagehide", releaseHeight);
+      window.removeEventListener("blur", releaseHeight);
+      window.removeEventListener("orientationchange", releaseHeight);
+      window.visualViewport?.removeEventListener("resize", releaseHeight);
+    };
+  }, [usesEmbla, primaryVisible, applyPanelHeight]);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
     if (frame === null) return;
+    if (usesEmbla) {
+      engineRef.current?.sync(activeIndex);
+      internalCommitIndexRef.current = null;
+      frameWidthRef.current = frame.clientWidth;
+      applyPanelHeight(activeIndex);
+      return;
+    }
     if (internalCommitIndexRef.current === activeIndex) {
       internalCommitIndexRef.current = null;
     } else {
@@ -737,6 +565,7 @@ export const CalligraphyCategoryPager = forwardRef<
     applyPanelHeight(activeIndex);
     publishProgress(true);
   }, [
+    usesEmbla,
     activeCategory,
     activeIndex,
     applyPanelHeight,
@@ -748,7 +577,7 @@ export const CalligraphyCategoryPager = forwardRef<
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    if (frame === null) return undefined;
+    if (frame === null || usesEmbla) return undefined;
     supportsScrollEndRef.current = "onscrollend" in frame;
     frame.dataset.calligraphyPagerSettleMode = supportsScrollEndRef.current
       ? "scrollend"
@@ -761,7 +590,7 @@ export const CalligraphyCategoryPager = forwardRef<
     };
     frame.addEventListener("scrollend", handleScrollEnd);
     return () => frame.removeEventListener("scrollend", handleScrollEnd);
-  }, []);
+  }, [usesEmbla]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -793,12 +622,14 @@ export const CalligraphyCategoryPager = forwardRef<
         frameWidthRef.current = width;
         invalidateSession();
         const offset = readSnapOffsets()[activeIndexRef.current];
-        if (offset !== undefined) frame.scrollLeft = offset;
+        if (usesEmbla) engineRef.current?.resize();
+        else if (offset !== undefined) frame.scrollLeft = offset;
         publishProgress(true);
       }
       const height = readPanelHeight(activeIndexRef.current);
       if (
         sessionRef.current !== null ||
+        touchActiveRef.current ||
         height === null ||
         frame.style.height === height
       ) {
@@ -815,7 +646,8 @@ export const CalligraphyCategoryPager = forwardRef<
           frameRef.current !== frame ||
           !frame.isConnected ||
           frame.clientWidth <= 0 ||
-          sessionRef.current !== null
+          sessionRef.current !== null ||
+          touchActiveRef.current
         ) {
           return;
         }
@@ -833,6 +665,7 @@ export const CalligraphyCategoryPager = forwardRef<
       cancelHeightFrame();
     };
   }, [
+    usesEmbla,
     applyPanelHeight,
     invalidateSession,
     primaryVisible,
@@ -856,11 +689,12 @@ export const CalligraphyCategoryPager = forwardRef<
       } else {
         frameWasUnavailableRef.current = true;
       }
-      if (offset !== undefined) frame.scrollLeft = offset;
+      if (!usesEmbla && offset !== undefined) frame.scrollLeft = offset;
     }
     applyPanelHeight(activeIndexRef.current);
     publishProgress(true);
   }, [
+    usesEmbla,
     applyPanelHeight,
     invalidateSession,
     primaryVisible,
@@ -885,11 +719,13 @@ export const CalligraphyCategoryPager = forwardRef<
       ref={frameRef}
       className={styles.pagerFrame}
       data-calligraphy-category-pager=""
-      data-calligraphy-pager-native=""
+      data-calligraphy-pager-native={usesEmbla ? undefined : ""}
+      data-category-pager-engine={usesEmbla ? "embla" : undefined}
       data-calligraphy-pager-platform={platform}
       data-calligraphy-pager-scrolling="false"
       onClickCapture={(event) => {
         if (
+          !usesEmbla &&
           event.detail !== 0 &&
           suppressClickUntilRef.current > 0 &&
           performance.now() <= suppressClickUntilRef.current
@@ -900,7 +736,7 @@ export const CalligraphyCategoryPager = forwardRef<
         }
       }}
       onPointerCancelCapture={(event) => {
-        if (event.pointerType !== "touch") cancelToCommitted();
+        if (!usesEmbla && event.pointerType !== "touch") cancelToCommitted();
       }}
       onScroll={handleScroll}
       onTouchCancelCapture={cancelToCommitted}

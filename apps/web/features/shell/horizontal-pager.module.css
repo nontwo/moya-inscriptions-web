@@ -52,3 +52,15 @@
 .frame:not([data-horizontal-pager-platform="pc"]) .panel {
   touch-action: pan-y pinch-zoom;
 }
+
+.frame[data-category-pager-engine="embla"] {
+  overflow-x: hidden;
+  scroll-snap-type: none;
+}
+.frame[data-category-pager-engine="embla"] .track {
+  touch-action: pan-y pinch-zoom;
+}
+.frame[data-category-pager-engine="embla"] .panel {
+  scroll-snap-align: none;
+  scroll-snap-stop: normal;
+}

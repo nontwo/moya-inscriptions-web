@@ -112,11 +112,29 @@ const homeFeedIndex: Record<HomeFeedName, number> = {
   topics: 2,
 };
 
-const nativeSettleHomeFeed = async (home: Locator, feed: HomeFeedName) => {
+const touchSettleHomeFeed = async (home: Locator, feed: HomeFeedName) => {
   const pager = home.locator("[data-home-feed-pager]");
+  // Each old scrollTo(auto) step was aligned before the next geometry input.
+  // This setup helper waits for that actual position, not for interaction.
+  const atPage = async (targetFeed: HomeFeedName) => {
+    await expect
+      .poll(() =>
+        pager.evaluate((node, target) => {
+          const panel = node.querySelector<HTMLElement>(
+            `[data-home-feed-panel="${target}"]`,
+          )!;
+          return Math.abs(
+            panel.getBoundingClientRect().left -
+              node.getBoundingClientRect().left,
+          );
+        }, targetFeed),
+      )
+      .toBeLessThanOrEqual(2);
+  };
   let active = (await home.getAttribute(
     "data-active-home-feed",
   )) as HomeFeedName;
+  await atPage(active);
   while (active !== feed) {
     const direction = Math.sign(homeFeedIndex[feed] - homeFeedIndex[active]);
     const targetIndex = homeFeedIndex[active] + direction;
@@ -131,16 +149,35 @@ const nativeSettleHomeFeed = async (home: Locator, feed: HomeFeedName) => {
           `[data-home-feed-panel="${input.feed}"]`,
         );
         if (panel === null) throw new Error("Missing adjacent Home panel");
-        frame.scrollTo({
-          behavior: "auto",
-          left: panel.offsetLeft,
-          top: 0,
-        });
-        frame.dispatchEvent(new Event("scrollend"));
+        for (const [type, progress] of [
+          ["touchstart", 0],
+          ["touchmove", 0.25],
+          ["touchmove", 0.6],
+          ["touchmove", 1],
+          ["touchend", 1],
+        ] as const) {
+          const event = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperty(event, "touches", {
+            value:
+              type === "touchend"
+                ? []
+                : [
+                    {
+                      identifier: 1,
+                      target: frame,
+                      clientX:
+                        frame.clientWidth * (0.75 - input.direction * progress),
+                      clientY: 300,
+                    },
+                  ],
+          });
+          frame.dispatchEvent(event);
+        }
       },
-      { feed: targetFeed },
+      { feed: targetFeed, direction },
     );
     await expect(home).toHaveAttribute("data-active-home-feed", targetFeed);
+    await atPage(targetFeed);
     active = targetFeed;
   }
 };
@@ -302,7 +339,7 @@ const settleHomeFeedAndReadStableEvidence = async (
   home: Locator,
   feed: HomeFeedName,
 ) => {
-  await nativeSettleHomeFeed(home, feed);
+  await touchSettleHomeFeed(home, feed);
   return waitForStableHomePanelEvidence(home, feed);
 };
 
@@ -1143,7 +1180,7 @@ test("Home tabs remain internal to Home and expose the bounded R03 feeds", async
   expect(page.url()).toBe(urlBefore);
 });
 
-test("Home pager follows scroll progress and commits only after settle", async ({
+test("Home pager follows touch progress and hands interaction over on release", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -1157,8 +1194,8 @@ test("Home pager follows scroll progress and commits only after settle", async (
   const nearby = home.locator('[data-home-feed-panel="nearby"]');
   const indicator = home.locator("[data-home-feed-indicator]");
 
-  await expect(pager).toHaveAttribute("data-home-pager-native", "");
-  await expect(pager).toHaveCSS("scroll-snap-type", "x mandatory");
+  await expect(pager).toHaveAttribute("data-category-pager-engine", "embla");
+  await expect(pager).toHaveCSS("scroll-snap-type", "none");
   // Horizontal input is local; browser vertical scrolling and pinch remain enabled.
   await expect(pager).toHaveCSS("touch-action", "pan-y pinch-zoom");
   await expect(nearby).not.toHaveAttribute("hidden", "");
@@ -1173,10 +1210,25 @@ test("Home pager follows scroll progress and commits only after settle", async (
 
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.dispatchEvent(new Event("touchstart", { bubbles: true }));
-    frame.style.scrollSnapType = "none";
-    frame.scrollLeft = frame.clientWidth / 2;
-    frame.dispatchEvent(new Event("scroll"));
+    // Controlled touch delivery checks integration; the native-input suite
+    // separately verifies browser scrolling, pinch and gesture arbitration.
+    for (const [type, progress] of [
+      ["touchstart", 0],
+      ["touchmove", 0.5],
+    ] as const) {
+      const point = {
+        identifier: 1,
+        target: frame,
+        clientX: frame.clientWidth * (0.75 - progress),
+        clientY: 300,
+      };
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: [point] },
+        changedTouches: { value: [point] },
+      });
+      frame.dispatchEvent(event);
+    }
   });
   await expect(home).toHaveAttribute("data-active-home-feed", "discover");
   await expect(pager).toHaveAttribute("data-home-pager-scrolling", "true");
@@ -1197,17 +1249,39 @@ test("Home pager follows scroll progress and commits only after settle", async (
     "home",
   );
 
-  await pager.evaluate((node) => {
+  const release = await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.scrollLeft = frame.clientWidth;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new Event("touchend", { bubbles: true }));
-    frame.dispatchEvent(new Event("scrollend"));
+    const point = {
+      identifier: 1,
+      target: frame,
+      clientX: -frame.clientWidth * 0.25,
+      clientY: 300,
+    };
+    for (const type of ["touchmove", "touchend"]) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: type === "touchmove" ? [point] : [] },
+        changedTouches: { value: [point] },
+      });
+      frame.dispatchEvent(event);
+    }
+    const target = frame.querySelector<HTMLElement>(
+      '[data-home-feed-panel="nearby"]',
+    )!;
+    return {
+      active: frame.closest<HTMLElement>("[data-home-surface]")!.dataset
+        .activeHomeFeed,
+      inert: target.inert,
+      remaining: Math.abs(
+        target.getBoundingClientRect().left -
+          frame.getBoundingClientRect().left,
+      ),
+    };
   });
+  expect(release.active).toBe("nearby");
+  expect(release.inert).toBe(false);
+  expect(release.remaining).toBeGreaterThan(2);
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
-  await pager.evaluate((node) => {
-    (node as HTMLElement).style.scrollSnapType = "";
-  });
   await expect(pager).toHaveAttribute("data-home-pager-scrolling", "false");
   await expect(nearby).toHaveAttribute("aria-hidden", "false");
   await expect(discover).toHaveAttribute("aria-hidden", "true");
@@ -1221,20 +1295,17 @@ test("Home pager follows scroll progress and commits only after settle", async (
   );
 });
 
-test("Home native settle commits once without post-release programmatic drift", async ({
+test("Home touch release commits once without post-release programmatic drift", async ({
   page,
 }, testInfo) => {
   test.skip(
     expectedInitialAutoPlatform(testInfo.project.name) === "pc",
-    "The native settle ownership regression belongs to Phone and Tablet.",
+    "The touch release ownership regression belongs to Phone and Tablet.",
   );
   const { surface } = await openDevelopmentSurface(page);
   const home = activeHomeSurface(surface);
   const pager = home.locator("[data-home-feed-pager]");
-  await expect(pager).toHaveAttribute(
-    "data-home-pager-settle-mode",
-    "scrollend",
-  );
+  await expect(pager).toHaveAttribute("data-category-pager-engine", "embla");
 
   await pager.evaluate((node) => {
     const frame = node as HTMLElement & {
@@ -1288,17 +1359,30 @@ test("Home native settle commits once without post-release programmatic drift", 
         if (source === undefined || target === undefined) {
           throw new Error("Missing Home feed panel");
         }
-        frame.style.scrollSnapType = "none";
-        frame.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
-        for (const progress of [0.25, 0.6, 1]) {
-          frame.scrollLeft =
-            source.offsetLeft +
-            (target.offsetLeft - source.offsetLeft) * progress;
-          frame.dispatchEvent(new Event("scroll"));
+        for (const [type, progress] of [
+          ["touchstart", 0],
+          ["touchmove", 0.25],
+          ["touchmove", 0.6],
+          ["touchmove", 1],
+        ] as const) {
+          const point = {
+            identifier: 1,
+            target: frame,
+            clientX:
+              frame.clientWidth * 0.75 -
+              (target.offsetLeft - source.offsetLeft) * progress,
+            clientY: 300,
+          };
+          const event = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperties(event, {
+            touches: { value: [point] },
+            changedTouches: { value: [point] },
+          });
+          frame.dispatchEvent(event);
         }
-        frame.dispatchEvent(new TouchEvent("touchend", { bubbles: true }));
-        frame.dispatchEvent(new Event("scrollend"));
-        frame.style.scrollSnapType = "";
+        const end = new Event("touchend", { bubbles: true, cancelable: true });
+        Object.defineProperty(end, "touches", { value: [] });
+        frame.dispatchEvent(end);
       },
       { sourceIndex: currentIndex, targetIndex },
     );
@@ -1319,16 +1403,29 @@ test("Home native settle commits once without post-release programmatic drift", 
     if (source === undefined || neighbor === undefined) {
       throw new Error("Missing short-drag panel");
     }
-    frame.style.scrollSnapType = "none";
-    frame.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
-    frame.scrollLeft =
-      source.offsetLeft + (neighbor.offsetLeft - source.offsetLeft) * 0.2;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.scrollLeft = source.offsetLeft;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new TouchEvent("touchend", { bubbles: true }));
-    frame.dispatchEvent(new Event("scrollend"));
-    frame.style.scrollSnapType = "";
+    for (const [type, progress] of [
+      ["touchstart", 0],
+      ["touchmove", 0.2],
+      ["touchmove", 0],
+    ] as const) {
+      const point = {
+        identifier: 1,
+        target: frame,
+        clientX:
+          frame.clientWidth * 0.75 -
+          (neighbor.offsetLeft - source.offsetLeft) * progress,
+        clientY: 300,
+      };
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: [point] },
+        changedTouches: { value: [point] },
+      });
+      frame.dispatchEvent(event);
+    }
+    const end = new Event("touchend", { bubbles: true, cancelable: true });
+    Object.defineProperty(end, "touches", { value: [] });
+    frame.dispatchEvent(end);
   }, currentIndex);
   await expect(home).toHaveAttribute(
     "data-active-home-feed",
@@ -1460,14 +1557,27 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
     nearby: await settleHomeFeedAndReadStableEvidence(home, "nearby"),
     topics: await settleHomeFeedAndReadStableEvidence(home, "topics"),
   };
-  await nativeSettleHomeFeed(home, "discover");
+  await touchSettleHomeFeed(home, "discover");
 
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.dispatchEvent(new Event("touchstart", { bubbles: true }));
-    frame.style.scrollSnapType = "none";
-    frame.scrollLeft = frame.clientWidth / 2;
-    frame.dispatchEvent(new Event("scroll"));
+    for (const [type, progress] of [
+      ["touchstart", 0],
+      ["touchmove", 0.5],
+    ] as const) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "touches", {
+        value: [
+          {
+            identifier: 1,
+            target: frame,
+            clientX: frame.clientWidth * (0.75 - progress),
+            clientY: 300,
+          },
+        ],
+      });
+      frame.dispatchEvent(event);
+    }
   });
   await expect(home).toHaveAttribute("data-active-home-feed", "discover");
   expect((await readHomePanelEvidence(home, "nearby")).scrollTop).toBe(
@@ -1478,16 +1588,28 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   ).toBe(0);
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.scrollLeft = frame.clientWidth;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new Event("touchend", { bubbles: true }));
-    frame.dispatchEvent(new Event("scrollend"));
-    frame.style.scrollSnapType = "";
+    for (const type of ["touchmove", "touchend"]) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "touches", {
+        value:
+          type === "touchend"
+            ? []
+            : [
+                {
+                  identifier: 1,
+                  target: frame,
+                  clientX: -frame.clientWidth * 0.25,
+                  clientY: 300,
+                },
+              ],
+      });
+      frame.dispatchEvent(event);
+    }
   });
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
 
   for (const feed of ["topics", "nearby", "discover", "topics"] as const) {
-    await nativeSettleHomeFeed(home, feed);
+    await touchSettleHomeFeed(home, feed);
     await expect
       .poll(() =>
         readHomePanelEvidence(home, feed).then((state) => state.scrollTop),
@@ -1502,15 +1624,28 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   };
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
-    frame.dispatchEvent(new Event("touchstart", { bubbles: true }));
-    frame.style.scrollSnapType = "none";
-    frame.scrollLeft = frame.clientWidth * 1.85;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.scrollLeft = frame.clientWidth * 2;
-    frame.dispatchEvent(new Event("scroll"));
-    frame.dispatchEvent(new Event("touchend", { bubbles: true }));
-    frame.dispatchEvent(new Event("scrollend"));
-    frame.style.scrollSnapType = "";
+    for (const [type, progress] of [
+      ["touchstart", 0],
+      ["touchmove", 0.15],
+      ["touchmove", 0],
+      ["touchend", 0],
+    ] as const) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "touches", {
+        value:
+          type === "touchend"
+            ? []
+            : [
+                {
+                  identifier: 1,
+                  target: frame,
+                  clientX: frame.clientWidth * (0.25 + progress),
+                  clientY: 300,
+                },
+              ],
+      });
+      frame.dispatchEvent(event);
+    }
   });
   await expect(home).toHaveAttribute("data-active-home-feed", "topics");
   expect({
@@ -2069,7 +2204,7 @@ test("Auto mode keeps an iPhone-like runtime on phone across viewport changes", 
   const home = activeHomeSurface(surface);
   const discoverTop = await writeHomePanelScroll(home, "discover", 600);
   const nearbyTop = await writeHomePanelScroll(home, "nearby", 300);
-  await nativeSettleHomeFeed(home, "nearby");
+  await touchSettleHomeFeed(home, "nearby");
 
   await page.setViewportSize({ height: 500, width: 1200 });
   await expectPresentationPlatform(surface, "phone");
@@ -2104,7 +2239,7 @@ test("Auto mode applies iPad-like viewport caps in both directions", async ({
   const home = activeHomeSurface(surface);
   const discoverTop = await writeHomePanelScroll(home, "discover", 700);
   const topicsTop = await writeHomePanelScroll(home, "topics", 500);
-  await nativeSettleHomeFeed(home, "topics");
+  await touchSettleHomeFeed(home, "topics");
 
   await page.setViewportSize({ height: 900, width: 600 });
   await expectPresentationPlatform(surface, "phone");

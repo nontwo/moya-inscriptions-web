@@ -229,16 +229,23 @@ describe("T02 R03 architecture boundaries", () => {
     expect(pager).not.toMatch(
       /home-feed|discover|nearby|topics|user-scenarios/u,
     );
-    // Category paging owns horizontal touch locally; browser vertical scroll and pinch remain available.
-    expect(pager).toContain(
-      'window.addEventListener("pointermove", move, true)',
+    // Category hosts retain state/scroll ownership; the approved core owns
+    // touch motion, without a second direction or animation implementation.
+    const engine = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/shell/category-pager-engine.ts",
+      ),
+      "utf8",
     );
-    expect(pager).toContain(
-      'window.removeEventListener("pointermove", move, true)',
+    expect(pager).toContain("createCategoryPagerEngine(frame, {");
+    expect(pager).toContain("engine.destroy()");
+    expect(pager).not.toMatch(
+      /resolvePagerDirection|setPointerCapture|pagerSettleProgress/u,
     );
-    expect(pager).toContain("frame.setPointerCapture?.(event.pointerId)");
-    expect(pager).toContain("resolvePagerDirection");
-    expect(pager).toContain("cancelAnimation");
+    expect(engine).toContain('from "embla-carousel"');
+    expect(engine).toContain("api.destroy()");
+    expect(engine).not.toContain("internalEngine");
     expect(pager).not.toMatch(/translate3d|spring|resistance/u);
     expect(styles).toContain("touch-action: pan-y pinch-zoom;");
     expect(pager).not.toMatch(

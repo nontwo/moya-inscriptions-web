@@ -76,8 +76,19 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.pagerFrame:not([data-calligraphy-pager-platform="pc"]) {
+.pagerFrame[data-category-pager-engine="embla"] {
+  overflow-x: hidden;
+  scroll-snap-type: none;
   touch-action: pan-y pinch-zoom;
+}
+
+.pagerFrame[data-category-pager-engine="embla"] .pagerTrack {
+  touch-action: pan-y pinch-zoom;
+}
+
+.pagerFrame[data-category-pager-engine="embla"] .panel {
+  scroll-snap-align: none;
+  scroll-snap-stop: normal;
 }
 
 .pagerFrame::-webkit-scrollbar {

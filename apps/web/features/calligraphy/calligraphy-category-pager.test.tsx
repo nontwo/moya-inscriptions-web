@@ -51,12 +51,14 @@ const renderPager = (
   platform: "phone" | "tablet" | "pc" = "phone",
   onCommit = vi.fn<(category: CalligraphyCategory) => void>(),
   initialPrimaryVisible = true,
+  commitRenders = false,
 ) => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const handle = createRef<CalligraphyCategoryPagerHandle>();
   roots.push(root);
+  const onProgress = vi.fn();
   const render = (
     activeCategory: CalligraphyCategory = "all",
     primaryVisible = true,
@@ -66,8 +68,11 @@ const renderPager = (
         <CalligraphyCategoryPager
           ref={handle}
           activeCategory={activeCategory}
-          onCommit={onCommit}
-          onProgress={vi.fn()}
+          onCommit={(category) => {
+            onCommit(category);
+            if (commitRenders) render(category);
+          }}
+          onProgress={onProgress}
           panels={{
             all: <button type="button">All card</button>,
             ink: <p>Ink page</p>,
@@ -92,7 +97,19 @@ const renderPager = (
     roots.splice(roots.indexOf(root), 1);
     act(() => root.unmount());
   };
-  return { container, frame, handle, onCommit, render, unmount };
+  const track = frame.firstElementChild as HTMLElement;
+  const panels = [...track.children] as HTMLElement[];
+  return {
+    container,
+    frame,
+    track,
+    panels,
+    handle,
+    onCommit,
+    onProgress,
+    render,
+    unmount,
+  };
 };
 
 const nativeScroll = (frame: HTMLElement, left: number) => {
@@ -102,15 +119,65 @@ const nativeScroll = (frame: HTMLElement, left: number) => {
   });
 };
 
+const touch = (
+  node: HTMLElement,
+  type: string,
+  x = 300,
+  y = 300,
+  count = 1,
+) => {
+  const points =
+    type === "touchend" || type === "touchcancel"
+      ? []
+      : Array.from({ length: count }, (_, index) => ({
+          clientX: x + index * 80,
+          clientY: y,
+        }));
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: points as Touch[],
+  });
+  Object.defineProperty(event, "timeStamp", { value: performance.now() });
+  act(() => node.dispatchEvent(event));
+  return event;
+};
+const drag = (frame: HTMLElement, dx = -220, dy = 0) => {
+  touch(frame, "touchstart");
+  for (let index = 1; index <= 10; index++) {
+    act(() => vi.advanceTimersByTime(16));
+    touch(frame, "touchmove", 300 + (dx * index) / 10, 300 + (dy * index) / 10);
+  }
+};
+const trackLeft = (track: HTMLElement) =>
+  Number(track.style.transform.match(/translate3d\(([-\d.]+)px/)?.[1] ?? 0);
+
 describe("CalligraphyCategoryPager", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
     prefersReducedMotion = false;
     pagerWidth = 400;
     offsets = [0, 400, 800];
     scrollToCalls = [];
     panelHeights = { all: 900, ink: 600, rubbing: 720 };
     resizeObservers.length = 0;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    for (const name of ["offsetWidth", "offsetHeight"] as const)
+      vi.spyOn(HTMLElement.prototype, name, "get").mockImplementation(() =>
+        name === "offsetWidth" ? pagerWidth : 720,
+      );
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(
+      document.body,
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(0);
     Object.defineProperty(globalThis, "ResizeObserver", {
       configurable: true,
       value: TestResizeObserver,
@@ -145,7 +212,7 @@ describe("CalligraphyCategoryPager", () => {
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: (callback: FrameRequestCallback) =>
-        window.setTimeout(() => callback(performance.now()), 0),
+        window.setTimeout(() => callback(performance.now()), 16),
     });
     Object.defineProperty(window, "cancelAnimationFrame", {
       configurable: true,
@@ -153,7 +220,11 @@ describe("CalligraphyCategoryPager", () => {
     });
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
-      value: vi.fn(() => ({ matches: prefersReducedMotion })),
+      value: vi.fn(() => ({
+        matches: prefersReducedMotion,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
     });
     Object.defineProperty(HTMLElement.prototype, "onscrollend", {
       configurable: true,
@@ -166,47 +237,48 @@ describe("CalligraphyCategoryPager", () => {
     document.body.replaceChildren();
     Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });
 
-  it("keeps all pages mounted and commits only after release and snap settle", () => {
-    const { container, frame, onCommit } = renderPager();
-    const panels = Array.from(
-      container.querySelectorAll<HTMLElement>(
-        "[data-calligraphy-category-panel]",
-      ),
-    );
-    expect(panels).toHaveLength(3);
-    expect(panels[0]?.getAttribute("aria-hidden")).toBe("false");
-    expect(panels[0]?.dataset.catalogPresentationState).toBe("populated");
-    expect(panels[1]?.hasAttribute("inert")).toBe(true);
-
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 200);
-    act(() => vi.advanceTimersByTime(0));
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.dataset.calligraphyPagerScrolling).toBe("true");
-
-    nativeScroll(frame, 400);
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    expect(onCommit).not.toHaveBeenCalled();
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("ink");
+  it("keeps mounted pages and commits category with inert ownership on release before visual settle", () => {
+    const v = renderPager("phone", vi.fn(), true, true);
+    expect(v.panels).toHaveLength(3);
+    expect(v.panels[0]?.getAttribute("aria-hidden")).toBe("false");
+    expect(v.panels[0]?.dataset.catalogPresentationState).toBe("populated");
+    expect(v.panels[1]?.hasAttribute("inert")).toBe(true);
+    const oldPanels = [...v.panels];
+    drag(v.frame);
+    expect(trackLeft(v.track)).toBeLessThan(-100);
+    expect(v.frame.scrollLeft).toBe(0);
+    expect(v.onCommit).not.toHaveBeenCalled();
+    expect(v.frame.dataset.calligraphyPagerScrolling).toBe("true");
+    touch(v.frame, "touchend");
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+    expect(v.panels[0]?.hasAttribute("inert")).toBe(true);
+    expect(v.panels[1]?.hasAttribute("inert")).toBe(false);
+    expect(v.panels[1]?.getAttribute("aria-hidden")).toBe("false");
+    expect(v.frame.style.height).toBe("600px");
+    expect(trackLeft(v.track)).toBeGreaterThan(-400);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(trackLeft(v.track)).toBeCloseTo(-400, 2);
+    expect(v.onCommit).toHaveBeenCalledOnce();
+    expect([...v.track.children]).toEqual(oldPanels);
   });
 
   it("uses immediate tab paging for reduced motion and PC", () => {
     prefersReducedMotion = true;
-    const phone = renderPager();
+    const phone = renderPager("phone", vi.fn(), true, true);
     const phoneEvents = vi.spyOn(phone.frame, "dispatchEvent");
     act(() => phone.handle.current?.scrollToCategory("rubbing"));
-    expect(phone.frame.scrollLeft).toBe(800);
+    expect(phone.frame.scrollLeft).toBe(0);
+    expect(trackLeft(phone.track)).toBe(-800);
     expect(scrollToCalls).toEqual([]);
     expect(phoneEvents).not.toHaveBeenCalled();
     expect(phone.onCommit).toHaveBeenCalledExactlyOnceWith("rubbing");
     phone.render("rubbing");
-    nativeScroll(phone.frame, 800);
+    expect(trackLeft(phone.track)).toBe(-800);
     expect(phone.onCommit).toHaveBeenCalledOnce();
     act(() => phone.frame.dispatchEvent(new Event("scrollend")));
     expect(phone.onCommit).toHaveBeenCalledExactlyOnceWith("rubbing");
@@ -252,84 +324,80 @@ describe("CalligraphyCategoryPager", () => {
   });
 
   it.each(["phone", "tablet"] as const)(
-    "controls the bounded settle and commits exactly once at the target on %s",
+    "commits tab requests immediately and lets the visual tail be interrupted on %s",
     (platform) => {
-      const { frame, handle, onCommit } = renderPager(platform);
-      const nativeSmoothScroll = vi.spyOn(frame, "scrollTo");
-      act(() => handle.current?.scrollToCategory("ink"));
+      const v = renderPager(platform, vi.fn(), true, true);
+      const nativeSmoothScroll = vi.spyOn(v.frame, "scrollTo");
+      act(() => v.handle.current?.scrollToCategory("ink"));
       expect(nativeSmoothScroll).not.toHaveBeenCalled();
-      expect(frame.scrollLeft).toBe(0);
-      expect(onCommit).not.toHaveBeenCalled();
-      act(() => vi.advanceTimersByTime(30));
-      expect(frame.scrollLeft).toBeGreaterThan(0);
-      expect(frame.scrollLeft).toBeLessThan(400);
-      act(() => frame.dispatchEvent(new Event("scrollend")));
-      expect(onCommit).not.toHaveBeenCalled();
-      act(() => vi.advanceTimersByTime(30));
-      expect(frame.scrollLeft).toBe(400);
-      expect(onCommit).toHaveBeenCalledExactlyOnceWith("ink");
-      act(() => frame.dispatchEvent(new Event("scrollend")));
-      expect(onCommit).toHaveBeenCalledOnce();
+      expect(v.frame.scrollLeft).toBe(0);
+      expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+      act(() => vi.advanceTimersByTime(64));
+      const before = trackLeft(v.track);
+      expect(before).toBeLessThan(0);
+      expect(before).toBeGreaterThan(-400);
+      touch(v.frame, "touchstart");
+      expect(trackLeft(v.track)).toBe(before);
+      for (let index = 1; index <= 10; index++) {
+        act(() => vi.advanceTimersByTime(16));
+        touch(v.frame, "touchmove", 300 + 22 * index, 300);
+      }
+      expect(trackLeft(v.track)).toBeGreaterThan(before);
+      touch(v.frame, "touchend");
+      expect(v.onCommit.mock.calls.map(([category]) => category)).toEqual([
+        "ink",
+        "all",
+      ]);
+      act(() => vi.advanceTimersByTime(3000));
+      expect(trackLeft(v.track)).toBeCloseTo(0, 2);
+      expect(v.onCommit).toHaveBeenCalledTimes(2);
     },
   );
 
-  it("commits before applying the shorter target panel height", () => {
-    let heightObservedByCommit: string | undefined;
-    const onCommit = vi.fn<(category: CalligraphyCategory) => void>(() => {
-      heightObservedByCommit = rendered.frame.style.height;
-    });
-    const rendered = renderPager("pc", onCommit);
-    expect(rendered.frame.style.height).toBe("900px");
-
-    act(() => rendered.handle.current?.scrollToCategory("ink"));
-    act(() => rendered.frame.dispatchEvent(new Event("scrollend")));
-
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("ink");
-    expect(heightObservedByCommit).toBe("900px");
-    expect(rendered.frame.style.height).toBe("600px");
-  });
-
-  it("keeps a second-finger cancellation cleared across pointerdown and touchstart", () => {
-    const { frame, onCommit } = renderPager();
-    const pointer = (type: string, x: number, primary = true) => {
-      const event = new MouseEvent(type, {
-        bubbles: true,
-        clientX: x,
-        clientY: 200,
+  it.each(["phone", "tablet", "pc"] as const)(
+    "commits before applying the shorter target panel height on %s",
+    (platform) => {
+      let heightObservedByCommit: string | undefined;
+      const onCommit = vi.fn<(category: CalligraphyCategory) => void>(() => {
+        heightObservedByCommit = rendered.frame.style.height;
       });
-      Object.defineProperties(event, {
-        pointerType: { value: "touch" },
-        pointerId: { value: primary ? 9 : 10 },
-        isPrimary: { value: primary },
-      });
-      act(() => frame.dispatchEvent(event));
-    };
-    pointer("pointerdown", 300);
-    pointer("pointermove", 80);
-    expect(frame.scrollLeft).toBe(220);
-    pointer("pointerdown", 350, false);
-    const event = new Event("touchstart", { bubbles: true });
-    Object.defineProperty(event, "touches", {
-      value: [{ identifier: 9 }, { identifier: 10 }],
-    });
-    act(() => frame.dispatchEvent(event));
-    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
-    pointer("pointerup", 80);
-    act(() => vi.runAllTimers());
-    expect(frame.scrollLeft).toBe(0);
-    expect(onCommit).not.toHaveBeenCalled();
+      const rendered = renderPager(platform, onCommit, true, true);
+      expect(rendered.frame.style.height).toBe("900px");
+
+      act(() => rendered.handle.current?.scrollToCategory("ink"));
+      act(() => rendered.frame.dispatchEvent(new Event("scrollend")));
+
+      expect(onCommit).toHaveBeenCalledOnce();
+      expect(onCommit).toHaveBeenCalledWith("ink");
+      expect(heightObservedByCommit).toBe("900px");
+      expect(rendered.frame.style.height).toBe("600px");
+    },
+  );
+
+  it("keeps a second-finger cancellation blocked until all fingers leave", () => {
+    const v = renderPager("phone", vi.fn(), true, true);
+    drag(v.frame);
+    expect(trackLeft(v.track)).toBeLessThan(-100);
+    touch(v.frame, "touchstart", 80, 300, 2);
+    expect(v.frame.dataset.calligraphyPagerScrolling).toBe("false");
+    touch(v.frame, "touchmove", 20, 300);
+    touch(v.frame, "touchend");
+    act(() => vi.advanceTimersByTime(3000));
+    expect(trackLeft(v.track)).toBe(0);
+    expect(v.onCommit).not.toHaveBeenCalled();
+    drag(v.frame);
+    touch(v.frame, "touchend");
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
   });
 
   it("cancels an interrupted gesture without changing category", () => {
-    const { frame, onCommit } = renderPager();
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 240);
-    act(() => frame.dispatchEvent(new Event("touchcancel", { bubbles: true })));
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(frame.scrollLeft).toBe(0);
-    expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
+    const v = renderPager();
+    drag(v.frame);
+    touch(v.frame, "touchcancel");
+    act(() => vi.advanceTimersByTime(3000));
+    expect(v.onCommit).not.toHaveBeenCalled();
+    expect(trackLeft(v.track)).toBe(0);
+    expect(v.frame.dataset.calligraphyPagerScrolling).toBe("false");
   });
 
   it("allows at most one bounded category change per PC wheel gesture", () => {
@@ -364,9 +432,9 @@ describe("CalligraphyCategoryPager", () => {
   });
 
   it("preserves the committed category across resize and hidden mounting", () => {
-    const { frame, onCommit, render } = renderPager();
+    const { frame, track, onCommit, render } = renderPager();
     render("ink");
-    expect(frame.scrollLeft).toBe(400);
+    expect(trackLeft(track)).toBe(-400);
 
     pagerWidth = 0;
     render("ink", false);
@@ -376,27 +444,22 @@ describe("CalligraphyCategoryPager", () => {
     render("ink", true);
     act(() => resizeObservers.at(-1)?.trigger());
 
-    expect(frame.scrollLeft).toBe(520);
+    expect(trackLeft(frame.firstElementChild as HTMLElement)).toBe(-520);
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it("preserves the first native gesture after becoming visible", () => {
+  it("preserves the first gesture after becoming visible", () => {
     pagerWidth = 0;
-    const onCommit = vi.fn<(category: CalligraphyCategory) => void>();
-    const { frame, render } = renderPager("phone", onCommit, false);
+    const v = renderPager("phone", vi.fn(), false, true);
     act(() => resizeObservers[0]?.trigger());
-
     pagerWidth = 400;
-    render("all", true);
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 400);
+    v.render("all", true);
+    drag(v.frame);
     act(() => resizeObservers[0]?.trigger());
-    act(() => frame.dispatchEvent(new Event("scrollend")));
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
-
-    expect(frame.scrollLeft).toBe(400);
-    expect(onCommit).toHaveBeenCalledOnce();
-    expect(onCommit).toHaveBeenCalledWith("ink");
+    touch(v.frame, "touchend");
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+    act(() => vi.advanceTimersByTime(3000));
+    expect(trackLeft(v.track)).toBeCloseTo(-400, 2);
   });
 
   it("does not write or queue a height frame for an unchanged measurement", () => {
@@ -456,14 +519,14 @@ describe("CalligraphyCategoryPager", () => {
     const requestFrame = vi.spyOn(window, "requestAnimationFrame");
     panelHeights.all = 1200;
     act(() => resizeObservers[0]?.trigger());
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    touch(frame, "touchstart");
     act(() => vi.runOnlyPendingTimers());
     act(() => resizeObservers[0]?.trigger());
 
     expect(requestFrame).toHaveBeenCalledOnce();
     expect(writeHeight).not.toHaveBeenCalled();
     expect(frame.style.height).toBe("900px");
-    act(() => frame.dispatchEvent(new Event("touchcancel", { bubbles: true })));
+    touch(frame, "touchcancel");
     expect(frame.style.height).toBe("1200px");
   });
 
@@ -471,21 +534,56 @@ describe("CalligraphyCategoryPager", () => {
     const { frame, onCommit } = renderPager();
     panelHeights.all = 1200;
     act(() => resizeObservers[0]?.trigger());
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    touch(frame, "touchstart");
     act(() => vi.runOnlyPendingTimers());
     expect(frame.style.height).toBe("900px");
 
-    act(() => frame.dispatchEvent(new Event("touchend", { bubbles: true })));
+    touch(frame, "touchend");
 
     expect(frame.style.height).toBe("1200px");
     expect(frame.dataset.calligraphyPagerScrolling).toBe("false");
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("releases deferred height work when the page hides without a touchend", () => {
+    const { frame, onCommit } = renderPager();
+    touch(frame, "touchstart");
+    panelHeights.all = 1200;
+    act(() => resizeObservers[0]?.trigger());
+    expect(frame.style.height).toBe("900px");
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    act(() => resizeObservers[0]?.trigger());
+    act(() => vi.runOnlyPendingTimers());
+    expect(frame.style.height).toBe("1200px");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("keeps vertical input with the page and leaves an active drag intact on unrelated renders", () => {
+    const v = renderPager("phone", vi.fn(), true, true);
+    touch(v.frame, "touchstart");
+    const firstVertical = touch(v.frame, "touchmove", 306, 280);
+    const laterDiagonal = touch(v.frame, "touchmove", 160, 160);
+    expect(firstVertical.defaultPrevented).toBe(false);
+    expect(laterDiagonal.defaultPrevented).toBe(false);
+    touch(v.frame, "touchend");
+    expect(v.onCommit).not.toHaveBeenCalled();
+    expect(trackLeft(v.track)).toBe(0);
+
+    drag(v.frame);
+    const before = trackLeft(v.track);
+    const addListener = vi.spyOn(v.frame, "addEventListener");
+    v.render("all");
+    expect(trackLeft(v.track)).toBe(before);
+    expect(addListener).not.toHaveBeenCalled();
+    touch(v.frame, "touchend");
+    expect(v.onCommit).toHaveBeenCalledExactlyOnceWith("ink");
+  });
+
   it("discards an unfinished session when hidden and revealed at the same width", () => {
     const { frame, onCommit, render } = renderPager();
-    act(() => frame.dispatchEvent(new Event("touchstart", { bubbles: true })));
-    nativeScroll(frame, 200);
+    drag(frame);
     expect(frame.dataset.calligraphyPagerScrolling).toBe("true");
 
     render("all", false);
@@ -512,7 +610,7 @@ describe("CalligraphyCategoryPager", () => {
     pagerWidth = 520;
     offsets = [0, 520, 1040];
     act(() => resizeObservers[0]?.trigger());
-    expect(frame.scrollLeft).toBe(520);
+    expect(trackLeft(frame.firstElementChild as HTMLElement)).toBe(-520);
     expect(frame.style.height).toBe("600px");
     act(() => vi.runOnlyPendingTimers());
     expect(frame.style.height).toBe("1000px");
@@ -551,6 +649,7 @@ describe("CalligraphyCategoryPager", () => {
     panelHeights.all = 1200;
     act(() => observer.trigger());
     const staleFrameCallback = requestFrame.mock.calls[0]![0];
+    const heightFrameId = requestFrame.mock.results[0]!.value;
 
     unmount();
     act(() => observer.trigger());
@@ -558,7 +657,11 @@ describe("CalligraphyCategoryPager", () => {
     act(() => vi.runOnlyPendingTimers());
 
     expect(observer.observed.size).toBe(0);
-    expect(cancelFrame).toHaveBeenCalledOnce();
+    // Embla also cancels its own animation token on destroy. The original
+    // queued height work must still be cancelled exactly once.
+    expect(
+      cancelFrame.mock.calls.filter(([id]) => id === heightFrameId),
+    ).toHaveLength(1);
     expect(requestFrame).toHaveBeenCalledOnce();
     expect(writeHeight).not.toHaveBeenCalled();
     expect(frame.style.height).toBe("900px");

@@ -1,49 +1,6 @@
 export const HORIZONTAL_PAGER_FALLBACK_STABLE_FRAMES = 4;
 export const HORIZONTAL_PAGER_CLICK_SUPPRESS_PX = 8;
 export const HORIZONTAL_PAGER_SCROLL_TOLERANCE_PX = 2;
-export const HORIZONTAL_PAGER_SETTLE_MS = 60;
-
-export type PagerDirection = "pending" | "horizontal" | "vertical";
-
-export const resolvePagerDirection = (
-  direction: PagerDirection,
-  deltaX: number,
-  deltaY: number,
-): PagerDirection => {
-  if (direction !== "pending") return direction;
-  if (Math.abs(deltaX) >= 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5)
-    return "horizontal";
-  if (Math.abs(deltaY) >= 12 && Math.abs(deltaY) >= Math.abs(deltaX))
-    return "vertical";
-  return "pending";
-};
-
-export const pagerSettleProgress = (elapsedMs: number): number => {
-  const progress = Math.max(
-    0,
-    Math.min(1, elapsedMs / HORIZONTAL_PAGER_SETTLE_MS),
-  );
-  return 1 - (1 - progress) ** 3;
-};
-
-export const resolvePagerRelease = (
-  left: number,
-  offsets: readonly number[],
-  origin: number,
-  velocity: number,
-): number => {
-  const distance = left - (offsets[origin] ?? 0);
-  const target =
-    Math.abs(velocity) >= 0.35 && Math.abs(distance) >= 24
-      ? origin + Math.sign(velocity)
-      : resolveHorizontalPagerSettledIndex(left, offsets);
-  return Math.max(
-    0,
-    origin - 1,
-    Math.min(offsets.length - 1, origin + 1, target),
-  );
-};
-
 export const horizontalPagerProgress = (
   scrollLeft: number,
   offsets: readonly number[],
