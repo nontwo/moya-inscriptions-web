@@ -1,0 +1,13 @@
+{
+  "name": "p2-03-search-evaluation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test evaluation.test.mjs",
+    "evaluate": "node benchmark.mjs"
+  },
+  "dependencies": {
+    "opencc": "1.4.1",
+    "pg": "8.22.0"
+  }
+}

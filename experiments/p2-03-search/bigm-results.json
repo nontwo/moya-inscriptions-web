@@ -1,0 +1,3147 @@
+{
+  "evaluationOnly": true,
+  "trigger": "100k rare two-Han LIKE scan was measured above 300 ms; targeted Owner-authorized extension comparison.",
+  "startedAt": "2026-09-07T23:20:34.476Z",
+  "seed": 20320260907,
+  "qualityEquivalence": [
+    {
+      "group": "official-open-data",
+      "queries": 24,
+      "mismatches": 0
+    },
+    {
+      "group": "designed-synthetic",
+      "queries": 58,
+      "mismatches": 0
+    }
+  ],
+  "scales": [
+    {
+      "count": 10000,
+      "indexedVisible": 9685,
+      "configs": {
+        "trigram-contains-index": {
+          "replaceIndexMs": 0,
+          "firstPass": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "clientMs": 8.665916999999808,
+              "resultCount": 20,
+              "resultDigest": "fa42783a5abd7ebecbcc47531f8e06400d8517f831e0b7190986cf61833a77bf"
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "clientMs": 22.072541999999885,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "clientMs": 22.088166999999885,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "clientMs": 22.293291999999838,
+              "resultCount": 20,
+              "resultDigest": "bc152870fb5983cda1cc64df40089d6d8968e6db70008cdbcdf34d28edcb4700"
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "clientMs": 0.9337909999999283,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "clientMs": 30.364082999999937,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            }
+          ],
+          "warmClientMs": {
+            "samples": 30,
+            "p50": 21.912540999999692,
+            "p95": 28.29912500000046,
+            "max": 28.38799999999992
+          },
+          "perQueryWarmClientMs": {
+            "q-01": {
+              "samples": 5,
+              "p50": 8.350957999999991,
+              "p95": 8.395291999999245,
+              "max": 8.395291999999245
+            },
+            "q-11": {
+              "samples": 5,
+              "p50": 21.619832999999744,
+              "p95": 22.120792000000165,
+              "max": 22.120792000000165
+            },
+            "q-12": {
+              "samples": 5,
+              "p50": 22.084540999999263,
+              "p95": 22.273959000000104,
+              "max": 22.273959000000104
+            },
+            "q-14": {
+              "samples": 5,
+              "p50": 22.385207999999693,
+              "p95": 22.88745800000015,
+              "max": 22.88745800000015
+            },
+            "q-17": {
+              "samples": 5,
+              "p50": 0.8624579999996058,
+              "p95": 0.9504589999996824,
+              "max": 0.9504589999996824
+            },
+            "q-26": {
+              "samples": 5,
+              "p50": 28.149083999999675,
+              "p95": 28.38799999999992,
+              "max": 28.38799999999992
+            }
+          },
+          "queryCpuSeconds": 0.6052569999999999,
+          "resourcesAfter": {
+            "cpuSeconds": 3.659559,
+            "anonymousMemoryBytes": 22740992,
+            "fileCacheBytes": 230289408,
+            "cgroupCurrentBytes": 264835072,
+            "cgroupPeakBytes": 279236608
+          },
+          "stats": {
+            "version": "18.4",
+            "pgTrgmVersion": "1.6",
+            "ftsConfiguration": "simple",
+            "similarityThreshold": 0.3,
+            "numberOfDocuments": 9685,
+            "tableSizeBytes": 38502400,
+            "indexesSizeBytes": 18079744,
+            "totalSizeBytes": 56582144,
+            "databaseSizeBytes": 64673471,
+            "indexes": [
+              {
+                "name": "documents_pkey",
+                "bytes": 319488
+              },
+              {
+                "name": "p203_aliases_exact",
+                "bytes": 1441792
+              },
+              {
+                "name": "p203_fts",
+                "bytes": 4767744
+              },
+              {
+                "name": "p203_normalized_aliases_exact",
+                "bytes": 1441792
+              },
+              {
+                "name": "p203_normalized_text_trgm",
+                "bytes": 7307264
+              },
+              {
+                "name": "p203_normalized_title_exact",
+                "bytes": 532480
+              },
+              {
+                "name": "p203_normalized_title_prefix",
+                "bytes": 532480
+              },
+              {
+                "name": "p203_normalized_title_trgm",
+                "bytes": 671744
+              },
+              {
+                "name": "p203_title_exact",
+                "bytes": 532480
+              },
+              {
+                "name": "p203_title_prefix",
+                "bytes": 532480
+              }
+            ],
+            "ftsDebug": [
+              {
+                "sample": "合成山河碑",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成山河碑",
+                    "lexemes": ["合成山河碑"]
+                  }
+                ]
+              },
+              {
+                "sample": "合成人物 合成作品",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成人物",
+                    "lexemes": ["合成人物"]
+                  },
+                  {
+                    "alias": "blank",
+                    "token": " ",
+                    "lexemes": null
+                  },
+                  {
+                    "alias": "word",
+                    "token": "合成作品",
+                    "lexemes": ["合成作品"]
+                  }
+                ]
+              }
+            ]
+          },
+          "plans": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 1045.79,
+                "totalCost": 1045.84,
+                "planRows": 20,
+                "actualStartupMs": 7.397,
+                "actualTotalMs": 7.399,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 3832,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 1045.79,
+                    "totalCost": 1046.77,
+                    "planRows": 391,
+                    "actualStartupMs": 7.396,
+                    "actualTotalMs": 7.397,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 3832,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 14.87,
+                        "totalCost": 1035.39,
+                        "planRows": 391,
+                        "actualStartupMs": 0.11,
+                        "actualTotalMs": 7.283,
+                        "actualRows": 1115,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 3832,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 14.77,
+                            "planRows": 391,
+                            "actualStartupMs": 0.059,
+                            "actualTotalMs": 0.059,
+                            "actualRows": 1115,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 3,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_trgm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.92,
+                            "actualLoops": 1112,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 1028,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.166,
+              "executionTimeMs": 7.415
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2523.22,
+                "totalCost": 2523.27,
+                "planRows": 20,
+                "actualStartupMs": 21.112,
+                "actualTotalMs": 21.114,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2523.22,
+                    "totalCost": 2531.29,
+                    "planRows": 3228,
+                    "actualStartupMs": 21.111,
+                    "actualTotalMs": 21.112,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2437.32,
+                        "planRows": 3228,
+                        "actualStartupMs": 0.009,
+                        "actualTotalMs": 20.803,
+                        "actualRows": 4900,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 4785,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 4900,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 4578,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.155,
+              "executionTimeMs": 21.126
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2523.22,
+                "totalCost": 2523.27,
+                "planRows": 20,
+                "actualStartupMs": 21.575,
+                "actualTotalMs": 21.577,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2523.22,
+                    "totalCost": 2531.29,
+                    "planRows": 3228,
+                    "actualStartupMs": 21.574,
+                    "actualTotalMs": 21.575,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2437.32,
+                        "planRows": 3228,
+                        "actualStartupMs": 0.01,
+                        "actualTotalMs": 21.255,
+                        "actualRows": 4900,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 4785,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 4900,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 4578,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.164,
+              "executionTimeMs": 21.592
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2607.22,
+                "totalCost": 2607.27,
+                "planRows": 20,
+                "actualStartupMs": 21.748,
+                "actualTotalMs": 21.75,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2607.22,
+                    "totalCost": 2618.22,
+                    "planRows": 4401,
+                    "actualStartupMs": 21.747,
+                    "actualTotalMs": 21.748,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 27,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2490.11,
+                        "planRows": 4401,
+                        "actualStartupMs": 0.008,
+                        "actualTotalMs": 21.381,
+                        "actualRows": 5269,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 4416,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.85,
+                            "actualLoops": 5268,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 4465,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.154,
+              "executionTimeMs": 21.761
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 16.89,
+                "totalCost": 16.89,
+                "planRows": 1,
+                "actualStartupMs": 0.017,
+                "actualTotalMs": 0.018,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 4,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 16.89,
+                    "totalCost": 16.89,
+                    "planRows": 1,
+                    "actualStartupMs": 0.017,
+                    "actualTotalMs": 0.017,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 4,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 12.82,
+                        "totalCost": 16.88,
+                        "planRows": 1,
+                        "actualStartupMs": 0.015,
+                        "actualTotalMs": 0.015,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 4,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 12.82,
+                            "planRows": 1,
+                            "actualStartupMs": 0.007,
+                            "actualTotalMs": 0.007,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 3,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_trgm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.002,
+                            "actualTotalMs": 0.002,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.166,
+              "executionTimeMs": 0.028
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2292.12,
+                "totalCost": 2292.12,
+                "planRows": 1,
+                "actualStartupMs": 27.207,
+                "actualTotalMs": 27.209,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2292.12,
+                    "totalCost": 2292.12,
+                    "planRows": 1,
+                    "actualStartupMs": 27.207,
+                    "actualTotalMs": 27.208,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2292.11,
+                        "planRows": 1,
+                        "actualStartupMs": 0.007,
+                        "actualTotalMs": 27.204,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 9684,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.135,
+              "executionTimeMs": 27.219
+            }
+          ]
+        },
+        "bigram-contains-index": {
+          "replaceIndexMs": 937.7240830000001,
+          "firstPass": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "clientMs": 8.773833000000195,
+              "resultCount": 20,
+              "resultDigest": "fa42783a5abd7ebecbcc47531f8e06400d8517f831e0b7190986cf61833a77bf"
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "clientMs": 21.83995799999957,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "clientMs": 21.853375000000597,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "clientMs": 22.509291999999732,
+              "resultCount": 20,
+              "resultDigest": "bc152870fb5983cda1cc64df40089d6d8968e6db70008cdbcdf34d28edcb4700"
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "clientMs": 0.8367090000001554,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "clientMs": 0.6347079999995913,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            }
+          ],
+          "warmClientMs": {
+            "samples": 30,
+            "p50": 8.194999999999709,
+            "p95": 22.290874999999687,
+            "max": 22.366250000000036
+          },
+          "perQueryWarmClientMs": {
+            "q-01": {
+              "samples": 5,
+              "p50": 8.139291000000412,
+              "p95": 8.194999999999709,
+              "max": 8.194999999999709
+            },
+            "q-11": {
+              "samples": 5,
+              "p50": 21.560417000000598,
+              "p95": 21.804415999999947,
+              "max": 21.804415999999947
+            },
+            "q-12": {
+              "samples": 5,
+              "p50": 21.91687499999989,
+              "p95": 22.12670900000012,
+              "max": 22.12670900000012
+            },
+            "q-14": {
+              "samples": 5,
+              "p50": 22.144209000000046,
+              "p95": 22.366250000000036,
+              "max": 22.366250000000036
+            },
+            "q-17": {
+              "samples": 5,
+              "p50": 0.8257499999999709,
+              "p95": 0.909708999999566,
+              "max": 0.909708999999566
+            },
+            "q-26": {
+              "samples": 5,
+              "p50": 0.6814999999996871,
+              "p95": 0.7489999999997963,
+              "max": 0.7489999999997963
+            }
+          },
+          "queryCpuSeconds": 0.4354560000000003,
+          "resourcesAfter": {
+            "cpuSeconds": 5.547167,
+            "anonymousMemoryBytes": 22863872,
+            "fileCacheBytes": 229437440,
+            "cgroupCurrentBytes": 264232960,
+            "cgroupPeakBytes": 279236608
+          },
+          "stats": {
+            "version": "18.4",
+            "pgTrgmVersion": "1.6",
+            "ftsConfiguration": "simple",
+            "similarityThreshold": 0.3,
+            "numberOfDocuments": 9685,
+            "tableSizeBytes": 38502400,
+            "indexesSizeBytes": 16982016,
+            "totalSizeBytes": 55484416,
+            "databaseSizeBytes": 63641279,
+            "indexes": [
+              {
+                "name": "documents_pkey",
+                "bytes": 319488
+              },
+              {
+                "name": "p203_aliases_exact",
+                "bytes": 1441792
+              },
+              {
+                "name": "p203_fts",
+                "bytes": 4767744
+              },
+              {
+                "name": "p203_normalized_aliases_exact",
+                "bytes": 1441792
+              },
+              {
+                "name": "p203_normalized_text_bigm",
+                "bytes": 6209536
+              },
+              {
+                "name": "p203_normalized_title_exact",
+                "bytes": 532480
+              },
+              {
+                "name": "p203_normalized_title_prefix",
+                "bytes": 532480
+              },
+              {
+                "name": "p203_normalized_title_trgm",
+                "bytes": 671744
+              },
+              {
+                "name": "p203_title_exact",
+                "bytes": 532480
+              },
+              {
+                "name": "p203_title_prefix",
+                "bytes": 532480
+              }
+            ],
+            "ftsDebug": [
+              {
+                "sample": "合成山河碑",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成山河碑",
+                    "lexemes": ["合成山河碑"]
+                  }
+                ]
+              },
+              {
+                "sample": "合成人物 合成作品",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成人物",
+                    "lexemes": ["合成人物"]
+                  },
+                  {
+                    "alias": "blank",
+                    "token": " ",
+                    "lexemes": null
+                  },
+                  {
+                    "alias": "word",
+                    "token": "合成作品",
+                    "lexemes": ["合成作品"]
+                  }
+                ]
+              }
+            ]
+          },
+          "plans": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 1054.47,
+                "totalCost": 1054.52,
+                "planRows": 20,
+                "actualStartupMs": 7.654,
+                "actualTotalMs": 7.656,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 3835,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 1054.47,
+                    "totalCost": 1055.45,
+                    "planRows": 391,
+                    "actualStartupMs": 7.653,
+                    "actualTotalMs": 7.655,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 3835,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 23.54,
+                        "totalCost": 1044.07,
+                        "planRows": 391,
+                        "actualStartupMs": 0.146,
+                        "actualTotalMs": 7.554,
+                        "actualRows": 1115,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 3835,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 23.45,
+                            "planRows": 391,
+                            "actualStartupMs": 0.094,
+                            "actualTotalMs": 0.094,
+                            "actualRows": 1115,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 6,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_bigm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.92,
+                            "actualLoops": 1112,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 1028,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.168,
+              "executionTimeMs": 7.673
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2523.22,
+                "totalCost": 2523.27,
+                "planRows": 20,
+                "actualStartupMs": 21.455,
+                "actualTotalMs": 21.457,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2523.22,
+                    "totalCost": 2531.29,
+                    "planRows": 3228,
+                    "actualStartupMs": 21.454,
+                    "actualTotalMs": 21.455,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2437.32,
+                        "planRows": 3228,
+                        "actualStartupMs": 0.01,
+                        "actualTotalMs": 21.135,
+                        "actualRows": 4900,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 4785,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 4900,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 4578,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.139,
+              "executionTimeMs": 21.468
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2523.22,
+                "totalCost": 2523.27,
+                "planRows": 20,
+                "actualStartupMs": 21.541,
+                "actualTotalMs": 21.543,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2523.22,
+                    "totalCost": 2531.29,
+                    "planRows": 3228,
+                    "actualStartupMs": 21.54,
+                    "actualTotalMs": 21.541,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2437.32,
+                        "planRows": 3228,
+                        "actualStartupMs": 0.01,
+                        "actualTotalMs": 21.215,
+                        "actualRows": 4900,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 4785,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 4900,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 4578,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.153,
+              "executionTimeMs": 21.556
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 2607.22,
+                "totalCost": 2607.27,
+                "planRows": 20,
+                "actualStartupMs": 21.594,
+                "actualTotalMs": 21.596,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 18152,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 2607.22,
+                    "totalCost": 2618.22,
+                    "planRows": 4401,
+                    "actualStartupMs": 21.593,
+                    "actualTotalMs": 21.594,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 18152,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 27,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 2490.11,
+                        "planRows": 4401,
+                        "actualStartupMs": 0.006,
+                        "actualTotalMs": 21.221,
+                        "actualRows": 5269,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 4416,
+                        "sharedHitBlocks": 18152,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.85,
+                            "actualLoops": 5268,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 4465,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.148,
+              "executionTimeMs": 21.608
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 25.56,
+                "totalCost": 25.57,
+                "planRows": 1,
+                "actualStartupMs": 0.025,
+                "actualTotalMs": 0.025,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 7,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 25.56,
+                    "totalCost": 25.57,
+                    "planRows": 1,
+                    "actualStartupMs": 0.024,
+                    "actualTotalMs": 0.025,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 7,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 21.5,
+                        "totalCost": 25.55,
+                        "planRows": 1,
+                        "actualStartupMs": 0.022,
+                        "actualTotalMs": 0.022,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 7,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 21.49,
+                            "planRows": 1,
+                            "actualStartupMs": 0.014,
+                            "actualTotalMs": 0.014,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 6,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_bigm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.002,
+                            "actualTotalMs": 0.002,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.169,
+              "executionTimeMs": 0.036
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 16.88,
+                "totalCost": 16.89,
+                "planRows": 1,
+                "actualStartupMs": 0.016,
+                "actualTotalMs": 0.016,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 4,
+                "sharedReadBlocks": 0,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 16.88,
+                    "totalCost": 16.89,
+                    "planRows": 1,
+                    "actualStartupMs": 0.016,
+                    "actualTotalMs": 0.016,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 4,
+                    "sharedReadBlocks": 0,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 12.81,
+                        "totalCost": 16.87,
+                        "planRows": 1,
+                        "actualStartupMs": 0.014,
+                        "actualTotalMs": 0.014,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 4,
+                        "sharedReadBlocks": 0,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 12.81,
+                            "planRows": 1,
+                            "actualStartupMs": 0.005,
+                            "actualTotalMs": 0.006,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 3,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_bigm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.002,
+                            "actualTotalMs": 0.002,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.149,
+              "executionTimeMs": 0.026
+            }
+          ]
+        }
+      },
+      "baselineInitializeMs": 2438.947291,
+      "extension": {
+        "pgBigmVersion": "1.2",
+        "containsIndex": "p203_normalized_text_bigm",
+        "enableRecheck": true
+      },
+      "top20Unchanged": true
+    },
+    {
+      "count": 100000,
+      "indexedVisible": 96915,
+      "configs": {
+        "trigram-contains-index": {
+          "replaceIndexMs": 0,
+          "firstPass": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "clientMs": 125.499917000001,
+              "resultCount": 20,
+              "resultDigest": "fa42783a5abd7ebecbcc47531f8e06400d8517f831e0b7190986cf61833a77bf"
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "clientMs": 258.250165999998,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "clientMs": 251.8871250000011,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "clientMs": 255.38462499999878,
+              "resultCount": 20,
+              "resultDigest": "bc152870fb5983cda1cc64df40089d6d8968e6db70008cdbcdf34d28edcb4700"
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "clientMs": 0.9243750000023283,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "clientMs": 321.5802079999994,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            }
+          ],
+          "warmClientMs": {
+            "samples": 30,
+            "p50": 252.0325410000005,
+            "p95": 320.9562500000029,
+            "max": 321.11937500000204
+          },
+          "perQueryWarmClientMs": {
+            "q-01": {
+              "samples": 5,
+              "p50": 104.78770900000382,
+              "p95": 104.9228329999969,
+              "max": 104.9228329999969
+            },
+            "q-11": {
+              "samples": 5,
+              "p50": 252.69112499999756,
+              "p95": 252.92195800000627,
+              "max": 252.92195800000627
+            },
+            "q-12": {
+              "samples": 5,
+              "p50": 251.89474999999948,
+              "p95": 253.42429200000333,
+              "max": 253.42429200000333
+            },
+            "q-14": {
+              "samples": 5,
+              "p50": 256.47841699999844,
+              "p95": 257.65541700000176,
+              "max": 257.65541700000176
+            },
+            "q-17": {
+              "samples": 5,
+              "p50": 1.040208000005805,
+              "p95": 1.0872500000041327,
+              "max": 1.0872500000041327
+            },
+            "q-26": {
+              "samples": 5,
+              "p50": 320.9457920000059,
+              "p95": 321.11937500000204,
+              "max": 321.11937500000204
+            }
+          },
+          "queryCpuSeconds": 7.958932000000001,
+          "resourcesAfter": {
+            "cpuSeconds": 38.891416,
+            "anonymousMemoryBytes": 57106432,
+            "fileCacheBytes": 1271271424,
+            "cgroupCurrentBytes": 1372749824,
+            "cgroupPeakBytes": 1402855424
+          },
+          "stats": {
+            "version": "18.4",
+            "pgTrgmVersion": "1.6",
+            "ftsConfiguration": "simple",
+            "similarityThreshold": 0.3,
+            "numberOfDocuments": 96915,
+            "tableSizeBytes": 387416064,
+            "indexesSizeBytes": 147095552,
+            "totalSizeBytes": 534511616,
+            "databaseSizeBytes": 542717631,
+            "indexes": [
+              {
+                "name": "documents_pkey",
+                "bytes": 3080192
+              },
+              {
+                "name": "p203_aliases_exact",
+                "bytes": 14360576
+              },
+              {
+                "name": "p203_fts",
+                "bytes": 37871616
+              },
+              {
+                "name": "p203_normalized_aliases_exact",
+                "bytes": 14360576
+              },
+              {
+                "name": "p203_normalized_text_trgm",
+                "bytes": 51027968
+              },
+              {
+                "name": "p203_normalized_title_exact",
+                "bytes": 5185536
+              },
+              {
+                "name": "p203_normalized_title_prefix",
+                "bytes": 5185536
+              },
+              {
+                "name": "p203_normalized_title_trgm",
+                "bytes": 5652480
+              },
+              {
+                "name": "p203_title_exact",
+                "bytes": 5185536
+              },
+              {
+                "name": "p203_title_prefix",
+                "bytes": 5185536
+              }
+            ],
+            "ftsDebug": [
+              {
+                "sample": "合成山河碑",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成山河碑",
+                    "lexemes": ["合成山河碑"]
+                  }
+                ]
+              },
+              {
+                "sample": "合成人物 合成作品",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成人物",
+                    "lexemes": ["合成人物"]
+                  },
+                  {
+                    "alias": "blank",
+                    "token": " ",
+                    "lexemes": null
+                  },
+                  {
+                    "alias": "word",
+                    "token": "合成作品",
+                    "lexemes": ["合成作品"]
+                  }
+                ]
+              }
+            ]
+          },
+          "plans": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 16280.13,
+                "totalCost": 16280.18,
+                "planRows": 20,
+                "actualStartupMs": 105.918,
+                "actualTotalMs": 105.92,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 32504,
+                "sharedReadBlocks": 16543,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 16280.13,
+                    "totalCost": 16299.71,
+                    "planRows": 7832,
+                    "actualStartupMs": 105.917,
+                    "actualTotalMs": 105.918,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 32504,
+                    "sharedReadBlocks": 16543,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 62.18,
+                        "totalCost": 16071.72,
+                        "planRows": 7832,
+                        "actualStartupMs": 1.278,
+                        "actualTotalMs": 104.966,
+                        "actualRows": 11358,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 32504,
+                        "sharedReadBlocks": 16543,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 60.22,
+                            "planRows": 7832,
+                            "actualStartupMs": 0.596,
+                            "actualTotalMs": 0.597,
+                            "actualRows": 11358,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 1,
+                            "sharedReadBlocks": 6,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_trgm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 11355,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 10550,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.184,
+              "executionTimeMs": 105.939
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 24952.26,
+                "totalCost": 24952.31,
+                "planRows": 20,
+                "actualStartupMs": 257.913,
+                "actualTotalMs": 257.915,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 192077,
+                "sharedReadBlocks": 43839,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 24952.26,
+                    "totalCost": 25020.78,
+                    "planRows": 27410,
+                    "actualStartupMs": 257.912,
+                    "actualTotalMs": 257.914,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 192077,
+                    "sharedReadBlocks": 43839,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 24222.89,
+                        "planRows": 27410,
+                        "actualStartupMs": 0.056,
+                        "actualTotalMs": 254.676,
+                        "actualRows": 48785,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 48130,
+                        "sharedHitBlocks": 192077,
+                        "sharedReadBlocks": 43839,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 48785,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 45570,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.166,
+              "executionTimeMs": 257.928
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 24952.26,
+                "totalCost": 24952.31,
+                "planRows": 20,
+                "actualStartupMs": 257.441,
+                "actualTotalMs": 257.443,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 193762,
+                "sharedReadBlocks": 42154,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 24952.26,
+                    "totalCost": 25020.78,
+                    "planRows": 27410,
+                    "actualStartupMs": 257.44,
+                    "actualTotalMs": 257.442,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 193762,
+                    "sharedReadBlocks": 42154,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 24222.89,
+                        "planRows": 27410,
+                        "actualStartupMs": 0.054,
+                        "actualTotalMs": 254.156,
+                        "actualRows": 48785,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 48130,
+                        "sharedHitBlocks": 193762,
+                        "sharedReadBlocks": 42154,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 48785,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 45570,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.164,
+              "executionTimeMs": 257.458
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 25513.1,
+                "totalCost": 25513.15,
+                "planRows": 20,
+                "actualStartupMs": 262.621,
+                "actualTotalMs": 262.624,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 192643,
+                "sharedReadBlocks": 43273,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 25513.1,
+                    "totalCost": 25601.21,
+                    "planRows": 35242,
+                    "actualStartupMs": 262.62,
+                    "actualTotalMs": 262.622,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 192643,
+                    "sharedReadBlocks": 43273,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 27,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 24575.33,
+                        "planRows": 35242,
+                        "actualStartupMs": 0.06,
+                        "actualTotalMs": 258.75,
+                        "actualRows": 53462,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 43453,
+                        "sharedHitBlocks": 192643,
+                        "sharedReadBlocks": 43273,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.85,
+                            "actualLoops": 53461,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 45435,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.172,
+              "executionTimeMs": 262.638
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 57.09,
+                "totalCost": 57.11,
+                "planRows": 10,
+                "actualStartupMs": 0.065,
+                "actualTotalMs": 0.066,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 1,
+                "sharedReadBlocks": 3,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 57.09,
+                    "totalCost": 57.11,
+                    "planRows": 10,
+                    "actualStartupMs": 0.065,
+                    "actualTotalMs": 0.065,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 1,
+                    "sharedReadBlocks": 3,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 16.99,
+                        "totalCost": 56.92,
+                        "planRows": 10,
+                        "actualStartupMs": 0.062,
+                        "actualTotalMs": 0.063,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 1,
+                        "sharedReadBlocks": 3,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 16.99,
+                            "planRows": 10,
+                            "actualStartupMs": 0.009,
+                            "actualTotalMs": 0.009,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 1,
+                            "sharedReadBlocks": 2,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_trgm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.002,
+                            "actualTotalMs": 0.002,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.191,
+              "executionTimeMs": 0.077
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 22990.05,
+                "totalCost": 22990.08,
+                "planRows": 10,
+                "actualStartupMs": 319.615,
+                "actualTotalMs": 319.617,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 193508,
+                "sharedReadBlocks": 42408,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 22990.05,
+                    "totalCost": 22990.08,
+                    "planRows": 10,
+                    "actualStartupMs": 319.615,
+                    "actualTotalMs": 319.616,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 193508,
+                    "sharedReadBlocks": 42408,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 22989.89,
+                        "planRows": 10,
+                        "actualStartupMs": 0.011,
+                        "actualTotalMs": 319.613,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 96914,
+                        "sharedHitBlocks": 193508,
+                        "sharedReadBlocks": 42408,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.118,
+              "executionTimeMs": 319.626
+            }
+          ]
+        },
+        "bigram-contains-index": {
+          "replaceIndexMs": 6286.281959,
+          "firstPass": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "clientMs": 108.60291599999618,
+              "resultCount": 20,
+              "resultDigest": "fa42783a5abd7ebecbcc47531f8e06400d8517f831e0b7190986cf61833a77bf"
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "clientMs": 253.3785829999979,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "clientMs": 253.04162499999802,
+              "resultCount": 20,
+              "resultDigest": "fb4d71bd7144400b844c4e549b6f889bf531ead62dc30f5bb5032fadefb27bc9"
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "clientMs": 256.395875000002,
+              "resultCount": 20,
+              "resultDigest": "bc152870fb5983cda1cc64df40089d6d8968e6db70008cdbcdf34d28edcb4700"
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "clientMs": 1.155665999998746,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "clientMs": 0.780958000003011,
+              "resultCount": 1,
+              "resultDigest": "9162d5619591f726ba2f74c850ebb84ddf70e453897dbd9e775ca61781920284"
+            }
+          ],
+          "warmClientMs": {
+            "samples": 30,
+            "p50": 104.64616699999897,
+            "p95": 257.3786669999972,
+            "max": 257.47937499999534
+          },
+          "perQueryWarmClientMs": {
+            "q-01": {
+              "samples": 5,
+              "p50": 104.23666600000433,
+              "p95": 104.64616699999897,
+              "max": 104.64616699999897
+            },
+            "q-11": {
+              "samples": 5,
+              "p50": 252.24400000000605,
+              "p95": 252.60470899999927,
+              "max": 252.60470899999927
+            },
+            "q-12": {
+              "samples": 5,
+              "p50": 251.83050000000367,
+              "p95": 252.22000000000116,
+              "max": 252.22000000000116
+            },
+            "q-14": {
+              "samples": 5,
+              "p50": 257.20850000000064,
+              "p95": 257.47937499999534,
+              "max": 257.47937499999534
+            },
+            "q-17": {
+              "samples": 5,
+              "p50": 0.9915419999961159,
+              "p95": 1.0324170000021695,
+              "max": 1.0324170000021695
+            },
+            "q-26": {
+              "samples": 5,
+              "p50": 0.6214580000014394,
+              "p95": 0.6245829999970738,
+              "max": 0.6245829999970738
+            }
+          },
+          "queryCpuSeconds": 5.850740000000002,
+          "resourcesAfter": {
+            "cpuSeconds": 56.575209,
+            "anonymousMemoryBytes": 57126912,
+            "fileCacheBytes": 1293856768,
+            "cgroupCurrentBytes": 1396129792,
+            "cgroupPeakBytes": 1427513344
+          },
+          "stats": {
+            "version": "18.4",
+            "pgTrgmVersion": "1.6",
+            "ftsConfiguration": "simple",
+            "similarityThreshold": 0.3,
+            "numberOfDocuments": 96915,
+            "tableSizeBytes": 387416064,
+            "indexesSizeBytes": 135979008,
+            "totalSizeBytes": 523395072,
+            "databaseSizeBytes": 531650239,
+            "indexes": [
+              {
+                "name": "documents_pkey",
+                "bytes": 3080192
+              },
+              {
+                "name": "p203_aliases_exact",
+                "bytes": 14360576
+              },
+              {
+                "name": "p203_fts",
+                "bytes": 37871616
+              },
+              {
+                "name": "p203_normalized_aliases_exact",
+                "bytes": 14360576
+              },
+              {
+                "name": "p203_normalized_text_bigm",
+                "bytes": 39911424
+              },
+              {
+                "name": "p203_normalized_title_exact",
+                "bytes": 5185536
+              },
+              {
+                "name": "p203_normalized_title_prefix",
+                "bytes": 5185536
+              },
+              {
+                "name": "p203_normalized_title_trgm",
+                "bytes": 5652480
+              },
+              {
+                "name": "p203_title_exact",
+                "bytes": 5185536
+              },
+              {
+                "name": "p203_title_prefix",
+                "bytes": 5185536
+              }
+            ],
+            "ftsDebug": [
+              {
+                "sample": "合成山河碑",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成山河碑",
+                    "lexemes": ["合成山河碑"]
+                  }
+                ]
+              },
+              {
+                "sample": "合成人物 合成作品",
+                "tokens": [
+                  {
+                    "alias": "word",
+                    "token": "合成人物",
+                    "lexemes": ["合成人物"]
+                  },
+                  {
+                    "alias": "blank",
+                    "token": " ",
+                    "lexemes": null
+                  },
+                  {
+                    "alias": "word",
+                    "token": "合成作品",
+                    "lexemes": ["合成作品"]
+                  }
+                ]
+              }
+            ]
+          },
+          "plans": [
+            {
+              "id": "q-01",
+              "query": "云岭记",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 8385.97,
+                "totalCost": 8386.02,
+                "planRows": 20,
+                "actualStartupMs": 106.131,
+                "actualTotalMs": 106.133,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 32656,
+                "sharedReadBlocks": 16410,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 8385.97,
+                    "totalCost": 8393.31,
+                    "planRows": 2937,
+                    "actualStartupMs": 106.13,
+                    "actualTotalMs": 106.131,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 32656,
+                    "sharedReadBlocks": 16410,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 65.78,
+                        "totalCost": 8307.82,
+                        "planRows": 2937,
+                        "actualStartupMs": 1.596,
+                        "actualTotalMs": 105.194,
+                        "actualRows": 11358,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 32656,
+                        "sharedReadBlocks": 16410,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 65.05,
+                            "planRows": 2937,
+                            "actualStartupMs": 0.99,
+                            "actualTotalMs": 0.99,
+                            "actualRows": 11358,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 10,
+                            "sharedReadBlocks": 16,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_bigm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 11355,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 10550,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.165,
+              "executionTimeMs": 106.151
+            },
+            {
+              "id": "q-11",
+              "query": "书谱",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 25092.47,
+                "totalCost": 25092.52,
+                "planRows": 20,
+                "actualStartupMs": 259.514,
+                "actualTotalMs": 259.516,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 192055,
+                "sharedReadBlocks": 43861,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 25092.47,
+                    "totalCost": 25165.89,
+                    "planRows": 29368,
+                    "actualStartupMs": 259.513,
+                    "actualTotalMs": 259.515,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 192055,
+                    "sharedReadBlocks": 43861,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 24311,
+                        "planRows": 29368,
+                        "actualStartupMs": 0.017,
+                        "actualTotalMs": 256.342,
+                        "actualRows": 48785,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 48130,
+                        "sharedHitBlocks": 192055,
+                        "sharedReadBlocks": 43861,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 48785,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 45570,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.158,
+              "executionTimeMs": 259.53
+            },
+            {
+              "id": "q-12",
+              "query": "書譜",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 25092.47,
+                "totalCost": 25092.52,
+                "planRows": 20,
+                "actualStartupMs": 258.005,
+                "actualTotalMs": 258.007,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 193760,
+                "sharedReadBlocks": 42156,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 25092.47,
+                    "totalCost": 25165.89,
+                    "planRows": 29368,
+                    "actualStartupMs": 258.004,
+                    "actualTotalMs": 258.005,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 193760,
+                    "sharedReadBlocks": 42156,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 26,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 24311,
+                        "planRows": 29368,
+                        "actualStartupMs": 0.061,
+                        "actualTotalMs": 254.806,
+                        "actualRows": 48785,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 48130,
+                        "sharedHitBlocks": 193760,
+                        "sharedReadBlocks": 42156,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.93,
+                            "actualLoops": 48785,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 45570,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.164,
+              "executionTimeMs": 258.02
+            },
+            {
+              "id": "q-14",
+              "query": "碑",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 25793.53,
+                "totalCost": 25793.58,
+                "planRows": 20,
+                "actualStartupMs": 262.84,
+                "actualTotalMs": 262.842,
+                "actualRows": 20,
+                "actualLoops": 1,
+                "sharedHitBlocks": 192659,
+                "sharedReadBlocks": 43257,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 25793.53,
+                    "totalCost": 25891.42,
+                    "planRows": 39158,
+                    "actualStartupMs": 262.839,
+                    "actualTotalMs": 262.84,
+                    "actualRows": 20,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 192659,
+                    "sharedReadBlocks": 43257,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 27,
+                    "plans": [
+                      {
+                        "nodeType": "Seq Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 0,
+                        "totalCost": 24751.55,
+                        "planRows": 39158,
+                        "actualStartupMs": 0.061,
+                        "actualTotalMs": 259.022,
+                        "actualRows": 53462,
+                        "actualLoops": 1,
+                        "rowsRemovedByFilter": 43453,
+                        "sharedHitBlocks": 192659,
+                        "sharedReadBlocks": 43257,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 0.85,
+                            "actualLoops": 53461,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0,
+                            "actualTotalMs": 0,
+                            "actualRows": 1,
+                            "actualLoops": 45435,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.177,
+              "executionTimeMs": 262.855
+            },
+            {
+              "id": "q-17",
+              "query": "拟青朝",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 90.51,
+                "totalCost": 90.54,
+                "planRows": 10,
+                "actualStartupMs": 0.097,
+                "actualTotalMs": 0.098,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 2,
+                "sharedReadBlocks": 6,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 90.51,
+                    "totalCost": 90.54,
+                    "planRows": 10,
+                    "actualStartupMs": 0.097,
+                    "actualTotalMs": 0.097,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 2,
+                    "sharedReadBlocks": 6,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 50.42,
+                        "totalCost": 90.35,
+                        "planRows": 10,
+                        "actualStartupMs": 0.093,
+                        "actualTotalMs": 0.094,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 2,
+                        "sharedReadBlocks": 6,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 50.41,
+                            "planRows": 10,
+                            "actualStartupMs": 0.032,
+                            "actualTotalMs": 0.032,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 2,
+                            "sharedReadBlocks": 5,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_bigm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.003,
+                            "actualTotalMs": 0.003,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.204,
+              "executionTimeMs": 0.112
+            },
+            {
+              "id": "q-26",
+              "query": "行草",
+              "mode": "policy",
+              "plan": {
+                "nodeType": "Limit",
+                "startupCost": 65.33,
+                "totalCost": 65.36,
+                "planRows": 10,
+                "actualStartupMs": 0.015,
+                "actualTotalMs": 0.015,
+                "actualRows": 1,
+                "actualLoops": 1,
+                "sharedHitBlocks": 3,
+                "sharedReadBlocks": 1,
+                "tempReadBlocks": 0,
+                "tempWrittenBlocks": 0,
+                "plans": [
+                  {
+                    "nodeType": "Sort",
+                    "parentRelationship": "Outer",
+                    "startupCost": 65.33,
+                    "totalCost": 65.36,
+                    "planRows": 10,
+                    "actualStartupMs": 0.014,
+                    "actualTotalMs": 0.015,
+                    "actualRows": 1,
+                    "actualLoops": 1,
+                    "sharedHitBlocks": 3,
+                    "sharedReadBlocks": 1,
+                    "tempReadBlocks": 0,
+                    "tempWrittenBlocks": 0,
+                    "sortSpaceUsedKb": 25,
+                    "plans": [
+                      {
+                        "nodeType": "Bitmap Heap Scan",
+                        "parentRelationship": "Outer",
+                        "startupCost": 25.23,
+                        "totalCost": 65.17,
+                        "planRows": 10,
+                        "actualStartupMs": 0.013,
+                        "actualTotalMs": 0.013,
+                        "actualRows": 1,
+                        "actualLoops": 1,
+                        "rowsRemovedByIndexRecheck": 0,
+                        "sharedHitBlocks": 3,
+                        "sharedReadBlocks": 1,
+                        "tempReadBlocks": 0,
+                        "tempWrittenBlocks": 0,
+                        "plans": [
+                          {
+                            "nodeType": "Bitmap Index Scan",
+                            "parentRelationship": "Outer",
+                            "startupCost": 0,
+                            "totalCost": 25.23,
+                            "planRows": 10,
+                            "actualStartupMs": 0.008,
+                            "actualTotalMs": 0.008,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "sharedHitBlocks": 2,
+                            "sharedReadBlocks": 1,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0,
+                            "index": "p203_normalized_text_bigm"
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.002,
+                            "actualTotalMs": 0.002,
+                            "actualRows": 1,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 0,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          },
+                          {
+                            "nodeType": "Function Scan",
+                            "parentRelationship": "SubPlan",
+                            "startupCost": 0,
+                            "totalCost": 0.02,
+                            "planRows": 1,
+                            "actualStartupMs": 0.001,
+                            "actualTotalMs": 0.001,
+                            "actualRows": 0,
+                            "actualLoops": 1,
+                            "rowsRemovedByFilter": 1,
+                            "sharedHitBlocks": 0,
+                            "sharedReadBlocks": 0,
+                            "tempReadBlocks": 0,
+                            "tempWrittenBlocks": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "planningTimeMs": 0.125,
+              "executionTimeMs": 0.023
+            }
+          ]
+        }
+      },
+      "baselineInitializeMs": 22285.392417000003,
+      "extension": {
+        "pgBigmVersion": "1.2",
+        "containsIndex": "p203_normalized_text_bigm",
+        "enableRecheck": true
+      },
+      "top20Unchanged": true
+    }
+  ],
+  "provenance": {
+    "kind": "postgres",
+    "image": "p203-pg-bigm-evaluation",
+    "imageId": "sha256:c81ed97fe8c09fcd9f89d5e1e5e6d05ac5a5fa3ff1053ab0a74d345d6c46c592",
+    "repoDigests": [
+      "p203-pg-bigm-evaluation@sha256:c81ed97fe8c09fcd9f89d5e1e5e6d05ac5a5fa3ff1053ab0a74d345d6c46c592"
+    ],
+    "architecture": "arm64",
+    "operatingSystem": "linux",
+    "cpuLimit": 2,
+    "memoryLimitBytes": 2147483648
+  },
+  "completedAt": "2026-09-07T23:21:28.686Z"
+}
