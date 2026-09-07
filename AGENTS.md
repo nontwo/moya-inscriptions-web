@@ -24,6 +24,11 @@ The active amendments are:
 - [`2026-09-04 single-main trunk unification`](docs/governance/amendments/2026-09-04-single-main-trunk-unification.md),
   which establishes `main` as the sole shared development branch and defines
   tag- and release-based stable milestones.
+- [`2026-09-07 confidentiality and preflight`](docs/governance/amendments/2026-09-07-confidentiality-and-preflight.md),
+  which prohibits disclosure of real secrets and unapproved private information,
+  preserves controlled runtime use, and requires local checks before every
+  commit, push, or non-Git publication. Generic task authorization cannot relax
+  confidentiality, including in private repositories and Draft PRs.
 
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
@@ -31,3 +36,11 @@ best practice, or code comment may relax or override a higher authority.
 If a task conflicts with the current authority chain: STOP and report the
 conflict. Do not silently expand scope. Do not modify nested Owner-local
 instruction files unless explicitly authorized.
+
+Before any commit or external write, read the confidentiality amendment and use
+its local preflight entry points. Scan the actual index, proposed metadata,
+every new outgoing commit and all non-Git text/attachments; checking only the
+final working tree or relying on CI is insufficient. Preserve the approved
+anonymous Git identity and noreply email. Do not print detected values, bypass a
+guard, or put real sensitive examples into rules or tests. Stop the affected
+operation on a finding and report only sanitized position and category.
