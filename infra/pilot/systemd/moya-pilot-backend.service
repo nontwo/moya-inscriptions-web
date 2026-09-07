@@ -1,0 +1,30 @@
+[Unit]
+Description=Moya non-production Pilot backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=moya-pilot-backend
+Group=moya-pilot-backend
+WorkingDirectory=/srv/moya-pilot/current
+EnvironmentFile=/etc/moya-pilot/backend.env
+# Keep these last so the environment file cannot expose the listener.
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env NODE_ENV=production HOST=127.0.0.1 PORT=3001 node services/backend-production/dist/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

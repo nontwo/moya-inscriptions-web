@@ -27,19 +27,22 @@ const collectTypeScript = async (directory: string): Promise<string[]> => {
 };
 
 describe("@moya/backend-production composition boundary", () => {
-  it("is a thin root with exactly the runtime and adapter dependencies", async () => {
+  it("declares exactly the runtime, adapter, Pilot and official COS SDK dependencies", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(productionRoot, "package.json"), "utf8"),
     ) as { dependencies?: Record<string, string> };
     expect(manifest.dependencies).toEqual({
+      "@moya/catalog-importer": "workspace:*",
       "@moya/backend-runtime": "workspace:*",
       "@moya/catalog-postgres": "workspace:*",
       "@moya/image": "workspace:*",
+      "cos-nodejs-sdk-v5": "3.0.0",
     });
   });
 
-  it("imports only the two approved workspace roots", async () => {
+  it("imports approved backend roots and confines the COS SDK to storage", async () => {
     const approved = new Set([
+      "@moya/catalog-importer",
       "@moya/backend-runtime",
       "@moya/catalog-postgres",
       "@moya/image",
@@ -50,9 +53,17 @@ describe("@moya/backend-production composition boundary", () => {
     )) {
       const source = await readFile(file, "utf8");
       for (const reference of extractModuleReferences(source)) {
+        const isCosSdk =
+          reference.specifier === "cos-nodejs-sdk-v5" ||
+          reference.specifier.startsWith("cos-nodejs-sdk-v5/");
+        const isStorageFile = file.startsWith(
+          path.join(productionRoot, "src", "storage") + path.sep,
+        );
         if (
-          reference.specifier.startsWith("@moya/") &&
-          !approved.has(reference.specifier)
+          (reference.specifier.startsWith("@moya/") &&
+            !approved.has(reference.specifier)) ||
+          (isCosSdk &&
+            (!isStorageFile || reference.specifier !== "cos-nodejs-sdk-v5"))
         ) {
           violations.push(
             `${path.relative(repositoryRoot, file)} imports ${reference.specifier}`,

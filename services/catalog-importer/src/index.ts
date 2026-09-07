@@ -1,5 +1,27 @@
 import { createHash } from "node:crypto";
 
+export {
+  applyPilotImport,
+  assertPilotApproval,
+  assertPilotDatabase,
+  createPilotPool,
+  parsePilotScope,
+  pilotScopeSha256,
+  pilotSha256,
+  preparePilotImport,
+  readPilotMedia,
+  readPilotPhoto,
+  syncPilotMedia,
+  webpDimensions,
+} from "./pilot.js";
+export type {
+  PilotApprovalDocument,
+  PilotMedia,
+  PilotMediaResult,
+  PilotMediaTransport,
+  PilotScope,
+} from "./pilot.js";
+
 import {
   CATALOG_IMPORT_CITATION_SCOPE_ORDER,
   CATALOG_IMPORT_CONTRACT_VERSION,
@@ -1455,6 +1477,15 @@ export type CatalogImportAuthorization =
       readonly approval: VersionedImportApproval;
     }
   | {
+      readonly runtime: "PILOT";
+      readonly purpose: "PERSISTENT_NON_PRODUCTION_PILOT";
+      readonly nonProduction: true;
+      readonly publicationApproval: false;
+      readonly ownerInstructionReference: string;
+      readonly targetScopeSha256: string;
+      readonly approval: VersionedImportApproval;
+    }
+  | {
       readonly runtime: "PRODUCTION";
       readonly purpose: "PRODUCTION_IMPORT";
       readonly publicationApproval: false;
@@ -1484,6 +1515,7 @@ const loadExistingResult = async (
   canonicalInputSha256: string,
   dryRunResultSha256: string,
   approvalSha256: string,
+  pilotTargetScopeSha256?: string,
 ): Promise<CatalogImportApplicationResult | undefined> => {
   const result = await client.query<
     QueryResultRow & {
@@ -1491,16 +1523,26 @@ const loadExistingResult = async (
       canonical_input_sha256: string;
       dry_run_result_sha256: string;
       approval_sha256: string;
+      validation_context: Record<string, unknown> | null;
       status: string;
       result_json: CatalogImportApplicationResult | null;
     }
   >(
-    `SELECT import_contract_version, canonical_input_sha256, dry_run_result_sha256, approval_sha256, status, result_json
+    `SELECT import_contract_version, canonical_input_sha256, dry_run_result_sha256, approval_sha256, validation_context, status, result_json
      FROM catalog_import_operations WHERE operation_id = $1`,
     [operationId],
   );
   const existing = result.rows[0];
   if (existing === undefined) return undefined;
+  if (
+    pilotTargetScopeSha256 !== undefined &&
+    (existing.validation_context?.runtime !== "PILOT" ||
+      existing.validation_context.targetScopeSha256 !== pilotTargetScopeSha256)
+  ) {
+    throw new Error(
+      "Pilot operation identity was reused with a different target scope",
+    );
+  }
   if (
     existing.import_contract_version !== importContractVersion ||
     existing.canonical_input_sha256 !== canonicalInputSha256 ||
@@ -1521,6 +1563,7 @@ const assertAuthorization = (
   dryRun: VersionedCatalogImportDryRun,
   canonicalInputSha256: string,
 ) => {
+  assertPilotAuthorization(authorization);
   const approval = versionedImportApprovalSchema.parse(authorization.approval);
   if (
     approval.importContractVersion !== dryRun.importContractVersion ||
@@ -1570,6 +1613,23 @@ const assertAuthorization = (
   return approval;
 };
 
+const assertPilotAuthorization = (
+  authorization: CatalogImportAuthorization,
+) => {
+  if (
+    authorization.runtime === "PILOT" &&
+    (authorization.purpose !== "PERSISTENT_NON_PRODUCTION_PILOT" ||
+      authorization.nonProduction !== true ||
+      authorization.publicationApproval !== false ||
+      !authorization.ownerInstructionReference?.trim() ||
+      !/^[a-f0-9]{64}$/.test(authorization.targetScopeSha256))
+  ) {
+    throw new Error(
+      "Persistent Pilot requires an explicit non-production target-bound authorization",
+    );
+  }
+};
+
 const insertProvenance = async (
   client: PoolClient,
   catalogId: string,
@@ -1607,6 +1667,8 @@ export const applyCatalogImport = async (
     readonly failureAfterCatalogRows?: number;
   },
 ): Promise<CatalogImportApplicationResult> => {
+  // A replay is still an operation on this target; never bypass Pilot scope checks.
+  assertPilotAuthorization(input.authorization);
   const suppliedDryRun = versionedCatalogImportDryRunSchema.parse(input.dryRun);
   const canonical = canonicalizeParsedBundle(input.parsed);
   const importContractVersion = canonical.envelope.importContractVersion;
@@ -1653,6 +1715,9 @@ export const applyCatalogImport = async (
       canonical.canonicalInputSha256,
       String(suppliedDryRunHash),
       approvalSha256,
+      input.authorization.runtime === "PILOT"
+        ? input.authorization.targetScopeSha256
+        : undefined,
     );
     if (replay !== undefined) {
       await client.query("COMMIT");

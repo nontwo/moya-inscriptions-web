@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Moya Pilot TLS health independently every hour
+
+[Timer]
+OnCalendar=*-*-* *:30:00 UTC
+RandomizedDelaySec=5min
+Persistent=true
+Unit=moya-pilot-certificate-check.service
+
+[Install]
+WantedBy=timers.target
