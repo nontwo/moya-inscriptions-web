@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+fail_initialization() {
+  printf '%s\n' '{"ok":false,"findings":[{"path":".","category":"HOOK_INITIALIZATION_FAILED"}]}'
+  exit 1
+}
+case $0 in
+  */*) hook_dir=${0%/*} ;;
+  *) fail_initialization ;;
+esac
+hook_dir=$(CDPATH= cd -- "$hook_dir" 2>/dev/null && pwd -P 2>/dev/null) || fail_initialization
+if ! command -v node >/dev/null 2>&1 || [ ! -f "$hook_dir/confidentiality-scan.mjs" ]; then
+  printf '%s\n' '{"ok":false,"findings":[{"path":".","category":"HOOK_RUNTIME_MISSING"}]}'
+  exit 1
+fi
+exec node "$hook_dir/confidentiality-scan.mjs" push "$@" 2>/dev/null

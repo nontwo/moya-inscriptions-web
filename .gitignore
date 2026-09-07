@@ -12,3 +12,26 @@ coverage
 *.tsbuildinfo
 
 !.env.example
+
+# Private runtime inputs and indirect disclosure carriers
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.dump
+*.sql.gz
+*.har
+*.trace
+playwright-report/
+test-results/
+private-evidence/
+private-input/
+private-credentials/
+
+!.env.example
+!.env.*.example

@@ -45,6 +45,19 @@ List only applicable checks and include command plus result.
 - Current remote state and review-thread check: `Pending` / result
 - Expected head SHA pinned for merge: `Pending` / SHA
 
+## Confidentiality preflight
+
+- Actual staged content, commit messages and author/committer identities:
+- Every new outgoing commit, filename and changed artifact:
+- Exact PR text and any non-Git attachment/output checked before sending:
+- Approved anonymous identity and noreply email verified without echoing values:
+- Effective local hook installation and scan limitations:
+
+Report only sanitized results and locations. Do not include private deployment
+details, personal paths, credentials or complete signed links as evidence.
+Private repositories and Draft PRs have the same confidentiality boundary. CI
+and GitHub alerts supplement, but do not replace, the local preflight.
+
 ## Owner decision gates
 
 Use `Not applicable` unless a gate genuinely applies.

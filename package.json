@@ -17,7 +17,7 @@
     "db:migrate": "pnpm --filter @moya/catalog-postgres migrate",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "pnpm test:confidentiality && turbo run test",
     "test:e2e": "pnpm --filter @moya/tests test:e2e",
     "verify": "node scripts/verify.mjs",
     "test:e2e:smoke": "node scripts/verify.mjs e2e",
@@ -27,7 +27,13 @@
     "generate:catalog-import-v2-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --version v2",
     "check:catalog-import-v2-template": "pnpm --filter @moya/contracts build && node scripts/generate-catalog-import-template.mjs --version v2 --check",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "confidentiality:install": "node scripts/install-confidentiality-hooks.mjs",
+    "confidentiality:health": "node scripts/confidentiality-scan.mjs health",
+    "confidentiality:staged": "node scripts/confidentiality-scan.mjs staged",
+    "confidentiality:message": "node scripts/confidentiality-scan.mjs message",
+    "confidentiality:outbound": "node scripts/confidentiality-scan.mjs outbound",
+    "test:confidentiality": "node --test scripts/confidentiality-scan.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
