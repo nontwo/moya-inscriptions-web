@@ -51,7 +51,17 @@ class Arguments(argparse.ArgumentParser):
 
 class IpTlsConnection(http.client.HTTPSConnection):
     def __init__(self, host: str, connect_ip: str, port: int) -> None:
-        context = ssl.create_default_context()
+        # Bundled Python may have no default CA location on macOS. Use only
+        # fixed operating-system stores; callers cannot supply another CA.
+        system_ca = None
+        if sys.platform == "darwin":
+            system_ca = "/etc/ssl/cert.pem"
+        elif sys.platform.startswith("linux"):
+            candidate = Path("/etc/ssl/certs/ca-certificates.crt")
+            if candidate.is_file():
+                system_ca = str(candidate)
+        context = ssl.create_default_context(cafile=system_ca)
+        require(context.cert_store_stats()["x509_ca"] > 0, "TLS_SYSTEM_CA_STORE_EMPTY")
         require(context.check_hostname, "TLS_HOSTNAME_CHECK_REQUIRED")
         require(context.verify_mode == ssl.CERT_REQUIRED, "TLS_CA_CHECK_REQUIRED")
         super().__init__(host, port, timeout=10, context=context)
