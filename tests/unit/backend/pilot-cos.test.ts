@@ -1,8 +1,19 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { request } from "node:https";
+import { createServer, request as requestHttp } from "node:http";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { RequestOptions } from "node:https";
+
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { requestCosHttps } from "@moya/backend-production/internal/cos-https";
 import {
@@ -15,11 +26,13 @@ import { PilotCosStorage } from "@moya/backend-production/internal/pilot-cos";
 import type {
   CosHttpRequest,
   CosHttpResponse,
-  CosHttpSender,
 } from "@moya/backend-production/internal/cos-https";
 import type { PilotCosOptions } from "@moya/backend-production/internal/pilot-cos";
 
-vi.mock("node:https", () => ({ request: vi.fn() }));
+vi.mock("node:https", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:https")>()),
+  request: vi.fn(),
+}));
 
 const content = Buffer.from("frozen-pilot-image-bytes");
 const digest = createHash("sha256").update(content).digest("hex");
@@ -44,15 +57,87 @@ const response = (
   headers: {},
   body,
 });
+// Real official SDK APIs/signing/parser run against a local HTTP fixture through
+// an explicit native-request test seam. Production always uses verified HTTPS.
+const queues = new Map<
+  string,
+  {
+    responses: CosHttpResponse[];
+    calls: CosHttpRequest[];
+    stall?: boolean;
+  }
+>();
+let nextQueue = 0;
+let fixturePort = 0;
+const fixture = createServer((incoming, outgoing) => {
+  const queue = queues.get(String(incoming.headers["x-unit-queue"]));
+  const chunks: Buffer[] = [];
+  incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+  incoming.on("end", () => {
+    if (queue?.stall) return;
+    const next = queue?.responses.shift();
+    if (!queue || !next) {
+      outgoing.writeHead(500);
+      outgoing.end();
+      return;
+    }
+    const last = queue.calls.length - 1;
+    queue.calls[last] = { ...queue.calls[last]!, body: Buffer.concat(chunks) };
+    outgoing.writeHead(next.statusCode, next.headers);
+    outgoing.end(next.body);
+  });
+});
+beforeAll(async () => {
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const address = fixture.address();
+  if (!address || typeof address === "string")
+    throw new Error("Fixture unavailable");
+  fixturePort = address.port;
+});
+afterAll(async () => {
+  fixture.closeAllConnections();
+  await new Promise<void>((resolve, reject) =>
+    fixture.close((error) => (error ? reject(error) : resolve())),
+  );
+});
 const queueSender = (...responses: CosHttpResponse[]) => {
+  const id = String(++nextQueue);
   const calls: CosHttpRequest[] = [];
-  const sender: CosHttpSender = async (input) => {
-    calls.push(input);
-    const next = responses.shift();
-    if (!next) throw new Error("Unexpected request");
-    return next;
-  };
-  return { calls, sender };
+  const nativeOptions: RequestOptions[] = [];
+  const requests: ReturnType<typeof request>[] = [];
+  const state = { calls, responses, stall: false };
+  queues.set(id, state);
+  const sender = ((input: RequestOptions) => {
+    nativeOptions.push(input);
+    const headers = Object.fromEntries(
+      Object.entries(input.headers ?? {}).map(([key, value]) => [
+        key.toLowerCase(),
+        String(value),
+      ]),
+    );
+    calls.push({
+      url: new URL(
+        String(input.path),
+        `https://${input.hostname ?? input.host}`,
+      ),
+      method: input.method as "GET" | "HEAD" | "PUT",
+      headers,
+      timeoutMs: 30_000,
+      maxResponseBytes: 32 * 1024 * 1024,
+    });
+    const outgoing = requestHttp({
+      ...input,
+      protocol: "http:",
+      hostname: "127.0.0.1",
+      host: "127.0.0.1",
+      port: fixturePort,
+      agent: false,
+      headers: { ...input.headers, "x-unit-queue": id },
+    });
+    requests.push(outgoing);
+    return outgoing;
+  }) as typeof request;
+  return { calls, sender, nativeOptions, requests, state };
 };
 const neverVersioned = () =>
   response(200, Buffer.from("<VersioningConfiguration/>"));
@@ -126,7 +211,7 @@ describe("bounded Pilot COS operations", () => {
       response(200, content),
     );
     const storage = new PilotCosStorage(options(), {
-      sender: queue.sender,
+      nativeRequest: queue.sender,
       now: () => now,
     });
     expect(await storage.ensureObject(objectKey, content)).toEqual({
@@ -157,6 +242,115 @@ describe("bounded Pilot COS operations", () => {
     expect(put.body).toEqual(content);
   });
 
+  it("enforces verified TLS and a single network attempt on SDK retryable errors", async () => {
+    const queue = queueSender(response(503));
+    await expect(
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).ensureObject(objectKey, content),
+    ).rejects.toThrow(/^COS request failed; verify state before retrying$/);
+    expect(queue.calls).toHaveLength(1);
+    expect(queue.nativeOptions[0]?.rejectUnauthorized).toBe(true);
+    expect(queue.calls[0]?.url.protocol).toBe("https:");
+  });
+
+  it("does not follow an SDK redirect to another host", async () => {
+    const queue = queueSender({
+      ...response(302),
+      headers: { location: "https://other.example.invalid/object" },
+    });
+    await expect(
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).ensureObject(objectKey, content),
+    ).rejects.toThrow("existence could not be verified");
+    expect(queue.calls).toHaveLength(1);
+  });
+
+  it("destroys an SDK request at the absolute deadline", async () => {
+    const queue = queueSender();
+    queue.state.stall = true;
+    await expect(
+      new PilotCosStorage(
+        { ...options(), requestTimeoutMs: 30 },
+        { nativeRequest: queue.sender },
+      ).verifyObject(objectKey),
+    ).rejects.toThrow(/^COS request failed; verify state before retrying$/);
+    expect(queue.requests).toHaveLength(1);
+    expect(queue.requests[0]?.destroyed).toBe(true);
+  });
+
+  it("preserves the caller's frozen byte snapshot across async credential reads", async () => {
+    const queue = queueSender(
+      response(404),
+      neverVersioned(),
+      response(200),
+      response(200, content),
+    );
+    const mutable = Buffer.from(content);
+    const pending = new PilotCosStorage(options(), {
+      nativeRequest: queue.sender,
+    }).ensureObject(objectKey, mutable);
+    mutable.fill(0);
+    expect((await pending).outcome).toBe("uploaded");
+    expect(queue.calls[2]?.body).toEqual(content);
+  });
+
+  it("signs temporary tokens on SDK object requests without logging them", async () => {
+    const queue = queueSender(response(200), response(200, content));
+    const storage = new PilotCosStorage(
+      {
+        ...options(),
+        credentials: async () => ({
+          secretId: "unit-only-id",
+          secretKey: "unit-only-secret",
+          securityToken: "unit-token+/=",
+          expiresAt: now / 1000 + 90,
+        }),
+      },
+      { nativeRequest: queue.sender, now: () => now },
+    );
+    await storage.ensureObject(objectKey, content);
+    expect(
+      queue.calls.every(
+        (call) => call.headers["x-cos-security-token"] === "unit-token+/=",
+      ),
+    ).toBe(true);
+    expect(
+      queue.calls.every((call) =>
+        new URLSearchParams(call.headers.authorization)
+          .get("q-header-list")
+          ?.includes("x-cos-security-token"),
+      ),
+    ).toBe(true);
+  });
+
+  it("contains SDK parser errors for malformed remote response text", async () => {
+    const queue = queueSender(
+      response(404),
+      response(200, Buffer.from("not-xml")),
+    );
+    await expect(
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).ensureObject(objectKey, content),
+    ).rejects.toThrow(/^COS request failed; verify state before retrying$/);
+    expect(queue.calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
+  it("bounds raw versioning responses before the SDK parser can default them", async () => {
+    const queue = queueSender(
+      response(404),
+      response(200, Buffer.alloc(4097, 32)),
+    );
+    await expect(
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).ensureObject(objectKey, content),
+    ).rejects.toThrow(/^COS request failed; verify state before retrying$/);
+    expect(queue.calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
   it("replay reuses existing byte-identical objects without PUT", async () => {
     const queue = queueSender(
       response(200),
@@ -164,7 +358,9 @@ describe("bounded Pilot COS operations", () => {
       response(200),
       response(200, content),
     );
-    const storage = new PilotCosStorage(options(), { sender: queue.sender });
+    const storage = new PilotCosStorage(options(), {
+      nativeRequest: queue.sender,
+    });
     expect((await storage.ensureObject(objectKey, content)).outcome).toBe(
       "reused",
     );
@@ -185,10 +381,9 @@ describe("bounded Pilot COS operations", () => {
       headers: { "x-cos-meta-sha256": digest, etag: digest },
     });
     await expect(
-      new PilotCosStorage(options(), { sender: queue.sender }).ensureObject(
-        objectKey,
-        content,
-      ),
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).ensureObject(objectKey, content),
     ).rejects.toThrow("content conflicts");
     expect(queue.calls.every((call) => call.method !== "PUT")).toBe(true);
   });
@@ -205,7 +400,7 @@ describe("bounded Pilot COS operations", () => {
       expect(
         (
           await new PilotCosStorage(options(), {
-            sender: queue.sender,
+            nativeRequest: queue.sender,
           }).ensureObject(objectKey, content)
         ).outcome,
       ).toBe("reused");
@@ -220,15 +415,16 @@ describe("bounded Pilot COS operations", () => {
     "<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>",
     "",
     "<Error/>",
+    "<Unexpected/>",
+    '{"VersioningConfiguration":{}}',
   ])(
     "blocks upload when versioning is enabled, suspended or unknown: %s",
     async (xml) => {
       const queue = queueSender(response(404), response(200, Buffer.from(xml)));
       await expect(
-        new PilotCosStorage(options(), { sender: queue.sender }).ensureObject(
-          objectKey,
-          content,
-        ),
+        new PilotCosStorage(options(), {
+          nativeRequest: queue.sender,
+        }).ensureObject(objectKey, content),
       ).rejects.toThrow("never-versioned");
       expect(queue.calls.some((call) => call.method === "PUT")).toBe(false);
     },
@@ -237,17 +433,18 @@ describe("bounded Pilot COS operations", () => {
   it("treats denied existence reads as uncertainty rather than absent objects", async () => {
     const queue = queueSender(response(403));
     await expect(
-      new PilotCosStorage(options(), { sender: queue.sender }).ensureObject(
-        objectKey,
-        content,
-      ),
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).ensureObject(objectKey, content),
     ).rejects.toThrow("existence could not be verified");
     expect(queue.calls).toHaveLength(1);
   });
 
   it("rejects unlisted keys and changed input before making any request", async () => {
     const queue = queueSender();
-    const storage = new PilotCosStorage(options(), { sender: queue.sender });
+    const storage = new PilotCosStorage(options(), {
+      nativeRequest: queue.sender,
+    });
     await expect(storage.ensureObject("../outside", content)).rejects.toThrow(
       "outside",
     );
@@ -290,13 +487,13 @@ describe("bounded Pilot COS operations", () => {
   it("caps GET response size and does not leak transport details", async () => {
     const queue = queueSender(response(200, Buffer.alloc(content.length + 1)));
     await expect(
-      new PilotCosStorage(options(), { sender: queue.sender }).verifyObject(
-        objectKey,
-      ),
+      new PilotCosStorage(options(), {
+        nativeRequest: queue.sender,
+      }).verifyObject(objectKey),
     ).rejects.toThrow("COS request failed; verify state before retrying");
     await expect(
       new PilotCosStorage(options(), {
-        sender: async () => {
+        nativeRequest: () => {
           throw new Error("secret-and-signed-request");
         },
       }).verifyObject(objectKey),
@@ -312,7 +509,9 @@ describe("bounded Pilot COS operations", () => {
       response(200),
       response(200, content),
     );
-    const storage = new PilotCosStorage(options(), { sender: queue.sender });
+    const storage = new PilotCosStorage(options(), {
+      nativeRequest: queue.sender,
+    });
     await expect(storage.ensureObject(objectKey, content)).rejects.toThrow(
       "content conflicts",
     );
@@ -378,6 +577,37 @@ describe("short-lived backend URL resolver", () => {
       resolver.resolveMany([{ mediaId, objectKey }]),
     ).rejects.toThrow("expired");
   });
+
+  it.each([
+    { securityToken: "token" },
+    { securityToken: "token", expiresAt: now / 1000 + 20 },
+    { securityToken: "token", expiresAt: Infinity },
+    { securityToken: "token", expiresAt: NaN },
+    { securityToken: "", expiresAt: now / 1000 + 90 },
+    { securityToken: "token\r\nsecret", expiresAt: now / 1000 + 90 },
+  ])(
+    "fails closed for invalid temporary credentials without returning a URL",
+    async (temporary) => {
+      const storage = new PilotCosStorage(
+        {
+          ...options(),
+          credentials: async () => ({
+            secretId: "unit-only-id",
+            secretKey: "unit-only-secret",
+            ...temporary,
+          }),
+        },
+        { now: () => now },
+      );
+      await expect(
+        storage
+          .createStorageUrlResolver()
+          .resolveMany([{ mediaId, objectKey }]),
+      ).rejects.toThrow(
+        /^COS credentials (expired or insufficient validity|invalid)$/,
+      );
+    },
+  );
 
   it.each([
     "http://media.example.invalid",

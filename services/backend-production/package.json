@@ -34,7 +34,8 @@
     "@moya/catalog-importer": "workspace:*",
     "@moya/backend-runtime": "workspace:*",
     "@moya/catalog-postgres": "workspace:*",
-    "@moya/image": "workspace:*"
+    "@moya/image": "workspace:*",
+    "cos-nodejs-sdk-v5": "3.0.0"
   },
   "devDependencies": {
     "@types/node": "24.13.3"

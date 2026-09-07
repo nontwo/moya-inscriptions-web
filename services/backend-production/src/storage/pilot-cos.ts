@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
+import { Writable } from "node:stream";
 
-import { requestCosHttps } from "./cos-https.js";
-import { signCosRequest } from "./cos-signature.js";
+import { createPilotCosSdk } from "./cos-sdk.js";
 
-import type { CosHttpResponse, CosHttpSender } from "./cos-https.js";
+import type { CosSdkResponse, PilotCosSdkDependencies } from "./cos-sdk.js";
 
 export interface PilotCosObject {
   readonly mediaId: string;
@@ -70,17 +70,14 @@ const httpsOrigin = (value: string): URL => {
  */
 export class PilotCosStorage {
   private readonly objects: ReadonlyMap<string, PilotCosObject>;
-  private readonly endpoint: URL;
   private readonly mediaOrigin: URL;
   private readonly ttl: number;
   private readonly timeout: number;
-  private readonly sender: CosHttpSender;
   private readonly now: () => number;
 
   constructor(
     private readonly options: PilotCosOptions,
-    dependencies: {
-      readonly sender?: CosHttpSender;
+    private readonly dependencies: PilotCosSdkDependencies & {
       readonly now?: () => number;
     } = {},
   ) {
@@ -90,9 +87,6 @@ export class PilotCosStorage {
     ) {
       throw new Error("COS bucket or region invalid");
     }
-    this.endpoint = new URL(
-      `https://${options.bucket}.cos.${options.region}.myqcloud.com`,
-    );
     this.mediaOrigin = httpsOrigin(options.mediaOrigin);
     this.ttl = options.signedUrlTtlSeconds ?? 300;
     this.timeout = options.requestTimeoutMs ?? 30_000;
@@ -128,7 +122,6 @@ export class PilotCosStorage {
       objects.set(item.objectKey, Object.freeze({ ...item }));
     }
     this.objects = objects;
-    this.sender = dependencies.sender ?? requestCosHttps;
     this.now = dependencies.now ?? Date.now;
   }
 
@@ -138,13 +131,7 @@ export class PilotCosStorage {
     return object;
   }
 
-  private async authorization(
-    method: "GET" | "HEAD" | "PUT",
-    pathname: string,
-    headers: Record<string, string>,
-    query: Record<string, string>,
-    asUrl: boolean,
-  ) {
+  private async sdk() {
     let credentials: CosCredentials;
     try {
       credentials = await this.options.credentials();
@@ -158,6 +145,9 @@ export class PilotCosStorage {
     );
     if (
       !Number.isSafeInteger(now) ||
+      now < 0 ||
+      (credentials.expiresAt !== undefined &&
+        !Number.isSafeInteger(credentials.expiresAt)) ||
       !Number.isSafeInteger(expiresAt) ||
       expiresAt - now < 30 ||
       (credentials.securityToken !== undefined &&
@@ -165,25 +155,30 @@ export class PilotCosStorage {
     ) {
       throw new Error("COS credentials expired or insufficient validity");
     }
-    if (credentials.securityToken !== undefined) {
-      if (
-        !credentials.securityToken ||
-        /[\r\n]/.test(credentials.securityToken)
-      ) {
-        throw new Error("COS credentials invalid");
-      }
-      if (asUrl) query["x-cos-security-token"] = credentials.securityToken;
-      else headers["x-cos-security-token"] = credentials.securityToken;
+    if (
+      !/^[A-Za-z0-9_-]+$/.test(credentials.secretId) ||
+      !credentials.secretKey ||
+      /[\r\n]/.test(credentials.secretKey) ||
+      (credentials.securityToken !== undefined &&
+        (!credentials.securityToken ||
+          /[\r\n]/.test(credentials.securityToken)))
+    ) {
+      throw new Error("COS credentials invalid");
     }
-    return signCosRequest({
-      method,
-      pathname,
-      headers,
-      query,
-      ...credentials,
-      startsAt: now,
-      expiresAt,
-    });
+    return {
+      ...createPilotCosSdk(
+        {
+          secretId: credentials.secretId,
+          secretKey: credentials.secretKey,
+          startsAt: now,
+          expiresAt,
+          timeoutMs: this.timeout,
+        },
+        this.dependencies,
+      ),
+      securityToken: credentials.securityToken,
+      expiresIn: expiresAt - now,
+    };
   }
 
   private async send(
@@ -192,43 +187,50 @@ export class PilotCosStorage {
     maxResponseBytes: number,
     body?: Buffer,
     query: Record<string, string> = {},
-  ): Promise<CosHttpResponse> {
-    const url = new URL(pathname, this.endpoint);
-    const headers: Record<string, string> = {
-      host: url.host,
-      "accept-encoding": "identity",
+  ): Promise<CosSdkResponse> {
+    const sdk = await this.sdk();
+    const headers: Record<string, string> = { "accept-encoding": "identity" };
+    if (sdk.securityToken) headers["x-cos-security-token"] = sdk.securityToken;
+    const bucket = {
+      Bucket: this.options.bucket,
+      Region: this.options.region,
+      Headers: headers,
     };
-    if (body !== undefined) {
-      headers["content-type"] = "image/webp";
-      headers["content-length"] = String(body.length);
-      headers["content-md5"] = createHash("md5").update(body).digest("base64");
-      headers["x-cos-forbid-overwrite"] = "true";
-    }
-    headers.authorization = await this.authorization(
-      method,
-      pathname,
-      headers,
-      query,
-      false,
-    );
-    for (const [key, value] of Object.entries(query))
-      url.searchParams.set(key, value);
-    try {
-      const response = await this.sender({
-        url,
-        method,
-        headers,
-        timeoutMs: this.timeout,
-        maxResponseBytes,
-        ...(body === undefined ? {} : { body }),
-      });
-      if (response.body.length > maxResponseBytes)
-        throw new Error("COS response exceeds byte limit");
-      return response;
-    } catch {
-      // Underlying errors can contain full signed URLs, request headers or keys.
-      throw new Error("COS request failed; verify state before retrying");
-    }
+    const object = { ...bucket, Key: pathname.slice(1) };
+    return sdk.request(maxResponseBytes, (callback) => {
+      if (Object.hasOwn(query, "versioning")) {
+        sdk.client.getBucketVersioning(bucket, callback);
+      } else if (method === "HEAD") {
+        sdk.client.headObject(object, callback);
+      } else if (method === "PUT" && body !== undefined) {
+        sdk.client.putObject(
+          {
+            ...object,
+            Body: body,
+            ContentType: "image/webp",
+            ContentLength: body.length,
+            Headers: {
+              ...headers,
+              "Content-MD5": createHash("md5").update(body).digest("base64"),
+              "x-cos-forbid-overwrite": "true",
+            },
+          },
+          callback,
+        );
+      } else {
+        sdk.client.getObject(
+          {
+            ...object,
+            // Raw bytes are captured under the transport byte limit. Stream the
+            // SDK download so it does not also buffer a second 32 MB copy.
+            Output: new Writable({
+              write: (_chunk, _encoding, done) => done(),
+            }),
+          },
+          callback,
+        );
+      }
+    });
   }
 
   async verifyObject(objectKey: string): Promise<VerifiedPilotCosObject> {
@@ -317,25 +319,38 @@ export class PilotCosStorage {
         for (const locator of locators) {
           const expected = this.objects.get(locator.objectKey);
           if (!expected || expected.mediaId !== locator.mediaId) continue;
-          const pathname = `/${locator.objectKey}`;
-          const url = new URL(pathname, this.mediaOrigin);
-          // Signing per read avoids caching already-expired URL values. The HTTP
-          // composition must also mark Pilot API responses Cache-Control: no-store.
+          const sdk = await this.sdk();
+          // The official SDK signs per read. Include STS in Query so it is both
+          // signed and URL-encoded, avoiding the SDK's raw-token append path.
           const query: Record<string, string> = {
             "response-cache-control": "no-store",
           };
-          const authorization = await this.authorization(
-            "GET",
-            pathname,
-            { host: url.host },
-            query,
-            true,
-          );
-          for (const [key, value] of Object.entries(query))
-            url.searchParams.set(key, value);
-          for (const [key, value] of new URLSearchParams(authorization))
-            url.searchParams.set(key, value);
-          result.set(locator.mediaId, url.toString());
+          if (sdk.securityToken)
+            query["x-cos-security-token"] = sdk.securityToken;
+          try {
+            const url = await new Promise<string>((resolve, reject) => {
+              sdk.client.getObjectUrl(
+                {
+                  Bucket: this.options.bucket,
+                  Region: this.options.region,
+                  Key: locator.objectKey,
+                  Domain: this.mediaOrigin.host,
+                  Protocol: "https:",
+                  Method: "GET",
+                  Sign: true,
+                  Expires: sdk.expiresIn,
+                  Query: query,
+                },
+                (error, data) => {
+                  if (error) reject(new Error("COS URL signing failed"));
+                  else resolve(data.Url);
+                },
+              );
+            });
+            result.set(locator.mediaId, url);
+          } catch {
+            throw new Error("COS URL signing failed");
+          }
         }
         return result;
       },
