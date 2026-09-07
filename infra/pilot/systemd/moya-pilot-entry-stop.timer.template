@@ -1,0 +1,13 @@
+[Unit]
+Description=Stop Moya Pilot HTTPS entry at the explicit Owner deadline
+
+[Timer]
+# Replace with the same approved deadline as https.json, e.g. YYYY-MM-DD HH:MM:SS UTC.
+OnCalendar=__PILOT_DEADLINE_SYSTEMD_UTC__
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=moya-pilot-entry-stop.service
+
+[Install]
+WantedBy=timers.target

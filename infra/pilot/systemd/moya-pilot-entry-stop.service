@@ -1,0 +1,15 @@
+[Unit]
+Description=Stop only Moya Pilot HTTPS entry at the approved deadline
+OnFailure=moya-pilot-certificate-check.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=MOYA_CERTIFICATE_ACTION=stop
+ExecStart=/usr/bin/python3 /usr/local/libexec/moya-pilot-certificate.py stop
+ExecStopPost=/usr/bin/python3 /usr/local/libexec/moya-pilot-certificate.py status-failure
+TimeoutStartSec=3min
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true

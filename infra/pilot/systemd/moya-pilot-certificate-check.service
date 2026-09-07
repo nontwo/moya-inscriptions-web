@@ -1,0 +1,17 @@
+[Unit]
+Description=Independent Moya Pilot served certificate and renewal timer check
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=MOYA_CERTIFICATE_ACTION=check
+ExecStart=/usr/bin/python3 /usr/local/libexec/moya-pilot-certificate.py check
+ExecStopPost=/usr/bin/python3 /usr/local/libexec/moya-pilot-certificate.py status-failure
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true

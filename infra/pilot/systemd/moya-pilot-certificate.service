@@ -1,0 +1,18 @@
+[Unit]
+Description=Moya Pilot IP certificate renewal and served TLS verification
+After=network-online.target nginx.service
+Wants=network-online.target
+OnFailure=moya-pilot-certificate-check.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=MOYA_CERTIFICATE_ACTION=renew
+ExecStart=/usr/bin/python3 /usr/local/libexec/moya-pilot-certificate.py renew
+ExecStopPost=/usr/bin/python3 /usr/local/libexec/moya-pilot-certificate.py status-failure
+TimeoutStartSec=20min
+TimeoutStopSec=30s
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true

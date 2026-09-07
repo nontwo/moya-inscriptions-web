@@ -8,6 +8,13 @@ targets, costs, credentials, exact-input approval or publication.
 `publicationApproval=false` remains required. `NODE_ENV=production` selects
 truthful Formal rendering; it does not authorize a public Production release.
 
+The Owner's 2026-09-07 continuation accepts the existing three real records and
+twenty verified COS photographs. Continue only with the restricted IP HTTPS
+entry and final phone acceptance. Do not run import or upload again, change
+SourceIds/MediaIds/keys, add backend business, buy a domain or introduce another
+access platform. The port checklist is a proposal until the Owner explicitly
+authorizes it; deployment authorization does not imply port authorization.
+
 ## Scope and behavior
 
 The following matrix transcribes the accepted Pilot requirements. It does not
@@ -25,12 +32,17 @@ CMS/Search/accounts, CDN, queues and unrelated PRs are outside this task.
 | Signed URLs / refresh                       | Test expiry using backend tests                                         | Refresh API obtains currently valid HTTPS links; no retained expired API/page response | Signing and storage configuration stay in backend; DB stores logical keys                 |
 | Restricted access                           | Existing local dev entrypoints                                          | HTTPS entry authenticates every Web/API bridge request                                 | Backend and Web listener ports remain loopback; DB has no unrestricted public ingress     |
 | Mac offline                                 | Development may stop                                                    | All Web/backend/PG/COS dependencies run remotely                                       | Owner independently checks mobile cellular access after closing Mac                       |
+| Trusted IP certificate                      | Existing development HTTP is unchanged                                  | Publicly trusted IP SAN certificate with automated renewal and verified reload         | No self-signed bypass; no domain purchase                                                 |
+| Certificate validation                      | Not applicable                                                          | Only HTTP-01 token files are public on the separately approved validation port         | Validation never exposes the Web application                                              |
+| Owner test entry                            | Existing local access is unchanged                                      | One Owner credential protects every permitted HTTPS page, asset and API                | No anonymous application access, frontend authentication feature or public release        |
+| Expiry and test deadline                    | Not applicable                                                          | Renewal/check timers report failures; the agreed deadline stops the entrance           | SSH, private services, data and existing media remain intact                              |
 
 ## Templates and target prerequisites
 
-`infra/pilot/` contains two systemd units, an Nginx site template, an empty
-backend configuration example and a guarded pg_dump/pg_restore wrapper. They do
-not install software, start services, provision resources or grant cloud writes.
+`infra/pilot/` contains application and certificate systemd units, a restricted
+Nginx template and ingress verifier, certificate supervision, an empty backend
+configuration example and a guarded pg_dump/pg_restore wrapper. Merely checking
+these files out does not install software, start services or grant cloud writes.
 Reuse an existing approved Nginx installation and certificate where available.
 If the actual CVM has different tooling, record the precise necessary adaptation
 and any package/certificate costs before installation. Do not reuse archived
@@ -153,41 +165,103 @@ readback after each. Never stop unrelated services.
 
 ## HTTPS and access restriction
 
-Render `infra/pilot/nginx/pilot.conf.template` into a server-controlled file by
-substituting only `__PILOT_HOSTNAME__` with the approved DNS name. Do not run a
-blanket environment substitution: Nginx `$host` and other variables must remain
-literal. Point the template's server-side certificate links at the approved
-certificate and private key, and retain renewal evidence. The template does not
-request a new domain or certificate and has no port-80 listener.
+Use the actual approved IPv4 address as the certificate identity. Let's Encrypt
+supports publicly trusted IP certificates using its `shortlived` profile: their
+lifetime is 160 hours. IP issuance supports HTTP-01 or TLS-ALPN-01, not DNS-01.
+This deployment uses Certbot 5.8.0 `certonly --webroot --ip-address` and
+`--required-profile shortlived`; it does not rely on the Nginx certificate
+installer. Install Certbot in a separate versioned Python environment. Resolve
+and retain exact wheel versions, verify wheel bytes against official PyPI
+SHA-256 metadata and install from the resulting complete hash lock. Do not
+upgrade existing application dependencies or system Python merely to obtain it.
 
-Create the password file on the server with an existing supported password-hash
-tool and a prompted secret; do not put a plaintext password in command history,
-URL, Git or the handoff report. Restrict file ownership/permissions to the
-administrator and Nginx worker group. Deliver Owner access credentials through a
-separate secure channel. Nginx `auth_basic` covers all paths, including Next
-assets and `/api/catalog`; authorization headers are removed before forwarding.
-The browser uses the existing same-origin bridge. There is no public `/v1`
-backend alias, no image proxy, and no new account feature.
+Before changing the security group, give the Owner one target-specific list: TCP
+80 from all IPv4 addresses for HTTP-01 only; TCP 443 from all IPv4 addresses for
+cellular access protected by the separate Owner credential; the existing
+restricted SSH source remains unchanged. Public validation servers have no
+published fixed source range. A changing cellular address also cannot be
+represented by the Mac's fixed SSH source. These are two narrowly defined TCP
+rules, not an all-ports rule. Keep IPv6, PostgreSQL, Web, backend and every
+other internal port closed. Record the approved end time and earlier
+cancellation condition outside Git. Until that explicit approval arrives, keep
+the public Nginx service stopped and use loopback-only preflight checks.
 
-Validate the rendered configuration with `nginx -t` before an explicitly scoped
-reload. Check current listeners/vhosts first; do not replace unrelated sites or
-a default server. Only HTTPS and separately approved restricted administration
-ports may be reachable. Security groups and the host firewall must not expose
-3000, 3001 or PostgreSQL; verify IPv4 and IPv6. An unauthenticated request to
-both `/` and `/api/catalog` must return 401; direct listener access from outside
-must fail. Verify the approved DNS/HTTPS chain from outside the server.
+Render `infra/pilot/nginx/pilot.conf.template` by replacing only its five named
+placeholders: `__PILOT_IPV4__`, `__PILOT_TLS_DIR__`, `__PILOT_AUTH_FILE__`,
+`__PILOT_ACME_ROOT__`, and `__PILOT_STATUS_ROOT__`. Nginx variables must remain
+literal. Use a dedicated IPv4 server and remove the new package's unused default
+site only after confirming there are no unrelated sites. The HTTP server serves
+only GET/HEAD token files below `.well-known/acme-challenge/`; every other HTTP
+path returns 404, with no redirect or application upstream. Explicitly make all
+webroot/token parent directories traversable by Nginx. First validate issuance
+against the staging CA without installing or serving its untrusted certificate,
+then obtain the production IP certificate. Validate `nginx -t` before
+activation.
 
-The template disables proxy caching and returns private/no-store responses so it
-cannot retain pages/API results containing expiring media links. Backend and
-existing same-origin fetch behavior must also be verified; proxy configuration
-alone is insufficient. Use actual COS response bytes, Content-Type, HTTPS origin
-and browser image requests to establish browser usability. Never equate ETag or
-caller-supplied SHA metadata with independent content verification.
+Create one strong random Owner password outside Git, in an exclusive mode-0600
+local file. Deliver it to the server only over the verified SSH connection and
+produce a password hash readable by root and the Nginx worker group. Do not put
+the password in argv, command history, URLs, logs or chat. The Owner reads the
+local file privately and transfers it through their password manager. This is a
+separate identity from COS API/operator credentials. Nginx Basic authentication
+protects every permitted HTTPS page, static asset, status page and same-origin
+API. Strip `Authorization` and `Proxy-Authorization` before forwarding. The
+existing Web and backend listeners remain on loopback.
 
-Access logs contain time/status/duration only; request URLs, Basic credentials
-and signed COS queries are omitted. Review error/process logs for sensitive
-values, restrict them, retain useful startup/error/restart evidence and apply
-existing log rotation. Do not publish logs or output credentials in diagnostics.
+The deployment allowlist admits the formal root, Catalog routes, built Next
+static assets and the specific package styles/assets used by that application.
+It denies prototype HTML, `/docs`, `/dev`, QA/fixture routes, source documents,
+Next image/data proxy paths, backend aliases and ambiguous encoded paths. Test
+both GET and HEAD, normal and encoded/traversal spellings, with and without
+credentials. An anonymous COS 403 is separate storage evidence and cannot prove
+that the application is protected. Anonymous or wrong-credential requests to
+legitimate root/API/static/status routes must receive 401; correct credentials
+must reach the actual remote application.
+
+The boundary hides upstream cache headers and sends
+`Cache-Control: private, no-store` on all HTTPS responses. Confirm it on the
+actual same-origin list and all detail API responses, including errors; confirm
+backend/bridge fetch behavior separately. Disable caching, referrers and
+indexing. Access logs contain time/status/duration only. The site error log is
+disabled because Nginx can include request URLs or credentials in error
+messages; controlled service and certificate status retain safe operational
+failures instead.
+
+Install `https/certificate.py` as
+`/usr/local/libexec/moya-pilot-certificate.py`, with root-owned mode-0600
+`/etc/moya-pilot/https.json`. The strict configuration contains only `ipv4`,
+`deadlineUTC`, `cert_name`, `webroot`, `lineage`, and `status_root`. Install the
+certificate renewal, independent check and entrance-stop units. Install
+`systemd/moya-pilot-nginx-deadline.conf` as
+`/etc/systemd/system/nginx.service.d/moya-pilot-deadline.conf`; its additional
+`ExecStartPre` runs the side-effect-free `start-guard` without replacing the
+distribution syntax check. Missing/invalid configuration or an elapsed deadline
+rejects startup, including a boot after the deadline while the stop timer is
+still catching up. The renewal timer runs every six hours with jitter and
+persistence. Do not force renewal: Certbot decides when the short-lived
+certificate is due. After renewal, check Nginx syntax, reload it and verify the
+served certificate through a trusted TLS connection using the IP identity; its
+fingerprint must match the live disk certificate. Certbot exit success alone is
+insufficient evidence of reload.
+
+The hourly check detects certificate/served-chain problems, disabled renewal,
+stale renewal attempts and less than 48 hours remaining. It writes a safe
+Owner-authenticated `/_pilot/status` page and a login MOTD indication; it does
+not send mail or push notifications. Let's Encrypt no longer sends expiry
+emails. Run a real `renew --dry-run` and verify the production certificate
+remains in service. At the approved deadline, the dedicated stop timer closes
+Nginx and stops certificate timers while leaving SSH and private application
+services running. The corresponding cloud security-group entries still require
+removal by the authorized administrator; host closure is not evidence of rule
+deletion.
+
+Run `nginx/verify-ingress.py --ipv4 <approved-IP> --auth-file <private-JSON>`
+from outside the server using system CA trust. Its optional loopback HTTP
+preflight mode is explicitly not certificate or external-reachability evidence.
+Check trusted IP SAN/chain/expiry, authenticated and rejected requests, real
+Home/Detail/Viewer photographs and their original SHA-256, then restart services
+and verify recovery. Never retain full signed media URLs in evidence, and never
+substitute ETag or caller-provided SHA metadata for downloaded-byte validation.
 
 ## Backup and isolated restore
 
@@ -253,9 +327,12 @@ is not proof that the application was recovered.
 ## Required evidence before Owner handoff
 
 Record local and remote results separately and identify the exact deployed code
-SHA. Current `pnpm verify` and focused backend/PG/media tests remain required;
-the historical daily full-browser requirement is not restored. Run this real
-remote smoke in addition to daily smoke:
+SHA. For the initial cumulative implementation, retain `pnpm verify` and focused
+backend/PG/media results. For this HTTPS-only continuation, run lint, typecheck,
+certificate supervision tests and actual ingress/media checks; carry forward
+unchanged import/upload/restore evidence instead of repeating those operations
+or unrelated tests. Required current PR checks still apply. The historical daily
+full-browser requirement is not restored. Initial Pilot evidence includes:
 
 - Backend alone imports approved v2 data, verifies/registers COS objects and
   serves actual HTTP list/detail results from PG.
@@ -282,6 +359,11 @@ through remote smoke after merge. No stable tag, public launch or Production
 authority is implied.
 
 References:
+[Let's Encrypt IP certificates](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability.html),
+[Certbot IP issuance](https://letsencrypt.org/2026/03/11/shorter-certs-certbot.html),
+[HTTP-01 challenge](https://letsencrypt.org/docs/challenge-types/),
+[Validation firewall requirements](https://letsencrypt.org/docs/integration-guide/#firewall-configuration),
+[End of expiry emails](https://letsencrypt.org/2025/01/22/ending-expiration-emails),
 [Nginx Basic authentication](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html),
 [Nginx proxy module](https://nginx.org/en/docs/http/ngx_http_proxy_module.html),
 [PostgreSQL pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html),
