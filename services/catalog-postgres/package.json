@@ -16,11 +16,13 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "migrate": "node dist/migrations/cli.js ../../database/migrations",
+    "search:rebuild": "node dist/search-rebuild-cli.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@moya/api": "workspace:*",
     "@moya/contracts": "workspace:*",
+    "@moya/search": "workspace:*",
     "pg": "8.22.0"
   },
   "devDependencies": {

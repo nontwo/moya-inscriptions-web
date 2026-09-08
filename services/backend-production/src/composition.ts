@@ -67,6 +67,7 @@ export const prepareProductionBackend = async (
     requestListener: createBackendApplication({
       nodeEnv: runtimeConfig.nodeEnv,
       catalogQueryPort,
+      catalogSearchQueryPort: catalogQueryPort,
       storageUrlResolver:
         pilot?.storage.createStorageUrlResolver() ??
         new UnconfiguredStorageUrlResolver(),

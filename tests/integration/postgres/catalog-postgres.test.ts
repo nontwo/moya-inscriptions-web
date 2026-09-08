@@ -1224,10 +1224,9 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
         ),
       ]);
 
-      expect(await runMigrations(upgradePool, migrationsDirectory)).toEqual([
-        contentMigration.migrationId,
-        importV2Migration.migrationId,
-      ]);
+      expect(await runMigrations(upgradePool, migrationsDirectory)).toEqual(
+        requiredMigrations.slice(4).map(({ migrationId }) => migrationId),
+      );
       expect(await runMigrations(upgradePool, migrationsDirectory)).toEqual([]);
       await expect(
         verifyRequiredMigrationLedger(upgradePool),
@@ -1714,7 +1713,10 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       `UPDATE catalog_entries
        SET test_private_metadata = $1
        WHERE catalog_id = $2`,
-      ["raw evidence review objectKey /private/path", "test-catalog-001"],
+      [
+        "raw evidence review objectKey /Users/SYNTHETIC/catalog-internal-note",
+        "test-catalog-001",
+      ],
     );
     const { baseUrl } = await startHttp();
     const response = await fetch(`${baseUrl}/v1/catalog/test-catalog-001`);
@@ -1724,7 +1726,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
     expect(serialized).not.toContain("test_private_metadata");
     expect(serialized).not.toContain("raw evidence");
     expect(serialized).not.toContain("objectKey");
-    expect(serialized).not.toContain("/private/path");
+    expect(serialized).not.toContain("/Users/SYNTHETIC/catalog-internal-note");
   });
 
   it("accepts newer unknown ledger rows without claiming rollback safety", async () => {
@@ -1779,7 +1781,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
   it("maps a real unavailable PostgreSQL connection to safe Catalog and health 503", async () => {
     const unavailablePool = createPostgresPool({
       connectionString:
-        "postgresql://moya:secret@127.0.0.1:1/unavailable_catalog",
+        "postgresql://127.0.0.1:1/SYNTHETIC_UNAVAILABLE_CATALOG",
       connectionTimeoutMillis: 100,
     });
     const { baseUrl } = await startHttp(unavailablePool);

@@ -1,4 +1,8 @@
 export { parseCatalogCount, PostgresCatalogQueryAdapter } from "./adapter.js";
+export {
+  rebuildCatalogSearchDocuments,
+  refreshCatalogSearchDocument,
+} from "./search-documents.js";
 export { asPostgresOperationError } from "./availability.js";
 export { parsePostgresConfig } from "./config.js";
 export { catalogPageOffset } from "./pagination.js";

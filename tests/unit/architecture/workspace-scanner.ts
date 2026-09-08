@@ -220,6 +220,19 @@ const webCatalogListApiRouteFile = path.join(
   "catalog",
   "route.ts",
 );
+const webCatalogSearchApiRouteFile = path.join(
+  webRoot,
+  "app",
+  "api",
+  "catalog-search",
+  "route.ts",
+);
+const webCatalogSearchClientFile = path.join(
+  webRoot,
+  "features",
+  "search",
+  "catalog-search.tsx",
+);
 const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
 
 export const isAuthorizedWebPublicApiFile = (
@@ -343,6 +356,75 @@ const isApprovedCatalogListApiReference = (
     serverAdapterImports.length === 1 &&
     serverAdapterImports[0]?.[1]?.replaceAll(/\s/g, "") ===
       "{fetchServerCatalogPage}"
+  );
+};
+
+const isApprovedCatalogSearchApiReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  if (
+    path.resolve(filePath) !== webCatalogSearchApiRouteFile ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    reference.specifier !== "../../../lib/public-api/server"
+  )
+    return false;
+  const imports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])\.\.\/\.\.\/\.\.\/lib\/public-api\/server\2\s*;/g,
+    ),
+  ];
+  return (
+    imports.length === 1 &&
+    imports[0]?.[1]?.replaceAll(/\s/g, "") === "{fetchServerCatalogSearchPage}"
+  );
+};
+
+const isApprovedCatalogSearchClientReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  if (
+    path.resolve(filePath) !== webCatalogSearchClientFile ||
+    reference.kind !== "static-import"
+  )
+    return false;
+  if (
+    reference.specifier === "../../lib/public-api/catalog-search" &&
+    reference.typeOnly
+  ) {
+    const imports = [
+      ...source.matchAll(
+        /\bimport\s+type\s*{([^}]+)}\s*from\s*(["'])\.\.\/\.\.\/lib\/public-api\/catalog-search\2/g,
+      ),
+    ];
+    return (
+      imports.length === 1 &&
+      imports[0]?.[1]?.trim() === "CatalogSearchTransportResult"
+    );
+  }
+  if (
+    reference.specifier !== "../../lib/public-api/catalog-search-client" ||
+    reference.typeOnly
+  )
+    return false;
+  const imports = [
+    ...source.matchAll(
+      /\bimport\s*{([^}]+)}\s*from\s*(["'])\.\.\/\.\.\/lib\/public-api\/catalog-search-client\2/g,
+    ),
+  ];
+  const names = imports[0]?.[1]
+    ?.split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .sort();
+  return (
+    imports.length === 1 &&
+    names?.join(",") ===
+      "fetchSameOriginCatalogSearchPage,parseCatalogSearchPage,parseCatalogSearchQuery"
   );
 };
 
@@ -481,6 +563,8 @@ const serverOnlyPackages = [
   "@moya/contracts/schemas",
   "@moya/image",
   "@moya/public-api",
+  "@moya/search",
+  "opencc",
   "node-pg-migrate",
   "pg",
   "server-only",
@@ -506,6 +590,10 @@ const allowedClientContractTypes = new Set([
   "CatalogListTransportQuery",
   "CatalogPage",
   "CatalogSummary",
+  "CatalogSearchMatchKind",
+  "CatalogSearchTransportQuery",
+  "CatalogSearchItem",
+  "CatalogSearchPage",
   "MediaId",
   "PublicMedia",
   "PublicSourceCitation",
@@ -555,7 +643,10 @@ export const clientBoundaryViolations = (
     violations.push("Web Public API boundary cannot be a Client Component");
   }
   for (const reference of extractModuleReferences(source)) {
-    if (referencesWebPublicApiBoundary(filePath, reference.specifier)) {
+    if (
+      referencesWebPublicApiBoundary(filePath, reference.specifier) &&
+      !isApprovedCatalogSearchClientReference(filePath, source, reference)
+    ) {
       violations.push(`${reference.specifier} is server/runtime-only`);
     }
     if (isForbiddenServerReference(reference.specifier)) {
@@ -630,6 +721,11 @@ export const frontendBoundaryViolations = (
       source,
       reference,
     );
+    const approvedCatalogSearchApiImport = isApprovedCatalogSearchApiReference(
+      filePath,
+      source,
+      reference,
+    );
     if (
       isForbiddenServerReference(reference.specifier) &&
       !approvedPublicApiRuntimeImport &&
@@ -638,7 +734,8 @@ export const frontendBoundaryViolations = (
       !approvedWebTestRendererImport &&
       !approvedHomeLoaderImport &&
       !approvedCatalogDetailApiImport &&
-      !approvedCatalogListApiImport
+      !approvedCatalogListApiImport &&
+      !approvedCatalogSearchApiImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

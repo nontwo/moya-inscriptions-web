@@ -37,6 +37,7 @@ describe("@moya/backend-runtime package boundary", () => {
       "@moya/contracts": "workspace:*",
       "@moya/image": "workspace:*",
       "@moya/public-api": "workspace:*",
+      "@moya/search": "workspace:*",
     });
   });
 
@@ -61,6 +62,7 @@ describe("@moya/backend-runtime package boundary", () => {
       "@moya/contracts/schemas",
       "@moya/image",
       "@moya/public-api",
+      "@moya/search",
     ]);
     const sourceFiles = await collectTypeScriptFiles(
       path.join(runtimeRoot, "src"),

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { refreshCatalogSearchDocument } from "@moya/catalog-postgres";
 
 export {
   applyPilotImport,
@@ -2118,6 +2119,7 @@ export const applyCatalogImport = async (
       }
       for (const item of provenance)
         await insertProvenance(client, catalogId, item);
+      await refreshCatalogSearchDocument(client, catalogId);
       const itemResult = isCreate
         ? "CREATED"
         : recomputedDryRun.findings.some(

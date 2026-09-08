@@ -3,6 +3,7 @@ import type { RequestListener } from "node:http";
 import {
   handleCatalogDetail,
   handleCatalogList,
+  handleCatalogSearch,
 } from "../catalog/catalog-handler.js";
 import { healthHandler } from "../health/health-handler.js";
 import { sendJson } from "./json-response.js";
@@ -34,7 +35,7 @@ export const createRouter =
     healthReadinessCheck,
   }: RouterDependencies): RequestListener =>
   (request, response) => {
-    const pathname = new URL(request.url ?? "/", "http://backend-runtime.local")
+    const pathname = new URL(request.url ?? "/", "http://request.invalid")
       .pathname;
 
     if (pathname === "/health") {
@@ -54,6 +55,15 @@ export const createRouter =
       }
 
       void handleCatalogList(request, response, catalogReadService);
+      return;
+    }
+
+    if (pathname === "/v1/catalog-search") {
+      if (request.method !== "GET") {
+        sendRouteError(response, 405, "Method Not Allowed");
+        return;
+      }
+      void handleCatalogSearch(request, response, catalogReadService);
       return;
     }
 

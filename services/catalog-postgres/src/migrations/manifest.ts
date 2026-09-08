@@ -41,4 +41,10 @@ export const requiredMigrations: readonly RequiredMigration[] = Object.freeze([
     checksum:
       "79ab26c343bd869a9c2327fb4a90dcbb33d691e562f1c229a6ef3e44357e13b1",
   }),
+  Object.freeze({
+    migrationId: "20260908010000",
+    filename: "20260908010000_catalog_search_v1.sql",
+    checksum:
+      "85208f2295b9237ff7358a40612f0a4206c3bcc581372324ae50822dcf004403",
+  }),
 ]);

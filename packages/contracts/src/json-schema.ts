@@ -12,6 +12,10 @@ import {
   catalogListTransportQuerySchema,
   catalogPageSchema,
   catalogSummarySchema,
+  catalogSearchMatchKindSchema,
+  catalogSearchTransportQuerySchema,
+  catalogSearchItemSchema,
+  catalogSearchPageSchema,
   healthResponseSchema,
   mediaIdSchema,
   noQueryTransportSchema,
@@ -42,6 +46,18 @@ export const catalogListTransportQueryJsonSchema = toJsonSchema(
 );
 export const noQueryTransportJsonSchema = toJsonSchema(noQueryTransportSchema);
 export const catalogPageJsonSchema = toJsonSchema(catalogPageSchema);
+export const catalogSearchMatchKindJsonSchema = toJsonSchema(
+  catalogSearchMatchKindSchema,
+);
+export const catalogSearchTransportQueryJsonSchema = toJsonSchema(
+  catalogSearchTransportQuerySchema,
+);
+export const catalogSearchItemJsonSchema = toJsonSchema(
+  catalogSearchItemSchema,
+);
+export const catalogSearchPageJsonSchema = toJsonSchema(
+  catalogSearchPageSchema,
+);
 export const publicSourceCitationJsonSchema = toJsonSchema(
   publicSourceCitationSchema,
 );

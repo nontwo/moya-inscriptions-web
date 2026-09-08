@@ -2,6 +2,7 @@ import {
   isCatalogMediaResolutionError,
   isCatalogQueryUnavailableError,
   parseCatalogListQuery,
+  parseCatalogSearchQuery,
 } from "@moya/api";
 import {
   catalogIdSchema,
@@ -12,7 +13,11 @@ import { sendApiError } from "../http/api-error-response.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
 
-import type { CatalogListQuery, CatalogReadService } from "@moya/api";
+import type {
+  CatalogListQuery,
+  CatalogReadService,
+  CatalogSearchQuery,
+} from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export const handleCatalogList = async (
@@ -20,7 +25,7 @@ export const handleCatalogList = async (
   response: ServerResponse,
   catalogReadService: CatalogReadService,
 ): Promise<void> => {
-  const url = new URL(request.url ?? "/", "http://backend-runtime.local");
+  const url = new URL(request.url ?? "/", "http://request.invalid");
 
   let query: CatalogListQuery;
   try {
@@ -48,13 +53,44 @@ export const handleCatalogList = async (
   }
 };
 
+export const handleCatalogSearch = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  catalogReadService: CatalogReadService,
+): Promise<void> => {
+  let query: CatalogSearchQuery;
+  try {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    query = parseCatalogSearchQuery(collectTransportQuery(url.searchParams));
+  } catch {
+    sendApiError(response, "INVALID_QUERY", "Invalid catalog search query");
+    return;
+  }
+  try {
+    sendJson(response, 200, await catalogReadService.search(query));
+  } catch (error) {
+    if (
+      isCatalogQueryUnavailableError(error) ||
+      isCatalogMediaResolutionError(error)
+    ) {
+      sendApiError(
+        response,
+        "SERVICE_UNAVAILABLE",
+        "Service temporarily unavailable",
+      );
+      return;
+    }
+    sendApiError(response, "INTERNAL_ERROR", "Internal server error");
+  }
+};
+
 export const handleCatalogDetail = async (
   request: IncomingMessage,
   encodedCatalogId: string,
   response: ServerResponse,
   catalogReadService: CatalogReadService,
 ): Promise<void> => {
-  const url = new URL(request.url ?? "/", "http://backend-runtime.local");
+  const url = new URL(request.url ?? "/", "http://request.invalid");
   try {
     noQueryTransportSchema.parse(collectTransportQuery(url.searchParams));
   } catch {

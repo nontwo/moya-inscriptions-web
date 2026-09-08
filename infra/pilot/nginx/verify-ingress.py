@@ -157,6 +157,29 @@ def private_headers(headers: dict[str, str]) -> None:
     require({"noindex", "nofollow", "noarchive"} <= robots, "ROBOTS_POLICY_INVALID")
 
 
+def verify_catalog_search(page: dict, authenticated, request, authorization: str) -> None:
+    # Derive the query from the current read set and keep it, the response and
+    # identifiers in memory. Never emit these values in probe evidence.
+    first = page["items"][0]
+    title = first.get("title")
+    require(isinstance(title, str) and title == title.strip()
+            and 0 < len(title.encode("utf-16-le")) // 2 <= 200,
+            "SEARCH_PROBE_TITLE_INVALID")
+    path = "/api/catalog-search?" + urllib.parse.urlencode({"q": title})
+    headers, body = authenticated(path)
+    require("application/json" in headers.get("content-type", ""), "SEARCH_TYPE_INVALID")
+    result = json.loads(body)
+    items = result.get("items") if isinstance(result, dict) else None
+    require(isinstance(items, list) and len(items) > 0 and isinstance(items[0], dict),
+            "SEARCH_RESULT_INVALID")
+    require(items[0].get("id") == first.get("id"), "SEARCH_EXACT_IDENTITY_MISMATCH")
+    require(items[0].get("matchKind") == "title-exact", "SEARCH_EXACT_RANK_MISMATCH")
+    authenticated(path, "HEAD")
+    status, headers, _ = request("/api/catalog-search", credential=authorization)
+    require(status == 400, "SEARCH_MISSING_QUERY_NOT_REJECTED")
+    private_headers(headers)
+
+
 DENIED_PATHS = (
     "/docs/prototypes/mobile-preview",
     "/docs/prototypes/mobile-preview/",
@@ -186,6 +209,9 @@ DENIED_PATHS = (
     "/.git/config",
     "/.env",
     "/v1/catalog",
+    "/v1/catalog-search",
+    "/api/catalog-search/",
+    "/api/catalog-search/unapproved",
     "/health",
     "/%64ocs/prototypes/mobile-preview/%69ndex.html",
     "//docs//prototypes//mobile-preview//index.html",
@@ -313,6 +339,9 @@ def main() -> None:
             require("application/json" in headers.get("content-type", ""), "DETAIL_TYPE_INVALID")
             require(json.loads(detail_bytes).get("id") == catalog_id, "DETAIL_IDENTITY_MISMATCH")
 
+        phase = "catalog_search"
+        verify_catalog_search(page, authenticated, request, authorization)
+
         phase = "denied_paths"
         def denied(path: str) -> None:
             for method in ("GET", "HEAD"):
@@ -329,7 +358,7 @@ def main() -> None:
 
         phase = "methods_and_host"
         for method in ("POST", "PUT", "PATCH", "DELETE", "OPTIONS"):
-            for path in ("/", "/api/catalog", "/_pilot/status"):
+            for path in ("/", "/api/catalog", "/api/catalog-search", "/_pilot/status"):
                 status, headers, _ = request(path, method, authorization)
                 require(status == 405, "WRITE_METHOD_ACCEPTED")
                 require(headers.get("allow") == "GET, HEAD", "ALLOW_HEADER_INVALID")
@@ -385,7 +414,7 @@ def main() -> None:
 
         phase = "http_challenge_boundary"
         if http_port is not None:
-            for path in ("/", "/api/catalog", "/_pilot/status", "/.well-known/acme-challenge",
+            for path in ("/", "/api/catalog", "/api/catalog-search", "/_pilot/status", "/.well-known/acme-challenge",
                          "/.well-known/acme-challenge/", "/.well-known/acme-challenge/../index.html",
                          "/.well-known/acme-challenge/not-created-ingress-probe"):
                 status, headers, _ = request(path, plaintext_port=http_port)
@@ -400,6 +429,7 @@ def main() -> None:
             "tls_verified": not args.preflight_http,
             "http_challenge_boundary_checked": http_port is not None,
             "catalogs_verified": len(ids),
+            "searches_verified": 1,
             "assets_verified": assets_verified,
             "asset_kinds": sorted(asset_kinds),
             "denied_path_cases": len(DENIED_PATHS),

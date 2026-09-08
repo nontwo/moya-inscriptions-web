@@ -33,6 +33,7 @@ map $uri $moya_pilot_allowed_uri {
     default 0;
     / 1;
     /api/catalog 1;
+    /api/catalog-search 1;
     /_pilot/status 1;
     "~^/(api/)?catalog/catalog-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" 1;
     ~^/_next/static/[A-Za-z0-9_./~-]+$ 1;

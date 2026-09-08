@@ -168,18 +168,22 @@ describe("workspace dependency boundaries", () => {
       "@moya/contracts",
       "@moya/image",
       "@moya/public-api",
+      "@moya/search",
     ]);
     expect(moyaDependencies("@moya/catalog-postgres")).toEqual([
       "@moya/api",
       "@moya/contracts",
+      "@moya/search",
     ]);
     expect(moyaDependencies("@moya/catalog-importer")).toEqual([
+      "@moya/catalog-postgres",
       "@moya/contracts",
     ]);
     expect(moyaDependencies("@moya/image")).toEqual([
       "@moya/api",
       "@moya/contracts",
     ]);
+    expect(moyaDependencies("@moya/search")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/public-api")).toEqual(["@moya/contracts"]);
     expect(moyaDependencies("@moya/ui")).toEqual(["@moya/design-tokens"]);
   });
