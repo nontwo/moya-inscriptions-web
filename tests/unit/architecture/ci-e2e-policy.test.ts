@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -31,6 +33,102 @@ const gateModule = (await import(
 };
 const { classifyE2eScope: classify, classifyGitDiff } = scopeModule;
 const { assertBrowserGate: gate, assertSmokeReport } = gateModule;
+
+const requireTurbo = createRequire(
+  createRequire(root + "package.json").resolve("turbo/package.json"),
+);
+const turboPlatform =
+  process.platform === "win32" ? "windows" : process.platform;
+const turboArch = process.arch === "x64" ? "64" : process.arch;
+const turboExtension = process.platform === "win32" ? ".exe" : "";
+const nativeTurbo = (() => {
+  for (const prefix of ["@turbo/", "turbo-"]) {
+    try {
+      return requireTurbo.resolve(
+        `${prefix}${turboPlatform}-${turboArch}/bin/turbo${turboExtension}`,
+      );
+    } catch {
+      // Resolve only installed native packages; never invoke auto-install.
+    }
+  }
+  throw new Error("TURBO_NATIVE_BINARY_UNAVAILABLE");
+})();
+
+const taskGraph = (task: string, filters: string[]) => {
+  const result = spawnSync(
+    nativeTurbo,
+    [
+      "run",
+      task,
+      ...filters.map((filter) => "--filter=" + filter),
+      "--dry=json",
+      "--no-daemon",
+    ],
+    {
+      cwd: root,
+      env: { ...process.env, TURBO_TELEMETRY_DISABLED: "1" },
+      encoding: "utf8",
+      timeout: 10_000,
+      killSignal: "SIGKILL",
+      maxBuffer: 5 * 1024 * 1024,
+    },
+  );
+  // Raw task output can include environment metadata and local paths.
+  if (result.error || result.status !== 0)
+    throw new Error("TURBO_DRY_RUN_FAILED");
+  try {
+    const plan = JSON.parse(result.stdout) as {
+      tasks: { taskId: string; dependencies: string[]; hash: string }[];
+    };
+    return new Map(plan.tasks.map((entry) => [entry.taskId, entry]));
+  } catch {
+    throw new Error("TURBO_DRY_RUN_UNREADABLE");
+  }
+};
+
+describe("PostgreSQL preparation shares ordinary test build hashes", () => {
+  it("retains all nine dependency builds inside the existing verification plan", async () => {
+    const filters = [
+      "@moya/backend-production...",
+      "@moya/catalog-importer...",
+    ];
+    const graph = taskGraph("test", ["@moya/tests"]);
+    const preparation = taskGraph("build", filters);
+    expect([...preparation.keys()].sort()).toEqual(
+      [
+        "@moya/api#build",
+        "@moya/backend-production#build",
+        "@moya/backend-runtime#build",
+        "@moya/catalog-importer#build",
+        "@moya/catalog-postgres#build",
+        "@moya/contracts#build",
+        "@moya/image#build",
+        "@moya/public-api#build",
+        "@moya/search#build",
+      ].sort(),
+    );
+    for (const [id, task] of preparation) {
+      expect(task.hash).toMatch(/^[a-f0-9]{16}$/);
+      expect(task.hash).toBe(graph.get(id)?.hash);
+    }
+    const verify = await readFile(root + "scripts/verify.mjs", "utf8");
+    const postgresPlan = verify
+      .split("const postgres = [")[1]
+      ?.split("];", 1)[0];
+    expect(postgresPlan).toMatch(
+      /pnpm\(\s*"exec",\s*"turbo",\s*"run",\s*"build",/,
+    );
+    for (const filter of filters)
+      expect(postgresPlan).toContain(JSON.stringify("--filter=" + filter));
+    expect(postgresPlan).toMatch(
+      /pnpm\("db:migrate"\),\s*pnpm\("test:postgres"\)/,
+    );
+    expect(verify).toContain(
+      'test: [...(process.env.TEST_DATABASE_URL ? postgres : []), pnpm("test")]',
+    );
+    expect(verify).toContain("runWithinBudget(plans[mode])");
+  });
+});
 
 describe("bounded daily browser selection", () => {
   it.each([
