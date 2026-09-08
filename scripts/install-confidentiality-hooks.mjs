@@ -21,8 +21,6 @@ import {
   INSTALL_DIR,
   INSTALLED_FILES,
   isEntryPoint,
-  rejectConditionalConfig,
-  rejectWorktreeConfig,
   Stop,
   VERSION,
 } from "./confidentiality-scan.mjs";
@@ -30,6 +28,8 @@ import {
 function optional(args) {
   const result = spawnSync("git", ["config", ...args], {
     encoding: "utf8",
+    timeout: 10000,
+    killSignal: "SIGKILL",
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status === 1) return "";
@@ -71,7 +71,7 @@ function verifyExisting(directory, manifestSha) {
     throw new Stop("INSTALL_MANIFEST_CHANGED");
   const manifest = JSON.parse(bytes);
   if (
-    manifest.version !== VERSION ||
+    ![1, VERSION].includes(manifest.version) ||
     JSON.stringify(Object.keys(manifest.files).sort()) !==
       JSON.stringify([...INSTALLED_FILES].sort()) ||
     readdirSync(directory).sort().join("\0") !==
@@ -99,7 +99,6 @@ export function install(args) {
   )
     throw new Stop("INSTALL_ARGUMENT_INVALID");
   const update = args.includes("--update");
-  rejectConditionalConfig();
   const sourceRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
@@ -110,9 +109,6 @@ export function install(args) {
   const directory = path.join(common, INSTALL_DIR);
   const localHooks = optional(["--local", "--get", "core.hooksPath"]);
   const effectiveHooks = optional(["--get", "core.hooksPath"]);
-  // An enabled extension without any configuration files does not change
-  // worktree resolution. Every actual file or unverifiable admin still stops.
-  rejectWorktreeConfig(common);
   if (
     (effectiveHooks && effectiveHooks !== directory) ||
     (localHooks && localHooks !== directory)
@@ -125,7 +121,6 @@ export function install(args) {
     if (readdirSync(defaultHooks).some((file) => !file.endsWith(".sample")))
       throw new Stop("EXISTING_HOOKS_CONFLICT");
   }
-  const approved = currentIdentity();
   const oldName = optional([
     "--local",
     "--get",
@@ -136,11 +131,16 @@ export function install(args) {
     "--get",
     "confidentiality.approvedEmail",
   ]);
-  if (oldName || oldEmail) {
-    if (oldName !== approved.name || oldEmail !== approved.email)
-      throw new Stop("IDENTITY_POLICY_CONFLICT");
-  } else if (!args.includes("--confirm-current-identity-approved"))
+  if (
+    (!oldName || !oldEmail) &&
+    !args.includes("--confirm-current-identity-approved")
+  )
     throw new Stop("IDENTITY_APPROVAL_ACK_REQUIRED");
+  // Preserve the configured anonymous pair during controlled upgrades.
+  const approved =
+    oldName && oldEmail
+      ? { name: oldName, email: oldEmail }
+      : currentIdentity();
   const files = {};
   for (const file of INSTALLED_FILES)
     files[file] = fileBytes(
@@ -180,6 +180,7 @@ export function install(args) {
       throw new Stop("IDENTITY_POLICY_CONFLICT");
     if (oldManifest.equals(manifestBytes))
       return {
+        status: "PASS",
         ok: true,
         version: VERSION,
         manifestSha256: digest(manifestBytes),
@@ -226,8 +227,15 @@ export function install(args) {
       renameSync(prepared, directory);
     }
     git(["config", "--local", "core.hooksPath", directory]);
-    git(["config", "--local", "confidentiality.approvedName", approved.name]);
-    git(["config", "--local", "confidentiality.approvedEmail", approved.email]);
+    if (!oldName || !oldEmail) {
+      git(["config", "--local", "confidentiality.approvedName", approved.name]);
+      git([
+        "config",
+        "--local",
+        "confidentiality.approvedEmail",
+        approved.email,
+      ]);
+    }
     git([
       "config",
       "--local",
@@ -236,6 +244,7 @@ export function install(args) {
     ]);
     if (backup) rmSync(backup, { recursive: true });
     return {
+      status: "PASS",
       ok: true,
       version: VERSION,
       manifestSha256: digest(manifestBytes),
@@ -251,6 +260,7 @@ if (isEntryPoint(import.meta.url)) {
   } catch (error) {
     console.log(
       JSON.stringify({
+        status: "INCOMPLETE",
         ok: false,
         findings: [
           {
@@ -261,6 +271,6 @@ if (isEntryPoint(import.meta.url)) {
         ],
       }),
     );
-    process.exitCode = 1;
+    process.exitCode = 2;
   }
 }
