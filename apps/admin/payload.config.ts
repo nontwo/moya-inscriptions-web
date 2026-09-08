@@ -76,6 +76,12 @@ export default buildConfig({
       labels: { singular: "资料", plural: "资料" },
       admin: {
         preview: adminPreviewURL,
+        components: {
+          edit: {
+            UnpublishButton:
+              "/src/owner-workflow/OwnerWithdrawButton#OwnerWithdrawButton",
+          },
+        },
         useAsTitle: "title",
         defaultColumns: ["title", "kind", "catalogId", "revision", "_status"],
         group: "内容",

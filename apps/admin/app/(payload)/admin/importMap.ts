@@ -5,6 +5,7 @@ import { OriginalOrderConfidenceField as OriginalOrderConfidenceField_f0988f7c8f
 import { OwnerWorkflowNavLink as OwnerWorkflowNavLink_6a09c844bba2e571e3fc421615ec6d36 } from "../../../src/owner-workflow/NavLink";
 import { S3ClientUploadHandler as S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24 } from "@payloadcms/storage-s3/client";
 import { OwnerWorkflowView as OwnerWorkflowView_6be79d619593d3e50db1d13a833f41ac } from "../../../src/owner-workflow/View";
+import { OwnerWithdrawButton as OwnerWithdrawButton_9e998a9a7cb97e1d133b14fcf3c6aaf1 } from "../../../src/owner-workflow/OwnerWithdrawButton";
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from "@payloadcms/next/rsc";
 
 /** @type import('payload').ImportMap */
@@ -23,6 +24,8 @@ export const importMap = {
     S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24,
   "/src/owner-workflow/View#OwnerWorkflowView":
     OwnerWorkflowView_6be79d619593d3e50db1d13a833f41ac,
+  "/src/owner-workflow/OwnerWithdrawButton#OwnerWithdrawButton":
+    OwnerWithdrawButton_9e998a9a7cb97e1d133b14fcf3c6aaf1,
   "@payloadcms/next/rsc#CollectionCards":
     CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1,
 };

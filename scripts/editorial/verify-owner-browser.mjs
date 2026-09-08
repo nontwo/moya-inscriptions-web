@@ -19,6 +19,8 @@ const expectedStages = [
   "owner-batch-approval",
   "owner-history-restores-draft-only",
   "native-media-upload-and-draft-preview",
+  "native-withdrawal-confirmation-and-revision-conflict",
+  "native-withdrawal-preserves-latest-draft",
 ];
 
 async function main() {
@@ -105,13 +107,10 @@ async function main() {
         throw new Error("NATIVE_SERVER_START_FAILED");
       await delay(200, undefined, { signal: session.signal });
     }
-    const result = await session.run(
-      ["tests/cms/owner-browser.mjs"],
-      root,
-      "browser",
-      env,
-    );
-    const results = result.output
+    const browser = session.start(["tests/cms/owner-browser.mjs"], root, env);
+    const browserCode = await browser.closed;
+    const frames = browser
+      .output()
       .trim()
       .split("\n")
       .map((line) => {
@@ -121,8 +120,53 @@ async function main() {
           return null;
         }
       })
-      .filter((item) => item && typeof item.ok === "boolean");
+      .filter(Boolean);
+    const results = frames.filter((item) => typeof item.ok === "boolean");
     summary = results.length === 1 ? results[0] : null;
+    if (browserCode !== 0 || summary?.ok !== true) {
+      // The browser emits fixed stage names. Do not forward child diagnostics,
+      // response bodies, URLs or arbitrary exception messages.
+      console.log(
+        JSON.stringify({
+          syntheticOwnerBrowser: "FAIL",
+          stage: /^[a-z][a-z-]{0,95}$/.test(summary?.stage ?? "")
+            ? summary.stage
+            : "unrecognized-browser-result",
+          nativeWithdrawalCode: [
+            "REVISION_REQUIRED",
+            "REVISION_CONFLICT",
+          ].includes(summary?.nativeWithdrawalCode)
+            ? summary.nativeWithdrawalCode
+            : undefined,
+          failureKind: ["AssertionError", "TimeoutError", "Error"].includes(
+            summary?.category,
+          )
+            ? summary.category
+            : undefined,
+          completed: expectedStages.filter((stage) =>
+            summary?.completed?.includes(stage),
+          ),
+          checkpoints: frames
+            .filter(
+              (item) =>
+                [
+                  "start-conflict",
+                  "conflict-passed",
+                  "final-confirm-open",
+                  "final-confirm-click-returned",
+                  "withdraw-response-ok",
+                ].includes(item.nativeWithdrawalCheckpoint) &&
+                Number.isSafeInteger(item.elapsedMs) &&
+                item.elapsedMs >= 0,
+            )
+            .map((item) => ({
+              name: item.nativeWithdrawalCheckpoint,
+              elapsedMs: item.elapsedMs,
+            })),
+        }),
+      );
+      throw new Error("NATIVE_BROWSER_CHECK_FAILED");
+    }
     if (
       summary?.ok !== true ||
       !Array.isArray(summary.completed) ||

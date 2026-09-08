@@ -20,6 +20,17 @@ const responseFailures = [];
 const safeNativeFailures = [];
 const requestShapeFailures = [];
 let clientErrorCount = 0;
+let expectedWithdrawalConflict = false;
+let withdrawalConflictCount = 0;
+let nativeWithdrawalCode;
+const startedAt = Date.now();
+const checkpoint = (name) =>
+  console.log(
+    JSON.stringify({
+      nativeWithdrawalCheckpoint: name,
+      elapsedMs: Date.now() - startedAt,
+    }),
+  );
 try {
   assert.equal(process.env.CMS_ENVIRONMENT, "synthetic");
   const access = JSON.parse(
@@ -38,6 +49,16 @@ try {
     clientErrorCount += 1;
   });
   page.on("response", (response) => {
+    if (
+      expectedWithdrawalConflict &&
+      response.status() === 409 &&
+      response.request().method() === "PATCH" &&
+      response.request().postDataJSON()?._status === "draft" &&
+      new URL(response.url()).searchParams.get("draft") === "false"
+    ) {
+      withdrawalConflictCount += 1;
+      return;
+    }
     if (response.status() >= 400)
       responseFailures.push({
         status: response.status(),
@@ -334,6 +355,122 @@ try {
   assert.equal(publishedAfterMedia.revision, published.revision);
   completed.push(stage);
 
+  stage = "native-withdrawal-confirmation-and-revision-conflict";
+  checkpoint("start-conflict");
+  await page.reload();
+  await expect(page.locator('input[name="revision"]')).toHaveValue(
+    String(mediaDraft.revision),
+  );
+  const openWithdrawal = async () => {
+    await page.locator(".doc-controls__popup .popup-button").click();
+    await page.locator("button#action-unpublish").click();
+    await page.locator(".confirmation-modal #confirm-action").waitFor();
+  };
+  const withdrawalRequests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      url.pathname === `/api/catalogs/${created.id}` &&
+      request.method() === "PATCH" &&
+      url.searchParams.get("draft") === "false"
+    )
+      withdrawalRequests.push(request.postDataJSON());
+  });
+  await openWithdrawal();
+  await page.locator(".confirmation-modal #confirm-cancel").click();
+  await expect(page.locator(".confirmation-modal")).toHaveCount(0);
+  assert.equal(withdrawalRequests.length, 0);
+
+  await openWithdrawal();
+  // Another saved draft after confirmation opens must not be silently replaced
+  // by looking up a newer revision and retrying the withdrawal.
+  const concurrent = await requestResult(
+    await page.request.patch(
+      `${origin}/api/catalogs/${created.id}?draft=true&depth=0`,
+      {
+        data: {
+          revision: mediaDraft.revision,
+          summary: "Synthetic concurrent draft before withdrawal",
+          _status: "draft",
+        },
+      },
+    ),
+  );
+  assert.equal(concurrent.revision, mediaDraft.revision + 1);
+  expectedWithdrawalConflict = true;
+  const conflictResponse = saveResponse();
+  await page.locator(".confirmation-modal #confirm-action").click();
+  const conflict = await conflictResponse;
+  const conflictBody = JSON.stringify(await conflict.json());
+  nativeWithdrawalCode = ["REVISION_REQUIRED", "REVISION_CONFLICT"].find(
+    (code) => conflictBody.includes(code),
+  );
+  assert.equal(conflict.status(), 409);
+  assert.equal(nativeWithdrawalCode, "REVISION_CONFLICT");
+  await expect(page.locator(".confirmation-modal")).toHaveCount(0);
+  expectedWithdrawalConflict = false;
+  assert.equal(withdrawalConflictCount, 1);
+  assert.deepEqual(withdrawalRequests, [
+    { _status: "draft", revision: mediaDraft.revision },
+  ]);
+  const conflictMain = await requestResult(
+    await page.request.get(
+      `${origin}/api/catalogs/${created.id}?depth=0&draft=false`,
+    ),
+  );
+  assert.equal(conflictMain._status, "published");
+  assert.equal(conflictMain.revision, published.revision);
+  checkpoint("conflict-passed");
+  completed.push(stage);
+
+  stage = "native-withdrawal-preserves-latest-draft";
+  nativeWithdrawalCode = undefined;
+  await page.reload();
+  await expect(page.locator('input[name="revision"]')).toHaveValue(
+    String(concurrent.revision),
+  );
+  await openWithdrawal();
+  checkpoint("final-confirm-open");
+  // Start reading before the successful UI operation reloads this document.
+  const withdrawalResponse = saveResponse().then(requestResult);
+  await page.locator(".confirmation-modal #confirm-action").click();
+  checkpoint("final-confirm-click-returned");
+  const withdrawn = await withdrawalResponse;
+  checkpoint("withdraw-response-ok");
+  assert.deepEqual(withdrawalRequests, [
+    { _status: "draft", revision: mediaDraft.revision },
+    { _status: "draft", revision: concurrent.revision },
+  ]);
+  assert.equal(withdrawn._status, "draft");
+  assert.equal(withdrawn.revision, concurrent.revision + 1);
+  const withdrawnMain = await requestResult(
+    await page.request.get(
+      `${origin}/api/catalogs/${created.id}?depth=0&draft=false`,
+    ),
+  );
+  assert.equal(withdrawnMain._status, "draft");
+  assert.equal(withdrawnMain.revision, withdrawn.revision);
+  assert.equal(withdrawnMain.catalogId, catalogId);
+  assert.equal(withdrawnMain.sourceId, sourceId);
+  assert.equal(withdrawnMain.title, mediaDraft.title);
+  assert.equal(withdrawnMain.summary, concurrent.summary);
+  // Payload versions generate their own array-row id. Compare every stored
+  // media field and its order except that internal row id; MediaId is retained.
+  const mediaSnapshots = (rows) =>
+    rows.map((row) =>
+      Object.fromEntries(Object.entries(row).filter(([key]) => key !== "id")),
+    );
+  assert.deepEqual(
+    mediaSnapshots(withdrawnMain.media),
+    mediaSnapshots(mediaDraft.media),
+  );
+  await expect(page.locator('input[name="revision"]')).toHaveValue(
+    String(withdrawn.revision),
+  );
+  await page.locator(".doc-controls__popup .popup-button").click();
+  await expect(page.locator("#action-unpublish")).toHaveCount(0);
+  completed.push(stage);
+
   assert.equal(clientErrorCount, 0);
   assert.equal(responseFailures.length, 0);
   console.log(JSON.stringify({ ok: true, completed }));
@@ -352,6 +489,7 @@ try {
       safeNativeFailures,
       requestShapeFailures,
       clientErrorCount,
+      nativeWithdrawalCode,
     }),
   );
   process.exitCode = 1;
