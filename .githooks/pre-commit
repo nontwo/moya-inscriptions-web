@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 fail_initialization() {
-  printf '%s\n' '{"ok":false,"findings":[{"path":".","category":"HOOK_INITIALIZATION_FAILED"}]}'
-  exit 1
+  printf '%s\n' '{"status":"INCOMPLETE","ok":false,"findings":[{"path":".","category":"HOOK_INITIALIZATION_FAILED"}]}'
+  exit 2
 }
 case $0 in
   */*) hook_dir=${0%/*} ;;
@@ -10,7 +10,7 @@ case $0 in
 esac
 hook_dir=$(CDPATH= cd -- "$hook_dir" 2>/dev/null && pwd -P 2>/dev/null) || fail_initialization
 if ! command -v node >/dev/null 2>&1 || [ ! -f "$hook_dir/confidentiality-scan.mjs" ]; then
-  printf '%s\n' '{"ok":false,"findings":[{"path":".","category":"HOOK_RUNTIME_MISSING"}]}'
-  exit 1
+  printf '%s\n' '{"status":"INCOMPLETE","ok":false,"findings":[{"path":".","category":"HOOK_RUNTIME_MISSING"}]}'
+  exit 2
 fi
 exec node "$hook_dir/confidentiality-scan.mjs" staged 2>/dev/null

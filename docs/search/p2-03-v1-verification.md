@@ -136,14 +136,19 @@ lockfile. Normal application types and imports remain intact.
 Unused contact information in optional dependency deprecation metadata was
 removed; versions, resolutions and integrity values are unchanged and frozen
 installation passes. Synthetic URL parser bases use a reserved invalid domain;
-negative fixtures use explicit placeholders and omit unnecessary credentials. No
-scanner, hook, allowlist or confidentiality policy was weakened or bypassed.
+negative fixtures use explicit placeholders and omit unnecessary credentials.
+The complete entry candidate also exposed six Python reference/call/comparison
+false positives; business syntax was preserved. Independent governance PR #100
+fixed these under the Owner-revised V2 policy and updated the actual hooks.
+Search has no scanner changes, and no hook was bypassed.
 
-Scanner governance is delivered separately from Search. Search commits, outgoing
-history and exact external payloads must pass the currently effective installed
-preflight after that independent governance update. The implementation PR
-records the effective version and final publication checks; the initial blocked
-attempt is retained here rather than counted as a pass.
+Governance #100 merged at `1fefd896e989ff07dc1d9b3581be290c177a4c36`; its
+current rules and source are integrated into this branch. The complete 81-file
+Search candidate, proposed message, new outgoing commit and exact PR text passed
+the installed V2 checks with one stable delivery allowance and cache reuse.
+Draft implementation PR #101 records the current version, subsequent publication
+checks and exact-head review. Earlier blocked attempts remain failures, not
+passes.
 
 ## Protected entry preparation
 
