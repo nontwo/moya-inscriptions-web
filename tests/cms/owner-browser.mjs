@@ -431,25 +431,28 @@ try {
   );
   await openWithdrawal();
   checkpoint("final-confirm-open");
-  // Start reading before the successful UI operation reloads this document.
-  const withdrawalResponse = saveResponse().then(requestResult);
+  // A successful withdrawal reloads the page. Check its status, then verify
+  // the refreshed UI and persisted document instead of reading a stale body.
+  const withdrawalResponse = saveResponse();
   await page.locator(".confirmation-modal #confirm-action").click();
   checkpoint("final-confirm-click-returned");
-  const withdrawn = await withdrawalResponse;
+  assert.equal((await withdrawalResponse).status(), 200);
   checkpoint("withdraw-response-ok");
   assert.deepEqual(withdrawalRequests, [
     { _status: "draft", revision: mediaDraft.revision },
     { _status: "draft", revision: concurrent.revision },
   ]);
-  assert.equal(withdrawn._status, "draft");
-  assert.equal(withdrawn.revision, concurrent.revision + 1);
+  await expect(page.locator('input[name="revision"]')).toHaveValue(
+    String(concurrent.revision + 1),
+  );
   const withdrawnMain = await requestResult(
     await page.request.get(
       `${origin}/api/catalogs/${created.id}?depth=0&draft=false`,
     ),
   );
+  assert.equal(withdrawnMain.id, created.id);
   assert.equal(withdrawnMain._status, "draft");
-  assert.equal(withdrawnMain.revision, withdrawn.revision);
+  assert.equal(withdrawnMain.revision, concurrent.revision + 1);
   assert.equal(withdrawnMain.catalogId, catalogId);
   assert.equal(withdrawnMain.sourceId, sourceId);
   assert.equal(withdrawnMain.title, mediaDraft.title);
@@ -463,9 +466,6 @@ try {
   assert.deepEqual(
     mediaSnapshots(withdrawnMain.media),
     mediaSnapshots(mediaDraft.media),
-  );
-  await expect(page.locator('input[name="revision"]')).toHaveValue(
-    String(withdrawn.revision),
   );
   await page.locator(".doc-controls__popup .popup-button").click();
   await expect(page.locator("#action-unpublish")).toHaveCount(0);
