@@ -5,6 +5,7 @@ packages:
   - tests
 allowBuilds:
   esbuild: true
+  opencc@1.4.1: true
   sharp: true
 overrides:
   # CMS rendering patches; keep framework majors and the public DTO unchanged.

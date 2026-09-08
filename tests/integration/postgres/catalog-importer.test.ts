@@ -16,6 +16,7 @@ import {
   closePostgresPool,
   createPostgresPool,
   parsePostgresConfig,
+  PostgresCatalogQueryAdapter,
   requiredMigrations,
   runMigrations,
 } from "@moya/catalog-postgres";
@@ -239,7 +240,7 @@ const fakeAllocator = (
   allocateCatalogId: () => catalogIdSchema.parse(catalogId),
 });
 
-const authorization = (
+const SYNTHETIC_AUTHORIZATION = (
   dryRun: VersionedCatalogImportDryRun,
   approvedFindingIds: readonly string[] = [],
   runtime: "VALIDATION" | "PRODUCTION" = "VALIDATION",
@@ -283,7 +284,7 @@ const applyInput = (
   operationId,
   parsed,
   dryRun,
-  authorization: authorization(dryRun),
+  authorization: SYNTHETIC_AUTHORIZATION(dryRun),
   catalogIdAllocator: fakeAllocator(),
   appliedAt: "2026-08-15T00:00:00.000Z",
   ...overrides,
@@ -655,7 +656,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(update, updateDryRun, "xlsx-owner-note-update"),
-        authorization: authorization(updateDryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(updateDryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("Import dry-run is not apply-ready");
@@ -722,10 +723,36 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     await expect(
       pool.query("SELECT COUNT(*)::integer AS count FROM catalog_entries"),
     ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+    await expect(
+      pool.query(
+        "SELECT COUNT(*)::integer AS count FROM catalog_search_documents",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
 
     const input = applyInput(parsed, dryRun, "p5-applied");
     const first = await applyCatalogImport(pool, input);
+    const searchBeforeReplay = await pool.query(
+      "SELECT xmin::text AS revision FROM catalog_search_documents ORDER BY catalog_id",
+    );
     const replay = await applyCatalogImport(pool, input);
+    expect(
+      (
+        await pool.query(
+          "SELECT xmin::text AS revision FROM catalog_search_documents ORDER BY catalog_id",
+        )
+      ).rows,
+    ).toEqual(searchBeforeReplay.rows);
+    expect(
+      (
+        await new PostgresCatalogQueryAdapter(pool).search({
+          q: "测试旧称",
+          page: 1,
+          pageSize: 20,
+        })
+      ).items,
+    ).toMatchObject([
+      { id: "catalog-platform-test-001", matchKind: "alias-exact" },
+    ]);
     expect(first).toMatchObject({
       status: "APPLIED",
       created: 1,
@@ -815,7 +842,11 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     );
     const result = await applyCatalogImport(pool, {
       ...applyInput(updateParsed, updateDryRun, "p5-update"),
-      authorization: authorization(updateDryRun, findingIds, "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(
+        updateDryRun,
+        findingIds,
+        "PRODUCTION",
+      ),
       catalogIdAllocator: undefined,
     });
     expect(result).toMatchObject({ created: 0, updated: 1 });
@@ -824,6 +855,21 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     );
     expect(persisted.rows).toEqual([
       { catalog_id: "catalog-platform-test-001", title: "测试碑刻修订" },
+    ]);
+    expect(
+      (
+        await new PostgresCatalogQueryAdapter(pool).search({
+          q: "测试碑刻修订",
+          page: 1,
+          pageSize: 20,
+        })
+      ).items,
+    ).toMatchObject([
+      {
+        id: "catalog-platform-test-001",
+        title: "测试碑刻修订",
+        matchKind: "title-exact",
+      },
     ]);
   });
 
@@ -944,7 +990,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "p5-owner-note-update"),
-        authorization: authorization(dryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(dryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("Import dry-run is not apply-ready");
@@ -985,14 +1031,18 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "p5-clear-unapproved"),
-        authorization: authorization(dryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(dryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("required field-level finding");
     const clearFinding = String(dryRun.findings[0]?.findingId);
     await applyCatalogImport(pool, {
       ...applyInput(parsed, dryRun, "p5-clear-approved"),
-      authorization: authorization(dryRun, [clearFinding], "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(
+        dryRun,
+        [clearFinding],
+        "PRODUCTION",
+      ),
       catalogIdAllocator: undefined,
     });
     await expect(
@@ -1075,9 +1125,9 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "p5-tampered-approval"),
         authorization: {
-          ...authorization(dryRun),
+          ...SYNTHETIC_AUTHORIZATION(dryRun),
           approval: {
-            ...authorization(dryRun).approval,
+            ...SYNTHETIC_AUTHORIZATION(dryRun).approval,
             canonicalInputSha256:
               "0000000000000000000000000000000000000000000000000000000000000000",
           },
@@ -1091,7 +1141,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "p5-validation-in-production"),
         authorization: {
-          ...authorization(dryRun),
+          ...SYNTHETIC_AUTHORIZATION(dryRun),
           runtime: "PRODUCTION",
         } as unknown as CatalogImportAuthorization,
         catalogIdAllocator: allocator,
@@ -1183,7 +1233,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
           dryRun,
           "p5-tampered-factual-value",
         ),
-        authorization: authorization(dryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(dryRun, [], "PRODUCTION"),
         catalogIdAllocator: allocator,
       }),
     ).rejects.toThrow("metadata does not match its envelope");
@@ -1219,7 +1269,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
           dryRun,
           "p5-canonical-hash-mismatch",
         ),
-        authorization: authorization(dryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(dryRun, [], "PRODUCTION"),
         catalogIdAllocator: allocator,
       }),
     ).rejects.toThrow("metadata does not match its envelope");
@@ -1272,7 +1322,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "p5-unknown-finding-approval"),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           dryRun,
           [legitimateFinding, unknownFinding],
           "PRODUCTION",
@@ -1426,8 +1476,8 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
 
 describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
   it("keeps the first five migrations and widens only the sixth operation-version constraint", async () => {
-    expect(requiredMigrations).toHaveLength(6);
-    expect(requiredMigrations.at(-1)).toMatchObject({
+    expect(requiredMigrations.slice(0, 6)).toHaveLength(6);
+    expect(requiredMigrations[5]).toMatchObject({
       migrationId: "20260903193318",
       filename: "20260903193318_catalog_import_v2.sql",
     });
@@ -1669,7 +1719,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
         (barrierPool: ApplyPool) =>
           applyCatalogImport(barrierPool, {
             ...applyInput(parsed, dryRun, operationId),
-            authorization: authorization(
+            authorization: SYNTHETIC_AUTHORIZATION(
               dryRun,
               [String(dryRun.findings[0]?.findingId)],
               "PRODUCTION",
@@ -2222,7 +2272,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     ]);
     await applyCatalogImport(pool, {
       ...applyInput(summaryOnly, summaryDryRun, "v2-display-summary"),
-      authorization: authorization(summaryDryRun, [], "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(summaryDryRun, [], "PRODUCTION"),
       catalogIdAllocator: undefined,
     });
 
@@ -2256,7 +2306,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(changed, staleDryRun, "v2-display-unapproved"),
-        authorization: authorization(staleDryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(staleDryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("required field-level finding");
@@ -2293,7 +2343,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(changed, staleDryRun, "v2-display-stale"),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           staleDryRun,
           staleDryRun.findings
             .filter(({ requiresFieldApproval }) => requiresFieldApproval)
@@ -2324,7 +2374,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
       .map(({ findingId }) => String(findingId));
     const approvedInput = {
       ...applyInput(changed, dryRun, "v2-display-approved"),
-      authorization: authorization(dryRun, approvedFindingIds, "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(
+        dryRun,
+        approvedFindingIds,
+        "PRODUCTION",
+      ),
       catalogIdAllocator: undefined,
     };
     await expect(
@@ -2427,7 +2481,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "v2-scalar-unapproved"),
-        authorization: authorization(dryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(dryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("required field-level finding");
@@ -2444,7 +2498,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
       .map(({ findingId }) => String(findingId));
     await applyCatalogImport(pool, {
       ...applyInput(parsed, dryRun, "v2-scalar-approved"),
-      authorization: authorization(dryRun, requiredApprovals, "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(
+        dryRun,
+        requiredApprovals,
+        "PRODUCTION",
+      ),
       catalogIdAllocator: undefined,
     });
     await expect(
@@ -2508,7 +2566,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(scalarUpdate, scalarDryRun, "v2-stale-scalar-state"),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           scalarDryRun,
           [String(scalarDryRun.findings[0]?.findingId)],
           "PRODUCTION",
@@ -2562,7 +2620,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
           contributorDryRun,
           "v2-stale-contributor-state",
         ),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           contributorDryRun,
           [String(contributorDryRun.findings[0]?.findingId)],
           "PRODUCTION",
@@ -2627,7 +2685,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
           citationDryRun,
           "v2-stale-citation-state",
         ),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           citationDryRun,
           [String(citationDryRun.findings[0]?.findingId)],
           "PRODUCTION",
@@ -2682,7 +2740,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
           provenanceDryRun,
           "v2-stale-provenance-state",
         ),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           provenanceDryRun,
           [String(provenanceDryRun.findings[0]?.findingId)],
           "PRODUCTION",
@@ -2776,7 +2834,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
           missingProvenanceDryRun,
           "v2-stale-provenance-created",
         ),
-        authorization: authorization(
+        authorization: SYNTHETIC_AUTHORIZATION(
           missingProvenanceDryRun,
           [String(missingProvenanceDryRun.findings[0]?.findingId)],
           "PRODUCTION",
@@ -2879,7 +2937,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(changed, changedDryRun, "v2-contributor-unapproved"),
-        authorization: authorization(changedDryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(changedDryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("required field-level finding");
@@ -2887,7 +2945,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(changed, changedDryRun, "v2-contributor-rollback"),
-        authorization: authorization(changedDryRun, [findingId], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(
+          changedDryRun,
+          [findingId],
+          "PRODUCTION",
+        ),
         catalogIdAllocator: undefined,
         failureAfterCatalogRows: 1,
       }),
@@ -2898,7 +2960,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     );
     await applyCatalogImport(pool, {
       ...applyInput(changed, changedDryRun, "v2-contributor-approved"),
-      authorization: authorization(changedDryRun, [findingId], "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(
+        changedDryRun,
+        [findingId],
+        "PRODUCTION",
+      ),
       catalogIdAllocator: undefined,
     });
     expect((await readContributorRows()).map(omitRevision)).toEqual([
@@ -2935,7 +3001,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     ]);
     await applyCatalogImport(pool, {
       ...applyInput(clear, clearDryRun, "v2-contributor-clear"),
-      authorization: authorization(
+      authorization: SYNTHETIC_AUTHORIZATION(
         clearDryRun,
         [String(clearDryRun.findings[0]?.findingId)],
         "PRODUCTION",
@@ -3034,7 +3100,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(changed, changedDryRun, "v2-citation-unapproved"),
-        authorization: authorization(changedDryRun, [], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(changedDryRun, [], "PRODUCTION"),
         catalogIdAllocator: undefined,
       }),
     ).rejects.toThrow("required field-level finding");
@@ -3042,7 +3108,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(changed, changedDryRun, "v2-citation-rollback"),
-        authorization: authorization(changedDryRun, [findingId], "PRODUCTION"),
+        authorization: SYNTHETIC_AUTHORIZATION(
+          changedDryRun,
+          [findingId],
+          "PRODUCTION",
+        ),
         catalogIdAllocator: undefined,
         failureAfterCatalogRows: 1,
       }),
@@ -3053,7 +3123,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     );
     await applyCatalogImport(pool, {
       ...applyInput(changed, changedDryRun, "v2-citation-approved"),
-      authorization: authorization(changedDryRun, [findingId], "PRODUCTION"),
+      authorization: SYNTHETIC_AUTHORIZATION(
+        changedDryRun,
+        [findingId],
+        "PRODUCTION",
+      ),
       catalogIdAllocator: undefined,
     });
     const replaced = await readCitationRows();
@@ -3110,7 +3184,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     ]);
     await applyCatalogImport(pool, {
       ...applyInput(clear, clearDryRun, "v2-citation-clear"),
-      authorization: authorization(
+      authorization: SYNTHETIC_AUTHORIZATION(
         clearDryRun,
         [String(clearDryRun.findings[0]?.findingId)],
         "PRODUCTION",
@@ -3142,7 +3216,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
       }),
     ).rejects.toThrow("versions must match");
 
-    const mismatchedAuthorization = authorization(dryRun);
+    const mismatchedAuthorization = SYNTHETIC_AUTHORIZATION(dryRun);
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "v2-version-mismatch-approval"),
@@ -3171,7 +3245,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
           crossBoundDryRun,
           "v2-cross-input-approval",
         ),
-        authorization: authorization(dryRun),
+        authorization: SYNTHETIC_AUTHORIZATION(dryRun),
         catalogIdAllocator: fakeAllocator(v2CatalogId),
       }),
     ).rejects.toThrow("does not bind");
@@ -3213,11 +3287,11 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, invalidDryRun, "v2-dry-run-hash-mismatch"),
-        authorization: authorization(invalidDryRun),
+        authorization: SYNTHETIC_AUTHORIZATION(invalidDryRun),
         catalogIdAllocator: fakeAllocator(v2CatalogId),
       }),
     ).rejects.toThrow("dry-run result hash is invalid");
-    const mismatchedHashAuthorization = authorization(dryRun);
+    const mismatchedHashAuthorization = SYNTHETIC_AUTHORIZATION(dryRun);
     await expect(
       applyCatalogImport(pool, {
         ...applyInput(parsed, dryRun, "v2-approval-hash-mismatch"),

@@ -1,6 +1,7 @@
 import type {
   CatalogDetail,
   CatalogPage,
+  CatalogSearchPage,
   CatalogSummary,
   MediaId,
   PublicMedia,
@@ -9,6 +10,7 @@ import type {
 import {
   catalogDetailSchema,
   catalogPageSchema,
+  catalogSearchPageSchema,
   catalogSummarySchema,
   publicMediaSchema,
   publicSourceCitationSchema,
@@ -24,6 +26,7 @@ import type {
   CatalogSourceCitationProjection,
   CatalogStatefulTextProjection,
 } from "../catalog-read-projections.js";
+import type { CatalogSearchPageProjection } from "../ports/catalog-search-query-port.js";
 import type { ResolvedMediaUrl } from "../ports/storage-url-resolver.js";
 
 const noResolvedMedia = new Map<MediaId, ResolvedMediaUrl>();
@@ -182,6 +185,21 @@ export const mapCatalogPage = (
     items: projection.items.map((item) =>
       mapCatalogSummary(item, resolvedMedia),
     ),
+    total: projection.total,
+    page: projection.page,
+    pageSize: projection.pageSize,
+    totalPages: projection.totalPages,
+  });
+
+export const mapCatalogSearchPage = (
+  projection: CatalogSearchPageProjection,
+  resolvedMedia: ReadonlyMap<MediaId, ResolvedMediaUrl> = noResolvedMedia,
+): CatalogSearchPage =>
+  catalogSearchPageSchema.parse({
+    items: projection.items.map((item) => ({
+      ...mapCatalogSummary(item, resolvedMedia),
+      matchKind: item.matchKind,
+    })),
     total: projection.total,
     page: projection.page,
     pageSize: projection.pageSize,

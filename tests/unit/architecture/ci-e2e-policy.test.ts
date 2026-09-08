@@ -86,6 +86,50 @@ const taskGraph = (task: string, filters: string[]) => {
   }
 };
 
+describe("PostgreSQL preparation shares ordinary test build hashes", () => {
+  it("retains all nine dependency builds inside the existing verification plan", async () => {
+    const filters = [
+      "@moya/backend-production...",
+      "@moya/catalog-importer...",
+    ];
+    const graph = taskGraph("test", ["@moya/tests"]);
+    const preparation = taskGraph("build", filters);
+    expect([...preparation.keys()].sort()).toEqual(
+      [
+        "@moya/api#build",
+        "@moya/backend-production#build",
+        "@moya/backend-runtime#build",
+        "@moya/catalog-importer#build",
+        "@moya/catalog-postgres#build",
+        "@moya/contracts#build",
+        "@moya/image#build",
+        "@moya/public-api#build",
+        "@moya/search#build",
+      ].sort(),
+    );
+    for (const [id, task] of preparation) {
+      expect(task.hash).toMatch(/^[a-f0-9]{16}$/);
+      expect(task.hash).toBe(graph.get(id)?.hash);
+    }
+    const verify = await readFile(root + "scripts/verify.mjs", "utf8");
+    const postgresPlan = verify
+      .split("const postgres = [")[1]
+      ?.split("];", 1)[0];
+    expect(postgresPlan).toMatch(
+      /pnpm\(\s*"exec",\s*"turbo",\s*"run",\s*"build",/,
+    );
+    for (const filter of filters)
+      expect(postgresPlan).toContain(JSON.stringify("--filter=" + filter));
+    expect(postgresPlan).toMatch(
+      /pnpm\("db:migrate"\),\s*pnpm\("test:postgres"\)/,
+    );
+    expect(verify).toContain(
+      'test: [...(process.env.TEST_DATABASE_URL ? postgres : []), pnpm("test")]',
+    );
+    expect(verify).toContain("runWithinBudget(plans[mode])");
+  });
+});
+
 describe("ordinary tests and production task boundaries", () => {
   it("retains every workspace library build without building the Admin app for source imports", async () => {
     const manifest = JSON.parse(

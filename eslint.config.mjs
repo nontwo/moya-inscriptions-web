@@ -438,4 +438,41 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ["apps/admin/src/published/search.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/backend-production",
+            "@moya/backend-runtime",
+            {
+              name: "@moya/catalog-postgres",
+              allowImportNames: [
+                "catalogSearchSourceSelectSql",
+                "projectCatalogSearchSourceRow",
+              ],
+              message:
+                "The CMS publication bridge only shares the existing public Search projection.",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/backend-runtime/*",
+                "@moya/backend-production/*",
+                "@moya/catalog-postgres/*",
+                "**/data/**",
+                "**/*.csv",
+                "**/*.xlsx",
+              ],
+              message:
+                "CMS server uses its official adapter and controlled migration input; no unrelated runtime or raw source import.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

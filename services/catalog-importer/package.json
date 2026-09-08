@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@moya/catalog-postgres": "workspace:*",
     "@moya/contracts": "workspace:*",
     "exceljs": "4.4.0",
     "pg": "8.22.0",

@@ -119,7 +119,7 @@ if (
   const postgres = [
     // Use the same content-hashed build tasks as the later test phase. All
     // preparation stays inside this run's deadline; only identical library
-    // outputs can be reused. Admin source exports do not need a Next build.
+    // outputs can be reused.
     pnpm(
       "exec",
       "turbo",

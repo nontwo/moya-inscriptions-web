@@ -1,4 +1,10 @@
 import { catalogIdSchema, mediaIdSchema } from "@moya/contracts/schemas";
+import {
+  matchCatalogSearchDocument,
+  projectCatalogSearchDocument,
+} from "@moya/search";
+import type { CatalogSearchQueryPort } from "@moya/api";
+import type { CatalogSearchMatchKind } from "@moya/contracts";
 
 import type {
   CatalogDetailProjection,
@@ -217,6 +223,68 @@ const toDetailProjection = (
       : { description: entry.record.description }),
   } satisfies CatalogDetailProjection;
 };
+
+/** Creates the non-production Catalog adapter used only by development/tests. */
+export const createDevelopmentCatalogFixtureSearchPort =
+  (): CatalogSearchQueryPort => ({
+    async search({ q, kind, page, pageSize }) {
+      const tiers: CatalogSearchMatchKind[] = [
+        "title-exact",
+        "alias-exact",
+        "normalized-exact",
+        "title-alias-partial",
+        "structured",
+        "body",
+      ];
+      const items = developmentFixture
+        .flatMap((entry) => {
+          if (kind !== undefined && entry.record.kind !== kind) return [];
+          const source = {
+            title: entry.record.title,
+            aliases: [...entry.record.aliases],
+            ...(entry.record.summary === undefined
+              ? {}
+              : { summary: entry.record.summary }),
+            ...(entry.record.description === undefined
+              ? {}
+              : { description: entry.record.description }),
+            ...(entry.record.periodLabel === undefined
+              ? {}
+              : { periodLabel: entry.record.periodLabel }),
+            ...Object.fromEntries(
+              Object.entries(entry.detailFields).flatMap(([key, field]) =>
+                field.state === "VALUE" && field.value !== undefined
+                  ? [[key, field.value]]
+                  : [],
+              ),
+            ),
+          };
+          const matchKind = matchCatalogSearchDocument(
+            projectCatalogSearchDocument(source),
+            q,
+          );
+          return matchKind === null
+            ? []
+            : [{ ...toListProjection(entry), matchKind }];
+        })
+        .sort(
+          (a, b) =>
+            tiers.indexOf(a.matchKind) - tiers.indexOf(b.matchKind) ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        );
+      const offset = BigInt(page - 1) * BigInt(pageSize);
+      return {
+        items:
+          offset > BigInt(items.length)
+            ? []
+            : items.slice(Number(offset), Number(offset) + pageSize),
+        total: items.length,
+        page,
+        pageSize,
+        totalPages: items.length === 0 ? 0 : Math.ceil(items.length / pageSize),
+      };
+    },
+  });
 
 /** Creates the non-production Catalog adapter used only by development/tests. */
 export const createDevelopmentCatalogFixtureQueryPort =

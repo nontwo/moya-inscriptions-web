@@ -26,6 +26,10 @@ vi.mock("../features/product-preview/t02p-product-preview", () => ({
 }));
 
 import FormalPage from "./page";
+import {
+  CatalogSearch,
+  CatalogSearchNavigationAction,
+} from "../features/search/catalog-search";
 
 const states = { identity: "production-states" };
 
@@ -53,16 +57,14 @@ describe("FormalPage", () => {
       initialHomeFeed: "discover",
       initialPlatform: "tablet",
       initialTopicId: null,
+      navigationAction: expect.objectContaining({
+        type: CatalogSearchNavigationAction,
+      }),
+      productUtility: expect.objectContaining({ type: CatalogSearch }),
       states,
     });
     expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
       "inscriptionUtility",
-    );
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
-      "productUtility",
-    );
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
-      "navigationAction",
     );
   });
 
@@ -122,6 +124,10 @@ describe("FormalPage", () => {
       initialHomeFeed: "nearby",
       initialPlatform: "tablet",
       initialTopicId: null,
+      navigationAction: expect.objectContaining({
+        type: CatalogSearchNavigationAction,
+      }),
+      productUtility: expect.objectContaining({ type: CatalogSearch }),
       states,
     });
   });

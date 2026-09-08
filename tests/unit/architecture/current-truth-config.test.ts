@@ -19,6 +19,21 @@ const fileExists = async (filePath: string): Promise<boolean> => {
 };
 
 describe("current repository truth and local configuration", () => {
+  it("keeps native OpenCC external in the standalone Admin server", async () => {
+    const config = await readFile(
+      path.join(repositoryRoot, "apps/admin/next.config.ts"),
+      "utf8",
+    );
+    expect(config).toMatch(/serverExternalPackages:\s*\["opencc"\]/);
+    expect(config).toContain('output: "standalone"');
+    expect(config).toContain("export default withPayload(nextConfig)");
+    expect(config).toContain("outputFileTracingIncludes:");
+    for (const file of ["index.js", "package.json", "prebuilds/**/*.node"])
+      expect(config).toContain(
+        `../../node_modules/.pnpm/opencc@*/node_modules/@opencc/opencc-*/${file}`,
+      );
+  });
+
   it("keeps root development commands and port ownership explicit", async () => {
     const rootManifest = await readJson(
       path.join(repositoryRoot, "package.json"),

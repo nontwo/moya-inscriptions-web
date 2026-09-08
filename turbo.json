@@ -29,6 +29,7 @@
         "@moya/design-tokens#build",
         "@moya/image#build",
         "@moya/public-api#build",
+        "@moya/search#build",
         "@moya/ui#build"
       ]
     }

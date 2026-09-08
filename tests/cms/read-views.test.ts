@@ -7,6 +7,7 @@ import {
   createPostgresPool,
   parsePostgresConfig,
   PostgresCatalogQueryAdapter,
+  refreshCatalogSearchDocument,
 } from "@moya/catalog-postgres";
 import {
   catalogDetailSchema,
@@ -20,6 +21,7 @@ import {
   createPublishedCatalogViewsSql,
   dropPublishedCatalogViewsSql,
 } from "admin/published";
+import { upgradePublishedCatalogSearchViewSql } from "admin/published-search";
 
 const testDatabaseUrl = process.env.CMS_TEST_DATABASE_URL;
 if (!testDatabaseUrl) {
@@ -49,6 +51,7 @@ const service = new CatalogReadService(
 // rename, enum/type difference or missing migration fails here; no hand-written
 // substitute schema can make the view pass. Shared CMS content is never read.
 const sourceTables = [
+  "catalog_search_documents",
   "catalogs",
   "catalogs_aliases",
   "catalogs_contributors",
@@ -67,6 +70,7 @@ beforeAll(async () => {
     );
   }
   await pool.query(createPublishedCatalogViewsSql);
+  await pool.query(upgradePublishedCatalogSearchViewSql);
 }, 20_000);
 
 afterAll(async () => {
@@ -156,9 +160,34 @@ beforeEach(async () => {
             ('synthetic-media-row-1', 1, 1, 'synthetic-media-1', 'synthetic/snapshot/first.webp', 320, 480, '首幅合成图片', 0, true, '合成权利说明', 'HIGH'),
             ('synthetic-media-row-draft', 3, 1, 'synthetic-media-draft', 'synthetic/draft/private.webp', 100, 100, '草稿图片', 0, true, NULL, NULL)`,
   );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const id of ["synthetic-catalog-1", "synthetic-catalog-2"])
+      await refreshCatalogSearchDocument(client, id);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 describe("Payload published views through the unchanged Public read adapter", () => {
+  it("searches the same published Catalog set without exposing drafts", async () => {
+    const result = await adapter.search({
+      q: "合成资料",
+      page: 1,
+      pageSize: 10,
+    });
+    expect(result.total).toBe(2);
+    expect(result.items.map(({ id }) => id)).toEqual([
+      "synthetic-catalog-1",
+      "synthetic-catalog-2",
+    ]);
+  });
+
   it("excludes drafts consistently from list counts, kind filters and detail", async () => {
     const all = await service.list({ page: 1, pageSize: 10 });
     expect(catalogPageSchema.parse(all).total).toBe(2);
@@ -334,11 +363,13 @@ describe("Payload published views through the unchanged Public read adapter", ()
         .rows,
     ).toEqual([{ count: 3 }]);
     await pool.query(createPublishedCatalogViewsSql);
+    await pool.query(upgradePublishedCatalogSearchViewSql);
   });
 
   it("starts with a restricted public role while denying native drafts and all writes", async () => {
     const role = `cms_read_${randomUUID().replaceAll("-", "")}`;
     const publicViews = [
+      "catalog_search_documents",
       "catalog_entries",
       "catalog_aliases",
       "catalog_contributors",
@@ -357,6 +388,9 @@ describe("Payload published views through the unchanged Public read adapter", ()
       ],
     );
     await adminPool.query(`CREATE ROLE "${role}" NOLOGIN`);
+    await pool.query("INSERT INTO payload_migrations (name) VALUES ($1)", [
+      "20260908_120000_published_search",
+    ]);
     const restrictedConnection = new URL(schemaConnection);
     restrictedConnection.searchParams.set(
       "options",
@@ -392,6 +426,16 @@ describe("Payload published views through the unchanged Public read adapter", ()
           )
         ).rows,
       ).toEqual([{ count: 2 }]);
+      const restrictedAdapter = new PostgresCatalogQueryAdapter(restricted);
+      expect(
+        (
+          await restrictedAdapter.search({
+            q: "合成资料",
+            page: 1,
+            pageSize: 10,
+          })
+        ).items.map(({ id }) => id),
+      ).toEqual(["synthetic-catalog-1", "synthetic-catalog-2"]);
       for (const nativeTable of [
         "catalogs",
         "_catalogs_v",

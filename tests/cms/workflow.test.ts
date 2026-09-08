@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createLocalReq, getPayload, type TypedUser } from "payload";
+import { PostgresCatalogQueryAdapter } from "@moya/catalog-postgres";
 
 import config from "admin/config";
 import {
@@ -87,6 +88,7 @@ beforeAll(async () => {
         "clear",
         "ownership-a",
         "ownership-b",
+        "search",
       ].map(catalogId),
     },
   });
@@ -97,6 +99,159 @@ afterAll(async () => {
 });
 
 describe.sequential("Payload PostgreSQL editorial workflow", () => {
+  it("keeps Search on committed publications through drafts, restore, replay, rollback and withdrawal", async () => {
+    const adapter = new PostgresCatalogQueryAdapter(payload.db.pool);
+    const searchIds = async (q: string) =>
+      (await adapter.search({ q, page: 1, pageSize: 10 })).items.map(
+        ({ id }) => id,
+      );
+    const oldTitle = `合成檢索舊稿${run}`;
+    const newTitle = `合成檢索新稿${run}`;
+    const alias = `合成別名${run}`;
+    const author = `合成作者${run}`;
+    const description = `合成公開簡介${run}`;
+    const privateNote = `合成私有備註${run}`;
+    const first = await saveDraft(await reqFor(automation), {
+      idempotencyKey: `${run}:search-create`,
+      content: {
+        ...complete("search"),
+        title: oldTitle,
+        aliases: [{ alias, aliasType: "alternate" }],
+        contributors: [{ name: author, role: "textAuthor" }],
+        description: { state: "VALUE", value: description },
+        ownerNote: privateNote,
+      },
+    });
+    expect(await searchIds(oldTitle)).toEqual([]);
+    const grant = await approveBatch(await reqFor(owner), {
+      automationUserId: automation.id,
+      items: [{ id: first.id, revision: first.revision }],
+    });
+    const command = {
+      approvalId: grant.approvalId,
+      id: first.id,
+      idempotencyKey: `${run}:search-publish`,
+    };
+    const published = await publishApproved(await reqFor(automation), command);
+    for (const q of [
+      oldTitle,
+      `合成检索旧稿${run}`,
+      alias,
+      author,
+      description,
+    ])
+      expect(await searchIds(q)).toEqual([catalogId("search")]);
+    expect(await searchIds(privateNote)).toEqual([]);
+    expect(await publishApproved(await reqFor(automation), command)).toEqual({
+      ...published,
+      replayed: true,
+    });
+    const versions = await payload.findVersions({
+      collection: "catalogs",
+      where: { parent: { equals: first.id } },
+      sort: "createdAt",
+      depth: 0,
+      req: await reqFor(owner),
+      user: owner,
+      overrideAccess: false,
+    });
+    const draftCommand = {
+      id: first.id,
+      expectedRevision: published.revision,
+      idempotencyKey: `${run}:search-draft`,
+      content: {
+        catalogId: catalogId("search"),
+        sourceId: `source-${run}-search`,
+        kind: "calligraphy",
+        title: newTitle,
+        aliases: [],
+        contributors: [],
+        description: { state: "CLEAR" },
+      },
+    };
+    const edited = await saveDraft(await reqFor(automation), draftCommand);
+    expect(await saveDraft(await reqFor(automation), draftCommand)).toEqual({
+      ...edited,
+      replayed: true,
+    });
+    expect(await searchIds(oldTitle)).toEqual([catalogId("search")]);
+    expect(await searchIds(newTitle)).toEqual([]);
+    const restored = await restoreDraft(await reqFor(owner), {
+      versionId: versions.docs[0]!.id,
+      expectedRevision: edited.revision,
+    });
+    expect(await searchIds(oldTitle)).toEqual([catalogId("search")]);
+    const revised = await saveDraft(await reqFor(automation), {
+      ...draftCommand,
+      expectedRevision: restored.revision,
+      idempotencyKey: `${run}:search-revised`,
+    });
+
+    // A completed native afterChange must still roll back with its caller's
+    // transaction. A second public connection never sees the uncommitted title.
+    const transactionalReq = await reqFor(owner);
+    const transactionID = await payload.db.beginTransaction();
+    if (!transactionID) throw new Error("Synthetic transaction required");
+    transactionalReq.transactionID = transactionID;
+    try {
+      await payload.update({
+        collection: "catalogs",
+        id: first.id,
+        data: { revision: revised.revision, _status: "published" },
+        req: transactionalReq,
+        user: owner,
+        overrideAccess: false,
+      });
+      expect(await searchIds(oldTitle)).toEqual([catalogId("search")]);
+      expect(await searchIds(newTitle)).toEqual([]);
+    } finally {
+      await payload.db.rollbackTransaction(transactionID);
+      delete transactionalReq.transactionID;
+    }
+    expect(
+      (await readDraft(await reqFor(owner), { id: first.id })).revision,
+    ).toBe(revised.revision);
+    expect(await searchIds(oldTitle)).toEqual([catalogId("search")]);
+    const republished = await payload.update({
+      collection: "catalogs",
+      id: first.id,
+      data: { revision: revised.revision, _status: "published" },
+      req: await reqFor(owner),
+      user: owner,
+      overrideAccess: false,
+    });
+    expect(await searchIds(newTitle)).toEqual([catalogId("search")]);
+    for (const q of [oldTitle, alias, author, description])
+      expect(await searchIds(q)).toEqual([]);
+    if (typeof republished.revision !== "number")
+      throw new Error("Synthetic published revision required");
+    await payload.update({
+      collection: "catalogs",
+      id: first.id,
+      draft: false,
+      data: { revision: republished.revision, _status: "draft" },
+      req: await reqFor(owner),
+      user: owner,
+      overrideAccess: false,
+    });
+    expect(await searchIds(newTitle)).toEqual([]);
+    expect(
+      (
+        await payload.db.pool.query(
+          "SELECT catalog_id FROM catalog_search_documents WHERE catalog_id = $1",
+          [catalogId("search")],
+        )
+      ).rows,
+    ).toEqual([]);
+    // Replaying an old approved command after withdrawal is only a receipt read.
+    expect(await publishApproved(await reqFor(automation), command)).toEqual({
+      ...published,
+      replayed: true,
+    });
+    expect(await searchIds(oldTitle)).toEqual([]);
+    expect(await searchIds(newTitle)).toEqual([]);
+  });
+
   it("saves incomplete legal drafts, records real receipts, and replays without new versions", async () => {
     const content = {
       catalogId: catalogId("draft"),

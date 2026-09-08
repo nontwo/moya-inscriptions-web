@@ -21,6 +21,7 @@
     "@moya/design-tokens": "workspace:*",
     "@moya/image": "workspace:*",
     "@moya/public-api": "workspace:*",
+    "@moya/search": "workspace:*",
     "@moya/ui": "workspace:*",
     "@playwright/test": "1.62.1",
     "@testing-library/dom": "10.4.1",

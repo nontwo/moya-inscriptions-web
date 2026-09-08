@@ -1,3 +1,8 @@
+import {
+  CatalogSearch,
+  CatalogSearchNavigationAction,
+  CatalogSearchProvider,
+} from "../features/search/catalog-search";
 import { parseHomeFeed } from "../features/home/home-feed";
 import { loadProductionProductStates } from "../features/product-application/load-production-product-states";
 import { T02pProductPreview } from "../features/product-preview/t02p-product-preview";
@@ -22,11 +27,15 @@ export default async function FormalPage({
       : null;
 
   return (
-    <T02pProductPreview
-      initialHomeFeed={initialTopicId === null ? initialHomeFeed : "topics"}
-      initialPlatform={initialPlatform}
-      initialTopicId={initialTopicId}
-      states={states}
-    />
+    <CatalogSearchProvider>
+      <T02pProductPreview
+        initialHomeFeed={initialTopicId === null ? initialHomeFeed : "topics"}
+        initialPlatform={initialPlatform}
+        initialTopicId={initialTopicId}
+        navigationAction={<CatalogSearchNavigationAction />}
+        productUtility={<CatalogSearch />}
+        states={states}
+      />
+    </CatalogSearchProvider>
   );
 }

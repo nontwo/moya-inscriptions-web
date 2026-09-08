@@ -1,4 +1,12 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -60,6 +68,22 @@ try {
     },
     recursive: true,
   });
+  // Only the disposable E2E copy disables the dev badge: its bottom-left
+  // portal covers the accepted mobile Search submit button. Error overlays
+  // remain enabled, and interaction tests continue using normal pointer clicks.
+  const nextConfigPath = join(temporaryWebRoot, "next.config.ts");
+  const nextConfig = readFileSync(nextConfigPath, "utf8");
+  const exportStatement = "export default nextConfig;";
+  if (nextConfig.split(exportStatement).length !== 2) {
+    throw new Error("Unexpected disposable Next configuration export");
+  }
+  writeFileSync(
+    nextConfigPath,
+    nextConfig.replace(
+      exportStatement,
+      "export default { ...nextConfig, devIndicators: false } satisfies NextConfig;",
+    ),
+  );
   symlinkSync(
     join(repositoryRoot, "docs"),
     join(temporaryRepositoryRoot, "docs"),

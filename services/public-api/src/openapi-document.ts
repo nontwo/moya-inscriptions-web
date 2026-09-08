@@ -10,6 +10,10 @@ import {
   catalogListTransportQueryJsonSchema,
   catalogPageJsonSchema,
   catalogSummaryJsonSchema,
+  catalogSearchMatchKindJsonSchema,
+  catalogSearchTransportQueryJsonSchema,
+  catalogSearchItemJsonSchema,
+  catalogSearchPageJsonSchema,
   healthResponseJsonSchema,
   mediaIdJsonSchema,
   publicMediaJsonSchema,
@@ -103,6 +107,33 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
+    "/v1/catalog-search": {
+      get: {
+        operationId: "searchCatalog",
+        summary: "Search the public Catalog",
+        description:
+          "Required nonblank q (at most 200 UTF-16 code units), optional kind/page/pageSize. Unknown, duplicate or invalid parameters return INVALID_QUERY. Fixed OpenCC 1.4.1 t2s normalization and whitespace-separated same-record AND; percent, underscore and backslash are literal. Original title exact, existing alias exact, normalized exact, title/alias partial, structured and body tiers apply before deterministic CatalogId pagination. No typo correction, unapproved variants, historicalContext or scholarlyResearch. Missing/stale derived data is SERVICE_UNAVAILABLE, never an empty-result fallback.",
+        parameters: ["q", "kind", "page", "pageSize"].map((name) => ({
+          ...queryParameter(
+            name,
+            schemaProperty(catalogSearchTransportQueryJsonSchema, name),
+          ),
+          required: name === "q",
+        })),
+        responses: {
+          "200": jsonResponse(
+            "A page of ordered Catalog search results with truthful matchKind; query text is not echoed.",
+            "CatalogSearchPage",
+          ),
+          "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
+          "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
+          "503": apiErrorResponse(
+            "Service is temporarily unavailable",
+            "SERVICE_UNAVAILABLE",
+          ),
+        },
+      },
+    },
     "/v1/catalog/{catalogId}": {
       get: {
         operationId: "getCatalogById",
@@ -146,6 +177,9 @@ export const openApiDocument: JsonObject = {
       CatalogSummary: catalogSummaryJsonSchema,
       CatalogDetail: catalogDetailJsonSchema,
       CatalogPage: catalogPageJsonSchema,
+      CatalogSearchMatchKind: catalogSearchMatchKindJsonSchema,
+      CatalogSearchItem: catalogSearchItemJsonSchema,
+      CatalogSearchPage: catalogSearchPageJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     },

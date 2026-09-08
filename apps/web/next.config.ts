@@ -9,6 +9,10 @@ const allowedDevOrigins =
     : [];
 
 const nextConfig: NextConfig = {
+  // Search text is private runtime input; keep ordinary dev request logs intact.
+  logging: {
+    incomingRequests: { ignore: [/^\/api\/catalog-search(?:[/?]|$)/u] },
+  },
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
   outputFileTracingRoot: new URL("../../", import.meta.url).pathname,
   outputFileTracingIncludes: {

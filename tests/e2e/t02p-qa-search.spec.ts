@@ -147,7 +147,12 @@ test("QA Search and Filter stay isolated from Formal and clean Development", asy
     expect(response?.status()).toBe(200);
     await expect(page.locator("[data-t02p-qa-search]")).toHaveCount(0);
     await expect(page.locator("[data-inscription-filter]")).toHaveCount(0);
-    await expect(page.locator("[data-search-trigger]")).toHaveCount(0);
+    await expect(page.locator("[data-search-trigger]")).toHaveCount(
+      path === "/" ? 1 : 0,
+    );
+    await expect(page.locator("[data-catalog-search]")).toHaveCount(
+      path === "/" ? 1 : 0,
+    );
     await expect(page.locator("[data-open-settings]")).toHaveCount(0);
   }
 

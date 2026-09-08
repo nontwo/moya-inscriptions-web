@@ -15,7 +15,8 @@ import {
   mutationState,
   setMutationState,
 } from "./state";
-import { lockEditorialKey } from "./transaction";
+import { editorialTransaction, lockEditorialKey } from "./transaction";
+import { synchronizePublishedCatalogSearch } from "../published/search";
 import { claimEditorialIdentities } from "./identities";
 import { validateCatalogMedia } from "../media/validation";
 
@@ -243,6 +244,21 @@ export const catalogHooks: NonNullable<CollectionConfig["hooks"]> = {
         data._status = "published";
       }
       return data;
+    },
+  ],
+  afterChange: [
+    async ({ data, doc, req }) => {
+      const state = mutationState(req);
+      if (state?.mode === "publish" || state?.mode === "withdraw") {
+        if (typeof data.catalogId !== "string")
+          throw new EditorialError("CONTENT_INVALID", 422);
+        await synchronizePublishedCatalogSearch(
+          await editorialTransaction(req),
+          data.catalogId,
+          state.mode === "publish",
+        );
+      }
+      return doc;
     },
   ],
   afterOperation: [

@@ -456,6 +456,240 @@
         "required": ["items", "total", "page", "pageSize", "totalPages"],
         "type": "object"
       },
+      "CatalogSearchItem": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": ["inscription", "calligraphy"],
+            "type": "string"
+          },
+          "matchKind": {
+            "enum": [
+              "title-exact",
+              "alias-exact",
+              "normalized-exact",
+              "title-alias-partial",
+              "structured",
+              "body"
+            ],
+            "type": "string"
+          },
+          "periodLabel": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "representativeMedia": {
+            "additionalProperties": false,
+            "properties": {
+              "alt": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^\\S+$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "image",
+                "type": "string"
+              },
+              "src": {
+                "allOf": [
+                  {
+                    "format": "uri",
+                    "type": "string"
+                  },
+                  {
+                    "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                    "type": "string"
+                  }
+                ]
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": ["id", "kind", "src", "alt", "width", "height"],
+            "type": "object"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["id", "kind", "title", "aliases", "matchKind"],
+        "type": "object"
+      },
+      "CatalogSearchMatchKind": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "enum": [
+          "title-exact",
+          "alias-exact",
+          "normalized-exact",
+          "title-alias-partial",
+          "structured",
+          "body"
+        ],
+        "type": "string"
+      },
+      "CatalogSearchPage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "aliases": {
+                  "items": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^\\S+$",
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["inscription", "calligraphy"],
+                  "type": "string"
+                },
+                "matchKind": {
+                  "enum": [
+                    "title-exact",
+                    "alias-exact",
+                    "normalized-exact",
+                    "title-alias-partial",
+                    "structured",
+                    "body"
+                  ],
+                  "type": "string"
+                },
+                "periodLabel": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "representativeMedia": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "alt": {
+                      "maxLength": 2000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "height": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^\\S+$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "image",
+                      "type": "string"
+                    },
+                    "src": {
+                      "allOf": [
+                        {
+                          "format": "uri",
+                          "type": "string"
+                        },
+                        {
+                          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["id", "kind", "src", "alt", "width", "height"],
+                  "type": "object"
+                },
+                "summary": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "title": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["id", "kind", "title", "aliases", "matchKind"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "page": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "pageSize": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalPages": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total", "page", "pageSize", "totalPages"],
+        "type": "object"
+      },
       "CatalogSummary": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -770,6 +1004,96 @@
           }
         },
         "summary": "List public Catalog entries"
+      }
+    },
+    "/v1/catalog-search": {
+      "get": {
+        "description": "Required nonblank q (at most 200 UTF-16 code units), optional kind/page/pageSize. Unknown, duplicate or invalid parameters return INVALID_QUERY. Fixed OpenCC 1.4.1 t2s normalization and whitespace-separated same-record AND; percent, underscore and backslash are literal. Original title exact, existing alias exact, normalized exact, title/alias partial, structured and body tiers apply before deterministic CatalogId pagination. No typo correction, unapproved variants, historicalContext or scholarlyResearch. Missing/stale derived data is SERVICE_UNAVAILABLE, never an empty-result fallback.",
+        "operationId": "searchCatalog",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "enum": ["inscription", "calligraphy"],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "maxLength": 16,
+              "pattern": "^[1-9]\\d*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "maxLength": 16,
+              "pattern": "^[1-9]\\d*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSearchPage"
+                }
+              }
+            },
+            "description": "A page of ordered Catalog search results with truthful matchKind; query text is not echoed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query; error code INVALID_QUERY."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "summary": "Search the public Catalog"
       }
     },
     "/v1/catalog/{catalogId}": {

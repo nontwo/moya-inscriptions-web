@@ -4,10 +4,7 @@ import type { PayloadRequest } from "payload";
 import { EditorialError } from "./errors";
 
 /** Uses the exact Payload transaction; falling back to the pool is unsafe. */
-export const lockEditorialKey = async (
-  req: PayloadRequest,
-  key: string,
-): Promise<void> => {
+export const editorialTransaction = async (req: PayloadRequest) => {
   const transactionID = await req.transactionID;
   if (!transactionID) throw new EditorialError("TRANSACTION_REQUIRED", 503);
   const adapter = req.payload.db as unknown as Pick<
@@ -16,9 +13,17 @@ export const lockEditorialKey = async (
   >;
   const session = adapter.sessions?.[String(transactionID)];
   if (!session) throw new EditorialError("TRANSACTION_REQUIRED", 503);
+  return session.db;
+};
+
+export const lockEditorialKey = async (
+  req: PayloadRequest,
+  key: string,
+): Promise<void> => {
+  const db = await editorialTransaction(req);
   try {
-    await session.db.execute(sql`SET LOCAL lock_timeout = '5s'`);
-    await session.db.execute(
+    await db.execute(sql`SET LOCAL lock_timeout = '5s'`);
+    await db.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`moya-editorial:${key}`}, 0))`,
     );
   } catch {

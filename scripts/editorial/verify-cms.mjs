@@ -255,6 +255,15 @@ async function main() {
         ],
       ],
       [
+        "search-build",
+        ".",
+        [
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "packages/search/tsconfig.json",
+        ],
+      ],
+      [
         "api-build",
         ".",
         ["node_modules/typescript/bin/tsc", "-p", "services/api/tsconfig.json"],

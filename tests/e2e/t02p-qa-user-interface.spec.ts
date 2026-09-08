@@ -63,7 +63,12 @@ test("QA user UI is isolated from clean Development and formal routes", async ({
     expect(response?.status()).toBe(200);
     await expect(page.locator("[data-qa-user-interface]")).toHaveCount(0);
     await expect(page.locator("[data-open-settings]")).toHaveCount(0);
-    await expect(page.locator("[data-search-trigger]")).toHaveCount(0);
+    await expect(page.locator("[data-search-trigger]")).toHaveCount(
+      path === "/" ? 1 : 0,
+    );
+    await expect(page.locator("[data-catalog-search]")).toHaveCount(
+      path === "/" ? 1 : 0,
+    );
   }
 
   const { shell } = await openQa(page);

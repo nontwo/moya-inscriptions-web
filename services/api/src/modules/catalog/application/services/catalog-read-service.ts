@@ -2,14 +2,19 @@ import type {
   CatalogDetail,
   CatalogId,
   CatalogPage,
+  CatalogSearchPage,
   MediaId,
 } from "@moya/contracts";
 
 import { CatalogMediaResolutionError } from "../errors/catalog-media-resolution-error.js";
+import { CatalogQueryUnavailableError } from "../errors/catalog-query-unavailable-error.js";
+import type { CatalogSearchQueryPort } from "../ports/catalog-search-query-port.js";
+import type { CatalogSearchQuery } from "../queries/catalog-search-query.js";
 
 import {
   mapCatalogDetail,
   mapCatalogPage,
+  mapCatalogSearchPage,
 } from "../mappers/catalog-public-contract-mapper.js";
 
 import type { CatalogQueryPort } from "../ports/catalog-query-port.js";
@@ -51,6 +56,7 @@ export class CatalogReadService {
   constructor(
     private readonly catalogQueryPort: CatalogQueryPort,
     private readonly storageUrlResolver: StorageUrlResolver,
+    private readonly catalogSearchQueryPort?: CatalogSearchQueryPort,
   ) {}
 
   private async resolveMedia(locators: readonly StorageMediaLocator[]) {
@@ -79,6 +85,15 @@ export class CatalogReadService {
       detailMediaLocators(projection),
     );
     return mapCatalogDetail(projection, resolvedMedia);
+  }
+
+  async search(query: CatalogSearchQuery): Promise<CatalogSearchPage> {
+    if (!this.catalogSearchQueryPort) throw new CatalogQueryUnavailableError();
+    const projection = await this.catalogSearchQueryPort.search(query);
+    const resolvedMedia = await this.resolveMedia(
+      listMediaLocators(projection),
+    );
+    return mapCatalogSearchPage(projection, resolvedMedia);
   }
 }
 
