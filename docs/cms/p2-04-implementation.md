@@ -65,6 +65,49 @@ completion.
 Current remote Pilot and Production are untouched. Existing content write paths
 remain active until a specifically authorized cutover freezes their privileges.
 
+## Bounded CI dependency correction
+
+Draft PR #102 first ran at `16612503f805c0985ca78bcf3c93fde244b0f0c3`.
+[CI run 34232280412](https://github.com/nontwo/moya-inscriptions-web/actions/runs/34232280412)
+failed its ordinary-test job at 119,001 ms, exit 124. PostgreSQL preparation and
+integration took about 18.34 seconds, scanner tests 10.52 seconds, and the Turbo
+phase 81.397 seconds. Only 12/13 executable tasks completed. The unfinished
+`@moya/tests#test` waited for a cold Admin build (45 seconds compilation plus
+6.2 seconds TypeScript). This failed run remains evidence; absence of an
+assertion failure does not make an incomplete run pass.
+
+The ordinary tests import `admin/fields` and `admin/migration` as TypeScript
+source; the migration CLI test also runs source through the installed Payload
+CLI. They do not consume Admin `.next` output. The other ten direct workspace
+dependencies expose runtime JavaScript from `dist`, which the tests do consume.
+Only `@moya/tests#test` now explicitly selects those ten library builds. The
+Admin workspace dependency, global test/build `^build` rules, production build,
+CMS database/browser checks, public smoke and security checks remain intact.
+
+PostgreSQL preparation invokes the same Turbo library build tasks as the later
+ordinary-test phase. All eight preparation task hashes match the later graph, so
+only identical source/configuration/dependency versions can reuse output. Cold
+preparation, migrations, PostgreSQL tests, scanner tests and ordinary tests
+remain under one unchanged 119-second execution deadline within the 120-second
+command allowance; no build is moved outside the timer. Regression checks
+inspect actual Turbo dry graphs and the retained CI entry points.
+
+This correction changes only `turbo.json`, `scripts/verify.mjs`, the existing
+`tests/unit/architecture/ci-e2e-policy.test.ts`, and this implementation record.
+No product behavior, dependency version, test exclusion or task scope changes.
+
+The corrected source passed local lint (7.3 seconds), typecheck (5.2 seconds),
+production build (13/13 cached tasks) and ordinary verification (42.7 seconds,
+12/12 tasks, 11 cached). Ordinary reports contain 679 common and 732 Web tests;
+these local cached results do not establish cold Linux completion. Independent
+review closed a dry-graph subprocess cleanup finding by invoking the installed
+native Turbo executable directly. The two added regressions passed with the
+existing file's 23 tests. Isolated Linux preparation first rejected accidental
+AppleDouble archive entries, then an old Git lacking `--no-lazy-fetch`; both
+environment failures are retained, and no safety assertion was removed. Exact
+new-Head Linux and GitHub results will be recorded in the same Draft PR,
+separately from the initial candidate's evidence below.
+
 ## Observed local evidence (synthetic data only)
 
 | Check                                      | Observed result                                                                                                                                                              | Practical limit                                                                                        |
@@ -221,6 +264,7 @@ adds the narrow existing-scanner correction described above.
 - `scripts/editorial/batch.mjs`
 - `scripts/editorial/verify-cms.mjs`
 - `scripts/editorial/verify-owner-browser.mjs`
+- `scripts/verify.mjs`
 - `services/backend-production/src/composition.ts`
 - `services/catalog-postgres/src/readiness.ts`
 - `tests/cms/media.test.ts`
@@ -233,6 +277,7 @@ adds the narrow existing-scanner correction described above.
 - `tests/package.json`
 - `tests/tsconfig.json`
 - `tests/unit/architecture/contracts-surface.test.ts`
+- `tests/unit/architecture/ci-e2e-policy.test.ts`
 - `tests/unit/architecture/current-truth-config.test.ts`
 - `tests/unit/architecture/dependency-boundaries.test.ts`
 - `tests/unit/architecture/workspace-scanner.ts`
@@ -241,3 +286,4 @@ adds the narrow existing-scanner correction described above.
 - `tests/unit/editorial-migration-cli.test.ts`
 - `tests/unit/editorial-migration.test.ts`
 - `tests/unit/editorial-model.test.ts`
+- `turbo.json`

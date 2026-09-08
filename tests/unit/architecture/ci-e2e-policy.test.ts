@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -31,6 +33,142 @@ const gateModule = (await import(
 };
 const { classifyE2eScope: classify, classifyGitDiff } = scopeModule;
 const { assertBrowserGate: gate, assertSmokeReport } = gateModule;
+
+const requireTurbo = createRequire(
+  createRequire(root + "package.json").resolve("turbo/package.json"),
+);
+const turboPlatform =
+  process.platform === "win32" ? "windows" : process.platform;
+const turboArch = process.arch === "x64" ? "64" : process.arch;
+const turboExtension = process.platform === "win32" ? ".exe" : "";
+const nativeTurbo = (() => {
+  for (const prefix of ["@turbo/", "turbo-"]) {
+    try {
+      return requireTurbo.resolve(
+        `${prefix}${turboPlatform}-${turboArch}/bin/turbo${turboExtension}`,
+      );
+    } catch {
+      // Resolve only installed native packages; never invoke auto-install.
+    }
+  }
+  throw new Error("TURBO_NATIVE_BINARY_UNAVAILABLE");
+})();
+
+const taskGraph = (task: string, filters: string[]) => {
+  const result = spawnSync(
+    nativeTurbo,
+    [
+      "run",
+      task,
+      ...filters.map((filter) => "--filter=" + filter),
+      "--dry=json",
+      "--no-daemon",
+    ],
+    {
+      cwd: root,
+      env: { ...process.env, TURBO_TELEMETRY_DISABLED: "1" },
+      encoding: "utf8",
+      timeout: 10_000,
+      killSignal: "SIGKILL",
+      maxBuffer: 5 * 1024 * 1024,
+    },
+  );
+  // Raw task output can include environment metadata and local paths.
+  if (result.error || result.status !== 0)
+    throw new Error("TURBO_DRY_RUN_FAILED");
+  try {
+    const plan = JSON.parse(result.stdout) as {
+      tasks: { taskId: string; dependencies: string[]; hash: string }[];
+    };
+    return new Map(plan.tasks.map((entry) => [entry.taskId, entry]));
+  } catch {
+    throw new Error("TURBO_DRY_RUN_UNREADABLE");
+  }
+};
+
+describe("ordinary tests and production task boundaries", () => {
+  it("retains every workspace library build without building the Admin app for source imports", async () => {
+    const manifest = JSON.parse(
+      await readFile(root + "tests/package.json", "utf8"),
+    ) as { devDependencies: Record<string, string> };
+    expect(manifest.devDependencies.admin).toBe("workspace:*");
+    const requireTests = createRequire(root + "tests/package.json");
+    expect(
+      requireTests
+        .resolve("admin/fields")
+        .endsWith("/apps/admin/src/fields/editorial-fields.ts"),
+    ).toBe(true);
+    expect(
+      requireTests
+        .resolve("admin/migration")
+        .endsWith("/apps/admin/src/migration/legacy.ts"),
+    ).toBe(true);
+
+    const libraryBuilds = Object.entries(manifest.devDependencies)
+      .filter(
+        ([name, version]) =>
+          name !== "admin" && version.startsWith("workspace:"),
+      )
+      .map(([name]) => name + "#build")
+      .sort();
+    const graph = taskGraph("test", ["@moya/tests"]);
+    expect(
+      [...(graph.get("@moya/tests#test")?.dependencies ?? [])].sort(),
+    ).toEqual(libraryBuilds);
+    expect([...graph.keys()].sort()).toEqual(
+      [...libraryBuilds, "@moya/tests#test"].sort(),
+    );
+    expect(graph.has("admin#build")).toBe(false);
+    expect(graph.has("web#build")).toBe(false);
+
+    const filters = [
+      "@moya/backend-production...",
+      "@moya/catalog-importer...",
+    ];
+    const preparation = taskGraph("build", filters);
+    for (const [id, task] of preparation) {
+      expect(task.hash).toMatch(/^[a-f0-9]{16}$/);
+      expect(task.hash).toBe(graph.get(id)?.hash);
+    }
+    const verify = await readFile(root + "scripts/verify.mjs", "utf8");
+    const postgresPlan = verify
+      .split("const postgres = [")[1]
+      ?.split("];", 1)[0];
+    expect(postgresPlan).toMatch(
+      /pnpm\(\s*"exec",\s*"turbo",\s*"run",\s*"build",/,
+    );
+    for (const filter of filters)
+      expect(postgresPlan).toContain(JSON.stringify("--filter=" + filter));
+    expect(verify).toContain(
+      'test: [...(process.env.TEST_DATABASE_URL ? postgres : []), pnpm("test")]',
+    );
+    expect(verify).toContain("runWithinBudget(plans[mode])");
+  });
+
+  it("retains production app builds and native CMS browser validation", async () => {
+    const graph = taskGraph("build", ["admin", "web"]);
+    expect(graph.has("admin#build")).toBe(true);
+    expect(graph.has("web#build")).toBe(true);
+    expect(graph.get("admin#build")?.dependencies).toContain(
+      "@moya/contracts#build",
+    );
+    const [workflow, rootManifest] = await Promise.all([
+      readFile(root + ".github/workflows/ci.yml", "utf8"),
+      readFile(root + "package.json", "utf8"),
+    ]);
+    expect(JSON.parse(rootManifest).scripts).toMatchObject({
+      build: "turbo run build",
+      "test:cms": "node scripts/editorial/verify-cms.mjs",
+      "test:cms:browser": "node scripts/editorial/verify-owner-browser.mjs",
+    });
+    const cmsJob = workflow.split("\n  cms:\n")[1]?.split("\n  build:\n")[0];
+    expect(cmsJob).toContain("run: pnpm test:cms");
+    expect(cmsJob).toMatch(
+      /pnpm --filter admin build[\s\S]*?run: pnpm test:cms:browser/,
+    );
+    expect(workflow).toContain("run: node scripts/verify.mjs build");
+  });
+});
 
 describe("bounded daily browser selection", () => {
   it.each([

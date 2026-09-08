@@ -117,12 +117,16 @@ if (
   const pnpm = (...args) => ["pnpm", ...args];
   const smoke = [process.execPath, "scripts/ci-e2e-smoke.mjs"];
   const postgres = [
+    // Use the same content-hashed build tasks as the later test phase. All
+    // preparation stays inside this run's deadline; only identical library
+    // outputs can be reused. Admin source exports do not need a Next build.
     pnpm(
-      "--filter",
-      "@moya/backend-production...",
-      "--filter",
-      "@moya/catalog-importer...",
+      "exec",
+      "turbo",
+      "run",
       "build",
+      "--filter=@moya/backend-production...",
+      "--filter=@moya/catalog-importer...",
     ),
     pnpm("db:migrate"),
     pnpm("test:postgres"),
