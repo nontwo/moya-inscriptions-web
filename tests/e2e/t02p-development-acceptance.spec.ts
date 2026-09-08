@@ -1341,6 +1341,40 @@ test("Home touch release commits once without post-release programmatic drift", 
   });
 
   const feeds = ["discover", "nearby", "topics"] as const;
+  const expectSettledFeed = async (feed: (typeof feeds)[number]) => {
+    // Confirm the full visual tail before and after the short out-and-back
+    // gesture; the preceding 30 releases intentionally exercise interruption.
+    await expect
+      .poll(
+        () =>
+          pager.evaluate(async (node, targetFeed) => {
+            const frame = node as HTMLElement;
+            const panel = frame.querySelector<HTMLElement>(
+              `[data-home-feed-panel="${targetFeed}"]`,
+            );
+            if (panel === null) throw new Error("Missing settled Home panel");
+            const settled = () =>
+              frame.dataset.homePagerScrolling === "false" &&
+              Math.abs(
+                panel.getBoundingClientRect().left -
+                  frame.getBoundingClientRect().left,
+              ) < 1;
+            if (!settled()) return false;
+            // Check consecutive animation frames, including the first scroll frame
+            // where an initially false motion attribute alone would be misleading.
+            for (let index = 0; index < 2; index += 1) {
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => resolve()),
+              );
+              if (!settled()) return false;
+            }
+            return true;
+          }, feed),
+        { intervals: [16] },
+      )
+      .toBe(true);
+    await expect(home).toHaveAttribute("data-active-home-feed", feed);
+  };
   let currentIndex = 0;
   for (let iteration = 0; iteration < 30; iteration += 1) {
     const direction =
@@ -1359,6 +1393,11 @@ test("Home touch release commits once without post-release programmatic drift", 
         if (source === undefined || target === undefined) {
           throw new Error("Missing Home feed panel");
         }
+        // Business selection can precede visual settling. Continue from the
+        // track's actual position instead of assuming it is at the source snap.
+        const distance =
+          target.getBoundingClientRect().left -
+          frame.getBoundingClientRect().left;
         for (const [type, progress] of [
           ["touchstart", 0],
           ["touchmove", 0.25],
@@ -1368,9 +1407,7 @@ test("Home touch release commits once without post-release programmatic drift", 
           const point = {
             identifier: 1,
             target: frame,
-            clientX:
-              frame.clientWidth * 0.75 -
-              (target.offsetLeft - source.offsetLeft) * progress,
+            clientX: frame.clientWidth * 0.75 - distance * progress,
             clientY: 300,
           };
           const event = new Event(type, { bubbles: true, cancelable: true });
@@ -1393,7 +1430,8 @@ test("Home touch release commits once without post-release programmatic drift", 
   const activeBeforeShortDrag = feeds[currentIndex];
   if (activeBeforeShortDrag === undefined)
     throw new Error("Missing active feed");
-  await pager.evaluate((node, sourceIndex) => {
+  await expectSettledFeed(activeBeforeShortDrag);
+  await pager.evaluate(async (node, sourceIndex) => {
     const frame = node as HTMLElement;
     const panels = Array.from(
       frame.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
@@ -1422,6 +1460,9 @@ test("Home touch release commits once without post-release programmatic drift", 
         changedTouches: { value: [point] },
       });
       frame.dispatchEvent(event);
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     }
     const end = new Event("touchend", { bubbles: true, cancelable: true });
     Object.defineProperty(end, "touches", { value: [] });
@@ -1431,6 +1472,8 @@ test("Home touch release commits once without post-release programmatic drift", 
     "data-active-home-feed",
     activeBeforeShortDrag,
   );
+
+  await expectSettledFeed(activeBeforeShortDrag);
 
   const evidence = await pager.evaluate((node) => {
     const frame = node as HTMLElement & {
@@ -1443,6 +1486,71 @@ test("Home touch release commits once without post-release programmatic drift", 
   });
   expect(evidence?.activeFeedChanges).toHaveLength(30);
   expect(evidence?.programmaticScrolls).toEqual([]);
+
+  // Separately retain rapid interruption coverage: start the reverse gesture
+  // from the moving track, before the first release has visually settled.
+  const interruption = await pager.evaluate(async (node) => {
+    const frame = node as HTMLElement;
+    const surface = frame.closest<HTMLElement>("[data-home-surface]")!;
+    const target = frame.querySelector<HTMLElement>(
+      '[data-home-feed-panel="nearby"]',
+    )!;
+    const track = target.parentElement!;
+    const touch = (type: string, x: number) => {
+      const point = { identifier: 1, target: frame, clientX: x, clientY: 300 };
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: type === "touchend" ? [] : [point] },
+        changedTouches: { value: [point] },
+      });
+      frame.dispatchEvent(event);
+    };
+    const drag = async (from: number, to: number) => {
+      for (let step = 1; step <= 8; step += 1) {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+        touch(
+          "touchmove",
+          frame.clientWidth * (from + ((to - from) * step) / 8),
+        );
+      }
+      touch("touchend", frame.clientWidth * to);
+    };
+    touch("touchstart", frame.clientWidth * 0.8);
+    await drag(0.8, 0.2);
+    const firstCommit = surface.dataset.activeHomeFeed;
+    const remaining = Math.abs(
+      target.getBoundingClientRect().left - frame.getBoundingClientRect().left,
+    );
+    const beforeReverse = track.getBoundingClientRect().left;
+    touch("touchstart", frame.clientWidth * 0.2);
+    const afterReverseStart = track.getBoundingClientRect().left;
+    await drag(0.2, 0.8);
+    return { firstCommit, remaining, beforeReverse, afterReverseStart };
+  });
+  expect(interruption.firstCommit).toBe("nearby");
+  expect(interruption.remaining).toBeGreaterThan(2);
+  expect(interruption.afterReverseStart).toBe(interruption.beforeReverse);
+  await expect(home).toHaveAttribute("data-active-home-feed", "discover");
+  await expectSettledFeed("discover");
+  const interruptedEvidence = await pager.evaluate(
+    (node) =>
+      (
+        node as HTMLElement & {
+          __r03NativeSettleEvidence?: {
+            activeFeedChanges: string[];
+            programmaticScrolls: number[];
+          };
+        }
+      ).__r03NativeSettleEvidence,
+  );
+  expect(interruptedEvidence?.activeFeedChanges).toEqual([
+    ...evidence!.activeFeedChanges,
+    "nearby",
+    "discover",
+  ]);
+  expect(interruptedEvidence?.programmaticScrolls).toEqual([]);
 });
 
 test("Home PC pager accepts only explicit horizontal wheel input", async ({
