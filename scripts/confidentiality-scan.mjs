@@ -137,7 +137,7 @@ const PRIMITIVE =
 const CREDENTIAL_NAME =
   /^(?:(?:[A-Za-z0-9]+[_-])*(?:password|passwd|pwd|secret[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|security[_-]?token|session[_-]?token|client[_-]?secret|token)|(?:db|database|cos|cloud)?(?:Password|SecretKey|ApiKey|AccessToken|RefreshToken)|authorization|cookie)$/i;
 function syntax(filename) {
-  return /\.(?:[cm]?js|jsx|tsx?)$/i.test(filename)
+  return /\.(?:[cm]?js|jsx|tsx?|py)$/i.test(filename)
     ? "code"
     : /(?:^|\.)env(?:\.|$)|\.(?:ini|conf|service|timer|ya?ml|json|toml)$/i.test(
           filename,
@@ -169,14 +169,15 @@ function literalFindings(text, filename) {
   ))
     add(m.index, "AUTH_MATERIAL");
   const assignment =
-    /(?:\b([A-Za-z_][\w-]*)|["']([A-Za-z_][\w-]*)["'])[ \t]*[:=][ \t]*(?:(["'])([^\r\n]*?)\3|([^\s,;#{}()[\]"'`]+))/g;
+    /(?:\b([A-Za-z_][\w-]*)|["']([A-Za-z_][\w-]*)["'])[ \t]*(?::=|!?={1,3}|:(?!=))[ \t]*(?:(["'])([^\r\n]*?)\3|([^\s,;#{}()[\]"'`]+))/g;
   let m;
   while ((m = assignment.exec(text))) {
     // Inspect nested assignments, e.g. systemd Environment="API_KEY=...".
     assignment.lastIndex = m.index + 1;
     const name = m[1] ?? m[2];
     if (!CREDENTIAL_NAME.test(name)) continue;
-    const value = m[4] ?? m[5];
+    let value = m[4] ?? m[5];
+    if (!m[3] && syntax(filename) === "code") value = value.replace(/:$/, "");
     // A closing source string followed by concatenation is not a literal value.
     if (syntax(filename) === "code" && /^\s*\+\s*$/.test(value)) continue;
     // Package versions and auth field declarations are not auth material.

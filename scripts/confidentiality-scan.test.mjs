@@ -149,6 +149,21 @@ test("types, references, relative imports and versions are not credential litera
     categories("https://example.invalid/search?code=9781234567890", "notes.md"),
     [],
   );
+  for (const text of [
+    'username, password = value["username"], value["password"]',
+    "username, password = load_auth(args.auth_file)",
+    "wrong_password = secrets.token_urlsafe(32)",
+    "while wrong_password == password:",
+    "headers, body = authenticated(asset_path, check_wrong_password=False)",
+  ])
+    assert.deepEqual(categories(text, "probe.py"), []);
+  for (const operator of ["=", ":=", "==", "!=", "===", "!=="])
+    assert.ok(
+      categories(
+        ["password", operator, '"opaqueCredential123456789"'].join(" "),
+        "probe.py",
+      ).length,
+    );
 });
 test("ordinary identifiers, certificates, public keys and readable artifacts pass", () => {
   for (const filename of [
