@@ -37,7 +37,10 @@ export const checkPostgresReadiness = async (pool: Pool): Promise<void> => {
   }
 };
 
-export const assertPostgresStartupReady = async (pool: Pool): Promise<void> => {
+export const assertPostgresStartupReady = async (
+  pool: Pool,
+  source: "legacy" | "payload" = "legacy",
+): Promise<void> => {
   try {
     const client = await acquireClient(pool);
     try {
@@ -59,7 +62,36 @@ export const assertPostgresStartupReady = async (pool: Pool): Promise<void> => {
     } finally {
       client.release();
     }
-    await verifyRequiredMigrationLedger(pool);
+    if (source === "legacy") await verifyRequiredMigrationLedger(pool);
+    else {
+      const views = [
+        "catalog_entries",
+        "catalog_aliases",
+        "catalog_source_citations",
+        "catalog_contributors",
+        "catalog_source_citation_scopes",
+        "catalog_media",
+      ];
+      const result = await pool.query<{
+        view_count: string;
+        view_migration: boolean;
+      }>(`
+        SELECT (SELECT count(*)::text FROM pg_class WHERE oid = ANY(ARRAY[
+          to_regclass('catalog_entries'), to_regclass('catalog_aliases'),
+          to_regclass('catalog_source_citations'), to_regclass('catalog_contributors'),
+          to_regclass('catalog_source_citation_scopes'), to_regclass('catalog_media')
+        ]) AND relkind = 'v') AS view_count,
+        EXISTS(SELECT 1 FROM payload_migrations WHERE name = '20260908_031500_published_views') AS view_migration
+      `);
+      if (
+        Number(result.rows[0]?.view_count) !== views.length ||
+        result.rows[0]?.view_migration !== true
+      ) {
+        throw new PostgresStartupError(
+          "Payload published read views are not migration-ready",
+        );
+      }
+    }
   } catch (error) {
     if (error instanceof PostgresStartupError) throw error;
     throw new PostgresStartupError(

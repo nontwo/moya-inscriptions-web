@@ -3,3 +3,10 @@ packages:
   - services/*
   - packages/*
   - tests
+allowBuilds:
+  esbuild: true
+  sharp: true
+overrides:
+  # CMS rendering patches; keep framework majors and the public DTO unchanged.
+  dompurify@3.4.8: 3.4.15
+  nanoid@3.3.17: 3.3.18

@@ -88,6 +88,7 @@ describe("contracts package surface", () => {
       [
         ".",
         "./internal/catalog-import",
+        "./internal/editorial",
         "./json-schema",
         "./schemas",
         "./types",

@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -472,6 +473,8 @@ export const runtimeDatasetReferences = (
 };
 
 const serverOnlyPackages = [
+  "payload",
+  "@payloadcms",
   "@moya/api",
   "@moya/backend-production",
   "@moya/backend-runtime",
@@ -488,6 +491,8 @@ const serverOnlyPackages = [
 
 const isForbiddenServerReference = (specifier: string): boolean => {
   const normalized = specifier.replaceAll("\\", "/");
+  if (specifier === "@payloadcms/ui" || specifier.startsWith("@payloadcms/ui/"))
+    return false;
   return (
     serverOnlyPackages.some(
       (entry) => specifier === entry || specifier.startsWith(`${entry}/`),
@@ -544,6 +549,83 @@ const clientContractTypeViolations = (source: string): string[] => {
   return violations;
 };
 
+const cmsRoot = path.join(repositoryRoot, "apps", "admin");
+export const isAuthorizedCmsServerFile = (
+  filePath: string,
+  source: string,
+): boolean => {
+  if (!isPathInside(cmsRoot, filePath) || hasUseClientDirective(source))
+    return false;
+  const relative = path.relative(cmsRoot, filePath).replaceAll("\\", "/");
+  if (relative === "src/media/snapshot.ts") return false;
+  return (
+    relative === "payload.config.ts" ||
+    relative === "next.config.ts" ||
+    /^scripts\/(?:build\.mjs|bootstrap-synthetic\.ts|benchmark-synthetic\.ts|migrate-legacy\.ts|recovery-synthetic\.ts)$/.test(
+      relative,
+    ) ||
+    /^src\/owner-workflow\/(?:View|NavLink)\.tsx$/.test(relative) ||
+    /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
+      relative,
+    ) ||
+    /^src\/(?:users|runtime-settings|mcp|payload-types)\.ts$/.test(relative) ||
+    /^app\/\(payload\)\/.*(?:page|layout|route|importMap)\.tsx?$/.test(relative)
+  );
+};
+
+const isOwnerWorkflowTypes = (
+  filePath: string,
+  reference: ModuleReference,
+): boolean => {
+  const relative = path.relative(cmsRoot, filePath).replaceAll("\\", "/");
+  return (
+    reference.typeOnly &&
+    (([
+      "src/owner-workflow/client.tsx",
+      "src/media/MediaSnapshotPicker.tsx",
+      "src/media/snapshot.ts",
+    ].includes(relative) &&
+      reference.specifier === "@moya/contracts/internal/editorial") ||
+      ([
+        "src/media/MediaSnapshotPicker.tsx",
+        "src/media/CatalogOwnershipField.tsx",
+        "src/media/OriginalMediaMetadataField.tsx",
+      ].includes(relative) &&
+        reference.specifier === "payload"))
+  );
+};
+
+const referencesCmsServerModule = (
+  filePath: string,
+  specifier: string,
+): boolean => {
+  if (!specifier.startsWith(".")) return false;
+  const base = path.resolve(path.dirname(filePath), specifier);
+  const extension = path.extname(base);
+  const candidates = sourceExtensions.has(extension)
+    ? [
+        ...(extension === ".js"
+          ? [base.slice(0, -3) + ".ts", base.slice(0, -3) + ".tsx"]
+          : []),
+        base,
+      ]
+    : [
+        base + ".ts",
+        base + ".tsx",
+        base + ".js",
+        base + ".jsx",
+        path.join(base, "index.ts"),
+        path.join(base, "index.tsx"),
+        path.join(base, "index.js"),
+        path.join(base, "index.jsx"),
+      ];
+  // Resolve actual files first: a permitted helper such as media/snapshot.ts
+  // must not be misclassified as an imaginary snapshot/index.ts server module.
+  const resolved = candidates.find((candidate) => existsSync(candidate));
+  if (!resolved) return false;
+  return isAuthorizedCmsServerFile(resolved, readFileSync(resolved, "utf8"));
+};
+
 export const clientBoundaryViolations = (
   filePath: string,
   source: string,
@@ -558,7 +640,12 @@ export const clientBoundaryViolations = (
     if (referencesWebPublicApiBoundary(filePath, reference.specifier)) {
       violations.push(`${reference.specifier} is server/runtime-only`);
     }
-    if (isForbiddenServerReference(reference.specifier)) {
+    if (
+      !isOwnerWorkflowTypes(filePath, reference) &&
+      (isForbiddenServerReference(reference.specifier) ||
+        reference.specifier === "@payload-config" ||
+        referencesCmsServerModule(filePath, reference.specifier))
+    ) {
       violations.push(`${reference.specifier} is server/runtime-only`);
     }
     if (
@@ -592,6 +679,15 @@ export const frontendBoundaryViolations = (
 ): string[] => {
   const violations = clientBoundaryViolations(filePath, source);
   const isAuthorizedPublicApi = isAuthorizedWebPublicApiFile(filePath, source);
+  const isCmsServer = isAuthorizedCmsServerFile(filePath, source);
+  const isPreviewTransport =
+    !hasUseClientDirective(source) &&
+    path.resolve(filePath) ===
+      path.join(webPublicApiRoot, "editorial-preview-server.ts");
+  const isPreviewPage =
+    !hasUseClientDirective(source) &&
+    path.resolve(filePath) ===
+      path.join(webRoot, "app/editorial-preview/[id]/page.tsx");
   const isWebTestFile =
     isPathInside(webRoot, filePath) && /\.test\.[cm]?[jt]sx?$/.test(filePath);
   const isDomainAgnosticUi = isPathInside(
@@ -632,7 +728,15 @@ export const frontendBoundaryViolations = (
     );
     if (
       isForbiddenServerReference(reference.specifier) &&
+      !isCmsServer &&
+      !isOwnerWorkflowTypes(filePath, reference) &&
       !approvedPublicApiRuntimeImport &&
+      !(isPreviewTransport && reference.specifier === "next/headers") &&
+      !(
+        isPreviewPage &&
+        reference.specifier ===
+          "../../../lib/public-api/editorial-preview-server"
+      ) &&
       !approvedHomeConnectionImport &&
       !approvedT02StaticFilesImport &&
       !approvedWebTestRendererImport &&
@@ -667,7 +771,10 @@ export const frontendBoundaryViolations = (
 
   if (isAuthorizedPublicApi) {
     for (const match of source.matchAll(/\bprocess\.env\.([A-Z0-9_]+)/g)) {
-      if (match[1] !== "MOYA_PUBLIC_API_BASE_URL") {
+      if (
+        match[1] !== "MOYA_PUBLIC_API_BASE_URL" &&
+        !(isPreviewTransport && match[1] === "CMS_INTERNAL_URL")
+      ) {
         violations.push(
           `${match[1] ?? "unknown environment variable"} is not authorized for the Web Public API boundary`,
         );

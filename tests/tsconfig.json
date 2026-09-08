@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["unit/**/*.ts", "integration/**/*.ts"]
+  "include": ["unit/**/*.ts", "integration/**/*.ts", "cms/**/*.ts"]
 }

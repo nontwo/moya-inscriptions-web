@@ -75,7 +75,12 @@ describe("catalog importer remediation boundaries", () => {
       path.join(repositoryRoot, "packages/contracts/src/index.ts"),
       path.join(repositoryRoot, "services/public-api/src/index.ts"),
       path.join(repositoryRoot, "apps/web/app/page.tsx"),
-      path.join(repositoryRoot, "apps/admin/app/page.tsx"),
+      path.join(repositoryRoot, "apps/admin/app/(payload)/page.tsx"),
+      path.join(repositoryRoot, "apps/admin/app/(payload)/layout.tsx"),
+      path.join(
+        repositoryRoot,
+        "apps/admin/app/(payload)/admin/[[...segments]]/page.tsx",
+      ),
       path.join(repositoryRoot, "packages/ui/src/index.ts"),
     ];
     for (const file of guardedFiles) {

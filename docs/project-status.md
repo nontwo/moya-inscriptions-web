@@ -1,3 +1,9 @@
+> P2-04 update (2026-09-08): Payload editorial automation is authorized and in
+> final local validation and independent review. Real migration, Codex runtime
+> connection, COS compatibility and Owner workflow acceptance are not yet
+> complete. Existing runtime has not switched; spreadsheet retirement is pending
+> cutover. See [P2-04](cms/p2-04-implementation.md).
+
 # 当前项目状态
 
 最后审计：2026-09-04
@@ -214,17 +220,21 @@ Bounded scope:
 Local array filtering is not Search V1. Elasticsearch, vector databases, and AI
 embeddings are not pre-authorized.
 
-### P2-04 — Minimal Operator Governance
+### P2-04 — Payload editorial workflow and Codex automation
 
-Bounded scope:
+The Owner-approved P2-04 amendment replaces the earlier minimal-operator-only
+scope with self-hosted Payload Admin, official MCP/REST, PostgreSQL and COS. It
+includes native draft/version/media editing, scoped automated batches,
+exact-revision Owner approval and published-only public reads. It does not add
+ordinary public-user accounts or community features.
 
-- Operator identity；
-- import-batch and validation visibility；
-- publication approval；
-- withdrawal；
-- audit identity and timestamps。
-
-This is not ordinary public-user authentication or a full CMS.
+Local implementation passed aggregate validation (45.4 seconds), 30 real CMS
+database tests and eight native Admin browser stages; Draft review continues.
+Real source mapping, COS compatibility, successful Codex client tool execution,
+Owner workflow acceptance and operational cutover remain pending. The old
+runtime and write entry remain active until the approved cutover. See
+[implementation and evidence](cms/p2-04-implementation.md) and the
+[single operations guide](cms/operations.md).
 
 ### P2-R2 — Production Release Gate
 

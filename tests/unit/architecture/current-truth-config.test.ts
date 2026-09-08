@@ -62,24 +62,59 @@ describe("current repository truth and local configuration", () => {
   });
 
   it("uses current Yoyi branding in Web and Admin metadata", async () => {
-    const [webLayout, adminLayout, adminPage] = await Promise.all([
+    const [
+      webLayout,
+      adminLayout,
+      adminPage,
+      adminHome,
+      adminConfig,
+      adminTsconfig,
+    ] = await Promise.all([
       readFile(
         path.join(repositoryRoot, "apps", "web", "app", "layout.tsx"),
         "utf8",
       ),
       readFile(
-        path.join(repositoryRoot, "apps", "admin", "app", "layout.tsx"),
+        path.join(repositoryRoot, "apps/admin/app/(payload)/layout.tsx"),
         "utf8",
       ),
       readFile(
-        path.join(repositoryRoot, "apps", "admin", "app", "page.tsx"),
+        path.join(
+          repositoryRoot,
+          "apps/admin/app/(payload)/admin/[[...segments]]/page.tsx",
+        ),
         "utf8",
       ),
+      readFile(
+        path.join(repositoryRoot, "apps/admin/app/(payload)/page.tsx"),
+        "utf8",
+      ),
+      readFile(
+        path.join(repositoryRoot, "apps/admin/payload.config.ts"),
+        "utf8",
+      ),
+      readJson(path.join(repositoryRoot, "apps/admin/tsconfig.json")),
     ]);
 
     expect(webLayout).toContain('title: "由艺（Yoyi）"');
-    expect(adminLayout).toContain('title: "由艺（Yoyi）管理端"');
-    expect(adminPage).toContain("由艺（Yoyi）");
+    expect(adminConfig).toContain('titleSuffix: "— 由艺（Yoyi）管理端"');
+    expect(adminTsconfig.compilerOptions).toMatchObject({
+      paths: { "@payload-config": ["./payload.config.ts"] },
+    });
+    expect(adminHome).toContain('redirect("/admin")');
+    for (const source of [adminLayout, adminPage])
+      expect(source).toContain('import config from "@payload-config"');
+    expect(adminLayout).toMatch(/<RootLayout\s+config=\{config\}/);
+    expect(adminPage).toContain(
+      'import { RootPage, generatePageMetadata } from "@payloadcms/next/views"',
+    );
+    expect(adminPage).toMatch(
+      /export const generateMetadata\s*=[\s\S]*?generatePageMetadata\(\{ config, params, searchParams \}\)/,
+    );
+    expect(adminPage).toContain(
+      "return RootPage({ config, importMap, params, searchParams })",
+    );
+    expect(adminConfig).toMatch(/importMap:\s*\{[^}]*autoGenerate:\s*false/);
   });
 
   it("keeps CloudBase examples archived and UI URL guidance resolved", async () => {
