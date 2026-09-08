@@ -13,20 +13,8 @@ coverage
 
 !.env.example
 
-# Private runtime inputs and indirect disclosure carriers
+# Private runtime configuration and local output directories
 .env.*
-*.pem
-*.key
-*.p12
-*.pfx
-*.sqlite
-*.sqlite3
-*.sqlite-wal
-*.sqlite-shm
-*.dump
-*.sql.gz
-*.har
-*.trace
 playwright-report/
 test-results/
 private-evidence/

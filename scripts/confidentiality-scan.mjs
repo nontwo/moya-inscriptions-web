@@ -1,13 +1,21 @@
 #!/usr/bin/env node
-// Local preflight: inspect exact Git objects and outbound bytes, never excerpts.
+// Incremental core-credential checks; exact content, one delivery budget.
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { isIP } from "node:net";
+import {
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  mkdirSync,
+  writeFileSync,
+  renameSync,
+  existsSync,
+  rmSync,
+} from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = 1;
+export const VERSION = 2;
 export const INSTALL_DIR = "confidentiality-hooks";
 export const INSTALLED_FILES = [
   "pre-commit",
@@ -15,58 +23,30 @@ export const INSTALLED_FILES = [
   "pre-push",
   "confidentiality-scan.mjs",
 ];
-const MAX_BYTES = 8 * 1024 * 1024;
-const MAX_COMMITS = 2000;
+const MAX_BYTES = 64 * 1024 * 1024;
+const BUDGET_MS = 120000;
 const OID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const ZERO = /^0+$/;
-const PRIVATE_PATH =
-  /(?:\/Users\/|\/home\/|\/private\/|[A-Za-z]:[\\/]Users[\\/])[^\s"'<>`]+/g;
-const EMAIL =
-  /[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*\.[A-Za-z]{2,})/g;
-const SYNTHETIC =
-  /^(?:<[^<>\r\n]+>|\$\{[A-Z_][A-Z0-9_]*\}|__[A-Z0-9_]+__|(?:EXAMPLE|PLACEHOLDER|REPLACE_ME|REDACTED|SYNTHETIC|TEST_ONLY)(?:[_-][A-Z0-9_-]+)?|(?:example|placeholder|synthetic|test-only)(?:[-_][a-z0-9_-]+)?)$/i;
-const SECRET_KEY =
-  /(?:password|passwd|secret(?:_?key)?|api[_-]?key|access[_-]?token|refresh[_-]?token|security[_-]?token|authorization|cookie|session[_-]?token)/i;
-
+const SELF = fileURLToPath(import.meta.url);
+export const digest = (bytes) =>
+  createHash("sha256").update(bytes).digest("hex");
+const RULE_VERSION = digest(readFileSync(SELF));
+let deadline = Infinity;
+let cache = {};
+let stats = { scanned: 0, reused: 0, commits: 0 };
 export class Stop extends Error {
-  constructor(category) {
+  constructor(category, location = ".") {
     super(category);
     this.category = category;
+    this.location = location;
   }
 }
-export function digest(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
+function remaining() {
+  const ms = Math.floor(deadline - Date.now());
+  if (ms <= 0) throw new Stop("BUDGET_EXHAUSTED");
+  return Math.min(BUDGET_MS, ms);
 }
 export function git(args, options = {}) {
-  const identityQuery = options.identityOnly === true;
-  if (
-    identityQuery &&
-    !(
-      args.length === 2 &&
-      args[0] === "var" &&
-      ["GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"].includes(args[1])
-    )
-  ) {
-    throw new Stop("IDENTITY_QUERY_INVALID");
-  }
-  const env = {
-    ...process.env,
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_NO_REPLACE_OBJECTS: "1",
-    GIT_OPTIONAL_LOCKS: "0",
-    GIT_SSH_COMMAND: "ssh",
-    GIT_ALLOW_PROTOCOL: "file:https:ssh",
-    GIT_NO_LAZY_FETCH: "1",
-  };
-  for (const key of Object.keys(env))
-    if (
-      /^GIT_(?:EXTERNAL_DIFF|SSH|PROXY_COMMAND|SSL_NO_VERIFY)$/.test(key) ||
-      (!identityQuery &&
-        /^GIT_(?:CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_.*|CONFIG_VALUE_.*)$/.test(
-          key,
-        ))
-    )
-      delete env[key];
   const result = spawnSync(
     "git",
     [
@@ -75,662 +55,624 @@ export function git(args, options = {}) {
       "core.fsmonitor=false",
       "-c",
       "diff.external=",
-      "-c",
-      "protocol.allow=never",
-      "-c",
-      "protocol.file.allow=always",
-      "-c",
-      "protocol.https.allow=always",
-      "-c",
-      "protocol.ssh.allow=always",
-      "-c",
-      "protocol.ext.allow=never",
-      "-c",
-      "http.sslVerify=true",
       ...args,
     ],
     {
       cwd: options.cwd,
       input: options.input,
-      encoding: undefined,
-      maxBuffer: 64 * 1024 * 1024,
-      timeout: 60000,
-      env,
+      maxBuffer: MAX_BYTES,
+      timeout: remaining(),
+      killSignal: "SIGKILL",
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_NO_REPLACE_OBJECTS: "1",
+        GIT_NO_LAZY_FETCH: "1",
+        GIT_OPTIONAL_LOCKS: "0",
+      },
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
   if (result.error || result.status !== 0)
-    throw new Stop("GIT_OPERATION_UNVERIFIABLE");
+    throw new Stop(
+      result.error?.code === "ETIMEDOUT"
+        ? "BUDGET_EXHAUSTED"
+        : "GIT_READ_FAILED",
+    );
   if (options.binary) return result.stdout;
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(result.stdout);
   } catch {
-    throw new Stop("GIT_TEXT_UNINSPECTABLE");
+    throw new Stop("GIT_TEXT_UNREADABLE");
   }
 }
 export function config(key) {
   return git(["config", "--local", "--get", key]).trim();
-}
-function optionalConfig(key) {
-  const result = spawnSync("git", ["config", "--get", key], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.status === 1) return "";
-  if (result.error || result.status !== 0)
-    throw new Stop("CONFIG_UNVERIFIABLE");
-  return result.stdout.trim();
-}
-export function policy() {
-  const name = config("confidentiality.approvedName");
-  const email = config("confidentiality.approvedEmail");
-  if (!name || !email || /[\r\n<>]/.test(name + email))
-    throw new Stop("IDENTITY_POLICY_INVALID");
-  if (optionalConfig("user.useConfigOnly") !== "true")
-    throw new Stop("IDENTITY_CONFIG_REQUIRED");
-  return { name, email };
-}
-function identity(value, approved) {
-  const match = /^(.+) <([^<>]+)> \d+ [+-]\d{4}$/.exec(value);
-  if (!match || match[1] !== approved.name || match[2] !== approved.email)
-    throw new Stop("IDENTITY_NOT_APPROVED");
-}
-function effectiveIdentity(approved) {
-  // Git exports command-line -c overrides to hooks. Preserve those only for
-  // these two read-only identity queries so the actual committer is checked.
-  identity(
-    git(["var", "GIT_AUTHOR_IDENT"], { identityOnly: true }).trim(),
-    approved,
-  );
-  identity(
-    git(["var", "GIT_COMMITTER_IDENT"], { identityOnly: true }).trim(),
-    approved,
-  );
-}
-function syntheticEmail(email) {
-  return /@(?:[a-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test)$/i.test(
-    email,
-  );
-}
-function allowedIP(value) {
-  if (isIP(value) === 4) {
-    const [a, b, c, d] = value.split(".").map(Number);
-    return (
-      a === 127 ||
-      value === "0.0.0.0" ||
-      (a === 192 && b === 0 && c === 2) ||
-      (a === 198 && b === 51 && c === 100) ||
-      (a === 203 && b === 0 && c === 113) ||
-      (a === 255 && b === 255 && c === 255 && d === 255)
-    );
-  }
-  return /^(?:::|::1|2001:db8(?::[a-f0-9]*)*)$/i.test(value);
-}
-function javascriptCodePositions(text, filename) {
-  if (!/\.(?:[cm]?js|jsx|tsx?)$/i.test(filename)) return null;
-  const code = new Uint8Array(text.length);
-  let state = "code";
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
-    if (state === "line") {
-      if (char === "\n") state = "code";
-      continue;
-    }
-    if (state === "block") {
-      if (char === "*" && next === "/") {
-        state = "code";
-        i++;
-      }
-      continue;
-    }
-    if (state !== "code") {
-      if (char === "\\") i++;
-      else if (char === state) state = "code";
-      continue;
-    }
-    if (char === "/" && next === "/") {
-      state = "line";
-      i++;
-    } else if (char === "/" && next === "*") {
-      state = "block";
-      i++;
-    } else if (char === '"' || char === "'" || char === "`") state = char;
-    else code[i] = 1;
-  }
-  return code;
-}
-function declaredMemberReference(text, match, code) {
-  if (
-    !code?.[match.index] ||
-    match[2] ||
-    !/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(match[4] ?? "")
-  )
-    return false;
-  const before = text.slice(
-    text.lastIndexOf("\n", match.index - 1) + 1,
-    match.index,
-  );
-  const end = text.indexOf("\n", match.index + match[0].length);
-  const after = text.slice(
-    match.index + match[0].length,
-    end === -1 ? text.length : end,
-  );
-  return (
-    /^\s*(?:export\s+)?(?:const|let|var)\s+$/.test(before) &&
-    /^\s*;?\s*(?:\/\/.*)?$/.test(after)
-  );
-}
-export function categories(text, filename = "") {
-  const found = new Set();
-  if (
-    /-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY|OPENSSH PRIVATE KEY)-----/.test(text)
-  )
-    found.add("PRIVATE_KEY");
-  if (
-    /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AKIA[A-Z0-9]{16}|ASIA[A-Z0-9]{16}|AKID[A-Za-z0-9]{20,}|sk-(?:proj-)?[A-Za-z0-9_-]{24,})\b/.test(
-      text,
-    )
-  )
-    found.add("CREDENTIAL_SHAPE");
-  if (
-    /\b(?:Bearer|Basic)\s+[A-Za-z0-9+/=_-]{16,}\b/i.test(text) ||
-    /\$(?:2[aby]\$\d\d\$|argon2(?:id|i|d)\$|[156]\$)[^\s"']{12,}/.test(text)
-  )
-    found.add("AUTH_MATERIAL");
-  for (const match of text.matchAll(PRIVATE_PATH)) {
-    if (
-      !/^(?:\/(?:Users|home)\/|[A-Za-z]:[\\/]Users[\\/])(?:EXAMPLE|PLACEHOLDER|SYNTHETIC|test-only)(?:[\\/]|$)/i.test(
-        match[0],
-      )
-    )
-      found.add("PRIVATE_LOCAL_PATH");
-  }
-  for (const match of text.matchAll(EMAIL))
-    if (!syntheticEmail(match[0])) found.add("PERSONAL_EMAIL");
-  for (const match of text.matchAll(
-    /(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])/g,
-  )) {
-    if (isIP(match[0]) && !allowedIP(match[0])) found.add("DEPLOYMENT_ADDRESS");
-  }
-  for (const match of text.matchAll(
-    /(?<![\w:])(?:[a-fA-F0-9]{0,4}:){2,}[a-fA-F0-9:]{0,39}(?![\w:])/g,
-  )) {
-    if (isIP(match[0]) && !allowedIP(match[0])) found.add("DEPLOYMENT_ADDRESS");
-  }
-  // A dotted literal is still a secret in configuration, prose and metadata.
-  // Only explicit JavaScript/TypeScript declarations in code receive the narrow
-  // member-reference exemption; strings, templates and comments never receive it.
-  const code = javascriptCodePositions(text, filename);
-  const assignment =
-    /["']?([A-Za-z_][\w-]*)["']?\s*[:=]\s*(?:(["'])([^\r\n]*?)\2|([^\s,;#{}()[\]"'`]+))/g;
-  for (const match of text.matchAll(assignment)) {
-    if (!SECRET_KEY.test(match[1])) continue;
-    const value = match[3] ?? match[4];
-    if (
-      !value ||
-      SYNTHETIC.test(value) ||
-      (/^(?:undefined|null|false|true)$/.test(value) && !match[2]) ||
-      declaredMemberReference(text, match, code)
-    )
-      continue;
-    if (/^(?:["']|`|\/|=>)$/.test(value)) continue;
-    found.add("SECRET_LITERAL");
-  }
-  for (const match of text.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+/gi)) {
-    try {
-      const url = new URL(match[0]);
-      if (url.username || url.password) found.add("CREDENTIAL_URL");
-      for (const [key, value] of url.searchParams) {
-        if (
-          /(?:signature|q-sign|x-amz-credential|x-amz-security-token|x-cos-security-token|token|password|secret|invite|reset|sig$)/i.test(
-            key,
-          ) &&
-          value &&
-          !SYNTHETIC.test(value)
-        )
-          found.add("SIGNED_OR_TOKEN_URL");
-      }
-      if (
-        /\.(?:internal|local|lan)$/.test(url.hostname) &&
-        url.hostname !== "localhost"
-      )
-        found.add("PRIVATE_HOSTNAME");
-      if (
-        /(?:\.cos\.[a-z0-9-]+\.myqcloud\.com|\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com|\.blob\.core\.windows\.net)$/i.test(
-          url.hostname,
-        ) &&
-        !/^(?:example|placeholder|synthetic)(?:[-.])/.test(url.hostname)
-      )
-        found.add("CLOUD_RESOURCE");
-    } catch {
-      /* Textual code fragments are not complete URLs. */
-    }
-  }
-  if (
-    /\b(?:ins|sg|subnet|vpc)-[a-z0-9]{8,}\b|\bqcs::[^\s"']*:(?:uid|uin)\/\d+|\barn:aws:[^\s"']*:\d{12}:/i.test(
-      text,
-    )
-  )
-    found.add("CLOUD_RESOURCE");
-  if (/^version https:\/\/git-lfs\.github\.com\/spec\/v1\r?$/m.test(text))
-    found.add("UNINSPECTABLE_LFS");
-  return [...found].sort();
-}
-function safePath(value) {
-  // Even a relative attachment name can itself reveal a person's identity.
-  return [
-    ".",
-    "[commit-message]",
-    "[commit-metadata]",
-    "[tag-metadata]",
-    "[ref-name]",
-    "[outbound-file]",
-  ].includes(value)
-    ? value
-    : "[redacted-path]";
-}
-const TEXT_SUFFIX =
-  /\.(?:[cm]?js|jsx|tsx?|json|md|txt|ya?ml|toml|py|sh|sql|css|html?|csv|tsv|xml|ini|conf|template|example|env|lock)$/i;
-const TEXT_NAME =
-  /^(?:Dockerfile|Makefile|LICENSE|NOTICE|pre-commit|commit-msg|pre-push|\.(?:gitignore|gitattributes|editorconfig|npmrc|nvmrc|env))$/;
-export function inspect(bytes, label = ".", filename = label) {
-  const findings = [];
-  const report = (category) =>
-    findings.push({ path: safePath(label), category });
-  for (const category of categories(filename)) report(category);
-  if (/[\x00-\x1f\x7f]/.test(filename)) report("UNSAFE_FILENAME");
-  if (bytes.length > MAX_BYTES) {
-    report("INPUT_TOO_LARGE");
-    return findings;
-  }
-  let text;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    report("UNINSPECTABLE_BINARY");
-    return findings;
-  }
-  if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) {
-    report("UNINSPECTABLE_BINARY");
-    return findings;
-  }
-  const internal =
-    filename === "." ||
-    /^\[(?:commit-message|commit-metadata|tag-metadata|ref-name)\]$/.test(
-      filename,
-    );
-  const basename = path.basename(filename);
-  if (
-    bytes.length &&
-    !internal &&
-    !TEXT_SUFFIX.test(basename) &&
-    !TEXT_NAME.test(basename)
-  )
-    report("UNCLASSIFIED_ARTIFACT");
-  if (
-    /^\s*(?:%PDF-|%!PS|<svg\b|<\?xml[^>]*>\s*<svg\b|SQLite format 3|PK\x03\x04)/i.test(
-      text,
-    ) ||
-    /(?:^|[^A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?:$|[^A-Za-z0-9+/=])/.test(
-      text,
-    )
-  )
-    report("OPAQUE_ARTIFACT");
-  for (const category of categories(text, filename)) report(category);
-  return findings;
-}
-function regularBytes(filename) {
-  const stat = lstatSync(filename);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES)
-    throw new Stop("FILE_UNINSPECTABLE");
-  return readFileSync(filename);
 }
 function commonDir() {
   return realpathSync(
     git(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
   );
 }
-export function rejectConditionalConfig() {
-  const names = git(["config", "--list", "--name-only"]).split("\n");
-  if (names.some((name) => /^includeif\./i.test(name))) {
-    throw new Stop("CONDITIONAL_GIT_CONFIG_REQUIRES_REVIEW");
+function currentRepository() {
+  let dir = process.cwd(),
+    admin = process.env.GIT_DIR;
+  if (!admin) {
+    for (;;) {
+      const candidate = path.join(dir, ".git");
+      if (existsSync(candidate)) {
+        admin = candidate;
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) throw new Stop("NOT_A_GIT_WORKTREE");
+      dir = parent;
+    }
   }
+  admin = path.resolve(admin);
+  if (lstatSync(admin).isFile()) {
+    const match = /^gitdir: (.+)\s*$/.exec(readFileSync(admin, "utf8"));
+    if (!match) throw new Stop("GIT_DIRECTORY_UNREADABLE");
+    admin = path.resolve(path.dirname(admin), match[1]);
+  }
+  const gitDir = realpathSync(admin);
+  const commonFile = path.join(gitDir, "commondir");
+  const common = process.env.GIT_COMMON_DIR
+    ? path.resolve(process.env.GIT_COMMON_DIR)
+    : existsSync(commonFile)
+      ? path.resolve(gitDir, readFileSync(commonFile, "utf8").trim())
+      : gitDir;
+  return { gitDir, common: realpathSync(common) };
 }
-export function rejectWorktreeConfig(common) {
-  function statOrAbsent(filename) {
+function regularBytes(file) {
+  const info = lstatSync(file);
+  if (!info.isFile() || info.size > MAX_BYTES)
+    throw new Stop("TEXT_INPUT_UNREADABLE", path.basename(file));
+  return readFileSync(file);
+}
+const PLACEHOLDER =
+  /^(?:<[^<>\r\n]+>|\$\{[^{}\r\n]+\}|\$[A-Z_][A-Z0-9_]*|__[A-Z0-9_]+__|(?:EXAMPLE|PLACEHOLDER|REPLACE_ME|REDACTED|SYNTHETIC|TEST_ONLY|YOUR)(?:[_-][A-Z0-9_-]+)?|(?:example|placeholder|synthetic|test-only|dummy|fake|changeme|test|testing)(?:[-_][a-z0-9_-]+)?)$/i;
+const PRIMITIVE =
+  /^(?:string|number|boolean|unknown|never|any|void|undefined|null|false|true)$/;
+const CREDENTIAL_NAME =
+  /^(?:(?:[A-Za-z0-9]+[_-])*(?:password|passwd|pwd|secret[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|security[_-]?token|session[_-]?token|client[_-]?secret|token)|(?:db|database|cos|cloud)?(?:Password|SecretKey|ApiKey|AccessToken|RefreshToken)|authorization|cookie)$/i;
+function syntax(filename) {
+  return /\.(?:[cm]?js|jsx|tsx?)$/i.test(filename)
+    ? "code"
+    : /(?:^|\.)env(?:\.|$)|\.(?:ini|conf|service|timer|ya?ml|json|toml)$/i.test(
+          filename,
+        )
+      ? "config"
+      : "text";
+}
+function placeholder(value) {
+  return !value || value === "..." || PLACEHOLDER.test(value);
+}
+function literalFindings(text, filename) {
+  const hits = [];
+  const add = (at, category) =>
+    hits.push({
+      line: text.slice(0, at).split("\n").length,
+      category,
+      severity: "BLOCK",
+    });
+  for (const m of text.matchAll(
+    /-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY|OPENSSH PRIVATE KEY)-----/g,
+  ))
+    add(m.index, "PRIVATE_KEY");
+  for (const m of text.matchAll(
+    /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-)?[A-Za-z0-9_-]{24,})\b/g,
+  ))
+    add(m.index, "API_TOKEN");
+  for (const m of text.matchAll(
+    /\b(?:Bearer|Basic)\s+[A-Za-z0-9+/=_-]{12,}|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{16,}/g,
+  ))
+    add(m.index, "AUTH_MATERIAL");
+  const assignment =
+    /(?:\b([A-Za-z_][\w-]*)|["']([A-Za-z_][\w-]*)["'])[ \t]*[:=][ \t]*(?:(["'])([^\r\n]*?)\3|([^\s,;#{}()[\]"'`]+))/g;
+  let m;
+  while ((m = assignment.exec(text))) {
+    // Inspect nested assignments, e.g. systemd Environment="API_KEY=...".
+    assignment.lastIndex = m.index + 1;
+    const name = m[1] ?? m[2];
+    if (!CREDENTIAL_NAME.test(name)) continue;
+    const value = m[4] ?? m[5];
+    // A closing source string followed by concatenation is not a literal value.
+    if (syntax(filename) === "code" && /^\s*\+\s*$/.test(value)) continue;
+    // Package versions and auth field declarations are not auth material.
+    if (
+      /^authorization$/i.test(name) &&
+      !/^(?:Bearer|Basic)\s+\S{12,}$/.test(value)
+    )
+      continue;
+    if (/^cookie$/i.test(name) && !/\b[A-Za-z_][\w-]*=[^;\s]{12,}/.test(value))
+      continue;
+    if (
+      !m[3] &&
+      value === "$" &&
+      /^\{[A-Za-z_][A-Za-z0-9_]*\}/.test(text.slice(m.index + m[0].length))
+    )
+      continue;
+    if (placeholder(value) || (!m[3] && PRIMITIVE.test(value))) continue;
+    if (
+      !m[3] &&
+      /^(?:process\.env(?:\.|$)|import\.meta\.env(?:\.|$)|os\.environ(?:\.|$)|getenv$|env$)/.test(
+        value,
+      )
+    )
+      continue;
+    if (
+      !m[3] &&
+      syntax(filename) === "code" &&
+      /^[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/.test(value)
+    )
+      continue;
+    if (
+      !m[3] &&
+      syntax(filename) !== "config" &&
+      m[0].includes(":") &&
+      /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(value)
+    )
+      continue;
+    if (m[3] || syntax(filename) === "config" || m[0].includes("="))
+      add(m.index, "CREDENTIAL_LITERAL");
+  }
+  for (const m of text.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+/gi)) {
     try {
-      return lstatSync(filename);
-    } catch (error) {
-      if (error?.code === "ENOENT") return null;
-      throw new Stop("WORKTREE_ADMIN_UNVERIFIABLE");
+      const u = new URL(m[0]);
+      if (u.password && !placeholder(decodeURIComponent(u.password)))
+        add(m.index, "PASSWORD_CONNECTION_URL");
+      for (const [key, value] of u.searchParams) {
+        if (
+          /^(?:q-signature|x-amz-signature|signature|sig|access_token|refresh_token|token)$/i.test(
+            key,
+          ) &&
+          value.length >= 12 &&
+          !placeholder(value)
+        )
+          add(m.index, "AUTHORIZING_URL");
+      }
+    } catch {
+      /* Incomplete code fragment. */
     }
   }
-  function directory(filename) {
-    const info = statOrAbsent(filename);
-    if (!info?.isDirectory() || info.isSymbolicLink()) {
-      throw new Stop("WORKTREE_ADMIN_UNVERIFIABLE");
+  return [...new Map(hits.map((h) => [JSON.stringify(h), h])).values()];
+}
+export function categories(text, filename = "") {
+  return [
+    ...new Set(literalFindings(text, filename).map((f) => f.category)),
+  ].sort();
+}
+function safePath(label) {
+  return categories(label).length
+    ? "[credential-in-filename]"
+    : label.replace(/[\x00-\x1f\x7f]/g, "?");
+}
+export function inspect(bytes, label = ".", filename = label) {
+  remaining();
+  const nameHits = literalFindings(filename, "");
+  const key = digest(
+    Buffer.from(RULE_VERSION + "\0" + syntax(filename) + "\0" + digest(bytes)),
+  );
+  let findings = cache[key];
+  if (findings) stats.reused++;
+  else {
+    stats.scanned++;
+    let text;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      /* Ordinary binary. */
     }
+    findings =
+      text === undefined || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)
+        ? [{ line: 1, category: "BINARY_NOT_TEXT_SCANNED", severity: "WARN" }]
+        : literalFindings(text, filename);
+    cache[key] = findings;
   }
-  function noConfig(admin) {
-    directory(admin);
-    // lstat sees empty files, directories and dangling links without reading
-    // their contents. No actual worktree configuration is approved here.
-    if (statOrAbsent(path.join(admin, "config.worktree"))) {
-      throw new Stop("WORKTREE_CONFIG_REQUIRES_REVIEW");
-    }
-  }
-  noConfig(common);
-  const linked = path.join(common, "worktrees");
-  if (!statOrAbsent(linked)) return;
-  directory(linked);
-  let entries;
-  try {
-    entries = readdirSync(linked);
-  } catch {
-    throw new Stop("WORKTREE_ADMIN_UNVERIFIABLE");
-  }
-  for (const entry of entries) noConfig(path.join(linked, entry));
+  remaining();
+  return [...nameHits, ...findings].map((f) => ({
+    path: safePath(label),
+    ...f,
+  }));
 }
 export function health() {
-  rejectConditionalConfig();
-  const common = commonDir();
-  rejectWorktreeConfig(common);
-  const directory = path.join(common, INSTALL_DIR);
-  const directoryStat = lstatSync(directory);
-  if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
-    throw new Stop("INSTALL_DIRECTORY_CONFLICT");
-  }
+  const directory = path.join(commonDir(), INSTALL_DIR);
+  const bytes = regularBytes(path.join(directory, "manifest.json"));
+  const manifest = JSON.parse(bytes);
   if (
-    optionalConfig("core.hooksPath") !== directory ||
-    config("core.hooksPath") !== directory
+    digest(bytes) !== config("confidentiality.manifestSha256") ||
+    manifest.version !== VERSION
   )
-    throw new Stop("HOOKS_PATH_CONFLICT");
-  const manifestBytes = regularBytes(path.join(directory, "manifest.json"));
-  if (digest(manifestBytes) !== config("confidentiality.manifestSha256"))
-    throw new Stop("INSTALL_MANIFEST_CHANGED");
-  const manifest = JSON.parse(manifestBytes);
-  if (
-    manifest.version !== VERSION ||
-    JSON.stringify(Object.keys(manifest.files).sort()) !==
-      JSON.stringify([...INSTALLED_FILES].sort())
-  )
-    throw new Stop("INSTALL_VERSION_INVALID");
-  for (const file of INSTALLED_FILES) {
-    if (
-      digest(regularBytes(path.join(directory, file))) !== manifest.files[file]
-    )
+    throw new Stop("INSTALL_VERSION_MISMATCH");
+  if (git(["config", "--get", "core.hooksPath"]).trim() !== directory)
+    throw new Stop("ACTIVE_HOOKS_DIFFER");
+  for (const f of INSTALLED_FILES) {
+    const p = path.join(directory, f);
+    if (digest(regularBytes(p)) !== manifest.files[f])
       throw new Stop("INSTALLED_FILE_CHANGED");
-    if (
-      file !== "confidentiality-scan.mjs" &&
-      !(lstatSync(path.join(directory, file)).mode & 0o111)
-    )
+    if (f !== "confidentiality-scan.mjs" && !(lstatSync(p).mode & 0o111))
       throw new Stop("HOOK_NOT_EXECUTABLE");
   }
-  if (
-    digest(readFileSync(fileURLToPath(import.meta.url))) !==
-    manifest.files["confidentiality-scan.mjs"]
-  )
+  if (manifest.files["confidentiality-scan.mjs"] !== RULE_VERSION)
     throw new Stop("SCANNER_VERSION_MISMATCH");
-  const approved = policy();
-  if (
-    digest(Buffer.from(approved.name + "\0" + approved.email)) !==
-    manifest.identitySha256
-  ) {
-    throw new Stop("IDENTITY_POLICY_CHANGED");
-  }
-  return { version: VERSION, manifestSha256: digest(manifestBytes) };
+  return { version: VERSION, manifestSha256: digest(bytes) };
 }
 function blob(oid, label, mode, findings) {
-  if (!OID.test(oid) || !["100644", "100755"].includes(mode))
-    throw new Stop("GIT_OBJECT_UNINSPECTABLE");
-  const size = Number(git(["cat-file", "-s", oid]).trim());
-  if (!Number.isSafeInteger(size) || size > MAX_BYTES)
-    throw new Stop("INPUT_TOO_LARGE");
+  if (!OID.test(oid)) throw new Stop("GIT_OBJECT_UNREADABLE", label);
+  if (mode === "160000") {
+    findings.push({
+      path: safePath(label),
+      line: 1,
+      category: "SUBMODULE_CONTENT_NOT_INCLUDED",
+      severity: "WARN",
+    });
+    return;
+  }
+  if (!["100644", "100755", "120000"].includes(mode))
+    throw new Stop("GIT_MODE_UNREADABLE", label);
   findings.push(
     ...inspect(git(["cat-file", "blob", oid], { binary: true }), label),
   );
 }
-export function staged() {
-  effectiveIdentity(policy());
-  const findings = [];
-  const changed = git([
-    "diff",
-    "--cached",
-    "--name-only",
-    "-z",
-    "--no-renames",
-    "--no-ext-diff",
-    "--no-textconv",
-  ])
-    .split("\0")
-    .filter(Boolean);
-  const index = new Map();
-  for (const item of git(["ls-files", "--stage", "-z"])
-    .split("\0")
-    .filter(Boolean)) {
-    const match = /^(\d{6}) ([a-f0-9]+) ([0-3])\t([\s\S]+)$/.exec(item);
-    if (!match || match[3] !== "0") throw new Stop("UNMERGED_INDEX");
-    index.set(match[4], { mode: match[1], oid: match[2] });
-  }
-  for (const file of changed) {
+function rawBlobs(records, findings) {
+  for (let i = 0; i < records.length && records[i]; i += 2) {
+    const m = /^:(\d{6}) (\d{6}) ([a-f0-9]+) ([a-f0-9]+) ([A-Z])$/.exec(
+      records[i],
+    );
+    const file = records[i + 1];
+    if (!m || !file || m[5] === "U")
+      throw new Stop("CHANGED_CONTENT_UNDETERMINED");
     findings.push(...inspect(Buffer.alloc(0), file));
-    if (index.has(file)) {
-      const entry = index.get(file);
-      blob(entry.oid, file, entry.mode, findings);
-    }
+    if (m[5] !== "D") blob(m[4], file, m[2], findings);
   }
-  return findings;
 }
-export function message(filename) {
-  effectiveIdentity(policy());
-  return inspect(regularBytes(filename), "[commit-message]");
-}
-function metadata(oid, type, approved, findings) {
-  const raw = git(["cat-file", type, oid]);
-  const boundary = raw.indexOf("\n\n");
-  if (boundary < 0) throw new Stop("OBJECT_METADATA_INVALID");
-  const headers = raw.slice(0, boundary).split("\n");
-  const required = type === "commit" ? ["author", "committer"] : ["tagger"];
-  for (const field of required) {
-    const fields = headers.filter((line) => line.startsWith(field + " "));
-    if (fields.length !== 1) throw new Stop("OBJECT_METADATA_INVALID");
-    identity(fields[0].slice(field.length + 1), approved);
-  }
-  const nonIdentity = headers
-    .filter((line) => !required.some((field) => line.startsWith(field + " ")))
-    .join("\n");
-  findings.push(
-    ...inspect(
-      Buffer.from(nonIdentity + "\n" + raw.slice(boundary + 2)),
-      "[" + type + "-metadata]",
-    ),
-  );
-}
-function peel(oid, approved, findings, inspectTags) {
-  for (let depth = 0; depth < 8; depth++) {
-    if (!OID.test(oid)) throw new Stop("GIT_OBJECT_UNVERIFIABLE");
-    const type = git(["cat-file", "-t", oid]).trim();
-    if (type === "commit") return oid;
-    if (type !== "tag") throw new Stop("REF_TARGET_UNINSPECTABLE");
-    if (inspectTags) metadata(oid, "tag", approved, findings);
-    const match = /^object ([a-f0-9]+)\n/.exec(git(["cat-file", "tag", oid]));
-    if (!match) throw new Stop("TAG_UNVERIFIABLE");
-    oid = match[1];
-  }
-  throw new Stop("TAG_DEPTH_LIMIT");
-}
-function changedBlobs(commit, findings) {
-  const rawCommit = git(["cat-file", "commit", commit]);
-  const header = rawCommit.slice(0, rawCommit.indexOf("\n\n"));
-  const parents = [...header.matchAll(/^parent ([a-f0-9]+)$/gm)].map(
-    (match) => match[1],
-  );
-  const seen = new Set();
-  // Union every parent's changed result blobs, including merge resolutions.
-  for (const parent of parents.length ? parents : [null]) {
-    const revisions = parent ? [parent, commit] : ["--root", commit];
-    const records = git([
-      "diff-tree",
-      "--no-commit-id",
-      "-r",
+export function staged() {
+  const findings = [];
+  rawBlobs(
+    git([
+      "diff",
+      "--cached",
       "--raw",
+      "--abbrev=64",
       "-z",
       "--no-renames",
       "--no-ext-diff",
       "--no-textconv",
-      ...revisions,
-    ]).split("\0");
-    for (let i = 0; i < records.length && records[i]; i += 2) {
-      const match = /^:(\d{6}) (\d{6}) ([a-f0-9]+) ([a-f0-9]+) ([A-Z])$/.exec(
-        records[i],
-      );
-      const file = records[i + 1];
-      if (!match || !file) throw new Stop("TREE_DIFF_UNVERIFIABLE");
-      const key = records[i] + "\0" + file;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      findings.push(...inspect(Buffer.alloc(0), file));
-      if (match[5] !== "D") blob(match[4], file, match[2], findings);
-    }
+    ]).split("\0"),
+    findings,
+  );
+  return findings;
+}
+export function message(file) {
+  return inspect(regularBytes(file), "[commit-message]");
+}
+function metadata(oid, type, findings) {
+  findings.push(
+    ...inspect(
+      Buffer.from(git(["cat-file", type, oid])),
+      `[${type} ${oid.slice(0, 12)}]`,
+      "[metadata]",
+    ),
+  );
+}
+function peel(oid, findings, inspectTags) {
+  for (let depth = 0; depth < 8; depth++) {
+    if (!OID.test(oid)) throw new Stop("PUSH_OBJECT_UNDETERMINED");
+    const type = git(["cat-file", "-t", oid]).trim();
+    if (type === "commit") return oid;
+    if (type !== "tag") throw new Stop("PUSH_TARGET_UNDETERMINED");
+    if (inspectTags) metadata(oid, "tag", findings);
+    oid = /^object ([a-f0-9]+)\n/.exec(git(["cat-file", "tag", oid]))?.[1];
+  }
+  throw new Stop("TAG_DEPTH_LIMIT");
+}
+function changedBlobs(commit, findings) {
+  const raw = git(["cat-file", "commit", commit]);
+  const parents = [
+    ...raw.slice(0, raw.indexOf("\n\n")).matchAll(/^parent ([a-f0-9]+)$/gm),
+  ].map((m) => m[1]);
+  for (const parent of parents.length ? parents : [null]) {
+    rawBlobs(
+      git([
+        "diff-tree",
+        "--no-commit-id",
+        "-r",
+        "--raw",
+        "--abbrev=64",
+        "-z",
+        "--no-renames",
+        "--no-ext-diff",
+        "--no-textconv",
+        ...(parent ? [parent, commit] : ["--root", commit]),
+      ]).split("\0"),
+      findings,
+    );
   }
 }
-export function push(remote, stdin) {
-  const approved = policy();
-  effectiveIdentity(approved);
-  const findings = [];
-  const lines = stdin.trim().split("\n").filter(Boolean);
-  if (!lines.length) return findings;
-  const updates = lines.map((line) => {
+export function push(remote, input) {
+  const findings = [],
+    visited = new Set();
+  let newBranchBase;
+  for (const line of input.trim().split("\n").filter(Boolean)) {
     const fields = line.split(" ");
     if (fields.length !== 4 || !OID.test(fields[1]) || !OID.test(fields[3]))
-      throw new Stop("PUSH_INPUT_INVALID");
-    if (!/^refs\/(?:heads|tags)\//.test(fields[2]))
-      throw new Stop("REF_NAMESPACE_UNSUPPORTED");
-    for (const ref of [fields[0], fields[2]])
-      findings.push(...inspect(Buffer.from(ref), "[ref-name]"));
-    return fields;
-  });
-  const localHelpers = spawnSync(
-    "git",
-    [
-      "config",
-      "--local",
-      "--includes",
-      "--get-regexp",
-      "^(credential\\..*helper|core\\.sshcommand|remote\\..*\\.vcs)$",
-    ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  );
-  if (localHelpers.status !== 1)
-    throw new Stop("LOCAL_TRANSPORT_HELPER_REQUIRES_REVIEW");
-  // Query the actual remote. A stale tracking ref cannot establish a new-ref baseline.
-  const advertised = new Map();
-  for (const row of git([
-    "ls-remote",
-    "--refs",
-    "--",
-    remote,
-    "refs/heads/*",
-    "refs/tags/*",
-  ])
-    .trim()
-    .split("\n")
-    .filter(Boolean)) {
-    const [oid, ref, extra] = row.split("\t");
-    if (extra || !OID.test(oid) || !ref?.startsWith("refs/"))
-      throw new Stop("REMOTE_BASELINE_UNVERIFIABLE");
-    advertised.set(ref, oid);
-  }
-  const baseline = new Set();
-  for (const oid of advertised.values())
-    baseline.add(peel(oid, approved, findings, false));
-  const tips = new Set();
-  for (const [, localOid, remoteRef, remoteOid] of updates) {
-    if (
-      (advertised.get(remoteRef) ?? "0".repeat(remoteOid.length)) !== remoteOid
-    )
-      throw new Stop("REMOTE_BASELINE_CHANGED");
-    if (!ZERO.test(localOid))
-      tips.add(peel(localOid, approved, findings, true));
-  }
-  if (!tips.size) return findings;
-  const revisionInput =
-    [...tips, ...[...baseline].map((oid) => "^" + oid)].join("\n") + "\n";
-  const commits = git(["rev-list", "--reverse", "--topo-order", "--stdin"], {
-    input: revisionInput,
-  })
-    .trim()
-    .split("\n")
-    .filter(Boolean);
-  if (commits.length > MAX_COMMITS) throw new Stop("OUTGOING_COMMIT_LIMIT");
-  for (const commit of commits) {
-    if (!OID.test(commit)) throw new Stop("COMMIT_UNVERIFIABLE");
-    metadata(commit, "commit", approved, findings);
-    changedBlobs(commit, findings);
+      throw new Stop("PUSH_INPUT_UNDETERMINED");
+    const [localRef, localOid, remoteRef, remoteOid] = fields;
+    findings.push(
+      ...inspect(Buffer.from(localRef + "\n" + remoteRef), "[ref-name]"),
+    );
+    if (ZERO.test(localOid)) continue;
+    const tip = peel(localOid, findings, true);
+    let base;
+    if (!ZERO.test(remoteOid)) base = peel(remoteOid, findings, false);
+    else {
+      if (newBranchBase === undefined) {
+        const rows = git(["ls-remote", "--symref", "--", remote, "HEAD"])
+          .trim()
+          .split("\n");
+        const head = rows
+          .map((row) => /^([a-f0-9]+)\tHEAD$/.exec(row)?.[1])
+          .find(Boolean);
+        newBranchBase = head ? peel(head, findings, false) : null;
+      }
+      base = newBranchBase;
+    }
+    const commits = git([
+      "rev-list",
+      "--reverse",
+      "--topo-order",
+      tip,
+      ...(base ? ["^" + base] : []),
+    ])
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    for (const commit of commits) {
+      if (visited.has(commit)) continue;
+      visited.add(commit);
+      stats.commits++;
+      metadata(commit, "commit", findings);
+      changedBlobs(commit, findings);
+    }
   }
   return findings;
 }
 export function outbound(files) {
   if (!files.length) throw new Stop("EXACT_OUTBOUND_FILE_REQUIRED");
-  const root = process.cwd();
   return files.flatMap((file) => {
-    const absolute = path.resolve(file);
-    const relative = path.relative(root, absolute);
-    const label = relative.startsWith("..") ? "[outbound-file]" : relative;
-    const filenameFindings = inspect(Buffer.alloc(0), path.basename(file));
-    return [
-      ...filenameFindings,
-      ...inspect(regularBytes(absolute), label, path.basename(file)),
-    ];
+    const relative = path.relative(process.cwd(), path.resolve(file));
+    return inspect(
+      regularBytes(file),
+      relative.startsWith("..")
+        ? "[outbound]/" + path.basename(file)
+        : relative,
+      path.basename(file),
+    );
   });
 }
-function pushInput() {
-  const bytes = readFileSync(0);
-  if (bytes.length > MAX_BYTES) throw new Stop("PUSH_INPUT_INVALID");
+function atomicJSON(file, value) {
+  const temp = file + "." + process.pid + ".tmp";
+  writeFileSync(temp, JSON.stringify(value), { mode: 0o600 });
+  renameSync(temp, file);
+}
+function readJSON(file, fallback) {
+  if (!existsSync(file)) return fallback;
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return JSON.parse(readFileSync(file, "utf8"));
   } catch {
-    throw new Stop("PUSH_INPUT_INVALID");
+    throw new Stop("LOCAL_STATE_UNREADABLE");
   }
 }
-export function main(args = process.argv.slice(2)) {
-  try {
-    const [mode, ...rest] = args;
-    if (mode === "health" && !rest.length) {
-      console.log(JSON.stringify({ ok: true, ...health() }));
-      return 0;
+function result(findings) {
+  const unique = [
+    ...new Map(findings.map((f) => [JSON.stringify(f), f])).values(),
+  ];
+  const status = unique.some((f) => f.severity === "BLOCK")
+    ? "BLOCK"
+    : unique.length
+      ? "WARN"
+      : "PASS";
+  return { status, ok: status !== "BLOCK", findings: unique, ...stats };
+}
+async function worker(args) {
+  deadline = Number(process.env.CONFIDENTIALITY_WORKER_DEADLINE);
+  cache = readJSON(process.env.CONFIDENTIALITY_CACHE_FILE, {});
+  const [mode, ...rest] = args;
+  let findings;
+  if (mode === "health") return { status: "PASS", ok: true, ...health() };
+  if (mode === "staged" && !rest.length) findings = staged();
+  else if (mode === "message" && rest.length === 1) findings = message(rest[0]);
+  else if (mode === "push" && rest.length === 2) {
+    const chunks = [];
+    for await (const chunk of process.stdin) {
+      remaining();
+      chunks.push(chunk);
     }
-    health();
-    let findings;
-    if (mode === "staged" && !rest.length) findings = staged();
-    else if (mode === "message" && rest.length === 1)
-      findings = message(rest[0]);
-    else if (mode === "push" && rest.length === 2)
-      findings = push(rest[1], pushInput());
-    else if (mode === "outbound") findings = outbound(rest);
-    else throw new Stop("COMMAND_INVALID");
-    const unique = [
-      ...new Map(
-        findings.map((finding) => [JSON.stringify(finding), finding]),
-      ).values(),
-    ];
-    console.log(JSON.stringify({ ok: unique.length === 0, findings: unique }));
-    return unique.length ? 1 : 0;
-  } catch (error) {
+    let input;
+    try {
+      input = new TextDecoder("utf-8", { fatal: true }).decode(
+        Buffer.concat(chunks),
+      );
+    } catch {
+      throw new Stop("PUSH_INPUT_UNDETERMINED");
+    }
+    findings = push(rest[1], input);
+  } else if (mode === "outbound") findings = outbound(rest);
+  else throw new Stop("COMMAND_INVALID");
+  remaining();
+  atomicJSON(process.env.CONFIDENTIALITY_CACHE_FILE, cache);
+  return result(findings);
+}
+function incomplete(error) {
+  return {
+    status: "INCOMPLETE",
+    ok: false,
+    findings: [
+      {
+        path: safePath(error.location ?? "."),
+        line: 1,
+        category: error instanceof Stop ? error.category : "CHECK_FAILED",
+        severity: "INCOMPLETE",
+      },
+    ],
+  };
+}
+// One persisted allowance is shared by commit, push and exact publication.
+// Functional tests/review/idle time are excluded; each active invocation gets
+// an absolute deadline from the SAME remaining allowance, never a fresh 120s.
+export async function main(args = process.argv.slice(2)) {
+  const started = Date.now();
+  deadline = started + BUDGET_MS;
+  let stateFile, state, lock;
+  try {
+    const { common, gitDir } = currentRepository();
+    const directory = path.join(common, "confidentiality-check-state");
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    stateFile = path.join(directory, digest(Buffer.from(gitDir)) + ".json");
+    lock = stateFile + ".lock";
+    try {
+      mkdirSync(lock);
+    } catch {
+      lock = undefined;
+      throw new Stop("CHECK_ALREADY_RUNNING");
+    }
+    const previous = readJSON(stateFile, null);
+    state = previous
+      ? { ...previous, rule: RULE_VERSION }
+      : {
+          rule: RULE_VERSION,
+          batch: null,
+          remainingMs: BUDGET_MS,
+          usedMs: 0,
+        };
+    if (
+      process.env.CONFIDENTIALITY_BATCH_ID &&
+      state.batch !== process.env.CONFIDENTIALITY_BATCH_ID
+    )
+      state = {
+        rule: RULE_VERSION,
+        batch: process.env.CONFIDENTIALITY_BATCH_ID,
+        remainingMs: BUDGET_MS,
+        usedMs: 0,
+      };
+    deadline = started + Math.max(0, state.remainingMs);
+    const batch =
+      process.env.CONFIDENTIALITY_BATCH_ID || git(["write-tree"]).trim();
+    state =
+      previous?.batch === batch
+        ? { ...previous, rule: RULE_VERSION }
+        : { rule: RULE_VERSION, batch, remainingMs: BUDGET_MS, usedMs: 0 };
+    deadline = started + state.remainingMs;
+    const cacheFile = path.join(directory, RULE_VERSION + ".cache.json");
+    const manifest = readJSON(
+      path.join(common, INSTALL_DIR, "manifest.json"),
+      null,
+    );
+    if (
+      !manifest ||
+      manifest.version !== VERSION ||
+      manifest.files["confidentiality-scan.mjs"] !== RULE_VERSION
+    )
+      throw new Stop("SCANNER_VERSION_MISMATCH");
+    for (const file of INSTALLED_FILES) {
+      const installed = path.join(common, INSTALL_DIR, file);
+      if (digest(regularBytes(installed)) !== manifest.files[file])
+        throw new Stop("INSTALLED_FILE_CHANGED");
+      if (
+        file !== "confidentiality-scan.mjs" &&
+        !(lstatSync(installed).mode & 0o111)
+      )
+        throw new Stop("HOOK_NOT_EXECUTABLE");
+    }
+    const output = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [SELF, "--worker", ...args], {
+        detached: process.platform !== "win32",
+        stdio: [args[0] === "push" ? "inherit" : "ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          CONFIDENTIALITY_WORKER_DEADLINE: String(deadline),
+          CONFIDENTIALITY_CACHE_FILE: cacheFile,
+        },
+      });
+      let bytes = "",
+        finished = false;
+      const finish = (value) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        terminate();
+        resolve(value);
+      };
+      const terminate = () => {
+        try {
+          process.kill(
+            process.platform === "win32" ? child.pid : -child.pid,
+            "SIGKILL",
+          );
+        } catch {
+          /* Already exited. */
+        }
+      };
+      const timer = setTimeout(
+        () => {
+          terminate();
+          finish(incomplete(new Stop("BUDGET_EXHAUSTED")));
+        },
+        Math.max(1, deadline - Date.now()),
+      );
+      child.stdout.on("data", (chunk) => {
+        bytes += chunk.toString();
+        if (bytes.length > 2 * 1024 * 1024) {
+          terminate();
+          finish(incomplete(new Stop("RESULT_TOO_LARGE")));
+        }
+      });
+      child.on("error", () =>
+        finish(incomplete(new Stop("WORKER_START_FAILED"))),
+      );
+      child.on("close", () => {
+        try {
+          finish(JSON.parse(bytes));
+        } catch {
+          finish(incomplete(new Stop("WORKER_FAILED")));
+        }
+      });
+    });
+    const elapsedMs = Date.now() - started;
+    state.usedMs += elapsedMs;
+    state.remainingMs = Math.max(0, state.remainingMs - elapsedMs);
+    atomicJSON(stateFile, state);
     console.log(
       JSON.stringify({
-        ok: false,
-        findings: [
-          {
-            path: ".",
-            category:
-              error instanceof Stop ? error.category : "PREFLIGHT_UNVERIFIABLE",
-          },
-        ],
+        ...output,
+        elapsedMs,
+        batchUsedMs: state.usedMs,
+        batchRemainingMs: state.remainingMs,
       }),
     );
-    return 1;
+    return output.status === "BLOCK"
+      ? 1
+      : output.status === "INCOMPLETE"
+        ? 2
+        : 0;
+  } catch (error) {
+    if (state && stateFile) {
+      const elapsed = Date.now() - started;
+      state.usedMs += elapsed;
+      state.remainingMs = Math.max(0, state.remainingMs - elapsed);
+      try {
+        atomicJSON(stateFile, state);
+      } catch {
+        /* Report once. */
+      }
+    }
+    console.log(
+      JSON.stringify({ ...incomplete(error), elapsedMs: Date.now() - started }),
+    );
+    return 2;
+  } finally {
+    if (lock) rmSync(lock, { recursive: true, force: true });
   }
 }
 export function isEntryPoint(url) {
@@ -738,14 +680,15 @@ export function isEntryPoint(url) {
   try {
     return realpathSync(process.argv[1]) === fileURLToPath(url);
   } catch {
-    console.log(
-      JSON.stringify({
-        ok: false,
-        findings: [{ path: ".", category: "ENTRYPOINT_UNVERIFIABLE" }],
-      }),
-    );
-    process.exitCode = 1;
     return false;
   }
 }
-if (isEntryPoint(import.meta.url)) process.exitCode = main();
+if (isEntryPoint(import.meta.url)) {
+  if (process.argv[2] === "--worker") {
+    try {
+      console.log(JSON.stringify(await worker(process.argv.slice(3))));
+    } catch (error) {
+      console.log(JSON.stringify(incomplete(error)));
+    }
+  } else process.exitCode = await main();
+}

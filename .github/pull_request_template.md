@@ -45,18 +45,19 @@ List only applicable checks and include command plus result.
 - Current remote state and review-thread check: `Pending` / result
 - Expected head SHA pinned for merge: `Pending` / SHA
 
-## Confidentiality preflight
+## Core-credential check
 
-- Actual staged content, commit messages and author/committer identities:
-- Every new outgoing commit, filename and changed artifact:
-- Exact PR text and any non-Git attachment/output checked before sending:
-- Approved anonymous identity and noreply email verified without echoing values:
-- Effective local hook installation and scan limitations:
+- Exact staged content and proposed message result:
+- Newly outgoing commits and intermediate changes result:
+- Exact PR/comment text and specified attachment result:
+- Shared delivery allowance, elapsed security time and reused results:
+- Any WARN or concrete INCOMPLETE coverage limitation:
 
-Report only sanitized results and locations. Do not include private deployment
-details, personal paths, credentials or complete signed links as evidence.
-Private repositories and Draft PRs have the same confidentiality boundary. CI
-and GitHub alerts supplement, but do not replace, the local preflight.
+Use repository-relative paths, line numbers and categories without matched
+values. Ordinary identifiers, public certificates and Git configuration forms do
+not require privacy approval. Preserve the configured anonymous identity. The
+incremental local check, normal code review and GitHub push protection remain;
+there is no separate confidentiality approval process.
 
 ## Owner decision gates
 
