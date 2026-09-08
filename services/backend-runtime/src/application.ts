@@ -1,5 +1,6 @@
 import {
   createDevelopmentCatalogFixtureQueryPort,
+  createDevelopmentCatalogFixtureSearchPort,
   developmentMediaUrlsByObjectKey,
 } from "./catalog/development-catalog-fixture.js";
 import { createRouter } from "./http/router.js";
@@ -7,7 +8,11 @@ import { createRouter } from "./http/router.js";
 import { CatalogReadService } from "@moya/api";
 import { MappedStorageUrlResolver } from "@moya/image";
 
-import type { CatalogQueryPort, StorageUrlResolver } from "@moya/api";
+import type {
+  CatalogQueryPort,
+  CatalogSearchQueryPort,
+  StorageUrlResolver,
+} from "@moya/api";
 import type { NodeEnvironment } from "./config.js";
 import type { HealthReadinessCheck } from "./health/health-handler.js";
 import type { RequestListener } from "node:http";
@@ -15,6 +20,7 @@ import type { RequestListener } from "node:http";
 export interface BackendApplicationOptions {
   readonly nodeEnv: NodeEnvironment;
   readonly catalogQueryPort?: CatalogQueryPort;
+  readonly catalogSearchQueryPort?: CatalogSearchQueryPort;
   readonly storageUrlResolver?: StorageUrlResolver;
   readonly healthReadinessCheck?: HealthReadinessCheck;
 }
@@ -57,6 +63,11 @@ export const createBackendApplication = (
     catalogReadService: new CatalogReadService(
       catalogQueryPort,
       storageUrlResolver,
+      options.catalogSearchQueryPort ??
+        (options.nodeEnv !== "production" &&
+        options.catalogQueryPort === undefined
+          ? createDevelopmentCatalogFixtureSearchPort()
+          : undefined),
     ),
     healthReadinessCheck:
       options.healthReadinessCheck ?? (async (): Promise<void> => undefined),

@@ -23,7 +23,7 @@ const collectTypeScript = async (directory: string): Promise<string[]> => {
 };
 
 describe("@moya/catalog-postgres package boundary", () => {
-  it("depends only on the application contract, Public identity schemas and pg", async () => {
+  it("depends only on the application contract, Public identity schemas, search normalization and pg", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(adapterRoot, "package.json"), "utf8"),
     ) as {
@@ -33,6 +33,7 @@ describe("@moya/catalog-postgres package boundary", () => {
     expect(manifest.dependencies).toEqual({
       "@moya/api": "workspace:*",
       "@moya/contracts": "workspace:*",
+      "@moya/search": "workspace:*",
       pg: "8.22.0",
     });
     expect(manifest.sideEffects).toBe(false);
@@ -43,6 +44,7 @@ describe("@moya/catalog-postgres package boundary", () => {
       "@moya/api",
       "@moya/contracts",
       "@moya/contracts/schemas",
+      "@moya/search",
     ]);
     const violations: string[] = [];
     for (const file of await collectTypeScript(path.join(adapterRoot, "src"))) {

@@ -1,3 +1,6 @@
+import { CatalogQueryUnavailableError } from "@moya/api";
+import { SEARCH_NORMALIZATION_VERSION } from "@moya/search";
+
 import { asPostgresOperationError } from "./availability.js";
 import { catalogPageOffset } from "./pagination.js";
 import {
@@ -19,6 +22,10 @@ import {
   mapCitationRows,
   mapRepresentativeMediaRows,
 } from "./row-mapper.js";
+import {
+  buildCatalogSearchSql,
+  catalogSearchReadySql,
+} from "./search-queries.js";
 
 import type {
   CatalogAliasRow,
@@ -32,13 +39,35 @@ import type {
   CatalogListPageProjection,
   CatalogListQuery,
   CatalogQueryPort,
+  CatalogSearchPageProjection,
+  CatalogSearchQuery,
+  CatalogSearchQueryPort,
 } from "@moya/api";
-import type { CatalogId } from "@moya/contracts";
+import type { CatalogId, CatalogSearchMatchKind } from "@moya/contracts";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 interface CatalogCountRow extends QueryResultRow {
   readonly total: unknown;
 }
+
+const searchMatchKinds: readonly CatalogSearchMatchKind[] = [
+  "title-exact",
+  "alias-exact",
+  "normalized-exact",
+  "title-alias-partial",
+  "structured",
+  "body",
+];
+
+const mapSearchMatchKind = (value: unknown): CatalogSearchMatchKind => {
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new Error("Invalid PostgreSQL Catalog search rank");
+  }
+  const matchKind = searchMatchKinds[value];
+  if (matchKind === undefined)
+    throw new Error("Invalid PostgreSQL Catalog search rank");
+  return matchKind;
+};
 
 export const parseCatalogCount = (value: unknown): number => {
   if (typeof value !== "string" || !/^\d+$/.test(value)) {
@@ -82,8 +111,64 @@ const withReadTransaction = async <Result>(
 };
 
 /** PostgreSQL infrastructure implementation of the frozen Catalog read port. */
-export class PostgresCatalogQueryAdapter implements CatalogQueryPort {
+export class PostgresCatalogQueryAdapter
+  implements CatalogQueryPort, CatalogSearchQueryPort
+{
   constructor(private readonly pool: Pool) {}
+
+  async search(
+    query: CatalogSearchQuery,
+  ): Promise<CatalogSearchPageProjection> {
+    const sql = buildCatalogSearchSql(query);
+    return withReadTransaction(this.pool, async (client) => {
+      const readiness = await client.query(catalogSearchReadySql, [
+        SEARCH_NORMALIZATION_VERSION,
+      ]);
+      if (readiness.rows[0]?.incomplete !== false) {
+        throw new CatalogQueryUnavailableError();
+      }
+      const count = await client.query<CatalogCountRow>(
+        sql.countSql,
+        sql.countValues,
+      );
+      const total = parseCatalogCount(count.rows[0]?.total);
+      const entries = await client.query<CatalogEntryRow>(
+        sql.listSql,
+        sql.listValues,
+      );
+      const catalogIds = entries.rows.map((row) => String(row.catalog_id));
+      const [aliasRows, mediaRows] =
+        catalogIds.length === 0
+          ? [
+              { rows: [] as CatalogAliasRow[] },
+              { rows: [] as CatalogMediaRow[] },
+            ]
+          : await Promise.all([
+              client.query<CatalogAliasRow>(listCatalogAliasesSql, [
+                catalogIds,
+              ]),
+              client.query<CatalogMediaRow>(listRepresentativeCatalogMediaSql, [
+                catalogIds,
+              ]),
+            ]);
+      const aliases = mapAliasRows(aliasRows.rows);
+      const representativeMedia = mapRepresentativeMediaRows(mediaRows.rows);
+      return {
+        items: entries.rows.map((row) => ({
+          ...mapCatalogEntryRow(
+            row,
+            aliases.get(String(row.catalog_id)) ?? [],
+            representativeMedia.get(String(row.catalog_id)),
+          ),
+          matchKind: mapSearchMatchKind(row.search_rank),
+        })),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+        totalPages: total === 0 ? 0 : Math.ceil(total / query.pageSize),
+      };
+    });
+  }
 
   async list({
     kind,

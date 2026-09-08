@@ -178,6 +178,45 @@ export const catalogPageSchema = z
     }
   });
 
+export const catalogSearchMatchKindSchema = z.enum([
+  "title-exact",
+  "alias-exact",
+  "normalized-exact",
+  "title-alias-partial",
+  "structured",
+  "body",
+]);
+
+export const catalogSearchTransportQuerySchema = z.strictObject({
+  ...catalogListTransportQuerySchema.shape,
+  q: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (value) =>
+        Array.from(value).every((character) => {
+          const code = character.charCodeAt(0);
+          return (
+            (code < 127 || code > 159) &&
+            (code >= 32 || code === 9 || code === 10 || code === 13)
+          );
+        }),
+      { message: "Query contains unsupported control characters" },
+    )
+    .refine((value) => value.trim().length > 0, {
+      message: "Query must not be blank",
+    }),
+});
+
+export const catalogSearchItemSchema = catalogSummarySchema.extend({
+  matchKind: catalogSearchMatchKindSchema,
+});
+
+export const catalogSearchPageSchema = catalogPageSchema.safeExtend({
+  items: z.array(catalogSearchItemSchema),
+});
+
 export const healthResponseSchema = z.strictObject({
   status: z.literal("ok"),
 });

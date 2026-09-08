@@ -401,9 +401,15 @@ test("Formal and clean Development do not consume the QA chrome parameter", asyn
       ).toHaveCount(0);
       await expect(
         page.locator(
-          "[data-search-trigger], [data-inscription-filter], [data-user-trigger], [data-open-settings]",
+          "[data-inscription-filter], [data-user-trigger], [data-open-settings]",
         ),
       ).toHaveCount(0);
+      await expect(page.locator("[data-search-trigger]")).toHaveCount(
+        path === "/" ? 1 : 0,
+      );
+      await expect(page.locator("[data-catalog-search]")).toHaveCount(
+        path === "/" ? 1 : 0,
+      );
       await expect(page.locator('[data-catalog-id^="qa-visual-"]')).toHaveCount(
         0,
       );

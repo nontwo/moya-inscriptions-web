@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CatalogListQuery,
   CatalogQueryPort,
+  CatalogSearchQueryPort,
   StorageMediaLocator,
   StorageUrlResolver,
 } from "@moya/api";
@@ -30,6 +31,59 @@ const recordingResolver = (
 };
 
 describe("CatalogReadService", () => {
+  it("maps Search through the public mapper without changing rank order or leaking projection internals", async () => {
+    const port: CatalogQueryPort = {
+      async list({ page, pageSize }) {
+        return { items: [], total: 0, page, pageSize, totalPages: 0 };
+      },
+      async getById() {
+        return null;
+      },
+    };
+    const searchPort: CatalogSearchQueryPort = {
+      async search(query) {
+        return {
+          items: [
+            {
+              id: catalogId,
+              kind: "calligraphy",
+              title: "合成精确标题",
+              aliases: [],
+              matchKind: "title-exact",
+              internalNote: "SYNTHETIC_INTERNAL_NOTE",
+            },
+            {
+              id: catalogIdSchema.parse("synthetic-body-result"),
+              kind: "inscription",
+              title: "合成正文命中",
+              aliases: [],
+              matchKind: "body",
+            },
+          ],
+          total: 2,
+          page: query.page,
+          pageSize: query.pageSize,
+          totalPages: 1,
+        };
+      },
+    };
+    const { calls, resolver } = recordingResolver();
+    const result = await new CatalogReadService(
+      port,
+      resolver,
+      searchPort,
+    ).search({ q: "合成", page: 1, pageSize: 20 });
+    expect(
+      result.items.map(({ id, matchKind }) => ({ id, matchKind })),
+    ).toEqual([
+      { id: catalogId, matchKind: "title-exact" },
+      { id: "synthetic-body-result", matchKind: "body" },
+    ]);
+    expect(result).not.toHaveProperty("q");
+    expect(result.items[0]).not.toHaveProperty("internalNote");
+    expect(calls).toEqual([]);
+  });
+
   it("passes the normalized query and never calls the resolver for zero Media", async () => {
     const received: CatalogListQuery[] = [];
     const port: CatalogQueryPort = {

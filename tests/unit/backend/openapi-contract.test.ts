@@ -11,6 +11,9 @@ import {
   catalogListTransportQueryJsonSchema,
   catalogPageJsonSchema,
   catalogSummaryJsonSchema,
+  catalogSearchMatchKindJsonSchema,
+  catalogSearchItemJsonSchema,
+  catalogSearchPageJsonSchema,
   healthResponseJsonSchema,
   mediaIdJsonSchema,
   publicMediaJsonSchema,
@@ -41,14 +44,19 @@ const requiredProperties = (schema: unknown): string[] =>
   (asObject(schema).required ?? []) as string[];
 
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
-  it("contains exactly the three approved read-only routes", () => {
+  it("contains exactly the four approved read-only routes", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.jsonSchemaDialect).toBe(
       "https://json-schema.org/draft/2020-12/schema",
     );
     expect(asObject(openApiDocument.info).version).toBe("1.0.0");
     expect(Object.keys(paths).sort()).toEqual(
-      ["/health", "/v1/catalog", "/v1/catalog/{catalogId}"].sort(),
+      [
+        "/health",
+        "/v1/catalog",
+        "/v1/catalog/{catalogId}",
+        "/v1/catalog-search",
+      ].sort(),
     );
     expect(paths).not.toHaveProperty("/v1/items");
     expect(paths).not.toHaveProperty("/v1/items/{id}");
@@ -136,6 +144,9 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       CatalogSummary: catalogSummaryJsonSchema,
       CatalogDetail: catalogDetailJsonSchema,
       CatalogPage: catalogPageJsonSchema,
+      CatalogSearchMatchKind: catalogSearchMatchKindJsonSchema,
+      CatalogSearchItem: catalogSearchItemJsonSchema,
+      CatalogSearchPage: catalogSearchPageJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     });

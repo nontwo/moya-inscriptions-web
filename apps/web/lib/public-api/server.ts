@@ -1,5 +1,9 @@
 import "server-only";
 
+import { fetchCatalogSearchPage } from "./catalog-search";
+import type { CatalogSearchTransportResult } from "./catalog-search";
+import type { CatalogSearchTransportQuery } from "@moya/contracts";
+
 import { fetchCatalogDetail } from "./catalog-detail";
 import { fetchCatalogPage } from "./catalog-list";
 
@@ -57,6 +61,22 @@ export const fetchServerCatalogDetail = async (
     return await fetchCatalogDetail(
       { baseUrl, fetch: globalThis.fetch },
       catalogId,
+    );
+  } catch {
+    return { state: "unexpected-error" };
+  }
+};
+
+export const fetchServerCatalogSearchPage = async (
+  query: CatalogSearchTransportQuery,
+  signal?: AbortSignal,
+): Promise<CatalogSearchTransportResult> => {
+  try {
+    const baseUrl = parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL);
+    return await fetchCatalogSearchPage(
+      { baseUrl, fetch: globalThis.fetch },
+      query,
+      signal,
     );
   } catch {
     return { state: "unexpected-error" };

@@ -53,6 +53,7 @@ describe("@moya/api server-only surface", () => {
       "mapCatalogPage",
       "mapCatalogSummary",
       "parseCatalogListQuery",
+      "parseCatalogSearchQuery",
     ]);
   });
 

@@ -12,6 +12,10 @@ import type {
   catalogListTransportQuerySchema,
   catalogPageSchema,
   catalogSummarySchema,
+  catalogSearchMatchKindSchema,
+  catalogSearchTransportQuerySchema,
+  catalogSearchItemSchema,
+  catalogSearchPageSchema,
   healthResponseSchema,
   mediaIdSchema,
   publicMediaSchema,
@@ -34,6 +38,14 @@ export type CatalogListTransportQuery = z.infer<
   typeof catalogListTransportQuerySchema
 >;
 export type CatalogPage = z.infer<typeof catalogPageSchema>;
+export type CatalogSearchMatchKind = z.infer<
+  typeof catalogSearchMatchKindSchema
+>;
+export type CatalogSearchTransportQuery = z.infer<
+  typeof catalogSearchTransportQuerySchema
+>;
+export type CatalogSearchItem = z.infer<typeof catalogSearchItemSchema>;
+export type CatalogSearchPage = z.infer<typeof catalogSearchPageSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;

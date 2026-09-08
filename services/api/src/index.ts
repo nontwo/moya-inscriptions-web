@@ -1,5 +1,12 @@
 export { deriveCatalogPeriodLabel } from "./modules/catalog/application/catalog-read-projections.js";
 export { parseCatalogListQuery } from "./modules/catalog/transport/catalog-list-query-parser.js";
+export { parseCatalogSearchQuery } from "./modules/catalog/transport/catalog-search-query-parser.js";
+export type { CatalogSearchQuery } from "./modules/catalog/application/queries/catalog-search-query.js";
+export type {
+  CatalogSearchQueryPort,
+  CatalogSearchItemProjection,
+  CatalogSearchPageProjection,
+} from "./modules/catalog/application/ports/catalog-search-query-port.js";
 export {
   mapCatalogDetail,
   mapCatalogPage,
