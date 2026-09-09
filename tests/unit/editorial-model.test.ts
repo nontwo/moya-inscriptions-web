@@ -11,6 +11,7 @@ import {
   editorialSaveDraftSchema,
 } from "@moya/contracts/internal/editorial";
 import { editorialFields } from "admin/fields";
+import { publicSourceCitationSchema } from "@moya/contracts/schemas";
 
 const identity = {
   catalogId: "synthetic-catalog-001",
@@ -291,6 +292,50 @@ describe("editorial draft and publication boundaries", () => {
     expect(
       editorialContentFromDocument({ ...identity, title: " 原文 " }).title,
     ).toBe(" 原文 ");
+  });
+
+  it("adapts only empty native citation scopes while preserving text and order", () => {
+    const unscoped = {
+      label: "合成無範圍引用",
+      citation: "異體字𠮷\r\n甲  乙",
+    };
+    const scoped = {
+      label: "合成指定範圍引用",
+      citation: "第二條\n〔闕〕",
+      url: "https://example.invalid/synthetic-citation",
+      appliesTo: ["scholarlyResearch", "record"],
+    };
+    const original = {
+      ...identity,
+      aliases: [],
+      sourceCitations: [
+        { ...unscoped, id: "synthetic-citation-001", appliesTo: [] },
+        { ...scoped, id: "synthetic-citation-002" },
+        { label: "合成已省略範圍引用" },
+      ],
+    };
+    const unchanged = structuredClone(original);
+    const content = editorialContentFromDocument(original);
+    expect(content).toEqual({
+      ...identity,
+      aliases: [],
+      sourceCitations: [unscoped, scoped, { label: "合成已省略範圍引用" }],
+    });
+    expect(editorialDraftSchema.safeParse(content).success).toBe(true);
+    expect(original).toEqual(unchanged);
+    expect(
+      publicSourceCitationSchema.safeParse({ ...unscoped, appliesTo: [] })
+        .success,
+    ).toBe(false);
+    expect(
+      editorialSaveDraftSchema.safeParse({
+        idempotencyKey: "synthetic-explicit-empty-scopes",
+        content: {
+          ...identity,
+          sourceCitations: [{ ...unscoped, appliesTo: [] }],
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 

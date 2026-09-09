@@ -290,9 +290,26 @@ export const editorialContentFromDocument = (
     }
     return value;
   };
-  return Object.fromEntries(
+  const content: Record<string, unknown> = Object.fromEntries(
     EDITORIAL_FIELD_NAMES.filter(
       (name) => input[name] !== null && input[name] !== undefined,
     ).map((name) => [name, copyContent(input[name])]),
   );
+  // Payload reads an unselected hasMany select as []. The contract represents
+  // an unspecified citation scope by omission, and still rejects explicit []
+  // in API input. Normalize only this native transport field on the copied rows.
+  if (Array.isArray(content.sourceCitations)) {
+    for (const citation of content.sourceCitations) {
+      if (
+        citation !== null &&
+        typeof citation === "object" &&
+        !Array.isArray(citation) &&
+        Array.isArray(citation.appliesTo) &&
+        citation.appliesTo.length === 0
+      ) {
+        delete citation.appliesTo;
+      }
+    }
+  }
+  return content;
 };
