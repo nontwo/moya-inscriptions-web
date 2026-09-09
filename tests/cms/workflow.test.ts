@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createLocalReq, getPayload, type TypedUser } from "payload";
 import { PostgresCatalogQueryAdapter } from "@moya/catalog-postgres";
+import { editorialDraftSchema } from "@moya/contracts/internal/editorial";
 
 import config from "admin/config";
 import {
@@ -369,6 +370,74 @@ describe.sequential("Payload PostgreSQL editorial workflow", () => {
         overrideAccess: false,
       }),
     ).rejects.toMatchObject({ code: "AUTOMATION_DRAFT_ONLY" });
+  });
+
+  it("preserves unspecified citation scopes through native save, read, update and restore", async () => {
+    const unscoped = {
+      label: "合成無範圍引用",
+      citation: "異體字𠮷\r\n甲  乙",
+    };
+    const scoped = {
+      label: "合成指定範圍引用",
+      citation: "第二條\n〔闕〕",
+      url: "https://example.invalid/synthetic-citation",
+      appliesTo: ["scholarlyResearch", "record"],
+    };
+    const content = {
+      ...complete("citation-scopes"),
+      sourceCitations: [unscoped, scoped],
+    };
+    const expected = editorialDraftSchema.parse(content);
+    const first = await saveDraft(await reqFor(owner), {
+      idempotencyKey: `${run}:citation-scopes-create`,
+      content,
+    });
+    const saved = await readDraft(await reqFor(owner), { id: first.id });
+    expect(saved.content).toEqual(expected);
+    expect(saved.fingerprint).toBe(first.fingerprint);
+    const versions = await payload.findVersions({
+      collection: "catalogs",
+      where: { parent: { equals: first.id } },
+      depth: 0,
+      req: await reqFor(owner),
+      user: owner,
+      overrideAccess: false,
+    });
+    const originalVersion = versions.docs.find(
+      (version) => version.version.revision === first.revision,
+    );
+    if (!originalVersion) throw new Error("Synthetic original version missing");
+
+    const updatedContent = {
+      ...content,
+      sourceCitations: [
+        { label: scoped.label, citation: scoped.citation, url: scoped.url },
+        { ...unscoped, appliesTo: ["transcription", "description"] },
+      ],
+    };
+    const edited = await saveDraft(await reqFor(owner), {
+      id: first.id,
+      expectedRevision: first.revision,
+      idempotencyKey: `${run}:citation-scopes-update`,
+      content: updatedContent,
+    });
+    const updated = await readDraft(await reqFor(owner), { id: first.id });
+    expect(updated.content).toEqual(editorialDraftSchema.parse(updatedContent));
+    expect(updated.revision).toBe(first.revision + 1);
+    expect(updated.fingerprint).toBe(edited.fingerprint);
+    expect(updated.fingerprint).not.toBe(first.fingerprint);
+
+    const restored = await restoreDraft(await reqFor(owner), {
+      versionId: originalVersion.id,
+      expectedRevision: edited.revision,
+    });
+    const restoredDraft = await readDraft(await reqFor(owner), {
+      id: first.id,
+    });
+    expect(restoredDraft.content).toEqual(expected);
+    expect(restoredDraft.revision).toBe(edited.revision + 1);
+    expect(restoredDraft.fingerprint).toBe(first.fingerprint);
+    expect(restored.fingerprint).toBe(first.fingerprint);
   });
 
   it("requires an explicit main-record publication state and preserves explicit withdrawal", async () => {

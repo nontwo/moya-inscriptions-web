@@ -60,8 +60,26 @@ const snapshot = (name: string) => {
     ],
     catalog_aliases: [],
     catalog_contributors: [],
-    catalog_source_citations: [],
-    catalog_source_citation_scopes: [],
+    catalog_source_citations: [
+      {
+        catalog_id: catalogId,
+        position: 0,
+        label: "合成無範圍引用",
+        citation: original,
+        url: null,
+      },
+      {
+        catalog_id: catalogId,
+        position: 1,
+        label: "合成指定範圍引用",
+        citation: "合成引用\r\n第二條",
+        url: "https://example.invalid/synthetic-migration-citation",
+      },
+    ],
+    catalog_source_citation_scopes: [
+      { catalog_id: catalogId, citation_position: 1, scope: "transcription" },
+      { catalog_id: catalogId, citation_position: 1, scope: "record" },
+    ],
     catalog_media: [
       {
         catalog_id: catalogId,
