@@ -29,6 +29,10 @@ The active amendments are:
   shared 120-second security-work allowance. Ordinary identifiers and Git
   configuration forms are not credential findings or approval gates.
 
+- [`2026-09-07 P2-04 Payload editorial automation`](docs/governance/amendments/2026-09-07-p2-04-payload-editorial.md),
+  which authorizes the bounded CMS server integration and controlled content
+  automation while preserving public contracts and separate cutover authority.
+
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
 

@@ -402,4 +402,77 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: [
+      "apps/admin/payload.config.ts",
+      "apps/admin/src/editorial/**/*.ts",
+      "apps/admin/src/media/**/*.ts",
+      "apps/admin/src/migration/**/*.ts",
+      "apps/admin/src/preview/**/*.ts",
+      "apps/admin/src/published/**/*.ts",
+      "apps/admin/src/migrations/**/*.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/backend-production",
+            "@moya/backend-runtime",
+            "@moya/catalog-postgres",
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/backend-runtime/*",
+                "@moya/backend-production/*",
+                "**/data/**",
+                "**/*.csv",
+                "**/*.xlsx",
+              ],
+              message:
+                "CMS server uses its official adapter and controlled migration input; no unrelated runtime or raw source import.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["apps/admin/src/published/search.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/backend-production",
+            "@moya/backend-runtime",
+            {
+              name: "@moya/catalog-postgres",
+              allowImportNames: [
+                "catalogSearchSourceSelectSql",
+                "projectCatalogSearchSourceRow",
+              ],
+              message:
+                "The CMS publication bridge only shares the existing public Search projection.",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "@moya/backend-runtime/*",
+                "@moya/backend-production/*",
+                "@moya/catalog-postgres/*",
+                "**/data/**",
+                "**/*.csv",
+                "**/*.xlsx",
+              ],
+              message:
+                "CMS server uses its official adapter and controlled migration input; no unrelated runtime or raw source import.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

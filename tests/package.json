@@ -6,9 +6,10 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit --project e2e/tsconfig.json",
-    "test": "vitest run --exclude 'integration/postgres/**' --exclude 'e2e/**'",
+    "test": "vitest run --exclude 'integration/postgres/**' --exclude 'e2e/**' --exclude 'cms/**'",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
-    "test:postgres": "vitest run integration/postgres"
+    "test:postgres": "vitest run integration/postgres",
+    "test:cms": "vitest run cms --no-file-parallelism --testTimeout=30000 --hookTimeout=60000"
   },
   "devDependencies": {
     "@moya/api": "workspace:*",
@@ -20,6 +21,7 @@
     "@moya/design-tokens": "workspace:*",
     "@moya/image": "workspace:*",
     "@moya/public-api": "workspace:*",
+    "@moya/search": "workspace:*",
     "@moya/ui": "workspace:*",
     "@playwright/test": "1.62.1",
     "@testing-library/dom": "10.4.1",
@@ -29,6 +31,9 @@
     "jszip": "3.10.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@moya/search": "workspace:*"
+    "admin": "workspace:*",
+    "payload": "3.88.0",
+    "@payloadcms/db-postgres": "3.88.0",
+    "sharp": "0.35.4"
   }
 }

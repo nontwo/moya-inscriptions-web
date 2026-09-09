@@ -35,6 +35,9 @@ export const prepareProductionBackend = async (
   if (runtimeConfig.nodeEnv !== "production") {
     throw new Error("NODE_ENV must be production for the production backend");
   }
+  const contentSource = environment.MOYA_CONTENT_SOURCE ?? "legacy";
+  if (contentSource !== "legacy" && contentSource !== "payload")
+    throw new Error("MOYA_CONTENT_SOURCE must be legacy or payload");
   const pilot =
     environment.MOYA_PILOT_SCOPE_FILE === undefined &&
     environment.MOYA_PILOT_MEDIA_FILE === undefined
@@ -52,7 +55,7 @@ export const prepareProductionBackend = async (
       });
 
   try {
-    await assertPostgresStartupReady(pool);
+    await assertPostgresStartupReady(pool, contentSource);
   } catch (error) {
     await closePostgresPool(pool);
     throw error;

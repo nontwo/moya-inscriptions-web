@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import * as catalogPostgres from "@moya/catalog-postgres";
 
 import {
   extractModuleReferences,
@@ -23,6 +24,38 @@ const collectTypeScript = async (directory: string): Promise<string[]> => {
 };
 
 describe("@moya/catalog-postgres package boundary", () => {
+  it("exposes only the existing adapter surface and shared public Search projection", () => {
+    expect(Object.keys(catalogPostgres).sort()).toEqual([
+      "DatabaseSchemaNotReadyError",
+      "MigrationStateError",
+      "PostgresCatalogQueryAdapter",
+      "PostgresStartupError",
+      "asPostgresOperationError",
+      "assertPostgresStartupReady",
+      "catalogPageOffset",
+      "catalogSearchSourceSelectSql",
+      "checkPostgresReadiness",
+      "closePostgresPool",
+      "createPostgresPool",
+      "mapAliasRows",
+      "mapCatalogDetailRow",
+      "mapCatalogEntryRow",
+      "mapCatalogMediaRow",
+      "mapCatalogMediaRows",
+      "mapCitationRows",
+      "mapRepresentativeMediaRows",
+      "parseCatalogCount",
+      "parsePostgresConfig",
+      "projectCatalogSearchSourceRow",
+      "readMigrationFiles",
+      "rebuildCatalogSearchDocuments",
+      "refreshCatalogSearchDocument",
+      "requiredMigrations",
+      "runMigrations",
+      "verifyRequiredMigrationLedger",
+    ]);
+  });
+
   it("depends only on the application contract, Public identity schemas, search normalization and pg", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(adapterRoot, "package.json"), "utf8"),

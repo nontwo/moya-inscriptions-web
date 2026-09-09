@@ -95,14 +95,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      DATABASE_URL: postgresql://moya_test:moya_test_password@127.0.0.1:5432/moya_test
-      TEST_DATABASE_URL: postgresql://moya_test:moya_test_password@127.0.0.1:5432/moya_test
+      DATABASE_URL: postgresql://moya_test:synthetic-ci-postgres-password@127.0.0.1:5432/moya_test
+      TEST_DATABASE_URL: postgresql://moya_test:synthetic-ci-postgres-password@127.0.0.1:5432/moya_test
     services:
       postgres:
         image: postgres:18.4-alpine
         env:
           POSTGRES_DB: moya_test
-          POSTGRES_PASSWORD: moya_test_password
+          POSTGRES_PASSWORD: synthetic-ci-postgres-password
           POSTGRES_USER: moya_test
         ports:
           - 5432:5432
@@ -128,6 +128,44 @@ jobs:
 
       - name: PostgreSQL and ordinary tests within 120 seconds
         run: node scripts/verify.mjs test
+
+  cms:
+    name: cms
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: cms_qa
+          POSTGRES_USER: cms_qa
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cms_qa -d cms_qa" --health-interval 2s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Real Payload migrations and PostgreSQL integration
+        env:
+          # Explicitly fictional, isolated CI database; no cloud access.
+          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_qa
+        run: pnpm test:cms
+      - name: Prepare native Admin browser validation
+        run: |
+          pnpm --filter @moya/tests exec playwright install --with-deps --only-shell chromium
+          pnpm --filter admin build
+      - name: Native Owner create, publish, autosave, batch approval and restore
+        env:
+          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_qa
+        run: pnpm test:cms:browser
 
   build:
     runs-on: ubuntu-latest

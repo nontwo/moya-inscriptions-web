@@ -13,7 +13,9 @@ const readPort = (
 };
 
 /** Test-service ports only; the existing default runtime stays unchanged. */
-export const readE2ePorts = (environment: NodeJS.ProcessEnv = process.env) => {
+export const readE2ePorts = (
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+) => {
   const web = readPort(
     environment.MOYA_E2E_WEB_PORT,
     3100,

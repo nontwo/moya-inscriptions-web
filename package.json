@@ -2,7 +2,7 @@
   "name": "moya-inscriptions-web",
   "version": "0.0.0",
   "private": true,
-  "description": "Engineering foundation for 由艺 (Yoyi), the inscription and calligraphy Catalog.",
+  "description": "Engineering foundation for \u7531\u827a (Yoyi), the inscription and calligraphy Catalog.",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24 <25",
@@ -33,7 +33,9 @@
     "confidentiality:staged": "node scripts/confidentiality-scan.mjs staged",
     "confidentiality:message": "node scripts/confidentiality-scan.mjs message",
     "confidentiality:outbound": "node scripts/confidentiality-scan.mjs outbound",
-    "test:confidentiality": "node --test scripts/confidentiality-scan.test.mjs"
+    "test:confidentiality": "node --test scripts/confidentiality-scan.test.mjs",
+    "test:cms": "node scripts/editorial/verify-cms.mjs",
+    "test:cms:browser": "node scripts/editorial/verify-owner-browser.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

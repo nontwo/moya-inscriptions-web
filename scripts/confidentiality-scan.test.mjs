@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -164,6 +165,123 @@ test("types, references, relative imports and versions are not credential litera
         "probe.py",
       ).length,
     );
+});
+test("typeof primitive comparisons pass without hiding literal credential comparisons or assignments", () => {
+  for (const source of [
+    "token !== null && typeof token === 'object'",
+    "typeof config.apiKey !== 'string'",
+    "typeof config?.apiKey === 'undefined'",
+    "const check = token => Boolean(token);",
+  ])
+    assert.deepEqual(categories(source, "fixture.ts"), []);
+  for (const type of [
+    "undefined",
+    "object",
+    "boolean",
+    "number",
+    "bigint",
+    "string",
+    "symbol",
+    "function",
+  ])
+    assert.deepEqual(
+      categories(
+        ["typeof", "config.apiKey", "===", JSON.stringify(type)].join(" "),
+        "fixture.ts",
+      ),
+      [],
+    );
+  const opaque = ["opaque", "Credential123456789"].join("");
+  for (const operator of ["=", ":=", "==", "!=", "===", "!=="])
+    for (const value of [opaque, "object", "string"])
+      assert.ok(
+        categories(
+          ["apiKey", operator, JSON.stringify(value)].join(" "),
+          "fixture.ts",
+        ).includes("CREDENTIAL_LITERAL"),
+      );
+  assert.ok(
+    categories(
+      ["typeof", "apiKey", "===", JSON.stringify(opaque)].join(" "),
+      "fixture.ts",
+    ).includes("CREDENTIAL_LITERAL"),
+  );
+  assert.ok(
+    categories(
+      ["typeof", "apiKey", "===", JSON.stringify(token)].join(" "),
+      "fixture.ts",
+    ).includes("API_TOKEN"),
+  );
+  assert.ok(
+    categories(
+      ["typeof", "apiKey", "===", JSON.stringify(signedUrl)].join(" "),
+      "fixture.ts",
+    ).includes("AUTHORIZING_URL"),
+  );
+});
+test("only exact pnpm snapshot dependency versions pass and cache remains context-bound", () => {
+  const lock = [
+    "lockfileVersion: '9.0'",
+    "",
+    "snapshots:",
+    "  synthetic-package@1.2.3:",
+    "    dependencies:",
+    "      parse-passwd: 1.0.0",
+    "",
+  ].join("\n");
+  assert.deepEqual(categories(lock, "pnpm-lock.yaml"), []);
+  assert.deepEqual(inspect(Buffer.from(lock), "pnpm-lock.yaml"), []);
+  assert.ok(
+    inspect(Buffer.from(lock), "settings.yaml").some(
+      (finding) => finding.category === "CREDENTIAL_LITERAL",
+    ),
+  );
+  for (const content of [
+    lock.replace("snapshots:", "credentials:"),
+    lock.replace("    dependencies:", "    settings:"),
+    lock.replace("synthetic-package@1.2.3", "unversioned-record"),
+    lock.replace("1.0.0", ["opaque", "Credential123456789"].join("")),
+    lock + [["password", ":"].join(""), "7.8.9"].join(" ") + "\n",
+  ])
+    assert.ok(
+      categories(content, "pnpm-lock.yaml").includes("CREDENTIAL_LITERAL"),
+    );
+  assert.ok(categories(lock + token, "pnpm-lock.yaml").includes("API_TOKEN"));
+  assert.ok(
+    categories(lock + signedUrl, "pnpm-lock.yaml").includes("AUTHORIZING_URL"),
+  );
+});
+test("fictional placeholders and wholly-placeholder cookies pass but mixed cookie values block", () => {
+  const opaque = ["opaque", "Session123456789"].join("");
+  const cookie = (value) => JSON.stringify({ Cookie: value });
+  for (const value of [
+    "payload-token=fictional-session",
+    "session=synthetic-session; token=fictional-token",
+  ])
+    assert.deepEqual(categories(cookie(value), "fixture.ts"), []);
+  assert.deepEqual(
+    categories(
+      JSON.stringify({ apiKey: "fictional-test-key" }),
+      "settings.json",
+    ),
+    [],
+  );
+  for (const value of [
+    "session=synthetic-session; other=" + opaque,
+    "other=" + opaque + "; session=fictional-session",
+    "session=fictional-session; pin=1234",
+  ])
+    assert.ok(
+      categories(cookie(value), "fixture.ts").includes("CREDENTIAL_LITERAL"),
+    );
+  assert.ok(
+    categories(cookie("session=" + token), "fixture.ts").includes("API_TOKEN"),
+  );
+  assert.ok(
+    categories(JSON.stringify({ apiKey: opaque }), "settings.json").includes(
+      "CREDENTIAL_LITERAL",
+    ),
+  );
 });
 test("ordinary identifiers, certificates, public keys and readable artifacts pass", () => {
   for (const filename of [

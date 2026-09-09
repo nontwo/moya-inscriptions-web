@@ -1,5 +1,7 @@
 import { asPostgresOperationError } from "./availability.js";
 import { verifyRequiredMigrationLedger } from "./migrations/runner.js";
+import { catalogSearchReadySql } from "./search-queries.js";
+import { SEARCH_NORMALIZATION_VERSION } from "@moya/search";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
@@ -37,7 +39,10 @@ export const checkPostgresReadiness = async (pool: Pool): Promise<void> => {
   }
 };
 
-export const assertPostgresStartupReady = async (pool: Pool): Promise<void> => {
+export const assertPostgresStartupReady = async (
+  pool: Pool,
+  source: "legacy" | "payload" = "legacy",
+): Promise<void> => {
   try {
     const client = await acquireClient(pool);
     try {
@@ -59,7 +64,48 @@ export const assertPostgresStartupReady = async (pool: Pool): Promise<void> => {
     } finally {
       client.release();
     }
-    await verifyRequiredMigrationLedger(pool);
+    if (source === "legacy") await verifyRequiredMigrationLedger(pool);
+    else if (source === "payload") {
+      const views = [
+        "catalog_entries",
+        "catalog_aliases",
+        "catalog_source_citations",
+        "catalog_contributors",
+        "catalog_source_citation_scopes",
+        "catalog_media",
+      ];
+      const result = await pool.query<{
+        view_count: string;
+        view_migration: boolean;
+        search_migration: boolean;
+      }>(`
+        SELECT (SELECT count(*)::text FROM pg_class WHERE oid = ANY(ARRAY[
+          to_regclass('catalog_entries'), to_regclass('catalog_aliases'),
+          to_regclass('catalog_source_citations'), to_regclass('catalog_contributors'),
+          to_regclass('catalog_source_citation_scopes'), to_regclass('catalog_media')
+        ]) AND relkind = 'v') AS view_count,
+        EXISTS(SELECT 1 FROM payload_migrations WHERE name = '20260908_031500_published_views') AS view_migration,
+        EXISTS(SELECT 1 FROM payload_migrations WHERE name = '20260908_120000_published_search') AS search_migration
+      `);
+      if (
+        Number(result.rows[0]?.view_count) !== views.length ||
+        result.rows[0]?.view_migration !== true ||
+        result.rows[0]?.search_migration !== true
+      ) {
+        throw new PostgresStartupError(
+          "Payload published read views are not migration-ready",
+        );
+      }
+      // Require the derived table and its public SELECT grant at startup too.
+      const search = await pool.query<{ incomplete: boolean }>(
+        catalogSearchReadySql,
+        [SEARCH_NORMALIZATION_VERSION],
+      );
+      if (search.rows[0]?.incomplete !== false)
+        throw new PostgresStartupError(
+          "Payload published search is not migration-ready",
+        );
+    }
   } catch (error) {
     if (error instanceof PostgresStartupError) throw error;
     throw new PostgresStartupError(

@@ -17,6 +17,21 @@
     },
     "test": {
       "dependsOn": ["^build"]
+    },
+    "@moya/tests#test": {
+      "dependsOn": [
+        "@moya/api#build",
+        "@moya/backend-production#build",
+        "@moya/backend-runtime#build",
+        "@moya/catalog-importer#build",
+        "@moya/catalog-postgres#build",
+        "@moya/contracts#build",
+        "@moya/design-tokens#build",
+        "@moya/image#build",
+        "@moya/public-api#build",
+        "@moya/search#build",
+        "@moya/ui#build"
+      ]
     }
   }
 }

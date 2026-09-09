@@ -3,7 +3,7 @@ import { projectCatalogSearchDocument } from "@moya/search";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-const sourceSql = `
+export const catalogSearchSourceSelectSql = `
   SELECT entry.catalog_id, entry.title, entry.summary, entry.period_label,
     entry.dynasty, entry.dynasty_state, entry.date_text, entry.date_text_state,
     CASE WHEN entry.description_state = 'VALUE' THEN entry.description END AS description,
@@ -17,8 +17,8 @@ const sourceSql = `
     ARRAY(SELECT alias FROM catalog_aliases WHERE catalog_id = entry.catalog_id ORDER BY position) AS aliases,
     ARRAY(SELECT name FROM catalog_contributors WHERE catalog_id = entry.catalog_id ORDER BY position) AS contributor_names
   FROM catalog_entries AS entry
-  WHERE entry.catalog_id = $1::text
 `;
+const sourceSql = `${catalogSearchSourceSelectSql} WHERE entry.catalog_id = $1::text`;
 
 const upsertSql = `
   INSERT INTO catalog_search_documents (
@@ -60,7 +60,7 @@ const stringArray = (value: unknown): string[] => {
 };
 
 /** Only explicitly selected public fields can reach the normalization helper. */
-const projectSourceRow = (row: QueryResultRow) => {
+export const projectCatalogSearchSourceRow = (row: QueryResultRow) => {
   const dynasty =
     row.dynasty_state === "VALUE" ? exactString(row.dynasty) : undefined;
   const dateText =
@@ -122,7 +122,7 @@ export const refreshCatalogSearchDocument = async (
     );
     return;
   }
-  const document = projectSourceRow(row);
+  const document = projectCatalogSearchSourceRow(row);
   await client.query(upsertSql, [
     catalogId,
     document.normalizationVersion,

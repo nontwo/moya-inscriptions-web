@@ -1,5 +1,7 @@
 export { parseCatalogCount, PostgresCatalogQueryAdapter } from "./adapter.js";
 export {
+  catalogSearchSourceSelectSql,
+  projectCatalogSearchSourceRow,
   rebuildCatalogSearchDocuments,
   refreshCatalogSearchDocument,
 } from "./search-documents.js";

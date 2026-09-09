@@ -131,7 +131,7 @@ function regularBytes(file) {
   return readFileSync(file);
 }
 const PLACEHOLDER =
-  /^(?:<[^<>\r\n]+>|\$\{[^{}\r\n]+\}|\$[A-Z_][A-Z0-9_]*|__[A-Z0-9_]+__|(?:EXAMPLE|PLACEHOLDER|REPLACE_ME|REDACTED|SYNTHETIC|TEST_ONLY|YOUR)(?:[_-][A-Z0-9_-]+)?|(?:example|placeholder|synthetic|test-only|dummy|fake|changeme|test|testing)(?:[-_][a-z0-9_-]+)?)$/i;
+  /^(?:<[^<>\r\n]+>|\$\{[^{}\r\n]+\}|\$[A-Z_][A-Z0-9_]*|__[A-Z0-9_]+__|(?:EXAMPLE|PLACEHOLDER|REPLACE_ME|REDACTED|SYNTHETIC|TEST_ONLY|YOUR)(?:[_-][A-Z0-9_-]+)?|(?:example|placeholder|synthetic|fictional|test-only|dummy|fake|changeme|test|testing)(?:[-_][a-z0-9_-]+)?)$/i;
 const PRIMITIVE =
   /^(?:string|number|boolean|unknown|never|any|void|undefined|null|false|true)$/;
 const CREDENTIAL_NAME =
@@ -147,6 +147,68 @@ function syntax(filename) {
 }
 function placeholder(value) {
   return !value || value === "..." || PLACEHOLDER.test(value);
+}
+const pnpmLock = (filename) => path.basename(filename) === "pnpm-lock.yaml";
+const syntaxContext = (filename) =>
+  syntax(filename) + (pnpmLock(filename) ? ":pnpm-lock" : "");
+function packageVersionContext(text, at, name, value, filename, operator) {
+  if (
+    !pnpmLock(filename) ||
+    operator !== ":" ||
+    !/^lockfileVersion:[ \t]*(['"]?)9\.0\1[ \t]*$/m.test(text)
+  )
+    return false;
+  const lineStart = text.lastIndexOf("\n", at - 1) + 1;
+  const lineEnd = text.indexOf("\n", at);
+  const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
+  const entry =
+    /^ {6}(['"]?)(@[-\w.]+\/[-\w.]+|[-\w.]+)\1:[ \t]+(['"]?)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\3[ \t]*$/.exec(
+      line,
+    );
+  if (!entry || entry[4] !== value) return false;
+  // The scanner revisits nested matches, including the passwd suffix in
+  // parse-passwd. Each match must end at this exact validated package key.
+  const keyStart = lineStart + 6;
+  const keyEnd = keyStart + entry[1].length + entry[2].length;
+  if (
+    at < keyStart ||
+    at >= keyEnd ||
+    ![name, entry[1] + name].includes(text.slice(at, keyEnd))
+  )
+    return false;
+  const parents = [];
+  for (const previous of text.slice(0, lineStart).split("\n")) {
+    if (!previous.trim() || previous.trimStart().startsWith("#")) continue;
+    const indentation = previous.length - previous.trimStart().length;
+    while (parents.length && parents.at(-1).indentation >= indentation)
+      parents.pop();
+    const mapping = /^ *(.*):[ \t]*$/.exec(previous);
+    if (mapping) parents.push({ indentation, key: mapping[1] });
+  }
+  return (
+    parents.length === 3 &&
+    parents[0].indentation === 0 &&
+    parents[0].key === "snapshots" &&
+    parents[1].indentation === 2 &&
+    /^(['"]?)(?:@[-\w.]+\/[-\w.]+|[-\w.]+)@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\1$/.test(
+      parents[1].key,
+    ) &&
+    parents[2].indentation === 4 &&
+    /^(?:dependencies|optionalDependencies)$/.test(parents[2].key)
+  );
+}
+function placeholderCookie(value) {
+  const entries = value
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return (
+    entries.length > 0 &&
+    entries.every((entry) => {
+      const pair = /^[A-Za-z_][\w-]*=([^;]*)$/.exec(entry);
+      return pair && PLACEHOLDER.test(pair[1]);
+    })
+  );
 }
 function literalFindings(text, filename) {
   const hits = [];
@@ -169,15 +231,31 @@ function literalFindings(text, filename) {
   ))
     add(m.index, "AUTH_MATERIAL");
   const assignment =
-    /(?:\b([A-Za-z_][\w-]*)|["']([A-Za-z_][\w-]*)["'])[ \t]*(?::=|!?={1,3}|:(?!=))[ \t]*(?:(["'])([^\r\n]*?)\3|([^\s,;#{}()[\]"'`]+))/g;
+    /(?:\b([A-Za-z_][\w-]*)|["']([A-Za-z_][\w-]*)["'])[ \t]*(:=|===|!==|==|!=|=(?!=|>)|:(?!=))[ \t]*(?:(["'])([^\r\n]*?)\4|([^\s,;#{}()[\]"'`]+))/g;
   let m;
   while ((m = assignment.exec(text))) {
     // Inspect nested assignments, e.g. systemd Environment="API_KEY=...".
     assignment.lastIndex = m.index + 1;
     const name = m[1] ?? m[2];
     if (!CREDENTIAL_NAME.test(name)) continue;
-    let value = m[4] ?? m[5];
-    if (!m[3] && syntax(filename) === "code") value = value.replace(/:$/, "");
+    const operator = m[3];
+    const quoted = Boolean(m[4]);
+    let value = m[5] ?? m[6];
+    if (!quoted && syntax(filename) === "code") value = value.replace(/:$/, "");
+    if (
+      syntax(filename) === "code" &&
+      quoted &&
+      /^(?:===|!==|==|!=)$/.test(operator) &&
+      /^(?:undefined|object|boolean|number|bigint|string|symbol|function)$/.test(
+        value,
+      ) &&
+      /\btypeof[ \t]+(?:[A-Za-z_$][\w$]*[ \t]*(?:\?\.|\.)[ \t]*)*$/.test(
+        text.slice(Math.max(0, m.index - 512), m.index),
+      )
+    )
+      continue;
+    if (packageVersionContext(text, m.index, name, value, filename, operator))
+      continue;
     // A closing source string followed by concatenation is not a literal value.
     if (syntax(filename) === "code" && /^\s*\+\s*$/.test(value)) continue;
     // Package versions and auth field declarations are not auth material.
@@ -188,34 +266,35 @@ function literalFindings(text, filename) {
       continue;
     if (/^cookie$/i.test(name) && !/\b[A-Za-z_][\w-]*=[^;\s]{12,}/.test(value))
       continue;
+    if (/^cookie$/i.test(name) && placeholderCookie(value)) continue;
     if (
-      !m[3] &&
+      !quoted &&
       value === "$" &&
       /^\{[A-Za-z_][A-Za-z0-9_]*\}/.test(text.slice(m.index + m[0].length))
     )
       continue;
-    if (placeholder(value) || (!m[3] && PRIMITIVE.test(value))) continue;
+    if (placeholder(value) || (!quoted && PRIMITIVE.test(value))) continue;
     if (
-      !m[3] &&
+      !quoted &&
       /^(?:process\.env(?:\.|$)|import\.meta\.env(?:\.|$)|os\.environ(?:\.|$)|getenv$|env$)/.test(
         value,
       )
     )
       continue;
     if (
-      !m[3] &&
+      !quoted &&
       syntax(filename) === "code" &&
       /^[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/.test(value)
     )
       continue;
     if (
-      !m[3] &&
+      !quoted &&
       syntax(filename) !== "config" &&
       m[0].includes(":") &&
       /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(value)
     )
       continue;
-    if (m[3] || syntax(filename) === "config" || m[0].includes("="))
+    if (quoted || syntax(filename) === "config" || m[0].includes("="))
       add(m.index, "CREDENTIAL_LITERAL");
   }
   for (const m of text.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+/gi)) {
@@ -253,7 +332,9 @@ export function inspect(bytes, label = ".", filename = label) {
   remaining();
   const nameHits = literalFindings(filename, "");
   const key = digest(
-    Buffer.from(RULE_VERSION + "\0" + syntax(filename) + "\0" + digest(bytes)),
+    Buffer.from(
+      RULE_VERSION + "\0" + syntaxContext(filename) + "\0" + digest(bytes),
+    ),
   );
   let findings = cache[key];
   if (findings) stats.reused++;

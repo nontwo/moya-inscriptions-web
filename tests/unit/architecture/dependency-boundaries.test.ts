@@ -11,6 +11,7 @@ import {
   extractModuleReferences,
   findOwningWorkspace,
   frontendBoundaryViolations,
+  isAuthorizedCmsServerFile,
   isAuthorizedWebPublicApiFile,
   isPathInside,
   isRawSourceAccessAuthorized,
@@ -190,6 +191,29 @@ describe("workspace dependency boundaries", () => {
 });
 
 describe("frontend and browser boundaries", () => {
+  it("allows the approved CMS server while retaining browser and public Web denial", () => {
+    const cms = path.join(repositoryRoot, "apps/admin/src/editorial/hooks.ts");
+    const server =
+      'import { getPayload } from "payload"; import { sql } from "@payloadcms/db-postgres";';
+    expect(isAuthorizedCmsServerFile(cms, server)).toBe(true);
+    expect(frontendBoundaryViolations(cms, server)).toEqual([]);
+    expect(
+      frontendBoundaryViolations(cms, '"use client";\n' + server),
+    ).not.toEqual([]);
+    expect(
+      frontendBoundaryViolations(
+        path.join(repositoryRoot, "apps/web/app/page.tsx"),
+        server,
+      ),
+    ).not.toEqual([]);
+    expect(
+      clientBoundaryViolations(
+        path.join(repositoryRoot, "apps/admin/components/editor.tsx"),
+        '"use client"; import config from "@payload-config";',
+      ),
+    ).not.toEqual([]);
+  });
+
   it("allows Client Components to type-import public DTOs", () => {
     const file = path.join(repositoryRoot, "apps", "web", "example.tsx");
     const allowed = `
@@ -205,6 +229,61 @@ describe("frontend and browser boundaries", () => {
       import type { CatalogSummary, PublicMedia } from "@moya/contracts/types";
     `;
     expect(clientBoundaryViolations(file, allowed)).toEqual([]);
+  });
+
+  it("resolves actual CMS relative files and index exports without blocking client helpers", () => {
+    const file = path.join(
+      repositoryRoot,
+      "apps/admin/src/owner-workflow/client.tsx",
+    );
+    for (const specifier of [
+      "../editorial",
+      "../editorial/index.js",
+      "../editorial/hooks",
+      "../../payload.config",
+      "../../payload.config.js",
+      "../../payload.config.ts",
+    ]) {
+      expect(
+        clientBoundaryViolations(
+          file,
+          `"use client"; import value from ${JSON.stringify(specifier)};`,
+        ),
+      ).toContain(`${specifier} is server/runtime-only`);
+    }
+    for (const specifier of [
+      "../media/snapshot",
+      "../media/snapshot.js",
+      "../media/MediaSnapshotPicker",
+    ])
+      expect(
+        clientBoundaryViolations(
+          file,
+          `"use client"; import value from ${JSON.stringify(specifier)};`,
+        ),
+      ).toEqual([]);
+    const picker = path.join(
+      repositoryRoot,
+      "apps/admin/src/media/MediaSnapshotPicker.tsx",
+    );
+    expect(
+      clientBoundaryViolations(
+        picker,
+        '"use client"; import type { UIFieldClientComponent } from "payload";',
+      ),
+    ).toEqual([]);
+    expect(
+      clientBoundaryViolations(
+        picker,
+        '"use client"; import { getPayload } from "payload";',
+      ),
+    ).toContain("payload is server/runtime-only");
+    expect(
+      clientBoundaryViolations(
+        file,
+        '"use client"; import type { UIFieldClientComponent } from "payload";',
+      ),
+    ).toContain("payload is server/runtime-only");
   });
 
   it("detects Reader, runtime schema, database and data-file access", () => {
