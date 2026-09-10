@@ -37,6 +37,13 @@ export interface QaUserScenario {
   readonly user: QaUserPresentation;
 }
 
+export const qaCurrentUser: QaUserPresentation = {
+  avatarSrc: null,
+  bio: "记录碑刻、书法与古迹。",
+  id: "qa-user-01",
+  name: "访碑者",
+};
+
 const contentKindLabel = {
   calligraphy: "书帖",
   inscription: "碑刻",
@@ -86,12 +93,7 @@ export const createQaUserScenarios = (
   const saved = toContentItems(source, "saved", 5, 2);
   const liked = toContentItems(source, "liked", 4, 4);
   const history = toContentItems(source, "history", 6, 1);
-  const user: QaUserPresentation = {
-    avatarSrc: null,
-    bio: "记录碑刻、书法与古迹。",
-    id: "qa-user-01",
-    name: "访碑者",
-  };
+  const user = qaCurrentUser;
   const content = { history, liked, published, saved };
 
   return {

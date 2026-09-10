@@ -1,0 +1,455 @@
+.section {
+  display: grid;
+  gap: var(--yoyi-space-6);
+  margin-top: var(--yoyi-space-7);
+  padding: var(--yoyi-space-6);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-lg);
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.header,
+.metaRow,
+.composerFooter,
+.replyMode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yoyi-space-4);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: var(--yoyi-type-section-title-size);
+  line-height: 1.4;
+}
+
+.sortControl select {
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  cursor: pointer;
+}
+
+.composer,
+.comment,
+.reply {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--yoyi-space-4);
+}
+
+.composerBody,
+.commentBody {
+  min-width: 0;
+}
+
+.composerBody {
+  display: grid;
+  gap: var(--yoyi-space-3);
+}
+
+.composerInputRow {
+  display: grid;
+  gap: var(--yoyi-space-3);
+}
+
+.avatar {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-body-small-size);
+  font-weight: 650;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  padding: var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-page);
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-md);
+  font: inherit;
+  line-height: 1.65;
+}
+
+.composer textarea::placeholder {
+  color: var(--yoyi-color-text-tertiary);
+}
+
+.composerFooter {
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.composerFooter button {
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-5);
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-seal-red);
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.composerFooter button:hover:not(:disabled) {
+  background: var(--yoyi-color-seal-red-hover);
+}
+
+.composerFooter button:disabled {
+  color: var(--yoyi-color-text-disabled);
+  background: var(--yoyi-color-background-muted);
+  cursor: not-allowed;
+}
+
+.replyMode {
+  padding: var(--yoyi-space-3) var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.replyMode button,
+.textAction,
+.expandReplies {
+  min-height: 36px;
+  padding: 0 var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-sm);
+  font: inherit;
+  cursor: pointer;
+}
+
+.replyMode button:hover,
+.textAction:hover,
+.expandReplies:hover {
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-background-muted);
+}
+
+.list,
+.replies {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list {
+  gap: var(--yoyi-space-6);
+}
+
+.comment + .comment {
+  padding-top: var(--yoyi-space-6);
+  border-top: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.userName,
+.commentText {
+  margin: 0;
+}
+
+.userName {
+  overflow-wrap: anywhere;
+  font-size: var(--yoyi-type-body-small-size);
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.commentText {
+  margin-top: var(--yoyi-space-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.commentMedia {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 112px));
+  gap: var(--yoyi-space-3);
+  margin: var(--yoyi-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.commentMedia li {
+  min-width: 0;
+  overflow: hidden;
+  aspect-ratio: 1;
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-md);
+}
+
+.commentMedia img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.commentMedia li[data-comment-media-kind="sticker"] {
+  width: 88px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.commentMedia li[data-comment-media-kind="sticker"] img {
+  object-fit: contain;
+}
+
+.metaRow {
+  justify-content: flex-start;
+  margin-top: var(--yoyi-space-2);
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--yoyi-space-1);
+}
+
+.textAction[aria-pressed="true"],
+.heart {
+  color: var(--yoyi-color-seal-red);
+}
+
+.heart {
+  margin-right: var(--yoyi-space-2);
+}
+
+.replies {
+  gap: var(--yoyi-space-4);
+  margin-top: var(--yoyi-space-4);
+  padding: var(--yoyi-space-4);
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-muted) 58%,
+    transparent
+  );
+  border-radius: var(--yoyi-radius-md);
+}
+
+.reply {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.reply .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.replyTo {
+  color: var(--yoyi-color-text-secondary);
+}
+
+.expandReplies {
+  margin-top: var(--yoyi-space-3);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--yoyi-space-8) var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  text-align: center;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+}
+
+.skeleton {
+  display: grid;
+  gap: var(--yoyi-space-4);
+}
+
+.skeleton span {
+  display: block;
+  height: 56px;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+  animation: comment-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.skeleton span:nth-child(2) {
+  width: 82%;
+}
+
+.skeleton span:nth-child(3) {
+  width: 68%;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sortControl select:focus-visible,
+.composer textarea:focus-visible,
+.composer button:focus-visible,
+.textAction:focus-visible,
+.expandReplies:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+[data-detail-content-pager]
+  [data-detail-content-panel="comments"][data-active="true"]
+  .composer,
+[data-detail-landscape-comments] .composer {
+  position: fixed;
+  z-index: 8;
+  right: var(--detail-comment-composer-right);
+  bottom: 0;
+  left: var(--detail-comment-composer-left);
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-3) var(--yoyi-space-4)
+    calc(var(--yoyi-space-3) + env(safe-area-inset-bottom));
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-surface) 96%,
+    transparent
+  );
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-bottom: 0;
+  border-radius: var(--yoyi-radius-lg) var(--yoyi-radius-lg) 0 0;
+  box-shadow: var(--yoyi-shadow-dialog);
+  backdrop-filter: blur(14px);
+}
+
+[data-detail-landscape-comments] .composer {
+  width: var(--detail-comment-composer-width);
+}
+
+[data-detail-content-pager]
+  [data-detail-content-panel="comments"][data-active="false"]
+  .composer {
+  display: none;
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composer
+  > .avatar {
+  width: 36px;
+  height: 36px;
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composerBody {
+  gap: var(--yoyi-space-2);
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composerInputRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composer
+  textarea {
+  height: 44px;
+  min-height: 44px;
+  padding: 10px var(--yoyi-space-4);
+  resize: none;
+  line-height: 1.45;
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composerFooter {
+  display: contents;
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composerFooter
+  > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:is([data-detail-content-pager], [data-detail-landscape-comments])
+  .composerFooter
+  button {
+  min-width: 64px;
+  min-height: 44px;
+}
+
+@keyframes comment-pulse {
+  from {
+    opacity: 0.55;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .section {
+    gap: var(--yoyi-space-5);
+    padding: var(--yoyi-space-5);
+  }
+
+  .composer,
+  .comment {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: var(--yoyi-space-3);
+  }
+
+  .composer > .avatar,
+  .comment > .avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .composerFooter > span {
+    max-width: 58%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton span {
+    animation: none;
+  }
+}

@@ -59,9 +59,48 @@ describe("T02pQaPage", () => {
     expect(markup).toContain("data-qa-user-interface");
     expect(markup).toContain("data-user-trigger");
     expect(markup).toContain("data-qa-user-scenario-selector");
+    expect(markup).toContain("data-qa-comment-scenario-selector");
     expect(markup).not.toContain("data-open-settings");
     expect(markup).toContain(
       '<option value="visual" selected="">Visual</option>',
+    );
+  });
+
+  it("supports direct QA links for phone and tablet presentation modes", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+
+    for (const platform of ["phone", "tablet"] as const) {
+      const markup = renderToStaticMarkup(
+        await T02pQaPage({ searchParams: Promise.resolve({ platform }) }),
+      );
+
+      expect(markup).toContain(
+        `<option value="${platform}" selected="">${
+          platform === "phone" ? "Phone" : "Tablet"
+        }</option>`,
+      );
+    }
+  });
+
+  it("supports exact direct Comment scenario links", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+
+    const valid = renderToStaticMarkup(
+      await T02pQaPage({
+        searchParams: Promise.resolve({ commentScenario: "comment-long" }),
+      }),
+    );
+    const invalid = renderToStaticMarkup(
+      await T02pQaPage({
+        searchParams: Promise.resolve({ commentScenario: "Long" }),
+      }),
+    );
+
+    expect(valid).toContain(
+      '<option value="comment-long" selected="">Comment long</option>',
+    );
+    expect(invalid).toContain(
+      '<option value="comment-default" selected="">Comment default</option>',
     );
   });
 
@@ -78,6 +117,7 @@ describe("T02pQaPage", () => {
     expect(markup).not.toContain("data-qa-controls");
     expect(markup).not.toContain("T02P QA Harness");
     expect(markup).not.toContain("data-qa-platform-selector");
+    expect(markup).not.toContain("data-qa-comment-scenario-selector");
     expect(markup).not.toContain("data-development-primary-pager");
     expect(markup).toContain("data-product-shell");
     expect(markup).toContain("data-search-trigger");
@@ -105,6 +145,7 @@ describe("T02pQaPage", () => {
     expect(markup).toContain("data-qa-platform-selector");
     expect(markup).toContain("data-qa-search-scenario-selector");
     expect(markup).toContain("data-qa-user-scenario-selector");
+    expect(markup).toContain("data-qa-comment-scenario-selector");
     expect(markup).toContain("data-development-primary-pager");
   });
 

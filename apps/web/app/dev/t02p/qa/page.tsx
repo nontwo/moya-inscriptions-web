@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { T02pQaHarness } from "../../../../features/qa/t02p-qa-harness";
+import { qaCommentScenarioNames } from "../../../../features/comments/comment-scenarios";
 import { homeScenarioNames } from "../../../../features/qa/home-scenario-contract";
 import { parseHomeFeed } from "../../../../features/home/home-feed";
 import { readDevelopmentRequestContext } from "../development-context";
@@ -34,15 +35,30 @@ export default async function T02pQaPage({
     typeof query.topic === "string" && query.topic.length <= 160
       ? query.topic
       : null;
+  const initialPlatformMode =
+    query.platform === "phone" ||
+    query.platform === "tablet" ||
+    query.platform === "pc"
+      ? query.platform
+      : "auto";
+  const initialCommentScenario =
+    typeof query.commentScenario === "string" &&
+    qaCommentScenarioNames.includes(
+      query.commentScenario as (typeof qaCommentScenarioNames)[number],
+    )
+      ? (query.commentScenario as (typeof qaCommentScenarioNames)[number])
+      : "comment-default";
 
   return (
     <T02pQaHarness
       catalogScenarios={scenarios.catalog}
       detailRecords={scenarios.detail}
       homeScenarios={scenarios.home}
+      initialCommentScenario={initialCommentScenario}
       {...(initialHomeFeed === undefined ? {} : { initialHomeFeed })}
       initialHomeScenario={initialHomeScenario}
       initialPlatform={initialPlatform}
+      initialPlatformMode={initialPlatformMode}
       initialTopicId={initialTopicId}
       qaChrome={query.qaChrome === "hidden" ? "hidden" : "visible"}
     />

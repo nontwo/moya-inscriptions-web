@@ -15,6 +15,7 @@ import styles from "./catalog-detail.module.css";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
+  ReactNode,
   RefObject,
   UIEvent,
   WheelEvent as ReactWheelEvent,
@@ -26,6 +27,7 @@ export interface CatalogDetailExperienceProps {
   readonly activeViewerMediaId: string | null;
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly catalogId: string;
+  readonly commentSection?: ReactNode;
   readonly initialScrollTop: number;
   readonly onBack: () => void;
   readonly onCloseViewer: () => void;
@@ -51,6 +53,7 @@ export const CatalogDetailExperience = ({
   activeViewerMediaId,
   backButtonRef,
   catalogId,
+  commentSection,
   initialScrollTop,
   onBack,
   onCloseViewer,
@@ -289,6 +292,7 @@ export const CatalogDetailExperience = ({
         <CatalogDetailScreen
           activeMediaIndex={activeMediaIndex}
           backButtonRef={backButtonRef}
+          commentSection={commentSection}
           onActiveMediaIndexChange={setActiveMediaIndex}
           onBack={onBack}
           onOpenViewer={(index, opener) => {

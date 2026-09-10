@@ -5,13 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { CatalogDetailExperience } from "../detail/catalog-detail-experience";
 import { useProductShell } from "../product-shell/product-shell";
 
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
 import type { CatalogDetailPresentationState } from "../detail/catalog-detail-presentation";
 
 export interface PreviewCatalogDetailOverlayProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly catalogId: string;
+  readonly commentSection?: ReactNode;
   readonly initialScrollTop: number;
   readonly loader: CatalogDetailPresentationLoader;
   readonly onClose: () => void;
@@ -21,6 +22,7 @@ export interface PreviewCatalogDetailOverlayProps {
 export const PreviewCatalogDetailOverlay = ({
   backButtonRef,
   catalogId,
+  commentSection,
   initialScrollTop,
   loader,
   onClose,
@@ -68,6 +70,7 @@ export const PreviewCatalogDetailOverlay = ({
       activeViewerMediaId={activeViewerMediaId}
       backButtonRef={backButtonRef}
       catalogId={catalogId}
+      commentSection={commentSection}
       initialScrollTop={initialScrollTop}
       onBack={onClose}
       onCloseViewer={closeViewer}

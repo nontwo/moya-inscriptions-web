@@ -1279,6 +1279,30 @@ describe("ProductShell", () => {
     ).toBe("73");
   });
 
+  it("debounces rapid Detail scroll history updates below browser quotas", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const { container } = renderDetailShell();
+    await act(async () => vi.runAllTimers());
+    click(container.querySelector<HTMLButtonElement>("[data-open-catalog]")!);
+    await act(async () => vi.runAllTimers());
+    replaceState.mockClear();
+    const scrollDetail = container.querySelector<HTMLButtonElement>(
+      "[data-detail-scroll-test]",
+    )!;
+
+    for (let index = 0; index < 120; index += 1) {
+      click(scrollDetail);
+      await act(async () => vi.advanceTimersByTime(16));
+    }
+
+    expect(replaceState).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(replaceState).toHaveBeenCalledOnce();
+    expect(parseProductHistoryState(window.history.state)).toEqual(
+      detailHistoryState("catalog-one", "home", 0, 73),
+    );
+  });
+
   it("owns one Viewer history layer and replaces media navigation in place", async () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const replaceState = vi.spyOn(window.history, "replaceState");

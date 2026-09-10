@@ -70,6 +70,7 @@ import type { PrimaryDestination } from "../shell/primary-shell";
 type ScrollPositions = Record<PrimaryDestination, number>;
 
 const SCROLL_RESTORE_RETRY_FRAMES = 12;
+const DETAIL_HISTORY_SYNC_DELAY_MS = 500;
 
 const currentProductHistoryState = (state: ProductHistoryState) =>
   mergeProductHistoryState(window.history.state, state);
@@ -190,7 +191,7 @@ export const ProductShell = ({
   const topicBackRef = useRef<HTMLButtonElement>(null);
   const detailOpenerRef = useRef<HTMLElement | null>(null);
   const detailOpenerIdRef = useRef<string | null>(null);
-  const detailHistoryFrameRef = useRef<number | null>(null);
+  const detailHistoryTimerRef = useRef<number | null>(null);
   const detailScrollTopRef = useRef(0);
   const detailSourceDestinationRef = useRef<PrimaryDestination>("home");
   const detailSourceScrollTopRef = useRef(0);
@@ -753,11 +754,14 @@ export const ProductShell = ({
 
   const updateDetailScrollTop = useCallback((top: number) => {
     detailScrollTopRef.current = Number.isFinite(top) ? Math.max(0, top) : 0;
-    if (detailHistoryFrameRef.current !== null) return;
-    detailHistoryFrameRef.current = window.requestAnimationFrame(() => {
-      detailHistoryFrameRef.current = null;
+    if (detailHistoryTimerRef.current !== null) {
+      window.clearTimeout(detailHistoryTimerRef.current);
+    }
+    detailHistoryTimerRef.current = window.setTimeout(() => {
+      detailHistoryTimerRef.current = null;
       const state = parseProductHistoryState(window.history.state);
       if (state?.kind === "detail") {
+        if (state.detailScrollTop === detailScrollTopRef.current) return;
         window.history.replaceState(
           currentProductHistoryState(
             detailHistoryState(
@@ -771,6 +775,7 @@ export const ProductShell = ({
           detailLocation(window.location, state.catalogId),
         );
       } else if (state?.kind === "viewer") {
+        if (state.detailScrollTop === detailScrollTopRef.current) return;
         window.history.replaceState(
           currentProductHistoryState(
             viewerHistoryState(
@@ -785,7 +790,7 @@ export const ProductShell = ({
           viewerLocation(window.location, state.catalogId, state.mediaId),
         );
       }
-    });
+    }, DETAIL_HISTORY_SYNC_DELAY_MS);
   }, []);
 
   const openCatalog = useCallback(
@@ -937,9 +942,9 @@ export const ProductShell = ({
       closeViewer();
       return;
     }
-    if (detailHistoryFrameRef.current !== null) {
-      window.cancelAnimationFrame(detailHistoryFrameRef.current);
-      detailHistoryFrameRef.current = null;
+    if (detailHistoryTimerRef.current !== null) {
+      window.clearTimeout(detailHistoryTimerRef.current);
+      detailHistoryTimerRef.current = null;
     }
     const state = parseProductHistoryState(window.history.state);
     if (state?.kind === "detail") {
@@ -1447,8 +1452,8 @@ export const ProductShell = ({
       if (topicFocusFrameRef.current !== null) {
         window.cancelAnimationFrame(topicFocusFrameRef.current);
       }
-      if (detailHistoryFrameRef.current !== null) {
-        window.cancelAnimationFrame(detailHistoryFrameRef.current);
+      if (detailHistoryTimerRef.current !== null) {
+        window.clearTimeout(detailHistoryTimerRef.current);
       }
       if (navigationIdleTimerRef.current !== null) {
         window.clearTimeout(navigationIdleTimerRef.current);

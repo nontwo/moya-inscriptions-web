@@ -62,7 +62,7 @@ describe("T02pQaHarness QA chrome", () => {
     expect(harness?.getAttribute("data-qa-chrome")).toBe("visible");
     expect(controls?.parentElement).toBe(harness);
     expect(controls?.querySelector("h1")?.textContent).toBe("T02P QA Harness");
-    expect(controls?.querySelectorAll("select")).toHaveLength(5);
+    expect(controls?.querySelectorAll("select")).toHaveLength(6);
     expect(
       controls?.querySelector('[value="unexpected-error"]'),
     ).not.toBeNull();
@@ -84,6 +84,7 @@ describe("T02pQaHarness QA chrome", () => {
     expect(container.querySelector("#t02p-qa-home-scenario")).toBeNull();
     expect(container.querySelector("#t02p-qa-user-scenario")).toBeNull();
     expect(container.querySelector("#t02p-qa-catalog-scenario")).toBeNull();
+    expect(container.querySelector("#t02p-qa-comment-scenario")).toBeNull();
     expect(
       container.querySelector("[data-development-primary-pager]"),
     ).toBeNull();

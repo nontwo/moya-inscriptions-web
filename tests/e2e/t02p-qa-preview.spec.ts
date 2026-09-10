@@ -48,7 +48,7 @@ const expectChrome = async (surface: Locator, mode: "visible" | "hidden") => {
   );
   if (mode === "visible") {
     await expect(controls).toBeVisible();
-    await expect(controls.getByRole("combobox")).toHaveCount(5);
+    await expect(controls.getByRole("combobox")).toHaveCount(6);
   }
 };
 

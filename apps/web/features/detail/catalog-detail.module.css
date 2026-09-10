@@ -14,6 +14,9 @@
 }
 
 .detail {
+  --detail-comment-composer-left: 16px;
+  --detail-comment-composer-right: 16px;
+
   min-height: 100%;
   color: var(--yoyi-color-text-primary);
   background: var(--yoyi-color-background-page);
@@ -70,6 +73,100 @@
 .hero {
   display: grid;
   gap: 20px;
+}
+
+.pagedDetail {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+}
+
+.pagedMedia,
+.landscapeDetail,
+.landscapePrimary,
+.landscapeComments,
+.contentPager,
+.contentPagerFrame,
+.contentPagerPanel {
+  min-width: 0;
+}
+
+.landscapeDetail,
+.landscapePrimary {
+  display: grid;
+}
+
+.landscapePrimary {
+  align-content: start;
+  gap: 20px;
+}
+
+.contentPager {
+  position: relative;
+}
+
+.contentPagerTabs {
+  position: sticky;
+  z-index: 5;
+  top: 56px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 var(--yoyi-space-3);
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-background-page) 94%,
+    transparent
+  );
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+  backdrop-filter: blur(12px);
+}
+
+.contentPagerTabs button {
+  position: relative;
+  min-height: 48px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.contentPagerTabs button[aria-selected="true"] {
+  color: var(--yoyi-color-text-primary);
+}
+
+.contentPagerTabs button[aria-selected="true"]::after {
+  position: absolute;
+  right: 28%;
+  bottom: 0;
+  left: 28%;
+  height: 3px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: var(--yoyi-radius-full);
+  content: "";
+}
+
+.contentPagerTabs button:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -4px;
+}
+
+.contentPagerFrame {
+  margin-top: var(--yoyi-space-5);
+}
+
+.contentPagerTrack {
+  isolation: isolate;
+}
+
+.contentPagerPanel {
+  padding: 0;
+}
+
+.contentPagerPanel[data-detail-content-panel="comments"] {
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
 }
 
 .identityPanel,
@@ -673,6 +770,11 @@
   padding: 24px 28px 64px;
 }
 
+.detail[data-platform="tablet"] {
+  --detail-comment-composer-left: 28px;
+  --detail-comment-composer-right: 28px;
+}
+
 .detail[data-platform="tablet"] .mainStage {
   height: min(50dvh, 460px);
   min-height: 340px;
@@ -686,6 +788,41 @@
 .detail[data-detail-composition="tablet-landscape"] .hero {
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
   gap: 28px;
+}
+
+.detail[data-detail-composition="tablet-landscape"] .landscapeDetail {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 36%);
+  gap: 28px;
+}
+
+.detail[data-detail-composition="tablet-landscape"] {
+  --detail-comment-composer-left: auto;
+  --detail-comment-composer-right: max(28px, calc((100vw - 1320px) / 2 + 28px));
+  --detail-comment-composer-width: calc((min(100vw, 1320px) - 56px) * 0.36);
+}
+
+.detail[data-detail-composition="tablet-landscape"] .landscapePrimary {
+  grid-column: 1;
+}
+
+.detail[data-detail-composition="tablet-landscape"]
+  .landscapePrimary
+  .readingFlow {
+  width: 100%;
+  margin-top: 0;
+}
+
+.detail[data-detail-composition="tablet-landscape"] .landscapeComments {
+  grid-column: 2;
+  min-height: calc(100dvh - 112px);
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  align-self: start;
+}
+
+.detail[data-detail-composition="tablet-landscape"]
+  .landscapeComments
+  > [data-comment-section] {
+  margin-top: 0;
 }
 
 .detail[data-platform="pc"] .detailContent {
