@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
+import { useCommentComposerPortalTarget } from "./comment-composer-portal";
 import styles from "./comment-section.module.css";
 
 import type { FormEvent } from "react";
@@ -240,6 +242,7 @@ export const CommentSection = ({
     null,
   );
   const [sort, setSort] = useState<CommentSort>("hot");
+  const composerPortalTarget = useCommentComposerPortalTarget();
   const loading = scenario === "comment-loading";
   const count = items.reduce(
     (total, comment) => total + 1 + comment.replies.length,
@@ -267,6 +270,44 @@ export const CommentSection = ({
     setDraft("");
     setReplyTarget(null);
   };
+  const composer = (
+    <form
+      className={styles.composer}
+      data-comment-composer=""
+      onSubmit={submit}
+    >
+      <Avatar user={currentUser} />
+      <div className={styles.composerBody}>
+        {replyTarget === null ? null : (
+          <div className={styles.replyMode} data-comment-reply-mode="">
+            <span>回复 {replyTarget.user.name}</span>
+            <button onClick={() => setReplyTarget(null)} type="button">
+              取消
+            </button>
+          </div>
+        )}
+        <div className={styles.composerInputRow}>
+          <textarea
+            aria-label={
+              replyTarget === null
+                ? "写下你的评论"
+                : `回复 ${replyTarget.user.name}`
+            }
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            placeholder="写下你的评论…"
+            rows={3}
+            value={draft}
+          />
+          <div className={styles.composerFooter}>
+            <span>以“{currentUser.name}”发布</span>
+            <button disabled={draft.trim().length === 0} type="submit">
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
 
   return (
     <section
@@ -310,42 +351,9 @@ export const CommentSection = ({
         </div>
       ) : (
         <>
-          <form
-            className={styles.composer}
-            data-comment-composer=""
-            onSubmit={submit}
-          >
-            <Avatar user={currentUser} />
-            <div className={styles.composerBody}>
-              {replyTarget === null ? null : (
-                <div className={styles.replyMode} data-comment-reply-mode="">
-                  <span>回复 {replyTarget.user.name}</span>
-                  <button onClick={() => setReplyTarget(null)} type="button">
-                    取消
-                  </button>
-                </div>
-              )}
-              <div className={styles.composerInputRow}>
-                <textarea
-                  aria-label={
-                    replyTarget === null
-                      ? "写下你的评论"
-                      : `回复 ${replyTarget.user.name}`
-                  }
-                  onChange={(event) => setDraft(event.currentTarget.value)}
-                  placeholder="写下你的评论…"
-                  rows={3}
-                  value={draft}
-                />
-                <div className={styles.composerFooter}>
-                  <span>以“{currentUser.name}”发布</span>
-                  <button disabled={draft.trim().length === 0} type="submit">
-                    发送
-                  </button>
-                </div>
-              </div>
-            </div>
-          </form>
+          {composerPortalTarget === null
+            ? composer
+            : createPortal(composer, composerPortalTarget)}
 
           {sortedItems.length === 0 ? (
             <p className={styles.empty} data-comment-empty="">

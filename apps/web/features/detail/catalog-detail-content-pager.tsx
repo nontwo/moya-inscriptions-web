@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 
+import { CommentComposerPortalProvider } from "../comments/comment-composer-portal";
 import { HorizontalPager } from "../shell/horizontal-pager";
 import styles from "./catalog-detail.module.css";
 
@@ -25,6 +26,8 @@ export const CatalogDetailContentPager = ({
 }: CatalogDetailContentPagerProps) => {
   const [activePage, setActivePage] =
     useState<DetailContentPage>("information");
+  const [composerPortalTarget, setComposerPortalTarget] =
+    useState<HTMLDivElement | null>(null);
   const pagerRef = useRef<HorizontalPagerHandle<DetailContentPage>>(null);
   const id = useId();
   const selectPage = (page: DetailContentPage) => {
@@ -78,11 +81,23 @@ export const CatalogDetailContentPager = ({
         panelClassName={styles.contentPagerPanel}
         panelId={(page) => `${id}-${page}-panel`}
         panelLabelledBy={(page) => `${id}-${page}-tab`}
-        panels={{ comments, information }}
+        panels={{
+          comments: (
+            <CommentComposerPortalProvider target={composerPortalTarget}>
+              {comments}
+            </CommentComposerPortalProvider>
+          ),
+          information,
+        }}
         platform={platform}
         scrollOwner="document"
         trackAttributes={{ "data-detail-content-track": "" }}
         trackClassName={styles.contentPagerTrack}
+      />
+      <div
+        data-active={String(activePage === "comments")}
+        data-comment-composer-outlet=""
+        ref={setComposerPortalTarget}
       />
     </section>
   );

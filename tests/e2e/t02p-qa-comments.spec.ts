@@ -217,12 +217,13 @@ test("phone and tablet page Detail content into bottom-composer comments with me
   await expect
     .poll(() => frame.evaluate((node) => node.scrollLeft))
     .toBeLessThanOrEqual(1);
-
-  await frame.evaluate((node) => {
-    node.scrollLeft = node.scrollWidth - node.clientWidth;
-    node.dispatchEvent(new Event("scroll"));
-    node.dispatchEvent(new Event("scrollend"));
-  });
+  await expect(
+    frame.locator('[data-detail-content-panel="information"]'),
+  ).toHaveAttribute("data-horizontal-panel-key", "information");
+  await expect(
+    frame.locator('[data-detail-content-panel="comments"]'),
+  ).toHaveAttribute("data-horizontal-panel-key", "comments");
+  await detail.getByRole("tab", { name: "评论" }).click();
   await expect(pager).toHaveAttribute(
     "data-detail-content-active-page",
     "comments",
