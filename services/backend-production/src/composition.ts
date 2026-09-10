@@ -11,8 +11,12 @@ import {
   parsePostgresConfig,
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
-import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { loadPilotConfiguration, openPilotPool } from "./pilot-config.js";
+import { createLocalStorageUrlResolver } from "./storage/local-media.js";
+import {
+  ProductionCosStorageUrlResolver,
+  productionCosOptions,
+} from "./storage/production-cos.js";
 
 import type {
   BackendProcessHandle,
@@ -28,22 +32,87 @@ export interface PreparedProductionBackend {
   readonly runtimeConfig: RuntimeConfig;
 }
 
+const assertLocalDevelopmentDatabase = (
+  environment: RuntimeEnvironment,
+  host: string,
+): void => {
+  parsePostgresConfig({
+    DATABASE_URL: environment.CMS_DATABASE_URL,
+    DATABASE_SSL_CA_FILE: environment.CMS_DATABASE_SSL_CA_FILE,
+  });
+  const backendUrl = new URL(environment.DATABASE_URL!);
+  // Inspect the original URLs: the generic parser removes validated sslmode.
+  // pg-connection-string permits query fields to override host, port and user.
+  const cmsUrl = new URL(environment.CMS_DATABASE_URL!);
+  const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+  let sameDatabaseUser: boolean;
+  try {
+    sameDatabaseUser =
+      decodeURIComponent(backendUrl.username) ===
+      decodeURIComponent(cmsUrl.username);
+  } catch {
+    throw new Error("Local database users are invalid");
+  }
+  if (
+    !loopback.has(host) ||
+    !loopback.has(backendUrl.hostname) ||
+    !loopback.has(cmsUrl.hostname) ||
+    backendUrl.hostname !== cmsUrl.hostname ||
+    (backendUrl.port || "5432") !== (cmsUrl.port || "5432") ||
+    backendUrl.pathname !== "/yoyi_dev" ||
+    cmsUrl.pathname !== backendUrl.pathname ||
+    sameDatabaseUser ||
+    [backendUrl, cmsUrl].some(
+      (url) =>
+        url.hash ||
+        [...url.searchParams].some(
+          ([key, value]) => key !== "sslmode" || value !== "disable",
+        ),
+    )
+  )
+    throw new Error(
+      "Local Backend and Admin must use the same loopback yoyi_dev database with different users",
+    );
+};
+
 export const prepareProductionBackend = async (
   environment: RuntimeEnvironment,
 ): Promise<PreparedProductionBackend> => {
   const runtimeConfig = parseRuntimeConfig(environment);
-  if (runtimeConfig.nodeEnv !== "production") {
-    throw new Error("NODE_ENV must be production for the production backend");
+  if (
+    runtimeConfig.nodeEnv !== "production" &&
+    runtimeConfig.nodeEnv !== "development"
+  ) {
+    throw new Error(
+      "NODE_ENV must be production or development for this backend",
+    );
   }
   const contentSource = environment.MOYA_CONTENT_SOURCE ?? "legacy";
   if (contentSource !== "legacy" && contentSource !== "payload")
     throw new Error("MOYA_CONTENT_SOURCE must be legacy or payload");
-  const pilot =
-    environment.MOYA_PILOT_SCOPE_FILE === undefined &&
-    environment.MOYA_PILOT_MEDIA_FILE === undefined
-      ? undefined
-      : await loadPilotConfiguration(environment);
+  const hasPilotConfiguration =
+    environment.MOYA_PILOT_SCOPE_FILE !== undefined ||
+    environment.MOYA_PILOT_MEDIA_FILE !== undefined;
+  if (
+    runtimeConfig.nodeEnv === "development" &&
+    (contentSource !== "payload" || hasPilotConfiguration)
+  )
+    throw new Error(
+      "Local development requires Payload without Pilot configuration",
+    );
   const postgresConfig = parsePostgresConfig(environment);
+  if (runtimeConfig.nodeEnv === "development")
+    assertLocalDevelopmentDatabase(environment, runtimeConfig.host);
+  const pilot = hasPilotConfiguration
+    ? await loadPilotConfiguration(environment)
+    : undefined;
+  // Resolver configuration fails before opening the database pool. Only
+  // published database projections can supply keys to the public read service.
+  const storageUrlResolver = pilot
+    ? pilot.storage.createStorageUrlResolver()
+    : runtimeConfig.nodeEnv === "development"
+      ? createLocalStorageUrlResolver(environment)
+      : new ProductionCosStorageUrlResolver(productionCosOptions(environment));
   const pool = pilot
     ? openPilotPool(environment, pilot.scope)
     : createPostgresPool(postgresConfig, {
@@ -71,9 +140,7 @@ export const prepareProductionBackend = async (
       nodeEnv: runtimeConfig.nodeEnv,
       catalogQueryPort,
       catalogSearchQueryPort: catalogQueryPort,
-      storageUrlResolver:
-        pilot?.storage.createStorageUrlResolver() ??
-        new UnconfiguredStorageUrlResolver(),
+      storageUrlResolver,
       healthReadinessCheck: readinessCheck,
     }),
     closeResources: async () => closePostgresPool(pool),

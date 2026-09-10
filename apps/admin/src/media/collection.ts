@@ -12,6 +12,7 @@ import {
   type PayloadRequest,
 } from "payload";
 import sharp from "sharp";
+import { createLocalPublishedMediaReadAccess } from "./local-read";
 
 const MIME_FORMATS = {
   "image/jpeg": "jpeg",
@@ -89,7 +90,7 @@ export function createMediaCollection(options: MediaAccess): CollectionConfig {
     disableDuplicate: true,
     disableBulkDelete: true,
     access: {
-      read: options.read,
+      read: createLocalPublishedMediaReadAccess(options.read),
       create: async ({ req, data }) =>
         typeof data?.catalogId === "string" &&
         options.canWrite(req, data.catalogId),

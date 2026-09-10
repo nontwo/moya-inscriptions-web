@@ -1,11 +1,5 @@
 # Production topology readiness
 
-> Draft integration gate: the standalone Production COS signer is implemented.
-> Wiring the non-Pilot composition and local Backend awaits the Owner decision
-> on opaque Backend media delivery versus direct signed COS URLs. The
-> three-process readiness acceptance is still pending; this draft is not ready
-> to merge.
-
 This directory prepares code and deployment templates for a future partner-owned
 Tencent Cloud CVM, TencentDB PostgreSQL and private COS. **It does not execute a
 deployment.** Current cloud resources and production content have not migrated;
@@ -139,10 +133,33 @@ origins and private bucket.
 short lifetimes, timeout and error handling against an already-authorized
 database object key. It does not upload, consume a Pilot manifest, enforce a
 20-object ceiling, or make a bucket public. Pilot upload/manifest guards remain
-inside the Pilot module. Public browser output must not carry database/COS
-credentials or raw storage identifiers. COS permissions, credentials and real
-objects are configured only in a separately authorized operation; this task
-makes no live COS requests or uploads.
+inside the Pilot module. Non-Pilot composition resolves only keys returned by
+the published database projection. Public API keeps only `PublicMedia.src`; no
+independent bucket, region, objectKey, credential or signature fields are added,
+and clients cannot request arbitrary object keys. The browser reads the signed
+COS URL directly. No media proxy or new public HTTP Contract is introduced.
+
+`COS_MEDIA_ORIGIN` must be a verified custom HTTPS media domain such as
+`media.example.invalid`, hiding provider bucket/region from the hostname. The
+resolved URL path may contain its existing opaque MediaId/hash/SHA key. Never
+construct production keys from titles, usernames, emails, local paths or
+original folder names; do not rename previously approved keys. Stage B must
+verify actual domain binding, TLS, URL signing, expiry and tamper rejection.
+Offline SDK tests in this PR do not substitute for that cloud acceptance.
+
+`COS_SIGNED_URL_TTL_SECONDS` is 300 in the template, with an allowed range of
+60–600 seconds. Request timeouts and configuration errors fail closed. Signed
+URLs are not persisted or logged, Public responses remain uncached, and pages
+retain `no-referrer`. Withdrawal stops new URLs; previously issued URLs can
+remain usable until expiry, and downloaded bytes cannot be recalled. Drafts,
+Admin preview and future private UGC use authenticated permission interfaces.
+
+After filing and formal public launch, a separately scoped custom CDN with
+private COS origin authentication and necessary URL authentication can replace
+the resolver without changing PublicMedia or Web. No CDN/EdgeOne implementation
+is included here. COS permissions, credentials and real objects are configured
+only in a separately authorized operation; this task makes no live COS requests
+or uploads.
 
 The future Backend owns public identity/community and will use a separate
 `APP_DATABASE_URL` runtime role. Payload users remain owner/automation only.

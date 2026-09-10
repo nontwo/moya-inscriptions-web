@@ -9,7 +9,7 @@ const main = async (): Promise<void> => {
   const processHandle = await startProductionBackend(process.env);
   installProcessShutdownHandlers(processHandle.shutdown);
   console.info(
-    `[backend-production] listening on http://${processHandle.address.address}:${processHandle.address.port} (production)`,
+    `[backend-production] listening on http://${processHandle.address.address}:${processHandle.address.port}`,
   );
 };
 

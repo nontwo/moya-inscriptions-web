@@ -18,8 +18,10 @@ apps/web/app/page.tsx
 ```
 
 正式 Web 只通过 Public HTTP API 获取业务数据。Frontend 消费已验证的 Public
-DTO 和 `PublicMedia.src`，不接触 PostgreSQL、object
-key、bucket、存储 provider 配置或 raw research data。
+DTO 和 Backend 解析的 `PublicMedia.src`，不接触 PostgreSQL、存储凭据或 raw
+research data。Public
+DTO 没有独立的 objectKey、bucket 或 region 字段；短时签名 URL 可以包含既有 opaque
+object key，前端不自行拼接或签名。
 
 `/docs/prototypes/mobile-preview/` 是独立的非生产 Prototype； `/dev/t02p` 与
 `/dev/t02p/qa`

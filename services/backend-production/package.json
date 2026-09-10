@@ -33,6 +33,10 @@
     "./internal/cos-sdk": {
       "types": "./src/storage/cos-sdk.ts",
       "import": "./dist/storage/cos-sdk.js"
+    },
+    "./internal/local-media": {
+      "types": "./src/storage/local-media.ts",
+      "import": "./dist/storage/local-media.js"
     }
   },
   "scripts": {

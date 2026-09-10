@@ -1422,6 +1422,12 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
       expect(replay).toMatchObject({ status: "ALREADY_APPLIED", created: 28 });
 
       const prepared = await prepareProductionBackend({
+        // Synthetic signing only; these tests never contact COS.
+        COS_BUCKET: "synthetic-example-1250000000",
+        COS_REGION: "ap-guangzhou",
+        COS_MEDIA_ORIGIN: "https://media.example.invalid",
+        COS_SECRET_ID: "synthetic-unit-id",
+        COS_SECRET_KEY: "synthetic-unit-secret",
         DATABASE_URL: isolatedUrl.toString(),
         HOST: "127.0.0.1",
         NODE_ENV: "production",
@@ -2078,6 +2084,12 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
     });
 
     const prepared = await prepareProductionBackend({
+      // Synthetic signing only; these tests never contact COS.
+      COS_BUCKET: "synthetic-example-1250000000",
+      COS_REGION: "ap-guangzhou",
+      COS_MEDIA_ORIGIN: "https://media.example.invalid",
+      COS_SECRET_ID: "synthetic-unit-id",
+      COS_SECRET_KEY: "synthetic-unit-secret",
       DATABASE_URL: isolatedUrl.toString(),
       HOST: "127.0.0.1",
       NODE_ENV: "production",

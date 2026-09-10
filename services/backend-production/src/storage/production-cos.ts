@@ -3,15 +3,23 @@ import { CosReadUrlSigner } from "./cos-read.js";
 import type { CosReadDependencies, CosReadOptions } from "./cos-read.js";
 import type { RuntimeEnvironment } from "@moya/backend-runtime";
 
-/** Backend-only: callers must keep the returned signed URLs behind the public
- * media delivery boundary. Authorization is the published database projection,
- * with no Pilot manifest, object limit or upload capability.
+/** Backend-only resolution of published database media into PublicMedia.src.
+ * The browser reads COS directly; storage fields never become separate DTO
+ * fields. No Pilot manifest, object limit or upload capability applies.
  */
 export class ProductionCosStorageUrlResolver {
   private readonly signer: CosReadUrlSigner;
 
   constructor(options: CosReadOptions, dependencies: CosReadDependencies = {}) {
     this.signer = new CosReadUrlSigner(options, dependencies);
+    if (
+      /(?:^|\.)(?:myqcloud\.com|tencentcos\.cn)$/i.test(
+        new URL(options.mediaOrigin).hostname,
+      )
+    )
+      throw new Error(
+        "COS production media origin must use a verified custom domain",
+      );
   }
 
   async resolveMany<MediaIdentity extends string>(
@@ -22,6 +30,17 @@ export class ProductionCosStorageUrlResolver {
   ): Promise<ReadonlyMap<MediaIdentity, string>> {
     const result = new Map<MediaIdentity, string>();
     for (const locator of locators) {
+      // Preserve the two existing approved key formats byte-for-byte. Reject
+      // readable filenames, personal data and arbitrary request-controlled keys.
+      if (
+        !/^display\/v1\/media_[a-f0-9]{32}\/[a-f0-9]{64}\.webp$/.test(
+          locator.objectKey,
+        ) &&
+        !/^editorial\/[a-f0-9]{64}\/[a-f0-9]{64}-[a-f0-9]{64}\.(?:jpg|png|webp)$/.test(
+          locator.objectKey,
+        )
+      )
+        throw new Error("COS object key invalid");
       result.set(locator.mediaId, await this.signer.sign(locator.objectKey));
     }
     return result;

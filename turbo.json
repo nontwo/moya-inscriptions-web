@@ -65,6 +65,9 @@
         "MOYA_CONTENT_SOURCE",
         "DATABASE_*",
         "CMS_STORAGE_MODE",
+        "CMS_ENVIRONMENT",
+        "CMS_DATABASE_URL",
+        "CMS_DATABASE_SSL_CA_FILE",
         "CMS_MEDIA_DIR",
         "PUBLIC_MEDIA_BASE_URL"
       ]

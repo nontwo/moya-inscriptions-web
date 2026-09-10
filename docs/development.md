@@ -1,11 +1,5 @@
 # Local development
 
-> Draft integration gate: the standalone Production COS signer is implemented.
-> Wiring the non-Pilot composition and local Backend awaits the Owner decision
-> on opaque Backend media delivery versus direct signed COS URLs. The
-> three-process readiness acceptance is still pending; this draft is not ready
-> to merge.
-
 P2-R2A prepares the existing Public Web, sole Backend composition and Payload
 Admin for ordinary PostgreSQL. This setup uses synthetic local content. It does
 not purchase cloud resources, deploy, migrate real data, switch the production
@@ -60,10 +54,15 @@ template.
 Payload owner/automation accounts are administrative identities, not public
 users. The local template uses `CMS_ENVIRONMENT=synthetic` for the existing HTTP
 local authentication behavior. `CMS_STORAGE_MODE=local` requires no COS/Tencent
-credentials. Admin and Backend both resolve `CMS_MEDIA_DIR=../../.local/media`
-from their workspace directories to the same gitignored root `.local/media`.
-Create it locally if needed with `mkdir -p .local/media`. Do not commit media,
-secrets or synthetic database dumps.
+credentials. Admin resolves `CMS_MEDIA_DIR=../../.local/media` from its
+workspace directory to the gitignored root `.local/media`. The Backend maps
+published opaque keys to `PUBLIC_MEDIA_BASE_URL=http://127.0.0.1:3002` and
+Payload’s existing `/api/media/file/<filename>` route. Only published local
+uploads are anonymously readable when development, synthetic and local-storage
+guards all pass. Media metadata, drafts and Admin preview retain authentication;
+filesystem paths never enter Public DTOs. Use the same `127.0.0.1` hostname for
+all three processes. Create it locally if needed with `mkdir -p .local/media`.
+Do not commit media, secrets or synthetic database dumps.
 
 ## Daily commands
 

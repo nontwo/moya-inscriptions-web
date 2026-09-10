@@ -22,7 +22,8 @@ PostgreSQL 与私有 COS；资源尚未创建，本清单不授权部署。具�
       definition；当前本地端口权威为 `3000`、`3001`、`3002`。
 - [ ] Production `HOST`、`PORT`、`DATABASE_URL` 与 Web
       `MOYA_PUBLIC_API_BASE_URL` 由受控 runtime configuration 注入。
-- [ ] Frontend artifact 不包含 `DATABASE_URL`、object key、bucket、provider
+- [ ] Frontend
+      artifact 不包含数据库/COS 凭据、独立 objectKey/bucket/region 字段、provider
       credential 或 storage configuration。
 - [ ] Public Media 只输出 backend resolver 生成的
       `PublicMedia.src`；UI 不推导 URL。

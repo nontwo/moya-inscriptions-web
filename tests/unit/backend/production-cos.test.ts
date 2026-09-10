@@ -6,6 +6,7 @@ import {
 } from "@moya/backend-production/internal/production-cos";
 import type { CosReadOptions } from "@moya/backend-production/internal/cos-read";
 import type { CosSdkClient } from "@moya/backend-production/internal/cos-sdk";
+import { createCosSdk } from "@moya/backend-production/internal/cos-sdk";
 
 const now = 1_788_820_000_000;
 const options = (): CosReadOptions => ({
@@ -18,8 +19,8 @@ const options = (): CosReadOptions => ({
   }),
 });
 const locator = {
-  mediaId: "media-production-any-count",
-  objectKey: "catalog-originals/approved existing/原圖 100%.webp",
+  mediaId: `media_${"a".repeat(32)}`,
+  objectKey: `display/v1/media_${"a".repeat(32)}/${"b".repeat(64)}.webp`,
 };
 
 afterEach(() => vi.useRealTimers());
@@ -35,7 +36,7 @@ describe("production COS signing without Pilot policy", () => {
     });
     const locators = Array.from({ length: 35 }, (_, index) => ({
       mediaId: `catalog-media-${index}`,
-      objectKey: `originals/任意批准前缀/${index}.webp`,
+      objectKey: `editorial/${"a".repeat(64)}/${index.toString(16).padStart(64, "0")}-${"b".repeat(64)}.webp`,
     }));
     const result = await resolver.resolveMany(locators);
     expect(result.size).toBe(35);
@@ -58,9 +59,77 @@ describe("production COS signing without Pilot policy", () => {
     expect(first.origin).toBe(options().mediaOrigin);
     expect(first.searchParams.get("response-cache-control")).toBe("no-store");
     time += 350_000;
-    expect(
-      (await resolver.resolveMany([locator])).get(locator.mediaId),
-    ).not.toBe(first.href);
+    const refreshed = new URL(
+      (await resolver.resolveMany([locator])).get(locator.mediaId)!,
+    );
+    const [, expiry] = first.searchParams
+      .get("q-sign-time")!
+      .split(";")
+      .map(Number);
+    expect(time / 1000).toBeGreaterThan(expiry!);
+    expect(refreshed.href).not.toBe(first.href);
+    expect(refreshed.searchParams.get("q-sign-time")).toBe(
+      `${time / 1000};${time / 1000 + 300}`,
+    );
+    expect(refreshed.pathname).toBe(first.pathname);
+  });
+
+  it("binds the official SDK signature to the object, custom host and signed query", async () => {
+    const resolver = new ProductionCosStorageUrlResolver(options(), {
+      now: () => now,
+    });
+    const signed = new URL(
+      (await resolver.resolveMany([locator])).get(locator.mediaId)!,
+    );
+    // Recompute the requested URL with the official SDK. This is an offline
+    // signature check, not a claim about a live bucket's authorization setup.
+    const expectedSignature = (url: URL): Promise<string | null> =>
+      new Promise((resolve, reject) => {
+        const { client } = createCosSdk({
+          secretId: "synthetic-unit-id",
+          secretKey: "synthetic-unit-secret",
+          startsAt: now / 1000,
+          expiresAt: now / 1000 + 300,
+          timeoutMs: 1000,
+        });
+        client.getObjectUrl(
+          {
+            Bucket: options().bucket,
+            Region: options().region,
+            Key: decodeURIComponent(url.pathname.slice(1)),
+            Domain: url.host,
+            Protocol: "https:",
+            Method: "GET",
+            Sign: true,
+            Expires: 300,
+            Query: {
+              "response-cache-control": url.searchParams.get(
+                "response-cache-control",
+              )!,
+            },
+          },
+          (error, data) => {
+            if (error) reject(new Error("synthetic signing failed"));
+            else resolve(new URL(data.Url).searchParams.get("q-signature"));
+          },
+        );
+      });
+    expect(await expectedSignature(signed)).toBe(
+      signed.searchParams.get("q-signature"),
+    );
+    const changedObject = new URL(signed);
+    changedObject.pathname = changedObject.pathname.replace(
+      "b".repeat(64),
+      "c".repeat(64),
+    );
+    const changedHost = new URL(signed);
+    changedHost.hostname = "other-media.example.invalid";
+    const changedQuery = new URL(signed);
+    changedQuery.searchParams.set("response-cache-control", "public");
+    for (const tampered of [changedObject, changedHost, changedQuery])
+      expect(await expectedSignature(tampered)).not.toBe(
+        tampered.searchParams.get("q-signature"),
+      );
   });
 
   it("bounds signed STS reads by credential expiry and signs the encoded token", async () => {
@@ -97,6 +166,10 @@ describe("production COS signing without Pilot policy", () => {
     "originals/./outside",
     "originals\\outside",
     "originals/\u0000outside",
+    "catalog-originals/approved existing/原圖 100%.webp",
+    "originals/person@example.invalid.webp",
+    "/Users/synthetic-owner/Desktop/原图.webp",
+    `editorial/${"a".repeat(64)}/original-title.webp`,
   ])(
     "rejects unsafe object key before credential access",
     async (objectKey) => {
@@ -120,6 +193,14 @@ describe("production COS signing without Pilot policy", () => {
     { bucket: "wrong" },
     { region: "wrong" },
     { mediaOrigin: "http://media.example.invalid" },
+    {
+      mediaOrigin:
+        "https://synthetic-example-1250000000.cos.ap-guangzhou.myqcloud.com",
+    },
+    {
+      mediaOrigin:
+        "https://synthetic-example-1250000000.cos.ap-guangzhou.tencentcos.cn",
+    },
   ])("fails closed on invalid storage configuration", (invalid) => {
     expect(
       () => new ProductionCosStorageUrlResolver({ ...options(), ...invalid }),
@@ -144,6 +225,30 @@ describe("production COS signing without Pilot policy", () => {
     });
     await expect(failed.resolveMany([locator])).rejects.toThrow(
       /^COS URL signing failed$/,
+    );
+  });
+
+  it("stops issuing new URLs after temporary credentials expire", async () => {
+    let time = now;
+    const resolver = new ProductionCosStorageUrlResolver(
+      {
+        ...options(),
+        credentials: async () => ({
+          secretId: "synthetic-unit-id",
+          secretKey: "synthetic-unit-secret",
+          securityToken: "synthetic-unit-token",
+          expiresAt: now / 1000 + 90,
+        }),
+      },
+      { now: () => time },
+    );
+    await expect(resolver.resolveMany([locator])).resolves.toHaveProperty(
+      "size",
+      1,
+    );
+    time += 90_000;
+    await expect(resolver.resolveMany([locator])).rejects.toThrow(
+      /^COS credentials expired or insufficient validity$/,
     );
   });
 

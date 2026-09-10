@@ -3,7 +3,10 @@
 唯一 Public Backend composition，组合现有 HTTP
 runtime、CatalogQueryPort、PostgreSQL published-read adapter、Search
 V1 与 Production COS resolver。Public
-API 和已验收前端行为保持原样；Pilot 上传与 manifest 保护留在 Pilot 模块。
+API 和已验收前端行为保持原样；Pilot 上传与 manifest 保护留在 Pilot 模块。非 Pilot
+composition 将 published projection 的 opaque key 解析为短时签名 COS URL，经既有
+`PublicMedia.src` 由浏览器直接读取。Local development 使用 Backend local
+resolver 和 Payload 原生文件路由；不新增公开媒体 Contract 或字节代理。
 
 `MOYA_CONTENT_SOURCE=legacy|payload`
 明确内容源。启动前在独立授权的 migration 步骤执行
