@@ -29,12 +29,13 @@ datasets、object key、bucket、provider configuration 或 credentials。
 
 - `apps/web`：Public Web composition、React Product
   Shell、interaction、server-side Public HTTP client 与 same-origin API routes。
-- `apps/admin`：独立最小 Admin boundary，当前没有管理业务。
+- `apps/admin`：已实现 Payload Catalog
+  Admin、原生草稿/版本、Owner 发布与受限 automation。
 - `services/backend-runtime`：Node.js listener、runtime
   config、router、handlers、JSON response、readiness injection 与 graceful
   shutdown。
 - `services/backend-production`：PostgreSQL adapter、HTTP runtime 与 production
-  composition root；启动时只读验证 migration ledger。
+  composition root；启动时只读验证所选内容源的 readiness。
 - `services/api`：backend-only Catalog application boundary，拥有 normalized
   query、internal projections、`CatalogQueryPort`、`StorageUrlResolver`、read
   service 与 explicit Public mapper。
@@ -52,8 +53,10 @@ datasets、object key、bucket、provider configuration 或 credentials。
   implementations；不拥有 provider credential、upload 或 transport policy。
 - `packages/ui`、`packages/design-tokens`：共享 semantic
   components、assets 与 tokens。
-- `packages/search`：Search V1 尚未实现的隔离 boundary。
-- `database/migrations`：database schema evolution 的唯一入口。
+- `packages/search`：已实现 Search
+  V1 中文归一化；标准 PostgreSQL 负责检索与排序。
+- `database/migrations`：仅 legacy
+  migrations；`apps/admin/src/migrations`：仅 Payload migrations。
 
 The retired empty `@moya/data-access` workspace is not part of the current
 architecture.
@@ -124,11 +127,13 @@ Current backend Public endpoints are:
 
 - `GET /health`;
 - `GET /v1/catalog`;
-- `GET /v1/catalog/{catalogId}`.
+- `GET /v1/catalog/{catalogId}`；
+- `GET /v1/catalog-search`。
 
-Web exposes bounded same-origin list and Detail routes under `/api/catalog`.
-Transport input is parsed strictly. Catalog list supports page-based pagination
-and optional `kind=inscription|calligraphy`.
+Web exposes bounded same-origin list and Detail routes under `/api/catalog`, and
+Search V1 under `/api/catalog-search`. Transport input is parsed strictly.
+Catalog list supports page-based pagination and optional
+`kind=inscription|calligraphy`.
 
 ```text
 Public transport input
@@ -175,16 +180,22 @@ PostgreSQL stores logical object keys. Backend `StorageUrlResolver`
 implementations convert them to public or signed runtime URLs. Public API
 outputs only `PublicMedia.src`; Web and `@moya/ui` consume that resolved value.
 
-Development uses explicit mapped media. Production composition fails closed
-until an approved provider resolver is configured. A Catalog with no media
-remains readable and receives a truthful missing-media presentation.
-
-No Production storage provider or credential is selected in the repository.
+Local development uses gitignored Payload media and requires no COS credentials.
+The implemented standalone `ProductionCosStorageUrlResolver` uses the official
+COS SDK, with private objects, short read URL lifetimes, verified TLS and
+bounded errors. It has no Pilot manifest, object-count cap or upload operation.
+Pilot upload and manifest enforcement remain in the Pilot module. Production
+requires explicit provider configuration. Composition wiring remains pending the
+Owner media-delivery decision recorded in the Draft PR; it is not yet
+production-ready.
 
 ## PostgreSQL, migrations, and importer
 
-PostgreSQL is the intended Production runtime canonical source of truth.
-Production startup and schema migration are separate:
+Payload with PostgreSQL published views is implemented; Search V1 consumes the
+published read model. Legacy remains an explicit compatibility source until the
+separately authorized operational cutover. TencentDB is a standard PostgreSQL
+target; business code has no Tencent database SDK dependency. Production startup
+and schema migration are separate:
 
 ```text
 explicit migration command
@@ -218,12 +229,40 @@ The repository contains no persistent Production Catalog dataset, Production
 credential, or configured Production media provider. The 28-record P5 flow was
 validated against disposable infrastructure and remains non-production evidence.
 
-Active deployment documents are provider-neutral. Historical CloudBase material
-under `docs/archive/deployment/` is non-executable and non-authoritative.
+The Owner currently tests in an Owner-owned Tencent account. Future CVM,
+TencentDB PostgreSQL and private COS resources will belong to the domestic
+partner's verified main account; those resources have not been created.
+[Production topology](../infra/production/README.md) defines three separate
+loopback processes behind Nginx and distinct service users. Historical CloudBase
+material under `docs/archive/deployment/` remains non-authoritative.
 
 Production provider choice, purchases, domains, credentials, secrets, release
 operations, data import approval, backup/restore, and deployment require
 separate Owner authority.
+
+## Database roles and future Phase 3 boundary
+
+`CMS_DATABASE_URL` is Payload runtime; `DATABASE_URL` is the Public Backend
+published-read runtime; `TEST_DATABASE_URL` is dedicated disposable testing.
+Future `APP_DATABASE_URL` is reserved for Backend public identity/community and
+is not consumed or implemented in this change. CMS, Public and future App roles
+may use the same TencentDB instance and database, but must be different database
+users with separate permissions. Tests and local development remain isolated
+from staging and production. Public Backend grants read access only to published
+views; deployment migration privileges are separate from runtime privileges.
+
+Public pool defaults to 5, with explicit idle timeout. Payload retains max 5.
+Optional CA files configure verified TLS; `rejectUnauthorized=false` is
+forbidden. Migrations route by `MOYA_CONTENT_SOURCE`: `legacy` selects only
+legacy SQL; `payload` selects only Payload migrations. Startup never performs
+DDL.
+
+Payload users serve Owner/automation only. Public users, sessions, profiles,
+posts, comments, likes, favorites and UGC are not part of this work. Future
+public identity/community belongs to Backend, with its own App database runtime
+role and a separate UGC storage boundary. QA filter fixtures remain QA-only;
+hard-coded dynasties, script styles, kinds or regions do not become production
+taxonomies or contracts. No production filtering is added.
 
 ## Stable guardrails
 

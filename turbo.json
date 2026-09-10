@@ -3,7 +3,9 @@
   "tasks": {
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "dependsOn": ["^build"],
+      "interruptible": true
     },
     "build": {
       "dependsOn": ["^build"],
@@ -31,6 +33,40 @@
         "@moya/public-api#build",
         "@moya/search#build",
         "@moya/ui#build"
+      ]
+    },
+    "web#dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "passThroughEnv": [
+        "MOYA_PUBLIC_API_BASE_URL",
+        "MOYA_ALLOWED_DEV_ORIGINS",
+        "CMS_INTERNAL_URL"
+      ]
+    },
+    "admin#dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "passThroughEnv": ["CMS_*", "DATABASE_IDLE_TIMEOUT_MS"]
+    },
+    "@moya/backend-production#dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "passThroughEnv": [
+        "NODE_ENV",
+        "HOST",
+        "PORT",
+        "MOYA_CONTENT_SOURCE",
+        "DATABASE_*",
+        "CMS_STORAGE_MODE",
+        "CMS_MEDIA_DIR",
+        "PUBLIC_MEDIA_BASE_URL"
       ]
     }
   }

@@ -4,10 +4,11 @@ import { parsePostgresConfig } from "../config.js";
 import { closePostgresPool, createPostgresPool } from "../pool.js";
 import { runMigrations } from "./runner.js";
 
-const safeMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : "Migration failed";
+const safeMessage = (): string => "Migration configuration or execution failed";
 
 const main = async (): Promise<void> => {
+  if (process.env.MOYA_CONTENT_SOURCE !== "legacy")
+    throw new Error("Legacy migrations require MOYA_CONTENT_SOURCE=legacy");
   const migrationDirectoryArgument = process.argv[2];
   if (migrationDirectoryArgument === undefined) {
     throw new Error("A migration directory is required");
@@ -28,7 +29,7 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((error: unknown) => {
-  console.error(`[catalog-postgres] migration failed: ${safeMessage(error)}`);
+main().catch(() => {
+  console.error(`[catalog-postgres] migration failed: ${safeMessage()}`);
   process.exitCode = 1;
 });

@@ -2,7 +2,7 @@
   "name": "moya-inscriptions-web",
   "version": "0.0.0",
   "private": true,
-  "description": "Engineering foundation for \u7531\u827a (Yoyi), the inscription and calligraphy Catalog.",
+  "description": "Engineering foundation for 由艺 (Yoyi), the inscription and calligraphy Catalog.",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24 <25",
@@ -12,9 +12,9 @@
     "dev": "pnpm dev:web",
     "dev:web": "pnpm --filter web dev",
     "dev:admin": "pnpm --filter admin dev",
-    "dev:all": "turbo run dev --filter=web --filter=admin",
+    "dev:all": "node --env-file=.env.local node_modules/turbo/bin/turbo watch dev --filter=web --filter=admin --filter=@moya/backend-production",
     "build": "turbo run build",
-    "db:migrate": "pnpm --filter @moya/catalog-postgres migrate",
+    "db:migrate": "node scripts/migrate.mjs",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "pnpm test:confidentiality && turbo run test",
@@ -35,7 +35,11 @@
     "confidentiality:outbound": "node scripts/confidentiality-scan.mjs outbound",
     "test:confidentiality": "node --test scripts/confidentiality-scan.test.mjs",
     "test:cms": "node scripts/editorial/verify-cms.mjs",
-    "test:cms:browser": "node scripts/editorial/verify-owner-browser.mjs"
+    "test:cms:browser": "node scripts/editorial/verify-owner-browser.mjs",
+    "dev:db:up": "docker compose -f compose.dev.yml up -d --wait",
+    "dev:db:down": "docker compose -f compose.dev.yml down",
+    "dev:migrate": "turbo run build --filter=admin^... && node --env-file=.env.local scripts/migrate.mjs --development && docker compose -f compose.dev.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U yoyi_dev_owner -d yoyi_dev -f /opt/yoyi/grant-public-read.sql",
+    "dev:backend": "node --env-file=.env.local node_modules/turbo/bin/turbo watch dev --filter=@moya/backend-production"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

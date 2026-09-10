@@ -475,4 +475,41 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: [
+      "apps/admin/src/runtime-settings.ts",
+      "apps/admin/src/migration/guard.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            "@moya/backend-production",
+            "@moya/backend-runtime",
+            "pg",
+            {
+              name: "@moya/catalog-postgres",
+              allowImportNames: [
+                "parsePostgresConfig",
+                "PostgresConfig",
+                "assertMigrationTarget",
+                "migrationTargetProbeSql",
+              ],
+              message:
+                "CMS runtime shares only verified connection settings and read-only migration target checks.",
+            },
+          ],
+          patterns: [
+            "@moya/catalog-postgres/*",
+            "@moya/backend-runtime/*",
+            "@moya/backend-production/*",
+            "**/data/**",
+            "**/*.csv",
+            "**/*.xlsx",
+          ],
+        },
+      ],
+    },
+  },
 );

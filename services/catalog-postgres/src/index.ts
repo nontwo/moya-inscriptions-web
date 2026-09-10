@@ -42,3 +42,8 @@ export type {
   CatalogEntryRow,
   CatalogMediaRow,
 } from "./row-mapper.js";
+
+export {
+  assertMigrationTarget,
+  migrationTargetProbeSql,
+} from "./migrations/target.js";

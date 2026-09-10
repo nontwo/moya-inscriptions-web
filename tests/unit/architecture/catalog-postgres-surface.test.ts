@@ -24,13 +24,14 @@ const collectTypeScript = async (directory: string): Promise<string[]> => {
 };
 
 describe("@moya/catalog-postgres package boundary", () => {
-  it("exposes only the existing adapter surface and shared public Search projection", () => {
+  it("exposes the adapter, shared public Search projection and migration target checks", () => {
     expect(Object.keys(catalogPostgres).sort()).toEqual([
       "DatabaseSchemaNotReadyError",
       "MigrationStateError",
       "PostgresCatalogQueryAdapter",
       "PostgresStartupError",
       "asPostgresOperationError",
+      "assertMigrationTarget",
       "assertPostgresStartupReady",
       "catalogPageOffset",
       "catalogSearchSourceSelectSql",
@@ -44,6 +45,7 @@ describe("@moya/catalog-postgres package boundary", () => {
       "mapCatalogMediaRows",
       "mapCitationRows",
       "mapRepresentativeMediaRows",
+      "migrationTargetProbeSql",
       "parseCatalogCount",
       "parsePostgresConfig",
       "projectCatalogSearchSourceRow",

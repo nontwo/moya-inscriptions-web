@@ -1,5 +1,8 @@
 import { execFileSync, spawn } from "node:child_process";
 import process from "node:process";
+import console from "node:console";
+import { performance } from "node:perf_hooks";
+import { setTimeout, clearTimeout } from "node:timers";
 import { pathToFileURL } from "node:url";
 
 // One deadline for the entire sequence, including startup and teardown. Leave
@@ -112,8 +115,10 @@ if (
   const mode = process.argv[2] ?? "all";
   // Migration and integration tests must use the same explicitly supplied test
   // database, even when the developer also has an ordinary DATABASE_URL set.
-  if (["all", "test"].includes(mode) && process.env.TEST_DATABASE_URL)
+  if (["all", "test"].includes(mode) && process.env.TEST_DATABASE_URL) {
     process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+    process.env.MOYA_CONTENT_SOURCE = "legacy";
+  }
   const pnpm = (...args) => ["pnpm", ...args];
   const smoke = [process.execPath, "scripts/ci-e2e-smoke.mjs"];
   const postgres = [

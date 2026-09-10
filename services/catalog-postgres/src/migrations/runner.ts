@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { asPostgresOperationError } from "../availability.js";
 import { requiredMigrations } from "./manifest.js";
+import { assertMigrationTarget, migrationTargetProbeSql } from "./target.js";
 
 import type { RequiredMigration } from "./manifest.js";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -155,6 +156,8 @@ export const runMigrations = async (
     await client.query("SELECT pg_advisory_lock($1::bigint)", [
       migrationLockId,
     ]);
+    const target = await client.query(migrationTargetProbeSql);
+    assertMigrationTarget(target.rows, "legacy");
     await createLedger(client);
     const ledger = await readLedger(client);
 

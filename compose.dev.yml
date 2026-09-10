@@ -1,0 +1,24 @@
+name: yoyi-development
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_DB: yoyi_dev
+      POSTGRES_USER: yoyi_dev_owner
+      # Reviewed synthetic local-only values; never copy to staging/production.
+      POSTGRES_PASSWORD: synthetic-local-owner-only
+    ports:
+      - "127.0.0.1:54330:5432"
+    volumes:
+      # PostgreSQL 18 images store versioned data beneath /var/lib/postgresql.
+      - yoyi_dev_data:/var/lib/postgresql
+      - ./infra/development/init-roles.sql:/docker-entrypoint-initdb.d/010-roles.sql:ro
+      - ./infra/development/grant-public-read.sql:/opt/yoyi/grant-public-read.sql:ro
+      - ./infra/development/readonly-browser.sql:/opt/yoyi/readonly-browser.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yoyi_dev_owner -d yoyi_dev"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  yoyi_dev_data:

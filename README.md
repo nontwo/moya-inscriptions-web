@@ -30,11 +30,11 @@ fixture 的仓库存在不授权 Production 使用。
 
 - `apps/web`：Next.js App Router Public Web、React Product Shell、same-origin
   API boundary 与用户交互。
-- `apps/admin`：独立的最小 Admin 工程骨架；尚无管理业务。
+- `apps/admin`：已实现 Payload Catalog 管理端、原生草稿/版本、发布与受限自动化。
 - `services/backend-runtime`：Node.js listener、router、handlers、runtime
   config 与 graceful shutdown。
 - `services/backend-production`：PostgreSQL-backed production composition
-  root；启动时只读验证 migration ledger。
+  root；启动时只读验证所选内容源的 schema readiness。
 - `services/api`：backend-only Catalog application boundary。
 - `services/catalog-postgres`：private PostgreSQL 18
   adapter、queries、migrations/readiness integration。
@@ -47,25 +47,27 @@ fixture 的仓库存在不授权 Production 使用。
 - `packages/design-tokens`、`packages/ui`：共享视觉 token、semantic
   components 与正式 assets。
 - `packages/image`：backend-owned `StorageUrlResolver` implementations。
-- `packages/search`：Search V1 的隔离边界；业务搜索尚未实现。
-- `database/migrations`：数据库结构演进的唯一入口。
+- `packages/search`：已实现 Search V1 中文归一化；检索使用 PostgreSQL published
+  projections。
+- `database/migrations`：legacy 内容源迁移；Payload 内容源只使用
+  `apps/admin/src/migrations`。
 - `docs`：当前状态、架构、治理、ADR、历史和非生产原型。
 
 ## 已实现的核心链路
 
 ```text
-Owner-approved CSV/XLSX
-  → catalog-import/v1 or catalog-import/v2
-  → validation and dry-run
-  → hash-bound approval
-  → one PostgreSQL transaction
+Payload Admin / scoped automation
+  → native drafts and exact-revision approval
+  → published PostgreSQL views (Search V1 included)
   → CatalogQueryPort
   → explicit Public mapper
   → Public HTTP API
   → React Product presentation
 ```
 
-当前支持 Catalog list/detail、分页、Content V1、媒体读取边界、Detail
+现有 CSV/XLSX 受控写入口仍保留；正式内容源切换和 XLSX 退役尚未执行。
+
+当前支持 Catalog list/detail、Search V1、分页、Content V1、媒体读取边界、Detail
 Carousel、full-screen Viewer、history、focus/scroll
 restoration，以及 Development/Production 数据隔离。正式数据、正式媒体和部署状态以
 `docs/project-status.md` 为准。
@@ -84,31 +86,19 @@ pnpm install --frozen-lockfile
 
 ## 本地开发
 
-端口所有权固定为：
-
-```text
-Public Web      3000
-Backend/API     3001
-Admin           3002
-```
+Public
+Web、Backend、Admin 使用本地端口 3000、3001、3002；Backend 与数据库只绑定回环。使用独立 PostgreSQL
+18.4 `yoyi_dev`，默认 Payload 内容源与本地媒体，无需云凭据。
 
 ```bash
-pnpm dev         # Public Web only
-pnpm dev:web     # Public Web only
-pnpm dev:admin   # Admin only
-pnpm dev:all     # Public Web + Admin
+pnpm dev:db:up
+pnpm dev:migrate
+pnpm dev:all
 ```
 
-Backend 不由根 `dev` 脚本隐式启动：
-
-```bash
-pnpm --filter @moya/backend-runtime build
-HOST=127.0.0.1 PORT=3001 NODE_ENV=development \
-  pnpm --filter @moya/backend-runtime start
-```
-
-复制 `.env.example` 后仅填写当前入口实际需要的值。不得提交 `.env`、真实 API
-key、数据库连接串、云密钥或其他 Production credential。
+先按 [development 说明](docs/development.md) 创建 gitignored 本地配置。
+[production 说明](infra/production/README.md) 提供未来伙伴账号 CVM、TencentDB
+PostgreSQL 和私有 COS 的配置边界。当前仍在 Owner 自有账号测试；伙伴正式资源尚未创建。
 
 ## 验证
 

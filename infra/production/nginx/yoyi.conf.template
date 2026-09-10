@@ -1,0 +1,55 @@
+# Include within nginx http {}. All names/paths below are fictional examples.
+# Render/validate this template only during separately authorized deployment.
+log_format yoyi_status '$time_iso8601 $status $request_time';
+
+upstream yoyi_web { server 127.0.0.1:3000; }
+upstream yoyi_backend { server 127.0.0.1:3001; }
+upstream yoyi_admin { server 127.0.0.1:3002; }
+
+server {
+    listen 80 default_server;
+    server_name _;
+    return 404;
+}
+
+server {
+    listen 443 ssl;
+    server_name catalog.example.invalid;
+    ssl_certificate /etc/yoyi/tls/fullchain.pem;
+    ssl_certificate_key /etc/yoyi/tls/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+    if ($host != catalog.example.invalid) { return 421; }
+    access_log /var/log/nginx/yoyi-access.log yoyi_status;
+    # Request URIs can contain private search text or media capabilities.
+    error_log /dev/null;
+    add_header Referrer-Policy no-referrer always;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host catalog.example.invalid;
+    proxy_set_header X-Forwarded-Host catalog.example.invalid;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 60s;
+
+    # Shared hostname preserves the existing host-only Payload preview cookie.
+    location = /admin { proxy_pass http://yoyi_admin; }
+    location ^~ /admin/ { proxy_pass http://yoyi_admin; }
+    # The Admin build uses assetPrefix=/admin-assets; preserve Web's /_next assets.
+    location ^~ /admin-assets/_next/static/ {
+        proxy_pass http://yoyi_admin/_next/static/;
+    }
+    # Payload owns its native management/preview/media APIs and authorizes access.
+    location /api/ {
+        client_max_body_size 50m;
+        proxy_pass http://yoyi_admin;
+    }
+    # The approved Web retains all existing Public API forwarding routes.
+    location = /api/catalog { proxy_pass http://yoyi_web; }
+    location ^~ /api/catalog/ { proxy_pass http://yoyi_web; }
+    location = /api/catalog-search { proxy_pass http://yoyi_web; }
+    # Includes /editorial-preview/:id and Web assets; draft fetches use loopback CMS_INTERNAL_URL.
+    location / { proxy_pass http://yoyi_web; }
+}

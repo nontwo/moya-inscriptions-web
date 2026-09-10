@@ -1,8 +1,8 @@
 # Provider-neutral deployment checklist
 
-本清单只保存 provider-neutral release
-safety。它不选择 provider，不创建资源，也不授权 production
-deployment。真实外部操作必须在独立批准后补充 provider、账号、区域、预算、安全、合规与运行目标。
+本清单保留 release safety。未来拓扑已确定为伙伴实名主账号的腾讯云 CVM、TencentDB
+PostgreSQL 与私有 COS；资源尚未创建，本清单不授权部署。具体模板与数据库角色见
+[production 说明](../../infra/production/README.md)。
 
 ## Authority gate
 
@@ -35,14 +35,16 @@ deployment。真实外部操作必须在独立批准后补充 provider、账号�
 - [ ] Target PostgreSQL major/minor 与已验证 compatibility
       baseline 一致，或已有独立 maintenance approval 与完整 test evidence。
 - [ ] Backup identifier、restore procedure、RPO/RTO 与负责人已记录并演练。
-- [ ] 使用已实现的显式 migration command，成功后才启动 production backend：
+- [ ] 在受控 EnvironmentFile 中明确 `MOYA_CONTENT_SOURCE`
+      与所选目标，用单独 migration 身份显式执行
+      `pnpm db:migrate`，成功后再启动进程。 `legacy` 只执行
+      `database/migrations`；`payload` 只执行 Payload
+      migrations。不对新 Payload 库执行 legacy
+      SQL，不在 legacy 库安装同名 published views。
 
-```sh
-pnpm --filter @moya/catalog-postgres build
-DATABASE_URL='postgresql://...' pnpm --filter @moya/catalog-postgres migrate
-```
-
-- [ ] Startup 只读验证 required migration ledger，不自动执行 DDL。
+- [ ] Startup 只读验证所选内容源 readiness，不自动执行 DDL。
+- [ ] CMS runtime、Public published-read runtime 与 migration 用户权限分离；pool
+      max 默认 5，可选 CA 文件启用验证 TLS。
 - [ ] Schema change 已按 expand/contract compatibility 评审；destructive
       rollback 不是普通应用回滚步骤。
 

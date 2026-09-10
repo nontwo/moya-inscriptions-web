@@ -13,6 +13,9 @@ export const createPostgresPool = (
   const pool = new Pool({
     connectionString: config.connectionString,
     connectionTimeoutMillis: config.connectionTimeoutMillis,
+    max: config.max,
+    idleTimeoutMillis: config.idleTimeoutMillis,
+    ssl: config.ssl,
   });
   pool.on("error", () => {
     onUnexpectedIdleError?.();

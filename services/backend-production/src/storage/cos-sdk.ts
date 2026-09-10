@@ -5,7 +5,7 @@ import COS from "cos-nodejs-sdk-v5";
 import type { ClientRequest } from "node:http";
 import type { RequestOptions } from "node:https";
 
-export type PilotCosSdkClient = Pick<
+export type CosSdkClient = Pick<
   COS,
   | "headObject"
   | "getObject"
@@ -17,8 +17,8 @@ export type PilotCosSdkClient = Pick<
 >;
 
 /** Test seams are never selected by environment or production configuration. */
-export interface PilotCosSdkDependencies {
-  readonly sdkFactory?: (options: COS.COSOptions) => PilotCosSdkClient;
+export interface CosSdkDependencies {
+  readonly sdkFactory?: (options: COS.COSOptions) => CosSdkClient;
   readonly nativeRequest?: typeof https.request;
 }
 
@@ -35,7 +35,7 @@ const requestFailure = () =>
  * Pilot's stricter byte/deadline bounds, TLS verification and single attempt.
  * SDK v3.0.0 base.js otherwise retries basic requests up to four times.
  */
-export const createPilotCosSdk = (
+export const createCosSdk = (
   options: {
     readonly secretId: string;
     readonly secretKey: string;
@@ -43,7 +43,7 @@ export const createPilotCosSdk = (
     readonly expiresAt: number;
     readonly timeoutMs: number;
   },
-  dependencies: PilotCosSdkDependencies = {},
+  dependencies: CosSdkDependencies = {},
 ) => {
   let authorized = false;
   const client = (dependencies.sdkFactory ?? ((config) => new COS(config)))({
@@ -175,3 +175,8 @@ export const createPilotCosSdk = (
       }),
   };
 };
+
+// Compatibility for the guarded Pilot uploader; shared reads use provider names.
+export type PilotCosSdkClient = CosSdkClient;
+export type PilotCosSdkDependencies = CosSdkDependencies;
+export const createPilotCosSdk = createCosSdk;

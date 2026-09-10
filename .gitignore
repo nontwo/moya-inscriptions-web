@@ -23,3 +23,6 @@ private-credentials/
 
 !.env.example
 !.env.*.example
+
+# Shared local Payload/Public Backend media (never a tracked content source)
+apps/admin/media/

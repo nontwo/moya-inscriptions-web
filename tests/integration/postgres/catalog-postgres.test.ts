@@ -1783,6 +1783,9 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       connectionString:
         "postgresql://127.0.0.1:1/SYNTHETIC_UNAVAILABLE_CATALOG",
       connectionTimeoutMillis: 100,
+      max: 5,
+      idleTimeoutMillis: 10_000,
+      ssl: false,
     });
     const { baseUrl } = await startHttp(unavailablePool);
     const [catalogResponse, healthResponse] = await Promise.all([
