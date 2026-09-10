@@ -341,16 +341,11 @@
   gap: var(--yoyi-space-3);
   padding: var(--yoyi-space-3) var(--yoyi-space-4)
     calc(var(--yoyi-space-3) + env(safe-area-inset-bottom));
-  background: color-mix(
-    in srgb,
-    var(--yoyi-color-background-surface) 96%,
-    transparent
-  );
+  background: var(--yoyi-color-background-surface);
   border: 1px solid var(--yoyi-color-border-subtle);
   border-bottom: 0;
   border-radius: var(--yoyi-radius-lg) var(--yoyi-radius-lg) 0 0;
   box-shadow: var(--yoyi-shadow-dialog);
-  backdrop-filter: blur(14px);
 }
 
 [data-detail-landscape-comments] .composer {

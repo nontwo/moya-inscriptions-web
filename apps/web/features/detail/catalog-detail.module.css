@@ -112,13 +112,8 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0 var(--yoyi-space-3);
-  background: color-mix(
-    in srgb,
-    var(--yoyi-color-background-page) 94%,
-    transparent
-  );
+  background: var(--yoyi-color-background-page);
   border-bottom: 1px solid var(--yoyi-color-border-subtle);
-  backdrop-filter: blur(12px);
 }
 
 .contentPagerTabs button {
