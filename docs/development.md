@@ -45,9 +45,9 @@ starts:
 
 | Process       | Address                       | Database use                       |
 | ------------- | ----------------------------- | ---------------------------------- |
-| Public Web    | `http://localhost:3000`       | Public HTTP API only               |
+| Public Web    | `http://127.0.0.1:3000`       | Public HTTP API only               |
 | Backend       | `http://127.0.0.1:3001`       | `yoyi_dev_public`, published reads |
-| Payload Admin | `http://localhost:3002/admin` | `yoyi_dev_payload`, CMS runtime    |
+| Payload Admin | `http://127.0.0.1:3002/admin` | `yoyi_dev_payload`, CMS runtime    |
 
 Web and Admin retain their existing development hostname behavior for device QA.
 The Backend and PostgreSQL listen on loopback. The root `.env.local` is loaded
