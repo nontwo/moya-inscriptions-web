@@ -1,12 +1,10 @@
-> P2-04 update (2026-09-08): Payload editorial automation is authorized and in
-> final local validation and independent review. Real migration, Codex runtime
-> connection, COS compatibility and Owner workflow acceptance are not yet
-> complete. Existing runtime has not switched; spreadsheet retirement is pending
-> cutover. See [P2-04](cms/p2-04-implementation.md).
+> P2-R2A update (2026-09-09): Payload Admin、Search V1 和 Stage
+> A 已完成。当前仍在 Owner 自有腾讯云账号测试；正式切换、XLSX 写入口退役、Stage
+> B 和 Production 发布均未执行。伙伴账号的 CVM、TencentDB 与正式 COS 尚未创建。本轮只准备代码和独立本地开发环境，不迁移当前云资源或正式数据。
 
 # 当前项目状态
 
-最后审计：2026-09-04
+能力基线审计：2026-09-04；本轮有限事实更新：2026-09-09
 
 本文件是 current project status、active Phase 2 work、Production
 gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
@@ -172,8 +170,6 @@ The repository does not currently contain:
 - Production database credentials；
 - a configured Production media provider；
 - a real Production media manifest and URLs；
-- formal Search V1；
-- Operator identity/publication governance；
 - deployment automation or a Production release；
 - verified backup/restore and release rollback evidence；
 - Production domain、HTTPS、logs or monitoring。
@@ -207,7 +203,7 @@ The Pilot does not require all 1658 SourceRecords to be researched first.
 
 ### P2-03 — Search V1
 
-Bounded scope:
+已实现并合入主干；保留其已验收前端与公共 API 行为。已交付范围：
 
 - governed Search Contract；
 - Chinese normalization；
@@ -228,11 +224,9 @@ includes native draft/version/media editing, scoped automated batches,
 exact-revision Owner approval and published-only public reads. It does not add
 ordinary public-user accounts or community features.
 
-Local implementation passed aggregate validation (45.4 seconds), 30 real CMS
-database tests and eight native Admin browser stages; Draft review continues.
-Real source mapping, COS compatibility, successful Codex client tool execution,
-Owner workflow acceptance and operational cutover remain pending. The old
-runtime and write entry remain active until the approved cutover. See
+Payload Admin 与 published-only 数据读取已经实现并合入主干，Stage
+A 已完成。这些完成项不代表 Stage
+B、正式内容源切换或正式数据迁移已经执行。既有写入口继续保留，XLSX 尚未退役。历史验证与实施过程见
 [implementation and evidence](cms/p2-04-implementation.md) and the
 [single operations guide](cms/operations.md).
 
@@ -252,16 +246,16 @@ Bounded scope:
 ## Next task
 
 ```text
-Next Product task:
-T09-F1 — Catalog Content V1 React Detail presentation
+Current bounded readiness task:
+P2-R2A — Production Topology & Development Environment Readiness
 
 Required branch origin:
 fresh latest origin/main
 ```
 
-After T09-F1, the next backend/operations milestone is the bounded P2-02
-Production Data and Media Pilot. Do not extend importer or persistence
-infrastructure without a concrete Pilot blocker.
+P2-R2A 准备连接未来 TencentDB/COS/CVM，并提供独立本地 PostgreSQL 开发环境。public
+user/community 开发可在该本地环境开始，但本 PR 不实现这些功能。后续 Stage
+B、正式资源创建、迁移、发布与 XLSX 退役仍是各自独立的工作。QA 筛选仍不是 Production 功能。
 
 ## Current remote lineage disposition
 

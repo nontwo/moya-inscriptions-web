@@ -69,6 +69,7 @@ export async function createVerificationSession(
   );
   const env = {
     ...inherited,
+    MOYA_CONTENT_SOURCE: "payload",
     CMS_DATABASE_URL: database,
     CMS_TEST_DATABASE_URL: database,
     CMS_SECRET: randomBytes(48).toString("hex"),

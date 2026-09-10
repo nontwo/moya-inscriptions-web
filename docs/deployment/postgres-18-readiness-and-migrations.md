@@ -23,6 +23,19 @@ row；这只说明当前binary所需migration仍存在，不代表rollback到旧
 expand/contract策略。drop、rename、不兼容类型变化或其他destructive
 migration必须经过独立compatibility checkpoint。
 
+## Content-source routing
+
+`pnpm db:migrate` 必须按 `MOYA_CONTENT_SOURCE` 选择唯一迁移路径：
+
+- `legacy`：`DATABASE_URL` → `database/migrations`。
+- `payload`：`CMS_DATABASE_URL` → `apps/admin/src/migrations`。
+
+不得混用两套 schema。Payload readiness 检查其 published views；legacy
+readiness 检查 legacy migration ledger。生产进程不执行 migration，也不自动 push
+schema。开发配置与操作见
+[development](../development.md)，正式角色/TLS 与操作顺序见
+[production](../../infra/production/README.md)。
+
 ## Health semantics
 
 Production composition把PostgreSQL readiness注入唯一的`GET /health`：

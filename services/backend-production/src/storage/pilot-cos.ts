@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import { Writable } from "node:stream";
 
-import { createPilotCosSdk } from "./cos-sdk.js";
+import { CosReadUrlSigner } from "./cos-read.js";
 
-import type { CosSdkResponse, PilotCosSdkDependencies } from "./cos-sdk.js";
+import type { CosSdkResponse } from "./cos-sdk.js";
+import type { CosReadDependencies, CosReadOptions } from "./cos-read.js";
+
+export type { CosCredentials } from "./cos-read.js";
 
 export interface PilotCosObject {
   readonly mediaId: string;
@@ -12,23 +15,8 @@ export interface PilotCosObject {
   readonly sizeBytes: number;
 }
 
-export interface CosCredentials {
-  readonly secretId: string;
-  readonly secretKey: string;
-  readonly securityToken?: string;
-  /** Unix seconds. Required when a temporary securityToken is supplied. */
-  readonly expiresAt?: number;
-}
-
-export interface PilotCosOptions {
-  readonly bucket: string;
-  readonly region: string;
-  /** An independently verified, bucket-bound HTTPS origin for browser images. */
-  readonly mediaOrigin: string;
+export interface PilotCosOptions extends CosReadOptions {
   readonly objects: readonly PilotCosObject[];
-  readonly credentials: () => Promise<CosCredentials>;
-  readonly signedUrlTtlSeconds?: number;
-  readonly requestTimeoutMs?: number;
 }
 
 export interface VerifiedPilotCosObject {
@@ -43,63 +31,19 @@ const MAX_OBJECT_BYTES = 32 * 1024 * 1024;
 const sha256 = (bytes: Buffer) =>
   createHash("sha256").update(bytes).digest("hex");
 
-const httpsOrigin = (value: string): URL => {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error("COS media origin invalid");
-  }
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    parsed.port ||
-    parsed.pathname !== "/" ||
-    parsed.search ||
-    parsed.hash ||
-    !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(parsed.hostname)
-  ) {
-    throw new Error("COS media origin must be a verified HTTPS DNS origin");
-  }
-  return parsed;
-};
-
 /** Backend-only storage infrastructure. Calling ensureObject still requires the
  * operation/target approval guard owned by the Pilot application entry point.
  */
 export class PilotCosStorage {
   private readonly objects: ReadonlyMap<string, PilotCosObject>;
-  private readonly mediaOrigin: URL;
-  private readonly ttl: number;
-  private readonly timeout: number;
+  private readonly signer: CosReadUrlSigner;
   private readonly now: () => number;
 
   constructor(
     private readonly options: PilotCosOptions,
-    private readonly dependencies: PilotCosSdkDependencies & {
-      readonly now?: () => number;
-    } = {},
+    dependencies: CosReadDependencies = {},
   ) {
-    if (
-      !/^[a-z0-9][a-z0-9-]{1,49}-[0-9]{5,20}$/.test(options.bucket) ||
-      !/^[a-z]{2}-[a-z]+(?:-[a-z]+)?$/.test(options.region)
-    ) {
-      throw new Error("COS bucket or region invalid");
-    }
-    this.mediaOrigin = httpsOrigin(options.mediaOrigin);
-    this.ttl = options.signedUrlTtlSeconds ?? 300;
-    this.timeout = options.requestTimeoutMs ?? 30_000;
-    if (
-      !Number.isSafeInteger(this.ttl) ||
-      this.ttl < 60 ||
-      this.ttl > 600 ||
-      !Number.isSafeInteger(this.timeout) ||
-      this.timeout < 1 ||
-      this.timeout > 120_000
-    ) {
-      throw new Error("COS time bounds invalid");
-    }
+    this.signer = new CosReadUrlSigner(options, dependencies);
     if (options.objects.length === 0 || options.objects.length > 20) {
       throw new Error("COS Pilot manifest must contain 1 to 20 objects");
     }
@@ -131,56 +75,6 @@ export class PilotCosStorage {
     return object;
   }
 
-  private async sdk() {
-    let credentials: CosCredentials;
-    try {
-      credentials = await this.options.credentials();
-    } catch {
-      throw new Error("COS credentials unavailable");
-    }
-    const now = Math.floor(this.now() / 1000);
-    const expiresAt = Math.min(
-      now + this.ttl,
-      credentials.expiresAt ?? Infinity,
-    );
-    if (
-      !Number.isSafeInteger(now) ||
-      now < 0 ||
-      (credentials.expiresAt !== undefined &&
-        !Number.isSafeInteger(credentials.expiresAt)) ||
-      !Number.isSafeInteger(expiresAt) ||
-      expiresAt - now < 30 ||
-      (credentials.securityToken !== undefined &&
-        credentials.expiresAt === undefined)
-    ) {
-      throw new Error("COS credentials expired or insufficient validity");
-    }
-    if (
-      !/^[A-Za-z0-9_-]+$/.test(credentials.secretId) ||
-      !credentials.secretKey ||
-      /[\r\n]/.test(credentials.secretKey) ||
-      (credentials.securityToken !== undefined &&
-        (!credentials.securityToken ||
-          /[\r\n]/.test(credentials.securityToken)))
-    ) {
-      throw new Error("COS credentials invalid");
-    }
-    return {
-      ...createPilotCosSdk(
-        {
-          secretId: credentials.secretId,
-          secretKey: credentials.secretKey,
-          startsAt: now,
-          expiresAt,
-          timeoutMs: this.timeout,
-        },
-        this.dependencies,
-      ),
-      securityToken: credentials.securityToken,
-      expiresIn: expiresAt - now,
-    };
-  }
-
   private async send(
     method: "GET" | "HEAD" | "PUT",
     pathname: string,
@@ -188,7 +82,7 @@ export class PilotCosStorage {
     body?: Buffer,
     query: Record<string, string> = {},
   ): Promise<CosSdkResponse> {
-    const sdk = await this.sdk();
+    const sdk = await this.signer.sdk();
     const headers: Record<string, string> = { "accept-encoding": "identity" };
     if (sdk.securityToken) headers["x-cos-security-token"] = sdk.securityToken;
     const bucket = {
@@ -319,38 +213,10 @@ export class PilotCosStorage {
         for (const locator of locators) {
           const expected = this.objects.get(locator.objectKey);
           if (!expected || expected.mediaId !== locator.mediaId) continue;
-          const sdk = await this.sdk();
-          // The official SDK signs per read. Include STS in Query so it is both
-          // signed and URL-encoded, avoiding the SDK's raw-token append path.
-          const query: Record<string, string> = {
-            "response-cache-control": "no-store",
-          };
-          if (sdk.securityToken)
-            query["x-cos-security-token"] = sdk.securityToken;
-          try {
-            const url = await new Promise<string>((resolve, reject) => {
-              sdk.client.getObjectUrl(
-                {
-                  Bucket: this.options.bucket,
-                  Region: this.options.region,
-                  Key: locator.objectKey,
-                  Domain: this.mediaOrigin.host,
-                  Protocol: "https:",
-                  Method: "GET",
-                  Sign: true,
-                  Expires: sdk.expiresIn,
-                  Query: query,
-                },
-                (error, data) => {
-                  if (error) reject(new Error("COS URL signing failed"));
-                  else resolve(data.Url);
-                },
-              );
-            });
-            result.set(locator.mediaId, url);
-          } catch {
-            throw new Error("COS URL signing failed");
-          }
+          result.set(
+            locator.mediaId,
+            await this.signer.sign(locator.objectKey),
+          );
         }
         return result;
       },

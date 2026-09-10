@@ -21,6 +21,22 @@
     "./internal/pilot-cos": {
       "types": "./src/storage/pilot-cos.ts",
       "import": "./dist/storage/pilot-cos.js"
+    },
+    "./internal/production-cos": {
+      "types": "./src/storage/production-cos.ts",
+      "import": "./dist/storage/production-cos.js"
+    },
+    "./internal/cos-read": {
+      "types": "./src/storage/cos-read.ts",
+      "import": "./dist/storage/cos-read.js"
+    },
+    "./internal/cos-sdk": {
+      "types": "./src/storage/cos-sdk.ts",
+      "import": "./dist/storage/cos-sdk.js"
+    },
+    "./internal/local-media": {
+      "types": "./src/storage/local-media.ts",
+      "import": "./dist/storage/local-media.js"
     }
   },
   "scripts": {
@@ -28,7 +44,8 @@
     "lint": "eslint .",
     "start": "node dist/main.js",
     "pilot": "node dist/pilot-cli.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/main.ts"
   },
   "dependencies": {
     "@moya/catalog-importer": "workspace:*",
@@ -38,6 +55,7 @@
     "cos-nodejs-sdk-v5": "3.0.0"
   },
   "devDependencies": {
-    "@types/node": "24.13.3"
+    "@types/node": "24.13.3",
+    "tsx": "4.22.4"
   }
 }

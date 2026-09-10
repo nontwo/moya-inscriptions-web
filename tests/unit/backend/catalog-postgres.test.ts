@@ -59,10 +59,13 @@ const catalogDetailRow = (overrides: Record<string, unknown> = {}) => ({
 describe("PostgreSQL configuration and availability", () => {
   it("parses the minimal DATABASE_URL without exposing it in the result shape", () => {
     const connectionString =
-      "postgresql://moya:secret@127.0.0.1:5432/moya_test?sslmode=disable";
+      "postgresql://synthetic-test-role:synthetic-test-password@127.0.0.1:5432/moya_test?sslmode=disable";
     expect(parsePostgresConfig({ DATABASE_URL: connectionString })).toEqual({
-      connectionString,
+      connectionString: connectionString.replace("?sslmode=disable", ""),
       connectionTimeoutMillis: 5_000,
+      max: 5,
+      idleTimeoutMillis: 10_000,
+      ssl: false,
     });
   });
 
@@ -70,7 +73,7 @@ describe("PostgreSQL configuration and availability", () => {
     undefined,
     "",
     "not-a-url",
-    "http://moya:secret@private-host/catalog",
+    "http://synthetic-test-role:synthetic-test-password@private-host/catalog",
     "postgresql://private-host/catalog",
     "postgresql://moya@private-host",
   ])("rejects invalid database config safely", (DATABASE_URL) => {

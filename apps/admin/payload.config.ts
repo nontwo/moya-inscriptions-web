@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildConfig } from "payload";
 import { postgresAdapter } from "@payloadcms/db-postgres";
+import { guardCmsMigrationAdapter } from "./src/migration/guard";
 import { zh } from "@payloadcms/translations/languages/zh";
 import { Users } from "./src/users";
 import { editorialFields } from "./src/fields/editorial-fields";
@@ -23,10 +24,12 @@ import {
 } from "./src/editorial/access";
 import { adminPreviewURL, editorialPreviewEndpoint } from "./src/preview";
 import {
-  cmsDatabase,
+  cmsDatabasePool,
+  assertCmsProductionEnvironment,
   cmsRuntimeLogFields,
   requiredSetting,
 } from "./src/runtime-settings";
+assertCmsProductionEnvironment();
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default buildConfig({
   secret: requiredSetting("CMS_SECRET"),
@@ -62,12 +65,14 @@ export default buildConfig({
       },
     },
   },
-  db: postgresAdapter({
-    pool: { connectionString: cmsDatabase(), max: 5 },
-    push: false,
-    disableCreateDatabase: true,
-    migrationDir: path.resolve(dirname, "src/migrations"),
-  }),
+  db: guardCmsMigrationAdapter(
+    postgresAdapter({
+      pool: cmsDatabasePool(),
+      push: false,
+      disableCreateDatabase: true,
+      migrationDir: path.resolve(dirname, "src/migrations"),
+    }),
+  ),
   collections: [
     Users,
     {

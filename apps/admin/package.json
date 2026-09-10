@@ -8,7 +8,7 @@
     "start": "next start --port 3002",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "cms:migrate": "payload migrate",
+    "cms:migrate": "node ../../scripts/migrate.mjs --expect=payload",
     "cms:migrate:create": "payload migrate:create",
     "cms:types": "payload generate:types",
     "cms:importmap": "payload generate:importmap",
@@ -51,6 +51,9 @@
     "./migration": "./src/migration/legacy.ts",
     "./preview": "./src/preview/index.ts",
     "./fields": "./src/fields/editorial-fields.ts",
-    "./migration-runner": "./src/migration/run.ts"
+    "./migration-runner": "./src/migration/run.ts",
+    "./runtime-settings": "./src/runtime-settings.ts",
+    "./migration-guard": "./src/migration/guard.ts",
+    "./local-media-read": "./src/media/local-read.ts"
   }
 }

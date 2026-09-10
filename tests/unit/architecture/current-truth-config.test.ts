@@ -2,6 +2,8 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseEnv } from "node:util";
+
 import { describe, expect, it } from "vitest";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -45,35 +47,133 @@ describe("current repository truth and local configuration", () => {
     expect(rootManifest.scripts).toMatchObject({
       dev: "pnpm dev:web",
       "dev:admin": "pnpm --filter admin dev",
-      "dev:all": "turbo run dev --filter=web --filter=admin",
+
       "dev:web": "pnpm --filter web dev",
     });
+    const scripts = rootManifest.scripts as Record<string, string>;
+    for (const command of ["dev:all", "dev:backend"]) {
+      expect(scripts[command]).toContain("--env-file=.env.local");
+      expect(scripts[command]).toContain("turbo watch dev");
+      expect(scripts[command]).toContain("--filter=@moya/backend-production");
+    }
+    expect(scripts["dev:all"]).toContain("--filter=web");
+    expect(scripts["dev:all"]).toContain("--filter=admin");
+    expect(scripts["dev:migrate"]).toContain(
+      "scripts/migrate.mjs --development",
+    );
+    expect(scripts["dev:db:up"]).toContain("compose.dev.yml");
+    expect(scripts["dev:db:down"]).not.toContain("--volumes");
     expect(adminManifest.scripts).toMatchObject({
       dev: "next dev --port 3002",
       start: "next start --port 3002",
     });
   });
 
-  it("exposes only implemented variables in the active environment template", async () => {
-    const environmentTemplate = (
-      await readFile(path.join(repositoryRoot, ".env.example"), "utf8")
-    ).trimEnd();
-
-    expect(environmentTemplate.split("\n")).toEqual([
-      "NODE_ENV=development",
-      "",
-      "HOST=127.0.0.1",
-      "PORT=3001",
-      "",
-      "MOYA_PUBLIC_API_BASE_URL=http://127.0.0.1:3001",
-      "",
-      "# Optional comma-separated hostnames for Next.js LAN device QA.",
-      "# Example: MOYA_ALLOWED_DEV_ORIGINS=192.168.1.25,dev.yoyi.local",
-      "MOYA_ALLOWED_DEV_ORIGINS=",
-      "",
-      "DATABASE_URL=",
-      "TEST_DATABASE_URL=",
+  it("separates local, test and production runtime environment contracts", async () => {
+    const template = async (name: string) =>
+      parseEnv(await readFile(path.join(repositoryRoot, name), "utf8"));
+    const local = await template("infra/env/local.env.example");
+    const testing = await template("infra/env/test.env.example");
+    const web = await template("infra/production/env/web.env.example");
+    const backend = await template("infra/production/env/backend.env.example");
+    const admin = await template("infra/production/env/admin.env.example");
+    const staging = await template("infra/env/staging.env.example");
+    expect(local).toMatchObject({
+      MOYA_CONTENT_SOURCE: "payload",
+      CMS_STORAGE_MODE: "local",
+      CMS_INTERNAL_URL: "http://127.0.0.1:3002",
+      DATABASE_POOL_MAX: "5",
+    });
+    const cms = new URL(local.CMS_DATABASE_URL!);
+    const published = new URL(local.DATABASE_URL!);
+    expect(cms.pathname).toBe("/yoyi_dev");
+    expect(published.pathname).toBe(cms.pathname);
+    expect(published.host).toBe(cms.host);
+    expect(published.username).not.toBe(cms.username);
+    expect(local.TEST_DATABASE_URL).toBeUndefined();
+    expect(
+      Object.keys(local).some((name) => /^(COS_|CMS_COS_)/.test(name)),
+    ).toBe(false);
+    expect(testing.TEST_DATABASE_URL).not.toBe(testing.CMS_TEST_DATABASE_URL);
+    expect(new URL(testing.CMS_TEST_DATABASE_URL!).pathname).not.toBe(
+      "/yoyi_dev",
+    );
+    expect(Object.keys(web).sort()).toEqual([
+      "CMS_INTERNAL_URL",
+      "MOYA_PUBLIC_API_BASE_URL",
+      "NODE_ENV",
     ]);
+    expect(backend).toMatchObject({
+      HOST: "127.0.0.1",
+      PORT: "3001",
+      DATABASE_POOL_MAX: "5",
+      CMS_STORAGE_MODE: "cos",
+    });
+    for (const name of [
+      "COS_BUCKET",
+      "COS_REGION",
+      "COS_MEDIA_ORIGIN",
+      "COS_SECRET_ID",
+      "COS_SECRET_KEY",
+    ])
+      expect(backend[name]).toBeTruthy();
+    expect(admin.CMS_PUBLIC_URL).toBe(admin.CMS_PREVIEW_WEB_URL);
+    expect(staging.CMS_PUBLIC_URL).toBe(staging.CMS_PREVIEW_WEB_URL);
+    expect(new URL(backend.DATABASE_URL!).searchParams.get("sslmode")).toBe(
+      "verify-full",
+    );
+    expect(new URL(admin.CMS_DATABASE_URL!).searchParams.get("sslmode")).toBe(
+      "verify-full",
+    );
+  });
+
+  it("keeps development PostgreSQL isolated and production listeners hardened", async () => {
+    const compose = await readFile(
+      path.join(repositoryRoot, "compose.dev.yml"),
+      "utf8",
+    );
+    expect(compose).toContain("postgres:18.4-alpine");
+    expect(compose).toContain('"127.0.0.1:54330:5432"');
+    expect(compose).toContain("POSTGRES_DB: yoyi_dev");
+    expect(compose).toContain("yoyi_dev_data:/var/lib/postgresql");
+    expect(compose).not.toContain("TEST_DATABASE_URL");
+    for (const [service, port] of [
+      ["web", 3000],
+      ["backend", 3001],
+      ["admin", 3002],
+    ] as const) {
+      const unit = await readFile(
+        path.join(
+          repositoryRoot,
+          `infra/production/systemd/yoyi-${service}.service`,
+        ),
+        "utf8",
+      );
+      expect(unit).toContain(`User=yoyi-${service}`);
+      expect(unit).toContain(`EnvironmentFile=/etc/yoyi/${service}.env`);
+      expect(unit).toContain(
+        service === "backend"
+          ? `HOST=127.0.0.1 PORT=${port}`
+          : `--hostname 127.0.0.1 --port ${port}`,
+      );
+      for (const setting of [
+        "Restart=on-failure",
+        "KillSignal=SIGTERM",
+        "TimeoutStopSec=30",
+        "NoNewPrivileges=true",
+        "ProtectSystem=strict",
+      ])
+        expect(unit).toContain(setting);
+      expect(unit).not.toContain("migrate");
+    }
+    const grants = await readFile(
+      path.join(repositoryRoot, "infra/development/grant-public-read.sql"),
+      "utf8",
+    );
+    expect(grants).toContain(
+      "SELECT (name) ON TABLE public.payload_migrations",
+    );
+    expect(grants).not.toContain("ALL TABLES");
   });
 
   it("uses current Yoyi branding in Web and Admin metadata", async () => {
