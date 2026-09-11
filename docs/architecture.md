@@ -175,8 +175,8 @@ Zod
 ```
 
 PostgreSQL persistence, read projection, explicit Public mapping, API
-population, and `catalog-import/v2` are implemented. The current React Detail
-has not yet completed the bounded T09-F1 presentation of every Content V1 field.
+population, `catalog-import/v2`, and the bounded T09-F1 React Detail
+presentation of every Content V1 field (PR #89) are implemented.
 
 ## Media boundary
 

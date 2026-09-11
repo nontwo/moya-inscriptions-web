@@ -52,7 +52,7 @@ receive object keys and must not derive provider/CDN URLs.
 Catalog Content V1 Contract, PostgreSQL/API read support, and
 `catalog-import/v2` are implemented. Frontend presentation of contributors,
 script style, transcription, historical context, scholarly research, and scoped
-citations remains the bounded `T09-F1` task.
+citations is implemented as the bounded `T09-F1` task (PR #89).
 
 ## Development, QA, and Prototype
 

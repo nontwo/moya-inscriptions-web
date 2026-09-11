@@ -1,10 +1,13 @@
-> P2-R2A update (2026-09-09): Payload Admin、Search V1 和 Stage
-> A 已完成。当前仍在 Owner 自有腾讯云账号测试；正式切换、XLSX 写入口退役、Stage
-> B 和 Production 发布均未执行。伙伴账号的 CVM、TencentDB 与正式 COS 尚未创建。本轮只准备代码和独立本地开发环境，不迁移当前云资源或正式数据。
+> 2026-09-11 update: T09-F1、Search V1、P2-04 Payload editorial/MCP
+> automation 与 P2-R2A 均已合入 `main`。P2-R2B Stage
+> B 目标环境已装载 3 条批准资料与 20 个媒体对象并在目标内发布，但公开入口、媒体自定义域名、Production 启动与发布仍未完成，该云端轨道明确 parked。当前没有公开的 Production
+> release。Public
+> user/community 开发可独立于 parked 的 Production-release 轨道继续，但须先通过其自身的 Owner
+> amendment（Community V1）冻结范围。
 
 # 当前项目状态
 
-能力基线审计：2026-09-04；本轮有限事实更新：2026-09-09
+能力基线审计：2026-09-04；本轮有限事实更新：2026-09-11
 
 本文件是 current project status、active Phase 2 work、Production
 gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
@@ -36,10 +39,14 @@ Phase 2 — trustworthy read-only digital Catalog MVP
 目标是发布具有受治理内容、真实媒体、正式搜索、最小 Operator
 governance 和可恢复 Production operations 的只读 Catalog。
 
-Phase 2 当前不扩展到普通 public-user
+Phase 2 的 Production-release critical path 不包含普通 public-user
 identity、favorites/likes、comments、posts、user upload、social
 following、messaging、native mobile apps、transactions、AI
-recommendation、OCR 或 knowledge graph。
+recommendation、OCR 或 knowledge graph。自 2026-09-11 起，public
+user/community 开发作为独立轨道进行，不以 Production
+release 为前提，也不阻塞 Production release；其第一步是 Community V1
+scope/architecture
+amendment，在该 amendment 获批前不得实现 community 持久化、身份或 API。
 
 ## 已完成的 Formal Web
 
@@ -67,6 +74,8 @@ runtime；它只保留为 direct Prototype 和 legacy regression evidence。
 - Detail scroll restoration；
 - opener focus restoration；
 - mutually exclusive Topic、Detail、Viewer 与 Settings layers；
+- Search V1 presentation（fullscreen search、Search → Detail → Back）；
+- QA long-press quick actions（Development/QA only）；
 - Development/QA 与 Production isolation。
 
 ### Home and Browse
@@ -94,7 +103,8 @@ truthful classification-unavailable
 Initial server page is `page=1&pageSize=24`. Later pages use explicit
 “继续加载”, preserve existing records on failure, support same-page retry, and
 retain mounted list/scroll/opener state across Detail/Viewer journeys. Home
-Discover does not yet progressively load.
+Discover does not yet progressively load; this remains a separate known product
+gap (see “下一步任务”).
 
 No canonical `ink/rubbing` field exists. Formal UI must not infer classification
 from titles, aliases, summaries, periods, media, or hard-coded IDs.
@@ -104,7 +114,9 @@ from titles, aliases, summaries, periods, media, or hard-coded IDs.
 One shared Catalog Detail and Viewer currently support:
 
 - truthful loading/not-found/unavailable/unexpected-error states；
-- current pre-Content-V1 Detail presentation；
+- Catalog Content V1 Detail presentation（contributors、script
+  style、transcription、historical context、scholarly research、scoped
+  citations；PR #89）；
 - no-media、single-media、multiple-media and failed-media states；
 - bounded Detail Carousel；
 - full-screen Viewer；
@@ -121,16 +133,20 @@ Completed foundation includes:
 - `CatalogKind = inscription | calligraphy`；
 - page-based list query and error contracts；
 - Public Catalog list/detail HTTP API；
+- Public Search API（`GET /v1/catalog-search`）；
 - backend application boundary and `CatalogQueryPort`；
-- PostgreSQL 18.4 adapter、queries、migrations and readiness ledger；
+- PostgreSQL adapter、queries、migrations and readiness ledger（18.4 local
+  development；18.6 verified remote target）；
 - backend-owned `StorageUrlResolver` boundary；
 - controlled CSV/XLSX importer；
 - dry-run、hash-bound approval、transactional apply and idempotent replay；
 - `catalog-import/v1` backward compatibility；
 - `catalog-import/v2` Content V1 support；
+- Payload CMS editorial source（native draft/version/media、Owner
+  approval、published-only public reads、editorial MCP automation）；
 - deterministic JSON Schema and OpenAPI generation；
-- format、lint、typecheck、unit/integration、PostgreSQL、build and browser E2E
-  CI。
+- format、lint、typecheck、unit/integration、PostgreSQL、CMS、build and browser
+  E2E CI。
 
 ## P2-01 — Catalog Content V1
 
@@ -146,8 +162,9 @@ T09-B1B: CLOSED / PASS
 catalog-import/v2 XLSX/CSV, canonical hash, dry-run, approval, transactional
 apply, rollback, replay and v1 compatibility
 
-T09-F1:  PENDING
+T09-F1:  CLOSED / PASS
 React Detail presentation for all Content V1 fields and scoped citations
+(PR #89, merged 2026-09-04)
 ```
 
 Current Content V1 fields are:
@@ -159,51 +176,50 @@ Current Content V1 fields are:
 - `scholarlyResearch`;
 - source-citation `appliesTo`.
 
-The backend and importer support these fields. Current React Detail still
-renders the earlier field set, so T09-F1 is the next bounded Product task.
+Backend、importer 与 React Detail 均已支持这些字段。P2-01 整体 CLOSED。
 
 ## Production gaps
 
-The repository does not currently contain:
+The repository now contains the P2-R2A production topology (three loopback
+services behind Nginx, distinct service users, env templates and systemd units)
+and the necessary IP-identity TLS fix for a literal-IP PostgreSQL endpoint (PR
+#107). Backup/restore and rollback guidance is still the pre-existing
+provider-neutral rollback plan and the P2-04 CMS recovery notes; P2-R2A defers
+backup/restore execution to a separately approved production operation. The
+repository still does not contain, and no public environment yet provides:
 
-- a persistent Production PostgreSQL dataset；
-- Production database credentials；
-- a configured Production media provider；
-- a real Production media manifest and URLs；
-- deployment automation or a Production release；
-- verified backup/restore and release rollback evidence；
-- Production domain、HTTPS、logs or monitoring。
+- a public Production release or release tag；
+- an Owner-controlled media custom domain bound to the private COS bucket and a
+  configured `COS_MEDIA_ORIGIN`；
+- a public protected HTTPS entry serving Web and Backend；
+- Production real-device smoke, logs or monitoring evidence for a public entry。
 
-The earlier 28-record P5 validation used disposable PostgreSQL and backend
-infrastructure. It proved importer/API correctness but did not create a
-persistent Production dataset or publication.
+The P2-R2B Stage B target environment (new CVM, TencentDB PostgreSQL 18.6 with
+`verify-full` TLS, private COS with two least-privilege identities) has been
+prepared and loaded with the 3 approved Catalog records and 20 hash-verified
+media objects; the 3 records are published on that target, a formal backup and
+an isolated restore were verified, and a real Payload Owner account exists. Web
+and Backend are not started there because the media domain is unresolved. This
+is deployment-candidate evidence, not a Production release. The old personal
+server, old COS and the isolated restore database remain unchanged pending Owner
+acceptance.
 
 ## Remaining Phase 2 roadmap
 
-### P2-01 remaining — T09-F1
+### P2-01 — CLOSED
 
-Present contributors, script style, transcription, historical context, scholarly
-research, and scoped citations in the existing React Detail without creating a
-second Detail implementation or inventing missing Production values.
+All four P2-01 tasks are closed; see above.
 
 ### P2-02 — Production Data and Media Pilot
 
-Bounded scope:
-
-- persistent PostgreSQL environment；
-- approved 10–30 record initial import；
-- readback and replay；
-- real media manifest；
-- approved storage resolver；
-- real Public media URLs；
-- backup and restore rehearsal；
-- rollback and Production smoke evidence。
-
-The Pilot does not require all 1658 SourceRecords to be researched first.
+Delivered as the bounded remote HTTPS Pilot (PR #97; protected IP entry, three
+real records, twenty verified COS objects). It remains non-production evidence
+and was superseded as a data source by the P2-R2B Stage B export and target
+load.
 
 ### P2-03 — Search V1
 
-已实现并合入主干；保留其已验收前端与公共 API 行为。已交付范围：
+已实现并合入主干（PR #101）；保留其已验收前端与公共 API 行为。已交付范围：
 
 - governed Search Contract；
 - Chinese normalization；
@@ -224,53 +240,69 @@ includes native draft/version/media editing, scoped automated batches,
 exact-revision Owner approval and published-only public reads. It does not add
 ordinary public-user accounts or community features.
 
-Payload Admin 与 published-only 数据读取已经实现并合入主干，Stage
-A 已完成。这些完成项不代表 Stage
-B、正式内容源切换或正式数据迁移已经执行。既有写入口继续保留，XLSX 尚未退役。历史验证与实施过程见
+Payload Admin、editorial MCP automation 与 published-only 数据读取已合入主干（PR
+#102、#104），Stage A 已完成。P2-R2B Stage
+B 已在目标环境执行正式 migrations、导入并发布 3 条资料，但正式内容源切换、traffic
+cutover 与 XLSX 写入口退役仍未执行；既有写入口继续保留。历史验证与实施过程见
 [implementation and evidence](cms/p2-04-implementation.md) and the
 [single operations guide](cms/operations.md).
 
 ### P2-R2 — Production Release Gate
 
-Bounded scope:
+```text
+P2-R2A  Production topology & development readiness   CLOSED / PASS (PR #105)
+P2-R2B  Tencent Stage B transfer                      IN PROGRESS — PARKED
+```
 
-- Web、backend、PostgreSQL and object storage；
-- domain、HTTPS and secrets；
-- logs and basic monitoring；
-- backup/restore；
-- deployment rollback；
-- real-device Production smoke；
-- verified `main` commit → explicit Owner milestone decision → annotated tag →
-  GitHub Release。
+P2-R2B completed on the target: database identity/TLS/migrations/role
+separation, media transfer 20/20 hash-verified, 3 records published, backup and
+isolated restore, real Owner account. Parked until explicit Owner instruction:
+media custom domain and `COS_MEDIA_ORIGIN`, public protected HTTPS entry,
+Web/Backend Production start, real-device Production smoke, release tag, GitHub
+Release, ICP/domain work. Do not resume these without explicit instruction.
 
-## Next task
+## 下一步任务
 
 ```text
-Current bounded readiness task:
-P2-R2A — Production Topology & Development Environment Readiness
-
-Required branch origin:
+Required branch origin for every task:
 fresh latest origin/main
 ```
 
-P2-R2A 准备连接未来 TencentDB/COS/CVM，并提供独立本地 PostgreSQL 开发环境。public
-user/community 开发可在该本地环境开始，但本 PR 不实现这些功能。后续 Stage
-B、正式资源创建、迁移、发布与 XLSX 退役仍是各自独立的工作。QA 筛选仍不是 Production 功能。
+Active development tracks (independent of the parked cloud track):
+
+1. **Community V1 scope decision** — Owner amendment freezing public-user
+   identity, authentication/session ownership, Comment V1 contract, API
+   boundary, moderation minimum and the #106 integration seam. No Community
+   persistence, identity or API is implemented before this amendment is
+   approved. Implementation then proceeds in three separately reviewable stages:
+   identity/session foundation → comment contract, persistence, API and
+   moderation → connecting the #106 UI seam, once Owner-accepted, to the real
+   API.
+2. **Home Discover progressive loading** — small product task using the
+   established explicit “继续加载” pattern; not mixed into Community work.
+3. **Editorial hardening on the local P2-R2A environment** — independent of
+   Community work.
+4. **Content growth** — separately scoped research delivery through
+   `catalog-import/v2`; parallel, non-blocking.
 
 ## Current remote lineage disposition
 
 No historical feature branch is an active implementation base.
 
-| Branch                                                |  PR | Current disposition                                                               |
-| ----------------------------------------------------- | --: | --------------------------------------------------------------------------------- |
-| `fix/t02-development-composition`                     | #54 | MERGED HISTORY; squash result is already in the current `main` lineage.           |
-| `feat/catalog-detail-ui-t09-2`                        | #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage. |
-| `feat/t02p-12-react-detail-gallery-viewer-acceptance` | #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.  |
-| `feat/t02-petal-quick-actions-rebuild`                | #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick. |
+| Branch                                                |   PR | Current disposition                                                                                       |
+| ----------------------------------------------------- | ---: | --------------------------------------------------------------------------------------------------------- |
+| `codex/comment-feature-main`                          | #106 | OPEN DRAFT; QA-only community/comment presentation prototype pending Owner real-device visual acceptance. |
+| `ops/p2-r2b-tencent-stage-b`                          | #107 | MERGED; necessary PostgreSQL IP-identity TLS fix and guarded remote 18.6 verification only.               |
+| `codex/t02-adaptive-quick-actions`                    |  #94 | CLOSED; superseded by the merged minimal quick actions (#95). Reference only.                             |
+| `fix/t02-development-composition`                     |  #54 | MERGED HISTORY; squash result is already in the current `main` lineage.                                   |
+| `feat/catalog-detail-ui-t09-2`                        |  #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage.                         |
+| `feat/t02p-12-react-detail-gallery-viewer-acceptance` |  #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.                          |
+| `feat/t02-petal-quick-actions-rebuild`                |  #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick.                         |
 
 Remote refs may remain for traceability. Their existence does not grant
 implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as
-completed.
+completed. #106 is not an implementation base for Community persistence; its QA
+data seam is the integration point to be defined by the Community V1 amendment.
 
 ## Research relationship
 
@@ -291,7 +323,7 @@ data through `catalog-import/v2`.
 
 ## Explicitly deferred
 
-Phase 2 critical path excludes:
+Phase 2 Production-release critical path excludes:
 
 - public-user authentication；
 - favorites、likes、comments and posts；
@@ -304,6 +336,10 @@ Phase 2 critical path excludes:
 - generic taxonomy framework；
 - broad Prototype/static-seam cleanup；
 - cosmetic directory or component renaming。
+
+Public-user identity and comments are no longer deferred indefinitely: they form
+the independent Community V1 track above, gated by its own amendment. The other
+items remain deferred unless separately authorized.
 
 ## Branch and release policy
 
