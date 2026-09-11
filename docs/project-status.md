@@ -303,7 +303,8 @@ No historical feature branch is an active implementation base.
 Remote refs may remain for traceability. Their existence does not grant
 implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as
 completed. #106 is not an implementation base for Community persistence; its QA
-data seam is the integration point to be defined by the Community V1 amendment.
+data seam is the integration point defined in section 6 of the proposed
+Community V1 amendment.
 
 ## Research relationship
 

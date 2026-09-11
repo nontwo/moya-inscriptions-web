@@ -26,7 +26,7 @@ const walkFiles = async (
   });
   for (const entry of entries) {
     if (
-      entry.name.startsWith(".") ||
+      (entry.name.startsWith(".") && !/^\.env(?:\.|$)/u.test(entry.name)) ||
       ["node_modules", "dist", "coverage", "playwright-report"].includes(
         entry.name,
       )

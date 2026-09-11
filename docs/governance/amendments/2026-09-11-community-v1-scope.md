@@ -92,8 +92,8 @@ PublicUser
                provider id, phone, e-mail, handle, Payload row id or serial
   handle       unique, normalized, bounded, no whitespace (policy: decision 3)
   displayName  bounded plain text; the rendered author name (source: decision 3)
-  avatar       optional internal reference; no source in V1
-  bio          optional bounded plain text
+  avatar, bio  in the Owner's conceptual model; no V1 write path, so no column
+               or DTO field until a later amendment adds one
   status       active | suspended
   createdAt / updatedAt
 ```
@@ -110,13 +110,13 @@ Public product user != Payload Admin / Operator
   PublicUser table references no Payload user.
 - Public users are Backend-owned rows in the community namespace (section 2),
   never a Payload collection and never reached through `CMS_DATABASE_URL`.
-- Public DTOs: `PublicUserProfile { id, handle, displayName, bio? }` returned
-  only to the session owner; `CommentAuthor { id, displayName }` embedded in
-  comments (no avatar in any V1 DTO: Mission 2C maps `avatarSrc: null` so PR
-  #106 renders its initial-glyph fallback; avatar exposure joins decision 5).
-  `status`, timestamps and credential linkage never appear in a Public DTO.
-  `PublicUser` carries no credential material; credential bindings are
-  introduced only by an Owner-authorized provider task.
+- Public DTOs: `PublicUserProfile { id, handle, displayName }` returned only to
+  the session owner; `CommentAuthor { id, displayName }` embedded in comments
+  (no avatar in any V1 DTO: Mission 2C maps `avatarSrc: null` so PR #106 renders
+  its initial-glyph fallback; avatar exposure joins decision 5). `status`,
+  timestamps and credential linkage never appear in a Public DTO. `PublicUser`
+  carries no credential material; credential bindings are introduced only by an
+  Owner-authorized provider task.
 - QA identities (`qa-user-01` / 访碑者 and the fixture comment authors) remain
   presentation fixtures: never a fallback for a missing session, never bound to
   a `PublicUserId`, never in PostgreSQL.
@@ -144,8 +144,9 @@ Backend ── session lookup in the community namespace ──▶ PublicUserId 
   and passes it explicitly to an `apps/web/lib/public-api` server function (the
   existing `fetchEditorialPreview(id, { session })` pattern).
 - Backend: sessions are opaque server-side records validated on every request;
-  Web-asserted identity headers are never trusted. Token storage, expiry and
-  revocation mechanics are Mission 2A Plan decisions.
+  Web-asserted identity headers are never trusted. Token storage and expiry
+  mechanics are Mission 2A Plan decisions; revocation design is fixed in the 2A
+  Plan and first implemented with 2B suspension or the provider task.
 - Providers: none is chosen or integrated — no WeChat login, SMS, e-mail
   delivery, Apple/Google OAuth, CAPTCHA, passwords or password reset. Whether
   the Backend exposes a credential-verification seam before a provider exists,
@@ -357,13 +358,14 @@ Mission 2C  connect the accepted #106 seam to the real Comment API — one PR
   `UNAUTHENTICATED`, OpenAPI, scanner allowlists and the guard updates listed in
   section 9. A credential-verification seam and any Development session
   issuance/termination are delivered only if decision 2 selects them; revocation
-  arrives with its first trigger (2B suspension or the provider task). No
-  comment table, endpoint or UI; no provider.
-- 2B delivers: comment and moderation persistence, the community application
-  module and ports, the three comment operations, `CatalogComment*` DTOs,
-  `INVALID_INPUT`, OpenAPI, the same-origin comment route handlers, server
-  functions and client seam, and the moderation surface chosen in decision 4. It
-  changes no Formal root composition and no `CommentSection` code.
+  is first implemented with 2B suspension or the provider task. No comment
+  table, endpoint or UI; no provider.
+- 2B delivers: comment and moderation persistence, the comment and moderation
+  use-cases and ports inside the `community` module that 2A creates, the three
+  comment operations, `CatalogComment*` DTOs, `INVALID_INPUT`, OpenAPI, the
+  same-origin comment route handlers, server functions and client seam, and the
+  moderation surface chosen in decision 4. It changes no Formal root composition
+  and no `CommentSection` code.
 - 2C delivers: the real comment client, loader and DTO → presentation mapper,
   Formal root and `/dev/t02p` composition through the frozen seam,
   `CommentSection` prop narrowing, the signed-out and unavailable states, the
@@ -381,7 +383,7 @@ Mission 1 adds one architecture test,
 `tests/unit/architecture/community-v1-freeze.test.ts`, pinning six facts that
 are true on `main` today. Each row names the only mission(s) allowed to change
 it; each named mission replaces the row with the new exact value in the same PR
-that changes it. Rows 3 and 5 overlap facts also pinned by
+that changes it. Rows 2, 3 and 5 overlap facts also pinned by
 `tests/unit/backend/openapi-contract.test.ts` and
 `tests/unit/backend/migration-routing.test.ts`, and the contracts export list is
 pinned by `tests/unit/architecture/contracts-surface.test.ts`; the mission that
@@ -389,14 +391,14 @@ changes a row updates those existing tests in the same PR. The guard pins
 nothing else: what each mission may add or change is bounded by sections 4 and
 8, and no mission changes a pinned value except the mission named in its row.
 
-| #   | Fact pinned today                                                                                                                                                                                      | Changed by                                         |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| 1   | `packages/contracts/src/internal` holds exactly `catalog-import`, `editorial`                                                                                                                          | 2B, only if decision 4 requires it; otherwise none |
-| 2   | `apiErrorCodeSchema` lists exactly the four existing codes                                                                                                                                             | 2A (`UNAUTHENTICATED`), 2B (`INVALID_INPUT`)       |
-| 3   | The Backend router matches exactly `/health`, `/v1/catalog`, `/v1/catalog-search` and one `/v1/catalog/{catalogId}` regex; no comment/community/me/session token                                       | 2A (`/v1/me`), 2B (comment paths)                  |
-| 4   | `services/api/src/modules` is exactly `catalog`                                                                                                                                                        | 2A (`community`)                                   |
-| 5   | `scripts/migrate.mjs` accepts only `legacy` / `payload` and contains no `community` or `APP_DATABASE_URL` token; `APP_DATABASE_URL` appears in no file under `apps`, `services`, `packages`, `scripts` | 2A                                                 |
-| 6   | Payload `users` role values are exactly `owner`, `automation`                                                                                                                                          | none                                               |
+| #   | Fact pinned today                                                                                                                                                                                      | Changed by                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| 1   | `packages/contracts/src/internal` holds exactly `catalog-import`, `editorial`                                                                                                                          | 2B, only if decision 4 requires it; otherwise none                                              |
+| 2   | `apiErrorCodeSchema` lists exactly the four existing codes                                                                                                                                             | 2A (`UNAUTHENTICATED`), 2B (`INVALID_INPUT`)                                                    |
+| 3   | The Backend router matches exactly `/health`, `/v1/catalog`, `/v1/catalog-search` and one `/v1/catalog/{catalogId}` regex; no comment/community/me/session token                                       | 2A (`/v1/me`), 2B (comment paths and, if decision 4 selects the Backend seam, moderation paths) |
+| 4   | `services/api/src/modules` is exactly `catalog`                                                                                                                                                        | 2A (`community`)                                                                                |
+| 5   | `scripts/migrate.mjs` accepts only `legacy` / `payload` and contains no `community` or `APP_DATABASE_URL` token; `APP_DATABASE_URL` appears in no file under `apps`, `services`, `packages`, `scripts` | 2A                                                                                              |
+| 6   | Payload `users` role values are exactly `owner`, `automation`                                                                                                                                          | none                                                                                            |
 
 ## 10. Explicit non-goals
 
