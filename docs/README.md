@@ -26,7 +26,14 @@ chain. They cannot amend it.
     Formal React root, the non-production Prototype boundary, and implemented
     Catalog Content V1 state.
   - the single-main trunk amendment, which establishes `main` as the sole shared
-    development branch and defines tag- and release-based milestones.
+    development branch and defines tag- and release-based milestones;
+  - the confidentiality and preflight amendment, which limits delivery checks to
+    incremental core-credential scans under a shared allowance;
+  - the P2-04 Payload editorial automation amendment, which authorizes the
+    bounded CMS server integration and controlled content automation.
+- A proposed Community V1 scope amendment is drafted in the same directory
+  (`governance/amendments/2026-09-11-community-v1-scope.md`); it binds nothing
+  until the Owner records approval.
 - The [Owner Development Constitution][constitution] is normative below active
   Owner instructions and amendments.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) is the subordinate operational

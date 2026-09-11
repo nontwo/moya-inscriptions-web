@@ -270,14 +270,15 @@ fresh latest origin/main
 
 Active development tracks (independent of the parked cloud track):
 
-1. **Community V1 scope decision** — Owner amendment freezing public-user
-   identity, authentication/session ownership, Comment V1 contract, API
-   boundary, moderation minimum and the #106 integration seam. No Community
-   persistence, identity or API is implemented before this amendment is
-   approved. Implementation then proceeds in three separately reviewable stages:
-   identity/session foundation → comment contract, persistence, API and
-   moderation → connecting the #106 UI seam, once Owner-accepted, to the real
-   API.
+1. **Community V1 scope decision** — the proposed
+   [Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md)
+   freezes public-user identity, authentication/session ownership, the Comment
+   V1 contract, API boundary, moderation minimum and the #106 integration seam,
+   and lists the Owner decisions still open. No Community persistence, identity
+   or API is implemented before the Owner records approval. Implementation then
+   proceeds in three separately reviewable stages: identity/session foundation →
+   comment contract, persistence, API and moderation → connecting the #106 UI
+   seam, once Owner-accepted, to the real API.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of
@@ -338,8 +339,10 @@ Phase 2 Production-release critical path excludes:
 - cosmetic directory or component renaming。
 
 Public-user identity and comments are no longer deferred indefinitely: they form
-the independent Community V1 track above, gated by its own amendment. The other
-items remain deferred unless separately authorized.
+the independent Community V1 track above, gated by the proposed
+[Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md)
+until the Owner records approval. The other items remain deferred unless
+separately authorized.
 
 ## Branch and release policy
 
