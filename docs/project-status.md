@@ -181,10 +181,12 @@ Backend、importer 与 React Detail 均已支持这些字段。P2-01 整体 CLOS
 ## Production gaps
 
 The repository now contains the P2-R2A production topology (three loopback
-services behind Nginx, distinct service users, env templates, backup/restore and
-rollback guidance) and the necessary IP-identity TLS fix for a literal-IP
-PostgreSQL endpoint (PR #107). It still does not contain, and no public
-environment yet provides:
+services behind Nginx, distinct service users, env templates and systemd units)
+and the necessary IP-identity TLS fix for a literal-IP PostgreSQL endpoint (PR
+#107). Backup/restore and rollback guidance is still the pre-existing
+provider-neutral rollback plan and the P2-04 CMS recovery notes; P2-R2A defers
+backup/restore execution to a separately approved production operation. The
+repository still does not contain, and no public environment yet provides:
 
 - a public Production release or release tag；
 - an Owner-controlled media custom domain bound to the private COS bucket and a
@@ -274,7 +276,8 @@ Active development tracks (independent of the parked cloud track):
    persistence, identity or API is implemented before this amendment is
    approved. Implementation then proceeds in three separately reviewable stages:
    identity/session foundation → comment contract, persistence, API and
-   moderation → connecting the accepted #106 UI seam to the real API.
+   moderation → connecting the #106 UI seam, once Owner-accepted, to the real
+   API.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of
@@ -299,7 +302,7 @@ No historical feature branch is an active implementation base.
 Remote refs may remain for traceability. Their existence does not grant
 implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as
 completed. #106 is not an implementation base for Community persistence; its QA
-data seam is the integration point defined by the Community V1 amendment.
+data seam is the integration point to be defined by the Community V1 amendment.
 
 ## Research relationship
 
