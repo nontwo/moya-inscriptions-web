@@ -316,7 +316,8 @@ describe("current repository truth and local configuration", () => {
     expect(projectStatus).toContain("T09-C0:  CLOSED / PASS");
     expect(projectStatus).toContain("T09-B1A: CLOSED / PASS");
     expect(projectStatus).toContain("T09-B1B: CLOSED / PASS");
-    expect(projectStatus).toContain("T09-F1:  PENDING");
+    expect(projectStatus).toContain("T09-F1:  CLOSED / PASS");
+    expect(projectStatus).not.toContain("T09-F1:  PENDING");
     expect(projectStatus).not.toContain("Current verified commit:");
     expect(projectStatus).not.toContain("Current verified tree:");
     expect(projectStatus).not.toContain(
