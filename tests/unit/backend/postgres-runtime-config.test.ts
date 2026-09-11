@@ -1,7 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { rootCertificates } from "node:tls";
+import { rootCertificates, type PeerCertificate } from "node:tls";
+import { X509Certificate } from "node:crypto";
 import {
   closePostgresPool,
   createPostgresPool,
@@ -15,6 +16,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const database =
   "postgresql://synthetic_runtime@127.0.0.1:5432/synthetic_database";
+// Public synthetic certificate only; these tests inspect IP SANs, not validity dates.
+const ipCertificate = new X509Certificate(`-----BEGIN CERTIFICATE-----
+MIIC8jCCAdqgAwIBAgIJAKIDDuq4Uxy3MA0GCSqGSIb3DQEBCwUAMCUxIzAhBgNV
+BAMMGnN5bnRoZXRpYy1wb3N0Z3Jlcy1pcC10ZXN0MB4XDTI2MDkxMTA4MDg1N1oX
+DTI2MDkxMjA4MDg1N1owJTEjMCEGA1UEAwwac3ludGhldGljLXBvc3RncmVzLWlw
+LXRlc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDQuXleY5S489Js
+UkqvykFgc8Xd9Emx3typyNq98fhh+sNaYSb73r2bxG6x49MW1g/MyFa0UiqqvSuA
+alCGc/IzZa1zKxt7A6OaupA+w4SejGh/HzCGRECXOfiL9VEpGnRkCoOli5+2zxOR
+hUg86YdbTYJUuXu03T2U7kxN8tz2sFdEDQHKERclgjit3HMUB/VeN3nmPM4ALkbH
+K8KQ2BY+a2X+w16E0bSMTvOx58UwTmcsL9q5ZXuf4rdlMsXMLDQONC+DSGGTyQwh
+eIjFHn0sV+QyUj7MjMnyOmlurmHNZSKFjvpKKU6em+xR1DKRSft2mTUT5IV81QH2
+65VHIMVTAgMBAAGjJTAjMCEGA1UdEQQaMBiHBH8AAAGHEAAAAAAAAAAAAAAAAAAA
+AAEwDQYJKoZIhvcNAQELBQADggEBAJW4VYBdZPObCqvnseqMlErMMv/DAeUtEIw1
+a0PgYQaHZ1YEeBvy7mcDE0MGxrq/lSZyjaptqxoFBmHBpF6cF7qYSbisq58ZiWqb
+KSJca3crNWS5DA+JO5Dve5wLKOCygNGxXygOOmlNhGxz01tHEXzfRU6LA4eAlAe2
+jjSTgjLq2jF/vPpTYeT0W1L4+hTOs99wILt23G0/nvK7AshKvy1K33nmDW4ZolGO
+zt0Xm/BGG4Dm7wJ9sTxfn7gsBznoZk1nPPN6afrn94kiUdc8qOai8kQOwvbccW5n
+oiaJ/7+nzk4m9c4J/hu4Qga6LyBoLtZPHfvP6bRSWjJCRboNwEk=
+-----END CERTIFICATE-----`).toLegacyObject();
 afterEach(() => vi.unstubAllEnvs());
 
 describe("runtime PostgreSQL pool and verified TLS", () => {
@@ -66,10 +86,13 @@ describe("runtime PostgreSQL pool and verified TLS", () => {
       const config = parsePostgresConfig({
         DATABASE_URL: `${database}?sslmode=${mode}`,
       });
-      expect(config.ssl).toEqual({ rejectUnauthorized: true });
+      expect(config.ssl).toMatchObject({
+        rejectUnauthorized: true,
+        checkServerIdentity: expect.any(Function),
+      });
       expect(config.connectionString).toBe(database);
       const pool = createPostgresPool(config);
-      expect(pool.options.ssl).toEqual({ rejectUnauthorized: true });
+      expect(pool.options.ssl).toBe(config.ssl);
       void pool.end();
     },
   );
@@ -101,10 +124,13 @@ describe("runtime PostgreSQL pool and verified TLS", () => {
           DATABASE_URL: `${database}?sslmode=require`,
           DATABASE_SSL_CA_FILE: caFile,
         }).ssl,
-      ).toEqual({ rejectUnauthorized: true, ca });
+      ).toMatchObject({ rejectUnauthorized: true, ca });
       vi.stubEnv("CMS_DATABASE_URL", `${database}?sslmode=verify-full`);
       vi.stubEnv("CMS_DATABASE_SSL_CA_FILE", caFile);
-      expect(cmsDatabasePool().ssl).toEqual({ rejectUnauthorized: true, ca });
+      expect(cmsDatabasePool().ssl).toMatchObject({
+        rejectUnauthorized: true,
+        ca,
+      });
       expect(() =>
         parsePostgresConfig({
           DATABASE_URL: `${database}?sslmode=disable`,
@@ -130,6 +156,49 @@ describe("runtime PostgreSQL pool and verified TLS", () => {
     vi.stubEnv("CMS_ENVIRONMENT", "synthetic");
     vi.stubEnv("CMS_DATABASE_URL", `${database}?host=synthetic.invalid`);
     expect(() => cmsDatabasePool()).toThrow("loopback database");
+  });
+
+  it.each([
+    ["127.0.0.1", "127.0.0.2"],
+    ["[::1]", "[::2]"],
+  ])(
+    "verifies the URL IP SAN when pg supplies a different default name: %s",
+    (host, wrong) => {
+      const config = parsePostgresConfig({
+        DATABASE_URL: `postgresql://synthetic@${host}/synthetic?sslmode=verify-full`,
+      });
+      if (!config.ssl || !config.ssl.checkServerIdentity)
+        throw new Error("EXPECTED_IP_IDENTITY_CHECK");
+      expect(config.ssl.rejectUnauthorized).toBe(true);
+      expect(
+        config.ssl.checkServerIdentity("localhost", ipCertificate),
+      ).toBeUndefined();
+      const wrongConfig = parsePostgresConfig({
+        DATABASE_URL: `postgresql://synthetic@${wrong}/synthetic?sslmode=verify-full`,
+      });
+      if (!wrongConfig.ssl || !wrongConfig.ssl.checkServerIdentity)
+        throw new Error("EXPECTED_IP_IDENTITY_CHECK");
+      expect(
+        wrongConfig.ssl.checkServerIdentity("localhost", ipCertificate),
+      ).toMatchObject({ code: "ERR_TLS_CERT_ALTNAME_INVALID" });
+      expect(
+        config.ssl.checkServerIdentity("localhost", {
+          subjectaltname: "DNS:localhost",
+        } as PeerCertificate),
+      ).toMatchObject({ code: "ERR_TLS_CERT_ALTNAME_INVALID" });
+    },
+  );
+
+  it("keeps DNS verification and existing no-TLS local defaults unchanged", () => {
+    const config = parsePostgresConfig({
+      DATABASE_URL:
+        "postgresql://synthetic@database.example.invalid/synthetic?sslmode=verify-full",
+    });
+    expect(config.ssl).toEqual({ rejectUnauthorized: true });
+    expect(parsePostgresConfig({ DATABASE_URL: database }).ssl).toBe(false);
+    expect(
+      parsePostgresConfig({ DATABASE_URL: `${database}?sslmode=disable` }).ssl,
+    ).toBe(false);
   });
 });
 

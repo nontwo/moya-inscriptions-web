@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
-import { createSecureContext } from "node:tls";
+import { X509Certificate } from "node:crypto";
+import { isIP } from "node:net";
+import { checkServerIdentity, createSecureContext } from "node:tls";
 
 export type PostgresEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -9,7 +11,12 @@ export interface PostgresConfig {
   readonly max: number;
   readonly idleTimeoutMillis: number;
   readonly ssl:
-    false | { readonly rejectUnauthorized: true; readonly ca?: string };
+    | false
+    | {
+        readonly rejectUnauthorized: true;
+        readonly ca?: string;
+        readonly checkServerIdentity?: typeof checkServerIdentity;
+      };
 }
 
 const connectionTimeoutMillis = 5_000;
@@ -88,7 +95,32 @@ export const parsePostgresConfig = (
     throw new Error("DATABASE_URL must be a valid PostgreSQL URL");
   }
 
-  const ssl = verifiedTLS(url, environment.DATABASE_SSL_CA_FILE);
+  const verified = verifiedTLS(url, environment.DATABASE_SSL_CA_FILE);
+  const hostname = url.hostname.startsWith("[")
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
+  // pg omits SNI for a literal IP and Node otherwise falls back to localhost.
+  // Keep CA verification and bind only this identity check to the URL's IP SAN.
+  const ssl: PostgresConfig["ssl"] =
+    verified && isIP(hostname)
+      ? {
+          ...verified,
+          checkServerIdentity: (_defaultName, certificate) => {
+            const error = checkServerIdentity(hostname, certificate);
+            // Some Node 24 minors apply domainToASCII to IPv6, which produces
+            // an empty DNS name. OpenSSL's native IP SAN check remains exact.
+            if (error && isIP(hostname) === 6) {
+              try {
+                if (new X509Certificate(certificate.raw).checkIP(hostname))
+                  return undefined;
+              } catch {
+                // Missing/malformed peer DER must retain the verification error.
+              }
+            }
+            return error;
+          },
+        }
+      : verified;
   // pg's URL parser replaces the explicit ssl object when URL SSL options are
   // present. Strip the validated mode so certificate verification stays final.
   url.searchParams.delete("sslmode");
