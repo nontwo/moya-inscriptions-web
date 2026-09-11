@@ -1,7 +1,97 @@
+import { createHash } from "node:crypto";
+import {
+  constants,
+  closeSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import {
   parsePostgresConfig,
   type PostgresConfig,
 } from "@moya/catalog-postgres";
+
+/** Explicit remote verification exception; ordinary targets retain their guard. */
+export function cmsRemoteSyntheticTarget(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  const fail = (): never => {
+    throw new Error("REMOTE_SYNTHETIC_TARGET_INVALID");
+  };
+  if (
+    environment.CMS_ENVIRONMENT !== "synthetic" ||
+    environment.MOYA_CONTENT_SOURCE !== "payload" ||
+    environment.CMS_STORAGE_MODE !== "local" ||
+    !environment.CMS_TEST_REMOTE_TARGET_JSON ||
+    environment.CMS_DATABASE_URL !== environment.CMS_TEST_DATABASE_URL
+  )
+    fail();
+  let file: number | undefined;
+  try {
+    const target: unknown = JSON.parse(
+      environment.CMS_TEST_REMOTE_TARGET_JSON!,
+    );
+    if (!target || typeof target !== "object" || Array.isArray(target)) fail();
+    const record = target as Record<string, unknown>;
+    if (
+      Object.keys(record).sort().join(",") !==
+        "caSha256,database,databaseOid,host,kind,port,serverVersionNum,user,version" ||
+      record.version !== 1 ||
+      record.kind !== "p2-r2b-remote-synthetic" ||
+      record.serverVersionNum !== 180006 ||
+      typeof record.host !== "string" ||
+      !record.host ||
+      !Number.isSafeInteger(record.port) ||
+      Number(record.port) < 1 ||
+      Number(record.port) > 65535 ||
+      typeof record.database !== "string" ||
+      !/^[a-z][a-z0-9_]{0,62}$/.test(record.database) ||
+      !record.database.includes("cms_test") ||
+      typeof record.user !== "string" ||
+      !/^[a-z][a-z0-9_]{0,62}$/.test(record.user) ||
+      !record.user.includes("test") ||
+      typeof record.databaseOid !== "string" ||
+      !/^[1-9][0-9]*$/.test(record.databaseOid) ||
+      typeof record.caSha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(record.caSha256)
+    )
+      fail();
+    const url = new URL(environment.CMS_DATABASE_URL!);
+    if (
+      !["postgres:", "postgresql:"].includes(url.protocol) ||
+      ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+      url.hostname !== record.host ||
+      Number(url.port || "5432") !== record.port ||
+      decodeURIComponent(url.pathname.slice(1)) !== record.database ||
+      decodeURIComponent(url.username) !== record.user ||
+      url.hash ||
+      url.search !== "?sslmode=verify-full" ||
+      !environment.CMS_DATABASE_SSL_CA_FILE
+    )
+      fail();
+    file = openSync(
+      environment.CMS_DATABASE_SSL_CA_FILE!,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    const info = fstatSync(file);
+    if (!info.isFile() || info.size > 1024 * 1024) fail();
+    const ca = readFileSync(file);
+    if (createHash("sha256").update(ca).digest("hex") !== record.caSha256)
+      fail();
+    return {
+      host: record.host as string,
+      port: record.port as number,
+      database: record.database as string,
+      user: record.user as string,
+      databaseOid: record.databaseOid as string,
+      serverVersionNum: record.serverVersionNum as number,
+    };
+  } catch {
+    return fail();
+  } finally {
+    if (file !== undefined) closeSync(file);
+  }
+}
 
 export const requiredSetting = (name: string): string => {
   const value = process.env[name];
@@ -18,14 +108,17 @@ export const cmsDatabasePool = (): PostgresConfig => {
   }
   if (!["postgres:", "postgresql:"].includes(url.protocol))
     throw new Error("Invalid CMS database protocol");
-  if (
-    process.env.CMS_ENVIRONMENT === "synthetic" &&
-    (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+  if (process.env.CMS_ENVIRONMENT === "synthetic") {
+    if (process.env.CMS_TEST_REMOTE_TARGET_JSON !== undefined)
+      cmsRemoteSyntheticTarget();
+    else if (
+      !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
       [...url.searchParams].some(
         ([key, entry]) => key !== "sslmode" || entry !== "disable",
-      ))
-  )
-    throw new Error("Synthetic CMS requires a loopback database");
+      )
+    )
+      throw new Error("Synthetic CMS requires a loopback database");
+  }
   try {
     return parsePostgresConfig({
       DATABASE_URL: value,

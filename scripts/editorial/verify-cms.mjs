@@ -9,8 +9,15 @@ import {
   clearInterval,
 } from "node:timers";
 import { setTimeout as delay } from "node:timers/promises";
-import { stripVTControlCharacters } from "node:util";
+import { parseEnv, stripVTControlCharacters } from "node:util";
 import { randomBytes } from "node:crypto";
+import {
+  constants,
+  closeSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,7 +26,56 @@ import { spawn, execFileSync } from "node:child_process";
 export const verificationRoot = fileURLToPath(
   new URL("../../", import.meta.url),
 );
-export function syntheticDatabase(value) {
+const remoteSettingNames = [
+  "MOYA_CONTENT_SOURCE",
+  "CMS_ENVIRONMENT",
+  "CMS_STORAGE_MODE",
+  "CMS_DATABASE_URL",
+  "CMS_TEST_DATABASE_URL",
+  "CMS_DATABASE_SSL_CA_FILE",
+  "CMS_TEST_REMOTE_TARGET_JSON",
+];
+
+/** Read only the explicitly named Owner-controlled EnvironmentFile. */
+export function protectedRemoteSyntheticSettings(environment = process.env) {
+  let file;
+  try {
+    if (!environment.CMS_TEST_CONFIG_FILE) throw new Error("CONFIG_REQUIRED");
+    file = openSync(
+      environment.CMS_TEST_CONFIG_FILE,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    const info = fstatSync(file);
+    if (
+      !info.isFile() ||
+      (info.mode & 0o777) !== 0o600 ||
+      ![0, process.getuid?.()].includes(info.uid) ||
+      info.size > 64 * 1024
+    )
+      throw new Error("CONFIG_INVALID");
+    const parsed = parseEnv(readFileSync(file, "utf8"));
+    if (
+      remoteSettingNames.some(
+        (name) => !parsed[name] || parsed[name] !== environment[name],
+      ) ||
+      parsed.MOYA_CONTENT_SOURCE !== "payload" ||
+      parsed.CMS_ENVIRONMENT !== "synthetic" ||
+      parsed.CMS_STORAGE_MODE !== "local" ||
+      parsed.CMS_DATABASE_URL !== parsed.CMS_TEST_DATABASE_URL ||
+      environment.NODE_TLS_REJECT_UNAUTHORIZED === "0"
+    )
+      throw new Error("CONFIG_MISMATCH");
+    return Object.fromEntries(
+      remoteSettingNames.map((name) => [name, parsed[name]]),
+    );
+  } catch {
+    throw new Error("REMOTE_SYNTHETIC_PROTECTED_CONFIG_REQUIRED");
+  } finally {
+    if (file !== undefined) closeSync(file);
+  }
+}
+
+export function syntheticDatabase(value, environment = process.env) {
   let url;
   try {
     url = new URL(value);
@@ -28,6 +84,21 @@ export function syntheticDatabase(value) {
   }
   // node-postgres query parameters can override host/user and load TLS files.
   // A URL-hostname check alone does not constrain the actual connection target.
+  const remote = environment.CMS_TEST_REMOTE_TARGET_JSON !== undefined;
+  if (remote) {
+    const settings = protectedRemoteSyntheticSettings(environment);
+    if (
+      !["postgres:", "postgresql:"].includes(url.protocol) ||
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
+      value !== settings.CMS_TEST_DATABASE_URL ||
+      !url.username ||
+      url.pathname.length <= 1 ||
+      url.search !== "?sslmode=verify-full" ||
+      url.hash
+    )
+      throw new Error("REMOTE_SYNTHETIC_TARGET_INVALID");
+    return url.toString();
+  }
   if (
     !["postgres:", "postgresql:"].includes(url.protocol) ||
     !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
@@ -38,6 +109,97 @@ export function syntheticDatabase(value) {
   )
     throw new Error("SYNTHETIC_LOOPBACK_DATABASE_REQUIRED");
   return url.toString();
+}
+
+/** The caller invokes this after library builds and before the first DDL. */
+export async function verifyRemoteSyntheticDatabase(environment, query) {
+  if (!environment.CMS_TEST_REMOTE_TARGET_JSON) return;
+  const { cmsRemoteSyntheticTarget } =
+    await import("../../apps/admin/src/runtime-settings.ts");
+  const target = cmsRemoteSyntheticTarget(environment);
+  let pool;
+  try {
+    if (!query) {
+      const { createPostgresPool, parsePostgresConfig } =
+        await import("../../services/catalog-postgres/dist/index.js");
+      pool = createPostgresPool(
+        parsePostgresConfig({
+          DATABASE_URL: environment.CMS_DATABASE_URL,
+          DATABASE_SSL_CA_FILE: environment.CMS_DATABASE_SSL_CA_FILE,
+        }),
+      );
+      pool.options.statement_timeout = 10000;
+      pool.options.query_timeout = 15000;
+      query = (sql) => pool.query(sql);
+    }
+    const result = await query(`WITH RECURSIVE allowed_objects AS (
+      SELECT d.classid, d.objid FROM pg_depend d JOIN pg_extension e ON e.oid=d.refobjid
+      WHERE d.refclassid='pg_extension'::regclass AND d.deptype='e' AND e.extname='pg_trgm'
+      UNION
+      SELECT d.classid, d.objid FROM pg_depend d JOIN allowed_objects a
+        ON d.refclassid=a.classid AND d.refobjid=a.objid WHERE d.deptype IN ('i', 'a')
+    ) SELECT
+      current_database() AS database,
+      current_user AS username,
+      (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,
+      current_setting('server_version_num') AS version_num,
+      current_setting('server_version') AS server_version,
+      COALESCE((SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()), false) AS tls,
+      (SELECT count(*)::integer FROM (
+        SELECT 'pg_class'::regclass AS classid, c.oid, c.relnamespace AS namespace FROM pg_class c
+        UNION ALL
+        SELECT 'pg_proc'::regclass, p.oid, p.pronamespace FROM pg_proc p
+        UNION ALL
+        SELECT 'pg_type'::regclass, t.oid, t.typnamespace FROM pg_type t
+        UNION ALL
+        SELECT 'pg_operator'::regclass, o.oid, o.oprnamespace FROM pg_operator o
+        UNION ALL
+        SELECT 'pg_opclass'::regclass, o.oid, o.opcnamespace FROM pg_opclass o
+        UNION ALL
+        SELECT 'pg_opfamily'::regclass, o.oid, o.opfnamespace FROM pg_opfamily o
+        UNION ALL
+        SELECT 'pg_collation'::regclass, c.oid, c.collnamespace FROM pg_collation c
+        UNION ALL
+        SELECT 'pg_conversion'::regclass, c.oid, c.connamespace FROM pg_conversion c
+        UNION ALL
+        SELECT 'pg_ts_config'::regclass, c.oid, c.cfgnamespace FROM pg_ts_config c
+        UNION ALL
+        SELECT 'pg_ts_dict'::regclass, d.oid, d.dictnamespace FROM pg_ts_dict d
+        UNION ALL
+        SELECT 'pg_ts_parser'::regclass, p.oid, p.prsnamespace FROM pg_ts_parser p
+        UNION ALL
+        SELECT 'pg_ts_template'::regclass, t.oid, t.tmplnamespace FROM pg_ts_template t
+      ) objects JOIN pg_namespace n ON n.oid=objects.namespace
+      WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+        AND NOT EXISTS (
+          SELECT 1 FROM allowed_objects a
+          WHERE a.classid=objects.classid AND a.objid=objects.oid
+        )) AS user_objects,
+      (SELECT count(*)::integer FROM pg_namespace
+        WHERE nspname !~ '^pg_' AND nspname NOT IN ('public', 'information_schema')) AS custom_schemas,
+      (SELECT count(*)::integer FROM pg_extension WHERE extname NOT IN ('plpgsql', 'pg_trgm')) AS other_extensions,
+      (SELECT count(*)::integer FROM pg_largeobject_metadata) AS large_objects`);
+    const row = result.rows?.[0];
+    if (
+      result.rows?.length !== 1 ||
+      row.database !== target.database ||
+      row.username !== target.user ||
+      row.database_oid !== target.databaseOid ||
+      row.version_num !== String(target.serverVersionNum) ||
+      !/^18\.6(?:\D|$)/.test(row.server_version ?? "") ||
+      row.tls !== true ||
+      row.user_objects !== 0 ||
+      row.custom_schemas !== 0 ||
+      row.other_extensions !== 0 ||
+      row.large_objects !== 0
+    )
+      throw new Error("REMOTE_SYNTHETIC_PREFLIGHT_FAILED");
+    return { versionNum: target.serverVersionNum, tls: true, empty: true };
+  } catch {
+    throw new Error("REMOTE_SYNTHETIC_PREFLIGHT_FAILED");
+  } finally {
+    await pool?.end();
+  }
 }
 
 const summaryLines = (output) =>
@@ -77,6 +239,11 @@ export async function createVerificationSession(
     CMS_STORAGE_MODE: "local",
     CMS_MEDIA_DIR: path.join(directory, "media"),
   };
+  if (process.env.CMS_TEST_REMOTE_TARGET_JSON) {
+    Object.assign(env, protectedRemoteSyntheticSettings(), {
+      NODE_EXTRA_CA_CERTS: process.env.CMS_DATABASE_SSL_CA_FILE,
+    });
+  }
   const started = Date.now();
   const groups = new Set();
   const processes = new Set();
@@ -301,6 +468,10 @@ async function main() {
         ],
       ],
     ]) {
+      if (name === "migrations") {
+        await verifyRemoteSyntheticDatabase(session.env);
+        session.assertActive();
+      }
       const result = await session.run(
         args,
         path.join(verificationRoot, cwd),
