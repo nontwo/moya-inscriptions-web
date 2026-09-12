@@ -37,6 +37,8 @@ import {
   vi,
 } from "vitest";
 
+import { assertSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
 import type {
   CatalogImportApplicationResult,
   PilotApprovalDocument,
@@ -81,6 +83,8 @@ describe.skipIf(!enabled)(
           "Explicit TEST_DATABASE_URL and verified PILOT_TEST_SYSTEM_IDENTIFIER are required",
         );
       }
+      // Refuse yoyi_dev or any unmarked database before the administration pool exists.
+      assertSyntheticTestDatabaseUrl(databaseUrl);
       const endpoint = new URL(databaseUrl);
       if (
         !["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname) ||
