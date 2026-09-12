@@ -115,8 +115,7 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     for (const file of files) {
       if ((await read(file)).includes("APP_DATABASE_URL")) offenders.push(file);
     }
-    expect(offenders.sort()).toEqual([
-      "scripts/migrate-community.mjs",
+    expect(offenders).toEqual([
       "services/backend-production/src/composition.ts",
     ]);
   });

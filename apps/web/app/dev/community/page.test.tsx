@@ -101,4 +101,16 @@ describe("CommunityDevelopmentPage", () => {
     expect(markup).toContain("Backend 暂时不可用");
     expect(markup).not.toContain('role="status"');
   });
+
+  it("ignores crafted notice keys instead of reaching the prototype chain", async () => {
+    for (const notice of ["__proto__", "constructor", "toString"]) {
+      const markup = renderToStaticMarkup(
+        await CommunityDevelopmentPage({
+          searchParams: Promise.resolve({ notice }),
+        }),
+      );
+      expect(markup).toContain("未登录");
+      expect(markup).not.toContain('role="status"');
+    }
+  });
 });

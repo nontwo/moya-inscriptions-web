@@ -198,6 +198,17 @@ export const runCommunityMigrations = async (
   return appliedNow;
 };
 
+// undefined_table, invalid_schema_name, insufficient_privilege: the family or
+// its App-role grants are missing, not the database.
+const schemaNotReadyCodes = new Set(["42P01", "3F000", "42501"]);
+
+const isSchemaNotReadyError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  schemaNotReadyCodes.has(error.code);
+
 /** Read-only startup check with the App role: every required migration is applied unchanged. */
 export const verifyCommunityMigrationLedger = async (
   pool: Pool,
@@ -216,6 +227,8 @@ export const verifyCommunityMigrationLedger = async (
       error instanceof CommunityMigrationStateError
     )
       throw error;
+    if (isSchemaNotReadyError(error))
+      throw new CommunitySchemaNotReadyError({ cause: error });
     throw asCommunityOperationError(error, "query");
   } finally {
     client.release();

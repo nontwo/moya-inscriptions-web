@@ -5,7 +5,12 @@ import {
   sessionTokenSchema,
 } from "@moya/contracts/schemas";
 
-import type { DevelopmentSession, PublicUserProfile } from "@moya/contracts";
+import type { PublicUserProfile } from "@moya/contracts";
+
+/** Server-only shape (no root Public DTO): the raw credential must not travel further than this module's callers. */
+export type DevelopmentSession = ReturnType<
+  typeof developmentSessionSchema.parse
+>;
 
 export interface CommunitySessionTransportContext {
   readonly baseUrl: URL;

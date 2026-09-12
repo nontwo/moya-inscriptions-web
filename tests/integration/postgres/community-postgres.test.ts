@@ -145,15 +145,25 @@ describe("community PostgreSQL identity and sessions", () => {
 
   it("verifies the ledger read-only and fails closed when it is missing", async () => {
     await expect(verifyCommunityMigrationLedger(pool)).resolves.toBeUndefined();
-    await pool.query("BEGIN");
+    // One dedicated client keeps the uncommitted DELETE visible to the check.
+    const client = await pool.connect();
     try {
-      await pool.query("DELETE FROM community.schema_migrations");
-      await expect(verifyCommunityMigrationLedger(pool)).rejects.toBeInstanceOf(
-        CommunitySchemaNotReadyError,
-      );
+      await client.query("BEGIN");
+      await client.query("DELETE FROM community.schema_migrations");
+      const singleClientPool = {
+        connect: async () => ({
+          query: client.query.bind(client),
+          release: () => undefined,
+        }),
+      } as unknown as typeof pool;
+      await expect(
+        verifyCommunityMigrationLedger(singleClientPool),
+      ).rejects.toBeInstanceOf(CommunitySchemaNotReadyError);
     } finally {
-      await pool.query("ROLLBACK");
+      await client.query("ROLLBACK");
+      client.release();
     }
+    await expect(verifyCommunityMigrationLedger(pool)).resolves.toBeUndefined();
   });
 
   it("issues, validates, expires and revokes sessions against real rows", async () => {

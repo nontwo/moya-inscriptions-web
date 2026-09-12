@@ -170,11 +170,15 @@ CMS relation; `infra/development/grant-community-app.sql` is the local model.
 Community migrations run only through `pnpm db:migrate:community` with a
 separately provisioned migration-privileged role (`APP_MIGRATION_DATABASE_URL`,
 never placed in `backend.env`). The Backend refuses to start without
-`APP_DATABASE_URL` and verifies the community ledger read-only. No Production
-sign-in path exists: the Development test-account entry is composed only under
-`NODE_ENV=development`, and external identity providers remain deferred. Payload
-users remain owner/automation only. Future UGC media receives an independent
-storage boundary. QA filtering remains QA-only; no hard-coded
-dynasty/script/type/region taxonomy enters production contracts or tables. This
-task prepares the existing code and local development environment to connect
-future CVM/TencentDB/COS; it does not release those domains or resources.
+`APP_DATABASE_URL` and verifies the community ledger read-only, so on any host
+the order is fixed: provision the App role → `pnpm db:migrate:community` with
+the migration role → apply the App-role grants → set `APP_DATABASE_URL` in
+`backend.env` → restart the Backend; restarting before those steps fails closed.
+No Production sign-in path exists: the Development test-account entry is
+composed only under `NODE_ENV=development`, and external identity providers
+remain deferred. Payload users remain owner/automation only. Future UGC media
+receives an independent storage boundary. QA filtering remains QA-only; no
+hard-coded dynasty/script/type/region taxonomy enters production contracts or
+tables. This task prepares the existing code and local development environment
+to connect future CVM/TencentDB/COS; it does not release those domains or
+resources.

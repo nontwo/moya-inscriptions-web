@@ -234,7 +234,11 @@ export const publicUserProfileSchema = z.strictObject({
   displayName: publicUserDisplayNameSchema,
 });
 
-/** Development-only support operation between Web and the Backend; never composed in Production. */
+/**
+ * Development-only support operation between Web and the Backend; never
+ * composed in Production. These runtime shapes live only on the server-only
+ * `./schemas` subpath: they are not root Public DTO types and not OpenAPI.
+ */
 export const developmentSignInRequestSchema = z.strictObject({
   handle: publicUserHandleSchema,
 });
@@ -242,6 +246,7 @@ export const developmentSignInRequestSchema = z.strictObject({
 /** Opaque bearer credential: 32 random bytes as base64url. Web moves it into the HttpOnly cookie. */
 export const sessionTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
+/** The one-time grant handed to Web on Development sign-in; the token never appears anywhere else. */
 export const developmentSessionSchema = z.strictObject({
   token: sessionTokenSchema,
   expiresAt: z.iso.datetime({ offset: false }),

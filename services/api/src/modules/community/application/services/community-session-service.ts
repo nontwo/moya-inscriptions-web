@@ -1,4 +1,4 @@
-import type { DevelopmentSession, PublicUserProfile } from "@moya/contracts";
+import type { PublicUserProfile } from "@moya/contracts";
 
 import { mapPublicUserProfile } from "../mappers/community-public-contract-mapper.js";
 import {
@@ -17,6 +17,17 @@ export interface CommunitySessionServiceOptions {
   /** Absolute session lifetime; sessions do not slide. */
   readonly sessionTtlMs?: number;
   readonly randomBytes?: RandomBytes;
+}
+
+/**
+ * The one-time result of a Development sign-in. It is handed to the transport
+ * layer, which validates it with the server-only Development session schema;
+ * it is not a root Public DTO and the raw token appears nowhere else.
+ */
+export interface DevelopmentSessionGrant {
+  readonly token: string;
+  readonly expiresAt: string;
+  readonly profile: PublicUserProfile;
 }
 
 const defaultSessionTtlMs = 7 * 24 * 60 * 60 * 1_000;
@@ -47,7 +58,7 @@ export class CommunitySessionService {
   /** Development-only support operation; null means no such active test account. */
   async signInDevelopmentAccount(
     handle: string,
-  ): Promise<DevelopmentSession | null> {
+  ): Promise<DevelopmentSessionGrant | null> {
     const user = await this.identityPort.findDevelopmentAccountByHandle(handle);
     if (user === null || user.status !== "active") return null;
     const token = generateSessionToken(this.randomBytes);

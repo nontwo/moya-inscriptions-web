@@ -56,8 +56,11 @@ export default async function CommunityDevelopmentPage({
       ? { state: "unauthenticated" }
       : await fetchServerCurrentUser(token);
   const query = (await searchParams) ?? {};
+  // Own-property lookup only: a crafted notice must never reach the prototype.
   const notice =
-    typeof query.notice === "string" ? notices[query.notice] : undefined;
+    typeof query.notice === "string" && Object.hasOwn(notices, query.notice)
+      ? notices[query.notice]
+      : undefined;
 
   return (
     <main className={styles.page} data-community-development-entry="">

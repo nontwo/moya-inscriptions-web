@@ -6,7 +6,6 @@ import { URL, fileURLToPath, pathToFileURL } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const migrationDirectory = path.join(root, "database", "community-migrations");
 const migrationVariable = "APP_MIGRATION_DATABASE_URL";
-const runtimeVariable = "APP_DATABASE_URL";
 
 const localYoyiDev = (value) => {
   let url;
@@ -39,18 +38,26 @@ export function communityMigrationPlan(environment, args = []) {
   if (!environment[migrationVariable])
     throw new Error(`Missing migration setting: ${migrationVariable}`);
   if (args.includes("--development")) {
+    // The same loopback preflight as scripts/migrate.mjs: the migration role
+    // must target the local yoyi_dev database and be distinct from the runtime
+    // roles. The App runtime role itself is read only by the composition root.
     const migration = localYoyiDev(environment[migrationVariable]);
-    const runtime = localYoyiDev(environment[runtimeVariable] ?? "");
-    if (migration === undefined || runtime === undefined)
+    const runtimes = [
+      environment.DATABASE_URL ?? "",
+      environment.CMS_DATABASE_URL ?? "",
+    ].map(localYoyiDev);
+    if (migration === undefined || runtimes.some((url) => url === undefined))
       throw new Error(
         "Development community migrations require the isolated loopback yoyi_dev database",
       );
     if (
-      migration.host !== runtime.host ||
-      migration.username === runtime.username
+      runtimes.some(
+        (url) =>
+          url.host !== migration.host || url.username === migration.username,
+      )
     )
       throw new Error(
-        "Development community migration and App roles require one database and distinct roles",
+        "Development community migrations require one database and a migration role distinct from the runtime roles",
       );
   }
   return { variable: migrationVariable, directory: migrationDirectory };

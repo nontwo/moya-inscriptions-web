@@ -29,8 +29,6 @@ describe("contracts package surface", () => {
       "CatalogSearchTransportQuery",
       "CatalogSearchItem",
       "CatalogSearchPage",
-      "DevelopmentSession",
-      "DevelopmentSignInRequest",
       "HealthResponse",
       "MediaId",
       "PublicMedia",

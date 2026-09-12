@@ -109,6 +109,11 @@ describe("Development sign-in bridge", () => {
         headers: { "content-type": "application/json" },
         body: "{not json",
       }),
+      new Request("http://127.0.0.1:3000/api/community/development/sign-in", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ handle: "dev-user-01", pad: "x".repeat(5_000) }),
+      }),
     ]) {
       const response = await POST(request);
       expect(response.status).toBe(400);

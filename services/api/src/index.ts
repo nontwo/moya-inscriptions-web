@@ -27,7 +27,10 @@ export {
 } from "./modules/community/application/errors/community-store-unavailable-error.js";
 export { mapPublicUserProfile } from "./modules/community/application/mappers/community-public-contract-mapper.js";
 export { CommunitySessionService } from "./modules/community/application/services/community-session-service.js";
-export type { CommunitySessionServiceOptions } from "./modules/community/application/services/community-session-service.js";
+export type {
+  CommunitySessionServiceOptions,
+  DevelopmentSessionGrant,
+} from "./modules/community/application/services/community-session-service.js";
 export type {
   CommunityIdentityPort,
   SessionRecordInput,

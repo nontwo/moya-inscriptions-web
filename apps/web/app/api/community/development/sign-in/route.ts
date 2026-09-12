@@ -24,18 +24,46 @@ const redirectToEntry = (notice: string, setCookie?: string) =>
 const wantsHtml = (request: Request): boolean =>
   (request.headers.get("accept") ?? "").includes("text/html");
 
+// The Backend bounds its own body at 4 KiB; the bridge refuses larger bodies first.
+const maximumBodyBytes = 4_096;
+
+/** Reads at most `maximumBodyBytes`; a longer body is dropped without buffering it. */
+const readBoundedBody = async (request: Request): Promise<string | null> => {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declared) || declared > maximumBodyBytes) return null;
+  const reader = request.body?.getReader();
+  if (reader === undefined) return "";
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > maximumBodyBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(
+    chunks.length === 1 ? chunks[0] : Buffer.concat(chunks),
+  );
+};
+
 /** The handle from a JSON body or the Development page's form; anything else is null. */
 const readHandle = async (request: Request): Promise<unknown> => {
   const contentType = request.headers.get("content-type") ?? "";
+  const body = await readBoundedBody(request);
+  if (body === null) return null;
   try {
     if (contentType.startsWith("application/json")) {
-      const body: unknown = await request.json();
-      return typeof body === "object" && body !== null && "handle" in body
-        ? body.handle
+      const parsed: unknown = JSON.parse(body);
+      return typeof parsed === "object" && parsed !== null && "handle" in parsed
+        ? parsed.handle
         : null;
     }
     if (contentType.startsWith("application/x-www-form-urlencoded")) {
-      return (await request.formData()).get("handle");
+      return new URLSearchParams(body).get("handle");
     }
   } catch {
     return null;

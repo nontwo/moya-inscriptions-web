@@ -14,8 +14,6 @@ export type {
   CatalogSearchTransportQuery,
   CatalogSearchItem,
   CatalogSearchPage,
-  DevelopmentSession,
-  DevelopmentSignInRequest,
   HealthResponse,
   MediaId,
   PublicMedia,
