@@ -270,15 +270,17 @@ fresh latest origin/main
 
 Active development tracks (independent of the parked cloud track):
 
-1. **Community V1 scope decision** — the proposed
+1. **Community V1** — the
    [Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md)
-   freezes public-user identity, authentication/session ownership, the Comment
-   V1 contract, API boundary, moderation minimum and the #106 integration seam,
-   and lists the Owner decisions still open. No Community persistence, identity
-   or API is implemented before the Owner records approval. Implementation then
-   proceeds in three separately reviewable stages: identity/session foundation →
-   comment contract, persistence, API and moderation → connecting the #106 UI
-   seam, once Owner-accepted, to the real API.
+   is Active (Owner-approved 2026-09-11) and records the product decisions:
+   Owner-controlled publication setting (`PRE_MODERATION` default), Development
+   test-account sign-in, system-assigned handles, Payload Admin moderation over
+   a Backend operator boundary, text comments first, flat paginated replies,
+   Production deferred. PR #106's comment UI was accepted at `8e7d12a`.
+   Implementation proceeds in three separately reviewable stages, Mission 2A
+   next: identity/session foundation → comment contract, persistence, API and
+   moderation → connecting the #106 UI seam, once Owner-accepted, to the real
+   API.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of
@@ -290,21 +292,21 @@ Active development tracks (independent of the parked cloud track):
 
 No historical feature branch is an active implementation base.
 
-| Branch                                                |   PR | Current disposition                                                                                       |
-| ----------------------------------------------------- | ---: | --------------------------------------------------------------------------------------------------------- |
-| `codex/comment-feature-main`                          | #106 | OPEN DRAFT; QA-only community/comment presentation prototype pending Owner real-device visual acceptance. |
-| `ops/p2-r2b-tencent-stage-b`                          | #107 | MERGED; necessary PostgreSQL IP-identity TLS fix and guarded remote 18.6 verification only.               |
-| `codex/t02-adaptive-quick-actions`                    |  #94 | CLOSED; superseded by the merged minimal quick actions (#95). Reference only.                             |
-| `fix/t02-development-composition`                     |  #54 | MERGED HISTORY; squash result is already in the current `main` lineage.                                   |
-| `feat/catalog-detail-ui-t09-2`                        |  #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage.                         |
-| `feat/t02p-12-react-detail-gallery-viewer-acceptance` |  #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.                          |
-| `feat/t02-petal-quick-actions-rebuild`                |  #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick.                         |
+| Branch                                                |   PR | Current disposition                                                                                           |
+| ----------------------------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------- |
+| `codex/comment-feature-main`                          | #106 | ACCEPTED at `8e7d12a` (Owner real-device visual acceptance 2026-09-11); QA-only comment presentation, merged. |
+| `ops/p2-r2b-tencent-stage-b`                          | #107 | MERGED; necessary PostgreSQL IP-identity TLS fix and guarded remote 18.6 verification only.                   |
+| `codex/t02-adaptive-quick-actions`                    |  #94 | CLOSED; superseded by the merged minimal quick actions (#95). Reference only.                                 |
+| `fix/t02-development-composition`                     |  #54 | MERGED HISTORY; squash result is already in the current `main` lineage.                                       |
+| `feat/catalog-detail-ui-t09-2`                        |  #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage.                             |
+| `feat/t02p-12-react-detail-gallery-viewer-acceptance` |  #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.                              |
+| `feat/t02-petal-quick-actions-rebuild`                |  #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick.                             |
 
 Remote refs may remain for traceability. Their existence does not grant
 implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as
 completed. #106 is not an implementation base for Community persistence; its QA
-data seam is the integration point defined in section 6 of the proposed
-Community V1 amendment.
+data seam is the integration point defined in section 6 of the Community V1
+amendment.
 
 ## Research relationship
 
@@ -339,11 +341,10 @@ Phase 2 Production-release critical path excludes:
 - broad Prototype/static-seam cleanup；
 - cosmetic directory or component renaming。
 
-Public-user identity and comments are no longer deferred indefinitely: they form
-the independent Community V1 track above, gated by the proposed
-[Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md)
-until the Owner records approval. The other items remain deferred unless
-separately authorized.
+Public-user identity and comments are no longer deferred: they form the
+independent Community V1 track above, authorized by the active
+[Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md).
+The other items remain deferred unless separately authorized.
 
 ## Branch and release policy
 

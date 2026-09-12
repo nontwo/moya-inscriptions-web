@@ -32,15 +32,11 @@ The active amendments are:
 - [`2026-09-07 P2-04 Payload editorial automation`](docs/governance/amendments/2026-09-07-p2-04-payload-editorial.md),
   which authorizes the bounded CMS server integration and controlled content
   automation while preserving public contracts and separate cutover authority.
-
-Proposed amendments (read them, but they bind nothing until the Owner records
-approval):
-
 - [`2026-09-11 Community V1 scope`](docs/governance/amendments/2026-09-11-community-v1-scope.md),
-  which freezes public-user identity, Backend-owned authentication/session
-  ownership, the Comment V1 model, the four-operation API surface, the
-  moderation minimum, the PR #106 integration seam and the Mission 2A → 2B → 2C
-  sequence before any Community implementation.
+  which authorizes the bounded Community V1 domain — public-user identity,
+  Backend-owned sessions, the Comment V1 model, its API boundary, the
+  Owner-controlled publication setting and moderation — through the Mission 2A →
+  2B → 2C sequence, with the Owner's product decisions recorded.
 
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
