@@ -162,6 +162,32 @@
   margin: 0;
 }
 
+/* The expanded reading flow shares the identity card's column, so the card
+   must scroll with it instead of sticking over it. */
+.landscapeInfo .identityPanel,
+.detail[data-platform="pc"] .landscapeInfo .identityPanel {
+  position: static;
+}
+
+/* Paged compositions read as one surface: no card fill, shadow or radius
+   around the identity and reading panels, and the tab bar runs edge to edge. */
+[data-detail-content-pager] .identityPanel,
+[data-detail-content-pager] .readingSection {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.detail[data-platform="phone"] {
+  --detail-comment-composer-left: 0;
+  --detail-comment-composer-right: 0;
+}
+
+.detail[data-platform="phone"] .contentPagerTabs {
+  margin: 0 -16px;
+  padding: 0 calc(16px + var(--yoyi-space-3));
+}
+
 .contentPager {
   position: relative;
 }

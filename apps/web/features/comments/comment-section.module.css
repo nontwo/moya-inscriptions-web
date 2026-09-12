@@ -341,6 +341,14 @@
   background: var(--yoyi-color-background-surface);
 }
 
+/* In the paged composition the composer is part of the page, not a tray. */
+[data-detail-content-pager]
+  [data-detail-content-panel="comments"][data-active="true"]
+  .composer,
+[data-comment-composer-outlet][data-active="true"] .composer {
+  background: var(--yoyi-color-background-page);
+}
+
 [data-detail-content-pager]
   [data-detail-content-panel="comments"][data-active="false"]
   .composer,
