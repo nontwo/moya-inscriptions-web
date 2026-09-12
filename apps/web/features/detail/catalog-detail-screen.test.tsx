@@ -4,23 +4,140 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CatalogDetailScreen } from "./catalog-detail-screen";
 
+import type { ReactNode } from "react";
+import type { PresentationPlatform } from "../shell/device-platform";
+
 const renderState = (
   state: Parameters<typeof CatalogDetailScreen>[0]["state"],
+  commentSection?: ReactNode,
+  platform: PresentationPlatform = "phone",
+  orientation: "landscape" | "portrait" = "portrait",
 ) =>
   renderToStaticMarkup(
     <CatalogDetailScreen
       activeMediaIndex={0}
       backButtonRef={createRef<HTMLButtonElement>()}
+      commentSection={commentSection}
       onActiveMediaIndexChange={vi.fn()}
       onBack={vi.fn()}
       onOpenViewer={vi.fn()}
-      orientation="portrait"
-      platform="phone"
+      orientation={orientation}
+      platform={platform}
       state={state}
     />,
   );
 
 describe("CatalogDetailScreen", () => {
+  it("mounts an injected comment section only for a loaded Detail", () => {
+    const comments = <section data-comment-section="">comments</section>;
+    expect(renderState({ state: "loading" }, comments)).not.toContain(
+      "data-comment-section",
+    );
+    expect(
+      renderState(
+        {
+          detail: {
+            aliases: [],
+            facts: [],
+            id: "with-comments",
+            kind: "inscription",
+            media: [],
+            sections: [],
+            source: "qa",
+            sourceCitations: [],
+            title: "评论挂载测试",
+          },
+          state: "loaded",
+        },
+        comments,
+      ),
+    ).toContain("data-comment-section");
+  });
+
+  it("pages compact Detail content and stacks comments under wide compositions", () => {
+    const state = {
+      detail: {
+        aliases: [],
+        facts: [],
+        id: "paged-comments",
+        kind: "inscription" as const,
+        media: [],
+        sections: [],
+        source: "qa" as const,
+        sourceCitations: [],
+        title: "分页评论测试",
+      },
+      state: "loaded" as const,
+    };
+    const comments = <section data-comment-section="">comments</section>;
+    const phone = renderState(state, comments);
+    const tabletLandscape = renderState(state, comments, "tablet", "landscape");
+    const pc = renderState(state, comments, "pc", "landscape");
+
+    expect(phone).toContain("data-detail-content-pager");
+    expect(
+      phone.indexOf('data-detail-content-panel="information"'),
+    ).toBeLessThan(phone.indexOf('data-detail-content-panel="comments"'));
+    expect(phone).toContain('data-detail-content-active-page="information"');
+    expect(tabletLandscape).not.toContain("data-detail-content-pager");
+    expect(tabletLandscape).toContain("data-detail-landscape-layout");
+    expect(tabletLandscape).toContain("data-detail-landscape-media");
+    expect(tabletLandscape).toContain("data-detail-landscape-comments");
+    expect(tabletLandscape.indexOf("data-detail-landscape-media")).toBeLessThan(
+      tabletLandscape.indexOf("data-detail-info-panel"),
+    );
+    expect(tabletLandscape.indexOf("data-detail-info-panel")).toBeLessThan(
+      tabletLandscape.indexOf("data-detail-landscape-comments"),
+    );
+    expect(pc).not.toContain("data-detail-content-pager");
+    expect(pc).toContain("data-comment-section");
+    expect(pc).toContain("data-detail-landscape-layout");
+    expect(pc.indexOf("data-detail-landscape-media")).toBeLessThan(
+      pc.indexOf("data-detail-info-panel"),
+    );
+    expect(pc.indexOf("data-detail-info-panel")).toBeLessThan(
+      pc.indexOf("data-detail-landscape-comments"),
+    );
+  });
+
+  it("collapses the reading flow only where comments render", () => {
+    const state = {
+      detail: {
+        aliases: [],
+        facts: [],
+        id: "reading-disclosure",
+        kind: "inscription" as const,
+        media: [],
+        sections: [
+          { key: "transcription" as const, text: "释文", title: "释文" },
+        ],
+        source: "qa" as const,
+        sourceCitations: [],
+        title: "详情折叠测试",
+      },
+      state: "loaded" as const,
+    };
+    const comments = <section data-comment-section="">comments</section>;
+
+    for (const [platform, orientation] of [
+      ["tablet", "landscape"],
+      ["pc", "landscape"],
+    ] as const) {
+      const withComments = renderState(state, comments, platform, orientation);
+      expect(withComments).toContain("data-detail-reading-disclosure");
+      expect(withComments).toContain('data-detail-section="transcription"');
+
+      const formal = renderState(state, undefined, platform, orientation);
+      expect(formal).not.toContain("data-detail-reading-disclosure");
+      expect(formal).not.toContain("data-detail-landscape-layout");
+      expect(formal).toContain('data-detail-section="transcription"');
+    }
+
+    expect(renderState(state, comments)).not.toContain(
+      "data-detail-reading-disclosure",
+    );
+  });
+
   it.each([
     ["not-found", "未找到这项资料"],
     ["unavailable", "资料服务当前不可用"],

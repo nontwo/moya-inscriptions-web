@@ -14,6 +14,9 @@
 }
 
 .detail {
+  --detail-comment-composer-left: 16px;
+  --detail-comment-composer-right: 16px;
+
   min-height: 100%;
   color: var(--yoyi-color-text-primary);
   background: var(--yoyi-color-background-page);
@@ -70,6 +73,182 @@
 .hero {
   display: grid;
   gap: 20px;
+}
+
+.pagedDetail {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+}
+
+.pagedMedia,
+.landscapeDetail,
+.landscapeStage,
+.landscapeInfo,
+.landscapeComments,
+.contentPager,
+.contentPagerFrame,
+.contentPagerPanel {
+  min-width: 0;
+}
+
+.landscapeDetail,
+.landscapeStage,
+.landscapeInfo {
+  display: grid;
+}
+
+.landscapeDetail {
+  gap: 24px;
+}
+
+.landscapeStage {
+  align-items: start;
+  gap: 24px;
+}
+
+.landscapeInfo {
+  align-content: start;
+  gap: 16px;
+}
+
+.readingDisclosure {
+  display: grid;
+  gap: 16px;
+}
+
+/* `display: grid` on <details> overrides the closed-state hiding some engines
+   apply, so keep the collapsed content out of layout explicitly. */
+.readingDisclosure:not([open]) > *:not(summary) {
+  display: none;
+}
+
+.readingDisclosure > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--yoyi-color-text-secondary);
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.readingDisclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.readingDisclosure > summary::after {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentcolor;
+  border-bottom: 2px solid currentcolor;
+  content: "";
+  transform: rotate(45deg) translate(-2px, -2px);
+}
+
+.readingDisclosure[open] > summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.readingDisclosure > summary:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.landscapeInfo .readingFlow {
+  width: 100%;
+  margin: 0;
+}
+
+/* The expanded reading flow shares the identity card's column, so the card
+   must scroll with it instead of sticking over it. */
+.landscapeInfo .identityPanel,
+.detail[data-platform="pc"] .landscapeInfo .identityPanel {
+  position: static;
+}
+
+/* Paged compositions read as one surface: no card fill, shadow or radius
+   around the identity and reading panels, and the tab bar runs edge to edge. */
+[data-detail-content-pager] .identityPanel,
+[data-detail-content-pager] .readingSection {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.detail[data-platform="phone"] {
+  --detail-comment-composer-left: 0;
+  --detail-comment-composer-right: 0;
+}
+
+.detail[data-platform="phone"] .contentPagerTabs {
+  margin: 0 -16px;
+  padding: 0 calc(16px + var(--yoyi-space-3));
+}
+
+.contentPager {
+  position: relative;
+}
+
+.contentPagerTabs {
+  position: sticky;
+  z-index: 5;
+  top: 56px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 var(--yoyi-space-3);
+  background: var(--yoyi-color-background-page);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.contentPagerTabs button {
+  position: relative;
+  min-height: 48px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.contentPagerTabs button[aria-selected="true"] {
+  color: var(--yoyi-color-text-primary);
+}
+
+.contentPagerTabs button[aria-selected="true"]::after {
+  position: absolute;
+  right: 28%;
+  bottom: 0;
+  left: 28%;
+  height: 3px;
+  background: var(--yoyi-color-seal-red);
+  border-radius: var(--yoyi-radius-full);
+  content: "";
+}
+
+.contentPagerTabs button:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -4px;
+}
+
+.contentPagerFrame {
+  margin-top: var(--yoyi-space-5);
+}
+
+.contentPagerTrack {
+  isolation: isolate;
+}
+
+.contentPagerPanel {
+  padding: 0;
+}
+
+.contentPagerPanel[data-detail-content-panel="comments"] {
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
 }
 
 .identityPanel,
@@ -673,6 +852,11 @@
   padding: 24px 28px 64px;
 }
 
+.detail[data-platform="tablet"] {
+  --detail-comment-composer-left: 28px;
+  --detail-comment-composer-right: 28px;
+}
+
 .detail[data-platform="tablet"] .mainStage {
   height: min(50dvh, 460px);
   min-height: 340px;
@@ -688,11 +872,38 @@
   gap: 28px;
 }
 
+.detail[data-detail-composition="tablet-landscape"] .landscapeStage {
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 28px;
+}
+
+.detail[data-detail-composition="tablet-landscape"] .landscapeComments,
+.detail[data-platform="pc"] .landscapeComments {
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
+}
+
+.detail[data-detail-composition="tablet-landscape"]
+  .landscapeComments
+  > [data-comment-section],
+.detail[data-platform="pc"] .landscapeComments > [data-comment-section] {
+  margin-top: 0;
+}
+
 .detail[data-platform="pc"] .detailContent {
   padding: 32px 48px 72px;
 }
 
 .detail[data-platform="pc"] .hero {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 36px;
+}
+
+.detail[data-platform="pc"] {
+  --detail-comment-composer-left: 48px;
+  --detail-comment-composer-right: 48px;
+}
+
+.detail[data-platform="pc"] .landscapeStage {
   grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
   gap: 36px;
 }

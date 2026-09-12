@@ -3,6 +3,12 @@
 import { useCallback, useState } from "react";
 
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
+import { CommentSection } from "../comments/comment-section";
+import {
+  qaCommentScenarioLabels,
+  qaCommentScenarioNames,
+} from "../comments/comment-scenarios";
+import { useQaCommentStore } from "../comments/use-qa-comment-store";
 import { homeScenarioNames } from "./home-scenario-contract";
 import { loadCatalogDetailPresentation } from "../detail/load-catalog-detail";
 import {
@@ -12,6 +18,7 @@ import {
 } from "./inscription-filter-presentation";
 import {
   defaultQaUserScenarioName,
+  qaCurrentUser,
   qaUserScenarioLabels,
   qaUserScenarioNames,
 } from "./user-scenarios";
@@ -32,6 +39,7 @@ import type {
 } from "./home-scenario-contract";
 import type { QaSearchScenarioName } from "./search-scenarios";
 import type { QaUserScenarioName } from "./user-scenarios";
+import type { QaCommentScenarioName } from "../comments/comment-scenarios";
 
 type PresentationPlatformMode = "auto" | PresentationPlatform;
 
@@ -74,9 +82,11 @@ const searchScenarioLabels = {
 export interface T02pQaHarnessProps {
   readonly catalogScenarios: T02pDevelopmentCatalogScenarios;
   readonly homeScenarios: DevelopmentHomeScenarios;
+  readonly initialCommentScenario?: QaCommentScenarioName;
   readonly initialHomeFeed?: HomeFeed;
   readonly initialHomeScenario?: HomeScenarioName;
   readonly initialPlatform: PresentationPlatform;
+  readonly initialPlatformMode?: PresentationPlatformMode;
   readonly initialTopicId?: string | null;
   readonly detailRecords: readonly CatalogDetail[];
   readonly qaChrome?: "visible" | "hidden";
@@ -86,18 +96,23 @@ export const T02pQaHarness = ({
   catalogScenarios,
   detailRecords,
   homeScenarios,
+  initialCommentScenario = "comment-default",
   initialHomeFeed,
   initialHomeScenario = "discover-visual",
   initialPlatform,
+  initialPlatformMode = "auto",
   initialTopicId,
   qaChrome = "visible",
 }: T02pQaHarnessProps) => {
   const [catalogScenario, setCatalogScenario] =
     useState<T02pDevelopmentCatalogScenario>("visual");
+  const [commentScenario, setCommentScenario] = useState<QaCommentScenarioName>(
+    initialCommentScenario,
+  );
   const [homeScenario, setHomeScenario] =
     useState<HomeScenarioName>(initialHomeScenario);
   const [platformMode, setPlatformMode] =
-    useState<PresentationPlatformMode>("auto");
+    useState<PresentationPlatformMode>(initialPlatformMode);
   const [searchScenario, setSearchScenario] =
     useState<QaSearchScenarioName>("search-default");
   const [userScenario, setUserScenario] = useState<QaUserScenarioName>(
@@ -116,6 +131,7 @@ export const T02pQaHarness = ({
       if (action === "favorite") setFavoriteIds(toggle);
     },
   };
+  const commentStore = useQaCommentStore(commentScenario);
   const home = homeScenarios[homeScenario];
   const catalog = catalogScenarios[catalogScenario];
   const search = qaSearchScenarios[searchScenario];
@@ -154,6 +170,7 @@ export const T02pQaHarness = ({
   return (
     <main
       data-catalog-scenario={catalogScenario}
+      data-comment-scenario={commentScenario}
       data-home-scenario={homeScenario}
       data-qa-chrome={qaChrome}
       data-search-scenario={searchScenario}
@@ -256,6 +273,24 @@ export const T02pQaHarness = ({
               </option>
             ))}
           </select>
+          <label htmlFor="t02p-qa-comment-scenario">QA Comment scenario</label>
+          <select
+            id="t02p-qa-comment-scenario"
+            data-qa-comment-scenario-selector=""
+            value={commentScenario}
+            onChange={(event) => {
+              const next = qaCommentScenarioNames.find(
+                (candidate) => candidate === event.currentTarget.value,
+              );
+              if (next !== undefined) setCommentScenario(next);
+            }}
+          >
+            {qaCommentScenarioNames.map((value) => (
+              <option key={value} value={value}>
+                {qaCommentScenarioLabels[value]}
+              </option>
+            ))}
+          </select>
         </aside>
       ) : null}
 
@@ -284,6 +319,24 @@ export const T02pQaHarness = ({
               userScenarioName={userScenario}
             />
           }
+          renderCommentSection={(catalogId) => (
+            <CommentSection
+              catalogId={catalogId}
+              currentUser={qaCurrentUser}
+              items={commentStore.getItems(catalogId)}
+              key={`${commentScenario}:${catalogId}`}
+              onSendComment={(text) =>
+                commentStore.sendComment(catalogId, text, qaCurrentUser)
+              }
+              onSendReply={(target, text) =>
+                commentStore.sendReply(catalogId, target, text, qaCurrentUser)
+              }
+              onToggleLike={(commentId, replyId) =>
+                commentStore.toggleLike(catalogId, commentId, replyId)
+              }
+              scenario={commentScenario}
+            />
+          )}
           showDevelopmentPagerControls={qaChrome !== "hidden"}
           states={states}
         />

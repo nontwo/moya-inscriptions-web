@@ -1,15 +1,18 @@
 import { Icon } from "@moya/ui";
 
+import { CatalogDetailContentPager } from "./catalog-detail-content-pager";
 import { CatalogMediaCarousel } from "./catalog-media-carousel";
 import styles from "./catalog-detail.module.css";
 
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
+import type { CatalogDetailPresentation } from "./catalog-detail-presentation";
 import type { CatalogDetailPresentationState } from "./catalog-detail-presentation";
 import type { PresentationPlatform } from "../shell/device-platform";
 
 export interface CatalogDetailScreenProps {
   readonly activeMediaIndex: number;
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
+  readonly commentSection?: ReactNode;
   readonly onActiveMediaIndexChange: (index: number) => void;
   readonly onBack: () => void;
   readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
@@ -33,9 +36,123 @@ const DetailMessage = ({
   </section>
 );
 
+const DetailIdentity = ({
+  detail,
+}: {
+  readonly detail: CatalogDetailPresentation;
+}) => {
+  const identity = [
+    detail.kind === "calligraphy" ? "书帖" : "碑刻",
+    detail.periodLabel,
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join(" · ");
+
+  return (
+    <section className={styles.identityPanel} data-detail-info-panel="">
+      <h1 data-detail-title="">{detail.title}</h1>
+      <p className={styles.kindPeriod}>{identity}</p>
+      {detail.summary === undefined ? null : (
+        <p className={styles.summary}>{detail.summary}</p>
+      )}
+      {detail.aliases.length === 0 ? null : (
+        <div className={styles.aliases}>
+          <span>又名</span>
+          <p>{detail.aliases.join(" · ")}</p>
+        </div>
+      )}
+      {detail.facts.length === 0 ? null : (
+        <section className={styles.factsSection} data-detail-facts="">
+          <h2>基本资料</h2>
+          <dl className={styles.facts}>
+            {detail.facts.map((fact, index) => (
+              <div key={`${fact.label}-${fact.value}-${index}`}>
+                <dt>{fact.label}</dt>
+                <dd>{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+    </section>
+  );
+};
+
+const DetailReadingFlow = ({
+  detail,
+}: {
+  readonly detail: CatalogDetailPresentation;
+}) => {
+  const sections = detail.sections ?? [];
+  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+
+  return (
+    <div className={styles.readingFlow}>
+      {sections.map((section) => (
+        <section
+          key={section.key}
+          className={styles.readingSection}
+          data-detail-section={section.key}
+        >
+          <h2>{section.title}</h2>
+          <p>{section.text}</p>
+        </section>
+      ))}
+      {detail.sourceCitations.length === 0 ? null : (
+        <section
+          className={styles.readingSection}
+          data-detail-section="sources"
+        >
+          <h2>资料来源</h2>
+          <ul className={styles.sources}>
+            {detail.sourceCitations.map((citation, index) => (
+              <li key={`${citation.label}-${index}`}>
+                <strong>{citation.label}</strong>
+                {citation.citation === undefined ? null : (
+                  <span>{citation.citation}</span>
+                )}
+                {citation.url === undefined ? null : (
+                  <a href={citation.url} rel="noreferrer" target="_blank">
+                    查看来源
+                  </a>
+                )}
+                <span className={styles.citationScope}>
+                  适用于：{citation.scopeLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+};
+
+/** Wide compositions collapse the reading flow so the media keeps its size;
+ *  opening 详情 reveals exactly the same sections, unchanged. */
+const DetailReadingDisclosure = ({
+  detail,
+}: {
+  readonly detail: CatalogDetailPresentation;
+}) => {
+  const sections = detail.sections ?? [];
+  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+
+  return (
+    <details
+      className={styles.readingDisclosure}
+      data-detail-reading-disclosure=""
+    >
+      <summary>详情</summary>
+      <DetailReadingFlow detail={detail} />
+    </details>
+  );
+};
+
 export const CatalogDetailScreen = ({
   activeMediaIndex,
   backButtonRef,
+  commentSection,
   onActiveMediaIndexChange,
   onBack,
   onOpenViewer,
@@ -77,92 +194,69 @@ export const CatalogDetailScreen = ({
     );
   } else {
     const detail = state.detail;
-    const sections = detail.sections ?? [];
-    const identity = [
-      detail.kind === "calligraphy" ? "书帖" : "碑刻",
-      detail.periodLabel,
-    ]
-      .filter((value): value is string => value !== undefined)
-      .join(" · ");
+    const media = (
+      <CatalogMediaCarousel
+        activeIndex={activeMediaIndex}
+        media={detail.media}
+        onActiveIndexChange={onActiveMediaIndexChange}
+        onOpenViewer={onOpenViewer}
+        platform={platform}
+      />
+    );
+    const information = (
+      <>
+        <DetailIdentity detail={detail} />
+        <DetailReadingFlow detail={detail} />
+      </>
+    );
+    const pagedComments =
+      commentSection !== undefined &&
+      (platform === "phone" ||
+        (platform === "tablet" && orientation === "portrait"));
+    // Wide compositions keep the media and the identity card side by side,
+    // collapse the reading flow behind 详情, and read comments underneath.
+    const wideComments =
+      commentSection !== undefined &&
+      (platform === "pc" ||
+        (platform === "tablet" && orientation === "landscape"));
 
-    body = (
+    body = pagedComments ? (
+      <div className={styles.pagedDetail} data-detail-paged-layout="">
+        <div className={styles.pagedMedia} data-detail-paged-media="">
+          {media}
+        </div>
+        <CatalogDetailContentPager
+          comments={commentSection}
+          information={information}
+          key={detail.id}
+          platform={platform}
+        />
+      </div>
+    ) : wideComments ? (
+      <div className={styles.landscapeDetail} data-detail-landscape-layout="">
+        <div className={styles.landscapeStage}>
+          <div data-detail-landscape-media="">{media}</div>
+          <div className={styles.landscapeInfo}>
+            <DetailIdentity detail={detail} />
+            <DetailReadingDisclosure detail={detail} />
+          </div>
+        </div>
+        <section
+          aria-label="评论"
+          className={styles.landscapeComments}
+          data-detail-landscape-comments=""
+        >
+          {commentSection}
+        </section>
+      </div>
+    ) : (
       <>
         <div className={styles.hero}>
-          <CatalogMediaCarousel
-            activeIndex={activeMediaIndex}
-            media={detail.media}
-            onActiveIndexChange={onActiveMediaIndexChange}
-            onOpenViewer={onOpenViewer}
-            platform={platform}
-          />
-          <section className={styles.identityPanel} data-detail-info-panel="">
-            <h1 data-detail-title="">{detail.title}</h1>
-            <p className={styles.kindPeriod}>{identity}</p>
-            {detail.summary === undefined ? null : (
-              <p className={styles.summary}>{detail.summary}</p>
-            )}
-            {detail.aliases.length === 0 ? null : (
-              <div className={styles.aliases}>
-                <span>又名</span>
-                <p>{detail.aliases.join(" · ")}</p>
-              </div>
-            )}
-            {detail.facts.length === 0 ? null : (
-              <section className={styles.factsSection} data-detail-facts="">
-                <h2>基本资料</h2>
-                <dl className={styles.facts}>
-                  {detail.facts.map((fact, index) => (
-                    <div key={`${fact.label}-${fact.value}-${index}`}>
-                      <dt>{fact.label}</dt>
-                      <dd>{fact.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
-            )}
-          </section>
+          {media}
+          <DetailIdentity detail={detail} />
         </div>
-
-        {sections.length === 0 && detail.sourceCitations.length === 0 ? null : (
-          <div className={styles.readingFlow}>
-            {sections.map((section) => (
-              <section
-                key={section.key}
-                className={styles.readingSection}
-                data-detail-section={section.key}
-              >
-                <h2>{section.title}</h2>
-                <p>{section.text}</p>
-              </section>
-            ))}
-            {detail.sourceCitations.length === 0 ? null : (
-              <section
-                className={styles.readingSection}
-                data-detail-section="sources"
-              >
-                <h2>资料来源</h2>
-                <ul className={styles.sources}>
-                  {detail.sourceCitations.map((citation, index) => (
-                    <li key={`${citation.label}-${index}`}>
-                      <strong>{citation.label}</strong>
-                      {citation.citation === undefined ? null : (
-                        <span>{citation.citation}</span>
-                      )}
-                      {citation.url === undefined ? null : (
-                        <a href={citation.url} rel="noreferrer" target="_blank">
-                          查看来源
-                        </a>
-                      )}
-                      <span className={styles.citationScope}>
-                        适用于：{citation.scopeLabel}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-          </div>
-        )}
+        <DetailReadingFlow detail={detail} />
+        {commentSection}
       </>
     );
   }

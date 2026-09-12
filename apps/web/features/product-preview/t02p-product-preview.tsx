@@ -62,6 +62,7 @@ export interface T02pProductPreviewProps {
   readonly productUtility?: ReactNode;
   readonly navigationAction?: ReactNode;
   readonly quickActions?: ContentQuickActionEnvironment;
+  readonly renderCommentSection?: (catalogId: string) => ReactNode;
   readonly showDevelopmentPagerControls?: boolean;
   readonly states: T02pDevelopmentCatalogDestinationStates;
 }
@@ -74,8 +75,9 @@ export const T02pProductPreview = ({
   initialTopicId = null,
   productUtility,
   navigationAction,
-  showDevelopmentPagerControls = false,
   quickActions,
+  renderCommentSection,
+  showDevelopmentPagerControls = false,
   states,
 }: T02pProductPreviewProps) => (
   <div data-clean-product-preview="">
@@ -112,6 +114,7 @@ export const T02pProductPreview = ({
         <PreviewCatalogDetailOverlay
           backButtonRef={backButtonRef}
           catalogId={catalogId}
+          commentSection={renderCommentSection?.(catalogId)}
           initialScrollTop={initialScrollTop}
           loader={catalogDetailLoader}
           onClose={onClose}
