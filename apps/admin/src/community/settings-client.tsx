@@ -93,13 +93,20 @@ export const CommunitySettingsClient = () => {
         </p>
       ) : null}
 
-      <div aria-label="发布模式" className={styles.tabs} role="radiogroup">
+      {/* Options are unavailable only until the current mode is known; while a
+          switch is in flight the group is busy and clicks are ignored. */}
+      <div
+        aria-busy={busy}
+        aria-label="发布模式"
+        className={styles.tabs}
+        role="radiogroup"
+      >
         {policies.map((option) => (
           <button
             aria-checked={policy?.policy === option}
             className={styles.option}
             data-policy-option={option}
-            disabled={busy && policy?.policy !== option}
+            disabled={policy === null}
             key={option}
             onClick={() => void choose(option)}
             role="radio"

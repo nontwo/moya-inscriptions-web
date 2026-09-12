@@ -49,10 +49,12 @@ const hints: Record<string, string> = {
 };
 
 export const failureMessage = (code: string): string =>
-  messages[code] ?? messages.OPERATION_FAILED!;
+  (Object.hasOwn(messages, code) ? messages[code] : undefined) ??
+  messages.OPERATION_FAILED!;
 
 export const failureHint = (code: string): string =>
-  hints[code] ?? hints.OPERATION_FAILED!;
+  (Object.hasOwn(hints, code) ? hints[code] : undefined) ??
+  hints.OPERATION_FAILED!;
 
 export const describeFailure = (
   error: unknown,

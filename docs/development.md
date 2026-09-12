@@ -130,8 +130,11 @@ Catalog record and reply once under a root comment. Reads are anonymous:
 - `POST` on either path requires the session cookie. `201` means the submission
   is visible; `202` means it entered moderation and awaits Owner approval.
 
-The Owner moderates in Payload Admin (sign in at `http://127.0.0.1:3002/admin`;
-the sidebar group 社区 and the workspace card lead there):
+The Owner moderates in Payload Admin (sign in at `http://127.0.0.1:3002/admin`).
+The sidebar is grouped around
+work: 内容 (资料, 媒体), 社区 (审核队列, 发布设置, 操作历史), 系统与自动化 (操作身份, 批次发布批准, 批处理回执,
+API 密钥) and自动化工具 (编辑批处理工作流); the workspace card on the dashboard
+leads to the Community views:
 
 - `/admin/community-moderation` — the review queue, the primary working surface.
   It lists root comments and replies together with status tabs
@@ -159,6 +162,12 @@ the sidebar group 社区 and the workspace card lead there):
   never bypasses a pending or hidden root.
 - `/admin/community-moderation/history` — the operation history, straight from
   the audit table, filterable by action.
+- The 资料 filter offers the records present on the current page (plus the one
+  already chosen); any record can also be addressed directly through the
+  `?catalog=` query. Three pages of synthetic queue items for this workspace
+  come from `infra/development/community-acceptance-queue.sql`, applied by hand
+  after `dev:migrate` and the acceptance comments:
+  `docker compose -f compose.dev.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U yoyi_dev_owner -d yoyi_dev -f - < infra/development/community-acceptance-queue.sql`.
 
 Selected tabs and mode options are black with white text; unselected ones light
 gray with dark text (`aria-selected` / `aria-checked`, never a disabled look).

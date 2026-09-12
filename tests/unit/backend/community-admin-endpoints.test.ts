@@ -62,7 +62,10 @@ describe("Admin community moderation endpoint boundary", () => {
       "moderate-comment",
       request({ id: commentId, action: "approve" }),
     );
-    expect(result).toEqual({ status: 200, body: { ok: true, result: { echoed: true } } });
+    expect(result).toEqual({
+      status: 200,
+      body: { ok: true, result: { echoed: true } },
+    });
     expect(calls).toEqual([
       {
         method: "POST",
@@ -78,7 +81,10 @@ describe("Admin community moderation endpoint boundary", () => {
     ["missing action", { id: commentId }],
     ["unknown action", { id: commentId, action: "delete" }],
     ["malformed id", { id: "comment-x", action: "approve" }],
-    ["actor label", { id: commentId, action: "approve", operatorLabel: "owner" }],
+    [
+      "actor label",
+      { id: commentId, action: "approve", operatorLabel: "owner" },
+    ],
     ["non-object", "approve"],
   ])("rejects %s before any Backend call", async (_label, body) => {
     const { call, calls } = recorder();
@@ -95,19 +101,48 @@ describe("Admin community moderation endpoint boundary", () => {
     const { call, calls } = recorder();
     const endpoints = createCommunityEndpoints(call);
     for (const action of ["reject", "hide", "unhide"] as const)
-      await invoke(endpoints, "moderate-comment", request({ id: commentId, action }));
+      await invoke(
+        endpoints,
+        "moderate-comment",
+        request({ id: commentId, action }),
+      );
     for (const action of ["suspend", "reinstate"] as const)
       await invoke(endpoints, "moderate-user", request({ id: userId, action }));
     expect(calls).toEqual([
-      { method: "POST", path: `comments/${commentId}/moderation`, body: { action: "reject" } },
-      { method: "POST", path: `comments/${commentId}/moderation`, body: { action: "hide" } },
-      { method: "POST", path: `comments/${commentId}/moderation`, body: { action: "unhide" } },
-      { method: "POST", path: `users/${userId}/status`, body: { action: "suspend" } },
-      { method: "POST", path: `users/${userId}/status`, body: { action: "reinstate" } },
+      {
+        method: "POST",
+        path: `comments/${commentId}/moderation`,
+        body: { action: "reject" },
+      },
+      {
+        method: "POST",
+        path: `comments/${commentId}/moderation`,
+        body: { action: "hide" },
+      },
+      {
+        method: "POST",
+        path: `comments/${commentId}/moderation`,
+        body: { action: "unhide" },
+      },
+      {
+        method: "POST",
+        path: `users/${userId}/status`,
+        body: { action: "suspend" },
+      },
+      {
+        method: "POST",
+        path: `users/${userId}/status`,
+        body: { action: "reinstate" },
+      },
     ]);
     expect(
-      (await invoke(endpoints, "moderate-user", request({ id: commentId, action: "suspend" })))
-        .status,
+      (
+        await invoke(
+          endpoints,
+          "moderate-user",
+          request({ id: commentId, action: "suspend" }),
+        )
+      ).status,
     ).toBe(400);
   });
 
@@ -119,10 +154,20 @@ describe("Admin community moderation endpoint boundary", () => {
       (_value, index) => `comment-${index.toString(16).padStart(32, "0")}`,
     );
     expect(
-      (await invoke(endpoints, "moderate-comments", request({ action: "hide", ids }))).status,
+      (
+        await invoke(
+          endpoints,
+          "moderate-comments",
+          request({ action: "hide", ids }),
+        )
+      ).status,
     ).toBe(200);
     expect(calls).toEqual([
-      { method: "POST", path: "comments/moderation", body: { action: "hide", ids } },
+      {
+        method: "POST",
+        path: "comments/moderation",
+        body: { action: "hide", ids },
+      },
     ]);
     for (const body of [
       { action: "hide", ids: [...ids, `comment-${"f".repeat(32)}`] },
@@ -142,10 +187,20 @@ describe("Admin community moderation endpoint boundary", () => {
     await invoke(
       endpoints,
       "read-comments",
-      request({ moderation: "pending", search: "字口", order: "oldest", page: 2, pageSize: 50 }),
+      request({
+        moderation: "pending",
+        search: "字口",
+        order: "oldest",
+        page: 2,
+        pageSize: 50,
+      }),
     );
     await invoke(endpoints, "read-comment", request({ id: commentId }));
-    await invoke(endpoints, "read-events", request({ subjectId: commentId, page: 3 }));
+    await invoke(
+      endpoints,
+      "read-events",
+      request({ subjectId: commentId, page: 3 }),
+    );
     await invoke(endpoints, "read-summary", request({ range: "30d" }));
     await invoke(endpoints, "read-summary", request({}));
     expect(calls).toEqual([
@@ -154,7 +209,10 @@ describe("Admin community moderation endpoint boundary", () => {
         path: "comments?moderation=pending&search=%E5%AD%97%E5%8F%A3&order=oldest&page=2&pageSize=50",
       },
       { method: "GET", path: `comments/${commentId}` },
-      { method: "GET", path: `moderation-events?subjectId=${commentId}&page=3` },
+      {
+        method: "GET",
+        path: `moderation-events?subjectId=${commentId}&page=3`,
+      },
       { method: "GET", path: "summary?range=30d" },
       { method: "GET", path: "summary" },
     ]);
@@ -204,9 +262,18 @@ describe("Admin community moderation endpoint boundary", () => {
     }) as unknown as OperatorCall;
     const endpoints = createCommunityEndpoints(failing);
     expect(
-      await invoke(endpoints, "moderate-comment", request({ id: commentId, action: "hide" })),
-    ).toEqual({ status: 409, body: { ok: false, error: { code: "STATE_CONFLICT" } } });
-    expect(await invoke(endpoints, "read-comment", request({ id: commentId }))).toEqual({
+      await invoke(
+        endpoints,
+        "moderate-comment",
+        request({ id: commentId, action: "hide" }),
+      ),
+    ).toEqual({
+      status: 409,
+      body: { ok: false, error: { code: "STATE_CONFLICT" } },
+    });
+    expect(
+      await invoke(endpoints, "read-comment", request({ id: commentId })),
+    ).toEqual({
       status: 404,
       body: { ok: false, error: { code: "NOT_FOUND" } },
     });

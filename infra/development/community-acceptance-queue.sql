@@ -86,3 +86,32 @@ INSERT INTO community.catalog_comment_replies (id, root_comment_id, author_id, t
   ('comment-000000000000000000000eed00000047', 'comment-000000000000000000000eed0000000c', 'user-d3121116762595e78ddc5dd84e8ecf1c', '回复：碑额纹饰与邻近题刻相同。（队列回复 23）', 'hidden', '2026-09-06T18:02:30Z'::timestamptz, NULL),
   ('comment-000000000000000000000eed00000048', 'comment-000000000000000000000eed0000000c', 'user-e7f588eee9b15df8432c7a16db80ec44', '回复：感谢整理，很有帮助。（队列回复 24）', 'visible', '2026-09-06T19:13:30Z'::timestamptz, 'comment-000000000000000000000eed00000047')
 ON CONFLICT (id) DO NOTHING;
+
+-- Top-up: twenty-four more pending root comments on the same record, so the
+-- pending tab stays populated after repeated acceptance runs. Idempotent.
+INSERT INTO community.catalog_comments (id, catalog_id, author_id, text, moderation, created_at) VALUES
+  ('comment-000000000000000000000eed00000100', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '请核对第二行第三字的释读，我看到的是另一种写法。（补充待审核样例 01）', 'pending', '2026-09-09T09:00:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000101', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '补充一条：题记右侧有一处后人题名，未见于旧拓。（补充待审核样例 02）', 'pending', '2026-09-09T10:13:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000102', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '这方石刻的年号问题，县志与碑文自署并不一致。（补充待审核样例 03）', 'pending', '2026-09-09T11:26:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000103', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '建议在资料页补充现场路线与最佳观察时段。（补充待审核样例 04）', 'pending', '2026-09-09T12:39:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000104', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '拓片上的补描痕迹需要说明，以免误导后来者。（补充待审核样例 05）', 'pending', '2026-09-09T13:52:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000105', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '字口风化程度与上次考察相比有明显变化。（补充待审核样例 06）', 'pending', '2026-09-09T14:05:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000106', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '此处“年”字的写法与同期造像记相近，可作旁证。（补充待审核样例 07）', 'pending', '2026-09-09T15:18:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000107', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '关于书者身份的推测，建议注明依据与出处。（补充待审核样例 08）', 'pending', '2026-09-09T16:31:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000108', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '请核对第二行第三字的释读，我看到的是另一种写法。（补充待审核样例 09）', 'pending', '2026-09-10T09:44:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000109', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '补充一条：题记右侧有一处后人题名，未见于旧拓。（补充待审核样例 10）', 'pending', '2026-09-10T10:57:00Z'::timestamptz),
+  ('comment-000000000000000000000eed0000010a', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '这方石刻的年号问题，县志与碑文自署并不一致。（补充待审核样例 11）', 'pending', '2026-09-10T11:10:00Z'::timestamptz),
+  ('comment-000000000000000000000eed0000010b', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '建议在资料页补充现场路线与最佳观察时段。（补充待审核样例 12）', 'pending', '2026-09-10T12:23:00Z'::timestamptz),
+  ('comment-000000000000000000000eed0000010c', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '拓片上的补描痕迹需要说明，以免误导后来者。（补充待审核样例 13）', 'pending', '2026-09-10T13:36:00Z'::timestamptz),
+  ('comment-000000000000000000000eed0000010d', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '字口风化程度与上次考察相比有明显变化。（补充待审核样例 14）', 'pending', '2026-09-10T14:49:00Z'::timestamptz),
+  ('comment-000000000000000000000eed0000010e', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '此处“年”字的写法与同期造像记相近，可作旁证。（补充待审核样例 15）', 'pending', '2026-09-10T15:02:00Z'::timestamptz),
+  ('comment-000000000000000000000eed0000010f', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '关于书者身份的推测，建议注明依据与出处。（补充待审核样例 16）', 'pending', '2026-09-10T16:15:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000110', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '请核对第二行第三字的释读，我看到的是另一种写法。（补充待审核样例 17）', 'pending', '2026-09-11T09:28:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000111', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '补充一条：题记右侧有一处后人题名，未见于旧拓。（补充待审核样例 18）', 'pending', '2026-09-11T10:41:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000112', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '这方石刻的年号问题，县志与碑文自署并不一致。（补充待审核样例 19）', 'pending', '2026-09-11T11:54:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000113', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '建议在资料页补充现场路线与最佳观察时段。（补充待审核样例 20）', 'pending', '2026-09-11T12:07:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000114', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '拓片上的补描痕迹需要说明，以免误导后来者。（补充待审核样例 21）', 'pending', '2026-09-11T13:20:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000115', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '字口风化程度与上次考察相比有明显变化。（补充待审核样例 22）', 'pending', '2026-09-11T14:33:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000116', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '此处“年”字的写法与同期造像记相近，可作旁证。（补充待审核样例 23）', 'pending', '2026-09-11T15:46:00Z'::timestamptz),
+  ('comment-000000000000000000000eed00000117', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '关于书者身份的推测，建议注明依据与出处。（补充待审核样例 24）', 'pending', '2026-09-11T16:59:00Z'::timestamptz)
+ON CONFLICT (id) DO NOTHING;

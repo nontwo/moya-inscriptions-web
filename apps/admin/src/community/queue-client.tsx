@@ -82,7 +82,7 @@ const readQuery = (params: URLSearchParams): QueueQuery => {
     status: statuses.includes(status as Status)
       ? (status as Status)
       : "pending",
-    q: (params.get("q") ?? "").slice(0, 100),
+    q: (params.get("q") ?? "").trim().slice(0, 100),
     kind: kind === "comment" || kind === "reply" ? kind : "all",
     catalog: (params.get("catalog") ?? "").slice(0, 128),
     order: order === "oldest" ? "oldest" : "newest",
@@ -153,7 +153,10 @@ export const CommunityQueueClient = () => {
   const [bulkAction, setBulkAction] =
     useState<CommentModerationAction>("approve");
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkFailed, setBulkFailed] = useState<readonly string[]>([]);
+  const [bulkFailed, setBulkFailed] = useState<{
+    readonly action: CommentModerationAction;
+    readonly ids: readonly string[];
+  } | null>(null);
   const [pendingSuspension, setPendingSuspension] =
     useState<OperatorComment | null>(null);
   const [detail, setDetail] = useState<
@@ -222,7 +225,7 @@ export const CommunityQueueClient = () => {
   useEffect(() => {
     void load();
     setSelected(new Set());
-    setBulkFailed([]);
+    setBulkFailed(null);
   }, [load]);
 
   useEffect(() => {
@@ -297,10 +300,16 @@ export const CommunityQueueClient = () => {
       };
     });
 
+  // A refresh after an action competes with a newer open: the sequence
+  // decides, so an older answer never overwrites the item the URL names.
   const refreshDetailIfOpen = (id: string) => {
     if (query.item !== id) return;
+    const sequence = (detailSequence.current += 1);
     void call<OperatorCommentDetail>("read-comment", { id })
-      .then((data) => setDetail({ state: "ready", id, data }))
+      .then((data) => {
+        if (sequence === detailSequence.current)
+          setDetail({ state: "ready", id, data });
+      })
       .catch(() => undefined);
   };
 
@@ -373,12 +382,15 @@ export const CommunityQueueClient = () => {
     }
   };
 
-  const runBulk = async (ids: readonly string[]) => {
+  const runBulk = async (
+    action: CommentModerationAction,
+    ids: readonly string[],
+  ) => {
     if (ids.length === 0 || ids.length > BULK_LIMIT) return;
     setBulkBusy(true);
     try {
       const result = await call<BulkModerationResult>("moderate-comments", {
-        action: bulkAction,
+        action,
         ids,
       });
       const failed: string[] = [];
@@ -407,7 +419,9 @@ export const CommunityQueueClient = () => {
           });
         }
       }
-      setBulkFailed(failed);
+      setBulkFailed(
+        failed.length === 0 ? null : { action: result.action, ids: failed },
+      );
       setSelected(new Set(failed));
       setReceipt({
         tone:
@@ -528,6 +542,7 @@ export const CommunityQueueClient = () => {
             className={styles.tab}
             key={status}
             onClick={() => navigate({ status, page: 1 })}
+            aria-controls="community-queue-list"
             role="tab"
             type="button"
           >
@@ -661,14 +676,15 @@ export const CommunityQueueClient = () => {
           >
             {bulkBusy ? "处理中…" : "执行批量操作…"}
           </button>
-          {bulkFailed.length === 0 ? null : (
+          {bulkFailed === null ? null : (
             <button
               className={styles.actionButton}
               disabled={bulkBusy}
-              onClick={() => void runBulk(bulkFailed)}
+              onClick={() => void runBulk(bulkFailed.action, bulkFailed.ids)}
               type="button"
             >
-              重试失败项（{bulkFailed.length}）
+              重试失败项（{bulkFailed.ids.length}，
+              {bulkActionLabels[bulkFailed.action]}）
             </button>
           )}
           <button
@@ -685,7 +701,13 @@ export const CommunityQueueClient = () => {
         className={styles.layout}
         data-panel-open={query.item === null ? "false" : "true"}
       >
-        <section aria-busy={loading} aria-label="评论列表" data-queue-list="">
+        <section
+          aria-busy={loading}
+          aria-label="评论列表"
+          data-queue-list=""
+          id="community-queue-list"
+          role="tabpanel"
+        >
           {loadError !== null ? (
             <p className={styles.state} data-queue-error="" role="alert">
               无法加载队列：{loadError}{" "}
@@ -908,7 +930,7 @@ export const CommunityQueueClient = () => {
         modalSlug="community-bulk-confirm"
         onConfirm={async () => {
           closeModal("community-bulk-confirm");
-          await runBulk([...selected]);
+          await runBulk(bulkAction, [...selected]);
         }}
       />
       <ConfirmationModal

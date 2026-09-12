@@ -30,7 +30,7 @@ const readQuery = (params: URLSearchParams) => {
       ? (action as ModerationEventAction)
       : "all",
     subject: (params.get("subject") ?? "").slice(0, 128),
-    page: Number.isInteger(page) && page >= 1 ? page : 1,
+    page: Number.isInteger(page) && page >= 1 && page <= 10_000 ? page : 1,
   };
 };
 
