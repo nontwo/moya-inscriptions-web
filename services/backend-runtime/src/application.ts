@@ -5,12 +5,20 @@ import {
 } from "./catalog/development-catalog-fixture.js";
 import { createRouter } from "./http/router.js";
 
-import { CatalogReadService, CommunitySessionService } from "@moya/api";
+import {
+  CatalogCommentService,
+  CatalogReadService,
+  CommunityModerationService,
+  CommunitySessionService,
+} from "@moya/api";
 import { MappedStorageUrlResolver } from "@moya/image";
 
 import type {
+  CatalogPublicationPort,
+  CommentAnalysisPort,
   CatalogQueryPort,
   CatalogSearchQueryPort,
+  CommunityCommentPort,
   CommunityIdentityPort,
   StorageUrlResolver,
 } from "@moya/api";
@@ -27,6 +35,14 @@ export interface BackendApplicationOptions {
   readonly healthReadinessCheck?: HealthReadinessCheck;
   /** Backend-owned identity and sessions; without it every credential is unauthenticated. */
   readonly communityIdentityPort?: CommunityIdentityPort;
+  /** Comments, moderation and the publication setting; requires the identity port. */
+  readonly communityCommentPort?: CommunityCommentPort;
+  /** Answers whether a Catalog record is currently published, from the Catalog read side. */
+  readonly catalogPublicationPort?: CatalogPublicationPort;
+  /** Advisory analysis provider; absent means the boundary reports "not connected". */
+  readonly communityAnalysisPort?: CommentAnalysisPort;
+  /** The Owner's operator credential; empty leaves the internal subpath closed. */
+  readonly communityOperatorCredential?: string;
 }
 
 const resolveCatalogQueryPort = ({
@@ -57,19 +73,41 @@ const resolveStorageUrlResolver = ({
   );
 };
 
-// Without an identity port no session can exist and no Development entry is
-// composed; the production composition root always wires the App-role adapter.
-// The Development sign-in entry itself exists only under NODE_ENV=development.
-const resolveCommunity = ({
-  nodeEnv,
-  communityIdentityPort,
-}: BackendApplicationOptions): CommunityRouterDependencies | undefined =>
-  communityIdentityPort === undefined
-    ? undefined
-    : {
-        sessionService: new CommunitySessionService(communityIdentityPort),
-        developmentEntry: nodeEnv === "development",
-      };
+// Without an identity and comment port no session or comment can exist and no
+// community route is composed; the production composition root always wires the
+// App-role adapters. The Development sign-in entry itself exists only under
+// NODE_ENV=development, and the operator boundary only with a credential.
+const resolveCommunity = (
+  options: BackendApplicationOptions,
+  catalogPublicationPort: CatalogPublicationPort,
+): CommunityRouterDependencies | undefined => {
+  const { nodeEnv, communityIdentityPort, communityCommentPort } = options;
+  if (communityIdentityPort === undefined) return undefined;
+  return {
+    sessionService: new CommunitySessionService(communityIdentityPort),
+    developmentEntry: nodeEnv === "development",
+    // Comments and moderation need their own port; identity works without it.
+    ...(communityCommentPort === undefined
+      ? {}
+      : {
+          commentService: new CatalogCommentService(
+            communityCommentPort,
+            catalogPublicationPort,
+          ),
+          moderationService: new CommunityModerationService(
+            communityCommentPort,
+            communityIdentityPort,
+            catalogPublicationPort,
+            {
+              ...(options.communityAnalysisPort === undefined
+                ? {}
+                : { analysisPort: options.communityAnalysisPort }),
+            },
+          ),
+        }),
+    operatorCredential: options.communityOperatorCredential ?? "",
+  };
+};
 
 /** Composes the HTTP listener before any TCP listener is created. */
 export const createBackendApplication = (
@@ -77,7 +115,17 @@ export const createBackendApplication = (
 ): RequestListener => {
   const catalogQueryPort = resolveCatalogQueryPort(options);
   const storageUrlResolver = resolveStorageUrlResolver(options);
-  const community = resolveCommunity(options);
+  const community = resolveCommunity(
+    options,
+    options.catalogPublicationPort ?? {
+      // A comment may only attach to a record the Catalog read side publishes;
+      // the same read side names the record in the Owner's review queue.
+      isPublished: async (catalogId) =>
+        (await catalogQueryPort.getById(catalogId)) !== null,
+      readTitle: async (catalogId) =>
+        (await catalogQueryPort.getById(catalogId))?.title ?? null,
+    },
+  );
   return createRouter({
     catalogReadService: new CatalogReadService(
       catalogQueryPort,

@@ -6,6 +6,8 @@ import { OwnerWorkflowNavLink as OwnerWorkflowNavLink_6a09c844bba2e571e3fc421615
 import { S3ClientUploadHandler as S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24 } from "@payloadcms/storage-s3/client";
 import { OwnerWorkflowView as OwnerWorkflowView_6be79d619593d3e50db1d13a833f41ac } from "../../../src/owner-workflow/View";
 import { OwnerWithdrawButton as OwnerWithdrawButton_9e998a9a7cb97e1d133b14fcf3c6aaf1 } from "../../../src/owner-workflow/OwnerWithdrawButton";
+import { CommunityModerationNavLink as CommunityModerationNavLink_3f5f0a1f5b0d4b0a8f2f4a6c9d1e7b03 } from "../../../src/community/NavLink";
+import { CommunityModerationView as CommunityModerationView_4a2c8d6e0b1f47a29c3d5e8f70b1a642 } from "../../../src/community/View";
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from "@payloadcms/next/rsc";
 
 /** @type import('payload').ImportMap */
@@ -26,6 +28,10 @@ export const importMap = {
     OwnerWorkflowView_6be79d619593d3e50db1d13a833f41ac,
   "/src/owner-workflow/OwnerWithdrawButton#OwnerWithdrawButton":
     OwnerWithdrawButton_9e998a9a7cb97e1d133b14fcf3c6aaf1,
+  "/src/community/NavLink#CommunityModerationNavLink":
+    CommunityModerationNavLink_3f5f0a1f5b0d4b0a8f2f4a6c9d1e7b03,
+  "/src/community/View#CommunityModerationView":
+    CommunityModerationView_4a2c8d6e0b1f47a29c3d5e8f70b1a642,
   "@payloadcms/next/rsc#CollectionCards":
     CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1,
 };

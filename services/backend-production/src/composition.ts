@@ -12,6 +12,7 @@ import {
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
 import {
+  PostgresCommunityCommentAdapter,
   PostgresCommunityIdentityAdapter,
   verifyCommunityMigrationLedger,
 } from "@moya/community-postgres";
@@ -107,6 +108,21 @@ const parseCommunityPostgresConfig = (
   }
 };
 
+/**
+ * The Owner's operator credential. It is optional: without it the loopback-only
+ * internal subpath rejects every request, so a missing value fails closed
+ * instead of opening the moderation boundary.
+ */
+const parseOperatorCredential = (environment: RuntimeEnvironment): string => {
+  const value = environment.COMMUNITY_OPERATOR_TOKEN;
+  if (value === undefined || value === "") return "";
+  if (value.trim() !== value || value.length < 32 || value.length > 512)
+    throw new Error(
+      "COMMUNITY_OPERATOR_TOKEN must be 32 to 512 characters without surrounding whitespace",
+    );
+  return value;
+};
+
 export const prepareProductionBackend = async (
   environment: RuntimeEnvironment,
 ): Promise<PreparedProductionBackend> => {
@@ -182,6 +198,9 @@ export const prepareProductionBackend = async (
   const communityIdentityPort = new PostgresCommunityIdentityAdapter(
     communityPool,
   );
+  const communityCommentPort = new PostgresCommunityCommentAdapter(
+    communityPool,
+  );
   const readinessCheck = async (): Promise<void> => {
     await checkPostgresReadiness(pool);
     await checkPostgresReadiness(communityPool);
@@ -196,6 +215,16 @@ export const prepareProductionBackend = async (
       storageUrlResolver,
       healthReadinessCheck: readinessCheck,
       communityIdentityPort,
+      communityCommentPort,
+      // A comment attaches only to a currently published Catalog record; the
+      // published read role answers that, so the App role needs no Catalog grant.
+      catalogPublicationPort: {
+        isPublished: async (catalogId) =>
+          (await catalogQueryPort.getById(catalogId)) !== null,
+        readTitle: async (catalogId) =>
+          (await catalogQueryPort.getById(catalogId))?.title ?? null,
+      },
+      communityOperatorCredential: parseOperatorCredential(environment),
     }),
     closeResources,
   };

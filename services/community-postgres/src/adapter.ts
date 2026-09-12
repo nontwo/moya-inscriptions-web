@@ -1,5 +1,10 @@
 import { asCommunityOperationError } from "./availability.js";
 import {
+  findUserByIdSql,
+  revokeUserSessionsSql,
+  setUserStatusSql,
+} from "./comment-queries.js";
+import {
   findDevelopmentAccountByHandleSql,
   findSessionUserSql,
   insertSessionSql,
@@ -13,6 +18,7 @@ import type {
   PublicUserRecord,
   SessionRecordInput,
 } from "@moya/api";
+import type { PublicUserId } from "@moya/contracts";
 import type { Pool } from "pg";
 
 /** App-role adapter: DML only on the community namespace, never DDL. */
@@ -58,6 +64,55 @@ export class PostgresCommunityIdentityAdapter implements CommunityIdentityPort {
       const result = await client.query(revokeSessionSql, [tokenHash, now]);
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
+      throw asCommunityOperationError(error, "query");
+    } finally {
+      client.release();
+    }
+  }
+
+  async findUserById(id: PublicUserId): Promise<PublicUserRecord | null> {
+    const result = await this.query<PublicUserRow>(findUserByIdSql, [id]);
+    const row = result[0];
+    return row === undefined ? null : mapPublicUserRow(row);
+  }
+
+  /** Status and session revocation move together or not at all. */
+  async setUserStatus(
+    id: PublicUserId,
+    status: PublicUserRecord["status"],
+    at: Date,
+  ): Promise<{
+    readonly user: PublicUserRecord;
+    readonly revokedSessions: number;
+  } | null> {
+    const client = await this.connect();
+    try {
+      await client.query("BEGIN");
+      const updated = await client.query<PublicUserRow>(setUserStatusSql, [
+        id,
+        status,
+        at,
+      ]);
+      const row = updated.rows[0];
+      if (row === undefined) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const revoked =
+        status === "suspended"
+          ? await client.query(revokeUserSessionsSql, [id, at])
+          : undefined;
+      await client.query("COMMIT");
+      return {
+        user: mapPublicUserRow(row),
+        revokedSessions: revoked?.rowCount ?? 0,
+      };
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // Preserve the original failure.
+      }
       throw asCommunityOperationError(error, "query");
     } finally {
       client.release();

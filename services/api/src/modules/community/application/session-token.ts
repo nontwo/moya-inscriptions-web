@@ -24,9 +24,15 @@ export const generateSessionToken = (
   randomBytes: RandomBytes = defaultRandomBytes,
 ): string => toBase64Url(randomBytes(sessionTokenBytes));
 
+/** Opaque, platform-generated row identity; never a serial or a provider id. */
+export const generateOpaqueId = (
+  prefix: string,
+  randomBytes: RandomBytes = defaultRandomBytes,
+): string => `${prefix}-${toHex(randomBytes(16))}`;
+
 export const generateSessionId = (
   randomBytes: RandomBytes = defaultRandomBytes,
-): string => `session-${toHex(randomBytes(16))}`;
+): string => generateOpaqueId("session", randomBytes);
 
 export const isSessionTokenShape = (token: string): boolean =>
   sessionTokenPattern.test(token);

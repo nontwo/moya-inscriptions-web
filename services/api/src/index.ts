@@ -25,8 +25,44 @@ export {
   CommunityStoreUnavailableError,
   isCommunityStoreUnavailableError,
 } from "./modules/community/application/errors/community-store-unavailable-error.js";
+export {
+  CommunityInputError,
+  CommunityConflictError,
+  CommunityNotFoundError,
+  isCommunityConflictError,
+  isCommunityInputError,
+  isCommunityNotFoundError,
+} from "./modules/community/application/errors/community-request-errors.js";
+export { DisabledCommentAnalysisPort } from "./modules/community/application/ports/comment-analysis-port.js";
+export type {
+  CommentAnalysisPort,
+  CommentAnalysisTarget,
+} from "./modules/community/application/ports/comment-analysis-port.js";
 export { mapPublicUserProfile } from "./modules/community/application/mappers/community-public-contract-mapper.js";
+export { CatalogCommentService } from "./modules/community/application/services/catalog-comment-service.js";
+export { CommunityModerationService } from "./modules/community/application/services/community-moderation-service.js";
 export { CommunitySessionService } from "./modules/community/application/services/community-session-service.js";
+export type {
+  CatalogCommentServiceOptions,
+  CommentListingInput,
+  CommentPageInput,
+  CommentSubmission,
+} from "./modules/community/application/services/catalog-comment-service.js";
+export { COMMENT_EMBEDDED_REPLY_LIMIT } from "./modules/community/application/services/catalog-comment-service.js";
+export { COMMENT_HOT_LIMIT } from "./modules/community/application/mappers/community-public-contract-mapper.js";
+export {
+  COMMENT_PAGE_SIZE_DEFAULT,
+  COMMENT_REPLY_PAGE_SIZE_DEFAULT,
+  parseCommentListingQuery,
+  parseCommentPageQuery,
+  parseCreateCommentRequest,
+  parseCreateReplyRequest,
+} from "./modules/community/transport/comment-request-parsers.js";
+export type {
+  CommentListingRequest,
+  CommentPageRequest,
+} from "./modules/community/transport/comment-request-parsers.js";
+export type { CommunityModerationServiceOptions } from "./modules/community/application/services/community-moderation-service.js";
 export type {
   CommunitySessionServiceOptions,
   DevelopmentSessionGrant,
@@ -35,6 +71,32 @@ export type {
   CommunityIdentityPort,
   SessionRecordInput,
 } from "./modules/community/application/ports/community-identity-port.js";
+export type { CatalogPublicationPort } from "./modules/community/application/ports/catalog-publication-port.js";
+export type {
+  CommentInsert,
+  CommentPageQuery,
+  CommunityCommentPort,
+  ModeratedSubject,
+  ModerationEvent,
+  ModerationEventAction,
+  ModerationEventDraft,
+  ModerationEventQueryInput,
+  ModerationSummaryRecord,
+  OperatorCommentListing,
+  OperatorCommentQueryInput,
+  OperatorCommentRecord,
+  OperatorQueueCountsRecord,
+  ReplyInsert,
+  ReplyPageQuery,
+} from "./modules/community/application/ports/community-comment-port.js";
+export type {
+  CatalogCommentRecord,
+  CatalogCommentReplyRecord,
+  CatalogCommentWithReplies,
+  CommentAuthorRecord,
+  CommentListingRecord,
+  CommentPageRecord,
+} from "./modules/community/domain/catalog-comment.js";
 export type {
   PublicUserRecord,
   PublicUserStatus,

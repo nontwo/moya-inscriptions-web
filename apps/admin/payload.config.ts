@@ -14,6 +14,7 @@ import {
   EditorialReceipts,
   editorialEndpoints,
 } from "./src/editorial";
+import { communityEndpoints } from "./src/community/endpoints";
 import { editorialMcp } from "./src/mcp";
 import { createMediaCollection } from "./src/media/collection";
 import { createEditorialStoragePlugin } from "./src/media/storage";
@@ -48,8 +49,16 @@ export default buildConfig({
           path: "/editorial-workflow",
           exact: true,
         },
+        communityModeration: {
+          Component: "/src/community/View#CommunityModerationView",
+          path: "/community-moderation",
+          exact: true,
+        },
       },
-      afterNavLinks: ["/src/owner-workflow/NavLink#OwnerWorkflowNavLink"],
+      afterNavLinks: [
+        "/src/owner-workflow/NavLink#OwnerWorkflowNavLink",
+        "/src/community/NavLink#CommunityModerationNavLink",
+      ],
     },
   },
   i18n: { fallbackLanguage: "zh", supportedLanguages: { zh } },
@@ -123,7 +132,11 @@ export default buildConfig({
     EditorialApprovals,
     EditorialReceipts,
   ],
-  endpoints: [...editorialEndpoints, editorialPreviewEndpoint],
+  endpoints: [
+    ...editorialEndpoints,
+    ...communityEndpoints,
+    editorialPreviewEndpoint,
+  ],
   plugins: [createEditorialStoragePlugin(), editorialMcp()],
   typescript: { outputFile: path.resolve(dirname, "src/payload-types.ts") },
 });

@@ -10,18 +10,10 @@ import { sendApiError } from "../http/api-error-response.js";
 import { readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
+import { readBearerToken } from "./session-credential.js";
 
 import type { CommunitySessionService } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
-
-const bearerPattern = /^Bearer ([A-Za-z0-9_-]{43})$/;
-
-/** The opaque bearer credential relayed by Web; anything else is unauthenticated. */
-const readBearerToken = (request: IncomingMessage): string | undefined => {
-  const header = request.headers.authorization;
-  if (typeof header !== "string") return undefined;
-  return bearerPattern.exec(header)?.[1];
-};
 
 const hasQuery = (request: IncomingMessage): boolean => {
   const url = new URL(request.url ?? "/", "http://request.invalid");

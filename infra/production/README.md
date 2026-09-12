@@ -174,11 +174,31 @@ never placed in `backend.env`). The Backend refuses to start without
 the order is fixed: provision the App role → `pnpm db:migrate:community` with
 the migration role → apply the App-role grants → set `APP_DATABASE_URL` in
 `backend.env` → restart the Backend; restarting before those steps fails closed.
-No Production sign-in path exists: the Development test-account entry is
-composed only under `NODE_ENV=development`, and external identity providers
-remain deferred. Payload users remain owner/automation only. Future UGC media
-receives an independent storage boundary. QA filtering remains QA-only; no
-hard-coded dynasty/script/type/region taxonomy enters production contracts or
-tables. This task prepares the existing code and local development environment
-to connect future CVM/TencentDB/COS; it does not release those domains or
-resources.
+Mission 2B adds comments, the publication setting and the moderation audit in
+the same namespace under the same role (`SELECT, INSERT, UPDATE` on the two
+comment tables, `SELECT, UPDATE` on `community.publication_setting`,
+`SELECT, INSERT` on `community.moderation_events`, column-only
+`UPDATE (status, updated_at)` on `community.public_users`; still no DELETE and
+no DDL anywhere). It also adds `COMMUNITY_OPERATOR_TOKEN`: a 32-512 character
+shared credential Admin holds server-side to reach the Backend's loopback-only
+`/internal/community/*` boundary, and `COMMUNITY_OPERATOR_BASE_URL`, the
+dedicated origin Admin calls it on. Put the same token in `backend.env` and
+`admin.env`, rotate them together, and never expose it to a browser or a public
+ingress; leaving it unset keeps the boundary closed and the Owner's moderation
+view reports that it is not configured. The base URL must resolve to loopback
+whatever its scheme, and Admin refuses to start a call otherwise. Admin's own
+moderation endpoints answer under `/api/community-moderation/*`, clear of the
+public `/api/community/*` read surface; each validates its complete request
+envelope strictly and forwards only the command body to the Backend route.
+Forward migration `20260912100000` adds the audited `reject` action (pending →
+hidden) and an index for per-item history; deploy it before restarting the
+Backend, which verifies the ledger read-only. Nginx forwards no `/internal/`
+path and the Backend listens on loopback only, so that boundary is never
+publicly reachable. No Production sign-in path exists: the Development
+test-account entry is composed only under `NODE_ENV=development`, and external
+identity providers remain deferred. Payload users remain owner/automation only.
+Future UGC media receives an independent storage boundary. QA filtering remains
+QA-only; no hard-coded dynasty/script/type/region taxonomy enters production
+contracts or tables. This task prepares the existing code and local development
+environment to connect future CVM/TencentDB/COS; it does not release those
+domains or resources.

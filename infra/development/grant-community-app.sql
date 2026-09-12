@@ -16,5 +16,17 @@ GRANT SELECT ON TABLE
   community.development_accounts
 TO yoyi_dev_app;
 GRANT SELECT, INSERT, UPDATE ON TABLE community.sessions TO yoyi_dev_app;
+-- Suspension flips only the account status; handles and ids stay immutable.
+GRANT UPDATE (status, updated_at) ON TABLE community.public_users
+TO yoyi_dev_app;
+-- The Backend is the sole writer of comments and moderation state. Nothing is
+-- deleted, so no DELETE is granted anywhere in the namespace.
+GRANT SELECT, INSERT, UPDATE ON TABLE
+  community.catalog_comments,
+  community.catalog_comment_replies
+TO yoyi_dev_app;
+GRANT SELECT, UPDATE ON TABLE community.publication_setting TO yoyi_dev_app;
+-- The moderation audit is append-only for the runtime role.
+GRANT SELECT, INSERT ON TABLE community.moderation_events TO yoyi_dev_app;
 -- Startup readiness verifies the community ledger read-only.
 GRANT SELECT ON TABLE community.schema_migrations TO yoyi_dev_app;

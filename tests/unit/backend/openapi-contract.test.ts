@@ -3,10 +3,20 @@ import { readFile } from "node:fs/promises";
 import {
   apiErrorJsonSchema,
   catalogCitationScopeJsonSchema,
+  catalogCommentIdJsonSchema,
+  catalogCommentJsonSchema,
+  catalogCommentPageJsonSchema,
+  catalogCommentReplyJsonSchema,
+  catalogCommentReplyPageJsonSchema,
+  catalogCommentListingTransportQueryJsonSchema,
+  catalogCommentTransportQueryJsonSchema,
   catalogContributorJsonSchema,
   catalogContributorRoleJsonSchema,
   catalogDetailJsonSchema,
   catalogIdJsonSchema,
+  commentAuthorJsonSchema,
+  createCatalogCommentReplyRequestJsonSchema,
+  createCatalogCommentRequestJsonSchema,
   catalogKindJsonSchema,
   catalogListTransportQueryJsonSchema,
   catalogPageJsonSchema,
@@ -46,7 +56,7 @@ const requiredProperties = (schema: unknown): string[] =>
   (asObject(schema).required ?? []) as string[];
 
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
-  it("contains exactly the four approved Catalog read routes and the current-user route", () => {
+  it("contains exactly the approved Catalog read, current-user and comment routes", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.jsonSchemaDialect).toBe(
       "https://json-schema.org/draft/2020-12/schema",
@@ -57,11 +67,14 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/health",
         "/v1/catalog",
         "/v1/catalog/{catalogId}",
+        "/v1/catalog/{catalogId}/comments",
+        "/v1/catalog/{catalogId}/comments/{commentId}/replies",
         "/v1/catalog-search",
         "/v1/me",
       ].sort(),
     );
-    // The Development session lifecycle is not a Public API operation.
+    // The Development session lifecycle is not a Public API operation, and the
+    // Owner's operator boundary is an internal subpath, never documented here.
     expect(paths).not.toHaveProperty("/v1/development/sign-in");
     expect(paths).not.toHaveProperty("/v1/development/sign-out");
     expect(paths).not.toHaveProperty("/v1/items");
@@ -69,9 +82,26 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     expect(paths).not.toHaveProperty("/v1/search");
     expect(paths).not.toHaveProperty("/v1/categories");
     expect(paths).not.toHaveProperty("/v1/taxonomies");
+    for (const name of Object.keys(paths))
+      expect(name).not.toMatch(/internal|moderation|publication|operator/iu);
+    const operationIds = Object.values(paths).flatMap((pathItem) =>
+      Object.values(asObject(pathItem)).map((operation) =>
+        String(asObject(operation).operationId),
+      ),
+    );
+    for (const operationId of operationIds)
+      expect(operationId).not.toMatch(
+        /internal|moderate|publication|operator|suspend/iu,
+      );
 
-    for (const pathItem of Object.values(paths)) {
-      expect(Object.keys(asObject(pathItem))).toEqual(["get"]);
+    const writePaths = new Set([
+      "/v1/catalog/{catalogId}/comments",
+      "/v1/catalog/{catalogId}/comments/{commentId}/replies",
+    ]);
+    for (const [name, pathItem] of Object.entries(paths)) {
+      expect(Object.keys(asObject(pathItem))).toEqual(
+        writePaths.has(name) ? ["get", "post"] : ["get"],
+      );
     }
 
     expect(
@@ -105,8 +135,137 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/catalog",
       "/v1/catalog/{catalogId}",
       "/v1/catalog-search",
+      // Comment reads stay anonymous.
+      "/v1/catalog/{catalogId}/comments",
+      "/v1/catalog/{catalogId}/comments/{commentId}/replies",
     ])
       expect(getOperation(operation)).not.toHaveProperty("security");
+  });
+
+  it("documents the comment operations, their session requirement and the pending outcome", () => {
+    const commentsPath = "/v1/catalog/{catalogId}/comments";
+    const repliesPath = "/v1/catalog/{catalogId}/comments/{commentId}/replies";
+    const postOperation = (name: string): JsonObject =>
+      asObject(asObject(paths[name]).post);
+
+    expect(getOperation(commentsPath).operationId).toBe("listCatalogComments");
+    expect(getOperation(repliesPath).operationId).toBe(
+      "listCatalogCommentReplies",
+    );
+    expect(postOperation(commentsPath).operationId).toBe(
+      "createCatalogComment",
+    );
+    expect(postOperation(repliesPath).operationId).toBe(
+      "createCatalogCommentReply",
+    );
+
+    for (const name of [commentsPath, repliesPath]) {
+      expect(
+        Object.keys(asObject(getOperation(name).responses)).sort(),
+      ).toEqual(["200", "400", "404", "500", "503"]);
+      // 202 is the truthful outcome while PRE_MODERATION holds the submission.
+      expect(
+        Object.keys(asObject(postOperation(name).responses)).sort(),
+      ).toEqual(["201", "202", "400", "401", "404", "422", "500", "503"]);
+      expect(postOperation(name).security).toEqual([{ session: [] }]);
+      expect(
+        asObject(asObject(postOperation(name).requestBody).content),
+      ).toHaveProperty("application/json");
+      const pageParameters = parametersFor(name).filter(
+        (parameter) => parameter.in === "query",
+      );
+      // Only the root listing takes the pinned hot ids of a load-more sequence.
+      const listing = name === commentsPath;
+      expect(pageParameters.map((parameter) => parameter.name)).toEqual(
+        listing ? ["page", "pageSize", "pinned"] : ["page", "pageSize"],
+      );
+      for (const parameter of pageParameters)
+        expect(asObject(parameter.schema)).toEqual(
+          schemaProperty(
+            listing
+              ? catalogCommentListingTransportQueryJsonSchema
+              : catalogCommentTransportQueryJsonSchema,
+            String(parameter.name),
+          ),
+        );
+    }
+    expect(getOperation(commentsPath).description).toContain("hot");
+    expect(
+      asObject(asObject(schemas.CatalogCommentPage).properties),
+    ).toHaveProperty("hot");
+    expect(
+      asObject(asObject(schemas.CatalogComment).properties),
+    ).toHaveProperty("replyTotal");
+
+    expect(asObject(getOperation(commentsPath).responses)["200"]).toMatchObject(
+      {
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/CatalogCommentPage" },
+          },
+        },
+      },
+    );
+    expect(asObject(getOperation(repliesPath).responses)["200"]).toMatchObject({
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/CatalogCommentReplyPage" },
+        },
+      },
+    });
+    expect(responseDescription(commentsPath, "404")).toContain(
+      "ITEM_NOT_FOUND",
+    );
+    expect(
+      String(
+        asObject(asObject(postOperation(commentsPath).responses)["422"])
+          .description,
+      ),
+    ).toContain("INVALID_INPUT");
+  });
+
+  it("keeps moderation state and operator shapes out of the public comment DTOs", () => {
+    for (const name of [
+      "CatalogComment",
+      "CatalogCommentReply",
+      "CatalogCommentPage",
+      "CatalogCommentReplyPage",
+      "CommentAuthor",
+    ])
+      expect(JSON.stringify(schemas[name]).toLowerCase()).not.toMatch(
+        /moderation|pending|hidden|status|handle|operator/u,
+      );
+    expect(
+      Object.keys(asObject(asObject(schemas.CatalogComment).properties)),
+    ).toEqual([
+      "id",
+      "catalogId",
+      "author",
+      "text",
+      "createdAt",
+      "replies",
+      "replyTotal",
+    ]);
+    expect(
+      Object.keys(asObject(asObject(schemas.CatalogCommentReply).properties)),
+    ).toEqual(["id", "author", "text", "createdAt", "replyTo"]);
+    expect(requiredProperties(schemas.CatalogCommentReply)).not.toContain(
+      "replyTo",
+    );
+    expect(
+      Object.keys(asObject(asObject(schemas.CommentAuthor).properties)),
+    ).toEqual(["id", "displayName"]);
+    expect(asObject(schemas.CatalogComment).additionalProperties).toBe(false);
+    expect(
+      asObject(
+        schemaProperty(
+          asObject(asObject(schemas.CatalogCommentPage).properties).pageSize
+            ? schemas.CatalogCommentPage
+            : {},
+          "pageSize",
+        ),
+      ).maximum,
+    ).toBe(50);
   });
 
   it("exposes only the approved kind and bounded page parameters", () => {
@@ -173,6 +332,15 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       CatalogSearchPage: catalogSearchPageJsonSchema,
       PublicUserId: publicUserIdJsonSchema,
       PublicUserProfile: publicUserProfileJsonSchema,
+      CatalogCommentId: catalogCommentIdJsonSchema,
+      CommentAuthor: commentAuthorJsonSchema,
+      CatalogCommentReply: catalogCommentReplyJsonSchema,
+      CatalogComment: catalogCommentJsonSchema,
+      CatalogCommentPage: catalogCommentPageJsonSchema,
+      CatalogCommentReplyPage: catalogCommentReplyPageJsonSchema,
+      CreateCatalogCommentRequest: createCatalogCommentRequestJsonSchema,
+      CreateCatalogCommentReplyRequest:
+        createCatalogCommentReplyRequestJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     });
@@ -404,6 +572,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     ).toMatchObject({
       enum: [
         "INVALID_QUERY",
+        "INVALID_INPUT",
         "ITEM_NOT_FOUND",
         "UNAUTHENTICATED",
         "SERVICE_UNAVAILABLE",

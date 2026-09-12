@@ -314,6 +314,9 @@ importers:
       '@moya/api':
         specifier: workspace:*
         version: link:../api
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       pg:
         specifier: 8.22.0
         version: 8.22.0
