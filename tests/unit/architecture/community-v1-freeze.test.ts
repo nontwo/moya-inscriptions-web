@@ -171,6 +171,22 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     );
   });
 
+  it("keeps the live comment client behind one plain loader module (2B preview)", async () => {
+    // Client Components never touch the Web Public API boundary; the one
+    // plain module that imports the same-origin comment client is the loader
+    // that carries the DTO -> presentation mapper beside it.
+    const importers: string[] = [];
+    for (const file of await walkFiles("apps/web")) {
+      if (/\.test\.[cm]?[jt]sx?$/u.test(file)) continue;
+      const source = await read(file);
+      if (
+        /from\s+["'][^"']*public-api\/catalog-comments-client["']/u.test(source)
+      )
+        importers.push(file);
+    }
+    expect(importers).toEqual(["apps/web/features/comments/live-comments.ts"]);
+  });
+
   it("keeps every Payload endpoint path clear of the public community prefix (2B)", async () => {
     // Payload mounts its endpoints under /api, so a Payload path of
     // /community/... would land on /api/community/..., which is the public
