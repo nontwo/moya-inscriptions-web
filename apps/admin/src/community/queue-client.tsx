@@ -172,6 +172,8 @@ export const CommunityQueueClient = () => {
   const [searchDraft, setSearchDraft] = useState(query.q);
   const requestSequence = useRef(0);
   const detailSequence = useRef(0);
+  // The item currently open, readable from callbacks created before it changed.
+  const openItemRef = useRef<string | null>(null);
   // The list query excludes the open item, so opening detail never reloads.
   const listQuery = useMemo(
     () => ({
@@ -239,6 +241,7 @@ export const CommunityQueueClient = () => {
   }, []);
 
   useEffect(() => {
+    openItemRef.current = query.item;
     if (query.item === null) {
       setDetail(null);
       return;
@@ -303,7 +306,7 @@ export const CommunityQueueClient = () => {
   // A refresh after an action competes with a newer open: the sequence
   // decides, so an older answer never overwrites the item the URL names.
   const refreshDetailIfOpen = (id: string) => {
-    if (query.item !== id) return;
+    if (openItemRef.current !== id) return;
     const sequence = (detailSequence.current += 1);
     void call<OperatorCommentDetail>("read-comment", { id })
       .then((data) => {

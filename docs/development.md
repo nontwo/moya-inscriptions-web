@@ -133,7 +133,7 @@ Catalog record and reply once under a root comment. Reads are anonymous:
 The Owner moderates in Payload Admin (sign in at `http://127.0.0.1:3002/admin`).
 The sidebar is grouped around
 work: 内容 (资料, 媒体), 社区 (审核队列, 发布设置, 操作历史), 系统与自动化 (操作身份, 批次发布批准, 批处理回执,
-API 密钥) and自动化工具 (编辑批处理工作流); the workspace card on the dashboard
+API 密钥) and 自动化工具 (编辑批处理工作流); the workspace card on the dashboard
 leads to the Community views:
 
 - `/admin/community-moderation` — the review queue, the primary working surface.
