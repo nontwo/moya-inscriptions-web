@@ -39,6 +39,8 @@ import {
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
 import type {
   CanonicalCatalogImportV2Envelope,
   CatalogImportV2DryRun,
@@ -53,10 +55,7 @@ import type {
   ParsedCatalogImportV2Bundle,
 } from "@moya/catalog-importer";
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL;
-if (testDatabaseUrl === undefined) {
-  throw new Error("TEST_DATABASE_URL is required for PostgreSQL tests");
-}
+const testDatabaseUrl = requireSyntheticTestDatabaseUrl();
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const migrationsDirectory = path.join(repositoryRoot, "database", "migrations");

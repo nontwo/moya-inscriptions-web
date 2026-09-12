@@ -5,6 +5,8 @@ import {
 } from "@moya/catalog-postgres";
 import { expect, it } from "vitest";
 
+import { assertSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
 const runner = (await import(
   new URL("../../../scripts/editorial/verify-cms.mjs", import.meta.url).href
 )) as {
@@ -23,6 +25,8 @@ it.skipIf(process.env.CMS_TEST_PREFLIGHT_REGRESSION !== "1")(
       process.env,
     );
     await runner.verifyRemoteSyntheticDatabase(process.env);
+    // The shared guard refuses yoyi_dev or any unmarked database before the pool exists.
+    assertSyntheticTestDatabaseUrl(database, "CMS_TEST_DATABASE_URL");
     const pool = createPostgresPool(
       parsePostgresConfig({
         DATABASE_URL: database,

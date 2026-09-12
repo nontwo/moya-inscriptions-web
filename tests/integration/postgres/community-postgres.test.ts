@@ -26,6 +26,8 @@ import {
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
 import type { BackendProcessHandle } from "@moya/backend-runtime";
 import type {
   CatalogCommentId,
@@ -33,10 +35,7 @@ import type {
   PublicUserId,
 } from "@moya/contracts";
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL;
-if (testDatabaseUrl === undefined) {
-  throw new Error("TEST_DATABASE_URL is required for PostgreSQL tests");
-}
+const testDatabaseUrl = requireSyntheticTestDatabaseUrl();
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const migrationsDirectory = path.join(
