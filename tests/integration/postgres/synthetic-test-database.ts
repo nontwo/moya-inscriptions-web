@@ -8,7 +8,8 @@
  * lost. Each suite therefore calls this guard before it creates a pool, so a
  * wrong URL fails at collection time instead of after the first DELETE.
  *
- * The functions are pure over the URL string and need no database.
+ * The functions are pure over the URL string and need no database. They check
+ * the database name only: host, port and role stay each suite's own concern.
  */
 
 /** The disposable database named by infra/env/test.env.example. */
@@ -26,7 +27,7 @@ export const SYNTHETIC_TEST_DATABASE_NAME_PATTERN =
 export const REFUSED_TEST_DATABASE_NAMES: readonly string[] = ["yoyi_dev"];
 
 const remedy = (variable: string): string =>
-  `The PostgreSQL suites DELETE and TRUNCATE rows in their target. Point ${variable} at a disposable synthetic database such as "${SYNTHETIC_TEST_DATABASE_NAME}" (see infra/env/test.env.example) or one whose name has a whole "_test" or "_synthetic" segment, for example "moya_test".`;
+  `The PostgreSQL suites DELETE and TRUNCATE rows in their target. Point ${variable} at a disposable synthetic database such as "${SYNTHETIC_TEST_DATABASE_NAME}" (see infra/env/test.env.example) or one whose name carries a whole "test" or "synthetic" segment, for example "moya_test".`;
 
 export const isSyntheticTestDatabaseName = (name: string): boolean =>
   !REFUSED_TEST_DATABASE_NAMES.includes(name.toLowerCase()) &&

@@ -24,9 +24,10 @@ it.skipIf(process.env.CMS_TEST_PREFLIGHT_REGRESSION !== "1")(
       process.env.CMS_TEST_DATABASE_URL ?? "",
       process.env,
     );
-    await runner.verifyRemoteSyntheticDatabase(process.env);
-    // The shared guard refuses yoyi_dev or any unmarked database before the pool exists.
+    // The shared guard refuses yoyi_dev or any unmarked database before the
+    // first database access: the remote preflight below connects and queries.
     assertSyntheticTestDatabaseUrl(database, "CMS_TEST_DATABASE_URL");
+    await runner.verifyRemoteSyntheticDatabase(process.env);
     const pool = createPostgresPool(
       parsePostgresConfig({
         DATABASE_URL: database,

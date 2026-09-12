@@ -70,12 +70,12 @@ describe("PostgreSQL synthetic test database guard", () => {
 
   it("names the variable, the offending database and the remedy", () => {
     expect(() => assertSyntheticTestDatabaseUrl(url("yoyi_dev"))).toThrow(
-      'TEST_DATABASE_URL points at "yoyi_dev", the live local Development database, which is refused by name. The PostgreSQL suites DELETE and TRUNCATE rows in their target. Point TEST_DATABASE_URL at a disposable synthetic database such as "moya_synthetic_test" (see infra/env/test.env.example) or one whose name has a whole "_test" or "_synthetic" segment, for example "moya_test".',
+      'TEST_DATABASE_URL points at "yoyi_dev", the live local Development database, which is refused by name. The PostgreSQL suites DELETE and TRUNCATE rows in their target. Point TEST_DATABASE_URL at a disposable synthetic database such as "moya_synthetic_test" (see infra/env/test.env.example) or one whose name carries a whole "test" or "synthetic" segment, for example "moya_test".',
     );
     expect(() =>
       assertSyntheticTestDatabaseUrl(url("cms_qa"), "CMS_TEST_DATABASE_URL"),
     ).toThrow(
-      'CMS_TEST_DATABASE_URL points at database "cms_qa", whose name carries no whole "test" or "synthetic" segment. The PostgreSQL suites DELETE and TRUNCATE rows in their target. Point CMS_TEST_DATABASE_URL at a disposable synthetic database such as "moya_synthetic_test" (see infra/env/test.env.example) or one whose name has a whole "_test" or "_synthetic" segment, for example "moya_test".',
+      'CMS_TEST_DATABASE_URL points at database "cms_qa", whose name carries no whole "test" or "synthetic" segment. The PostgreSQL suites DELETE and TRUNCATE rows in their target. Point CMS_TEST_DATABASE_URL at a disposable synthetic database such as "moya_synthetic_test" (see infra/env/test.env.example) or one whose name carries a whole "test" or "synthetic" segment, for example "moya_test".',
     );
   });
 
@@ -143,7 +143,7 @@ describe("PostgreSQL synthetic test database guard", () => {
     }
   });
 
-  it("guards every PostgreSQL integration suite before it creates a pool", async () => {
+  it("guards every PostgreSQL integration suite before it touches a database", async () => {
     const suites = (await readdir(suiteDirectory))
       .filter((file) => file.endsWith(".test.ts"))
       .sort();
@@ -153,11 +153,20 @@ describe("PostgreSQL synthetic test database guard", () => {
       const guard = source.search(
         /\b(requireSyntheticTestDatabaseUrl|assertSyntheticTestDatabaseUrl)\(/,
       );
-      const pool = source.indexOf("createPostgresPool(");
+      // A pool is not the only way in: the CMS preflight suite connects
+      // through the verification runner, so the guard must precede the first
+      // of these calls. (runner.syntheticDatabase is pure URL validation and
+      // is deliberately not listed.)
+      const access = [
+        /\bcreatePostgresPool\(/,
+        /\brunner\.verifyRemoteSyntheticDatabase\(/,
+      ]
+        .map((pattern) => source.search(pattern))
+        .filter((index) => index > -1);
       expect(source, suite).toContain('from "./synthetic-test-database.js"');
       expect(guard, suite).toBeGreaterThan(-1);
-      expect(pool, suite).toBeGreaterThan(-1);
-      expect(guard, suite).toBeLessThan(pool);
+      expect(access, suite).not.toHaveLength(0);
+      expect(guard, suite).toBeLessThan(Math.min(...access));
     }
   });
 });
