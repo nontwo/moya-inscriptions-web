@@ -738,7 +738,7 @@ export const isAuthorizedCmsServerFile = (
   return (
     relative === "payload.config.ts" ||
     relative === "next.config.ts" ||
-    /^scripts\/(?:build\.mjs|bootstrap-synthetic\.ts|benchmark-synthetic\.ts|migrate-legacy\.ts|recovery-synthetic\.ts)$/.test(
+    /^scripts\/(?:build\.mjs|bootstrap-synthetic\.ts|benchmark-synthetic\.ts|migrate-legacy\.ts|recovery-synthetic\.ts|seed-community-acceptance\.ts)$/.test(
       relative,
     ) ||
     /^src\/owner-workflow\/(?:View|NavLink)\.tsx$/.test(relative) ||

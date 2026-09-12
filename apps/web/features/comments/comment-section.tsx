@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useCommentComposerPortalTarget } from "./comment-composer-portal";
 import styles from "./comment-section.module.css";
 
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type { QaCommentScenarioName } from "./comment-scenarios";
 import type {
   CommentItem,
@@ -18,14 +18,49 @@ import type {
 
 type CommentSort = "hot" | "latest";
 
+/** Who is behind the composer in the live composition. */
+export type CommentViewerState =
+  | { readonly state: "checking" }
+  | { readonly state: "signed-in" }
+  | { readonly state: "signed-out"; readonly signInHref: string };
+
+export interface CommentSectionNotice {
+  readonly tone: "info" | "error";
+  readonly text: string;
+}
+
+export interface CommentLoadMore {
+  readonly hasMore: boolean;
+  readonly loading: boolean;
+  readonly onLoadMore: () => void;
+}
+
 export interface CommentSectionProps {
   readonly catalogId: string;
   readonly currentUser: CommentUserPresentation;
   readonly items: readonly CommentItem[];
   readonly onSendComment: (text: string) => void;
   readonly onSendReply: (target: CommentReplyTarget, text: string) => void;
-  readonly onToggleLike: (commentId: string, replyId?: string) => void;
-  readonly scenario: QaCommentScenarioName;
+  /** QA only; the live composition hides likes (decision 5). */
+  readonly onToggleLike?: (commentId: string, replyId?: string) => void;
+  /** QA only; the live composition derives loading from the real client. */
+  readonly scenario?: QaCommentScenarioName;
+  /**
+   * Live composition (scope amendment 2026-09-12): contract-derived props in
+   * place of the QA inputs. `hotItems` is the Backend's hot section, rendered
+   * above the latest list; the 热门/最新 client-side sort control is hidden.
+   */
+  readonly presentation?: "qa" | "live";
+  readonly hotItems?: readonly CommentItem[];
+  readonly loading?: boolean;
+  readonly viewer?: CommentViewerState;
+  readonly status?: "not-found" | "unavailable" | "unexpected-error" | null;
+  readonly notice?: CommentSectionNotice | null;
+  /** Root comments the Backend counted; replaces the loaded-item count. */
+  readonly totalCount?: number;
+  readonly loadMore?: CommentLoadMore;
+  readonly onLoadMoreReplies?: (commentId: string) => void;
+  readonly submitting?: boolean;
 }
 
 const Avatar = ({ user }: { readonly user: CommentUserPresentation }) => (
@@ -107,7 +142,8 @@ const CommentActions = ({
 }: {
   readonly likeCount: number;
   readonly liked: boolean;
-  readonly onLike: () => void;
+  /** Absent in the live composition: no like data exists, so no control. */
+  readonly onLike?: (() => void) | undefined;
   readonly onReply: () => void;
 }) => (
   <div className={styles.actions}>
@@ -119,7 +155,9 @@ const CommentActions = ({
     >
       回复
     </button>
-    <LikeButton count={likeCount} liked={liked} onClick={onLike} />
+    {onLike === undefined ? null : (
+      <LikeButton count={likeCount} liked={liked} onClick={onLike} />
+    )}
   </div>
 );
 
@@ -131,7 +169,8 @@ const ReplyRow = ({
 }: {
   readonly commentId: string;
   readonly onReply: (target: CommentReplyTarget) => void;
-  readonly onToggleLike: (commentId: string, replyId?: string) => void;
+  readonly onToggleLike?:
+    ((commentId: string, replyId?: string) => void) | undefined;
   readonly reply: CommentReply;
 }) => (
   <li className={styles.reply} data-comment-reply={reply.id}>
@@ -148,9 +187,17 @@ const ReplyRow = ({
         <CommentActions
           likeCount={reply.likeCount}
           liked={reply.liked}
-          onLike={() => onToggleLike(commentId, reply.id)}
+          onLike={
+            onToggleLike === undefined
+              ? undefined
+              : () => onToggleLike(commentId, reply.id)
+          }
           onReply={() =>
-            onReply({ rootCommentId: commentId, user: reply.user })
+            onReply({
+              replyId: reply.id,
+              rootCommentId: commentId,
+              user: reply.user,
+            })
           }
         />
       </div>
@@ -162,18 +209,26 @@ const CommentRow = ({
   comment,
   expanded,
   onExpandedChange,
+  onLoadMoreReplies,
   onReply,
   onToggleLike,
 }: {
   readonly comment: CommentItem;
   readonly expanded: boolean;
   readonly onExpandedChange: () => void;
+  readonly onLoadMoreReplies?: ((commentId: string) => void) | undefined;
   readonly onReply: (target: CommentReplyTarget) => void;
-  readonly onToggleLike: (commentId: string, replyId?: string) => void;
+  readonly onToggleLike?:
+    ((commentId: string, replyId?: string) => void) | undefined;
 }) => {
   const visibleReplies = expanded
     ? comment.replies
     : comment.replies.slice(0, 2);
+  // The Backend's real visible total; more exist only when it says so.
+  const remoteRemaining =
+    comment.replyTotal === undefined
+      ? 0
+      : Math.max(0, comment.replyTotal - comment.replies.length);
   return (
     <li className={styles.comment} data-comment-id={comment.id}>
       <Avatar user={comment.user} />
@@ -185,7 +240,11 @@ const CommentRow = ({
           <CommentActions
             likeCount={comment.likeCount}
             liked={comment.liked}
-            onLike={() => onToggleLike(comment.id)}
+            onLike={
+              onToggleLike === undefined
+                ? undefined
+                : () => onToggleLike(comment.id)
+            }
             onReply={() =>
               onReply({ rootCommentId: comment.id, user: comment.user })
             }
@@ -220,6 +279,16 @@ const CommentRow = ({
               : `展开其余 ${comment.replies.length - 2} 条回复`}
           </button>
         )}
+        {onLoadMoreReplies === undefined || remoteRemaining === 0 ? null : (
+          <button
+            className={styles.expandReplies}
+            data-comment-load-more-replies=""
+            onClick={() => onLoadMoreReplies(comment.id)}
+            type="button"
+          >
+            查看更多回复（还有 {remoteRemaining} 条）
+          </button>
+        )}
       </div>
     </li>
   );
@@ -228,11 +297,21 @@ const CommentRow = ({
 export const CommentSection = ({
   catalogId,
   currentUser,
+  hotItems,
   items,
+  loadMore,
+  loading: loadingOverride,
+  notice,
+  onLoadMoreReplies,
   onSendComment,
   onSendReply,
   onToggleLike,
+  presentation = "qa",
   scenario,
+  status = null,
+  submitting = false,
+  totalCount,
+  viewer,
 }: CommentSectionProps) => {
   const [draft, setDraft] = useState("");
   const [expandedCommentIds, setExpandedCommentIds] = useState<Set<string>>(
@@ -243,29 +322,41 @@ export const CommentSection = ({
   );
   const [sort, setSort] = useState<CommentSort>("hot");
   const composerPortalTarget = useCommentComposerPortalTarget();
-  const loading = scenario === "comment-loading";
-  const count = items.reduce(
-    (total, comment) => total + 1 + comment.replies.length,
-    0,
-  );
+  const live = presentation === "live";
+  const loading = loadingOverride ?? scenario === "comment-loading";
+  const hot = hotItems ?? [];
+  const count =
+    totalCount ??
+    [...hot, ...items].reduce(
+      (total, comment) => total + 1 + comment.replies.length,
+      0,
+    );
   const sortedItems = useMemo(() => {
+    if (live) return items;
     const local = items.filter((item) => item.isQaGenerated);
     const fixture = items.filter((item) => !item.isQaGenerated);
     return [
       ...local,
       ...(sort === "latest" ? [...fixture].reverse() : fixture),
     ];
-  }, [items, sort]);
+  }, [items, live, sort]);
+  const toggleExpanded = (commentId: string) =>
+    setExpandedCommentIds((current) => {
+      const next = new Set(current);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
+      return next;
+    });
+  const expandThread = (commentId: string) =>
+    setExpandedCommentIds((current) => new Set(current).add(commentId));
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    if (text.length === 0) return;
+    if (text.length === 0 || submitting) return;
     if (replyTarget === null) onSendComment(text);
     else {
       onSendReply(replyTarget, text);
-      setExpandedCommentIds((current) =>
-        new Set(current).add(replyTarget.rootCommentId),
-      );
+      expandThread(replyTarget.rootCommentId);
     }
     setDraft("");
     setReplyTarget(null);
@@ -300,13 +391,43 @@ export const CommentSection = ({
           />
           <div className={styles.composerFooter}>
             <span>以“{currentUser.name}”发布</span>
-            <button disabled={draft.trim().length === 0} type="submit">
-              发送
+            <button
+              disabled={draft.trim().length === 0 || submitting}
+              type="submit"
+            >
+              {submitting ? "发送中…" : "发送"}
             </button>
           </div>
         </div>
       </div>
     </form>
+  );
+  // Signed out, the composer's place carries the truthful state instead.
+  const composerSlot: ReactNode =
+    viewer === undefined || viewer.state === "signed-in" ? (
+      composer
+    ) : viewer.state === "signed-out" ? (
+      <p className={styles.signedOut} data-comment-signed-out="">
+        <a href={viewer.signInHref}>登录</a>后即可发表评论。
+      </p>
+    ) : null;
+  const renderRow = (comment: CommentItem) => (
+    <CommentRow
+      comment={comment}
+      expanded={expandedCommentIds.has(comment.id)}
+      key={comment.id}
+      onExpandedChange={() => toggleExpanded(comment.id)}
+      onLoadMoreReplies={
+        onLoadMoreReplies === undefined
+          ? undefined
+          : (commentId) => {
+              expandThread(commentId);
+              onLoadMoreReplies(commentId);
+            }
+      }
+      onReply={setReplyTarget}
+      onToggleLike={live ? undefined : onToggleLike}
+    />
   );
 
   return (
@@ -314,15 +435,16 @@ export const CommentSection = ({
       aria-busy={loading}
       aria-labelledby={`comment-title-${catalogId}`}
       className={styles.section}
-      data-comment-scenario={scenario}
+      data-comment-presentation={presentation}
       data-comment-section=""
+      {...(scenario === undefined ? {} : { "data-comment-scenario": scenario })}
     >
       <header className={styles.header}>
         <h2 id={`comment-title-${catalogId}`}>
           评论
           {loading ? null : <span aria-label={`${count} 条`}> {count}</span>}
         </h2>
-        {loading ? null : (
+        {loading || live ? null : (
           <label className={styles.sortControl}>
             <span className={styles.visuallyHidden}>评论排序</span>
             <select
@@ -339,6 +461,16 @@ export const CommentSection = ({
         )}
       </header>
 
+      {notice === undefined || notice === null ? null : (
+        <p
+          className={styles.notice}
+          data-comment-notice={notice.tone}
+          role="status"
+        >
+          {notice.text}
+        </p>
+      )}
+
       {loading ? (
         <div
           aria-label="正在加载评论"
@@ -349,36 +481,70 @@ export const CommentSection = ({
           <span />
           <span />
         </div>
+      ) : status !== null ? (
+        <p className={styles.empty} data-comment-unavailable={status}>
+          {status === "not-found"
+            ? "这条资料暂不开放评论。"
+            : "评论暂时无法加载，请稍后再试。"}
+        </p>
       ) : (
         <>
           {composerPortalTarget === null
-            ? composer
-            : createPortal(composer, composerPortalTarget)}
+            ? composerSlot
+            : createPortal(composerSlot, composerPortalTarget)}
+
+          {hot.length === 0 ? null : (
+            <section
+              aria-label="热门评论"
+              className={styles.group}
+              data-comment-hot=""
+            >
+              <h3 className={styles.groupLabel}>热门</h3>
+              <ul
+                aria-live="polite"
+                className={styles.list}
+                data-comment-list="hot"
+              >
+                {hot.map(renderRow)}
+              </ul>
+            </section>
+          )}
 
           {sortedItems.length === 0 ? (
-            <p className={styles.empty} data-comment-empty="">
-              还没有评论，来说说你的看法。
-            </p>
+            hot.length === 0 ? (
+              <p className={styles.empty} data-comment-empty="">
+                还没有评论，来说说你的看法。
+              </p>
+            ) : null
           ) : (
-            <ul aria-live="polite" className={styles.list} data-comment-list="">
-              {sortedItems.map((comment) => (
-                <CommentRow
-                  comment={comment}
-                  expanded={expandedCommentIds.has(comment.id)}
-                  key={comment.id}
-                  onExpandedChange={() =>
-                    setExpandedCommentIds((current) => {
-                      const next = new Set(current);
-                      if (next.has(comment.id)) next.delete(comment.id);
-                      else next.add(comment.id);
-                      return next;
-                    })
-                  }
-                  onReply={setReplyTarget}
-                  onToggleLike={onToggleLike}
-                />
-              ))}
-            </ul>
+            <section
+              aria-label={hot.length === 0 ? undefined : "最新评论"}
+              className={styles.group}
+              data-comment-latest=""
+            >
+              {hot.length === 0 ? null : (
+                <h3 className={styles.groupLabel}>最新</h3>
+              )}
+              <ul
+                aria-live="polite"
+                className={styles.list}
+                data-comment-list=""
+              >
+                {sortedItems.map(renderRow)}
+              </ul>
+            </section>
+          )}
+
+          {loadMore === undefined || !loadMore.hasMore ? null : (
+            <button
+              className={styles.loadMore}
+              data-comment-load-more=""
+              disabled={loadMore.loading}
+              onClick={loadMore.onLoadMore}
+              type="button"
+            >
+              {loadMore.loading ? "加载中…" : "加载更多评论"}
+            </button>
           )}
         </>
       )}
