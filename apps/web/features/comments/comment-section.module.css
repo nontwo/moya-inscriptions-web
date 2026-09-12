@@ -274,6 +274,67 @@
   margin-top: var(--yoyi-space-3);
 }
 
+/* Live composition: the hot group above the latest group, one list each. */
+.group {
+  display: grid;
+  gap: var(--yoyi-space-4);
+}
+
+.groupLabel {
+  margin: 0;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-caption-size);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.notice {
+  margin: 0;
+  padding: var(--yoyi-space-3) var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.notice[data-comment-notice="error"] {
+  color: var(--yoyi-color-seal-red);
+}
+
+.signedOut {
+  margin: 0;
+  padding: var(--yoyi-space-3) var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.signedOut a {
+  color: var(--yoyi-color-seal-red);
+  font-weight: 650;
+}
+
+.loadMore {
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-5);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  cursor: pointer;
+}
+
+.loadMore:hover:not(:disabled) {
+  color: var(--yoyi-color-seal-red);
+}
+
+.loadMore:disabled {
+  color: var(--yoyi-color-text-disabled);
+  cursor: not-allowed;
+}
+
 .empty {
   margin: 0;
   padding: var(--yoyi-space-8) var(--yoyi-space-4);
@@ -318,9 +379,33 @@
 .composer textarea:focus-visible,
 .composer button:focus-visible,
 .textAction:focus-visible,
+.loadMore:focus-visible,
+.signedOut a:focus-visible,
 .expandReplies:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
   outline-offset: 2px;
+}
+
+[data-detail-content-pager]
+  [data-detail-content-panel="comments"][data-active="true"]
+  .signedOut,
+[data-comment-composer-outlet][data-active="true"] .signedOut,
+[data-detail-landscape-comments] .signedOut {
+  position: fixed;
+  z-index: 8;
+  right: var(--detail-comment-composer-right);
+  bottom: 0;
+  left: var(--detail-comment-composer-left);
+  border-radius: 0;
+  padding-bottom: calc(var(--yoyi-space-3) + env(safe-area-inset-bottom));
+  background: var(--yoyi-color-background-surface);
+}
+
+[data-detail-content-pager]
+  [data-detail-content-panel="comments"][data-active="false"]
+  .signedOut,
+[data-comment-composer-outlet][data-active="false"] .signedOut {
+  display: none;
 }
 
 [data-detail-content-pager]

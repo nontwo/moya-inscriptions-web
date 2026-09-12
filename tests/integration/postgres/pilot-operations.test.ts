@@ -19,6 +19,7 @@ import {
   parsePostgresConfig,
   runMigrations,
 } from "@moya/catalog-postgres";
+import { runCommunityMigrations } from "@moya/community-postgres";
 import { prepareProductionBackend } from "@moya/backend-production";
 import { startBackendProcess } from "@moya/backend-runtime";
 import { CATALOG_IMPORT_V2_CSV_SPEC } from "@moya/contracts/internal/catalog-import";
@@ -35,6 +36,8 @@ import {
   it,
   vi,
 } from "vitest";
+
+import { assertSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
 
 import type {
   CatalogImportApplicationResult,
@@ -80,6 +83,8 @@ describe.skipIf(!enabled)(
           "Explicit TEST_DATABASE_URL and verified PILOT_TEST_SYSTEM_IDENTIFIER are required",
         );
       }
+      // Refuse yoyi_dev or any unmarked database before the administration pool exists.
+      assertSyntheticTestDatabaseUrl(databaseUrl);
       const endpoint = new URL(databaseUrl);
       if (
         !["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname) ||
@@ -109,6 +114,11 @@ describe.skipIf(!enabled)(
       await runMigrations(
         pool,
         path.join(repositoryRoot, "database/migrations"),
+      );
+      // The production composition also verifies the community ledger read-only.
+      await runCommunityMigrations(
+        pool,
+        path.join(repositoryRoot, "database/community-migrations"),
       );
       const identity =
         await pool.query(`SELECT current_database() AS database, current_user AS "user",
@@ -576,6 +586,7 @@ describe.skipIf(!enabled)(
         HOST: "127.0.0.1",
         PORT: "3001",
         DATABASE_URL: isolated.toString(),
+        APP_DATABASE_URL: isolated.toString(),
         MOYA_PILOT_SCOPE_FILE: scopeFile,
         MOYA_PILOT_MEDIA_FILE: manifestFile,
         COS_SECRET_ID: "synthetic_signing_id",

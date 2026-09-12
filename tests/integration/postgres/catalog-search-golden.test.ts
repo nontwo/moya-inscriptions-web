@@ -18,6 +18,8 @@ import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { projectCatalogSearchDocument } from "@moya/search";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
 interface SourceFixture extends Record<string, unknown> {
   readonly id: string;
   readonly kind: string;
@@ -83,9 +85,7 @@ const documentFor = (record: SourceFixture) =>
       }),
     ),
   });
-const testDatabaseUrl = process.env.TEST_DATABASE_URL;
-if (testDatabaseUrl === undefined)
-  throw new Error("TEST_DATABASE_URL is required for PostgreSQL tests");
+const testDatabaseUrl = requireSyntheticTestDatabaseUrl();
 const schema = "p203_search_golden";
 const administration = createPostgresPool(
   parsePostgresConfig({ DATABASE_URL: testDatabaseUrl }),

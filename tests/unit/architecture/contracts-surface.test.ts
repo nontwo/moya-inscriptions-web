@@ -29,10 +29,22 @@ describe("contracts package surface", () => {
       "CatalogSearchTransportQuery",
       "CatalogSearchItem",
       "CatalogSearchPage",
+      "CatalogComment",
+      "CatalogCommentId",
+      "CatalogCommentPage",
+      "CatalogCommentReply",
+      "CatalogCommentReplyPage",
+      "CatalogCommentListingTransportQuery",
+      "CatalogCommentTransportQuery",
+      "CommentAuthor",
+      "CreateCatalogCommentReplyRequest",
+      "CreateCatalogCommentRequest",
       "HealthResponse",
       "MediaId",
       "PublicMedia",
       "PublicSourceCitation",
+      "PublicUserId",
+      "PublicUserProfile",
     ];
     const exportBlock = declaration.match(
       /export type\s*\{([\s\S]*?)\}\s*from/,
@@ -92,6 +104,7 @@ describe("contracts package surface", () => {
       [
         ".",
         "./internal/catalog-import",
+        "./internal/community-operator",
         "./internal/editorial",
         "./json-schema",
         "./schemas",
@@ -99,6 +112,33 @@ describe("contracts package surface", () => {
       ].sort(),
     );
     expect(manifest.sideEffects).toBe(false);
+  });
+
+  it("keeps the Community operator shapes on the explicit internal subpath", async () => {
+    const publicDeclaration = await readFile(
+      path.join(contractsRoot, "dist", "index.d.ts"),
+      "utf8",
+    );
+    const operatorDeclaration = await readFile(
+      path.join(
+        contractsRoot,
+        "dist",
+        "internal",
+        "community-operator",
+        "index.d.ts",
+      ),
+      "utf8",
+    );
+
+    for (const name of [
+      "PublicationPolicy",
+      "OperatorComment",
+      "ModerationResult",
+      "CommentModerationState",
+    ]) {
+      expect(publicDeclaration).not.toContain(name);
+      expect(operatorDeclaration).toContain(name);
+    }
   });
 
   it("keeps Catalog Import contracts on the explicit internal subpath", async () => {

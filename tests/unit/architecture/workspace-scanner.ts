@@ -235,6 +235,69 @@ const webCatalogSearchClientFile = path.join(
   "catalog-search.tsx",
 );
 const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
+// Community V1 (Mission 2A): each file may import exactly these names from the
+// Web Public API server module; nothing else under app/ reaches it.
+const webCommunityServerImports: ReadonlyMap<string, string> = new Map([
+  [
+    path.join(webRoot, "app", "api", "community", "me", "route.ts"),
+    "{fetchServerCurrentUser}",
+  ],
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "community",
+      "development",
+      "sign-in",
+      "route.ts",
+    ),
+    "{signInServerDevelopmentAccount}",
+  ],
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "community",
+      "development",
+      "sign-out",
+      "route.ts",
+    ),
+    "{signOutServerDevelopmentSession}",
+  ],
+  [
+    path.join(webRoot, "app", "dev", "community", "page.tsx"),
+    "{fetchServerCurrentUser}",
+  ],
+  // Mission 2B: the same-origin comment bridges.
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "catalog",
+      "[catalogId]",
+      "comments",
+      "route.ts",
+    ),
+    "{createServerCatalogComment,fetchServerCatalogCommentPage,}",
+  ],
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "catalog",
+      "[catalogId]",
+      "comments",
+      "[commentId]",
+      "replies",
+      "route.ts",
+    ),
+    "{createServerCatalogCommentReply,fetchServerCatalogCommentReplyPage,}",
+  ],
+]);
 
 export const isAuthorizedWebPublicApiFile = (
   filePath: string,
@@ -380,6 +443,31 @@ const isApprovedCatalogSearchApiReference = (
   return (
     imports.length === 1 &&
     imports[0]?.[1]?.replaceAll(/\s/g, "") === "{fetchServerCatalogSearchPage}"
+  );
+};
+
+const isApprovedCommunityServerReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  const expected = webCommunityServerImports.get(path.resolve(filePath));
+  if (
+    expected === undefined ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    !reference.specifier.startsWith(".") ||
+    path.resolve(path.dirname(filePath), reference.specifier) !==
+      path.join(webPublicApiRoot, "server")
+  )
+    return false;
+  const imports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])(?:\.\.\/)+lib\/public-api\/server\2\s*;/g,
+    ),
+  ];
+  return (
+    imports.length === 1 && imports[0]?.[1]?.replaceAll(/\s/g, "") === expected
   );
 };
 
@@ -561,6 +649,7 @@ const serverOnlyPackages = [
   "@moya/backend-production",
   "@moya/backend-runtime",
   "@moya/catalog-postgres",
+  "@moya/community-postgres",
   "@moya/contracts/json-schema",
   "@moya/contracts/internal",
   "@moya/contracts/schemas",
@@ -649,10 +738,15 @@ export const isAuthorizedCmsServerFile = (
   return (
     relative === "payload.config.ts" ||
     relative === "next.config.ts" ||
-    /^scripts\/(?:build\.mjs|bootstrap-synthetic\.ts|benchmark-synthetic\.ts|migrate-legacy\.ts|recovery-synthetic\.ts)$/.test(
+    /^scripts\/(?:build\.mjs|bootstrap-synthetic\.ts|benchmark-synthetic\.ts|migrate-legacy\.ts|recovery-synthetic\.ts|seed-community-acceptance\.ts)$/.test(
       relative,
     ) ||
     /^src\/owner-workflow\/(?:View|NavLink)\.tsx$/.test(relative) ||
+    // Community moderation: the server views, the workspace card and the
+    // Backend operator client; the browser modules are listed with the
+    // type-only exceptions below.
+    /^src\/community\/(?:View|DashboardCard)\.tsx$/.test(relative) ||
+    /^src\/community\/(?:backend|endpoints)\.ts$/.test(relative) ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
@@ -674,6 +768,16 @@ const isOwnerWorkflowTypes = (
       "src/media/snapshot.ts",
     ].includes(relative) &&
       reference.specifier === "@moya/contracts/internal/editorial") ||
+      // Community moderation: the browser modules render operator shapes as
+      // types only; every value crosses the same-origin Payload endpoints.
+      ([
+        "src/community/api.ts",
+        "src/community/queue-client.tsx",
+        "src/community/settings-client.tsx",
+        "src/community/history-client.tsx",
+      ].includes(relative) &&
+        reference.specifier ===
+          "@moya/contracts/internal/community-operator") ||
       ([
         "src/media/MediaSnapshotPicker.tsx",
         "src/media/CatalogOwnershipField.tsx",
@@ -822,6 +926,11 @@ export const frontendBoundaryViolations = (
       source,
       reference,
     );
+    const approvedCommunityServerImport = isApprovedCommunityServerReference(
+      filePath,
+      source,
+      reference,
+    );
     if (
       isForbiddenServerReference(reference.specifier) &&
       !isCmsServer &&
@@ -839,7 +948,8 @@ export const frontendBoundaryViolations = (
       !approvedHomeLoaderImport &&
       !approvedCatalogDetailApiImport &&
       !approvedCatalogListApiImport &&
-      !approvedCatalogSearchApiImport
+      !approvedCatalogSearchApiImport &&
+      !approvedCommunityServerImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

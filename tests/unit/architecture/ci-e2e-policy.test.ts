@@ -87,7 +87,7 @@ const taskGraph = (task: string, filters: string[]) => {
 };
 
 describe("PostgreSQL preparation shares ordinary test build hashes", () => {
-  it("retains all nine dependency builds inside the existing verification plan", async () => {
+  it("retains all ten dependency builds inside the existing verification plan", async () => {
     const filters = [
       "@moya/backend-production...",
       "@moya/catalog-importer...",
@@ -101,6 +101,7 @@ describe("PostgreSQL preparation shares ordinary test build hashes", () => {
         "@moya/backend-runtime#build",
         "@moya/catalog-importer#build",
         "@moya/catalog-postgres#build",
+        "@moya/community-postgres#build",
         "@moya/contracts#build",
         "@moya/image#build",
         "@moya/public-api#build",

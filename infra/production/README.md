@@ -72,7 +72,7 @@ preserved:
 | `CMS_DATABASE_URL`  | Payload runtime         | CMS tables and published projection maintenance; no public/community authority |
 | `DATABASE_URL`      | Public Backend          | CONNECT, schema USAGE and SELECT only on approved published projections        |
 | `TEST_DATABASE_URL` | Disposable test runtime | A separate synthetic target; never production or Stage A data                  |
-| `APP_DATABASE_URL`  | Future Phase 3 only     | Independent future public-identity/community runtime role; not implemented     |
+| `APP_DATABASE_URL`  | Community Backend       | CONNECT, USAGE and DML only on the `community` schema (public users, sessions) |
 
 The same-target option concerns runtime domains, not permission to run tests on
 production content. Every runtime uses a distinct login; Web uses HTTP and never
@@ -161,8 +161,42 @@ is included here. COS permissions, credentials and real objects are configured
 only in a separately authorized operation; this task makes no live COS requests
 or uploads.
 
-The future Backend owns public identity/community and will use a separate
-`APP_DATABASE_URL` runtime role. Payload users remain owner/automation only.
+The Backend owns public identity/community through the separate
+`APP_DATABASE_URL` runtime role (Community V1, Mission 2A). That role receives
+`CONNECT`, `USAGE` on schema `community`, `SELECT` on `community.public_users`,
+`community.development_accounts` and `community.schema_migrations`, and
+`SELECT, INSERT, UPDATE` on `community.sessions` — never DDL, never a Catalog or
+CMS relation; `infra/development/grant-community-app.sql` is the local model.
+Community migrations run only through `pnpm db:migrate:community` with a
+separately provisioned migration-privileged role (`APP_MIGRATION_DATABASE_URL`,
+never placed in `backend.env`). The Backend refuses to start without
+`APP_DATABASE_URL` and verifies the community ledger read-only, so on any host
+the order is fixed: provision the App role → `pnpm db:migrate:community` with
+the migration role → apply the App-role grants → set `APP_DATABASE_URL` in
+`backend.env` → restart the Backend; restarting before those steps fails closed.
+Mission 2B adds comments, the publication setting and the moderation audit in
+the same namespace under the same role (`SELECT, INSERT, UPDATE` on the two
+comment tables, `SELECT, UPDATE` on `community.publication_setting`,
+`SELECT, INSERT` on `community.moderation_events`, column-only
+`UPDATE (status, updated_at)` on `community.public_users`; still no DELETE and
+no DDL anywhere). It also adds `COMMUNITY_OPERATOR_TOKEN`: a 32-512 character
+shared credential Admin holds server-side to reach the Backend's loopback-only
+`/internal/community/*` boundary, and `COMMUNITY_OPERATOR_BASE_URL`, the
+dedicated origin Admin calls it on. Put the same token in `backend.env` and
+`admin.env`, rotate them together, and never expose it to a browser or a public
+ingress; leaving it unset keeps the boundary closed and the Owner's moderation
+view reports that it is not configured. The base URL must resolve to loopback
+whatever its scheme, and Admin refuses to start a call otherwise. Admin's own
+moderation endpoints answer under `/api/community-moderation/*`, clear of the
+public `/api/community/*` read surface; each validates its complete request
+envelope strictly and forwards only the command body to the Backend route.
+Forward migration `20260912100000` adds the audited `reject` action (pending →
+hidden) and an index for per-item history; deploy it before restarting the
+Backend, which verifies the ledger read-only. Nginx forwards no `/internal/`
+path and the Backend listens on loopback only, so that boundary is never
+publicly reachable. No Production sign-in path exists: the Development
+test-account entry is composed only under `NODE_ENV=development`, and external
+identity providers remain deferred. Payload users remain owner/automation only.
 Future UGC media receives an independent storage boundary. QA filtering remains
 QA-only; no hard-coded dynasty/script/type/region taxonomy enters production
 contracts or tables. This task prepares the existing code and local development

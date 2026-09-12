@@ -27,6 +27,7 @@
         "@moya/backend-runtime#build",
         "@moya/catalog-importer#build",
         "@moya/catalog-postgres#build",
+        "@moya/community-postgres#build",
         "@moya/contracts#build",
         "@moya/design-tokens#build",
         "@moya/image#build",
@@ -51,7 +52,12 @@
       "cache": false,
       "persistent": true,
       "interruptible": true,
-      "passThroughEnv": ["CMS_*", "DATABASE_IDLE_TIMEOUT_MS"]
+      "passThroughEnv": [
+        "CMS_*",
+        "DATABASE_IDLE_TIMEOUT_MS",
+        "COMMUNITY_OPERATOR_BASE_URL",
+        "COMMUNITY_OPERATOR_TOKEN"
+      ]
     },
     "@moya/backend-production#dev": {
       "dependsOn": ["^build"],
@@ -64,6 +70,9 @@
         "PORT",
         "MOYA_CONTENT_SOURCE",
         "DATABASE_*",
+        "APP_DATABASE_URL",
+        "APP_DATABASE_SSL_CA_FILE",
+        "COMMUNITY_OPERATOR_TOKEN",
         "CMS_STORAGE_MODE",
         "CMS_ENVIRONMENT",
         "CMS_DATABASE_URL",

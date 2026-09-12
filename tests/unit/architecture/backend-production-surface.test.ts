@@ -35,6 +35,7 @@ describe("@moya/backend-production composition boundary", () => {
       "@moya/catalog-importer": "workspace:*",
       "@moya/backend-runtime": "workspace:*",
       "@moya/catalog-postgres": "workspace:*",
+      "@moya/community-postgres": "workspace:*",
       "@moya/image": "workspace:*",
       "cos-nodejs-sdk-v5": "3.0.0",
     });
@@ -45,6 +46,7 @@ describe("@moya/backend-production composition boundary", () => {
       "@moya/catalog-importer",
       "@moya/backend-runtime",
       "@moya/catalog-postgres",
+      "@moya/community-postgres",
       "@moya/image",
     ]);
     const violations: string[] = [];

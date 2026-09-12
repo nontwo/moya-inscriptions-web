@@ -258,29 +258,59 @@ Production provider choice, purchases, domains, credentials, secrets, release
 operations, data import approval, backup/restore, and deployment require
 separate Owner authority.
 
-## Database roles and future Phase 3 boundary
+## Database roles and the Community boundary
 
 `CMS_DATABASE_URL` is Payload runtime; `DATABASE_URL` is the Public Backend
 published-read runtime; `TEST_DATABASE_URL` is dedicated disposable testing.
-Future `APP_DATABASE_URL` is reserved for Backend public identity/community and
-is not consumed or implemented in this change. CMS, Public and future App roles
-may use the same TencentDB instance and database, but must be different database
-users with separate permissions. Tests and local development remain isolated
-from staging and production. Public Backend grants read access only to published
-views; deployment migration privileges are separate from runtime privileges.
+`APP_DATABASE_URL` is the Backend's Community V1 runtime role (Mission 2A): DML
+only on the `community` schema namespace, read at runtime solely by the
+`services/backend-production` composition root, and the only login that reaches
+public users and sessions. CMS, Public and App roles may use the same TencentDB
+instance and database, but must be different database users with separate
+permissions. Tests and local development remain isolated from staging and
+production. Public Backend grants read access only to published views;
+deployment migration privileges are separate from runtime privileges.
 
 Public pool defaults to 5, with explicit idle timeout. Payload retains max 5.
 Optional CA files configure verified TLS; `rejectUnauthorized=false` is
 forbidden. Migrations route by `MOYA_CONTENT_SOURCE`: `legacy` selects only
-legacy SQL; `payload` selects only Payload migrations. Startup never performs
-DDL.
+legacy SQL; `payload` selects only Payload migrations. The community family
+(`database/community-migrations/`, `pnpm db:migrate:community`) is separate from
+both, is never selected by `MOYA_CONTENT_SOURCE`, and runs only with the
+migration-privileged `APP_MIGRATION_DATABASE_URL`. Startup never performs DDL;
+the Backend only verifies each ledger read-only.
 
-Payload users serve Owner/automation only. Public users, sessions, profiles,
-posts, comments, likes, favorites and UGC are not part of this work. Future
-public identity/community belongs to Backend, with its own App database runtime
-role and a separate UGC storage boundary. QA filter fixtures remain QA-only;
-hard-coded dynasties, script styles, kinds or regions do not become production
-taxonomies or contracts. No production filtering is added.
+Payload users serve Owner/automation only and are never public users. Community
+V1 is the one approved social domain (Owner amendment 2026-09-11): public-user
+identity and Backend-owned sessions are implemented (Mission 2A, including the
+Development-only test-account sign-in that is never composed in Production), and
+Mission 2B adds Catalog comments with exactly one level of replies, the
+Owner-controlled publication setting (`DIRECT_PUBLICATION` initial default since
+the 2026-09-12 scope amendment) and the moderation surface. The public listing
+is one combined list, a small Backend-computed hot section (visible roots ranked
+by visible replies, provisional Owner defaults) followed by the latest roots,
+with no root in both; replies stay flat and paginated, never ranked. Comments
+live only in the community namespace and hold no cross-family foreign key: a
+write is admitted only after the published Catalog read side confirms the
+record, and comments never enter Catalog DTOs, the importer, CMS or Search.
+Payload holds no comment or public-user collection — the Owner's Admin views
+(review queue, publication setting, operation history) call a loopback-only
+authenticated Backend operator boundary and the Backend stays the sole writer.
+The queue is typed, authenticated and paginated Backend reads (listing with
+counts, item detail with thread context and history, audit events, a ranged
+summary); the same services will serve any later REST or MCP adapter, so no
+future automation needs browser automation or database access. Moderation is
+four audited edges of one state machine (`approve`, `reject` pending → hidden,
+`hide`, `unhide`); a stale state is a 409 conflict that records nothing. Bulk
+actions are bounded to the selected items on one page (at most 50), applied one
+by one through the same edges with per-item outcomes. Machine analysis is a
+provider-independent, advisory boundary (see
+`docs/community-analysis-boundary.md`): it may recommend, never act, and an
+unconfigured provider reads as "not connected", never as clean. The Formal
+comment UI follows in Mission 2C. Posts, likes, favorites, following, messaging
+and UGC media stay deferred. QA filter fixtures remain QA-only; hard-coded
+dynasties, script styles, kinds or regions do not become production taxonomies
+or contracts. No production filtering is added.
 
 ## Stable guardrails
 

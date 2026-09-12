@@ -4,10 +4,20 @@ import {
   apiErrorCodeSchema,
   apiErrorSchema,
   catalogCitationScopeSchema,
+  catalogCommentIdSchema,
+  catalogCommentPageSchema,
+  catalogCommentReplyPageSchema,
+  catalogCommentReplySchema,
+  catalogCommentSchema,
+  catalogCommentListingTransportQuerySchema,
+  catalogCommentTransportQuerySchema,
   catalogContributorRoleSchema,
   catalogContributorSchema,
   catalogDetailSchema,
   catalogIdSchema,
+  commentAuthorSchema,
+  createCatalogCommentReplyRequestSchema,
+  createCatalogCommentRequestSchema,
   catalogKindSchema,
   catalogListTransportQuerySchema,
   catalogPageSchema,
@@ -21,6 +31,8 @@ import {
   noQueryTransportSchema,
   publicMediaSchema,
   publicSourceCitationSchema,
+  publicUserIdSchema,
+  publicUserProfileSchema,
 } from "./schemas.js";
 
 const toJsonSchema = (schema: z.ZodType) =>
@@ -60,6 +72,34 @@ export const catalogSearchPageJsonSchema = toJsonSchema(
 );
 export const publicSourceCitationJsonSchema = toJsonSchema(
   publicSourceCitationSchema,
+);
+export const publicUserIdJsonSchema = toJsonSchema(publicUserIdSchema);
+export const publicUserProfileJsonSchema = toJsonSchema(
+  publicUserProfileSchema,
+);
+export const catalogCommentIdJsonSchema = toJsonSchema(catalogCommentIdSchema);
+export const commentAuthorJsonSchema = toJsonSchema(commentAuthorSchema);
+export const catalogCommentReplyJsonSchema = toJsonSchema(
+  catalogCommentReplySchema,
+);
+export const catalogCommentJsonSchema = toJsonSchema(catalogCommentSchema);
+export const catalogCommentPageJsonSchema = toJsonSchema(
+  catalogCommentPageSchema,
+);
+export const catalogCommentReplyPageJsonSchema = toJsonSchema(
+  catalogCommentReplyPageSchema,
+);
+export const catalogCommentTransportQueryJsonSchema = toJsonSchema(
+  catalogCommentTransportQuerySchema,
+);
+export const catalogCommentListingTransportQueryJsonSchema = toJsonSchema(
+  catalogCommentListingTransportQuerySchema,
+);
+export const createCatalogCommentRequestJsonSchema = toJsonSchema(
+  createCatalogCommentRequestSchema,
+);
+export const createCatalogCommentReplyRequestJsonSchema = toJsonSchema(
+  createCatalogCommentReplyRequestSchema,
 );
 export const healthResponseJsonSchema = toJsonSchema(healthResponseSchema);
 export const apiErrorCodeJsonSchema = toJsonSchema(apiErrorCodeSchema);

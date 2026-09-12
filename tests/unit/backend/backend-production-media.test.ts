@@ -65,6 +65,17 @@ vi.mock("@moya/catalog-postgres", async (importOriginal) => {
   };
 });
 
+// The community ledger check is read-only PostgreSQL I/O as well; the App-role
+// adapter is unused by these media compositions.
+vi.mock("@moya/community-postgres", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@moya/community-postgres")>();
+  return {
+    ...actual,
+    verifyCommunityMigrationLedger: vi.fn(async () => {}),
+  };
+});
+
 const environment = {
   HOST: "127.0.0.1",
   NODE_ENV: "production",
@@ -72,6 +83,8 @@ const environment = {
   MOYA_CONTENT_SOURCE: "payload",
   DATABASE_URL:
     "postgresql://synthetic-runtime@127.0.0.1:1/synthetic_published",
+  APP_DATABASE_URL:
+    "postgresql://synthetic-community@127.0.0.1:1/synthetic_published",
   COS_BUCKET: "synthetic-example-1250000000",
   COS_REGION: "ap-guangzhou",
   COS_MEDIA_ORIGIN: "https://media.example.invalid",
@@ -200,6 +213,7 @@ describe("local development database boundary", () => {
     MOYA_CONTENT_SOURCE: "payload",
     DATABASE_URL: "postgresql://synthetic-public@127.0.0.1:54330/yoyi_dev",
     CMS_DATABASE_URL: "postgresql://synthetic-payload@127.0.0.1:54330/yoyi_dev",
+    APP_DATABASE_URL: "postgresql://synthetic-app@127.0.0.1:54330/yoyi_dev",
     CMS_ENVIRONMENT: "synthetic",
     CMS_STORAGE_MODE: "local",
     PUBLIC_MEDIA_BASE_URL: "http://127.0.0.1:3002",

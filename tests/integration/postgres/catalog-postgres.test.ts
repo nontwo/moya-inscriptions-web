@@ -17,6 +17,7 @@ import {
   runMigrations,
   verifyRequiredMigrationLedger,
 } from "@moya/catalog-postgres";
+import { runCommunityMigrations } from "@moya/community-postgres";
 import {
   apiErrorSchema,
   catalogDetailSchema,
@@ -30,13 +31,12 @@ import {
 } from "@moya/image";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
 import type { StorageUrlResolver } from "@moya/api";
 import type { BackendProcessHandle } from "@moya/backend-runtime";
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL;
-if (testDatabaseUrl === undefined) {
-  throw new Error("TEST_DATABASE_URL is required for PostgreSQL tests");
-}
+const testDatabaseUrl = requireSyntheticTestDatabaseUrl();
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const migrationsDirectory = path.join(repositoryRoot, "database", "migrations");
@@ -203,6 +203,11 @@ const insertMediaFixture = async ({
 
 beforeAll(async () => {
   await runMigrations(pool, migrationsDirectory);
+  // The production composition also verifies the community ledger read-only.
+  await runCommunityMigrations(
+    pool,
+    path.join(repositoryRoot, "database", "community-migrations"),
+  );
   await resetCatalog();
 });
 
@@ -1772,6 +1777,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
           COS_SECRET_ID: "synthetic-unit-id",
           COS_SECRET_KEY: "synthetic-unit-secret",
           DATABASE_URL: isolatedUrl.toString(),
+          APP_DATABASE_URL: isolatedUrl.toString(),
           HOST: "127.0.0.1",
           NODE_ENV: "production",
           PORT: "3001",
@@ -1821,6 +1827,7 @@ describe.sequential("PostgreSQL Catalog HTTP integration", () => {
       COS_SECRET_ID: "synthetic-unit-id",
       COS_SECRET_KEY: "synthetic-unit-secret",
       DATABASE_URL: testDatabaseUrl,
+      APP_DATABASE_URL: testDatabaseUrl,
       HOST: "127.0.0.1",
       NODE_ENV: "production",
       PORT: "3001",

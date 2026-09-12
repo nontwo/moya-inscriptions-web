@@ -1,10 +1,12 @@
 # Owner Amendment — Community V1 scope and architecture
 
 - Status: Active — approved by the Owner on 2026-09-11 with the decisions
-  recorded in section 11.
-- Effective date: 2026-09-11.
+  recorded in section 11; narrowly amended by the Owner on 2026-09-12 as
+  recorded in sections 12 and 13.
+- Effective date: 2026-09-11; section 12 effective 2026-09-12.
 - Authority: explicit Owner "Community V1 scope decision" instruction of
-  2026-09-11 (Mission 1 of the Community sequence).
+  2026-09-11 (Mission 1 of the Community sequence); explicit Owner instruction
+  of 2026-09-12 for section 12.
 - Applies to: public-user identity; authentication and session ownership; the
   Comment V1 model, its API boundary and its minimum moderation; the integration
   boundary with Draft PR #106; the frozen Mission 2A / 2B / 2C sequence.
@@ -209,11 +211,14 @@ CatalogCommentReply
   bounded pagination/load-more, never an arbitrary lifetime reply-count cap
   (decision 6).
 - Ordering is server-defined and deterministic, fixed by the 2B Contract review
-  together with the text bound; Web renders the page in server order. The
+  together with the text bound; Web renders the page in server order. Since
+  section 12 the root listing is one combined list: a small Backend-computed hot
+  section first, then the remaining roots newest first, no root in both. The
   `isQaGenerated` partition and the 热门/最新 reversal in PR #106's
   `CommentSection.sortedItems` are QA-only ordering inputs that Mission 2C
-  removes under prop narrowing; the 热门 sort control is hidden in the real
-  composition (decision 5).
+  removes under prop narrowing; the 热门 sort control (a client-side reordering
+  of whatever is loaded) stays hidden in the real composition (decision 5) — the
+  hot section is not that control.
 - Public reads return `visible` items only; a reply never bypasses a hidden or
   pending root's visibility restriction; nothing is deleted; moderation state
   never appears in Public DTOs.
@@ -226,9 +231,12 @@ CatalogCommentReply
   workbook, CMS or Search V1; no comment count is added to Catalog DTOs.
 
 Public DTOs: `CommentAuthor`,
-`CatalogComment { id, catalogId, author, text, createdAt, replies }`,
+`CatalogComment { id, catalogId, author, text, createdAt, replies, replyTotal }`,
 `CatalogCommentReply { id, author, text, createdAt, replyTo? }`,
-`CatalogCommentPage` (the `CatalogPage` shape and invariants).
+`CatalogCommentPage` (the `CatalogPage` shape and invariants over `items`, plus
+the `hot` section of section 12) and `CatalogCommentReplyPage` (the
+`CatalogPage` shape; the pagination support for reply load-more under decision
+6).
 
 ## 4. API boundary and minimum contract surface
 
@@ -251,7 +259,7 @@ without a further amendment.
 
 | Operation        | Backend endpoint                                            | Auth      | Result                       |
 | ---------------- | ----------------------------------------------------------- | --------- | ---------------------------- |
-| Read comments    | `GET /v1/catalog/{catalogId}/comments?page&pageSize`        | anonymous | `CatalogCommentPage`         |
+| Read comments    | `GET /v1/catalog/{catalogId}/comments?page&pageSize&pinned` | anonymous | `CatalogCommentPage`         |
 | Create comment   | `POST /v1/catalog/{catalogId}/comments`                     | session   | `201 CatalogComment`         |
 | Create reply     | `POST /v1/catalog/{catalogId}/comments/{commentId}/replies` | session   | `201 CatalogCommentReply`    |
 | Current identity | `GET /v1/me`                                                | session   | `PublicUserProfile` or `401` |
@@ -306,17 +314,17 @@ Setting   PRE_MODERATION | DIRECT_PUBLICATION   (Owner-controlled, global)
   operator boundary (decision 4); public-user identity stays separate from
   Payload Owner/automation accounts.
 - Publication policy (decision 1): one comment system with an Owner-controlled
-  global setting in the existing Payload Admin interface. `PRE_MODERATION`
-  (default): new comments and replies enter `pending`; only Owner approval makes
-  them visible. `DIRECT_PUBLICATION`: new comments and replies become visible
-  after successful validation; the Owner can still hide them afterwards. The
-  Backend owns, persists and enforces the setting; changing it requires no code
-  change, restart or redeployment. Switching affects new submissions only —
-  existing pending items stay pending, visible items stay visible, hidden items
-  stay hidden; no bulk publication or bulk takedown is part of the setting.
-  Replies never bypass a hidden root comment's visibility restriction. The
-  setting and moderation are implemented in Mission 2B; the corresponding
-  user-facing states in Mission 2C.
+  global setting in the existing Payload Admin interface. `DIRECT_PUBLICATION`
+  (the initial default since section 12): new comments and replies become
+  visible after successful validation; the Owner can still hide them afterwards.
+  `PRE_MODERATION`: new comments and replies enter `pending`; only Owner
+  approval makes them visible. The Backend owns, persists and enforces the
+  setting; changing it requires no code change, restart or redeployment.
+  Switching affects new submissions only — existing pending items stay pending,
+  visible items stay visible, hidden items stay hidden; no bulk publication or
+  bulk takedown is part of the setting. Replies never bypass a hidden root
+  comment's visibility restriction. The setting and moderation are implemented
+  in Mission 2B; the corresponding user-facing states in Mission 2C.
 - No AI moderation, trust scores, reputation, strikes, moderator hierarchies,
   large review queues, keyword engines or user reporting.
 
@@ -494,3 +502,112 @@ These product decisions are approved and are not reopened by any mission.
 Historical decisions remain unchanged and are interpreted under this amendment.
 This amendment records authorization and boundaries, not completion or
 Production approval.
+
+## 12. Owner scope amendment of 2026-09-12 (narrow)
+
+Recorded from the Owner's explicit instruction of 2026-09-12, while Mission 2B
+(PR #112) was still an unmerged Draft. It supersedes exactly three earlier
+points and reopens nothing else: the seven decisions of section 11 stand.
+
+1. Comment display — hot first, then latest, one combined list. The root listing
+   is a small hot-comment section at the top followed by the remaining root
+   comments newest first. A root shown in the hot section never appears again in
+   the latest section, nor through load-more. This is not a pair of mutually
+   exclusive 热门/最新 tabs, and it is not permission to rank every comment by
+   popularity. Provisional implementation defaults, adjustable by the Owner and
+   explicitly not a permanent ranking formula:
+   - at most 3 hot root comments;
+   - heat = the actual number of currently visible replies under that root;
+   - only roots with a positive score qualify; otherwise only the latest list is
+     shown;
+   - deterministic ties: newer creation time, then the stable id. The selection
+     is computed on the Backend from eligible database rows, never by sorting
+     the comments already loaded in the browser; pending and hidden comments and
+     replies never contribute. No likes system, recommendation engine, Redis or
+     ranking service is introduced; nothing is ever ranked by fabricated QA
+     likes or counts. The flat reply relationship and reply pagination are
+     unchanged; root popularity never sorts replies. The implementation keeps
+     the hot selection stable during a loaded browsing sequence (the client pins
+     the hot ids it holds on load-more and the Backend excludes exactly those
+     from the latest pages) and refreshes the combined view coherently on
+     demand; a timestamp tie-breaker alone is not claimed to guarantee
+     pagination stability under concurrent changes. Contract consequences, the
+     only ones needed: `CatalogCommentPage` gains the `hot` section (at most 3
+     `CatalogComment`, empty on a pinned request); `CatalogComment` gains
+     `replyTotal`, the real count of currently visible replies (what tells a
+     reader whether load-more has anything left, and the hot score); the read
+     operation accepts `pinned`. Supersedes the newest-only root ordering of
+     section 3 and the earlier deferral of a hot-comment display in sections 6
+     and 11.5 to the extent described here.
+2. Default publication mode — `DIRECT_PUBLICATION`. The initial default of the
+   publication setting changes from `PRE_MODERATION` to `DIRECT_PUBLICATION`.
+   Both Owner-controlled modes stay in the existing Payload Admin surface with
+   the semantics of section 5; switching still requires no code change, restart
+   or redeployment and affects future submissions only (pending stays pending,
+   visible stays visible, hidden stays hidden; a reply never bypasses an
+   unavailable, pending or hidden root). Direct publication bypasses no
+   authentication, validation, suspension check or other safeguard. Fresh
+   initialization defaults to `DIRECT_PUBLICATION` through a forward-only
+   migration that changes only the untouched platform seed; a saved Owner choice
+   is never overwritten by startup or migration, and the existing local
+   acceptance database receives one explicit, recorded change through the
+   operator boundary. The 201-visible / 202-pending distinction stays.
+   Supersedes the `PRE_MODERATION` default in sections 5 and 11.1 and the
+   default noted in the rule classification above.
+3. Acceptance preview. The Owner authorizes the minimum Development-only
+   frontend integration required to accept this behavior visually: the accepted
+   #106 Detail/comment presentation connected to the real Development Backend
+   through the section 4 transport, under a Development-only route, reusing the
+   accepted layout and components without redesign and without substituting
+   `useQaCommentStore` for the real path (the QA prototype stays separate).
+   Backend/contract changes and the frontend preview stay separately reviewable.
+   This does not merge Mission 2C's Formal-root composition or its visual gate;
+   those remain as frozen in section 8.
+
+## 13. Owner instruction of 2026-09-12: the moderation workspace (bounded)
+
+Recorded from the Owner's rejection of the first Community moderation Admin
+experience and the instruction that replaced it. It permits exactly the
+following bounded changes and reopens nothing in sections 11 and 12.
+
+1. Comment state machine: one explicit, audited `reject` edge (pending → hidden)
+   joins `approve`, `hide` and `unhide`. Rejection is recorded as its own
+   action, distinct from hiding previously published content. Transition guards
+   stay; nothing is deleted; a stale state is a conflict that records nothing.
+2. Admin request boundary: the Payload endpoints validate the complete request
+   envelope strictly (including the platform-format subject id), map the id into
+   the Backend route and forward only the validated command body. The acting
+   identity is the server-side operator label; no request field names an actor.
+3. Review workspace in the existing Payload Admin: a queue with status counts,
+   server-side search and bounded filters, server-side pagination, a review
+   order independent of the public hot/latest ordering, a context panel with
+   thread context and the item's audit history, a separate publication-setting
+   view and an operation-history view backed by the audit table; navigation
+   organized around work (the dashboard as 工作台; sidebar
+   groups 内容, 社区, 系统与自动化 and 自动化工具 for the editorial batch
+   workflow) with a workspace card carrying a few real numbers. Payload stays
+   the only Admin application; no collection slug is renamed and no database
+   ownership moves. Catalog context reaches Admin only through the Backend's
+   published read side.
+4. Bounded bulk moderation: selected items on the current page only, at most 50,
+   through the same authorized operations and transition checks as a single
+   action, with per-item success, conflict and failure reporting and a retry of
+   failed items only. Never "every matching record"; never bulk suspension or
+   deletion; separate from the publication setting, which still changes no
+   existing comment.
+5. Analysis boundary: a typed, provider-independent, advisory
+   `CommentAnalysisPort` and the result shape of section 8 of the Owner's
+   instruction, documented in `docs/community-analysis-boundary.md`. Today only
+   a disabled adapter and contract-level tests exist. Analysis never changes
+   publication or account state, an unconfigured or failed analysis is never a
+   clean verdict, machine findings stay apart from the authoritative human audit
+   trail, and no paid provider, external transmission, scheduler, job system or
+   analysis table is introduced. The Backend read services the Admin uses are
+   the ones a later REST or MCP adapter reuses.
+
+Everything already approved stays: `DIRECT_PUBLICATION` as the fresh-install
+default, the Owner's switch to `PRE_MODERATION`, the saved local choice never
+reset by startup or migration, policy changes affecting only later submissions,
+replies never bypassing a pending or hidden root, the public hot section
+followed by the remaining latest roots without duplicates, and the accepted
+public Detail, Viewer and comment layout.

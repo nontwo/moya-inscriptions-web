@@ -27,6 +27,10 @@
       "types": "./src/internal/catalog-import/index.ts",
       "import": "./dist/internal/catalog-import/index.js"
     },
+    "./internal/community-operator": {
+      "types": "./src/internal/community-operator/index.ts",
+      "import": "./dist/internal/community-operator/index.js"
+    },
     "./internal/editorial": {
       "types": "./src/internal/editorial/index.ts",
       "import": "./dist/internal/editorial/index.js"
