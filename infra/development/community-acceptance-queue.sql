@@ -9,6 +9,18 @@
 -- earlier records stay exactly as accepted, with pending, visible and hidden
 -- states mixed so the review queue spans several pages at 20 per page.
 
+-- One transaction: the guard below aborts everything that follows, whatever
+-- psql flags the operator used.
+BEGIN;
+
+-- The file refuses any database but the local Development one.
+DO $$
+BEGIN
+  IF current_database() <> 'yoyi_dev' THEN
+    RAISE EXCEPTION 'LOCAL_YOYI_DEV_DATABASE_REQUIRED';
+  END IF;
+END $$;
+
 INSERT INTO community.catalog_comments (id, catalog_id, author_id, text, moderation, created_at) VALUES
   ('comment-000000000000000000000eed00000001', 'catalog-dev-acceptance-04', 'user-e7f588eee9b15df8432c7a16db80ec44', '这一段题记的书风介于楷隶之间，横画收笔处常见向上挑起的波磔，竖画则多呈悬针。与同一区域晚近的造像题记相比，字距紧而行距宽，整体章法疏朗。拓片上第三行第五字左侧有一处明显的剥蚀，原石现场观察时应当留意是否为后期人为损伤。此外，题记末尾的纪年文字曾被几位学者分别释读为不同年号，目前尚无定论，建议在资料页中同时保留各家说法并注明出处，而不要在释文中直接采信其中一种。', 'pending', '2026-09-05T06:00:00Z'::timestamptz),
   ('comment-000000000000000000000eed00000002', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '拓本与原石对照后，有三处出入。（队列样例 02）', 'pending', '2026-09-05T07:07:00Z'::timestamptz),
@@ -115,3 +127,5 @@ INSERT INTO community.catalog_comments (id, catalog_id, author_id, text, moderat
   ('comment-000000000000000000000eed00000116', 'catalog-dev-acceptance-04', 'user-993d5a92418b0834339028df8645a0fb', '此处“年”字的写法与同期造像记相近，可作旁证。（补充待审核样例 23）', 'pending', '2026-09-11T15:46:00Z'::timestamptz),
   ('comment-000000000000000000000eed00000117', 'catalog-dev-acceptance-04', 'user-d3121116762595e78ddc5dd84e8ecf1c', '关于书者身份的推测，建议注明依据与出处。（补充待审核样例 24）', 'pending', '2026-09-11T16:59:00Z'::timestamptz)
 ON CONFLICT (id) DO NOTHING;
+
+COMMIT;
