@@ -376,5 +376,125 @@ describe("LiveCommentSection", () => {
         ?.getAttribute("data-comment-unavailable"),
     ).toBe("unavailable");
     expect(container.querySelector("[data-comment-list]")).toBeNull();
+    // No count is claimed while the listing could not be read.
+    expect(container.querySelector("h2")?.textContent?.trim()).toBe("评论");
+  });
+
+  it("keeps the draft in the composer after a failed submission", async () => {
+    const submitComment = vi
+      .fn()
+      .mockResolvedValueOnce({ state: "unavailable" })
+      .mockResolvedValueOnce({
+        state: "success",
+        item: root(1, []),
+        awaitingApproval: false,
+      });
+    const container = await render(fakeSource({ submitComment }));
+
+    fill(container.querySelector("textarea"), "还没发出去");
+    await click(
+      container.querySelector("[data-comment-composer] button[type=submit]"),
+    );
+    expect(
+      container
+        .querySelector("[data-comment-notice]")
+        ?.getAttribute("data-comment-notice"),
+    ).toBe("error");
+    expect(container.querySelector("textarea")?.value).toBe("还没发出去");
+
+    // The same text is sent again untouched; success then clears it.
+    await click(
+      container.querySelector("[data-comment-composer] button[type=submit]"),
+    );
+    expect(submitComment).toHaveBeenNthCalledWith(2, catalogId, "还没发出去");
+    expect(container.querySelector("textarea")?.value).toBe("");
+    expect(
+      container.querySelector("[data-comment-notice]")?.textContent,
+    ).toContain("已发布");
+  });
+
+  it("shows a published reply inside its thread at once, beyond the embedded page", async () => {
+    const embedded = [reply(1), reply(2), reply(3)];
+    const readListing = vi.fn().mockResolvedValue({
+      state: "success",
+      page: {
+        hot: [],
+        items: [root(1, embedded, 3)],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+      },
+    });
+    const submitReply = vi.fn().mockResolvedValue({
+      state: "success",
+      item: reply(9, { text: "第四条回复" }),
+      awaitingApproval: false,
+    });
+    const container = await render(fakeSource({ readListing, submitReply }));
+
+    await click(
+      container.querySelector("[data-comment-id] [data-comment-reply-action]"),
+    );
+    fill(container.querySelector("textarea"), "第四条回复");
+    await click(
+      container.querySelector("[data-comment-composer] button[type=submit]"),
+    );
+    expect(container.querySelectorAll("[data-comment-reply]")).toHaveLength(4);
+    expect(container.textContent).toContain("第四条回复");
+    // Nothing more to load: the thread total moved with the new reply.
+    expect(
+      container.querySelector("[data-comment-load-more-replies]"),
+    ).toBeNull();
+    expect(readListing).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the reply load-more once the last reply page was read", async () => {
+    // A reply hidden between two loads leaves the total above what can be
+    // shown; the exhausted page, not the stale total, ends the affordance.
+    const readReplies = vi.fn().mockResolvedValue({
+      state: "success",
+      page: {
+        items: [reply(1), reply(2), reply(3)],
+        total: 4,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+      },
+    });
+    const container = await render(
+      fakeSource({
+        readListing: vi.fn().mockResolvedValue({
+          state: "success",
+          page: {
+            hot: [],
+            items: [root(1, [reply(1), reply(2), reply(3)], 5)],
+            total: 1,
+            page: 1,
+            pageSize: 10,
+            totalPages: 1,
+          },
+        }),
+        readReplies,
+      }),
+    );
+    await click(container.querySelector("[data-comment-load-more-replies]"));
+    expect(container.querySelectorAll("[data-comment-reply]")).toHaveLength(3);
+    expect(
+      container.querySelector("[data-comment-load-more-replies]"),
+    ).toBeNull();
+  });
+
+  it("never presents an unanswered session check as signed out", async () => {
+    const container = await render(
+      fakeSource({
+        readViewer: vi.fn().mockResolvedValue({ state: "unavailable" }),
+      }),
+    );
+    expect(container.querySelector("[data-comment-composer]")).toBeNull();
+    expect(container.querySelector("[data-comment-signed-out]")).toBeNull();
+    expect(
+      container.querySelector("[data-comment-viewer-unavailable]")?.textContent,
+    ).toContain("无法确认登录状态");
   });
 });

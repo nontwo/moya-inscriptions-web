@@ -69,6 +69,11 @@ const submissionNotice = (state: string): LiveCommentNotice => {
   }
 };
 
+const pendingNotice: LiveCommentNotice = {
+  text: "已提交，待审核通过后才会显示。",
+  tone: "info",
+};
+
 const mergeUnseen = <Item extends { readonly id: string }>(
   existing: readonly Item[],
   incoming: readonly Item[],
@@ -112,6 +117,8 @@ export const useLiveComments = (
   });
   const [notice, setNotice] = useState<LiveCommentNotice | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // A second click before the state re-renders must not start a second page.
+  const loadingMoreRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const replyPages = useRef(new Map<string, number>());
 
@@ -179,8 +186,9 @@ export const useLiveComments = (
   }, [loadFirstPage]);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || listing.status !== "ready") return;
+    if (loadingMoreRef.current || listing.status !== "ready") return;
     if (listing.page >= listing.totalPages) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
       const result = await source.readListing(catalogId, {
@@ -192,6 +200,9 @@ export const useLiveComments = (
         setNotice({ text: "无法加载更多评论，请稍后再试。", tone: "error" });
         return;
       }
+      setNotice((current) =>
+        current?.text === "无法加载更多评论，请稍后再试。" ? null : current,
+      );
       const at = nowRef.current();
       setListing((current) => ({
         ...current,
@@ -204,9 +215,10 @@ export const useLiveComments = (
         totalPages: result.page.totalPages,
       }));
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [catalogId, listing, loadingMore, source]);
+  }, [catalogId, listing, source]);
 
   const loadMoreReplies = useCallback(
     async (rootId: string) => {
@@ -224,11 +236,21 @@ export const useLiveComments = (
       const incoming = result.page.items.map((reply) =>
         toCommentReplyPresentation(reply, at),
       );
-      const update = (thread: CommentItem): CommentItem => ({
-        ...thread,
-        replies: mergeUnseen(thread.replies, incoming),
-        replyTotal: result.page.total,
-      });
+      // Past the last page nothing more can arrive: the total then equals
+      // what is shown, so the load-more control disappears even if a reply was
+      // hidden between two loads.
+      const exhausted = result.page.page >= result.page.totalPages;
+      const update = (thread: CommentItem): CommentItem => {
+        const replies = mergeUnseen(thread.replies, incoming);
+        return {
+          ...thread,
+          replies,
+          replyTotal: exhausted ? replies.length : result.page.total,
+        };
+      };
+      setNotice((current) =>
+        current?.text === "无法加载更多回复，请稍后再试。" ? null : current,
+      );
       setListing((current) => ({
         ...current,
         hot: withThread(current.hot, rootId, update),
@@ -238,46 +260,47 @@ export const useLiveComments = (
     [catalogId, source],
   );
 
-  const afterSubmission = useCallback(
-    async (state: string, awaitingApproval: boolean) => {
-      if (state === "success") {
-        setNotice(
-          awaitingApproval
-            ? {
-                text: "已提交，待审核通过后才会显示。",
-                tone: "info",
-              }
-            : { text: "已发布。", tone: "info" },
-        );
-        await loadFirstPage();
-        return;
-      }
-      if (state === "unauthenticated") setViewer({ status: "signed-out" });
-      setNotice(submissionNotice(state));
-    },
-    [loadFirstPage],
-  );
+  /** Explains a refused submission; a 401 also flips the viewer to signed out. */
+  const reportFailure = useCallback((state: string) => {
+    if (state === "unauthenticated") setViewer({ status: "signed-out" });
+    setNotice(submissionNotice(state));
+  }, []);
 
+  /** Resolves true when the Backend accepted the comment (201 or 202). */
   const sendComment = useCallback(
-    async (text: string) => {
-      if (submitting) return;
+    async (text: string): Promise<boolean> => {
+      if (submitting) return false;
       setSubmitting(true);
       try {
         const result = await source.submitComment(catalogId, text);
-        await afterSubmission(
-          result.state,
-          result.state === "success" && result.awaitingApproval,
+        if (result.state !== "success") {
+          reportFailure(result.state);
+          return false;
+        }
+        // A published root belongs at the top of the latest list; a pending
+        // one refreshes as before so the reader sees the current list.
+        setNotice(
+          result.awaitingApproval
+            ? pendingNotice
+            : { text: "已发布。", tone: "info" },
         );
+        await loadFirstPage();
+        return true;
       } finally {
         setSubmitting(false);
       }
     },
-    [afterSubmission, catalogId, source, submitting],
+    [catalogId, loadFirstPage, reportFailure, source, submitting],
   );
 
+  /**
+   * Resolves true when the Backend accepted the reply. A published reply is
+   * shown inside its thread right away (the embedded first page would hide a
+   * reply beyond the third), and the thread's real total moves with it.
+   */
   const sendReply = useCallback(
-    async (target: CommentReplyTarget, text: string) => {
-      if (submitting) return;
+    async (target: CommentReplyTarget, text: string): Promise<boolean> => {
+      if (submitting) return false;
       setSubmitting(true);
       try {
         const result = await source.submitReply(
@@ -286,15 +309,36 @@ export const useLiveComments = (
           text,
           target.replyId,
         );
-        await afterSubmission(
-          result.state,
-          result.state === "success" && result.awaitingApproval,
-        );
+        if (result.state !== "success") {
+          reportFailure(result.state);
+          return false;
+        }
+        if (result.awaitingApproval) {
+          setNotice(pendingNotice);
+          await loadFirstPage();
+          return true;
+        }
+        const reply = toCommentReplyPresentation(result.item, nowRef.current());
+        const update = (thread: CommentItem): CommentItem =>
+          thread.replies.some((existing) => existing.id === reply.id)
+            ? thread
+            : {
+                ...thread,
+                replies: [...thread.replies, reply],
+                replyTotal: (thread.replyTotal ?? thread.replies.length) + 1,
+              };
+        setListing((current) => ({
+          ...current,
+          hot: withThread(current.hot, target.rootCommentId, update),
+          latest: withThread(current.latest, target.rootCommentId, update),
+        }));
+        setNotice({ text: "已发布。", tone: "info" });
+        return true;
       } finally {
         setSubmitting(false);
       }
     },
-    [afterSubmission, catalogId, source, submitting],
+    [catalogId, loadFirstPage, reportFailure, source, submitting],
   );
 
   return {

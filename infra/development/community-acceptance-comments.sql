@@ -11,6 +11,18 @@
 --   pending or hidden, so no root qualifies as hot.
 -- catalog-dev-acceptance-03: intentionally empty.
 
+-- One transaction: the guard below aborts everything that follows, whatever
+-- psql flags the operator used.
+BEGIN;
+
+-- The file refuses any database but the local Development one.
+DO $$
+BEGIN
+  IF current_database() <> 'yoyi_dev' THEN
+    RAISE EXCEPTION 'LOCAL_YOYI_DEV_DATABASE_REQUIRED';
+  END IF;
+END $$;
+
 INSERT INTO community.catalog_comments (id, catalog_id, author_id, text, moderation, created_at) VALUES
   ('comment-00000000000000000000acce00000001', 'catalog-dev-acceptance-01', 'user-e7f588eee9b15df8432c7a16db80ec44', '这方摩崖的字口还很清晰，拓片能看出刀痕的起收。', 'visible', '2026-09-10T08:00:00Z'::timestamptz),
   ('comment-00000000000000000000acce00000002', 'catalog-dev-acceptance-01', 'user-993d5a92418b0834339028df8645a0fb', '请教：题记末尾那个年号，是否有学者做过考订？', 'visible', '2026-09-10T09:00:00Z'::timestamptz),
@@ -61,3 +73,5 @@ INSERT INTO community.catalog_comment_replies (id, root_comment_id, author_id, t
   ('comment-00000000000000000000acce0000002c', 'comment-00000000000000000000acce00000029', 'user-993d5a92418b0834339028df8645a0fb', '（待审核的回复）', 'pending', '2026-09-11T12:00:00Z'::timestamptz, NULL),
   ('comment-00000000000000000000acce0000002d', 'comment-00000000000000000000acce0000002a', 'user-e7f588eee9b15df8432c7a16db80ec44', '（已隐藏的回复）', 'hidden', '2026-09-11T13:00:00Z'::timestamptz, NULL)
 ON CONFLICT (id) DO NOTHING;
+
+COMMIT;

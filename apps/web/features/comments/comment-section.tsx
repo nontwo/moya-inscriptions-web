@@ -22,7 +22,16 @@ type CommentSort = "hot" | "latest";
 export type CommentViewerState =
   | { readonly state: "checking" }
   | { readonly state: "signed-in" }
-  | { readonly state: "signed-out"; readonly signInHref: string };
+  | { readonly state: "signed-out"; readonly signInHref: string }
+  /** The session service could not answer; never shown as signed out. */
+  | { readonly state: "unavailable" };
+
+/**
+ * A send handler may report whether the submission was accepted. The QA
+ * store returns nothing (always accepted); the live client resolves false on
+ * a failure so the draft stays in the composer for another attempt.
+ */
+export type CommentSendResult = void | Promise<boolean>;
 
 export interface CommentSectionNotice {
   readonly tone: "info" | "error";
@@ -39,8 +48,11 @@ export interface CommentSectionProps {
   readonly catalogId: string;
   readonly currentUser: CommentUserPresentation;
   readonly items: readonly CommentItem[];
-  readonly onSendComment: (text: string) => void;
-  readonly onSendReply: (target: CommentReplyTarget, text: string) => void;
+  readonly onSendComment: (text: string) => CommentSendResult;
+  readonly onSendReply: (
+    target: CommentReplyTarget,
+    text: string,
+  ) => CommentSendResult;
   /** QA only; the live composition hides likes (decision 5). */
   readonly onToggleLike?: (commentId: string, replyId?: string) => void;
   /** QA only; the live composition derives loading from the real client. */
@@ -353,13 +365,20 @@ export const CommentSection = ({
     event.preventDefault();
     const text = draft.trim();
     if (text.length === 0 || submitting) return;
-    if (replyTarget === null) onSendComment(text);
-    else {
-      onSendReply(replyTarget, text);
-      expandThread(replyTarget.rootCommentId);
-    }
-    setDraft("");
-    setReplyTarget(null);
+    const target = replyTarget;
+    const outcome =
+      target === null ? onSendComment(text) : onSendReply(target, text);
+    const accepted = () => {
+      if (target !== null) expandThread(target.rootCommentId);
+      setDraft("");
+      setReplyTarget(null);
+    };
+    // A failed live submission keeps the text; nothing is shown as sent.
+    if (outcome instanceof Promise) {
+      void outcome.then((ok) => {
+        if (ok) accepted();
+      });
+    } else accepted();
   };
   const composer = (
     <form
@@ -410,6 +429,10 @@ export const CommentSection = ({
       <p className={styles.signedOut} data-comment-signed-out="">
         <a href={viewer.signInHref}>登录</a>后即可发表评论。
       </p>
+    ) : viewer.state === "unavailable" ? (
+      <p className={styles.signedOut} data-comment-viewer-unavailable="">
+        暂时无法确认登录状态，请稍后刷新再试。
+      </p>
     ) : null;
   const renderRow = (comment: CommentItem) => (
     <CommentRow
@@ -442,7 +465,9 @@ export const CommentSection = ({
       <header className={styles.header}>
         <h2 id={`comment-title-${catalogId}`}>
           评论
-          {loading ? null : <span aria-label={`${count} 条`}> {count}</span>}
+          {loading || status !== null ? null : (
+            <span aria-label={`${count} 条`}> {count}</span>
+          )}
         </h2>
         {loading || live ? null : (
           <label className={styles.sortControl}>

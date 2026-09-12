@@ -12,7 +12,8 @@ import config from "../payload.config";
 if (process.env.CMS_ENVIRONMENT !== "synthetic")
   throw new Error("SYNTHETIC_ENVIRONMENT_REQUIRED");
 if (process.env.NODE_ENV === "production") throw new Error("DEVELOPMENT_ONLY");
-const database = new URL(process.env.CMS_DATABASE_URL ?? "");
+if (!process.env.CMS_DATABASE_URL) throw new Error("CMS_DATABASE_URL_REQUIRED");
+const database = new URL(process.env.CMS_DATABASE_URL);
 if (
   !["127.0.0.1", "localhost", "[::1]"].includes(database.hostname) ||
   database.pathname !== "/yoyi_dev"
