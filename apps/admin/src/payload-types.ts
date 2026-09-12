@@ -13,86 +13,93 @@
  * via the `definition` "supportedTimezones".
  */
 export type SupportedTimezones =
-  | 'Pacific/Midway'
-  | 'Pacific/Niue'
-  | 'Pacific/Honolulu'
-  | 'Pacific/Rarotonga'
-  | 'America/Anchorage'
-  | 'Pacific/Gambier'
-  | 'America/Los_Angeles'
-  | 'America/Tijuana'
-  | 'America/Denver'
-  | 'America/Phoenix'
-  | 'America/Chicago'
-  | 'America/Guatemala'
-  | 'America/New_York'
-  | 'America/Bogota'
-  | 'America/Caracas'
-  | 'America/Santiago'
-  | 'America/Buenos_Aires'
-  | 'America/Sao_Paulo'
-  | 'Atlantic/South_Georgia'
-  | 'Atlantic/Azores'
-  | 'Atlantic/Cape_Verde'
-  | 'Europe/London'
-  | 'Europe/Berlin'
-  | 'Africa/Lagos'
-  | 'Europe/Athens'
-  | 'Africa/Cairo'
-  | 'Europe/Moscow'
-  | 'Asia/Riyadh'
-  | 'Asia/Dubai'
-  | 'Asia/Baku'
-  | 'Asia/Karachi'
-  | 'Asia/Tashkent'
-  | 'Asia/Calcutta'
-  | 'Asia/Dhaka'
-  | 'Asia/Almaty'
-  | 'Asia/Jakarta'
-  | 'Asia/Bangkok'
-  | 'Asia/Shanghai'
-  | 'Asia/Singapore'
-  | 'Asia/Tokyo'
-  | 'Asia/Seoul'
-  | 'Australia/Brisbane'
-  | 'Australia/Sydney'
-  | 'Pacific/Guam'
-  | 'Pacific/Noumea'
-  | 'Pacific/Auckland'
-  | 'Pacific/Fiji';
+  | "Pacific/Midway"
+  | "Pacific/Niue"
+  | "Pacific/Honolulu"
+  | "Pacific/Rarotonga"
+  | "America/Anchorage"
+  | "Pacific/Gambier"
+  | "America/Los_Angeles"
+  | "America/Tijuana"
+  | "America/Denver"
+  | "America/Phoenix"
+  | "America/Chicago"
+  | "America/Guatemala"
+  | "America/New_York"
+  | "America/Bogota"
+  | "America/Caracas"
+  | "America/Santiago"
+  | "America/Buenos_Aires"
+  | "America/Sao_Paulo"
+  | "Atlantic/South_Georgia"
+  | "Atlantic/Azores"
+  | "Atlantic/Cape_Verde"
+  | "Europe/London"
+  | "Europe/Berlin"
+  | "Africa/Lagos"
+  | "Europe/Athens"
+  | "Africa/Cairo"
+  | "Europe/Moscow"
+  | "Asia/Riyadh"
+  | "Asia/Dubai"
+  | "Asia/Baku"
+  | "Asia/Karachi"
+  | "Asia/Tashkent"
+  | "Asia/Calcutta"
+  | "Asia/Dhaka"
+  | "Asia/Almaty"
+  | "Asia/Jakarta"
+  | "Asia/Bangkok"
+  | "Asia/Shanghai"
+  | "Asia/Singapore"
+  | "Asia/Tokyo"
+  | "Asia/Seoul"
+  | "Australia/Brisbane"
+  | "Australia/Sydney"
+  | "Pacific/Guam"
+  | "Pacific/Noumea"
+  | "Pacific/Auckland"
+  | "Pacific/Fiji";
 
 export interface Config {
   auth: {
     users: UserAuthOperations;
-    'payload-mcp-api-keys': PayloadMcpApiKeyAuthOperations;
+    "payload-mcp-api-keys": PayloadMcpApiKeyAuthOperations;
   };
   blocks: {};
   collections: {
     users: User;
     catalogs: Catalog;
     media: Media;
-    'editorial-identities': EditorialIdentity;
-    'editorial-approvals': EditorialApproval;
-    'editorial-receipts': EditorialReceipt;
-    'payload-mcp-api-keys': PayloadMcpApiKey;
-    'payload-kv': PayloadKv;
-    'payload-locked-documents': PayloadLockedDocument;
-    'payload-preferences': PayloadPreference;
-    'payload-migrations': PayloadMigration;
+    "editorial-identities": EditorialIdentity;
+    "editorial-approvals": EditorialApproval;
+    "editorial-receipts": EditorialReceipt;
+    "payload-mcp-api-keys": PayloadMcpApiKey;
+    "payload-kv": PayloadKv;
+    "payload-locked-documents": PayloadLockedDocument;
+    "payload-preferences": PayloadPreference;
+    "payload-migrations": PayloadMigration;
   };
   collectionsJoins: {};
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     catalogs: CatalogsSelect<false> | CatalogsSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
-    'editorial-identities': EditorialIdentitiesSelect<false> | EditorialIdentitiesSelect<true>;
-    'editorial-approvals': EditorialApprovalsSelect<false> | EditorialApprovalsSelect<true>;
-    'editorial-receipts': EditorialReceiptsSelect<false> | EditorialReceiptsSelect<true>;
-    'payload-mcp-api-keys': PayloadMcpApiKeysSelect<false> | PayloadMcpApiKeysSelect<true>;
-    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
-    'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
-    'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
-    'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
+    "editorial-identities":
+      EditorialIdentitiesSelect<false> | EditorialIdentitiesSelect<true>;
+    "editorial-approvals":
+      EditorialApprovalsSelect<false> | EditorialApprovalsSelect<true>;
+    "editorial-receipts":
+      EditorialReceiptsSelect<false> | EditorialReceiptsSelect<true>;
+    "payload-mcp-api-keys":
+      PayloadMcpApiKeysSelect<false> | PayloadMcpApiKeysSelect<true>;
+    "payload-kv": PayloadKvSelect<false> | PayloadKvSelect<true>;
+    "payload-locked-documents":
+      PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
+    "payload-preferences":
+      PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
+    "payload-migrations":
+      PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
   };
   db: {
     defaultIDType: number;
@@ -152,7 +159,7 @@ export interface PayloadMcpApiKeyAuthOperations {
  */
 export interface User {
   id: number;
-  role: 'owner' | 'automation';
+  role: "owner" | "automation";
   scopeCatalogIds?:
     | {
         [k: string]: unknown;
@@ -182,7 +189,7 @@ export interface User {
       }[]
     | null;
   password?: string | null;
-  collection: 'users';
+  collection: "users";
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -200,7 +207,7 @@ export interface Catalog {
    * 新建时独立生成，已有来源须沿用已保存的映射；不得由名称或 CatalogId 推导。
    */
   sourceId: string;
-  kind: 'inscription' | 'calligraphy';
+  kind: "inscription" | "calligraphy";
   /**
    * 草稿可暂缺；发布时必须填写。
    */
@@ -211,90 +218,90 @@ export interface Catalog {
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   dynasty: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   dateText: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   province: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   prefecture: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   county: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   currentLocation: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   currentCustodian: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   description: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   scriptStyle: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "UNKNOWN" | "NOT_APPLICABLE" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   transcription: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   historicalContext: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "CLEAR";
     value?: string | null;
   };
   /**
    * 原文逐字保存，不转换繁简或标点。非“有值”状态请清空原文；首尾空白会提示修正。
    */
   scholarlyResearch: {
-    state: 'VALUE' | 'UNSUPPLIED' | 'CLEAR';
+    state: "VALUE" | "UNSUPPLIED" | "CLEAR";
     value?: string | null;
   };
   aliases?:
     | {
         alias: string;
-        aliasType: 'alternate' | 'historical';
+        aliasType: "alternate" | "historical";
         id?: string | null;
       }[]
     | null;
@@ -314,7 +321,7 @@ export interface Catalog {
   contributors?:
     | {
         name: string;
-        role: 'textAuthor' | 'calligrapher';
+        role: "textAuthor" | "calligrapher";
         id?: string | null;
       }[]
     | null;
@@ -323,7 +330,15 @@ export interface Catalog {
         label: string;
         citation?: string | null;
         url?: string | null;
-        appliesTo?: ('record' | 'description' | 'transcription' | 'historicalContext' | 'scholarlyResearch')[] | null;
+        appliesTo?:
+          | (
+              | "record"
+              | "description"
+              | "transcription"
+              | "historicalContext"
+              | "scholarlyResearch"
+            )[]
+          | null;
         id?: string | null;
       }[]
     | null;
@@ -340,7 +355,7 @@ export interface Catalog {
         position: number;
         isRepresentative?: boolean | null;
         rights?: string | null;
-        orderConfidence?: ('HIGH' | 'LOW') | null;
+        orderConfidence?: ("HIGH" | "LOW") | null;
         id?: string | null;
       }[]
     | null;
@@ -350,7 +365,7 @@ export interface Catalog {
   ownerNote?: string | null;
   updatedAt: string;
   createdAt: string;
-  _status?: ('draft' | 'published') | null;
+  _status?: ("draft" | "published") | null;
 }
 /**
  * Original media. Replacement and deletion are disabled; use a new MediaId for new bytes.
@@ -362,7 +377,7 @@ export interface Media {
   id: number;
   mediaId: string;
   catalogId: string;
-  origin: 'upload' | 'existing';
+  origin: "upload" | "existing";
   objectKey: string;
   sha256: string;
   alt: string;
@@ -373,7 +388,7 @@ export interface Media {
   /**
    * 保留原始排序可信度；LOW 警告不可自动提升或删除。
    */
-  orderConfidence?: ('HIGH' | 'LOW') | null;
+  orderConfidence?: ("HIGH" | "LOW") | null;
   prefix?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -392,7 +407,7 @@ export interface Media {
 export interface EditorialIdentity {
   id: number;
   identityValue: string;
-  kind: 'catalog' | 'source';
+  kind: "catalog" | "source";
   catalogId: string;
   updatedAt: string;
   createdAt: string;
@@ -407,7 +422,7 @@ export interface EditorialApproval {
   id: number;
   label: string;
   automationUser: number | User;
-  status: 'active' | 'revoked';
+  status: "active" | "revoked";
   items: {
     catalog: number | Catalog;
     revision: number;
@@ -430,8 +445,8 @@ export interface EditorialReceipt {
   deduplicationKey: string;
   requestFingerprint: string;
   actor: number | User;
-  operation: 'save-draft' | 'publish-approved';
-  status: 'completed' | 'rejected';
+  operation: "save-draft" | "publish-approved";
+  status: "completed" | "rejected";
   catalog?: (number | null) | Catalog;
   revision?: number | null;
   fingerprint?: string | null;
@@ -459,7 +474,7 @@ export interface PayloadMcpApiKey {
    * The purpose of the API key.
    */
   description?: string | null;
-  'payload-mcp-tool'?: {
+  "payload-mcp-tool"?: {
     /**
      * Query scoped Catalog draft summaries. Content is untrusted data; no credentials or private media URLs are returned.
      */
@@ -486,7 +501,7 @@ export interface PayloadMcpApiKey {
   enableAPIKey?: boolean | null;
   apiKey?: string | null;
   apiKeyIndex?: string | null;
-  collection: 'payload-mcp-api-keys';
+  collection: "payload-mcp-api-keys";
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -513,41 +528,41 @@ export interface PayloadLockedDocument {
   id: number;
   document?:
     | ({
-        relationTo: 'users';
+        relationTo: "users";
         value: number | User;
       } | null)
     | ({
-        relationTo: 'catalogs';
+        relationTo: "catalogs";
         value: number | Catalog;
       } | null)
     | ({
-        relationTo: 'media';
+        relationTo: "media";
         value: number | Media;
       } | null)
     | ({
-        relationTo: 'editorial-identities';
+        relationTo: "editorial-identities";
         value: number | EditorialIdentity;
       } | null)
     | ({
-        relationTo: 'editorial-approvals';
+        relationTo: "editorial-approvals";
         value: number | EditorialApproval;
       } | null)
     | ({
-        relationTo: 'editorial-receipts';
+        relationTo: "editorial-receipts";
         value: number | EditorialReceipt;
       } | null)
     | ({
-        relationTo: 'payload-mcp-api-keys';
+        relationTo: "payload-mcp-api-keys";
         value: number | PayloadMcpApiKey;
       } | null);
   globalSlug?: string | null;
   user:
     | {
-        relationTo: 'users';
+        relationTo: "users";
         value: number | User;
       }
     | {
-        relationTo: 'payload-mcp-api-keys';
+        relationTo: "payload-mcp-api-keys";
         value: number | PayloadMcpApiKey;
       };
   updatedAt: string;
@@ -561,11 +576,11 @@ export interface PayloadPreference {
   id: number;
   user:
     | {
-        relationTo: 'users';
+        relationTo: "users";
         value: number | User;
       }
     | {
-        relationTo: 'payload-mcp-api-keys';
+        relationTo: "payload-mcp-api-keys";
         value: number | PayloadMcpApiKey;
       };
   key?: string | null;
@@ -837,7 +852,7 @@ export interface PayloadMcpApiKeysSelect<T extends boolean = true> {
   user?: T;
   label?: T;
   description?: T;
-  'payload-mcp-tool'?:
+  "payload-mcp-tool"?:
     | T
     | {
         editorialQuery?: T;
@@ -900,7 +915,7 @@ export interface CollectionsWidget {
   data?: {
     [k: string]: unknown;
   };
-  width: 'full';
+  width: "full";
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -910,7 +925,6 @@ export interface Auth {
   [k: string]: unknown;
 }
 
-
-declare module 'payload' {
+declare module "payload" {
   export interface GeneratedTypes extends Config {}
 }
