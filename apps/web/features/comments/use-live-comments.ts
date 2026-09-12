@@ -121,6 +121,9 @@ export const useLiveComments = (
   const loadingMoreRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const replyPages = useRef(new Map<string, number>());
+  // Replies the reader published that no reply page has delivered yet: they
+  // trail the paged ones in their thread until a page carries them.
+  const trailingReplies = useRef(new Map<string, Set<string>>());
 
   const loadFirstPage = useCallback(
     async (signal?: AbortSignal) => {
@@ -131,6 +134,7 @@ export const useLiveComments = (
       );
       if (signal?.aborted === true) return;
       replyPages.current = new Map();
+      trailingReplies.current = new Map();
       if (result.state !== "success") {
         setListing({
           ...emptyListing,
@@ -240,8 +244,19 @@ export const useLiveComments = (
       // what is shown, so the load-more control disappears even if a reply was
       // hidden between two loads.
       const exhausted = result.page.page >= result.page.totalPages;
+      // The reader's own trailing replies stay last until a page carries
+      // them, at which point the page decides their position.
+      const trailing = new Set(trailingReplies.current.get(rootId));
+      const carried = new Set(incoming.map((reply) => reply.id));
+      for (const id of carried) trailingReplies.current.get(rootId)?.delete(id);
       const update = (thread: CommentItem): CommentItem => {
-        const replies = mergeUnseen(thread.replies, incoming);
+        const paged = thread.replies.filter((reply) => !trailing.has(reply.id));
+        const replies = [
+          ...mergeUnseen(paged, incoming),
+          ...thread.replies.filter(
+            (reply) => trailing.has(reply.id) && !carried.has(reply.id),
+          ),
+        ];
         return {
           ...thread,
           replies,
@@ -294,9 +309,11 @@ export const useLiveComments = (
   );
 
   /**
-   * Resolves true when the Backend accepted the reply. A published reply is
-   * shown inside its thread right away (the embedded first page would hide a
-   * reply beyond the third), and the thread's real total moves with it.
+   * Resolves true when the Backend accepted the reply. The listing refreshes
+   * as after any submission (the replied root may now be hot); a published
+   * reply beyond the embedded first replies is then shown at the end of its
+   * thread rather than hidden behind the reply pages, with the Backend's
+   * refreshed total already counting it.
    */
   const sendReply = useCallback(
     async (target: CommentReplyTarget, text: string): Promise<boolean> => {
@@ -313,26 +330,28 @@ export const useLiveComments = (
           reportFailure(result.state);
           return false;
         }
-        if (result.awaitingApproval) {
-          setNotice(pendingNotice);
-          await loadFirstPage();
-          return true;
-        }
+        setNotice(
+          result.awaitingApproval
+            ? pendingNotice
+            : { text: "已发布。", tone: "info" },
+        );
+        await loadFirstPage();
+        if (result.awaitingApproval) return true;
         const reply = toCommentReplyPresentation(result.item, nowRef.current());
-        const update = (thread: CommentItem): CommentItem =>
-          thread.replies.some((existing) => existing.id === reply.id)
-            ? thread
-            : {
-                ...thread,
-                replies: [...thread.replies, reply],
-                replyTotal: (thread.replyTotal ?? thread.replies.length) + 1,
-              };
+        const update = (thread: CommentItem): CommentItem => {
+          if (thread.replies.some((existing) => existing.id === reply.id))
+            return thread;
+          const trailing =
+            trailingReplies.current.get(thread.id) ?? new Set<string>();
+          trailing.add(reply.id);
+          trailingReplies.current.set(thread.id, trailing);
+          return { ...thread, replies: [...thread.replies, reply] };
+        };
         setListing((current) => ({
           ...current,
           hot: withThread(current.hot, target.rootCommentId, update),
           latest: withThread(current.latest, target.rootCommentId, update),
         }));
-        setNotice({ text: "已发布。", tone: "info" });
         return true;
       } finally {
         setSubmitting(false);

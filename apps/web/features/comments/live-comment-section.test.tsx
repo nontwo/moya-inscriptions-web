@@ -98,6 +98,10 @@ const ids = (container: Element, selector: string) =>
   [...container.querySelectorAll(selector)].map((element) =>
     element.getAttribute("data-comment-id"),
   );
+const replyIds = (container: Element) =>
+  [...container.querySelectorAll("[data-comment-reply]")].map((element) =>
+    element.getAttribute("data-comment-reply"),
+  );
 
 const fakeSource = (
   overrides: Partial<LiveCommentSource> = {},
@@ -415,17 +419,22 @@ describe("LiveCommentSection", () => {
 
   it("shows a published reply inside its thread at once, beyond the embedded page", async () => {
     const embedded = [reply(1), reply(2), reply(3)];
-    const readListing = vi.fn().mockResolvedValue({
+    const listingWithTotal = (replyTotal: number) => ({
       state: "success",
       page: {
         hot: [],
-        items: [root(1, embedded, 3)],
+        items: [root(1, embedded, replyTotal)],
         total: 1,
         page: 1,
         pageSize: 10,
         totalPages: 1,
       },
     });
+    const readListing = vi
+      .fn()
+      .mockResolvedValueOnce(listingWithTotal(3))
+      // The refresh after the submission already counts the new reply.
+      .mockResolvedValue(listingWithTotal(4));
     const submitReply = vi.fn().mockResolvedValue({
       state: "success",
       item: reply(9, { text: "第四条回复" }),
@@ -440,13 +449,94 @@ describe("LiveCommentSection", () => {
     await click(
       container.querySelector("[data-comment-composer] button[type=submit]"),
     );
-    expect(container.querySelectorAll("[data-comment-reply]")).toHaveLength(4);
+    // The list refreshed as before (hot may change), and the reply shows.
+    expect(readListing).toHaveBeenCalledTimes(2);
+    expect(replyIds(container)).toEqual([
+      commentId(101),
+      commentId(102),
+      commentId(103),
+      commentId(109),
+    ]);
     expect(container.textContent).toContain("第四条回复");
-    // Nothing more to load: the thread total moved with the new reply.
     expect(
       container.querySelector("[data-comment-load-more-replies]"),
     ).toBeNull();
-    expect(readListing).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the reader's own reply after the paged ones until a page carries it", async () => {
+    const embedded = [reply(1), reply(2), reply(3)];
+    const listingWithTotal = (replyTotal: number) => ({
+      state: "success",
+      page: {
+        hot: [],
+        items: [root(1, embedded, replyTotal)],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+      },
+    });
+    const readListing = vi
+      .fn()
+      .mockResolvedValueOnce(listingWithTotal(11))
+      .mockResolvedValue(listingWithTotal(12));
+    const submitReply = vi.fn().mockResolvedValue({
+      state: "success",
+      item: reply(12),
+      awaitingApproval: false,
+    });
+    const readReplies = vi
+      .fn()
+      .mockResolvedValueOnce({
+        state: "success",
+        page: {
+          items: Array.from({ length: 10 }, (_, i) => reply(i + 1)),
+          total: 12,
+          page: 1,
+          pageSize: 10,
+          totalPages: 2,
+        },
+      })
+      .mockResolvedValueOnce({
+        state: "success",
+        page: {
+          items: [reply(11), reply(12)],
+          total: 12,
+          page: 2,
+          pageSize: 10,
+          totalPages: 2,
+        },
+      });
+    const container = await render(
+      fakeSource({ readListing, readReplies, submitReply }),
+    );
+    await click(
+      container.querySelector("[data-comment-id] [data-comment-reply-action]"),
+    );
+    fill(container.querySelector("textarea"), "第十二条");
+    await click(
+      container.querySelector("[data-comment-composer] button[type=submit]"),
+    );
+    expect(replyIds(container).at(-1)).toBe(commentId(112));
+
+    // Page one lands before the reader's reply, not after it.
+    await click(container.querySelector("[data-comment-load-more-replies]"));
+    expect(replyIds(container)).toEqual([
+      ...Array.from({ length: 10 }, (_, i) => commentId(101 + i)),
+      commentId(112),
+    ]);
+    expect(
+      container.querySelector("[data-comment-load-more-replies]")?.textContent,
+    ).toContain("还有 1 条");
+
+    // The last page carries the reply itself, in its real position.
+    await click(container.querySelector("[data-comment-load-more-replies]"));
+    expect(replyIds(container)).toEqual(
+      Array.from({ length: 12 }, (_, i) => commentId(101 + i)),
+    );
+    expect(
+      container.querySelector("[data-comment-load-more-replies]"),
+    ).toBeNull();
   });
 
   it("hides the reply load-more once the last reply page was read", async () => {
