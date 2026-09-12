@@ -742,8 +742,10 @@ export const isAuthorizedCmsServerFile = (
       relative,
     ) ||
     /^src\/owner-workflow\/(?:View|NavLink)\.tsx$/.test(relative) ||
-    // Mission 2B: the Owner's moderation view and its Backend operator client.
-    /^src\/community\/(?:View|NavLink)\.tsx$/.test(relative) ||
+    // Community moderation: the server views, the workspace card and the
+    // Backend operator client; the browser modules are listed with the
+    // type-only exceptions below.
+    /^src\/community\/(?:View|DashboardCard)\.tsx$/.test(relative) ||
     /^src\/community\/(?:backend|endpoints)\.ts$/.test(relative) ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
@@ -766,8 +768,14 @@ const isOwnerWorkflowTypes = (
       "src/media/snapshot.ts",
     ].includes(relative) &&
       reference.specifier === "@moya/contracts/internal/editorial") ||
-      // Mission 2B: the moderation view renders operator shapes as types only.
-      (relative === "src/community/client.tsx" &&
+      // Community moderation: the browser modules render operator shapes as
+      // types only; every value crosses the same-origin Payload endpoints.
+      ([
+        "src/community/api.ts",
+        "src/community/queue-client.tsx",
+        "src/community/settings-client.tsx",
+        "src/community/history-client.tsx",
+      ].includes(relative) &&
         reference.specifier ===
           "@moya/contracts/internal/community-operator") ||
       ([

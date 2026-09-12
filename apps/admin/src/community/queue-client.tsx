@@ -1,0 +1,1138 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ConfirmationModal, SetStepNav, useModal } from "@payloadcms/ui";
+
+import {
+  TIME_ZONE_NOTE,
+  actionLabels,
+  applicableActions,
+  call,
+  describeFailure,
+  doneLabels,
+  excerpt,
+  formatPreciseTime,
+  formatTime,
+  kindLabels,
+  moderationLabels,
+  policyLabels,
+  shortId,
+  subjectKindLabels,
+} from "./api";
+import styles from "./community.module.css";
+
+import type {
+  BulkModerationResult,
+  CommentModerationAction,
+  CommentModerationState,
+  ModerationResult,
+  OperatorComment,
+  OperatorCommentDetail,
+  OperatorCommentPage,
+  PublicationPolicyState,
+  UserModerationResult,
+} from "@moya/contracts/internal/community-operator";
+
+type Status = CommentModerationState | "all";
+type Kind = "all" | "comment" | "reply";
+type Order = "newest" | "oldest";
+type PageSize = 20 | 50;
+
+interface QueueQuery {
+  readonly status: Status;
+  readonly q: string;
+  readonly kind: Kind;
+  readonly catalog: string;
+  readonly order: Order;
+  readonly page: number;
+  readonly size: PageSize;
+  readonly item: string | null;
+}
+
+interface Notice {
+  readonly tone: "success" | "error" | "info";
+  readonly text: string;
+}
+
+const statuses: readonly Status[] = ["pending", "visible", "hidden", "all"];
+const statusLabels: Record<Status, string> = {
+  pending: "待审核",
+  visible: "已公开",
+  hidden: "已隐藏",
+  all: "全部",
+};
+const bulkActionLabels: Record<CommentModerationAction, string> = {
+  approve: "通过并公开",
+  reject: "拒绝（不公开）",
+  hide: "隐藏",
+  unhide: "恢复公开",
+};
+const BULK_LIMIT = 50;
+
+/** The queue state lives in the URL, so back, reload and direct entry agree. */
+const readQuery = (params: URLSearchParams): QueueQuery => {
+  const status = params.get("status");
+  const kind = params.get("kind");
+  const order = params.get("order");
+  const size = params.get("size");
+  const page = Number(params.get("page") ?? "1");
+  return {
+    status: statuses.includes(status as Status)
+      ? (status as Status)
+      : "pending",
+    q: (params.get("q") ?? "").trim().slice(0, 100),
+    kind: kind === "comment" || kind === "reply" ? kind : "all",
+    catalog: (params.get("catalog") ?? "").slice(0, 128),
+    order: order === "oldest" ? "oldest" : "newest",
+    page: Number.isInteger(page) && page >= 1 && page <= 10_000 ? page : 1,
+    size: size === "50" ? 50 : 20,
+    item: params.get("item"),
+  };
+};
+
+const writeQuery = (query: QueueQuery): string => {
+  const params = new URLSearchParams();
+  if (query.status !== "pending") params.set("status", query.status);
+  if (query.q !== "") params.set("q", query.q);
+  if (query.kind !== "all") params.set("kind", query.kind);
+  if (query.catalog !== "") params.set("catalog", query.catalog);
+  if (query.order !== "newest") params.set("order", query.order);
+  if (query.page !== 1) params.set("page", String(query.page));
+  if (query.size !== 20) params.set("size", String(query.size));
+  if (query.item !== null) params.set("item", query.item);
+  const encoded = params.toString();
+  return encoded === "" ? "" : `?${encoded}`;
+};
+
+const filterKey = (query: QueueQuery): string =>
+  [
+    query.status,
+    query.q,
+    query.kind,
+    query.catalog,
+    query.order,
+    query.page,
+    query.size,
+  ].join("|");
+
+const catalogLink = (catalogId: string): string =>
+  `/admin/collections/catalogs?where[catalogId][equals]=${encodeURIComponent(catalogId)}`;
+
+const copyText = async (text: string): Promise<boolean> => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const StateChip = ({ state }: { readonly state: CommentModerationState }) => (
+  <span className={styles.chip} data-state={state}>
+    {moderationLabels[state]}
+  </span>
+);
+
+export const CommunityQueueClient = () => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const query = useMemo(() => readQuery(searchParams), [searchParams]);
+  const { openModal, closeModal } = useModal();
+
+  const [page, setPage] = useState<OperatorCommentPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<PublicationPolicyState | null>(null);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [rowNotices, setRowNotices] = useState<Record<string, Notice>>({});
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
+  const [receipt, setReceipt] = useState<Notice | null>(null);
+  const [bulkAction, setBulkAction] =
+    useState<CommentModerationAction>("approve");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkFailed, setBulkFailed] = useState<{
+    readonly action: CommentModerationAction;
+    readonly ids: readonly string[];
+  } | null>(null);
+  const [pendingSuspension, setPendingSuspension] =
+    useState<OperatorComment | null>(null);
+  const [detail, setDetail] = useState<
+    | { readonly state: "loading"; readonly id: string }
+    | {
+        readonly state: "ready";
+        readonly id: string;
+        readonly data: OperatorCommentDetail;
+      }
+    | { readonly state: "error"; readonly id: string; readonly text: string }
+    | null
+  >(null);
+  const [searchDraft, setSearchDraft] = useState(query.q);
+  const requestSequence = useRef(0);
+  const detailSequence = useRef(0);
+  // The item currently open, readable from callbacks created before it changed.
+  const openItemRef = useRef<string | null>(null);
+  // The list query excludes the open item, so opening detail never reloads.
+  const listQuery = useMemo(
+    () => ({
+      status: query.status,
+      q: query.q,
+      kind: query.kind,
+      catalog: query.catalog,
+      order: query.order,
+      page: query.page,
+      size: query.size,
+    }),
+    // Keyed on the serialized filters on purpose.
+    [filterKey(query)],
+  );
+
+  const navigate = useCallback(
+    (patch: Partial<QueueQuery>, mode: "replace" | "push" = "replace") => {
+      const next = writeQuery({ ...query, ...patch });
+      const href = `${pathname}${next}`;
+      if (mode === "push") router.push(href, { scroll: false });
+      else router.replace(href, { scroll: false });
+    },
+    [pathname, query, router],
+  );
+
+  // A newer request always wins; a slow older answer can never replace it.
+  const load = useCallback(async () => {
+    const sequence = (requestSequence.current += 1);
+    setLoading(true);
+    try {
+      const result = await call<OperatorCommentPage>("read-comments", {
+        ...(listQuery.status === "all" ? {} : { moderation: listQuery.status }),
+        ...(listQuery.kind === "all" ? {} : { kind: listQuery.kind }),
+        ...(listQuery.catalog === "" ? {} : { catalogId: listQuery.catalog }),
+        ...(listQuery.q === "" ? {} : { search: listQuery.q }),
+        order: listQuery.order,
+        page: listQuery.page,
+        pageSize: listQuery.size,
+      });
+      if (sequence !== requestSequence.current) return;
+      setPage(result);
+      setLoadError(null);
+    } catch (error) {
+      if (sequence !== requestSequence.current) return;
+      setLoadError(describeFailure(error).text);
+    } finally {
+      if (sequence === requestSequence.current) setLoading(false);
+    }
+  }, [listQuery]);
+
+  useEffect(() => {
+    void load();
+    setSelected(new Set());
+    setBulkFailed(null);
+  }, [load]);
+
+  useEffect(() => {
+    setSearchDraft(query.q);
+  }, [query.q]);
+
+  useEffect(() => {
+    void call<PublicationPolicyState>("read-policy")
+      .then(setPolicy)
+      .catch(() => setPolicy(null));
+  }, []);
+
+  useEffect(() => {
+    openItemRef.current = query.item;
+    if (query.item === null) {
+      setDetail(null);
+      return;
+    }
+    const id = query.item;
+    const sequence = (detailSequence.current += 1);
+    setDetail({ state: "loading", id });
+    void call<OperatorCommentDetail>("read-comment", { id })
+      .then((data) => {
+        if (sequence === detailSequence.current)
+          setDetail({ state: "ready", id, data });
+      })
+      .catch((error: unknown) => {
+        if (sequence === detailSequence.current)
+          setDetail({ state: "error", id, text: describeFailure(error).text });
+      });
+  }, [query.item]);
+
+  const items = page?.items ?? [];
+  const catalogOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const item of items)
+      options.set(item.catalogId, item.catalogTitle ?? item.catalogId);
+    if (query.catalog !== "" && !options.has(query.catalog))
+      options.set(query.catalog, query.catalog);
+    return [...options.entries()];
+  }, [items, query.catalog]);
+
+  const setBusy = (id: string, busy: boolean) =>
+    setBusyIds((current) => {
+      const next = new Set(current);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const noteRow = (id: string, notice: Notice) =>
+    setRowNotices((current) => ({ ...current, [id]: notice }));
+
+  /** Updates the row and the tab counts in place; no page reload needed. */
+  const applyTransition = (id: string, moderation: CommentModerationState) =>
+    setPage((current) => {
+      if (current === null) return current;
+      const previous = current.items.find((item) => item.id === id);
+      if (previous === undefined || previous.moderation === moderation)
+        return current;
+      const counts = { ...current.counts };
+      counts[previous.moderation] = Math.max(
+        0,
+        counts[previous.moderation] - 1,
+      );
+      counts[moderation] += 1;
+      return {
+        ...current,
+        counts,
+        items: current.items.map((item) =>
+          item.id === id ? { ...item, moderation } : item,
+        ),
+      };
+    });
+
+  // A refresh after an action competes with a newer open: the sequence
+  // decides, so an older answer never overwrites the item the URL names.
+  const refreshDetailIfOpen = (id: string) => {
+    if (openItemRef.current !== id) return;
+    const sequence = (detailSequence.current += 1);
+    void call<OperatorCommentDetail>("read-comment", { id })
+      .then((data) => {
+        if (sequence === detailSequence.current)
+          setDetail({ state: "ready", id, data });
+      })
+      .catch(() => undefined);
+  };
+
+  const moderate = async (
+    item: OperatorComment,
+    action: CommentModerationAction,
+  ) => {
+    setBusy(item.id, true);
+    try {
+      const result = await call<ModerationResult>("moderate-comment", {
+        id: item.id,
+        action,
+      });
+      applyTransition(result.id, result.moderation);
+      noteRow(item.id, { tone: "success", text: doneLabels[action] });
+      setReceipt({
+        tone: "success",
+        text: `${doneLabels[action]}：${kindLabels[item.kind]} ${shortId(item.id)}`,
+      });
+      refreshDetailIfOpen(item.id);
+    } catch (error) {
+      const failure = describeFailure(error);
+      noteRow(item.id, { tone: "error", text: failure.text });
+      setReceipt({
+        tone: "error",
+        text: `${actionLabels[action]}未执行（${kindLabels[item.kind]} ${shortId(item.id)}）：${failure.text}`,
+      });
+    } finally {
+      setBusy(item.id, false);
+    }
+  };
+
+  const moderateAuthor = async (
+    item: OperatorComment,
+    action: "suspend" | "reinstate",
+  ) => {
+    setBusy(item.id, true);
+    try {
+      const result = await call<UserModerationResult>("moderate-user", {
+        id: item.author.id,
+        action,
+      });
+      setPage((current) =>
+        current === null
+          ? current
+          : {
+              ...current,
+              items: current.items.map((row) =>
+                row.author.id === result.id
+                  ? { ...row, author: { ...row.author, status: result.status } }
+                  : row,
+              ),
+            },
+      );
+      setReceipt({
+        tone: "success",
+        text:
+          action === "suspend"
+            ? `已停用账号 @${item.author.handle}，撤销 ${result.revokedSessions} 个会话；既有评论状态不变。`
+            : `已恢复账号 @${item.author.handle}。`,
+      });
+      refreshDetailIfOpen(item.id);
+    } catch (error) {
+      setReceipt({
+        tone: "error",
+        text: `${actionLabels[action]}未执行（@${item.author.handle}）：${describeFailure(error).text}`,
+      });
+    } finally {
+      setBusy(item.id, false);
+    }
+  };
+
+  const runBulk = async (
+    action: CommentModerationAction,
+    ids: readonly string[],
+  ) => {
+    if (ids.length === 0 || ids.length > BULK_LIMIT) return;
+    setBulkBusy(true);
+    try {
+      const result = await call<BulkModerationResult>("moderate-comments", {
+        action,
+        ids,
+      });
+      const failed: string[] = [];
+      for (const outcome of result.results) {
+        if (outcome.outcome === "applied" && outcome.moderation !== undefined) {
+          applyTransition(outcome.id, outcome.moderation);
+          noteRow(outcome.id, {
+            tone: "success",
+            text: doneLabels[result.action],
+          });
+        } else if (outcome.outcome === "conflict") {
+          noteRow(outcome.id, {
+            tone: "error",
+            text: "状态已变化（可能已被处理），本次未处理；请刷新后再决定。",
+          });
+        } else if (outcome.outcome === "not_found") {
+          noteRow(outcome.id, {
+            tone: "error",
+            text: "目标已不存在，请刷新队列。",
+          });
+        } else {
+          failed.push(outcome.id);
+          noteRow(outcome.id, {
+            tone: "error",
+            text: "处理失败，可重试失败项。",
+          });
+        }
+      }
+      setBulkFailed(
+        failed.length === 0 ? null : { action: result.action, ids: failed },
+      );
+      setSelected(new Set(failed));
+      setReceipt({
+        tone:
+          failed.length === 0 && result.conflicts === 0 ? "success" : "info",
+        text: `批量${bulkActionLabels[result.action]}：成功 ${result.applied} 条，状态冲突 ${result.conflicts} 条，已不存在 ${result.notFound} 条，失败 ${result.failed} 条。`,
+      });
+    } catch (error) {
+      setReceipt({
+        tone: "error",
+        text: `批量操作未执行：${describeFailure(error).text}`,
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const toggleSelected = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < BULK_LIMIT) next.add(id);
+      return next;
+    });
+
+  const allOnPageSelected =
+    items.length > 0 && items.every((item) => selected.has(item.id));
+
+  const openItem = (id: string) => navigate({ item: id }, "push");
+  const closeItem = () => navigate({ item: null }, "replace");
+
+  const renderActions = (item: OperatorComment, compact: boolean) => {
+    const busy = busyIds.has(item.id);
+    const suspended = item.author.status === "suspended";
+    return (
+      <div className={styles.actions}>
+        {applicableActions(item.moderation).map((action) => (
+          <button
+            className={styles.actionButton}
+            data-primary={
+              action === "approve" || action === "unhide" ? "true" : undefined
+            }
+            data-danger={
+              action === "reject" || action === "hide" ? "true" : undefined
+            }
+            disabled={busy}
+            key={action}
+            onClick={() => void moderate(item, action)}
+            type="button"
+          >
+            {busy ? "处理中…" : bulkActionLabels[action]}
+          </button>
+        ))}
+        <details className={styles.more}>
+          <summary aria-label={`更多操作：${shortId(item.id)}`}>更多</summary>
+          <div className={styles.moreMenu} role="menu">
+            {compact ? (
+              <button
+                onClick={() => openItem(item.id)}
+                role="menuitem"
+                type="button"
+              >
+                查看详情
+              </button>
+            ) : null}
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (suspended) void moderateAuthor(item, "reinstate");
+                else {
+                  setPendingSuspension(item);
+                  openModal("community-suspend-confirm");
+                }
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {suspended ? "恢复账号" : "停用账号…"}
+            </button>
+          </div>
+        </details>
+      </div>
+    );
+  };
+
+  return (
+    <div className={styles.workspace}>
+      <SetStepNav
+        nav={[
+          { label: "社区", url: "/admin/community-moderation" },
+          { label: "评论审核队列" },
+        ]}
+      />
+      <header className={styles.header}>
+        <div>
+          <h1 className={styles.title}>评论审核队列</h1>
+          <p className={styles.lead}>
+            队列同时包含根评论与回复，按提交时间排序；{TIME_ZONE_NOTE}。
+            <Link href="/admin">返回工作台</Link>
+          </p>
+        </div>
+        <div className={styles.summaryLine} data-policy-summary="">
+          <span>
+            当前发布模式：
+            <strong>
+              {policy === null ? "读取中…" : policyLabels[policy.policy]}
+            </strong>
+          </span>
+          <Link href="/admin/community-moderation/settings">发布设置</Link>
+          <Link href="/admin/community-moderation/history">操作历史</Link>
+        </div>
+      </header>
+
+      <div aria-label="审核状态" className={styles.tabs} role="tablist">
+        {statuses.map((status) => (
+          <button
+            aria-busy={loading && query.status === status}
+            aria-selected={query.status === status}
+            className={styles.tab}
+            key={status}
+            onClick={() => navigate({ status, page: 1 })}
+            aria-controls="community-queue-list"
+            role="tab"
+            type="button"
+          >
+            {statusLabels[status]}
+            <span className={styles.count}>
+              {page === null ? "…" : page.counts[status]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <form
+        className={styles.filters}
+        onSubmit={(event) => {
+          event.preventDefault();
+          navigate({ q: searchDraft.trim().slice(0, 100), page: 1 });
+        }}
+      >
+        <label>
+          搜索评论正文、作者账号或显示名
+          <input
+            data-queue-search=""
+            maxLength={100}
+            onChange={(event) => setSearchDraft(event.currentTarget.value)}
+            placeholder="例如：字口 或 dev-user-02"
+            type="search"
+            value={searchDraft}
+          />
+        </label>
+        <label>
+          类型
+          <select
+            onChange={(event) =>
+              navigate({ kind: event.currentTarget.value as Kind, page: 1 })
+            }
+            value={query.kind}
+          >
+            <option value="all">根评论与回复</option>
+            <option value="comment">仅根评论</option>
+            <option value="reply">仅回复</option>
+          </select>
+        </label>
+        <label>
+          资料
+          <select
+            onChange={(event) =>
+              navigate({ catalog: event.currentTarget.value, page: 1 })
+            }
+            value={query.catalog}
+          >
+            <option value="">全部资料</option>
+            {catalogOptions.map(([id, title]) => (
+              <option key={id} value={id}>
+                {title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          审阅顺序
+          <select
+            onChange={(event) =>
+              navigate({ order: event.currentTarget.value as Order, page: 1 })
+            }
+            value={query.order}
+          >
+            <option value="newest">最新优先</option>
+            <option value="oldest">最早优先</option>
+          </select>
+        </label>
+        <button className={styles.actionButton} type="submit">
+          搜索
+        </button>
+        {query.q === "" &&
+        query.kind === "all" &&
+        query.catalog === "" ? null : (
+          <button
+            className={styles.actionButton}
+            onClick={() =>
+              navigate({ q: "", kind: "all", catalog: "", page: 1 })
+            }
+            type="button"
+          >
+            清除筛选
+          </button>
+        )}
+      </form>
+
+      {receipt === null ? null : (
+        <p
+          className={styles.receipt}
+          data-queue-receipt=""
+          data-tone={receipt.tone}
+          role="status"
+        >
+          {receipt.text}
+        </p>
+      )}
+
+      {selected.size === 0 ? null : (
+        <div className={styles.bulkBar} data-bulk-bar="">
+          <span>
+            已选 <strong>{selected.size}</strong> 条（仅限本页，最多{" "}
+            {BULK_LIMIT} 条）
+          </span>
+          <label>
+            <span className={styles.srOnly}>批量操作</span>
+            <select
+              onChange={(event) =>
+                setBulkAction(
+                  event.currentTarget.value as CommentModerationAction,
+                )
+              }
+              value={bulkAction}
+            >
+              {(Object.keys(bulkActionLabels) as CommentModerationAction[]).map(
+                (action) => (
+                  <option key={action} value={action}>
+                    {bulkActionLabels[action]}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+          <button
+            className={styles.actionButton}
+            data-primary="true"
+            disabled={bulkBusy}
+            onClick={() => openModal("community-bulk-confirm")}
+            type="button"
+          >
+            {bulkBusy ? "处理中…" : "执行批量操作…"}
+          </button>
+          {bulkFailed === null ? null : (
+            <button
+              className={styles.actionButton}
+              disabled={bulkBusy}
+              onClick={() => void runBulk(bulkFailed.action, bulkFailed.ids)}
+              type="button"
+            >
+              重试失败项（{bulkFailed.ids.length}，
+              {bulkActionLabels[bulkFailed.action]}）
+            </button>
+          )}
+          <button
+            className={styles.actionButton}
+            onClick={() => setSelected(new Set())}
+            type="button"
+          >
+            取消选择
+          </button>
+        </div>
+      )}
+
+      <div
+        className={styles.layout}
+        data-panel-open={query.item === null ? "false" : "true"}
+      >
+        <section
+          aria-busy={loading}
+          aria-label="评论列表"
+          data-queue-list=""
+          id="community-queue-list"
+          role="tabpanel"
+        >
+          {loadError !== null ? (
+            <p className={styles.state} data-queue-error="" role="alert">
+              无法加载队列：{loadError}{" "}
+              <button
+                className={styles.rowLink}
+                onClick={() => void load()}
+                type="button"
+              >
+                重试
+              </button>
+            </p>
+          ) : page === null ? (
+            <p className={styles.state} role="status">
+              正在读取评论…
+            </p>
+          ) : page.items.length === 0 ? (
+            <p className={styles.state} data-queue-empty="">
+              没有符合条件的{statusLabels[query.status]}评论。
+            </p>
+          ) : (
+            <div className={styles.tableWrap}>
+              <table className={styles.table} data-queue-table="">
+                <thead>
+                  <tr>
+                    <th scope="col">
+                      <input
+                        aria-label="选择本页全部"
+                        checked={allOnPageSelected}
+                        onChange={() =>
+                          setSelected(
+                            allOnPageSelected
+                              ? new Set()
+                              : new Set(
+                                  items
+                                    .slice(0, BULK_LIMIT)
+                                    .map((item) => item.id),
+                                ),
+                          )
+                        }
+                        type="checkbox"
+                      />
+                    </th>
+                    <th scope="col">评论</th>
+                    <th scope="col">资料</th>
+                    <th scope="col">作者</th>
+                    <th scope="col">状态 / 时间</th>
+                    <th scope="col">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {page.items.map((item) => (
+                    <tr
+                      data-busy={busyIds.has(item.id) ? "true" : undefined}
+                      data-current={query.item === item.id ? "true" : undefined}
+                      data-queue-row={item.id}
+                      data-state={item.moderation}
+                      key={item.id}
+                    >
+                      <td>
+                        <input
+                          aria-label={`选择 ${shortId(item.id)}`}
+                          checked={selected.has(item.id)}
+                          onChange={() => toggleSelected(item.id)}
+                          type="checkbox"
+                        />
+                      </td>
+                      <td>
+                        <p className={styles.excerpt}>
+                          <button
+                            className={styles.rowLink}
+                            onClick={() => openItem(item.id)}
+                            type="button"
+                          >
+                            {excerpt(item.text)}
+                          </button>
+                        </p>
+                        <span className={styles.secondary}>
+                          <span className={styles.chip} data-state="kind">
+                            {kindLabels[item.kind]}
+                          </span>{" "}
+                          <span className={styles.mono}>
+                            {shortId(item.id)}
+                          </span>
+                        </span>
+                        {rowNotices[item.id] === undefined ? null : (
+                          <p
+                            className={styles.rowNotice}
+                            data-row-notice=""
+                            data-tone={rowNotices[item.id]?.tone}
+                            role="status"
+                          >
+                            {rowNotices[item.id]?.text}
+                          </p>
+                        )}
+                      </td>
+                      <td>
+                        {item.catalogTitle ?? "（未公开的资料）"}
+                        <span className={styles.secondary}>
+                          {item.catalogId}
+                        </span>
+                      </td>
+                      <td>
+                        {item.author.displayName}
+                        <span className={styles.secondary}>
+                          @{item.author.handle}{" "}
+                          {item.author.status === "suspended" ? (
+                            <span
+                              className={styles.chip}
+                              data-state="suspended"
+                            >
+                              已停用
+                            </span>
+                          ) : null}
+                        </span>
+                      </td>
+                      <td>
+                        <StateChip state={item.moderation} />
+                        <span className={styles.secondary}>
+                          <time dateTime={item.createdAt}>
+                            {formatTime(item.createdAt)}
+                          </time>
+                        </span>
+                      </td>
+                      <td>{renderActions(item, true)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {page === null ? null : (
+            <div className={styles.pager}>
+              <span>
+                共 {page.total} 条 · 第 {page.total === 0 ? 0 : page.page} /{" "}
+                {page.totalPages} 页
+              </span>
+              <div className={styles.actions}>
+                <button
+                  className={styles.actionButton}
+                  disabled={page.page <= 1 || loading}
+                  onClick={() => navigate({ page: query.page - 1 })}
+                  type="button"
+                >
+                  上一页
+                </button>
+                <button
+                  className={styles.actionButton}
+                  disabled={page.page >= page.totalPages || loading}
+                  onClick={() => navigate({ page: query.page + 1 })}
+                  type="button"
+                >
+                  下一页
+                </button>
+                <label>
+                  <span className={styles.srOnly}>每页条数</span>
+                  <select
+                    onChange={(event) =>
+                      navigate({
+                        size: Number(event.currentTarget.value) as PageSize,
+                        page: 1,
+                      })
+                    }
+                    value={query.size}
+                  >
+                    <option value={20}>每页 20 条</option>
+                    <option value={50}>每页 50 条</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {query.item === null ? null : (
+          <aside
+            aria-labelledby="community-detail-title"
+            className={styles.panel}
+            data-queue-detail=""
+          >
+            <div className={styles.panelHeader}>
+              <h2 id="community-detail-title">评论详情</h2>
+              <button
+                className={styles.iconButton}
+                onClick={closeItem}
+                type="button"
+              >
+                关闭
+              </button>
+            </div>
+            {detail === null || detail.state === "loading" ? (
+              <p role="status">正在读取详情…</p>
+            ) : detail.state === "error" ? (
+              <p className={styles.notice} data-tone="error" role="alert">
+                {detail.text}
+              </p>
+            ) : (
+              <DetailBody
+                data={detail.data}
+                onOpen={openItem}
+                renderActions={(item) => renderActions(item, false)}
+              />
+            )}
+          </aside>
+        )}
+      </div>
+
+      <ConfirmationModal
+        body={
+          <p>
+            将对本页已选的 {selected.size} 条评论执行「
+            {bulkActionLabels[bulkAction]}」。
+            每条都会单独检查当前状态并记录审计；状态已变化的项目不会被处理。
+          </p>
+        }
+        cancelLabel="取消"
+        confirmLabel="确认执行"
+        confirmingLabel="处理中…"
+        heading="确认批量操作"
+        modalSlug="community-bulk-confirm"
+        onConfirm={async () => {
+          closeModal("community-bulk-confirm");
+          await runBulk(bulkAction, [...selected]);
+        }}
+      />
+      <ConfirmationModal
+        body={
+          <p>
+            停用账号 @{pendingSuspension?.author.handle ?? ""}（
+            {pendingSuspension?.author.displayName ?? ""}
+            ）会立即撤销该账号的全部登录会话并拒绝其后续发言；
+            已有评论保持当前状态不变，可单独隐藏。此操作会记录到操作历史，可随时恢复。
+          </p>
+        }
+        cancelLabel="取消"
+        confirmLabel="确认停用"
+        confirmingLabel="处理中…"
+        heading="确认停用账号"
+        modalSlug="community-suspend-confirm"
+        onConfirm={async () => {
+          closeModal("community-suspend-confirm");
+          if (pendingSuspension !== null)
+            await moderateAuthor(pendingSuspension, "suspend");
+          setPendingSuspension(null);
+        }}
+      />
+    </div>
+  );
+};
+
+const DetailBody = ({
+  data,
+  onOpen,
+  renderActions,
+}: {
+  readonly data: OperatorCommentDetail;
+  readonly onOpen: (id: string) => void;
+  readonly renderActions: (item: OperatorComment) => React.ReactNode;
+}) => {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async (label: string, value: string) => {
+    setCopied(
+      (await copyText(value)) ? `已复制${label}` : "复制失败，请手动选择",
+    );
+  };
+  const { item } = data;
+  return (
+    <>
+      <div>
+        <h3>正文</h3>
+        <p className={styles.fullText} data-detail-text="">
+          {item.text}
+        </p>
+      </div>
+      <div>
+        <h3>状态</h3>
+        <StateChip state={item.moderation} />{" "}
+        <span className={styles.chip} data-state="kind">
+          {kindLabels[item.kind]}
+        </span>
+        {data.parentRestriction === "none" ? null : (
+          <p className={styles.notice} data-tone="info">
+            {data.parentRestriction === "root_pending"
+              ? "所属根评论仍待审核：即使本回复已公开，公开页也不会显示它。"
+              : "所属根评论已隐藏：即使本回复已公开，公开页也不会显示它。"}
+          </p>
+        )}
+      </div>
+      <div>
+        <h3>所属资料</h3>
+        {item.catalogTitle ?? "（未公开的资料）"}
+        <span className={styles.secondary}>
+          <Link href={catalogLink(item.catalogId)}>在资料列表中查看</Link>
+          {" · "}
+          <span className={styles.mono}>{item.catalogId}</span>
+        </span>
+      </div>
+      {data.root === null ? null : (
+        <div>
+          <h3>所属根评论</h3>
+          <div className={styles.contextBox}>
+            <StateChip state={data.root.moderation} />{" "}
+            {data.root.author.displayName}：{excerpt(data.root.text, 160)}
+            <span className={styles.secondary}>
+              <button
+                className={styles.rowLink}
+                onClick={() => onOpen(data.root!.id)}
+                type="button"
+              >
+                打开根评论
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
+      {data.replyTo === null ? null : (
+        <div>
+          <h3>回复对象</h3>
+          <div className={styles.contextBox}>
+            <StateChip state={data.replyTo.moderation} />{" "}
+            {data.replyTo.author.displayName}：{excerpt(data.replyTo.text, 160)}
+            <span className={styles.secondary}>
+              <button
+                className={styles.rowLink}
+                onClick={() => onOpen(data.replyTo!.id)}
+                type="button"
+              >
+                打开该回复
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
+      <div>
+        <h3>作者</h3>
+        {item.author.displayName}{" "}
+        <span className={styles.mono}>@{item.author.handle}</span>{" "}
+        {item.author.status === "suspended" ? (
+          <span className={styles.chip} data-state="suspended">
+            已停用
+          </span>
+        ) : (
+          <span className={styles.chip} data-state="visible">
+            正常
+          </span>
+        )}
+        <span className={styles.secondary}>
+          <span className={styles.mono}>{item.author.id}</span>
+        </span>
+      </div>
+      <div>
+        <h3>时间</h3>
+        <time dateTime={item.createdAt}>
+          {formatPreciseTime(item.createdAt)}
+        </time>
+        <span className={styles.secondary}>
+          <span className={styles.mono}>{item.createdAt}</span>{" "}
+          <button
+            className={styles.rowLink}
+            onClick={() => void copy("时间戳", item.createdAt)}
+            type="button"
+          >
+            复制
+          </button>
+        </span>
+      </div>
+      <div>
+        <h3>内部 ID</h3>
+        <span className={styles.mono}>{item.id}</span>{" "}
+        <button
+          className={styles.rowLink}
+          onClick={() => void copy("ID", item.id)}
+          type="button"
+        >
+          复制
+        </button>
+        {copied === null ? null : (
+          <span className={styles.secondary}>{copied}</span>
+        )}
+      </div>
+      <div>
+        <h3>操作历史</h3>
+        {data.history.length === 0 ? (
+          <p className={styles.secondary}>尚无审核操作记录。</p>
+        ) : (
+          <ol className={styles.timeline} data-detail-history="">
+            {data.history.map((event) => (
+              <li key={event.id}>
+                <time dateTime={event.occurredAt}>
+                  {formatTime(event.occurredAt)}
+                </time>
+                <span>
+                  {actionLabels[event.action]} · {event.operatorLabel}
+                  {event.detail === undefined ? "" : ` · ${event.detail}`}
+                  <span className={styles.secondary}>
+                    {subjectKindLabels[event.subjectKind]}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+      <div>
+        <h3>机器分析（仅供参考）</h3>
+        <p
+          className={styles.secondary}
+          data-detail-analysis={data.analysis.status}
+        >
+          {data.analysis.status === "not_connected"
+            ? "未接入分析服务：没有任何机器判断，也不代表内容无问题。"
+            : data.analysis.status === "not_analyzed"
+              ? "尚未分析。"
+              : data.analysis.status === "completed"
+                ? `建议：${data.analysis.recommendation}（${data.analysis.analyzer.name} ${data.analysis.analyzer.version}）。${data.analysis.explanation}`
+                : `分析${data.analysis.status === "failed" ? "失败" : data.analysis.status === "stale" ? "已过期" : "已跳过"}，不构成任何结论。`}
+        </p>
+      </div>
+      <div>
+        <h3>操作</h3>
+        {renderActions(item)}
+      </div>
+    </>
+  );
+};

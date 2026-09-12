@@ -49,16 +49,27 @@ export default buildConfig({
           path: "/editorial-workflow",
           exact: true,
         },
+        // Community: the review queue is the primary working surface; the
+        // publication setting and the operation history are their own views.
         communityModeration: {
           Component: "/src/community/View#CommunityModerationView",
           path: "/community-moderation",
           exact: true,
         },
+        communitySettings: {
+          Component: "/src/community/View#CommunitySettingsView",
+          path: "/community-moderation/settings",
+          exact: true,
+        },
+        communityHistory: {
+          Component: "/src/community/View#CommunityHistoryView",
+          path: "/community-moderation/history",
+          exact: true,
+        },
       },
-      afterNavLinks: [
-        "/src/owner-workflow/NavLink#OwnerWorkflowNavLink",
-        "/src/community/NavLink#CommunityModerationNavLink",
-      ],
+      // Work-oriented groups after the collection groups: 社区 and 自动化工具.
+      afterNavLinks: ["/src/community/NavGroup#CommunityNavGroups"],
+      beforeDashboard: ["/src/community/DashboardCard#CommunityDashboardCard"],
     },
   },
   i18n: { fallbackLanguage: "zh", supportedLanguages: { zh } },

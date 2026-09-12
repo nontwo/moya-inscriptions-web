@@ -19,6 +19,7 @@ export const EditorialApprovals: CollectionConfig = {
   labels: { singular: "批次发布批准", plural: "批次发布批准" },
   admin: {
     useAsTitle: "label",
+    group: "系统与自动化",
     description:
       "批准所选版本。内容变动后该项需重新批准；可撤销尚未执行的批准。",
     defaultColumns: ["label", "automationUser", "status", "approvedAt"],
@@ -196,6 +197,7 @@ export const EditorialReceipts: CollectionConfig = {
   labels: { singular: "批处理回执", plural: "批处理回执" },
   admin: {
     useAsTitle: "deduplicationKey",
+    group: "系统与自动化",
     description: "每项执行结果；成功项重放不会重复创建内容或版本。",
     defaultColumns: ["operation", "catalog", "revision", "status", "createdAt"],
   },

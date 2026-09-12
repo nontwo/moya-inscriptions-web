@@ -83,6 +83,7 @@ export function createMediaCollection(options: MediaAccess): CollectionConfig {
     slug: "media",
     admin: {
       useAsTitle: "alt",
+      group: "内容",
       defaultColumns: ["alt", "mimeType", "width", "height", "orderConfidence"],
       description:
         "Original media. Replacement and deletion are disabled; use a new MediaId for new bytes.",
