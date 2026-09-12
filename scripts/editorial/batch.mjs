@@ -435,7 +435,10 @@ function bounded(value, min, max, code) {
   return value;
 }
 
-/** Receipt lock is fail-closed; after an interrupted process inspect before removing its lock. */
+/**
+ * Receipt lock is fail-closed; after an interrupted process inspect before removing its lock.
+ * Inject `now` only for isolated tests; the abort of in-flight requests always follows real time.
+ */
 export async function runBatch({
   manifest,
   directory,
@@ -446,6 +449,7 @@ export async function runBatch({
   attempts = 3,
   budgetMs = 120_000,
   retryDelayMs = 250,
+  now = Date.now,
   onProgress = () => {},
   signal,
 }) {
@@ -453,11 +457,11 @@ export async function runBatch({
   bounded(attempts, 1, 5, "ATTEMPTS_INVALID");
   bounded(budgetMs, 100, 900_000, "BUDGET_INVALID");
   bounded(retryDelayMs, 0, 10_000, "RETRY_DELAY_INVALID");
-  const deadline = Date.now() + budgetMs;
+  const deadline = now() + budgetMs;
   const operationSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(budgetMs)])
     : AbortSignal.timeout(budgetMs);
-  const stopped = () => operationSignal.aborted || Date.now() >= deadline;
+  const stopped = () => operationSignal.aborted || now() >= deadline;
   const prepared = await prepareItems(manifest, directory);
   if (dryRun)
     return {
@@ -538,7 +542,7 @@ export async function runBatch({
           await sleep(
             Math.min(
               retryDelayMs * 2 ** (attempt - 1),
-              Math.max(0, deadline - Date.now()),
+              Math.max(0, deadline - now()),
             ),
             undefined,
             { signal: operationSignal },
