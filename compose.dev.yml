@@ -15,6 +15,8 @@ services:
       - ./infra/development/init-roles.sql:/docker-entrypoint-initdb.d/010-roles.sql:ro
       - ./infra/development/grant-public-read.sql:/opt/yoyi/grant-public-read.sql:ro
       - ./infra/development/readonly-browser.sql:/opt/yoyi/readonly-browser.sql:ro
+      - ./infra/development/grant-community-app.sql:/opt/yoyi/grant-community-app.sql:ro
+      - ./infra/development/community-development-accounts.sql:/opt/yoyi/community-development-accounts.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U yoyi_dev_owner -d yoyi_dev"]
       interval: 2s

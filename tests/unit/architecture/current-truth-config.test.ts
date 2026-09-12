@@ -61,6 +61,14 @@ describe("current repository truth and local configuration", () => {
     expect(scripts["dev:migrate"]).toContain(
       "scripts/migrate.mjs --development",
     );
+    // Community V1 (Mission 2A): the separate family, App-role grants and the
+    // Development test accounts follow the Payload migrations, never precede them.
+    expect(scripts["dev:migrate"]).toMatch(
+      /migrate\.mjs --development.*migrate-community\.mjs --development.*grant-community-app\.sql -f \/opt\/yoyi\/community-development-accounts\.sql/,
+    );
+    expect(scripts["db:migrate:community"]).toBe(
+      "node scripts/migrate-community.mjs",
+    );
     expect(scripts["dev:db:up"]).toContain("compose.dev.yml");
     expect(scripts["dev:db:down"]).not.toContain("--volumes");
     expect(adminManifest.scripts).toMatchObject({
@@ -174,6 +182,66 @@ describe("current repository truth and local configuration", () => {
       "SELECT (name) ON TABLE public.payload_migrations",
     );
     expect(grants).not.toContain("ALL TABLES");
+    const communityGrants = await readFile(
+      path.join(repositoryRoot, "infra/development/grant-community-app.sql"),
+      "utf8",
+    );
+    expect(communityGrants).toContain("GRANT USAGE ON SCHEMA community");
+    expect(communityGrants).not.toMatch(/ALL TABLES|CREATE ON SCHEMA|public\./);
+    for (const file of [
+      "grant-community-app.sql",
+      "community-development-accounts.sql",
+    ])
+      expect(compose).toContain(
+        `./infra/development/${file}:/opt/yoyi/${file}`,
+      );
+  });
+
+  it("routes Community V1 same-origin paths to Web, never to Payload", async () => {
+    const nginx = await readFile(
+      path.join(repositoryRoot, "infra/production/nginx/yoyi.conf.template"),
+      "utf8",
+    );
+    const communityLocations = [
+      ...nginx.matchAll(/location\s+(\S+)\s+\/api\/community\/\s*\{([^}]*)\}/g),
+    ];
+    expect(communityLocations).toHaveLength(1);
+    expect(communityLocations[0]?.[1]).toBe("^~");
+    expect(communityLocations[0]?.[2]).toContain("proxy_pass http://yoyi_web;");
+    expect(nginx).not.toMatch(/community[^\n]*yoyi_admin/);
+    const local = parseEnv(
+      await readFile(
+        path.join(repositoryRoot, "infra/env/local.env.example"),
+        "utf8",
+      ),
+    );
+    const app = new URL(local.APP_DATABASE_URL!);
+    const migration = new URL(local.APP_MIGRATION_DATABASE_URL!);
+    for (const url of [app, migration]) {
+      expect(url.pathname).toBe("/yoyi_dev");
+      expect(url.host).toBe(new URL(local.DATABASE_URL!).host);
+    }
+    expect(
+      new Set([
+        app.username,
+        migration.username,
+        new URL(local.DATABASE_URL!).username,
+        new URL(local.CMS_DATABASE_URL!).username,
+      ]).size,
+    ).toBe(4);
+    const backend = parseEnv(
+      await readFile(
+        path.join(repositoryRoot, "infra/production/env/backend.env.example"),
+        "utf8",
+      ),
+    );
+    expect(new URL(backend.APP_DATABASE_URL!).searchParams.get("sslmode")).toBe(
+      "verify-full",
+    );
+    expect(new URL(backend.APP_DATABASE_URL!).username).not.toBe(
+      new URL(backend.DATABASE_URL!).username,
+    );
+    expect(backend.APP_MIGRATION_DATABASE_URL).toBeUndefined();
   });
 
   it("uses current Yoyi branding in Web and Admin metadata", async () => {

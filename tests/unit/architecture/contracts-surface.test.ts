@@ -29,10 +29,14 @@ describe("contracts package surface", () => {
       "CatalogSearchTransportQuery",
       "CatalogSearchItem",
       "CatalogSearchPage",
+      "DevelopmentSession",
+      "DevelopmentSignInRequest",
       "HealthResponse",
       "MediaId",
       "PublicMedia",
       "PublicSourceCitation",
+      "PublicUserId",
+      "PublicUserProfile",
     ];
     const exportBlock = declaration.match(
       /export type\s*\{([\s\S]*?)\}\s*from/,

@@ -18,6 +18,8 @@ import {
   mediaIdJsonSchema,
   publicMediaJsonSchema,
   publicSourceCitationJsonSchema,
+  publicUserIdJsonSchema,
+  publicUserProfileJsonSchema,
 } from "@moya/contracts/json-schema";
 
 type JsonObject = Record<string, unknown>;
@@ -67,7 +69,7 @@ export const openApiDocument: JsonObject = {
     title: "由艺（Yoyi）Public API",
     version: "1.0.0",
     description:
-      "Inscription-first, read-only access to the public Catalog. Operational health is unversioned; public Catalog contracts use /v1.",
+      "Inscription-first, read-only access to the public Catalog, plus the Community V1 current-user identity. Operational health is unversioned; public contracts use /v1.",
   },
   paths: {
     "/health": {
@@ -163,8 +165,41 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
+    "/v1/me": {
+      get: {
+        operationId: "getCurrentUser",
+        summary: "Current public user",
+        description:
+          "Identifies the session owner behind the opaque bearer credential that the same-origin Web route relays from its HttpOnly cookie. Accepts no query parameters. Sessions are issued, validated, expired and revoked only by the Backend; Production has no sign-in path until a provider is separately authorized.",
+        security: [{ session: [] }],
+        responses: {
+          "200": jsonResponse(
+            "The session owner's public profile.",
+            "PublicUserProfile",
+          ),
+          "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
+          "401": apiErrorResponse(
+            "Missing, malformed, expired, revoked or suspended session",
+            "UNAUTHENTICATED",
+          ),
+          "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
+          "503": apiErrorResponse(
+            "Service is temporarily unavailable",
+            "SERVICE_UNAVAILABLE",
+          ),
+        },
+      },
+    },
   },
   components: {
+    securitySchemes: {
+      session: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "Opaque Backend-issued session credential; never a JWT and never readable by browser JavaScript.",
+      },
+    },
     schemas: {
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
@@ -180,6 +215,8 @@ export const openApiDocument: JsonObject = {
       CatalogSearchMatchKind: catalogSearchMatchKindJsonSchema,
       CatalogSearchItem: catalogSearchItemJsonSchema,
       CatalogSearchPage: catalogSearchPageJsonSchema,
+      PublicUserId: publicUserIdJsonSchema,
+      PublicUserProfile: publicUserProfileJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     },

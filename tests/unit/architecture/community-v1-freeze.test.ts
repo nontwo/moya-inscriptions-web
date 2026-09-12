@@ -8,7 +8,8 @@ import { repositoryRoot } from "./workspace-scanner.js";
 // Freeze guard for docs/governance/amendments/2026-09-11-community-v1-scope.md
 // section 9. Each assertion pins a repository fact that is true on main today;
 // the mission named in that section replaces the pinned value in the same pull
-// request that changes it. Nothing here authorizes an implementation.
+// request that changes it. Mission 2A replaced rows 2, 3, 4 and 5 with the
+// identity/session values below; 2B owns the next change to rows 1, 2 and 3.
 
 const read = (file: string) =>
   readFile(path.join(repositoryRoot, file), "utf8");
@@ -50,7 +51,7 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     ]);
   });
 
-  it("2. keeps ApiErrorCode at the four existing codes", async () => {
+  it("2. keeps ApiErrorCode at the four existing codes plus UNAUTHENTICATED (2A)", async () => {
     const schemas = await read("packages/contracts/src/schemas.ts");
     const enumBody = /apiErrorCodeSchema = z\.enum\(\[([\s\S]*?)\]\)/u.exec(
       schemas,
@@ -61,31 +62,48 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     ).toEqual([
       "INVALID_QUERY",
       "ITEM_NOT_FOUND",
+      "UNAUTHENTICATED",
       "SERVICE_UNAVAILABLE",
       "INTERNAL_ERROR",
     ]);
   });
 
-  it("3. keeps the Backend router at the four existing routes", async () => {
+  it("3. keeps the Backend router at the Catalog routes plus /v1/me and the Development session lifecycle (2A)", async () => {
     const router = await read("services/backend-runtime/src/http/router.ts");
     expect(
       [...router.matchAll(/pathname === "([^"]+)"/gu)].map((m) => m[1]),
-    ).toEqual(["/health", "/v1/catalog", "/v1/catalog-search"]);
+    ).toEqual([
+      "/health",
+      "/v1/catalog",
+      "/v1/catalog-search",
+      "/v1/me",
+      "/v1/development/sign-in",
+      "/v1/development/sign-out",
+    ]);
     expect(router.match(/\.exec\(pathname\)/gu)).toHaveLength(1);
     expect(router).toContain("/^\\/v1\\/catalog\\/([^/]+)$/");
-    expect(router).not.toMatch(/comment|community|\/v1\/me|session/iu);
+    // The Development entry is composed only behind the explicit flag.
+    expect(router).toContain("community?.developmentEntry === true");
+    expect(router).not.toMatch(/comment|moderation|operator/iu);
   });
 
-  it("4. keeps the application modules at catalog only", async () => {
+  it("4. keeps the application modules at catalog and community (2A)", async () => {
     expect(await visibleEntries("services/api/src/modules")).toEqual([
       "catalog",
+      "community",
     ]);
   });
 
-  it("5. keeps migrations at legacy/payload and the App role out of code", async () => {
+  it("5. keeps legacy/payload migrations apart from the community family and the App role in the composition root only (2A)", async () => {
     const migrate = await read("scripts/migrate.mjs");
     expect(migrate).toContain('source !== "legacy" && source !== "payload"');
     expect(migrate).not.toMatch(/community|APP_DATABASE_URL/u);
+    const communityMigrate = await read("scripts/migrate-community.mjs");
+    // The community family is never selected by the content source switch.
+    expect(communityMigrate).not.toMatch(
+      /environment\.MOYA_CONTENT_SOURCE|\[["']MOYA_CONTENT_SOURCE["']\]/u,
+    );
+    expect(communityMigrate).toContain('"APP_MIGRATION_DATABASE_URL"');
     const files = (
       await Promise.all(
         ["apps", "services", "packages", "scripts"].map((root) =>
@@ -97,7 +115,10 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     for (const file of files) {
       if ((await read(file)).includes("APP_DATABASE_URL")) offenders.push(file);
     }
-    expect(offenders).toEqual([]);
+    expect(offenders.sort()).toEqual([
+      "scripts/migrate-community.mjs",
+      "services/backend-production/src/composition.ts",
+    ]);
   });
 
   it("6. keeps Payload users limited to owner and automation roles", async () => {

@@ -21,6 +21,8 @@ import {
   noQueryTransportSchema,
   publicMediaSchema,
   publicSourceCitationSchema,
+  publicUserIdSchema,
+  publicUserProfileSchema,
 } from "./schemas.js";
 
 const toJsonSchema = (schema: z.ZodType) =>
@@ -60,6 +62,10 @@ export const catalogSearchPageJsonSchema = toJsonSchema(
 );
 export const publicSourceCitationJsonSchema = toJsonSchema(
   publicSourceCitationSchema,
+);
+export const publicUserIdJsonSchema = toJsonSchema(publicUserIdSchema);
+export const publicUserProfileJsonSchema = toJsonSchema(
+  publicUserProfileSchema,
 );
 export const healthResponseJsonSchema = toJsonSchema(healthResponseSchema);
 export const apiErrorCodeJsonSchema = toJsonSchema(apiErrorCodeSchema);

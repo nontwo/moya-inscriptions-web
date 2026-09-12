@@ -72,7 +72,7 @@ preserved:
 | `CMS_DATABASE_URL`  | Payload runtime         | CMS tables and published projection maintenance; no public/community authority |
 | `DATABASE_URL`      | Public Backend          | CONNECT, schema USAGE and SELECT only on approved published projections        |
 | `TEST_DATABASE_URL` | Disposable test runtime | A separate synthetic target; never production or Stage A data                  |
-| `APP_DATABASE_URL`  | Future Phase 3 only     | Independent future public-identity/community runtime role; not implemented     |
+| `APP_DATABASE_URL`  | Community Backend       | CONNECT, USAGE and DML only on the `community` schema (public users, sessions) |
 
 The same-target option concerns runtime domains, not permission to run tests on
 production content. Every runtime uses a distinct login; Web uses HTTP and never
@@ -161,10 +161,20 @@ is included here. COS permissions, credentials and real objects are configured
 only in a separately authorized operation; this task makes no live COS requests
 or uploads.
 
-The future Backend owns public identity/community and will use a separate
-`APP_DATABASE_URL` runtime role. Payload users remain owner/automation only.
-Future UGC media receives an independent storage boundary. QA filtering remains
-QA-only; no hard-coded dynasty/script/type/region taxonomy enters production
-contracts or tables. This task prepares the existing code and local development
-environment to connect future CVM/TencentDB/COS; it does not release those
-domains or resources.
+The Backend owns public identity/community through the separate
+`APP_DATABASE_URL` runtime role (Community V1, Mission 2A). That role receives
+`CONNECT`, `USAGE` on schema `community`, `SELECT` on `community.public_users`,
+`community.development_accounts` and `community.schema_migrations`, and
+`SELECT, INSERT, UPDATE` on `community.sessions` — never DDL, never a Catalog or
+CMS relation; `infra/development/grant-community-app.sql` is the local model.
+Community migrations run only through `pnpm db:migrate:community` with a
+separately provisioned migration-privileged role (`APP_MIGRATION_DATABASE_URL`,
+never placed in `backend.env`). The Backend refuses to start without
+`APP_DATABASE_URL` and verifies the community ledger read-only. No Production
+sign-in path exists: the Development test-account entry is composed only under
+`NODE_ENV=development`, and external identity providers remain deferred. Payload
+users remain owner/automation only. Future UGC media receives an independent
+storage boundary. QA filtering remains QA-only; no hard-coded
+dynasty/script/type/region taxonomy enters production contracts or tables. This
+task prepares the existing code and local development environment to connect
+future CVM/TencentDB/COS; it does not release those domains or resources.

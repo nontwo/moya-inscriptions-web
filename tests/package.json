@@ -17,6 +17,7 @@
     "@moya/backend-runtime": "workspace:*",
     "@moya/catalog-importer": "workspace:*",
     "@moya/catalog-postgres": "workspace:*",
+    "@moya/community-postgres": "workspace:*",
     "@moya/contracts": "workspace:*",
     "@moya/design-tokens": "workspace:*",
     "@moya/image": "workspace:*",

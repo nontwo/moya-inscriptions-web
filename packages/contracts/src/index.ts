@@ -14,8 +14,12 @@ export type {
   CatalogSearchTransportQuery,
   CatalogSearchItem,
   CatalogSearchPage,
+  DevelopmentSession,
+  DevelopmentSignInRequest,
   HealthResponse,
   MediaId,
   PublicMedia,
   PublicSourceCitation,
+  PublicUserId,
+  PublicUserProfile,
 } from "./types.js";

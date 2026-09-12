@@ -29,19 +29,24 @@ environment.
 preflight requires Payload, the same loopback `yoyi_dev` database and different
 CMS/public roles. It then runs only Payload migrations and grants the local
 public role `SELECT` on the six published views and published search table.
-Legacy migrations never run here. The grant command addresses only this Compose
-container; do not edit local URLs to target another server. Database and Admin
-startup run no DDL. Run migrations explicitly when the code changes them.
+Legacy migrations never run here. It then applies the separate Community V1
+family (`scripts/migrate-community.mjs --development`, using the local
+`APP_MIGRATION_DATABASE_URL` owner role), grants the DML-only `yoyi_dev_app`
+role on the `community` schema and seeds the three Development test accounts
+(`infra/development/community-development-accounts.sql`). The grant commands
+address only this Compose container; do not edit local URLs to target another
+server. Database and Admin startup run no DDL. Run migrations explicitly when
+the code changes them.
 
 `dev:all` runs the existing Turbo watch mode and the standard `tsx` development
 runner; Turbo rebuilds shared dependencies and restarts affected tasks. It
 starts:
 
-| Process       | Address                       | Database use                       |
-| ------------- | ----------------------------- | ---------------------------------- |
-| Public Web    | `http://127.0.0.1:3000`       | Public HTTP API only               |
-| Backend       | `http://127.0.0.1:3001`       | `yoyi_dev_public`, published reads |
-| Payload Admin | `http://127.0.0.1:3002/admin` | `yoyi_dev_payload`, CMS runtime    |
+| Process       | Address                       | Database use                                                                      |
+| ------------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| Public Web    | `http://127.0.0.1:3000`       | Public HTTP API only                                                              |
+| Backend       | `http://127.0.0.1:3001`       | `yoyi_dev_public` published reads; `yoyi_dev_app` community identity and sessions |
+| Payload Admin | `http://127.0.0.1:3002/admin` | `yoyi_dev_payload`, CMS runtime                                                   |
 
 Web and Admin retain their existing development hostname behavior for device QA.
 The Backend and PostgreSQL listen on loopback. The root `.env.local` is loaded
@@ -69,8 +74,11 @@ Do not commit media, secrets or synthetic database dumps.
 - `pnpm dev:db:up`: start only the dedicated development database and wait for
   health.
 - `pnpm dev:db:down`: stop it while retaining the named volume and data.
-- `pnpm dev:migrate`: explicit Payload migrations and local published-read
-  grants.
+- `pnpm dev:migrate`: explicit Payload migrations, local published-read grants,
+  community migrations, the local App-role grants and the Development test
+  accounts.
+- `pnpm db:migrate:community`: the community migration family alone, with
+  `APP_MIGRATION_DATABASE_URL` (add `--development` for the local preflight).
 - `pnpm dev:backend`: run the Backend and rebuild changed shared dependencies.
 - `pnpm dev:all`: run Web, Backend and Admin together; Ctrl-C stops these
   processes.
@@ -79,6 +87,22 @@ No custom watchdog, session controller or new process platform is added. `tsx`
 4.22.4 is the sole direct dev-runner addition, reusing the already locked
 version. The ordinary `pnpm verify` and production `pnpm build` commands remain
 in place.
+
+## Community V1 Development sign-in
+
+Community V1 (Owner amendment 2026-09-11, Mission 2A) adds Backend-owned public
+users and sessions. The local `yoyi_dev` database holds three real Development
+test accounts — handles `dev-user-01`, `dev-user-02`, `dev-user-03` with Chinese
+display names — seeded by `dev:migrate`; they are not QA fixtures and exist in
+no other environment. Open `http://127.0.0.1:3000/dev/community` (or the same
+path on the LAN address used for device QA) to sign in as one of them, see the
+identity the Backend returns from `GET /api/community/me`, and sign out. The
+Backend issues, validates, expires (seven days, absolute) and revokes the
+session; Web only holds the opaque credential in the HttpOnly `yoyi-session`
+cookie and relays it as a bearer credential. The sign-in and sign-out routes and
+the page answer 404 unless `NODE_ENV=development`, and the Backend composes
+`/v1/development/*` only under `NODE_ENV=development`; Production has no sign-in
+path.
 
 ## Optional local read-only browser role
 
@@ -117,8 +141,11 @@ TLS must validate CA, optionally through `DATABASE_SSL_CA_FILE` or
 [production guide](../infra/production/README.md) for roles, CA and deployment
 boundaries; staging shares that topology with independent resources.
 
-After this readiness work, public identity/community development can begin on
-local PostgreSQL under a separate task. `APP_DATABASE_URL`, its independent
-runtime role and a separate UGC storage boundary are only future Phase 3 design
-notes. No public-user/session/profile/post/comment/like/favorite/UGC table or
-production filtering is introduced here.
+Community V1 development runs on this local PostgreSQL: `APP_DATABASE_URL`
+(`yoyi_dev_app`, DML-only on the `community` schema) is read only by the Backend
+composition root and `APP_MIGRATION_DATABASE_URL` only by the community
+migration command. Mission 2A introduces the public-user and session tables;
+comment tables arrive with Mission 2B. Profiles, posts, likes, favorites, UGC
+media and production filtering are not introduced. The PostgreSQL integration
+suite exercises the community family on `TEST_DATABASE_URL`, never on
+`yoyi_dev`.

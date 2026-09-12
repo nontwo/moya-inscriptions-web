@@ -11,6 +11,10 @@ import {
   parsePostgresConfig,
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
+import {
+  PostgresCommunityIdentityAdapter,
+  verifyCommunityMigrationLedger,
+} from "@moya/community-postgres";
 import { loadPilotConfiguration, openPilotPool } from "./pilot-config.js";
 import { createLocalStorageUrlResolver } from "./storage/local-media.js";
 import {
@@ -23,6 +27,7 @@ import type {
   RuntimeConfig,
   RuntimeEnvironment,
 } from "@moya/backend-runtime";
+import type { PostgresConfig } from "@moya/catalog-postgres";
 import type { RequestListener } from "node:http";
 
 export interface PreparedProductionBackend {
@@ -31,6 +36,24 @@ export interface PreparedProductionBackend {
   readonly requestListener: RequestListener;
   readonly runtimeConfig: RuntimeConfig;
 }
+
+const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+
+const isLocalYoyiDevUrl = (url: URL): boolean =>
+  loopback.has(url.hostname) &&
+  url.pathname === "/yoyi_dev" &&
+  !url.hash &&
+  [...url.searchParams].every(
+    ([key, value]) => key === "sslmode" && value === "disable",
+  );
+
+const databaseUser = (url: URL): string => {
+  try {
+    return decodeURIComponent(url.username);
+  } catch {
+    throw new Error("Local database users are invalid");
+  }
+};
 
 const assertLocalDevelopmentDatabase = (
   environment: RuntimeEnvironment,
@@ -44,35 +67,44 @@ const assertLocalDevelopmentDatabase = (
   // Inspect the original URLs: the generic parser removes validated sslmode.
   // pg-connection-string permits query fields to override host, port and user.
   const cmsUrl = new URL(environment.CMS_DATABASE_URL!);
-  const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
-  let sameDatabaseUser: boolean;
-  try {
-    sameDatabaseUser =
-      decodeURIComponent(backendUrl.username) ===
-      decodeURIComponent(cmsUrl.username);
-  } catch {
-    throw new Error("Local database users are invalid");
-  }
+  const appUrl = new URL(environment.APP_DATABASE_URL!);
+  const users = [backendUrl, cmsUrl, appUrl].map(databaseUser);
   if (
     !loopback.has(host) ||
-    !loopback.has(backendUrl.hostname) ||
-    !loopback.has(cmsUrl.hostname) ||
+    ![backendUrl, cmsUrl, appUrl].every(isLocalYoyiDevUrl) ||
     backendUrl.hostname !== cmsUrl.hostname ||
+    backendUrl.hostname !== appUrl.hostname ||
     (backendUrl.port || "5432") !== (cmsUrl.port || "5432") ||
-    backendUrl.pathname !== "/yoyi_dev" ||
-    cmsUrl.pathname !== backendUrl.pathname ||
-    sameDatabaseUser ||
-    [backendUrl, cmsUrl].some(
-      (url) =>
-        url.hash ||
-        [...url.searchParams].some(
-          ([key, value]) => key !== "sslmode" || value !== "disable",
-        ),
-    )
+    (backendUrl.port || "5432") !== (appUrl.port || "5432") ||
+    new Set(users).size !== users.length
   )
     throw new Error(
-      "Local Backend and Admin must use the same loopback yoyi_dev database with different users",
+      "Local Backend, Admin and App roles must use the same loopback yoyi_dev database with different users",
     );
+};
+
+/** The Community App role is read at runtime only here and is DML-only. */
+const parseCommunityPostgresConfig = (
+  environment: RuntimeEnvironment,
+): PostgresConfig => {
+  const url = environment.APP_DATABASE_URL;
+  if (url === undefined || url === "")
+    throw new Error("APP_DATABASE_URL is required");
+  try {
+    return parsePostgresConfig({
+      DATABASE_URL: url,
+      DATABASE_SSL_CA_FILE: environment.APP_DATABASE_SSL_CA_FILE,
+      DATABASE_POOL_MAX: environment.DATABASE_POOL_MAX,
+      DATABASE_IDLE_TIMEOUT_MS: environment.DATABASE_IDLE_TIMEOUT_MS,
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? error.message.replace(/\bDATABASE_URL\b/g, "APP_DATABASE_URL")
+        : "APP_DATABASE_URL is invalid",
+      { cause: error },
+    );
+  }
 };
 
 export const prepareProductionBackend = async (
@@ -101,6 +133,7 @@ export const prepareProductionBackend = async (
       "Local development requires Payload without Pilot configuration",
     );
   const postgresConfig = parsePostgresConfig(environment);
+  const communityPostgresConfig = parseCommunityPostgresConfig(environment);
   if (runtimeConfig.nodeEnv === "development")
     assertLocalDevelopmentDatabase(environment, runtimeConfig.host);
   const pilot = hasPilotConfiguration
@@ -113,15 +146,12 @@ export const prepareProductionBackend = async (
     : runtimeConfig.nodeEnv === "development"
       ? createLocalStorageUrlResolver(environment)
       : new ProductionCosStorageUrlResolver(productionCosOptions(environment));
+  const onUnexpectedIdleError = () => {
+    console.error("[backend-production] unexpected PostgreSQL pool error");
+  };
   const pool = pilot
     ? openPilotPool(environment, pilot.scope)
-    : createPostgresPool(postgresConfig, {
-        onUnexpectedIdleError: () => {
-          console.error(
-            "[backend-production] unexpected PostgreSQL pool error",
-          );
-        },
-      });
+    : createPostgresPool(postgresConfig, { onUnexpectedIdleError });
 
   try {
     await assertPostgresStartupReady(pool, contentSource);
@@ -130,9 +160,32 @@ export const prepareProductionBackend = async (
     throw error;
   }
 
+  // The community namespace is reached only through the separate App role;
+  // startup verifies its migration ledger read-only and never runs DDL.
+  const communityPool = createPostgresPool(communityPostgresConfig, {
+    onUnexpectedIdleError,
+  });
+  const closeResources = async (): Promise<void> => {
+    await Promise.all([
+      closePostgresPool(pool),
+      closePostgresPool(communityPool),
+    ]);
+  };
+  try {
+    await verifyCommunityMigrationLedger(communityPool);
+  } catch (error) {
+    await closeResources();
+    throw error;
+  }
+
   const catalogQueryPort = new PostgresCatalogQueryAdapter(pool);
-  const readinessCheck = async (): Promise<void> =>
-    checkPostgresReadiness(pool);
+  const communityIdentityPort = new PostgresCommunityIdentityAdapter(
+    communityPool,
+  );
+  const readinessCheck = async (): Promise<void> => {
+    await checkPostgresReadiness(pool);
+    await checkPostgresReadiness(communityPool);
+  };
   return {
     runtimeConfig,
     readinessCheck,
@@ -142,8 +195,9 @@ export const prepareProductionBackend = async (
       catalogSearchQueryPort: catalogQueryPort,
       storageUrlResolver,
       healthReadinessCheck: readinessCheck,
+      communityIdentityPort,
     }),
-    closeResources: async () => closePostgresPool(pool),
+    closeResources,
   };
 };
 

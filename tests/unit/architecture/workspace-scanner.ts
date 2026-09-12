@@ -235,6 +235,42 @@ const webCatalogSearchClientFile = path.join(
   "catalog-search.tsx",
 );
 const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
+// Community V1 (Mission 2A): each file may import exactly these names from the
+// Web Public API server module; nothing else under app/ reaches it.
+const webCommunityServerImports: ReadonlyMap<string, string> = new Map([
+  [
+    path.join(webRoot, "app", "api", "community", "me", "route.ts"),
+    "{fetchServerCurrentUser}",
+  ],
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "community",
+      "development",
+      "sign-in",
+      "route.ts",
+    ),
+    "{signInServerDevelopmentAccount}",
+  ],
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "community",
+      "development",
+      "sign-out",
+      "route.ts",
+    ),
+    "{signOutServerDevelopmentSession}",
+  ],
+  [
+    path.join(webRoot, "app", "dev", "community", "page.tsx"),
+    "{fetchServerCurrentUser}",
+  ],
+]);
 
 export const isAuthorizedWebPublicApiFile = (
   filePath: string,
@@ -380,6 +416,31 @@ const isApprovedCatalogSearchApiReference = (
   return (
     imports.length === 1 &&
     imports[0]?.[1]?.replaceAll(/\s/g, "") === "{fetchServerCatalogSearchPage}"
+  );
+};
+
+const isApprovedCommunityServerReference = (
+  filePath: string,
+  source: string,
+  reference: ModuleReference,
+): boolean => {
+  const expected = webCommunityServerImports.get(path.resolve(filePath));
+  if (
+    expected === undefined ||
+    hasUseClientDirective(source) ||
+    reference.kind !== "static-import" ||
+    !reference.specifier.startsWith(".") ||
+    path.resolve(path.dirname(filePath), reference.specifier) !==
+      path.join(webPublicApiRoot, "server")
+  )
+    return false;
+  const imports = [
+    ...source.matchAll(
+      /\bimport\s+([^;]+?)\s+from\s*(["'])(?:\.\.\/)+lib\/public-api\/server\2\s*;/g,
+    ),
+  ];
+  return (
+    imports.length === 1 && imports[0]?.[1]?.replaceAll(/\s/g, "") === expected
   );
 };
 
@@ -561,6 +622,7 @@ const serverOnlyPackages = [
   "@moya/backend-production",
   "@moya/backend-runtime",
   "@moya/catalog-postgres",
+  "@moya/community-postgres",
   "@moya/contracts/json-schema",
   "@moya/contracts/internal",
   "@moya/contracts/schemas",
@@ -822,6 +884,11 @@ export const frontendBoundaryViolations = (
       source,
       reference,
     );
+    const approvedCommunityServerImport = isApprovedCommunityServerReference(
+      filePath,
+      source,
+      reference,
+    );
     if (
       isForbiddenServerReference(reference.specifier) &&
       !isCmsServer &&
@@ -839,7 +906,8 @@ export const frontendBoundaryViolations = (
       !approvedHomeLoaderImport &&
       !approvedCatalogDetailApiImport &&
       !approvedCatalogListApiImport &&
-      !approvedCatalogSearchApiImport
+      !approvedCatalogSearchApiImport &&
+      !approvedCommunityServerImport
     ) {
       violations.push(`${reference.specifier} crosses the frontend boundary`);
     }

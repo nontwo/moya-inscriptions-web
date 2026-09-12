@@ -18,6 +18,8 @@ import {
   mediaIdJsonSchema,
   publicMediaJsonSchema,
   publicSourceCitationJsonSchema,
+  publicUserIdJsonSchema,
+  publicUserProfileJsonSchema,
 } from "@moya/contracts/json-schema";
 import { openApiDocument, serializeOpenApiDocument } from "@moya/public-api";
 import { format, resolveConfig } from "prettier";
@@ -44,7 +46,7 @@ const requiredProperties = (schema: unknown): string[] =>
   (asObject(schema).required ?? []) as string[];
 
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
-  it("contains exactly the four approved read-only routes", () => {
+  it("contains exactly the four approved Catalog read routes and the current-user route", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.jsonSchemaDialect).toBe(
       "https://json-schema.org/draft/2020-12/schema",
@@ -56,8 +58,12 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/catalog",
         "/v1/catalog/{catalogId}",
         "/v1/catalog-search",
+        "/v1/me",
       ].sort(),
     );
+    // The Development session lifecycle is not a Public API operation.
+    expect(paths).not.toHaveProperty("/v1/development/sign-in");
+    expect(paths).not.toHaveProperty("/v1/development/sign-out");
     expect(paths).not.toHaveProperty("/v1/items");
     expect(paths).not.toHaveProperty("/v1/items/{id}");
     expect(paths).not.toHaveProperty("/v1/search");
@@ -83,6 +89,24 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     expect(getOperation("/v1/catalog/{catalogId}").operationId).toBe(
       "getCatalogById",
     );
+    expect(
+      Object.keys(asObject(getOperation("/v1/me").responses)).sort(),
+    ).toEqual(["200", "400", "401", "500", "503"]);
+    expect(getOperation("/v1/me").operationId).toBe("getCurrentUser");
+    expect(getOperation("/v1/me").security).toEqual([{ session: [] }]);
+    expect(parametersFor("/v1/me")).toEqual([]);
+    expect(
+      asObject(asObject(openApiDocument.components).securitySchemes),
+    ).toEqual({
+      session: expect.objectContaining({ type: "http", scheme: "bearer" }),
+    });
+    for (const operation of [
+      "/health",
+      "/v1/catalog",
+      "/v1/catalog/{catalogId}",
+      "/v1/catalog-search",
+    ])
+      expect(getOperation(operation)).not.toHaveProperty("security");
   });
 
   it("exposes only the approved kind and bounded page parameters", () => {
@@ -147,9 +171,22 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       CatalogSearchMatchKind: catalogSearchMatchKindJsonSchema,
       CatalogSearchItem: catalogSearchItemJsonSchema,
       CatalogSearchPage: catalogSearchPageJsonSchema,
+      PublicUserId: publicUserIdJsonSchema,
+      PublicUserProfile: publicUserProfileJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     });
+    expect(schemas.PublicUserProfile).toMatchObject({
+      additionalProperties: false,
+      required: ["id", "handle", "displayName"],
+      type: "object",
+    });
+    expect(
+      Object.keys(asObject(asObject(schemas.PublicUserProfile).properties)),
+    ).toEqual(["id", "handle", "displayName"]);
+    expect(JSON.stringify(schemas.PublicUserProfile).toLowerCase()).not.toMatch(
+      /status|token|credential|email|phone|avatar/u,
+    );
     expect(schemas.CatalogContributorRole).toEqual({
       $schema: "https://json-schema.org/draft/2020-12/schema",
       enum: ["textAuthor", "calligrapher"],
@@ -368,11 +405,13 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       enum: [
         "INVALID_QUERY",
         "ITEM_NOT_FOUND",
+        "UNAUTHENTICATED",
         "SERVICE_UNAVAILABLE",
         "INTERNAL_ERROR",
       ],
       type: "string",
     });
+    expect(responseDescription("/v1/me", "401")).toContain("UNAUTHENTICATED");
     expect(responseDescription("/v1/catalog", "400")).toContain(
       "INVALID_QUERY",
     );

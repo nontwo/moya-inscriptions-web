@@ -217,6 +217,37 @@ export const catalogSearchPageSchema = catalogPageSchema.safeExtend({
   items: z.array(catalogSearchItemSchema),
 });
 
+/** Opaque, platform-generated and immutable; never a provider id or handle. */
+export const publicUserIdSchema =
+  platformIdentitySchema().brand<"PublicUserId">();
+/** System-assigned, normalized, bounded, no whitespace. */
+export const publicUserHandleSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{2,31}$/);
+/** The rendered author name: bounded plain text, Chinese supported, duplicates allowed. */
+export const publicUserDisplayNameSchema = exactTextSchema(40);
+
+/** Returned only to the session owner; carries no status, timestamps or credential linkage. */
+export const publicUserProfileSchema = z.strictObject({
+  id: publicUserIdSchema,
+  handle: publicUserHandleSchema,
+  displayName: publicUserDisplayNameSchema,
+});
+
+/** Development-only support operation between Web and the Backend; never composed in Production. */
+export const developmentSignInRequestSchema = z.strictObject({
+  handle: publicUserHandleSchema,
+});
+
+/** Opaque bearer credential: 32 random bytes as base64url. Web moves it into the HttpOnly cookie. */
+export const sessionTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+
+export const developmentSessionSchema = z.strictObject({
+  token: sessionTokenSchema,
+  expiresAt: z.iso.datetime({ offset: false }),
+  profile: publicUserProfileSchema,
+});
+
 export const healthResponseSchema = z.strictObject({
   status: z.literal("ok"),
 });
@@ -224,6 +255,7 @@ export const healthResponseSchema = z.strictObject({
 export const apiErrorCodeSchema = z.enum([
   "INVALID_QUERY",
   "ITEM_NOT_FOUND",
+  "UNAUTHENTICATED",
   "SERVICE_UNAVAILABLE",
   "INTERNAL_ERROR",
 ]);

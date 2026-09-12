@@ -16,10 +16,14 @@ import type {
   catalogSearchTransportQuerySchema,
   catalogSearchItemSchema,
   catalogSearchPageSchema,
+  developmentSessionSchema,
+  developmentSignInRequestSchema,
   healthResponseSchema,
   mediaIdSchema,
   publicMediaSchema,
   publicSourceCitationSchema,
+  publicUserIdSchema,
+  publicUserProfileSchema,
 } from "./schemas.js";
 
 export type CatalogId = z.infer<typeof catalogIdSchema>;
@@ -46,6 +50,12 @@ export type CatalogSearchTransportQuery = z.infer<
 >;
 export type CatalogSearchItem = z.infer<typeof catalogSearchItemSchema>;
 export type CatalogSearchPage = z.infer<typeof catalogSearchPageSchema>;
+export type PublicUserId = z.infer<typeof publicUserIdSchema>;
+export type PublicUserProfile = z.infer<typeof publicUserProfileSchema>;
+export type DevelopmentSignInRequest = z.infer<
+  typeof developmentSignInRequestSchema
+>;
+export type DevelopmentSession = z.infer<typeof developmentSessionSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
