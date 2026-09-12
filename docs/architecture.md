@@ -258,27 +258,35 @@ Production provider choice, purchases, domains, credentials, secrets, release
 operations, data import approval, backup/restore, and deployment require
 separate Owner authority.
 
-## Database roles and future Phase 3 boundary
+## Database roles and the Community boundary
 
 `CMS_DATABASE_URL` is Payload runtime; `DATABASE_URL` is the Public Backend
 published-read runtime; `TEST_DATABASE_URL` is dedicated disposable testing.
-Future `APP_DATABASE_URL` is reserved for Backend public identity/community and
-is not consumed or implemented in this change. CMS, Public and future App roles
-may use the same TencentDB instance and database, but must be different database
-users with separate permissions. Tests and local development remain isolated
-from staging and production. Public Backend grants read access only to published
-views; deployment migration privileges are separate from runtime privileges.
+`APP_DATABASE_URL` is the Backend's Community V1 runtime role (Mission 2A): DML
+only on the `community` schema namespace, read at runtime solely by the
+`services/backend-production` composition root, and the only login that reaches
+public users and sessions. CMS, Public and App roles may use the same TencentDB
+instance and database, but must be different database users with separate
+permissions. Tests and local development remain isolated from staging and
+production. Public Backend grants read access only to published views;
+deployment migration privileges are separate from runtime privileges.
 
 Public pool defaults to 5, with explicit idle timeout. Payload retains max 5.
 Optional CA files configure verified TLS; `rejectUnauthorized=false` is
 forbidden. Migrations route by `MOYA_CONTENT_SOURCE`: `legacy` selects only
-legacy SQL; `payload` selects only Payload migrations. Startup never performs
-DDL.
+legacy SQL; `payload` selects only Payload migrations. The community family
+(`database/community-migrations/`, `pnpm db:migrate:community`) is separate from
+both, is never selected by `MOYA_CONTENT_SOURCE`, and runs only with the
+migration-privileged `APP_MIGRATION_DATABASE_URL`. Startup never performs DDL;
+the Backend only verifies each ledger read-only.
 
-Payload users serve Owner/automation only. Public users, sessions, profiles,
-posts, comments, likes, favorites and UGC are not part of this work. Future
-public identity/community belongs to Backend, with its own App database runtime
-role and a separate UGC storage boundary. QA filter fixtures remain QA-only;
+Payload users serve Owner/automation only and are never public users. Community
+V1 is the one approved social domain (Owner amendment 2026-09-11): public-user
+identity and Backend-owned sessions are implemented (Mission 2A, including the
+Development-only test-account sign-in that is never composed in Production);
+Catalog comments, moderation and the publication setting follow in Mission 2B
+and the Formal comment UI in Mission 2C. Posts, likes, favorites, following,
+messaging and UGC media stay deferred. QA filter fixtures remain QA-only;
 hard-coded dynasties, script styles, kinds or regions do not become production
 taxonomies or contracts. No production filtering is added.
 

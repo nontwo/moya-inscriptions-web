@@ -12,6 +12,7 @@
                 "enum": [
                   "INVALID_QUERY",
                   "ITEM_NOT_FOUND",
+                  "UNAUTHENTICATED",
                   "SERVICE_UNAVAILABLE",
                   "INTERNAL_ERROR"
                 ],
@@ -876,11 +877,48 @@
         },
         "required": ["label"],
         "type": "object"
+      },
+      "PublicUserId": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^\\S+$",
+        "type": "string"
+      },
+      "PublicUserProfile": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "handle": {
+            "pattern": "^[a-z][a-z0-9-]{2,31}$",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "type": "string"
+          }
+        },
+        "required": ["id", "handle", "displayName"],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "description": "Opaque Backend-issued session credential; never a JWT and never readable by browser JavaScript.",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
   "info": {
-    "description": "Inscription-first, read-only access to the public Catalog. Operational health is unversioned; public Catalog contracts use /v1.",
+    "description": "Inscription-first, read-only access to the public Catalog, plus the Community V1 current-user identity. Operational health is unversioned; public contracts use /v1.",
     "title": "由艺（Yoyi）Public API",
     "version": "1.0.0"
   },
@@ -1164,6 +1202,70 @@
           }
         },
         "summary": "Get one public Catalog entry"
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "description": "Identifies the session owner behind the opaque bearer credential that the same-origin Web route relays from its HttpOnly cookie. Accepts no query parameters. Sessions are issued, validated, expired and revoked only by the Backend; Production has no sign-in path until a provider is separately authorized.",
+        "operationId": "getCurrentUser",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicUserProfile"
+                }
+              }
+            },
+            "description": "The session owner's public profile."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Invalid query; error code INVALID_QUERY."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Missing, malformed, expired, revoked or suspended session; error code UNAUTHENTICATED."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal service error; error code INTERNAL_ERROR."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Service is temporarily unavailable; error code SERVICE_UNAVAILABLE."
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Current public user"
       }
     }
   }

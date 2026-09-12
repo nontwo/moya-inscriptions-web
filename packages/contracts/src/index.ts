@@ -18,4 +18,6 @@ export type {
   MediaId,
   PublicMedia,
   PublicSourceCitation,
+  PublicUserId,
+  PublicUserProfile,
 } from "./types.js";

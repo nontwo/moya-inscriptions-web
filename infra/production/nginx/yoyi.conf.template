@@ -50,6 +50,8 @@ server {
     location = /api/catalog { proxy_pass http://yoyi_web; }
     location ^~ /api/catalog/ { proxy_pass http://yoyi_web; }
     location = /api/catalog-search { proxy_pass http://yoyi_web; }
+    # Community V1 identity and session routes are Web route handlers, never Payload.
+    location ^~ /api/community/ { proxy_pass http://yoyi_web; }
     # Includes /editorial-preview/:id and Web assets; draft fetches use loopback CMS_INTERNAL_URL.
     location / { proxy_pass http://yoyi_web; }
 }

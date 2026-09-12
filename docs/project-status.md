@@ -278,9 +278,12 @@ Active development tracks (independent of the parked cloud track):
    a Backend operator boundary, text comments first, flat paginated replies,
    Production deferred. PR #106's comment UI was accepted at `8e7d12a` and
    merged as `b27c85c`. Implementation proceeds in three separately reviewable
-   stages, Mission 2A next: identity/session foundation → comment contract,
-   persistence, API and moderation → connecting the merged #106 UI seam to the
-   real API.
+   stages: identity/session foundation → comment contract, persistence, API and
+   moderation → connecting the merged #106 UI seam to the real API. Mission 2A
+   (public-user identity, Backend-owned sessions, `GET /v1/me`, the
+   Development-only test-account sign-in and the `/dev/community` entry) is
+   implemented as a Draft PR awaiting review and the Owner's Development
+   acceptance; Mission 2B starts only after it is merged and verified.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of

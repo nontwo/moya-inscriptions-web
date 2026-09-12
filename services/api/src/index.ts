@@ -21,6 +21,24 @@ export {
   isCatalogQueryUnavailableError,
 } from "./modules/catalog/application/errors/catalog-query-unavailable-error.js";
 export { CatalogReadService } from "./modules/catalog/application/services/catalog-read-service.js";
+export {
+  CommunityStoreUnavailableError,
+  isCommunityStoreUnavailableError,
+} from "./modules/community/application/errors/community-store-unavailable-error.js";
+export { mapPublicUserProfile } from "./modules/community/application/mappers/community-public-contract-mapper.js";
+export { CommunitySessionService } from "./modules/community/application/services/community-session-service.js";
+export type {
+  CommunitySessionServiceOptions,
+  DevelopmentSessionGrant,
+} from "./modules/community/application/services/community-session-service.js";
+export type {
+  CommunityIdentityPort,
+  SessionRecordInput,
+} from "./modules/community/application/ports/community-identity-port.js";
+export type {
+  PublicUserRecord,
+  PublicUserStatus,
+} from "./modules/community/domain/public-user.js";
 
 export type { CatalogQueryPort } from "./modules/catalog/application/ports/catalog-query-port.js";
 export type {

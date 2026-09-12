@@ -33,6 +33,8 @@ describe("contracts package surface", () => {
       "MediaId",
       "PublicMedia",
       "PublicSourceCitation",
+      "PublicUserId",
+      "PublicUserProfile",
     ];
     const exportBlock = declaration.match(
       /export type\s*\{([\s\S]*?)\}\s*from/,

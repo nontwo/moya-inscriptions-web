@@ -20,6 +20,7 @@ import {
   requiredMigrations,
   runMigrations,
 } from "@moya/catalog-postgres";
+import { runCommunityMigrations } from "@moya/community-postgres";
 import {
   catalogDetailSchema,
   catalogIdSchema,
@@ -522,6 +523,11 @@ beforeAll(async () => {
   await administrationPool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await administrationPool.query(`CREATE SCHEMA ${schema}`);
   await runMigrations(pool, migrationsDirectory);
+  // The production composition also verifies the community ledger read-only.
+  await runCommunityMigrations(
+    pool,
+    path.join(repositoryRoot, "database", "community-migrations"),
+  );
   bundleDirectory = await mkdtemp(path.join(tmpdir(), "moya-p5-import-"));
   xlsxDirectory = await mkdtemp(path.join(tmpdir(), "moya-xlsx-import-"));
 });
@@ -1429,6 +1435,7 @@ describe.sequential("catalog-import/v1 PostgreSQL apply", () => {
         COS_SECRET_ID: "synthetic-unit-id",
         COS_SECRET_KEY: "synthetic-unit-secret",
         DATABASE_URL: isolatedUrl.toString(),
+        APP_DATABASE_URL: isolatedUrl.toString(),
         HOST: "127.0.0.1",
         NODE_ENV: "production",
         PORT: "3001",
@@ -2091,6 +2098,7 @@ describe.sequential("catalog-import/v2 PostgreSQL apply", () => {
       COS_SECRET_ID: "synthetic-unit-id",
       COS_SECRET_KEY: "synthetic-unit-secret",
       DATABASE_URL: isolatedUrl.toString(),
+      APP_DATABASE_URL: isolatedUrl.toString(),
       HOST: "127.0.0.1",
       NODE_ENV: "production",
       PORT: "3001",

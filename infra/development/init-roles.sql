@@ -6,7 +6,11 @@ CREATE ROLE yoyi_dev_payload LOGIN PASSWORD 'synthetic-local-payload-only'
   NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 CREATE ROLE yoyi_dev_public LOGIN PASSWORD 'synthetic-local-public-only'
   NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
-GRANT CONNECT ON DATABASE yoyi_dev TO yoyi_dev_payload, yoyi_dev_public;
+-- Community V1 App role: DML-only on the community schema (grant-community-app.sql).
+CREATE ROLE yoyi_dev_app LOGIN PASSWORD 'synthetic-local-app-only'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+GRANT CONNECT ON DATABASE yoyi_dev
+  TO yoyi_dev_payload, yoyi_dev_public, yoyi_dev_app;
 -- Existing Payload identity-backfill migration uses a transaction-local table.
 GRANT TEMPORARY ON DATABASE yoyi_dev TO yoyi_dev_payload;
 GRANT USAGE, CREATE ON SCHEMA public TO yoyi_dev_payload;
