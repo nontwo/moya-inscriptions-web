@@ -72,14 +72,14 @@ upload is added.
 
 The Owner stated that Mission 2C acceptance passed.
 
-Provenance of the accepted runtime, verified rather than assumed: the three
-Development processes (Web 3000, Backend 3001, Admin 3002) were started at
+Provenance of the accepted runtime, verified rather than assumed: the
+Development session serving Web 3000, Backend 3001 and Admin 3002 was started at
 2026-09-12 17:18 local time from the task worktree on branch
-`feat/community-2c-catalog-comments`, whose source tree was identical to
-`8f5e7b3` — the only files differing were the generated `next-env.d.ts` pair and
-`payload-types.ts`, which the dev servers rewrite. The Owner reached that
-runtime over the local network address in use for device testing. `8f5e7b3` is
-therefore the accepted candidate.
+`feat/community-2c-catalog-comments`, whose tracked source was identical to
+`8f5e7b3` — the branch reached `8f5e7b3` at 16:36 and did not move again until
+18:12, and the only files differing were ones the dev servers regenerate. The
+Owner reached that runtime over the local network address in use for device
+testing. `8f5e7b3` is therefore the accepted candidate.
 
 This section records the Owner's own judgment only. It does not record which
 devices or scenarios the Owner exercised, and the automated evidence listed on
@@ -87,8 +87,10 @@ the pull request — unit, architecture, E2E and the scripted Development journe
 — is machine verification, not Owner acceptance.
 
 Commits after `8f5e7b3` on this branch are a merge of `main` (the PostgreSQL
-test-target guard and the deterministic editorial batch test) and this record;
-every file of the accepted change is byte-identical to `8f5e7b3`, except
+test-target guard and the deterministic editorial batch test) and this record.
+Every source, test and architecture-pin file of the accepted change is
+byte-identical to `8f5e7b3`; the three documentation files that differ are
 `docs/development.md`, which additionally carries the guard paragraph merged
-from `main`. No accepted behavior changed, so no further acceptance is required
-for this delivery.
+from `main`, and `docs/project-status.md` and this file, which carry this
+record. No accepted behavior changed, so no further acceptance is required for
+this delivery.
