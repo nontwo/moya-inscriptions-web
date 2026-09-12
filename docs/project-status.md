@@ -276,11 +276,11 @@ Active development tracks (independent of the parked cloud track):
    Owner-controlled publication setting (`PRE_MODERATION` default), Development
    test-account sign-in, system-assigned handles, Payload Admin moderation over
    a Backend operator boundary, text comments first, flat paginated replies,
-   Production deferred. PR #106's comment UI was accepted at `8e7d12a`.
-   Implementation proceeds in three separately reviewable stages, Mission 2A
-   next: identity/session foundation → comment contract, persistence, API and
-   moderation → connecting the #106 UI seam, once Owner-accepted, to the real
-   API.
+   Production deferred. PR #106's comment UI was accepted at `8e7d12a` and
+   merged as `b27c85c`. Implementation proceeds in three separately reviewable
+   stages, Mission 2A next: identity/session foundation → comment contract,
+   persistence, API and moderation → connecting the merged #106 UI seam to the
+   real API.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of
@@ -292,15 +292,15 @@ Active development tracks (independent of the parked cloud track):
 
 No historical feature branch is an active implementation base.
 
-| Branch                                                |   PR | Current disposition                                                                                           |
-| ----------------------------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------- |
-| `codex/comment-feature-main`                          | #106 | ACCEPTED at `8e7d12a` (Owner real-device visual acceptance 2026-09-11); QA-only comment presentation, merged. |
-| `ops/p2-r2b-tencent-stage-b`                          | #107 | MERGED; necessary PostgreSQL IP-identity TLS fix and guarded remote 18.6 verification only.                   |
-| `codex/t02-adaptive-quick-actions`                    |  #94 | CLOSED; superseded by the merged minimal quick actions (#95). Reference only.                                 |
-| `fix/t02-development-composition`                     |  #54 | MERGED HISTORY; squash result is already in the current `main` lineage.                                       |
-| `feat/catalog-detail-ui-t09-2`                        |  #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage.                             |
-| `feat/t02p-12-react-detail-gallery-viewer-acceptance` |  #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.                              |
-| `feat/t02-petal-quick-actions-rebuild`                |  #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick.                             |
+| Branch                                                |   PR | Current disposition                                                                                                                                           |
+| ----------------------------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codex/comment-feature-main`                          | #106 | MERGED as `b27c85c` (2026-09-12) after Owner real-device visual acceptance at `8e7d12a` (identical patch rebased as `f48ee2f`); QA-only comment presentation. |
+| `ops/p2-r2b-tencent-stage-b`                          | #107 | MERGED; necessary PostgreSQL IP-identity TLS fix and guarded remote 18.6 verification only.                                                                   |
+| `codex/t02-adaptive-quick-actions`                    |  #94 | CLOSED; superseded by the merged minimal quick actions (#95). Reference only.                                                                                 |
+| `fix/t02-development-composition`                     |  #54 | MERGED HISTORY; squash result is already in the current `main` lineage.                                                                                       |
+| `feat/catalog-detail-ui-t09-2`                        |  #52 | SUPERSEDED; closed unmerged and replaced by the current React Detail/MIG lineage.                                                                             |
+| `feat/t02p-12-react-detail-gallery-viewer-acceptance` |  #69 | SUPERSEDED REFERENCE; closed unmerged after bounded concepts were reimplemented.                                                                              |
+| `feat/t02-petal-quick-actions-rebuild`                |  #72 | CLOSED DESIGN REFERENCE ONLY; never merge, retarget, rebase, or bulk cherry-pick.                                                                             |
 
 Remote refs may remain for traceability. Their existence does not grant
 implementation authority. PR #72 is closed, and obsolete Issue #11 is closed as

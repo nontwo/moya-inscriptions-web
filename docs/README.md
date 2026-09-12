@@ -29,8 +29,8 @@ chain. They cannot amend it.
     development branch and defines tag- and release-based milestones;
   - the confidentiality and preflight amendment, which limits delivery checks to
     incremental core-credential scans under a shared allowance;
-    - the P2-04 Payload editorial automation amendment, which authorizes the
-      bounded CMS server integration and controlled content automation;
+  - the P2-04 Payload editorial automation amendment, which authorizes the
+    bounded CMS server integration and controlled content automation;
   - the Community V1 scope amendment, which authorizes the bounded Community V1
     domain through the Mission 2A → 2B → 2C sequence and records the Owner's
     product decisions.

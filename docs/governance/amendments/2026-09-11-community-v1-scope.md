@@ -41,7 +41,7 @@ real-device layout changes.
   `INVALID_QUERY | ITEM_NOT_FOUND | SERVICE_UNAVAILABLE | INTERNAL_ERROR`.
   Migrations are append-only and `scripts/migrate.mjs` accepts exactly
   `MOYA_CONTENT_SOURCE=legacy | payload`.
-- PR #106 (`codex/comment-feature-main`, Draft, QA-only) adds
+- PR #106 (`codex/comment-feature-main`, QA-only) adds
   `apps/web/features/comments/` and the seam
   `T02pProductPreview.renderCommentSection?(catalogId)` →
   `PreviewCatalogDetailOverlay.commentSection` →
@@ -52,7 +52,8 @@ real-device layout changes.
   wired only inside the QA harness (`/dev/t02p/qa`) from `useQaCommentStore`
   fixtures. Its own E2E asserts that the Formal compositions render no comment
   section. The Owner recorded real-device visual acceptance for `8e7d12a` on
-  2026-09-11; it is not redesigned here.
+  2026-09-11; the identical patch was rebased as `f48ee2f` and squash-merged as
+  `b27c85c`. It is not redesigned here.
 
 ## Rule classification
 
@@ -65,8 +66,9 @@ real-device layout changes.
   `docs/architecture.md`, `docs/development.md` and `infra/production/README.md`
   is superseded for this domain; the mission that implements each part updates
   those documents. Every other social capability stays deferred.
-- PRESERVE ADR 0006 §6 (Official Catalog、UGC 与 media — the accepted statement
-  of the fact boundary first recorded in the now-superseded ADR 0003 as
+- PRESERVE, with one narrow modernization, ADR 0006 §6 (Official
+  Catalog、UGC 与 media — the accepted statement of the fact boundary first
+  recorded in the now-superseded ADR 0003 as
   `CatalogRecord != CommunityPost != Product / Order`): a comment references a
   `CatalogId`; no shared content base class; `CatalogSummary`, `CatalogDetail`
   and Search DTOs gain no comment or user field. Its rule that user submissions
@@ -117,10 +119,11 @@ Public product user != Payload Admin / Operator
 - Public DTOs: `PublicUserProfile { id, handle, displayName }` returned only to
   the session owner; `CommentAuthor { id, displayName }` embedded in comments
   (no avatar in any V1 DTO: Mission 2C maps `avatarSrc: null` so PR #106 renders
-  its initial-glyph fallback; avatar exposure joins decision 5). `status`,
-  timestamps and credential linkage never appear in a Public DTO. `PublicUser`
-  carries no credential material; credential bindings are introduced only by an
-  Owner-authorized provider task.
+  its initial-glyph fallback; the avatar affordance is treated like the other
+  unsupported affordances under decision 5). `status`, timestamps and credential
+  linkage never appear in a Public DTO. `PublicUser` carries no credential
+  material; credential bindings are introduced only by an Owner-authorized
+  provider task.
 - QA identities (`qa-user-01` / 访碑者 and the fixture comment authors) remain
   presentation fixtures: never a fallback for a missing session, never bound to
   a `PublicUserId`, never in PostgreSQL.
@@ -324,11 +327,11 @@ Setting   PRE_MODERATION | DIRECT_PUBLICATION   (Owner-controlled, global)
   plus the Owner's layout changes). A conflict-free rebase onto `main` that
   changes no file under `apps/web/features/comments/`,
   `apps/web/features/detail/` or `apps/web/features/product-preview/` keeps that
-  acceptance; any other change that affects the accepted behavior re-opens the
-  visual gate. This amendment does not redesign it, and no mission may alter its
-  Detail, comment section or composer to ease implementation (Constitution
-  §17.4). Missions 2A and 2B do not depend on it; Mission 2C requires it merged.
-  Merging it does not expose QA comments in Production.
+  acceptance; any other change re-opens the visual gate. This amendment does not
+  redesign it, and no mission may alter its Detail, comment section or composer
+  to ease implementation (Constitution §17.4). Missions 2A and 2B do not depend
+  on it; Mission 2C requires it merged. Merging it does not expose QA comments
+  in Production.
 - Mission 2C replaces only the data seam:
 
 ```text
@@ -363,8 +366,8 @@ Every mission freezes its own Behavior Matrix before implementation
 (Constitution §7), covering only the surfaces it delivers: 2A `GET /v1/me`, the
 cookie relay and `401`; 2B the three comment operations, `404` /
 `INVALID_INPUT`, hidden filtering and moderation effects; 2C the Formal Detail
-states (signed-out, empty, loading, unavailable, create and reply, session
-expiry) under the Owner visual gate. No matrix row is frozen here.
+states (signed-out, empty, loading, pending, unavailable, create and reply,
+session expiry) under the Owner visual gate. No matrix row is frozen here.
 
 Production exposure of any Community surface remains deferred (decision 7): it
 requires an authorized identity provider, Backend runtime configuration, the
