@@ -39,9 +39,21 @@ export interface CommunityModerationServiceOptions {
 const defaultOperatorLabel = "owner";
 const defaultOperatorPageSize = 20;
 
-const moderationForAction = (
-  action: "approve" | "hide" | "unhide",
-): CommentModerationState => (action === "hide" ? "hidden" : "visible");
+/**
+ * Amendment section 5, edge by edge: pending -> visible (approval),
+ * visible -> hidden (hide), hidden -> visible (unhide). Nothing else.
+ */
+const moderationTransitions: Record<
+  "approve" | "hide" | "unhide",
+  {
+    readonly to: CommentModerationState;
+    readonly from: CommentModerationState[];
+  }
+> = {
+  approve: { to: "visible", from: ["pending"] },
+  hide: { to: "hidden", from: ["visible"] },
+  unhide: { to: "visible", from: ["hidden"] },
+};
 
 /**
  * The Owner's moderation surface behind the authenticated operator boundary.
@@ -119,14 +131,18 @@ export class CommunityModerationService {
   ): Promise<ModerationResult> {
     const { action } = this.parse(moderateCommentCommandSchema, body);
     const at = this.clock();
+    const transition = moderationTransitions[action];
     const moderated = await this.commentPort.applyCommentModeration(
       id,
-      moderationForAction(action),
+      transition.to,
+      transition.from,
       this.operatorLabel,
       at,
     );
     if (moderated === null)
-      throw new CommunityNotFoundError("Comment was not found");
+      throw new CommunityNotFoundError(
+        "Comment was not found in a state this action can leave",
+      );
     await this.record(action, moderated.kind, moderated.id, at);
     return { id: moderated.id, moderation: moderated.moderation };
   }

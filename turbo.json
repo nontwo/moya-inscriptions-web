@@ -55,7 +55,7 @@
       "passThroughEnv": [
         "CMS_*",
         "DATABASE_IDLE_TIMEOUT_MS",
-        "MOYA_PUBLIC_API_BASE_URL",
+        "COMMUNITY_OPERATOR_BASE_URL",
         "COMMUNITY_OPERATOR_TOKEN"
       ]
     },

@@ -26,7 +26,7 @@ const errorMessage = (code: string) =>
 class OperatorFailure extends Error {}
 
 async function call<T>(name: string, input: unknown = {}): Promise<T> {
-  const response = await fetch(`/api/community/${name}`, {
+  const response = await fetch(`/api/community-moderation/${name}`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },

@@ -234,7 +234,9 @@ describe("CatalogCommentService", () => {
       fixtureUsers.second.id,
       { text: "公开的回复" },
     );
-    await port.applyCommentModeration(visibleRoot.item.id, "hidden");
+    await port.applyCommentModeration(visibleRoot.item.id, "hidden", [
+      "visible",
+    ]);
     // Hiding the root removes the whole thread from public reads.
     const page = await service.readComments(publishedCatalogId, {
       page: 1,

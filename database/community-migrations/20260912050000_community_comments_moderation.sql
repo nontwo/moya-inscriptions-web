@@ -27,6 +27,7 @@ CREATE TABLE community.catalog_comments (
   ),
   CONSTRAINT catalog_comments_moderation_recorded CHECK (
     (moderated_at IS NULL) = (moderated_by IS NULL)
+    AND (moderated_by IS NULL OR moderated_by ~ '^[a-z][a-z0-9-]{0,63}$')
   )
 );
 
@@ -54,6 +55,7 @@ CREATE TABLE community.catalog_comment_replies (
   ),
   CONSTRAINT catalog_comment_replies_moderation_recorded CHECK (
     (moderated_at IS NULL) = (moderated_by IS NULL)
+    AND (moderated_by IS NULL OR moderated_by ~ '^[a-z][a-z0-9-]{0,63}$')
   ),
   CONSTRAINT catalog_comment_replies_not_self CHECK (reply_to_reply_id <> id),
   CONSTRAINT catalog_comment_replies_thread_unique UNIQUE (id, root_comment_id),

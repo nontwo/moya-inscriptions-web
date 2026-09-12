@@ -181,10 +181,14 @@ comment tables, `SELECT, UPDATE` on `community.publication_setting`,
 `UPDATE (status, updated_at)` on `community.public_users`; still no DELETE and
 no DDL anywhere). It also adds `COMMUNITY_OPERATOR_TOKEN`: a 32-512 character
 shared credential Admin holds server-side to reach the Backend's loopback-only
-`/internal/community/*` boundary. Put the same value in `backend.env` and
+`/internal/community/*` boundary, and `COMMUNITY_OPERATOR_BASE_URL`, the
+dedicated origin Admin calls it on. Put the same token in `backend.env` and
 `admin.env`, rotate them together, and never expose it to a browser or a public
 ingress; leaving it unset keeps the boundary closed and the Owner's moderation
-view reports that it is not configured. Nginx forwards no `/internal/` path and
+view reports that it is not configured. The base URL must resolve to loopback
+whatever its scheme, and Admin refuses to start a call otherwise. Admin's own
+moderation endpoints answer under `/api/community-moderation/*`, clear of the
+public `/api/community/*` read surface. Nginx forwards no `/internal/` path and
 the Backend listens on loopback only, so that boundary is never publicly
 reachable. No Production sign-in path exists: the Development test-account entry
 is composed only under `NODE_ENV=development`, and external identity providers

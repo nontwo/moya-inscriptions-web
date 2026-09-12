@@ -100,7 +100,7 @@ const operations: Record<
 };
 
 const endpoint = (name: string): Endpoint => ({
-  path: `/community/${name}`,
+  path: `/community-moderation/${name}`,
   method: "post",
   handler: async (req) => {
     try {

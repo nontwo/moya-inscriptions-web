@@ -25,9 +25,6 @@ import type { CommunityCommentPort } from "../ports/community-comment-port.js";
 import type { CatalogPublicationPort } from "../ports/catalog-publication-port.js";
 import type { RandomBytes } from "../session-token.js";
 
-/** Fixed by the Mission 2B Contract review; the transport layer parses them. */
-const embeddedReplyLimit = 3;
-
 export interface CatalogCommentServiceOptions {
   readonly clock?: () => Date;
   readonly randomBytes?: RandomBytes;
@@ -38,6 +35,12 @@ export interface CommentSubmission<Item> {
   /** `pending` under PRE_MODERATION; the transport turns it into 202 vs 201. */
   readonly awaitingApproval: boolean;
 }
+
+/**
+ * How many visible replies a comment page carries inline before the reader
+ * pages the thread. Fixed by the Mission 2B Contract review.
+ */
+export const COMMENT_EMBEDDED_REPLY_LIMIT = 3;
 
 export interface CommentPageInput {
   readonly page: number;
@@ -71,7 +74,7 @@ export class CatalogCommentService {
       catalogId,
       page: query.page,
       pageSize: query.pageSize,
-      embeddedReplyLimit,
+      embeddedReplyLimit: COMMENT_EMBEDDED_REPLY_LIMIT,
     });
     return mapCatalogCommentPage({
       items: comments.items.map((comment) =>

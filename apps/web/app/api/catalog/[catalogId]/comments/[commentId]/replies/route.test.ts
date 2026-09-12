@@ -40,6 +40,27 @@ const writeRequest = (body: unknown, cookie?: string) => {
   });
 };
 
+/**
+ * A chunked body declares no content-length, so only the stream bound can stop
+ * it. Each chunk is well under the cap; the total is far over it.
+ */
+const chunkedRequest = (target: string, chunkCount: number, cookie: string) =>
+  new Request(target, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunkCount-- <= 0) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode("x".repeat(1_024)));
+      },
+    }),
+    // @ts-expect-error -- Node requires duplex for a streaming request body.
+    duplex: "half",
+  });
+
 beforeEach(() => {
   fetchRepliesMock.mockReset();
   createReplyMock.mockReset();
@@ -110,6 +131,12 @@ describe("same-origin reply bridge", () => {
     );
     expect(response.status).toBe(status);
     expect(await response.text()).toBe("");
+  });
+
+  it("bounds a chunked body that declares no length", async () => {
+    const chunked = chunkedRequest(url, 8, `yoyi-session=${opaqueSession}`);
+    expect((await POST(chunked, context)).status).toBe(422);
+    expect(createReplyMock).not.toHaveBeenCalled();
   });
 
   it("answers 202 while a reply awaits approval", async () => {

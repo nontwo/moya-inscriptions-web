@@ -155,12 +155,19 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
   async applyCommentModeration(
     id: CatalogCommentId,
     moderation: CommentModerationState,
+    from: readonly CommentModerationState[],
     operatorLabel: string,
     at: Date,
   ): Promise<ModeratedSubject | null> {
     const rows = await this.query<
       { id: unknown; moderation: unknown; kind: unknown } & QueryResultRow
-    >(applyCommentModerationSql, [id, moderation, operatorLabel, at]);
+    >(applyCommentModerationSql, [
+      id,
+      moderation,
+      operatorLabel,
+      at,
+      [...from],
+    ]);
     const row = rows[0];
     if (row === undefined) return null;
     if (

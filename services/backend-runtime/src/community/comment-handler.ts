@@ -63,12 +63,23 @@ const sendFailure = (response: ServerResponse, error: unknown): void => {
 const sendNotFound = (response: ServerResponse): void =>
   sendApiError(response, "ITEM_NOT_FOUND", "The requested item was not found");
 
+/** A malformed percent escape is a missing item, never an unhandled rejection. */
+const decodeSegment = (segment: string): string | undefined => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+};
+
 const parseCatalogId = (
   response: ServerResponse,
   catalogId: string,
 ): CatalogId | undefined => {
-  const parsed = catalogIdSchema.safeParse(decodeURIComponent(catalogId));
-  if (!parsed.success) {
+  const decoded = decodeSegment(catalogId);
+  const parsed =
+    decoded === undefined ? undefined : catalogIdSchema.safeParse(decoded);
+  if (parsed?.success !== true) {
     sendNotFound(response);
     return undefined;
   }
@@ -79,10 +90,12 @@ const parseCommentId = (
   response: ServerResponse,
   commentId: string,
 ): CatalogCommentId | undefined => {
-  const parsed = catalogCommentIdSchema.safeParse(
-    decodeURIComponent(commentId),
-  );
-  if (!parsed.success) {
+  const decoded = decodeSegment(commentId);
+  const parsed =
+    decoded === undefined
+      ? undefined
+      : catalogCommentIdSchema.safeParse(decoded);
+  if (parsed?.success !== true) {
     sendNotFound(response);
     return undefined;
   }

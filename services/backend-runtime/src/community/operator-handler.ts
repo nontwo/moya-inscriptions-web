@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import {
+  CommunityInputError,
   isCommunityInputError,
   isCommunityNotFoundError,
   isCommunityStoreUnavailableError,
@@ -62,10 +63,31 @@ const sendFailure = (response: ServerResponse, error: unknown): void => {
   sendOperatorError(response, 500, "INTERNAL_ERROR");
 };
 
+/**
+ * Duplicate or non-string query values must fail, not be silently dropped:
+ * an unfiltered moderation queue is not what the Owner asked for.
+ */
 const numericQuery = (value: unknown): number | undefined => {
+  if (value === undefined) return undefined;
   if (typeof value !== "string" || !/^[1-9]\d{0,5}$/.test(value))
-    return undefined;
+    throw new CommunityInputError("Operator query is invalid");
   return Number(value);
+};
+
+const moderationQuery = (value: unknown): string | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string")
+    throw new CommunityInputError("Operator query is invalid");
+  return value;
+};
+
+/** A malformed percent escape is a missing subject, never a 500. */
+const decodeSegment = (segment: string): string | undefined => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
 };
 
 export const handleOperatorRequest = async (
@@ -110,19 +132,16 @@ export const handleOperatorRequest = async (
       }
       const url = new URL(request.url ?? "/", "http://request.invalid");
       const query = collectTransportQuery(url.searchParams);
+      const moderation = moderationQuery(query.moderation);
+      const page = numericQuery(query.page);
+      const pageSize = numericQuery(query.pageSize);
       sendJson(
         response,
         200,
         await moderationService.readComments({
-          ...(typeof query.moderation === "string"
-            ? { moderation: query.moderation }
-            : {}),
-          ...(numericQuery(query.page) === undefined
-            ? {}
-            : { page: numericQuery(query.page) }),
-          ...(numericQuery(query.pageSize) === undefined
-            ? {}
-            : { pageSize: numericQuery(query.pageSize) }),
+          ...(moderation === undefined ? {} : { moderation }),
+          ...(page === undefined ? {} : { page }),
+          ...(pageSize === undefined ? {} : { pageSize }),
         }),
       );
       return;
@@ -135,10 +154,12 @@ export const handleOperatorRequest = async (
         sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
         return;
       }
-      const id = catalogCommentIdSchema.safeParse(
-        decodeURIComponent(commentRoute[1] ?? ""),
-      );
-      if (!id.success) {
+      const decoded = decodeSegment(commentRoute[1] ?? "");
+      const id =
+        decoded === undefined
+          ? undefined
+          : catalogCommentIdSchema.safeParse(decoded);
+      if (id?.success !== true) {
         sendOperatorError(response, 404, "NOT_FOUND");
         return;
       }
@@ -161,10 +182,12 @@ export const handleOperatorRequest = async (
         sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
         return;
       }
-      const id = publicUserIdSchema.safeParse(
-        decodeURIComponent(userRoute[1] ?? ""),
-      );
-      if (!id.success) {
+      const decoded = decodeSegment(userRoute[1] ?? "");
+      const id =
+        decoded === undefined
+          ? undefined
+          : publicUserIdSchema.safeParse(decoded);
+      if (id?.success !== true) {
         sendOperatorError(response, 404, "NOT_FOUND");
         return;
       }

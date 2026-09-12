@@ -493,14 +493,43 @@ describe("community PostgreSQL comments and moderation", () => {
       ).items,
     ).toEqual([]);
 
+    // Unhiding a pending row is not an edge of the machine: no row matches.
     expect(
-      await port.applyCommentModeration(root.id, "visible", "owner", at),
+      await port.applyCommentModeration(
+        root.id,
+        "visible",
+        ["hidden"],
+        "owner",
+        at,
+      ),
+    ).toBeNull();
+
+    expect(
+      await port.applyCommentModeration(
+        root.id,
+        "visible",
+        ["pending"],
+        "owner",
+        at,
+      ),
     ).toEqual({ id: root.id, kind: "comment", moderation: "visible" });
     expect(
-      await port.applyCommentModeration(reply.id, "visible", "owner", at),
+      await port.applyCommentModeration(
+        reply.id,
+        "visible",
+        ["pending"],
+        "owner",
+        at,
+      ),
     ).toEqual({ id: reply.id, kind: "reply", moderation: "visible" });
     expect(
-      await port.applyCommentModeration(commentId(99), "visible", "owner", at),
+      await port.applyCommentModeration(
+        commentId(99),
+        "visible",
+        ["pending"],
+        "owner",
+        at,
+      ),
     ).toBeNull();
 
     const visible = await port.readVisibleComments({
@@ -512,7 +541,13 @@ describe("community PostgreSQL comments and moderation", () => {
     expect(visible.items[0]?.replies).toHaveLength(1);
 
     // Hiding the root removes the thread; the reply row keeps its own state.
-    await port.applyCommentModeration(root.id, "hidden", "owner", at);
+    await port.applyCommentModeration(
+      root.id,
+      "hidden",
+      ["visible"],
+      "owner",
+      at,
+    );
     expect(
       (
         await port.readVisibleComments({

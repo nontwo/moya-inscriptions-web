@@ -214,7 +214,7 @@ describe("Community V1 comment HTTP surface", () => {
     expect(page.status).toBe(200);
     expect((await page.json()).items).toHaveLength(1);
 
-    await commentPort.applyCommentModeration(root.id, "hidden");
+    await commentPort.applyCommentModeration(root.id, "hidden", ["visible"]);
     await expectApiError(await fetch(repliesUrl), 404, "ITEM_NOT_FOUND");
     await expectApiError(
       await fetch(repliesUrl, {
@@ -245,6 +245,31 @@ describe("Community V1 comment HTTP surface", () => {
       503,
       "SERVICE_UNAVAILABLE",
     );
+  });
+
+  // A malformed percent escape makes decodeURIComponent throw. Anonymous
+  // callers must get 404, never an unhandled URIError that ends the request.
+  it("answers 404 for a malformed percent escape in either path segment", async () => {
+    const { baseUrl, signIn } = await start();
+    const token = await signIn();
+    const malformed = "%E0%A4";
+    const targets = [
+      `${baseUrl}/v1/catalog/${malformed}/comments`,
+      `${baseUrl}/v1/catalog/${publishedCatalogId}/comments/${malformed}/replies`,
+      `${baseUrl}/v1/catalog/${malformed}/comments/${malformed}/replies`,
+    ];
+    for (const target of targets) {
+      expect((await fetch(target)).status, `GET ${target}`).toBe(404);
+      const written = await fetch(target, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text: "格式错误的路径" }),
+      });
+      expect(written.status, `POST ${target}`).toBe(404);
+    }
   });
 });
 
@@ -390,6 +415,34 @@ describe("Community V1 operator boundary", () => {
       },
     );
     expect(unknown.status).toBe(404);
+
+    // The comment is visible again, so approving it is not an edge of the
+    // machine: it must be refused rather than silently rewrite the state.
+    const audited = commentPort.events.length;
+    const outOfMachine = await operatorFetch(
+      baseUrl,
+      `comments/${created.id}/moderation`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "approve" }),
+      },
+    );
+    expect(outOfMachine.status).toBe(404);
+    expect(commentPort.comments.get(created.id)?.moderation).toBe("visible");
+    expect(commentPort.events).toHaveLength(audited);
+  });
+
+  it("answers 404 for a malformed percent escape on either operator route", async () => {
+    const { baseUrl } = await start();
+    for (const path of ["comments/%E0%A4/moderation", "users/%E0%A4/status"]) {
+      const response = await operatorFetch(baseUrl, path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "approve" }),
+      });
+      expect(response.status, path).toBe(404);
+    }
   });
 
   it("suspends and reinstates an author without touching comment state", async () => {

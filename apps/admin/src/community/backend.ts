@@ -15,12 +15,16 @@ export class CommunityOperatorError extends APIError {
   }
 }
 
-const operatorBaseUrlVariable = "MOYA_PUBLIC_API_BASE_URL" as const;
+/**
+ * A dedicated variable, never the public Backend base URL: the operator
+ * credential must not follow a value that could legitimately point off-box.
+ */
+const operatorBaseUrlVariable = "COMMUNITY_OPERATOR_BASE_URL" as const;
 const operatorTokenVariable = "COMMUNITY_OPERATOR_TOKEN" as const;
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
-/** The boundary is reached over loopback only; it is never a public ingress. */
+/** The boundary is reached over loopback only, whatever the scheme. */
 const operatorBaseUrl = (): URL => {
   const value = process.env[operatorBaseUrlVariable];
   if (value === undefined || value === "")
@@ -33,7 +37,7 @@ const operatorBaseUrl = (): URL => {
   }
   if (
     (url.protocol !== "http:" && url.protocol !== "https:") ||
-    (url.protocol === "http:" && !loopbackHosts.has(url.hostname)) ||
+    !loopbackHosts.has(url.hostname) ||
     url.username !== "" ||
     url.password !== "" ||
     url.search !== "" ||

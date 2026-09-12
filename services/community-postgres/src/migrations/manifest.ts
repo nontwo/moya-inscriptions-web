@@ -17,6 +17,6 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       migrationId: "20260912050000",
       filename: "20260912050000_community_comments_moderation.sql",
       checksum:
-        "e00ac63edabfa372f6268e38dfe0ac6733d6c3ed64ec3855346d68bd7ff31ab6",
+        "6be083ac66ebe477f893726447f168c539746198cfd96a76e6854cbe2e84f5f8",
     }),
   ]);

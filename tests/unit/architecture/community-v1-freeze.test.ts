@@ -170,4 +170,24 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
       "internal/community/",
     );
   });
+
+  it("keeps every Payload endpoint path clear of the public community prefix (2B)", async () => {
+    // Payload mounts its endpoints under /api, so a Payload path of
+    // /community/... would land on /api/community/..., which is the public
+    // Community read surface. The moderation endpoints carry their own prefix.
+    const paths: string[] = [];
+    for (const file of await walkFiles("apps/admin")) {
+      const source = await read(file);
+      for (const match of source.matchAll(
+        /\bpath: [`"](\/[^`"$]*)(\$\{[^}]+\})?/gu,
+      ))
+        paths.push(match[1] ?? "");
+    }
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) {
+      expect(path.startsWith("/community/")).toBe(false);
+      expect(path).not.toBe("/community");
+    }
+    expect(paths).toContain("/community-moderation/");
+  });
 });

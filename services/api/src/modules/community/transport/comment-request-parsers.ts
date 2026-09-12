@@ -24,7 +24,6 @@ export interface CommentPageRequest {
 /** Fixed by the Mission 2B Contract review; Web never widens them. */
 export const COMMENT_PAGE_SIZE_DEFAULT = 20;
 export const COMMENT_REPLY_PAGE_SIZE_DEFAULT = 10;
-export const COMMENT_EMBEDDED_REPLY_LIMIT = 3;
 
 export const parseCommentPageQuery = (
   input: unknown,

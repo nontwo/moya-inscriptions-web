@@ -125,10 +125,17 @@ and 直接发布 (`DIRECT_PUBLICATION`), approve, hide or unhide a comment or re
 and suspend or reinstate an author. Switching the setting affects new
 submissions only; nothing is bulk-published or bulk-hidden, and nothing is ever
 deleted. Admin never touches community tables: it calls the Backend's
-loopback-only `/internal/community/*` boundary with the shared
-`COMMUNITY_OPERATOR_TOKEN` from `.env.local`, and the Backend stays the sole
-writer. Leave that variable unset and the boundary rejects every request, so the
-moderation view reports that it is not configured rather than opening.
+loopback-only `/internal/community/*` boundary at `COMMUNITY_OPERATOR_BASE_URL`
+with the shared `COMMUNITY_OPERATOR_TOKEN`, both from `.env.local`, and the
+Backend stays the sole writer. The base URL must resolve to loopback whatever
+its scheme, so the credential never leaves the machine. Leave the token unset
+and the boundary rejects every request, so the moderation view reports that it
+is not configured rather than opening.
+
+The view's own server routes are `POST /api/community-moderation/*` in Payload.
+They carry that prefix deliberately: Payload mounts every endpoint under `/api`,
+so a `/community/...` endpoint would land on the public Community read surface
+that Web and the Backend already own.
 
 ## Optional local read-only browser role
 

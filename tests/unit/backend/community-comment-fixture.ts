@@ -173,18 +173,20 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     return record;
   }
 
+  /** Mirrors the adapter: a row outside `from` matches nothing. */
   async applyCommentModeration(
     id: CatalogCommentId,
     moderation: CommentModerationState,
+    from: readonly CommentModerationState[],
   ): Promise<ModeratedSubject | null> {
     this.assertAvailable();
     const comment = this.comments.get(id);
-    if (comment !== undefined) {
+    if (comment !== undefined && from.includes(comment.moderation)) {
       this.comments.set(id, { ...comment, moderation });
       return { id, kind: "comment", moderation };
     }
     const reply = this.replies.get(id);
-    if (reply !== undefined) {
+    if (reply !== undefined && from.includes(reply.moderation)) {
       this.replies.set(id, { ...reply, moderation });
       return { id, kind: "reply", moderation };
     }

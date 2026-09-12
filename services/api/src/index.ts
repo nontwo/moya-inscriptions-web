@@ -40,8 +40,8 @@ export type {
   CommentPageInput,
   CommentSubmission,
 } from "./modules/community/application/services/catalog-comment-service.js";
+export { COMMENT_EMBEDDED_REPLY_LIMIT } from "./modules/community/application/services/catalog-comment-service.js";
 export {
-  COMMENT_EMBEDDED_REPLY_LIMIT,
   COMMENT_PAGE_SIZE_DEFAULT,
   COMMENT_REPLY_PAGE_SIZE_DEFAULT,
   parseCommentPageQuery,

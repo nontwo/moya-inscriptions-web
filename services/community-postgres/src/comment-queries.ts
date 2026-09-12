@@ -120,19 +120,24 @@ export const insertReplySql = `
   LEFT JOIN community.public_users ru ON ru.id = t.author_id
 `;
 
-/** Comment ids are unique across both tables, so at most one branch matches. */
+/**
+ * Comment ids are unique across both tables, so at most one branch matches.
+ * `$5` carries the states the requested transition may leave, so an
+ * out-of-machine edge (approving a hidden item, hiding a pending one) matches
+ * no row and surfaces as 404 instead of silently rewriting the state.
+ */
 export const applyCommentModerationSql = `
   WITH root AS (
     UPDATE community.catalog_comments
     SET moderation = $2::text, moderated_by = $3::text,
         moderated_at = $4::timestamptz
-    WHERE id = $1::text
+    WHERE id = $1::text AND moderation = ANY($5::text[])
     RETURNING id, moderation
   ), reply AS (
     UPDATE community.catalog_comment_replies
     SET moderation = $2::text, moderated_by = $3::text,
         moderated_at = $4::timestamptz
-    WHERE id = $1::text
+    WHERE id = $1::text AND moderation = ANY($5::text[])
     RETURNING id, moderation
   )
   SELECT id, moderation, 'comment' AS kind FROM root

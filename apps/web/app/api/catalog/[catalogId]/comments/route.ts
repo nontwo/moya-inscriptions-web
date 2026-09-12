@@ -15,6 +15,38 @@ const emptyResponse = (status: number) =>
 const jsonResponse = (body: unknown, status: number) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
+/**
+ * Bounds the actual stream: a chunked body declares no content-length, so the
+ * header alone is not a limit. Returns null when the body is too large or absent.
+ */
+const readBoundedJson = async (request: Request): Promise<unknown | null> => {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declared) || declared > maximumBodyBytes) return null;
+  const reader = request.body?.getReader();
+  if (reader === undefined) return null;
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maximumBodyBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    return JSON.parse(
+      new TextDecoder().decode(
+        chunks.length === 1 ? chunks[0] : Buffer.concat(chunks),
+      ),
+    ) as unknown;
+  } catch {
+    return null;
+  }
+};
+
 interface CommentRouteContext {
   params: Promise<{ catalogId: string }>;
 }
@@ -61,15 +93,8 @@ export const POST = async (
 ): Promise<Response> => {
   const token = readCommunitySessionToken(request.headers.get("cookie"));
   if (token === undefined) return emptyResponse(401);
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(declared) || declared > maximumBodyBytes)
-    return emptyResponse(422);
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return emptyResponse(422);
-  }
+  const body = await readBoundedJson(request);
+  if (body === null) return emptyResponse(422);
   const { catalogId } = await context.params;
   try {
     const result = await createServerCatalogComment(catalogId, token, body);

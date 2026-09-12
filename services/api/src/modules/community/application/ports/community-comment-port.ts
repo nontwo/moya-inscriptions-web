@@ -101,10 +101,15 @@ export interface CommunityCommentPort {
 
   insertReply(reply: ReplyInsert): Promise<CatalogCommentReplyRecord>;
 
-  /** Applies the moderation transition to a root comment or a reply; null when unknown. */
+  /**
+   * Applies the moderation transition to a root comment or a reply. `from`
+   * lists the states the edge may leave, so an out-of-machine transition
+   * matches no row and returns null (the caller turns that into 404).
+   */
   applyCommentModeration(
     id: CatalogCommentId,
     moderation: CommentModerationState,
+    from: readonly CommentModerationState[],
     operatorLabel: string,
     at: Date,
   ): Promise<ModeratedSubject | null>;
