@@ -1001,9 +1001,21 @@ test("MIG-D1 direct multi-media Detail preserves Carousel and scroll across resi
     );
     await page.setViewportSize(viewport);
   }
+  // A layout change re-mounts the wide layout with 详情 folded again, so the
+  // scroller may be shorter than the remembered position: the position is
+  // kept (history) and applied as far as the content reaches.
   await expect
-    .poll(() => scroller.evaluate((node) => (node as HTMLElement).scrollTop))
-    .toBe(recordedScroll);
+    .poll(() =>
+      scroller.evaluate((node, desiredTop) => {
+        const element = node as HTMLElement;
+        const maximum = Math.max(
+          0,
+          element.scrollHeight - element.clientHeight,
+        );
+        return Math.abs(element.scrollTop - Math.min(desiredTop, maximum)) <= 2;
+      }, recordedScroll),
+    )
+    .toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() =>
