@@ -40,6 +40,7 @@ type RunOptions = {
   attempts?: number;
   retryDelayMs?: number;
   budgetMs?: number;
+  now?: () => number;
   signal?: AbortSignal;
 };
 const { runBatch, prepareItems, createTransport } = (await import(
@@ -203,8 +204,14 @@ describe("deterministic editorial batch", () => {
         content: { catalogId: `catalog-${key}` },
       })),
     );
+    // The injected clock, not the runner's speed, decides when the budget
+    // expires: receipt and lock setup take no clock time, and the first request
+    // alone outlasts the budget. The real in-flight abort timer stays far
+    // beyond the test's own runtime.
+    const budgetMs = 120_000;
+    let clock = 0;
     const transport = vi.fn(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      clock += budgetMs + 20;
       return { ok: false, retryable: true, code: "SERVER_RETRYABLE" };
     });
     expect(
@@ -212,8 +219,9 @@ describe("deterministic editorial batch", () => {
         ...context,
         transport,
         concurrency: 1,
-        budgetMs: 100,
+        budgetMs,
         attempts: 5,
+        now: () => clock,
       }),
     ).toMatchObject({ failed: 1, pending: 2 });
     expect(transport).toHaveBeenCalledTimes(1);
