@@ -67,3 +67,28 @@ upload is added.
   — the acceptance preview over the clean Development states.
 - `http://localhost:3002/admin/community-moderation` — the moderation workspace
   for the moderation-effect row.
+
+## Owner acceptance (2026-09-12)
+
+The Owner stated that Mission 2C acceptance passed.
+
+Provenance of the accepted runtime, verified rather than assumed: the three
+Development processes (Web 3000, Backend 3001, Admin 3002) were started at
+2026-09-12 17:18 local time from the task worktree on branch
+`feat/community-2c-catalog-comments`, whose source tree was identical to
+`8f5e7b3` — the only files differing were the generated `next-env.d.ts` pair and
+`payload-types.ts`, which the dev servers rewrite. The Owner reached that
+runtime over the local network address in use for device testing. `8f5e7b3` is
+therefore the accepted candidate.
+
+This section records the Owner's own judgment only. It does not record which
+devices or scenarios the Owner exercised, and the automated evidence listed on
+the pull request — unit, architecture, E2E and the scripted Development journey
+— is machine verification, not Owner acceptance.
+
+Commits after `8f5e7b3` on this branch are a merge of `main` (the PostgreSQL
+test-target guard and the deterministic editorial batch test) and this record;
+every file of the accepted change is byte-identical to `8f5e7b3`, except
+`docs/development.md`, which additionally carries the guard paragraph merged
+from `main`. No accepted behavior changed, so no further acceptance is required
+for this delivery.

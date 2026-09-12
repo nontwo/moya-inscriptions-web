@@ -292,9 +292,44 @@ Active development tracks (independent of the parked cloud track):
    (`/dev/community/preview`) as `9c75964`; the revised moderation workspace in
    Payload Admin, visually accepted by the Owner on 2026-09-12, as `0fa6d5e`.
    Mission 2C (the Formal root, `/dev/t02p` and the preview composing the real
-   comment client through the frozen seam, Development runtime only) is a Draft
-   PR awaiting its own Owner acceptance; see
+   comment client through the frozen seam, Development runtime only) passed
+   Owner acceptance on 2026-09-12 at `8f5e7b3` and is merged through PR #116;
+   its frozen Behavior Matrix and the acceptance record are in
    `docs/community/mission-2c-formal-comments.md`.
+
+   **Community V1's currently authorized Development implementation is closed.**
+   Missions 2A, 2B and 2C are merged and verified; nothing further in this track
+   is authorized without a new Owner decision. Community features remain
+   unavailable in Production: the Formal composition resolves to no comment
+   section and no Development sign-in link outside the Development runtime, and
+   opening any Community surface in Production still requires decision 7 of the
+   amendment, the P2-R2 release gates and separate Owner Production authority.
+
+   Two maintenance pull requests closed with this milestone: PR #115 (the
+   PostgreSQL suites refuse a non-synthetic `TEST_DATABASE_URL` before their
+   first database access) merged as `7700341`, and PR #111 (deterministic
+   editorial batch budget expiry through an injectable clock) merged as
+   `702a168`.
+
+   Development database incident of 2026-09-12, recorded factually: a PostgreSQL
+   integration run was pointed at the live `yoyi_dev` database and its
+   `community` rows were deleted. The synthetic acceptance data was re-created
+   from `infra/development/community-acceptance-comments.sql` and
+   `community-acceptance-queue.sql`; that is re-creation of synthetic fixtures,
+   not recovery. The Development comments, moderation history and sessions from
+   the earlier acceptance session were not recovered, and no backup of them
+   existed. PR #115 now refuses such a target inside the suites; it does not
+   cover `scripts/verify.mjs`'s `pnpm db:migrate` step or `pnpm test:cms`, so
+   test preparation must still be aimed at a disposable target such as the
+   isolated `compose.postgres.yml` container. A restricted-permission local dump
+   of the `community` schema was taken during this closure.
+
+   Deferred recommendations, not implemented and not closure gates: the
+   audit/transaction and data-model improvements discussed while building the
+   moderation workspace; a guard for the migration runner itself; a reply
+   load-more in-flight guard and the other known limitations recorded on the
+   merged pull requests.
+
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of
