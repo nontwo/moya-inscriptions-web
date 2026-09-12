@@ -6,17 +6,29 @@ import {
   handleCatalogSearch,
 } from "../catalog/catalog-handler.js";
 import {
+  handleCreateComment,
+  handleCreateReply,
+  handleReadComments,
+  handleReadReplies,
+} from "../community/comment-handler.js";
+import {
   handleCurrentUser,
   handleDevelopmentSignIn,
   handleDevelopmentSignOut,
 } from "../community/community-handler.js";
+import { handleOperatorRequest } from "../community/operator-handler.js";
 import { healthHandler } from "../health/health-handler.js";
 import { sendJson } from "./json-response.js";
 
-import type { CatalogReadService, CommunitySessionService } from "@moya/api";
+import type {
+  CatalogCommentService,
+  CatalogReadService,
+  CommunityModerationService,
+  CommunitySessionService,
+} from "@moya/api";
 import type { HealthReadinessCheck } from "../health/health-handler.js";
 
-type AllowedMethod = "GET" | "POST";
+type AllowedMethod = "GET" | "POST" | "GET, POST";
 
 const sendRouteError = (
   response: Parameters<RequestListener>[1],
@@ -36,6 +48,14 @@ export interface CommunityRouterDependencies {
   readonly sessionService: CommunitySessionService;
   /** True only under NODE_ENV=development; Production never composes the entry. */
   readonly developmentEntry: boolean;
+  /** Present only when a comment port is composed; identity works without it. */
+  readonly commentService?: CatalogCommentService;
+  readonly moderationService?: CommunityModerationService;
+  /**
+   * The Owner's operator boundary. An empty credential leaves the internal
+   * subpath unreachable, so it is never accidentally open.
+   */
+  readonly operatorCredential: string;
 }
 
 export interface RouterDependencies {
@@ -118,6 +138,71 @@ export const createRouter =
         );
         return;
       }
+    }
+
+    const commentService = community?.commentService;
+    if (community !== undefined && commentService !== undefined) {
+      const comments = {
+        commentService,
+        sessionService: community.sessionService,
+      };
+      const commentsRoute = /^\/v1\/catalog\/([^/]+)\/comments$/.exec(pathname);
+      if (commentsRoute !== null) {
+        const catalogId = commentsRoute[1] ?? "";
+        if (request.method === "GET") {
+          void handleReadComments(request, response, catalogId, comments);
+          return;
+        }
+        if (request.method === "POST") {
+          void handleCreateComment(request, response, catalogId, comments);
+          return;
+        }
+        sendRouteError(response, 405, "Method Not Allowed", "GET, POST");
+        return;
+      }
+
+      const repliesRoute =
+        /^\/v1\/catalog\/([^/]+)\/comments\/([^/]+)\/replies$/.exec(pathname);
+      if (repliesRoute !== null) {
+        const catalogId = repliesRoute[1] ?? "";
+        const commentId = repliesRoute[2] ?? "";
+        if (request.method === "GET") {
+          void handleReadReplies(
+            request,
+            response,
+            catalogId,
+            commentId,
+            comments,
+          );
+          return;
+        }
+        if (request.method === "POST") {
+          void handleCreateReply(
+            request,
+            response,
+            catalogId,
+            commentId,
+            comments,
+          );
+          return;
+        }
+        sendRouteError(response, 405, "Method Not Allowed", "GET, POST");
+        return;
+      }
+    }
+
+    // Loopback-only operator boundary: never exposed by the public ingress and
+    // never part of the Public API document.
+    const moderationService = community?.moderationService;
+    if (
+      moderationService !== undefined &&
+      pathname.startsWith("/internal/community/")
+    ) {
+      void handleOperatorRequest(request, response, pathname, {
+        moderationService,
+        operatorCredential: community?.operatorCredential ?? "",
+      });
+      return;
     }
 
     const detailRoute = /^\/v1\/catalog\/([^/]+)$/.exec(pathname);

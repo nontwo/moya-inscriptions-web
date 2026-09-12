@@ -28,4 +28,19 @@ export interface CommunityIdentityPort {
 
   /** Revokes an active session; false when no active session matched. */
   revokeSession(tokenHash: string, now: Date): Promise<boolean>;
+
+  findUserById(id: PublicUserId): Promise<PublicUserRecord | null>;
+
+  /**
+   * Suspension refuses new writes and revokes the user's active sessions in one
+   * transaction; it changes no comment's moderation state. Null when unknown.
+   */
+  setUserStatus(
+    id: PublicUserId,
+    status: PublicUserRecord["status"],
+    at: Date,
+  ): Promise<{
+    readonly user: PublicUserRecord;
+    readonly revokedSessions: number;
+  } | null>;
 }

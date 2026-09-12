@@ -104,6 +104,32 @@ the page answer 404 unless `NODE_ENV=development`, and the Backend composes
 `/v1/development/*` only under `NODE_ENV=development`; Production has no sign-in
 path.
 
+## Community V1 comments and moderation
+
+Mission 2B adds Catalog comments with one level of replies, the Owner-controlled
+publication setting and the Owner's moderation surface. Signed in through the
+Development entry above, a public user can post a comment on any published
+Catalog record and reply once under a root comment. Reads are anonymous:
+
+- `GET /api/catalog/{catalogId}/comments?page&pageSize` — visible comments,
+  newest first, each with its first three visible replies (oldest first).
+- `GET /api/catalog/{catalogId}/comments/{commentId}/replies?page&pageSize` —
+  bounded load-more for one thread.
+- `POST` on either path requires the session cookie. `201` means the submission
+  is visible; `202` means it entered moderation and awaits Owner approval.
+
+The Owner moderates in Payload Admin at
+`http://127.0.0.1:3002/admin/community-moderation`: switch the publication
+setting between 先审后发 (`PRE_MODERATION`, the default)
+and 直接发布 (`DIRECT_PUBLICATION`), approve, hide or unhide a comment or reply,
+and suspend or reinstate an author. Switching the setting affects new
+submissions only; nothing is bulk-published or bulk-hidden, and nothing is ever
+deleted. Admin never touches community tables: it calls the Backend's
+loopback-only `/internal/community/*` boundary with the shared
+`COMMUNITY_OPERATOR_TOKEN` from `.env.local`, and the Backend stays the sole
+writer. Leave that variable unset and the boundary rejects every request, so the
+moderation view reports that it is not configured rather than opening.
+
 ## Optional local read-only browser role
 
 After `dev:migrate`, an operator can explicitly create a local inspection role:

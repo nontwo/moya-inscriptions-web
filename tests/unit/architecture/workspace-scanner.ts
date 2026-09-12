@@ -270,6 +270,33 @@ const webCommunityServerImports: ReadonlyMap<string, string> = new Map([
     path.join(webRoot, "app", "dev", "community", "page.tsx"),
     "{fetchServerCurrentUser}",
   ],
+  // Mission 2B: the same-origin comment bridges.
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "catalog",
+      "[catalogId]",
+      "comments",
+      "route.ts",
+    ),
+    "{createServerCatalogComment,fetchServerCatalogCommentPage,}",
+  ],
+  [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "catalog",
+      "[catalogId]",
+      "comments",
+      "[commentId]",
+      "replies",
+      "route.ts",
+    ),
+    "{createServerCatalogCommentReply,fetchServerCatalogCommentReplyPage,}",
+  ],
 ]);
 
 export const isAuthorizedWebPublicApiFile = (
@@ -715,6 +742,9 @@ export const isAuthorizedCmsServerFile = (
       relative,
     ) ||
     /^src\/owner-workflow\/(?:View|NavLink)\.tsx$/.test(relative) ||
+    // Mission 2B: the Owner's moderation view and its Backend operator client.
+    /^src\/community\/(?:View|NavLink)\.tsx$/.test(relative) ||
+    /^src\/community\/(?:backend|endpoints)\.ts$/.test(relative) ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
@@ -736,6 +766,10 @@ const isOwnerWorkflowTypes = (
       "src/media/snapshot.ts",
     ].includes(relative) &&
       reference.specifier === "@moya/contracts/internal/editorial") ||
+      // Mission 2B: the moderation view renders operator shapes as types only.
+      (relative === "src/community/client.tsx" &&
+        reference.specifier ===
+          "@moya/contracts/internal/community-operator") ||
       ([
         "src/media/MediaSnapshotPicker.tsx",
         "src/media/CatalogOwnershipField.tsx",

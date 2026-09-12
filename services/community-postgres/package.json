@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@moya/api": "workspace:*",
+    "@moya/contracts": "workspace:*",
     "pg": "8.22.0"
   },
   "devDependencies": {

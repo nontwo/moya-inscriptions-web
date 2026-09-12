@@ -282,8 +282,12 @@ Active development tracks (independent of the parked cloud track):
    moderation → connecting the merged #106 UI seam to the real API. Mission 2A
    (public-user identity, Backend-owned sessions, `GET /v1/me`, the
    Development-only test-account sign-in and the `/dev/community` entry) is
-   implemented as a Draft PR awaiting review and the Owner's Development
-   acceptance; Mission 2B starts only after it is merged and verified.
+   merged as `4077aef` after the Owner's Development acceptance at `76655ff`.
+   Mission 2B (Catalog comments with one reply level, bounded reply pagination,
+   the Owner-controlled publication setting, the moderation surface in Payload
+   Admin over the authenticated Backend operator boundary, and the same-origin
+   comment routes) is implemented as a Draft PR awaiting review; Mission 2C
+   starts only after it is merged and verified.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of

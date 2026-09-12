@@ -4,10 +4,19 @@ import {
   apiErrorCodeSchema,
   apiErrorSchema,
   catalogCitationScopeSchema,
+  catalogCommentIdSchema,
+  catalogCommentPageSchema,
+  catalogCommentReplyPageSchema,
+  catalogCommentReplySchema,
+  catalogCommentSchema,
+  catalogCommentTransportQuerySchema,
   catalogContributorRoleSchema,
   catalogContributorSchema,
   catalogDetailSchema,
   catalogIdSchema,
+  commentAuthorSchema,
+  createCatalogCommentReplyRequestSchema,
+  createCatalogCommentRequestSchema,
   catalogKindSchema,
   catalogListTransportQuerySchema,
   catalogPageSchema,
@@ -66,6 +75,27 @@ export const publicSourceCitationJsonSchema = toJsonSchema(
 export const publicUserIdJsonSchema = toJsonSchema(publicUserIdSchema);
 export const publicUserProfileJsonSchema = toJsonSchema(
   publicUserProfileSchema,
+);
+export const catalogCommentIdJsonSchema = toJsonSchema(catalogCommentIdSchema);
+export const commentAuthorJsonSchema = toJsonSchema(commentAuthorSchema);
+export const catalogCommentReplyJsonSchema = toJsonSchema(
+  catalogCommentReplySchema,
+);
+export const catalogCommentJsonSchema = toJsonSchema(catalogCommentSchema);
+export const catalogCommentPageJsonSchema = toJsonSchema(
+  catalogCommentPageSchema,
+);
+export const catalogCommentReplyPageJsonSchema = toJsonSchema(
+  catalogCommentReplyPageSchema,
+);
+export const catalogCommentTransportQueryJsonSchema = toJsonSchema(
+  catalogCommentTransportQuerySchema,
+);
+export const createCatalogCommentRequestJsonSchema = toJsonSchema(
+  createCatalogCommentRequestSchema,
+);
+export const createCatalogCommentReplyRequestJsonSchema = toJsonSchema(
+  createCatalogCommentReplyRequestSchema,
 );
 export const healthResponseJsonSchema = toJsonSchema(healthResponseSchema);
 export const apiErrorCodeJsonSchema = toJsonSchema(apiErrorCodeSchema);

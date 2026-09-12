@@ -43,14 +43,23 @@ describe("@moya/api server-only surface", () => {
     });
     expect(manifest.sideEffects).toBe(false);
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
+      "COMMENT_EMBEDDED_REPLY_LIMIT",
+      "COMMENT_PAGE_SIZE_DEFAULT",
+      "COMMENT_REPLY_PAGE_SIZE_DEFAULT",
+      "CatalogCommentService",
       "CatalogMediaResolutionError",
       "CatalogQueryUnavailableError",
       "CatalogReadService",
+      "CommunityInputError",
+      "CommunityModerationService",
+      "CommunityNotFoundError",
       "CommunitySessionService",
       "CommunityStoreUnavailableError",
       "deriveCatalogPeriodLabel",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
+      "isCommunityInputError",
+      "isCommunityNotFoundError",
       "isCommunityStoreUnavailableError",
       "mapCatalogDetail",
       "mapCatalogPage",
@@ -58,6 +67,9 @@ describe("@moya/api server-only surface", () => {
       "mapPublicUserProfile",
       "parseCatalogListQuery",
       "parseCatalogSearchQuery",
+      "parseCommentPageQuery",
+      "parseCreateCommentRequest",
+      "parseCreateReplyRequest",
     ]);
   });
 

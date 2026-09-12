@@ -165,7 +165,10 @@ describe("workspace dependency boundaries", () => {
       "@moya/community-postgres",
       "@moya/image",
     ]);
-    expect(moyaDependencies("@moya/community-postgres")).toEqual(["@moya/api"]);
+    expect(moyaDependencies("@moya/community-postgres")).toEqual([
+      "@moya/api",
+      "@moya/contracts",
+    ]);
     expect(moyaDependencies("@moya/backend-runtime")).toEqual([
       "@moya/api",
       "@moya/contracts",

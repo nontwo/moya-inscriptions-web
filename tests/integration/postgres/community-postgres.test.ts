@@ -14,6 +14,7 @@ import {
 } from "@moya/catalog-postgres";
 import {
   CommunitySchemaNotReadyError,
+  PostgresCommunityCommentAdapter,
   PostgresCommunityIdentityAdapter,
   runCommunityMigrations,
   verifyCommunityMigrationLedger,
@@ -26,6 +27,11 @@ import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type { BackendProcessHandle } from "@moya/backend-runtime";
+import type {
+  CatalogCommentId,
+  CatalogId,
+  PublicUserId,
+} from "@moya/contracts";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 if (testDatabaseUrl === undefined) {
@@ -93,7 +99,7 @@ beforeAll(async () => {
   await runCommunityMigrations(pool, migrationsDirectory);
   expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual([]);
   await pool.query(
-    "DELETE FROM community.sessions; DELETE FROM community.development_accounts; DELETE FROM community.public_users",
+    "DELETE FROM community.catalog_comment_replies; DELETE FROM community.catalog_comments; DELETE FROM community.sessions; DELETE FROM community.development_accounts; DELETE FROM community.public_users",
   );
   await pool.query(await readFile(seedFile, "utf8"));
 });
@@ -105,7 +111,13 @@ afterEach(async () => {
       processes.delete(handle);
     }),
   );
+  await pool.query("DELETE FROM community.catalog_comment_replies");
+  await pool.query("DELETE FROM community.catalog_comments");
+  await pool.query("DELETE FROM community.moderation_events");
   await pool.query("DELETE FROM community.sessions");
+  await pool.query(
+    "UPDATE community.publication_setting SET policy = 'PRE_MODERATION', updated_by = 'platform' WHERE id = 'publication'",
+  );
   await pool.query(
     "UPDATE community.public_users SET status = 'active', updated_at = CURRENT_TIMESTAMP",
   );
@@ -284,5 +296,381 @@ describe("community PostgreSQL identity and sessions", () => {
         })
       ).status,
     ).toBe(401);
+  });
+});
+
+const seededAuthor = async (handle: string): Promise<PublicUserId> => {
+  const rows = await pool.query<{ id: string }>(
+    "SELECT id FROM community.public_users WHERE handle = $1",
+    [handle],
+  );
+  const id = rows.rows[0]?.id;
+  if (id === undefined) throw new Error("Seeded Development account missing");
+  return id as PublicUserId;
+};
+
+const commentAdapter = () => new PostgresCommunityCommentAdapter(pool);
+
+const commentId = (suffix: number): CatalogCommentId =>
+  `comment-${suffix.toString(16).padStart(32, "0")}` as CatalogCommentId;
+
+const publishedCatalogId = "catalog-integration-01" as CatalogId;
+
+describe("community PostgreSQL comments and moderation", () => {
+  it("stores comments and one level of replies with deterministic order", async () => {
+    const port = commentAdapter();
+    const author = await seededAuthor("dev-user-01");
+    const second = await seededAuthor("dev-user-02");
+    const base = new Date("2026-09-12T08:00:00.000Z");
+
+    const root = await port.insertComment({
+      id: commentId(1),
+      catalogId: publishedCatalogId,
+      authorId: author,
+      text: "第一条评论",
+      moderation: "visible",
+      createdAt: base,
+    });
+    const older = await port.insertComment({
+      id: commentId(2),
+      catalogId: publishedCatalogId,
+      authorId: second,
+      text: "更早的评论",
+      moderation: "visible",
+      createdAt: new Date(base.getTime() - 60_000),
+    });
+    const replyOne = await port.insertReply({
+      id: commentId(3),
+      rootCommentId: root.id,
+      authorId: second,
+      text: "第一条回复",
+      moderation: "visible",
+      createdAt: new Date(base.getTime() + 1_000),
+    });
+    const replyTwo = await port.insertReply({
+      id: commentId(4),
+      rootCommentId: root.id,
+      authorId: author,
+      text: "第二条回复",
+      moderation: "visible",
+      createdAt: new Date(base.getTime() + 2_000),
+      replyToReplyId: replyOne.id,
+    });
+
+    const page = await port.readVisibleComments({
+      catalogId: publishedCatalogId,
+      page: 1,
+      pageSize: 20,
+      embeddedReplyLimit: 3,
+    });
+    // Newest root first; replies oldest first inside the thread.
+    expect(page.items.map((item) => item.id)).toEqual([root.id, older.id]);
+    expect(page.total).toBe(2);
+    expect(page.items[0]?.replies.map((reply) => reply.id)).toEqual([
+      replyOne.id,
+      replyTwo.id,
+    ]);
+    expect(page.items[0]?.replies[1]?.replyTo?.id).toBe(second);
+    expect(replyTwo.replyTo?.displayName).toBe("书法学徒");
+  });
+
+  it("enforces depth one, same-thread reply pointers and the text bound in PostgreSQL", async () => {
+    const port = commentAdapter();
+    const author = await seededAuthor("dev-user-01");
+    const at = new Date("2026-09-12T09:00:00.000Z");
+    const first = await port.insertComment({
+      id: commentId(11),
+      catalogId: publishedCatalogId,
+      authorId: author,
+      text: "根评论",
+      moderation: "visible",
+      createdAt: at,
+    });
+    const other = await port.insertComment({
+      id: commentId(12),
+      catalogId: publishedCatalogId,
+      authorId: author,
+      text: "另一条根评论",
+      moderation: "visible",
+      createdAt: at,
+    });
+    const reply = await port.insertReply({
+      id: commentId(13),
+      rootCommentId: other.id,
+      authorId: author,
+      text: "另一线程的回复",
+      moderation: "visible",
+      createdAt: at,
+    });
+
+    // A reply-to-reply pointer may not cross threads.
+    await expect(
+      port.insertReply({
+        id: commentId(14),
+        rootCommentId: first.id,
+        authorId: author,
+        text: "跨线程指针",
+        moderation: "visible",
+        createdAt: at,
+        replyToReplyId: reply.id,
+      }),
+    ).rejects.toThrow();
+
+    // A reply can never become a root, so no tree can form.
+    await expect(
+      port.insertReply({
+        id: commentId(15),
+        rootCommentId: reply.id,
+        authorId: author,
+        text: "回复的回复",
+        moderation: "visible",
+        createdAt: at,
+      }),
+    ).rejects.toThrow();
+
+    for (const [text, label] of [
+      ["", "empty"],
+      [" 前导空白", "untrimmed"],
+      ["x".repeat(1_001), "too long"],
+    ] as const) {
+      await expect(
+        pool.query(
+          `INSERT INTO community.catalog_comments
+             (id, catalog_id, author_id, text, moderation)
+           VALUES ($1, $2, $3, $4, 'visible')`,
+          [commentId(20), publishedCatalogId, author, text],
+        ),
+        label,
+      ).rejects.toThrow();
+    }
+    await expect(
+      pool.query(
+        `INSERT INTO community.catalog_comments
+           (id, catalog_id, author_id, text, moderation)
+         VALUES ('not-opaque', $1, $2, '文本', 'visible')`,
+        [publishedCatalogId, author],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO community.catalog_comments
+           (id, catalog_id, author_id, text, moderation)
+         VALUES ($1, $2, $3, '文本', 'approved')`,
+        [commentId(21), publishedCatalogId, author],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("moderates a comment or a reply and keeps hidden threads out of public reads", async () => {
+    const port = commentAdapter();
+    const author = await seededAuthor("dev-user-01");
+    const at = new Date("2026-09-12T10:00:00.000Z");
+    const root = await port.insertComment({
+      id: commentId(31),
+      catalogId: publishedCatalogId,
+      authorId: author,
+      text: "待审核的根评论",
+      moderation: "pending",
+      createdAt: at,
+    });
+    const reply = await port.insertReply({
+      id: commentId(32),
+      rootCommentId: root.id,
+      authorId: author,
+      text: "待审核的回复",
+      moderation: "pending",
+      createdAt: at,
+    });
+
+    expect(
+      (
+        await port.readVisibleComments({
+          catalogId: publishedCatalogId,
+          page: 1,
+          pageSize: 20,
+          embeddedReplyLimit: 3,
+        })
+      ).items,
+    ).toEqual([]);
+
+    expect(
+      await port.applyCommentModeration(root.id, "visible", "owner", at),
+    ).toEqual({ id: root.id, kind: "comment", moderation: "visible" });
+    expect(
+      await port.applyCommentModeration(reply.id, "visible", "owner", at),
+    ).toEqual({ id: reply.id, kind: "reply", moderation: "visible" });
+    expect(
+      await port.applyCommentModeration(commentId(99), "visible", "owner", at),
+    ).toBeNull();
+
+    const visible = await port.readVisibleComments({
+      catalogId: publishedCatalogId,
+      page: 1,
+      pageSize: 20,
+      embeddedReplyLimit: 3,
+    });
+    expect(visible.items[0]?.replies).toHaveLength(1);
+
+    // Hiding the root removes the thread; the reply row keeps its own state.
+    await port.applyCommentModeration(root.id, "hidden", "owner", at);
+    expect(
+      (
+        await port.readVisibleComments({
+          catalogId: publishedCatalogId,
+          page: 1,
+          pageSize: 20,
+          embeddedReplyLimit: 3,
+        })
+      ).items,
+    ).toEqual([]);
+    const stored = await pool.query<{
+      moderation: string;
+      moderated_by: string;
+    }>(
+      "SELECT moderation, moderated_by FROM community.catalog_comments WHERE id = $1",
+      [root.id],
+    );
+    expect(stored.rows[0]).toMatchObject({
+      moderation: "hidden",
+      moderated_by: "owner",
+    });
+  });
+
+  it("keeps the publication setting a single row and appends every moderation event", async () => {
+    const port = commentAdapter();
+    const at = new Date("2026-09-12T11:00:00.000Z");
+    expect(await port.readPublicationPolicy()).toMatchObject({
+      policy: "PRE_MODERATION",
+    });
+    await port.writePublicationPolicy("DIRECT_PUBLICATION", "owner", at);
+    expect(await port.readPublicationPolicy()).toMatchObject({
+      policy: "DIRECT_PUBLICATION",
+      updatedBy: "owner",
+    });
+
+    await expect(
+      pool.query(
+        "INSERT INTO community.publication_setting (id, policy, updated_by) VALUES ('second', 'PRE_MODERATION', 'owner')",
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        "UPDATE community.publication_setting SET policy = 'SOMETHING' WHERE id = 'publication'",
+      ),
+    ).rejects.toThrow();
+
+    await port.recordModerationEvent({
+      id: `moderation-${"0".repeat(31)}1`,
+      occurredAt: at,
+      operatorLabel: "owner",
+      action: "approve",
+      subjectKind: "comment",
+      subjectId: commentId(41),
+    });
+    const events = await pool.query<{ action: string; operator_label: string }>(
+      "SELECT action, operator_label FROM community.moderation_events",
+    );
+    expect(events.rows).toEqual([
+      { action: "approve", operator_label: "owner" },
+    ]);
+    await expect(
+      port.recordModerationEvent({
+        id: `moderation-${"0".repeat(31)}2`,
+        occurredAt: at,
+        operatorLabel: "owner",
+        action: "approve" as never,
+        subjectKind: "planet" as never,
+        subjectId: commentId(41),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("pages root comments and replies without repeating or dropping a row", async () => {
+    const port = commentAdapter();
+    const author = await seededAuthor("dev-user-01");
+    const base = new Date("2026-09-12T12:00:00.000Z");
+    for (let index = 0; index < 5; index += 1) {
+      await port.insertComment({
+        id: commentId(50 + index),
+        catalogId: publishedCatalogId,
+        authorId: author,
+        text: `评论 ${index}`,
+        moderation: "visible",
+        createdAt: new Date(base.getTime() + index * 1_000),
+      });
+    }
+    const seen: string[] = [];
+    for (const page of [1, 2, 3]) {
+      const result = await port.readVisibleComments({
+        catalogId: publishedCatalogId,
+        page,
+        pageSize: 2,
+        embeddedReplyLimit: 3,
+      });
+      expect(result.total).toBe(5);
+      seen.push(...result.items.map((item) => item.id));
+    }
+    expect(new Set(seen).size).toBe(5);
+
+    const root = commentId(50);
+    for (let index = 0; index < 4; index += 1) {
+      await port.insertReply({
+        id: commentId(60 + index),
+        rootCommentId: root,
+        authorId: author,
+        text: `回复 ${index}`,
+        moderation: "visible",
+        createdAt: new Date(base.getTime() + index * 1_000),
+      });
+    }
+    const replySeen: string[] = [];
+    for (const page of [1, 2]) {
+      const result = await port.readVisibleReplies({
+        rootCommentId: root,
+        page,
+        pageSize: 3,
+      });
+      expect(result.total).toBe(4);
+      replySeen.push(...result.items.map((item) => item.id));
+    }
+    expect(new Set(replySeen).size).toBe(4);
+  });
+
+  it("lists the operator queue with author status and moderation state", async () => {
+    const port = commentAdapter();
+    const author = await seededAuthor("dev-user-03");
+    const at = new Date("2026-09-12T13:00:00.000Z");
+    await port.insertComment({
+      id: commentId(71),
+      catalogId: publishedCatalogId,
+      authorId: author,
+      text: "待审核",
+      moderation: "pending",
+      createdAt: at,
+    });
+    await port.insertComment({
+      id: commentId(72),
+      catalogId: publishedCatalogId,
+      authorId: author,
+      text: "已公开",
+      moderation: "visible",
+      createdAt: at,
+    });
+
+    const pending = await port.readOperatorComments({
+      moderation: "pending",
+      page: 1,
+      pageSize: 20,
+    });
+    expect(pending.total).toBe(1);
+    expect(pending.items[0]).toMatchObject({
+      id: commentId(71),
+      kind: "comment",
+      moderation: "pending",
+      author: { handle: "dev-user-03", status: "active" },
+    });
+
+    const all = await port.readOperatorComments({ page: 1, pageSize: 20 });
+    expect(all.total).toBe(2);
   });
 });

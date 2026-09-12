@@ -2,10 +2,19 @@ import type { ApiErrorCode } from "@moya/contracts";
 import {
   apiErrorJsonSchema,
   catalogCitationScopeJsonSchema,
+  catalogCommentIdJsonSchema,
+  catalogCommentJsonSchema,
+  catalogCommentPageJsonSchema,
+  catalogCommentReplyJsonSchema,
+  catalogCommentReplyPageJsonSchema,
+  catalogCommentTransportQueryJsonSchema,
   catalogContributorJsonSchema,
   catalogContributorRoleJsonSchema,
   catalogDetailJsonSchema,
   catalogIdJsonSchema,
+  commentAuthorJsonSchema,
+  createCatalogCommentReplyRequestJsonSchema,
+  createCatalogCommentRequestJsonSchema,
   catalogKindJsonSchema,
   catalogListTransportQueryJsonSchema,
   catalogPageJsonSchema,
@@ -61,6 +70,83 @@ const listQueryParameters = ["kind", "page", "pageSize"].map((name) =>
     schemaProperty(catalogListTransportQueryJsonSchema, name),
   ),
 );
+
+const pathParameter = (
+  name: string,
+  schemaName: string,
+  description: string,
+) => ({
+  name,
+  in: "path",
+  required: true,
+  description,
+  schema: { $ref: `#/components/schemas/${schemaName}` },
+});
+
+const jsonRequestBody = (description: string, schemaName: string) => ({
+  description,
+  required: true,
+  content: {
+    "application/json": {
+      schema: { $ref: `#/components/schemas/${schemaName}` },
+    },
+  },
+});
+
+const catalogIdPathParameter = pathParameter(
+  "catalogId",
+  "CatalogId",
+  "Opaque platform CatalogId of a currently published record.",
+);
+const commentIdPathParameter = pathParameter(
+  "commentId",
+  "CatalogCommentId",
+  "Opaque platform id of a visible root comment.",
+);
+const commentPageParameters = ["page", "pageSize"].map((name) =>
+  queryParameter(
+    name,
+    schemaProperty(catalogCommentTransportQueryJsonSchema, name),
+  ),
+);
+
+/** Shared by both comment write operations (amendment decision 1). */
+const commentWriteResponses = (
+  createdDescription: string,
+  schemaName: string,
+) => ({
+  "201": jsonResponse(createdDescription, schemaName),
+  "202": jsonResponse(
+    `${createdDescription} It entered moderation under PRE_MODERATION and is not visible until the Owner approves it.`,
+    schemaName,
+  ),
+  "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
+  "401": apiErrorResponse("A valid session is required", "UNAUTHENTICATED"),
+  "404": apiErrorResponse(
+    "The Catalog record or root comment is not available",
+    "ITEM_NOT_FOUND",
+  ),
+  "422": apiErrorResponse("The submitted body is invalid", "INVALID_INPUT"),
+  "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
+  "503": apiErrorResponse(
+    "Service is temporarily unavailable",
+    "SERVICE_UNAVAILABLE",
+  ),
+});
+
+const commentReadResponses = (description: string, schemaName: string) => ({
+  "200": jsonResponse(description, schemaName),
+  "400": apiErrorResponse("Invalid query", "INVALID_QUERY"),
+  "404": apiErrorResponse(
+    "The Catalog record or root comment is not available",
+    "ITEM_NOT_FOUND",
+  ),
+  "500": apiErrorResponse("Internal service error", "INTERNAL_ERROR"),
+  "503": apiErrorResponse(
+    "Service is temporarily unavailable",
+    "SERVICE_UNAVAILABLE",
+  ),
+});
 
 export const openApiDocument: JsonObject = {
   openapi: "3.1.1",
@@ -165,6 +251,68 @@ export const openApiDocument: JsonObject = {
         },
       },
     },
+    "/v1/catalog/{catalogId}/comments": {
+      get: {
+        operationId: "listCatalogComments",
+        summary: "List visible comments on one Catalog record",
+        description:
+          "Anonymous read. Only comments the Owner's publication policy has made visible are returned, each carrying a bounded first page of its visible replies in server order (root comments newest first, replies oldest first). Moderation state never appears in the response.",
+        parameters: [catalogIdPathParameter, ...commentPageParameters],
+        responses: commentReadResponses(
+          "A page of visible comments.",
+          "CatalogCommentPage",
+        ),
+      },
+      post: {
+        operationId: "createCatalogComment",
+        summary: "Create a comment on one Catalog record",
+        description:
+          "Requires the session credential. Plain text only, trimmed and bounded; no rich text, mentions, links, media or attachments. Under PRE_MODERATION the comment enters moderation and the response is 202.",
+        security: [{ session: [] }],
+        parameters: [catalogIdPathParameter],
+        requestBody: jsonRequestBody(
+          "The comment text.",
+          "CreateCatalogCommentRequest",
+        ),
+        responses: commentWriteResponses(
+          "The created comment.",
+          "CatalogComment",
+        ),
+      },
+    },
+    "/v1/catalog/{catalogId}/comments/{commentId}/replies": {
+      get: {
+        operationId: "listCatalogCommentReplies",
+        summary: "List visible replies under one root comment",
+        description:
+          "Anonymous read supporting bounded load-more. Reply depth is one: a reply never owns children, and a reply under a root that is not visible is never returned.",
+        parameters: [
+          catalogIdPathParameter,
+          commentIdPathParameter,
+          ...commentPageParameters,
+        ],
+        responses: commentReadResponses(
+          "A page of visible replies.",
+          "CatalogCommentReplyPage",
+        ),
+      },
+      post: {
+        operationId: "createCatalogCommentReply",
+        summary: "Reply to one root comment",
+        description:
+          "Requires the session credential. An answer to a sibling reply stays a sibling under the same root and carries its author as replyTo. Under PRE_MODERATION the reply enters moderation and the response is 202.",
+        security: [{ session: [] }],
+        parameters: [catalogIdPathParameter, commentIdPathParameter],
+        requestBody: jsonRequestBody(
+          "The reply text and an optional sibling reply to answer.",
+          "CreateCatalogCommentReplyRequest",
+        ),
+        responses: commentWriteResponses(
+          "The created reply.",
+          "CatalogCommentReply",
+        ),
+      },
+    },
     "/v1/me": {
       get: {
         operationId: "getCurrentUser",
@@ -217,6 +365,15 @@ export const openApiDocument: JsonObject = {
       CatalogSearchPage: catalogSearchPageJsonSchema,
       PublicUserId: publicUserIdJsonSchema,
       PublicUserProfile: publicUserProfileJsonSchema,
+      CatalogCommentId: catalogCommentIdJsonSchema,
+      CommentAuthor: commentAuthorJsonSchema,
+      CatalogCommentReply: catalogCommentReplyJsonSchema,
+      CatalogComment: catalogCommentJsonSchema,
+      CatalogCommentPage: catalogCommentPageJsonSchema,
+      CatalogCommentReplyPage: catalogCommentReplyPageJsonSchema,
+      CreateCatalogCommentRequest: createCatalogCommentRequestJsonSchema,
+      CreateCatalogCommentReplyRequest:
+        createCatalogCommentReplyRequestJsonSchema,
       HealthResponse: healthResponseJsonSchema,
       ApiError: apiErrorJsonSchema,
     },

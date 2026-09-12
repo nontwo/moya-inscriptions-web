@@ -44,14 +44,22 @@ const walkFiles = async (
 };
 
 describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
-  it("1. keeps the internal contracts subpaths at catalog-import and editorial", async () => {
+  it("1. keeps the internal contracts subpaths at catalog-import, community-operator and editorial (2B)", async () => {
     expect(await visibleEntries("packages/contracts/src/internal")).toEqual([
       "catalog-import",
+      "community-operator",
       "editorial",
     ]);
+    // The operator shapes stay server-only: never a root export, never OpenAPI.
+    const rootExports = await read("packages/contracts/src/index.ts");
+    expect(rootExports).not.toMatch(
+      /PublicationPolicy|OperatorComment|Moderation/u,
+    );
+    const openapi = await read("services/public-api/src/openapi-document.ts");
+    expect(openapi).not.toContain("community-operator");
   });
 
-  it("2. keeps ApiErrorCode at the four existing codes plus UNAUTHENTICATED (2A)", async () => {
+  it("2. keeps ApiErrorCode at the four existing codes plus UNAUTHENTICATED (2A) and INVALID_INPUT (2B)", async () => {
     const schemas = await read("packages/contracts/src/schemas.ts");
     const enumBody = /apiErrorCodeSchema = z\.enum\(\[([\s\S]*?)\]\)/u.exec(
       schemas,
@@ -61,6 +69,7 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
       [...enumBody![1]!.matchAll(/"([A-Z_]+)"/gu)].map((m) => m[1]),
     ).toEqual([
       "INVALID_QUERY",
+      "INVALID_INPUT",
       "ITEM_NOT_FOUND",
       "UNAUTHENTICATED",
       "SERVICE_UNAVAILABLE",
@@ -68,7 +77,7 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     ]);
   });
 
-  it("3. keeps the Backend router at the Catalog routes plus /v1/me and the Development session lifecycle (2A)", async () => {
+  it("3. keeps the Backend router at the Catalog routes, /v1/me, the Development session lifecycle (2A) and the comment paths (2B)", async () => {
     const router = await read("services/backend-runtime/src/http/router.ts");
     expect(
       [...router.matchAll(/pathname === "([^"]+)"/gu)].map((m) => m[1]),
@@ -80,11 +89,18 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
       "/v1/development/sign-in",
       "/v1/development/sign-out",
     ]);
-    expect(router.match(/\.exec\(pathname\)/gu)).toHaveLength(1);
+    // One Catalog detail route plus the two comment routes of Mission 2B.
+    expect(router.match(/\.exec\(pathname\)/gu)).toHaveLength(3);
     expect(router).toContain("/^\\/v1\\/catalog\\/([^/]+)$/");
+    expect(router).toContain("/^\\/v1\\/catalog\\/([^/]+)\\/comments$/");
+    expect(router).toContain(
+      "/^\\/v1\\/catalog\\/([^/]+)\\/comments\\/([^/]+)\\/replies$/",
+    );
     // The Development entry is composed only behind the explicit flag.
     expect(router).toContain("community?.developmentEntry === true");
-    expect(router).not.toMatch(/comment|moderation|operator/iu);
+    // The operator boundary is an internal subpath, never a /v1 Public API path.
+    expect(router).toContain('pathname.startsWith("/internal/community/")');
+    expect(router).not.toMatch(/"\/v1\/[^"]*(?:moderation|operator|internal)/u);
   });
 
   it("4. keeps the application modules at catalog and community (2A)", async () => {
@@ -124,6 +140,34 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     const users = await read("apps/admin/src/users.ts");
     expect([...users.matchAll(/value: "([a-z]+)"/gu)].map((m) => m[1])).toEqual(
       ["owner", "automation"],
+    );
+  });
+
+  it("keeps Payload free of community collections and community database access (2B)", async () => {
+    const config = await read("apps/admin/payload.config.ts");
+    const slugs = [...config.matchAll(/slug: "([a-z-]+)"/gu)].map((m) => m[1]);
+    for (const forbidden of [
+      "comments",
+      "catalog-comments",
+      "public-users",
+      "community",
+    ])
+      expect(slugs).not.toContain(forbidden);
+    // Admin reaches community data only through the Backend operator boundary.
+    const adminFiles = await walkFiles("apps/admin");
+    const offenders: string[] = [];
+    for (const file of adminFiles) {
+      const source = await read(file);
+      if (
+        /APP_DATABASE_URL|community\.(?:catalog_comments|public_users|sessions|publication_setting|moderation_events)/u.test(
+          source,
+        )
+      )
+        offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+    expect(await read("apps/admin/src/community/backend.ts")).toContain(
+      "internal/community/",
     );
   });
 });

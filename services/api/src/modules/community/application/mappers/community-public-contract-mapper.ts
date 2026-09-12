@@ -1,7 +1,24 @@
-import { publicUserProfileSchema } from "@moya/contracts/schemas";
+import {
+  catalogCommentPageSchema,
+  catalogCommentReplyPageSchema,
+  catalogCommentReplySchema,
+  catalogCommentSchema,
+  publicUserProfileSchema,
+} from "@moya/contracts/schemas";
 
-import type { PublicUserProfile } from "@moya/contracts";
+import type {
+  CatalogComment,
+  CatalogCommentPage,
+  CatalogCommentReply,
+  CatalogCommentReplyPage,
+  PublicUserProfile,
+} from "@moya/contracts";
 
+import type {
+  CatalogCommentRecord,
+  CatalogCommentReplyRecord,
+  CommentPageRecord,
+} from "../../domain/catalog-comment.js";
 import type { PublicUserRecord } from "../../domain/public-user.js";
 
 /** The only public projection of a public user; status and timestamps never leave the Backend. */
@@ -12,4 +29,64 @@ export const mapPublicUserProfile = (
     id: user.id,
     handle: user.handle,
     displayName: user.displayName,
+  });
+
+const isoUtc = (value: Date): string =>
+  value.toISOString().replace(/\.\d{3}Z$/, ".000Z");
+
+export const mapCatalogCommentReply = (
+  reply: CatalogCommentReplyRecord,
+): CatalogCommentReply =>
+  catalogCommentReplySchema.parse({
+    id: reply.id,
+    author: { id: reply.author.id, displayName: reply.author.displayName },
+    text: reply.text,
+    createdAt: isoUtc(reply.createdAt),
+    ...(reply.replyTo === undefined
+      ? {}
+      : {
+          replyTo: {
+            id: reply.replyTo.id,
+            displayName: reply.replyTo.displayName,
+          },
+        }),
+  });
+
+/** Moderation state never appears in a Public DTO. */
+export const mapCatalogComment = (
+  comment: CatalogCommentRecord,
+  replies: readonly CatalogCommentReplyRecord[],
+): CatalogComment =>
+  catalogCommentSchema.parse({
+    id: comment.id,
+    catalogId: comment.catalogId,
+    author: { id: comment.author.id, displayName: comment.author.displayName },
+    text: comment.text,
+    createdAt: isoUtc(comment.createdAt),
+    replies: replies.map(mapCatalogCommentReply),
+  });
+
+const totalPages = (total: number, pageSize: number): number =>
+  total === 0 ? 0 : Math.ceil(total / pageSize);
+
+export const mapCatalogCommentPage = (
+  page: CommentPageRecord<CatalogComment>,
+): CatalogCommentPage =>
+  catalogCommentPageSchema.parse({
+    items: page.items,
+    total: page.total,
+    page: page.page,
+    pageSize: page.pageSize,
+    totalPages: totalPages(page.total, page.pageSize),
+  });
+
+export const mapCatalogCommentReplyPage = (
+  page: CommentPageRecord<CatalogCommentReplyRecord>,
+): CatalogCommentReplyPage =>
+  catalogCommentReplyPageSchema.parse({
+    items: page.items.map(mapCatalogCommentReply),
+    total: page.total,
+    page: page.page,
+    pageSize: page.pageSize,
+    totalPages: totalPages(page.total, page.pageSize),
   });

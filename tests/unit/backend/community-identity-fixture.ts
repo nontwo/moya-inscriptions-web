@@ -112,4 +112,39 @@ export class InMemoryCommunityIdentityPort implements CommunityIdentityPort {
     session.revokedAt = now;
     return true;
   }
+
+  async findUserById(id: PublicUserId): Promise<PublicUserRecord | null> {
+    this.assertAvailable();
+    return this.users.get(id) ?? null;
+  }
+
+  /** Mirrors the adapter: status and session revocation move together. */
+  async setUserStatus(
+    id: PublicUserId,
+    status: PublicUserRecord["status"],
+    at: Date,
+  ): Promise<{
+    readonly user: PublicUserRecord;
+    readonly revokedSessions: number;
+  } | null> {
+    this.assertAvailable();
+    const user = this.users.get(id);
+    if (user === undefined) return null;
+    const updated = { ...user, status };
+    this.users.set(id, updated);
+    let revokedSessions = 0;
+    if (status === "suspended") {
+      for (const session of this.sessions.values()) {
+        if (
+          session.userId === id &&
+          session.revokedAt === undefined &&
+          session.expiresAt.getTime() > at.getTime()
+        ) {
+          session.revokedAt = at;
+          revokedSessions += 1;
+        }
+      }
+    }
+    return { user: updated, revokedSessions };
+  }
 }

@@ -135,48 +135,68 @@ export const catalogListTransportQuerySchema = z.strictObject({
 /** Strict transport boundary for endpoints that declare no query parameters. */
 export const noQueryTransportSchema = z.strictObject({});
 
-export const catalogPageSchema = z
-  .strictObject({
-    items: z.array(catalogSummarySchema),
-    total: z.number().int().min(0),
-    page: z.number().int().min(1),
-    pageSize: z.number().int().min(1).max(100),
-    totalPages: z.number().int().min(0),
-  })
-  .superRefine((result, context) => {
-    const expectedTotalPages =
-      result.total === 0 ? 0 : Math.ceil(result.total / result.pageSize);
+interface PageResult {
+  readonly items: readonly unknown[];
+  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly totalPages: number;
+}
 
-    if (result.totalPages !== expectedTotalPages) {
-      context.addIssue({
-        code: "custom",
-        path: ["totalPages"],
-        message:
-          "totalPages must equal ceil(total / pageSize), or 0 when empty",
-      });
-    }
-    if (result.items.length > result.pageSize) {
-      context.addIssue({
-        code: "custom",
-        path: ["items"],
-        message: "items cannot exceed pageSize",
-      });
-    }
-    if (result.items.length > result.total) {
-      context.addIssue({
-        code: "custom",
-        path: ["items"],
-        message: "items cannot exceed total",
-      });
-    }
-    if (result.page > expectedTotalPages && result.items.length !== 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["items"],
-        message: "an out-of-range page must have no items",
-      });
-    }
-  });
+/** The page invariants every paginated Public DTO shares. */
+const checkPageInvariants = (
+  result: PageResult,
+  context: z.RefinementCtx,
+): void => {
+  const expectedTotalPages =
+    result.total === 0 ? 0 : Math.ceil(result.total / result.pageSize);
+
+  if (result.totalPages !== expectedTotalPages) {
+    context.addIssue({
+      code: "custom",
+      path: ["totalPages"],
+      message: "totalPages must equal ceil(total / pageSize), or 0 when empty",
+    });
+  }
+  if (result.items.length > result.pageSize) {
+    context.addIssue({
+      code: "custom",
+      path: ["items"],
+      message: "items cannot exceed pageSize",
+    });
+  }
+  if (result.items.length > result.total) {
+    context.addIssue({
+      code: "custom",
+      path: ["items"],
+      message: "items cannot exceed total",
+    });
+  }
+  if (result.page > expectedTotalPages && result.items.length !== 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["items"],
+      message: "an out-of-range page must have no items",
+    });
+  }
+};
+
+/** Builds a page DTO for one item schema; the bound belongs to its operation. */
+const pageSchema = <Item extends z.ZodType>(
+  itemSchema: Item,
+  maximumPageSize: number,
+) =>
+  z
+    .strictObject({
+      items: z.array(itemSchema),
+      total: z.number().int().min(0),
+      page: z.number().int().min(1),
+      pageSize: z.number().int().min(1).max(maximumPageSize),
+      totalPages: z.number().int().min(0),
+    })
+    .superRefine(checkPageInvariants);
+
+export const catalogPageSchema = pageSchema(catalogSummarySchema, 100);
 
 export const catalogSearchMatchKindSchema = z.enum([
   "title-exact",
@@ -253,12 +273,83 @@ export const developmentSessionSchema = z.strictObject({
   profile: publicUserProfileSchema,
 });
 
+/** Opaque, platform-generated comment identity; never a row serial. */
+export const catalogCommentIdSchema =
+  platformIdentitySchema().brand<"CatalogCommentId">();
+
+/** The author shape embedded in every comment and reply; no avatar, no status. */
+export const commentAuthorSchema = z.strictObject({
+  id: publicUserIdSchema,
+  displayName: publicUserDisplayNameSchema,
+});
+
+/**
+ * Comment text is plain: no rich text, mentions, links, media or attachments.
+ * The bound is fixed by the Mission 2B Contract review and enforced by the
+ * Backend; Web never relaxes it.
+ */
+export const COMMENT_TEXT_MAXIMUM = 1_000;
+const commentTextSchema = exactTextSchema(COMMENT_TEXT_MAXIMUM);
+
+export const catalogCommentReplySchema = z.strictObject({
+  id: catalogCommentIdSchema,
+  author: commentAuthorSchema,
+  text: commentTextSchema,
+  createdAt: z.iso.datetime({ offset: false }),
+  /** PR #106's 回复 X： pointer; absent when the reply answers the root. */
+  replyTo: commentAuthorSchema.optional(),
+});
+
+export const catalogCommentSchema = z.strictObject({
+  id: catalogCommentIdSchema,
+  catalogId: catalogIdSchema,
+  author: commentAuthorSchema,
+  text: commentTextSchema,
+  createdAt: z.iso.datetime({ offset: false }),
+  /** A bounded first page of visible replies, in server order. */
+  replies: z.array(catalogCommentReplySchema),
+});
+
+const COMMENT_PAGE_SIZE_MAXIMUM = 50;
+
+export const catalogCommentPageSchema = pageSchema(
+  catalogCommentSchema,
+  COMMENT_PAGE_SIZE_MAXIMUM,
+);
+
+/** The load-more page for one root comment's replies (support operation). */
+export const catalogCommentReplyPageSchema = pageSchema(
+  catalogCommentReplySchema,
+  COMMENT_PAGE_SIZE_MAXIMUM,
+);
+
+const commentPageSizeStringSchema = safePositiveIntegerStringSchema.refine(
+  (value) => Number(value) <= COMMENT_PAGE_SIZE_MAXIMUM,
+  { message: "pageSize must be less than or equal to 50" },
+);
+
+export const catalogCommentTransportQuerySchema = z.strictObject({
+  page: safePositiveIntegerStringSchema.optional(),
+  pageSize: commentPageSizeStringSchema.optional(),
+});
+
+export const createCatalogCommentRequestSchema = z.strictObject({
+  text: commentTextSchema,
+});
+
+export const createCatalogCommentReplyRequestSchema = z.strictObject({
+  text: commentTextSchema,
+  /** Answers a sibling reply; the new reply stays a sibling under the same root. */
+  replyTo: catalogCommentIdSchema.optional(),
+});
+
 export const healthResponseSchema = z.strictObject({
   status: z.literal("ok"),
 });
 
 export const apiErrorCodeSchema = z.enum([
   "INVALID_QUERY",
+  "INVALID_INPUT",
   "ITEM_NOT_FOUND",
   "UNAUTHENTICATED",
   "SERVICE_UNAVAILABLE",
