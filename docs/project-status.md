@@ -273,12 +273,14 @@ Active development tracks (independent of the parked cloud track):
 1. **Community V1** — the
    [Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md)
    is Active (Owner-approved 2026-09-11) and records the product decisions:
-   Owner-controlled publication setting (`PRE_MODERATION` default), Development
-   test-account sign-in, system-assigned handles, Payload Admin moderation over
-   a Backend operator boundary, text comments first, flat paginated replies,
-   Production deferred. PR #106's comment UI was accepted at `8e7d12a` and
-   merged as `b27c85c`. Implementation proceeds in three separately reviewable
-   stages: identity/session foundation → comment contract, persistence, API and
+   Owner-controlled publication setting (`DIRECT_PUBLICATION` initial default
+   since the 2026-09-12 scope amendment, which also adds the small hot-comment
+   section above the latest roots), Development test-account sign-in,
+   system-assigned handles, Payload Admin moderation over a Backend operator
+   boundary, text comments first, flat paginated replies, Production deferred.
+   PR #106's comment UI was accepted at `8e7d12a` and merged as `b27c85c`.
+   Implementation proceeds in three separately reviewable stages:
+   identity/session foundation → comment contract, persistence, API and
    moderation → connecting the merged #106 UI seam to the real API. Mission 2A
    (public-user identity, Backend-owned sessions, `GET /v1/me`, the
    Development-only test-account sign-in and the `/dev/community` entry) is

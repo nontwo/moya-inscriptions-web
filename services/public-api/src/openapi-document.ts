@@ -7,6 +7,7 @@ import {
   catalogCommentPageJsonSchema,
   catalogCommentReplyJsonSchema,
   catalogCommentReplyPageJsonSchema,
+  catalogCommentListingTransportQueryJsonSchema,
   catalogCommentTransportQueryJsonSchema,
   catalogContributorJsonSchema,
   catalogContributorRoleJsonSchema,
@@ -107,6 +108,14 @@ const commentPageParameters = ["page", "pageSize"].map((name) =>
   queryParameter(
     name,
     schemaProperty(catalogCommentTransportQueryJsonSchema, name),
+  ),
+);
+
+/** The root listing adds `pinned`; the reply page keeps the plain page query. */
+const commentListingParameters = ["page", "pageSize", "pinned"].map((name) =>
+  queryParameter(
+    name,
+    schemaProperty(catalogCommentListingTransportQueryJsonSchema, name),
   ),
 );
 
@@ -256,10 +265,10 @@ export const openApiDocument: JsonObject = {
         operationId: "listCatalogComments",
         summary: "List visible comments on one Catalog record",
         description:
-          "Anonymous read. Only comments the Owner's publication policy has made visible are returned, each carrying a bounded first page of its visible replies in server order (root comments newest first, replies oldest first). Moderation state never appears in the response.",
-        parameters: [catalogIdPathParameter, ...commentPageParameters],
+          "Anonymous read returning one combined list: `hot`, at most three visible root comments ranked by their number of currently visible replies (positive scores only; ties to the newer comment, then the greater id), followed by `items`, the remaining visible roots newest first. A root never appears in both. Each root carries a bounded first page of its visible replies (oldest first) and its visible reply total. Without `pinned` the hot section is selected afresh; a load-more request passes the hot ids it already holds as `pinned`, receives an empty `hot` and pages the latest list with exactly those roots excluded, so the sequence neither repeats nor drops a root when the hot selection moves. Offset pagination is still not stable under concurrent inserts; a client refreshes the whole list to resynchronize. Pending and hidden items never count and never appear.",
+        parameters: [catalogIdPathParameter, ...commentListingParameters],
         responses: commentReadResponses(
-          "A page of visible comments.",
+          "The hot section and one page of the latest visible comments.",
           "CatalogCommentPage",
         ),
       },

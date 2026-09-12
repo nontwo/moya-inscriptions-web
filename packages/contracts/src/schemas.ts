@@ -181,19 +181,25 @@ const checkPageInvariants = (
   }
 };
 
-/** Builds a page DTO for one item schema; the bound belongs to its operation. */
+/** The fields every page DTO shares; the bound belongs to its operation. */
+const pageShape = <Item extends z.ZodType>(
+  itemSchema: Item,
+  maximumPageSize: number,
+) => ({
+  items: z.array(itemSchema),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1).max(maximumPageSize),
+  totalPages: z.number().int().min(0),
+});
+
+/** Builds a page DTO for one item schema. */
 const pageSchema = <Item extends z.ZodType>(
   itemSchema: Item,
   maximumPageSize: number,
 ) =>
   z
-    .strictObject({
-      items: z.array(itemSchema),
-      total: z.number().int().min(0),
-      page: z.number().int().min(1),
-      pageSize: z.number().int().min(1).max(maximumPageSize),
-      totalPages: z.number().int().min(0),
-    })
+    .strictObject(pageShape(itemSchema, maximumPageSize))
     .superRefine(checkPageInvariants);
 
 export const catalogPageSchema = pageSchema(catalogSummarySchema, 100);
@@ -308,14 +314,51 @@ export const catalogCommentSchema = z.strictObject({
   createdAt: z.iso.datetime({ offset: false }),
   /** A bounded first page of visible replies, in server order. */
   replies: z.array(catalogCommentReplySchema),
+  /**
+   * The number of currently visible replies under this root: the hot score,
+   * and what tells a reader whether load-more has anything left. Never a
+   * fabricated or cached count.
+   */
+  replyTotal: z.number().int().min(0),
 });
 
 const COMMENT_PAGE_SIZE_MAXIMUM = 50;
 
-export const catalogCommentPageSchema = pageSchema(
-  catalogCommentSchema,
-  COMMENT_PAGE_SIZE_MAXIMUM,
-);
+/**
+ * The small hot section at the top of the combined comment list (Owner scope
+ * amendment 2026-09-12). Provisional defaults, adjustable by the Owner: at most
+ * three visible roots, ranked by their number of currently visible replies,
+ * positive scores only, ties broken by newer creation time then id.
+ */
+export const COMMENT_HOT_LIMIT = 3;
+
+/**
+ * One combined list: `hot` first, then `items` (the latest roots, newest
+ * first). A root never appears in both. `hot` is populated only when the
+ * request carries no `pinned` set; a load-more request pins the hot ids it
+ * already holds, so the latest pages exclude exactly those.
+ */
+export const catalogCommentPageSchema = z
+  .strictObject({
+    hot: z.array(catalogCommentSchema).max(COMMENT_HOT_LIMIT),
+    ...pageShape(catalogCommentSchema, COMMENT_PAGE_SIZE_MAXIMUM),
+  })
+  .superRefine(checkPageInvariants)
+  .superRefine((listing, context) => {
+    const hotIds = new Set(listing.hot.map((comment) => comment.id));
+    if (hotIds.size !== listing.hot.length)
+      context.addIssue({
+        code: "custom",
+        path: ["hot"],
+        message: "hot comments must be distinct",
+      });
+    if (listing.items.some((comment) => hotIds.has(comment.id)))
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "a hot comment never repeats in the latest list",
+      });
+  });
 
 /** The load-more page for one root comment's replies (support operation). */
 export const catalogCommentReplyPageSchema = pageSchema(
@@ -332,6 +375,32 @@ export const catalogCommentTransportQuerySchema = z.strictObject({
   page: safePositiveIntegerStringSchema.optional(),
   pageSize: commentPageSizeStringSchema.optional(),
 });
+
+/**
+ * Comma-separated hot ids a browsing sequence pins: at most COMMENT_HOT_LIMIT,
+ * distinct, each a CatalogCommentId. Present on load-more requests only.
+ */
+const pinnedCommentIdsStringSchema = z
+  .string()
+  .min(1)
+  .max((128 + 1) * COMMENT_HOT_LIMIT)
+  .refine(
+    (value) => {
+      const ids = value.split(",");
+      return (
+        ids.length <= COMMENT_HOT_LIMIT &&
+        new Set(ids).size === ids.length &&
+        ids.every((id) => catalogCommentIdSchema.safeParse(id).success)
+      );
+    },
+    { message: "pinned must list at most 3 distinct comment ids" },
+  );
+
+/** The root comment listing accepts the page query plus the pinned hot ids. */
+export const catalogCommentListingTransportQuerySchema =
+  catalogCommentTransportQuerySchema.safeExtend({
+    pinned: pinnedCommentIdsStringSchema.optional(),
+  });
 
 export const createCatalogCommentRequestSchema = z.strictObject({
   text: commentTextSchema,

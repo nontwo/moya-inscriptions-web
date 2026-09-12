@@ -7,6 +7,7 @@ export type {
   CatalogCommentPage,
   CatalogCommentReply,
   CatalogCommentReplyPage,
+  CatalogCommentListingTransportQuery,
   CatalogCommentTransportQuery,
   CatalogContributor,
   CatalogContributorRole,

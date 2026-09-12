@@ -21,6 +21,7 @@ import {
 import type {
   CatalogComment,
   CatalogCommentReply,
+  CatalogCommentListingTransportQuery,
   CatalogCommentTransportQuery,
   CatalogListTransportQuery,
 } from "@moya/contracts";
@@ -111,7 +112,7 @@ export const fetchServerCatalogSearchPage = async (
 
 export const fetchServerCatalogCommentPage = async (
   catalogId: string,
-  query: CatalogCommentTransportQuery = {},
+  query: CatalogCommentListingTransportQuery = {},
   signal?: AbortSignal,
 ): Promise<CommentPageTransportResult> => {
   try {

@@ -149,6 +149,11 @@
             },
             "type": "array"
           },
+          "replyTotal": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "text": {
             "maxLength": 1000,
             "minLength": 1,
@@ -161,7 +166,8 @@
           "author",
           "text",
           "createdAt",
-          "replies"
+          "replies",
+          "replyTotal"
         ],
         "type": "object"
       },
@@ -176,6 +182,132 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "hot": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "author": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "displayName": {
+                      "maxLength": 40,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^\\S+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "displayName"],
+                  "type": "object"
+                },
+                "catalogId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^\\S+$",
+                  "type": "string"
+                },
+                "createdAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                  "type": "string"
+                },
+                "id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^\\S+$",
+                  "type": "string"
+                },
+                "replies": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "author": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "displayName": {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^\\S+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "displayName"],
+                        "type": "object"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^\\S+$",
+                        "type": "string"
+                      },
+                      "replyTo": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "displayName": {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^\\S+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "displayName"],
+                        "type": "object"
+                      },
+                      "text": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "author", "text", "createdAt"],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "replyTotal": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "text": {
+                  "maxLength": 1000,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "catalogId",
+                "author",
+                "text",
+                "createdAt",
+                "replies",
+                "replyTotal"
+              ],
+              "type": "object"
+            },
+            "maxItems": 3,
+            "type": "array"
+          },
           "items": {
             "items": {
               "additionalProperties": false,
@@ -277,6 +409,11 @@
                   },
                   "type": "array"
                 },
+                "replyTotal": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
                 "text": {
                   "maxLength": 1000,
                   "minLength": 1,
@@ -289,7 +426,8 @@
                 "author",
                 "text",
                 "createdAt",
-                "replies"
+                "replies",
+                "replyTotal"
               ],
               "type": "object"
             },
@@ -316,7 +454,7 @@
             "type": "integer"
           }
         },
-        "required": ["items", "total", "page", "pageSize", "totalPages"],
+        "required": ["hot", "items", "total", "page", "pageSize", "totalPages"],
         "type": "object"
       },
       "CatalogCommentReply": {
@@ -1679,7 +1817,7 @@
     },
     "/v1/catalog/{catalogId}/comments": {
       "get": {
-        "description": "Anonymous read. Only comments the Owner's publication policy has made visible are returned, each carrying a bounded first page of its visible replies in server order (root comments newest first, replies oldest first). Moderation state never appears in the response.",
+        "description": "Anonymous read returning one combined list: `hot`, at most three visible root comments ranked by their number of currently visible replies (positive scores only; ties to the newer comment, then the greater id), followed by `items`, the remaining visible roots newest first. A root never appears in both. Each root carries a bounded first page of its visible replies (oldest first) and its visible reply total. Without `pinned` the hot section is selected afresh; a load-more request passes the hot ids it already holds as `pinned`, receives an empty `hot` and pages the latest list with exactly those roots excluded, so the sequence neither repeats nor drops a root when the hot selection moves. Offset pagination is still not stable under concurrent inserts; a client refreshes the whole list to resynchronize. Pending and hidden items never count and never appear.",
         "operationId": "listCatalogComments",
         "parameters": [
           {
@@ -1710,6 +1848,16 @@
               "pattern": "^[1-9]\\d*$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "pinned",
+            "required": false,
+            "schema": {
+              "maxLength": 387,
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1721,7 +1869,7 @@
                 }
               }
             },
-            "description": "A page of visible comments."
+            "description": "The hot section and one page of the latest visible comments."
           },
           "400": {
             "content": {

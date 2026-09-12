@@ -115,8 +115,9 @@ afterEach(async () => {
   await pool.query("DELETE FROM community.catalog_comments");
   await pool.query("DELETE FROM community.moderation_events");
   await pool.query("DELETE FROM community.sessions");
+  // Back to the initial default the forward migration establishes.
   await pool.query(
-    "UPDATE community.publication_setting SET policy = 'PRE_MODERATION', updated_by = 'platform' WHERE id = 'publication'",
+    "UPDATE community.publication_setting SET policy = 'DIRECT_PUBLICATION', updated_by = 'platform' WHERE id = 'publication'",
   );
   await pool.query(
     "UPDATE community.public_users SET status = 'active', updated_at = CURRENT_TIMESTAMP",
@@ -362,15 +363,20 @@ describe("community PostgreSQL comments and moderation", () => {
       page: 1,
       pageSize: 20,
       embeddedReplyLimit: 3,
+      hotLimit: 3,
+      pinned: [],
     });
-    // Newest root first; replies oldest first inside the thread.
-    expect(page.items.map((item) => item.id)).toEqual([root.id, older.id]);
-    expect(page.total).toBe(2);
-    expect(page.items[0]?.replies.map((reply) => reply.id)).toEqual([
+    // The replied-to root is hot; the other is the latest list. Replies stay
+    // oldest first inside the thread.
+    expect(page.hot.map((item) => item.id)).toEqual([root.id]);
+    expect(page.items.map((item) => item.id)).toEqual([older.id]);
+    expect(page.total).toBe(1);
+    expect(page.hot[0]?.replyTotal).toBe(2);
+    expect(page.hot[0]?.replies.map((reply) => reply.id)).toEqual([
       replyOne.id,
       replyTwo.id,
     ]);
-    expect(page.items[0]?.replies[1]?.replyTo?.id).toBe(second);
+    expect(page.hot[0]?.replies[1]?.replyTo?.id).toBe(second);
     expect(replyTwo.replyTo?.displayName).toBe("书法学徒");
   });
 
@@ -489,6 +495,8 @@ describe("community PostgreSQL comments and moderation", () => {
           page: 1,
           pageSize: 20,
           embeddedReplyLimit: 3,
+          hotLimit: 3,
+          pinned: [],
         })
       ).items,
     ).toEqual([]);
@@ -537,8 +545,12 @@ describe("community PostgreSQL comments and moderation", () => {
       page: 1,
       pageSize: 20,
       embeddedReplyLimit: 3,
+      hotLimit: 3,
+      pinned: [],
     });
-    expect(visible.items[0]?.replies).toHaveLength(1);
+    // With its one visible reply the root is the hot section.
+    expect(visible.items).toEqual([]);
+    expect(visible.hot[0]?.replies).toHaveLength(1);
 
     // Hiding the root removes the thread; the reply row keeps its own state.
     await port.applyCommentModeration(
@@ -555,6 +567,8 @@ describe("community PostgreSQL comments and moderation", () => {
           page: 1,
           pageSize: 20,
           embeddedReplyLimit: 3,
+          hotLimit: 3,
+          pinned: [],
         })
       ).items,
     ).toEqual([]);
@@ -571,15 +585,145 @@ describe("community PostgreSQL comments and moderation", () => {
     });
   });
 
+  it("reads the hot section and the latest page in one snapshot and honours pinned ids", async () => {
+    const port = commentAdapter();
+    const author = await seededAuthor("dev-user-01");
+    const replier = await seededAuthor("dev-user-02");
+    const base = Date.parse("2026-09-12T12:00:00.000Z");
+    const at = (seconds: number) => new Date(base + seconds * 1_000);
+    const root = async (n: number, text: string) =>
+      port.insertComment({
+        id: commentId(n),
+        catalogId: publishedCatalogId,
+        authorId: author,
+        text,
+        moderation: "visible",
+        createdAt: at(n),
+      });
+    const reply = async (
+      n: number,
+      rootCommentId: CatalogCommentId,
+      moderation: "visible" | "pending" | "hidden",
+    ) =>
+      port.insertReply({
+        id: commentId(n),
+        rootCommentId,
+        authorId: replier,
+        text: `回复 ${n}`,
+        moderation,
+        createdAt: at(n),
+      });
+    const a = await root(41, "甲");
+    const b = await root(42, "乙");
+    const c = await root(43, "丙");
+    const d = await root(44, "丁");
+    const e = await root(45, "戊");
+    await reply(51, a.id, "visible");
+    await reply(52, a.id, "visible");
+    await reply(53, b.id, "visible");
+    await reply(54, b.id, "hidden");
+    await reply(55, b.id, "pending");
+    await reply(56, d.id, "visible");
+    await reply(57, d.id, "visible");
+    await reply(58, d.id, "visible");
+    await reply(59, e.id, "visible");
+
+    const first = await port.readVisibleComments({
+      catalogId: publishedCatalogId,
+      page: 1,
+      pageSize: 1,
+      embeddedReplyLimit: 3,
+      hotLimit: 3,
+      pinned: [],
+    });
+    expect(first.hot.map((item) => item.id)).toEqual([d.id, a.id, e.id]);
+    expect(first.hot.map((item) => item.replyTotal)).toEqual([3, 2, 1]);
+    expect(first.items.map((item) => item.id)).toEqual([c.id]);
+    expect(first.total).toBe(2);
+
+    const second = await port.readVisibleComments({
+      catalogId: publishedCatalogId,
+      page: 2,
+      pageSize: 1,
+      embeddedReplyLimit: 3,
+      hotLimit: 0,
+      pinned: first.hot.map((item) => item.id),
+    });
+    expect(second.hot).toEqual([]);
+    expect(second.items.map((item) => item.id)).toEqual([b.id]);
+    // 乙's hidden and pending replies neither count nor embed.
+    expect(second.items[0]?.replyTotal).toBe(1);
+    expect(second.items[0]?.replies.map((item) => item.id)).toEqual([
+      commentId(53),
+    ]);
+    expect(second.total).toBe(2);
+
+    // Hiding a hot root removes it from the fresh selection; nothing repeats.
+    await port.applyCommentModeration(
+      d.id,
+      "hidden",
+      ["visible"],
+      "owner",
+      at(60),
+    );
+    const refreshed = await port.readVisibleComments({
+      catalogId: publishedCatalogId,
+      page: 1,
+      pageSize: 20,
+      embeddedReplyLimit: 3,
+      hotLimit: 3,
+      pinned: [],
+    });
+    expect(refreshed.hot.map((item) => item.id)).toEqual([a.id, e.id, b.id]);
+    expect(refreshed.items.map((item) => item.id)).toEqual([c.id]);
+  });
+
+  it("flips only the untouched platform seed to DIRECT_PUBLICATION and keeps an Owner choice", async () => {
+    const sql = await readFile(
+      path.join(
+        migrationsDirectory,
+        "20260912080000_community_direct_publication_default.sql",
+      ),
+      "utf8",
+    );
+    const policy = async () =>
+      (
+        await pool.query<{ policy: string; updated_by: string }>(
+          "SELECT policy, updated_by FROM community.publication_setting WHERE id = 'publication'",
+        )
+      ).rows[0];
+
+    await pool.query(
+      "UPDATE community.publication_setting SET policy = 'PRE_MODERATION', updated_by = 'owner' WHERE id = 'publication'",
+    );
+    await pool.query(sql);
+    expect(await policy()).toEqual({
+      policy: "PRE_MODERATION",
+      updated_by: "owner",
+    });
+
+    await pool.query(
+      "UPDATE community.publication_setting SET policy = 'PRE_MODERATION', updated_by = 'platform' WHERE id = 'publication'",
+    );
+    await pool.query(sql);
+    expect(await policy()).toEqual({
+      policy: "DIRECT_PUBLICATION",
+      updated_by: "platform",
+    });
+  });
+
   it("keeps the publication setting a single row and appends every moderation event", async () => {
     const port = commentAdapter();
     const at = new Date("2026-09-12T11:00:00.000Z");
-    expect(await port.readPublicationPolicy()).toMatchObject({
-      policy: "PRE_MODERATION",
-    });
-    await port.writePublicationPolicy("DIRECT_PUBLICATION", "owner", at);
+    // A fresh initialization starts in DIRECT_PUBLICATION (forward migration
+    // 20260912080000 over the untouched platform seed).
     expect(await port.readPublicationPolicy()).toMatchObject({
       policy: "DIRECT_PUBLICATION",
+      updatedBy: "platform",
+    });
+    await port.writePublicationPolicy("PRE_MODERATION", "owner", at);
+    expect(await port.readPublicationPolicy()).toMatchObject({
+      policy: "PRE_MODERATION",
       updatedBy: "owner",
     });
 
@@ -641,6 +785,8 @@ describe("community PostgreSQL comments and moderation", () => {
         page,
         pageSize: 2,
         embeddedReplyLimit: 3,
+        hotLimit: 3,
+        pinned: [],
       });
       expect(result.total).toBe(5);
       seen.push(...result.items.map((item) => item.id));

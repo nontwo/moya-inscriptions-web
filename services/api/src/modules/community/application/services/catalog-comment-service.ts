@@ -3,6 +3,7 @@ import {
   CommunityNotFoundError,
 } from "../errors/community-request-errors.js";
 import {
+  COMMENT_HOT_LIMIT,
   mapCatalogComment,
   mapCatalogCommentPage,
   mapCatalogCommentReply,
@@ -48,6 +49,16 @@ export interface CommentPageInput {
 }
 
 /**
+ * The root listing input. `pinned` carries the hot ids a browsing sequence
+ * already holds: when present, no fresh hot selection is made and the latest
+ * pages exclude exactly those roots, so load-more never repeats or drops a
+ * root because the hot section moved underneath it.
+ */
+export interface CommentListingInput extends CommentPageInput {
+  readonly pinned?: readonly CatalogCommentId[];
+}
+
+/**
  * The three comment operations plus bounded reply pagination. Public reads
  * return `visible` items only; a reply never bypasses a root that is not
  * visible, and moderation state never leaves the Backend.
@@ -65,24 +76,33 @@ export class CatalogCommentService {
     this.randomBytes = options.randomBytes ?? defaultRandomBytes;
   }
 
+  /**
+   * One combined list: up to COMMENT_HOT_LIMIT hot roots (visible roots
+   * ranked by their visible replies, positive scores only, ties to the newer
+   * then the greater id), then the latest roots newest first with the hot and
+   * pinned ones removed. Pending and hidden rows never count anywhere.
+   */
   async readComments(
     catalogId: CatalogId,
-    query: CommentPageInput,
+    query: CommentListingInput,
   ): Promise<CatalogCommentPage> {
     await this.assertPublishedCatalog(catalogId);
-    const comments = await this.commentPort.readVisibleComments({
+    const listing = await this.commentPort.readVisibleComments({
       catalogId,
       page: query.page,
       pageSize: query.pageSize,
       embeddedReplyLimit: COMMENT_EMBEDDED_REPLY_LIMIT,
+      hotLimit: query.pinned === undefined ? COMMENT_HOT_LIMIT : 0,
+      pinned: query.pinned ?? [],
     });
+    const toDto = (comment: (typeof listing.items)[number]) =>
+      mapCatalogComment(comment, comment.replies, comment.replyTotal);
     return mapCatalogCommentPage({
-      items: comments.items.map((comment) =>
-        mapCatalogComment(comment, comment.replies),
-      ),
-      total: comments.total,
-      page: comments.page,
-      pageSize: comments.pageSize,
+      hot: listing.hot.map(toDto),
+      items: listing.items.map(toDto),
+      total: listing.total,
+      page: listing.page,
+      pageSize: listing.pageSize,
     });
   }
 
@@ -117,7 +137,7 @@ export class CatalogCommentService {
       createdAt: this.clock(),
     });
     return {
-      item: mapCatalogComment(created, []),
+      item: mapCatalogComment(created, [], 0),
       awaitingApproval: moderation === "pending",
     };
   }

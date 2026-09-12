@@ -9,6 +9,7 @@ import type {
   catalogCommentReplyPageSchema,
   catalogCommentReplySchema,
   catalogCommentSchema,
+  catalogCommentListingTransportQuerySchema,
   catalogCommentTransportQuerySchema,
   catalogContributorRoleSchema,
   catalogContributorSchema,
@@ -69,6 +70,9 @@ export type CatalogCommentReplyPage = z.infer<
 >;
 export type CatalogCommentTransportQuery = z.infer<
   typeof catalogCommentTransportQuerySchema
+>;
+export type CatalogCommentListingTransportQuery = z.infer<
+  typeof catalogCommentListingTransportQuerySchema
 >;
 export type CreateCatalogCommentRequest = z.infer<
   typeof createCatalogCommentRequestSchema

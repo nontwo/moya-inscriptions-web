@@ -37,18 +37,24 @@ export { CommunityModerationService } from "./modules/community/application/serv
 export { CommunitySessionService } from "./modules/community/application/services/community-session-service.js";
 export type {
   CatalogCommentServiceOptions,
+  CommentListingInput,
   CommentPageInput,
   CommentSubmission,
 } from "./modules/community/application/services/catalog-comment-service.js";
 export { COMMENT_EMBEDDED_REPLY_LIMIT } from "./modules/community/application/services/catalog-comment-service.js";
+export { COMMENT_HOT_LIMIT } from "./modules/community/application/mappers/community-public-contract-mapper.js";
 export {
   COMMENT_PAGE_SIZE_DEFAULT,
   COMMENT_REPLY_PAGE_SIZE_DEFAULT,
+  parseCommentListingQuery,
   parseCommentPageQuery,
   parseCreateCommentRequest,
   parseCreateReplyRequest,
 } from "./modules/community/transport/comment-request-parsers.js";
-export type { CommentPageRequest } from "./modules/community/transport/comment-request-parsers.js";
+export type {
+  CommentListingRequest,
+  CommentPageRequest,
+} from "./modules/community/transport/comment-request-parsers.js";
 export type { CommunityModerationServiceOptions } from "./modules/community/application/services/community-moderation-service.js";
 export type {
   CommunitySessionServiceOptions,
@@ -75,6 +81,7 @@ export type {
   CatalogCommentReplyRecord,
   CatalogCommentWithReplies,
   CommentAuthorRecord,
+  CommentListingRecord,
   CommentPageRecord,
 } from "./modules/community/domain/catalog-comment.js";
 export type {

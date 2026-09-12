@@ -6,6 +6,9 @@ import {
   publicUserProfileSchema,
 } from "@moya/contracts/schemas";
 
+/** The contract's bound is the only definition; the service reads it here. */
+export { COMMENT_HOT_LIMIT } from "@moya/contracts/schemas";
+
 import type {
   CatalogComment,
   CatalogCommentPage,
@@ -17,6 +20,7 @@ import type {
 import type {
   CatalogCommentRecord,
   CatalogCommentReplyRecord,
+  CommentListingRecord,
   CommentPageRecord,
 } from "../../domain/catalog-comment.js";
 import type { PublicUserRecord } from "../../domain/public-user.js";
@@ -56,6 +60,7 @@ export const mapCatalogCommentReply = (
 export const mapCatalogComment = (
   comment: CatalogCommentRecord,
   replies: readonly CatalogCommentReplyRecord[],
+  replyTotal: number,
 ): CatalogComment =>
   catalogCommentSchema.parse({
     id: comment.id,
@@ -64,15 +69,17 @@ export const mapCatalogComment = (
     text: comment.text,
     createdAt: isoUtc(comment.createdAt),
     replies: replies.map(mapCatalogCommentReply),
+    replyTotal,
   });
 
 const totalPages = (total: number, pageSize: number): number =>
   total === 0 ? 0 : Math.ceil(total / pageSize);
 
 export const mapCatalogCommentPage = (
-  page: CommentPageRecord<CatalogComment>,
+  page: CommentListingRecord<CatalogComment>,
 ): CatalogCommentPage =>
   catalogCommentPageSchema.parse({
+    hot: page.hot,
     items: page.items,
     total: page.total,
     page: page.page,

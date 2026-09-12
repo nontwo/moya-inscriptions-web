@@ -44,6 +44,7 @@ describe("@moya/api server-only surface", () => {
     expect(manifest.sideEffects).toBe(false);
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
       "COMMENT_EMBEDDED_REPLY_LIMIT",
+      "COMMENT_HOT_LIMIT",
       "COMMENT_PAGE_SIZE_DEFAULT",
       "COMMENT_REPLY_PAGE_SIZE_DEFAULT",
       "CatalogCommentService",
@@ -67,6 +68,7 @@ describe("@moya/api server-only surface", () => {
       "mapPublicUserProfile",
       "parseCatalogListQuery",
       "parseCatalogSearchQuery",
+      "parseCommentListingQuery",
       "parseCommentPageQuery",
       "parseCreateCommentRequest",
       "parseCreateReplyRequest",

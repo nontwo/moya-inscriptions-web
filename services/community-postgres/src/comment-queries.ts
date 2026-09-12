@@ -8,10 +8,32 @@ const commentAuthorJoin = `
   JOIN community.public_users u ON u.id = c.author_id
 `;
 
+/**
+ * The hot section: visible roots that have at least one visible reply, most
+ * replies first, then newer, then greater id. Pending and hidden replies never
+ * count, and a pending or hidden root never qualifies. Provisional Owner
+ * defaults (scope amendment 2026-09-12); the limit comes from the contract.
+ */
+export const selectHotCommentsSql = `
+  SELECT c.id, c.catalog_id, c.text, c.created_at, c.moderation,
+         u.id AS author_id, u.display_name AS author_display_name
+  FROM community.catalog_comments c
+  ${commentAuthorJoin}
+  JOIN community.catalog_comment_replies r
+    ON r.root_comment_id = c.id AND r.moderation = 'visible'
+  WHERE c.catalog_id = $1::text AND c.moderation = 'visible'
+  GROUP BY c.id, c.catalog_id, c.text, c.created_at, c.moderation,
+           u.id, u.display_name
+  ORDER BY COUNT(r.id) DESC, c.created_at DESC, c.id DESC
+  LIMIT $2::integer
+`;
+
+/** `$2` / `$4` carry the roots the latest list leaves out (hot and pinned). */
 export const countVisibleCommentsSql = `
   SELECT COUNT(*)::text AS total
   FROM community.catalog_comments c
   WHERE c.catalog_id = $1::text AND c.moderation = 'visible'
+    AND c.id <> ALL($2::text[])
 `;
 
 export const listVisibleCommentsSql = `
@@ -20,8 +42,17 @@ export const listVisibleCommentsSql = `
   FROM community.catalog_comments c
   ${commentAuthorJoin}
   WHERE c.catalog_id = $1::text AND c.moderation = 'visible'
+    AND c.id <> ALL($4::text[])
   ORDER BY c.created_at DESC, c.id DESC
   LIMIT $2::integer OFFSET $3::bigint
+`;
+
+/** Visible reply totals for the roots on a page; absent rows mean zero. */
+export const countVisibleRepliesByRootSql = `
+  SELECT r.root_comment_id, COUNT(*)::text AS total
+  FROM community.catalog_comment_replies r
+  WHERE r.root_comment_id = ANY($1::text[]) AND r.moderation = 'visible'
+  GROUP BY r.root_comment_id
 `;
 
 /** The bounded first page of visible replies for each root on the page. */

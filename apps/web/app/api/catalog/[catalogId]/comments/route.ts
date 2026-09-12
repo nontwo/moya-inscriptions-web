@@ -6,7 +6,8 @@ import {
 
 export const runtime = "nodejs";
 
-const allowedParameters = new Set(["page", "pageSize"]);
+/** `pinned` carries the hot ids a load-more request already holds. */
+const allowedParameters = new Set(["page", "pageSize", "pinned"]);
 const maximumBodyBytes = 4_096;
 
 const emptyResponse = (status: number) =>

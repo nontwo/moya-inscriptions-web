@@ -128,8 +128,68 @@ describe("Community V1 comment HTTP surface", () => {
     ).toHaveLength(1);
   });
 
-  it("answers 202 while the submission awaits Owner approval", async () => {
+  it("serves the hot section and honours a pinned load-more sequence", async () => {
     const { baseUrl, signIn } = await start();
+    const token = await signIn();
+    const older = catalogCommentSchema.parse(
+      await (await postComment(baseUrl, token, { text: "较早的评论" })).json(),
+    );
+    const newer = catalogCommentSchema.parse(
+      await (await postComment(baseUrl, token, { text: "较新的评论" })).json(),
+    );
+    const replied = await fetch(
+      `${baseUrl}/v1/catalog/${publishedCatalogId}/comments/${older.id}/replies`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text: "一条回复" }),
+      },
+    );
+    expect(replied.status).toBe(201);
+
+    const listing = catalogCommentPageSchema.parse(
+      await (
+        await fetch(`${baseUrl}/v1/catalog/${publishedCatalogId}/comments`)
+      ).json(),
+    );
+    expect(listing.hot.map((item) => item.id)).toEqual([older.id]);
+    expect(listing.hot[0]?.replyTotal).toBe(1);
+    expect(listing.items.map((item) => item.id)).toEqual([newer.id]);
+
+    const pinned = catalogCommentPageSchema.parse(
+      await (
+        await fetch(
+          `${baseUrl}/v1/catalog/${publishedCatalogId}/comments?pinned=${older.id}&pageSize=1`,
+        )
+      ).json(),
+    );
+    expect(pinned.hot).toEqual([]);
+    expect(pinned.items.map((item) => item.id)).toEqual([newer.id]);
+
+    for (const query of ["?pinned=", "?pinned=a,a", "?pinned=a&pinned=b"])
+      await expectApiError(
+        await fetch(
+          `${baseUrl}/v1/catalog/${publishedCatalogId}/comments${query}`,
+        ),
+        400,
+        "INVALID_QUERY",
+      );
+    // The reply page never takes a pinned set.
+    await expectApiError(
+      await fetch(
+        `${baseUrl}/v1/catalog/${publishedCatalogId}/comments/${older.id}/replies?pinned=${newer.id}`,
+      ),
+      400,
+      "INVALID_QUERY",
+    );
+  });
+
+  it("answers 202 while the submission awaits Owner approval", async () => {
+    const { baseUrl, commentPort, signIn } = await start();
+    commentPort.policy = "PRE_MODERATION";
     const token = await signIn();
     const created = await postComment(baseUrl, token, { text: "待审核评论" });
     expect(created.status).toBe(202);
@@ -331,23 +391,26 @@ describe("Community V1 operator boundary", () => {
     const { baseUrl, commentPort } = await start();
     const initial = await operatorFetch(baseUrl, "publication-policy");
     expect(initial.status).toBe(200);
-    expect(await initial.json()).toMatchObject({ policy: "PRE_MODERATION" });
+    // DIRECT_PUBLICATION is the initial default (scope amendment 2026-09-12).
+    expect(await initial.json()).toMatchObject({
+      policy: "DIRECT_PUBLICATION",
+    });
 
     const switched = await operatorFetch(baseUrl, "publication-policy", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ policy: "DIRECT_PUBLICATION" }),
+      body: JSON.stringify({ policy: "PRE_MODERATION" }),
     });
     expect(switched.status).toBe(200);
     expect(await switched.json()).toMatchObject({
-      policy: "DIRECT_PUBLICATION",
+      policy: "PRE_MODERATION",
       updatedBy: "owner",
     });
     expect(commentPort.events.at(-1)).toMatchObject({
       action: "set_publication_policy",
       subjectKind: "setting",
       operatorLabel: "owner",
-      detail: "DIRECT_PUBLICATION",
+      detail: "PRE_MODERATION",
     });
 
     const invalid = await operatorFetch(baseUrl, "publication-policy", {
@@ -360,6 +423,7 @@ describe("Community V1 operator boundary", () => {
 
   it("approves, hides and unhides a comment and audits each action", async () => {
     const { baseUrl, commentPort, signIn } = await start();
+    commentPort.policy = "PRE_MODERATION";
     const token = await signIn();
     const created = catalogCommentSchema.parse(
       await (await postComment(baseUrl, token, { text: "待审核评论" })).json(),

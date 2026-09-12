@@ -111,26 +111,40 @@ publication setting and the Owner's moderation surface. Signed in through the
 Development entry above, a public user can post a comment on any published
 Catalog record and reply once under a root comment. Reads are anonymous:
 
-- `GET /api/catalog/{catalogId}/comments?page&pageSize` — visible comments,
-  newest first, each with its first three visible replies (oldest first).
+- `GET /api/catalog/{catalogId}/comments?page&pageSize&pinned` — one combined
+  list: `hot`, up to three visible roots ranked by their number of currently
+  visible replies (positive scores only; ties to the newer root, then the
+  greater id), then `items`, the remaining visible roots newest first. A root
+  never appears in both. Each root carries its first three visible replies
+  (oldest first) and `replyTotal`, its real visible reply count. A load-more
+  request passes the hot ids it already holds as `pinned` (comma-separated, at
+  most three): it then receives an empty `hot` and pages the latest list with
+  exactly those roots excluded, so the sequence neither repeats nor drops a root
+  because the hot selection moved. Offset pagination is still not stable under
+  concurrent inserts; the client refreshes the whole list to resynchronize. The
+  count and metric are provisional Owner defaults (scope amendment 2026-09-12),
+  computed on the Backend from visible rows only; pending and hidden rows never
+  count.
 - `GET /api/catalog/{catalogId}/comments/{commentId}/replies?page&pageSize` —
-  bounded load-more for one thread.
+  bounded load-more for one thread, oldest first; never ranked.
 - `POST` on either path requires the session cookie. `201` means the submission
   is visible; `202` means it entered moderation and awaits Owner approval.
 
 The Owner moderates in Payload Admin at
 `http://127.0.0.1:3002/admin/community-moderation`: switch the publication
-setting between 先审后发 (`PRE_MODERATION`, the default)
-and 直接发布 (`DIRECT_PUBLICATION`), approve, hide or unhide a comment or reply,
-and suspend or reinstate an author. Switching the setting affects new
-submissions only; nothing is bulk-published or bulk-hidden, and nothing is ever
-deleted. Admin never touches community tables: it calls the Backend's
-loopback-only `/internal/community/*` boundary at `COMMUNITY_OPERATOR_BASE_URL`
-with the shared `COMMUNITY_OPERATOR_TOKEN`, both from `.env.local`, and the
-Backend stays the sole writer. The base URL must resolve to loopback whatever
-its scheme, so the credential never leaves the machine. Leave the token unset
-and the boundary rejects every request, so the moderation view reports that it
-is not configured rather than opening.
+setting between 直接发布 (`DIRECT_PUBLICATION`, the initial default since the
+2026-09-12 scope amendment; forward migration `20260912080000` flips only the
+untouched platform seed and never a saved Owner choice)
+and 先审后发 (`PRE_MODERATION`), approve, hide or unhide a comment or reply, and
+suspend or reinstate an author. Switching the setting affects new submissions
+only; nothing is bulk-published or bulk-hidden, and nothing is ever deleted.
+Admin never touches community tables: it calls the Backend's loopback-only
+`/internal/community/*` boundary at `COMMUNITY_OPERATOR_BASE_URL` with the
+shared `COMMUNITY_OPERATOR_TOKEN`, both from `.env.local`, and the Backend stays
+the sole writer. The base URL must resolve to loopback whatever its scheme, so
+the credential never leaves the machine. Leave the token unset and the boundary
+rejects every request, so the moderation view reports that it is not configured
+rather than opening.
 
 The view's own server routes are `POST /api/community-moderation/*` in Payload.
 They carry that prefix deliberately: Payload mounts every endpoint under `/api`,

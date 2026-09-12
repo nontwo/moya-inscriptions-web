@@ -9,6 +9,7 @@ import {
   catalogCommentReplyPageSchema,
   catalogCommentReplySchema,
   catalogCommentSchema,
+  catalogCommentListingTransportQuerySchema,
   catalogCommentTransportQuerySchema,
   catalogContributorRoleSchema,
   catalogContributorSchema,
@@ -90,6 +91,9 @@ export const catalogCommentReplyPageJsonSchema = toJsonSchema(
 );
 export const catalogCommentTransportQueryJsonSchema = toJsonSchema(
   catalogCommentTransportQuerySchema,
+);
+export const catalogCommentListingTransportQueryJsonSchema = toJsonSchema(
+  catalogCommentListingTransportQuerySchema,
 );
 export const createCatalogCommentRequestJsonSchema = toJsonSchema(
   createCatalogCommentRequestSchema,

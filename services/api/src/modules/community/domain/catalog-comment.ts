@@ -35,6 +35,8 @@ export interface CatalogCommentReplyRecord {
 /** A root comment together with the bounded first page of its visible replies. */
 export interface CatalogCommentWithReplies extends CatalogCommentRecord {
   readonly replies: readonly CatalogCommentReplyRecord[];
+  /** Currently visible replies under this root; the hot score. */
+  readonly replyTotal: number;
 }
 
 export interface CommentPageRecord<Item> {
@@ -42,4 +44,12 @@ export interface CommentPageRecord<Item> {
   readonly total: number;
   readonly page: number;
   readonly pageSize: number;
+}
+
+/**
+ * The combined root listing: the hot section first, then the latest page.
+ * `total` counts the latest roots only; a root is never in both lists.
+ */
+export interface CommentListingRecord<Item> extends CommentPageRecord<Item> {
+  readonly hot: readonly Item[];
 }

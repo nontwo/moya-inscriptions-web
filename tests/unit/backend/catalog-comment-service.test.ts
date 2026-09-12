@@ -1,5 +1,6 @@
 import {
   CatalogCommentService,
+  parseCommentListingQuery,
   parseCommentPageQuery,
   parseCreateCommentRequest,
 } from "@moya/api";
@@ -56,6 +57,7 @@ const createService = (
 describe("CatalogCommentService", () => {
   it("creates a pending comment under PRE_MODERATION and hides it from public reads", async () => {
     const { service, port } = createService();
+    port.policy = "PRE_MODERATION";
     const created = await service.createComment(
       publishedCatalogId,
       fixtureUsers.active.id,
@@ -77,6 +79,7 @@ describe("CatalogCommentService", () => {
 
   it("publishes immediately under DIRECT_PUBLICATION and keeps existing items untouched", async () => {
     const { service, port, advance } = createService();
+    port.policy = "PRE_MODERATION";
     const pending = await service.createComment(
       publishedCatalogId,
       fixtureUsers.active.id,
@@ -134,17 +137,148 @@ describe("CatalogCommentService", () => {
       page: 1,
       pageSize: 20,
     });
-    expect(page.items.map((item) => item.id)).toEqual([
-      second.item.id,
-      first.item.id,
-    ]);
-    expect(page.items[1]?.replies.map((reply) => reply.id)).toEqual([
+    // The replied-to root is hot and leaves the latest list; the other stays.
+    expect(page.hot.map((item) => item.id)).toEqual([first.item.id]);
+    expect(page.items.map((item) => item.id)).toEqual([second.item.id]);
+    expect(page.total).toBe(1);
+    expect(page.hot[0]?.replies.map((reply) => reply.id)).toEqual([
       replyA.item.id,
       replyB.item.id,
     ]);
+    expect(page.hot[0]?.replyTotal).toBe(2);
+    expect(page.items[0]?.replyTotal).toBe(0);
     // The 回复 X： pointer resolves to the sibling author, not to a nested tree.
-    expect(page.items[1]?.replies[1]?.replyTo?.id).toBe(fixtureUsers.second.id);
+    expect(page.hot[0]?.replies[1]?.replyTo?.id).toBe(fixtureUsers.second.id);
     expect(replyB.item.replyTo?.id).toBe(fixtureUsers.second.id);
+  });
+
+  it("selects up to three hot roots by visible replies and pages the rest without repeats", async () => {
+    const { service, port, advance } = createService();
+    const roots: CatalogCommentId[] = [];
+    for (const text of ["甲", "乙", "丙", "丁", "戊"]) {
+      advance(1_000);
+      const created = await service.createComment(
+        publishedCatalogId,
+        fixtureUsers.active.id,
+        { text },
+      );
+      roots.push(created.item.id);
+    }
+    const [a, b, c, d, e] = roots as [
+      CatalogCommentId,
+      CatalogCommentId,
+      CatalogCommentId,
+      CatalogCommentId,
+      CatalogCommentId,
+    ];
+    const reply = async (root: CatalogCommentId, text: string) => {
+      advance(1_000);
+      return service.createReply(
+        publishedCatalogId,
+        root,
+        fixtureUsers.second.id,
+        { text },
+      );
+    };
+    await reply(a, "甲一");
+    await reply(a, "甲二");
+    await reply(d, "丁一");
+    await reply(d, "丁二");
+    await reply(d, "丁三");
+    await reply(e, "戊一");
+    const bVisible = await reply(b, "乙一");
+    const bHidden = await reply(b, "乙二");
+    await port.applyCommentModeration(bHidden.item.id, "hidden", ["visible"]);
+    port.policy = "PRE_MODERATION";
+    const bPending = await reply(b, "乙三");
+    expect(bPending.awaitingApproval).toBe(true);
+    port.policy = "DIRECT_PUBLICATION";
+
+    const first = await service.readComments(publishedCatalogId, {
+      page: 1,
+      pageSize: 1,
+    });
+    expect(catalogCommentPageSchema.parse(first)).toEqual(first);
+    // 丁 has three, 甲 two; 乙 and 戊 tie on one visible reply and the newer
+    // 戊 wins. 乙's hidden and pending replies never counted.
+    expect(first.hot.map((item) => item.id)).toEqual([d, a, e]);
+    expect(first.hot.map((item) => item.replyTotal)).toEqual([3, 2, 1]);
+    expect(first.items.map((item) => item.id)).toEqual([c]);
+    expect(first.total).toBe(2);
+    expect(first.totalPages).toBe(2);
+
+    // Load-more pins the hot ids it holds: no fresh selection, same exclusion.
+    const second = await service.readComments(publishedCatalogId, {
+      page: 2,
+      pageSize: 1,
+      pinned: first.hot.map((item) => item.id),
+    });
+    expect(second.hot).toEqual([]);
+    expect(second.items.map((item) => item.id)).toEqual([b]);
+    expect(second.items[0]?.replyTotal).toBe(1);
+    expect(second.items[0]?.replies.map((item) => item.id)).toEqual([
+      bVisible.item.id,
+    ]);
+    expect(second.total).toBe(2);
+    const seen = [...first.hot, ...first.items, ...second.items].map(
+      (item) => item.id,
+    );
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen.sort()).toEqual([...roots].sort());
+
+    // A pinned set on page 1 keeps the hot selection out of the fresh page too.
+    const pinnedFirst = await service.readComments(publishedCatalogId, {
+      page: 1,
+      pageSize: 20,
+      pinned: [d],
+    });
+    expect(pinnedFirst.hot).toEqual([]);
+    expect(pinnedFirst.items.map((item) => item.id)).toEqual([e, c, b, a]);
+  });
+
+  it("shows the latest list alone when no root has a visible reply", async () => {
+    const { service, port, advance } = createService();
+    const root = await service.createComment(
+      publishedCatalogId,
+      fixtureUsers.active.id,
+      { text: "没有回复的评论" },
+    );
+    advance(1_000);
+    port.policy = "PRE_MODERATION";
+    await service.createReply(
+      publishedCatalogId,
+      root.item.id,
+      fixtureUsers.second.id,
+      {
+        text: "待审核的回复",
+      },
+    );
+    const page = await service.readComments(publishedCatalogId, {
+      page: 1,
+      pageSize: 20,
+    });
+    expect(page.hot).toEqual([]);
+    expect(page.items.map((item) => item.id)).toEqual([root.item.id]);
+    expect(page.items[0]?.replyTotal).toBe(0);
+  });
+
+  it("parses the listing query and refuses a malformed pinned set", () => {
+    expect(
+      parseCommentListingQuery({
+        page: "2",
+        pinned: "comment-a,comment-b",
+      }),
+    ).toEqual({ page: 2, pageSize: 20, pinned: ["comment-a", "comment-b"] });
+    expect(parseCommentListingQuery({})).toEqual({ page: 1, pageSize: 20 });
+    for (const pinned of [
+      "",
+      "a,b,c,d",
+      "a,a",
+      ["comment-a", "comment-b"],
+      "with space",
+    ])
+      expect(() => parseCommentListingQuery({ pinned })).toThrow();
+    expect(() => parseCommentPageQuery({ pinned: "comment-a" })).toThrow();
   });
 
   it("embeds a bounded first page of replies and serves the rest through pagination", async () => {
@@ -169,7 +303,8 @@ describe("CatalogCommentService", () => {
       page: 1,
       pageSize: 20,
     });
-    expect(page.items[0]?.replies).toHaveLength(3);
+    expect(page.hot[0]?.replies).toHaveLength(3);
+    expect(page.hot[0]?.replyTotal).toBe(5);
 
     const replies = await service.readReplies(
       publishedCatalogId,
@@ -202,6 +337,7 @@ describe("CatalogCommentService", () => {
 
   it("never lets a reply bypass a root that is not visible", async () => {
     const { service, port } = createService();
+    port.policy = "PRE_MODERATION";
     const pendingRoot = await service.createComment(
       publishedCatalogId,
       fixtureUsers.active.id,

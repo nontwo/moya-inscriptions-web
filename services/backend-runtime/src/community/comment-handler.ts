@@ -3,6 +3,7 @@ import {
   isCommunityInputError,
   isCommunityNotFoundError,
   isCommunityStoreUnavailableError,
+  parseCommentListingQuery,
   parseCommentPageQuery,
   parseCreateCommentRequest,
   parseCreateReplyRequest,
@@ -20,6 +21,7 @@ import { readBearerToken } from "./session-credential.js";
 
 import type {
   CatalogCommentService,
+  CommentListingRequest,
   CommentPageRequest,
   CommentSubmission,
   CommunitySessionService,
@@ -103,22 +105,35 @@ const parseCommentId = (
 };
 
 /** An invalid page query is a transport error, not a body error. */
-const parsePage = (
+const parseQuery = <Parsed>(
   request: IncomingMessage,
   response: ServerResponse,
-  fallbackPageSize?: number,
-): CommentPageRequest | undefined => {
+  parse: (query: ReturnType<typeof collectTransportQuery>) => Parsed,
+): Parsed | undefined => {
   const url = new URL(request.url ?? "/", "http://request.invalid");
   try {
-    return parseCommentPageQuery(
-      collectTransportQuery(url.searchParams),
-      fallbackPageSize,
-    );
+    return parse(collectTransportQuery(url.searchParams));
   } catch {
     sendApiError(response, "INVALID_QUERY", "Invalid comment query");
     return undefined;
   }
 };
+
+/** The root listing accepts the pinned hot ids; the reply page does not. */
+const parseListing = (
+  request: IncomingMessage,
+  response: ServerResponse,
+): CommentListingRequest | undefined =>
+  parseQuery(request, response, parseCommentListingQuery);
+
+const parsePage = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  fallbackPageSize?: number,
+): CommentPageRequest | undefined =>
+  parseQuery(request, response, (query) =>
+    parseCommentPageQuery(query, fallbackPageSize),
+  );
 
 /** Resolves the session owner; undefined means the request is unauthenticated. */
 const identify = async (
@@ -161,10 +176,14 @@ export const handleReadComments = async (
 ): Promise<void> => {
   const catalogId = parseCatalogId(response, rawCatalogId);
   if (catalogId === undefined) return;
-  const page = parsePage(request, response);
-  if (page === undefined) return;
+  const listing = parseListing(request, response);
+  if (listing === undefined) return;
   try {
-    sendJson(response, 200, await commentService.readComments(catalogId, page));
+    sendJson(
+      response,
+      200,
+      await commentService.readComments(catalogId, listing),
+    );
   } catch (error) {
     sendFailure(response, error);
   }

@@ -8,6 +8,7 @@ import {
   catalogCommentPageJsonSchema,
   catalogCommentReplyJsonSchema,
   catalogCommentReplyPageJsonSchema,
+  catalogCommentListingTransportQueryJsonSchema,
   catalogCommentTransportQueryJsonSchema,
   catalogContributorJsonSchema,
   catalogContributorRoleJsonSchema,
@@ -173,18 +174,28 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       const pageParameters = parametersFor(name).filter(
         (parameter) => parameter.in === "query",
       );
-      expect(pageParameters.map((parameter) => parameter.name)).toEqual([
-        "page",
-        "pageSize",
-      ]);
+      // Only the root listing takes the pinned hot ids of a load-more sequence.
+      const listing = name === commentsPath;
+      expect(pageParameters.map((parameter) => parameter.name)).toEqual(
+        listing ? ["page", "pageSize", "pinned"] : ["page", "pageSize"],
+      );
       for (const parameter of pageParameters)
         expect(asObject(parameter.schema)).toEqual(
           schemaProperty(
-            catalogCommentTransportQueryJsonSchema,
+            listing
+              ? catalogCommentListingTransportQueryJsonSchema
+              : catalogCommentTransportQueryJsonSchema,
             String(parameter.name),
           ),
         );
     }
+    expect(getOperation(commentsPath).description).toContain("hot");
+    expect(
+      asObject(asObject(schemas.CatalogCommentPage).properties),
+    ).toHaveProperty("hot");
+    expect(
+      asObject(asObject(schemas.CatalogComment).properties),
+    ).toHaveProperty("replyTotal");
 
     expect(asObject(getOperation(commentsPath).responses)["200"]).toMatchObject(
       {
@@ -226,7 +237,15 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       );
     expect(
       Object.keys(asObject(asObject(schemas.CatalogComment).properties)),
-    ).toEqual(["id", "catalogId", "author", "text", "createdAt", "replies"]);
+    ).toEqual([
+      "id",
+      "catalogId",
+      "author",
+      "text",
+      "createdAt",
+      "replies",
+      "replyTotal",
+    ]);
     expect(
       Object.keys(asObject(asObject(schemas.CatalogCommentReply).properties)),
     ).toEqual(["id", "author", "text", "createdAt", "replyTo"]);

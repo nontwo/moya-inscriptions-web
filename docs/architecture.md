@@ -285,17 +285,21 @@ V1 is the one approved social domain (Owner amendment 2026-09-11): public-user
 identity and Backend-owned sessions are implemented (Mission 2A, including the
 Development-only test-account sign-in that is never composed in Production), and
 Mission 2B adds Catalog comments with exactly one level of replies, the
-Owner-controlled publication setting (`PRE_MODERATION` default) and the
-moderation surface. Comments live only in the community namespace and hold no
-cross-family foreign key: a write is admitted only after the published Catalog
-read side confirms the record, and comments never enter Catalog DTOs, the
-importer, CMS or Search. Payload holds no comment or public-user collection —
-the Owner's Admin view calls a loopback-only authenticated Backend operator
-boundary and the Backend stays the sole writer. The Formal comment UI follows in
-Mission 2C. Posts, likes, favorites, following, messaging and UGC media stay
-deferred. QA filter fixtures remain QA-only; hard-coded dynasties, script
-styles, kinds or regions do not become production taxonomies or contracts. No
-production filtering is added.
+Owner-controlled publication setting (`DIRECT_PUBLICATION` initial default since
+the 2026-09-12 scope amendment) and the moderation surface. The public listing
+is one combined list, a small Backend-computed hot section (visible roots ranked
+by visible replies, provisional Owner defaults) followed by the latest roots,
+with no root in both; replies stay flat and paginated, never ranked. Comments
+live only in the community namespace and hold no cross-family foreign key: a
+write is admitted only after the published Catalog read side confirms the
+record, and comments never enter Catalog DTOs, the importer, CMS or Search.
+Payload holds no comment or public-user collection — the Owner's Admin view
+calls a loopback-only authenticated Backend operator boundary and the Backend
+stays the sole writer. The Formal comment UI follows in Mission 2C. Posts,
+likes, favorites, following, messaging and UGC media stay deferred. QA filter
+fixtures remain QA-only; hard-coded dynasties, script styles, kinds or regions
+do not become production taxonomies or contracts. No production filtering is
+added.
 
 ## Stable guardrails
 

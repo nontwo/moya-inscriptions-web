@@ -3,6 +3,7 @@ import {
   applyCommentModerationSql,
   countOperatorCommentsSql,
   countVisibleCommentsSql,
+  countVisibleRepliesByRootSql,
   countVisibleRepliesSql,
   findCommentSql,
   findReplySql,
@@ -14,6 +15,7 @@ import {
   listVisibleCommentsSql,
   listVisibleRepliesSql,
   readPublicationSettingSql,
+  selectHotCommentsSql,
   writePublicationSettingSql,
 } from "./comment-queries.js";
 import {
@@ -29,6 +31,7 @@ import type {
   CatalogCommentRecord,
   CatalogCommentWithReplies,
   CommentInsert,
+  CommentListingRecord,
   CommentPageQuery,
   CommentPageRecord,
   CommunityCommentPort,
@@ -44,10 +47,16 @@ import type {
   OperatorComment,
   PublicationPolicy,
 } from "@moya/contracts/internal/community-operator";
-import type { Pool, QueryResultRow } from "pg";
+import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 const offset = (page: number, pageSize: number): number =>
   (page - 1) * pageSize;
+
+/** Runs one parameterized statement on whichever connection the caller holds. */
+type Runner = <Row extends QueryResultRow = QueryResultRow>(
+  sql: string,
+  values: readonly unknown[],
+) => Promise<readonly Row[]>;
 
 /**
  * App-role adapter for comments, moderation and the publication setting. It is
@@ -57,33 +66,59 @@ const offset = (page: number, pageSize: number): number =>
 export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
   constructor(private readonly pool: Pool) {}
 
+  /**
+   * One repeatable-read snapshot: the hot selection, the latest page, its
+   * total and the embedded replies all describe the same instant, so the two
+   * lists cannot overlap and the total cannot disagree with them.
+   */
   async readVisibleComments(
     query: CommentPageQuery,
-  ): Promise<CommentPageRecord<CatalogCommentWithReplies>> {
-    const [totals, rows] = await Promise.all([
-      this.query<{ total: unknown } & QueryResultRow>(countVisibleCommentsSql, [
-        query.catalogId,
-      ]),
-      this.query<CommentRow>(listVisibleCommentsSql, [
-        query.catalogId,
-        query.pageSize,
-        offset(query.page, query.pageSize),
-      ]),
-    ]);
-    const comments = rows.map(mapCommentRow);
-    const repliesByRoot = await this.readEmbeddedReplies(
-      comments.map((comment) => comment.id),
-      query.embeddedReplyLimit,
-    );
-    return {
-      items: comments.map((comment) => ({
+  ): Promise<CommentListingRecord<CatalogCommentWithReplies>> {
+    return this.snapshot(async (run) => {
+      const hot =
+        query.hotLimit > 0
+          ? (
+              await run<CommentRow>(selectHotCommentsSql, [
+                query.catalogId,
+                query.hotLimit,
+              ])
+            ).map(mapCommentRow)
+          : [];
+      const excluded = [
+        ...new Set([...query.pinned, ...hot.map((comment) => comment.id)]),
+      ];
+      const totals = await run<{ total: unknown } & QueryResultRow>(
+        countVisibleCommentsSql,
+        [query.catalogId, excluded],
+      );
+      const latest = (
+        await run<CommentRow>(listVisibleCommentsSql, [
+          query.catalogId,
+          query.pageSize,
+          offset(query.page, query.pageSize),
+          excluded,
+        ])
+      ).map(mapCommentRow);
+      const rootIds = [...hot, ...latest].map((comment) => comment.id);
+      const [repliesByRoot, replyTotals] = [
+        await this.readEmbeddedReplies(run, rootIds, query.embeddedReplyLimit),
+        await this.readReplyTotals(run, rootIds),
+      ];
+      const attach = (
+        comment: CatalogCommentRecord,
+      ): CatalogCommentWithReplies => ({
         ...comment,
         replies: repliesByRoot.get(comment.id) ?? [],
-      })),
-      total: parseCommentTotal(totals[0]?.total),
-      page: query.page,
-      pageSize: query.pageSize,
-    };
+        replyTotal: replyTotals.get(comment.id) ?? 0,
+      });
+      return {
+        hot: hot.map(attach),
+        items: latest.map(attach),
+        total: parseCommentTotal(totals[0]?.total),
+        page: query.page,
+        pageSize: query.pageSize,
+      };
+    });
   }
 
   async readVisibleReplies(
@@ -254,13 +289,28 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
     ]);
   }
 
+  private async readReplyTotals(
+    run: Runner,
+    rootIds: readonly CatalogCommentId[],
+  ): Promise<Map<string, number>> {
+    const totals = new Map<string, number>();
+    if (rootIds.length === 0) return totals;
+    const rows = await run<
+      { root_comment_id: unknown; total: unknown } & QueryResultRow
+    >(countVisibleRepliesByRootSql, [[...rootIds]]);
+    for (const row of rows)
+      totals.set(String(row.root_comment_id), parseCommentTotal(row.total));
+    return totals;
+  }
+
   private async readEmbeddedReplies(
+    run: Runner,
     rootIds: readonly CatalogCommentId[],
     limit: number,
   ): Promise<Map<string, CatalogCommentReplyRecord[]>> {
     const grouped = new Map<string, CatalogCommentReplyRecord[]>();
     if (rootIds.length === 0 || limit <= 0) return grouped;
-    const rows = await this.query<CommentRow>(listEmbeddedRepliesSql, [
+    const rows = await run<CommentRow>(listEmbeddedRepliesSql, [
       [...rootIds],
       limit,
     ]);
@@ -272,20 +322,43 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
     return grouped;
   }
 
+  private async connect(): Promise<PoolClient> {
+    try {
+      return await this.pool.connect();
+    } catch (error) {
+      throw asCommunityOperationError(error, "connect");
+    }
+  }
+
   private async query<Row extends QueryResultRow = QueryResultRow>(
     sql: string,
     values: readonly unknown[],
   ): Promise<readonly Row[]> {
-    let client;
-    try {
-      client = await this.pool.connect();
-    } catch (error) {
-      throw asCommunityOperationError(error, "connect");
-    }
+    const client = await this.connect();
     try {
       const result = await client.query<Row>(sql, [...values]);
       return result.rows;
     } catch (error) {
+      throw asCommunityOperationError(error, "query");
+    } finally {
+      client.release();
+    }
+  }
+
+  /** A read-only repeatable-read transaction: every statement sees one snapshot. */
+  private async snapshot<Result>(
+    read: (run: Runner) => Promise<Result>,
+  ): Promise<Result> {
+    const client = await this.connect();
+    const run: Runner = async (sql, values) =>
+      (await client.query(sql, [...values])).rows;
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const result = await read(run);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
       throw asCommunityOperationError(error, "query");
     } finally {
       client.release();

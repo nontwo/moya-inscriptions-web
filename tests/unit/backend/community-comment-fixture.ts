@@ -8,6 +8,7 @@ import type {
   CatalogCommentWithReplies,
   CatalogPublicationPort,
   CommentInsert,
+  CommentListingRecord,
   CommentPageQuery,
   CommentPageRecord,
   CommunityCommentPort,
@@ -61,7 +62,8 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     CatalogCommentReplyRecord & { readonly replyToReplyId?: string }
   >();
   readonly events: ModerationEvent[] = [];
-  policy: PublicationPolicy = "PRE_MODERATION";
+  /** DIRECT_PUBLICATION is the initial default since the 2026-09-12 scope amendment. */
+  policy: PublicationPolicy = "DIRECT_PUBLICATION";
   policyUpdatedAt = new Date("2026-09-12T00:00:00.000Z");
   policyUpdatedBy = "platform";
   unavailable = false;
@@ -79,27 +81,46 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
       .sort(byOldest);
   }
 
+  /** Mirrors the adapter's hot selection and exclusion, in one in-memory pass. */
   async readVisibleComments(
     query: CommentPageQuery,
-  ): Promise<CommentPageRecord<CatalogCommentWithReplies>> {
+  ): Promise<CommentListingRecord<CatalogCommentWithReplies>> {
     this.assertAvailable();
-    const matching = [...this.comments.values()]
-      .filter(
-        (comment) =>
-          comment.catalogId === query.catalogId &&
-          comment.moderation === "visible",
+    const visible = [...this.comments.values()].filter(
+      (comment) =>
+        comment.catalogId === query.catalogId &&
+        comment.moderation === "visible",
+    );
+    const heat = (id: string): number => this.visibleRepliesFor(id).length;
+    const hot = visible
+      .filter((comment) => heat(comment.id) > 0)
+      .sort(
+        (left, right) =>
+          heat(right.id) - heat(left.id) || byNewest(left, right),
       )
+      .slice(0, query.hotLimit);
+    const excluded = new Set<string>([
+      ...query.pinned,
+      ...hot.map((comment) => comment.id),
+    ]);
+    const latest = visible
+      .filter((comment) => !excluded.has(comment.id))
       .sort(byNewest);
+    const attach = (
+      comment: CatalogCommentRecord,
+    ): CatalogCommentWithReplies => ({
+      ...comment,
+      replies: this.visibleRepliesFor(comment.id).slice(
+        0,
+        query.embeddedReplyLimit,
+      ),
+      replyTotal: heat(comment.id),
+    });
     const start = (query.page - 1) * query.pageSize;
     return {
-      items: matching.slice(start, start + query.pageSize).map((comment) => ({
-        ...comment,
-        replies: this.visibleRepliesFor(comment.id).slice(
-          0,
-          query.embeddedReplyLimit,
-        ),
-      })),
-      total: matching.length,
+      hot: hot.map(attach),
+      items: latest.slice(start, start + query.pageSize).map(attach),
+      total: latest.length,
       page: query.page,
       pageSize: query.pageSize,
     };

@@ -14,6 +14,7 @@ import type {
   CatalogCommentRecord,
   CatalogCommentReplyRecord,
   CatalogCommentWithReplies,
+  CommentListingRecord,
   CommentPageRecord,
 } from "../../domain/catalog-comment.js";
 
@@ -23,6 +24,14 @@ export interface CommentPageQuery {
   readonly pageSize: number;
   /** Bounded first page of replies embedded in each returned comment. */
   readonly embeddedReplyLimit: number;
+  /**
+   * Upper bound of the hot section selected by the store: visible roots with
+   * at least one visible reply, most replies first, then newest, then id.
+   * 0 when the caller pinned a set instead of asking for a fresh selection.
+   */
+  readonly hotLimit: number;
+  /** Roots the latest list excludes in addition to the hot ones selected here. */
+  readonly pinned: readonly CatalogCommentId[];
 }
 
 export interface ReplyPageQuery {
@@ -82,10 +91,14 @@ export interface OperatorCommentQueryInput {
  * namespace. The Backend is the sole writer; nothing here deletes a row.
  */
 export interface CommunityCommentPort {
-  /** Visible root comments for one Catalog record, in server order. */
+  /**
+   * The combined listing for one Catalog record: the hot section, then the
+   * latest page excluding hot and pinned roots. Read in one snapshot, so the
+   * two lists and the total agree with each other.
+   */
   readVisibleComments(
     query: CommentPageQuery,
-  ): Promise<CommentPageRecord<CatalogCommentWithReplies>>;
+  ): Promise<CommentListingRecord<CatalogCommentWithReplies>>;
 
   /** Visible replies under one visible root, in server order. */
   readVisibleReplies(

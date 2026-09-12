@@ -1,4 +1,5 @@
 import {
+  catalogCommentListingTransportQuerySchema,
   catalogCommentTransportQuerySchema,
   createCatalogCommentReplyRequestSchema,
   createCatalogCommentRequestSchema,
@@ -7,6 +8,7 @@ import {
 import { CommunityInputError } from "../application/errors/community-request-errors.js";
 
 import type {
+  CatalogCommentId,
   CreateCatalogCommentReplyRequest,
   CreateCatalogCommentRequest,
 } from "@moya/contracts";
@@ -19,6 +21,11 @@ import type {
 export interface CommentPageRequest {
   readonly page: number;
   readonly pageSize: number;
+}
+
+/** The root listing request; `pinned` is present on load-more requests only. */
+export interface CommentListingRequest extends CommentPageRequest {
+  readonly pinned?: readonly CatalogCommentId[];
 }
 
 /** Fixed by the Mission 2B Contract review; Web never widens them. */
@@ -37,6 +44,23 @@ export const parseCommentPageQuery = (
     pageSize: parsed.data.pageSize
       ? Number(parsed.data.pageSize)
       : fallbackPageSize,
+  };
+};
+
+export const parseCommentListingQuery = (
+  input: unknown,
+): CommentListingRequest => {
+  const parsed = catalogCommentListingTransportQuerySchema.safeParse(
+    input ?? {},
+  );
+  if (!parsed.success)
+    throw new CommunityInputError("Comment listing query is invalid");
+  const { pinned, ...page } = parsed.data;
+  return {
+    ...parseCommentPageQuery(page),
+    ...(pinned === undefined
+      ? {}
+      : { pinned: pinned.split(",") as CatalogCommentId[] }),
   };
 };
 

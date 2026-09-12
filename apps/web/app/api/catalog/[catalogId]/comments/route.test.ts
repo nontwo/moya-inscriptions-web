@@ -16,6 +16,7 @@ const opaqueSession = "A".repeat(43);
 const catalogId = "catalog-001";
 const context = { params: Promise.resolve({ catalogId }) };
 const page = {
+  hot: [],
   items: [],
   total: 0,
   page: 1,
@@ -32,6 +33,7 @@ const comment = {
   text: "评论正文",
   createdAt: "2026-09-12T06:00:00.000Z",
   replies: [],
+  replyTotal: 0,
 };
 
 const readRequest = (query = "") =>
@@ -89,8 +91,26 @@ describe("same-origin comment bridge", () => {
     });
   });
 
+  it("forwards the pinned hot ids of a load-more request", async () => {
+    fetchPageMock.mockResolvedValue({ state: "success", page });
+    const response = await GET(
+      readRequest("?page=2&pinned=comment-a,comment-b"),
+      context,
+    );
+    expect(response.status).toBe(200);
+    expect(fetchPageMock).toHaveBeenCalledWith(catalogId, {
+      page: "2",
+      pinned: "comment-a,comment-b",
+    });
+  });
+
   it("rejects unknown or repeated query parameters before calling the Backend", async () => {
-    for (const query of ["?unknown=1", "?page=1&page=2", "?sort=hot"]) {
+    for (const query of [
+      "?unknown=1",
+      "?page=1&page=2",
+      "?sort=hot",
+      "?pinned=a&pinned=b",
+    ]) {
       const response = await GET(readRequest(query), context);
       expect(response.status).toBe(400);
     }

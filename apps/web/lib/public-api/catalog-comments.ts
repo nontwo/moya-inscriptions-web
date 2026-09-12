@@ -2,6 +2,7 @@ import {
   catalogCommentPageSchema,
   catalogCommentReplyPageSchema,
   catalogCommentReplySchema,
+  catalogCommentListingTransportQuerySchema,
   catalogCommentSchema,
   catalogCommentTransportQuerySchema,
   createCatalogCommentReplyRequestSchema,
@@ -12,6 +13,7 @@ import type {
   CatalogComment,
   CatalogCommentPage,
   CatalogCommentReply,
+  CatalogCommentListingTransportQuery,
   CatalogCommentReplyPage,
   CatalogCommentTransportQuery,
 } from "@moya/contracts";
@@ -58,7 +60,18 @@ export const parseCatalogCommentQuery = (
   return parsed.success ? parsed.data : null;
 };
 
-const withQuery = (url: URL, query: CatalogCommentTransportQuery): URL => {
+/** The root listing query: the page query plus the pinned hot ids. */
+export const parseCatalogCommentListingQuery = (
+  candidate: unknown,
+): CatalogCommentListingTransportQuery | null => {
+  const parsed = catalogCommentListingTransportQuerySchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+};
+
+const withQuery = (
+  url: URL,
+  query: CatalogCommentListingTransportQuery,
+): URL => {
   for (const [name, value] of Object.entries(query)) {
     if (value !== undefined) url.searchParams.set(name, value);
   }
@@ -100,7 +113,7 @@ const repliesUrl = (baseUrl: URL, catalogId: string, commentId: string): URL =>
 const readPage = async <Page>(
   context: CatalogCommentTransportContext,
   url: URL,
-  query: CatalogCommentTransportQuery,
+  query: CatalogCommentListingTransportQuery,
   parse: (candidate: unknown) => Page | null,
   signal?: AbortSignal,
 ): Promise<
@@ -168,7 +181,7 @@ const parseWith =
 export const fetchCatalogCommentPage = async (
   context: CatalogCommentTransportContext,
   catalogId: string,
-  query: CatalogCommentTransportQuery = {},
+  query: CatalogCommentListingTransportQuery = {},
   signal?: AbortSignal,
 ): Promise<CommentPageTransportResult> =>
   readPage(
