@@ -10,8 +10,8 @@
  * route. Opening a Production surface is a separate Owner decision under
  * decision 7 and changes this one resolver.
  *
- * Next inlines `process.env.NODE_ENV` per build: `next build` and
- * `next start` read "production", `next dev` reads "development" — the same
+ * Next inlines `process.env.NODE_ENV` per build: `next build` (served by
+ * `next start`) bakes in "production", `next dev` "development" — the same
  * gate the `/dev/*` routes rely on.
  */
 export const developmentSignInPath = "/dev/community";
