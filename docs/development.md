@@ -222,9 +222,19 @@ the Backend. No database browser UI or pgAdmin container enters the product.
 The test template deliberately separates `TEST_DATABASE_URL` (legacy test
 schema) from `CMS_TEST_DATABASE_URL` (Payload synthetic schema). Existing
 `pnpm test:postgres` and `pnpm test:cms` must use new disposable synthetic
-databases; do not point either at `yoyi_dev`, Stage A or real content. The CMS
-verification runner generates an isolated synthetic secret and local media
-workspace. Templates never load automatically into CI.
+databases; do not point either at `yoyi_dev`, Stage A or real content. Every
+suite under `tests/integration/postgres` enforces this before its first database
+access: the `TEST_DATABASE_URL` database name must be `moya_synthetic_test` or
+carry a whole `test` or `synthetic` segment (CI uses `moya_test`), and
+`yoyi_dev` is refused by name; see
+`tests/integration/postgres/synthetic-test-database.ts`. The guard reads the
+name only, and it covers those suites only: `node scripts/verify.mjs test` still
+runs `pnpm db:migrate` against `TEST_DATABASE_URL` before them, and
+`pnpm test:cms` runs through `scripts/editorial/verify-cms.mjs`, neither of
+which this guard protects — point the variable at a disposable database, and
+prefer the isolated `compose.postgres.yml` container. The CMS verification
+runner generates an isolated synthetic secret and local media workspace.
+Templates never load automatically into CI.
 
 `DATABASE_POOL_MAX` defaults to 5, `DATABASE_IDLE_TIMEOUT_MS` defaults to 10000,
 and Payload keeps `max=5`. Local loopback PostgreSQL does not need TLS; remote

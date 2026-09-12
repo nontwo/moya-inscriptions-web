@@ -13,9 +13,9 @@ import {
 } from "@moya/catalog-postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL;
-if (testDatabaseUrl === undefined)
-  throw new Error("TEST_DATABASE_URL is required for PostgreSQL tests");
+import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+
+const testDatabaseUrl = requireSyntheticTestDatabaseUrl();
 const schema = "p203_search_v1";
 const administration = createPostgresPool(
   parsePostgresConfig({ DATABASE_URL: testDatabaseUrl }),
