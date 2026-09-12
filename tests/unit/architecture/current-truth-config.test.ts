@@ -364,7 +364,18 @@ describe("current repository truth and local configuration", () => {
     ]);
 
     expect(formalPage).toContain("loadProductionProductStates");
-    expect(formalPage).toContain("<T02pProductPreview");
+    // Mission 2C: the accepted preview is reached through the Product
+    // application shell, which composes the live comment section on the client.
+    expect(formalPage).toContain("<ProductApplication");
+    expect(
+      await readFile(
+        path.join(
+          repositoryRoot,
+          "apps/web/features/product-application/product-application.tsx",
+        ),
+        "utf8",
+      ),
+    ).toContain("<T02pProductPreview");
     expect(
       await fileExists(
         path.join(repositoryRoot, "apps", "web", "app", "route.ts"),

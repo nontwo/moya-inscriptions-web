@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 
-import { T02pProductPreview } from "../../../features/product-preview/t02p-product-preview";
 import { parseHomeFeed } from "../../../features/home/home-feed";
+import { developmentSignInPath } from "../../../features/product-application/community-comment-surface";
+import { ProductApplication } from "../../../features/product-application/product-application";
 import { readDevelopmentRequestContext } from "./development-context";
 import { loadCleanPreviewStates } from "./development-data";
 
@@ -26,8 +27,11 @@ export default async function T02pDevelopmentPage({
       ? query.topic
       : null;
 
+  // Development only (guarded above): the real comment client is composed
+  // with the Development sign-in entry, as on the Formal root in Development.
   return (
-    <T02pProductPreview
+    <ProductApplication
+      comments={{ signInHref: developmentSignInPath }}
       initialHomeFeed={initialTopicId === null ? initialHomeFeed : "topics"}
       initialPlatform={initialPlatform}
       initialTopicId={initialTopicId}

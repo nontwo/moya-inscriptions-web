@@ -4,8 +4,9 @@ import {
   CatalogSearchProvider,
 } from "../features/search/catalog-search";
 import { parseHomeFeed } from "../features/home/home-feed";
+import { resolveCommunityCommentSurface } from "../features/product-application/community-comment-surface";
 import { loadProductionProductStates } from "../features/product-application/load-production-product-states";
-import { T02pProductPreview } from "../features/product-preview/t02p-product-preview";
+import { ProductApplication } from "../features/product-application/product-application";
 import { readFormalRequestContext } from "./formal-request-context";
 
 export default async function FormalPage({
@@ -28,7 +29,8 @@ export default async function FormalPage({
 
   return (
     <CatalogSearchProvider>
-      <T02pProductPreview
+      <ProductApplication
+        comments={resolveCommunityCommentSurface()}
         initialHomeFeed={initialTopicId === null ? initialHomeFeed : "topics"}
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId}
