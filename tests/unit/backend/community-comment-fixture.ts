@@ -14,6 +14,7 @@ import type {
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,
+  ModerationEventDraft,
   ModerationEventQueryInput,
   ModerationSummaryRecord,
   OperatorCommentListing,
@@ -211,19 +212,31 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     id: CatalogCommentId,
     moderation: CommentModerationState,
     from: readonly CommentModerationState[],
+    _operatorLabel?: string,
+    _at?: Date,
+    audit?: ModerationEventDraft,
   ): Promise<ModeratedSubject | null> {
     this.assertAvailable();
     if (this.failNextModeration.delete(id))
       throw new Error("Simulated moderation write failure");
+    const record = (subject: ModeratedSubject): ModeratedSubject => {
+      if (audit !== undefined)
+        this.events.push({
+          ...audit,
+          subjectKind: subject.kind,
+          subjectId: subject.id,
+        });
+      return subject;
+    };
     const comment = this.comments.get(id);
     if (comment !== undefined && from.includes(comment.moderation)) {
       this.comments.set(id, { ...comment, moderation });
-      return { id, kind: "comment", moderation };
+      return record({ id, kind: "comment", moderation });
     }
     const reply = this.replies.get(id);
     if (reply !== undefined && from.includes(reply.moderation)) {
       this.replies.set(id, { ...reply, moderation });
-      return { id, kind: "reply", moderation };
+      return record({ id, kind: "reply", moderation });
     }
     return null;
   }

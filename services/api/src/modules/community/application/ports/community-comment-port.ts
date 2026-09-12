@@ -74,6 +74,15 @@ export interface ModerationEvent {
   readonly detail?: string;
 }
 
+/**
+ * The audit row a comment transition writes with it: everything except the
+ * subject, which the store fills from the row it actually changed.
+ */
+export type ModerationEventDraft = Omit<
+  ModerationEvent,
+  "subjectKind" | "subjectId"
+>;
+
 /** What the moderation write actually changed; null when the id is unknown. */
 export interface ModeratedSubject {
   readonly id: CatalogCommentId;
@@ -154,7 +163,10 @@ export interface CommunityCommentPort {
   /**
    * Applies the moderation transition to a root comment or a reply. `from`
    * lists the states the edge may leave, so an out-of-machine transition
-   * matches no row and returns null (the caller turns that into 404).
+   * matches no row and returns null (the service reports a conflict when the
+   * subject exists, 404 when it does not). When `audit` is given, the
+   * transition and its audit row are written in one transaction, and nothing
+   * is recorded when no row matches.
    */
   applyCommentModeration(
     id: CatalogCommentId,
@@ -162,6 +174,7 @@ export interface CommunityCommentPort {
     from: readonly CommentModerationState[],
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<ModeratedSubject | null>;
 
   /** Bounded operator listing with its status counts; V1 keeps no large review queue. */

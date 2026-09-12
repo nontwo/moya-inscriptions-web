@@ -79,6 +79,7 @@ export type {
   ModeratedSubject,
   ModerationEvent,
   ModerationEventAction,
+  ModerationEventDraft,
   ModerationEventQueryInput,
   ModerationSummaryRecord,
   OperatorCommentListing,

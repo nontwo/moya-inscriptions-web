@@ -552,7 +552,7 @@ describe("Community V1 operator boundary", () => {
       ],
       applied: 1,
       conflicts: 1,
-      notFound: 0 + 1,
+      notFound: 1,
       failed: 0,
     });
     const tooMany = await operatorFetch(

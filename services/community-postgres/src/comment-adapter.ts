@@ -50,6 +50,7 @@ import type {
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,
+  ModerationEventDraft,
   ModerationEventQueryInput,
   ModerationSummaryRecord,
   OperatorCommentListing,
@@ -227,16 +228,36 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
     from: readonly CommentModerationState[],
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<ModeratedSubject | null> {
-    const rows = await this.query<
-      { id: unknown; moderation: unknown; kind: unknown } & QueryResultRow
-    >(applyCommentModerationSql, [
-      id,
-      moderation,
-      operatorLabel,
-      at,
-      [...from],
-    ]);
+    const values = [id, moderation, operatorLabel, at, [...from]];
+    type Changed = {
+      id: unknown;
+      moderation: unknown;
+      kind: unknown;
+    } & QueryResultRow;
+    const rows =
+      audit === undefined
+        ? await this.query<Changed>(applyCommentModerationSql, values)
+        : await this.transaction(async (run) => {
+            const changed = await run<Changed>(
+              applyCommentModerationSql,
+              values,
+            );
+            const subject = changed[0];
+            // The audit row exists exactly when the transition happened.
+            if (subject !== undefined)
+              await run(insertModerationEventSql, [
+                audit.id,
+                audit.occurredAt,
+                audit.operatorLabel,
+                audit.action,
+                subject.kind,
+                subject.id,
+                audit.detail ?? null,
+              ]);
+            return changed;
+          });
     const row = rows[0];
     if (row === undefined) return null;
     if (
@@ -464,15 +485,32 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
   }
 
   /** A read-only repeatable-read transaction: every statement sees one snapshot. */
-  private async snapshot<Result>(
+  private snapshot<Result>(
     read: (run: Runner) => Promise<Result>,
+  ): Promise<Result> {
+    return this.inTransaction(
+      "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+      read,
+    );
+  }
+
+  /** A read-write transaction: a transition and its audit row commit together. */
+  private transaction<Result>(
+    write: (run: Runner) => Promise<Result>,
+  ): Promise<Result> {
+    return this.inTransaction("BEGIN", write);
+  }
+
+  private async inTransaction<Result>(
+    begin: string,
+    work: (run: Runner) => Promise<Result>,
   ): Promise<Result> {
     const client = await this.connect();
     const run: Runner = async (sql, values) =>
       (await client.query(sql, [...values])).rows;
     try {
-      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      const result = await read(run);
+      await client.query(begin);
+      const result = await work(run);
       await client.query("COMMIT");
       return result;
     } catch (error) {

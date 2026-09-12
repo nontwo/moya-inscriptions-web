@@ -155,7 +155,8 @@ export const insertReplySql = `
  * Comment ids are unique across both tables, so at most one branch matches.
  * `$5` carries the states the requested transition may leave, so an
  * out-of-machine edge (approving a hidden item, hiding a pending one) matches
- * no row and surfaces as 404 instead of silently rewriting the state.
+ * no row: the service then answers 409 for a known subject and 404 for an
+ * unknown one, and never silently rewrites the state.
  */
 export const applyCommentModerationSql = `
   WITH root AS (

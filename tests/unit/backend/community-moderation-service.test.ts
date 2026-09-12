@@ -304,6 +304,19 @@ describe("CommunityModerationService", () => {
     });
   });
 
+  it("records a policy switch once and never a no-op choice", async () => {
+    const harness = createHarness();
+    const same = await harness.moderation.setPublicationPolicy({
+      policy: "DIRECT_PUBLICATION",
+    });
+    expect(same.policy).toBe("DIRECT_PUBLICATION");
+    expect(harness.commentPort.events).toHaveLength(0);
+    await harness.moderation.setPublicationPolicy({ policy: "PRE_MODERATION" });
+    expect(harness.commentPort.events.map((event) => event.action)).toEqual([
+      "set_publication_policy",
+    ]);
+  });
+
   it("reads the history and a ranged summary with explicit numbers", async () => {
     const harness = createHarness();
     harness.commentPort.policy = "PRE_MODERATION";

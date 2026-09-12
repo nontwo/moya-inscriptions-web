@@ -583,10 +583,12 @@ following bounded changes and reopens nothing in sections 11 and 12.
    order independent of the public hot/latest ordering, a context panel with
    thread context and the item's audit history, a separate publication-setting
    view and an operation-history view backed by the audit table; navigation
-   organized around work (工作台 / 内容 / 社区 / 系统与自动化) with a workspace
-   card carrying a few real numbers. Payload stays the only Admin application;
-   no collection slug is renamed and no database ownership moves. Catalog
-   context reaches Admin only through the Backend's published read side.
+   organized around work (the dashboard as 工作台; sidebar
+   groups 内容, 社区, 系统与自动化 and 自动化工具 for the editorial batch
+   workflow) with a workspace card carrying a few real numbers. Payload stays
+   the only Admin application; no collection slug is renamed and no database
+   ownership moves. Catalog context reaches Admin only through the Backend's
+   published read side.
 4. Bounded bulk moderation: selected items on the current page only, at most 50,
    through the same authorized operations and transition checks as a single
    action, with per-item success, conflict and failure reporting and a retry of

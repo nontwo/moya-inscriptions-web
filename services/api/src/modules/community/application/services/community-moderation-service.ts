@@ -21,6 +21,7 @@ import {
   isCommunityConflictError,
   isCommunityNotFoundError,
 } from "../errors/community-request-errors.js";
+import { isCommunityStoreUnavailableError } from "../errors/community-store-unavailable-error.js";
 import { DisabledCommentAnalysisPort } from "../ports/comment-analysis-port.js";
 import { defaultRandomBytes, generateOpaqueId } from "../session-token.js";
 
@@ -152,6 +153,9 @@ export class CommunityModerationService {
    */
   async setPublicationPolicy(body: unknown): Promise<PublicationPolicyState> {
     const command = this.parse(setPublicationPolicyCommandSchema, body);
+    // Choosing the mode already in force changes nothing and records nothing.
+    const current = await this.readPublicationPolicy();
+    if (current.policy === command.policy) return current;
     const at = this.clock();
     await this.commentPort.writePublicationPolicy(
       command.policy,
@@ -251,12 +255,20 @@ export class CommunityModerationService {
     const { action } = this.parse(moderateCommentCommandSchema, body);
     const at = this.clock();
     const transition = moderationTransitions[action];
+    // The audit row is written in the same transaction as the transition, so
+    // a moderated row without its record (or the reverse) cannot exist.
     const moderated = await this.commentPort.applyCommentModeration(
       id,
       transition.to,
       transition.from,
       this.operatorLabel,
       at,
+      {
+        id: generateOpaqueId("moderation", this.randomBytes),
+        occurredAt: at,
+        operatorLabel: this.operatorLabel,
+        action,
+      },
     );
     if (moderated === null) {
       const current = await this.commentPort.findOperatorComment(id);
@@ -266,7 +278,6 @@ export class CommunityModerationService {
         `Comment is ${current.moderation}; ${action} requires ${transition.from.join(" or ")}`,
       );
     }
-    await this.record(action, moderated.kind, moderated.id, at);
     return { id: moderated.id, moderation: moderated.moderation };
   }
 
@@ -297,6 +308,13 @@ export class CommunityModerationService {
         } else if (isCommunityNotFoundError(error)) {
           results.push({ id, outcome: "not_found" });
           tally.notFound += 1;
+        } else if (isCommunityStoreUnavailableError(error)) {
+          // The store is down: the rest of the selection cannot be attempted.
+          for (const remaining of ids.slice(results.length)) {
+            results.push({ id: remaining, outcome: "failed" });
+            tally.failed += 1;
+          }
+          break;
         } else {
           results.push({ id, outcome: "failed" });
           tally.failed += 1;
