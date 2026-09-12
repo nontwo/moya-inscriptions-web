@@ -286,10 +286,21 @@ Active development tracks (independent of the parked cloud track):
    Development-only test-account sign-in and the `/dev/community` entry) is
    merged as `4077aef` after the Owner's Development acceptance at `76655ff`.
    Mission 2B (Catalog comments with one reply level, bounded reply pagination,
-   the Owner-controlled publication setting, the moderation surface in Payload
-   Admin over the authenticated Backend operator boundary, and the same-origin
-   comment routes) is implemented as a Draft PR awaiting review; Mission 2C
-   starts only after it is merged and verified.
+   hot-first listing, the Owner-controlled publication setting defaulting to
+   direct publication, the same-origin comment routes and the Backend operator
+   boundary) is merged as `3d0f69e`; its Development acceptance preview
+   (`/dev/community/preview`) as `9c75964`; the revised moderation workspace in
+   Payload Admin, visually accepted by the Owner on 2026-09-12, as `0fa6d5e`.
+   Mission 2C (the Formal root, `/dev/t02p` and the preview composing the real
+   comment client through the frozen seam, Development runtime only) passed
+   Owner acceptance on 2026-09-12 at `8f5e7b3` and is delivered through PR #116;
+   its frozen Behavior Matrix and the acceptance record are in
+   `docs/community/mission-2c-formal-comments.md`. Community features stay
+   unavailable in Production: outside the Development runtime the Formal
+   composition resolves to no comment section and no Development sign-in link,
+   and opening any Community surface in Production still requires decision 7 of
+   the amendment, the P2-R2 release gates and separate Owner Production
+   authority.
 2. **Home Discover progressive loading** — small product task using the
    established explicit “继续加载” pattern; not mixed into Community work.
 3. **Editorial hardening on the local P2-R2A environment** — independent of

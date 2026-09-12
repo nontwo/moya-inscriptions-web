@@ -12,8 +12,14 @@ const read = (file: string) =>
 describe("formal Search V1 boundaries", () => {
   it("uses the existing ProductShell slots and the sole Detail navigation owner", async () => {
     const formal = await read("apps/web/app/page.tsx");
+    const application = await read(
+      "apps/web/features/product-application/product-application.tsx",
+    );
     const search = await read("apps/web/features/search/catalog-search.tsx");
-    expect(formal).toContain("T02pProductPreview");
+    // The Product application shell (Mission 2C) wraps the accepted preview;
+    // the Formal page still owns the Search slots.
+    expect(formal).toContain("ProductApplication");
+    expect(application).toContain("T02pProductPreview");
     expect(formal).toContain(
       "navigationAction={<CatalogSearchNavigationAction",
     );

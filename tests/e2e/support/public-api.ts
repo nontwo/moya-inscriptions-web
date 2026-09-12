@@ -328,6 +328,33 @@ const server = createServer((request, response) => {
     return;
   }
 
+  // Community V1 (Mission 2C): the Formal root composes the live comment
+  // section in the Development runtime, so the fixture answers the anonymous
+  // reads with an empty listing for every known record. Writes and the
+  // session probe stay outside the fixture: no cookie is ever issued here, so
+  // the Web relay answers /api/community/me with 401 on its own.
+  const commentListingMatch = url.pathname.match(
+    /^\/(?:paging\/)?v1\/catalog\/([^/]+)\/comments$/,
+  );
+  if (commentListingMatch) {
+    const requestedId = decodeURIComponent(commentListingMatch[1] ?? "");
+    if (!details.has(requestedId)) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    const pageSize = Number(url.searchParams.get("pageSize") ?? "10");
+    sendJson(response, 200, {
+      hot: [],
+      items: [],
+      page: Number(url.searchParams.get("page") ?? "1"),
+      pageSize,
+      total: 0,
+      totalPages: 0,
+    });
+    return;
+  }
+
   const catalogDetailMatch = url.pathname.match(
     /^\/(?:paging\/)?v1\/catalog\/([^/]+)$/,
   );

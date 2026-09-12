@@ -866,6 +866,15 @@ test("MIG-D1 direct multi-media Detail preserves Carousel and scroll across resi
     detail.locator("[data-detail-facts]"),
     "periodLabel de-dup",
   ).not.toContainText(/朝代|年代/u);
+  // Mission 2C composes the live comment section here too: on pc and
+  // tablet-landscape the accepted layout folds the reading flow behind 详情,
+  // so open it before reading the sections it holds.
+  const disclosure = detail.locator("[data-detail-reading-disclosure]");
+  if (
+    (await disclosure.count()) > 0 &&
+    (await disclosure.getAttribute("open")) === null
+  )
+    await disclosure.locator("summary").click();
   await expect(
     detail.getByText("用于验证多媒体与响应式连续性。", { exact: true }),
   ).toHaveCount(1);
@@ -992,9 +1001,21 @@ test("MIG-D1 direct multi-media Detail preserves Carousel and scroll across resi
     );
     await page.setViewportSize(viewport);
   }
+  // A layout change re-mounts the wide layout with 详情 folded again, so the
+  // scroller may be shorter than the remembered position: the position is
+  // kept (history) and applied as far as the content reaches.
   await expect
-    .poll(() => scroller.evaluate((node) => (node as HTMLElement).scrollTop))
-    .toBe(recordedScroll);
+    .poll(() =>
+      scroller.evaluate((node, desiredTop) => {
+        const element = node as HTMLElement;
+        const maximum = Math.max(
+          0,
+          element.scrollHeight - element.clientHeight,
+        );
+        return Math.abs(element.scrollTop - Math.min(desiredTop, maximum)) <= 2;
+      }, recordedScroll),
+    )
+    .toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() =>

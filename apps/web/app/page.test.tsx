@@ -1,14 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   loadProductionProductStatesMock,
   readFormalRequestContextMock,
-  t02pProductPreviewMock,
+  productApplicationMock,
 } = vi.hoisted(() => ({
   loadProductionProductStatesMock: vi.fn(),
   readFormalRequestContextMock: vi.fn(),
-  t02pProductPreviewMock: vi.fn(),
+  productApplicationMock: vi.fn(),
 }));
 
 vi.mock(
@@ -18,9 +18,9 @@ vi.mock(
 vi.mock("./formal-request-context", () => ({
   readFormalRequestContext: readFormalRequestContextMock,
 }));
-vi.mock("../features/product-preview/t02p-product-preview", () => ({
-  T02pProductPreview: (props: unknown) => {
-    t02pProductPreviewMock(props);
+vi.mock("../features/product-application/product-application", () => ({
+  ProductApplication: (props: unknown) => {
+    productApplicationMock(props);
     return <div data-formal-product-application="" />;
   },
 }));
@@ -36,24 +36,28 @@ const states = { identity: "production-states" };
 beforeEach(() => {
   loadProductionProductStatesMock.mockReset();
   readFormalRequestContextMock.mockReset();
-  t02pProductPreviewMock.mockReset();
+  productApplicationMock.mockReset();
   loadProductionProductStatesMock.mockResolvedValue(states);
   readFormalRequestContextMock.mockResolvedValue({
     initialPlatform: "tablet",
   });
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("FormalPage", () => {
   it("renders the accepted Product application with Production state only", async () => {
     const markup = renderToStaticMarkup(await FormalPage({}));
 
     expect(markup).toContain("data-formal-product-application");
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
+    expect(productApplicationMock.mock.calls[0]?.[0]).not.toHaveProperty(
       "quickActions",
     );
     expect(readFormalRequestContextMock).toHaveBeenCalledOnce();
     expect(loadProductionProductStatesMock).toHaveBeenCalledOnce();
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).toEqual({
+    // Outside the Development runtime no comment section is composed.
+    expect(productApplicationMock.mock.calls[0]?.[0]).toEqual({
+      comments: null,
       initialHomeFeed: "discover",
       initialPlatform: "tablet",
       initialTopicId: null,
@@ -63,9 +67,24 @@ describe("FormalPage", () => {
       productUtility: expect.objectContaining({ type: CatalogSearch }),
       states,
     });
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).not.toHaveProperty(
+    expect(productApplicationMock.mock.calls[0]?.[0]).not.toHaveProperty(
       "inscriptionUtility",
     );
+  });
+
+  it("composes the live comment section with the Development sign-in entry only in Development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    renderToStaticMarkup(await FormalPage({}));
+    expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
+      comments: { signInHref: "/dev/community" },
+    });
+
+    productApplicationMock.mockReset();
+    vi.stubEnv("NODE_ENV", "production");
+    renderToStaticMarkup(await FormalPage({}));
+    expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
+      comments: null,
+    });
   });
 
   it.each(["discover", "nearby", "topics"] as const)(
@@ -75,7 +94,7 @@ describe("FormalPage", () => {
         await FormalPage({ searchParams: Promise.resolve({ feed }) }),
       );
 
-      expect(t02pProductPreviewMock.mock.calls[0]?.[0]).toMatchObject({
+      expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
         initialHomeFeed: feed,
         initialTopicId: null,
       });
@@ -89,7 +108,7 @@ describe("FormalPage", () => {
       }),
     );
 
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).toMatchObject({
+    expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
       initialHomeFeed: "discover",
       initialTopicId: null,
     });
@@ -102,7 +121,7 @@ describe("FormalPage", () => {
       }),
     );
 
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).toMatchObject({
+    expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
       initialHomeFeed: "topics",
       initialTopicId: "topic-one",
     });
@@ -120,7 +139,8 @@ describe("FormalPage", () => {
       }),
     );
 
-    expect(t02pProductPreviewMock.mock.calls[0]?.[0]).toEqual({
+    expect(productApplicationMock.mock.calls[0]?.[0]).toEqual({
+      comments: null,
       initialHomeFeed: "nearby",
       initialPlatform: "tablet",
       initialTopicId: null,

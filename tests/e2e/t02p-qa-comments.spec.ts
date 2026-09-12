@@ -129,17 +129,31 @@ test("long comments stay inside the single Detail scroller on every project", as
   await expect(page.locator("[data-detail-scroll]")).toHaveCount(1);
 });
 
-test("formal compositions render no comment section", async ({
+test("formal compositions render the live comment section over the real client", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium");
+  // Mission 2C: the Formal root and /dev/t02p compose the real comment client
+  // in the Development runtime the fixture runs; the QA store never reaches
+  // them. The fixture serves an empty listing and issues no session, so the
+  // truthful states are "no comments yet" and signed out with the
+  // Development sign-in entry.
   for (const path of [
     "/?catalogId=runtime-inscription-no-media",
     "/dev/t02p?catalogId=runtime-inscription-no-media",
   ]) {
     expect((await page.goto(path))?.status()).toBe(200);
     await expect(page.locator("[data-detail-experience]")).toBeVisible();
-    await expect(page.locator("[data-comment-section]")).toHaveCount(0);
+    const section = page.locator("[data-comment-section]");
+    await expect(section).toHaveCount(1);
+    await expect(section).toHaveAttribute("data-comment-presentation", "live");
+    await expect(section.locator("[data-comment-empty]")).toBeVisible();
+    await expect(
+      section.locator("[data-comment-signed-out] a[href='/dev/community']"),
+    ).toBeVisible();
+    await expect(section.locator("[data-comment-composer]")).toHaveCount(0);
+    await expect(section.locator("[data-comment-sort]")).toHaveCount(0);
+    await expect(section.locator("[data-comment-like]")).toHaveCount(0);
   }
 });
 

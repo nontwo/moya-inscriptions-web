@@ -112,7 +112,9 @@ enter PostgreSQL, Public API, Contracts, importer, workbook, or Production
 runtime data.
 
 - `/dev/t02p` and `/dev/t02p/qa` are Development-only React acceptance surfaces;
-  Production returns 404.
+  Production returns 404. `/dev/community` (Development sign-in) and
+  `/dev/community/preview` (the Community acceptance entry) are Development-only
+  as well.
 - `/docs/prototypes/mobile-preview/` is a direct non-production static
   Prototype.
 - `apps/web/lib/t02-static-files.ts` remains a Prototype-serving utility with a
@@ -307,10 +309,13 @@ by one through the same edges with per-item outcomes. Machine analysis is a
 provider-independent, advisory boundary (see
 `docs/community-analysis-boundary.md`): it may recommend, never act, and an
 unconfigured provider reads as "not connected", never as clean. The Formal
-comment UI follows in Mission 2C. Posts, likes, favorites, following, messaging
-and UGC media stay deferred. QA filter fixtures remain QA-only; hard-coded
-dynasties, script styles, kinds or regions do not become production taxonomies
-or contracts. No production filtering is added.
+comment UI (Mission 2C) composes the real comment client through the frozen #106
+seam on every Catalog Detail of the Product application, in the Development
+runtime only; a Production build composes no comment section until the decision
+7 gates are met. Posts, likes, favorites, following, messaging and UGC media
+stay deferred. QA filter fixtures remain QA-only; hard-coded dynasties, script
+styles, kinds or regions do not become production taxonomies or contracts. No
+production filtering is added.
 
 ## Stable guardrails
 

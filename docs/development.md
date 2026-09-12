@@ -104,6 +104,23 @@ the page answer 404 unless `NODE_ENV=development`, and the Backend composes
 `/v1/development/*` only under `NODE_ENV=development`; Production has no sign-in
 path.
 
+### Where comments show (Mission 2C)
+
+In the Development runtime the Formal root `/`, `/dev/t02p` and the acceptance
+entry `/dev/community/preview` all compose the same Product application with the
+live comment section on every Catalog Detail: open a record from Home, Browse or
+Search and the comments load from `GET /api/catalog/{catalogId}/comments` (hot
+roots first, then the latest, `加载更多评论`, `查看更多回复`). Signed out, the
+composer is replaced by a link to `/dev/community`; signed in, submissions go
+through the same-origin routes and every failure keeps the draft and says why.
+`/dev/community/preview` differs only in its clean Development states and stays
+as the regression and acceptance entry. A Production build composes no comment
+section and links to no Development route
+(`apps/web/features/product-application/community-comment-surface.ts`):
+Production exposure of any Community surface stays deferred under decision 7 of
+the 2026-09-11 amendment. The QA prototype at `/dev/t02p/qa` keeps its fixture
+store and scenarios and never uses the real client.
+
 ## Community V1 comments and moderation
 
 Mission 2B adds Catalog comments with one level of replies, the Owner-controlled

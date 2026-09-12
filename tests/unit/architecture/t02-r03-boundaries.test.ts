@@ -114,9 +114,22 @@ describe("T02 R03 architecture boundaries", () => {
       path.join(repositoryRoot, "apps/web/app/catalog/[catalogId]/route.ts"),
       "utf8",
     );
-    expect(formal).toContain("T02pProductPreview");
+    // The accepted preview reaches the Formal root through the Product
+    // application shell (Mission 2C), which composes comments on the client.
+    expect(formal).toContain("ProductApplication");
     expect(formal).not.toMatch(
       /readT02Document|t02-static-files|(?:^|[/])app\/dev|development-data|features\/qa|docs\/prototypes/u,
+    );
+    const application = await readFile(
+      path.join(
+        repositoryRoot,
+        "apps/web/features/product-application/product-application.tsx",
+      ),
+      "utf8",
+    );
+    expect(application).toContain("T02pProductPreview");
+    expect(application).not.toMatch(
+      /readT02Document|t02-static-files|(?:^|[/])app\/dev|development-data|features\/qa|docs\/prototypes|useQaCommentStore|comment-scenarios/u,
     );
     expect(catalogRedirect).not.toMatch(
       /T02pProductPreview|HomeScreen|TopicDetail|apps\/web\/qa|features\/qa/u,
