@@ -78,6 +78,18 @@ const records = [
       "这是一条仅存在于本地 Development 数据库的合成资料，评论区初始为空。",
     ),
   },
+  {
+    catalogId: "catalog-dev-acceptance-04",
+    sourceId: "source-dev-acceptance-04",
+    kind: "inscription",
+    title: "验收样例四 · 审核队列长文（合成）",
+    summary:
+      "Development 验收用合成资料。评论区包含较长的中文段落、回复与多种审核状态，用于检查后台审核队列的分页、搜索与详情。",
+    periodLabel: "合成样例",
+    ...statefulGroups(
+      "这是一条仅存在于本地 Development 数据库的合成资料，评论以较长的中文段落为主，用于验收后台审核工作区。",
+    ),
+  },
 ] as const;
 
 const payload = await getPayload({ config });

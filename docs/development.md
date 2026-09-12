@@ -130,21 +130,57 @@ Catalog record and reply once under a root comment. Reads are anonymous:
 - `POST` on either path requires the session cookie. `201` means the submission
   is visible; `202` means it entered moderation and awaits Owner approval.
 
-The Owner moderates in Payload Admin at
-`http://127.0.0.1:3002/admin/community-moderation`: switch the publication
-setting between 直接发布 (`DIRECT_PUBLICATION`, the initial default since the
-2026-09-12 scope amendment; forward migration `20260912080000` flips only the
-untouched platform seed and never a saved Owner choice)
-and 先审后发 (`PRE_MODERATION`), approve, hide or unhide a comment or reply, and
-suspend or reinstate an author. Switching the setting affects new submissions
-only; nothing is bulk-published or bulk-hidden, and nothing is ever deleted.
+The Owner moderates in Payload Admin (sign in at `http://127.0.0.1:3002/admin`;
+the sidebar group 社区 and the workspace card lead there):
+
+- `/admin/community-moderation` — the review queue, the primary working surface.
+  It lists root comments and replies together with status tabs
+  (待审核 / 已公开 / 已隐藏 / 全部) whose counts follow the current search and
+  filters, server-side search over comment text and the author's handle or
+  display name, bounded filters by Catalog record and item type, newest or
+  oldest review order, server-side pagination at 20 or 50 per page, row actions
+  that show only the applicable transitions
+  (pending: 通过并公开 / 拒绝；visible: 隐藏；hidden: 恢复公开), a 更多 menu for
+  account suspension or reinstatement behind a confirmation, and selected-item
+  bulk actions for at most 50 items on the current page with per-item outcomes
+  (applied, state conflict, not found, failed) and a retry of the failed items
+  only. Clicking an item opens a context panel (`?item=`) with the full text,
+  the root and replied-to context for a reply, the Catalog title and list link,
+  the author and account status, the stored state with any parent restriction,
+  the item's own audit history and the machine-analysis state ("未接入" when no
+  provider is configured). Filters, page and the open item live in the URL, so
+  browser back, reload and direct entry agree.
+- `/admin/community-moderation/settings` — the publication
+  setting: 直接发布 (`DIRECT_PUBLICATION`, the initial default since the
+  2026-09-12 scope amendment; forward migration `20260912080000` flips only the
+  untouched platform seed and never a saved Owner choice)
+  or 先审后发 (`PRE_MODERATION`). Switching affects new submissions only;
+  nothing is bulk-published or bulk-hidden, nothing is ever deleted, and a reply
+  never bypasses a pending or hidden root.
+- `/admin/community-moderation/history` — the operation history, straight from
+  the audit table, filterable by action.
+
+Selected tabs and mode options are black with white text; unselected ones light
+gray with dark text (`aria-selected` / `aria-checked`, never a disabled look).
+Timestamps are Beijing time (UTC+8) with the precise timestamp in the detail
+panel. A failed or conflicting action keeps the item in place with its own
+message (refresh for a state conflict, retry for a transient failure); a success
+leaves a receipt that a later list refresh does not erase. Every action is a
+single audited transition of the comment state machine (`approve`, `reject` =
+pending → hidden, `hide`, `unhide`); a stale state is a 409 conflict, never a
+silent rewrite or a misleading audit entry.
+
 Admin never touches community tables: it calls the Backend's loopback-only
 `/internal/community/*` boundary at `COMMUNITY_OPERATOR_BASE_URL` with the
 shared `COMMUNITY_OPERATOR_TOKEN`, both from `.env.local`, and the Backend stays
-the sole writer. The base URL must resolve to loopback whatever its scheme, so
-the credential never leaves the machine. Leave the token unset and the boundary
-rejects every request, so the moderation view reports that it is not configured
-rather than opening.
+the sole writer. Catalog titles in the queue come from the Backend's published
+Catalog read side, never from a Payload join. The base URL must resolve to
+loopback whatever its scheme, so the credential never leaves the machine. Leave
+the token unset and the boundary rejects every request, so the moderation views
+and the workspace card report that the Backend is not connected rather than
+opening. In Development the Admin dev server allows `127.0.0.1`, `localhost` and
+the hosts in `MOYA_ALLOWED_DEV_ORIGINS`; without the loopback entries Next
+refuses its own dev chunks and the Admin renders blank.
 
 The view's own server routes are `POST /api/community-moderation/*` in Payload.
 They carry that prefix deliberately: Payload mounts every endpoint under `/api`,

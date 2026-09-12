@@ -54,6 +54,7 @@
     "./migration-runner": "./src/migration/run.ts",
     "./runtime-settings": "./src/runtime-settings.ts",
     "./migration-guard": "./src/migration/guard.ts",
-    "./local-media-read": "./src/media/local-read.ts"
+    "./local-media-read": "./src/media/local-read.ts",
+    "./community-endpoints": "./src/community/endpoints.ts"
   }
 }

@@ -56,7 +56,31 @@ const operatorToken = (): string => {
 };
 
 const statusCode = (status: number): number =>
-  status === 404 ? 404 : status === 400 ? 400 : status === 503 ? 503 : 502;
+  status === 404
+    ? 404
+    : status === 409
+      ? 409
+      : status === 400
+        ? 400
+        : status === 503
+          ? 503
+          : 502;
+
+/**
+ * The Backend's bare codes become Admin codes the view can explain: a stale
+ * state is a conflict to refresh from, an unknown subject is gone, an
+ * unavailable store is a retry later; anything else is a plain failure.
+ */
+const operatorFailureCode = (status: number): string =>
+  status === 401
+    ? "OPERATOR_UNAUTHORIZED"
+    : status === 404
+      ? "NOT_FOUND"
+      : status === 409
+        ? "STATE_CONFLICT"
+        : status === 503
+          ? "OPERATOR_UNAVAILABLE"
+          : "OPERATION_FAILED";
 
 export const callCommunityOperator = async <Result>(
   method: "GET" | "POST" | "PUT",
@@ -84,7 +108,7 @@ export const callCommunityOperator = async <Result>(
   }
   if (!response.ok)
     throw new CommunityOperatorError(
-      response.status === 401 ? "OPERATOR_UNAUTHORIZED" : "OPERATION_FAILED",
+      operatorFailureCode(response.status),
       statusCode(response.status),
     );
   return (await response.json()) as Result;

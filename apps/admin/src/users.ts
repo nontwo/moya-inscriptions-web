@@ -6,7 +6,7 @@ const ownerField: FieldAccess = ({ req }) =>
 export const Users: CollectionConfig = {
   slug: "users",
   labels: { singular: "操作身份", plural: "操作身份" },
-  admin: { useAsTitle: "email", group: "权限" },
+  admin: { useAsTitle: "email", group: "系统与自动化" },
   auth: {
     useAPIKey: true,
     tokenExpiration: 7200,
