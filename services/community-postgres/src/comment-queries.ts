@@ -178,6 +178,7 @@ export const applyCommentModerationSql = `
 
 const operatorCommentUnion = `
   SELECT c.id, 'comment' AS kind, c.catalog_id, NULL::text AS root_comment_id,
+         NULL::text AS reply_to_reply_id,
          c.text, c.created_at, c.moderation,
          u.id AS author_id, u.handle AS author_handle,
          u.display_name AS author_display_name, u.status AS author_status
@@ -185,6 +186,7 @@ const operatorCommentUnion = `
   JOIN community.public_users u ON u.id = c.author_id
   UNION ALL
   SELECT r.id, 'reply' AS kind, c.catalog_id, r.root_comment_id,
+         r.reply_to_reply_id,
          r.text, r.created_at, r.moderation,
          u.id AS author_id, u.handle AS author_handle,
          u.display_name AS author_display_name, u.status AS author_status
@@ -193,17 +195,93 @@ const operatorCommentUnion = `
   JOIN community.public_users u ON u.id = r.author_id
 `;
 
+/**
+ * The review filters: `$1` state (NULL = every state), `$2` kind, `$3`
+ * Catalog record, `$4` a pre-escaped substring pattern matched against the
+ * text and the author's handle and display name. Nothing here is the public
+ * hot ordering; the Owner reviews newest or oldest first.
+ */
+const operatorFilter = `
+  WHERE ($1::text IS NULL OR entries.moderation = $1::text)
+    AND ($2::text IS NULL OR entries.kind = $2::text)
+    AND ($3::text IS NULL OR entries.catalog_id = $3::text)
+    AND (
+      $4::text IS NULL
+      OR entries.text ILIKE $4::text ESCAPE '\\'
+      OR entries.author_handle ILIKE $4::text ESCAPE '\\'
+      OR entries.author_display_name ILIKE $4::text ESCAPE '\\'
+    )
+`;
+
 export const countOperatorCommentsSql = `
   SELECT COUNT(*)::text AS total
   FROM (${operatorCommentUnion}) entries
-  WHERE ($1::text IS NULL OR entries.moderation = $1::text)
+  ${operatorFilter}
 `;
 
-export const listOperatorCommentsSql = `
+/** Counts per state under the non-state filters, for the status tabs. */
+export const countOperatorCommentsByStateSql = `
+  SELECT entries.moderation, COUNT(*)::text AS total
+  FROM (${operatorCommentUnion}) entries
+  ${operatorFilter}
+  GROUP BY entries.moderation
+`;
+
+export const listOperatorCommentsNewestSql = `
   SELECT * FROM (${operatorCommentUnion}) entries
-  WHERE ($1::text IS NULL OR entries.moderation = $1::text)
+  ${operatorFilter}
   ORDER BY entries.created_at DESC, entries.id DESC
-  LIMIT $2::integer OFFSET $3::bigint
+  LIMIT $5::integer OFFSET $6::bigint
+`;
+
+export const listOperatorCommentsOldestSql = `
+  SELECT * FROM (${operatorCommentUnion}) entries
+  ${operatorFilter}
+  ORDER BY entries.created_at ASC, entries.id ASC
+  LIMIT $5::integer OFFSET $6::bigint
+`;
+
+export const findOperatorCommentSql = `
+  SELECT * FROM (${operatorCommentUnion}) entries
+  WHERE entries.id = $1::text
+`;
+
+/** Turns free text into a bounded substring pattern for ILIKE ... ESCAPE '\\'. */
+export const toSearchPattern = (search: string): string =>
+  `%${search.replaceAll(/[\\%_]/g, (character) => `\\${character}`)}%`;
+
+const moderationEventColumns = `
+  id, occurred_at, operator_label, action, subject_kind, subject_id, detail
+`;
+
+export const countModerationEventsSql = `
+  SELECT COUNT(*)::text AS total
+  FROM community.moderation_events
+  WHERE ($1::text IS NULL OR subject_id = $1::text)
+    AND ($2::text IS NULL OR action = $2::text)
+`;
+
+export const listModerationEventsSql = `
+  SELECT ${moderationEventColumns}
+  FROM community.moderation_events
+  WHERE ($1::text IS NULL OR subject_id = $1::text)
+    AND ($2::text IS NULL OR action = $2::text)
+  ORDER BY occurred_at DESC, id DESC
+  LIMIT $3::integer OFFSET $4::bigint
+`;
+
+export const countModerationActionsInRangeSql = `
+  SELECT action, COUNT(*)::text AS total
+  FROM community.moderation_events
+  WHERE occurred_at >= $1::timestamptz AND occurred_at < $2::timestamptz
+  GROUP BY action
+`;
+
+export const recentModerationEventsSql = `
+  SELECT ${moderationEventColumns}
+  FROM community.moderation_events
+  ORDER BY occurred_at DESC, id DESC
+  LIMIT $1::integer
 `;
 
 export const readPublicationSettingSql = `

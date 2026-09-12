@@ -840,6 +840,7 @@ describe("community PostgreSQL comments and moderation", () => {
 
     const pending = await port.readOperatorComments({
       moderation: "pending",
+      order: "newest",
       page: 1,
       pageSize: 20,
     });
@@ -851,7 +852,234 @@ describe("community PostgreSQL comments and moderation", () => {
       author: { handle: "dev-user-03", status: "active" },
     });
 
-    const all = await port.readOperatorComments({ page: 1, pageSize: 20 });
+    const all = await port.readOperatorComments({
+      order: "newest",
+      page: 1,
+      pageSize: 20,
+    });
     expect(all.total).toBe(2);
+    expect(all.counts).toEqual({ pending: 1, visible: 1, hidden: 0, all: 2 });
+  });
+
+  it("searches, filters, counts and orders the review queue from one snapshot", async () => {
+    const port = commentAdapter();
+    const one = await seededAuthor("dev-user-01");
+    const two = await seededAuthor("dev-user-02");
+    const base = Date.parse("2026-09-12T14:00:00.000Z");
+    const at = (n: number) => new Date(base + n * 1_000);
+    const rootA = await port.insertComment({
+      id: commentId(81),
+      catalogId: publishedCatalogId,
+      authorId: one,
+      text: "字口清晰，拓片可见刀痕 100%",
+      moderation: "visible",
+      createdAt: at(1),
+    });
+    await port.insertComment({
+      id: commentId(82),
+      catalogId: "catalog-other-02" as CatalogId,
+      authorId: two,
+      text: "另一条资料下的评论_下划线",
+      moderation: "pending",
+      createdAt: at(2),
+    });
+    const replyA = await port.insertReply({
+      id: commentId(83),
+      rootCommentId: rootA.id,
+      authorId: two,
+      text: "回复：同意字口的观察",
+      moderation: "hidden",
+      createdAt: at(3),
+    });
+    await port.insertReply({
+      id: commentId(84),
+      rootCommentId: rootA.id,
+      authorId: one,
+      text: "再回复",
+      moderation: "visible",
+      createdAt: at(4),
+      replyToReplyId: replyA.id,
+    });
+
+    const base1 = { order: "newest" as const, page: 1, pageSize: 20 };
+    const everything = await port.readOperatorComments(base1);
+    expect(everything.counts).toEqual({
+      pending: 1,
+      visible: 2,
+      hidden: 1,
+      all: 4,
+    });
+    expect(everything.items.map((item) => item.id)).toEqual([
+      commentId(84),
+      commentId(83),
+      commentId(82),
+      commentId(81),
+    ]);
+    expect(everything.items[0]).toMatchObject({
+      kind: "reply",
+      rootCommentId: rootA.id,
+      replyToId: replyA.id,
+    });
+
+    const oldest = await port.readOperatorComments({
+      ...base1,
+      order: "oldest",
+    });
+    expect(oldest.items.map((item) => item.id)).toEqual([
+      commentId(81),
+      commentId(82),
+      commentId(83),
+      commentId(84),
+    ]);
+
+    // Search by text, by display name and by handle; counts follow the search.
+    const byText = await port.readOperatorComments({
+      ...base1,
+      search: "字口",
+    });
+    expect(byText.items.map((item) => item.id)).toEqual([
+      commentId(83),
+      commentId(81),
+    ]);
+    expect(byText.counts).toEqual({
+      pending: 0,
+      visible: 1,
+      hidden: 1,
+      all: 2,
+    });
+    const byName = await port.readOperatorComments({
+      ...base1,
+      search: "书法学徒",
+    });
+    expect(byName.items.map((item) => item.id)).toEqual([
+      commentId(83),
+      commentId(82),
+    ]);
+    const byHandle = await port.readOperatorComments({
+      ...base1,
+      search: "dev-user-02",
+    });
+    expect(byHandle.total).toBe(2);
+    // Wildcards are literal characters, never patterns.
+    expect(
+      (await port.readOperatorComments({ ...base1, search: "100%" })).total,
+    ).toBe(1);
+    expect(
+      (await port.readOperatorComments({ ...base1, search: "_下划线" })).total,
+    ).toBe(1);
+    expect(
+      (await port.readOperatorComments({ ...base1, search: "%" })).total,
+    ).toBe(1);
+
+    const replies = await port.readOperatorComments({
+      ...base1,
+      kind: "reply",
+      moderation: "visible",
+    });
+    expect(replies.items.map((item) => item.id)).toEqual([commentId(84)]);
+    expect(replies.counts).toEqual({
+      pending: 0,
+      visible: 1,
+      hidden: 1,
+      all: 2,
+    });
+    const otherRecord = await port.readOperatorComments({
+      ...base1,
+      catalogId: "catalog-other-02" as CatalogId,
+    });
+    expect(otherRecord.items.map((item) => item.id)).toEqual([commentId(82)]);
+
+    const paged = await port.readOperatorComments({
+      order: "newest",
+      page: 2,
+      pageSize: 3,
+    });
+    expect(paged.items.map((item) => item.id)).toEqual([commentId(81)]);
+    expect(paged.total).toBe(4);
+
+    expect(await port.findOperatorComment(commentId(84))).toMatchObject({
+      id: commentId(84),
+      kind: "reply",
+      replyToId: replyA.id,
+      author: { handle: "dev-user-01" },
+    });
+    expect(await port.findOperatorComment(commentId(99))).toBeNull();
+  });
+
+  it("stores the reject action, reads the history by subject and summarizes a range", async () => {
+    const port = commentAdapter();
+    const base = Date.parse("2026-09-12T15:00:00.000Z");
+    const at = (n: number) => new Date(base + n * 60_000);
+    const eventId = (n: number) =>
+      `moderation-${n.toString(16).padStart(32, "0")}`;
+    const subject = commentId(91);
+    await port.recordModerationEvent({
+      id: eventId(1),
+      occurredAt: at(0),
+      operatorLabel: "owner",
+      action: "reject",
+      subjectKind: "comment",
+      subjectId: subject,
+    });
+    await port.recordModerationEvent({
+      id: eventId(2),
+      occurredAt: at(1),
+      operatorLabel: "owner",
+      action: "unhide",
+      subjectKind: "comment",
+      subjectId: subject,
+    });
+    await port.recordModerationEvent({
+      id: eventId(3),
+      occurredAt: at(2),
+      operatorLabel: "owner",
+      action: "set_publication_policy",
+      subjectKind: "setting",
+      subjectId: "publication",
+      detail: "PRE_MODERATION",
+    });
+    // The migration widened the action set to reject and nothing else.
+    await expect(
+      pool.query(
+        "INSERT INTO community.moderation_events (id, operator_label, action, subject_kind, subject_id) VALUES ($1, 'owner', 'delete', 'comment', $2)",
+        [eventId(4), subject],
+      ),
+    ).rejects.toThrow();
+
+    const history = await port.readModerationEvents({
+      subjectId: subject,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(history.total).toBe(2);
+    expect(history.items.map((event) => event.action)).toEqual([
+      "unhide",
+      "reject",
+    ]);
+    const rejections = await port.readModerationEvents({
+      action: "reject",
+      page: 1,
+      pageSize: 20,
+    });
+    expect(rejections.items.map((event) => event.id)).toEqual([eventId(1)]);
+
+    const summary = await port.readModerationSummary({
+      from: at(0),
+      to: at(2),
+    });
+    // [from, to): the policy change at at(2) falls outside the range.
+    expect(summary.actions).toMatchObject({
+      reject: 1,
+      unhide: 1,
+      set_publication_policy: 0,
+    });
+    expect(summary.recentEvents.map((event) => event.id)).toEqual([
+      eventId(3),
+      eventId(2),
+      eventId(1),
+    ]);
+    expect(summary.queue.all).toBe(
+      summary.queue.pending + summary.queue.visible + summary.queue.hidden,
+    );
   });
 });

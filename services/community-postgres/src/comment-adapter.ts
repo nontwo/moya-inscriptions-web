@@ -1,31 +1,44 @@
 import { asCommunityOperationError } from "./availability.js";
 import {
   applyCommentModerationSql,
+  countModerationActionsInRangeSql,
+  countModerationEventsSql,
+  countOperatorCommentsByStateSql,
   countOperatorCommentsSql,
   countVisibleCommentsSql,
   countVisibleRepliesByRootSql,
   countVisibleRepliesSql,
   findCommentSql,
+  findOperatorCommentSql,
   findReplySql,
   insertCommentSql,
   insertModerationEventSql,
   insertReplySql,
   listEmbeddedRepliesSql,
-  listOperatorCommentsSql,
+  listModerationEventsSql,
+  listOperatorCommentsNewestSql,
+  listOperatorCommentsOldestSql,
   listVisibleCommentsSql,
   listVisibleRepliesSql,
   readPublicationSettingSql,
+  recentModerationEventsSql,
   selectHotCommentsSql,
+  toSearchPattern,
   writePublicationSettingSql,
 } from "./comment-queries.js";
 import {
   mapCommentRow,
+  mapModerationEventRow,
   mapOperatorCommentRow,
   mapReplyRow,
   parseCommentTotal,
 } from "./comment-row-mapper.js";
 
-import type { CommentRow, OperatorCommentRow } from "./comment-row-mapper.js";
+import type {
+  CommentRow,
+  ModerationEventRow,
+  OperatorCommentRow,
+} from "./comment-row-mapper.js";
 import type {
   CatalogCommentReplyRecord,
   CatalogCommentRecord,
@@ -37,20 +50,41 @@ import type {
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,
+  ModerationEventQueryInput,
+  ModerationSummaryRecord,
+  OperatorCommentListing,
   OperatorCommentQueryInput,
+  OperatorCommentRecord,
+  OperatorQueueCountsRecord,
   ReplyInsert,
   ReplyPageQuery,
 } from "@moya/api";
 import type { CatalogCommentId } from "@moya/contracts";
 import type {
   CommentModerationState,
-  OperatorComment,
+  ModerationEventAction,
   PublicationPolicy,
 } from "@moya/contracts/internal/community-operator";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 const offset = (page: number, pageSize: number): number =>
   (page - 1) * pageSize;
+
+/** Absent states count zero; `all` is the sum, never a separate query. */
+const toQueueCounts = (
+  rows: readonly ({ moderation: unknown; total: unknown } & QueryResultRow)[],
+): OperatorQueueCountsRecord => {
+  const counts = { pending: 0, visible: 0, hidden: 0 };
+  for (const row of rows) {
+    if (
+      row.moderation === "pending" ||
+      row.moderation === "visible" ||
+      row.moderation === "hidden"
+    )
+      counts[row.moderation] = parseCommentTotal(row.total);
+  }
+  return { ...counts, all: counts.pending + counts.visible + counts.hidden };
+};
 
 /** Runs one parameterized statement on whichever connection the caller holds. */
 type Runner = <Row extends QueryResultRow = QueryResultRow>(
@@ -218,27 +252,111 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
     };
   }
 
+  /**
+   * The review listing and its status counts from one snapshot, so the tab
+   * numbers always describe the page beside them. Search is a bounded
+   * substring match; the order is the review order, never the public one.
+   */
   async readOperatorComments(
     query: OperatorCommentQueryInput,
-  ): Promise<CommentPageRecord<OperatorComment>> {
-    const moderation = query.moderation ?? null;
-    const [totals, rows] = await Promise.all([
-      this.query<{ total: unknown } & QueryResultRow>(
+  ): Promise<OperatorCommentListing> {
+    const filters = [
+      query.moderation ?? null,
+      query.kind ?? null,
+      query.catalogId ?? null,
+      query.search === undefined ? null : toSearchPattern(query.search),
+    ];
+    return this.snapshot(async (run) => {
+      const totals = await run<{ total: unknown } & QueryResultRow>(
         countOperatorCommentsSql,
-        [moderation],
-      ),
-      this.query<OperatorCommentRow>(listOperatorCommentsSql, [
-        moderation,
+        filters,
+      );
+      const byState = await run<
+        { moderation: unknown; total: unknown } & QueryResultRow
+      >(countOperatorCommentsByStateSql, [null, ...filters.slice(1)]);
+      const rows = await run<OperatorCommentRow>(
+        query.order === "oldest"
+          ? listOperatorCommentsOldestSql
+          : listOperatorCommentsNewestSql,
+        [...filters, query.pageSize, offset(query.page, query.pageSize)],
+      );
+      return {
+        items: rows.map(mapOperatorCommentRow),
+        counts: toQueueCounts(byState),
+        total: parseCommentTotal(totals[0]?.total),
+        page: query.page,
+        pageSize: query.pageSize,
+      };
+    });
+  }
+
+  async findOperatorComment(
+    id: CatalogCommentId,
+  ): Promise<OperatorCommentRecord | null> {
+    const rows = await this.query<OperatorCommentRow>(findOperatorCommentSql, [
+      id,
+    ]);
+    const row = rows[0];
+    return row === undefined ? null : mapOperatorCommentRow(row);
+  }
+
+  async readModerationEvents(
+    query: ModerationEventQueryInput,
+  ): Promise<CommentPageRecord<ModerationEvent>> {
+    const filters = [query.subjectId ?? null, query.action ?? null];
+    return this.snapshot(async (run) => {
+      const totals = await run<{ total: unknown } & QueryResultRow>(
+        countModerationEventsSql,
+        filters,
+      );
+      const rows = await run<ModerationEventRow>(listModerationEventsSql, [
+        ...filters,
         query.pageSize,
         offset(query.page, query.pageSize),
-      ]),
-    ]);
-    return {
-      items: rows.map(mapOperatorCommentRow),
-      total: parseCommentTotal(totals[0]?.total),
-      page: query.page,
-      pageSize: query.pageSize,
-    };
+      ]);
+      return {
+        items: rows.map(mapModerationEventRow),
+        total: parseCommentTotal(totals[0]?.total),
+        page: query.page,
+        pageSize: query.pageSize,
+      };
+    });
+  }
+
+  async readModerationSummary(range: {
+    readonly from: Date;
+    readonly to: Date;
+  }): Promise<ModerationSummaryRecord> {
+    return this.snapshot(async (run) => {
+      const byState = await run<
+        { moderation: unknown; total: unknown } & QueryResultRow
+      >(countOperatorCommentsByStateSql, [null, null, null, null]);
+      const byAction = await run<
+        { action: unknown; total: unknown } & QueryResultRow
+      >(countModerationActionsInRangeSql, [range.from, range.to]);
+      const recent = await run<ModerationEventRow>(
+        recentModerationEventsSql,
+        [10],
+      );
+      const actions: Record<ModerationEventAction, number> = {
+        approve: 0,
+        reject: 0,
+        hide: 0,
+        unhide: 0,
+        suspend: 0,
+        reinstate: 0,
+        set_publication_policy: 0,
+      };
+      for (const row of byAction) {
+        const action = String(row.action) as ModerationEventAction;
+        if (action in actions) actions[action] = parseCommentTotal(row.total);
+      }
+      return {
+        queue: toQueueCounts(byState),
+        actions,
+        recentEvents: recent.map(mapModerationEventRow),
+      };
+    });
   }
 
   async readPublicationPolicy(): Promise<{

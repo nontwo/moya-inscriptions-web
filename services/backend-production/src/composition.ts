@@ -221,6 +221,8 @@ export const prepareProductionBackend = async (
       catalogPublicationPort: {
         isPublished: async (catalogId) =>
           (await catalogQueryPort.getById(catalogId)) !== null,
+        readTitle: async (catalogId) =>
+          (await catalogQueryPort.getById(catalogId))?.title ?? null,
       },
       communityOperatorCredential: parseOperatorCredential(environment),
     }),

@@ -27,10 +27,17 @@ export {
 } from "./modules/community/application/errors/community-store-unavailable-error.js";
 export {
   CommunityInputError,
+  CommunityConflictError,
   CommunityNotFoundError,
+  isCommunityConflictError,
   isCommunityInputError,
   isCommunityNotFoundError,
 } from "./modules/community/application/errors/community-request-errors.js";
+export { DisabledCommentAnalysisPort } from "./modules/community/application/ports/comment-analysis-port.js";
+export type {
+  CommentAnalysisPort,
+  CommentAnalysisTarget,
+} from "./modules/community/application/ports/comment-analysis-port.js";
 export { mapPublicUserProfile } from "./modules/community/application/mappers/community-public-contract-mapper.js";
 export { CatalogCommentService } from "./modules/community/application/services/catalog-comment-service.js";
 export { CommunityModerationService } from "./modules/community/application/services/community-moderation-service.js";
@@ -72,7 +79,12 @@ export type {
   ModeratedSubject,
   ModerationEvent,
   ModerationEventAction,
+  ModerationEventQueryInput,
+  ModerationSummaryRecord,
+  OperatorCommentListing,
   OperatorCommentQueryInput,
+  OperatorCommentRecord,
+  OperatorQueueCountsRecord,
   ReplyInsert,
   ReplyPageQuery,
 } from "./modules/community/application/ports/community-comment-port.js";

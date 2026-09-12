@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
   CommunityInputError,
+  isCommunityConflictError,
   isCommunityInputError,
   isCommunityNotFoundError,
   isCommunityStoreUnavailableError,
@@ -27,7 +28,7 @@ export interface OperatorRouteDependencies {
 /** The operator boundary is not the Public API: it returns bare codes, no ApiError. */
 const sendOperatorError = (
   response: ServerResponse,
-  status: 400 | 401 | 404 | 405 | 500 | 503,
+  status: 400 | 401 | 404 | 405 | 409 | 500 | 503,
   code: string,
 ): void => sendJson(response, status, { error: { status, code } });
 
@@ -52,6 +53,11 @@ const sendFailure = (response: ServerResponse, error: unknown): void => {
     sendOperatorError(response, 404, "NOT_FOUND");
     return;
   }
+  if (isCommunityConflictError(error)) {
+    // The subject moved on; the caller refreshes rather than retries.
+    sendOperatorError(response, 409, "STATE_CONFLICT");
+    return;
+  }
   if (isCommunityInputError(error)) {
     sendOperatorError(response, 400, "INVALID_COMMAND");
     return;
@@ -74,7 +80,7 @@ const numericQuery = (value: unknown): number | undefined => {
   return Number(value);
 };
 
-const moderationQuery = (value: unknown): string | undefined => {
+const stringQuery = (value: unknown): string | undefined => {
   if (value === undefined) return undefined;
   if (typeof value !== "string")
     throw new CommunityInputError("Operator query is invalid");
@@ -90,6 +96,34 @@ const decodeSegment = (segment: string): string | undefined => {
   }
 };
 
+const queryOf = (request: IncomingMessage) =>
+  collectTransportQuery(
+    new URL(request.url ?? "/", "http://request.invalid").searchParams,
+  );
+
+const withDefined = <Value>(
+  entries: readonly (readonly [string, Value | undefined])[],
+): Record<string, Value> =>
+  Object.fromEntries(
+    entries.filter(
+      (entry): entry is readonly [string, Value] => entry[1] !== undefined,
+    ),
+  );
+
+/**
+ * Routes, all behind the operator credential:
+ *   GET  /internal/community/publication-policy
+ *   PUT  /internal/community/publication-policy
+ *   GET  /internal/community/comments?moderation&kind&catalogId&search&order&page&pageSize
+ *   POST /internal/community/comments/moderation          (selected items, bounded)
+ *   GET  /internal/community/comments/{id}                (detail with context)
+ *   GET  /internal/community/comments/{id}/analysis       (advisory state only)
+ *   POST /internal/community/comments/{id}/moderation
+ *   POST /internal/community/users/{id}/status
+ *   GET  /internal/community/moderation-events?subjectId&action&page&pageSize
+ *   GET  /internal/community/summary?range
+ * The subject id always travels in the route; a body carries the command only.
+ */
 export const handleOperatorRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
@@ -101,6 +135,8 @@ export const handleOperatorRequest = async (
     return;
   }
   const method = request.method ?? "GET";
+  const methodNotAllowed = () =>
+    sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
   try {
     if (pathname === "/internal/community/publication-policy") {
       if (method === "GET") {
@@ -121,39 +157,93 @@ export const handleOperatorRequest = async (
         );
         return;
       }
-      sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
+      methodNotAllowed();
       return;
     }
 
     if (pathname === "/internal/community/comments") {
       if (method !== "GET") {
-        sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
+        methodNotAllowed();
         return;
       }
-      const url = new URL(request.url ?? "/", "http://request.invalid");
-      const query = collectTransportQuery(url.searchParams);
-      const moderation = moderationQuery(query.moderation);
-      const page = numericQuery(query.page);
-      const pageSize = numericQuery(query.pageSize);
+      const query = queryOf(request);
       sendJson(
         response,
         200,
         await moderationService.readComments({
-          ...(moderation === undefined ? {} : { moderation }),
-          ...(page === undefined ? {} : { page }),
-          ...(pageSize === undefined ? {} : { pageSize }),
+          ...withDefined([
+            ["moderation", stringQuery(query.moderation)],
+            ["kind", stringQuery(query.kind)],
+            ["catalogId", stringQuery(query.catalogId)],
+            ["search", stringQuery(query.search)],
+            ["order", stringQuery(query.order)],
+          ]),
+          ...withDefined([
+            ["page", numericQuery(query.page)],
+            ["pageSize", numericQuery(query.pageSize)],
+          ]),
         }),
       );
       return;
     }
 
-    const commentRoute =
-      /^\/internal\/community\/comments\/([^/]+)\/moderation$/.exec(pathname);
-    if (commentRoute !== null) {
+    if (pathname === "/internal/community/comments/moderation") {
       if (method !== "POST") {
-        sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
+        methodNotAllowed();
         return;
       }
+      sendJson(
+        response,
+        200,
+        await moderationService.moderateComments(await readJsonBody(request)),
+      );
+      return;
+    }
+
+    if (pathname === "/internal/community/moderation-events") {
+      if (method !== "GET") {
+        methodNotAllowed();
+        return;
+      }
+      const query = queryOf(request);
+      sendJson(
+        response,
+        200,
+        await moderationService.readModerationEvents({
+          ...withDefined([
+            ["subjectId", stringQuery(query.subjectId)],
+            ["action", stringQuery(query.action)],
+          ]),
+          ...withDefined([
+            ["page", numericQuery(query.page)],
+            ["pageSize", numericQuery(query.pageSize)],
+          ]),
+        }),
+      );
+      return;
+    }
+
+    if (pathname === "/internal/community/summary") {
+      if (method !== "GET") {
+        methodNotAllowed();
+        return;
+      }
+      const query = queryOf(request);
+      sendJson(
+        response,
+        200,
+        await moderationService.readSummary(
+          withDefined([["range", stringQuery(query.range)]]),
+        ),
+      );
+      return;
+    }
+
+    const commentRoute =
+      /^\/internal\/community\/comments\/([^/]+)(?:\/(moderation|analysis))?$/.exec(
+        pathname,
+      );
+    if (commentRoute !== null) {
       const decoded = decodeSegment(commentRoute[1] ?? "");
       const id =
         decoded === undefined
@@ -161,6 +251,32 @@ export const handleOperatorRequest = async (
           : catalogCommentIdSchema.safeParse(decoded);
       if (id?.success !== true) {
         sendOperatorError(response, 404, "NOT_FOUND");
+        return;
+      }
+      const leaf = commentRoute[2];
+      if (leaf === undefined) {
+        if (method !== "GET") {
+          methodNotAllowed();
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          await moderationService.readCommentDetail(id.data),
+        );
+        return;
+      }
+      if (leaf === "analysis") {
+        if (method !== "GET") {
+          methodNotAllowed();
+          return;
+        }
+        const detail = await moderationService.readCommentDetail(id.data);
+        sendJson(response, 200, detail.analysis);
+        return;
+      }
+      if (method !== "POST") {
+        methodNotAllowed();
         return;
       }
       sendJson(
@@ -179,7 +295,7 @@ export const handleOperatorRequest = async (
     );
     if (userRoute !== null) {
       if (method !== "POST") {
-        sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
+        methodNotAllowed();
         return;
       }
       const decoded = decodeSegment(userRoute[1] ?? "");

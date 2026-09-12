@@ -15,6 +15,7 @@ import { MappedStorageUrlResolver } from "@moya/image";
 
 import type {
   CatalogPublicationPort,
+  CommentAnalysisPort,
   CatalogQueryPort,
   CatalogSearchQueryPort,
   CommunityCommentPort,
@@ -38,6 +39,8 @@ export interface BackendApplicationOptions {
   readonly communityCommentPort?: CommunityCommentPort;
   /** Answers whether a Catalog record is currently published, from the Catalog read side. */
   readonly catalogPublicationPort?: CatalogPublicationPort;
+  /** Advisory analysis provider; absent means the boundary reports "not connected". */
+  readonly communityAnalysisPort?: CommentAnalysisPort;
   /** The Owner's operator credential; empty leaves the internal subpath closed. */
   readonly communityOperatorCredential?: string;
 }
@@ -94,6 +97,12 @@ const resolveCommunity = (
           moderationService: new CommunityModerationService(
             communityCommentPort,
             communityIdentityPort,
+            catalogPublicationPort,
+            {
+              ...(options.communityAnalysisPort === undefined
+                ? {}
+                : { analysisPort: options.communityAnalysisPort }),
+            },
           ),
         }),
     operatorCredential: options.communityOperatorCredential ?? "",
@@ -109,9 +118,12 @@ export const createBackendApplication = (
   const community = resolveCommunity(
     options,
     options.catalogPublicationPort ?? {
-      // A comment may only attach to a record the Catalog read side publishes.
+      // A comment may only attach to a record the Catalog read side publishes;
+      // the same read side names the record in the Owner's review queue.
       isPublished: async (catalogId) =>
         (await catalogQueryPort.getById(catalogId)) !== null,
+      readTitle: async (catalogId) =>
+        (await catalogQueryPort.getById(catalogId))?.title ?? null,
     },
   );
   return createRouter({

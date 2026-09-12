@@ -188,13 +188,17 @@ ingress; leaving it unset keeps the boundary closed and the Owner's moderation
 view reports that it is not configured. The base URL must resolve to loopback
 whatever its scheme, and Admin refuses to start a call otherwise. Admin's own
 moderation endpoints answer under `/api/community-moderation/*`, clear of the
-public `/api/community/*` read surface. Nginx forwards no `/internal/` path and
-the Backend listens on loopback only, so that boundary is never publicly
-reachable. No Production sign-in path exists: the Development test-account entry
-is composed only under `NODE_ENV=development`, and external identity providers
-remain deferred. Payload users remain owner/automation only. Future UGC media
-receives an independent storage boundary. QA filtering remains QA-only; no
-hard-coded dynasty/script/type/region taxonomy enters production contracts or
-tables. This task prepares the existing code and local development environment
-to connect future CVM/TencentDB/COS; it does not release those domains or
-resources.
+public `/api/community/*` read surface; each validates its complete request
+envelope strictly and forwards only the command body to the Backend route.
+Forward migration `20260912100000` adds the audited `reject` action (pending →
+hidden) and an index for per-item history; deploy it before restarting the
+Backend, which verifies the ledger read-only. Nginx forwards no `/internal/`
+path and the Backend listens on loopback only, so that boundary is never
+publicly reachable. No Production sign-in path exists: the Development
+test-account entry is composed only under `NODE_ENV=development`, and external
+identity providers remain deferred. Payload users remain owner/automation only.
+Future UGC media receives an independent storage boundary. QA filtering remains
+QA-only; no hard-coded dynasty/script/type/region taxonomy enters production
+contracts or tables. This task prepares the existing code and local development
+environment to connect future CVM/TencentDB/COS; it does not release those
+domains or resources.

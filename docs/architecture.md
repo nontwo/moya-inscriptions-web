@@ -293,13 +293,24 @@ with no root in both; replies stay flat and paginated, never ranked. Comments
 live only in the community namespace and hold no cross-family foreign key: a
 write is admitted only after the published Catalog read side confirms the
 record, and comments never enter Catalog DTOs, the importer, CMS or Search.
-Payload holds no comment or public-user collection — the Owner's Admin view
-calls a loopback-only authenticated Backend operator boundary and the Backend
-stays the sole writer. The Formal comment UI follows in Mission 2C. Posts,
-likes, favorites, following, messaging and UGC media stay deferred. QA filter
-fixtures remain QA-only; hard-coded dynasties, script styles, kinds or regions
-do not become production taxonomies or contracts. No production filtering is
-added.
+Payload holds no comment or public-user collection — the Owner's Admin views
+(review queue, publication setting, operation history) call a loopback-only
+authenticated Backend operator boundary and the Backend stays the sole writer.
+The queue is typed, authenticated and paginated Backend reads (listing with
+counts, item detail with thread context and history, audit events, a ranged
+summary); the same services will serve any later REST or MCP adapter, so no
+future automation needs browser automation or database access. Moderation is
+four audited edges of one state machine (`approve`, `reject` pending → hidden,
+`hide`, `unhide`); a stale state is a 409 conflict that records nothing. Bulk
+actions are bounded to the selected items on one page (at most 50), applied one
+by one through the same edges with per-item outcomes. Machine analysis is a
+provider-independent, advisory boundary (see
+`docs/community-analysis-boundary.md`): it may recommend, never act, and an
+unconfigured provider reads as "not connected", never as clean. The Formal
+comment UI follows in Mission 2C. Posts, likes, favorites, following, messaging
+and UGC media stay deferred. QA filter fixtures remain QA-only; hard-coded
+dynasties, script styles, kinds or regions do not become production taxonomies
+or contracts. No production filtering is added.
 
 ## Stable guardrails
 

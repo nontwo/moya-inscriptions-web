@@ -2,7 +2,7 @@
 
 - Status: Active — approved by the Owner on 2026-09-11 with the decisions
   recorded in section 11; narrowly amended by the Owner on 2026-09-12 as
-  recorded in section 12.
+  recorded in sections 12 and 13.
 - Effective date: 2026-09-11; section 12 effective 2026-09-12.
 - Authority: explicit Owner "Community V1 scope decision" instruction of
   2026-09-11 (Mission 1 of the Community sequence); explicit Owner instruction
@@ -563,3 +563,49 @@ points and reopens nothing else: the seven decisions of section 11 stand.
    Backend/contract changes and the frontend preview stay separately reviewable.
    This does not merge Mission 2C's Formal-root composition or its visual gate;
    those remain as frozen in section 8.
+
+## 13. Owner instruction of 2026-09-12: the moderation workspace (bounded)
+
+Recorded from the Owner's rejection of the first Community moderation Admin
+experience and the instruction that replaced it. It permits exactly the
+following bounded changes and reopens nothing in sections 11 and 12.
+
+1. Comment state machine: one explicit, audited `reject` edge (pending → hidden)
+   joins `approve`, `hide` and `unhide`. Rejection is recorded as its own
+   action, distinct from hiding previously published content. Transition guards
+   stay; nothing is deleted; a stale state is a conflict that records nothing.
+2. Admin request boundary: the Payload endpoints validate the complete request
+   envelope strictly (including the platform-format subject id), map the id into
+   the Backend route and forward only the validated command body. The acting
+   identity is the server-side operator label; no request field names an actor.
+3. Review workspace in the existing Payload Admin: a queue with status counts,
+   server-side search and bounded filters, server-side pagination, a review
+   order independent of the public hot/latest ordering, a context panel with
+   thread context and the item's audit history, a separate publication-setting
+   view and an operation-history view backed by the audit table; navigation
+   organized around work (工作台 / 内容 / 社区 / 系统与自动化) with a workspace
+   card carrying a few real numbers. Payload stays the only Admin application;
+   no collection slug is renamed and no database ownership moves. Catalog
+   context reaches Admin only through the Backend's published read side.
+4. Bounded bulk moderation: selected items on the current page only, at most 50,
+   through the same authorized operations and transition checks as a single
+   action, with per-item success, conflict and failure reporting and a retry of
+   failed items only. Never "every matching record"; never bulk suspension or
+   deletion; separate from the publication setting, which still changes no
+   existing comment.
+5. Analysis boundary: a typed, provider-independent, advisory
+   `CommentAnalysisPort` and the result shape of section 8 of the Owner's
+   instruction, documented in `docs/community-analysis-boundary.md`. Today only
+   a disabled adapter and contract-level tests exist. Analysis never changes
+   publication or account state, an unconfigured or failed analysis is never a
+   clean verdict, machine findings stay apart from the authoritative human audit
+   trail, and no paid provider, external transmission, scheduler, job system or
+   analysis table is introduced. The Backend read services the Admin uses are
+   the ones a later REST or MCP adapter reuses.
+
+Everything already approved stays: `DIRECT_PUBLICATION` as the fresh-install
+default, the Owner's switch to `PRE_MODERATION`, the saved local choice never
+reset by startup or migration, policy changes affecting only later submissions,
+replies never bypassing a pending or hidden root, the public hot section
+followed by the remaining latest roots without duplicates, and the accepted
+public Detail, Viewer and comment layout.

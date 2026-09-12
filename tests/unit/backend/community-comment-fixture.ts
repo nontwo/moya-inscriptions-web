@@ -14,14 +14,18 @@ import type {
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,
+  ModerationEventQueryInput,
+  ModerationSummaryRecord,
+  OperatorCommentListing,
   OperatorCommentQueryInput,
+  OperatorCommentRecord,
   ReplyInsert,
   ReplyPageQuery,
 } from "@moya/api";
 import type { CatalogCommentId, CatalogId } from "@moya/contracts";
 import type {
   CommentModerationState,
-  OperatorComment,
+  ModerationEventAction,
   PublicationPolicy,
 } from "@moya/contracts/internal/community-operator";
 
@@ -37,6 +41,11 @@ export class FixtureCatalogPublicationPort implements CatalogPublicationPort {
 
   async isPublished(catalogId: CatalogId): Promise<boolean> {
     return this.published.has(catalogId);
+  }
+
+  /** The fixture's published titles; unknown records read as unpublished. */
+  async readTitle(catalogId: CatalogId): Promise<string | null> {
+    return this.published.has(catalogId) ? `资料 ${catalogId}` : null;
   }
 }
 
@@ -194,6 +203,9 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     return record;
   }
 
+  /** Ids whose next moderation write throws, to exercise the failed outcome. */
+  failNextModeration = new Set<string>();
+
   /** Mirrors the adapter: a row outside `from` matches nothing. */
   async applyCommentModeration(
     id: CatalogCommentId,
@@ -201,6 +213,8 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     from: readonly CommentModerationState[],
   ): Promise<ModeratedSubject | null> {
     this.assertAvailable();
+    if (this.failNextModeration.delete(id))
+      throw new Error("Simulated moderation write failure");
     const comment = this.comments.get(id);
     if (comment !== undefined && from.includes(comment.moderation)) {
       this.comments.set(id, { ...comment, moderation });
@@ -214,20 +228,26 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     return null;
   }
 
-  async readOperatorComments(
-    query: OperatorCommentQueryInput,
-  ): Promise<CommentPageRecord<OperatorComment>> {
-    this.assertAvailable();
-    const rows: OperatorComment[] = [
+  /** The suspension state each fixture author currently has. */
+  readonly userStatus = new Map<string, "active" | "suspended">();
+
+  private operatorRows(): (OperatorCommentRecord & {
+    readonly raw: { createdAt: Date; id: string };
+  })[] {
+    const status = (id: string) => this.userStatus.get(id) ?? "active";
+    const handle = (id: string) =>
+      Object.values(fixtureUsers).find((user) => user.id === id)?.handle ??
+      fixtureUsers.active.handle;
+    return [
       ...[...this.comments.values()].map((comment) => ({
         id: comment.id,
         kind: "comment" as const,
         catalogId: comment.catalogId,
         author: {
           id: comment.author.id,
-          handle: fixtureUsers.active.handle,
+          handle: handle(comment.author.id),
           displayName: comment.author.displayName,
-          status: "active" as const,
+          status: status(comment.author.id),
         },
         text: comment.text,
         createdAt: comment.createdAt
@@ -239,25 +259,54 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
       ...[...this.replies.values()].map((reply) => ({
         id: reply.id,
         kind: "reply" as const,
-        catalogId: publishedCatalogId,
+        catalogId:
+          this.comments.get(reply.rootCommentId)?.catalogId ??
+          publishedCatalogId,
         rootCommentId: reply.rootCommentId,
+        ...(reply.replyToReplyId === undefined
+          ? {}
+          : { replyToId: reply.replyToReplyId as CatalogCommentId }),
         author: {
           id: reply.author.id,
-          handle: fixtureUsers.active.handle,
+          handle: handle(reply.author.id),
           displayName: reply.author.displayName,
-          status: "active" as const,
+          status: status(reply.author.id),
         },
         text: reply.text,
         createdAt: reply.createdAt.toISOString().replace(/\.\d{3}Z$/, ".000Z"),
         moderation: reply.moderation,
         raw: reply,
       })),
-    ]
+    ];
+  }
+
+  /** Mirrors the adapter: substring search, bounded filters, counts per state. */
+  async readOperatorComments(
+    query: OperatorCommentQueryInput,
+  ): Promise<OperatorCommentListing> {
+    this.assertAvailable();
+    const needle = query.search?.toLowerCase();
+    const filtered = this.operatorRows().filter(
+      (row) =>
+        (query.kind === undefined || row.kind === query.kind) &&
+        (query.catalogId === undefined || row.catalogId === query.catalogId) &&
+        (needle === undefined ||
+          row.text.toLowerCase().includes(needle) ||
+          row.author.handle.toLowerCase().includes(needle) ||
+          row.author.displayName.toLowerCase().includes(needle)),
+    );
+    const counts = { pending: 0, visible: 0, hidden: 0 };
+    for (const row of filtered) counts[row.moderation] += 1;
+    const rows = filtered
       .filter(
         (row) =>
           query.moderation === undefined || row.moderation === query.moderation,
       )
-      .sort((left, right) => byNewest(left.raw, right.raw))
+      .sort((left, right) =>
+        query.order === "oldest"
+          ? byOldest(left.raw, right.raw)
+          : byNewest(left.raw, right.raw),
+      )
       .map((row) => {
         const { raw, ...operatorRow } = row;
         void raw;
@@ -266,9 +315,73 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     const start = (query.page - 1) * query.pageSize;
     return {
       items: rows.slice(start, start + query.pageSize),
+      counts: { ...counts, all: filtered.length },
       total: rows.length,
       page: query.page,
       pageSize: query.pageSize,
+    };
+  }
+
+  async findOperatorComment(
+    id: CatalogCommentId,
+  ): Promise<OperatorCommentRecord | null> {
+    this.assertAvailable();
+    const row = this.operatorRows().find((candidate) => candidate.id === id);
+    if (row === undefined) return null;
+    const { raw, ...operatorRow } = row;
+    void raw;
+    return operatorRow;
+  }
+
+  async readModerationEvents(
+    query: ModerationEventQueryInput,
+  ): Promise<CommentPageRecord<ModerationEvent>> {
+    this.assertAvailable();
+    const matching = [...this.events]
+      .filter(
+        (event) =>
+          (query.subjectId === undefined ||
+            event.subjectId === query.subjectId) &&
+          (query.action === undefined || event.action === query.action),
+      )
+      .sort(
+        (left, right) =>
+          right.occurredAt.getTime() - left.occurredAt.getTime() ||
+          right.id.localeCompare(left.id),
+      );
+    const start = (query.page - 1) * query.pageSize;
+    return {
+      items: matching.slice(start, start + query.pageSize),
+      total: matching.length,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+  }
+
+  async readModerationSummary(range: {
+    readonly from: Date;
+    readonly to: Date;
+  }): Promise<ModerationSummaryRecord> {
+    this.assertAvailable();
+    const queue = { pending: 0, visible: 0, hidden: 0 };
+    for (const row of this.operatorRows()) queue[row.moderation] += 1;
+    const actions: Record<ModerationEventAction, number> = {
+      approve: 0,
+      reject: 0,
+      hide: 0,
+      unhide: 0,
+      suspend: 0,
+      reinstate: 0,
+      set_publication_policy: 0,
+    };
+    for (const event of this.events)
+      if (event.occurredAt >= range.from && event.occurredAt < range.to)
+        actions[event.action] += 1;
+    return {
+      queue: { ...queue, all: queue.pending + queue.visible + queue.hidden },
+      actions,
+      recentEvents: (await this.readModerationEvents({ page: 1, pageSize: 10 }))
+        .items,
     };
   }
 

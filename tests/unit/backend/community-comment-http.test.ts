@@ -481,7 +481,7 @@ describe("Community V1 operator boundary", () => {
     expect(unknown.status).toBe(404);
 
     // The comment is visible again, so approving it is not an edge of the
-    // machine: it must be refused rather than silently rewrite the state.
+    // machine: a stale-state conflict, refused rather than silently rewritten.
     const audited = commentPort.events.length;
     const outOfMachine = await operatorFetch(
       baseUrl,
@@ -492,9 +492,181 @@ describe("Community V1 operator boundary", () => {
         body: JSON.stringify({ action: "approve" }),
       },
     );
-    expect(outOfMachine.status).toBe(404);
+    expect(outOfMachine.status).toBe(409);
+    expect(await outOfMachine.json()).toEqual({
+      error: { status: 409, code: "STATE_CONFLICT" },
+    });
     expect(commentPort.comments.get(created.id)?.moderation).toBe("visible");
     expect(commentPort.events).toHaveLength(audited);
+  });
+
+  it("rejects a pending item, moderates a bounded selection and reports each outcome", async () => {
+    const { baseUrl, commentPort, signIn } = await start();
+    commentPort.policy = "PRE_MODERATION";
+    const token = await signIn();
+    const pending = catalogCommentSchema.parse(
+      await (await postComment(baseUrl, token, { text: "待拒绝" })).json(),
+    );
+    const other = catalogCommentSchema.parse(
+      await (await postComment(baseUrl, token, { text: "待通过" })).json(),
+    );
+    const json = (body: unknown) => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const rejected = await operatorFetch(
+      baseUrl,
+      `comments/${pending.id}/moderation`,
+      json({ action: "reject" }),
+    );
+    expect(rejected.status).toBe(200);
+    expect(await rejected.json()).toEqual({
+      id: pending.id,
+      moderation: "hidden",
+    });
+    expect(commentPort.events.at(-1)).toMatchObject({
+      action: "reject",
+      subjectId: pending.id,
+    });
+
+    const bulk = await operatorFetch(
+      baseUrl,
+      "comments/moderation",
+      json({
+        action: "approve",
+        ids: [other.id, pending.id, "comment-ffffffffffffffffffffffffffffffff"],
+      }),
+    );
+    expect(bulk.status).toBe(200);
+    expect(await bulk.json()).toEqual({
+      action: "approve",
+      results: [
+        { id: other.id, outcome: "applied", moderation: "visible" },
+        { id: pending.id, outcome: "conflict" },
+        {
+          id: "comment-ffffffffffffffffffffffffffffffff",
+          outcome: "not_found",
+        },
+      ],
+      applied: 1,
+      conflicts: 1,
+      notFound: 0 + 1,
+      failed: 0,
+    });
+    const tooMany = await operatorFetch(
+      baseUrl,
+      "comments/moderation",
+      json({
+        action: "approve",
+        ids: Array.from(
+          { length: 51 },
+          (_value, index) => `comment-${index.toString(16).padStart(32, "0")}`,
+        ),
+      }),
+    );
+    expect(tooMany.status).toBe(400);
+    // The body never carries an id or an actor label.
+    const envelope = await operatorFetch(
+      baseUrl,
+      `comments/${other.id}/moderation`,
+      json({ action: "hide", id: other.id }),
+    );
+    expect(envelope.status).toBe(400);
+  });
+
+  it("serves item detail, the history, the summary and the analysis state", async () => {
+    const { baseUrl, commentPort, signIn } = await start();
+    const token = await signIn();
+    const root = catalogCommentSchema.parse(
+      await (await postComment(baseUrl, token, { text: "根评论" })).json(),
+    );
+    const replied = await fetch(
+      `${baseUrl}/v1/catalog/${publishedCatalogId}/comments/${root.id}/replies`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text: "一条回复" }),
+      },
+    );
+    const reply = (await replied.json()) as { id: string };
+    await operatorFetch(baseUrl, `comments/${root.id}/moderation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "hide" }),
+    });
+
+    const detail = await operatorFetch(baseUrl, `comments/${reply.id}`);
+    expect(detail.status).toBe(200);
+    const body = (await detail.json()) as {
+      item: { id: string; catalogTitle: string | null };
+      root: { id: string } | null;
+      parentRestriction: string;
+      history: unknown[];
+      analysis: { status: string };
+    };
+    expect(body.item.id).toBe(reply.id);
+    expect(body.item.catalogTitle).toBe(`资料 ${publishedCatalogId}`);
+    expect(body.root?.id).toBe(root.id);
+    expect(body.parentRestriction).toBe("root_hidden");
+    expect(body.history).toEqual([]);
+    expect(body.analysis).toEqual({ status: "not_connected" });
+    expect(
+      (
+        await operatorFetch(
+          baseUrl,
+          "comments/comment-ffffffffffffffffffffffffffffffff",
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      await (
+        await operatorFetch(baseUrl, `comments/${root.id}/analysis`)
+      ).json(),
+    ).toEqual({ status: "not_connected" });
+
+    const listing = await operatorFetch(
+      baseUrl,
+      "comments?search=%E5%9B%9E%E5%A4%8D&kind=reply&order=oldest&pageSize=50",
+    );
+    expect(listing.status).toBe(200);
+    const page = (await listing.json()) as {
+      items: { id: string }[];
+      counts: { all: number };
+    };
+    expect(page.items.map((item) => item.id)).toEqual([reply.id]);
+    expect(page.counts.all).toBe(1);
+    for (const query of [
+      "comments?order=hot",
+      "comments?pageSize=51",
+      "comments?search=",
+    ])
+      expect((await operatorFetch(baseUrl, query)).status).toBe(400);
+
+    const events = await operatorFetch(
+      baseUrl,
+      `moderation-events?subjectId=${root.id}`,
+    );
+    expect(events.status).toBe(200);
+    expect(
+      ((await events.json()) as { items: { action: string }[] }).items.map(
+        (event) => event.action,
+      ),
+    ).toEqual(["hide"]);
+    const summary = await operatorFetch(baseUrl, "summary?range=24h");
+    expect(summary.status).toBe(200);
+    expect(await summary.json()).toMatchObject({
+      range: { key: "24h" },
+      queue: { visible: 1, hidden: 1, all: 2 },
+      actions: { hide: 1 },
+      analysis: { connected: false },
+    });
+    expect((await operatorFetch(baseUrl, "summary?range=1y")).status).toBe(400);
+    expect(commentPort.events).toHaveLength(1);
   });
 
   it("answers 404 for a malformed percent escape on either operator route", async () => {

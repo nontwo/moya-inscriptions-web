@@ -2,8 +2,10 @@ import type {
   CatalogCommentRecord,
   CatalogCommentReplyRecord,
   CommentAuthorRecord,
+  ModerationEvent,
+  OperatorCommentRecord,
 } from "@moya/api";
-import type { OperatorComment } from "@moya/contracts/internal/community-operator";
+import type { ModerationEventAction } from "@moya/contracts/internal/community-operator";
 import type { QueryResultRow } from "pg";
 
 export interface CommentRow extends QueryResultRow {
@@ -21,8 +23,19 @@ export interface CommentRow extends QueryResultRow {
 
 export interface OperatorCommentRow extends CommentRow {
   readonly kind: unknown;
+  readonly reply_to_reply_id?: unknown;
   readonly author_handle: unknown;
   readonly author_status: unknown;
+}
+
+export interface ModerationEventRow extends QueryResultRow {
+  readonly id: unknown;
+  readonly occurred_at: unknown;
+  readonly operator_label: unknown;
+  readonly action: unknown;
+  readonly subject_kind: unknown;
+  readonly subject_id: unknown;
+  readonly detail: unknown;
 }
 
 const commentIdPattern = /^comment-[0-9a-f]{32}$/;
@@ -116,21 +129,28 @@ const isoUtc = (value: Date): string =>
 /** The operator view carries the moderation state the Public DTOs never expose. */
 export const mapOperatorCommentRow = (
   row: OperatorCommentRow,
-): OperatorComment => {
+): OperatorCommentRecord => {
   const kind =
     row.kind === "comment" || row.kind === "reply" ? row.kind : invalid();
   const author = asAuthor(row.author_id, row.author_display_name);
+  const replyToId =
+    row.reply_to_reply_id === null || row.reply_to_reply_id === undefined
+      ? undefined
+      : (asCommentId(row.reply_to_reply_id) as OperatorCommentRecord["id"]);
   return {
-    id: asCommentId(row.id) as OperatorComment["id"],
+    id: asCommentId(row.id) as OperatorCommentRecord["id"],
     kind,
-    catalogId: asCatalogId(row.catalog_id) as OperatorComment["catalogId"],
+    catalogId: asCatalogId(
+      row.catalog_id,
+    ) as OperatorCommentRecord["catalogId"],
     ...(kind === "reply"
       ? {
           rootCommentId: asCommentId(
             row.root_comment_id,
-          ) as OperatorComment["id"],
+          ) as OperatorCommentRecord["id"],
         }
       : {}),
+    ...(replyToId === undefined ? {} : { replyToId }),
     author: {
       id: author.id,
       handle: asHandle(row.author_handle),
@@ -140,6 +160,51 @@ export const mapOperatorCommentRow = (
     text: asText(row.text),
     createdAt: isoUtc(asDate(row.created_at)),
     moderation: asModeration(row.moderation),
+  };
+};
+
+const eventActions: readonly ModerationEventAction[] = [
+  "approve",
+  "reject",
+  "hide",
+  "unhide",
+  "suspend",
+  "reinstate",
+  "set_publication_policy",
+];
+const subjectKinds = ["comment", "reply", "user", "setting"] as const;
+
+/** One authoritative audit row; fails closed like every other mapper here. */
+export const mapModerationEventRow = (
+  row: ModerationEventRow,
+): ModerationEvent => {
+  const action = eventActions.find((candidate) => candidate === row.action);
+  const subjectKind = subjectKinds.find(
+    (candidate) => candidate === row.subject_kind,
+  );
+  if (
+    typeof row.id !== "string" ||
+    !/^moderation-[0-9a-f]{32}$/.test(row.id) ||
+    action === undefined ||
+    subjectKind === undefined ||
+    typeof row.operator_label !== "string" ||
+    typeof row.subject_id !== "string"
+  )
+    invalid();
+  const detail =
+    row.detail === null || row.detail === undefined
+      ? undefined
+      : typeof row.detail === "string"
+        ? row.detail
+        : invalid();
+  return {
+    id: row.id as string,
+    occurredAt: asDate(row.occurred_at),
+    operatorLabel: row.operator_label as string,
+    action: action as ModerationEventAction,
+    subjectKind: subjectKind as ModerationEvent["subjectKind"],
+    subjectId: row.subject_id as string,
+    ...(detail === undefined ? {} : { detail }),
   };
 };
 

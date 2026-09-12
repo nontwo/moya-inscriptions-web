@@ -4,9 +4,10 @@ import type {
   PublicUserId,
 } from "@moya/contracts";
 import type {
-  CommentModerationAction,
   CommentModerationState,
+  ModerationEventAction as ContractModerationEventAction,
   OperatorComment,
+  OperatorCommentKind,
   PublicationPolicy,
 } from "@moya/contracts/internal/community-operator";
 
@@ -60,8 +61,8 @@ export interface ReplyInsert {
   readonly replyToReplyId?: CatalogCommentId;
 }
 
-export type ModerationEventAction =
-  CommentModerationAction | "suspend" | "reinstate" | "set_publication_policy";
+/** Every comment action is also an audit action (the service's `record` relies on it). */
+export type ModerationEventAction = ContractModerationEventAction;
 
 export interface ModerationEvent {
   readonly id: string;
@@ -80,10 +81,46 @@ export interface ModeratedSubject {
   readonly moderation: CommentModerationState;
 }
 
+/**
+ * The review listing: bounded filters, a plain substring search over text and
+ * author handle/display name, and a review order that is never the public hot
+ * ordering. Counts come back for the same filters, from the same snapshot.
+ */
 export interface OperatorCommentQueryInput {
   readonly moderation?: CommentModerationState;
+  readonly kind?: OperatorCommentKind;
+  readonly catalogId?: CatalogId;
+  readonly search?: string;
+  readonly order: "newest" | "oldest";
   readonly page: number;
   readonly pageSize: number;
+}
+
+export interface OperatorQueueCountsRecord {
+  readonly pending: number;
+  readonly visible: number;
+  readonly hidden: number;
+  readonly all: number;
+}
+
+/** A review item as the store knows it; the Catalog title is added by the service. */
+export type OperatorCommentRecord = Omit<OperatorComment, "catalogTitle">;
+
+export interface OperatorCommentListing extends CommentPageRecord<OperatorCommentRecord> {
+  readonly counts: OperatorQueueCountsRecord;
+}
+
+export interface ModerationEventQueryInput {
+  readonly subjectId?: string;
+  readonly action?: ModerationEventAction;
+  readonly page: number;
+  readonly pageSize: number;
+}
+
+export interface ModerationSummaryRecord {
+  readonly queue: OperatorQueueCountsRecord;
+  readonly actions: Readonly<Record<ModerationEventAction, number>>;
+  readonly recentEvents: readonly ModerationEvent[];
 }
 
 /**
@@ -127,10 +164,26 @@ export interface CommunityCommentPort {
     at: Date,
   ): Promise<ModeratedSubject | null>;
 
-  /** Bounded operator listing; V1 keeps no large review queue. */
+  /** Bounded operator listing with its status counts; V1 keeps no large review queue. */
   readOperatorComments(
     query: OperatorCommentQueryInput,
-  ): Promise<CommentPageRecord<OperatorComment>>;
+  ): Promise<OperatorCommentListing>;
+
+  /** One review item by id, whichever table holds it; null when unknown. */
+  findOperatorComment(
+    id: CatalogCommentId,
+  ): Promise<OperatorCommentRecord | null>;
+
+  /** The audit trail, newest first, optionally for one subject or action. */
+  readModerationEvents(
+    query: ModerationEventQueryInput,
+  ): Promise<CommentPageRecord<ModerationEvent>>;
+
+  /** Queue counts now, action counts inside [from, to), the last few events. */
+  readModerationSummary(range: {
+    readonly from: Date;
+    readonly to: Date;
+  }): Promise<ModerationSummaryRecord>;
 
   readPublicationPolicy(): Promise<{
     readonly policy: PublicationPolicy;
