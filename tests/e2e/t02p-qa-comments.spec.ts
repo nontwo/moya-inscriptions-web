@@ -155,19 +155,19 @@ test("phone and tablet page Detail content into bottom-composer comments with me
   const pager = detail.locator("[data-detail-content-pager]");
   const composer = detail.locator("[data-comment-composer]");
 
-  if (testInfo.project.name.startsWith("desktop")) {
+  if (
+    testInfo.project.name.startsWith("desktop") ||
+    testInfo.project.name === "tablet-landscape-webkit"
+  ) {
+    // Wide compositions: media beside the identity card, comments underneath,
+    // the reading flow collapsed behind 详情, composer pinned across the width.
     await expect(pager).toHaveCount(0);
-    await expect(composer).toHaveCSS("position", "static");
-    return;
-  }
-
-  if (testInfo.project.name === "tablet-landscape-webkit") {
-    await expect(pager).toHaveCount(0);
-    const splitLayout = detail.locator("[data-detail-landscape-layout]");
+    const wideLayout = detail.locator("[data-detail-landscape-layout]");
     const media = detail.locator("[data-detail-landscape-media]");
     const information = detail.locator("[data-detail-info-panel]");
     const comments = detail.locator("[data-detail-landscape-comments]");
-    await expect(splitLayout).toBeVisible();
+    const disclosure = detail.locator("[data-detail-reading-disclosure]");
+    await expect(wideLayout).toBeVisible();
     await expect(comments).toBeVisible();
     await expect(composer).toHaveCSS("position", "fixed");
 
@@ -181,13 +181,15 @@ test("phone and tablet page Detail content into bottom-composer comments with me
     expect(commentsBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(viewport).not.toBeNull();
-    expect(informationBox?.y ?? 0).toBeGreaterThanOrEqual(
-      (mediaBox?.y ?? 0) + (mediaBox?.height ?? 0),
+    expect(informationBox?.x ?? 0).toBeGreaterThanOrEqual(
+      (mediaBox?.x ?? 0) + (mediaBox?.width ?? 0) - 1,
     );
-    expect(commentsBox?.x ?? 0).toBeGreaterThanOrEqual(
-      (mediaBox?.x ?? 0) + (mediaBox?.width ?? 0),
+    expect(commentsBox?.y ?? 0).toBeGreaterThanOrEqual(
+      (mediaBox?.y ?? 0) + (mediaBox?.height ?? 0) - 1,
     );
-    expect(composerBox?.x ?? 0).toBeGreaterThanOrEqual(commentsBox?.x ?? 0);
+    expect(commentsBox?.x ?? Infinity).toBeLessThanOrEqual(
+      (mediaBox?.x ?? 0) + 1,
+    );
     expect(
       Math.abs(
         (composerBox?.y ?? 0) +
@@ -195,6 +197,13 @@ test("phone and tablet page Detail content into bottom-composer comments with me
           (viewport?.height ?? 0),
       ),
     ).toBeLessThanOrEqual(2);
+
+    if ((await disclosure.count()) > 0) {
+      const firstSection = disclosure.locator("[data-detail-section]").first();
+      await expect(firstSection).toBeHidden();
+      await disclosure.locator("summary").click();
+      await expect(firstSection).toBeVisible();
+    }
 
     const image = detail.locator('[data-comment-media-kind="image"] img');
     const sticker = detail.locator('[data-comment-media-kind="sticker"] img');

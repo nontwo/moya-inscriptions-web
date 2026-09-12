@@ -54,7 +54,7 @@ describe("CatalogDetailScreen", () => {
     ).toContain("data-comment-section");
   });
 
-  it("pages compact Detail content, splits tablet landscape, and preserves PC flow", () => {
+  it("pages compact Detail content and stacks comments under wide compositions", () => {
     const state = {
       detail: {
         aliases: [],
@@ -91,6 +91,51 @@ describe("CatalogDetailScreen", () => {
     );
     expect(pc).not.toContain("data-detail-content-pager");
     expect(pc).toContain("data-comment-section");
+    expect(pc).toContain("data-detail-landscape-layout");
+    expect(pc.indexOf("data-detail-landscape-media")).toBeLessThan(
+      pc.indexOf("data-detail-info-panel"),
+    );
+    expect(pc.indexOf("data-detail-info-panel")).toBeLessThan(
+      pc.indexOf("data-detail-landscape-comments"),
+    );
+  });
+
+  it("collapses the reading flow only where comments render", () => {
+    const state = {
+      detail: {
+        aliases: [],
+        facts: [],
+        id: "reading-disclosure",
+        kind: "inscription" as const,
+        media: [],
+        sections: [
+          { key: "transcription" as const, text: "释文", title: "释文" },
+        ],
+        source: "qa" as const,
+        sourceCitations: [],
+        title: "详情折叠测试",
+      },
+      state: "loaded" as const,
+    };
+    const comments = <section data-comment-section="">comments</section>;
+
+    for (const [platform, orientation] of [
+      ["tablet", "landscape"],
+      ["pc", "landscape"],
+    ] as const) {
+      const withComments = renderState(state, comments, platform, orientation);
+      expect(withComments).toContain("data-detail-reading-disclosure");
+      expect(withComments).toContain('data-detail-section="transcription"');
+
+      const formal = renderState(state, undefined, platform, orientation);
+      expect(formal).not.toContain("data-detail-reading-disclosure");
+      expect(formal).not.toContain("data-detail-landscape-layout");
+      expect(formal).toContain('data-detail-section="transcription"');
+    }
+
+    expect(renderState(state, comments)).not.toContain(
+      "data-detail-reading-disclosure",
+    );
   });
 
   it.each([

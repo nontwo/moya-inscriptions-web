@@ -128,6 +128,27 @@ const DetailReadingFlow = ({
   );
 };
 
+/** Wide compositions collapse the reading flow so the media keeps its size;
+ *  opening 详情 reveals exactly the same sections, unchanged. */
+const DetailReadingDisclosure = ({
+  detail,
+}: {
+  readonly detail: CatalogDetailPresentation;
+}) => {
+  const sections = detail.sections ?? [];
+  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+
+  return (
+    <details
+      className={styles.readingDisclosure}
+      data-detail-reading-disclosure=""
+    >
+      <summary>详情</summary>
+      <DetailReadingFlow detail={detail} />
+    </details>
+  );
+};
+
 export const CatalogDetailScreen = ({
   activeMediaIndex,
   backButtonRef,
@@ -192,10 +213,12 @@ export const CatalogDetailScreen = ({
       commentSection !== undefined &&
       (platform === "phone" ||
         (platform === "tablet" && orientation === "portrait"));
-    const splitComments =
+    // Wide compositions keep the media and the identity card side by side,
+    // collapse the reading flow behind 详情, and read comments underneath.
+    const wideComments =
       commentSection !== undefined &&
-      platform === "tablet" &&
-      orientation === "landscape";
+      (platform === "pc" ||
+        (platform === "tablet" && orientation === "landscape"));
 
     body = pagedComments ? (
       <div className={styles.pagedDetail} data-detail-paged-layout="">
@@ -209,19 +232,22 @@ export const CatalogDetailScreen = ({
           platform={platform}
         />
       </div>
-    ) : splitComments ? (
+    ) : wideComments ? (
       <div className={styles.landscapeDetail} data-detail-landscape-layout="">
-        <div className={styles.landscapePrimary}>
+        <div className={styles.landscapeStage}>
           <div data-detail-landscape-media="">{media}</div>
-          {information}
+          <div className={styles.landscapeInfo}>
+            <DetailIdentity detail={detail} />
+            <DetailReadingDisclosure detail={detail} />
+          </div>
         </div>
-        <aside
+        <section
           aria-label="评论"
           className={styles.landscapeComments}
           data-detail-landscape-comments=""
         >
           {commentSection}
-        </aside>
+        </section>
       </div>
     ) : (
       <>

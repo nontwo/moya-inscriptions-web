@@ -1,13 +1,10 @@
+/* The comment stream reads as part of the Detail surface: no outer card edge
+   around the section or the composer, only separators between comments. */
 .section {
   display: grid;
   gap: var(--yoyi-space-6);
   margin-top: var(--yoyi-space-7);
-  padding: var(--yoyi-space-6);
   color: var(--yoyi-color-text-primary);
-  background: var(--yoyi-color-background-surface);
-  border: 1px solid var(--yoyi-color-border-subtle);
-  border-radius: var(--yoyi-radius-lg);
-  box-shadow: var(--yoyi-shadow-subtle);
 }
 
 .header,
@@ -342,14 +339,6 @@
   padding: var(--yoyi-space-3) var(--yoyi-space-4)
     calc(var(--yoyi-space-3) + env(safe-area-inset-bottom));
   background: var(--yoyi-color-background-surface);
-  border: 1px solid var(--yoyi-color-border-subtle);
-  border-bottom: 0;
-  border-radius: var(--yoyi-radius-lg) var(--yoyi-radius-lg) 0 0;
-  box-shadow: var(--yoyi-shadow-dialog);
-}
-
-[data-detail-landscape-comments] .composer {
-  width: var(--detail-comment-composer-width);
 }
 
 [data-detail-content-pager]
