@@ -279,7 +279,7 @@ Active development tracks (independent of the parked cloud track):
    system-assigned handles, Payload Admin moderation over a Backend operator
    boundary, text comments first, flat paginated replies, Production deferred.
    PR #106's comment UI was accepted at `8e7d12a` and merged as `b27c85c`.
-   Implementation proceeds in three separately reviewable stages:
+   Implementation ran in three separately reviewable stages, all complete:
    identity/session foundation → comment contract, persistence, API and
    moderation → connecting the merged #106 UI seam to the real API. Mission 2A
    (public-user identity, Backend-owned sessions, `GET /v1/me`, the
@@ -293,19 +293,60 @@ Active development tracks (independent of the parked cloud track):
    Payload Admin, visually accepted by the Owner on 2026-09-12, as `0fa6d5e`.
    Mission 2C (the Formal root, `/dev/t02p` and the preview composing the real
    comment client through the frozen seam, Development runtime only) passed
-   Owner acceptance on 2026-09-12 at `8f5e7b3` and is delivered through PR #116;
-   its frozen Behavior Matrix and the acceptance record are in
+   Owner acceptance on 2026-09-12 at `8f5e7b3` and is merged as `5aefc25`; its
+   frozen Behavior Matrix and the acceptance record are in
    `docs/community/mission-2c-formal-comments.md`. Community features stay
    unavailable in Production: outside the Development runtime the Formal
    composition resolves to no comment section and no Development sign-in link,
    and opening any Community surface in Production still requires decision 7 of
    the amendment, the P2-R2 release gates and separate Owner Production
    authority.
-2. **Home Discover progressive loading** — small product task using the
-   established explicit “继续加载” pattern; not mixed into Community work.
-3. **Editorial hardening on the local P2-R2A environment** — independent of
-   Community work.
-4. **Content growth** — separately scoped research delivery through
+
+   **Community V1's currently authorized Development implementation is closed.**
+   Missions 2A, 2B and 2C are merged and verified at their merged heads; no
+   further work in this track is authorized without a new Owner decision. Two
+   maintenance pull requests closed with the milestone: PR #115, which makes the
+   PostgreSQL suites refuse a non-synthetic `TEST_DATABASE_URL` before their
+   first database access, merged as `7700341`; and PR #111, which makes the
+   editorial batch budget expiry deterministic through an injectable clock,
+   merged as `702a168`.
+
+   This closure is about the Community V1 Development implementation only. The
+   Phase 2 Catalog software and its still-incomplete Production release remain
+   separate status dimensions, tracked above and in the Production gaps section;
+   closing Community V1 changes neither.
+
+   Development database incident of 2026-09-12, recorded factually: a PostgreSQL
+   integration run was pointed at the live `yoyi_dev` database, and its
+   `community` rows were deleted. The synthetic acceptance data was re-created
+   from `infra/development/community-acceptance-comments.sql` and
+   `community-acceptance-queue.sql` — that is re-creation of synthetic fixtures,
+   not recovery. The Development comments, moderation history and sessions from
+   the earlier acceptance session were not recovered, and no backup of them
+   existed; a restricted-permission local dump of the `community` schema, held
+   outside the repository, was taken during this closure. PR #115 now refuses
+   such a target inside the suites, and both Development seed files refuse any
+   database but `yoyi_dev`. The guard reads the database name only and covers
+   those suites only: `node scripts/verify.mjs test` still runs
+   `pnpm db:migrate` against `TEST_DATABASE_URL` before them, and
+   `pnpm test:cms` runs through `scripts/editorial/verify-cms.mjs` under its own
+   separate check, so test preparation must still be aimed at a disposable
+   target such as the isolated `compose.postgres.yml` container.
+
+   Deferred recommendations, recorded as recommendations only — not implemented,
+   not started, and not closure gates: the audit-transaction and data-model
+   improvements discussed while building the moderation workspace, a guard for
+   the migration runner itself, and the known product limitations recorded on
+   the merged pull requests (among them the reply load-more in-flight guard and
+   the composer draft cleared by a submission that succeeds while new text is
+   being typed).
+
+2. **Home Discover progressive loading** — NOT STARTED. Small product task using
+   the established explicit “继续加载” pattern; not mixed into Community work
+   and not begun by the Community V1 closure.
+3. **Editorial hardening on the local P2-R2A environment** — NOT STARTED.
+   Independent of Community work.
+4. **Content growth** — NOT STARTED. Separately scoped research delivery through
    `catalog-import/v2`; parallel, non-blocking.
 
 ## Current remote lineage disposition
