@@ -302,6 +302,11 @@ export const registerPhase4DiscoveryTests = (
       const q = discoveryQuerySchema.parse({ pageSize: 1 });
       const first = await discovery.browse(visitor, q);
       expect(first.items.map((x) => x.target.id)).toEqual([catalog]);
+      expect(first.items[0]?.aliases).toEqual(["独立别名"]);
+      expect(
+        (await discovery.card({ type: "catalog", id: catalog }, visitor))
+          .aliases,
+      ).toEqual(["独立别名"]);
       expect(first.hasMore).toBe(true);
       const initial = await authors.readWork(work, author);
       await operatorPort.moderateWork(work, operator, {
@@ -330,6 +335,7 @@ export const registerPhase4DiscoveryTests = (
         after: first.nextAfter,
       });
       expect(next.items.map((x) => x.target.id)).toEqual([work]);
+      expect(next.items[0]?.aliases).toEqual([]);
       expect(next.hasMore).toBe(false);
       expect(next.items[0]?.firstPublishedAt).toBe(initial.firstPublishedAt);
       await expect(

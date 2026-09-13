@@ -18,6 +18,7 @@ import type {
   AuthorListQuery,
   AuthorMedia,
   CatalogCommentId,
+  PublicUserId,
 } from "@moya/contracts";
 import type { BackendProcessHandle } from "@moya/backend-runtime";
 
@@ -182,6 +183,195 @@ export const registerPhase4AuthorTests = (
       expect(response.status).toBe(201);
       return response.json() as Promise<AuthorMedia>;
     };
+    it("preserves suspended authors' visible Catalog threads while revoking auth and refusing their new writes", async () => {
+      await pool.query(
+        "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",
+      );
+      const target = { type: "catalog" as const, id: "fixture-catalog-001" };
+      const workTarget = { type: "work" as const, id: work };
+      const root = await discussion.submitDiscussion(
+        target,
+        a,
+        "停用后仍公开的历史根",
+      );
+      const authoredReply = await discussion.submitDiscussion(
+        target,
+        a,
+        "停用后仍公开的历史回复",
+        root.id,
+      );
+      const otherReply = await discussion.submitDiscussion(
+        target,
+        b,
+        "另一作者的历史回复",
+        root.id,
+        authoredReply.id,
+      );
+      const otherRoot = await discussion.submitDiscussion(
+        target,
+        b,
+        "仍活跃作者的根",
+      );
+      const suspendedReply = await discussion.submitDiscussion(
+        target,
+        a,
+        "活跃根下的历史回复",
+        otherRoot.id,
+      );
+      await discussion.setDiscussionLike(b, root.id, true, randomUUID());
+      await discussion.submitDiscussion(
+        workTarget,
+        a,
+        "作品范围的评论仍受作品可用性约束",
+      );
+      const base = await server();
+      const oldToken = await signIn(base, a);
+      const memberToken = await signIn(base, b);
+      const identity = new PostgresCommunityIdentityAdapter(pool);
+      const suspended = await identity.setUserStatus(
+        a as PublicUserId,
+        "suspended",
+        new Date(),
+      );
+      expect(suspended?.user.status).toBe("suspended");
+      expect(suspended?.revokedSessions).toBe(1);
+      expect(
+        (
+          await pool.query(
+            "SELECT moderation FROM community.catalog_comments WHERE id=ANY($1::text[])",
+            [[root.id, otherRoot.id]],
+          )
+        ).rows.every((row) => row.moderation === "visible"),
+      ).toBe(true);
+
+      // Actual public HTTP and authenticated reads keep historical public text,
+      // reply attribution, counters and active-account likes intact.
+      for (const viewerToken of [null, memberToken]) {
+        const response = await fetch(
+          `${base}/v1/community/discussion/catalog/${target.id}`,
+          {
+            headers: viewerToken
+              ? { authorization: `Bearer ${viewerToken}` }
+              : {},
+          },
+        );
+        expect(response.status).toBe(200);
+        const page = (await response.json()) as Awaited<
+          ReturnType<typeof discussion.readDiscussion>
+        >;
+        expect(page.visibleTotal).toBe(2);
+        expect(page.hot.map((item) => item.id)).toEqual([root.id]);
+        expect(page.hot[0]).toMatchObject({
+          text: "停用后仍公开的历史根",
+          likeCount: 1,
+          replyTotal: 2,
+        });
+        expect(page.hot[0]?.replies).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: authoredReply.id,
+              text: "停用后仍公开的历史回复",
+            }),
+            expect.objectContaining({
+              id: otherReply.id,
+              text: "另一作者的历史回复",
+              replyTo: expect.objectContaining({ id: a }),
+            }),
+          ]),
+        );
+        expect(
+          page.items.find((item) => item.id === otherRoot.id)?.replies,
+        ).toEqual([
+          expect.objectContaining({
+            id: suspendedReply.id,
+            text: "活跃根下的历史回复",
+          }),
+        ]);
+      }
+      const replies = await discussion.readDiscussionReplies(
+        target,
+        root.id,
+        b,
+        query,
+      );
+      expect(replies.visibleTotal).toBe(2);
+      expect(replies.items.map((item) => item.id)).toEqual(
+        expect.arrayContaining([authoredReply.id, otherReply.id]),
+      );
+      expect(
+        (await discussion.ownComments(b, query)).items.find(
+          (item) => item.id === otherReply.id,
+        )?.target,
+      ).toEqual(target);
+      expect(
+        await discussion.locateDiscussion(target, otherReply.id, b, query),
+      ).toMatchObject({ rootId: root.id, replyPage: 1 });
+
+      // Suspension is still authoritative for authentication and writes.
+      expect(
+        (
+          await fetch(`${base}/v1/community/me/profile`, {
+            headers: { authorization: `Bearer ${oldToken}` },
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await fetch(`${base}/v1/development/sign-in`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ handle: handles.get(a) }),
+          })
+        ).status,
+      ).toBe(404);
+      await expect(
+        discussion.submitDiscussion(target, a, "不得新增根"),
+      ).rejects.toBeInstanceOf(CommunityNotFoundError);
+      await expect(
+        discussion.submitDiscussion(target, a, "不得新增回复", otherRoot.id),
+      ).rejects.toBeInstanceOf(CommunityNotFoundError);
+      await expect(
+        discussion.setDiscussionLike(a, otherRoot.id, true, randomUUID()),
+      ).rejects.toBeInstanceOf(CommunityNotFoundError);
+      await expect(
+        discussion.readDiscussion(workTarget, null, query),
+      ).rejects.toBeInstanceOf(CommunityNotFoundError);
+      await expect(
+        discussion.readDiscussion(workTarget, b, query),
+      ).rejects.toBeInstanceOf(CommunityNotFoundError);
+
+      // An explicit hide still removes this historical root and its context.
+      const operator = `p4-${a.slice(-20)}`;
+      const at = new Date();
+      expect(
+        await discussion.applyCommentModeration(
+          root.id as CatalogCommentId,
+          "hidden",
+          ["visible"],
+          operator,
+          at,
+          {
+            id: id("moderation"),
+            occurredAt: at,
+            operatorLabel: operator,
+            action: "hide",
+          },
+        ),
+      ).toMatchObject({ id: root.id, moderation: "hidden" });
+      const hidden = await discussion.readDiscussion(target, null, query);
+      expect([...hidden.hot, ...hidden.items].map((item) => item.id)).toEqual([
+        otherRoot.id,
+      ]);
+      expect(
+        (await discussion.ownComments(b, query)).items.find(
+          (item) => item.id === otherReply.id,
+        ),
+      ).toMatchObject({
+        text: "另一作者的历史回复",
+        target: null,
+      });
+    });
+
     it("keeps an audited hidden original private, excludes its heat and preserves unavailable own records", async () => {
       await pool.query(
         "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",

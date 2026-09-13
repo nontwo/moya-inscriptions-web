@@ -1681,6 +1681,14 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "aliases": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
           "authorId": {
             "anyOf": [
               {
@@ -1788,6 +1796,7 @@
           }
         },
         "required": [
+          "aliases",
           "target",
           "title",
           "kind",
@@ -1805,6 +1814,14 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "aliases": {
+                  "items": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "authorId": {
                   "anyOf": [
                     {
@@ -1912,6 +1929,7 @@
                 }
               },
               "required": [
+                "aliases",
                 "target",
                 "title",
                 "kind",
@@ -2113,6 +2131,14 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "aliases": {
+                  "items": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "authorId": {
                   "anyOf": [
                     {
@@ -2220,6 +2246,7 @@
                 }
               },
               "required": [
+                "aliases",
                 "target",
                 "title",
                 "kind",

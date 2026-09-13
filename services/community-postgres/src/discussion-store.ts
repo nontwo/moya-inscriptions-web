@@ -26,10 +26,10 @@ const pageMeta = (total: number, q: DiscussionQuery) => ({
 /** The same root/reply tables and identity graph serve both kinds of content. */
 const rootPublic =
   "c.moderation='visible' AND (c.body_deleted_at IS NULL OR c.was_public)";
-const rootEligible = `c.thread_removed_at IS NULL AND u.status='active' AND community.accounts_can_interact($3,c.author_id)
- AND ((${rootPublic}) OR c.author_id=$3)`;
-const replyEligible = `r.root_comment_id=$4 AND ru.status='active' AND community.accounts_can_interact($3,r.author_id)
- AND (((${rootPublic}) AND r.moderation='visible' AND (r.body_deleted_at IS NULL OR r.was_public)) OR r.author_id=$3)`;
+const rootEligible = `c.thread_removed_at IS NULL AND community.accounts_can_interact($3,c.author_id)
+ AND ((${rootPublic}) OR (c.author_id=$3 AND u.status='active'))`;
+const replyEligible = `r.root_comment_id=$4 AND community.accounts_can_interact($3,r.author_id)
+ AND (((${rootPublic}) AND r.moderation='visible' AND (r.body_deleted_at IS NULL OR r.was_public)) OR (r.author_id=$3 AND ru.status='active'))`;
 const rootFrom = `FROM community.catalog_comments c JOIN community.public_users u ON u.id=c.author_id
  WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}`;
 const likeCount = (
@@ -46,8 +46,8 @@ const replyProjection = `r.id,r.author_id,ru.display_name,r.text,r.created_at,r.
  CASE WHEN ${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL THEN ${likeCount("r")} ELSE 0 END AS like_count,
  EXISTS(SELECT 1 FROM community.comment_likes WHERE comment_id=r.id AND user_id=$3) AS liked,
  (SELECT json_build_object('id',tu.id,'displayName',tu.display_name) FROM community.catalog_comment_replies tr
- JOIN community.public_users tu ON tu.id=tr.author_id WHERE tr.id=r.reply_to_reply_id AND tu.status='active'
- AND community.accounts_can_interact($3,tu.id) AND (tr.moderation='visible' OR tr.author_id=$3)) AS reply_to`;
+ JOIN community.public_users tu ON tu.id=tr.author_id WHERE tr.id=r.reply_to_reply_id
+ AND community.accounts_can_interact($3,tu.id) AND (tr.moderation='visible' OR (tr.author_id=$3 AND tu.status='active'))) AS reply_to`;
 interface ItemRow extends QueryResultRow {
   id: string;
   author_id: string;
@@ -649,7 +649,7 @@ export class PostgresDiscussionStore implements DiscussionPort {
       );
       const rows = (
         await db.query(
-          `SELECT x.*, (root_moderation='visible' OR root_author=$1) AND community.accounts_can_interact($1,root_author) AND EXISTS(SELECT 1 FROM community.public_users WHERE id=root_author AND status='active') AS context_available ${own} ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`,
+          `SELECT x.*, (root_moderation='visible' OR root_author=$1) AND community.accounts_can_interact($1,root_author) AND EXISTS(SELECT 1 FROM community.public_users WHERE id=root_author AND (root_moderation='visible' OR status='active')) AS context_available ${own} ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`,
           [actor, q.pageSize, (q.page - 1) * q.pageSize],
         )
       ).rows;

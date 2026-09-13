@@ -29,6 +29,7 @@ interface CardRow extends QueryResultRow {
   content_id: string;
   kind: "inscription" | "calligraphy" | null;
   title: string;
+  aliases: string[];
   author_id: string | null;
   first_published_at: Date | null;
   ordinal?: string;
@@ -110,6 +111,7 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
       return {
         target: { type: r.content_type, id: r.content_id },
         title: r.title,
+        aliases: r.aliases,
         kind: r.kind,
         authorId: r.author_id,
         firstPublishedAt: r.first_published_at?.toISOString() ?? null,

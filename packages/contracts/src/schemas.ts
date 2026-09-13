@@ -667,6 +667,7 @@ export type DiscussionReplyPage = z.infer<typeof discussionReplyPageSchema>;
 export type OwnComment = z.infer<typeof ownCommentSchema>;
 
 export const contentCardSchema = z.strictObject({
+  aliases: catalogSummarySchema.shape.aliases,
   target: contentIdentitySchema,
   title: authorText(500).min(1),
   kind: catalogKindSchema.nullable(),

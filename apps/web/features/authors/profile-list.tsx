@@ -4,6 +4,7 @@ import type { ContentCard as Card } from "@moya/contracts";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors } from "./author-context";
 import { readLocalHistory } from "./local-library";
+import { resolveLocalContent } from "./local-content-list";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import { useProductShell } from "../product-shell/product-shell";
 import { ContentCard } from "./content-card";
@@ -65,27 +66,7 @@ export const ProfileList = ({
     context.cache.set(cacheKey, list);
   }, [context.cache, cacheKey, list]);
   const readPage = async (q: Read) => {
-    if (tab === "history" || authorId === null) {
-      const all =
-        tab === "history"
-          ? readLocalHistory(context.viewer?.id ?? null)
-          : tab === "favorites"
-            ? context.guestFavorites
-            : [];
-      const results = await Promise.all(
-        all.slice((q.page - 1) * 12, q.page * 12).map((target) =>
-          authorClient.card(target).catch((e) => {
-            if (e instanceof AuthorRequestError && e.status === 404)
-              return null;
-            throw e;
-          }),
-        ),
-      );
-      return {
-        items: results.filter((i): i is Card => i !== null),
-        total: all.length,
-      };
-    }
+    if (!authorId) throw new Error("账户列表不可用");
     if (tab === "works") {
       const result = await authorClient.works(authorId, q.page);
       return {
@@ -94,6 +75,7 @@ export const ProfileList = ({
           .map((w) => ({
             target: { type: "work" as const, id: w.id },
             title: w.title,
+            aliases: [],
             kind: null,
             authorId: w.authorId,
             firstPublishedAt: w.firstPublishedAt,
@@ -102,6 +84,8 @@ export const ProfileList = ({
         total: result.total,
       };
     }
+    if (tab !== "favorites" && tab !== "likes")
+      throw new Error("账户列表不可用");
     return authorClient.collection(authorId, tab, q.page, q.search, q.kind);
   };
   const load = async (q: Read) => {
@@ -114,8 +98,27 @@ export const ProfileList = ({
       const items: Card[] = [];
       let total = 0;
       const last = q.through ?? q.page;
+      const localItems =
+        tab === "history" || authorId === null
+          ? await resolveLocalContent(
+              tab === "history"
+                ? readLocalHistory(context.viewer?.id ?? null)
+                : tab === "favorites"
+                  ? context.guestFavorites
+                  : [],
+              authorClient.card,
+              q.search,
+              q.kind,
+              () => run === epoch.current,
+            )
+          : null;
       for (let page = q.page; page <= last; page++) {
-        const result = await readPage({ ...q, page });
+        const result = localItems
+          ? {
+              items: localItems.slice((page - 1) * 12, page * 12),
+              total: localItems.length,
+            }
+          : await readPage({ ...q, page });
         if (run !== epoch.current) return;
         items.push(...result.items);
         total = result.total;
@@ -204,7 +207,7 @@ export const ProfileList = ({
   if (tab === "history" && !owner) return <p>浏览历史仅自己可见。</p>;
   return (
     <div>
-      {(tab === "favorites" || tab === "likes") && authorId && (
+      {(tab === "favorites" || tab === "likes") && (
         <form
           className="phase4-filters"
           onSubmit={(event) => {

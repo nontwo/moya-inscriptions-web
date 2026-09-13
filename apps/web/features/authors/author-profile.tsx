@@ -13,6 +13,7 @@ import { ProfileEditor } from "./profile-editor";
 import { AvatarEditor } from "./avatar-editor";
 import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
+import { PeopleList } from "./people-list";
 import { requestIdentity } from "../shell/request-identity";
 import styles from "../user/user-presentation.module.css";
 const tabs = ["works", "favorites", "likes", "history"] as const;
@@ -262,7 +263,15 @@ const ScopedAuthorProfileOverlay = ({
                   <a href={author.signInHref}>登录后关注</a>
                 )}
               </div>
-              {people && <PeopleList id={profile.id} list={people} />}
+              {people &&
+                (profile.isOwner || profile.privacy[people] === "public") && (
+                  <PeopleList
+                    key={`${author.viewer?.id ?? "guest"}:${profile.id}:${people}`}
+                    id={profile.id}
+                    list={people}
+                    revision={author.revision}
+                  />
+                )}
             </>
           ) : !id ? (
             <>
@@ -367,57 +376,6 @@ const ScopedAuthorProfileOverlay = ({
         />
       )}
     </section>
-  );
-};
-const PeopleList = ({
-  id,
-  list,
-}: {
-  id: string;
-  list: "following" | "followers";
-}) => {
-  const [page, setPage] = useState<Awaited<
-      ReturnType<typeof authorClient.people>
-    > | null>(null),
-    [error, setError] = useState("");
-  const shell = useProductShell();
-  const load = async (n = 1) => {
-    try {
-      const result = await authorClient.people(id, list, n);
-      setPage((old) =>
-        n === 1
-          ? result
-          : { ...result, items: [...(old?.items ?? []), ...result.items] },
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "无法读取列表");
-    }
-  };
-  useEffect(() => {
-    void load();
-  }, [id, list]);
-  return (
-    <div
-      style={{ maxHeight: 160, overflow: "auto" }}
-      aria-label={list === "following" ? "关注列表" : "粉丝列表"}
-    >
-      {page?.items.map((p) => (
-        <button
-          className="phase4-button"
-          type="button"
-          key={p.id}
-          onClick={(e) => shell.openProfile(p.id, e.currentTarget)}
-        >
-          {p.displayName} · @{p.handle}
-        </button>
-      ))}
-      {page && page.items.length < page.total && (
-        <button type="button" onClick={() => void load(page.page + 1)}>
-          加载更多
-        </button>
-      )}
-      {error && <p role="alert">{error}</p>}
-    </div>
   );
 };
 const MyComments = ({ entryId }: { entryId: string }) => {
