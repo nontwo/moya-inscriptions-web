@@ -357,3 +357,23 @@ uploads and bindings reuse their original request identities after return,
 refresh or network recovery. Definitive rejections stop automatic retry; the
 retained image can be retried explicitly. A server receipt is reconciled with
 the current profile before clearing local state or reporting success.
+
+### Comment avatar synchronization acceptance correction
+
+The Owner accepted avatar Save/navigation/refresh at
+`dad37f26bd8bd47380358a9ab44257dbeb070c0b`, then reported that comment avatars
+still did not match. This acceptance applies only to the completed avatar-save
+correction. Comment-avatar synchronization remains pending in the same Draft PR
+#126.
+
+| Scenario                                     | Development                                                                                 | Production              | Must preserve                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------- |
+| Root comments, replies and composer          | Show the author's current avatar; use the existing initial fallback when absent             | No new Phase 4 exposure | Existing comment presentation, authorship and profile navigation          |
+| Own avatar changes                           | Read shared author state so loaded comments and the composer update with the profile/header | No exposure change      | Comment pages, loaded replies and unsent text remain intact               |
+| Other authors and refreshed sessions         | Deduplicate authorized profile reads for loaded authors and revalidate on session revision  | No exposure change      | Bounded concurrency, account isolation and obsolete-response cancellation |
+| Unavailable profiles or failed session check | Clear unavailable avatar presentation and keep the existing fallback                        | No exposure change      | Profile visibility rules; no unauthorized cached avatar restoration       |
+
+The frozen embedded comment-author contract deliberately omits avatars. Reuse
+the existing profile endpoint and comment avatar renderer; do not expand the
+contract, change media/backend authorization, or alter the daily-change rule.
+Other accepted surfaces and frozen work mutations remain unchanged.

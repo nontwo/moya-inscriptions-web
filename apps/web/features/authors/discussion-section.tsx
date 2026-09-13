@@ -10,6 +10,7 @@ import type { CommentItem, CommentReply } from "../comments/comment-types";
 import { useProductShell } from "../product-shell/product-shell";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors, contentKey } from "./author-context";
+import { useDiscussionAvatars } from "./discussion-avatars";
 import { requestIdentity } from "../shell/request-identity";
 const row = (r: DiscussionReply): CommentReply => ({
   id: r.id,
@@ -56,6 +57,15 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
     replyPages = useRef(new Map<string, number>()),
     listRef = useRef<CommentItem[]>([]);
   listRef.current = [...hot, ...items];
+  const withAvatar = useDiscussionAvatars(listRef.current);
+  const present = (comment: CommentItem): CommentItem => ({
+    ...comment,
+    user: withAvatar(comment.user),
+    replies: comment.replies.map((reply) => ({
+      ...reply,
+      user: withAvatar(reply.user),
+    })),
+  });
   const load = async (next = 1, reset = false) => {
     if (reset) {
       listEpoch.current++;
@@ -263,11 +273,14 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
         contentKey={contentKey(target)}
         currentUser={
           author.viewer
-            ? { id: author.viewer.id, name: author.viewer.displayName }
+            ? withAvatar({
+                id: author.viewer.id,
+                name: author.viewer.displayName,
+              })
             : { id: "guest", name: "访客" }
         }
-        items={items}
-        hotItems={hot}
+        items={items.map(present)}
+        hotItems={hot.map(present)}
         onSendComment={(text) => send(text)}
         onSendReply={(reply, text) =>
           send(text, reply.rootCommentId, reply.replyId)
