@@ -90,6 +90,9 @@ export const CommunityDashboardCard = async ({ user }: ServerProps) => {
       )}
       <div className={styles.links}>
         <Link href="/admin/community-moderation">评论审核队列</Link>
+        {process.env.NODE_ENV === "development" ? (
+          <Link href="/admin/community-moderation/content">作品与推荐</Link>
+        ) : null}
         <Link href="/admin/community-moderation/settings">发布设置</Link>
         <Link href="/admin/community-moderation/history">操作历史</Link>
       </div>

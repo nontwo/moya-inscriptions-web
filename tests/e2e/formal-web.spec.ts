@@ -159,9 +159,7 @@ test("Formal root serves only the request-rendered React Product Shell", async (
   ).toHaveCount(0);
 });
 
-test("Formal root composes only truthful Production list states", async ({
-  page,
-}) => {
+test("Formal root composes truthful runtime list states", async ({ page }) => {
   const { shell } = await openFormalRoot(page);
   const home = shell.locator("[data-home-surface]");
   await expect(
@@ -176,6 +174,8 @@ test("Formal root composes only truthful Production list states", async ({
     "专题内容尚未接入",
   );
 
+  // Phase 4 loads the inscription sequence when its page becomes active.
+  await selectPrimaryDestination(page, "碑刻", "inscriptions");
   await expect(
     shell.locator(
       `[data-primary-destination="inscriptions"] [data-catalog-id="${runtimeIds.noMedia}"]`,

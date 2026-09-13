@@ -57,7 +57,9 @@ import type {
 import type { CommunityIdentityPort } from "../ports/community-identity-port.js";
 import type { RandomBytes } from "../session-token.js";
 
+import type { CommunityContentOperatorPort } from "../ports/community-content-operator-port.js";
 export interface CommunityModerationServiceOptions {
+  readonly contentOperatorPort?: CommunityContentOperatorPort;
   readonly clock?: () => Date;
   readonly randomBytes?: RandomBytes;
   /**
@@ -122,6 +124,8 @@ export class CommunityModerationService {
   private readonly randomBytes: RandomBytes;
   private readonly operatorLabel: string;
   private readonly analysisPort: CommentAnalysisPort;
+  private readonly contentOperatorPort:
+    CommunityContentOperatorPort | undefined;
 
   constructor(
     private readonly commentPort: CommunityCommentPort,
@@ -129,6 +133,7 @@ export class CommunityModerationService {
     private readonly catalogPort: CatalogPublicationPort,
     options: CommunityModerationServiceOptions = {},
   ) {
+    this.contentOperatorPort = options.contentOperatorPort;
     this.clock = options.clock ?? (() => new Date());
     this.randomBytes = options.randomBytes ?? defaultRandomBytes;
     this.operatorLabel = operatorLabelSchema.parse(
@@ -405,17 +410,37 @@ export class CommunityModerationService {
   ): Promise<(Item extends null ? null : OperatorComment)[]> {
     const titles = new Map<CatalogId, string | null>();
     for (const item of items) {
-      if (item !== null && !titles.has(item.catalogId))
+      if (
+        item !== null &&
+        item.catalogId !== null &&
+        !titles.has(item.catalogId)
+      )
         titles.set(
           item.catalogId,
           await this.catalogPort.readTitle(item.catalogId),
         );
     }
-    return items.map((item) =>
-      item === null
-        ? null
-        : { ...item, catalogTitle: titles.get(item.catalogId) ?? null },
-    ) as (Item extends null ? null : OperatorComment)[];
+    return (await Promise.all(
+      items.map(async (item) =>
+        item === null
+          ? null
+          : {
+              ...item,
+              catalogTitle:
+                item.catalogId === null
+                  ? null
+                  : (titles.get(item.catalogId) ?? null),
+              ...(item.target?.type === "work"
+                ? {
+                    contentTitle:
+                      (await this.contentOperatorPort?.readWorkTitle(
+                        item.target.id,
+                      )) ?? null,
+                  }
+                : {}),
+            },
+      ),
+    )) as (Item extends null ? null : OperatorComment)[];
   }
 
   private async record(

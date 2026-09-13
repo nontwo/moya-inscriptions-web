@@ -3,9 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-const { runWithinBudget } = (await import(
+const { runWithinBudget, verificationBudgetMs } = (await import(
   new URL("../../scripts/verify.mjs", import.meta.url).href
 )) as {
+  verificationBudgetMs: (
+    mode: string,
+    flags?: string[],
+    env?: Record<string, string>,
+  ) => number;
   runWithinBudget: (
     commands: string[][],
     options: { budgetMs: number; graceMs: number; stdio: string },
@@ -65,4 +70,39 @@ it("kills a interrupt-resistant descendant even after its parent exits", async (
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+it("keeps routine budgets fixed and permits only the explicit complete CI test milestone", () => {
+  const ci = {
+    GITHUB_ACTIONS: "true",
+    TEST_DATABASE_URL: "synthetic-test-target",
+  };
+  for (const mode of ["all", "lint", "typecheck", "test", "build", "e2e"]) {
+    expect(verificationBudgetMs(mode)).toBe(120_000);
+    expect(verificationBudgetMs(mode, [], ci)).toBe(120_000);
+    if (mode !== "test")
+      expect(() =>
+        verificationBudgetMs(mode, ["--ci-milestone"], ci),
+      ).toThrow();
+  }
+  expect(verificationBudgetMs("test", ["--ci-milestone"], ci)).toBe(300_000);
+  expect(() => verificationBudgetMs("test", ["--ci-milestone"], {})).toThrow();
+  expect(() =>
+    verificationBudgetMs("test", ["--ci-milestone"], {
+      GITHUB_ACTIONS: "true",
+    }),
+  ).toThrow();
+  expect(() => verificationBudgetMs("test", ["--budget=600000"], ci)).toThrow();
+  expect(() =>
+    verificationBudgetMs("test", ["--ci-milestone", "extra"], ci),
+  ).toThrow();
+
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  expect(workflow.match(/--ci-milestone/g)).toHaveLength(1);
+  expect(workflow).toContain(
+    "run: node scripts/verify.mjs test --ci-milestone",
+  );
 });

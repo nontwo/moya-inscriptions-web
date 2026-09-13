@@ -133,11 +133,25 @@ const setup = (
     commits,
     progress,
     render,
+    setPlatform(next: "phone" | "tablet" | "pc") {
+      platform = next;
+      render();
+    },
     drag,
   };
 };
 
 describe("HomeFeedPager category engine integration", () => {
+  it("releases desktop inline height when mobile panels own scrolling", () => {
+    const pager = setup("pc");
+    expect(pager.frame.style.height).toBe("600px");
+    pager.setPlatform("phone");
+    expect(pager.frame.dataset.horizontalPagerScrollOwner).toBe("panel");
+    expect(pager.frame.style.height).toBe("");
+    pager.setPlatform("pc");
+    expect(pager.frame.style.height).toBe("600px");
+  });
+
   beforeEach(() => {
     time = 0;
     id = 0;

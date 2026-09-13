@@ -9,6 +9,7 @@ import { S3ClientUploadHandler as S3ClientUploadHandler_f97aa6c64367fa259c5bc056
 import { OwnerWorkflowView as OwnerWorkflowView_6be79d619593d3e50db1d13a833f41ac } from "../../../src/owner-workflow/View";
 import { CommunityModerationView as CommunityModerationView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
 import { CommunitySettingsView as CommunitySettingsView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
+import { CommunityContentView as CommunityContentView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
 import { CommunityHistoryView as CommunityHistoryView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from "@payloadcms/next/rsc";
 
@@ -36,6 +37,8 @@ export const importMap = {
     CommunityModerationView_86a1b3c9ec56e37b61bf12e13c3d66d2,
   "/src/community/View#CommunitySettingsView":
     CommunitySettingsView_86a1b3c9ec56e37b61bf12e13c3d66d2,
+  "/src/community/View#CommunityContentView":
+    CommunityContentView_86a1b3c9ec56e37b61bf12e13c3d66d2,
   "/src/community/View#CommunityHistoryView":
     CommunityHistoryView_86a1b3c9ec56e37b61bf12e13c3d66d2,
   "@payloadcms/next/rsc#CollectionCards":

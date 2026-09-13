@@ -7,7 +7,7 @@
 
 # 当前项目状态
 
-能力基线审计：2026-09-04；本轮有限事实更新：2026-09-11
+能力基线审计：2026-09-04；本轮有限事实更新：2026-09-13
 
 本文件是 current project status、active Phase 2 work、Production
 gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
@@ -347,12 +347,29 @@ Active development tracks (independent of the parked cloud track):
    the composer draft cleared by a submission that succeeds while new text is
    being typed).
 
-2. **Home Discover progressive loading** — NOT STARTED. Small product task using
+2. **Phase 4 author/community** — Owner-accepted on 2026-09-13, including the
+   final comment-avatar synchronization correction. The approved Development
+   scope adds discovery, author profiles, relationships, saved lists,
+   discussions and Admin existing-work management. Accepted presentation
+   includes shared author bars, inscription rows, long-press actions, My
+   display/account settings, icon-only Detail actions, direct avatar cropping
+   and Save recovery after Back or refresh. Comment, reply and composer avatars
+   follow the saved profile. Work creation/editing/deletion entrances remain
+   frozen; favorites/likes list filters remain hidden. Backend authorization,
+   media ownership and the America/New_York avatar-change rule remain in force.
+   The [Behavior Matrix](community/phase4-author-community-v1.md) preserves
+   scope and acceptance history;
+   [PR #126](https://github.com/nontwo/moya-inscriptions-web/pull/126) records
+   the exact delivery head, independent reviews, CI outcomes and merge
+   verification. Owner acceptance does not waive failed checks. This is a
+   Development milestone, with no Production deployment or release authority.
+
+3. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.
-3. **Editorial hardening on the local P2-R2A environment** — NOT STARTED.
+4. **Editorial hardening on the local P2-R2A environment** — NOT STARTED.
    Independent of Community work.
-4. **Content growth** — NOT STARTED. Separately scoped research delivery through
+5. **Content growth** — NOT STARTED. Separately scoped research delivery through
    `catalog-import/v2`; parallel, non-blocking.
 
 ## Current remote lineage disposition

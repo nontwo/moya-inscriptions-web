@@ -213,3 +213,50 @@ describe("CommentSection", () => {
     );
   });
 });
+
+it("discards the open draft on confirmed logout, account/content change and unmount, while retaining it during uncertainty", () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+  const draw = (
+    user = currentUser.id as string,
+    state: "signed-in" | "signed-out" | "unavailable" = "signed-in",
+    catalogId = "catalog-a",
+  ) =>
+    act(() =>
+      root.render(
+        <CommentSection
+          catalogId={catalogId}
+          currentUser={{ ...currentUser, id: user }}
+          items={[]}
+          onSendComment={() => undefined}
+          onSendReply={() => undefined}
+          presentation="live"
+          viewer={
+            state === "signed-out"
+              ? { state, signInHref: "/dev/community" }
+              : { state }
+          }
+        />,
+      ),
+    );
+  draw();
+  fill(container.querySelector("textarea"), "暂时保留");
+  draw("anonymous", "unavailable");
+  draw();
+  expect(container.querySelector("textarea")?.value).toBe("暂时保留");
+  draw("anonymous", "signed-out");
+  draw();
+  expect(container.querySelector("textarea")?.value).toBe("");
+  fill(container.querySelector("textarea"), "账号甲");
+  draw("another-account");
+  expect(container.querySelector("textarea")?.value).toBe("");
+  fill(container.querySelector("textarea"), "资料甲");
+  draw("another-account", "signed-in", "catalog-b");
+  expect(container.querySelector("textarea")?.value).toBe("");
+  fill(container.querySelector("textarea"), "关闭丢弃");
+  act(() => root.render(null));
+  draw();
+  expect(container.querySelector("textarea")?.value).toBe("");
+});

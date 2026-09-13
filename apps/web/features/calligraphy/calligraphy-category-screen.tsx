@@ -123,10 +123,14 @@ const renderCategory = (
 };
 
 export interface CalligraphyCategoryScreenProps {
+  readonly headerStart?: ReactNode;
+  readonly headerEnd?: ReactNode;
   readonly data: CalligraphyCategorySurfaceData;
 }
 
 export const CalligraphyCategoryScreen = ({
+  headerStart,
+  headerEnd,
   data,
 }: CalligraphyCategoryScreenProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -295,7 +299,11 @@ export const CalligraphyCategoryScreen = ({
       data-calligraphy-platform={platform}
       tabIndex={-1}
     >
-      <header className={styles.header}>
+      <header
+        className={styles.header}
+        data-author-bar={headerEnd ? "" : undefined}
+      >
+        {headerStart}
         <div
           ref={tabsRef}
           aria-label="书帖分类"
@@ -327,6 +335,7 @@ export const CalligraphyCategoryScreen = ({
             );
           })}
         </div>
+        {headerEnd}
       </header>
       <CalligraphyCategoryPager
         ref={pagerRef}

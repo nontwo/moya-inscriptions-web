@@ -16,11 +16,14 @@ const allowedDevOrigins =
     : [];
 
 const nextConfig: NextConfig = {
+  agentRules: false,
   poweredByHeader: false,
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
   // One ingress hostname keeps host-only preview cookies; assets need a distinct prefix.
   assetPrefix: process.env.NODE_ENV === "production" ? "/admin-assets" : "",
   output: "standalone",
+  // Next can externalize the native package only when Admin can resolve it.
+  // Admin pins the already-used workspace version; native loading stays in Node.
   serverExternalPackages: ["opencc"],
   // OpenCC resolves its optional platform package dynamically at runtime.
   outputFileTracingIncludes: {

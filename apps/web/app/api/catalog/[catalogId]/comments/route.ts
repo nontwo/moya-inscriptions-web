@@ -69,7 +69,12 @@ export const GET = async (
   if (query === null) return emptyResponse(400);
   const { catalogId } = await context.params;
   try {
-    const result = await fetchServerCatalogCommentPage(catalogId, query);
+    const result = await fetchServerCatalogCommentPage(
+      catalogId,
+      query,
+      undefined,
+      readCommunitySessionToken(request.headers.get("cookie")),
+    );
     switch (result.state) {
       case "success":
         return jsonResponse(result.page, 200);

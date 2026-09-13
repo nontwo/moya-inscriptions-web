@@ -14,6 +14,9 @@ import { TopicDetail } from "../topics/topic-detail";
 
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
+import type { ContentIdentity } from "@moya/contracts";
+import type { ProductShellProfileOverlayRenderProps } from "../product-shell/product-shell";
+import type { CatalogDetailPresentation } from "../detail/catalog-detail-presentation";
 import type { ReactNode, RefObject } from "react";
 import type { HomeCatalogState } from "../home/catalog-state";
 import type { HomeFeed, HomeSurfaceData } from "../home/home-feed";
@@ -54,6 +57,20 @@ const PreviewBrowse = ({ state }: { readonly state: HomeCatalogState }) => {
 };
 
 export interface T02pProductPreviewProps {
+  readonly detailScopeKey?: string;
+  readonly headerStart?: ReactNode;
+  readonly headerEnd?: ReactNode;
+  readonly renderProfileOverlay?: (
+    properties: ProductShellProfileOverlayRenderProps,
+  ) => ReactNode;
+  readonly workDetailLoader?: CatalogDetailPresentationLoader;
+  readonly renderDiscussion?: (target: ContentIdentity) => ReactNode;
+  readonly renderDetailActions?: (
+    detail: CatalogDetailPresentation,
+    refresh: () => void,
+  ) => ReactNode;
+  readonly discoveryHome?: ReactNode;
+  readonly filteredInscriptions?: ReactNode;
   readonly catalogDetailLoader?: CatalogDetailPresentationLoader;
   readonly developmentPlatformOverride?: PresentationPlatform | null;
   readonly initialPlatform: PresentationPlatform;
@@ -69,6 +86,15 @@ export interface T02pProductPreviewProps {
 
 export const T02pProductPreview = ({
   catalogDetailLoader = loadCatalogDetailPresentation,
+  detailScopeKey = "catalog",
+  headerStart,
+  headerEnd,
+  renderProfileOverlay,
+  workDetailLoader,
+  renderDiscussion,
+  renderDetailActions,
+  discoveryHome,
+  filteredInscriptions,
   developmentPlatformOverride = null,
   initialPlatform,
   initialHomeFeed = "discover",
@@ -85,38 +111,61 @@ export const T02pProductPreview = ({
       calligraphy={
         <div data-product-panel="calligraphy">
           <ContentQuickActionsProvider environment={quickActions}>
-            <CalligraphyCategoryScreen data={states.calligraphy} />
+            <CalligraphyCategoryScreen
+              data={states.calligraphy}
+              headerStart={headerStart}
+              headerEnd={headerEnd}
+            />
           </ContentQuickActionsProvider>
         </div>
       }
       developmentPlatformOverride={developmentPlatformOverride}
       home={
         <ContentQuickActionsProvider environment={quickActions}>
-          <PreviewHome
-            data={states.home}
-            initialFeed={initialHomeFeed}
-            initialTopicId={initialTopicId}
-          />
+          {discoveryHome ?? (
+            <PreviewHome
+              data={states.home}
+              initialFeed={initialHomeFeed}
+              initialTopicId={initialTopicId}
+            />
+          )}
         </ContentQuickActionsProvider>
       }
       initialPlatform={initialPlatform}
       primaryUtility={productUtility}
       navigationAction={navigationAction}
-      inscriptions={<PreviewBrowse state={states.inscriptions} />}
+      inscriptions={
+        filteredInscriptions ?? <PreviewBrowse state={states.inscriptions} />
+      }
+      {...(renderProfileOverlay ? { renderProfileOverlay } : {})}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
       renderDetailOverlay={({
         backButtonRef,
-        catalogId,
+        target,
         initialScrollTop,
+        navigationRevision,
         onClose,
         onScrollTopChange,
       }) => (
         <PreviewCatalogDetailOverlay
           backButtonRef={backButtonRef}
-          catalogId={catalogId}
-          commentSection={renderCommentSection?.(catalogId)}
+          key={`${detailScopeKey}:${target.type}:${target.id}:${navigationRevision}`}
+          catalogId={target.id}
+          commentSection={
+            renderDiscussion?.(target) ??
+            (target.type === "catalog"
+              ? renderCommentSection?.(target.id)
+              : undefined)
+          }
+          {...(renderDetailActions
+            ? { renderActions: renderDetailActions }
+            : {})}
           initialScrollTop={initialScrollTop}
-          loader={catalogDetailLoader}
+          loader={
+            target.type === "work"
+              ? (workDetailLoader ?? unavailableDetailLoader)
+              : catalogDetailLoader
+          }
           onClose={onClose}
           onScrollTopChange={onScrollTopChange}
         />
@@ -156,3 +205,7 @@ const PreviewTopicOverlay = ({
     />
   );
 };
+
+const unavailableDetailLoader: CatalogDetailPresentationLoader = async () => ({
+  state: "not-found",
+});

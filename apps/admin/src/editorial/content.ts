@@ -5,6 +5,7 @@ import {
   EDITORIAL_STATEFUL_FIELDS,
   editorialDraftSchema,
   editorialPublishSchema,
+  catalogFilterMetadataSchema,
 } from "@moya/contracts/internal/editorial";
 
 import type { Catalog } from "../payload-types";
@@ -44,6 +45,10 @@ export const requestFingerprint = (value: unknown): string =>
 export const payloadContentData = (document: object): Partial<Catalog> => {
   const content = draftContent(document);
   const snapshot: Record<string, unknown> = JSON.parse(JSON.stringify(content));
+  // A full snapshot must clear previous native filter values when the canonical
+  // content represents every dimension as UNSUPPLIED.
+  snapshot.filterMetadata =
+    content.filterMetadata ?? catalogFilterMetadataSchema.parse({});
   for (const key of ["title", "summary", "periodLabel", "ownerNote"] as const) {
     snapshot[key] = content[key] ?? null;
   }

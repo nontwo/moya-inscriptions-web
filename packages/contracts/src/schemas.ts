@@ -417,6 +417,7 @@ export const healthResponseSchema = z.strictObject({
 });
 
 export const apiErrorCodeSchema = z.enum([
+  "CONFLICT",
   "INVALID_QUERY",
   "INVALID_INPUT",
   "ITEM_NOT_FOUND",
@@ -431,4 +432,344 @@ export const apiErrorSchema = z.strictObject({
     message: exactTextSchema(500),
     requestId: exactTextSchema(200),
   }),
+});
+
+// Phase 4 public shapes. Operator commands and storage metadata never appear here.
+const id = z.string().min(1).max(128).regex(/^\S+$/u);
+const userId = z.string().regex(/^user-[0-9a-f]{32}$/u);
+const workId = z.string().regex(/^work-[0-9a-f]{32}$/u);
+const mediaId = z.string().regex(/^user-media-[0-9a-f]{32}$/u);
+const requestId = z.string().uuid();
+const version = z.number().int().nonnegative().max(2147483647);
+const visibility = z.enum(["public", "private"]);
+const authorText = (maximum: number) =>
+  z
+    .string()
+    .max(maximum)
+    .refine(
+      (s) =>
+        s === s.trim() && !s.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(s),
+    );
+export const contentIdentitySchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("catalog"), id }),
+  z.strictObject({ type: z.literal("work"), id: workId }),
+]);
+export const authorPrivacySchema = z.strictObject({
+  following: visibility,
+  followers: visibility,
+  favorites: visibility,
+  likes: visibility,
+});
+export const authorMediaSchema = z.strictObject({
+  id: mediaId,
+  src: z.string().startsWith("/api/community/media/"),
+  width: z.number().int().positive().max(8192),
+  height: z.number().int().positive().max(8192),
+});
+export const authorProfileSchema = z.strictObject({
+  id: userId,
+  handle: z.string(),
+  displayName: authorText(40),
+  bio: authorText(500),
+  avatar: authorMediaSchema.nullable(),
+  isOwner: z.boolean(),
+  following: z.boolean(),
+  privacy: authorPrivacySchema,
+  totals: z.strictObject({
+    works: version,
+    following: version.nullable(),
+    followers: version.nullable(),
+    favorites: version.nullable(),
+    likes: version.nullable(),
+  }),
+  nextAvatarChangeAt: z.iso.datetime().nullable(),
+});
+export const workTextSchema = z.strictObject({
+  title: authorText(200).refine((s) => s.length > 0),
+  text: authorText(10000),
+  mediaIds: z
+    .array(mediaId)
+    .max(12)
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+export const workSchema = z.strictObject({
+  id: workId,
+  authorId: userId,
+  authorName: z.string(),
+  title: z.string(),
+  text: z.string(),
+  media: z.array(authorMediaSchema),
+  firstPublishedAt: z.iso.datetime(),
+  version,
+  canEdit: z.boolean(),
+  available: z.boolean(),
+});
+export const workEditDraftSchema = z.strictObject({
+  id: z.string().regex(/^draft-[0-9a-f]{32}$/u),
+  workId,
+  version,
+  baseWorkVersion: version,
+  baseDraftVersion: version,
+  content: workTextSchema,
+  savedAt: z.iso.datetime(),
+  conflicted: z.boolean(),
+});
+export const profileUpdateSchema = z.strictObject({
+  requestId,
+  displayName: authorText(40).refine((s) => s.length > 0),
+  bio: authorText(500),
+});
+export const privacyUpdateSchema = z.strictObject({
+  requestId,
+  privacy: authorPrivacySchema,
+});
+export const avatarUpdateSchema = z.strictObject({ requestId, mediaId });
+export const relationshipUpdateSchema = z.strictObject({
+  requestId,
+  targetId: userId,
+  enabled: z.boolean(),
+});
+export const contentRelationUpdateSchema = z.strictObject({
+  requestId,
+  target: contentIdentitySchema,
+  enabled: z.boolean(),
+});
+export const guestFavoriteMergeSchema = z.strictObject({
+  requestId,
+  expectedAccountId: userId,
+  items: z.array(contentIdentitySchema).min(1).max(100),
+});
+export const workDraftSaveSchema = z.strictObject({
+  requestId,
+  baseWorkVersion: version,
+  baseDraftVersion: version,
+  content: workTextSchema,
+});
+export const workDraftApplySchema = z.strictObject({
+  requestId,
+  draftId: z.string().regex(/^draft-[0-9a-f]{32}$/u),
+});
+export const requestIdentitySchema = z.strictObject({ requestId });
+export const authorListQuerySchema = z.strictObject({
+  page: z
+    .union([z.number(), z.string().regex(/^[1-9]\d*$/u)])
+    .pipe(z.coerce.number<string | number>().int().min(1).max(10000))
+    .default(1),
+  pageSize: z
+    .union([z.number(), z.string().regex(/^[1-9]\d*$/u)])
+    .pipe(z.coerce.number<string | number>().int().min(1).max(50))
+    .default(20),
+  search: z.string().trim().max(200).default(""),
+  kind: z.enum(["all", "inscription", "calligraphy"]).default("all"),
+});
+export type ContentIdentity = z.infer<typeof contentIdentitySchema>;
+export type AuthorPrivacy = z.infer<typeof authorPrivacySchema>;
+export type AuthorMedia = z.infer<typeof authorMediaSchema>;
+export type AuthorProfile = z.infer<typeof authorProfileSchema>;
+export type UserWork = z.infer<typeof workSchema>;
+export type WorkText = z.infer<typeof workTextSchema>;
+export type WorkEditDraft = z.infer<typeof workEditDraftSchema>;
+export type AuthorListQuery = z.infer<typeof authorListQuerySchema>;
+export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
+export type PrivacyUpdate = z.infer<typeof privacyUpdateSchema>;
+export type AvatarUpdate = z.infer<typeof avatarUpdateSchema>;
+export type RelationshipUpdate = z.infer<typeof relationshipUpdateSchema>;
+export type ContentRelationUpdate = z.infer<typeof contentRelationUpdateSchema>;
+export type GuestFavoriteMerge = z.infer<typeof guestFavoriteMergeSchema>;
+export type WorkDraftSave = z.infer<typeof workDraftSaveSchema>;
+export type WorkDraftApply = z.infer<typeof workDraftApplySchema>;
+
+const pageOf = <T extends z.ZodType>(item: T) =>
+  z.strictObject({
+    items: z.array(item).max(50),
+    total: version,
+    page: z.number().int().positive(),
+    pageSize: z.number().int().min(1).max(50),
+  });
+export const authorPersonSchema = z.strictObject({
+  id: userId,
+  handle: z.string(),
+  displayName: z.string(),
+  avatar: authorMediaSchema.nullable(),
+});
+export const authorPeoplePageSchema = pageOf(authorPersonSchema);
+export const workPageSchema = pageOf(workSchema);
+export const workDraftPageSchema = pageOf(workEditDraftSchema).extend({
+  currentVersion: version,
+});
+export const workDraftResultSchema = z.strictObject({
+  draft: workEditDraftSchema,
+  conflict: z.boolean(),
+  latestVersion: version,
+});
+export const workApplyResultSchema = z.strictObject({
+  applied: z.boolean(),
+  conflict: z.boolean(),
+  workVersion: version,
+});
+export const guestFavoriteMergeResultSchema = z.strictObject({
+  acknowledged: z.array(contentIdentitySchema).max(100),
+});
+export const avatarUpdateResultSchema = z.strictObject({
+  nextChangeAt: z.iso.datetime(),
+});
+
+export const discussionReplySchema = z.strictObject({
+  id: catalogCommentIdSchema,
+  author: commentAuthorSchema,
+  text: z.string().max(1000),
+  createdAt: z.iso.datetime(),
+  replyTo: commentAuthorSchema.optional(),
+  likeCount: z.number().int().nonnegative(),
+  liked: z.boolean(),
+  deleted: z.boolean(),
+});
+export const discussionCommentSchema = discussionReplySchema.extend({
+  target: contentIdentitySchema,
+  replies: z.array(discussionReplySchema).max(3),
+  replyTotal: z.number().int().nonnegative(),
+  replyPageTotal: z.number().int().nonnegative(),
+});
+export const discussionPageSchema = z.strictObject({
+  visibleTotal: z.number().int().nonnegative(),
+  hot: z.array(discussionCommentSchema).max(3),
+  items: z.array(discussionCommentSchema).max(50),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().min(1).max(50),
+  totalPages: z.number().int().nonnegative(),
+});
+export const discussionReplyPageSchema = z.strictObject({
+  visibleTotal: z.number().int().nonnegative(),
+  items: z.array(discussionReplySchema).max(50),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().min(1).max(50),
+  totalPages: z.number().int().nonnegative(),
+});
+export const ownCommentSchema = z.strictObject({
+  id: catalogCommentIdSchema,
+  rootId: catalogCommentIdSchema,
+  text: z.string(),
+  createdAt: z.iso.datetime(),
+  deleted: z.boolean(),
+  target: contentIdentitySchema.nullable(),
+});
+export const commentLikeUpdateSchema = z.strictObject({
+  requestId,
+  enabled: z.boolean(),
+});
+export const commentBodyDeleteSchema = z.strictObject({ requestId });
+export type DiscussionReply = z.infer<typeof discussionReplySchema>;
+export type DiscussionComment = z.infer<typeof discussionCommentSchema>;
+export type DiscussionPage = z.infer<typeof discussionPageSchema>;
+export type DiscussionReplyPage = z.infer<typeof discussionReplyPageSchema>;
+export type OwnComment = z.infer<typeof ownCommentSchema>;
+
+export const contentCardSchema = z.strictObject({
+  aliases: catalogSummarySchema.shape.aliases,
+  target: contentIdentitySchema,
+  title: authorText(500).min(1),
+  kind: catalogKindSchema.nullable(),
+  authorId: userId.nullable(),
+  firstPublishedAt: z.iso.datetime().nullable(),
+  media: z
+    .strictObject({
+      id: z.string(),
+      src: z.string(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+    })
+    .nullable(),
+});
+const filterValues = z
+  .array(authorText(80).min(1))
+  .max(25)
+  .refine((values) => new Set(values).size === values.length)
+  .default([]);
+export const inscriptionFiltersSchema = z.strictObject({
+  dynasty: filterValues,
+  textAuthor: filterValues,
+  calligrapher: filterValues,
+  originalRegion: filterValues,
+  script: filterValues,
+});
+export const discoveryQuerySchema = z
+  .strictObject({
+    kind: z.enum(["all", "inscription", "calligraphy"]).default("all"),
+    pageSize: z.number().int().min(1).max(50).default(12),
+    filters: inscriptionFiltersSchema.default({
+      dynasty: [],
+      textAuthor: [],
+      calligrapher: [],
+      originalRegion: [],
+      script: [],
+    }),
+    sequence: z.string().uuid().optional(),
+    after: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
+    search: authorText(200).default(""),
+  })
+  .refine(
+    (q) =>
+      q.kind === "inscription" ||
+      Object.values(q.filters).every((v) => v.length === 0),
+    { message: "Advanced filters are inscription-only" },
+  );
+export const discoveryPageSchema = z.strictObject({
+  items: z.array(contentCardSchema).max(50),
+  sequence: z.string().uuid(),
+  nextAfter: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+});
+export const contentCollectionPageSchema = z.strictObject({
+  items: z.array(contentCardSchema).max(50),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+});
+const filterOptionSchema = z.strictObject({
+  values: z.array(z.string()),
+  unknown: z.number().int().nonnegative(),
+  unsupplied: z.number().int().nonnegative(),
+});
+export const inscriptionFilterOptionsSchema = z.strictObject({
+  dynasty: filterOptionSchema,
+  textAuthor: filterOptionSchema,
+  calligrapher: filterOptionSchema,
+  originalRegion: filterOptionSchema,
+  script: filterOptionSchema,
+});
+export const contentStateQuerySchema = z.strictObject({
+  target: contentIdentitySchema,
+});
+export const contentStateSchema = z.strictObject({
+  favorite: z.boolean(),
+  liked: z.boolean(),
+});
+export type ContentCard = z.infer<typeof contentCardSchema>;
+export type DiscoveryQuery = z.infer<typeof discoveryQuerySchema>;
+export type DiscoveryPage = z.infer<typeof discoveryPageSchema>;
+export type InscriptionFilters = z.infer<typeof inscriptionFiltersSchema>;
+export type InscriptionFilterOptions = z.infer<
+  typeof inscriptionFilterOptionsSchema
+>;
+
+export const ownCommentPageSchema = pageOf(ownCommentSchema).extend({
+  totalPages: z.number().int().nonnegative(),
+});
+export const discussionSubmitResultSchema = z.strictObject({
+  id: catalogCommentIdSchema,
+  rootId: catalogCommentIdSchema,
+  item: discussionReplySchema,
+  awaitingApproval: z.boolean(),
+});
+export const discussionLocationSchema = z.strictObject({
+  rootId: catalogCommentIdSchema,
+  page: z.number().int().positive(),
+  replyPage: z.number().int().positive(),
+});
+export const savedResultSchema = z.strictObject({ saved: z.literal(true) });
+export const deletedResultSchema = z.strictObject({ deleted: z.literal(true) });
+export const discardedResultSchema = z.strictObject({
+  discarded: z.literal(true),
 });

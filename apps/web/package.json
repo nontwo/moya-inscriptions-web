@@ -18,6 +18,7 @@
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-easy-crop": "6.2.3",
     "server-only": "0.0.1"
   },
   "devDependencies": {

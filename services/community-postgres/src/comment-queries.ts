@@ -163,13 +163,13 @@ export const applyCommentModerationSql = `
     UPDATE community.catalog_comments
     SET moderation = $2::text, moderated_by = $3::text,
         moderated_at = $4::timestamptz
-    WHERE id = $1::text AND moderation = ANY($5::text[])
+    WHERE id = $1::text AND moderation = ANY($5::text[]) AND body_deleted_at IS NULL AND thread_removed_at IS NULL
     RETURNING id, moderation
   ), reply AS (
     UPDATE community.catalog_comment_replies
     SET moderation = $2::text, moderated_by = $3::text,
         moderated_at = $4::timestamptz
-    WHERE id = $1::text AND moderation = ANY($5::text[])
+    WHERE id = $1::text AND moderation = ANY($5::text[]) AND body_deleted_at IS NULL AND EXISTS(SELECT 1 FROM community.catalog_comments parent WHERE parent.id=root_comment_id AND parent.thread_removed_at IS NULL)
     RETURNING id, moderation
   )
   SELECT id, moderation, 'comment' AS kind FROM root
@@ -178,7 +178,7 @@ export const applyCommentModerationSql = `
 `;
 
 const operatorCommentUnion = `
-  SELECT c.id, 'comment' AS kind, c.catalog_id, NULL::text AS root_comment_id,
+  SELECT c.id, 'comment' AS kind, c.catalog_id,c.target_type,c.body_deleted_at,c.thread_removed_at,(1+(SELECT COUNT(*) FROM community.catalog_comment_replies siblings WHERE siblings.root_comment_id=c.id))::integer AS thread_affected_count, NULL::text AS root_comment_id,
          NULL::text AS reply_to_reply_id,
          c.text, c.created_at, c.moderation,
          u.id AS author_id, u.handle AS author_handle,
@@ -186,7 +186,7 @@ const operatorCommentUnion = `
   FROM community.catalog_comments c
   JOIN community.public_users u ON u.id = c.author_id
   UNION ALL
-  SELECT r.id, 'reply' AS kind, c.catalog_id, r.root_comment_id,
+  SELECT r.id, 'reply' AS kind, c.catalog_id,c.target_type,r.body_deleted_at,c.thread_removed_at,(1+(SELECT COUNT(*) FROM community.catalog_comment_replies siblings WHERE siblings.root_comment_id=c.id))::integer AS thread_affected_count,r.root_comment_id,
          r.reply_to_reply_id,
          r.text, r.created_at, r.moderation,
          u.id AS author_id, u.handle AS author_handle,

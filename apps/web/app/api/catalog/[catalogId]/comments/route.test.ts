@@ -85,10 +85,15 @@ describe("same-origin comment bridge", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual(page);
-    expect(fetchPageMock).toHaveBeenCalledWith(catalogId, {
-      page: "2",
-      pageSize: "10",
-    });
+    expect(fetchPageMock).toHaveBeenCalledWith(
+      catalogId,
+      {
+        page: "2",
+        pageSize: "10",
+      },
+      undefined,
+      undefined,
+    );
   });
 
   it("forwards the pinned hot ids of a load-more request", async () => {
@@ -98,10 +103,15 @@ describe("same-origin comment bridge", () => {
       context,
     );
     expect(response.status).toBe(200);
-    expect(fetchPageMock).toHaveBeenCalledWith(catalogId, {
-      page: "2",
-      pinned: "comment-a,comment-b",
-    });
+    expect(fetchPageMock).toHaveBeenCalledWith(
+      catalogId,
+      {
+        page: "2",
+        pinned: "comment-a,comment-b",
+      },
+      undefined,
+      undefined,
+    );
   });
 
   it("rejects unknown or repeated query parameters before calling the Backend", async () => {
