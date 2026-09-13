@@ -12,12 +12,16 @@ import path from "node:path";
 import process from "node:process";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { writeOutcome } from "./task-git.mjs";
 
-// Disposable repositories only: a bare "origin" reached through a URL rewrite
-// of the expected GitHub URL, the real core-credential hooks installed from
-// this checkout, and synthetic fixtures assembled at runtime.
+// Disposable repositories only: origin keeps the expected GitHub URL and a
+// synthetic ssh transport serves a local bare repository for it (a URL
+// rewrite would be refused by the helper), the real core-credential hooks are
+// installed from this checkout, and synthetic fixtures are assembled at
+// runtime. Other repositories use ssh URLs too, so nothing reaches a network.
 const source = path.dirname(fileURLToPath(import.meta.url));
-const expectedOrigin = "https://github.com/nontwo/moya-inscriptions-web.git";
+const expectedOrigin = "git@github.com:nontwo/moya-inscriptions-web.git";
+const fork = "git@github.com:someone/fork.git";
 const token = ["gh", "p_", "Z".repeat(36)].join("");
 
 function run(command, args, { cwd, env, input } = {}) {
@@ -53,7 +57,7 @@ function fixture(t) {
   };
   for (const key of Object.keys(env))
     if (
-      /^GIT_(?:AUTHOR|COMMITTER|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_|CONFIG_VALUE_|DIR$|WORK_TREE$|INDEX_FILE$|COMMON_DIR$)/u.test(
+      /^GIT_(?:AUTHOR|COMMITTER|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_|CONFIG_VALUE_|DIR$|WORK_TREE$|INDEX_FILE$|COMMON_DIR$|SSH$|SSH_COMMAND$|SSH_VARIANT$)/u.test(
         key,
       )
     )
@@ -78,7 +82,22 @@ function fixture(t) {
   good("add", ".");
   good("commit", "-m", "Synthetic base");
   good("remote", "add", "origin", expectedOrigin);
-  good("config", `url.${remote}.insteadOf`, expectedOrigin);
+  // Git calls the transport as `<host> "<service> '<path>'"`.
+  const transport = path.join(dir, "synthetic-ssh.mjs");
+  writeFileSync(
+    transport,
+    [
+      'import { spawnSync } from "node:child_process";',
+      'import process from "node:process";',
+      'const [service] = process.argv.at(-1).split(" ");',
+      'if (!["git-upload-pack", "git-receive-pack"].includes(service)) process.exit(1);',
+      `const served = spawnSync("git", [service.slice(4), ${JSON.stringify(remote)}], { stdio: "inherit" });`,
+      "process.exit(served.status ?? 1);",
+      "",
+    ].join("\n"),
+  );
+  good("config", "core.sshCommand", `"${process.execPath}" "${transport}"`);
+  good("config", "ssh.variant", "simple");
   good("push", "origin", "main");
   const install = run(
     process.execPath,
@@ -99,7 +118,13 @@ function fixture(t) {
     writeFileSync(path.join(repo, name), content);
     good("add", "--", name);
   };
-  return { dir, repo, remote, env, git, good, helper, stage };
+  // Every ref on origin, tags included, with the object it names.
+  const remoteRefs = () =>
+    run("git", ["for-each-ref", "--format=%(refname) %(objectname)"], {
+      cwd: remote,
+      env,
+    }).stdout.trim();
+  return { dir, repo, remote, env, git, good, helper, stage, remoteRefs };
 }
 
 const refusal = (result) => {
@@ -226,16 +251,10 @@ test("refuses before writing: arguments, branch, worktree, origin, hooks and run
     "WRONG_WORKTREE",
   );
 
-  f.good("remote", "set-url", "origin", "https://github.com/someone/fork.git");
+  f.good("remote", "set-url", "origin", fork);
   assert.equal(refusal(f.helper(["push"])), "ORIGIN_MISMATCH");
   f.good("remote", "set-url", "origin", expectedOrigin);
-  f.good(
-    "remote",
-    "set-url",
-    "--push",
-    "origin",
-    "https://github.com/someone/fork.git",
-  );
+  f.good("remote", "set-url", "--push", "origin", fork);
   assert.equal(refusal(f.helper(["push"])), "ORIGIN_MISMATCH");
   f.good("config", "--unset", "remote.origin.pushurl");
 
@@ -267,5 +286,142 @@ test("refuses before writing: arguments, branch, worktree, origin, hooks and run
     }).stdout.trim(),
     "refs/heads/main",
     "no refusal pushed",
+  );
+});
+
+test("reads the branch from the full HEAD ref, never from a shortened name", (t) => {
+  const f = fixture(t);
+  const branch = "chore/synthetic-task";
+
+  // A tag sharing the task branch's name leaves commit and push on the branch.
+  f.good("tag", branch);
+  const tagged = f.good("rev-parse", `refs/tags/${branch}`);
+  f.stage("tagged.txt", "Synthetic.\n");
+  const committed = f.helper(["commit", "--message", "test: synthetic"]);
+  assert.equal(committed.status, 0, committed.stderr);
+  assert.equal(JSON.parse(committed.stdout).branch, branch);
+  const head = f.good("rev-parse", `refs/heads/${branch}`);
+  assert.notEqual(head, tagged);
+  const pushed = f.helper(["push"]);
+  assert.equal(pushed.status, 0, pushed.stderr);
+  assert.equal(JSON.parse(pushed.stdout).branch, branch);
+  const published = f.remoteRefs();
+  assert.ok(published.includes(`refs/heads/${branch} ${head}`), published);
+  assert.equal(f.good("rev-parse", `refs/tags/${branch}`), tagged);
+
+  // A tag named main never turns local main into a task branch.
+  f.good("switch", "main");
+  f.good("tag", "main");
+  const main = f.good("rev-parse", "refs/heads/main");
+  f.stage("main.txt", "Synthetic.\n");
+  assert.equal(
+    refusal(f.helper(["commit", "--message", "test: synthetic"])),
+    "TASK_BRANCH_REQUIRED",
+  );
+  assert.equal(refusal(f.helper(["push"])), "TASK_BRANCH_REQUIRED");
+  assert.equal(f.good("rev-parse", "refs/heads/main"), main);
+
+  // HEAD pointing at a tag is not a branch, whatever its short name.
+  f.good("symbolic-ref", "HEAD", `refs/tags/${branch}`);
+  assert.equal(
+    refusal(f.helper(["commit", "--message", "test: synthetic"])),
+    "TASK_BRANCH_REQUIRED",
+  );
+  assert.equal(refusal(f.helper(["push"])), "TASK_BRANCH_REQUIRED");
+  assert.equal(f.good("rev-parse", `refs/tags/${branch}`), tagged);
+  assert.equal(f.remoteRefs(), published, "no refusal pushed");
+});
+
+test("checks origin as Git resolves it: every configured URL and every rewrite", (t) => {
+  const f = fixture(t);
+  const before = f.good("rev-parse", "HEAD");
+  const published = f.remoteRefs();
+  f.stage("pending.txt", "Pending.\n");
+  const refused = (label) => {
+    for (const args of [["commit", "--message", "test: synthetic"], ["push"]])
+      assert.equal(refusal(f.helper(args)), "ORIGIN_MISMATCH", label);
+  };
+
+  // A second URL would push to both; the expected one is the last value.
+  f.good("config", "--replace-all", "remote.origin.url", fork);
+  f.good("config", "--add", "remote.origin.url", expectedOrigin);
+  refused("multiple URLs");
+  f.good("config", "--replace-all", "remote.origin.url", expectedOrigin);
+
+  f.good("config", `url.${fork}.insteadOf`, expectedOrigin);
+  refused("insteadOf");
+  f.good("config", "--unset", `url.${fork}.insteadOf`);
+
+  f.good("config", "--global", `url.${fork}.pushInsteadOf`, expectedOrigin);
+  refused("pushInsteadOf");
+  f.good("config", "--global", "--unset", `url.${fork}.pushInsteadOf`);
+
+  assert.equal(
+    f.good("rev-parse", "HEAD"),
+    before,
+    "no refusal wrote a commit",
+  );
+  assert.equal(f.remoteRefs(), published, "no refusal pushed");
+
+  // A rewrite to another expected form of the same repository still works.
+  f.good(
+    "remote",
+    "set-url",
+    "origin",
+    "https://github.com/nontwo/moya-inscriptions-web",
+  );
+  f.good("config", "url.git@github.com:.insteadOf", "https://github.com/");
+  const committed = f.helper(["commit", "--message", "test: synthetic"]);
+  assert.equal(committed.status, 0, committed.stderr);
+  const pushed = f.helper(["push"]);
+  assert.equal(pushed.status, 0, pushed.stderr);
+  assert.ok(
+    f
+      .remoteRefs()
+      .includes(
+        `refs/heads/chore/synthetic-task ${f.good("rev-parse", "HEAD")}`,
+      ),
+  );
+});
+
+test("once Git is asked to write, a deadline, broken pipe or spawn error is FAILED, never a refusal", (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "task-git-synthetic-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // Real spawn results, not hand-written objects.
+  const timedOut = spawnSync(
+    process.execPath,
+    ["-e", "setTimeout(() => {}, 30_000)"],
+    { timeout: 200, killSignal: "SIGKILL" },
+  );
+  assert.equal(timedOut.error?.code, "ETIMEDOUT");
+  assert.deepEqual(writeOutcome(timedOut, "GIT_PUSH_FAILED"), {
+    failure: "GIT_PUSH_FAILED",
+  });
+
+  // A process that exits without reading its input, as Git does when a hook
+  // stops a commit before the message is read, can break the input pipe.
+  const brokenPipe = spawnSync(process.execPath, ["-e", "process.exit(1)"], {
+    input: "m".repeat(1024 * 1024),
+  });
+  assert.equal(brokenPipe.error?.code, "EPIPE");
+  assert.deepEqual(writeOutcome(brokenPipe, "GIT_COMMIT_FAILED"), {
+    failure: "GIT_COMMIT_FAILED",
+  });
+
+  const neverStarted = spawnSync(path.join(dir, "missing-git"), [], {
+    timeout: 5_000,
+  });
+  assert.equal(neverStarted.error?.code, "ENOENT");
+  assert.deepEqual(writeOutcome(neverStarted, "GIT_COMMIT_FAILED"), {
+    failure: "GIT_COMMIT_FAILED",
+  });
+
+  const rejected = spawnSync(process.execPath, ["-e", "process.exit(1)"]);
+  assert.deepEqual(writeOutcome(rejected, "GIT_PUSH_FAILED"), {
+    failure: "GIT_PUSH_FAILED",
+  });
+  assert.equal(
+    writeOutcome(spawnSync(process.execPath, ["-e", ""]), "GIT_PUSH_FAILED"),
+    null,
   );
 });

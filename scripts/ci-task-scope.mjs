@@ -20,7 +20,6 @@ const tooling = new Set([
   ".editorconfig",
   ".gitignore",
   ".github/CODEOWNERS",
-  "scripts/verify.mjs",
   "scripts/ci-e2e-scope.mjs",
   "scripts/ci-e2e-gate.mjs",
   "scripts/ci-e2e-smoke.mjs",
@@ -63,6 +62,13 @@ const webConfig = new Set([
   "turbo.json",
   "compose.dev.yml",
   "compose.postgres.yml",
+]);
+// The cms job imports the marker module and the name guard through
+// scripts/editorial/verify-cms.mjs and runs the SQL in its marker step.
+const cmsTestTarget = new Set([
+  "scripts/disposable-test-target.mjs",
+  "infra/test/disposable-test-target.sql",
+  "tests/integration/postgres/synthetic-test-database.ts",
 ]);
 const publicBoundary = (file) =>
   (file.startsWith("packages/contracts/") &&
@@ -115,6 +121,8 @@ export function classifyTask(paths, event = "pull_request") {
     } else if (
       docs.has(file) ||
       tooling.has(file) ||
+      // A workflow path cannot name the job an edit affects; script tests
+      // assert the test and cms jobs' disposable-target marker steps.
       file.startsWith(".github/workflows/") ||
       file.startsWith(".agents/") ||
       file.startsWith(".githooks/") ||
@@ -142,7 +150,9 @@ export function classifyTask(paths, event = "pull_request") {
       webRoots.some((prefix) => file.startsWith(prefix)) ||
       file.startsWith("packages/contracts/src/internal/") ||
       file.startsWith("scripts/editorial/") ||
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
+      // verify.mjs stage plans are the Web lint, typecheck, test, build and
+      // smoke job commands, including the test job's marker check.
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
         file,
       )
     ) {
@@ -151,6 +161,7 @@ export function classifyTask(paths, event = "pull_request") {
         file.startsWith("apps/admin/") ||
         file.startsWith("tests/cms/") ||
         file.startsWith("scripts/editorial/") ||
+        cmsTestTarget.has(file) ||
         /^packages\/contracts\/src\/internal\/(?:editorial|community-operator)(?:[/.]|$)/u.test(
           file,
         ) ||

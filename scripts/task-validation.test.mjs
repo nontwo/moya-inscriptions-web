@@ -112,6 +112,7 @@ describe("task routing follows the complete changed-path set", () => {
     [["README.md", "docs/development/task workflow.md"], {}],
     [["CLAUDE.md", "apps/apple/AGENTS.md", "apps/apple/README.md"], {}],
     [[".github/workflows/ci.yml", "scripts/verify-task.mjs"], {}],
+    [[".github/workflows/ci.yml"], {}],
     [[".githooks/pre-commit", ".agents/skills/example/SKILL.md"], {}],
     [
       [
@@ -127,10 +128,28 @@ describe("task routing follows the complete changed-path set", () => {
       ],
       {},
     ],
+    [["scripts/test-target.mjs"], { web: true, scope: "smoke" }],
     [
-      ["scripts/test-target.mjs", "scripts/disposable-test-target.mjs"],
+      ["scripts/disposable-test-target.mjs"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["infra/test/disposable-test-target.sql"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["tests/integration/postgres/synthetic-test-database.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      [
+        "scripts/migrate.mjs",
+        "infra/development/init-roles.sql",
+        "tests/integration/postgres/catalog-postgres.test.ts",
+      ],
       { web: true, scope: "smoke" },
     ],
+    [["scripts/verify.mjs"], { web: true, scope: "smoke" }],
     [["scripts/confidentiality-scan.test.mjs"], {}],
     [["scripts/confidentiality-scan.mjs"], { web: true, scope: "smoke" }],
     [
@@ -623,6 +642,50 @@ describe("the real CI wiring preserves required-check closure", () => {
     assert.doesNotMatch(
       workflow,
       /^\s*(?:paths|paths-ignore|pull_request_target|continue-on-error):/m,
+    );
+  });
+
+  it("routes the files the PostgreSQL and Web jobs execute to those jobs", () => {
+    const { jobs } = workflowJobs();
+    const entry = "scripts/editorial/verify-cms.mjs";
+    const imported = [
+      ...read(entry).matchAll(/\bfrom\s+"(\.\.?\/[^"]+)"/gu),
+    ].map((match) => relative(root, resolve(root, dirname(entry), match[1])));
+    const redirected = (job) =>
+      [...jobs.get(job).matchAll(/\s<([\w./-]+)/gu)].map((match) => match[1]);
+    const marker = "infra/test/disposable-test-target.sql";
+    assert.match(jobs.get("cms"), /run: pnpm test:cms\n/);
+    assert.ok(imported.includes("scripts/disposable-test-target.mjs"));
+    assert.ok(
+      imported.includes(
+        "tests/integration/postgres/synthetic-test-database.ts",
+      ),
+    );
+    assert.ok(redirected("cms").includes(marker));
+    assert.ok(redirected("test").includes(marker));
+    for (const file of [...imported, ...redirected("cms")])
+      assert.equal(classifyTask([file]).cms, true, file);
+    for (const file of redirected("test"))
+      assert.equal(classifyTask([file]).web, true, file);
+    // Only the Web-selected jobs run the verify.mjs stage plans.
+    const stages = new Map([
+      ["lint", "lint"],
+      ["typecheck", "typecheck"],
+      ["test", "test --ci-milestone"],
+      ["build", "build"],
+      ["e2e_smoke", "e2e"],
+    ]);
+    for (const [job, body] of jobs)
+      if (stages.has(job))
+        assert.match(
+          body,
+          new RegExp(`run: node scripts/verify\\.mjs ${stages.get(job)}\\n`),
+          job,
+        );
+      else assert.doesNotMatch(body, /node scripts\/verify\.mjs/, job);
+    assert.deepEqual(
+      flags(classifyTask(["scripts/verify.mjs"])),
+      expectedFlags({ web: true, scope: "smoke" }),
     );
   });
 
