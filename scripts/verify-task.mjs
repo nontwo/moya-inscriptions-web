@@ -6,6 +6,7 @@ import {
   writeFileSync,
   realpathSync,
   lstatSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
 } from "node:fs";
@@ -70,12 +71,23 @@ export const contractCommands = () => [
   ["pnpm", "--filter", "web", "exec", "vitest", "run", "lib/public-api"],
 ];
 
+export function scriptTests(root = process.cwd()) {
+  const files = readdirSync(join(root, "scripts"))
+    .filter((file) => /^[a-z-]+\.test\.mjs$/u.test(file))
+    .sort()
+    .map((file) => `scripts/${file}`);
+  if (files.length === 0)
+    throw new Error("No script tests found under scripts/");
+  return files;
+}
+
 export function taskCommands(plan, output) {
   const commands = [
     // Every dependency-free script test: routing, gates, the disposable
     // test-target guard and the agent permission guard get behavioral checks
-    // even when a task touches only lightweight paths.
-    [process.execPath, "--test", "scripts/*.test.mjs"],
+    // even when a task touches only lightweight paths. The files are
+    // enumerated so a missing suite fails instead of passing vacuously.
+    [process.execPath, "--test", ...scriptTests()],
   ];
   if (plan.contracts) commands.push(...contractCommands());
   if (plan.web) commands.push([process.execPath, "scripts/verify.mjs"]);

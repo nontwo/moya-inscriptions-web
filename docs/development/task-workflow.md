@@ -59,11 +59,12 @@ a terminal, a read-only reviewer or the incoming session opening the directory
 does not compete for the role, and an open file or process id alone is not proof
 of write activity. A competing writer is a newer held claim in the task's
 checkpoint, a conflicting task update, or a source-changing or Git-writing
-process left by the previous execution. An independent reviewer reads the
-assigned diff and exact HEAD. Tests that write files use separate output
-locations, or a separate review worktree when source writes cannot be avoided.
-Return the writer role to the implementer before fixes. Either tool, including a
-new session of the same tool, may implement, test, review or take over the task.
+process left by the previous execution. The private handoff record below is that
+checkpoint. An independent reviewer reads the assigned diff and exact HEAD.
+Tests that write files use separate output locations, or a separate review
+worktree when source writes cannot be avoided. Return the writer role to the
+implementer before fixes. Either tool, including a new session of the same tool,
+may implement, test, review or take over the task.
 
 Do not interrupt unrelated sessions, services, containers or databases. Use
 task-specific ports and writable test databases where isolation is needed. Apple

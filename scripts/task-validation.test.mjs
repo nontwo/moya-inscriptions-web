@@ -129,6 +129,8 @@ describe("task routing follows the complete changed-path set", () => {
       ["scripts/test-target.mjs", "scripts/disposable-test-target.mjs"],
       { web: true, scope: "smoke" },
     ],
+    [["scripts/confidentiality-scan.test.mjs"], {}],
+    [["scripts/confidentiality-scan.mjs"], { web: true, scope: "smoke" }],
     [
       ["apps/apple/ArtVenn/Assets 由艺.xcassets/Contents.json"],
       { apple: true },
@@ -210,7 +212,15 @@ describe("task routing follows the complete changed-path set", () => {
   });
 
   it("rejects unknown, malformed and incomplete input instead of reporting N/A", () => {
-    for (const paths of [[], null, ["unknown.ts"], ["README.md", "unknown.ts"]])
+    for (const paths of [
+      [],
+      null,
+      ["unknown.ts"],
+      ["README.md", "unknown.ts"],
+      ["scripts/new-thing.mjs"],
+      ["scripts/sub/x.test.mjs"],
+      [".github/dependabot.yml"],
+    ])
       assert.throws(() => classifyTask(paths));
     for (const file of [
       "",
@@ -871,7 +881,11 @@ describe("scoped validation commands and private output", () => {
         "/private/synthetic-output",
       );
       assert.ok(
-        commands.some((command) => command.includes("scripts/*.test.mjs")),
+        commands.some(
+          (command) =>
+            command.includes("scripts/task-validation.test.mjs") &&
+            command.includes("scripts/confidentiality-scan.test.mjs"),
+        ),
       );
       assert.doesNotMatch(
         commands.map((command) => command.join(" ")).join("\n"),

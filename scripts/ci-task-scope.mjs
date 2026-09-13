@@ -141,7 +141,7 @@ export function classifyTask(paths, event = "pull_request") {
       webRoots.some((prefix) => file.startsWith(prefix)) ||
       file.startsWith("packages/contracts/src/internal/") ||
       file.startsWith("scripts/editorial/") ||
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan(?:\.test)?|install-confidentiality-hooks|disposable-test-target|test-target)\.mjs$/u.test(
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target)\.mjs$/u.test(
         file,
       )
     ) {
