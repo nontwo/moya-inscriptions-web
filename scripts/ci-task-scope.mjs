@@ -27,7 +27,6 @@ const tooling = new Set([
   "scripts/verify-apple.mjs",
   "scripts/task-git.mjs",
   "scripts/task-validation.test.mjs",
-  "tests/unit/architecture/workspace-scanner.ts",
 ]);
 const webRoots = [
   "apps/web/",
@@ -44,6 +43,9 @@ const webRoots = [
   "services/community-postgres/",
   "database/",
   "infra/",
+  // Includes tests/unit/architecture/workspace-scanner.ts: a lightweight
+  // routing test imports it, but the Web jobs lint and type-check it and run
+  // the architecture tests that import it.
   "tests/",
   "experiments/",
   "docs/prototypes/",
