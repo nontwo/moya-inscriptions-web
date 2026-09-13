@@ -61,6 +61,11 @@ export default buildConfig({
           path: "/community-moderation/settings",
           exact: true,
         },
+        communityContent: {
+          Component: "/src/community/View#CommunityContentView",
+          path: "/community-moderation/content",
+          exact: true,
+        },
         communityHistory: {
           Component: "/src/community/View#CommunityHistoryView",
           path: "/community-moderation/history",
@@ -68,7 +73,14 @@ export default buildConfig({
         },
       },
       // Work-oriented groups after the collection groups: 社区 and 自动化工具.
-      afterNavLinks: ["/src/community/NavGroup#CommunityNavGroups"],
+      afterNavLinks: [
+        {
+          path: "/src/community/NavGroup#CommunityNavGroups",
+          clientProps: {
+            phase4Enabled: process.env.NODE_ENV === "development",
+          },
+        },
+      ],
       beforeDashboard: ["/src/community/DashboardCard#CommunityDashboardCard"],
     },
   },
@@ -149,5 +161,8 @@ export default buildConfig({
     editorialPreviewEndpoint,
   ],
   plugins: [createEditorialStoragePlugin(), editorialMcp()],
-  typescript: { outputFile: path.resolve(dirname, "src/payload-types.ts") },
+  typescript: {
+    autoGenerate: false,
+    outputFile: path.resolve(dirname, "src/payload-types.ts"),
+  },
 });

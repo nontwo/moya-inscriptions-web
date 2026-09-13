@@ -28,6 +28,7 @@ export interface CatalogDetailExperienceProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly catalogId: string;
   readonly commentSection?: ReactNode;
+  readonly detailActions?: ReactNode;
   readonly initialScrollTop: number;
   readonly onBack: () => void;
   readonly onCloseViewer: () => void;
@@ -54,6 +55,7 @@ export const CatalogDetailExperience = ({
   backButtonRef,
   catalogId,
   commentSection,
+  detailActions,
   initialScrollTop,
   onBack,
   onCloseViewer,
@@ -293,6 +295,7 @@ export const CatalogDetailExperience = ({
           activeMediaIndex={activeMediaIndex}
           backButtonRef={backButtonRef}
           commentSection={commentSection}
+          detailActions={detailActions}
           onActiveMediaIndexChange={setActiveMediaIndex}
           onBack={onBack}
           onOpenViewer={(index, opener) => {

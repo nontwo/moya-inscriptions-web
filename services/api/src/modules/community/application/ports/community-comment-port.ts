@@ -113,7 +113,10 @@ export interface OperatorQueueCountsRecord {
 }
 
 /** A review item as the store knows it; the Catalog title is added by the service. */
-export type OperatorCommentRecord = Omit<OperatorComment, "catalogTitle">;
+export type OperatorCommentRecord = Omit<
+  OperatorComment,
+  "catalogTitle" | "contentTitle"
+>;
 
 export interface OperatorCommentListing extends CommentPageRecord<OperatorCommentRecord> {
   readonly counts: OperatorQueueCountsRecord;

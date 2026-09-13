@@ -135,7 +135,11 @@ const StateChip = ({ state }: { readonly state: CommentModerationState }) => (
   </span>
 );
 
-export const CommunityQueueClient = () => {
+export const CommunityQueueClient = ({
+  phase4Enabled = false,
+}: {
+  readonly phase4Enabled?: boolean;
+}) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -157,6 +161,14 @@ export const CommunityQueueClient = () => {
     readonly action: CommentModerationAction;
     readonly ids: readonly string[];
   } | null>(null);
+  const deletionLock = useRef(false);
+  const [pendingDeletion, setPendingDeletion] = useState<{
+    item: OperatorComment;
+    scope: "body" | "thread";
+    requestId: string;
+  } | null>(null);
+  const [failedDeletion, setFailedDeletion] =
+    useState<typeof pendingDeletion>(null);
   const [pendingSuspension, setPendingSuspension] =
     useState<OperatorComment | null>(null);
   const [detail, setDetail] = useState<
@@ -264,7 +276,8 @@ export const CommunityQueueClient = () => {
   const catalogOptions = useMemo(() => {
     const options = new Map<string, string>();
     for (const item of items)
-      options.set(item.catalogId, item.catalogTitle ?? item.catalogId);
+      if (item.catalogId !== null)
+        options.set(item.catalogId, item.catalogTitle ?? item.catalogId);
     if (query.catalog !== "" && !options.has(query.catalog))
       options.set(query.catalog, query.catalog);
     return [...options.entries()];
@@ -455,12 +468,53 @@ export const CommunityQueueClient = () => {
   const openItem = (id: string) => navigate({ item: id }, "push");
   const closeItem = () => navigate({ item: null }, "replace");
 
+  const deleteContent = async (
+    command: NonNullable<typeof pendingDeletion>,
+  ) => {
+    if (deletionLock.current) return;
+    deletionLock.current = true;
+    setBusy(command.item.id, true);
+    try {
+      await call(command.scope === "body" ? "delete-body" : "remove-thread", {
+        id: command.item.id,
+        requestId: command.requestId,
+        ...(command.scope === "thread"
+          ? { expectedAffectedCount: command.item.threadAffectedCount }
+          : {}),
+      });
+      setFailedDeletion(null);
+      setReceipt({
+        tone: "success",
+        text:
+          command.scope === "body"
+            ? "正文已删除；已有回复保留。"
+            : "整帖及全部回复已移除。",
+      });
+      await load();
+      refreshDetailIfOpen(command.item.id);
+    } catch (error) {
+      const failure = describeFailure(error);
+      setReceipt({ tone: "error", text: failure.text });
+      setFailedDeletion(
+        failure.code === "STATE_CONFLICT" || failure.code === "NOT_FOUND"
+          ? null
+          : command,
+      );
+    } finally {
+      deletionLock.current = false;
+      setBusy(command.item.id, false);
+    }
+  };
+
   const renderActions = (item: OperatorComment, compact: boolean) => {
     const busy = busyIds.has(item.id);
     const suspended = item.author.status === "suspended";
     return (
       <div className={styles.actions}>
-        {applicableActions(item.moderation).map((action) => (
+        {(item.bodyDeleted || item.threadRemoved
+          ? []
+          : applicableActions(item.moderation)
+        ).map((action) => (
           <button
             className={styles.actionButton}
             data-primary={
@@ -480,6 +534,48 @@ export const CommunityQueueClient = () => {
         <details className={styles.more}>
           <summary aria-label={`更多操作：${shortId(item.id)}`}>更多</summary>
           <div className={styles.moreMenu} role="menu">
+            {phase4Enabled && !item.threadRemoved ? (
+              <>
+                {!item.bodyDeleted ? (
+                  <button
+                    role="menuitem"
+                    type="button"
+                    disabled={busy || failedDeletion !== null}
+                    onClick={() => {
+                      setPendingDeletion({
+                        item,
+                        scope: "body",
+                        requestId: crypto.randomUUID(),
+                      });
+                      openModal("community-delete-confirm");
+                    }}
+                  >
+                    删除正文…
+                  </button>
+                ) : null}
+                {item.kind === "comment" ? (
+                  <button
+                    role="menuitem"
+                    type="button"
+                    disabled={
+                      busy ||
+                      failedDeletion !== null ||
+                      !item.threadAffectedCount
+                    }
+                    onClick={() => {
+                      setPendingDeletion({
+                        item,
+                        scope: "thread",
+                        requestId: crypto.randomUUID(),
+                      });
+                      openModal("community-delete-confirm");
+                    }}
+                  >
+                    移除整帖…
+                  </button>
+                ) : null}
+              </>
+            ) : null}
             {compact ? (
               <button
                 onClick={() => openItem(item.id)}
@@ -807,9 +903,13 @@ export const CommunityQueueClient = () => {
                         )}
                       </td>
                       <td>
-                        {item.catalogTitle ?? "（未公开的资料）"}
+                        {item.contentTitle ??
+                          item.catalogTitle ??
+                          "（当前不可用的内容）"}
                         <span className={styles.secondary}>
-                          {item.catalogId}
+                          {item.target?.type === "work"
+                            ? `用户作品 · ${item.target.id}`
+                            : item.catalogId}
                         </span>
                       </td>
                       <td>
@@ -828,6 +928,11 @@ export const CommunityQueueClient = () => {
                       </td>
                       <td>
                         <StateChip state={item.moderation} />
+                        {item.threadRemoved ? (
+                          <span> 整帖已移除</span>
+                        ) : item.bodyDeleted ? (
+                          <span> 正文已删除</span>
+                        ) : null}
                         <span className={styles.secondary}>
                           <time dateTime={item.createdAt}>
                             {formatTime(item.createdAt)}
@@ -918,6 +1023,45 @@ export const CommunityQueueClient = () => {
         )}
       </div>
 
+      {failedDeletion ? (
+        <p className={styles.notice} role="alert">
+          上次删除操作结果尚未确认。
+          <button
+            type="button"
+            disabled={busyIds.has(failedDeletion.item.id)}
+            onClick={() => void deleteContent(failedDeletion)}
+          >
+            重试同一操作
+          </button>
+        </p>
+      ) : null}
+      <ConfirmationModal
+        heading={
+          pendingDeletion?.scope === "thread" ? "确认移除整帖" : "确认删除正文"
+        }
+        modalSlug="community-delete-confirm"
+        cancelLabel="取消"
+        confirmLabel="确认删除"
+        confirmingLabel="删除中…"
+        body={
+          pendingDeletion?.scope === "thread" ? (
+            <p>
+              将移除此根评论及全部回复，共{" "}
+              {pendingDeletion.item.threadAffectedCount}{" "}
+              项。所有作者也无法在「我的评论」中再读取这些正文。此操作不可恢复；新回复会使确认失效，需重新检查数量。
+            </p>
+          ) : (
+            <p>
+              删除这条评论的正文。已有回复及其关系保留；曾公开的内容显示删除占位，未公开内容不会因此公开。作者也无法再读取被删除的正文，此操作不可恢复。
+            </p>
+          )
+        }
+        onConfirm={async () => {
+          closeModal("community-delete-confirm");
+          if (pendingDeletion) await deleteContent(pendingDeletion);
+          setPendingDeletion(null);
+        }}
+      />
       <ConfirmationModal
         body={
           <p>
@@ -988,6 +1132,11 @@ const DetailBody = ({
       <div>
         <h3>状态</h3>
         <StateChip state={item.moderation} />{" "}
+        {item.threadRemoved ? (
+          <p>整帖已移除，不可恢复。</p>
+        ) : item.bodyDeleted ? (
+          <p>正文已删除，不可恢复。</p>
+        ) : null}
         <span className={styles.chip} data-state="kind">
           {kindLabels[item.kind]}
         </span>
@@ -1000,12 +1149,22 @@ const DetailBody = ({
         )}
       </div>
       <div>
-        <h3>所属资料</h3>
-        {item.catalogTitle ?? "（未公开的资料）"}
+        <h3>所属内容</h3>
+        {item.contentTitle ?? item.catalogTitle ?? "（当前不可用的内容）"}
         <span className={styles.secondary}>
-          <Link href={catalogLink(item.catalogId)}>在资料列表中查看</Link>
+          {item.catalogId !== null ? (
+            <Link href={catalogLink(item.catalogId)}>在资料列表中查看</Link>
+          ) : item.target?.type === "work" ? (
+            <Link
+              href={`/admin/community-moderation/content?q=${encodeURIComponent(item.target.id)}`}
+            >
+              在作品管理中查看
+            </Link>
+          ) : null}
           {" · "}
-          <span className={styles.mono}>{item.catalogId}</span>
+          <span className={styles.mono}>
+            {item.target?.id ?? item.catalogId}
+          </span>
         </span>
       </div>
       {data.root === null ? null : (

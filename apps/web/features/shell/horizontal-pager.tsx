@@ -582,6 +582,7 @@ function HorizontalPagerImplementation<Key extends string>(
       engineRef.current?.sync(activeIndex);
       internalCommitIndexRef.current = null;
       if (scrollOwner === "document") applyPanelHeight(activeIndex);
+      else frame.style.height = "";
       return;
     }
     const internalCommit = internalCommitIndexRef.current === activeIndex;

@@ -80,6 +80,63 @@ const statefulShape = {
   scholarlyResearch: canonicalScholarlyResearchImportFieldSchema,
 };
 
+export const FILTER_DIMENSIONS = [
+  "dynasty",
+  "textAuthor",
+  "calligrapher",
+  "originalRegion",
+  "script",
+] as const;
+const filterDimensionSchema = z
+  .strictObject({
+    state: z.enum(["VALUE", "UNKNOWN", "UNSUPPLIED"]).default("UNSUPPLIED"),
+    tokens: z.string().max(2000).default(""),
+  })
+  .superRefine((value, context) => {
+    const tokens = value.tokens.split("\n");
+    if (value.state !== "VALUE") {
+      if (value.tokens !== "")
+        context.addIssue({
+          code: "custom",
+          message: "Non-value filters must have no tokens",
+        });
+      return;
+    }
+    if (
+      tokens.length > 25 ||
+      new Set(tokens).size !== tokens.length ||
+      tokens.some(
+        (t) =>
+          !t ||
+          t === "@unknown" ||
+          t === "@unsupplied" ||
+          t.length > 80 ||
+          t !== t.normalize("NFKC").trim() ||
+          t.includes("\u0000") ||
+          /[\uD800-\uDFFF]/u.test(t),
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Supply distinct, validated normalized values, one per line",
+      });
+  });
+export const catalogFilterMetadataSchema = z.strictObject({
+  dynasty: filterDimensionSchema.default({ state: "UNSUPPLIED", tokens: "" }),
+  textAuthor: filterDimensionSchema.default({
+    state: "UNSUPPLIED",
+    tokens: "",
+  }),
+  calligrapher: filterDimensionSchema.default({
+    state: "UNSUPPLIED",
+    tokens: "",
+  }),
+  originalRegion: filterDimensionSchema.default({
+    state: "UNSUPPLIED",
+    tokens: "",
+  }),
+  script: filterDimensionSchema.default({ state: "UNSUPPLIED", tokens: "" }),
+});
 const contentShape = {
   catalogId: catalogIdSchema,
   sourceId: sourceIdSchema,
@@ -94,6 +151,7 @@ const contentShape = {
   sourceCitations: z.array(publicSourceCitationSchema).default([]),
   media: z.array(editorialMediaSchema).default([]),
   ownerNote: exactText(2_000).optional(),
+  filterMetadata: catalogFilterMetadataSchema.optional(),
 };
 
 export const EDITORIAL_FIELD_NAMES = Object.keys(
@@ -295,6 +353,23 @@ export const editorialContentFromDocument = (
       (name) => input[name] !== null && input[name] !== undefined,
     ).map((name) => [name, copyContent(input[name])]),
   );
+  // Native group defaults do not turn an older omitted field into new content.
+  // All UNSUPPLIED is the same absence; UNKNOWN and every supplied token remain
+  // explicit. This preserves legacy migration fingerprints and replay checks.
+  if (content.filterMetadata !== undefined) {
+    const filters = catalogFilterMetadataSchema.safeParse(
+      content.filterMetadata,
+    );
+    if (
+      filters.success &&
+      FILTER_DIMENSIONS.every(
+        (key) =>
+          filters.data[key].state === "UNSUPPLIED" &&
+          filters.data[key].tokens === "",
+      )
+    )
+      delete content.filterMetadata;
+  }
   // Payload reads an unselected hasMany select as []. The contract represents
   // an unspecified citation scope by omission, and still rejects explicit []
   // in API input. Normalize only this native transport field on the copied rows.

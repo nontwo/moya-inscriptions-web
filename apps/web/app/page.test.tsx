@@ -58,6 +58,7 @@ describe("FormalPage", () => {
     // Outside the Development runtime no comment section is composed.
     expect(productApplicationMock.mock.calls[0]?.[0]).toEqual({
       comments: null,
+      authorCommunity: false,
       initialHomeFeed: "discover",
       initialPlatform: "tablet",
       initialTopicId: null,
@@ -77,6 +78,7 @@ describe("FormalPage", () => {
     renderToStaticMarkup(await FormalPage({}));
     expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
       comments: { signInHref: "/dev/community" },
+      authorCommunity: true,
     });
 
     productApplicationMock.mockReset();
@@ -84,6 +86,7 @@ describe("FormalPage", () => {
     renderToStaticMarkup(await FormalPage({}));
     expect(productApplicationMock.mock.calls[0]?.[0]).toMatchObject({
       comments: null,
+      authorCommunity: false,
     });
   });
 
@@ -141,6 +144,7 @@ describe("FormalPage", () => {
 
     expect(productApplicationMock.mock.calls[0]?.[0]).toEqual({
       comments: null,
+      authorCommunity: false,
       initialHomeFeed: "nearby",
       initialPlatform: "tablet",
       initialTopicId: null,

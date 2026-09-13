@@ -1,6 +1,7 @@
+import type { ContentIdentity } from "@moya/contracts";
 import type { PrimaryDestination } from "../shell/primary-shell";
 
-export const PRODUCT_SHELL_HISTORY_VERSION = 1;
+export const PRODUCT_SHELL_HISTORY_VERSION = 2;
 
 export interface PrimaryProductHistoryState {
   readonly kind: "primary";
@@ -12,7 +13,7 @@ export interface PrimaryProductHistoryState {
 }
 
 export interface DetailProductHistoryState {
-  readonly catalogId: string;
+  readonly target: ContentIdentity;
   readonly detailScrollTop: number;
   readonly kind: "detail";
   readonly sourceDestination: PrimaryDestination;
@@ -21,7 +22,7 @@ export interface DetailProductHistoryState {
 }
 
 export interface ViewerProductHistoryState {
-  readonly catalogId: string;
+  readonly target: ContentIdentity;
   readonly detailScrollTop: number;
   readonly kind: "viewer";
   readonly mediaId: string;
@@ -50,9 +51,28 @@ export type ProductHistoryState =
   | DetailProductHistoryState
   | ViewerProductHistoryState
   | SettingsProductHistoryState
-  | TopicProductHistoryState;
+  | TopicProductHistoryState
+  | ProfileProductHistoryState;
 
+export type ProfileTab =
+  "works" | "favorites" | "likes" | "history" | "comments";
+export interface ProfileProductHistoryState {
+  readonly kind: "profile";
+  readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
+  readonly authorId: string | null;
+  readonly entryId: string;
+  readonly tab: ProfileTab;
+  readonly profileScrollTop: number;
+  readonly sourceDestination: PrimaryDestination;
+  readonly sourceScrollTop: number;
+}
 const productHistoryKeys = new Set([
+  "target",
+  "authorId",
+  "entryId",
+  "tab",
+  "profileScrollTop",
+
   "destination",
   "catalogId",
   "detailScrollTop",
@@ -125,12 +145,12 @@ const boundedScrollTop = (value: number) =>
   Number.isFinite(value) ? Math.max(0, value) : 0;
 
 export const detailHistoryState = (
-  catalogId: string,
+  target: string | ContentIdentity,
   sourceDestination: PrimaryDestination,
   sourceScrollTop: number,
   detailScrollTop = 0,
 ): DetailProductHistoryState => ({
-  catalogId,
+  target: typeof target === "string" ? { type: "catalog", id: target } : target,
   detailScrollTop: boundedScrollTop(detailScrollTop),
   kind: "detail",
   sourceDestination,
@@ -139,13 +159,13 @@ export const detailHistoryState = (
 });
 
 export const viewerHistoryState = (
-  catalogId: string,
+  target: string | ContentIdentity,
   mediaId: string,
   sourceDestination: PrimaryDestination,
   sourceScrollTop: number,
   detailScrollTop = 0,
 ): ViewerProductHistoryState => ({
-  catalogId,
+  target: typeof target === "string" ? { type: "catalog", id: target } : target,
   detailScrollTop: boundedScrollTop(detailScrollTop),
   kind: "viewer",
   mediaId,
@@ -180,7 +200,43 @@ export const parseProductHistoryState = (
   if (typeof value !== "object" || value === null) return null;
 
   const candidate = value as Record<string, unknown>;
-  if (candidate.version !== PRODUCT_SHELL_HISTORY_VERSION) return null;
+  if (
+    candidate.version !== PRODUCT_SHELL_HISTORY_VERSION &&
+    candidate.version !== 1
+  )
+    return null;
+  const target =
+    parseTarget(candidate.target) ??
+    (typeof candidate.catalogId === "string"
+      ? parseTarget({ type: "catalog", id: candidate.catalogId })
+      : null);
+  if (
+    candidate.kind === "profile" &&
+    (candidate.authorId === null ||
+      (typeof candidate.authorId === "string" &&
+        /^user-[0-9a-f]{32}$/.test(candidate.authorId))) &&
+    typeof candidate.entryId === "string" &&
+    candidate.entryId.length > 0 &&
+    candidate.entryId.length <= 128 &&
+    ["works", "favorites", "likes", "history", "comments"].includes(
+      String(candidate.tab),
+    ) &&
+    typeof candidate.profileScrollTop === "number" &&
+    Number.isFinite(candidate.profileScrollTop) &&
+    candidate.profileScrollTop >= 0 &&
+    isPrimaryDestination(candidate.sourceDestination) &&
+    typeof candidate.sourceScrollTop === "number" &&
+    Number.isFinite(candidate.sourceScrollTop) &&
+    candidate.sourceScrollTop >= 0
+  )
+    return profileHistoryState(
+      candidate.authorId,
+      candidate.entryId,
+      candidate.tab as ProfileTab,
+      candidate.profileScrollTop,
+      candidate.sourceDestination,
+      candidate.sourceScrollTop,
+    );
 
   if (
     candidate.kind === "primary" &&
@@ -219,8 +275,7 @@ export const parseProductHistoryState = (
 
   if (
     candidate.kind === "detail" &&
-    typeof candidate.catalogId === "string" &&
-    candidate.catalogId.length > 0 &&
+    target !== null &&
     isPrimaryDestination(candidate.sourceDestination) &&
     typeof candidate.sourceScrollTop === "number" &&
     Number.isFinite(candidate.sourceScrollTop) &&
@@ -230,7 +285,7 @@ export const parseProductHistoryState = (
     candidate.detailScrollTop >= 0
   ) {
     return detailHistoryState(
-      candidate.catalogId,
+      target,
       candidate.sourceDestination,
       candidate.sourceScrollTop,
       candidate.detailScrollTop,
@@ -239,8 +294,7 @@ export const parseProductHistoryState = (
 
   if (
     candidate.kind === "viewer" &&
-    typeof candidate.catalogId === "string" &&
-    candidate.catalogId.length > 0 &&
+    target !== null &&
     typeof candidate.mediaId === "string" &&
     candidate.mediaId.length > 0 &&
     isPrimaryDestination(candidate.sourceDestination) &&
@@ -252,7 +306,7 @@ export const parseProductHistoryState = (
     candidate.detailScrollTop >= 0
   ) {
     return viewerHistoryState(
-      candidate.catalogId,
+      target,
       candidate.mediaId,
       candidate.sourceDestination,
       candidate.sourceScrollTop,
@@ -286,6 +340,8 @@ export const parseProductHistoryState = (
 export const primaryLocation = (location: Location) => {
   const parameters = new URLSearchParams(location.search);
   parameters.delete("catalogId");
+  parameters.delete("workId");
+  parameters.delete("authorId");
   parameters.delete("image");
   const search = parameters.toString();
   return `${location.pathname}${search.length === 0 ? "" : `?${search}`}`;
@@ -297,29 +353,105 @@ export const settingsLocation = (location: Location) =>
 export const topicLocation = (location: Location, topicId: string) =>
   `${primaryLocation(location)}#topic-${encodeURIComponent(topicId)}`;
 
-export const detailLocation = (location: Location, catalogId: string) => {
+const contentParameters = (
+  location: Pick<Location, "search">,
+  target: string | ContentIdentity,
+) => {
+  const t =
+    typeof target === "string"
+      ? { type: "catalog" as const, id: target }
+      : target;
   const parameters = new URLSearchParams(location.search);
-  parameters.delete("image");
-  parameters.set("catalogId", catalogId);
-  return `${location.pathname}?${parameters.toString()}#detail`;
+  for (const key of ["catalogId", "workId", "authorId", "image"])
+    parameters.delete(key);
+  parameters.set(t.type === "catalog" ? "catalogId" : "workId", t.id);
+  return parameters;
 };
-
+export const detailLocation = (
+  location: Location,
+  target: string | ContentIdentity,
+) => `${location.pathname}?${contentParameters(location, target)}#detail`;
 export const viewerLocation = (
   location: Location,
-  catalogId: string,
+  target: string | ContentIdentity,
   mediaId: string,
 ) => {
-  const parameters = new URLSearchParams(location.search);
-  parameters.set("catalogId", catalogId);
-  parameters.set("image", mediaId);
-  return `${location.pathname}?${parameters.toString()}#viewer`;
+  const p = contentParameters(location, target);
+  p.set("image", mediaId);
+  return `${location.pathname}?${p}#viewer`;
+};
+export const profileHistoryState = (
+  authorId: string | null,
+  entryId: string,
+  tab: ProfileTab,
+  scroll: number,
+  sourceDestination: PrimaryDestination,
+  sourceScrollTop: number,
+): ProfileProductHistoryState => ({
+  kind: "profile",
+  version: PRODUCT_SHELL_HISTORY_VERSION,
+  authorId,
+  entryId,
+  tab,
+  profileScrollTop: boundedScrollTop(scroll),
+  sourceDestination,
+  sourceScrollTop: boundedScrollTop(sourceScrollTop),
+});
+export const profileLocation = (
+  location: Location,
+  authorId: string | null,
+) => {
+  const url = new URL(primaryLocation(location), location.origin);
+  if (authorId) url.searchParams.set("authorId", authorId);
+  return `${url.pathname}${url.search}#profile`;
+};
+const parseTarget = (value: unknown): ContentIdentity | null => {
+  if (!value || typeof value !== "object") return null;
+  const r = value as Record<string, unknown>;
+  if (
+    typeof r.id !== "string" ||
+    r.id.length === 0 ||
+    r.id.length > 128 ||
+    /\s/u.test(r.id)
+  )
+    return null;
+  return r.type === "catalog"
+    ? { type: "catalog", id: r.id }
+    : r.type === "work" && /^work-[0-9a-f]{32}$/.test(r.id)
+      ? { type: "work", id: r.id }
+      : null;
+};
+export const directContentFromLocation = (
+  location: Pick<Location, "search">,
+): ContentIdentity | null => {
+  const p = new URLSearchParams(location.search);
+  if (
+    p.has("authorId") ||
+    p.getAll("catalogId").length + p.getAll("workId").length !== 1
+  )
+    return null;
+  return p.has("workId")
+    ? parseTarget({ type: "work", id: p.get("workId") })
+    : parseTarget({ type: "catalog", id: p.get("catalogId") });
+};
+export const directAuthorFromLocation = (
+  location: Pick<Location, "search" | "hash">,
+): string | null | undefined => {
+  const p = new URLSearchParams(location.search);
+  if (p.has("catalogId") || p.has("workId") || p.getAll("authorId").length > 1)
+    return undefined;
+  const id = p.get("authorId");
+  if (id && /^user-[0-9a-f]{32}$/.test(id)) return id;
+  return !id && location.hash === "#profile" ? null : undefined;
 };
 
 const directIdentifierFromLocation = (
   location: Pick<Location, "search">,
   name: string,
 ): string | null => {
-  const identifier = new URLSearchParams(location.search).get(name);
+  const parameters = new URLSearchParams(location.search);
+  if (parameters.getAll(name).length !== 1) return null;
+  const identifier = parameters.get(name);
   return identifier !== null &&
     identifier.length > 0 &&
     identifier.length <= 128 &&

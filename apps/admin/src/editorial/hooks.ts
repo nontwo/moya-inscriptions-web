@@ -16,6 +16,7 @@ import {
   setMutationState,
 } from "./state";
 import { editorialTransaction, lockEditorialKey } from "./transaction";
+import { recordFirstCatalogPublication } from "../published/discovery";
 import { synchronizePublishedCatalogSearch } from "../published/search";
 import { claimEditorialIdentities } from "./identities";
 import { validateCatalogMedia } from "../media/validation";
@@ -252,6 +253,11 @@ export const catalogHooks: NonNullable<CollectionConfig["hooks"]> = {
       if (state?.mode === "publish" || state?.mode === "withdraw") {
         if (typeof data.catalogId !== "string")
           throw new EditorialError("CONTENT_INVALID", 422);
+        if (state.mode === "publish")
+          await recordFirstCatalogPublication(
+            await editorialTransaction(req),
+            data.catalogId,
+          );
         await synchronizePublishedCatalogSearch(
           await editorialTransaction(req),
           data.catalogId,

@@ -588,3 +588,77 @@ describe("LiveCommentSection", () => {
     ).toContain("无法确认登录状态");
   });
 });
+
+it("preserves newly typed text when an earlier send succeeds", async () => {
+  type Result = Awaited<ReturnType<LiveCommentSource["submitComment"]>>;
+  let resolve!: (result: Result) => void;
+  const pending = new Promise<Result>((done) => {
+    resolve = done;
+  });
+  const container = await render(
+    fakeSource({ submitComment: vi.fn().mockReturnValue(pending) }),
+  );
+  fill(container.querySelector("textarea"), "已经发送的版本");
+  await click(
+    container.querySelector("[data-comment-composer] button[type=submit]"),
+  );
+  fill(container.querySelector("textarea"), "仍在编辑的新版本");
+  await act(async () => {
+    resolve({ state: "success", item: root(1, []), awaitingApproval: false });
+  });
+  await flush();
+  expect(container.querySelector("textarea")?.value).toBe("仍在编辑的新版本");
+});
+
+it("preserves a sibling reply target selected while an earlier reply is sending", async () => {
+  type Result = Awaited<ReturnType<LiveCommentSource["submitReply"]>>;
+  let resolve!: (result: Result) => void;
+  const pending = new Promise<Result>((done) => {
+    resolve = done;
+  });
+  const submitReply = vi
+    .fn()
+    .mockReturnValueOnce(pending)
+    .mockResolvedValueOnce({ state: "unavailable" });
+  const container = await render(
+    fakeSource({
+      submitReply,
+      readListing: vi.fn().mockResolvedValue({
+        state: "success",
+        page: {
+          hot: [],
+          items: [root(1, [reply(1), reply(2)])],
+          total: 1,
+          page: 1,
+          pageSize: 10,
+          totalPages: 1,
+        },
+      }),
+    }),
+  );
+  const action = (n: number) =>
+    container.querySelector(
+      `[data-comment-reply="${commentId(100 + n)}"] [data-comment-reply-action]`,
+    );
+  const send = () =>
+    container.querySelector("[data-comment-composer] button[type=submit]");
+  await click(action(1));
+  fill(container.querySelector("textarea"), "给这条回复");
+  await click(send());
+  await click(action(2));
+  fill(container.querySelector("textarea"), "给这条回复");
+  await act(async () => {
+    resolve({ state: "success", item: reply(9), awaitingApproval: false });
+  });
+  await flush();
+  expect(container.querySelector("textarea")?.value).toBe("给这条回复");
+  expect(container.querySelector("[data-comment-reply-mode]")).not.toBeNull();
+  await click(send());
+  expect(submitReply).toHaveBeenNthCalledWith(
+    2,
+    catalogId,
+    commentId(1),
+    "给这条回复",
+    commentId(102),
+  );
+});

@@ -78,11 +78,14 @@ const withQuery = (
   return url;
 };
 
-const readInit = (signal?: AbortSignal): RequestInit => ({
+const readInit = (signal?: AbortSignal, token?: string): RequestInit => ({
   method: "GET",
   cache: "no-store",
   redirect: "error",
-  headers: { Accept: "application/json" },
+  headers: {
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  },
   ...(signal === undefined ? {} : { signal }),
 });
 
@@ -116,6 +119,7 @@ const readPage = async <Page>(
   query: CatalogCommentListingTransportQuery,
   parse: (candidate: unknown) => Page | null,
   signal?: AbortSignal,
+  token?: string,
 ): Promise<
   | { state: "success"; page: Page }
   | {
@@ -125,7 +129,7 @@ const readPage = async <Page>(
   try {
     const response = await context.fetch(
       withQuery(url, query).toString(),
-      readInit(signal),
+      readInit(signal, token),
     );
     if (response.status === 400) return { state: "invalid-query" };
     if (response.status === 404) return { state: "not-found" };
@@ -183,6 +187,7 @@ export const fetchCatalogCommentPage = async (
   catalogId: string,
   query: CatalogCommentListingTransportQuery = {},
   signal?: AbortSignal,
+  token?: string,
 ): Promise<CommentPageTransportResult> =>
   readPage(
     context,
@@ -190,6 +195,7 @@ export const fetchCatalogCommentPage = async (
     query,
     parseWith<CatalogCommentPage>(catalogCommentPageSchema),
     signal,
+    token,
   );
 
 export const fetchCatalogCommentReplyPage = async (
@@ -198,6 +204,7 @@ export const fetchCatalogCommentReplyPage = async (
   commentId: string,
   query: CatalogCommentTransportQuery = {},
   signal?: AbortSignal,
+  token?: string,
 ): Promise<CommentReplyPageTransportResult> =>
   readPage(
     context,
@@ -205,6 +212,7 @@ export const fetchCatalogCommentReplyPage = async (
     query,
     parseWith<CatalogCommentReplyPage>(catalogCommentReplyPageSchema),
     signal,
+    token,
   );
 
 export const createCatalogComment = async (

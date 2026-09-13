@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProductShell, useProductShell } from "./product-shell";
 import {
+  profileHistoryState,
   detailHistoryState,
   parseProductHistoryState,
   primaryHistoryState,
@@ -15,7 +16,11 @@ import {
 } from "./product-history";
 
 import type { ReactNode } from "react";
-import type { ProductShellContextValue } from "./product-shell";
+import type {
+  ProductShellDetailOverlayRenderProps,
+  ProductShellProfileOverlayRenderProps,
+  ProductShellContextValue,
+} from "./product-shell";
 
 const createMediaQueryList = (matches = false): MediaQueryList =>
   ({
@@ -188,12 +193,12 @@ const renderDetailShell = () => {
         inscriptions={<p>inscriptions content</p>}
         renderDetailOverlay={({
           backButtonRef,
-          catalogId,
+          target,
           initialScrollTop,
           onClose,
           onScrollTopChange,
         }) => (
-          <section aria-label={`Detail ${catalogId}`} role="dialog">
+          <section aria-label={`Detail ${target.id}`} role="dialog">
             <button
               ref={backButtonRef}
               aria-label="返回资料"
@@ -219,6 +224,98 @@ const renderDetailShell = () => {
   return { container };
 };
 
+const authorId = "user-" + "a".repeat(32),
+  workId = "work-" + "b".repeat(32);
+const renderAuthorShell = (enabled = true) => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push(root);
+  let profile: ProductShellProfileOverlayRenderProps | undefined,
+    detail: ProductShellDetailOverlayRenderProps | undefined;
+  act(() =>
+    root.render(
+      <ProductShell
+        initialPlatform="phone"
+        home={
+          <>
+            <ProductShellObserver />
+            <button
+              aria-label="个人主页"
+              onClick={(e) =>
+                observedProductShell?.openProfile(authorId, e.currentTarget)
+              }
+            >
+              Profile
+            </button>
+          </>
+        }
+        inscriptions={<p>inscriptions</p>}
+        calligraphy={<p>calligraphy</p>}
+        {...(enabled
+          ? {
+              renderProfileOverlay: (
+                props: ProductShellProfileOverlayRenderProps,
+              ) => {
+                profile = props;
+                return (
+                  <section role="dialog" aria-label="Profile">
+                    <button
+                      ref={props.backButtonRef}
+                      aria-label="返回主页"
+                      onClick={props.onClose}
+                    >
+                      Back
+                    </button>
+                    <article data-content-id={workId}>
+                      <button
+                        aria-label="打开作品"
+                        onClick={(e) =>
+                          observedProductShell?.openContent(
+                            { type: "work", id: workId },
+                            e.currentTarget,
+                          )
+                        }
+                      >
+                        Work
+                      </button>
+                    </article>
+                  </section>
+                );
+              },
+            }
+          : {})}
+        renderDetailOverlay={(props) => {
+          detail = props;
+          return (
+            <section role="dialog" aria-label="Work">
+              <button
+                ref={props.backButtonRef}
+                aria-label="返回作者"
+                onClick={props.onClose}
+              >
+                Back
+              </button>
+              <button
+                aria-label="打开作品图像"
+                onClick={() => observedProductShell?.openViewer("image-one")}
+              >
+                View
+              </button>
+            </section>
+          );
+        }}
+      />,
+    ),
+  );
+  return { container, profile: () => profile!, detail: () => detail! };
+};
+const traverse = (state: unknown) =>
+  act(() => {
+    window.history.replaceState(state, "");
+    window.dispatchEvent(new PopStateEvent("popstate", { state }));
+  });
+
 const buttonByLabel = (
   container: ParentNode,
   label: string | RegExp,
@@ -243,6 +340,12 @@ const dialog = (container: ParentNode) =>
 const click = (button: HTMLButtonElement) => {
   act(() => button.click());
 };
+
+const withHistoryMarkers = (state: unknown) => ({
+  ...(state as Record<string, unknown>),
+  __artvennDocument: expect.any(String),
+  __artvennEntry: expect.any(String),
+});
 
 describe("ProductShell", () => {
   beforeEach(() => {
@@ -307,7 +410,7 @@ describe("ProductShell", () => {
 
     expect(replaceState).toHaveBeenCalledOnce();
     expect(replaceState).toHaveBeenCalledWith(
-      primaryHistoryState("inscriptions"),
+      withHistoryMarkers(primaryHistoryState("inscriptions")),
       "",
       "/dev/t02p",
     );
@@ -862,7 +965,7 @@ describe("ProductShell", () => {
     await act(async () => vi.runAllTimers());
 
     expect(pushState).toHaveBeenCalledWith(
-      settingsHistoryState("home"),
+      withHistoryMarkers(settingsHistoryState("home")),
       "",
       "/dev/t02p#settings",
     );
@@ -1101,12 +1204,12 @@ describe("ProductShell", () => {
     await act(async () => vi.runAllTimers());
 
     expect(pushState).toHaveBeenCalledWith(
-      topicHistoryState("topic-one", 164),
+      withHistoryMarkers(topicHistoryState("topic-one", 164)),
       "",
       "/dev/t02p#topic-topic-one",
     );
     expect(replaceState).toHaveBeenCalledWith(
-      primaryHistoryState("home", 164, "topic-one"),
+      withHistoryMarkers(primaryHistoryState("home", 164, "topic-one")),
       "",
       "/dev/t02p",
     );
@@ -1129,7 +1232,10 @@ describe("ProductShell", () => {
     act(() =>
       window.dispatchEvent(
         new PopStateEvent("popstate", {
-          state: primaryHistoryState("home", 164, "topic-one"),
+          state: {
+            ...primaryHistoryState("home", 164, "topic-one"),
+            __artvennDocument: window.history.state.__artvennDocument,
+          },
         }),
       ),
     );
@@ -1158,7 +1264,7 @@ describe("ProductShell", () => {
     ).toBe("home");
   });
 
-  it("restores the recorded Topic source scroll after a Topic-detail reload and Back", async () => {
+  it("resets Topic source scroll after a full reload and Back", async () => {
     window.history.replaceState(
       topicHistoryState("topic-one", 164),
       "",
@@ -1190,7 +1296,7 @@ describe("ProductShell", () => {
     await act(async () => vi.runAllTimers());
 
     expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(home.scrollTop).toBe(164);
+    expect(home.scrollTop).toBe(0);
     expect(document.activeElement).toBe(
       container.querySelector("[data-topic-test-opener]"),
     );
@@ -1222,12 +1328,14 @@ describe("ProductShell", () => {
     await act(async () => vi.runAllTimers());
 
     expect(replaceState).toHaveBeenCalledWith(
-      primaryHistoryState("home", 146, undefined, "catalog-one"),
+      withHistoryMarkers(
+        primaryHistoryState("home", 146, undefined, "catalog-one"),
+      ),
       "",
       "/dev/t02p",
     );
     expect(pushState).toHaveBeenCalledWith(
-      detailHistoryState("catalog-one", "home", 146),
+      withHistoryMarkers(detailHistoryState("catalog-one", "home", 146)),
       "",
       "/dev/t02p?catalogId=catalog-one#detail",
     );
@@ -1255,7 +1363,10 @@ describe("ProductShell", () => {
     act(() =>
       window.dispatchEvent(
         new PopStateEvent("popstate", {
-          state: primaryHistoryState("home", 146, undefined, "catalog-one"),
+          state: {
+            ...primaryHistoryState("home", 146, undefined, "catalog-one"),
+            __artvennDocument: window.history.state.__artvennDocument,
+          },
         }),
       ),
     );
@@ -1269,7 +1380,10 @@ describe("ProductShell", () => {
     act(() =>
       window.dispatchEvent(
         new PopStateEvent("popstate", {
-          state: detailHistoryState("catalog-one", "home", 146, 73),
+          state: {
+            ...detailHistoryState("catalog-one", "home", 146, 73),
+            __artvennDocument: window.history.state.__artvennDocument,
+          },
         }),
       ),
     );
@@ -1330,12 +1444,14 @@ describe("ProductShell", () => {
     );
 
     expect(replaceState).toHaveBeenCalledWith(
-      detailHistoryState("catalog-one", "home", 146, 73),
+      withHistoryMarkers(detailHistoryState("catalog-one", "home", 146, 73)),
       "",
       "/dev/t02p?catalogId=catalog-one#detail",
     );
     expect(pushState).toHaveBeenCalledWith(
-      viewerHistoryState("catalog-one", "media-one", "home", 146, 73),
+      withHistoryMarkers(
+        viewerHistoryState("catalog-one", "media-one", "home", 146, 73),
+      ),
       "",
       "/dev/t02p?catalogId=catalog-one&image=media-one#viewer",
     );
@@ -1353,7 +1469,9 @@ describe("ProductShell", () => {
       container.querySelector<HTMLButtonElement>("[data-change-viewer-test]")!,
     );
     expect(replaceState).toHaveBeenCalledWith(
-      viewerHistoryState("catalog-one", "media-two", "home", 146, 73),
+      withHistoryMarkers(
+        viewerHistoryState("catalog-one", "media-two", "home", 146, 73),
+      ),
       "",
       "/dev/t02p?catalogId=catalog-one&image=media-two#viewer",
     );
@@ -1416,7 +1534,7 @@ describe("ProductShell", () => {
 
       expect(pushState).toHaveBeenCalledOnce();
       expect(pushState).toHaveBeenCalledWith(
-        settingsHistoryState(destination),
+        withHistoryMarkers(settingsHistoryState(destination)),
         "",
         "/dev/t02p#settings",
       );
@@ -1511,5 +1629,151 @@ describe("ProductShell", () => {
 
     expect(home.scrollTop).toBe(240);
     expect(inscriptions.scrollTop).toBe(130);
+  });
+  it("restores Profile tab and scroll through Work and Viewer history", async () => {
+    const app = renderAuthorShell();
+    await act(async () => vi.runAllTimers());
+    const primary = window.history.state;
+    click(buttonByLabel(app.container, "个人主页"));
+    act(() => app.profile().onViewChange("favorites", 188));
+    await act(async () => vi.runAllTimers());
+    const profile = window.history.state;
+    click(buttonByLabel(app.container, "打开作品"));
+    expect(app.detail().target).toEqual({ type: "work", id: workId });
+    act(() => app.detail().onScrollTopChange(73));
+    await act(async () => vi.runAllTimers());
+    const detail = window.history.state;
+    click(buttonByLabel(app.container, "打开作品图像"));
+    expect(observedProductShell?.activeViewerMediaId).toBe("image-one");
+    traverse(detail);
+    await act(async () => vi.runAllTimers());
+    expect(app.detail().initialScrollTop).toBe(73);
+    expect(observedProductShell?.activeViewerMediaId).toBeNull();
+    traverse(profile);
+    await act(async () => vi.runAllTimers());
+    expect(app.profile().state.tab).toBe("favorites");
+    expect(app.profile().state.profileScrollTop).toBe(188);
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "打开作品"),
+    );
+    traverse(primary);
+    await act(async () => vi.runAllTimers());
+    expect(observedProductShell?.activeProfile).toBeNull();
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "个人主页"),
+    );
+  });
+  it("restores explicit same-document links with null native state and reloads a repeated Detail", async () => {
+    const app = renderAuthorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "个人主页"));
+    click(buttonByLabel(app.container, "打开作品"));
+    const previous = app.detail().navigationRevision;
+    act(() => {
+      window.history.replaceState(
+        null,
+        "",
+        `/dev/t02p?workId=${workId}#detail`,
+      );
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    await act(async () => vi.runAllTimers());
+    expect(app.detail().target).toEqual({ type: "work", id: workId });
+    expect(app.detail().navigationRevision).toBe(previous + 1);
+    expect(parseProductHistoryState(window.history.state)?.kind).toBe("detail");
+    act(() => {
+      window.history.replaceState(
+        null,
+        "",
+        `/dev/t02p?authorId=${authorId}#profile`,
+      );
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    await act(async () => vi.runAllTimers());
+    expect(app.profile().state.authorId).toBe(authorId);
+    expect(observedProductShell?.activeContent).toBeNull();
+  });
+  it("remembers Detail scroll immediately when native Back precedes the checkpoint timer", async () => {
+    const app = renderAuthorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "个人主页"));
+    const profile = window.history.state;
+    click(buttonByLabel(app.container, "打开作品"));
+    const detail = window.history.state;
+    act(() => app.detail().onScrollTopChange(217));
+    traverse(profile);
+    traverse(detail);
+    await act(async () => vi.runAllTimers());
+    expect(app.detail().initialScrollTop).toBe(217);
+  });
+  it("resets all old-document offsets when returning from a refreshed Viewer", async () => {
+    const old = (value: unknown) => ({
+      ...(value as Record<string, unknown>),
+      __artvennDocument: "old-document",
+      __artvennEntry: "old-entry",
+    });
+    window.history.replaceState(
+      old(
+        viewerHistoryState(
+          { type: "work", id: workId },
+          "image-one",
+          "home",
+          146,
+          73,
+        ),
+      ),
+      "",
+      `/dev/t02p?workId=${workId}&image=image-one#viewer`,
+    );
+    const app = renderAuthorShell();
+    await act(async () => vi.runAllTimers());
+    expect(app.detail().initialScrollTop).toBe(0);
+    traverse(
+      old(detailHistoryState({ type: "work", id: workId }, "home", 146, 73)),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(app.detail().initialScrollTop).toBe(0);
+    traverse(
+      old(
+        profileHistoryState(
+          authorId,
+          "profile-entry",
+          "favorites",
+          188,
+          "home",
+          146,
+        ),
+      ),
+    );
+    await act(async () => vi.runAllTimers());
+    expect(app.profile().state.profileScrollTop).toBe(0);
+    expect(app.profile().state.sourceScrollTop).toBe(0);
+  });
+  it("bounds Profile scroll history writes and keeps disabled work/profile routes closed", async () => {
+    const app = renderAuthorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "个人主页"));
+    const replace = vi.spyOn(window.history, "replaceState");
+    replace.mockClear();
+    act(() => {
+      for (let top = 1; top <= 100; top++)
+        app.profile().onViewChange("works", top);
+    });
+    expect(replace).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    expect(replace).toHaveBeenCalledOnce();
+    for (const root of mountedRoots.splice(0)) act(() => root.unmount());
+    document.body.replaceChildren();
+    window.history.replaceState(null, "", `/dev/t02p?workId=${workId}#detail`);
+    const disabled = renderAuthorShell(false);
+    await act(async () => vi.runAllTimers());
+    expect(observedProductShell?.activeContent).toBeNull();
+    const button = buttonByLabel(disabled.container, "个人主页");
+    click(button);
+    act(() =>
+      observedProductShell?.openContent({ type: "work", id: workId }, button),
+    );
+    expect(observedProductShell?.activeProfile).toBeNull();
+    expect(observedProductShell?.activeContent).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 export {
   EDITORIAL_FIELD_NAMES,
   EDITORIAL_STATEFUL_FIELDS,
+  FILTER_DIMENSIONS,
+  catalogFilterMetadataSchema,
   editorialContentFromDocument,
   editorialDraftSchema,
   editorialMediaSchema,

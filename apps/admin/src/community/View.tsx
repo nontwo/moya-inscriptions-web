@@ -2,6 +2,7 @@ import { DefaultTemplate } from "@payloadcms/next/templates";
 import type { AdminViewServerProps } from "payload";
 
 import { isOwner } from "../editorial/access";
+import { CommunityContentClient } from "./content-client";
 import { CommunityHistoryClient } from "./history-client";
 import { CommunityQueueClient } from "./queue-client";
 import { CommunitySettingsClient } from "./settings-client";
@@ -28,7 +29,9 @@ const OwnerOnly = ({
 
 export const CommunityModerationView = (props: AdminViewServerProps) => (
   <OwnerOnly props={props}>
-    <CommunityQueueClient />
+    <CommunityQueueClient
+      phase4Enabled={process.env.NODE_ENV === "development"}
+    />
   </OwnerOnly>
 );
 
@@ -41,5 +44,15 @@ export const CommunitySettingsView = (props: AdminViewServerProps) => (
 export const CommunityHistoryView = (props: AdminViewServerProps) => (
   <OwnerOnly props={props}>
     <CommunityHistoryClient />
+  </OwnerOnly>
+);
+
+export const CommunityContentView = (props: AdminViewServerProps) => (
+  <OwnerOnly props={props}>
+    {process.env.NODE_ENV === "development" ? (
+      <CommunityContentClient />
+    ) : (
+      <p>此页面暂不可用。</p>
+    )}
   </OwnerOnly>
 );

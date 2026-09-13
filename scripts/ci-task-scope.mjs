@@ -156,7 +156,7 @@ export function classifyTask(paths, event = "pull_request") {
       // smoke job commands, including the test job's marker check. The smoke
       // stage spawns ci-e2e-smoke.mjs; only the test job's Vitest policy test
       // loads ci-e2e-scope.mjs.
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|ci-e2e-(?:scope|smoke))\.mjs$/u.test(
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|ci-e2e-(?:scope|smoke)|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
         file,
       )
     ) {

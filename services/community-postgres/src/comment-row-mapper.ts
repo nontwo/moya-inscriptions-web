@@ -23,6 +23,10 @@ export interface CommentRow extends QueryResultRow {
 
 export interface OperatorCommentRow extends CommentRow {
   readonly kind: unknown;
+  readonly target_type?: unknown;
+  readonly body_deleted_at?: unknown;
+  readonly thread_removed_at?: unknown;
+  readonly thread_affected_count?: unknown;
   readonly reply_to_reply_id?: unknown;
   readonly author_handle: unknown;
   readonly author_status: unknown;
@@ -140,9 +144,27 @@ export const mapOperatorCommentRow = (
   return {
     id: asCommentId(row.id) as OperatorCommentRecord["id"],
     kind,
-    catalogId: asCatalogId(
-      row.catalog_id,
-    ) as OperatorCommentRecord["catalogId"],
+    catalogId:
+      row.target_type === "work"
+        ? null
+        : (asCatalogId(row.catalog_id) as OperatorCommentRecord["catalogId"]),
+    ...(row.target_type === "work"
+      ? {
+          target: {
+            type: "work" as const,
+            id:
+              typeof row.catalog_id === "string" &&
+              /^work-[0-9a-f]{32}$/u.test(row.catalog_id)
+                ? row.catalog_id
+                : invalid(),
+          },
+        }
+      : {}),
+    ...(row.body_deleted_at ? { bodyDeleted: true } : {}),
+    ...(row.thread_removed_at ? { threadRemoved: true } : {}),
+    ...(typeof row.thread_affected_count === "number"
+      ? { threadAffectedCount: row.thread_affected_count }
+      : {}),
     ...(kind === "reply"
       ? {
           rootCommentId: asCommentId(
@@ -171,6 +193,8 @@ const eventActions: readonly ModerationEventAction[] = [
   "suspend",
   "reinstate",
   "set_publication_policy",
+  "delete_body",
+  "remove_thread",
 ];
 const subjectKinds = ["comment", "reply", "user", "setting"] as const;
 

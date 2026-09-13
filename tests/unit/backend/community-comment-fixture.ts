@@ -379,6 +379,8 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     const queue = { pending: 0, visible: 0, hidden: 0 };
     for (const row of this.operatorRows()) queue[row.moderation] += 1;
     const actions: Record<ModerationEventAction, number> = {
+      delete_body: 0,
+      remove_thread: 0,
       approve: 0,
       reject: 0,
       hide: 0,

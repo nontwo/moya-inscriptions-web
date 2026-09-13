@@ -79,9 +79,15 @@ describe("same-origin reply bridge", () => {
     const response = await GET(new Request(`${url}?pageSize=10`), context);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(page);
-    expect(fetchRepliesMock).toHaveBeenCalledWith(catalogId, commentId, {
-      pageSize: "10",
-    });
+    expect(fetchRepliesMock).toHaveBeenCalledWith(
+      catalogId,
+      commentId,
+      {
+        pageSize: "10",
+      },
+      undefined,
+      undefined,
+    );
   });
 
   it("refuses unknown query parameters and unauthenticated writes", async () => {

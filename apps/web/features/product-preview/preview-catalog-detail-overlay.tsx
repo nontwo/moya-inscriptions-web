@@ -7,12 +7,19 @@ import { useProductShell } from "../product-shell/product-shell";
 
 import type { ReactNode, RefObject } from "react";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
-import type { CatalogDetailPresentationState } from "../detail/catalog-detail-presentation";
+import type {
+  CatalogDetailPresentation,
+  CatalogDetailPresentationState,
+} from "../detail/catalog-detail-presentation";
 
 export interface PreviewCatalogDetailOverlayProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly catalogId: string;
   readonly commentSection?: ReactNode;
+  readonly renderActions?: (
+    detail: CatalogDetailPresentation,
+    refresh: () => void,
+  ) => ReactNode;
   readonly initialScrollTop: number;
   readonly loader: CatalogDetailPresentationLoader;
   readonly onClose: () => void;
@@ -23,6 +30,7 @@ export const PreviewCatalogDetailOverlay = ({
   backButtonRef,
   catalogId,
   commentSection,
+  renderActions,
   initialScrollTop,
   loader,
   onClose,
@@ -37,6 +45,7 @@ export const PreviewCatalogDetailOverlay = ({
     platform,
   } = useProductShell();
   const generationRef = useRef(0);
+  const [revision, setRevision] = useState(0);
   const [state, setState] = useState<CatalogDetailPresentationState>({
     state: "loading",
   });
@@ -63,7 +72,7 @@ export const PreviewCatalogDetailOverlay = ({
         }
       });
     return () => controller.abort();
-  }, [catalogId, loader]);
+  }, [catalogId, loader, revision]);
 
   return (
     <CatalogDetailExperience
@@ -71,6 +80,11 @@ export const PreviewCatalogDetailOverlay = ({
       backButtonRef={backButtonRef}
       catalogId={catalogId}
       commentSection={commentSection}
+      detailActions={
+        state.state === "loaded"
+          ? renderActions?.(state.detail, () => setRevision((v) => v + 1))
+          : undefined
+      }
       initialScrollTop={initialScrollTop}
       onBack={onClose}
       onCloseViewer={closeViewer}

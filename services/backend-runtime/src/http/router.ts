@@ -16,11 +16,15 @@ import {
   handleDevelopmentSignIn,
   handleDevelopmentSignOut,
 } from "../community/community-handler.js";
+import { handleAuthorRequest } from "../community/author-handler.js";
 import { handleOperatorRequest } from "../community/operator-handler.js";
 import { healthHandler } from "../health/health-handler.js";
 import { sendJson } from "./json-response.js";
 
 import type {
+  CommunityContentOperatorPort,
+  DiscussionPort,
+  AuthorCommunityService,
   CatalogCommentService,
   CatalogReadService,
   CommunityModerationService,
@@ -46,6 +50,9 @@ const sendRouteError = (
 
 export interface CommunityRouterDependencies {
   readonly sessionService: CommunitySessionService;
+  readonly authorService?: AuthorCommunityService;
+  readonly contentOperatorPort?: CommunityContentOperatorPort | undefined;
+  readonly discussionPort?: DiscussionPort | undefined;
   /** True only under NODE_ENV=development; Production never composes the entry. */
   readonly developmentEntry: boolean;
   /** Present only when a comment port is composed; identity works without it. */
@@ -140,6 +147,20 @@ export const createRouter =
       }
     }
 
+    if (
+      community?.developmentEntry === true &&
+      community.authorService !== undefined &&
+      pathname.startsWith("/v1/community/")
+    ) {
+      void handleAuthorRequest(
+        request,
+        response,
+        community.authorService,
+        community.sessionService,
+      );
+      return;
+    }
+
     const commentService = community?.commentService;
     if (community !== undefined && commentService !== undefined) {
       const comments = {
@@ -200,6 +221,8 @@ export const createRouter =
     ) {
       void handleOperatorRequest(request, response, pathname, {
         moderationService,
+        contentOperatorPort: community?.contentOperatorPort,
+        discussionPort: community?.discussionPort,
         operatorCredential: community?.operatorCredential ?? "",
       });
       return;
