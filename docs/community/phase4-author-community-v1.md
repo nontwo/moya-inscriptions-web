@@ -1,0 +1,221 @@
+# Phase 4 — author and community acceptance
+
+Task: `phase4-author-community-v1`. Revision: 2. Owner approved requirements
+provided on 2026-09-13. Phase 3 remains historically CLOSED.
+
+## Authority and delivery
+
+Base: `693eb3754a66fd2eac21cc29e6dbb07677638276`, freshly fetched from
+`origin/main`. One source writer: current Codex task `/root`. One branch:
+`codex/phase4-author-community-v1`. Worktree belongs exclusively to this task.
+
+The current Owner instruction authorizes this product scope and supersedes the
+specific Community V1 deferrals it enumerates. Constitution and six active
+amendments remain effective otherwise. Workflow PRs #118, #122, #123 and #124
+were verified OPEN, Draft, unmerged at the Owner reference SHAs. No yoyi-task,
+yoyi-review, yoyi-handoff or verify-task entry is installed on this baseline.
+Use CONTRIBUTING.md and scripts/verify.mjs. Paused workflow work remains
+separate.
+
+Stop at one running Development candidate, exact commit, automated evidence,
+independent actual-diff review, and one Draft PR to main. Owner acceptance is
+pending; no Ready transition, merge, release, Production exposure or closure.
+
+## Frozen functional paths
+
+- apps/web/features/{qa,user,authors,comments,quick-actions,product-application,product-preview,product-shell,home,calligraphy,detail}/**;
+  apps/web/app/api/community/**; existing Catalog same-origin comment routes;
+  apps/web/app/{page.tsx,page.test.tsx,dev/community/**};
+  apps/web/lib/public-api/**; Development Catalog media relay under
+  app/api/catalog/[catalogId]/media/; supported next.config.ts and generated
+  next-env.d.ts; features/shell/request-identity.ts browser request-identity
+  utility.
+- apps/admin/src/community/**; apps/admin/payload.config.ts; supported generated
+  Admin import map, editorial fields/hooks/content, forward Payload migrations
+  and generated types; src/published/discovery.ts projection. Admin directly
+  references the already locked OpenCC 1.4.1 so Next can externalize its native
+  module; no package upgrade.
+- packages/contracts/src/**; services/public-api/src/** and generated OpenAPI.
+- services/api/src/modules/{community,catalog}/** and public exports;
+  services/backend-runtime/src/**; services/backend-production/src/**;
+  services/{community,catalog}-postgres/src/**.
+- New forward files in database/community-migrations/ and, if required,
+  database/migrations/; append-only migration manifests.
+- scripts/{materialize-phase4-fixtures,seed-phase4-acceptance,seed-phase4-support}.mjs;
+  infra/development/phase4/manifest.json and its instructions. Credentials,
+  database target, process state and command journals remain private artifacts.
+- Owner explicitly authorized only the new exact Phase 4 paths/import names in
+  the existing workspace-scanner allowlists. Scanner logic and generic routing,
+  runners, budgets, workflow and instruction files remain unchanged.
+- tests/unit/{community,backend,architecture}/** product assertions only;
+  tests/integration/postgres/phase4*; tests/e2e/phase4*, the existing Formal
+  product spec and anonymous support/public-api.ts fixture (new product reads;
+  no harness/routing changes); colocated product tests;
+  docs/community/phase4-author-community-v1.md.
+
+Actual changed-file set is recorded with the candidate. No instruction files,
+workflow skills/settings/checkpoints, generic scanner, classifier, verification
+runner, test-target guard, Git hook or CI/protection change is authorized. A
+concrete new-route allowlist collision must be reported rather than bypassed.
+
+## Approved behavior matrix
+
+| Scenario             | Development                                                 | Production                                                  | Must preserve                                             |
+| -------------------- | ----------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------- |
+| Anonymous browsing   | Browse/search public Catalog and eligible synthetic works   | Existing approved exposure only                             | No login wall for ordinary browsing                       |
+| Author profile       | Real profile, works, relationships and per-list privacy     | Phase 4 exposure remains disabled pending release authority | Existing presentation and private-data separation         |
+| Favorites/likes      | Real account state; guest favorites are local until login   | No newly exposed Phase 4 surface                            | No fake persistence or duplicate relations                |
+| Work editing         | Only the assigned author edits an existing work             | No new public creation/upload authority                     | Stable work identity and last published version           |
+| Avatar               | Upload/crop/change with New York calendar-day limit         | No newly exposed upload surface                             | Backend authorization and bounded media                   |
+| Comment read         | Public items plus authorized self-only items                | Existing exposure policy retained                           | No leakage through public reads, caches or links          |
+| Comment deletion     | Body tombstone or explicit whole-thread removal             | No automatic Production rollout                             | Other replies preserved only where specified              |
+| Comment/reply drafts | In-memory while the composer remains open                   | No new draft service for comments                           | Refresh/exit discards; current input is not lost by races |
+| Work-edit drafts     | Private server persistence and conflict handling            | No newly exposed draft surface                              | No silent overwrite between devices                       |
+| Discovery            | Automatic paging; featured then remaining publication order | No public rollout in this task                              | No duplicates, no live reordering                         |
+| Inscription filters  | Real server-side combinations on inscription page only      | No new public filter rollout                                | No guessed historical metadata                            |
+| Sharing              | System share or copy the current safe content URL           | Existing public exposure only                               | No private/authentication links or false success          |
+| Moderation           | Existing Admin plus approved actions and context            | Owner/operator boundary retained                            | Audited, authorized transitions                           |
+| Acceptance fixtures  | Exactly 20 primary synthetic items plus supporting data     | Never exposed or promoted                                   | Separate identities, media and provenance                 |
+
+## Product contract and acceptance criteria
+
+1. Reuse accepted image-first author presentation outside QA; retain one
+   ProductShell, Detail, Viewer, navigation/history owner and long-press model.
+   Fixed browsing bar, right avatar, secondary tabs, search; overlays own their
+   header. Guest center has honest local state and Development sign-in only.
+2. Profiles: nickname/bio explicit Save and abandonment warning; immutable
+   identity/handle; duplicate display names; current names on old comments.
+   Avatar bounded upload/crop/replacement, Backend atomic
+   one-success-per-New-York date, next eligible time, DST and concurrent-device
+   coverage.
+3. Works are distinct from CatalogKind inscription|calligraphy. Only operator or
+   synthetic tooling creates assigned works. Authors edit existing text/media,
+   order/cover and delete; stable identity/first publication, last published
+   revision during editing, no restoration of operator-hidden/removed works.
+   Owned media has separate identity, visibility and resolved URLs.
+4. Independent following/follower/favorites/likes privacy; private totals owner
+   only. Real follow/unfollow and bidirectional block removes follows, prevents
+   direct interactions, filters normal surfaces; unblock restores no relation.
+   One reusable authorization policy. Historical third-party comments are not
+   globally removed by blocking. History/My Comments/drafts always private.
+5. Whole-content favorites, newest relation first, full eligible collection
+   search/All-Inscriptions-Calligraphy filters, single undo, unavailable
+   relations retained. Device-local guest union merge acknowledges exact items,
+   preserves failures, avoids reordered existing account items and cross-account
+   replay. Separate content likes require login. Safe current-environment public
+   sharing with keyboard access, cancellation handling and truthful feedback.
+6. Existing discussion IDs/threads retained for Catalog and extended to works.
+   Root heat is its own effective likes; up to three positive public hot roots,
+   ties newest then stable ID, pinned sequence, flat chronological replies.
+   Authenticated private self-only pending/hidden text without badges; own
+   nonpublic-root replies stay restricted. Neutral Sent success. My Comments
+   supports exact position and private-record fallback without revealing
+   context. Body deletion tombstones only when needed, preserves eligible
+   replies and erases original from user reads. Explicit operator whole-thread
+   removal erases all user access including My Comments. Never-public deletion
+   makes no new public tombstone. Committed mutation and audit must agree;
+   retries are safe.
+7. Comment/reply drafts exist only in open-editor memory and clear on close,
+   navigation/logout/refresh, never tab backgrounding; failed requests preserve
+   current text and older success cannot clear newer text. Work-edit drafts are
+   private server versions, retained until applied/discarded/deleted with
+   conflict recovery, no silent overwrite or automatic publish retry.
+8. Mixed Discover reuses cards, typed identity, featured first then stable first
+   publication. Bounded automatic paging/in-flight requests, explicit retry,
+   snapshot sequence with no duplicates or unsolicited reordering. Inscription
+   only filters: dynasty, role-distinguished historical contributor, original
+   region, script; OR within/AND across, full server query, normalized validated
+   values and source text, unknown distinct from no matches, no inferred facts.
+9. Exactly 20 primary synthetic acceptance items: 10 Catalog and 10 works,
+   independent accounts/media/IDs; supporting interactions extra. Cover all
+   Owner listed shapes, privacy, blocking, lifecycle, draft conflicts, time
+   boundaries, filter and paging cases. Repeatable guarded seed preserves
+   unrelated records.
+
+No public creation/upload authority, new auth provider/registration, cloud
+history, comment-draft service, taxonomy, Redis, Agentation, workflow ownership,
+Research/media transfer or Apple work is included.
+
+## Implementation decisions
+
+Extend the existing community namespace and Backend-owned session architecture.
+Use forward migrations and existing lockfile dependencies. Media metadata and
+resolved presentation URLs remain separate. Use explicit desired-state relation
+commands and version-checked mutations, with audit in the same transaction. New
+browsing sequences pin eligible ordering on the Backend; authorization is
+rechecked when serving pages, so withdrawn items disappear without replacement
+or offset duplication. Document sequence lifetime and concurrent changes in the
+implementation evidence, without claiming a cross-request database snapshot.
+
+## Environment and validation
+
+Canonical checkout is stale and dirty and remains untouched. Acceptance and
+integration tests must use distinct task-owned disposable infrastructure with
+proven ownership before any migration/seed. No existing Owner DB is a test
+target. Private config, evidence and checkpoint live in the task artifact
+directory; credentials never enter source, issue, PR, logs or reports.
+Acceptance Web may use verified private LAN; operator Backend and Admin remain
+loopback.
+
+Rebuild affected dependencies; targeted product/unit/PostgreSQL/browser tests
+through real same-origin and Backend routes. Daily pnpm verify retains one
+120-second shared routine budget; security delivery uses one separate shared
+120-second allowance. Do not import unmerged workflow tooling or conceal failed
+checks. Independent final review requires a genuinely separate session; helper
+agents in this task are not independent approval. Owner visual/device judgment
+remains separate and pending.
+
+## Candidate evidence and acceptance state
+
+The task-owned environment runs Web 3410, Backend 3411 and Admin 3412 against
+separate Development infrastructure. Exactly ten synthetic Catalog records and
+ten synthetic user works were seeded from a frozen manifest. The initial replay
+added zero records. Browser lifecycle checks may withdraw a primary work while
+retaining its original identity and publication provenance; the private handoff
+records current eligibility and all retained test mutations.
+
+Native routine attempt 7 passed all 46 workspace lint/typecheck/test/build
+tasks, including 926 Web tests and 1,023 ordinary repository tests. Earlier
+formatting, lint, composition and bridge-argument failures were fixed and
+retained in the private evidence. The cumulative routine allowance then expired
+during Formal smoke: the old anonymous fixture returned 404 for the new
+discovery API. The product fixture now serves the same frozen Catalog identities
+through the new reads, and the Formal assertions retain their
+content/Detail/Viewer checks. Routine timeout remains a failure; any additional
+smoke execution requires the Owner's explicit allowance under request
+section 13. No verification runner, guard, classifier or timeout has been
+changed.
+
+The separate disposable PostgreSQL suite passes 47 tests, including all four
+nonempty privacy lists, root heat cap/time/ID ties, audited hidden originals,
+media ownership and avatar date concurrency, work draft conflicts and atomic
+moderation/featured rollback. Native CMS integration passes 50 tests with its
+one existing native skip. An omitted legacy filter field and Payload's all-empty
+default represent the same content; explicit full snapshots clear old values.
+
+Real browser journeys use the same-origin Web routes, live Backend and isolated
+PostgreSQL. Evidence includes desktop Chromium and mobile WebKit browsing,
+Catalog media and Viewer, guest merge and cross-account reservation, profiles,
+privacy, follow/block/unblock, avatar upload/day limit, work media and
+independent session drafts, comment heat/private originals/deep positioning,
+both Admin deletion scopes, featured control and list retry retention. No forced
+invisible clicks or fabricated response bodies are used. Browser failures and
+scoped rechecks are preserved. Mobile WebKit is emulation; Owner physical-device
+and visual judgment remains pending.
+
+Independent review is performed in one separate read-only Codex session, with
+final exact GitHub Head/diff and delta verification recorded in the Draft PR.
+The implementation helpers are not independent approval. The private task
+checkpoint and Owner walkthrough carry process/data ownership and exact final
+revisions. This task does not authorize Ready, merge, release or Production.
+
+The first independent review identified three P2 issues: suspension incorrectly
+withdrew historical visible comments, cached people lists survived a privacy
+withdrawal/late request, and guest favorites lacked whole-collection search and
+filters. Fixes preserve the active suspension policy, revalidate and isolate
+people-list requests, and resolve public card metadata in bounded batches before
+local title/alias/type filtering. Catalog card aliases are public source data;
+no guest collection is uploaded. The fixes have native PostgreSQL/HTTP coverage,
+six focused Web unit tests, and live browser coverage for both people-list races
+and thirteen guest favorites including an alias-only match past the first page.
+Final exact-commit independent review remains recorded separately in the PR.

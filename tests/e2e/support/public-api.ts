@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import type {
+  ContentCard,
   CatalogDetail,
   CatalogId,
   CatalogPage,
@@ -325,6 +326,107 @@ const server = createServer((request, response) => {
       totalPages: items.length === 0 ? 0 : Math.ceil(items.length / pageSize),
     };
     sendJson(response, 200, page);
+    return;
+  }
+
+  // Phase 4 product fixture: preserve these same Catalog identities while
+  // answering the Development composition's bounded discovery/card reads.
+  // Authentication and mutations remain outside this anonymous fixture.
+  const communityPath = url.pathname.replace(/^\/paging\//, "/");
+  const summaries = url.pathname.startsWith("/paging/")
+    ? pagingSummaries
+    : baseSummaries;
+  const card = (item: CatalogSummary): ContentCard => ({
+    aliases: [...item.aliases],
+    target: { type: "catalog", id: item.id },
+    title: item.title,
+    kind: item.kind,
+    authorId: null,
+    firstPublishedAt: null,
+    media: item.representativeMedia
+      ? {
+          id: item.representativeMedia.id,
+          src: item.representativeMedia.src,
+          width: item.representativeMedia.width,
+          height: item.representativeMedia.height,
+        }
+      : null,
+  });
+  if (communityPath === "/v1/community/discover") {
+    const kind = url.searchParams.get("kind") ?? "all";
+    const items = summaries.filter(
+      (item) => kind === "all" || item.kind === kind,
+    );
+    const after = Number(url.searchParams.get("after") ?? "0");
+    const size = Math.min(50, Number(url.searchParams.get("pageSize") ?? "12"));
+    sendJson(response, 200, {
+      items: items.slice(after, after + size).map(card),
+      sequence: "f0de661e-3527-4c37-8d46-af96c5e5cf74",
+      nextAfter: Math.min(items.length, after + size),
+      hasMore: after + size < items.length,
+    });
+    return;
+  }
+  if (communityPath === "/v1/community/filter-options") {
+    sendJson(
+      response,
+      200,
+      Object.fromEntries(
+        [
+          "dynasty",
+          "textAuthor",
+          "calligrapher",
+          "originalRegion",
+          "script",
+        ].map((key) => [
+          key,
+          {
+            values: [],
+            unknown: 0,
+            unsupplied: summaries.filter((item) => item.kind === "inscription")
+              .length,
+          },
+        ]),
+      ),
+    );
+    return;
+  }
+  const communityCard = communityPath.match(
+    /^\/v1\/community\/content\/catalog\/([^/]+)\/card$/,
+  );
+  if (communityCard) {
+    const item = summaries.find(
+      (candidate) =>
+        candidate.id === decodeURIComponent(communityCard[1] ?? ""),
+    );
+    if (item) sendJson(response, 200, card(item));
+    else {
+      response.writeHead(404);
+      response.end();
+    }
+    return;
+  }
+  const discussion = communityPath.match(
+    /^\/v1\/community\/discussion\/catalog\/([^/]+)$/,
+  );
+  if (discussion) {
+    const item = summaries.find(
+      (candidate) => candidate.id === decodeURIComponent(discussion[1] ?? ""),
+    );
+    if (item)
+      sendJson(response, 200, {
+        hot: [],
+        items: [],
+        visibleTotal: 0,
+        total: 0,
+        page: Number(url.searchParams.get("page") ?? "1"),
+        pageSize: Number(url.searchParams.get("pageSize") ?? "10"),
+        totalPages: 0,
+      });
+    else {
+      response.writeHead(404);
+      response.end();
+    }
     return;
   }
 
