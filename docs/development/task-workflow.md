@@ -122,6 +122,40 @@ Concurrent runs only replace the same task/PR and workflow. Do not modify remote
 protection or account-level review/notification settings without approval for
 the exact change.
 
+## Commit, push and GitHub records
+
+Routine commits and task-branch pushes use the two fixed operations of
+`scripts/task-git.mjs` (`commit --message-file <file>` or
+`commit --message <text>` for staged changes, and `push` for the checked-out
+task branch). The helper verifies the worktree, a non-main task branch, the
+expected origin and the installed core-credential hooks before it writes, and
+runs Git from fixed argument arrays; the hooks run as usual. If it refuses or
+cannot run, that write stops: do not fall back to raw `git commit` or
+`git push`, which are never allowed automatically. It guards against accidental
+misuse; it is not a sandbox against a hostile agent.
+
+Issue comments and formal PR reviews ask for confirmation, and so does
+`gh pr edit`. A PR comment on the current task PR, after the outbound credential
+check, does not. None of these records is new Owner authority unless it records
+an explicit Owner task, change or review instruction.
+
+## Production and cloud tools: two gates
+
+Production and cloud tools (for example `tcb`, `tccli`, `cloudbase`, `coscli`
+and the CloudBase MCP tools) are never allowed automatically. They may be
+invoked only when both gates hold:
+
+1. the current task explicitly authorizes the specific cloud or Production
+   operation, its account and resource scope, read/write boundary, cost boundary
+   and delivery stop;
+2. the native ask prompt for the actual invocation is confirmed.
+
+In an ordinary Web, Apple, CMS, documentation or review task, do not invoke a
+cloud command merely to produce an approval prompt; stop and report the scope
+conflict instead. An approval prompt confirms that concrete tool call only. It
+does not create Production authority, widen the task, authorize destructive
+operations or permit credentials to be exposed.
+
 ## Load the common rules once per task context
 
 The repository has two standard entry files:

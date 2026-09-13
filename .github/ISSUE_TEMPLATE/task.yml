@@ -1,0 +1,104 @@
+name: Task
+description:
+  One bounded task record. The Issue is the task's authoritative specification
+  unless it links a formal specification file.
+title: "<task-id>: <short goal>"
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill every field with facts a second tool could act on without this conversation. Keep credentials, private paths and private acceptance content out of this Issue; local details belong in the task's private artifacts directory.
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      description: Also the worktree and private artifacts directory name.
+      placeholder: wf-example-task
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Specification revision
+      description:
+        r1 for a new task. A change bumps it and states what changed, what
+        remains unchanged and which earlier requirement it replaces.
+      value: r1
+    validations:
+      required: true
+  - type: dropdown
+    id: workstream
+    attributes:
+      label: Workstream
+      options:
+        - Web
+        - Apple
+        - Shared
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Approved module scope
+      description: Allowed paths and modules; anything else is a scope change.
+    validations:
+      required: true
+  - type: textarea
+    id: preserved
+    attributes:
+      label: Behavior that must remain unchanged
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Observable acceptance criteria
+      description:
+        Numbered, verifiable statements; add a Behavior Matrix link or table for
+        user-visible work.
+    validations:
+      required: true
+  - type: textarea
+    id: restrictions
+    attributes:
+      label: Data and environment restrictions
+      description:
+        Databases, services, ports, credentials and environments this task may
+        or may not touch.
+    validations:
+      required: true
+  - type: textarea
+    id: responsibility
+    attributes:
+      label: Writer and review responsibility
+      description:
+        One writer per worktree; who reviews independently and where evidence
+        lives.
+    validations:
+      required: true
+  - type: textarea
+    id: delivery
+    attributes:
+      label: Delivery stop, dependencies and required Owner decisions
+      description:
+        An ordinary machine-verifiable task is delivered by independent review,
+        then an expected-head squash merge and merged-head verification
+        (2026-08-24 amendment). Write a Draft limit here only when one applies
+        (a pending Owner visual or real-device acceptance, a dependency, or an
+        explicit rollout checkpoint). Name dependencies on other tasks or PRs
+        and the decisions only the Owner can make.
+    validations:
+      required: true

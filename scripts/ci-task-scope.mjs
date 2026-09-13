@@ -28,6 +28,7 @@ const tooling = new Set([
   "scripts/ci-task-gate.mjs",
   "scripts/verify-task.mjs",
   "scripts/verify-apple.mjs",
+  "scripts/task-git.mjs",
   "scripts/task-validation.test.mjs",
   "tests/unit/architecture/workspace-scanner.ts",
   "tests/unit/architecture/ci-e2e-policy.test.ts",

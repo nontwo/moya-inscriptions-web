@@ -2,6 +2,12 @@ import process from "node:process";
 import console from "node:console";
 import { spawn } from "node:child_process";
 import { URL, fileURLToPath, pathToFileURL } from "node:url";
+import {
+  assertDisposableTestTarget,
+  databaseNameFromUrl,
+  disposableTargetRequired,
+  disposableTestTargetProbeSql,
+} from "./disposable-test-target.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -94,6 +100,15 @@ export async function migrate(
     }),
   );
   try {
+    if (disposableTargetRequired(environment)) {
+      // Test preparation set MOYA_EXPECT_DISPOSABLE_TARGET: the target must
+      // carry the disposable marker before this explicit DDL path touches it.
+      const probe = await pool.query(disposableTestTargetProbeSql);
+      assertDisposableTestTarget(
+        probe.rows,
+        databaseNameFromUrl(environment[plan.variable]).name,
+      );
+    }
     const result = await pool.query(migrationTargetProbeSql);
     assertMigrationTarget(result.rows, plan.source);
   } finally {
