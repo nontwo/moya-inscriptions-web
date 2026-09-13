@@ -45,6 +45,19 @@ If a task conflicts with the current authority chain: STOP and report the
 conflict. Do not silently expand scope. Do not modify nested Owner-local
 instruction files unless explicitly authorized.
 
+## Task lifecycle skills
+
+Ordinary tasks run through three shared skills whose canonical bodies live in
+`.agents/skills/` — Codex invokes `$yoyi-task`, `$yoyi-review` and
+`$yoyi-handoff`; Claude Code invokes `/yoyi-task`, `/yoyi-review` and
+`/yoyi-handoff` through the thin adapters in `.claude/skills/`. `yoyi-task plan`
+is read-only; `start`, `change` and `status` act only as the skill text allows.
+A GitHub Issue created from the `Task` template is the task's authoritative
+specification unless it links a formal specification file;
+`docs/project-status.md` remains the project-level status source. Skills are not
+permission bypasses: side-effecting operations still require an explicit task
+invocation or an equally clear Owner instruction.
+
 Before commit, push or exact non-Git publication, follow the active core-check
 amendment. Scan actual staged versions/messages and all newly outgoing commits,
 reuse context-aware results, and share one delivery allowance. Distinguish PASS,

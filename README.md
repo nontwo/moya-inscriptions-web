@@ -130,6 +130,59 @@ Release。Production 发布只能从已批准的 tag 进入受保护环境和 de
 gates。详细流程见 [CONTRIBUTING.md](CONTRIBUTING.md) 和
 [分支策略](docs/branching-strategy.md)。
 
+## 代理协作工作流（Owner 快速开始）
+
+日常任务由 Claude
+Code 与 Codex 交替执行；两者按任务和角色互换，不按工具划分工作流。规则只有一份：根
+`AGENTS.md`（Claude Code 通过根 `CLAUDE.md` 的 `@AGENTS.md`
+导入）、共享的任务工作流 `docs/development/task-workflow.md`（由 PR
+#118 引入）与三个技能的正文
+`.agents/skills/yoyi-{task,review,handoff}/SKILL.md`； `.claude/skills/`
+只是渲染同一正文的薄适配层。
+
+| 想做的事                           | Claude Code                                             | Codex                                                   |
+| ---------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
+| 只分析、不改动                     | `/yoyi-task plan <request>`                             | `$yoyi-task plan <request>`                             |
+| 执行已批准任务（或足够明确的请求） | `/yoyi-task start #<issue>`                             | `$yoyi-task start #<issue>`                             |
+| 变更需求                           | `/yoyi-task change #<issue> <delta>`                    | `$yoyi-task change #<issue> <delta>`                    |
+| 只看状态                           | `/yoyi-task status #<issue>`                            | `$yoyi-task status #<issue>`                            |
+| 独立审查                           | `/yoyi-review <PR>`                                     | `$yoyi-review <PR>`                                     |
+| 交接 / 接手                        | `/yoyi-handoff save` · `/yoyi-handoff resume <task-id>` | `$yoyi-handoff save` · `$yoyi-handoff resume <task-id>` |
+
+可复制的英文示例：
+
+```text
+/yoyi-task plan Add explicit progressive loading to Home Discover with the existing 继续加载 pattern; Web only; no Contract change.
+/yoyi-task start #123
+/yoyi-task change #123 Limit the first slice to the inscriptions feed; keep calligraphy unchanged.
+/yoyi-review 124
+/yoyi-handoff save
+```
+
+信息只有一个来源：GitHub Issue（`Task`
+模板）是任务规格；`docs/project-status.md`
+是项目级状态；PR 与验证产物是实际改动与证据；本机路径、进程与详细交接只写在
+`~/Developer/artifacts/moya-inscriptions-web/<task-id>/`，从不入库。看板只用 Ideas
+/ Ready / Doing / Review /
+Done 五种状态。默认同时只有一个主要实现任务，最多两个真正独立的写入者（通常一个 Web、一个 Apple）；等待审查也算未完成。
+
+工具能力与激活（本机）：
+
+| 项目                                             | 状态           | 说明                                                                                |
+| ------------------------------------------------ | -------------- | ----------------------------------------------------------------------------------- |
+| Codex skills（`.agents/skills`）                 | 合并即生效     | `codex debug prompt-input` 可核对已加载的规则与 skills                              |
+| Claude skills（`.claude/skills`）                | 新会话生效     | `/context` 查看已加载的 Memory files 与 skills；`/memory` 打开规则文件              |
+| Claude 项目权限与钩子（`.claude/settings.json`） | 首次需信任目录 | `allow` 规则在接受 workspace trust 后生效；`deny`、`ask` 与 PreToolUse 钩子立即生效 |
+| Claude 项目 MCP（`.mcp.json`）                   | 首次需批准     | 仅 Development 试点使用；`claude mcp reset-project-choices` 可重置                  |
+
+激活是非破坏性的：这些文件随 `main`
+分发；已有会话必须显式重新读取规则（见任务工作流）；已有任务工作树不会自动获得它们，把
+`origin/main`
+合并进任务分支即可，暂存与未提交改动不受影响。回滚只需还原本次引入的文件：
+`.agents/skills/yoyi-*`、`.claude/`、`.github/ISSUE_TEMPLATE/`、`AGENTS.md`
+与本节；Issue 模板与 `task` / `workstream:*`
+标签可在 GitHub 删除；用户全局配置从未被修改。
+
 ## 许可
 
 - 代码与普通技术文档采用 [Apache License 2.0](LICENSE)。

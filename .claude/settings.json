@@ -1,0 +1,98 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git rev-parse *)",
+      "Bash(git branch --show-current)",
+      "Bash(git branch -vv)",
+      "Bash(git branch --list *)",
+      "Bash(git worktree list *)",
+      "Bash(git fetch origin *)",
+      "Bash(git ls-remote *)",
+      "Bash(git merge-base *)",
+      "Bash(git cherry *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)",
+      "Bash(node scripts/verify-task.mjs *)",
+      "Bash(node scripts/verify-apple.mjs *)",
+      "Bash(node scripts/verify.mjs *)",
+      "Bash(node scripts/test-target.mjs check *)",
+      "Bash(node --test scripts/*)",
+      "Bash(pnpm verify)",
+      "Bash(pnpm test:e2e:smoke)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm install --frozen-lockfile *)",
+      "Bash(pnpm --filter * exec vitest run *)"
+    ],
+    "ask": [
+      "Bash(git rebase *)",
+      "Bash(git reset *)",
+      "Bash(git stash *)",
+      "Bash(git worktree add *)",
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(gh issue create *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm install)",
+      "Bash(docker compose *)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force*)",
+      "Bash(git push origin main*)",
+      "Bash(git push origin HEAD:main*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)",
+      "Bash(git worktree remove *)",
+      "Bash(git worktree prune *)",
+      "Bash(git branch -D *)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git push --no-verify*)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh repo edit *)",
+      "Bash(gh repo delete *)",
+      "Bash(gh api -X DELETE *)",
+      "Bash(gh api --method DELETE *)",
+      "Bash(gh ruleset *)",
+      "Bash(docker compose * down -v*)",
+      "Bash(docker compose * down --volumes*)",
+      "Bash(docker volume rm *)",
+      "Bash(docker volume prune *)",
+      "Bash(docker system prune *)",
+      "Bash(dropdb *)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env.local)",
+      "Read(./private-credentials/**)",
+      "Read(~/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
