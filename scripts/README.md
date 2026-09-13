@@ -18,3 +18,16 @@ Root scripts会自行build contracts：
 该脚本不读取production data、external Owner workspace、credentials或runtime
 services。它只生成已实现 importer 所使用的安全空白工作簿模板，不能被apps、services或production
 runtime依赖。
+
+## Disposable test target
+
+`disposable-test-target.mjs`是纯函数模块：一次性测试库的标记常量、只读探测 SQL、标记 SQL 与断言，不依赖任何包。`test-target.mjs`是命令入口：
+
+- `node scripts/test-target.mjs check <VARIABLE>`：读取环境变量中的 PostgreSQL
+  URL，先做静态检查（suite 名称规则、回环主机），再用已 build 的
+  `services/catalog-postgres/dist` 只读探测数据库注释是否为
+  `yoyi-disposable-test-target`，且连接到的库名与 URL 一致。
+- `node scripts/test-target.mjs mark <VARIABLE> --yes`：显式给一个你确认可丢弃的库打标记；同样拒绝`yoyi_dev`和不含`test`/`synthetic`段的名字。
+
+输入只有变量名，输出为一行 JSON（变量名、库名、结果或类别），从不打印连接串。幂等：重复`mark`结果相同。`verify.mjs test`、其触发的`migrate.mjs`（通过
+`MOYA_EXPECT_DISPOSABLE_TARGET=1`）与`editorial/verify-cms.mjs`都在破坏性准备之前调用这些检查。
