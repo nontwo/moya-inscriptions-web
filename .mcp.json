@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "agentation": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "agentation-mcp@1.2.0",
+        "server",
+        "--port",
+        "${MOYA_AGENTATION_PORT:-4747}"
+      ],
+      "env": {
+        "AGENTATION_STORE": "memory"
+      }
+    }
+  }
+}
