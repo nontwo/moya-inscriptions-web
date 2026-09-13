@@ -14,10 +14,6 @@ const docs = new Set([
   ".github/pull_request_template.md",
 ]);
 const tooling = new Set([
-  ".prettierignore",
-  "eslint.config.mjs",
-  "prettier.config.mjs",
-  ".editorconfig",
   ".gitignore",
   ".github/CODEOWNERS",
   "scripts/ci-e2e-gate.mjs",
@@ -61,6 +57,16 @@ const webConfig = new Set([
   "turbo.json",
   "compose.dev.yml",
   "compose.postgres.yml",
+]);
+// The Web lint job's verify.mjs lint stage runs prettier --check ., which loads
+// the Prettier config and ignore file and applies .editorconfig, and turbo run
+// lint, whose workspace eslint . runs use the root flat config. A lightweight
+// routing test reads only the two ignore lists.
+const webLintConfig = new Set([
+  ".editorconfig",
+  ".prettierignore",
+  "eslint.config.mjs",
+  "prettier.config.mjs",
 ]);
 // The cms job imports the marker module and the name guard through
 // scripts/editorial/verify-cms.mjs and runs the SQL in its marker step.
@@ -151,6 +157,7 @@ export function classifyTask(paths, event = "pull_request") {
       if (cmsBuiltPackage.test(file)) plan.cms = true;
     } else if (
       webConfig.has(file) ||
+      webLintConfig.has(file) ||
       webRoots.some((prefix) => file.startsWith(prefix)) ||
       file.startsWith("packages/contracts/src/internal/") ||
       file.startsWith("scripts/editorial/") ||
