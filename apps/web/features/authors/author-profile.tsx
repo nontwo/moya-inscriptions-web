@@ -9,6 +9,7 @@ import { HorizontalPager } from "../shell/horizontal-pager";
 import type { HorizontalPagerHandle } from "../shell/horizontal-pager";
 import { authorClient } from "./author-data";
 import { useAuthors } from "./author-context";
+import { AvatarEntry } from "./avatar-editor";
 import { ProfileEditor } from "./profile-editor";
 import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
@@ -151,13 +152,31 @@ const ScopedAuthorProfileOverlay = ({
         aria-label="用户资料"
         data-profile-background-slot=""
       >
-        <div className={styles.avatar} role="img" aria-label={`${name}的头像`}>
-          {profile?.avatar ? (
-            <img src={profile.avatar.src} alt="" width={80} height={80} />
-          ) : (
-            <span>{name.slice(0, 1)}</span>
-          )}
-        </div>
+        {profile?.isOwner && profile.id === author.viewer?.id ? (
+          <AvatarEntry
+            profile={profile}
+            className={styles.avatar}
+            onSaved={save}
+          >
+            {profile.avatar ? (
+              <img src={profile.avatar.src} alt="" width={80} height={80} />
+            ) : (
+              <span>{name.slice(0, 1)}</span>
+            )}
+          </AvatarEntry>
+        ) : (
+          <div
+            className={styles.avatar}
+            role="img"
+            aria-label={`${name}的头像`}
+          >
+            {profile?.avatar ? (
+              <img src={profile.avatar.src} alt="" width={80} height={80} />
+            ) : (
+              <span>{name.slice(0, 1)}</span>
+            )}
+          </div>
+        )}
         <div className={styles.identity}>
           <h1>{name}</h1>
           {profile ? (

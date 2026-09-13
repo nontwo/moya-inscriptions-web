@@ -269,3 +269,33 @@ Preserve the fixed author bar, vertical-only scrolling, filters, pagination,
 Detail/Back and existing long-press actions. This correction changes only Web
 presentation and focused product evidence; no API/data/workflow change or new
 publication authority.
+
+## Owner avatar UX acceptance correction (2026-09-13)
+
+This is a bounded correction to the existing Phase 4 candidate in Draft PR #126,
+not a separate task branch or stacked PR. It supersedes only the avatar-entry
+freeze above; work creation/editing/deletion and all other accepted surfaces
+remain unchanged. The Owner explicitly selected focused validation and
+exact-head checks for this correction; the earlier full-routine timeout remains
+recorded.
+
+| Scenario                | Development                                                                                                                     | Production                        | Must preserve                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------- |
+| Owner selects an avatar | Native device picker followed by a direct crop editor                                                                           | No new public entry or deployment | Existing owner/account authorization                                |
+| Position and zoom       | Drag behind a circular mask, pinch/wheel, one helper zoom slider                                                                | No exposure change                | Native overlays, keyboard access and touch scroll ownership         |
+| Input and output        | JPG/PNG/WebP within 4 MiB, 8192px per dimension and 16 Mi pixels; 512px PNG export                                              | Backend validation unchanged      | Existing work-editor PNG input, media identity and ownership        |
+| Cancel or failure       | Cancel before Save sends no upload; failed save/replacement retains the current crop; unchanged retry reuses command identities | Unchanged                         | Daily allowance only consumed by successful binding                 |
+| Save and daily limit    | Refresh profile/shared avatar; server limit and next America/New_York time remain authoritative across sessions                 | No release authority              | Existing upload then binding protocol and backend calendar-day rule |
+
+The crop mechanics use exact-pinned `react-easy-crop` 6.2.3 (MIT; runtime
+`normalize-wheel` only). Its declared React peer range includes the project's
+React 19. The existing author dialog and design tokens provide presentation; the
+library demo is not copied. The round mask guides the same square PNG crop used
+by existing avatar presentations. Source object URLs are released on
+replacement/cancel/unmount, and no remote image processing is introduced.
+
+Automated cropper touch emulation complements, but does not replace, Owner phone
+pinch/feel and native photo-picker acceptance. HEIC is not an accepted input;
+JPG, PNG and WebP are explicitly offered. Final evidence, exact SHA, independent
+avatar-delta review and phone instructions are recorded with PR #126. It stays
+Draft; this correction does not infer acceptance, Ready, merge or deployment.

@@ -7,22 +7,24 @@ import { requestIdentity } from "../shell/request-identity";
 export const AuthorDialog = ({
   title,
   dirty = false,
+  dismissible = true,
   onClose,
   children,
 }: {
   title: string;
   dirty?: boolean;
+  dismissible?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) => {
   const ref = useRef<HTMLDialogElement>(null),
-    latest = useRef({ dirty, onClose }),
+    latest = useRef({ dirty, dismissible, onClose }),
     closeApproved = useRef(false),
     generation = useRef(0),
     id = useRef(requestIdentity());
-  latest.current = { dirty, onClose };
+  latest.current = { dirty, dismissible, onClose };
   const close = () => {
-    if (closeApproved.current) return;
+    if (closeApproved.current || !latest.current.dismissible) return;
     if (latest.current.dirty && !window.confirm("更改尚未保存，放弃这些更改？"))
       return;
     closeApproved.current = true;
@@ -49,6 +51,10 @@ export const AuthorDialog = ({
         return;
       }
       event.stopImmediatePropagation();
+      if (!latest.current.dismissible) {
+        window.history.forward();
+        return;
+      }
       if (
         !closeApproved.current &&
         latest.current.dirty &&
@@ -100,7 +106,7 @@ export const AuthorDialog = ({
     >
       <div>
         <header className="phase4-actions">
-          <button type="button" onClick={close}>
+          <button type="button" onClick={close} disabled={!dismissible}>
             返回
           </button>
           <h2>{title}</h2>
