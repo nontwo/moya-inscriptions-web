@@ -44,11 +44,33 @@ Codex: `$yoyi-review ...`. Claude Code: `/yoyi-review ...`.
   reproduction needs a checkout, use a separate review worktree and separate
   output directory; hand findings back to the writer for fixes.
 - Reopen settled design merely because another implementation is possible.
-- Infer delivery authority. `Ready` and merge follow the task record's explicit
-  authorization and the active review-and-merge amendment; an explicit Draft
-  stop overrides the general permission. Production authority is never inferred.
+- Infer delivery authority beyond what the task record says (see "Delivery after
+  review"). Production authority is never inferred.
 - Poll unrelated PRs, start review-of-review loops or repeat unchanged full
   suites.
+
+## Delivery after review
+
+Three cases, decided by the task record, never by the reviewer's opinion of the
+code alone:
+
+- **Ordinary machine-verifiable task.** The record names no delivery limit, or
+  names review-and-merge. When the decision is "approve", every applicable check
+  passes for the reviewed head and no Owner gate is pending, the reviewer
+  completes delivery: `gh pr ready <n>`, then
+  `gh pr merge <n> --squash --match-head-commit <reviewed sha>`, then
+  merged-head verification (`gh pr view`, the `main` CI run, the task record).
+  The tool's confirmation prompt for those two commands is the native consent
+  step, not a new policy question; it needs no further Owner approval. A head
+  newer than the reviewed one is never merged.
+- **Task limited to Draft.** The record says so (a rollout checkpoint, a pending
+  Owner acceptance, a dependency). Report and stop at Draft; only a recorded
+  Owner decision changes that.
+- **Production, remote settings or destructive operations.** Never part of
+  review delivery, whatever the record says about merging.
+
+The implementing session does not review or deliver its own change; a separate
+session or context does.
 
 ## Report format
 

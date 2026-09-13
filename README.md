@@ -152,12 +152,15 @@ Code 与 Codex 交替执行；两者按任务和角色互换，不按工具划�
 可复制的英文示例：
 
 ```text
-/yoyi-task plan Add explicit progressive loading to Home Discover with the existing 继续加载 pattern; Web only; no Contract change.
-/yoyi-task start #123
-/yoyi-task change #123 Limit the first slice to the inscriptions feed; keep calligraphy unchanged.
-/yoyi-review 124
+/yoyi-task plan <one-sentence request: goal, surface, explicit non-goals>
+/yoyi-task start #<issue>
+/yoyi-task change #<issue> <what changes; everything else stays as approved>
+/yoyi-review <pr>
 /yoyi-handoff save
 ```
+
+`#<issue>` 是任务的 Issue 编号（任务规格），`<pr>` 是 Pull
+Request 编号（实际改动与证据）；两者不是同一个数字。
 
 信息只有一个来源：GitHub Issue（`Task`
 模板）是任务规格；`docs/project-status.md`
@@ -168,20 +171,26 @@ Done 五种状态。默认同时只有一个主要实现任务，最多两个真
 
 工具能力与激活（本机）：
 
-| 项目                                             | 状态           | 说明                                                                                |
-| ------------------------------------------------ | -------------- | ----------------------------------------------------------------------------------- |
-| Codex skills（`.agents/skills`）                 | 合并即生效     | `codex debug prompt-input` 可核对已加载的规则与 skills                              |
-| Claude skills（`.claude/skills`）                | 新会话生效     | `/context` 查看已加载的 Memory files 与 skills；`/memory` 打开规则文件              |
-| Claude 项目权限与钩子（`.claude/settings.json`） | 首次需信任目录 | `allow` 规则在接受 workspace trust 后生效；`deny`、`ask` 与 PreToolUse 钩子立即生效 |
-| Claude 项目 MCP（`.mcp.json`）                   | 首次需批准     | 仅 Development 试点使用；`claude mcp reset-project-choices` 可重置                  |
+| 项目                                             | 状态           | 说明                                                                                              |
+| ------------------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------- |
+| Codex skills（`.agents/skills`）                 | 合并即生效     | `codex debug prompt-input` 可核对已加载的规则与 skills                                            |
+| Claude skills（`.claude/skills`）                | 新会话生效     | `/context` 查看已加载的 Memory files 与 skills；`/memory` 打开规则文件                            |
+| Claude 项目权限与钩子（`.claude/settings.json`） | 首次需信任目录 | `deny` 与 `ask` 规则立即生效；`allow` 规则与 PreToolUse 钩子在该目录接受 workspace trust 后才运行 |
+| Claude 项目 MCP（`.mcp.json`）                   | 首次需批准     | 仅 Development 试点使用；`claude mcp reset-project-choices` 可重置                                |
 
-激活是非破坏性的：这些文件随 `main`
-分发；已有会话必须显式重新读取规则（见任务工作流）；已有任务工作树不会自动获得它们，把
-`origin/main`
-合并进任务分支即可，暂存与未提交改动不受影响。回滚只需还原本次引入的文件：
-`.agents/skills/yoyi-*`、`.claude/`、`.github/ISSUE_TEMPLATE/`、`AGENTS.md`
-与本节；Issue 模板与 `task` / `workstream:*`
-标签可在 GitHub 删除；用户全局配置从未被修改。
+激活与回滚（按依赖关系）：
+
+- 这些文件随 `main` 分发，但"文件已合并"不等于"已激活"：skills只在新启动（或
+  `/cd` 进入该目录）的会话中出现；`allow`
+  规则与钩子需要信任目录；已有会话必须显式重新读取规则（见任务工作流）。
+- 已有任务工作树不会自动获得更新。由该任务的写入者在安全的检查点（先提交或
+  `yoyi-handoff save`）把 `origin/main`
+  合并进任务分支；合并可能与本地改动冲突，需要人工解决，不自动处理，也不 reset /
+  stash / 重建分支。
+- 依赖顺序：任务路由与共享工作流（PR #118）在先；测试目标守卫（Issue #119 / PR
+  #122）与任务生命周期（Issue #120 / PR
+  #123）依赖它的分类器映射。回滚时先还原后合入的改动；`git revert`
+  只恢复被跟踪的代码，不会撤销本机的目录信任、已批准的 MCP 服务器、OAuth 范围、私有产物或看板状态。Issue、任务历史与工作树不作为清理自动删除；用户全局配置从未被修改。
 
 ## 许可
 

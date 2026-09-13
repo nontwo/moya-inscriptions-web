@@ -48,12 +48,52 @@ describe("one canonical skill body per skill, one adapter per tool", () => {
     }
   });
 
+  it("the bodies carry the closeout clarifications", () => {
+    const task = read(".agents/skills/yoyi-task/SKILL.md").replace(
+      /\s+/gu,
+      " ",
+    );
+    assert.match(task, /## Instruction context and freshness/u);
+    assert.match(task, /same unchanged task context, reuse/u);
+    assert.match(
+      task,
+      /do not reread the governance set unless the rule files changed/u,
+    );
+    assert.match(task, /never marks its own PR Ready or merges it/u);
+    const review = read(".agents/skills/yoyi-review/SKILL.md").replace(
+      /\s+/gu,
+      " ",
+    );
+    assert.match(review, /## Delivery after review/u);
+    assert.match(
+      review,
+      /gh pr merge <n> --squash --match-head-commit <reviewed sha>/u,
+    );
+    assert.match(review, /Task limited to Draft/u);
+    assert.match(
+      review,
+      /Production, remote settings or destructive operations/u,
+    );
+    const handoff = read(".agents/skills/yoyi-handoff/SKILL.md").replace(
+      /\s+/gu,
+      " ",
+    );
+    assert.match(handoff, /Readers are not writers/u);
+    assert.match(handoff, /open file or process id alone is not proof/u);
+    assert.match(handoff, /unpushed local commit is recorded and reconciled/u);
+    assert.doesNotMatch(handoff, /no process has the worktree open/u);
+  });
+
   it("Claude adapters render the canonical body instead of duplicating it", () => {
     for (const name of skills) {
       const adapter = read(`.claude/skills/${name}/SKILL.md`);
       const meta = frontmatter(adapter);
       assert.equal(meta.name, name);
-      assert.equal(meta["disable-model-invocation"], "true");
+      assert.equal(
+        meta["disable-model-invocation"],
+        name === "yoyi-review" ? "false" : "true",
+        `${name}: only the read-only reviewer may be model-invoked`,
+      );
       assert.ok(meta["argument-hint"], `${name} argument hint`);
       const injected =
         /!`cat "\$\{CLAUDE_SKILL_DIR:-\.claude\/skills\/([a-z-]+)\}\/\.\.\/\.\.\/\.\.\/\.agents\/skills\/([a-z-]+)\/SKILL\.md"`/u.exec(
@@ -92,54 +132,93 @@ describe("one canonical skill body per skill, one adapter per tool", () => {
       !existsSync(`${root}.codex`),
       "no project-level Codex config duplicating the skills",
     );
-    assert.match(read("AGENTS.md"), /## Task lifecycle skills/u);
-    assert.ok(
-      read("AGENTS.md").split("\n").length < 80,
-      "root instructions stay brief",
-    );
+    const agents = read("AGENTS.md");
+    assert.match(agents, /## Task lifecycle skills/u);
+    assert.match(agents, /When entering a task context/u);
+    assert.match(agents, /delivery stop\s+is that task's authorization/u);
+    assert.ok(agents.split("\n").length < 90, "root instructions stay brief");
   });
 });
 
-describe("project-scoped Claude permissions stay minimal and fail closed", () => {
+describe("project-scoped Claude permissions: native rules first, fail closed", () => {
   const settings = JSON.parse(read(".claude/settings.json"));
+  const { allow, ask, deny } = settings.permissions;
 
-  it("allows only read-only Git/GitHub reads and the verification entries", () => {
-    const { allow, ask, deny } = settings.permissions;
+  it("allows read-only Git/GitHub, scoped pushes, Draft PR and task creation, and the verification entries", () => {
     for (const rule of allow) {
       assert.match(
         rule,
-        /^Bash\((?:git (?:status|diff|log|show|rev-parse|branch|worktree list|fetch origin|ls-remote|merge-base|cherry)|gh (?:pr (?:view|list|diff|checks)|issue (?:view|list)|run (?:view|list))|node (?:scripts\/verify(?:-task|-apple)?\.mjs|scripts\/test-target\.mjs check|--test scripts\/)|pnpm (?:verify|test:e2e:smoke|format:check|lint|typecheck|install --frozen-lockfile|--filter \* exec vitest run))/u,
+        /^Bash\((?:git (?:status|diff|log|show|rev-parse|branch|worktree (?:list|add)|fetch origin|ls-remote|merge-base|cherry|merge origin\/main|add|commit|push (?:-u )?origin)|gh (?:pr (?:view|list|diff|checks|create --draft|comment|review|edit)|issue (?:view|list|create|comment)|run (?:view|list))|node (?:scripts\/verify(?:-task|-apple)?\.mjs|scripts\/test-target\.mjs check|--test scripts\/)|pnpm (?:verify|test:e2e:smoke|format:check|lint|typecheck|install --frozen-lockfile|--filter \* exec vitest run))/u,
         rule,
       );
       assert.doesNotMatch(
         rule,
-        /^Bash\(\*?\)$|Bash\(rm|Bash\(sudo|Bash\(curl|Bash\(ssh|Bash\(scp/u,
+        /^Bash\(\*?\)$|Bash\(rm|Bash\(sudo|Bash\(curl|Bash\(ssh|Bash\(scp|Bash\(gh pr (?:merge|ready)/u,
         rule,
       );
     }
     for (const required of [
-      "Bash(git push --force*)",
+      "Bash(git push origin *)",
+      "Bash(git push -u origin *)",
+      "Bash(gh pr create --draft *)",
+      "Bash(gh issue create *)",
+      "Bash(git worktree add *)",
+      "Bash(git commit *)",
+    ])
+      assert.ok(allow.includes(required), required);
+  });
+
+  it("asks (native consent) for delivery, non-draft PRs and reversible-but-notable operations instead of denying them", () => {
+    for (const required of [
+      "Bash(gh pr ready *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr create *)",
+      "Bash(git rebase *)",
+      "Bash(git reset *)",
+      "Bash(git stash *)",
+      "Bash(rm -rf *)",
+      "Bash(pnpm add *)",
+      "Bash(docker compose *)",
+      "Bash(node scripts/test-target.mjs mark *)",
+    ])
+      assert.ok(ask.includes(required), required);
+    for (const forbidden of [
+      "Bash(gh pr merge *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr create *)",
+      "Bash(git push *)",
+      "Bash(gh issue create *)",
+      "Bash(git worktree add *)",
+    ])
+      assert.ok(
+        !deny.includes(forbidden),
+        `${forbidden} must not be an unconditional deny`,
+      );
+  });
+
+  it("denies force pushes, pushes to main, hook bypasses, history rewrites, worktree removal, repository settings and data deletion", () => {
+    for (const required of [
+      "Bash(git push *--force*)",
+      "Bash(git push -f *)",
+      "Bash(git push origin main)",
+      "Bash(git push origin HEAD:main*)",
+      "Bash(git push *--no-verify*)",
+      "Bash(git commit *--no-verify*)",
       "Bash(git reset --hard*)",
       "Bash(git clean *)",
       "Bash(git worktree remove *)",
       "Bash(git worktree prune *)",
-      "Bash(git commit --no-verify*)",
-      "Bash(git push --no-verify*)",
-      "Bash(gh pr merge *)",
-      "Bash(gh pr ready *)",
+      "Bash(git branch -D *)",
+      "Bash(gh repo edit *)",
+      "Bash(gh api -X DELETE *)",
+      "Bash(gh api *rulesets*)",
+      "Bash(docker compose * down -v*)",
       "Bash(docker volume rm *)",
       "Bash(dropdb *)",
       "Read(./.env)",
       "Read(./.env.*)",
     ])
       assert.ok(deny.includes(required), required);
-    for (const required of [
-      "Bash(git push *)",
-      "Bash(gh pr create *)",
-      "Bash(git worktree add *)",
-      "Bash(pnpm add *)",
-    ])
-      assert.ok(ask.includes(required), required);
     assert.equal(settings.permissions.defaultMode, undefined);
     assert.equal(settings.permissions.additionalDirectories, undefined);
     assert.equal(settings.enableAllProjectMcpServers, undefined);
@@ -160,73 +239,56 @@ describe("project-scoped Claude permissions stay minimal and fail closed", () =>
   });
 });
 
-describe("the Bash guard denies destructive shapes even inside compound commands", () => {
+describe("the reduced Bash guard covers only what native rules cannot express", () => {
   const denied = [
-    "git push --force origin chore/x",
-    "git push -f origin chore/x",
-    "git push --force-with-lease origin chore/x",
-    "git status && git push --force origin chore/x",
-    "git push origin main",
-    "git push origin HEAD:main",
-    "git reset --hard origin/main",
-    "git clean -fd",
-    "echo $(git worktree prune)",
-    "for w in a b; do git worktree remove $w; done",
-    "git branch -D feat/x",
-    "git commit -m 'x' --no-verify",
-    "gh pr merge 118 --squash",
-    "gh pr ready 118",
-    "gh api -X DELETE repos/nontwo/moya-inscriptions-web/git/refs/heads/x",
-    "gh api repos/nontwo/moya-inscriptions-web/rulesets",
-    "docker compose -f compose.dev.yml down -v",
-    "docker compose -f compose.dev.yml down --volumes",
-    "docker volume rm yoyi-development_yoyi_dev_data",
-    "docker system prune -af",
-    "dropdb yoyi_dev",
     "psql -d yoyi_dev -c 'TRUNCATE community.comments'",
     'psql postgresql://x@127.0.0.1:54330/yoyi_dev -c "DELETE FROM community.public_users"',
-    "rm -rf ~/Developer/worktrees/moya-inscriptions-web/apple-bootstrap",
-    "rm -rf .git",
-    "cd / && rm -rf *",
-    "rm -rf ../wf-agentation-pilot",
+    "pgcli -d yoyi_dev -e 'DROP TABLE community.sessions'",
+    "git -C ../other push --force origin chore/x",
+    "git -c core.hooksPath=/dev/null push origin main",
+    "git -C . push origin HEAD:main",
   ];
-  const allowed = [
-    "git status --short",
+  const leftToNativeRules = [
+    "git push --force origin chore/x",
+    "git status && git push --force origin chore/x",
+    "gh pr merge 118 --squash --match-head-commit abc",
+    "gh pr ready 118",
+    "git worktree prune",
+    "docker compose -f compose.dev.yml down -v",
+    "dropdb yoyi_dev",
+  ];
+  const harmless = [
+    "rg 'DROP DATABASE' docs/",
+    "grep -rn 'gh pr merge' .agents/skills",
+    "printf '%s\\n' 'gh pr merge 123'",
+    "echo \"never run: psql -d yoyi_dev -c 'TRUNCATE x'\" > /dev/null",
+    "psql -d yoyi_dev -c 'SELECT count(*) FROM community.comments'",
+    "psql -d moya_synthetic_test -c 'TRUNCATE catalog_entries'",
     "git push origin chore/wf-task-lifecycle",
-    "git push -u origin chore/wf-task-lifecycle",
-    "git branch -d chore/merged",
-    "git worktree list --porcelain",
-    "git worktree add -b chore/x ../x origin/main",
-    "gh pr view 118 --json state",
-    "gh api repos/nontwo/moya-inscriptions-web/pulls/118",
-    "docker compose -f compose.dev.yml down",
-    "pnpm dev:db:down",
+    "git -C ../other push origin chore/x",
     "node scripts/test-target.mjs check TEST_DATABASE_URL",
-    "psql -d moya_synthetic_test -c 'SELECT 1'",
-    "rm -rf node_modules/.cache",
-    "rm -f /tmp/x.log",
-    "git commit -m 'no-verify is mentioned in this message'",
     "",
   ];
-  it("denies every destructive example with a reason", () => {
+  it("denies destructive SQL against yoyi_dev and the -C/-c spelling of a forbidden push", () => {
     for (const command of denied)
       assert.equal(typeof guardDecision(command), "string", command);
   });
-  it("leaves ordinary commands to the normal permission flow", () => {
-    for (const command of allowed)
+  it("stays silent where the native permission rules already decide", () => {
+    for (const command of leftToNativeRules)
+      assert.equal(guardDecision(command), null, command);
+  });
+  it("never treats searched, quoted or printed command text as execution", () => {
+    for (const command of harmless)
       assert.equal(guardDecision(command), null, command);
   });
   it("only shapes a PreToolUse deny for Bash and stays silent otherwise", () => {
     const deny = hookOutput({
       tool_name: "Bash",
-      tool_input: { command: "git push --force origin x" },
+      tool_input: { command: "psql -d yoyi_dev -c 'DROP TABLE x'" },
     });
     assert.equal(deny.hookSpecificOutput.hookEventName, "PreToolUse");
     assert.equal(deny.hookSpecificOutput.permissionDecision, "deny");
-    assert.match(
-      deny.hookSpecificOutput.permissionDecisionReason,
-      /force push/u,
-    );
+    assert.match(deny.hookSpecificOutput.permissionDecisionReason, /yoyi_dev/u);
     assert.equal(
       hookOutput({ tool_name: "Read", tool_input: { file_path: "x" } }),
       null,
@@ -248,7 +310,7 @@ describe("the Bash guard denies destructive shapes even inside compound commands
     const blocked = run(
       JSON.stringify({
         tool_name: "Bash",
-        tool_input: { command: "gh pr merge 1" },
+        tool_input: { command: "git -C . push --force origin x" },
       }),
     );
     assert.equal(blocked.status, 0);
@@ -259,7 +321,7 @@ describe("the Bash guard denies destructive shapes even inside compound commands
     const fine = run(
       JSON.stringify({
         tool_name: "Bash",
-        tool_input: { command: "git log -1" },
+        tool_input: { command: "rg 'DROP DATABASE' docs/" },
       }),
     );
     assert.equal(fine.status, 0);
@@ -270,7 +332,7 @@ describe("the Bash guard denies destructive shapes even inside compound commands
   });
 });
 
-describe("task records and templates", () => {
+describe("task records, templates and the Owner guide", () => {
   it("the Issue form captures every lightweight template field once", () => {
     const form = read(".github/ISSUE_TEMPLATE/task.yml");
     for (const id of [
@@ -301,7 +363,7 @@ describe("task records and templates", () => {
     );
   });
 
-  it("the Owner quick start names both tools' invocations and the rollback set", () => {
+  it("the Owner quick start uses placeholders, separates Issue from PR numbers and documents dependency-aware rollback", () => {
     const readme = read("README.md").replace(/\s+/gu, " ");
     for (const text of [
       "/yoyi-task plan",
@@ -311,12 +373,35 @@ describe("task records and templates", () => {
       "/yoyi-handoff save",
       "$yoyi-handoff save",
       "Ideas / Ready / Doing / Review / Done",
-      ".github/ISSUE_TEMPLATE/",
+      "/yoyi-task start #<issue>",
+      "/yoyi-review <pr>",
+      "Issue #119 / PR #122",
+      "Issue #120 / PR #123",
+      "git revert",
     ])
       assert.ok(readme.includes(text), text);
+    const example = /```text\n([\s\S]*?)```/u.exec(read("README.md"))[1];
+    assert.doesNotMatch(
+      example,
+      /#\d+|review \d+/u,
+      "examples use placeholders, not real Issue or PR numbers",
+    );
+    assert.doesNotMatch(readme, /暂存与未提交改动不受影响/u);
+    assert.doesNotMatch(readme, /PreToolUse 钩子立即生效/u);
+    const map = read(
+      "docs/governance/history/2026-09-13-workflow-rule-migration-map.md",
+    );
     assert.match(
-      read("docs/governance/history/2026-09-13-workflow-rule-migration-map.md"),
-      /\| RETIRE\s+\| none/u,
+      map,
+      /\| CLARIFY\s+\| Read the full authority when entering a task context/u,
+    );
+    assert.match(
+      map,
+      /\| RETIRE\s+\| Native permission rules match those shapes per subcommand/u,
+    );
+    assert.match(
+      map,
+      /Readers, idle editors and the incoming session are not writers/u,
     );
   });
 });

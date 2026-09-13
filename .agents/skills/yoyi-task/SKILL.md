@@ -27,20 +27,28 @@ yoyi-task status [Issue reference | task ID]
 Codex: `$yoyi-task <mode> ...`. Claude Code: `/yoyi-task <mode> ...`. The first
 word selects the mode; an unknown or missing mode is a usage error, not a guess.
 
-## Before every mode
+## Instruction context and freshness
 
-1. Read the root `AGENTS.md`, the Constitution, every active amendment, the
-   shared task workflow (`docs/development/task-workflow.md` when present) and
-   the local instructions for the task's allowed paths (for example
-   `apps/apple/AGENTS.md`, `apps/admin/AGENTS.md`). An existing session must
-   read them again explicitly; startup loading is not assumed.
-2. Establish the real state: repository root, worktree path, branch, HEAD, the
-   task's PR if any, and `git status --short`. Report these facts, not
-   expectations.
-3. Read the task record: the GitHub Issue (`gh issue view <n>`) at its latest
-   revision, or the formal specification file it links. Keep its comments and
-   decisions; never overwrite an Issue body from stale context.
-4. Check the writer state in the task's private checkpoint
+1. When entering a task context — a new task, a tool handoff, or after the rule
+   files changed — read the full applicable authority: the root `AGENTS.md`, the
+   Constitution, every active amendment, the shared task workflow
+   (`docs/development/task-workflow.md`) and the local instructions for the
+   task's allowed paths (for example `apps/apple/AGENTS.md`,
+   `apps/admin/AGENTS.md`). An existing session must do this explicitly after a
+   handoff; startup loading is not assumed.
+2. Within the same unchanged task context, reuse what was read. A small check
+   that those files are unchanged (`git diff --stat` on them, or their blob ids)
+   is enough; do not reread the whole governance set for every `status` or small
+   `change`. Refresh the local instructions when the work enters another
+   directory's domain.
+3. Establish the real state: repository root, worktree path, branch, local HEAD
+   and PR head, the task's PR if any, and `git status --short`. Report these
+   facts, not expectations.
+4. Read the task record — the GitHub Issue (`gh issue view <n>`) at its latest
+   revision, or the formal specification file it links — when it matters: always
+   for `start` and `change`, and for `plan` when an Issue is named. Keep its
+   comments and decisions; never overwrite an Issue body from stale context.
+5. Check the writer state in the task's private checkpoint
    (`~/Developer/artifacts/moya-inscriptions-web/<task-id>/handoff.md`). If
    another actor holds the writer role, do not write; use `yoyi-handoff resume`
    first.
@@ -83,16 +91,19 @@ word selects the mode; an unknown or missing mode is a usage error, not a guess.
   One shared 120-second execution budget; a timeout is a failure. Record
   preparation time separately.
 - Deliver to the recorded stop, by default a Draft PR that follows the PR
-  template, with the exact base and head SHAs and the Issue reference. Never
-  mark Ready, merge, change remote settings or touch Production without the
-  explicit authorization the task record names.
+  template, with the exact base and head SHAs and the Issue reference. The
+  delivery stop is the task's authorization: an ordinary machine-verifiable task
+  continues under the review-and-merge amendment through `yoyi-review`; a task
+  whose record limits it to Draft stops there; Production, remote settings and
+  destructive operations keep their separate authority. The implementer never
+  marks its own PR Ready or merges it.
 - Finish with `yoyi-handoff save` so the next session, whichever tool, can
   resume without rediscovery.
 
 ## `change` — apply an explicit delta
 
-- Reread the latest Issue revision first. Apply only the stated delta; every
-  unaffected requirement stays verbatim.
+- Reread the latest Issue revision and the rules the delta touches. Apply only
+  the stated delta; every unaffected requirement stays verbatim.
 - Bump the revision (`r1` → `r2`) and record, in the Issue, what changed, what
   remains unchanged and which earlier requirement is replaced. Never silently
   rewrite an accepted requirement.
@@ -101,9 +112,11 @@ word selects the mode; an unknown or missing mode is a usage error, not a guess.
 
 ## `status` — report facts only
 
-- Report worktree, branch, HEAD, PR state, CI result for the exact head, review
-  threads, evidence paths, remaining items and open Owner decisions.
-- Launch no tests, builds or services; change no scope; open no task.
+- Inspect current facts only: worktree, branch, local HEAD and PR head, PR
+  state, CI result for the exact head, review threads, evidence paths, remaining
+  items and open Owner decisions.
+- Launch no tests, builds, services or audits; change no scope; open no task; do
+  not reread the governance set unless the rule files changed.
 
 ## Boundaries that hold in every mode
 

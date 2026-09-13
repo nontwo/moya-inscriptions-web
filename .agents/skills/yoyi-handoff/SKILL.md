@@ -59,12 +59,22 @@ Restrictions, approvals and delivery stop: ...
 1. Read the checkpoint. If none exists (quota exhaustion, crash), reconstruct it
    read-only from the actual worktree, branch, PR and evidence before
    continuing; say so.
-2. Verify the live state against it: same worktree path, branch and HEAD;
-   `git status --short` matches the recorded staged/unstaged/untracked set; the
-   PR head is the recorded SHA. Any difference is reported before writing.
-3. Confirm no other writer is active: the checkpoint says `released`, no process
-   has the worktree open, and no newer checkpoint exists. An advisory claim is
-   not proof that another machine is idle; when in doubt, stop and ask.
+2. Verify the live state against it: same worktree path and branch; local HEAD
+   and PR head each match their recorded values (a legitimate unpushed local
+   commit is recorded and reconciled, never forced to equal the PR head);
+   `git status --short` and the recorded content fingerprints match, not only
+   the file names. Report any difference before writing; never reset, stash,
+   recreate a branch or discard work to make the states look identical.
+3. Confirm no competing writer: the checkpoint says `released` (or the previous
+   writer's interruption was reconstructed read-only), no newer held claim or
+   conflicting task update exists, and no source-changing or Git-writing process
+   from the previous execution is still running. Readers are not writers: an
+   idle editor, a terminal, a read-only reviewer or this incoming session
+   opening the directory does not block the takeover, and an open file or
+   process id alone is not proof of write activity. The checkpoint is advisory
+   coordination, not a lock; when a material unexplained difference or an actual
+   competing writer exists, pause writing and ask the smallest necessary
+   question.
 4. Acquire the role by rewriting
    `Writer and handoff state: held by <tool> <time>` and continue the same
    worktree, branch and PR. Never create another branch or worktree for a

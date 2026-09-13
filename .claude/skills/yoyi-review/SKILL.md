@@ -3,9 +3,9 @@ name: yoyi-review
 description:
   Independently review one ArtVenn / Yoyi task against its Issue specification,
   the actual diff at the exact head SHA, applicable evidence and review threads,
-  without editing source. Owner-invoked only.
+  without editing source. Read-only; a review context may invoke it.
 argument-hint: "<PR number | branch | task ID> [--head <sha>]"
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 Claude Code adapter. The canonical body is

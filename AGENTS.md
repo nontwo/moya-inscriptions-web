@@ -1,6 +1,7 @@
 # Repository Development Authority
 
-Before planning or modifying repository files, read:
+When entering a task context — a new task, a tool handoff, or after these files
+change — read, and then reuse within that unchanged context:
 
 1. `docs/governance/OWNER-DEVELOPMENT-CONSTITUTION.md`;
 2. every active amendment under `docs/governance/amendments/`.
@@ -56,7 +57,11 @@ A GitHub Issue created from the `Task` template is the task's authoritative
 specification unless it links a formal specification file;
 `docs/project-status.md` remains the project-level status source. Skills are not
 permission bypasses: side-effecting operations still require an explicit task
-invocation or an equally clear Owner instruction.
+invocation or an equally clear Owner instruction. A task record's delivery stop
+is that task's authorization: an ordinary machine-verifiable task is delivered
+by its independent reviewer under the review-and-merge amendment, a task whose
+record limits it to Draft stops there, and Production, remote settings and
+destructive operations keep their separate authority.
 
 Before commit, push or exact non-Git publication, follow the active core-check
 amendment. Scan actual staged versions/messages and all newly outgoing commits,
