@@ -12,6 +12,7 @@ export interface CommentMediaPresentation {
 }
 
 export interface CommentReply {
+  readonly deleted?: boolean;
   readonly createdAtLabel: string;
   readonly id: string;
   readonly likeCount: number;
@@ -23,6 +24,9 @@ export interface CommentReply {
 }
 
 export interface CommentItem {
+  readonly deleted?: boolean;
+  readonly replyPageTotal?: number;
+  readonly replyRemaining?: number;
   readonly createdAtLabel: string;
   readonly id: string;
   readonly isQaGenerated: boolean;

@@ -1,0 +1,285 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import type { ContentCard as Card } from "@moya/contracts";
+import { authorClient, AuthorRequestError } from "./author-data";
+import { useAuthors } from "./author-context";
+import { readLocalHistory } from "./local-library";
+import { CatalogMasonry } from "../home/catalog-masonry";
+import { useProductShell } from "../product-shell/product-shell";
+import { ContentCard } from "./content-card";
+import type { ProfileTab } from "../product-shell/product-history";
+interface ListState {
+  items: Card[];
+  page: number;
+  total: number;
+  search: string;
+  kind: string;
+  revision: number;
+}
+interface Read {
+  page: number;
+  replace: boolean;
+  search: string;
+  kind: string;
+  through?: number;
+}
+export const ProfileList = ({
+  authorId,
+  tab,
+  entryId,
+  owner,
+  active,
+}: {
+  authorId: string | null;
+  tab: Exclude<ProfileTab, "comments">;
+  entryId: string;
+  owner: boolean;
+  active: boolean;
+}) => {
+  const context = useAuthors(),
+    shell = useProductShell(),
+    cacheKey = `list:${context.viewer?.id ?? "guest"}:${entryId}:${authorId ?? "guest"}:${tab}`;
+  const [list, setList] = useState<ListState>(
+      () =>
+        (context.cache.get(cacheKey) as ListState | undefined) ?? {
+          items: [],
+          page: 0,
+          total: 0,
+          search: "",
+          kind: "all",
+          revision: context.revision,
+        },
+    ),
+    [draftSearch, setDraftSearch] = useState(list.search),
+    [draftKind, setDraftKind] = useState(list.kind),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const wasActive = useRef(false);
+  const epoch = useRef(0),
+    loading = useRef(false),
+    failed = useRef<Read | null>(null),
+    sentinel = useRef<HTMLDivElement>(null),
+    listRef = useRef(list);
+  listRef.current = list;
+  useEffect(() => {
+    context.cache.set(cacheKey, list);
+  }, [context.cache, cacheKey, list]);
+  const readPage = async (q: Read) => {
+    if (tab === "history" || authorId === null) {
+      const all =
+        tab === "history"
+          ? readLocalHistory(context.viewer?.id ?? null)
+          : tab === "favorites"
+            ? context.guestFavorites
+            : [];
+      const results = await Promise.all(
+        all.slice((q.page - 1) * 12, q.page * 12).map((target) =>
+          authorClient.card(target).catch((e) => {
+            if (e instanceof AuthorRequestError && e.status === 404)
+              return null;
+            throw e;
+          }),
+        ),
+      );
+      return {
+        items: results.filter((i): i is Card => i !== null),
+        total: all.length,
+      };
+    }
+    if (tab === "works") {
+      const result = await authorClient.works(authorId, q.page);
+      return {
+        items: result.items
+          .filter((w) => w.available || owner)
+          .map((w) => ({
+            target: { type: "work" as const, id: w.id },
+            title: w.title,
+            kind: null,
+            authorId: w.authorId,
+            firstPublishedAt: w.firstPublishedAt,
+            media: w.media[0] ?? null,
+          })),
+        total: result.total,
+      };
+    }
+    return authorClient.collection(authorId, tab, q.page, q.search, q.kind);
+  };
+  const load = async (q: Read) => {
+    if (loading.current) return;
+    loading.current = true;
+    const run = ++epoch.current;
+    setBusy(true);
+    setError("");
+    try {
+      const items: Card[] = [];
+      let total = 0;
+      const last = q.through ?? q.page;
+      for (let page = q.page; page <= last; page++) {
+        const result = await readPage({ ...q, page });
+        if (run !== epoch.current) return;
+        items.push(...result.items);
+        total = result.total;
+      }
+      failed.current = null;
+      setList((old) => ({
+        ...old,
+        items: q.replace ? items : [...old.items, ...items],
+        page: last,
+        total,
+        search: q.search,
+        kind: q.kind,
+        revision: context.revision,
+      }));
+    } catch (e) {
+      if (run === epoch.current) {
+        failed.current = q;
+        if (
+          e instanceof AuthorRequestError &&
+          (e.status === 404 || e.status === 401)
+        )
+          setList((old) => ({ ...old, items: [], total: 0 }));
+        setError(e instanceof Error ? e.message : "列表加载失败");
+      }
+    } finally {
+      if (run === epoch.current) {
+        loading.current = false;
+        setBusy(false);
+      }
+    }
+  };
+  const next = () => {
+    const old = listRef.current;
+    void load({
+      page: old.page + 1,
+      replace: false,
+      search: old.search,
+      kind: old.kind,
+    });
+  };
+  useEffect(() => {
+    if (!active) {
+      wasActive.current = false;
+      return;
+    }
+    const entering = !wasActive.current;
+    wasActive.current = true;
+    const old = listRef.current;
+    // Recheck eligibility and privacy on return even if this account did not
+    // perform the remote change. Preserve the loaded range and filter state.
+    if (entering || old.page === 0 || old.revision !== context.revision)
+      void load({
+        page: 1,
+        through: Math.max(1, old.page),
+        replace: true,
+        search: old.search,
+        kind: old.kind,
+      });
+  }, [active, context.revision, list.revision]);
+  useEffect(
+    () => () => {
+      epoch.current++;
+      loading.current = false;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (
+      !sentinel.current ||
+      !active ||
+      busy ||
+      error ||
+      list.page === 0 ||
+      list.page * 12 >= list.total
+    )
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((i) => i.isIntersecting)) next();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [active, busy, error, list.page, list.total]);
+  if (tab === "history" && !owner) return <p>浏览历史仅自己可见。</p>;
+  return (
+    <div>
+      {(tab === "favorites" || tab === "likes") && authorId && (
+        <form
+          className="phase4-filters"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void load({
+              page: 1,
+              replace: true,
+              search: draftSearch.trim(),
+              kind: draftKind,
+            });
+          }}
+        >
+          <label>
+            搜索整个列表
+            <input
+              value={draftSearch}
+              maxLength={200}
+              onChange={(e) => setDraftSearch(e.target.value)}
+            />
+          </label>
+          <label>
+            类型
+            <select
+              value={draftKind}
+              onChange={(e) => setDraftKind(e.target.value)}
+            >
+              <option value="all">全部</option>
+              <option value="inscription">碑刻</option>
+              <option value="calligraphy">书帖</option>
+            </select>
+          </label>
+          <button className="phase4-button" disabled={busy} type="submit">
+            搜索
+          </button>
+        </form>
+      )}
+      {!authorId && tab === "favorites" && (
+        <p className="phase4-muted">
+          收藏保存在此浏览器；登录后可合并到账户。清除浏览器数据可能移除本机收藏。
+        </p>
+      )}
+      <CatalogMasonry
+        items={list.items}
+        getKey={(i) => `${i.target.type}:${i.target.id}`}
+        isFullSpan={(i) => !!i.media && i.media.width / i.media.height >= 2.4}
+        platform={shell.platform}
+        feedLayout={shell.feedLayout}
+        renderItem={(item, onMediaSettled) => (
+          <ContentCard item={item} onMediaSettled={onMediaSettled} />
+        )}
+      />
+      {error ? (
+        <div role="alert">
+          <p>{error}</p>
+          <button
+            className="phase4-button"
+            onClick={() => {
+              if (failed.current) void load(failed.current);
+            }}
+          >
+            重试
+          </button>
+        </div>
+      ) : !busy && !list.items.length ? (
+        <p>暂无可显示的内容</p>
+      ) : null}
+      <div ref={sentinel} className="phase4-load">
+        {busy ? (
+          <span role="status">正在加载…</span>
+        ) : !error && list.page * 12 < list.total ? (
+          <button className="phase4-button" onClick={next}>
+            加载更多
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+};

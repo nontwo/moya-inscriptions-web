@@ -13,6 +13,7 @@ export interface CatalogDetailScreenProps {
   readonly activeMediaIndex: number;
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly commentSection?: ReactNode;
+  readonly detailActions?: ReactNode;
   readonly onActiveMediaIndexChange: (index: number) => void;
   readonly onBack: () => void;
   readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
@@ -42,7 +43,11 @@ const DetailIdentity = ({
   readonly detail: CatalogDetailPresentation;
 }) => {
   const identity = [
-    detail.kind === "calligraphy" ? "书帖" : "碑刻",
+    detail.contentType === "work"
+      ? detail.authorName
+      : detail.kind === "calligraphy"
+        ? "书帖"
+        : "碑刻",
     detail.periodLabel,
   ]
     .filter((value): value is string => value !== undefined)
@@ -153,6 +158,7 @@ export const CatalogDetailScreen = ({
   activeMediaIndex,
   backButtonRef,
   commentSection,
+  detailActions,
   onActiveMediaIndexChange,
   onBack,
   onOpenViewer,
@@ -206,6 +212,7 @@ export const CatalogDetailScreen = ({
     const information = (
       <>
         <DetailIdentity detail={detail} />
+        {detailActions}
         <DetailReadingFlow detail={detail} />
       </>
     );
@@ -238,6 +245,7 @@ export const CatalogDetailScreen = ({
           <div data-detail-landscape-media="">{media}</div>
           <div className={styles.landscapeInfo}>
             <DetailIdentity detail={detail} />
+            {detailActions}
             <DetailReadingDisclosure detail={detail} />
           </div>
         </div>
@@ -254,6 +262,7 @@ export const CatalogDetailScreen = ({
         <div className={styles.hero}>
           {media}
           <DetailIdentity detail={detail} />
+          {detailActions}
         </div>
         <DetailReadingFlow detail={detail} />
         {commentSection}

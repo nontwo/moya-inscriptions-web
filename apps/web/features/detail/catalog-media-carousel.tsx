@@ -11,7 +11,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import type { PublicMedia } from "@moya/contracts";
+import type { DetailMediaPresentation } from "./catalog-detail-presentation";
 import type { PresentationPlatform } from "../shell/device-platform";
 
 export const MEDIA_CAROUSEL_AXIS_LOCK_PX = 10;
@@ -66,7 +66,7 @@ export const shouldCommitCarouselSwipe = (
 
 export interface CatalogMediaCarouselProps {
   readonly activeIndex: number;
-  readonly media: readonly PublicMedia[];
+  readonly media: readonly DetailMediaPresentation[];
   readonly onActiveIndexChange: (index: number) => void;
   readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
   readonly platform: PresentationPlatform;

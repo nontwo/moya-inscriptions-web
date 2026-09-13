@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { communitySessionCookieName } from "../../../lib/public-api/community-session-cookie";
 import { fetchServerCurrentUser } from "../../../lib/public-api/server";
 import styles from "./page.module.css";
+import { CommunitySessionNotification } from "../../../features/authors/session-notification";
 
 import type { CurrentUserTransportResult } from "../../../lib/public-api/community-session";
 
@@ -56,6 +57,11 @@ export default async function CommunityDevelopmentPage({
       ? { state: "unauthenticated" }
       : await fetchServerCurrentUser(token);
   const query = (await searchParams) ?? {};
+  const suggestedHandle =
+    typeof query.handle === "string" &&
+    /^[a-z][a-z0-9-]{2,31}$/.test(query.handle)
+      ? query.handle
+      : developmentAccountHandles[0];
   // Own-property lookup only: a crafted notice must never reach the prototype.
   const notice =
     typeof query.notice === "string" && Object.hasOwn(notices, query.notice)
@@ -64,6 +70,9 @@ export default async function CommunityDevelopmentPage({
 
   return (
     <main className={styles.page} data-community-development-entry="">
+      {query.notice === "signed-in" || query.notice === "signed-out" ? (
+        <CommunitySessionNotification change={query.notice} />
+      ) : null}
       <h1 className={styles.title}>Community 开发登录</h1>
       <p className={styles.lede}>
         仅 Development 环境可用的测试账号入口：Backend
@@ -111,7 +120,7 @@ export default async function CommunityDevelopmentPage({
               required
               autoComplete="off"
               pattern="[a-z][a-z0-9-]{2,31}"
-              defaultValue={developmentAccountHandles[0]}
+              defaultValue={suggestedHandle}
               className={styles.input}
             />
             <datalist id="community-handles">
@@ -125,6 +134,9 @@ export default async function CommunityDevelopmentPage({
           </form>
         )}
       </section>
+      <p>
+        <a href="/">返回浏览，打开右上角个人主页</a>
+      </p>
       <p className={styles.footnote}>
         同源接口：<code>GET /api/community/me</code>{" "}
         返回当前身份；本页的表单调用

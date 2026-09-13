@@ -1,8 +1,8 @@
+import { localCatalogMediaSrc } from "./local-catalog-media";
 import type {
   CatalogCitationScope,
   CatalogDetail,
   CatalogKind,
-  PublicMedia,
   PublicSourceCitation,
 } from "@moya/contracts";
 
@@ -29,12 +29,18 @@ export interface CatalogDetailSourceCitationPresentation {
   readonly url?: string;
 }
 
-export interface CatalogDetailPresentation {
+export interface DetailMediaPresentation {
+  readonly id: string;
+  readonly src: string;
+  readonly alt: string;
+  readonly width: number;
+  readonly height: number;
+}
+interface DetailPresentationBase {
   readonly aliases: readonly string[];
   readonly facts: readonly CatalogDetailFact[];
   readonly id: string;
-  readonly kind: CatalogKind;
-  readonly media: readonly PublicMedia[];
+  readonly media: readonly DetailMediaPresentation[];
   readonly periodLabel?: string;
   readonly sections?: readonly CatalogDetailContentSection[];
   readonly source: CatalogDetailSourceIdentity;
@@ -42,6 +48,18 @@ export interface CatalogDetailPresentation {
   readonly summary?: string;
   readonly title: string;
 }
+
+export type CatalogDetailPresentation = DetailPresentationBase &
+  (
+    | { readonly contentType?: "catalog"; readonly kind: CatalogKind }
+    | {
+        readonly contentType: "work";
+        readonly authorId: string;
+        readonly authorName: string;
+        readonly canEdit: boolean;
+        readonly available: boolean;
+      }
+  );
 
 export type CatalogDetailPresentationState =
   | { readonly state: "loading" }
@@ -134,7 +152,10 @@ export const toCatalogDetailPresentation = (
     facts,
     id: detail.id,
     kind: detail.kind,
-    media,
+    media: media.map((item) => ({
+      ...item,
+      src: localCatalogMediaSrc(item.src, detail.id, item.id),
+    })),
     ...(detail.periodLabel === undefined
       ? {}
       : { periodLabel: detail.periodLabel }),

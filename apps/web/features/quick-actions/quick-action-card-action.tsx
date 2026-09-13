@@ -218,11 +218,13 @@ export const QuickActionCardAction = ({
               : null;
             finish(layout !== null);
             if (action) {
-              latest.current.environment.onAction(
+              const result = latest.current.environment.onAction(
                 action,
                 latest.current.content,
               );
-              if (action === "share") setShareFeedback(true);
+              if (action === "share" && result === undefined)
+                setShareFeedback(true);
+              if (result instanceof Promise) void result.catch(() => undefined);
             }
           };
           const pointerCancel = (e: PointerEvent) => {

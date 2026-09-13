@@ -13,12 +13,16 @@ import {
 import { LoadingScreen } from "@moya/ui";
 
 import styles from "./product-shell.module.css";
+import { requestIdentity } from "../shell/request-identity";
 
 import { PRODUCT_LOADING_MINIMUM_MS } from "./product-boot";
 import {
   detailHistoryState,
   detailLocation,
-  directCatalogIdFromLocation,
+  directContentFromLocation,
+  directAuthorFromLocation,
+  profileHistoryState,
+  profileLocation,
   directMediaIdFromLocation,
   mergeProductHistoryState,
   parseProductHistoryState,
@@ -58,7 +62,12 @@ import {
 } from "../shell/primary-navigation-motion";
 
 import type { ReactNode, RefObject } from "react";
-import type { ProductHistoryState } from "./product-history";
+import type { ContentIdentity } from "@moya/contracts";
+import type {
+  ProfileProductHistoryState,
+  ProfileTab,
+  ProductHistoryState,
+} from "./product-history";
 import type { FeedLayoutPreference, ThemePreference } from "./preferences";
 import type {
   PresentationOrientation,
@@ -72,11 +81,72 @@ type ScrollPositions = Record<PrimaryDestination, number>;
 const SCROLL_RESTORE_RETRY_FRAMES = 12;
 const DETAIL_HISTORY_SYNC_DELAY_MS = 500;
 
-const currentProductHistoryState = (state: ProductHistoryState) =>
-  mergeProductHistoryState(window.history.state, state);
+const historyDocumentId = requestIdentity();
+const historyOffsets = new Map<string, number>();
+const resetHistoryScroll = (state: ProductHistoryState): ProductHistoryState =>
+  state.kind === "primary"
+    ? { ...state, scrollTop: 0 }
+    : state.kind === "detail" || state.kind === "viewer"
+      ? { ...state, detailScrollTop: 0, sourceScrollTop: 0 }
+      : state.kind === "profile"
+        ? { ...state, profileScrollTop: 0, sourceScrollTop: 0 }
+        : state.kind === "topic"
+          ? { ...state, sourceScrollTop: 0 }
+          : state;
+const entryIdentity = (state: ProductHistoryState | null) =>
+  state === null
+    ? ""
+    : state.kind === "profile"
+      ? state.entryId
+      : state.kind === "detail" || state.kind === "viewer"
+        ? `${state.kind}:${state.target.type}:${state.target.id}`
+        : state.kind === "primary"
+          ? state.destination
+          : state.kind === "topic"
+            ? state.topicId
+            : state.kind;
+const currentProductHistoryState = (state: ProductHistoryState) => ({
+  ...mergeProductHistoryState(window.history.state, state),
+  __artvennDocument: historyDocumentId,
+  __artvennEntry:
+    entryIdentity(parseProductHistoryState(window.history.state)) ===
+      entryIdentity(state) &&
+    typeof window.history.state?.__artvennEntry === "string"
+      ? window.history.state.__artvennEntry
+      : requestIdentity(),
+});
+const rememberHistoryOffset = (top: number) => {
+  const id = window.history.state?.__artvennEntry;
+  if (typeof id !== "string") return;
+  historyOffsets.set(id, top);
+  if (historyOffsets.size > 200)
+    historyOffsets.delete(historyOffsets.keys().next().value!);
+};
+const restoredHistoryState = (raw: unknown) => {
+  const state = parseProductHistoryState(raw);
+  if (!state) return null;
+  const fields = raw as Record<string, unknown>;
+  if (fields.__artvennDocument !== historyDocumentId)
+    return resetHistoryScroll(state);
+  const top =
+    typeof fields.__artvennEntry === "string"
+      ? historyOffsets.get(fields.__artvennEntry)
+      : undefined;
+  return top === undefined
+    ? state
+    : state.kind === "profile"
+      ? { ...state, profileScrollTop: top }
+      : state.kind === "detail" || state.kind === "viewer"
+        ? { ...state, detailScrollTop: top }
+        : state;
+};
 
 export interface ProductShellContextValue {
   readonly activeCatalogId: string | null;
+  readonly activeContent: ContentIdentity | null;
+  readonly activeProfile: ProfileProductHistoryState | null;
+  readonly openContent: (target: ContentIdentity, opener: HTMLElement) => void;
+  readonly openProfile: (authorId: string | null, opener: HTMLElement) => void;
   readonly activeDestination: PrimaryDestination;
   readonly activeTopicId: string | null;
   readonly activeViewerMediaId: string | null;
@@ -127,6 +197,9 @@ export interface ProductShellProps {
   readonly inscriptions: ReactNode;
   readonly primaryUtility?: ReactNode;
   readonly navigationAction?: ReactNode;
+  readonly renderProfileOverlay?: (
+    properties: ProductShellProfileOverlayRenderProps,
+  ) => ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
@@ -138,10 +211,18 @@ export interface ProductShellProps {
 
 export interface ProductShellDetailOverlayRenderProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
-  readonly catalogId: string;
+  readonly target: ContentIdentity;
   readonly initialScrollTop: number;
+  readonly navigationRevision: number;
   readonly onClose: () => void;
   readonly onScrollTopChange: (top: number) => void;
+}
+
+export interface ProductShellProfileOverlayRenderProps {
+  readonly state: ProfileProductHistoryState;
+  readonly backButtonRef: RefObject<HTMLButtonElement | null>;
+  readonly onClose: () => void;
+  readonly onViewChange: (tab: ProfileTab, scrollTop: number) => void;
 }
 
 export interface ProductShellTopicOverlayRenderProps {
@@ -182,6 +263,7 @@ export const ProductShell = ({
   primaryUtility,
   navigationAction,
   renderDetailOverlay,
+  renderProfileOverlay,
   renderTopicOverlay,
   showDevelopmentPagerControls = false,
 }: ProductShellProps) => {
@@ -214,7 +296,13 @@ export const ProductShell = ({
   const activeDestinationRef = useRef<PrimaryDestination>("home");
   const platformRef = useRef<PresentationPlatform>(initialPlatform);
   const settingsOpenRef = useRef(false);
-  const catalogIdRef = useRef<string | null>(null);
+  const contentRef = useRef<ContentIdentity | null>(null);
+  const profileRef = useRef<ProfileProductHistoryState | null>(null);
+  const profileBackRef = useRef<HTMLButtonElement>(null);
+  const profileOpenerRef = useRef<HTMLElement | null>(null);
+  const [activeProfile, setActiveProfile] =
+    useState<ProfileProductHistoryState | null>(null);
+  const profileEnabled = renderProfileOverlay !== undefined;
   const viewerMediaIdRef = useRef<string | null>(null);
   const topicIdRef = useRef<string | null>(null);
   const scrollPositionsRef = useRef<ScrollPositions>({
@@ -231,7 +319,10 @@ export const ProductShell = ({
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [feedLayout, setFeedLayout] = useState<FeedLayoutPreference>("double");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
+  const [activeContent, setActiveContent] = useState<ContentIdentity | null>(
+    null,
+  );
+  const [detailNavigationRevision, setDetailNavigationRevision] = useState(0);
   const [activeViewerMediaId, setActiveViewerMediaId] = useState<string | null>(
     null,
   );
@@ -501,16 +592,21 @@ export const ProductShell = ({
         const opener =
           registered !== null &&
           detailOpenerIdRef.current === catalogId &&
-          registeredCatalogId === catalogId
+          registered.isConnected &&
+          (registeredCatalogId === catalogId ||
+            registered.closest<HTMLElement>("[data-content-id]")?.dataset
+              .contentId === catalogId)
             ? registered
             : Array.from(
                 rootRef.current?.querySelectorAll<HTMLButtonElement>(
-                  "[data-open-catalog]",
+                  '[data-open-catalog], [data-content-id] button[aria-label^="打开"]',
                 ) ?? [],
               ).find(
                 (button) =>
-                  button.closest<HTMLElement>("[data-catalog-id]")?.dataset
-                    .catalogId === catalogId,
+                  (button.closest<HTMLElement>("[data-catalog-id]")?.dataset
+                    .catalogId ??
+                    button.closest<HTMLElement>("[data-content-id]")?.dataset
+                      .contentId) === catalogId,
               );
         if (opener !== undefined && opener !== null) {
           detailOpenerRef.current = opener;
@@ -542,7 +638,8 @@ export const ProductShell = ({
     const onInput = (event: Event) => {
       if (
         !settingsOpenRef.current &&
-        catalogIdRef.current === null &&
+        contentRef.current === null &&
+        profileRef.current === null &&
         topicIdRef.current === null &&
         event.target instanceof Node &&
         (rootRef.current?.contains(event.target) ||
@@ -567,7 +664,8 @@ export const ProductShell = ({
         if (
           activeDestinationRef.current !== destination ||
           settingsOpenRef.current ||
-          catalogIdRef.current !== null ||
+          contentRef.current !== null ||
+          profileRef.current !== null ||
           topicIdRef.current !== null ||
           !opener?.isConnected ||
           opener.closest('[inert], [hidden], [aria-hidden="true"]') !== null
@@ -585,7 +683,8 @@ export const ProductShell = ({
       if (
         destination === current ||
         settingsOpenRef.current ||
-        catalogIdRef.current !== null ||
+        contentRef.current !== null ||
+        profileRef.current !== null ||
         topicIdRef.current !== null
       ) {
         return;
@@ -611,9 +710,9 @@ export const ProductShell = ({
     setSettingsOpen(open);
   }, []);
 
-  const setDetailVisibility = useCallback((catalogId: string | null) => {
-    catalogIdRef.current = catalogId;
-    setActiveCatalogId(catalogId);
+  const setDetailVisibility = useCallback((target: ContentIdentity | null) => {
+    contentRef.current = target;
+    setActiveContent(target);
   }, []);
 
   const setViewerVisibility = useCallback((mediaId: string | null) => {
@@ -640,7 +739,8 @@ export const ProductShell = ({
     (opener: HTMLElement) => {
       if (
         settingsOpenRef.current ||
-        catalogIdRef.current !== null ||
+        contentRef.current !== null ||
+        profileRef.current !== null ||
         topicIdRef.current !== null
       ) {
         return;
@@ -705,7 +805,8 @@ export const ProductShell = ({
         topicId.length === 0 ||
         activeDestinationRef.current !== "home" ||
         settingsOpenRef.current ||
-        catalogIdRef.current !== null ||
+        contentRef.current !== null ||
+        profileRef.current !== null ||
         topicIdRef.current !== null
       ) {
         return;
@@ -754,6 +855,7 @@ export const ProductShell = ({
 
   const updateDetailScrollTop = useCallback((top: number) => {
     detailScrollTopRef.current = Number.isFinite(top) ? Math.max(0, top) : 0;
+    rememberHistoryOffset(detailScrollTopRef.current);
     if (detailHistoryTimerRef.current !== null) {
       window.clearTimeout(detailHistoryTimerRef.current);
     }
@@ -765,21 +867,21 @@ export const ProductShell = ({
         window.history.replaceState(
           currentProductHistoryState(
             detailHistoryState(
-              state.catalogId,
+              state.target,
               state.sourceDestination,
               state.sourceScrollTop,
               detailScrollTopRef.current,
             ),
           ),
           "",
-          detailLocation(window.location, state.catalogId),
+          detailLocation(window.location, state.target),
         );
       } else if (state?.kind === "viewer") {
         if (state.detailScrollTop === detailScrollTopRef.current) return;
         window.history.replaceState(
           currentProductHistoryState(
             viewerHistoryState(
-              state.catalogId,
+              state.target,
               state.mediaId,
               state.sourceDestination,
               state.sourceScrollTop,
@@ -787,62 +889,189 @@ export const ProductShell = ({
             ),
           ),
           "",
-          viewerLocation(window.location, state.catalogId, state.mediaId),
+          viewerLocation(window.location, state.target, state.mediaId),
         );
       }
     }, DETAIL_HISTORY_SYNC_DELAY_MS);
   }, []);
 
-  const openCatalog = useCallback(
-    (catalogId: string, opener: HTMLElement) => {
-      if (
-        catalogId.length === 0 ||
-        catalogId.length > 128 ||
-        /\s/u.test(catalogId) ||
-        settingsOpenRef.current ||
-        topicIdRef.current !== null ||
-        catalogIdRef.current !== null
-      ) {
-        return;
-      }
-      const sourceDestination = activeDestinationRef.current;
-      saveScroll(sourceDestination, platformRef.current);
-      const sourceScrollTop = readActiveScrollTop();
-      scrollPositionsRef.current[sourceDestination] = sourceScrollTop;
-      detailOpenerRef.current = opener;
-      detailOpenerIdRef.current = catalogId;
-      detailSourceDestinationRef.current = sourceDestination;
-      detailSourceScrollTopRef.current = sourceScrollTop;
-      detailScrollTopRef.current = 0;
+  const setProfileVisibility = useCallback(
+    (value: ProfileProductHistoryState | null) => {
+      profileRef.current = value;
+      setActiveProfile(value);
+    },
+    [],
+  );
+  const saveCurrentEntry = useCallback(() => {
+    if (detailHistoryTimerRef.current !== null) {
+      window.clearTimeout(detailHistoryTimerRef.current);
+      detailHistoryTimerRef.current = null;
+    }
+    const current = parseProductHistoryState(window.history.state);
+    if (current?.kind === "detail" || current?.kind === "viewer")
+      window.history.replaceState(
+        currentProductHistoryState({
+          ...current,
+          detailScrollTop: detailScrollTopRef.current,
+        }),
+        "",
+      );
+    else if (current?.kind === "profile" && profileRef.current)
+      window.history.replaceState(
+        currentProductHistoryState(profileRef.current),
+        "",
+      );
+    else {
+      const destination = activeDestinationRef.current;
+      saveScroll(destination, platformRef.current);
       window.history.replaceState(
         currentProductHistoryState(
-          primaryHistoryState(
-            sourceDestination,
-            sourceScrollTop,
-            undefined,
-            catalogId,
-          ),
+          primaryHistoryState(destination, readActiveScrollTop()),
         ),
         "",
         primaryLocation(window.location),
       );
+    }
+  }, [readActiveScrollTop, saveScroll]);
+  const openContent = useCallback(
+    (target: ContentIdentity, opener: HTMLElement) => {
+      if (
+        !target.id ||
+        target.id.length > 128 ||
+        /\s/u.test(target.id) ||
+        settingsOpenRef.current ||
+        topicIdRef.current !== null ||
+        viewerMediaIdRef.current !== null ||
+        (target.type === "work" && !profileEnabled)
+      )
+        return;
+      if (
+        contentRef.current?.type === target.type &&
+        contentRef.current.id === target.id
+      )
+        return;
+      saveCurrentEntry();
+      const sourceDestination = activeDestinationRef.current;
+      const saved = parseProductHistoryState(window.history.state);
+      if (saved?.kind === "primary" && target.type === "catalog")
+        window.history.replaceState(
+          currentProductHistoryState({ ...saved, focusCatalogId: target.id }),
+          "",
+          primaryLocation(window.location),
+        );
+      const sourceScrollTop = scrollPositionsRef.current[sourceDestination];
+      detailOpenerRef.current = opener;
+      detailOpenerIdRef.current = target.id;
+      detailSourceDestinationRef.current = sourceDestination;
+      detailSourceScrollTopRef.current = sourceScrollTop;
+      detailScrollTopRef.current = 0;
       window.history.pushState(
         currentProductHistoryState(
-          detailHistoryState(catalogId, sourceDestination, sourceScrollTop),
+          detailHistoryState(target, sourceDestination, sourceScrollTop),
         ),
         "",
-        detailLocation(window.location, catalogId),
+        detailLocation(window.location, target),
       );
-      setDetailVisibility(catalogId);
+      setProfileVisibility(null);
+      setDetailVisibility(target);
+      setViewerVisibility(null);
     },
-    [readActiveScrollTop, saveScroll, setDetailVisibility],
+    [
+      profileEnabled,
+      saveCurrentEntry,
+      setDetailVisibility,
+      setProfileVisibility,
+      setViewerVisibility,
+    ],
+  );
+  const openCatalog = useCallback(
+    (catalogId: string, opener: HTMLElement) =>
+      openContent({ type: "catalog", id: catalogId }, opener),
+    [openContent],
+  );
+  const openProfile = useCallback(
+    (authorId: string | null, opener: HTMLElement) => {
+      if (
+        !profileEnabled ||
+        settingsOpenRef.current ||
+        viewerMediaIdRef.current !== null ||
+        topicIdRef.current !== null ||
+        (authorId !== null && !/^user-[0-9a-f]{32}$/.test(authorId))
+      )
+        return;
+      saveCurrentEntry();
+      const destination = activeDestinationRef.current;
+      const state = profileHistoryState(
+        authorId,
+        requestIdentity(),
+        "works",
+        0,
+        destination,
+        scrollPositionsRef.current[destination],
+      );
+      profileOpenerRef.current = opener;
+      window.history.pushState(
+        currentProductHistoryState(state),
+        "",
+        profileLocation(window.location, authorId),
+      );
+      setDetailVisibility(null);
+      setViewerVisibility(null);
+      setProfileVisibility(state);
+    },
+    [
+      profileEnabled,
+      saveCurrentEntry,
+      setDetailVisibility,
+      setViewerVisibility,
+      setProfileVisibility,
+    ],
+  );
+  const closeProfile = useCallback(() => {
+    saveCurrentEntry();
+    window.history.back();
+  }, [saveCurrentEntry]);
+  const updateProfileView = useCallback(
+    (tab: ProfileTab, scrollTop: number) => {
+      const current = profileRef.current;
+      if (!current) return;
+      const next = profileHistoryState(
+        current.authorId,
+        current.entryId,
+        tab,
+        scrollTop,
+        current.sourceDestination,
+        current.sourceScrollTop,
+      );
+      profileRef.current = next;
+      rememberHistoryOffset(scrollTop);
+      if (detailHistoryTimerRef.current !== null) {
+        window.clearTimeout(detailHistoryTimerRef.current);
+        detailHistoryTimerRef.current = null;
+      }
+      if (current.tab !== tab) {
+        setActiveProfile(next);
+        window.history.replaceState(
+          currentProductHistoryState(next),
+          "",
+          profileLocation(window.location, current.authorId),
+        );
+      } else
+        detailHistoryTimerRef.current = window.setTimeout(() => {
+          detailHistoryTimerRef.current = null;
+          const live = profileRef.current;
+          if (live)
+            window.history.replaceState(currentProductHistoryState(live), "");
+        }, DETAIL_HISTORY_SYNC_DELAY_MS);
+    },
+    [],
   );
 
   const openViewer = useCallback(
     (mediaId: string) => {
-      const catalogId = catalogIdRef.current;
+      const target = contentRef.current;
       if (
-        catalogId === null ||
+        target === null ||
         viewerMediaIdRef.current !== null ||
         mediaId.length === 0 ||
         mediaId.length > 128 ||
@@ -862,19 +1091,19 @@ export const ProductShell = ({
       window.history.replaceState(
         currentProductHistoryState(
           detailHistoryState(
-            catalogId,
+            target,
             sourceDestination,
             sourceScrollTop,
             detailScrollTopRef.current,
           ),
         ),
         "",
-        detailLocation(window.location, catalogId),
+        detailLocation(window.location, target),
       );
       window.history.pushState(
         currentProductHistoryState(
           viewerHistoryState(
-            catalogId,
+            target,
             mediaId,
             sourceDestination,
             sourceScrollTop,
@@ -882,7 +1111,7 @@ export const ProductShell = ({
           ),
         ),
         "",
-        viewerLocation(window.location, catalogId, mediaId),
+        viewerLocation(window.location, target, mediaId),
       );
       setViewerVisibility(mediaId);
     },
@@ -899,7 +1128,7 @@ export const ProductShell = ({
       window.history.replaceState(
         currentProductHistoryState(
           viewerHistoryState(
-            state.catalogId,
+            state.target,
             mediaId,
             state.sourceDestination,
             state.sourceScrollTop,
@@ -907,7 +1136,7 @@ export const ProductShell = ({
           ),
         ),
         "",
-        viewerLocation(window.location, state.catalogId, mediaId),
+        viewerLocation(window.location, state.target, mediaId),
       );
       setViewerVisibility(mediaId);
     },
@@ -920,20 +1149,20 @@ export const ProductShell = ({
       window.history.back();
       return;
     }
-    const catalogId = catalogIdRef.current;
+    const target = contentRef.current;
     setViewerVisibility(null);
-    if (catalogId === null) return;
+    if (target === null) return;
     window.history.replaceState(
       currentProductHistoryState(
         detailHistoryState(
-          catalogId,
+          target,
           detailSourceDestinationRef.current,
           detailSourceScrollTopRef.current,
           detailScrollTopRef.current,
         ),
       ),
       "",
-      detailLocation(window.location, catalogId),
+      detailLocation(window.location, target),
     );
   }, [setViewerVisibility]);
 
@@ -951,14 +1180,14 @@ export const ProductShell = ({
       window.history.replaceState(
         currentProductHistoryState(
           detailHistoryState(
-            state.catalogId,
+            state.target,
             state.sourceDestination,
             state.sourceScrollTop,
             detailScrollTopRef.current,
           ),
         ),
         "",
-        detailLocation(window.location, state.catalogId),
+        detailLocation(window.location, state.target),
       );
       window.history.back();
       return;
@@ -1093,7 +1322,12 @@ export const ProductShell = ({
   }, [developmentPlatformOverride, restoreScroll, saveScroll]);
 
   useEffect(() => {
-    if (settingsOpen || activeCatalogId !== null || activeTopicId !== null) {
+    if (
+      settingsOpen ||
+      activeContent !== null ||
+      activeTopicId !== null ||
+      activeProfile !== null
+    ) {
       return undefined;
     }
     if (platform === "pc") {
@@ -1151,7 +1385,8 @@ export const ProductShell = ({
   }, [
     activeDestination,
     activeHomeScrollElement,
-    activeCatalogId,
+    activeProfile,
+    activeContent,
     activeTopicId,
     expandNavigation,
     platform,
@@ -1161,8 +1396,19 @@ export const ProductShell = ({
   ]);
 
   useEffect(() => {
-    const initialState = parseProductHistoryState(window.history.state);
-    const directCatalogId = directCatalogIdFromLocation(window.location);
+    const storedState = parseProductHistoryState(window.history.state);
+    const initialState =
+      storedState === null ? null : resetHistoryScroll(storedState);
+    if (initialState)
+      window.history.replaceState(currentProductHistoryState(initialState), "");
+    const candidateTarget = directContentFromLocation(window.location);
+    const directTarget =
+      candidateTarget?.type === "work" && !profileEnabled
+        ? null
+        : candidateTarget;
+    const directAuthor = profileEnabled
+      ? directAuthorFromLocation(window.location)
+      : undefined;
     const directMediaId = directMediaIdFromLocation(window.location);
     const directSettings = window.location.hash === "#settings";
     let destination: PrimaryDestination = "home";
@@ -1172,7 +1418,8 @@ export const ProductShell = ({
     } else if (
       initialState?.kind === "settings" ||
       initialState?.kind === "detail" ||
-      initialState?.kind === "viewer"
+      initialState?.kind === "viewer" ||
+      initialState?.kind === "profile"
     ) {
       destination = initialState.sourceDestination;
     }
@@ -1186,16 +1433,51 @@ export const ProductShell = ({
       scrollPositionsRef.current[destination] = initialState.scrollTop;
     }
 
-    if (initialState?.kind === "detail" || initialState?.kind === "viewer") {
+    if (
+      profileEnabled &&
+      (initialState?.kind === "profile" || directAuthor !== undefined)
+    ) {
+      const state =
+        initialState?.kind === "profile"
+          ? initialState
+          : profileHistoryState(
+              directAuthor ?? null,
+              requestIdentity(),
+              "works",
+              0,
+              destination,
+              0,
+            );
+      if (initialState?.kind !== "profile") {
+        window.history.replaceState(
+          currentProductHistoryState(primaryHistoryState(destination, 0)),
+          "",
+          primaryLocation(window.location),
+        );
+        window.history.pushState(
+          currentProductHistoryState(state),
+          "",
+          profileLocation(window.location, state.authorId),
+        );
+      }
+      setProfileVisibility(state);
+      setDetailVisibility(null);
+      setViewerVisibility(null);
+      setTopicVisibility(null);
+      setSettingsVisibility(false);
+    } else if (
+      (initialState?.kind === "detail" || initialState?.kind === "viewer") &&
+      (initialState.target.type === "catalog" || profileEnabled)
+    ) {
       detailSourceDestinationRef.current = initialState.sourceDestination;
       detailSourceScrollTopRef.current = initialState.sourceScrollTop;
       detailScrollTopRef.current = initialState.detailScrollTop;
-      detailOpenerIdRef.current = initialState.catalogId;
+      detailOpenerIdRef.current = initialState.target.id;
       scrollPositionsRef.current[initialState.sourceDestination] =
         initialState.sourceScrollTop;
       setSettingsVisibility(false);
       setTopicVisibility(null);
-      setDetailVisibility(initialState.catalogId);
+      setDetailVisibility(initialState.target);
       setViewerVisibility(
         initialState.kind === "viewer" ? initialState.mediaId : null,
       );
@@ -1211,7 +1493,7 @@ export const ProductShell = ({
       setDetailVisibility(null);
       setViewerVisibility(null);
       setTopicVisibility(null);
-    } else if (directCatalogId !== null) {
+    } else if (directTarget !== null) {
       const sourceScrollTop =
         initialState?.kind === "primary" && initialState.scrollTop !== undefined
           ? initialState.scrollTop
@@ -1219,7 +1501,7 @@ export const ProductShell = ({
       detailSourceDestinationRef.current = destination;
       detailSourceScrollTopRef.current = sourceScrollTop;
       detailScrollTopRef.current = 0;
-      detailOpenerIdRef.current = directCatalogId;
+      detailOpenerIdRef.current = directTarget.id;
       scrollPositionsRef.current[destination] = sourceScrollTop;
       window.history.replaceState(
         currentProductHistoryState(
@@ -1227,7 +1509,7 @@ export const ProductShell = ({
             destination,
             sourceScrollTop,
             undefined,
-            directCatalogId,
+            directTarget.type === "catalog" ? directTarget.id : undefined,
           ),
         ),
         "",
@@ -1235,28 +1517,28 @@ export const ProductShell = ({
       );
       window.history.pushState(
         currentProductHistoryState(
-          detailHistoryState(directCatalogId, destination, sourceScrollTop),
+          detailHistoryState(directTarget, destination, sourceScrollTop),
         ),
         "",
-        detailLocation(window.location, directCatalogId),
+        detailLocation(window.location, directTarget),
       );
       if (directMediaId !== null) {
         window.history.pushState(
           currentProductHistoryState(
             viewerHistoryState(
-              directCatalogId,
+              directTarget,
               directMediaId,
               destination,
               sourceScrollTop,
             ),
           ),
           "",
-          viewerLocation(window.location, directCatalogId, directMediaId),
+          viewerLocation(window.location, directTarget, directMediaId),
         );
       }
       setSettingsVisibility(false);
       setTopicVisibility(null);
-      setDetailVisibility(directCatalogId);
+      setDetailVisibility(directTarget);
       setViewerVisibility(directMediaId);
     } else if (directSettings) {
       window.history.replaceState(
@@ -1317,26 +1599,76 @@ export const ProductShell = ({
 
     const handlePopState = (event: PopStateEvent) => {
       cancelSettingsFocus();
-      const state = parseProductHistoryState(event.state);
-      const wasDetailOpen = catalogIdRef.current !== null;
+      let state = restoredHistoryState(event.state);
+      // Following an identical fragment link can be a native same-document
+      // navigation with null state. Reconstruct its validated public target;
+      // treating it as Home would close the overlay while leaving its URL open.
+      if (state === null) {
+        const target = directContentFromLocation(window.location);
+        const author = profileEnabled
+          ? directAuthorFromLocation(window.location)
+          : undefined;
+        const destination = activeDestinationRef.current;
+        if (author !== undefined) {
+          const current = profileRef.current;
+          state =
+            current?.authorId === author
+              ? current
+              : profileHistoryState(
+                  author,
+                  requestIdentity(),
+                  "works",
+                  0,
+                  destination,
+                  0,
+                );
+        } else if (target && (target.type === "catalog" || profileEnabled)) {
+          const media = directMediaIdFromLocation(window.location);
+          state =
+            media === null
+              ? detailHistoryState(target, destination, 0)
+              : viewerHistoryState(target, media, destination, 0);
+          setDetailNavigationRevision((value) => value + 1);
+        }
+        if (state)
+          window.history.replaceState(currentProductHistoryState(state), "");
+      }
+      const wasDetailOpen = contentRef.current !== null;
       const wasSettingsOpen = settingsOpenRef.current;
       const wasTopicOpen = topicIdRef.current !== null;
-      if (!wasDetailOpen && !wasTopicOpen) {
+      const wasProfileOpen = profileRef.current !== null;
+      setProfileVisibility(null);
+      if (!wasDetailOpen && !wasTopicOpen && !wasProfileOpen) {
         saveScroll(activeDestinationRef.current, platformRef.current);
       }
 
-      if (state?.kind === "detail" || state?.kind === "viewer") {
+      if (state?.kind === "profile" && profileEnabled) {
+        const returningContent = contentRef.current;
+        activeDestinationRef.current = state.sourceDestination;
+        setActiveDestination(state.sourceDestination);
+        setSettingsVisibility(false);
+        setTopicVisibility(null);
+        setDetailVisibility(null);
+        setViewerVisibility(null);
+        setProfileVisibility(state);
+        if (returningContent) restoreCatalogFocus(returningContent.id);
+        return;
+      }
+      if (
+        (state?.kind === "detail" || state?.kind === "viewer") &&
+        (state.target.type === "catalog" || profileEnabled)
+      ) {
         activeDestinationRef.current = state.sourceDestination;
         setActiveDestination(state.sourceDestination);
         detailSourceDestinationRef.current = state.sourceDestination;
         detailSourceScrollTopRef.current = state.sourceScrollTop;
         detailScrollTopRef.current = state.detailScrollTop;
-        detailOpenerIdRef.current = state.catalogId;
+        detailOpenerIdRef.current = state.target.id;
         scrollPositionsRef.current[state.sourceDestination] =
           state.sourceScrollTop;
         setSettingsVisibility(false);
         setTopicVisibility(null);
-        setDetailVisibility(state.catalogId);
+        setDetailVisibility(state.target);
         setViewerVisibility(state.kind === "viewer" ? state.mediaId : null);
         return;
       }
@@ -1394,6 +1726,12 @@ export const ProductShell = ({
         if (focusCatalogId !== null && focusCatalogId !== undefined) {
           restoreCatalogFocus(focusCatalogId);
         }
+      } else if (wasProfileOpen) {
+        window.requestAnimationFrame(
+          () =>
+            profileOpenerRef.current?.isConnected &&
+            profileOpenerRef.current.focus({ preventScroll: true }),
+        );
       } else if (wasSettingsOpen) {
         restoreSettingsFocus();
       } else if (
@@ -1421,16 +1759,24 @@ export const ProductShell = ({
     setSettingsVisibility,
     setTopicVisibility,
     setViewerVisibility,
+    setProfileVisibility,
+    profileEnabled,
   ]);
 
   useLayoutEffect(() => {
-    if (!settingsOpen && activeCatalogId === null && activeTopicId === null) {
+    if (
+      !settingsOpen &&
+      activeContent === null &&
+      activeTopicId === null &&
+      activeProfile === null
+    ) {
       return undefined;
     }
     cancelScrollRestore();
     cancelSettingsFocus();
     if (settingsOpen) settingsBackRef.current?.focus();
-    else if (activeCatalogId !== null) detailBackRef.current?.focus();
+    else if (activeContent !== null) detailBackRef.current?.focus();
+    else if (activeProfile !== null) profileBackRef.current?.focus();
     else topicBackRef.current?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1438,7 +1784,8 @@ export const ProductShell = ({
       document.body.style.overflow = previousOverflow;
     };
   }, [
-    activeCatalogId,
+    activeContent,
+    activeProfile,
     activeTopicId,
     cancelScrollRestore,
     cancelSettingsFocus,
@@ -1482,7 +1829,12 @@ export const ProductShell = ({
   };
 
   const contextValue: ProductShellContextValue = {
-    activeCatalogId,
+    activeCatalogId:
+      activeContent?.type === "catalog" ? activeContent.id : null,
+    activeProfile,
+    openContent,
+    openProfile,
+    activeContent,
     activeDestination,
     activeTopicId,
     activeViewerMediaId,
@@ -1504,7 +1856,10 @@ export const ProductShell = ({
     theme,
   };
   const ownedOverlayOpen =
-    settingsOpen || activeCatalogId !== null || activeTopicId !== null;
+    settingsOpen ||
+    activeContent !== null ||
+    activeTopicId !== null ||
+    activeProfile !== null;
 
   return (
     <ProductShellContext.Provider value={contextValue}>
@@ -1513,7 +1868,7 @@ export const ProductShell = ({
         className={styles.productShell}
         data-active-destination={activeDestination}
         data-feed-layout={feedLayout}
-        data-detail-open={activeCatalogId === null ? "false" : "true"}
+        data-detail-open={activeContent === null ? "false" : "true"}
         data-orientation={orientation}
         data-primary-navigation-minimized={
           navigationMinimized ? "true" : "false"
@@ -1567,16 +1922,25 @@ export const ProductShell = ({
               topicId: activeTopicId,
             })}
 
-        {activeCatalogId === null || renderDetailOverlay === undefined
+        {activeContent === null || renderDetailOverlay === undefined
           ? null
           : renderDetailOverlay({
               backButtonRef: detailBackRef,
-              catalogId: activeCatalogId,
+              target: activeContent,
               initialScrollTop: detailScrollTopRef.current,
+              navigationRevision: detailNavigationRevision,
               onClose: closeDetail,
               onScrollTopChange: updateDetailScrollTop,
             })}
 
+        {activeProfile !== null && renderProfileOverlay
+          ? renderProfileOverlay({
+              state: activeProfile,
+              backButtonRef: profileBackRef,
+              onClose: closeProfile,
+              onViewChange: updateProfileView,
+            })
+          : null}
         <LoadingScreen
           active={bootPending}
           className={styles.loading}
