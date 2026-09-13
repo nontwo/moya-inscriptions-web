@@ -187,7 +187,15 @@ export const AvatarEditor = ({
     };
   }, [file]);
   const save = async () => {
-    if (saving.current || decoding || limited || !source || !cropArea.current)
+    if (
+      saving.current ||
+      decoding ||
+      limited ||
+      author.checking ||
+      author.sessionError ||
+      !source ||
+      !cropArea.current
+    )
       return;
     saving.current = true;
     setBusy(true);
@@ -331,7 +339,25 @@ export const AvatarEditor = ({
             if (selected && !saving.current) setFile(selected);
           }}
         />
-        {error && (
+        {author.checking && !busy && (
+          <p role="status" className="phase4-muted">
+            正在确认账户…
+          </p>
+        )}
+        {author.sessionError && (
+          <div className={styles.error} role="alert">
+            <p>暂时无法确认账户，裁剪已保留。请检查网络后重试。</p>
+            <button
+              type="button"
+              className="phase4-button"
+              disabled={author.checking || busy}
+              onClick={() => void author.refresh()}
+            >
+              重新确认账户
+            </button>
+          </div>
+        )}
+        {error && !author.sessionError && (
           <p role="alert" className={styles.error}>
             {error}
           </p>
@@ -348,7 +374,14 @@ export const AvatarEditor = ({
           <button
             type="button"
             className={`phase4-button ${styles.save}`}
-            disabled={!ready || decoding || busy || limited}
+            disabled={
+              !ready ||
+              decoding ||
+              busy ||
+              limited ||
+              author.checking ||
+              author.sessionError
+            }
             onClick={() => void save()}
           >
             {busy ? "正在保存…" : "保存头像"}

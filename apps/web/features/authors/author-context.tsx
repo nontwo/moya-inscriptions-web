@@ -75,7 +75,9 @@ export const AuthorProvider = ({
   const refresh = useCallback(async () => {
     const run = ++epoch.current;
     confirmed.current = false;
-    authorClient.setAccount(null);
+    // Revalidation is not an account switch. Keep the confirmed identity so
+    // focus returning from a device picker cannot invalidate in-flight writes.
+    // A different /me identity or a failed check still invalidates the client.
     setChecking(true);
     try {
       const next = await authorClient.me();
@@ -140,6 +142,7 @@ export const AuthorProvider = ({
       mergeWorker.current = mergeWorker.current.then(merge, merge);
     } catch (error) {
       if (run !== epoch.current) return;
+      authorClient.setAccount(null);
       if (error instanceof AuthorRequestError && error.status === 401) {
         if (accountRef.current !== null) cache.current.clear();
         accountRef.current = null;

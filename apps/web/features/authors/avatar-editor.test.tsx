@@ -20,6 +20,9 @@ type CropProps = {
 };
 const state = vi.hoisted(() => ({
   account: "user-00000000000000000000000000000001",
+  checking: false,
+  sessionError: false,
+  refresh: vi.fn(),
   upload: vi.fn(),
   avatar: vi.fn(),
   profile: vi.fn(),
@@ -48,6 +51,9 @@ vi.mock("./author-data", () => ({
 vi.mock("./author-context", () => ({
   useAuthors: () => ({
     viewer: { id: "user-00000000000000000000000000000001" },
+    checking: state.checking,
+    sessionError: state.sessionError,
+    refresh: state.refresh,
     mutate: state.mutate,
     notify: state.notify,
   }),
@@ -100,6 +106,8 @@ const close = vi.fn(),
 beforeEach(() => {
   vi.clearAllMocks();
   state.account = profile.id;
+  state.checking = false;
+  state.sessionError = false;
   state.crop = null;
   state.upload.mockResolvedValue({ id: "media-synthetic-avatar" });
   state.avatar.mockResolvedValue({ nextChangeAt: "2099-01-01T05:00:00Z" });
@@ -294,18 +302,26 @@ it("does not bind under a changed account after upload completes", async () => {
   expect(state.avatar).not.toHaveBeenCalled();
 });
 
-it("keeps decoded photos and exits busy during transient account refresh", async () => {
-  state.account = "";
+it("keeps the crop and waits for account confirmation before saving", async () => {
+  state.checking = true;
   await render();
   expect(node.querySelector("[data-avatar-crop]")).not.toBeNull();
+  expect(button("保存头像").disabled).toBe(true);
+  expect(node.textContent).toContain("正在确认账户");
   await click();
-  expect(button("返回").disabled).toBe(false);
-  expect(node.querySelector('[role="alert"]')?.textContent).toContain(
-    "账户状态已变化",
-  );
-  state.account = profile.id;
+  expect(state.upload).not.toHaveBeenCalled();
+  state.checking = false;
+  await render();
   await click();
   expect(saved).toHaveBeenCalledOnce();
+});
+it("blocks save and offers explicit refresh after a failed account check", async () => {
+  state.sessionError = true;
+  await render();
+  expect(button("保存头像").disabled).toBe(true);
+  expect(node.querySelector("[data-avatar-crop]")).not.toBeNull();
+  await click("重新确认账户");
+  expect(state.refresh).toHaveBeenCalledOnce();
 });
 it("retains the crop and pending upload when replacement decoding fails", async () => {
   state.avatar.mockRejectedValueOnce(Error("保存未确认"));

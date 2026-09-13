@@ -299,3 +299,24 @@ pinch/feel and native photo-picker acceptance. HEIC is not an accepted input;
 JPG, PNG and WebP are explicitly offered. Final evidence, exact SHA, independent
 avatar-delta review and phone instructions are recorded with PR #126. It stays
 Draft; this correction does not infer acceptance, Ready, merge or deployment.
+
+### Avatar save synchronization acceptance fix
+
+The Owner's subsequent phone screenshot reported a failed save with an account
+change error. Focus returning from the photo picker had cleared the client
+identity during same-account revalidation, invalidating upload/binding
+responses. Retain the last confirmed expected account while checking; a
+confirmed switch, logout or failed check still invalidates it. Save waits for
+confirmation and a failed check offers explicit retry with the crop intact.
+Defer profile reads while checking or after a failed check, retiring earlier
+callbacks so they cannot unmount the active editor. Backend expected-account
+authorization, request identities, media ownership and the New York daily rule
+remain unchanged.
+
+Integrated tests exercise the real provider/client/operation guard and actual
+profile parent, including focus before/during save, switch/logout, failed checks
+and idempotent recovery after an accepted binding. Actual Development browser
+verification must retain the failed attempt and demonstrate synchronized profile
+and header avatars after the same request is retried. Owner acceptance is still
+pending on the corrected exact Head; no allowance reset or other frozen feature
+restoration is authorized.

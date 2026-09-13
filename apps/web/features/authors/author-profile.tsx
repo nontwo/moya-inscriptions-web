@@ -59,6 +59,9 @@ const ScopedAuthorProfileOverlay = ({
       setProfile(null);
       return;
     }
+    // Keep the loaded profile (and its editor) while the session is rechecked.
+    // Cleanup retires any earlier read before a failed check invalidates it.
+    if (author.checking || author.sessionError) return;
     void authorClient
       .profile(id)
       .then((result) => {
@@ -76,7 +79,14 @@ const ScopedAuthorProfileOverlay = ({
     return () => {
       current = false;
     };
-  }, [id, author.viewer?.id, author.revision, revision]);
+  }, [
+    id,
+    author.viewer?.id,
+    author.checking,
+    author.sessionError,
+    author.revision,
+    revision,
+  ]);
   const save = () => setRevision((v) => v + 1);
   const positions = useRef<Record<string, number>>(
     (author.cache.get(`profile-scroll:${state.entryId}`) as
