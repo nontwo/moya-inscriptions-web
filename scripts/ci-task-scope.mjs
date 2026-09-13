@@ -20,9 +20,7 @@ const tooling = new Set([
   ".editorconfig",
   ".gitignore",
   ".github/CODEOWNERS",
-  "scripts/ci-e2e-scope.mjs",
   "scripts/ci-e2e-gate.mjs",
-  "scripts/ci-e2e-smoke.mjs",
   "scripts/ci-task-scope.mjs",
   "scripts/ci-task-gate.mjs",
   "scripts/verify-task.mjs",
@@ -30,7 +28,6 @@ const tooling = new Set([
   "scripts/task-git.mjs",
   "scripts/task-validation.test.mjs",
   "tests/unit/architecture/workspace-scanner.ts",
-  "tests/unit/architecture/ci-e2e-policy.test.ts",
 ]);
 const webRoots = [
   "apps/web/",
@@ -70,6 +67,10 @@ const cmsTestTarget = new Set([
   "infra/test/disposable-test-target.sql",
   "tests/integration/postgres/synthetic-test-database.ts",
 ]);
+// verify-cms.mjs compiles these packages with tsc -p; Payload migrations,
+// tests/cms and its PostgreSQL probe import their dist output.
+const cmsBuiltPackage =
+  /^(?:packages\/(?:contracts|image|search)|services\/(?:api|catalog-postgres))\/(?:src\/|(?:package|tsconfig)\.json$)/u;
 const publicBoundary = (file) =>
   (file.startsWith("packages/contracts/") &&
     !file.startsWith("packages/contracts/src/internal/")) ||
@@ -145,14 +146,17 @@ export function classifyTask(paths, event = "pull_request") {
       plan.apple = true;
     } else if (publicBoundary(file)) {
       plan.contracts = true;
+      if (cmsBuiltPackage.test(file)) plan.cms = true;
     } else if (
       webConfig.has(file) ||
       webRoots.some((prefix) => file.startsWith(prefix)) ||
       file.startsWith("packages/contracts/src/internal/") ||
       file.startsWith("scripts/editorial/") ||
       // verify.mjs stage plans are the Web lint, typecheck, test, build and
-      // smoke job commands, including the test job's marker check.
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
+      // smoke job commands, including the test job's marker check. The smoke
+      // stage spawns ci-e2e-smoke.mjs; only the test job's Vitest policy test
+      // loads ci-e2e-scope.mjs.
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|ci-e2e-(?:scope|smoke)|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
         file,
       )
     ) {
@@ -162,9 +166,7 @@ export function classifyTask(paths, event = "pull_request") {
         file.startsWith("tests/cms/") ||
         file.startsWith("scripts/editorial/") ||
         cmsTestTarget.has(file) ||
-        /^packages\/contracts\/src\/internal\/(?:editorial|community-operator)(?:[/.]|$)/u.test(
-          file,
-        ) ||
+        cmsBuiltPackage.test(file) ||
         webConfig.has(file)
       )
         plan.cms = true;
