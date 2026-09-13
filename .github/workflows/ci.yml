@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group:
-    ${{ github.workflow }}-${{ github.event_name }}-${{
+    ${{ github.workflow }}-task-${{ github.event_name }}-${{ github.ref }}-${{
     github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -20,11 +20,17 @@ permissions:
 
 jobs:
   classify_e2e:
-    name: classify-e2e
+    name: classify-task
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       scope: ${{ steps.classify.outputs.scope }}
+      web: ${{ steps.classify.outputs.web }}
+      cms: ${{ steps.classify.outputs.cms }}
+      contracts: ${{ steps.classify.outputs.contracts }}
+      apple: ${{ steps.classify.outputs.apple }}
+      lightweight: ${{ steps.classify.outputs.lightweight }}
+      plan: ${{ steps.classify.outputs.plan }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,20 +38,80 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-      - name: Conservatively classify changed paths
+      - name: Classify the complete task diff
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA:
             ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          scope="$(node scripts/ci-e2e-scope.mjs)"
-          case "$scope" in none|smoke|full) ;; *) exit 1 ;; esac
-          echo "scope=$scope" >>"$GITHUB_OUTPUT"
-          echo "Browser validation scope: $scope" >>"$GITHUB_STEP_SUMMARY"
+        run: node scripts/ci-task-scope.mjs
+
+  lightweight:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.lightweight == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PLAN: ${{ needs.classify_e2e.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Validate task routing and affected documentation or tooling
+        run: >-
+          node scripts/verify-task.mjs --mode lightweight --output
+          "$RUNNER_TEMP/workflow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Preserve lightweight validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-${{ github.run_id }}-${{ github.run_attempt }}
+          path:
+            ${{ runner.temp }}/workflow-${{ github.run_id }}-${{
+            github.run_attempt }}/summary.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  contracts:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate shared contracts and their existing consumers
+        run: >-
+          node scripts/verify-task.mjs --mode contracts --output
+          "$RUNNER_TEMP/contracts-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Preserve shared-contract validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts-${{ github.run_id }}-${{ github.run_attempt }}
+          path:
+            ${{ runner.temp }}/contracts-${{ github.run_id }}-${{
+            github.run_attempt }}/summary.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
 
   lint:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -69,6 +135,8 @@ jobs:
         run: node scripts/verify.mjs lint
 
   typecheck:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -92,6 +160,8 @@ jobs:
         run: node scripts/verify.mjs typecheck
 
   test:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -131,6 +201,8 @@ jobs:
 
   cms:
     name: cms
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.cms == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -168,6 +240,8 @@ jobs:
         run: pnpm test:cms:browser
 
   build:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -189,6 +263,34 @@ jobs:
 
       - name: Build
         run: node scripts/verify.mjs build
+
+  apple:
+    needs: classify_e2e
+    if: needs.classify_e2e.outputs.apple == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Validate the selected native Apple project
+        run: >-
+          node scripts/verify-apple.mjs --output
+          "$RUNNER_TEMP/apple-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Preserve native Apple validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-${{ github.run_id }}-${{ github.run_attempt }}
+          path:
+            ${{ runner.temp }}/apple-${{ github.run_id }}-${{ github.run_attempt
+            }}/summary.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
 
   e2e-shards:
     needs: classify_e2e
@@ -275,9 +377,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Keep the existing required-check name. Success requires real shard job success
-  # AND complete native report identity, outcome and exact collection validation.
-  e2e:
+  # Browser validation retains its native report and exact collection gates.
+  browser_gate:
+    name: browser-gate
     if: ${{ always() }}
     needs: [classify_e2e, e2e_smoke, e2e-shards]
     runs-on: ubuntu-latest
@@ -340,3 +442,30 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
+
+  # Preserve the stable required context while enforcing every selected task job.
+  e2e:
+    if: ${{ always() }}
+    needs:
+      - classify_e2e
+      - lightweight
+      - contracts
+      - lint
+      - typecheck
+      - test
+      - cms
+      - build
+      - apple
+      - browser_gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Require complete validation for the classified task
+        env:
+          PLAN: ${{ needs.classify_e2e.outputs.plan }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/ci-task-gate.mjs >>"$GITHUB_STEP_SUMMARY"

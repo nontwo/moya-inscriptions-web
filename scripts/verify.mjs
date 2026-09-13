@@ -14,6 +14,7 @@ export async function runWithinBudget(
   const started = performance.now();
   const groups = new Set();
   let stopped = false;
+  let interruptionTimer;
   let finish;
   const result = new Promise((resolve) => {
     finish = resolve;
@@ -71,11 +72,18 @@ export async function runWithinBudget(
     finish(124);
   }, budgetMs);
   const interrupt = () => {
+    if (interruptionTimer) return;
     stop();
-    finish(130);
+    // A task-owned child (for example the Apple validator) must get the same
+    // bounded cleanup grace on Ctrl-C/CI cancellation as on a soft timeout.
+    // Repeated signals cannot extend the original sequence deadline.
+    interruptionTimer = setTimeout(
+      () => finish(130),
+      Math.max(0, Math.min(graceMs, budgetMs - (performance.now() - started))),
+    );
   };
-  process.once("SIGINT", interrupt);
-  process.once("SIGTERM", interrupt);
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
   const execute = async () => {
     for (const [command, ...args] of commands) {
       if (stopped) return;
@@ -102,6 +110,7 @@ export async function runWithinBudget(
   const code = await result;
   clearTimeout(softTimer);
   clearTimeout(hardTimer);
+  clearTimeout(interruptionTimer);
   process.off("SIGINT", interrupt);
   process.off("SIGTERM", interrupt);
   if (code !== 0) signalGroups("SIGKILL");
