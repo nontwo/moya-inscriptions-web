@@ -185,6 +185,22 @@ describe("task routing follows the complete changed-path set", () => {
     });
   }
 
+  it("routes only the three registered Phase 4 fixture scripts to Web", () => {
+    for (const name of [
+      "materialize-phase4-fixtures",
+      "seed-phase4-acceptance",
+      "seed-phase4-support",
+    ]) {
+      for (const event of ["pull_request", "push", "local"])
+        assert.deepEqual(
+          flags(classifyTask([`scripts/${name}.mjs`], event)),
+          expectedFlags({ web: true, scope: "smoke" }),
+        );
+      assert.throws(() => classifyTask([`scripts/${name}-extra.mjs`]));
+      assert.throws(() => classifyTask([`scripts/nested/${name}.mjs`]));
+    }
+  });
+
   it("does not truncate long diffs or let metadata change the selected checks", () => {
     const paths = Array.from({ length: 1000 }, (_, i) => `docs/change ${i}.md`);
     paths.push("apps/web/app/page.tsx", "docs/change 1.md");

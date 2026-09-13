@@ -13,7 +13,7 @@ import { useProductShell } from "../product-shell/product-shell";
 import { HomeScreen } from "../home/home-screen";
 import type { HomeSurfaceData, HomeFeed } from "../home/home-feed";
 import { CatalogMasonry } from "../home/catalog-masonry";
-import { CatalogSearchNavigationAction } from "../search/catalog-search";
+import homeStyles from "../home/home-screen.module.css";
 const emptyFilters: InscriptionFilters = {
   dynasty: [],
   textAuthor: [],
@@ -56,7 +56,7 @@ export const DiscoveryHome = ({
   <HomeScreen
     data={data}
     initialFeed={initialFeed}
-    headerStart={<CatalogSearchNavigationAction />}
+    headerStart={<span aria-hidden="true" />}
     headerEnd={<AuthorTrigger />}
     renderDiscover={(active) => <DiscoveryFeed kind="all" active={active} />}
   />
@@ -64,9 +64,9 @@ export const DiscoveryHome = ({
 export const FilteredInscriptions = () => {
   const shell = useProductShell();
   return (
-    <div>
-      <header className="phase4-topbar">
-        <CatalogSearchNavigationAction />
+    <div className="phase4-inscriptions" data-phase4-inscriptions="">
+      <header className={homeStyles.homeHeader} data-author-bar="">
+        <span aria-hidden="true" />
         <strong>碑刻</strong>
         <AuthorTrigger />
       </header>

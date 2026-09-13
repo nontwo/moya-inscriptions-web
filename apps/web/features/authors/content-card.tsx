@@ -4,7 +4,7 @@ import type { ContentCard as Card } from "@moya/contracts";
 import { CatalogCardMedia } from "../home/catalog-card";
 import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 import { useProductShell } from "../product-shell/product-shell";
-import { ContentActionsView, useContentActions } from "./content-actions";
+import { useContentActions } from "./content-actions";
 import styles from "../home/home-screen.module.css";
 export const ContentCard = ({
   item,
@@ -61,14 +61,6 @@ export const ContentCard = ({
           onActivate={(opener) => shell.openContent(item.target, opener)}
         />
       </article>
-      <details className="phase4-card-options">
-        <summary aria-label={`${item.title}的操作`}>操作</summary>
-        <ContentActionsView
-          target={item.target}
-          title={item.title}
-          actions={actions}
-        />
-      </details>
     </div>
   );
 };

@@ -154,6 +154,8 @@ export interface ProductShellContextValue {
   readonly closeViewer: () => void;
   readonly changeViewerMedia: (mediaId: string) => void;
   readonly feedLayout: FeedLayoutPreference;
+  readonly cycleTheme: () => void;
+  readonly cycleFeedLayout: () => void;
   readonly openCatalog: (catalogId: string, opener: HTMLElement) => void;
   readonly openViewer: (mediaId: string) => void;
   readonly openTopic: (
@@ -1842,6 +1844,8 @@ export const ProductShell = ({
     closeViewer,
     closeTopic,
     feedLayout,
+    cycleTheme,
+    cycleFeedLayout,
     openCatalog,
     openViewer,
     openTopic,

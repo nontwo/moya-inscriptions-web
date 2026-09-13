@@ -10,7 +10,6 @@ import type { HorizontalPagerHandle } from "../shell/horizontal-pager";
 import { authorClient } from "./author-data";
 import { useAuthors } from "./author-context";
 import { ProfileEditor } from "./profile-editor";
-import { AvatarEditor } from "./avatar-editor";
 import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
 import { PeopleList } from "./people-list";
@@ -38,7 +37,7 @@ const ScopedAuthorProfileOverlay = ({
       () => (author.cache.get(cacheKey) as AuthorProfile | undefined) ?? null,
     ),
     [error, setError] = useState(""),
-    [modal, setModal] = useState<"edit" | "avatar" | "settings" | null>(null),
+    [modal, setModal] = useState<"edit" | "settings" | null>(null),
     [people, setPeople] = useState<"following" | "followers" | null>(null),
     [revision, setRevision] = useState(0),
     [progress, setProgress] = useState(
@@ -134,10 +133,10 @@ const ScopedAuthorProfileOverlay = ({
           <Icon name="back" />
         </button>
         <strong>{owner ? "我的" : "作者主页"}</strong>
-        {profile?.isOwner ? (
+        {owner ? (
           <button
             type="button"
-            aria-label="账户设置"
+            aria-label="设置"
             className="yoyi-icon-button"
             onClick={() => setModal("settings")}
           >
@@ -152,19 +151,13 @@ const ScopedAuthorProfileOverlay = ({
         aria-label="用户资料"
         data-profile-background-slot=""
       >
-        <button
-          type="button"
-          className={styles.avatar}
-          aria-label={profile?.isOwner ? "更换头像" : `${name}的头像`}
-          disabled={!profile?.isOwner}
-          onClick={() => setModal("avatar")}
-        >
+        <div className={styles.avatar} role="img" aria-label={`${name}的头像`}>
           {profile?.avatar ? (
             <img src={profile.avatar.src} alt="" width={80} height={80} />
           ) : (
             <span>{name.slice(0, 1)}</span>
           )}
-        </button>
+        </div>
         <div className={styles.identity}>
           <h1>{name}</h1>
           {profile ? (
@@ -275,9 +268,7 @@ const ScopedAuthorProfileOverlay = ({
             </>
           ) : !id ? (
             <>
-              <p>
-                无需登录即可浏览与搜索。登录后可跨设备收藏、喜欢、关注，并管理已有作品。
-              </p>
+              <p>无需登录即可浏览与搜索。登录后可跨设备收藏、喜欢、关注。</p>
               <div className="phase4-actions">
                 <a href={author.signInHref}>使用开发测试账户登录</a>
               </div>
@@ -361,15 +352,9 @@ const ScopedAuthorProfileOverlay = ({
           onSaved={save}
         />
       )}{" "}
-      {profile && modal === "avatar" && (
-        <AvatarEditor
-          profile={profile}
-          onClose={() => setModal(null)}
-          onSaved={save}
-        />
-      )}{" "}
-      {profile && modal === "settings" && (
+      {owner && modal === "settings" && (
         <ProfileSettings
+          key={profile?.id ?? "guest"}
           profile={profile}
           onClose={() => setModal(null)}
           onSaved={save}

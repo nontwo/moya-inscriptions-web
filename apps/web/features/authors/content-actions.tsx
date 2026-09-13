@@ -5,6 +5,8 @@ import type { ContentQuickActionEnvironment } from "../quick-actions/quick-actio
 import { quickActionContentKey } from "../quick-actions/quick-action-types";
 import { useAuthors, shareContent, contentKey } from "./author-context";
 import { authorClient } from "./author-data";
+import { QuickActionIcon } from "../quick-actions/quick-action-card-action";
+import type { QuickActionName } from "../quick-actions/quick-action-types";
 export const useContentActions = (target: ContentIdentity, title: string) => {
   const author = useAuthors(),
     key = `${author.viewer?.id ?? "guest"}:${contentKey(target)}`;
@@ -15,6 +17,7 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
       known: false,
     }),
     [busy, setBusy] = useState(false),
+    [pendingAction, setPendingAction] = useState<QuickActionName | null>(null),
     scope = useRef(key),
     inFlight = useRef(false);
   scope.current = key;
@@ -57,6 +60,7 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
     }
     inFlight.current = true;
     setBusy(true);
+    setPendingAction(action);
     const run = key;
     try {
       if (action === "share") {
@@ -82,6 +86,7 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
     } finally {
       inFlight.current = false;
       setBusy(false);
+      setPendingAction(null);
     }
   };
   const actionKey = quickActionContentKey({
@@ -92,6 +97,7 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
   return {
     state,
     busy,
+    pendingAction,
     execute,
     environment: {
       onAction: execute,
@@ -111,55 +117,61 @@ export const ContentActionsView = ({
 }) => {
   const { viewer, signInHref, checking } = useAuthors();
   return (
-    <div className="phase4-actions" aria-label="内容操作">
-      <button
-        type="button"
-        disabled={checking || actions.busy || !actions.state.known}
-        aria-pressed={actions.state.favorite}
-        onClick={() =>
-          void actions.execute("favorite", {
-            kind: target.type,
-            id: target.id,
-            title,
-          })
-        }
-      >
-        {actions.state.favorite ? "取消收藏" : "收藏"}
-      </button>
-      {viewer ? (
-        <button
-          type="button"
-          disabled={checking || actions.busy || !actions.state.known}
-          aria-pressed={actions.state.liked}
-          onClick={() =>
-            void actions.execute("like", {
-              kind: target.type,
-              id: target.id,
-              title,
-            })
-          }
-        >
-          {actions.state.liked ? "取消喜欢" : "喜欢"}
-        </button>
-      ) : (
-        <a href={signInHref}>登录后喜欢</a>
-      )}
-      <button
-        type="button"
-        disabled={actions.busy}
-        onClick={() =>
-          void actions.execute("share", {
-            kind: target.type,
-            id: target.id,
-            title,
-          })
-        }
-      >
-        分享
-      </button>
+    <div
+      className="phase4-detail-actions"
+      role="group"
+      aria-label="内容操作"
+      data-detail-content-actions=""
+    >
+      {(["favorite", "like", "share"] as const).map((action) => {
+        const active =
+          action === "favorite"
+            ? actions.state.favorite
+            : action === "like"
+              ? actions.state.liked
+              : actions.pendingAction === "share";
+        return (
+          <button
+            key={action}
+            type="button"
+            aria-label={
+              action === "favorite"
+                ? "收藏"
+                : action === "like"
+                  ? "喜欢"
+                  : "分享"
+            }
+            aria-pressed={action === "share" ? undefined : active}
+            aria-busy={actions.pendingAction === action || undefined}
+            data-active={active}
+            disabled={
+              checking ||
+              actions.busy ||
+              (action !== "share" && !actions.state.known)
+            }
+            onClick={() => {
+              if (action === "like" && !viewer) {
+                window.location.assign(signInHref);
+                return;
+              }
+              void actions.execute(action, {
+                kind: target.type,
+                id: target.id,
+                title,
+              });
+            }}
+          >
+            <QuickActionIcon
+              action={action}
+              filled={action !== "share" && active}
+            />
+          </button>
+        );
+      })}
     </div>
   );
 };
+
 export const ContentActions = ({
   target,
   title,

@@ -1,16 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import type { UserWork } from "@moya/contracts";
+import { useEffect } from "react";
 import type { CatalogDetailPresentation } from "../detail/catalog-detail-presentation";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors } from "./author-context";
 import { ContentActions } from "./content-actions";
-import { useAuthorOperation } from "./use-author-operation";
-import { WorkEditor } from "./work-editor";
 import { useProductShell } from "../product-shell/product-shell";
 import { recordLocalHistory } from "./local-library";
-import { requestIdentity } from "../shell/request-identity";
 export const loadWorkDetail: CatalogDetailPresentationLoader = async (
   id,
   signal,
@@ -48,16 +44,11 @@ export const loadWorkDetail: CatalogDetailPresentationLoader = async (
 };
 export const DetailActions = ({
   detail,
-  refresh,
 }: {
   detail: CatalogDetailPresentation;
-  refresh: () => void;
 }) => {
   const author = useAuthors(),
-    shell = useProductShell(),
-    [editing, setEditing] = useState<UserWork | null>(null);
-  const needsRefresh = useRef(false);
-  const operation = useAuthorOperation();
+    shell = useProductShell();
   const target = {
     type: detail.contentType === "work" ? "work" : "catalog",
     id: detail.id,
@@ -85,82 +76,12 @@ export const DetailActions = ({
           >
             {detail.authorName}
           </button>
-          {!detail.available && <p>此作品当前不可公开访问，编辑不会恢复它。</p>}
-          {detail.canEdit &&
-            author.viewer?.id === detail.authorId &&
-            !author.checking &&
-            !author.sessionError && (
-              <>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const work = await operation.run(() =>
-                        authorClient.work(detail.id),
-                      );
-                      if (work.canEdit && work.authorId === author.viewer?.id)
-                        setEditing(work);
-                    } catch (e) {
-                      if (!operation.current()) return;
-                      author.notify(
-                        e instanceof Error ? e.message : "无法编辑",
-                      );
-                    }
-                  }}
-                >
-                  编辑作品
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (
-                      !window.confirm(
-                        "删除此作品？公开内容和编辑草稿将不可再访问。",
-                      )
-                    )
-                      return;
-                    try {
-                      await operation.run(() =>
-                        authorClient.command(
-                          `works/${detail.id}`,
-                          { requestId: requestIdentity() },
-                          "DELETE",
-                        ),
-                      );
-                      author.mutate();
-                      refresh();
-                    } catch (e) {
-                      if (!operation.current()) return;
-                      author.notify(
-                        e instanceof Error ? e.message : "删除未完成",
-                      );
-                    }
-                  }}
-                >
-                  删除作品
-                </button>
-              </>
-            )}
+          {!detail.available && <p>此作品当前不可公开访问。</p>}
         </div>
       )}
       {(detail.contentType !== "work" || detail.available) && (
         <ContentActions target={target} title={detail.title} />
       )}{" "}
-      {editing && (
-        <WorkEditor
-          work={editing}
-          onClose={() => {
-            setEditing(null);
-            if (needsRefresh.current) {
-              needsRefresh.current = false;
-              refresh();
-            }
-          }}
-          onSaved={() => {
-            needsRefresh.current = true;
-          }}
-        />
-      )}
     </div>
   );
 };

@@ -43,15 +43,6 @@
 .phase4-feedback:empty {
   display: none;
 }
-.phase4-card-options {
-  font-size: 13px;
-  margin-block: 4px;
-}
-.phase4-card-options summary {
-  padding: 8px;
-  cursor: pointer;
-  color: var(--yoyi-color-text-secondary);
-}
 .phase4-dialog {
   position: fixed;
   inset: 0;
@@ -230,4 +221,83 @@
   max-height: none;
   border: 0;
   color: var(--yoyi-color-text-primary);
+}
+
+/* The live inscription page uses the existing vertical destination scroll owner. */
+.phase4-inscriptions {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+  touch-action: pan-y pinch-zoom;
+}
+.phase4-inscriptions > [data-author-bar] > strong {
+  justify-self: center;
+  font-size: var(--yoyi-type-button-size);
+}
+.phase4-inscriptions .phase4-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1280px;
+  min-width: 0;
+}
+.phase4-inscriptions fieldset,
+.phase4-inscriptions input,
+.phase4-inscriptions select {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+.phase4-inscriptions label {
+  overflow-wrap: anywhere;
+}
+.phase4-detail-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+}
+.phase4-detail-actions button {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 44px;
+  padding: 0;
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  cursor: pointer;
+}
+.phase4-detail-actions button[data-active="true"] {
+  color: var(--yoyi-color-seal-red);
+}
+.phase4-detail-actions button:disabled {
+  opacity: 0.5;
+}
+.phase4-detail-actions button:focus-visible,
+.phase4-settings-tabs button:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+.phase4-settings-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+.phase4-settings-tabs button {
+  min-height: 44px;
+  padding: 8px 4px;
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.phase4-settings-tabs button[aria-selected="true"] {
+  color: var(--yoyi-color-text-primary);
+  border-bottom-color: var(--yoyi-color-seal-red);
 }

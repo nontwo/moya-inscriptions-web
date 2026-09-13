@@ -40,19 +40,20 @@ export const ProfileList = ({
   const context = useAuthors(),
     shell = useProductShell(),
     cacheKey = `list:${context.viewer?.id ?? "guest"}:${entryId}:${authorId ?? "guest"}:${tab}`;
-  const [list, setList] = useState<ListState>(
-      () =>
-        (context.cache.get(cacheKey) as ListState | undefined) ?? {
-          items: [],
-          page: 0,
-          total: 0,
-          search: "",
-          kind: "all",
-          revision: context.revision,
-        },
-    ),
-    [draftSearch, setDraftSearch] = useState(list.search),
-    [draftKind, setDraftKind] = useState(list.kind),
+  const [list, setList] = useState<ListState>(() => {
+      const cached = context.cache.get(cacheKey) as ListState | undefined;
+      // Hidden controls must never leave a previous filter active invisibly.
+      return cached && cached.search === "" && cached.kind === "all"
+        ? cached
+        : {
+            items: [],
+            page: 0,
+            total: 0,
+            search: "",
+            kind: "all",
+            revision: context.revision,
+          };
+    }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const wasActive = useRef(false);
@@ -86,7 +87,7 @@ export const ProfileList = ({
     }
     if (tab !== "favorites" && tab !== "likes")
       throw new Error("账户列表不可用");
-    return authorClient.collection(authorId, tab, q.page, q.search, q.kind);
+    return authorClient.collection(authorId, tab, q.page, "", "all");
   };
   const load = async (q: Read) => {
     if (loading.current) return;
@@ -107,8 +108,8 @@ export const ProfileList = ({
                   ? context.guestFavorites
                   : [],
               authorClient.card,
-              q.search,
-              q.kind,
+              "",
+              "all",
               () => run === epoch.current,
             )
           : null;
@@ -129,8 +130,8 @@ export const ProfileList = ({
         items: q.replace ? items : [...old.items, ...items],
         page: last,
         total,
-        search: q.search,
-        kind: q.kind,
+        search: "",
+        kind: "all",
         revision: context.revision,
       }));
     } catch (e) {
@@ -207,43 +208,6 @@ export const ProfileList = ({
   if (tab === "history" && !owner) return <p>浏览历史仅自己可见。</p>;
   return (
     <div>
-      {(tab === "favorites" || tab === "likes") && (
-        <form
-          className="phase4-filters"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void load({
-              page: 1,
-              replace: true,
-              search: draftSearch.trim(),
-              kind: draftKind,
-            });
-          }}
-        >
-          <label>
-            搜索整个列表
-            <input
-              value={draftSearch}
-              maxLength={200}
-              onChange={(e) => setDraftSearch(e.target.value)}
-            />
-          </label>
-          <label>
-            类型
-            <select
-              value={draftKind}
-              onChange={(e) => setDraftKind(e.target.value)}
-            >
-              <option value="all">全部</option>
-              <option value="inscription">碑刻</option>
-              <option value="calligraphy">书帖</option>
-            </select>
-          </label>
-          <button className="phase4-button" disabled={busy} type="submit">
-            搜索
-          </button>
-        </form>
-      )}
       {!authorId && tab === "favorites" && (
         <p className="phase4-muted">
           收藏保存在此浏览器；登录后可合并到账户。清除浏览器数据可能移除本机收藏。

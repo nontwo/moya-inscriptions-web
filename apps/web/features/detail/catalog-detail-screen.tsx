@@ -212,7 +212,6 @@ export const CatalogDetailScreen = ({
     const information = (
       <>
         <DetailIdentity detail={detail} />
-        {detailActions}
         <DetailReadingFlow detail={detail} />
       </>
     );
@@ -232,6 +231,7 @@ export const CatalogDetailScreen = ({
         <div className={styles.pagedMedia} data-detail-paged-media="">
           {media}
         </div>
+        {detailActions}
         <CatalogDetailContentPager
           comments={commentSection}
           information={information}

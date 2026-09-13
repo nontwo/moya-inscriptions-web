@@ -11,7 +11,6 @@ import {
 import { DiscussionSection } from "../authors/discussion-section";
 import { DetailActions, loadWorkDetail } from "../authors/work-detail";
 import { LiveCatalogCards } from "../authors/live-catalog-cards";
-import { CatalogSearchNavigationAction } from "../search/catalog-search";
 import "../authors/author-styles.css";
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
 
@@ -90,9 +89,7 @@ const AuthorProduct = ({
             key={`${target.type}:${target.id}`}
           />
         )}
-        renderDetailActions={(detail, refresh) => (
-          <DetailActions detail={detail} refresh={refresh} />
-        )}
+        renderDetailActions={(detail) => <DetailActions detail={detail} />}
         discoveryHome={
           <DiscoveryHome
             data={preview.states.home}
@@ -100,7 +97,7 @@ const AuthorProduct = ({
           />
         }
         filteredInscriptions={<FilteredInscriptions />}
-        headerStart={<CatalogSearchNavigationAction />}
+        headerStart={<span aria-hidden="true" />}
         headerEnd={<AuthorTrigger />}
       />
     </LiveCatalogCards>

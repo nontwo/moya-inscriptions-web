@@ -77,38 +77,58 @@ export const SettingsOverlay = ({
     </header>
 
     <div className={styles.content}>
-      <fieldset className={styles.group}>
-        <legend>显示</legend>
-        <div className={styles.controls}>
-          <button
-            type="button"
-            aria-label={`切换主题：当前${themeLabels[theme]}`}
-            className={`${styles.settingButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md`}
-            data-theme-mode={theme}
-            data-theme-toggle=""
-            onClick={onCycleTheme}
-            title={themeLabels[theme]}
-          >
-            <Icon name={themeIcons[theme]} />
-            <span>{themeLabels[theme]}</span>
-          </button>
-
-          {platform === "pc" ? null : (
-            <button
-              type="button"
-              aria-label={`切换布局：当前${layoutLabels[feedLayout]}`}
-              className={`${styles.settingButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md`}
-              data-feed-layout-mode={feedLayout}
-              data-feed-layout-toggle=""
-              onClick={onCycleFeedLayout}
-              title={layoutLabels[feedLayout]}
-            >
-              <Icon name={layoutIcons[feedLayout]} />
-              <span>{layoutLabels[feedLayout]}</span>
-            </button>
-          )}
-        </div>
-      </fieldset>
+      <SettingsDisplayControls
+        feedLayout={feedLayout}
+        onCycleFeedLayout={onCycleFeedLayout}
+        onCycleTheme={onCycleTheme}
+        platform={platform}
+        theme={theme}
+      />
     </div>
   </section>
+);
+
+/** The same display controls serve the product settings and My settings. */
+export const SettingsDisplayControls = ({
+  feedLayout,
+  onCycleFeedLayout,
+  onCycleTheme,
+  platform,
+  theme,
+}: Pick<
+  SettingsOverlayProps,
+  "feedLayout" | "onCycleFeedLayout" | "onCycleTheme" | "platform" | "theme"
+>) => (
+  <fieldset className={styles.group}>
+    <legend>显示</legend>
+    <div className={styles.controls}>
+      <button
+        type="button"
+        aria-label={`切换主题：当前${themeLabels[theme]}`}
+        className={`${styles.settingButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md`}
+        data-theme-mode={theme}
+        data-theme-toggle=""
+        onClick={onCycleTheme}
+        title={themeLabels[theme]}
+      >
+        <Icon name={themeIcons[theme]} />
+        <span>{themeLabels[theme]}</span>
+      </button>
+
+      {platform === "pc" ? null : (
+        <button
+          type="button"
+          aria-label={`切换布局：当前${layoutLabels[feedLayout]}`}
+          className={`${styles.settingButton} yoyi-icon-button yoyi-icon-button--quiet yoyi-icon-button--md`}
+          data-feed-layout-mode={feedLayout}
+          data-feed-layout-toggle=""
+          onClick={onCycleFeedLayout}
+          title={layoutLabels[feedLayout]}
+        >
+          <Icon name={layoutIcons[feedLayout]} />
+          <span>{layoutLabels[feedLayout]}</span>
+        </button>
+      )}
+    </div>
+  </fieldset>
 );

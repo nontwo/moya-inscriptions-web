@@ -219,3 +219,40 @@ no guest collection is uploaded. The fixes have native PostgreSQL/HTTP coverage,
 six focused Web unit tests, and live browser coverage for both people-list races
 and thirteen guest favorites including an alias-only match past the first page.
 Final exact-commit independent review remains recorded separately in the PR.
+
+## Owner mobile acceptance revision (2026-09-13)
+
+The Owner's screenshots and explicit follow-up replace the relevant earlier UI
+requirements. This is a bounded correction on the same task and Draft PR #126;
+Owner visual/device acceptance remains open. Root remains the sole writer.
+
+| Scenario                                | Development                                                                                                                                                             | Production                                          | Must preserve                                                                                        |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Main-page search and bars               | Remove all duplicate top search entrances; retain bottom navigation search. Home, inscriptions and calligraphy retain the same fixed bar with right-side author avatar. | Existing approved composition remains.              | Existing search overlay, navigation and overlay Back.                                                |
+| Card actions                            | Remove visible card action disclosures; use the existing long-press menu everywhere.                                                                                    | Existing approved card behavior remains.            | Real relation state, native long-press cancellation and single execution.                            |
+| Inscription scrolling                   | Only vertical scrolling, no horizontal overflow, including long filter labels and single/double columns.                                                                | Existing approved composition remains.              | Stable data/pagination and the current scroll owner; no new gesture engine.                          |
+| Favorites and liked lists               | Hide search/type filters; always load the unfiltered eligible list, including after a previously filtered cache.                                                        | No new exposure.                                    | Favorites/likes, privacy, local guest merge and stable identity.                                     |
+| My settings                             | Reuse existing theme/layout controls and persistence in My > Settings, with Display and Account Settings tabs. Display settings also work for guests.                   | Existing settings continue using the same controls. | Unsaved account privacy state across tab changes; Back/confirmation and account isolation.           |
+| Existing work editing and avatar upload | Freeze user-facing mutation entrances; existing editor/upload implementations and stored data are retained but not mounted from the product UI.                         | No new exposure.                                    | Published works, existing avatars, private drafts and server foundations are not erased or reseeded. |
+| Detail actions                          | Icon-only favorite/like/share row above Information/Comments tabs. Favorite/like toggle the existing state and highlight; share invokes native share/copy.              | No new Phase 4 exposure.                            | Accessible labels, truthful failures/sign-in needs; share is not invented as a persistent relation.  |
+
+This revision changes only relevant Web presentation/integration, focused
+product tests and this record. It adds no contracts, migrations, dependencies or
+Admin changes. The Owner clarified inscription scrolling as vertical-only. The
+image background-removal request was superseded by this application feedback;
+the screenshots are evidence, not edited assets.
+
+Main advanced independently to `4dba8c1524fef61758e979ba9c4812365d5fc173` with
+merged workflow #118. Its effective root/workflow instructions were reloaded and
+integrated without conflict in `ace9bddcfa0250bd95d71f735bf15628270f2c92`. No
+unmerged workflow work is copied or resumed. The merged task-diff routing is now
+authoritative. The Owner explicitly approved registering only the three existing
+Phase 4 fixture script names in its anchored Web path expression, plus a focused
+regression test. No classification algorithm, runner, budget or workflow changes
+are made. Earlier local routine timeout and subsequent exact-candidate native CI
+passes remain historical evidence, not a fresh-head pass.
+
+Mobile feedback verification also exposed a retained desktop inline pager height
+when the existing runtime switches to phone/tablet presentation. Clear that
+height when panels own vertical scrolling, with a regression for both
+directions; the existing pager engine and navigation behavior remain intact.
