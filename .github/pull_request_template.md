@@ -3,6 +3,7 @@
 ## Task and exact revisions
 
 - Work reference (Issue, task ID, or other Owner-approved reference):
+- Task Issue and specification revision (for example `#119 r1`):
 - Base SHA:
 - Head SHA:
 
