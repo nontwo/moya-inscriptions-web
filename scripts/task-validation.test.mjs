@@ -161,6 +161,10 @@ describe("task routing follows the complete changed-path set", () => {
       ["tests/unit/architecture/workspace-scanner.ts"],
       { web: true, scope: "smoke" },
     ],
+    [[".editorconfig"], { web: true, scope: "smoke" }],
+    [[".prettierignore"], { web: true, scope: "smoke" }],
+    [["eslint.config.mjs"], { web: true, scope: "smoke" }],
+    [["prettier.config.mjs"], { web: true, scope: "smoke" }],
     [["scripts/confidentiality-scan.test.mjs"], {}],
     [["scripts/confidentiality-scan.mjs"], { web: true, scope: "smoke" }],
     [
@@ -885,6 +889,81 @@ describe("the real CI wiring preserves required-check closure", () => {
       assert.equal(plan.web, true, file);
       assert.equal(plan.scope, "smoke", file);
       assert.equal(plan.lightweight, true, file);
+    }
+  });
+
+  it("routes the configuration the Web lint job reads to the Web jobs", () => {
+    const { jobs } = workflowJobs();
+    // The Web lint job runs verify.mjs lint, whose stage runs root pnpm scripts.
+    assert.match(jobs.get("lint"), /run: node scripts\/verify\.mjs lint\n/);
+    const stage = read("scripts/verify.mjs").match(/\blint: \[(.*)\],\n/u)?.[1];
+    const scripts = [...(stage ?? "").matchAll(/\bpnpm\("([^"]+)"\)/gu)].map(
+      (match) => match[1],
+    );
+    const rootScripts = JSON.parse(read("package.json")).scripts;
+    // Prettier's CLI finds its config, reads .prettierignore and applies
+    // .editorconfig unless a flag narrows that; turbo runs workspace lint.
+    assert.deepEqual(
+      scripts.map((name) => rootScripts[name]),
+      ["prettier --check .", "turbo run lint"],
+    );
+    const extensions = ["js", "mjs", "cjs", "ts", "mts", "cts"];
+    const eslintConfigs = extensions.map((ext) => `eslint.config.${ext}`);
+    const packages = read("pnpm-workspace.yaml").match(
+      /^packages:\n((?: {2}- \S+\n)+)/mu,
+    )?.[1];
+    const workspaces = [...(packages ?? "").matchAll(/- (\S+)\n/gu)]
+      .flatMap(([, pattern]) =>
+        pattern.endsWith("/*")
+          ? readdirSync(join(root, pattern.slice(0, -2))).map(
+              (name) => `${pattern.slice(0, -2)}/${name}`,
+            )
+          : [pattern],
+      )
+      .filter((dir) => existsSync(join(root, dir, "package.json")));
+    const linted = workspaces.filter(
+      (dir) => JSON.parse(read(`${dir}/package.json`)).scripts?.lint,
+    );
+    assert.ok(linted.includes("tests") && linted.includes("apps/web"));
+    // Without a workspace config, each eslint . run uses the root flat config.
+    for (const dir of linted) {
+      assert.equal(
+        JSON.parse(read(`${dir}/package.json`)).scripts.lint,
+        "eslint .",
+        dir,
+      );
+      for (const name of eslintConfigs)
+        assert.ok(!existsSync(join(root, dir, name)), `${dir}/${name}`);
+    }
+    // Prettier also honours .gitignore, a Git file left to its existing routing.
+    const present = (names) =>
+      names.filter((name) => existsSync(join(root, name)));
+    const prettierConfigs = present([
+      ".prettierrc",
+      ...["json", "yaml", "yml", "json5", "toml"].map(
+        (e) => `.prettierrc.${e}`,
+      ),
+      ...extensions.flatMap((e) => [
+        `.prettierrc.${e}`,
+        `prettier.config.${e}`,
+      ]),
+    ]);
+    const rootEslintConfigs = present(eslintConfigs);
+    assert.ok(prettierConfigs.length > 0, "Prettier config");
+    assert.ok(rootEslintConfigs.length > 0, "ESLint config");
+    for (const file of [
+      ...prettierConfigs,
+      ".prettierignore",
+      ".editorconfig",
+      ...rootEslintConfigs,
+    ]) {
+      assert.ok(existsSync(join(root, file)), file);
+      for (const event of ["pull_request", "push", "local"])
+        assert.deepEqual(
+          flags(classifyTask([file], event)),
+          expectedFlags({ web: true, scope: "smoke" }),
+          `${file} (${event})`,
+        );
     }
   });
 
