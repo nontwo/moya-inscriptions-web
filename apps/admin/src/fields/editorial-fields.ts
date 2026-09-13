@@ -52,8 +52,55 @@ const statefulText = (
   ],
 });
 
+const filterDimensions = [
+  ["dynasty", "朝代"],
+  ["textAuthor", "历史撰文者"],
+  ["calligrapher", "历史书写者"],
+  ["originalRegion", "原始地点或地域"],
+  ["script", "书体"],
+] as const;
+const filterMetadataField: Field = {
+  name: "filterMetadata",
+  type: "group",
+  label: "碑刻筛选元数据（经编辑核实）",
+  admin: {
+    description:
+      "仅用于碑刻筛选，原始资料保持原文。原始地点不得填写现藏地；历史作者不是上传账号。未知和未提供须分别记录。",
+  },
+  fields: filterDimensions.map(([name, label]) => ({
+    name,
+    label,
+    type: "group",
+    fields: [
+      {
+        name: "state",
+        type: "select",
+        label: "资料状态",
+        defaultValue: "UNSUPPLIED",
+        options: [
+          { label: "有经核实的值", value: "VALUE" },
+          { label: "未知", value: "UNKNOWN" },
+          { label: "未提供", value: "UNSUPPLIED" },
+        ],
+      },
+      {
+        name: "tokens",
+        type: "textarea",
+        label: "经核实的规范值（每行一个）",
+        maxLength: 2000,
+        defaultValue: "",
+        admin: {
+          description:
+            "仅录入资料证实的值；不从标题或名字猜测。非“有值”状态留空。",
+        },
+      },
+    ],
+  })),
+};
+
 /** Native Payload fields; no JSON editor, alternate form or rich-text conversion. */
 export const editorialFields: Field[] = [
+  filterMetadataField,
   {
     name: "catalogId",
     type: "text",

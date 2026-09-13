@@ -87,6 +87,9 @@ importers:
       next:
         specifier: 16.3.0
         version: 16.3.0(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(sass@1.77.4)
+      opencc:
+        specifier: 1.4.1
+        version: 1.4.1
       payload:
         specifier: 3.88.0
         version: 3.88.0(graphql@16.11.0)(typescript@6.0.3)

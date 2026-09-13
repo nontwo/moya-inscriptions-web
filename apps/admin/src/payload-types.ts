@@ -200,6 +200,46 @@ export interface Catalog {
   lastEditedBy?: (number | null) | User;
   revision?: number | null;
   /**
+   * 仅用于碑刻筛选，原始资料保持原文。原始地点不得填写现藏地；历史作者不是上传账号。未知和未提供须分别记录。
+   */
+  filterMetadata?: {
+    dynasty?: {
+      state?: ("VALUE" | "UNKNOWN" | "UNSUPPLIED") | null;
+      /**
+       * 仅录入资料证实的值；不从标题或名字猜测。非“有值”状态留空。
+       */
+      tokens?: string | null;
+    };
+    textAuthor?: {
+      state?: ("VALUE" | "UNKNOWN" | "UNSUPPLIED") | null;
+      /**
+       * 仅录入资料证实的值；不从标题或名字猜测。非“有值”状态留空。
+       */
+      tokens?: string | null;
+    };
+    calligrapher?: {
+      state?: ("VALUE" | "UNKNOWN" | "UNSUPPLIED") | null;
+      /**
+       * 仅录入资料证实的值；不从标题或名字猜测。非“有值”状态留空。
+       */
+      tokens?: string | null;
+    };
+    originalRegion?: {
+      state?: ("VALUE" | "UNKNOWN" | "UNSUPPLIED") | null;
+      /**
+       * 仅录入资料证实的值；不从标题或名字猜测。非“有值”状态留空。
+       */
+      tokens?: string | null;
+    };
+    script?: {
+      state?: ("VALUE" | "UNKNOWN" | "UNSUPPLIED") | null;
+      /**
+       * 仅录入资料证实的值；不从标题或名字猜测。非“有值”状态留空。
+       */
+      tokens?: string | null;
+    };
+  };
+  /**
    * 新建时独立生成，已有目录须沿用原身份；创建后不可变更。
    */
   catalogId: string;
@@ -641,6 +681,40 @@ export interface UsersSelect<T extends boolean = true> {
 export interface CatalogsSelect<T extends boolean = true> {
   lastEditedBy?: T;
   revision?: T;
+  filterMetadata?:
+    | T
+    | {
+        dynasty?:
+          | T
+          | {
+              state?: T;
+              tokens?: T;
+            };
+        textAuthor?:
+          | T
+          | {
+              state?: T;
+              tokens?: T;
+            };
+        calligrapher?:
+          | T
+          | {
+              state?: T;
+              tokens?: T;
+            };
+        originalRegion?:
+          | T
+          | {
+              state?: T;
+              tokens?: T;
+            };
+        script?:
+          | T
+          | {
+              state?: T;
+              tokens?: T;
+            };
+      };
   catalogId?: T;
   sourceId?: T;
   kind?: T;
