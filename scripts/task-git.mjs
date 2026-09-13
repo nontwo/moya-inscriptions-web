@@ -11,12 +11,14 @@
  * checked-out task branch to the same name on origin and sets its upstream.
  * Git runs from fixed argument arrays without a shell, and the message reaches
  * `git commit` on stdin as data. Before writing, the helper verifies that it
- * runs inside the repository it belongs to, that a non-main task branch is
- * checked out, that origin is this GitHub repository, and that the
- * core-credential hooks are installed and active; the hooks then run as usual.
- * A failed check or an unavailable runtime stops the operation with a category
- * and never falls back to raw Git. This is a guard against accidental misuse,
- * not a sandbox against a hostile agent.
+ * runs inside the repository it belongs to, that a non-main task branch
+ * (refs/heads/) is checked out, that origin resolves after URL rewrites to
+ * exactly this GitHub repository, and that the core-credential hooks are
+ * installed and active; the hooks then run as usual. A failed check or an
+ * unavailable runtime stops the operation with a REFUSED category before
+ * anything is written; once Git is asked to commit or push, any failure or
+ * stop is FAILED. It never falls back to raw Git. This is a guard against
+ * accidental misuse, not a sandbox against a hostile agent.
  */
 import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
@@ -27,11 +29,15 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+// Each form with and without `.git`, so that a same-repository rewrite such as
+// a user-level https-to-ssh `insteadOf` still resolves to an expected URL.
 const EXPECTED_ORIGINS = new Set([
   "https://github.com/nontwo/moya-inscriptions-web.git",
   "https://github.com/nontwo/moya-inscriptions-web",
   "git@github.com:nontwo/moya-inscriptions-web.git",
+  "git@github.com:nontwo/moya-inscriptions-web",
   "ssh://git@github.com/nontwo/moya-inscriptions-web.git",
+  "ssh://git@github.com/nontwo/moya-inscriptions-web",
 ]);
 const TASK_BRANCH =
   /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._/-]*$/u;
@@ -46,15 +52,15 @@ const REMEDY = {
   TASK_BRANCH_REQUIRED:
     "Check out the task branch (<prefix>/<slug>, never main) before committing or pushing.",
   ORIGIN_MISMATCH:
-    "origin must be the nontwo/moya-inscriptions-web GitHub repository without a push URL or mirror override.",
+    "origin must resolve, after any URL rewrite, to exactly one nontwo/moya-inscriptions-web GitHub URL for fetch and push, without a push URL or mirror override.",
   CREDENTIAL_HOOKS_UNVERIFIED:
     "Install or repair the core-credential hooks (pnpm confidentiality:install), then retry.",
   MESSAGE_INVALID: "Provide a non-empty commit message of at most 64 KiB.",
   NOTHING_STAGED: "Stage the intended changes with git add first.",
   GIT_COMMIT_FAILED:
-    "git commit failed (for example a credential hook BLOCK); read its output.",
+    "git commit failed or was stopped (for example a credential hook BLOCK or the deadline); read its output and check git status and git log before any retry.",
   GIT_PUSH_FAILED:
-    "git push failed (for example a rejected non-fast-forward); read its output. Never force.",
+    "git push failed or was stopped (for example a rejected non-fast-forward or the deadline); read its output and check the remote branch before any retry. Never force.",
 };
 
 class Refusal extends Error {}
@@ -73,8 +79,12 @@ function gitEnvironment() {
   return env;
 }
 
-function run(command, args, { input, output = "pipe", timeout = 10_000 } = {}) {
-  const result = spawnSync(command, args, {
+function spawn(
+  command,
+  args,
+  { input, output = "pipe", timeout = 10_000 } = {},
+) {
+  return spawnSync(command, args, {
     env: gitEnvironment(),
     encoding: "utf8",
     input,
@@ -83,12 +93,37 @@ function run(command, args, { input, output = "pipe", timeout = 10_000 } = {}) {
     // Git and hook output go to stderr so stdout stays one JSON line.
     stdio: output === "stderr" ? ["pipe", 2, 2] : ["pipe", "pipe", "pipe"],
   });
+}
+
+function run(command, args, options) {
+  const result = spawn(command, args, options);
   if (result.error) throw new Refusal("GIT_UNAVAILABLE");
   return result;
 }
 
 function git(args, options) {
   return run("git", args, options);
+}
+
+// A refusal promises that nothing was written, so it ends only the checks
+// before a write. Once Git is asked to commit or push, every error is that
+// write's failure: a deadline or a broken input pipe does not prove that
+// nothing was written, and a process that never started cannot be told apart
+// from one that did on every platform.
+export function writeOutcome(result, failure) {
+  return result.error || result.status !== 0 ? { failure } : null;
+}
+
+function gitWrite(args, failure, input) {
+  const outcome = writeOutcome(
+    spawn("git", args, { input, output: "stderr", timeout: 150_000 }),
+    failure,
+  );
+  if (outcome) return outcome;
+  const head = spawn("git", ["rev-parse", "HEAD"]);
+  return head.error || head.status !== 0
+    ? { failure }
+    : { commit: head.stdout.trim() };
 }
 
 function value(args) {
@@ -111,7 +146,12 @@ function verifyContext() {
   const top = value(["rev-parse", "--show-toplevel"]);
   if (top === null || realpathSync(top) !== realpathSync(ROOT))
     throw new Refusal("WRONG_WORKTREE");
-  const branch = value(["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  // The full ref, not `--short`: a tag or other ref sharing the branch's short
+  // name shortens to `heads/<name>`, and HEAD may point outside refs/heads/.
+  const ref = value(["symbolic-ref", "--quiet", "HEAD"]);
+  const branch = ref?.startsWith("refs/heads/")
+    ? ref.slice("refs/heads/".length)
+    : null;
   if (
     branch === null ||
     branch === "main" ||
@@ -119,10 +159,13 @@ function verifyContext() {
     git(["check-ref-format", "--branch", branch]).status !== 0
   )
     throw new Refusal("TASK_BRANCH_REQUIRED");
-  const origin = value(["config", "--get", "remote.origin.url"]);
+  // Git's own resolution after insteadOf/pushInsteadOf rewrites, one URL per
+  // line: a second configured URL makes the output a non-member of the set.
+  const origin = (...mode) =>
+    value(["remote", "get-url", ...mode, "--all", "origin"]);
   if (
-    origin === null ||
-    !EXPECTED_ORIGINS.has(origin) ||
+    !EXPECTED_ORIGINS.has(origin()) ||
+    !EXPECTED_ORIGINS.has(origin("--push")) ||
     value(["config", "--get", "remote.origin.pushurl"]) !== null ||
     value(["config", "--bool", "--get", "remote.origin.mirror"]) === "true"
   )
@@ -162,19 +205,16 @@ export function main(argv) {
       value(["rev-parse", "-q", "--verify", "MERGE_HEAD"]) !== null;
     if (staged === 0 && !merging) throw new Refusal("NOTHING_STAGED");
     if (staged !== 0 && staged !== 1) throw new Refusal("GIT_UNAVAILABLE");
-    const result = git(["commit", "--file=-"], {
-      input: message,
-      output: "stderr",
-      timeout: 150_000,
-    });
-    if (result.status !== 0) return { failure: "GIT_COMMIT_FAILED" };
-    return {
-      operation: "commit",
-      branch,
-      commit: value(["rev-parse", "HEAD"]),
-    };
+    const outcome = gitWrite(
+      ["commit", "--file=-"],
+      "GIT_COMMIT_FAILED",
+      message,
+    );
+    return outcome.failure
+      ? outcome
+      : { operation: "commit", branch, ...outcome };
   }
-  const result = git(
+  const outcome = gitWrite(
     [
       "push",
       "--set-upstream",
@@ -182,10 +222,9 @@ export function main(argv) {
       "origin",
       `refs/heads/${branch}:refs/heads/${branch}`,
     ],
-    { output: "stderr", timeout: 150_000 },
+    "GIT_PUSH_FAILED",
   );
-  if (result.status !== 0) return { failure: "GIT_PUSH_FAILED" };
-  return { operation: "push", branch, commit: value(["rev-parse", "HEAD"]) };
+  return outcome.failure ? outcome : { operation: "push", branch, ...outcome };
 }
 
 function isEntryPoint() {
