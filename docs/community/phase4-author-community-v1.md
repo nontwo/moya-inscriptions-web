@@ -256,3 +256,16 @@ Mobile feedback verification also exposed a retained desktop inline pager height
 when the existing runtime switches to phone/tablet presentation. Clear that
 height when panels own vertical scrolling, with a regression for both
 directions; the existing pager engine and navigation behavior remain intact.
+
+## Owner inscription list correction (2026-09-13)
+
+The Owner's follow-up screenshot clarifies that Inscriptions must retain the
+existing one-item-per-row presentation from `home/catalog-screen.tsx` and the
+`inscriptionList` / `inscriptionCard` styles. The earlier Phase 4 use of the
+Home masonry here was incorrect. Reuse the established horizontal row
+media/title layout for filtered discovery items. Home remains masonry; its
+single/double column preference must not change Inscriptions into a grid.
+Preserve the fixed author bar, vertical-only scrolling, filters, pagination,
+Detail/Back and existing long-press actions. This correction changes only Web
+presentation and focused product evidence; no API/data/workflow change or new
+publication authority.

@@ -387,16 +387,26 @@ const ScopedDiscoveryFeed = ({
           </form>
         </details>
       )}
-      <CatalogMasonry
-        items={snapshot.items}
-        getKey={(i) => `${i.target.type}:${i.target.id}`}
-        isFullSpan={(i) => !!i.media && i.media.width / i.media.height >= 2.4}
-        feedLayout={shell.feedLayout}
-        platform={shell.platform}
-        renderItem={(item, onMediaSettled) => (
-          <ContentCard item={item} onMediaSettled={onMediaSettled} />
-        )}
-      />
+      {kind === "inscription" ? (
+        <ul className={homeStyles.inscriptionList} data-inscription-list="">
+          {snapshot.items.map((item) => (
+            <li key={`${item.target.type}:${item.target.id}`}>
+              <ContentCard item={item} variant="inscription" />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <CatalogMasonry
+          items={snapshot.items}
+          getKey={(i) => `${i.target.type}:${i.target.id}`}
+          isFullSpan={(i) => !!i.media && i.media.width / i.media.height >= 2.4}
+          feedLayout={shell.feedLayout}
+          platform={shell.platform}
+          renderItem={(item, onMediaSettled) => (
+            <ContentCard item={item} onMediaSettled={onMediaSettled} />
+          )}
+        />
+      )}
       {!busy && !error && snapshot.cursor && !snapshot.items.length && (
         <p role="status">没有符合条件的内容</p>
       )}
