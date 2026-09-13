@@ -19,7 +19,7 @@ vi.mock("../shell/horizontal-pager", () => ({ HorizontalPager: () => null }));
 vi.mock("./profile-list", () => ({ ProfileList: () => null }));
 vi.mock("./avatar-image", () => ({
   readAvatarImage: async () => ({ image: {}, url: "blob:synthetic-avatar" }),
-  exportAvatar: async () => new Blob(["synthetic png"], { type: "image/png" }),
+  exportAvatarSnapshot: () => "data:image/png;base64,c3ludGhldGlj",
 }));
 vi.mock("react-easy-crop", async () => {
   const { useEffect } = await import("react");
@@ -95,8 +95,7 @@ let me: () => Promise<Response>,
   bind: () => Promise<Response>,
   bound: boolean;
 let readProfile: () => Promise<Response>;
-const saved = vi.fn(),
-  closed = vi.fn(),
+const closed = vi.fn(),
   requests: { path: string; init: RequestInit }[] = [];
 const Harness = () => {
   const author = useAuthors();
@@ -108,7 +107,6 @@ const Harness = () => {
         <AvatarEditor
           profile={profile}
           file={photo}
-          onSaved={saved}
           onClose={() => {
             closed();
             setOpen(false);
@@ -121,6 +119,7 @@ const Harness = () => {
 beforeEach(async () => {
   vi.clearAllMocks();
   requests.length = 0;
+  window.localStorage.clear();
   bound = false;
   readProfile = async () => reply({ ...profile, avatar: bound ? media : null });
   me = async () => reply(owner);
@@ -196,7 +195,6 @@ it("waits for same-owner picker focus refresh, then saves and refreshes shared a
   expect(posts("/media")).toHaveLength(0);
   await act(async () => check.resolve(reply(owner)));
   await click();
-  expect(saved).toHaveBeenCalledOnce();
   expect(closed).toHaveBeenCalledOnce();
   expect(node.querySelector("output")?.getAttribute("data-shared-avatar")).toBe(
     media.src,
@@ -221,7 +219,6 @@ it.each(["upload", "bind"])(
         ),
       );
     });
-    expect(saved).toHaveBeenCalledOnce();
     expect(closed).toHaveBeenCalledOnce();
     await act(async () => check.resolve(reply(owner)));
     expect(
@@ -246,7 +243,6 @@ it.each(["switch", "logout"])(
     expect(authorClient.account()).toBe(phase === "switch" ? other.id : null);
     await act(async () => write.resolve(reply(media)));
     expect(posts("/me/avatar")).toHaveLength(0);
-    expect(saved).not.toHaveBeenCalled();
   },
 );
 it("retains crop and explicitly reconfirms after a failed session check", async () => {
@@ -258,9 +254,8 @@ it("retains crop and explicitly reconfirms after a failed session check", async 
   me = async () => reply(owner);
   await click("重新确认账户");
   await click();
-  expect(saved).toHaveBeenCalledOnce();
 });
-it("reuses the accepted binding identity after a concurrent refresh failure", async () => {
+it("automatically resumes the accepted binding identity after a concurrent refresh failure", async () => {
   const accepted = deferred();
   bind = () => accepted.promise;
   await click();
@@ -270,18 +265,75 @@ it("reuses the accepted binding identity after a concurrent refresh failure", as
   await act(async () =>
     accepted.resolve(reply({ nextChangeAt: "2099-01-01T05:00:00Z" })),
   );
-  expect(saved).not.toHaveBeenCalled();
-  expect(button("保存头像").disabled).toBe(true);
+  expect(node.querySelector("dialog")).toBeNull();
+  expect(node.textContent).toContain("等待网络恢复");
   me = async () => reply(owner);
   bind = async () => reply({ nextChangeAt: "2099-01-01T05:00:00Z" });
-  await click("重新确认账户");
-  await click();
+  await focus();
   expect(posts("/media")).toHaveLength(1);
   expect(posts("/me/avatar")).toHaveLength(2);
   expect(posts("/me/avatar")[1]?.init.body).toBe(
     posts("/me/avatar")[0]?.init.body,
   );
-  expect(saved).toHaveBeenCalledOnce();
+  expect(node.querySelector("output")?.getAttribute("data-shared-avatar")).toBe(
+    media.src,
+  );
+});
+
+it.each(["upload", "bind"])(
+  "restores a Save after full provider unmount/reload during %s",
+  async (phase) => {
+    const interrupted = deferred();
+    if (phase === "upload") upload = () => interrupted.promise;
+    else bind = () => interrupted.promise;
+    await click();
+    const firstUpload = posts("/media")[0]!.init.headers;
+    const firstBind = posts("/me/avatar")[0]?.init.body;
+    const stored = localStorage.getItem(`yoyi-avatar-save-v1:${owner.id}`);
+    expect(stored).toContain("data:image/png;base64,");
+    expect(closed).toHaveBeenCalledOnce();
+    await act(async () => root.unmount());
+    upload = async () => reply(media);
+    bind = async () => {
+      bound = true;
+      return reply({ nextChangeAt: "2099-01-01T05:00:00Z" });
+    };
+    root = createRoot(node);
+    await act(async () =>
+      root.render(
+        <AuthorProvider signInHref="/dev/community">
+          <output data-reloaded="" />
+        </AuthorProvider>,
+      ),
+    );
+    expect(node.textContent).toContain("头像已更换");
+    expect(localStorage.getItem(`yoyi-avatar-save-v1:${owner.id}`)).toBeNull();
+    if (phase === "upload")
+      expect(posts("/media")[1]?.init.headers).toEqual(firstUpload);
+    else {
+      expect(posts("/media")).toHaveLength(1);
+      expect(posts("/me/avatar")[1]?.init.body).toEqual(firstBind);
+    }
+    await act(async () =>
+      interrupted.resolve(
+        reply(
+          phase === "upload" ? media : { nextChangeAt: "2099-01-01T05:00:00Z" },
+        ),
+      ),
+    );
+  },
+);
+
+it("records a real daily-limit rejection without retrying into another day or losing pending image", async () => {
+  bind = async () => reply({ error: { message: "daily limit" } }, 409);
+  readProfile = async () =>
+    reply({ ...profile, nextAvatarChangeAt: "2099-01-02T05:00:00Z" });
+  await click();
+  expect(node.textContent).toContain("2099年1月2日");
+  const intent = localStorage.getItem(`yoyi-avatar-save-v1:${owner.id}`)!;
+  expect(intent).toContain("data:image/png;base64,");
+  await focus();
+  expect(posts("/me/avatar")).toHaveLength(1);
 });
 
 it("keeps the actual profile and crop when an obsolete profile read rejects after refresh failure", async () => {
@@ -327,4 +379,111 @@ it("keeps the actual profile and crop when an obsolete profile read rejects afte
   me = async () => reply(owner);
   await click("重新确认账户");
   expect(button("保存头像").disabled).toBe(false);
+});
+
+it("resumes a pending offline reload on online without focus, and rearms failed revalidation", async () => {
+  const interrupted = deferred();
+  upload = () => interrupted.promise;
+  await click();
+  await act(async () => root.unmount());
+  root = createRoot(node);
+  vi.useFakeTimers();
+  me = async () => reply({}, 503);
+  await act(async () =>
+    root.render(
+      <AuthorProvider signInHref="/dev/community">
+        <output />
+      </AuthorProvider>,
+    ),
+  );
+  const before = requests.filter((r) => r.path === "/api/community/me").length;
+  await act(async () => vi.advanceTimersByTimeAsync(2000));
+  expect(
+    requests.filter((r) => r.path === "/api/community/me").length,
+  ).toBeGreaterThan(before);
+  await act(async () => vi.advanceTimersByTimeAsync(4000));
+  expect(
+    requests.filter((r) => r.path === "/api/community/me").length,
+  ).toBeGreaterThan(before + 1);
+  upload = async () => reply(media);
+  me = async () => reply(owner);
+  await act(async () => window.dispatchEvent(new Event("online")));
+  expect(node.textContent).toContain("头像已更换");
+  expect(localStorage.getItem(`yoyi-avatar-save-v1:${owner.id}`)).toBeNull();
+  await act(async () => interrupted.resolve(reply(media)));
+  vi.useRealTimers();
+});
+
+it("does not overwrite another tab's replacement intent after a delayed conflict reconciliation", async () => {
+  const conflictProfile = deferred(),
+    replacementUpload = deferred();
+  bind = async () => reply({ error: { message: "daily limit" } }, 409);
+  readProfile = () => conflictProfile.promise.then((r) => r.clone());
+  await click();
+  const storageKey = `yoyi-avatar-save-v1:${owner.id}`;
+  const first = JSON.parse(localStorage.getItem(storageKey)!);
+  const replacement = {
+    ...first,
+    uploadId: "00000000-0000-4000-8000-000000000002",
+    saveId: "00000000-0000-4000-8000-000000000003",
+    png: "data:image/png;base64,bmV3",
+  };
+  delete replacement.mediaId;
+  localStorage.setItem(storageKey, JSON.stringify(replacement));
+  upload = () => replacementUpload.promise;
+  await act(async () =>
+    window.dispatchEvent(new StorageEvent("storage", { key: storageKey })),
+  );
+  await act(async () =>
+    conflictProfile.resolve(
+      reply({ ...profile, nextAvatarChangeAt: "2099-01-02T05:00:00Z" }),
+    ),
+  );
+  expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual(replacement);
+  expect(posts("/media").at(-1)?.init.headers).toMatchObject({
+    "x-request-id": replacement.uploadId,
+  });
+  expect(node.textContent).not.toContain("今天已更换");
+  bind = async () => {
+    bound = true;
+    return reply({ nextChangeAt: "2099-01-02T05:00:00Z" });
+  };
+  readProfile = async () => reply({ ...profile, avatar: media });
+  await act(async () => replacementUpload.resolve(reply(media)));
+});
+
+it("rearms account confirmation when a conflict reconciliation overlaps a failed session refresh", async () => {
+  const reconciliation = deferred();
+  bind = async () => reply({ error: { message: "conflict" } }, 409);
+  readProfile = () => reconciliation.promise.then((r) => r.clone());
+  await click();
+  me = async () => reply({}, 503);
+  await focus();
+  vi.useFakeTimers();
+  await act(async () => reconciliation.resolve(reply(profile)));
+  const before = requests.filter((r) => r.path === "/api/community/me").length;
+  me = async () => reply(owner);
+  bind = async () => {
+    bound = true;
+    return reply({ nextChangeAt: "2099-01-01T05:00:00Z" });
+  };
+  readProfile = async () => reply({ ...profile, avatar: media });
+  await act(async () => vi.advanceTimersByTimeAsync(2000));
+  expect(
+    requests.filter((r) => r.path === "/api/community/me").length,
+  ).toBeGreaterThan(before);
+  expect(localStorage.getItem(`yoyi-avatar-save-v1:${owner.id}`)).toBeNull();
+  expect(node.textContent).toContain("头像已更换");
+  vi.useRealTimers();
+});
+
+it("retries a definitive upload rejection with the retained crop and request IDs", async () => {
+  upload = async () => reply({}, 422);
+  await click();
+  expect(node.textContent).toContain("服务器未接受图像");
+  const first = posts("/media")[0]!.init.headers;
+  upload = async () => reply(media);
+  await click("重试保存");
+  expect(posts("/media")[1]!.init.headers).toEqual(first);
+  expect(node.textContent).toContain("头像已更换");
 });

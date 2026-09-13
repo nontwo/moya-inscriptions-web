@@ -1,12 +1,37 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { exportAvatar, readAvatarImage } from "./avatar-image";
+import {
+  exportAvatar,
+  exportAvatarSnapshot,
+  normalizeAvatarPng,
+  readAvatarImage,
+} from "./avatar-image";
 let decoded: {
   naturalWidth: number;
   naturalHeight: number;
   src: string;
   decode: ReturnType<typeof vi.fn>;
 };
+const chunk = (type: string, data: number[] = []) => {
+  const bytes = new Uint8Array(12 + data.length);
+  new DataView(bytes.buffer).setUint32(0, data.length);
+  bytes.set(
+    Array.from(type, (c) => c.charCodeAt(0)),
+    4,
+  );
+  bytes.set(data, 8);
+  return bytes;
+};
+const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+const png = (...chunks: Uint8Array[]) =>
+  Uint8Array.from([...signature, ...chunks.flatMap((c) => [...c])]);
+const syntheticPng = png(
+  chunk("IHDR", [8, 6]),
+  chunk("sRGB", [0]),
+  chunk("eXIf", [1, 2, 3]),
+  chunk("IDAT", [42, 99]),
+  chunk("IEND"),
+);
 beforeEach(() => {
   decoded = {
     naturalWidth: 1200,
@@ -90,7 +115,11 @@ it("exports the exact natural-pixel crop directly as a bounded 512px PNG", async
     expect(this.width).toBe(512);
     expect(this.height).toBe(512);
     expect(type).toBe("image/png");
-    callback(new Blob(["synthetic output"], { type: type ?? "image/png" }));
+    const blob = new Blob([syntheticPng], { type: type ?? "image/png" });
+    Object.defineProperty(blob, "arrayBuffer", {
+      value: async () => syntheticPng.buffer,
+    });
+    callback(blob);
   });
   const image = decoded as unknown as HTMLImageElement;
   const output = await exportAvatar(image, {
@@ -119,4 +148,42 @@ it("rejects invalid crop coordinates and an unavailable export", async () => {
   await expect(
     exportAvatar(image, { x: 0, y: 0, width: 600, height: 600 }),
   ).rejects.toThrow("图像导出失败");
+});
+
+it("strips Safari ancillary metadata without changing compressed pixels or retained chunk CRCs", () => {
+  const expected = png(
+    chunk("IHDR", [8, 6]),
+    chunk("sRGB", [0]),
+    chunk("IDAT", [42, 99]),
+    chunk("IEND"),
+  );
+  expect(normalizeAvatarPng(syntheticPng)).toEqual(expected);
+  expect(normalizeAvatarPng(expected)).toEqual(expected);
+  expect(() => normalizeAvatarPng(syntheticPng.subarray(0, -1))).toThrow(
+    "导出失败",
+  );
+  expect(() =>
+    normalizeAvatarPng(png(chunk("IHDR"), chunk("PLTE"), chunk("IEND"))),
+  ).toThrow("格式不支持");
+});
+it("creates a synchronous normalized sRGB snapshot for the Save click", () => {
+  const context = vi
+    .spyOn(HTMLCanvasElement.prototype, "getContext")
+    .mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+    `data:image/png;base64,${btoa(String.fromCharCode(...syntheticPng))}`,
+  );
+  const output = exportAvatarSnapshot(decoded as unknown as HTMLImageElement, {
+    x: 0,
+    y: 0,
+    width: 600,
+    height: 600,
+  });
+  expect(typeof output).toBe("string");
+  expect(context).toHaveBeenCalledWith("2d", { colorSpace: "srgb" });
+  expect(
+    Uint8Array.from(atob(output.split(",")[1]!), (c) => c.charCodeAt(0)),
+  ).toEqual(normalizeAvatarPng(syntheticPng));
 });

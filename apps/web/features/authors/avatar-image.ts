@@ -33,10 +33,10 @@ export const readAvatarImage = async (file: File): Promise<AvatarImage> => {
 };
 
 /** The cropper reports natural-image pixels, including browser-applied orientation. */
-export const exportAvatar = async (
+const avatarCanvas = (
   image: HTMLImageElement,
   area: Area,
-): Promise<Blob> => {
+): HTMLCanvasElement => {
   const { x, y, width, height } = area;
   if (
     ![x, y, width, height].every(Number.isFinite) ||
@@ -51,9 +51,73 @@ export const exportAvatar = async (
     throw Error("裁剪区域尚未就绪，请重试");
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 512;
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d", { colorSpace: "srgb" });
   if (!context) throw Error("当前浏览器无法导出图像");
   context.drawImage(image, x, y, width, height, 0, 0, 512, 512);
+  return canvas;
+};
+
+/** Safari adds eXIf even to an sRGB canvas. Keep only the Backend's accepted
+ * chunks; their original bytes/CRCs and compressed pixels remain unchanged. */
+export const normalizeAvatarPng = (bytes: Uint8Array): Uint8Array => {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length > MAX_BYTES || !signature.every((b, i) => bytes[i] === b))
+    throw Error("图像导出失败，请重试");
+  const chunks = [bytes.subarray(0, 8)];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8,
+    ended = false;
+  while (offset + 12 <= bytes.length) {
+    const size = view.getUint32(offset),
+      end = offset + size + 12;
+    if (end > bytes.length) throw Error("图像导出失败，请重试");
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    if (["IHDR", "IDAT", "IEND", "sRGB", "gAMA", "pHYs", "cHRM"].includes(type))
+      chunks.push(bytes.subarray(offset, end));
+    else if (type[0] === type[0]?.toUpperCase())
+      throw Error("当前浏览器导出的图像格式不支持");
+    offset = end;
+    if (type === "IEND") {
+      ended = true;
+      break;
+    }
+  }
+  if (!ended || offset !== bytes.length) throw Error("图像导出失败，请重试");
+  const output = new Uint8Array(
+    chunks.reduce((n, chunk) => n + chunk.length, 0),
+  );
+  let index = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, index);
+    index += chunk.length;
+  }
+  return output;
+};
+
+/** Synchronous, bounded512px snapshot: Save can durably record intent in the
+ * same click handler, before any navigation/unload can interrupt an await. */
+export const exportAvatarSnapshot = (
+  image: HTMLImageElement,
+  area: Area,
+): string => {
+  const data = avatarCanvas(image, area).toDataURL("image/png");
+  if (!data.startsWith("data:image/png;base64,"))
+    throw Error("图像导出失败，请重试");
+  const raw = atob(data.slice("data:image/png;base64,".length));
+  const bytes = normalizeAvatarPng(
+    Uint8Array.from(raw, (c) => c.charCodeAt(0)),
+  );
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return `data:image/png;base64,${btoa(binary)}`;
+};
+
+export const exportAvatar = async (
+  image: HTMLImageElement,
+  area: Area,
+): Promise<Blob> => {
+  const canvas = avatarCanvas(image, area);
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (value) =>
@@ -63,5 +127,12 @@ export const exportAvatar = async (
   );
   if (blob.type !== "image/png" || blob.size > MAX_BYTES)
     throw Error("图像导出失败，请重试");
-  return blob;
+  return new Blob(
+    [
+      normalizeAvatarPng(
+        new Uint8Array(await blob.arrayBuffer()),
+      ) as Uint8Array<ArrayBuffer>,
+    ],
+    { type: "image/png" },
+  );
 };

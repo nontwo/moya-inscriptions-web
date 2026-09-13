@@ -163,11 +163,7 @@ const ScopedAuthorProfileOverlay = ({
         data-profile-background-slot=""
       >
         {profile?.isOwner && profile.id === author.viewer?.id ? (
-          <AvatarEntry
-            profile={profile}
-            className={styles.avatar}
-            onSaved={save}
-          >
+          <AvatarEntry profile={profile} className={styles.avatar}>
             {profile.avatar ? (
               <img src={profile.avatar.src} alt="" width={80} height={80} />
             ) : (

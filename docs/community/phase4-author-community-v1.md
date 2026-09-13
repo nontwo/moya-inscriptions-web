@@ -320,3 +320,40 @@ verification must retain the failed attempt and demonstrate synchronized profile
 and header avatars after the same request is retried. Owner acceptance is still
 pending on the corrected exact Head; no allowance reset or other frozen feature
 restoration is authorized.
+
+### Avatar Save survives navigation and refresh
+
+Owner acceptance failed again on the previous candidate. The Owner explicitly
+requires a Save click to commit the avatar intent independently of the crop
+editor, including Back and page refresh. This is an avatar-only acceptance delta
+inside the same Phase 4 task/PR126.
+
+| Scenario                                    | Development                                                                                             | Production            | Must Preserve                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------- |
+| Save click                                  | Synchronously retain bounded cropped PNG and stable upload/binding IDs before starting requests         | No new upload surface | Actual account owns the intent; no credentials in local storage |
+| Back after Save                             | Editor closes without an unsaved warning; page continues the save                                       | No new upload surface | Cancel before Save still performs no upload                     |
+| Refresh during upload or binding            | Confirm the same signed-in owner, restore the pending intent and finish or replay the existing requests | No new upload surface | Backend idempotency and one success per New York date           |
+| Network interruption                        | Keep pending crop, retry while page is available and on connection/focus recovery                       | No new upload surface | Never report success until the backend confirms it              |
+| Actual account switch/logout                | Suspend that owner's pending operation; never bind using another account                                | No new upload surface | Existing backend authorization and media ownership              |
+| Storage/export failure or backend rejection | Show an actionable failure; preserve the editor or pending result                                       | No new upload surface | No fake success, limit reset or validation weakening            |
+
+Browser persistence is scoped to the same site origin and browser storage.
+Leaving a page cannot keep its JavaScript running indefinitely; reopening or
+refreshing that site resumes an unacknowledged save. No service, DB, API
+contract, external processor, work editor, or general navigation redesign is
+introduced.
+
+The phone's generic save error was a separate confirmed upload-format bug:
+WebKit's native canvas PNG includes eXIf metadata, which the existing strict
+Backend correctly rejected with422. Avatar export now explicitly renders sRGB
+and removes only disallowed ancillary chunks from the generated PNG. Retained
+chunks, CRCs and compressed pixels are unchanged; the Backend validator and the
+frozen work editor remain unchanged. Both WebKit and Chromium outputs, including
+P3 source input, pass the actual validator with no pixel difference between the
+same exported PNG before and after normalization.
+
+After Save, the existing author provider owns the pending job. Unacknowledged
+uploads and bindings reuse their original request identities after return,
+refresh or network recovery. Definitive rejections stop automatic retry; the
+retained image can be retried explicitly. A server receipt is reconciled with
+the current profile before clearing local state or reporting success.

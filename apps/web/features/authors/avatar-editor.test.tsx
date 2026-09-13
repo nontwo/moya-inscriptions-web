@@ -30,6 +30,7 @@ const state = vi.hoisted(() => ({
   notify: vi.fn(),
   read: vi.fn(),
   export: vi.fn(),
+  save: vi.fn(),
   crop: null as CropProps | null,
 }));
 vi.mock("./author-data", () => ({
@@ -56,11 +57,13 @@ vi.mock("./author-context", () => ({
     refresh: state.refresh,
     mutate: state.mutate,
     notify: state.notify,
+    avatarSave: null,
+    saveAvatar: state.save,
   }),
 }));
 vi.mock("./avatar-image", () => ({
   readAvatarImage: state.read,
-  exportAvatar: state.export,
+  exportAvatarSnapshot: state.export,
 }));
 vi.mock("react-easy-crop", async () => {
   const { useEffect } = await import("react");
@@ -77,7 +80,6 @@ vi.mock("react-easy-crop", async () => {
   };
 });
 import { AvatarEditor, AvatarEntry } from "./avatar-editor";
-import { AuthorRequestError } from "./author-data";
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -99,10 +101,9 @@ const profile: AuthorProfile = {
   totals: { works: 0, following: 0, followers: 0, favorites: 0, likes: 0 },
 };
 let root: Root, node: HTMLDivElement;
-const blob = new Blob(["synthetic output"], { type: "image/png" });
+const snapshot = "data:image/png;base64,c3ludGhldGlj";
 const file = new File(["synthetic input"], "photo.jpg", { type: "image/jpeg" });
-const close = vi.fn(),
-  saved = vi.fn();
+const close = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   state.account = profile.id;
@@ -111,7 +112,8 @@ beforeEach(() => {
   state.crop = null;
   state.upload.mockResolvedValue({ id: "media-synthetic-avatar" });
   state.avatar.mockResolvedValue({ nextChangeAt: "2099-01-01T05:00:00Z" });
-  state.export.mockResolvedValue(blob);
+  state.export.mockReturnValue(snapshot);
+  state.save.mockImplementation(() => undefined);
   state.read.mockResolvedValue({ image: {}, url: "blob:synthetic-avatar" });
   Object.defineProperty(URL, "revokeObjectURL", {
     configurable: true,
@@ -147,7 +149,6 @@ const render = async (next: string | null = null) =>
         profile={{ ...profile, nextAvatarChangeAt: next }}
         file={file}
         onClose={close}
-        onSaved={saved}
       />,
     ),
   );
@@ -157,18 +158,10 @@ const button = (name: string) =>
   )!;
 const click = async (name = "保存头像") =>
   act(async () => button(name).click());
-const deferred = () => {
-  let resolve!: (value: unknown) => void;
-  const promise = new Promise<unknown>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-};
-
 it("opens the device picker before the editor and keeps other authors read-only", async () => {
   await act(async () =>
     root.render(
-      <AvatarEntry profile={profile} className="avatar" onSaved={saved}>
+      <AvatarEntry profile={profile} className="avatar">
         <span>头</span>
       </AvatarEntry>,
     ),
@@ -185,11 +178,7 @@ it("opens the device picker before the editor and keeps other authors read-only"
   expect(node.querySelector("dialog")).not.toBeNull();
   await act(async () =>
     root.render(
-      <AvatarEntry
-        profile={{ ...profile, isOwner: false }}
-        className="avatar"
-        onSaved={saved}
-      >
+      <AvatarEntry profile={{ ...profile, isOwner: false }} className="avatar">
         头
       </AvatarEntry>,
     ),
@@ -217,54 +206,50 @@ it("cancel before saving never uploads or binds", async () => {
   expect(state.upload).not.toHaveBeenCalled();
   expect(state.avatar).not.toHaveBeenCalled();
 });
-it("preserves crop after upload failure and retries the same upload identity", async () => {
-  state.upload.mockRejectedValueOnce(Error("上传失败"));
+it("commits the exact crop synchronously, closes and never treats accepted Save as dirty", async () => {
+  await render();
+  await act(async () => {
+    state.crop!.onCropChange({ x: 32, y: 21 });
+    state.crop!.onCropAreaChange(
+      {},
+      { x: 123, y: 40, width: 400, height: 400 },
+    );
+  });
+  await click();
+  expect(state.export).toHaveBeenCalledWith(
+    {},
+    { x: 123, y: 40, width: 400, height: 400 },
+  );
+  expect(state.save).toHaveBeenCalledWith(snapshot);
+  expect(close).toHaveBeenCalledOnce();
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(false);
+  expect(button("返回").disabled).toBe(false);
+});
+it("storage failure keeps crop and the editor available without claiming success", async () => {
+  state.save.mockImplementation(() => {
+    throw Error("本机存储不可用");
+  });
   await render();
   await act(async () => state.crop!.onCropChange({ x: 32, y: 21 }));
   await click();
-  expect(node.querySelector('[role="alert"]')?.textContent).toBe("上传失败");
+  expect(node.querySelector('[role="alert"]')?.textContent).toBe(
+    "本机存储不可用",
+  );
   expect(state.crop!.crop).toEqual({ x: 32, y: 21 });
+  expect(close).not.toHaveBeenCalled();
+  state.save.mockImplementation(() => undefined);
   await click();
-  expect(state.upload.mock.calls[1]).toEqual(state.upload.mock.calls[0]);
-  expect(state.export).toHaveBeenCalledOnce();
-  expect(saved).toHaveBeenCalledOnce();
-  expect(state.mutate).toHaveBeenCalledOnce();
   expect(close).toHaveBeenCalledOnce();
 });
-it("retries failed binding without uploading again or changing the save identity", async () => {
-  state.avatar.mockRejectedValueOnce(Error("保存未确认"));
-  await render();
-  await click();
-  await click();
-  expect(state.upload).toHaveBeenCalledOnce();
-  expect(state.avatar.mock.calls[1]).toEqual(state.avatar.mock.calls[0]);
-});
-it("freezes crop, duplicate save and dismissal while saving", async () => {
-  const upload = deferred();
-  state.upload.mockReturnValue(upload.promise);
+it("does not enqueue a second save from a duplicate click", async () => {
   await render();
   await act(async () => {
     button("保存头像").click();
     button("保存头像").click();
   });
-  expect(state.upload).toHaveBeenCalledOnce();
-  expect(button("返回").disabled).toBe(true);
-  await act(async () => {
-    state.crop!.onCropChange({ x: 99, y: 88 });
-    state.crop!.onZoomChange(3);
-  });
-  expect(state.crop!.crop).toEqual({ x: 0, y: 0 });
-  expect(state.crop!.zoom).toBe(1);
-  expect(state.crop!.cropperProps.tabIndex).toBe(-1);
-  expect(state.crop!.onTouchRequest()).toBe(false);
-  await act(async () =>
-    node
-      .querySelector("dialog")!
-      .dispatchEvent(new Event("cancel", { cancelable: true })),
-  );
-  expect(close).not.toHaveBeenCalled();
-  await act(async () => upload.resolve({ id: "media-synthetic-avatar" }));
-  expect(state.avatar).toHaveBeenCalledOnce();
+  expect(state.save).toHaveBeenCalledOnce();
 });
 it("shows future cooldown in New York time, but permits an expired cooldown", async () => {
   await render("2099-01-02T05:00:00Z");
@@ -277,31 +262,8 @@ it("does not treat a past next-change timestamp as a limit", async () => {
   await render("2020-01-01T05:00:00Z");
   expect(button("保存头像").disabled).toBe(false);
   await click();
-  expect(saved).toHaveBeenCalledOnce();
+  expect(state.save).toHaveBeenCalledOnce();
 });
-it("refreshes server cooldown after a competing session saves, retaining the crop", async () => {
-  state.avatar.mockRejectedValue(new AuthorRequestError(409, "daily limit"));
-  state.profile.mockResolvedValue({
-    ...profile,
-    nextAvatarChangeAt: "2099-01-02T05:00:00Z",
-  });
-  await render();
-  await act(async () => state.crop!.onCropChange({ x: 13, y: 7 }));
-  await click();
-  expect(button("保存头像").disabled).toBe(true);
-  expect(node.textContent).toContain("当前裁剪已保留");
-  expect(state.crop!.crop).toEqual({ x: 13, y: 7 });
-});
-it("does not bind under a changed account after upload completes", async () => {
-  const upload = deferred();
-  state.upload.mockReturnValue(upload.promise);
-  await render();
-  await click();
-  state.account = "user-00000000000000000000000000000002";
-  await act(async () => upload.resolve({ id: "media-synthetic-avatar" }));
-  expect(state.avatar).not.toHaveBeenCalled();
-});
-
 it("keeps the crop and waits for account confirmation before saving", async () => {
   state.checking = true;
   await render();
@@ -313,7 +275,7 @@ it("keeps the crop and waits for account confirmation before saving", async () =
   state.checking = false;
   await render();
   await click();
-  expect(saved).toHaveBeenCalledOnce();
+  expect(state.save).toHaveBeenCalledOnce();
 });
 it("blocks save and offers explicit refresh after a failed account check", async () => {
   state.sessionError = true;
@@ -323,11 +285,9 @@ it("blocks save and offers explicit refresh after a failed account check", async
   await click("重新确认账户");
   expect(state.refresh).toHaveBeenCalledOnce();
 });
-it("retains the crop and pending upload when replacement decoding fails", async () => {
-  state.avatar.mockRejectedValueOnce(Error("保存未确认"));
+it("retains the crop when replacement decoding fails before Save", async () => {
   await render();
   await act(async () => state.crop!.onCropChange({ x: 23, y: 18 }));
-  await click();
   state.read.mockRejectedValueOnce(Error("replacement invalid"));
   const input = node.querySelector<HTMLInputElement>('input[type="file"]')!;
   Object.defineProperty(input, "files", {
@@ -342,6 +302,5 @@ it("retains the crop and pending upload when replacement decoding fails", async 
   );
   expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   await click();
-  expect(state.upload).toHaveBeenCalledOnce();
-  expect(state.avatar.mock.calls[1]).toEqual(state.avatar.mock.calls[0]);
+  expect(state.save).toHaveBeenCalledWith(snapshot);
 });

@@ -5,12 +5,9 @@ import type { AuthorProfile } from "@moya/contracts";
 import Cropper from "react-easy-crop";
 import type { Area } from "react-easy-crop";
 import "react-easy-crop/react-easy-crop.css";
-import { authorClient, AuthorRequestError } from "./author-data";
 import { AuthorDialog } from "./author-dialog";
-import { requestIdentity } from "../shell/request-identity";
-import { useAuthorOperation } from "./use-author-operation";
 import { useAuthors } from "./author-context";
-import { readAvatarImage, exportAvatar } from "./avatar-image";
+import { readAvatarImage, exportAvatarSnapshot } from "./avatar-image";
 import type { AvatarImage } from "./avatar-image";
 import styles from "./avatar-editor.module.css";
 const pngFile = async (file: File): Promise<HTMLImageElement> => {
@@ -47,12 +44,10 @@ export const AvatarEntry = ({
   profile,
   className,
   children,
-  onSaved,
 }: {
   profile: AuthorProfile;
   className: string | undefined;
   children: ReactNode;
-  onSaved: () => void;
 }) => {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -66,6 +61,7 @@ export const AvatarEntry = ({
         type="button"
         className={`${className} ${styles.entry}`}
         aria-label="更换头像"
+        disabled={Boolean(author.avatarSave && !author.avatarSave.failed)}
         onClick={() =>
           availableAt(profile.nextAvatarChangeAt) > Date.now()
             ? setOpen(true)
@@ -94,7 +90,6 @@ export const AvatarEntry = ({
         <AvatarEditor
           profile={profile}
           file={file}
-          onSaved={onSaved}
           onClose={() => {
             setOpen(false);
             setFile(null);
@@ -109,12 +104,10 @@ export const AvatarEditor = ({
   profile,
   file: initialFile = null,
   onClose,
-  onSaved,
 }: {
   profile: AuthorProfile;
   file?: File | null;
   onClose: () => void;
-  onSaved: () => void;
 }) => {
   const [file, setFile] = useState(initialFile);
   const [source, setSource] = useState<AvatarImage | null>(null);
@@ -125,7 +118,7 @@ export const AvatarEditor = ({
   const [ready, setReady] = useState(false);
   const [decoding, setDecoding] = useState(false);
   const ownedSource = useRef<AvatarImage | null>(null);
-  const [next, setNext] = useState(profile.nextAvatarChangeAt);
+  const next = profile.nextAvatarChangeAt;
   const [now, setNow] = useState(Date.now);
   const input = useRef<HTMLInputElement>(null);
   const cropArea = useRef<Area | null>(null);
@@ -138,14 +131,7 @@ export const AvatarEditor = ({
       if (ownedSource.current) URL.revokeObjectURL(ownedSource.current.url);
     };
   }, []);
-  const pending = useRef<{
-    blob: Blob;
-    uploadId: string;
-    saveId: string;
-    mediaId?: string;
-  } | null>(null);
-  const operation = useAuthorOperation(),
-    author = useAuthors();
+  const author = useAuthors();
   const limited = availableAt(next) > now;
   useEffect(() => {
     if (!limited) return;
@@ -169,7 +155,6 @@ export const AvatarEditor = ({
         if (ownedSource.current) URL.revokeObjectURL(ownedSource.current.url);
         ownedSource.current = value;
         cropArea.current = null;
-        pending.current = null;
         setReady(false);
         setCrop({ x: 0, y: 0 });
         setZoom(1);
@@ -186,7 +171,7 @@ export const AvatarEditor = ({
       active = false;
     };
   }, [file]);
-  const save = async () => {
+  const save = () => {
     if (
       saving.current ||
       decoding ||
@@ -198,60 +183,24 @@ export const AvatarEditor = ({
     )
       return;
     saving.current = true;
-    setBusy(true);
     setError("");
-    const selected = { ...cropArea.current };
     try {
-      const blob =
-        pending.current?.blob ??
-        (await operation.run(() => exportAvatar(source.image, selected)));
-      const command = pending.current ?? {
-        blob,
-        uploadId: requestIdentity(),
-        saveId: requestIdentity(),
-      };
-      pending.current = command;
-      if (!command.mediaId)
-        command.mediaId = (
-          await operation.run(() => authorClient.upload(blob, command.uploadId))
-        ).id;
-      await operation.run(() =>
-        authorClient.avatar({
-          requestId: command.saveId,
-          mediaId: command.mediaId,
-        }),
-      );
-      pending.current = null;
-      onSaved();
-      author.mutate();
-      author.notify("头像已更换");
+      // No await before the durable intent: Back/reload cannot discard this save.
+      const snapshot = exportAvatarSnapshot(source.image, {
+        ...cropArea.current,
+      });
+      author.saveAvatar(snapshot);
+      setBusy(true);
       onClose();
     } catch (e) {
-      if (!mounted.current) return;
-      setError(e instanceof Error ? e.message : "头像未更换，请重试");
-      if (e instanceof AuthorRequestError && e.status === 409) {
-        try {
-          const current = await operation.run(() =>
-            authorClient.profile(profile.id),
-          );
-          setNext(current.nextAvatarChangeAt);
-          setNow(Date.now());
-          if (availableAt(current.nextAvatarChangeAt) > Date.now())
-            setError("今天已更换过头像，当前裁剪已保留。");
-        } catch {
-          /* Keep the original failure and the retryable crop. */
-        }
-      }
-    } finally {
       saving.current = false;
-      if (mounted.current) setBusy(false);
+      setError(e instanceof Error ? e.message : "头像尚未开始保存，请重试");
     }
   };
   return (
     <AuthorDialog
       title="更换头像"
-      dirty={source !== null}
-      dismissible={!busy}
+      dirty={source !== null && !busy}
       onClose={onClose}
     >
       <div className={styles.editor} aria-busy={busy}>
@@ -289,8 +238,6 @@ export const AvatarEditor = ({
               onWheelRequest={() => !saving.current}
               onCropAreaChange={(_, area) => {
                 if (saving.current) return;
-                if (JSON.stringify(cropArea.current) !== JSON.stringify(area))
-                  pending.current = null;
                 cropArea.current = area;
                 setReady(true);
               }}
@@ -382,7 +329,7 @@ export const AvatarEditor = ({
               author.checking ||
               author.sessionError
             }
-            onClick={() => void save()}
+            onClick={save}
           >
             {busy ? "正在保存…" : "保存头像"}
           </button>

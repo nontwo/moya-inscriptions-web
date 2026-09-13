@@ -19,11 +19,15 @@ import {
   setGuestFavorite,
 } from "./local-library";
 import { requestIdentity } from "../shell/request-identity";
+import { useAvatarSave } from "./avatar-save";
+import type { AvatarSaveState } from "./avatar-save";
 
 type Viewer = Awaited<ReturnType<typeof authorClient.me>>;
 interface Context {
   cache: Map<string, unknown>;
   avatarSrc: string | null;
+  avatarSave: AvatarSaveState | null;
+  saveAvatar: (png: string) => void;
   viewer: Viewer | null;
   checking: boolean;
   sessionError: boolean;
@@ -155,6 +159,22 @@ export const AuthorProvider = ({
       if (run === epoch.current) setChecking(false);
     }
   }, []);
+  const avatarSave = useAvatarSave({
+    accountId: viewer?.id ?? null,
+    checking,
+    sessionError,
+    refresh,
+    onSaved: (profile, selectedAvatarIsCurrent) => {
+      cache.current.set(`profile:${profile.id}`, profile);
+      setAvatarSrc(profile.avatar?.src ?? null);
+      setRevision((n) => n + 1);
+      setNotice(
+        selectedAvatarIsCurrent
+          ? "头像已更换"
+          : "保存已确认，当前头像已在其他页面更新。",
+      );
+    },
+  });
   useEffect(() => {
     void refresh();
     void refreshGuest();
@@ -248,6 +268,8 @@ export const AuthorProvider = ({
       value={{
         cache: cache.current,
         avatarSrc,
+        avatarSave: avatarSave.state,
+        saveAvatar: avatarSave.save,
         viewer,
         checking,
         sessionError,
@@ -264,7 +286,17 @@ export const AuthorProvider = ({
     >
       {children}
       <div className="phase4-feedback" role="status" aria-live="polite">
-        {notice}
+        {avatarSave.state?.message ?? notice}
+        {avatarSave.state?.failed && (
+          <button
+            type="button"
+            style={{ pointerEvents: "auto" }}
+            disabled={checking || sessionError}
+            onClick={avatarSave.retry}
+          >
+            重试保存
+          </button>
+        )}
         {undo && (
           <button
             type="button"
@@ -282,7 +314,7 @@ export const AuthorProvider = ({
             撤销取消收藏
           </button>
         )}
-        {notice.includes("重试") && (
+        {!avatarSave.state && notice.includes("重试") && (
           <button
             type="button"
             style={{ pointerEvents: "auto" }}
