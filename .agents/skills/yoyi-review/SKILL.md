@@ -70,7 +70,9 @@ code alone:
   review delivery, whatever the record says about merging.
 
 The implementing session does not review or deliver its own change; a separate
-session or context does.
+session or context does. Posting the report as a formal `gh pr review` asks for
+native confirmation, and neither a review nor a comment is new Owner authority
+unless it records an explicit Owner instruction.
 
 ## Report format
 

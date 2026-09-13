@@ -122,6 +122,8 @@ describe("task routing follows the complete changed-path set", () => {
         ".github/ISSUE_TEMPLATE/task.yml",
         "scripts/README.md",
         "scripts/agent-workflow.test.mjs",
+        "scripts/task-git.mjs",
+        "scripts/task-git.test.mjs",
       ],
       {},
     ],
