@@ -167,13 +167,11 @@ describe("Phase 4 comment avatar synchronization", () => {
     page.hot[0]!.replyPageTotal = 4;
     page.hot[0]!.replyTotal = 4;
     page.totalPages = 2;
-    discussion
-      .mockResolvedValueOnce(page)
-      .mockResolvedValueOnce({
-        ...listing([comment("page2", "third")]),
-        page: 2,
-        totalPages: 2,
-      });
+    discussion.mockResolvedValueOnce(page).mockResolvedValueOnce({
+      ...listing([comment("page2", "third")]),
+      page: 2,
+      totalPages: 2,
+    });
     replies.mockResolvedValue({
       items: [reply("paged-reply", "fourth")],
       page: 1,
