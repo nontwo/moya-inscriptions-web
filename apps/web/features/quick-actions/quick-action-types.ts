@@ -2,7 +2,7 @@ export const quickActionNames = ["like", "favorite", "share"] as const;
 export type QuickActionName = (typeof quickActionNames)[number];
 
 export interface QuickActionContent {
-  readonly kind: "catalog" | "nearby" | "topic";
+  readonly kind: "catalog" | "work" | "nearby" | "topic";
   readonly id: string;
   readonly title: string;
 }
@@ -17,5 +17,5 @@ export interface ContentQuickActionEnvironment {
   readonly onAction: (
     action: QuickActionName,
     content: QuickActionContent,
-  ) => void;
+  ) => void | Promise<boolean>;
 }

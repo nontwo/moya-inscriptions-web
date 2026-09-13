@@ -117,11 +117,32 @@ export async function runWithinBudget(
   return { code, durationMs: Math.round(performance.now() - started) };
 }
 
+/** Explicit CI test milestone only; ordinary entry points retain 120 seconds. */
+export function verificationBudgetMs(mode, flags = [], env = {}) {
+  if (flags.length === 0) return 120_000;
+  if (
+    flags.length !== 1 ||
+    flags[0] !== "--ci-milestone" ||
+    mode !== "test" ||
+    env.GITHUB_ACTIONS !== "true" ||
+    !env.TEST_DATABASE_URL
+  )
+    throw new Error(
+      "The CI milestone flag requires GitHub Actions test mode and an explicit test database",
+    );
+  return 300_000;
+}
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   const mode = process.argv[2] ?? "all";
+  const publicBudgetMs = verificationBudgetMs(
+    mode,
+    process.argv.slice(3),
+    process.env,
+  );
   // Migration and integration tests must use the same explicitly supplied test
   // database, even when the developer also has an ordinary DATABASE_URL set.
   if (["all", "test"].includes(mode) && process.env.TEST_DATABASE_URL) {
@@ -165,9 +186,14 @@ if (
   };
   if (!Object.hasOwn(plans, mode))
     throw new Error(`Unknown verification mode: ${mode}`);
-  const result = await runWithinBudget(plans[mode]);
+  const result =
+    publicBudgetMs === 120_000
+      ? await runWithinBudget(plans[mode])
+      : await runWithinBudget(plans[mode], {
+          budgetMs: publicBudgetMs - 1_000,
+        });
   console.log(
-    `Acceptance ${mode}: ${result.code === 0 ? "PASS" : result.code === 124 ? "TIME BUDGET EXCEEDED" : "FAIL"} (${result.durationMs}ms / 120000ms)`,
+    `Acceptance ${mode}: ${result.code === 0 ? "PASS" : result.code === 124 ? "TIME BUDGET EXCEEDED" : "FAIL"} (${result.durationMs}ms / ${publicBudgetMs}ms)`,
   );
   process.exitCode = result.code;
 }

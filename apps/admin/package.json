@@ -26,6 +26,7 @@
     "@payloadcms/translations": "3.88.0",
     "@moya/contracts": "workspace:*",
     "@moya/catalog-postgres": "workspace:*",
+    "opencc": "1.4.1",
     "graphql": "16.11.0",
     "sharp": "0.35.4",
     "zod": "4.4.3",

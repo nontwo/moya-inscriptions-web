@@ -1,3 +1,5 @@
+import { authorCommunityPaths } from "./author-community-openapi.js";
+import { authorCommunityJsonSchemas } from "@moya/contracts/json-schema";
 import type { ApiErrorCode } from "@moya/contracts";
 import {
   apiErrorJsonSchema,
@@ -167,6 +169,7 @@ export const openApiDocument: JsonObject = {
       "Inscription-first, read-only access to the public Catalog, plus the Community V1 current-user identity. Operational health is unversioned; public contracts use /v1.",
   },
   paths: {
+    ...authorCommunityPaths,
     "/health": {
       get: {
         operationId: "getHealth",
@@ -358,6 +361,7 @@ export const openApiDocument: JsonObject = {
       },
     },
     schemas: {
+      ...authorCommunityJsonSchemas,
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
       CatalogContributorRole: catalogContributorRoleJsonSchema,

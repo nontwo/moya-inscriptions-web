@@ -12,6 +12,9 @@ import {
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
 import {
+  PostgresCommunityContentOperatorAdapter,
+  PostgresAuthorCommunityAdapter,
+  PostgresCommunityDiscoveryAdapter,
   PostgresCommunityCommentAdapter,
   PostgresCommunityIdentityAdapter,
   verifyCommunityMigrationLedger,
@@ -216,6 +219,18 @@ export const prepareProductionBackend = async (
       healthReadinessCheck: readinessCheck,
       communityIdentityPort,
       communityCommentPort,
+      ...(runtimeConfig.nodeEnv === "development"
+        ? {
+            discussionPort: communityCommentPort,
+            contentOperatorPort: new PostgresCommunityContentOperatorAdapter(
+              communityPool,
+            ),
+            discoveryPort: new PostgresCommunityDiscoveryAdapter(communityPool),
+            authorCommunityPort: new PostgresAuthorCommunityAdapter(
+              communityPool,
+            ),
+          }
+        : {}),
       // A comment attaches only to a currently published Catalog record; the
       // published read role answers that, so the App role needs no Catalog grant.
       catalogPublicationPort: {

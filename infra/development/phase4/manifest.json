@@ -1,0 +1,2300 @@
+{
+  "version": 1,
+  "taskId": "phase4-author-community-v1",
+  "fixtureSetId": "40f28ea4-3643-4b2e-aaa6-fa39760525c4",
+  "generatedAt": "2026-09-13T06:49:36.302Z",
+  "scope": {
+    "syntheticOnly": true,
+    "productionAuthorized": false,
+    "databaseWritesPerformed": false,
+    "realResearchInputs": 0,
+    "runtimeGuardsMustVerifyTaskInfrastructure": true,
+    "identityRegenerationAllowed": false
+  },
+  "primaryCounts": {
+    "catalogs": 10,
+    "userWorks": 10,
+    "total": 20
+  },
+  "accounts": [
+    {
+      "fixtureKey": "account-1",
+      "id": "user-891423b92f1848bb9c78cabd16a46344",
+      "handle": "p4-dc0e3fc74a484745a7",
+      "displayName": "同名作者（合成）",
+      "bio": "Phase 4 合成验收账号：primary-author。这里的文字与图像仅用于功能测试，不代表真实人物、文物或历史资料。",
+      "status": "active",
+      "persona": "primary-author",
+      "developmentAccountLabel": "Phase 4 synthetic account 1",
+      "privacy": {
+        "following": "public",
+        "followers": "public",
+        "favorites": "private",
+        "likes": "private"
+      },
+      "avatarMediaId": null,
+      "avatarChangedOn": null
+    },
+    {
+      "fixtureKey": "account-2",
+      "id": "user-b29394722f994cc2a18693066ce6014d",
+      "handle": "p4-04f785de4d40462f80",
+      "displayName": "同名作者（合成）",
+      "bio": "Phase 4 合成验收账号：second-author。这里的文字与图像仅用于功能测试，不代表真实人物、文物或历史资料。",
+      "status": "active",
+      "persona": "second-author",
+      "developmentAccountLabel": "Phase 4 synthetic account 2",
+      "privacy": {
+        "following": "private",
+        "followers": "public",
+        "favorites": "public",
+        "likes": "private"
+      },
+      "avatarMediaId": null,
+      "avatarChangedOn": null
+    },
+    {
+      "fixtureKey": "account-3",
+      "id": "user-bcb36752ceaa4b04bec958c20172371e",
+      "handle": "p4-e8b4ae9a3eca4524be",
+      "displayName": "参观者（合成）",
+      "bio": "Phase 4 合成验收账号：visitor。这里的文字与图像仅用于功能测试，不代表真实人物、文物或历史资料。",
+      "status": "active",
+      "persona": "visitor",
+      "developmentAccountLabel": "Phase 4 synthetic account 3",
+      "privacy": {
+        "following": "public",
+        "followers": "private",
+        "favorites": "private",
+        "likes": "public"
+      },
+      "avatarMediaId": null,
+      "avatarChangedOn": null
+    },
+    {
+      "fixtureKey": "account-4",
+      "id": "user-82103af841524d78b83405e6ad756e23",
+      "handle": "p4-6ab7e1a2a4f246b99e",
+      "displayName": "边界甲（合成）",
+      "bio": "Phase 4 合成验收账号：blocked-pair-a。这里的文字与图像仅用于功能测试，不代表真实人物、文物或历史资料。",
+      "status": "active",
+      "persona": "blocked-pair-a",
+      "developmentAccountLabel": "Phase 4 synthetic account 4",
+      "privacy": {
+        "following": "public",
+        "followers": "public",
+        "favorites": "private",
+        "likes": "private"
+      },
+      "avatarMediaId": null,
+      "avatarChangedOn": null
+    },
+    {
+      "fixtureKey": "account-5",
+      "id": "user-06fd230103484c30bd692f80b9b26cc0",
+      "handle": "p4-481ced22d545493992",
+      "displayName": "边界乙（合成）",
+      "bio": "Phase 4 合成验收账号：blocked-pair-b。这里的文字与图像仅用于功能测试，不代表真实人物、文物或历史资料。",
+      "status": "active",
+      "persona": "blocked-pair-b",
+      "developmentAccountLabel": "Phase 4 synthetic account 5",
+      "privacy": {
+        "following": "private",
+        "followers": "private",
+        "favorites": "public",
+        "likes": "public"
+      },
+      "avatarMediaId": null,
+      "avatarChangedOn": null
+    },
+    {
+      "fixtureKey": "account-6",
+      "id": "user-544c80c8939749ef8805cd3f71c3d17f",
+      "handle": "p4-13fbf03986f24185ae",
+      "displayName": "留白（合成）",
+      "bio": "",
+      "status": "active",
+      "persona": "empty-profile",
+      "developmentAccountLabel": "Phase 4 synthetic account 6",
+      "privacy": {
+        "following": "public",
+        "followers": "public",
+        "favorites": "private",
+        "likes": "private"
+      },
+      "avatarMediaId": null,
+      "avatarChangedOn": null
+    }
+  ],
+  "guest": {
+    "browserLocalOnly": true,
+    "registeredAccount": false,
+    "persona": "guest"
+  },
+  "catalogs": [
+    {
+      "fixtureKey": "catalog-01",
+      "catalogId": "catalog-139360c215f745f38e61cd8369da82b9",
+      "sourceId": "source-9e7bf98962254c52a6a3056d5e23839b",
+      "firstPublicationOrder": 1,
+      "intendedFirstPublishedAt": "2026-09-01T12:00:00.000Z",
+      "mediaIds": [],
+      "editorialData": {
+        "catalogId": "catalog-139360c215f745f38e61cd8369da82b9",
+        "sourceId": "source-9e7bf98962254c52a6a3056d5e23839b",
+        "kind": "inscription",
+        "title": "合成碑刻资料 01 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 01 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体甲"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 01",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者甲",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者乙",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-9e7bf98962254c52a6a3056d5e23839b",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲",
+          "normalized": ["synthetic-dynasty-a"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者甲",
+            "role": "textAuthor",
+            "normalized": "合成撰文者甲"
+          },
+          {
+            "sourceText": "合成书写者乙",
+            "role": "calligrapher",
+            "normalized": "合成书写者乙"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址甲",
+          "normalized": ["synthetic-origin-a"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体甲",
+          "normalized": ["synthetic-script-a"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-02",
+      "catalogId": "catalog-fe7f5a97b0d24c1592048cbf8941912d",
+      "sourceId": "source-a0f8791c612f479fb05a6d8c15ef9169",
+      "firstPublicationOrder": 3,
+      "intendedFirstPublishedAt": "2026-09-01T14:00:00.000Z",
+      "mediaIds": ["media-3a5c222e0ded4a85b3fbe5f1917d3aa5"],
+      "editorialData": {
+        "catalogId": "catalog-fe7f5a97b0d24c1592048cbf8941912d",
+        "sourceId": "source-a0f8791c612f479fb05a6d8c15ef9169",
+        "kind": "inscription",
+        "title": "合成碑刻资料 02 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "VALUE",
+          "value": "合成当前保管地点丙（明确不同于原址）"
+        },
+        "currentCustodian": {
+          "state": "VALUE",
+          "value": "合成保管单位丁"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 02 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体乙"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 02",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者乙",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者甲",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-a0f8791c612f479fb05a6d8c15ef9169",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙",
+          "normalized": ["synthetic-dynasty-b"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者乙",
+            "role": "textAuthor",
+            "normalized": "合成撰文者乙"
+          },
+          {
+            "sourceText": "合成书写者甲",
+            "role": "calligrapher",
+            "normalized": "合成书写者甲"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址乙",
+          "normalized": ["synthetic-origin-b"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体乙",
+          "normalized": ["synthetic-script-b"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-03",
+      "catalogId": "catalog-84b27f04a89447cfb87e21f1e181a902",
+      "sourceId": "source-912e0230e2ca400ca902ea11f8ca102f",
+      "firstPublicationOrder": 5,
+      "intendedFirstPublishedAt": "2026-09-01T16:00:00.000Z",
+      "mediaIds": ["media-67e1296c432b4e9c95e453083a55132d"],
+      "editorialData": {
+        "catalogId": "catalog-84b27f04a89447cfb87e21f1e181a902",
+        "sourceId": "source-912e0230e2ca400ca902ea11f8ca102f",
+        "kind": "inscription",
+        "title": "合成碑刻资料 03 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "UNKNOWN"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 03 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体甲"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 03",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者甲",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者甲",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-912e0230e2ca400ca902ea11f8ca102f",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "UNKNOWN",
+          "normalized": []
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者甲",
+            "role": "textAuthor",
+            "normalized": "合成撰文者甲"
+          },
+          {
+            "sourceText": "合成书写者甲",
+            "role": "calligrapher",
+            "normalized": "合成书写者甲"
+          }
+        ],
+        "originalRegion": {
+          "state": "UNKNOWN",
+          "normalized": []
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体甲",
+          "normalized": ["synthetic-script-a"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-04",
+      "catalogId": "catalog-6d300ebaf59d418f875068f735dc61b4",
+      "sourceId": "source-75da39778e0848bb9ffcad2c454b0db2",
+      "firstPublicationOrder": 7,
+      "intendedFirstPublishedAt": "2026-09-01T18:00:00.000Z",
+      "mediaIds": ["media-c9378fe92d28441296e431c0481e0835"],
+      "editorialData": {
+        "catalogId": "catalog-6d300ebaf59d418f875068f735dc61b4",
+        "sourceId": "source-75da39778e0848bb9ffcad2c454b0db2",
+        "kind": "inscription",
+        "title": "合成碑刻资料 04 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 04 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "UNKNOWN"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 04",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者乙",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者乙",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-75da39778e0848bb9ffcad2c454b0db2",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙",
+          "normalized": ["synthetic-dynasty-b"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者乙",
+            "role": "textAuthor",
+            "normalized": "合成撰文者乙"
+          },
+          {
+            "sourceText": "合成书写者乙",
+            "role": "calligrapher",
+            "normalized": "合成书写者乙"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址甲",
+          "normalized": ["synthetic-origin-a"]
+        },
+        "script": {
+          "state": "UNKNOWN",
+          "normalized": []
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-05",
+      "catalogId": "catalog-6144388923244165ad1832b03af8104a",
+      "sourceId": "source-57d474b6a6bc48c9900948027da38474",
+      "firstPublicationOrder": 9,
+      "intendedFirstPublishedAt": "2026-09-01T20:00:00.000Z",
+      "mediaIds": [
+        "media-5f83a6a32bbe4d4aae861042ef0ff2e2",
+        "media-ab50337812164428ac3552c0f5f3762d",
+        "media-db872700c8ab4e649975e042681a6bad"
+      ],
+      "editorialData": {
+        "catalogId": "catalog-6144388923244165ad1832b03af8104a",
+        "sourceId": "source-57d474b6a6bc48c9900948027da38474",
+        "kind": "inscription",
+        "title": "合成碑刻资料 05 · 几何与留白 · 长题名用于检查窄屏换行和卡片布局",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。这是一段为界面验收写作的合成中文长文。图中的长方形、圆形和线条只用于区分尺寸与排版，不对应真实碑刻或历史材料。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体甲与合成书体乙（明确双值测试）"
+        },
+        "transcription": {
+          "state": "VALUE",
+          "value": "合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。合成释文，仅供排版验收；非历史释读。"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 05",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者甲",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者甲",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-57d474b6a6bc48c9900948027da38474",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲",
+          "normalized": ["synthetic-dynasty-a"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者甲",
+            "role": "textAuthor",
+            "normalized": "合成撰文者甲"
+          },
+          {
+            "sourceText": "合成书写者甲",
+            "role": "calligrapher",
+            "normalized": "合成书写者甲"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址乙",
+          "normalized": ["synthetic-origin-b"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体甲与合成书体乙（明确双值测试）",
+          "normalized": ["synthetic-script-a", "synthetic-script-b"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-06",
+      "catalogId": "catalog-e812db1d13b3492498797f66f2a2f45f",
+      "sourceId": "source-913083fd6b6f40fc847b1f05798645c7",
+      "firstPublicationOrder": 11,
+      "intendedFirstPublishedAt": "2026-09-01T22:00:00.000Z",
+      "mediaIds": [],
+      "editorialData": {
+        "catalogId": "catalog-e812db1d13b3492498797f66f2a2f45f",
+        "sourceId": "source-913083fd6b6f40fc847b1f05798645c7",
+        "kind": "inscription",
+        "title": "合成碑刻资料 06 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "UNSUPPLIED"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 06 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "UNSUPPLIED"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 06",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [],
+        "provenance": [
+          {
+            "sourceId": "source-913083fd6b6f40fc847b1f05798645c7",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "UNSUPPLIED",
+          "normalized": []
+        },
+        "contributors": [],
+        "originalRegion": {
+          "state": "UNSUPPLIED",
+          "normalized": []
+        },
+        "script": {
+          "state": "UNSUPPLIED",
+          "normalized": []
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-07",
+      "catalogId": "catalog-4d2a8e5003854e489b64127e96bddabf",
+      "sourceId": "source-09c93b49c8174163bc58aecb08e77537",
+      "firstPublicationOrder": 13,
+      "intendedFirstPublishedAt": "2026-09-02T00:00:00.000Z",
+      "mediaIds": ["media-2e0246fcc1214c6c972b6fcfd82c0195"],
+      "editorialData": {
+        "catalogId": "catalog-4d2a8e5003854e489b64127e96bddabf",
+        "sourceId": "source-09c93b49c8174163bc58aecb08e77537",
+        "kind": "calligraphy",
+        "title": "合成书法资料 07 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 07 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体甲"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 07",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者甲",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者乙",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-09c93b49c8174163bc58aecb08e77537",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲",
+          "normalized": ["synthetic-dynasty-a"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者甲",
+            "role": "textAuthor",
+            "normalized": "合成撰文者甲"
+          },
+          {
+            "sourceText": "合成书写者乙",
+            "role": "calligrapher",
+            "normalized": "合成书写者乙"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址甲",
+          "normalized": ["synthetic-origin-a"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体甲",
+          "normalized": ["synthetic-script-a"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-08",
+      "catalogId": "catalog-97c210db543341b08abdd7ad1bb3c987",
+      "sourceId": "source-ee8edb07b32f403399af9fdfe3005281",
+      "firstPublicationOrder": 15,
+      "intendedFirstPublishedAt": "2026-09-02T02:00:00.000Z",
+      "mediaIds": ["media-9b729653308a4c18a9074356b0394e4f"],
+      "editorialData": {
+        "catalogId": "catalog-97c210db543341b08abdd7ad1bb3c987",
+        "sourceId": "source-ee8edb07b32f403399af9fdfe3005281",
+        "kind": "calligraphy",
+        "title": "合成书法资料 08 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 08 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体乙"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 08",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者乙",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者甲",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-ee8edb07b32f403399af9fdfe3005281",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙",
+          "normalized": ["synthetic-dynasty-b"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者乙",
+            "role": "textAuthor",
+            "normalized": "合成撰文者乙"
+          },
+          {
+            "sourceText": "合成书写者甲",
+            "role": "calligrapher",
+            "normalized": "合成书写者甲"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址乙",
+          "normalized": ["synthetic-origin-b"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体乙",
+          "normalized": ["synthetic-script-b"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-09",
+      "catalogId": "catalog-540bdf491d3840fd83c2d41f48362c66",
+      "sourceId": "source-5d1f0cf486c34c39912b971c6326d314",
+      "firstPublicationOrder": 17,
+      "intendedFirstPublishedAt": "2026-09-02T04:00:00.000Z",
+      "mediaIds": [
+        "media-8f7f9aecb94a417f8b133bb04bd9cf39",
+        "media-f9c992186b2643f89ea51d76a73ea8a2",
+        "media-877502da1aa64c168d59b0250f3b1794"
+      ],
+      "editorialData": {
+        "catalogId": "catalog-540bdf491d3840fd83c2d41f48362c66",
+        "sourceId": "source-5d1f0cf486c34c39912b971c6326d314",
+        "kind": "calligraphy",
+        "title": "合成书法资料 09 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 09 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体甲"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 09",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者甲",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者甲",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-5d1f0cf486c34c39912b971c6326d314",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代甲",
+          "normalized": ["synthetic-dynasty-a"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者甲",
+            "role": "textAuthor",
+            "normalized": "合成撰文者甲"
+          },
+          {
+            "sourceText": "合成书写者甲",
+            "role": "calligrapher",
+            "normalized": "合成书写者甲"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址乙",
+          "normalized": ["synthetic-origin-b"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体甲",
+          "normalized": ["synthetic-script-a"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    },
+    {
+      "fixtureKey": "catalog-10",
+      "catalogId": "catalog-04ae5f033f424a408681cbc122fa0078",
+      "sourceId": "source-074add8e0eef4adbbbdcd2a80c58a6f8",
+      "firstPublicationOrder": 19,
+      "intendedFirstPublishedAt": "2026-09-02T06:00:00.000Z",
+      "mediaIds": ["media-089eb38749fa4f198c224f42526bfe95"],
+      "editorialData": {
+        "catalogId": "catalog-04ae5f033f424a408681cbc122fa0078",
+        "sourceId": "source-074add8e0eef4adbbbdcd2a80c58a6f8",
+        "kind": "calligraphy",
+        "title": "合成书法资料 10 · 几何与留白",
+        "summary": "Phase 4 专用合成验收资料；不是真实研究、导入或正式发布内容。",
+        "periodLabel": "合成测试年代",
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙"
+        },
+        "dateText": {
+          "state": "UNSUPPLIED"
+        },
+        "province": {
+          "state": "UNSUPPLIED"
+        },
+        "prefecture": {
+          "state": "UNSUPPLIED"
+        },
+        "county": {
+          "state": "UNSUPPLIED"
+        },
+        "currentLocation": {
+          "state": "UNSUPPLIED"
+        },
+        "currentCustodian": {
+          "state": "UNSUPPLIED"
+        },
+        "description": {
+          "state": "VALUE",
+          "value": "第 10 条 Phase 4 合成资料。全部名称、年代与地点标注均为测试占位，不对应真实历史事实。"
+        },
+        "scriptStyle": {
+          "state": "VALUE",
+          "value": "合成书体乙"
+        },
+        "transcription": {
+          "state": "UNSUPPLIED"
+        },
+        "historicalContext": {
+          "state": "UNSUPPLIED"
+        },
+        "scholarlyResearch": {
+          "state": "UNSUPPLIED"
+        },
+        "aliases": [
+          {
+            "alias": "合成别名 10",
+            "aliasType": "alternate"
+          }
+        ],
+        "contributors": [
+          {
+            "name": "合成撰文者乙",
+            "role": "textAuthor"
+          },
+          {
+            "name": "合成书写者乙",
+            "role": "calligrapher"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceId": "source-074add8e0eef4adbbbdcd2a80c58a6f8",
+            "sourceTitle": "Phase 4 程序生成的合成夹具",
+            "sourceNote": "此身份独立生成，未引用任何 Research/Catalog Import 来源映射。"
+          }
+        ],
+        "sourceCitations": [
+          {
+            "label": "Phase 4 合成测试资料说明",
+            "citation": "本记录、所有人物称谓与地点均为测试占位，不构成历史事实。",
+            "appliesTo": ["record"]
+          }
+        ],
+        "ownerNote": "phase4-author-community-v1; fixtureSet=40f28ea4-3643-4b2e-aaa6-fa39760525c4; synthetic-only"
+      },
+      "discoveryFacts": {
+        "dynasty": {
+          "state": "VALUE",
+          "value": "合成朝代乙",
+          "normalized": ["synthetic-dynasty-b"]
+        },
+        "contributors": [
+          {
+            "sourceText": "合成撰文者乙",
+            "role": "textAuthor",
+            "normalized": "合成撰文者乙"
+          },
+          {
+            "sourceText": "合成书写者乙",
+            "role": "calligrapher",
+            "normalized": "合成书写者乙"
+          }
+        ],
+        "originalRegion": {
+          "state": "VALUE",
+          "value": "合成原址甲",
+          "normalized": ["synthetic-origin-a"]
+        },
+        "script": {
+          "state": "VALUE",
+          "value": "合成书体乙",
+          "normalized": ["synthetic-script-b"]
+        },
+        "provenance": "Explicitly authored synthetic normalized values; no inference from historical titles or names. Generic province fields intentionally remain unsupplied."
+      }
+    }
+  ],
+  "works": [
+    {
+      "fixtureKey": "work-01",
+      "id": "work-3c422144f24540abbc1a567d8056edf7",
+      "authorId": "user-891423b92f1848bb9c78cabd16a46344",
+      "title": "合成作者作品 01 · 文字留白",
+      "text": "第 01 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": [],
+      "firstPublishedAt": "2026-09-01T13:00:00.000Z",
+      "firstPublicationOrder": 2,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-02",
+      "id": "work-3af7bd14605c45d0babf011fbc31665b",
+      "authorId": "user-891423b92f1848bb9c78cabd16a46344",
+      "title": "合成作者作品 02 · 几何练习",
+      "text": "第 02 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": ["user-media-73550826301e4d5a93dadafa0f963f6b"],
+      "firstPublishedAt": "2026-09-01T15:00:00.000Z",
+      "firstPublicationOrder": 4,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-03",
+      "id": "work-8260ccfa419c43f7862a10b634bf10d0",
+      "authorId": "user-b29394722f994cc2a18693066ce6014d",
+      "title": "合成作者作品 03 · 几何练习",
+      "text": "第 03 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": ["user-media-53a6a11306d84ac8b167f44f366fd8e0"],
+      "firstPublishedAt": "2026-09-01T17:00:00.000Z",
+      "firstPublicationOrder": 6,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-04",
+      "id": "work-d8d5279137624df283d2f9f1ddbda1ef",
+      "authorId": "user-82103af841524d78b83405e6ad756e23",
+      "title": "合成作者作品 04 · 横向延展",
+      "text": "第 04 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": ["user-media-922af795eddc4f65af1a4cfbcb06c032"],
+      "firstPublishedAt": "2026-09-01T19:00:00.000Z",
+      "firstPublicationOrder": 8,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-05",
+      "id": "work-69baa59c3b2c4a8ea2ff23e408c1ed67",
+      "authorId": "user-891423b92f1848bb9c78cabd16a46344",
+      "title": "合成作者作品 05 · 几何练习",
+      "text": "这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。这份合成作者作品用于检查长中文正文、图片顺序、封面和跨设备编辑草稿。它是既有作品的测试记录，不代表向终端用户开放新作品发布。",
+      "mediaIds": [
+        "user-media-fb7f4d416dba4a53ac9927348cccc2db",
+        "user-media-6f9a20c492ed4b2f82678f7e0318753c",
+        "user-media-218c0e6e9190469dbd38c4cc1bde2d4b"
+      ],
+      "firstPublishedAt": "2026-09-01T21:00:00.000Z",
+      "firstPublicationOrder": 10,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-06",
+      "id": "work-1bfb51b920a14e0a938565b5a74e47d0",
+      "authorId": "user-b29394722f994cc2a18693066ce6014d",
+      "title": "合成作者作品 06 · 几何练习",
+      "text": "第 06 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": ["user-media-bb67428442e04dfeab485200d2587410"],
+      "firstPublishedAt": "2026-09-01T23:00:00.000Z",
+      "firstPublicationOrder": 12,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-07",
+      "id": "work-c7e74e10f61644cba48a312aa404c94b",
+      "authorId": "user-06fd230103484c30bd692f80b9b26cc0",
+      "title": "合成作者作品 07 · 几何练习",
+      "text": "第 07 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": [],
+      "firstPublishedAt": "2026-09-02T01:00:00.000Z",
+      "firstPublicationOrder": 14,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-08",
+      "id": "work-3082e725623948129ebe0752c1b73789",
+      "authorId": "user-82103af841524d78b83405e6ad756e23",
+      "title": "合成作者作品 08 · 几何练习",
+      "text": "第 08 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": [
+        "user-media-5a417c53d771413989d9b171fd0bb8d4",
+        "user-media-504c017d0f2b4fa0b293d7f62dc507dc"
+      ],
+      "firstPublishedAt": "2026-09-02T03:00:00.000Z",
+      "firstPublicationOrder": 16,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-09",
+      "id": "work-69039c0df24740c1ae6393fe272d71bd",
+      "authorId": "user-b29394722f994cc2a18693066ce6014d",
+      "title": "合成作者作品 09 · 几何练习",
+      "text": "第 09 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": ["user-media-d214f05fcb3742008f6ef82784341fce"],
+      "firstPublishedAt": "2026-09-02T05:00:00.000Z",
+      "firstPublicationOrder": 18,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    },
+    {
+      "fixtureKey": "work-10",
+      "id": "work-702e577baff44e4a98d4327346c50bdb",
+      "authorId": "user-891423b92f1848bb9c78cabd16a46344",
+      "title": "合成作者作品 10 · 几何练习",
+      "text": "第 10 份合成作品，仅供 Phase 4 功能验收。图像由确定性几何程序生成，不包含真实书画、碑刻、作者身份或历史主张。",
+      "mediaIds": ["user-media-80be2c71a4cb4b30b9e7efb5141694b9"],
+      "firstPublishedAt": "2026-09-02T07:00:00.000Z",
+      "firstPublicationOrder": 20,
+      "version": 1,
+      "operatorState": "visible",
+      "deletedAt": null,
+      "syntheticProvenance": "phase4-author-community-v1:40f28ea4-3643-4b2e-aaa6-fa39760525c4"
+    }
+  ],
+  "media": [
+    {
+      "fixtureKey": "catalog-02-1",
+      "mediaId": "media-3a5c222e0ded4a85b3fbe5f1917d3aa5",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-fe7f5a97b0d24c1592048cbf8941912d"
+      },
+      "purpose": "content",
+      "file": "images/01-catalog-02-1-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10956,
+      "sha256": "7b83113133849a93cb882ab4369a8b601ac07fca6d96459c9feff08e2cfd7a3c",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成资料 02 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 1,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-03-1",
+      "mediaId": "media-67e1296c432b4e9c95e453083a55132d",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-84b27f04a89447cfb87e21f1e181a902"
+      },
+      "purpose": "content",
+      "file": "images/02-catalog-03-1-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10070,
+      "sha256": "b9c324b7ff7f0a6360eea0e64250756fb69d690c96f1b0c5c45c4b357231b9d8",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成资料 03 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 2,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-04-1",
+      "mediaId": "media-c9378fe92d28441296e431c0481e0835",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-6d300ebaf59d418f875068f735dc61b4"
+      },
+      "purpose": "content",
+      "file": "images/03-catalog-04-1-ultrawide.png",
+      "mimeType": "image/png",
+      "byteLength": 6423,
+      "sha256": "0e8a55efb586cdd55e819189cf0a864cee14f22544e66e5a7ab8ed4bb22b44e9",
+      "width": 1200,
+      "height": 300,
+      "geometry": "ultrawide",
+      "alt": "合成资料 04 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 3,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-05-1",
+      "mediaId": "media-5f83a6a32bbe4d4aae861042ef0ff2e2",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-6144388923244165ad1832b03af8104a"
+      },
+      "purpose": "content",
+      "file": "images/04-catalog-05-1-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10945,
+      "sha256": "44245dd0b6bfe918a2df309bce615b8d79cfd9b62ab5331507f73e1463605a28",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成资料 05 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 4,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-05-2",
+      "mediaId": "media-ab50337812164428ac3552c0f5f3762d",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-6144388923244165ad1832b03af8104a"
+      },
+      "purpose": "content",
+      "file": "images/05-catalog-05-2-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10039,
+      "sha256": "9e1a5aacc8183051b974d402af1df6c2aee8ac280250f7d6944806cf540e24fb",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成资料 05 的第 2 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 5,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-05-3",
+      "mediaId": "media-db872700c8ab4e649975e042681a6bad",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-6144388923244165ad1832b03af8104a"
+      },
+      "purpose": "content",
+      "file": "images/06-catalog-05-3-square.png",
+      "mimeType": "image/png",
+      "byteLength": 8001,
+      "sha256": "52b4df86b46217ed2f851bc78b6e2ff18c3b288271c48fcaa6512f80ed2204a3",
+      "width": 640,
+      "height": 640,
+      "geometry": "square",
+      "alt": "合成资料 05 的第 3 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 6,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-07-1",
+      "mediaId": "media-2e0246fcc1214c6c972b6fcfd82c0195",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-4d2a8e5003854e489b64127e96bddabf"
+      },
+      "purpose": "content",
+      "file": "images/07-catalog-07-1-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10897,
+      "sha256": "effb66f4b2a0aed11580f737c5553431b6b7c8e1ede1c0d1d8852fdbbe071866",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成资料 07 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 7,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-08-1",
+      "mediaId": "media-9b729653308a4c18a9074356b0394e4f",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-97c210db543341b08abdd7ad1bb3c987"
+      },
+      "purpose": "content",
+      "file": "images/08-catalog-08-1-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 9996,
+      "sha256": "194da98f010d0235bc28fb8926bf7e7204ce6b6b9c9e822cf88af0ff462dc298",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成资料 08 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 8,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-09-1",
+      "mediaId": "media-8f7f9aecb94a417f8b133bb04bd9cf39",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-540bdf491d3840fd83c2d41f48362c66"
+      },
+      "purpose": "content",
+      "file": "images/09-catalog-09-1-ultrawide.png",
+      "mimeType": "image/png",
+      "byteLength": 6414,
+      "sha256": "081815883309890805d12a30ed44ec6c9e18d90eed6fb1d77ed5455187712a3d",
+      "width": 1200,
+      "height": 300,
+      "geometry": "ultrawide",
+      "alt": "合成资料 09 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 9,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-09-2",
+      "mediaId": "media-f9c992186b2643f89ea51d76a73ea8a2",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-540bdf491d3840fd83c2d41f48362c66"
+      },
+      "purpose": "content",
+      "file": "images/10-catalog-09-2-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10844,
+      "sha256": "716fac0a7798e7986ac2a17f8d9f565c8dfbfcef9ee1b3f9c3bf9e2491c2bed8",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成资料 09 的第 2 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 10,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-09-3",
+      "mediaId": "media-877502da1aa64c168d59b0250f3b1794",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-540bdf491d3840fd83c2d41f48362c66"
+      },
+      "purpose": "content",
+      "file": "images/11-catalog-09-3-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10036,
+      "sha256": "19e49ad44e906a57ee6b0cf3fa83241969e30b6f799418e994f9566af4fda8f8",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成资料 09 的第 3 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 11,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "catalog-10-1",
+      "mediaId": "media-089eb38749fa4f198c224f42526bfe95",
+      "owner": {
+        "type": "catalog",
+        "catalogId": "catalog-04ae5f033f424a408681cbc122fa0078"
+      },
+      "purpose": "content",
+      "file": "images/12-catalog-10-1-ultrawide.png",
+      "mimeType": "image/png",
+      "byteLength": 6416,
+      "sha256": "aa28b323df23d4420a6956c5a92bdccee69a130d880772ce046bfa7549c69238",
+      "width": 1200,
+      "height": 300,
+      "geometry": "ultrawide",
+      "alt": "合成资料 10 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 12,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-02-1",
+      "mediaId": "user-media-73550826301e4d5a93dadafa0f963f6b",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "content",
+      "file": "images/13-work-02-1-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10966,
+      "sha256": "edec269bc0a7ff943bcae135646f321bc121263feba06b6a3ae7bc8957c82d77",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成作者作品 02 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 13,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-03-1",
+      "mediaId": "user-media-53a6a11306d84ac8b167f44f366fd8e0",
+      "owner": {
+        "type": "user",
+        "userId": "user-b29394722f994cc2a18693066ce6014d"
+      },
+      "purpose": "content",
+      "file": "images/14-work-03-1-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10062,
+      "sha256": "6ca31407447acb39e288c47043603fc455ad0df404aa0e61961679e25fc91e8a",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成作者作品 03 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 14,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-04-1",
+      "mediaId": "user-media-922af795eddc4f65af1a4cfbcb06c032",
+      "owner": {
+        "type": "user",
+        "userId": "user-82103af841524d78b83405e6ad756e23"
+      },
+      "purpose": "content",
+      "file": "images/15-work-04-1-ultrawide.png",
+      "mimeType": "image/png",
+      "byteLength": 6428,
+      "sha256": "839c062da80deedf248874dcf697dd76f2545fff62c7c065d4497f27e22ca978",
+      "width": 1200,
+      "height": 300,
+      "geometry": "ultrawide",
+      "alt": "合成作者作品 04 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 15,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-05-1",
+      "mediaId": "user-media-fb7f4d416dba4a53ac9927348cccc2db",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "content",
+      "file": "images/16-work-05-1-square.png",
+      "mimeType": "image/png",
+      "byteLength": 8019,
+      "sha256": "047a84ead8718863f765304f152fcd0ca72439c94289d2f630d7304fa343830c",
+      "width": 640,
+      "height": 640,
+      "geometry": "square",
+      "alt": "合成作者作品 05 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 16,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-05-2",
+      "mediaId": "user-media-6f9a20c492ed4b2f82678f7e0318753c",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "content",
+      "file": "images/17-work-05-2-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10918,
+      "sha256": "4c188cd773afadc133ece8398d341a97348bfe3ee9313c9fac5ef7a51a3a808c",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成作者作品 05 的第 2 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 17,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-05-3",
+      "mediaId": "user-media-218c0e6e9190469dbd38c4cc1bde2d4b",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "content",
+      "file": "images/18-work-05-3-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10018,
+      "sha256": "a60d6efd286cc702d038c70a016bf06a3159e7dbf44960d63661e5b38a2bb1fd",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成作者作品 05 的第 3 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 18,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-06-1",
+      "mediaId": "user-media-bb67428442e04dfeab485200d2587410",
+      "owner": {
+        "type": "user",
+        "userId": "user-b29394722f994cc2a18693066ce6014d"
+      },
+      "purpose": "content",
+      "file": "images/19-work-06-1-square.png",
+      "mimeType": "image/png",
+      "byteLength": 7964,
+      "sha256": "b7f3eb608c097b404ed95f80b88ee34bc97f0d52bf12d4ef9b350ee81c1e64ab",
+      "width": 640,
+      "height": 640,
+      "geometry": "square",
+      "alt": "合成作者作品 06 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 19,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-08-1",
+      "mediaId": "user-media-5a417c53d771413989d9b171fd0bb8d4",
+      "owner": {
+        "type": "user",
+        "userId": "user-82103af841524d78b83405e6ad756e23"
+      },
+      "purpose": "content",
+      "file": "images/20-work-08-1-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10865,
+      "sha256": "163c43e752d03a1d710c1d8465ac4bd4b903c2452d1ac1625b0a2d2381d500c9",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成作者作品 08 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 20,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-08-2",
+      "mediaId": "user-media-504c017d0f2b4fa0b293d7f62dc507dc",
+      "owner": {
+        "type": "user",
+        "userId": "user-82103af841524d78b83405e6ad756e23"
+      },
+      "purpose": "content",
+      "file": "images/21-work-08-2-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 9971,
+      "sha256": "8c197a7e58966b6080d4242a465677c39a6f221c23ec6505bfc80d7b64ca3adc",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成作者作品 08 的第 2 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 21,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-09-1",
+      "mediaId": "user-media-d214f05fcb3742008f6ef82784341fce",
+      "owner": {
+        "type": "user",
+        "userId": "user-b29394722f994cc2a18693066ce6014d"
+      },
+      "purpose": "content",
+      "file": "images/22-work-09-1-portrait.png",
+      "mimeType": "image/png",
+      "byteLength": 10935,
+      "sha256": "9dca54af8cce33538308bcc91999d35407af0d77c6585b6a7db48ba67455fb0f",
+      "width": 600,
+      "height": 900,
+      "geometry": "portrait",
+      "alt": "合成作者作品 09 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 22,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "work-10-1",
+      "mediaId": "user-media-80be2c71a4cb4b30b9e7efb5141694b9",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "content",
+      "file": "images/23-work-10-1-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10068,
+      "sha256": "9e74ed17ef002b7e6dfd4fa968c9e29ba4a63b7cf06a57c5bf9732806a2d553e",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成作者作品 10 的第 1 张几何测试图",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 23,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "avatar-candidate-1",
+      "mediaId": "user-media-4a83b968d0e74da88b5f0406ff59c533",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "avatar-candidate",
+      "file": "images/24-avatar-candidate-1-landscape.png",
+      "mimeType": "image/png",
+      "byteLength": 10070,
+      "sha256": "179286bd66dfe4532a2881d6c4e01245178666f9835df0bc0253cfe740377b2a",
+      "width": 900,
+      "height": 600,
+      "geometry": "landscape",
+      "alt": "合成头像裁剪候选图 1",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 24,
+        "noExternalInputs": true
+      }
+    },
+    {
+      "fixtureKey": "avatar-candidate-2",
+      "mediaId": "user-media-2e83e0ad310f48d3b6a52c179b9b4508",
+      "owner": {
+        "type": "user",
+        "userId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      "purpose": "avatar-candidate",
+      "file": "images/25-avatar-candidate-2-square.png",
+      "mimeType": "image/png",
+      "byteLength": 8058,
+      "sha256": "d2d27b83d1bc7d028a410ae6057852758c84c59960845b8cd94383c6c5f2f806",
+      "width": 640,
+      "height": 640,
+      "geometry": "square",
+      "alt": "合成头像裁剪候选图 2",
+      "rights": "由程序生成的几何合成测试图；不含真实文物、书画或第三方材料。",
+      "orderConfidence": "HIGH",
+      "generation": {
+        "recipe": "phase4-geometric-rgba-v1",
+        "ordinal": 25,
+        "noExternalInputs": true
+      }
+    }
+  ],
+  "featured": {
+    "enabledQuantity": 14,
+    "items": [
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-139360c215f745f38e61cd8369da82b9"
+        },
+        "position": 0
+      },
+      {
+        "target": {
+          "type": "work",
+          "id": "work-3af7bd14605c45d0babf011fbc31665b"
+        },
+        "position": 1
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-6144388923244165ad1832b03af8104a"
+        },
+        "position": 2
+      },
+      {
+        "target": {
+          "type": "work",
+          "id": "work-d8d5279137624df283d2f9f1ddbda1ef"
+        },
+        "position": 3
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-fe7f5a97b0d24c1592048cbf8941912d"
+        },
+        "position": 4
+      },
+      {
+        "target": {
+          "type": "work",
+          "id": "work-69baa59c3b2c4a8ea2ff23e408c1ed67"
+        },
+        "position": 5
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-4d2a8e5003854e489b64127e96bddabf"
+        },
+        "position": 6
+      },
+      {
+        "target": {
+          "type": "work",
+          "id": "work-3082e725623948129ebe0752c1b73789"
+        },
+        "position": 7
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-540bdf491d3840fd83c2d41f48362c66"
+        },
+        "position": 8
+      },
+      {
+        "target": {
+          "type": "work",
+          "id": "work-69039c0df24740c1ae6393fe272d71bd"
+        },
+        "position": 9
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-84b27f04a89447cfb87e21f1e181a902"
+        },
+        "position": 10
+      },
+      {
+        "target": {
+          "type": "work",
+          "id": "work-702e577baff44e4a98d4327346c50bdb"
+        },
+        "position": 11
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-97c210db543341b08abdd7ad1bb3c987"
+        },
+        "position": 12
+      },
+      {
+        "target": {
+          "type": "catalog",
+          "id": "catalog-04ae5f033f424a408681cbc122fa0078"
+        },
+        "position": 13
+      }
+    ],
+    "suggestedTestPageSize": 3,
+    "productPageSizeOverride": false
+  },
+  "relationships": {
+    "follows": [
+      {
+        "followerId": "user-891423b92f1848bb9c78cabd16a46344",
+        "followedId": "user-b29394722f994cc2a18693066ce6014d"
+      },
+      {
+        "followerId": "user-b29394722f994cc2a18693066ce6014d",
+        "followedId": "user-891423b92f1848bb9c78cabd16a46344"
+      },
+      {
+        "followerId": "user-bcb36752ceaa4b04bec958c20172371e",
+        "followedId": "user-891423b92f1848bb9c78cabd16a46344"
+      }
+    ],
+    "blocks": [
+      {
+        "blockerId": "user-82103af841524d78b83405e6ad756e23",
+        "blockedId": "user-06fd230103484c30bd692f80b9b26cc0"
+      }
+    ],
+    "initialFavorites": [
+      {
+        "userId": "user-bcb36752ceaa4b04bec958c20172371e",
+        "target": {
+          "type": "catalog",
+          "id": "catalog-fe7f5a97b0d24c1592048cbf8941912d"
+        },
+        "relativeOrder": 1
+      }
+    ],
+    "guestMergeScenario": {
+      "intendedAccountId": "user-bcb36752ceaa4b04bec958c20172371e",
+      "localItemsNewestFirst": [
+        {
+          "type": "work",
+          "id": "work-3082e725623948129ebe0752c1b73789"
+        },
+        {
+          "type": "catalog",
+          "id": "catalog-fe7f5a97b0d24c1592048cbf8941912d"
+        },
+        {
+          "type": "work",
+          "id": "work-3082e725623948129ebe0752c1b73789"
+        }
+      ],
+      "expectedNewRelationships": 1,
+      "includesDuplicateAndExistingAccountItem": true,
+      "leaveUnacknowledgedLocalItemsForRetry": true
+    }
+  },
+  "avatarScenario": {
+    "actorId": "user-891423b92f1848bb9c78cabd16a46344",
+    "candidateMediaIds": [
+      "user-media-4a83b968d0e74da88b5f0406ff59c533",
+      "user-media-2e83e0ad310f48d3b6a52c179b9b4508"
+    ],
+    "initialAvatarUnset": true,
+    "firstSuccessfulSaveCounts": true,
+    "calendarZone": "America/New_York",
+    "boundaryDatesForTestsOnly": ["2026-03-08", "2026-11-01"],
+    "doNotChangeMachineClock": true
+  },
+  "filterAssertions": [
+    {
+      "name": "OR within dynasty; AND with role-tagged contributor and script",
+      "dimensionInputs": {
+        "dynasty": ["synthetic-dynasty-a", "synthetic-dynasty-b"],
+        "contributors": [
+          {
+            "role": "textAuthor",
+            "normalized": "合成撰文者甲"
+          }
+        ],
+        "script": ["synthetic-script-a"]
+      },
+      "expectedCatalogFixtureKeys": ["catalog-01", "catalog-05"]
+    },
+    {
+      "name": "Zero matches is distinct from unsupplied metadata",
+      "dimensionInputs": {
+        "dynasty": ["synthetic-dynasty-a"],
+        "originalRegion": ["synthetic-origin-a"],
+        "script": ["synthetic-script-b"]
+      },
+      "expectedCatalogFixtureKeys": []
+    },
+    {
+      "name": "Explicit unknown",
+      "expectedUnknownDynastyFixtureKeys": ["catalog-03"],
+      "expectedUnsuppliedDynastyFixtureKeys": ["catalog-06"]
+    }
+  ],
+  "supportingScenarios": [
+    {
+      "fixtureKey": "comment-heat",
+      "target": {
+        "type": "catalog",
+        "id": "catalog-139360c215f745f38e61cd8369da82b9"
+      },
+      "description": "创建三个公开根评论：两个同点赞数，按较新创建时间和稳定 ID 破同分；一个零点赞。回复点赞不增加根热度。执行点赞/取消后核对顺序、计数与分页不重复。",
+      "authors": [
+        "user-891423b92f1848bb9c78cabd16a46344",
+        "user-b29394722f994cc2a18693066ce6014d",
+        "user-bcb36752ceaa4b04bec958c20172371e"
+      ],
+      "intendedOwnRootLikeCounts": [2, 2, 0],
+      "publicRepliesRemainChronological": true
+    },
+    {
+      "fixtureKey": "private-self-visibility",
+      "target": {
+        "type": "work",
+        "id": "work-3af7bd14605c45d0babf011fbc31665b"
+      },
+      "description": "作者自己的待审根、隐藏根和对应回复保留完整原文；作者可回复自己的非公开根。访客和匿名上下文均不可见，也不进入公开热度与统计。",
+      "ownerId": "user-891423b92f1848bb9c78cabd16a46344",
+      "visitorId": "user-bcb36752ceaa4b04bec958c20172371e"
+    },
+    {
+      "fixtureKey": "delete-body-versus-thread",
+      "bodyOnlyTarget": {
+        "type": "catalog",
+        "id": "catalog-6144388923244165ad1832b03af8104a"
+      },
+      "wholeThreadTarget": {
+        "type": "work",
+        "id": "work-69baa59c3b2c4a8ea2ff23e408c1ed67"
+      },
+      "description": "分别创建有跨作者回复的公开线程：删除正文保留其他合格回复与必要占位；移除整线程后所有作者的 My Comments 都不可恢复该上下文。两种操作需要独立确认和审计。",
+      "participants": [
+        "user-891423b92f1848bb9c78cabd16a46344",
+        "user-b29394722f994cc2a18693066ce6014d",
+        "user-bcb36752ceaa4b04bec958c20172371e"
+      ]
+    },
+    {
+      "fixtureKey": "parallel-work-drafts",
+      "workId": "work-3c422144f24540abbc1a567d8056edf7",
+      "authorId": "user-891423b92f1848bb9c78cabd16a46344",
+      "baseWorkVersion": 1,
+      "baseDraftVersion": 0,
+      "versions": [
+        {
+          "title": "合成编辑草稿甲",
+          "text": "第一设备保留的完整中文修改。"
+        },
+        {
+          "title": "合成编辑草稿乙",
+          "text": "第二个独立登录上下文的较新文字，应用另一版本不能删除本段。"
+        }
+      ],
+      "description": "在两个独立认证浏览器上下文保存相同基线的不同版本，显示冲突与可恢复版本。应用选择的版本后，未选文字保留，作品身份和首次发布时间不变。"
+    }
+  ],
+  "seedingInstructions": [
+    "This is a frozen private input manifest, not authorization to publish or mutate a database.",
+    "A later explicitly authorized task seed must verify the task-owned container/system identity and database/role before any write.",
+    "Do not run the older four-Catalog community acceptance seed in addition to these ten Catalogs.",
+    "Use Payload native owner-context creation and media upload for Catalog records; register returned immutable media metadata before embedding snapshots.",
+    "Use Backend-owned user media and narrowly guarded synthetic creation of the ten already-existing works; never add a public work-creation UI.",
+    "Treat discoveryFacts as proposed task fixture inputs for the approved normalized-filter implementation, not as fields accepted by the old Payload schema.",
+    "Apply intendedFirstPublishedAt only through an explicitly supported synthetic fixture/migration path; never overwrite an existing first-publication timestamp.",
+    "On rerun compare frozen identity/provenance/hashes and preserve existing matches. Reject collisions; never clear unrelated tables or regenerate IDs.",
+    "Avatar-candidate media are supporting input assets, not primary content. No account avatar is changed by this manifest."
+  ]
+}

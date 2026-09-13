@@ -9,6 +9,7 @@ const allowedDevOrigins =
     : [];
 
 const nextConfig: NextConfig = {
+  agentRules: false,
   // Search text is private runtime input; keep ordinary dev request logs intact.
   logging: {
     incomingRequests: { ignore: [/^\/api\/catalog-search(?:[/?]|$)/u] },

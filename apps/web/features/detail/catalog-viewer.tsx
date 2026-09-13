@@ -9,7 +9,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   WheelEvent as ReactWheelEvent,
 } from "react";
-import type { PublicMedia } from "@moya/contracts";
+import type { DetailMediaPresentation } from "./catalog-detail-presentation";
 import type { PresentationPlatform } from "../shell/device-platform";
 
 export const VIEWER_AXIS_LOCK_PX = 10;
@@ -156,14 +156,14 @@ export const clampViewerTransform = (
 
 export interface CatalogViewerProps {
   readonly index: number;
-  readonly media: readonly PublicMedia[];
+  readonly media: readonly DetailMediaPresentation[];
   readonly onClose: () => void;
   readonly onIndexChange: (index: number) => void;
   readonly open: boolean;
   readonly platform: PresentationPlatform;
 }
 
-const viewerResourceKey = (item: PublicMedia): string =>
+const viewerResourceKey = (item: DetailMediaPresentation): string =>
   JSON.stringify([item.id, item.src]);
 
 export const CatalogViewer = ({

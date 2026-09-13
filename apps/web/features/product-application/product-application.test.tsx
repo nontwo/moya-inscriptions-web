@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProductApplication } from "./product-application";
-import { LiveCommentSection } from "../comments/live-comment-section";
+import { DiscussionSection } from "../authors/discussion-section";
 
 import type { T02pProductPreviewProps } from "../product-preview/t02p-product-preview";
 
@@ -44,26 +44,32 @@ describe("ProductApplication", () => {
     expect(lastPreviewProps()).not.toHaveProperty("renderCommentSection");
   });
 
-  it("composes the live comment section through the frozen seam with the sign-in path", () => {
+  it("composes typed Phase 4 discussion and author surfaces only when Development is enabled", () => {
     renderToStaticMarkup(
       <ProductApplication
         comments={{ signInHref: "/dev/community" }}
+        authorCommunity
         initialPlatform="pc"
         states={states}
       />,
     );
-    const { renderCommentSection } = lastPreviewProps();
-    expect(renderCommentSection).toBeTypeOf("function");
-    const section = renderCommentSection?.("catalog-one") as {
+    const { renderDiscussion, renderProfileOverlay, workDetailLoader } =
+      lastPreviewProps();
+    expect(renderDiscussion).toBeTypeOf("function");
+    const section = renderDiscussion?.({
+      type: "catalog",
+      id: "catalog-one",
+    }) as {
       key: string | null;
       props: Record<string, unknown>;
       type: unknown;
     };
-    expect(section.type).toBe(LiveCommentSection);
-    expect(section.key).toBe("catalog-one");
+    expect(renderProfileOverlay).toBeTypeOf("function");
+    expect(workDetailLoader).toBeTypeOf("function");
+    expect(section.type).toBe(DiscussionSection);
+    expect(section.key).toBe("catalog:catalog-one");
     expect(section.props).toEqual({
-      catalogId: "catalog-one",
-      signInHref: "/dev/community",
+      target: { type: "catalog", id: "catalog-one" },
     });
   });
 });

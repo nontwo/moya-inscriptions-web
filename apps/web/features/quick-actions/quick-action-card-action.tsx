@@ -218,11 +218,13 @@ export const QuickActionCardAction = ({
               : null;
             finish(layout !== null);
             if (action) {
-              latest.current.environment.onAction(
+              const result = latest.current.environment.onAction(
                 action,
                 latest.current.content,
               );
-              if (action === "share") setShareFeedback(true);
+              if (action === "share" && result === undefined)
+                setShareFeedback(true);
+              if (result instanceof Promise) void result.catch(() => undefined);
             }
           };
           const pointerCancel = (e: PointerEvent) => {
@@ -353,24 +355,12 @@ export const QuickActionCardAction = ({
                   aria-label={`${active ? "取消" : ""}${label}`}
                 >
                   <span className={`${styles.bubble} yoyi-functional-glass`}>
-                    <svg
-                      aria-hidden="true"
-                      className={styles.icon}
-                      data-filled={
+                    <QuickActionIcon
+                      action={p.action}
+                      filled={
                         p.action !== "share" && (selected ? !active : active)
                       }
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        d={
-                          p.action === "like"
-                            ? "M12 20.4 4.5 13.2C1.1 9.9 3 4.5 7.5 4.5c1.9 0 3.5 1 4.5 2.4 1-1.4 2.6-2.4 4.5-2.4 4.5 0 6.4 5.4 3 8.7L12 20.4Z"
-                            : p.action === "favorite"
-                              ? "m12 3.2 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9L6.6 20l1-6.1-4.4-4.3 6.1-.9L12 3.2Z"
-                              : "M20.5 6.4 14.8 2v3.3C8.3 5.8 4.5 9 3.5 15.5c2.2-3.2 5.8-4.8 11.3-4.8V14l5.7-4.4V6.4Z"
-                        }
-                      />
-                    </svg>
+                    />
                   </span>
                 </span>
               );
@@ -390,3 +380,29 @@ export const QuickActionCardAction = ({
     </>
   );
 };
+
+/** Shared with Detail so action symbols remain identical to the long-press menu. */
+export const QuickActionIcon = ({
+  action,
+  filled = false,
+}: {
+  readonly action: QuickActionName;
+  readonly filled?: boolean;
+}) => (
+  <svg
+    aria-hidden="true"
+    className={styles.icon}
+    data-filled={filled}
+    viewBox="0 0 24 24"
+  >
+    <path
+      d={
+        action === "like"
+          ? "M12 20.4 4.5 13.2C1.1 9.9 3 4.5 7.5 4.5c1.9 0 3.5 1 4.5 2.4 1-1.4 2.6-2.4 4.5-2.4 4.5 0 6.4 5.4 3 8.7L12 20.4Z"
+          : action === "favorite"
+            ? "m12 3.2 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9L6.6 20l1-6.1-4.4-4.3 6.1-.9L12 3.2Z"
+            : "M20.5 6.4 14.8 2v3.3C8.3 5.8 4.5 9 3.5 15.5c2.2-3.2 5.8-4.8 11.3-4.8V14l5.7-4.4V6.4Z"
+      }
+    />
+  </svg>
+);

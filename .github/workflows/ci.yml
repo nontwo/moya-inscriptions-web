@@ -202,8 +202,10 @@ jobs:
           ON_ERROR_STOP=1 -U moya_test -d moya_test -f -
           <infra/test/disposable-test-target.sql
 
-      - name: PostgreSQL and ordinary tests within 120 seconds
-        run: node scripts/verify.mjs test
+      # Persistent opt-in for full PR and merged-main test runs only.
+      # Preparation, all tests and cleanup share one 300-second deadline.
+      - name: Complete CI test milestone within 300 seconds
+        run: node scripts/verify.mjs test --ci-milestone
 
   cms:
     name: cms

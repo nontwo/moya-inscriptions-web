@@ -72,6 +72,8 @@ export const GET = async (
       catalogId,
       commentId,
       query,
+      undefined,
+      readCommunitySessionToken(request.headers.get("cookie")),
     );
     switch (result.state) {
       case "success":

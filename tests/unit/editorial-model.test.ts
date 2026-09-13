@@ -9,6 +9,7 @@ import {
   editorialPublishApprovedSchema,
   editorialPublishSchema,
   editorialSaveDraftSchema,
+  catalogFilterMetadataSchema,
 } from "@moya/contracts/internal/editorial";
 import { editorialFields } from "admin/fields";
 import { publicSourceCitationSchema } from "@moya/contracts/schemas";
@@ -36,6 +37,22 @@ const media = (position = 0) => ({
 });
 
 describe("editorial draft and publication boundaries", () => {
+  it("keeps legacy omitted filters absent after native defaults, preserving explicit unknown and values", () => {
+    const filters = catalogFilterMetadataSchema.parse({});
+    expect(
+      editorialContentFromDocument({ ...identity, filterMetadata: filters }),
+    ).toEqual(identity);
+    filters.dynasty = { state: "UNKNOWN", tokens: "" };
+    expect(
+      editorialContentFromDocument({ ...identity, filterMetadata: filters })
+        .filterMetadata,
+    ).toEqual(filters);
+    filters.dynasty = { state: "VALUE", tokens: "合成朝代" };
+    expect(
+      editorialContentFromDocument({ ...identity, filterMetadata: filters })
+        .filterMetadata,
+    ).toEqual(filters);
+  });
   it("accepts an incomplete legal draft while requiring publication completeness", () => {
     expect(editorialDraftSchema.parse(identity)).toEqual({
       ...identity,

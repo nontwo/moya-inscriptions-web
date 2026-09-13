@@ -1,3 +1,4 @@
+import { PostgresDiscussionStore } from "./discussion-store.js";
 import { asCommunityOperationError } from "./availability.js";
 import {
   applyCommentModerationSql,
@@ -98,8 +99,13 @@ type Runner = <Row extends QueryResultRow = QueryResultRow>(
  * DML-only: no statement here creates, alters or drops anything, and nothing is
  * ever deleted.
  */
-export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
-  constructor(private readonly pool: Pool) {}
+export class PostgresCommunityCommentAdapter
+  extends PostgresDiscussionStore
+  implements CommunityCommentPort
+{
+  constructor(pool: Pool) {
+    super(pool);
+  }
 
   /**
    * One repeatable-read snapshot: the hot selection, the latest page, its
@@ -367,6 +373,8 @@ export class PostgresCommunityCommentAdapter implements CommunityCommentPort {
         suspend: 0,
         reinstate: 0,
         set_publication_policy: 0,
+        delete_body: 0,
+        remove_thread: 0,
       };
       for (const row of byAction) {
         const action = String(row.action) as ModerationEventAction;

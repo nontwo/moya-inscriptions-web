@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  contentIdentitySchema,
   catalogCommentIdSchema,
   catalogIdSchema,
   publicUserHandleSchema,
@@ -162,7 +163,12 @@ export const operatorAuthorSchema = z.strictObject({
 export const operatorCommentSchema = z.strictObject({
   id: catalogCommentIdSchema,
   kind: operatorCommentKindSchema,
-  catalogId: catalogIdSchema,
+  catalogId: catalogIdSchema.nullable(),
+  target: contentIdentitySchema.optional(),
+  contentTitle: z.string().nullable().optional(),
+  bodyDeleted: z.boolean().optional(),
+  threadRemoved: z.boolean().optional(),
+  threadAffectedCount: z.number().int().positive().optional(),
   catalogTitle: z.string().min(1).max(500).nullable(),
   rootCommentId: catalogCommentIdSchema.optional(),
   /** The sibling reply this reply answers, when there is one. */
@@ -219,6 +225,8 @@ export const moderationEventActionSchema = z.enum([
   "suspend",
   "reinstate",
   "set_publication_policy",
+  "delete_body",
+  "remove_thread",
 ]);
 
 export const moderationEventSubjectKindSchema = z.enum([
@@ -338,6 +346,8 @@ export const moderationSummarySchema = z.strictObject({
     suspend: z.number().int().min(0),
     reinstate: z.number().int().min(0),
     set_publication_policy: z.number().int().min(0),
+    delete_body: z.number().int().min(0).default(0),
+    remove_thread: z.number().int().min(0).default(0),
   }),
   recentEvents: z.array(moderationEventSchema).max(10),
   analysis: z.strictObject({ connected: z.boolean() }),

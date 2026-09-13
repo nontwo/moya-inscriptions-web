@@ -1,3 +1,5 @@
+import { registerPhase4DiscoveryTests } from "./phase4-discovery-cases.js";
+import { registerPhase4AuthorTests } from "./phase4-author-cases.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1082,3 +1084,7 @@ describe("community PostgreSQL comments and moderation", () => {
     );
   });
 });
+
+registerPhase4AuthorTests(pool);
+
+registerPhase4DiscoveryTests(pool);

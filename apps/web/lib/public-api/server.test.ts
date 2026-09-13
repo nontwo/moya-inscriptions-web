@@ -4,6 +4,7 @@ import {
   fetchServerCatalogDetail,
   fetchServerCatalogPage,
   parsePublicApiBaseUrl,
+  relayServerAuthorCommunity,
 } from "./server.js";
 
 afterEach(() => {
@@ -12,13 +13,55 @@ afterEach(() => {
 });
 
 describe("Public API server wiring", () => {
+  it("accepts the browser Host when Next normalizes its internal development URL", async () => {
+    vi.stubEnv("MOYA_PUBLIC_API_BASE_URL", "http://127.0.0.1:3411");
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ saved: true }));
+    vi.stubGlobal("fetch", upstream);
+    const response = await relayServerAuthorCommunity(
+      new Request("http://localhost:3410/api/community/favorites/merge", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:3410",
+          origin: "http://127.0.0.1:3410",
+          "content-type": "application/json",
+          "sec-fetch-site": "same-origin",
+        },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+  it.each(["https://foreign.invalid", "null", "http://127.0.0.1:3410/path"])(
+    "rejects foreign or malformed mutation origin %s even with a forwarded host",
+    async (origin) => {
+      const upstream = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", upstream);
+      const response = await relayServerAuthorCommunity(
+        new Request("http://localhost:3410/api/community/favorites/merge", {
+          method: "POST",
+          headers: {
+            host: "127.0.0.1:3410",
+            origin,
+            "x-forwarded-host": "foreign.invalid",
+            "content-type": "application/json",
+          },
+          body: "{}",
+        }),
+      );
+      expect(response.status).toBe(403);
+      expect(upstream).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     undefined,
     "",
     " https://api.example.invalid",
     "relative/path",
     "ftp://api.example.invalid",
-    "https://user:password@api.example.invalid",
+    "https://synthetic:placeholder@api.example.invalid",
     "https://api.example.invalid?tenant=one",
     "https://api.example.invalid#catalog",
   ])("rejects invalid base URL configuration: %s", (value) => {
