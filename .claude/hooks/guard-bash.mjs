@@ -27,13 +27,15 @@ import { pathToFileURL } from "node:url";
 
 const rules = [
   [
-    // The program must start a command (line start or after a separator), so
-    // the same words inside an echo, grep or printf argument never match.
-    /(?:^|[;&|(`]\s*)(?:psql|pgcli)\b[^|;&\n]*\byoyi_dev\b[^|;&\n]*\b(?:DROP|TRUNCATE|DELETE\s+FROM)\b/iu,
+    // The program must start a command (string start, a new line or after
+    // `;`, `&`, `|`), so the same words inside an echo, grep or printf
+    // argument never match. A program inside `$( )` or backticks is not
+    // matched here; it falls to the normal permission prompt instead.
+    /(?:^|[;&|\n]\s*)(?:psql|pgcli)\b[^|;&\n]*\byoyi_dev\b[^|;&\n]*\b(?:DROP|TRUNCATE|DELETE\s+FROM)\b/iu,
     "yoyi_dev is the live Development database; never run destructive SQL against it",
   ],
   [
-    /(?:^|[;&|(`]\s*)git\s+(?:-[Cc]\s+\S+\s+)+push\b[^|;&\n]*(?:--force(?:-with-lease)?\b|\s-f\b|\s(?:origin\s+)?(?:main|HEAD:main)(?:\s|$))/u,
+    /(?:^|[;&|\n]\s*)git\s+(?:-[Cc]\s+\S+\s+)+push\b[^|;&\n]*(?:--force(?:-with-lease)?\b|\s-f\b|\s\+\S|--prune\b|--mirror\b|\s\S*:(?:refs\/heads\/)?main(?:\s|$)|\s(?:origin\s+)?(?:main|refs\/heads\/main)(?:\s|$))/u,
     "force push or direct push to main is prohibited in every spelling",
   ],
 ];

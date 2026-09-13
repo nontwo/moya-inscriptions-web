@@ -172,7 +172,6 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
     for (const required of [
       "Bash(gh pr ready *)",
       "Bash(gh pr merge *)",
-      "Bash(gh pr create *)",
       "Bash(git rebase *)",
       "Bash(git reset *)",
       "Bash(git stash *)",
@@ -182,6 +181,10 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       "Bash(node scripts/test-target.mjs mark *)",
     ])
       assert.ok(ask.includes(required), required);
+    assert.ok(
+      !ask.includes("Bash(gh pr create *)"),
+      "an ask rule would override the Draft-PR allow rule (ask beats allow)",
+    );
     for (const forbidden of [
       "Bash(gh pr merge *)",
       "Bash(gh pr ready *)",
@@ -204,6 +207,13 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       "Bash(git push origin HEAD:main*)",
       "Bash(git push *--no-verify*)",
       "Bash(git commit *--no-verify*)",
+      "Bash(git commit -n *)",
+      "Bash(git commit * -n *)",
+      "Bash(git push * +*)",
+      "Bash(git push * *:main)",
+      "Bash(git push * refs/heads/main*)",
+      "Bash(git push *--prune*)",
+      "Bash(git push *--mirror*)",
       "Bash(git reset --hard*)",
       "Bash(git clean *)",
       "Bash(git worktree remove *)",
@@ -216,9 +226,14 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       "Bash(docker volume rm *)",
       "Bash(dropdb *)",
       "Read(./.env)",
-      "Read(./.env.*)",
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
     ])
       assert.ok(deny.includes(required), required);
+    assert.ok(
+      !deny.includes("Read(./.env.*)"),
+      "the tracked .env.example templates must stay readable",
+    );
     assert.equal(settings.permissions.defaultMode, undefined);
     assert.equal(settings.permissions.additionalDirectories, undefined);
     assert.equal(settings.enableAllProjectMcpServers, undefined);
@@ -247,6 +262,12 @@ describe("the reduced Bash guard covers only what native rules cannot express", 
     "git -C ../other push --force origin chore/x",
     "git -c core.hooksPath=/dev/null push origin main",
     "git -C . push origin HEAD:main",
+    "git -C . push origin +chore/x",
+    "git -C . push origin chore/x:main",
+    "git -C . push origin HEAD:refs/heads/main",
+    "git -C . push --prune origin",
+    "git status\ngit -C . push --force origin chore/x",
+    "true; psql -d yoyi_dev -c 'DROP TABLE x'",
   ];
   const leftToNativeRules = [
     "git push --force origin chore/x",
@@ -266,6 +287,8 @@ describe("the reduced Bash guard covers only what native rules cannot express", 
     "psql -d moya_synthetic_test -c 'TRUNCATE catalog_entries'",
     "git push origin chore/wf-task-lifecycle",
     "git -C ../other push origin chore/x",
+    "git -C ../other push origin chore/x:chore/x-copy",
+    'grep -rn "(psql -d yoyi_dev -c DROP)" docs/',
     "node scripts/test-target.mjs check TEST_DATABASE_URL",
     "",
   ];
@@ -393,7 +416,7 @@ describe("task records, templates and the Owner guide", () => {
     );
     assert.match(
       map,
-      /\| CLARIFY\s+\| Read the full authority when entering a task context/u,
+      /\| MODERNIZE\s+\| Read the full authority when entering a task context/u,
     );
     assert.match(
       map,
