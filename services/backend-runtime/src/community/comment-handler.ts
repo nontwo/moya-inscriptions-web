@@ -39,6 +39,10 @@ export interface CommentRouteDependencies {
 }
 
 const sendFailure = (response: ServerResponse, error: unknown): void => {
+  if (error instanceof InvalidSession) {
+    sendApiError(response, "UNAUTHENTICATED", "A valid session is required");
+    return;
+  }
   if (isCommunityNotFoundError(error)) {
     sendApiError(
       response,
@@ -172,7 +176,7 @@ export const handleReadComments = async (
   request: IncomingMessage,
   response: ServerResponse,
   rawCatalogId: string,
-  { commentService }: CommentRouteDependencies,
+  { commentService, sessionService }: CommentRouteDependencies,
 ): Promise<void> => {
   const catalogId = parseCatalogId(response, rawCatalogId);
   if (catalogId === undefined) return;
@@ -182,7 +186,12 @@ export const handleReadComments = async (
     sendJson(
       response,
       200,
-      await commentService.readComments(catalogId, listing),
+      await commentService.readComments(
+        catalogId,
+        listing,
+        await optionalViewer(request, sessionService),
+      ),
+      { "cache-control": "private, no-store", vary: "Authorization" },
     );
   } catch (error) {
     sendFailure(response, error);
@@ -223,7 +232,7 @@ export const handleReadReplies = async (
   response: ServerResponse,
   rawCatalogId: string,
   rawCommentId: string,
-  { commentService }: CommentRouteDependencies,
+  { commentService, sessionService }: CommentRouteDependencies,
 ): Promise<void> => {
   const catalogId = parseCatalogId(response, rawCatalogId);
   if (catalogId === undefined) return;
@@ -235,7 +244,13 @@ export const handleReadReplies = async (
     sendJson(
       response,
       200,
-      await commentService.readReplies(catalogId, commentId, page),
+      await commentService.readReplies(
+        catalogId,
+        commentId,
+        page,
+        await optionalViewer(request, sessionService),
+      ),
+      { "cache-control": "private, no-store", vary: "Authorization" },
     );
   } catch (error) {
     sendFailure(response, error);
@@ -273,4 +288,16 @@ export const handleCreateReply = async (
   } catch (error) {
     sendBodyFailure(response, error);
   }
+};
+
+class InvalidSession extends Error {}
+const optionalViewer = async (
+  request: IncomingMessage,
+  sessions: CommunitySessionService,
+): Promise<PublicUserId | null> => {
+  const token = readBearerToken(request);
+  if (token === undefined) return null;
+  const profile = await sessions.identify(token);
+  if (!profile) throw new InvalidSession();
+  return profile.id;
 };

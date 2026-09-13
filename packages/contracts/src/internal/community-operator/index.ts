@@ -81,3 +81,28 @@ export type {
   UserModerationAction,
   UserModerationResult,
 } from "./types.js";
+
+export {
+  operatorContentQuerySchema,
+  operatorWorkSchema,
+  operatorWorkPageSchema,
+  moderateWorkCommandSchema,
+  adminModerateWorkRequestSchema,
+  featuredMutationSchema,
+  featuredSettingsMutationSchema,
+  featuredItemSchema,
+  featuredPageSchema,
+  operatorDeleteBodySchema,
+  operatorRemoveThreadSchema,
+  adminDeleteBodySchema,
+  adminRemoveThreadSchema,
+} from "./content-schemas.js";
+export type {
+  OperatorContentQuery,
+  OperatorWork,
+  OperatorWorkPage,
+  ModerateWorkCommand,
+  FeaturedMutation,
+  FeaturedSettingsMutation,
+  FeaturedPage,
+} from "./content-schemas.js";

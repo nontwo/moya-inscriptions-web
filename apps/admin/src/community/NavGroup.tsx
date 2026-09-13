@@ -19,6 +19,7 @@ const groups = [
       { href: "/admin/community-moderation", label: "评论审核队列" },
       { href: "/admin/community-moderation/settings", label: "发布设置" },
       { href: "/admin/community-moderation/history", label: "操作历史" },
+      { href: "/admin/community-moderation/content", label: "作品与推荐" },
     ],
   },
   {
@@ -27,7 +28,11 @@ const groups = [
   },
 ] as const;
 
-export const CommunityNavGroups = () => {
+export const CommunityNavGroups = ({
+  phase4Enabled = false,
+}: {
+  readonly phase4Enabled?: boolean;
+}) => {
   const { user } = useAuth();
   const pathname = usePathname();
   if (user?.collection !== "users" || user.role !== "owner") return null;
@@ -35,21 +40,27 @@ export const CommunityNavGroups = () => {
     <>
       {groups.map((group) => (
         <NavGroup isOpen key={group.label} label={group.label}>
-          {group.links.map((link) => {
-            const active = pathname === link.href;
-            return (
-              <Link
-                aria-current={active ? "page" : undefined}
-                className={`nav__link ${styles.navLink}${active ? " nav__link--active" : ""}`}
-                data-community-nav={link.href}
-                href={link.href}
-                key={link.href}
-              >
-                {active ? <span className="nav__link-indicator" /> : null}
-                <span className="nav__link-label">{link.label}</span>
-              </Link>
-            );
-          })}
+          {group.links
+            .filter(
+              (link) =>
+                phase4Enabled ||
+                link.href !== "/admin/community-moderation/content",
+            )
+            .map((link) => {
+              const active = pathname === link.href;
+              return (
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  className={`nav__link ${styles.navLink}${active ? " nav__link--active" : ""}`}
+                  data-community-nav={link.href}
+                  href={link.href}
+                  key={link.href}
+                >
+                  {active ? <span className="nav__link-indicator" /> : null}
+                  <span className="nav__link-label">{link.label}</span>
+                </Link>
+              );
+            })}
         </NavGroup>
       ))}
     </>

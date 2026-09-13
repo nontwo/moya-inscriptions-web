@@ -152,7 +152,7 @@ export function classifyTask(paths, event = "pull_request") {
       file.startsWith("scripts/editorial/") ||
       // verify.mjs stage plans are the Web lint, typecheck, test, build and
       // smoke job commands, including the test job's marker check.
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify)\.mjs$/u.test(
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan|install-confidentiality-hooks|disposable-test-target|test-target|verify|materialize-phase4-fixtures|seed-phase4-acceptance|seed-phase4-support)\.mjs$/u.test(
         file,
       )
     ) {

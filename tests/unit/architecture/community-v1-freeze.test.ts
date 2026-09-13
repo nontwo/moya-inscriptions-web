@@ -68,6 +68,7 @@ describe("Community V1 freeze (amendment 2026-09-11, section 9)", () => {
     expect(
       [...enumBody![1]!.matchAll(/"([A-Z_]+)"/gu)].map((m) => m[1]),
     ).toEqual([
+      "CONFLICT",
       "INVALID_QUERY",
       "INVALID_INPUT",
       "ITEM_NOT_FOUND",

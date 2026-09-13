@@ -31,3 +31,36 @@ export type {
   PublicUserId,
   PublicUserProfile,
 } from "./types.js";
+
+export type {
+  ContentIdentity,
+  AuthorPrivacy,
+  AuthorMedia,
+  AuthorProfile,
+  UserWork,
+  WorkText,
+  WorkEditDraft,
+  AuthorListQuery,
+  ProfileUpdate,
+  PrivacyUpdate,
+  AvatarUpdate,
+  RelationshipUpdate,
+  ContentRelationUpdate,
+  GuestFavoriteMerge,
+  WorkDraftSave,
+  WorkDraftApply,
+} from "./schemas.js";
+export type {
+  DiscussionReply,
+  DiscussionComment,
+  DiscussionPage,
+  DiscussionReplyPage,
+  OwnComment,
+} from "./schemas.js";
+export type {
+  ContentCard,
+  DiscoveryQuery,
+  DiscoveryPage,
+  InscriptionFilters,
+  InscriptionFilterOptions,
+} from "./schemas.js";

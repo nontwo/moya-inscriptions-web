@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import {
+  authorCommunityJsonSchemas,
   apiErrorJsonSchema,
   catalogCitationScopeJsonSchema,
   catalogCommentIdJsonSchema,
@@ -56,7 +57,7 @@ const requiredProperties = (schema: unknown): string[] =>
   (asObject(schema).required ?? []) as string[];
 
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
-  it("contains exactly the approved Catalog read, current-user and comment routes", () => {
+  it("contains exactly the approved Catalog, Community V1 and Phase 4 routes", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.jsonSchemaDialect).toBe(
       "https://json-schema.org/draft/2020-12/schema",
@@ -71,6 +72,37 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/catalog/{catalogId}/comments/{commentId}/replies",
         "/v1/catalog-search",
         "/v1/me",
+        "/v1/community/discover",
+        "/v1/community/filter-options",
+        "/v1/community/content/{type}/{id}/card",
+        "/v1/community/content/{type}/{id}/state",
+        "/v1/community/authors/{authorId}/favorites",
+        "/v1/community/authors/{authorId}/likes",
+        "/v1/community/discussion/{type}/{id}",
+        "/v1/community/discussion/{type}/{id}/replies/{rootId}",
+        "/v1/community/discussion/{type}/{id}/locate/{commentId}",
+        "/v1/community/discussion/items/{commentId}/like",
+        "/v1/community/discussion/items/{commentId}/body",
+        "/v1/community/me/comments",
+        "/v1/community/authors/{authorId}",
+        "/v1/community/authors/{authorId}/followers",
+        "/v1/community/authors/{authorId}/following",
+        "/v1/community/authors/{authorId}/works",
+        "/v1/community/content/favorite",
+        "/v1/community/content/like",
+        "/v1/community/favorites/merge",
+        "/v1/community/me/avatar",
+        "/v1/community/me/blocks",
+        "/v1/community/me/privacy",
+        "/v1/community/me/profile",
+        "/v1/community/media",
+        "/v1/community/media/{mediaId}",
+        "/v1/community/relationships/block",
+        "/v1/community/relationships/follow",
+        "/v1/community/works/{workId}",
+        "/v1/community/works/{workId}/drafts",
+        "/v1/community/works/{workId}/drafts/apply",
+        "/v1/community/works/{workId}/drafts/{draftId}",
       ].sort(),
     );
     // The Development session lifecycle is not a Public API operation, and the
@@ -98,9 +130,44 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/catalog/{catalogId}/comments",
       "/v1/catalog/{catalogId}/comments/{commentId}/replies",
     ]);
+    const authorMethods: Record<string, string[]> = {
+      "/v1/community/discover": ["get"],
+      "/v1/community/filter-options": ["get"],
+      "/v1/community/content/{type}/{id}/card": ["get"],
+      "/v1/community/content/{type}/{id}/state": ["get"],
+      "/v1/community/authors/{authorId}/favorites": ["get"],
+      "/v1/community/authors/{authorId}/likes": ["get"],
+      "/v1/community/discussion/{type}/{id}": ["get", "post"],
+      "/v1/community/discussion/{type}/{id}/replies/{rootId}": ["get", "post"],
+      "/v1/community/discussion/{type}/{id}/locate/{commentId}": ["get"],
+      "/v1/community/discussion/items/{commentId}/like": ["post"],
+      "/v1/community/discussion/items/{commentId}/body": ["delete"],
+      "/v1/community/me/comments": ["get"],
+
+      "/v1/community/authors/{authorId}": ["get"],
+      "/v1/community/authors/{authorId}/followers": ["get"],
+      "/v1/community/authors/{authorId}/following": ["get"],
+      "/v1/community/authors/{authorId}/works": ["get"],
+      "/v1/community/content/favorite": ["post"],
+      "/v1/community/content/like": ["post"],
+      "/v1/community/favorites/merge": ["post"],
+      "/v1/community/me/avatar": ["post"],
+      "/v1/community/me/blocks": ["get"],
+      "/v1/community/me/privacy": ["post"],
+      "/v1/community/me/profile": ["post"],
+      "/v1/community/media": ["post"],
+      "/v1/community/media/{mediaId}": ["get"],
+      "/v1/community/relationships/block": ["post"],
+      "/v1/community/relationships/follow": ["post"],
+      "/v1/community/works/{workId}": ["get", "delete"],
+      "/v1/community/works/{workId}/drafts": ["get", "post"],
+      "/v1/community/works/{workId}/drafts/apply": ["post"],
+      "/v1/community/works/{workId}/drafts/{draftId}": ["delete"],
+    };
     for (const [name, pathItem] of Object.entries(paths)) {
       expect(Object.keys(asObject(pathItem))).toEqual(
-        writePaths.has(name) ? ["get", "post"] : ["get"],
+        authorMethods[name] ??
+          (writePaths.has(name) ? ["get", "post"] : ["get"]),
       );
     }
 
@@ -316,6 +383,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
 
   it("uses only contract-derived public components", () => {
     expect(schemas).toEqual({
+      ...authorCommunityJsonSchemas,
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
       CatalogContributorRole: catalogContributorRoleJsonSchema,
@@ -571,6 +639,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       schemaProperty(schemaProperty(schemas.ApiError, "error"), "code"),
     ).toMatchObject({
       enum: [
+        "CONFLICT",
         "INVALID_QUERY",
         "INVALID_INPUT",
         "ITEM_NOT_FOUND",

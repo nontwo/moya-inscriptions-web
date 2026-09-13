@@ -21,3 +21,7 @@ export type { CommentRow, OperatorCommentRow } from "./comment-row-mapper.js";
 export type { RequiredCommunityMigration } from "./migrations/manifest.js";
 export type { CommunityMigrationFile } from "./migrations/runner.js";
 export type { PublicUserRow } from "./row-mapper.js";
+
+export { PostgresAuthorCommunityAdapter } from "./author-adapter.js";
+export { PostgresCommunityDiscoveryAdapter } from "./discovery-adapter.js";
+export { PostgresCommunityContentOperatorAdapter } from "./content-operator-adapter.js";

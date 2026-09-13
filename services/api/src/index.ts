@@ -120,3 +120,27 @@ export type {
   CatalogStatefulTextProjection,
 } from "./modules/catalog/application/catalog-read-projections.js";
 export type { CatalogRecord } from "./modules/catalog/domain/catalog-record.js";
+
+export type {
+  AuthorCommunityPort,
+  AuthorPage,
+  AuthorListItem,
+  WorkDraftResult,
+  WorkApplyResult,
+  OwnedMediaInput,
+  OwnedMediaRead,
+  StoredContentRelation,
+} from "./modules/community/application/ports/author-community-port.js";
+export { AuthorCommunityService } from "./modules/community/application/services/author-community-service.js";
+export type {
+  DiscussionPort,
+  DiscussionQuery,
+} from "./modules/community/application/ports/discussion-port.js";
+export type {
+  CommunityDiscoveryPort,
+  DiscoveryCardRecord,
+  DiscoveryPageRecord,
+} from "./modules/community/application/ports/community-discovery-port.js";
+export type { CommunityContentOperatorPort } from "./modules/community/application/ports/community-content-operator-port.js";
+
+export { CommunityContentOperatorService } from "./modules/community/application/services/community-content-operator-service.js";

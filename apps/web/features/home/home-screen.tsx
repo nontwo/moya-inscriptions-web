@@ -101,12 +101,18 @@ const renderFeedState = <T,>(
 };
 
 export interface HomeScreenProps {
+  readonly renderDiscover?: (active: boolean) => ReactNode;
+  readonly headerStart?: ReactNode;
+  readonly headerEnd?: ReactNode;
   readonly data: HomeSurfaceData;
   readonly initialFeed?: HomeFeed;
   readonly initialTopicId?: string | null;
 }
 
 export const HomeScreen = ({
+  renderDiscover,
+  headerStart,
+  headerEnd,
   data,
   initialFeed = "discover",
   initialTopicId = null,
@@ -224,31 +230,35 @@ export const HomeScreen = ({
   );
 
   const panels = {
-    discover: renderFeedState(
-      "discover",
-      data.discover,
-      (items: readonly CatalogSummary[]) => (
-        <CatalogMasonry
-          feedLayout={feedLayout}
-          getKey={(item) => item.id}
-          isFullSpan={(item) =>
-            isUltraWideCatalogMedia(item.representativeMedia)
-          }
-          items={items}
-          platform={platform}
-          renderItem={(item, onMediaSettled) => (
-            <CatalogCard
-              item={item}
-              onMediaSettled={onMediaSettled}
-              onOpenCatalog={(catalog, opener) =>
-                openCatalog(catalog.id, opener)
-              }
-              variant="feed"
-            />
-          )}
-        />
+    discover:
+      renderDiscover?.(
+        activeFeed === "discover" && activeDestination === "home",
+      ) ??
+      renderFeedState(
+        "discover",
+        data.discover,
+        (items: readonly CatalogSummary[]) => (
+          <CatalogMasonry
+            feedLayout={feedLayout}
+            getKey={(item) => item.id}
+            isFullSpan={(item) =>
+              isUltraWideCatalogMedia(item.representativeMedia)
+            }
+            items={items}
+            platform={platform}
+            renderItem={(item, onMediaSettled) => (
+              <CatalogCard
+                item={item}
+                onMediaSettled={onMediaSettled}
+                onOpenCatalog={(catalog, opener) =>
+                  openCatalog(catalog.id, opener)
+                }
+                variant="feed"
+              />
+            )}
+          />
+        ),
       ),
-    ),
     nearby: renderFeedState(
       "nearby",
       data.nearby,
@@ -296,7 +306,11 @@ export const HomeScreen = ({
       data-home-surface=""
       tabIndex={-1}
     >
-      <header className={styles.homeHeader}>
+      <header
+        className={styles.homeHeader}
+        data-author-bar={headerEnd ? "" : undefined}
+      >
+        {headerStart}
         <div
           ref={tabsRef}
           aria-label="首页内容范围"
@@ -328,7 +342,9 @@ export const HomeScreen = ({
             );
           })}
         </div>
-        <span aria-hidden="true" className={styles.settingsClearance} />
+        {headerEnd ?? (
+          <span aria-hidden="true" className={styles.settingsClearance} />
+        )}
       </header>
       <HomeFeedPager
         ref={pagerRef}

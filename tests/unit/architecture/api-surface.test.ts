@@ -43,6 +43,7 @@ describe("@moya/api server-only surface", () => {
     });
     expect(manifest.sideEffects).toBe(false);
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
+      "AuthorCommunityService",
       "COMMENT_EMBEDDED_REPLY_LIMIT",
       "COMMENT_HOT_LIMIT",
       "COMMENT_PAGE_SIZE_DEFAULT",
@@ -52,6 +53,7 @@ describe("@moya/api server-only surface", () => {
       "CatalogQueryUnavailableError",
       "CatalogReadService",
       "CommunityConflictError",
+      "CommunityContentOperatorService",
       "CommunityInputError",
       "CommunityModerationService",
       "CommunityNotFoundError",

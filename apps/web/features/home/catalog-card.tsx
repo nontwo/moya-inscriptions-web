@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@moya/ui";
 
+import { localCatalogMediaSrc } from "../detail/local-catalog-media";
 import styles from "./home-screen.module.css";
 import { useContentQuickActions } from "../quick-actions/content-quick-actions";
 import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 
-import type { CSSProperties } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import type { CatalogSummary, PublicMedia } from "@moya/contracts";
 
 export type CatalogCardVariant = "feed" | "inscription";
@@ -69,13 +70,14 @@ const MediaFallback = ({
   </div>
 );
 
-const CatalogCardMedia = ({
+export const CatalogCardMedia = ({
   media,
   onMediaSettled,
   title,
   variant,
 }: {
-  readonly media: PublicMedia | undefined;
+  readonly media:
+    Pick<PublicMedia, "src" | "alt" | "width" | "height"> | undefined;
   readonly onMediaSettled?: () => void;
   readonly title: string;
   readonly variant: CatalogCardVariant;
@@ -131,7 +133,7 @@ const CatalogCardMedia = ({
   );
 };
 
-export const CatalogCard = ({
+export const CatalogCardPresentation = ({
   item,
   onMediaSettled,
   onOpenCatalog,
@@ -161,7 +163,18 @@ export const CatalogCard = ({
       role={variant === "feed" ? "listitem" : undefined}
     >
       <CatalogCardMedia
-        media={item.representativeMedia}
+        media={
+          item.representativeMedia
+            ? {
+                ...item.representativeMedia,
+                src: localCatalogMediaSrc(
+                  item.representativeMedia.src,
+                  item.id,
+                  item.representativeMedia.id,
+                ),
+              }
+            : undefined
+        }
         {...(onMediaSettled === undefined ? {} : { onMediaSettled })}
         title={item.title}
         variant={variant}
@@ -216,4 +229,23 @@ export const CatalogCard = ({
       )}
     </article>
   );
+};
+
+const CatalogRenderer = createContext<ComponentType<CatalogCardProps> | null>(
+  null,
+);
+export const CatalogCardRendererProvider = ({
+  component,
+  children,
+}: {
+  component: ComponentType<CatalogCardProps>;
+  children: ReactNode;
+}) => (
+  <CatalogRenderer.Provider value={component}>
+    {children}
+  </CatalogRenderer.Provider>
+);
+export const CatalogCard = (props: CatalogCardProps) => {
+  const Renderer = useContext(CatalogRenderer) ?? CatalogCardPresentation;
+  return <Renderer {...props} />;
 };

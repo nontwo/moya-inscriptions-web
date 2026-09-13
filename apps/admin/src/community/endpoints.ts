@@ -1,5 +1,11 @@
 import {
   adminBulkModerateCommentsRequestSchema,
+  operatorContentQuerySchema,
+  adminModerateWorkRequestSchema,
+  featuredMutationSchema,
+  featuredSettingsMutationSchema,
+  adminDeleteBodySchema,
+  adminRemoveThreadSchema,
   adminModerateCommentRequestSchema,
   adminModerateUserRequestSchema,
   adminReadCommentRequestSchema,
@@ -86,6 +92,59 @@ export type CommunityOperation = (
 export const communityOperations = (
   call: OperatorCall,
 ): Readonly<Record<string, CommunityOperation>> => ({
+  "read-works": async (_req, input) =>
+    call("GET", `works${toQuery(parse(operatorContentQuerySchema, input))}`),
+  "moderate-work": async (_req, input) => {
+    const { id, ...command } = parse(adminModerateWorkRequestSchema, input);
+    return call("POST", `works/${segment(id)}/moderation`, command);
+  },
+  "read-featured": async (_req, input) =>
+    call("GET", `featured${toQuery(parse(operatorContentQuerySchema, input))}`),
+  "set-featured": async (_req, input) =>
+    call("PUT", "featured", parse(featuredMutationSchema, input)),
+  "set-featured-quantity": async (_req, input) =>
+    call(
+      "PUT",
+      "featured/settings",
+      parse(featuredSettingsMutationSchema, input),
+    ),
+  "delete-body": async (_req, input) => {
+    const { id, ...command } = parse(adminDeleteBodySchema, input);
+    return call("POST", `comments/${segment(id)}/delete-body`, command);
+  },
+  "remove-thread": async (_req, input) => {
+    const { id, ...command } = parse(adminRemoveThreadSchema, input);
+    return call("POST", `comments/${segment(id)}/remove-thread`, command);
+  },
+  "read-feature-catalogs": async (req, input) => {
+    const query = parse(operatorContentQuerySchema, input);
+    const result = await req.payload.find({
+      collection: "catalogs",
+      req,
+      overrideAccess: false,
+      where: {
+        and: [
+          { _status: { equals: "published" } },
+          ...(query.search ? [{ title: { contains: query.search } }] : []),
+        ],
+      },
+      draft: false,
+      depth: 0,
+      page: query.page,
+      limit: query.pageSize,
+      sort: "title",
+      select: { catalogId: true, title: true },
+    });
+    return {
+      items: result.docs.map((doc) => ({
+        id: doc.catalogId,
+        title: doc.title,
+      })),
+      total: result.totalDocs,
+      page: result.page,
+      pageSize: result.limit,
+    };
+  },
   "read-policy": async (): Promise<PublicationPolicyState> =>
     call("GET", "publication-policy"),
   "set-policy": async (_req, input): Promise<PublicationPolicyState> =>
@@ -146,12 +205,25 @@ export const communityOperations = (
   },
 });
 
+const phase4Operations = new Set([
+  "read-works",
+  "moderate-work",
+  "read-featured",
+  "set-featured",
+  "set-featured-quantity",
+  "delete-body",
+  "remove-thread",
+  "read-feature-catalogs",
+]);
+
 const endpoint = (name: string, operation: CommunityOperation): Endpoint => ({
   path: `/community-moderation/${name}`,
   method: "post",
   handler: async (req) => {
     try {
       requireOwner(req);
+      if (phase4Operations.has(name) && process.env.NODE_ENV !== "development")
+        throw new CommunityOperatorError("NOT_FOUND", 404);
       const input = await readJson(req);
       const result = await operation(req, input);
       return Response.json(

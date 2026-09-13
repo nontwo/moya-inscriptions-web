@@ -135,6 +135,8 @@ export const actionLabels: Record<ModerationEventAction, string> = {
   suspend: "停用账号",
   reinstate: "恢复账号",
   set_publication_policy: "切换发布模式",
+  delete_body: "删除正文",
+  remove_thread: "移除整帖",
 };
 
 /** Past-tense receipts for a completed comment action. */
