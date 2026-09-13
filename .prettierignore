@@ -4,3 +4,5 @@ coverage
 dist
 node_modules
 pnpm-lock.yaml
+# Native sources/resources use their platform validator.
+apps/apple/

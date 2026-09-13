@@ -51,3 +51,38 @@ reuse context-aware results, and share one delivery allowance. Distinguish PASS,
 WARN, BLOCK and INCOMPLETE. Only high-confidence core credentials cause BLOCK;
 INCOMPLETE pauses only the unchecked outward action. Preserve the anonymous Git
 identity without repeated identity approval or a separate privacy review.
+
+## Task scope and tool compatibility
+
+Before planning or writing, read
+[`docs/development/task-workflow.md`](docs/development/task-workflow.md). It is
+the shared task, verification, review and handoff convention for every tool. For
+an Apple task, also read [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md), even
+when the session starts at the repository root. For other affected directories,
+read their applicable existing local instructions. Reading another platform's
+instructions or interfaces does not grant write authority there.
+
+Scope follows the current task, actual changed paths and necessary dependencies.
+It does not follow the model, tool, author account or branch prefix. Codex and
+Claude Code may each implement, test, independently review or take over any
+authorized task. One mutable worktree has one writer at a time; the shared
+workflow explains how to transfer that role without discarding work.
+
+Use `node scripts/verify-task.mjs --base origin/main --output <private-output>`
+from the task worktree root to select applicable verification. The daily
+`pnpm verify` requirement in contributor guidance applies to Web work; it is not
+a prerequisite for Apple-only or instruction/documentation-only work. Do not run
+unrelated platform checks or expand a failed check into another task. Preserve
+real shared-contract and integration obligations.
+
+Honor an explicit task delivery stop, including a Draft PR stop. It takes
+precedence over the general amendment permitting routine agent-managed merges.
+
+## Code Review Rules
+
+Review the assigned task's actual diff and exact HEAD against its scope and
+applicable evidence. A separate session can provide independent review using the
+same or a different tool; tool branding and author self-report do not prove
+independence. Preserve existing required reviews and Owner visual/device gates.
+Do not monitor unrelated PRs or create review/fix loops. New changes require
+review of their impact; changing tools alone does not invalidate valid evidence.

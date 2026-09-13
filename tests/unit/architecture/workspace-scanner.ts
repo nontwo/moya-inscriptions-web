@@ -79,14 +79,19 @@ const readWorkspace = async (
   sourceFiles: await collectSourceFiles(workspaceRoot),
 });
 
-export const discoverWorkspaces = async (): Promise<WorkspaceInfo[]> => {
-  const roots = [path.join(repositoryRoot, "tests")];
+export const discoverWorkspaces = async (
+  root: string = repositoryRoot,
+): Promise<WorkspaceInfo[]> => {
+  const roots = [path.join(root, "tests")];
 
   for (const group of ["apps", "packages", "services"]) {
-    const groupRoot = path.join(repositoryRoot, group);
+    const groupRoot = path.join(root, group);
     const entries = await readdir(groupRoot, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isDirectory()) roots.push(path.join(groupRoot, entry.name));
+      // The native Xcode project is not a JS workspace. Keep manifest errors
+      // visible for every other existing/future Web workspace.
+      if (entry.isDirectory() && !(group === "apps" && entry.name === "apple"))
+        roots.push(path.join(groupRoot, entry.name));
     }
   }
 
