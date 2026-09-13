@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -150,6 +151,12 @@ describe("task routing follows the complete changed-path set", () => {
       { web: true, scope: "smoke" },
     ],
     [["scripts/verify.mjs"], { web: true, scope: "smoke" }],
+    [["scripts/ci-e2e-smoke.mjs"], { web: true, scope: "smoke" }],
+    [["scripts/ci-e2e-scope.mjs"], { web: true, scope: "smoke" }],
+    [
+      ["tests/unit/architecture/ci-e2e-policy.test.ts"],
+      { web: true, scope: "smoke" },
+    ],
     [["scripts/confidentiality-scan.test.mjs"], {}],
     [["scripts/confidentiality-scan.mjs"], { web: true, scope: "smoke" }],
     [
@@ -162,7 +169,33 @@ describe("task routing follows the complete changed-path set", () => {
       { web: true, cms: true, scope: "smoke" },
     ],
     [["tests/cms/workflow.test.ts"], { web: true, cms: true, scope: "smoke" }],
-    [["packages/contracts/src/catalog.ts"], { contracts: true }],
+    [["packages/contracts/src/catalog.ts"], { contracts: true, cms: true }],
+    [["packages/contracts/package.json"], { contracts: true, cms: true }],
+    [
+      ["packages/contracts/src/internal/catalog-import/index.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["packages/search/src/index.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["packages/image/tsconfig.json"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [["services/api/package.json"], { web: true, cms: true, scope: "smoke" }],
+    [
+      ["services/catalog-postgres/src/adapter.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      [
+        "packages/search/scripts/native-runtime.mjs",
+        "services/community-postgres/src/index.ts",
+      ],
+      { web: true, scope: "smoke" },
+    ],
+    [["packages/search/README.md", "services/api/README.md"], {}],
     [["services/public-api/src/openapi.ts"], { contracts: true }],
     [
       ["services/backend-runtime/src/community/session.ts"],
@@ -193,7 +226,7 @@ describe("task routing follows the complete changed-path set", () => {
         "apps/web/app/page.tsx",
         "packages/contracts/src/catalog.ts",
       ],
-      { apple: true, web: true, contracts: true, scope: "smoke" },
+      { apple: true, web: true, cms: true, contracts: true, scope: "smoke" },
     ],
   ];
   for (const [paths, expected] of cases) {
@@ -313,7 +346,7 @@ describe("real temporary Git comparisons", () => {
     );
     assert.deepEqual(
       flags(classifyTask(pr)),
-      expectedFlags({ web: true, apple: true, scope: "smoke" }),
+      expectedFlags({ web: true, cms: true, apple: true, scope: "smoke" }),
     );
   });
 
@@ -348,6 +381,7 @@ describe("real temporary Git comparisons", () => {
       flags(classifyTask(paths, "local")),
       expectedFlags({
         web: true,
+        cms: true,
         contracts: true,
         apple: true,
         scope: "smoke",
@@ -671,6 +705,112 @@ describe("the real CI wiring preserves required-check closure", () => {
       flags(classifyTask(["scripts/verify.mjs"])),
       expectedFlags({ web: true, scope: "smoke" }),
     );
+  });
+
+  it("routes the packages the cms job builds and imports to the cms job", () => {
+    const { jobs } = workflowJobs();
+    const entry = "scripts/editorial/verify-cms.mjs";
+    const source = read(entry);
+    // The tsc -p projects it builds and the build output it imports itself.
+    const built = [
+      ...source.matchAll(/"((?:packages|services)\/[\w-]+)\/tsconfig\.json"/gu),
+    ].map((match) => match[1]);
+    const probed = [
+      ...source.matchAll(/\bimport\("(\.\.\/[^"]+?)\/dist\/[^"]+"\)/gu),
+    ].map((match) => relative(root, resolve(root, dirname(entry), match[1])));
+    const workspaces = new Map(
+      ["apps", "packages", "services"].flatMap((parent) =>
+        readdirSync(join(root, parent))
+          .filter((name) =>
+            existsSync(join(root, parent, name, "package.json")),
+          )
+          .map((name) => [
+            JSON.parse(read(`${parent}/${name}/package.json`)).name,
+            `${parent}/${name}`,
+          ]),
+      ),
+    );
+    // The job migrates and builds Admin and runs Vitest over tests/cms; the
+    // workspaces they import load their workspace runtime dependencies.
+    assert.match(jobs.get("cms"), /pnpm --filter admin build\n/);
+    const pending = [
+      "admin",
+      ...readdirSync(join(root, "tests/cms"))
+        .filter((file) => /\.[cm]?[jt]s$/u.test(file))
+        .flatMap((file) =>
+          [
+            ...read(`tests/cms/${file}`).matchAll(
+              /(?:\bfrom\s+|\bimport\()"([^".][^"]*)"/gu,
+            ),
+          ].map((match) => match[1]),
+        ),
+    ];
+    const loaded = new Set();
+    while (pending.length) {
+      const specifier = pending.pop();
+      const dir = workspaces.get(
+        specifier
+          .split("/")
+          .slice(0, specifier.startsWith("@") ? 2 : 1)
+          .join("/"),
+      );
+      if (!dir || loaded.has(dir)) continue;
+      loaded.add(dir);
+      pending.push(
+        ...Object.entries(
+          JSON.parse(read(`${dir}/package.json`)).dependencies ?? {},
+        )
+          .filter(([, version]) => version.startsWith("workspace:"))
+          .map(([name]) => name),
+      );
+    }
+    for (const dir of ["packages/image", "packages/search"])
+      assert.ok(built.includes(dir), dir);
+    assert.ok(probed.includes("services/catalog-postgres"));
+    for (const dir of [
+      "apps/admin",
+      "packages/contracts",
+      "packages/image",
+      "packages/search",
+      "services/api",
+      "services/catalog-postgres",
+    ])
+      assert.ok(loaded.has(dir), dir);
+    for (const dir of new Set([...built, ...probed, ...loaded]))
+      for (const file of ["src/index.ts", "package.json", "tsconfig.json"])
+        assert.equal(
+          classifyTask([`${dir}/${file}`]).cms,
+          true,
+          `${dir}/${file}`,
+        );
+  });
+
+  it("routes the E2E smoke and policy files to the Web jobs that run them", () => {
+    const { jobs } = workflowJobs();
+    // e2e_smoke runs verify.mjs e2e, whose only stage spawns the smoke script.
+    assert.match(jobs.get("e2e_smoke"), /run: node scripts\/verify\.mjs e2e\n/);
+    const verify = read("scripts/verify.mjs");
+    assert.match(verify, /\be2e: \[smoke\]/);
+    const smoke = verify.match(
+      /const smoke = \[process\.execPath, "([^"]+)"\]/u,
+    )?.[1];
+    assert.equal(smoke, "scripts/ci-e2e-smoke.mjs");
+    // The Web test job's @moya/tests Vitest run keeps the unit architecture
+    // tests; the policy test there loads the E2E scope module.
+    const policy = "tests/unit/architecture/ci-e2e-policy.test.ts";
+    assert.doesNotMatch(
+      JSON.parse(read("tests/package.json")).scripts.test,
+      /unit/,
+    );
+    assert.match(
+      read(policy),
+      /pathToFileURL\(root \+ "scripts\/ci-e2e-scope\.mjs"\)/,
+    );
+    for (const file of [smoke, policy, "scripts/ci-e2e-scope.mjs"]) {
+      const plan = classifyTask([file]);
+      assert.equal(plan.web, true, file);
+      assert.equal(plan.scope, "smoke", file);
+    }
   });
 
   it("retains existing smoke/full jobs, five projects, native reports and the compatible Apple runner", () => {
