@@ -94,7 +94,11 @@ body:
     attributes:
       label: Delivery stop, dependencies and required Owner decisions
       description:
-        Default stop is a reviewed Draft PR. Name dependencies on other tasks or
-        PRs and the decisions only the Owner can make.
+        An ordinary machine-verifiable task is delivered by independent review,
+        then an expected-head squash merge and merged-head verification
+        (2026-08-24 amendment). Write a Draft limit here only when one applies
+        (a pending Owner visual or real-device acceptance, a dependency, or an
+        explicit rollout checkpoint). Name dependencies on other tasks or PRs
+        and the decisions only the Owner can make.
     validations:
       required: true

@@ -171,12 +171,12 @@ Done 五种状态。默认同时只有一个主要实现任务，最多两个真
 
 工具能力与激活（本机）：
 
-| 项目                                             | 状态           | 说明                                                                                              |
-| ------------------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------- |
-| Codex skills（`.agents/skills`）                 | 合并即生效     | `codex debug prompt-input` 可核对已加载的规则与 skills                                            |
-| Claude skills（`.claude/skills`）                | 新会话生效     | `/context` 查看已加载的 Memory files 与 skills；`/memory` 打开规则文件                            |
-| Claude 项目权限与钩子（`.claude/settings.json`） | 首次需信任目录 | `deny` 与 `ask` 规则立即生效；`allow` 规则与 PreToolUse 钩子在该目录接受 workspace trust 后才运行 |
-| Claude 项目 MCP（`.mcp.json`）                   | 首次需批准     | 仅 Development 试点使用；`claude mcp reset-project-choices` 可重置                                |
+| 项目                                             | 状态           | 说明                                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex skills（`.agents/skills`）                 | 新会话生效     | 工作树包含合并后的文件后，新启动的 Codex 会话加载；`codex debug prompt-input` 可核对已加载的规则与 skills                                                                                                                                                        |
+| Claude skills（`.claude/skills`）                | 新会话生效     | `/context` 查看已加载的 Memory files 与 skills；`/memory` 打开规则文件                                                                                                                                                                                           |
+| Claude 项目权限与钩子（`.claude/settings.json`） | 首次需信任目录 | `deny` 与 `ask` 规则立即生效；交互会话中 `allow` 规则与 PreToolUse 钩子在该目录接受 workspace trust 后生效；`-p` / SDK 会话不显示信任对话，钩子直接运行，`allow` 规则仍需已信任。凡是 `allow` 规则生效之处钩子都在运行，所以会被自动放行的命令一定先经过钩子检查 |
+| Claude 项目 MCP（`.mcp.json`）                   | 当前不存在     | 只有 Draft PR #124（Development 试点，默认关闭）合并后才出现；届时首次需批准，`claude mcp reset-project-choices` 可重置                                                                                                                                          |
 
 激活与回滚（按依赖关系）：
 
@@ -190,7 +190,9 @@ Done 五种状态。默认同时只有一个主要实现任务，最多两个真
 - 依赖顺序：任务路由与共享工作流（PR #118）在先；测试目标守卫（Issue #119 / PR
   #122）与任务生命周期（Issue #120 / PR
   #123）依赖它的分类器映射。回滚时先还原后合入的改动；`git revert`
-  只恢复被跟踪的代码，不会撤销本机的目录信任、已批准的 MCP 服务器、OAuth 范围、私有产物或看板状态。Issue、任务历史与工作树不作为清理自动删除；用户全局配置从未被修改。
+  只恢复被跟踪的代码，不会撤销本机的目录信任、激活时以“Yes, don’t ask
+  again”保存到 `.claude/settings.local.json`
+  的规则、已批准的 MCP 服务器、OAuth 范围、私有产物或看板状态。Issue、任务历史与工作树不作为清理自动删除；用户全局配置从未被修改。
 
 ## 许可
 

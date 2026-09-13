@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { describe, it } from "node:test";
 import { URL, fileURLToPath } from "node:url";
@@ -148,7 +158,7 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
     for (const rule of allow) {
       assert.match(
         rule,
-        /^Bash\((?:git (?:status|diff|log|show|rev-parse|branch|worktree (?:list|add)|fetch origin|ls-remote|merge-base|cherry|merge origin\/main|add|commit|push (?:-u )?origin)|gh (?:pr (?:view|list|diff|checks|create --draft|comment|review|edit)|issue (?:view|list|create|comment)|run (?:view|list))|node (?:scripts\/verify(?:-task|-apple)?\.mjs|scripts\/test-target\.mjs check|--test scripts\/)|pnpm (?:verify|test:e2e:smoke|format:check|lint|typecheck|install --frozen-lockfile|--filter \* exec vitest run))/u,
+        /^Bash\((?:git (?:status|diff|log|show|rev-parse|branch|worktree (?:list|add)|fetch origin|ls-remote|merge-base|cherry|merge origin\/main|stash (?:list|show)|add|commit|push (?:-u )?origin)|gh (?:pr (?:view|list|diff|checks|create --draft|comment|review|edit)|issue (?:view|list|create|comment)|run (?:view|list))|node (?:scripts\/verify(?:-task|-apple)?\.mjs|scripts\/test-target\.mjs check|--test scripts\/)|pnpm (?:verify|test:e2e:smoke|format:check|lint|typecheck|install --frozen-lockfile|--filter \* exec vitest run))/u,
         rule,
       );
       assert.doesNotMatch(
@@ -164,17 +174,19 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       "Bash(gh issue create *)",
       "Bash(git worktree add *)",
       "Bash(git commit *)",
+      "Bash(git stash list*)",
     ])
       assert.ok(allow.includes(required), required);
   });
 
-  it("asks (native consent) for delivery, non-draft PRs and reversible-but-notable operations instead of denying them", () => {
+  it("asks (native consent) for delivery and state-changing operations instead of denying them", () => {
     for (const required of [
       "Bash(gh pr ready *)",
       "Bash(gh pr merge *)",
+      "Bash(git push * --delete *)",
       "Bash(git rebase *)",
       "Bash(git reset *)",
-      "Bash(git stash *)",
+      "Bash(git stash pop*)",
       "Bash(rm -rf *)",
       "Bash(pnpm add *)",
       "Bash(docker compose *)",
@@ -185,6 +197,16 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       !ask.includes("Bash(gh pr create *)"),
       "an ask rule would override the Draft-PR allow rule (ask beats allow)",
     );
+    assert.ok(
+      !ask.includes("Bash(git stash *)"),
+      "read-only stash inspection must not prompt",
+    );
+    for (const rule of [...allow, ...ask, ...deny])
+      assert.doesNotMatch(
+        rule,
+        /:\*\)$/u,
+        `${rule}: a trailing ":*" is the legacy prefix syntax, not a literal colon`,
+      );
     for (const forbidden of [
       "Bash(gh pr merge *)",
       "Bash(gh pr ready *)",
@@ -192,6 +214,7 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       "Bash(git push *)",
       "Bash(gh issue create *)",
       "Bash(git worktree add *)",
+      "Bash(gh ruleset *)",
     ])
       assert.ok(
         !deny.includes(forbidden),
@@ -199,19 +222,19 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       );
   });
 
-  it("denies force pushes, pushes to main, hook bypasses, history rewrites, worktree removal, repository settings and data deletion", () => {
+  it("denies the leading spellings of force pushes, pushes to main, hook bypasses, history rewrites, worktree removal, repository settings and data deletion", () => {
     for (const required of [
       "Bash(git push *--force*)",
       "Bash(git push -f *)",
+      "Bash(git push * -f)",
       "Bash(git push origin main)",
-      "Bash(git push origin HEAD:main*)",
-      "Bash(git push *--no-verify*)",
-      "Bash(git commit *--no-verify*)",
-      "Bash(git commit -n *)",
-      "Bash(git commit * -n *)",
-      "Bash(git push * +*)",
       "Bash(git push * *:main)",
-      "Bash(git push * refs/heads/main*)",
+      "Bash(git push *--no-verify*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit -n)",
+      "Bash(git commit -n *)",
+      "Bash(git push * +*)",
+      "Bash(git push * refs/heads/main)",
       "Bash(git push *--prune*)",
       "Bash(git push *--mirror*)",
       "Bash(git reset --hard*)",
@@ -228,8 +251,15 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
       "Read(./.env)",
       "Read(./.env.local)",
       "Read(./.env.*.local)",
+      "Read(./**/.env.*.local)",
     ])
       assert.ok(deny.includes(required), required);
+    for (const rule of deny.filter((r) => r.startsWith("Bash(git commit")))
+      assert.doesNotMatch(
+        rule,
+        /^Bash\(git commit \*/u,
+        `${rule} would also match commit-message text`,
+      );
     assert.ok(
       !deny.includes("Read(./.env.*)"),
       "the tracked .env.example templates must stay readable",
@@ -252,66 +282,224 @@ describe("project-scoped Claude permissions: native rules first, fail closed", (
     );
     assert.ok(entry.hooks[0].timeout <= 30);
   });
+
+  // Documented Bash rule matching (code.claude.com/docs/en/permissions): `*`
+  // matches any text including spaces; a trailing ` *` also matches the bare
+  // command only when it is the rule's single wildcard; deny, then ask, then
+  // allow. Compound commands are split by Claude Code before matching, so the
+  // fixtures below are single commands.
+  const ruleMatches = (rule, command) => {
+    const pattern = rule.slice("Bash(".length, -1).replace(/[ \t]+/gu, " ");
+    let source = pattern
+      .replace(/[.+?^${}()|[\]\\]/gu, "\\$&")
+      .replaceAll("*", ".*");
+    if ((pattern.match(/\*/gu) ?? []).length === 1 && source.endsWith(" .*"))
+      source = `${source.slice(0, -3)}( .*)?`;
+    return new RegExp(`^${source}$`, "su").test(
+      command.replace(/[ \t]+/gu, " "),
+    );
+  };
+  const nativeDecision = (command) => {
+    for (const [decision, rules] of [
+      ["deny", deny],
+      ["ask", ask],
+      ["allow", allow],
+    ])
+      if (rules.some((r) => r.startsWith("Bash(") && ruleMatches(r, command)))
+        return decision;
+    return "prompt";
+  };
+  const hook = (command, branch = "chore/x") =>
+    guardDecision(command, { cwd: root, currentBranch: () => branch })
+      ?.decision ?? null;
+
+  it("never denies an ordinary commit because of its message text", () => {
+    for (const command of [
+      'git commit -m "fix -n handling"',
+      'git commit -m "docs: explain head -n limits"',
+      'git commit -m "chore: forbid --no-verify in agent settings"',
+      "git commit -m \"$(cat <<'EOF'\nfeat: guard\n\nuse head -n 5; --no-verify stays banned\nEOF\n)\"",
+    ]) {
+      assert.equal(nativeDecision(command), "allow", command);
+      assert.equal(hook(command), null, command);
+    }
+    assert.equal(nativeDecision("git stash list"), "allow");
+    assert.equal(nativeDecision("gh pr merge 1 --squash"), "ask");
+    assert.equal(nativeDecision("gh pr ready 1"), "ask");
+  });
+
+  it("stops every forbidden spelling: a native deny, or the hook wherever a native rule would allow or prompt", () => {
+    for (const command of [
+      "git push --force origin chore/x",
+      "git push origin chore/x -f",
+      "git push -u origin chore/x -f",
+      "git push origin chore/x -uf",
+      "git push origin chore/x -fu",
+      "git push origin +chore/x",
+      "git push origin HEAD:main",
+      "git push origin chore/x:refs/heads/main",
+      "git push --mirror origin",
+      "git commit -n -m x",
+      'git commit -nm "msg"',
+      'git commit -anm "msg"',
+      "git commit --no-verify -m x",
+      "git -c core.hooksPath=/dev/null commit -m x",
+    ]) {
+      const native = nativeDecision(command);
+      assert.ok(
+        native === "deny" || hook(command) === "deny",
+        `${command}: native ${native}, hook ${hook(command)}`,
+      );
+    }
+    for (const command of [
+      "git push origin :chore/x",
+      "git push origin --delete chore/x",
+    ]) {
+      const native = nativeDecision(command);
+      assert.ok(
+        native === "ask" || hook(command) === "ask",
+        `${command}: native ${native}, hook ${hook(command)}`,
+      );
+    }
+  });
 });
 
-describe("the reduced Bash guard covers only what native rules cannot express", () => {
+describe("the Bash guard reads argument vectors, never quoted text", () => {
+  const decide = (command, branch = "chore/x") =>
+    guardDecision(command, { cwd: root, currentBranch: () => branch })
+      ?.decision ?? null;
   const denied = [
+    "git push origin chore/x -f",
+    "git push origin chore/x -uf",
+    "git push --force-with-lease origin chore/x",
+    "git push --force-w origin chore/x",
+    "git push --mirr origin",
+    "git push --all origin",
+    "git push --prune origin",
+    "git push --no-verify origin chore/x",
+    "git push origin +chore/x",
+    "git push origin chore/x:main",
+    "git push origin HEAD:refs/heads/main",
+    "git push origin :main",
+    'git commit -nm "msg"',
+    'git commit -anm "msg"',
+    "git commit -S -n -m x",
+    "git commit --no-veri -m x",
+    "git -c core.hooksPath=/dev/null commit -m x",
+    "GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/dev/null'\" git commit -m x",
+    "git -C ../other push --force origin chore/x",
+    "(git -C . push --force origin x)",
+    "for r in a; do git -C $r push --force origin x; done",
+    'bash -c "git push -f origin x"',
+    "sh -lc 'git commit -nm x'",
+    "echo x | xargs git push -f origin",
+    "git status && git push origin chore/x -f",
+    "git status\ngit -C . push --force origin chore/x",
+    "echo `echo )`; git push -f origin x",
     "psql -d yoyi_dev -c 'TRUNCATE community.comments'",
     'psql postgresql://x@127.0.0.1:54330/yoyi_dev -c "DELETE FROM community.public_users"',
     "pgcli -d yoyi_dev -e 'DROP TABLE community.sessions'",
-    "git -C ../other push --force origin chore/x",
-    "git -c core.hooksPath=/dev/null push origin main",
-    "git -C . push origin HEAD:main",
-    "git -C . push origin +chore/x",
-    "git -C . push origin chore/x:main",
-    "git -C . push origin HEAD:refs/heads/main",
-    "git -C . push --prune origin",
-    "git status\ngit -C . push --force origin chore/x",
+    'psql -d postgres -c "DROP DATABASE yoyi_dev"',
+    "PGDATABASE=yoyi_dev psql -c 'TRUNCATE x'",
+    "echo 'DROP TABLE x' | psql -d yoyi_dev",
+    "psql -d yoyi_dev <<'SQL'\nDROP TABLE x;\nSQL",
     "true; psql -d yoyi_dev -c 'DROP TABLE x'",
   ];
-  const leftToNativeRules = [
-    "git push --force origin chore/x",
-    "git status && git push --force origin chore/x",
-    "gh pr merge 118 --squash --match-head-commit abc",
-    "gh pr ready 118",
-    "git worktree prune",
-    "docker compose -f compose.dev.yml down -v",
-    "dropdb yoyi_dev",
+  const asked = [
+    "git push origin :chore/x",
+    "git push origin --delete chore/x",
+    "git push -d origin chore/x",
+    "git push --tags origin",
+    'git push -u origin "$(git branch --show-current)"',
+    "cd ../other && git push origin",
   ];
   const harmless = [
     "rg 'DROP DATABASE' docs/",
     "grep -rn 'gh pr merge' .agents/skills",
     "printf '%s\\n' 'gh pr merge 123'",
     "echo \"never run: psql -d yoyi_dev -c 'TRUNCATE x'\" > /dev/null",
+    'grep -rn "(psql -d yoyi_dev -c DROP)" docs/',
     "psql -d yoyi_dev -c 'SELECT count(*) FROM community.comments'",
+    "psql -d yoyi_dev -c 'SELECT 1' | grep DROP",
     "psql -d moya_synthetic_test -c 'TRUNCATE catalog_entries'",
     "git push origin chore/wf-task-lifecycle",
-    "git -C ../other push origin chore/x",
+    "git push -u origin HEAD",
     "git -C ../other push origin chore/x:chore/x-copy",
-    'grep -rn "(psql -d yoyi_dev -c DROP)" docs/',
+    "git push origin feature:refs/heads/main-nav",
+    'git commit -m "fix -n handling"',
+    "git commit -F - <<'EOF'\nbody -n --no-verify\nEOF",
+    "git commit -mn",
+    "git commit --message -n",
+    "git log -n 5 2>/dev/null | head -n 5",
+    "gh pr merge 118 --squash --match-head-commit abc",
     "node scripts/test-target.mjs check TEST_DATABASE_URL",
     "",
   ];
-  it("denies destructive SQL against yoyi_dev and the -C/-c spelling of a forbidden push", () => {
+  it("denies forbidden pushes, hook bypasses and destructive SQL in any position, bundle or wrapper", () => {
     for (const command of denied)
-      assert.equal(typeof guardDecision(command), "string", command);
+      assert.equal(decide(command), "deny", command);
   });
-  it("stays silent where the native permission rules already decide", () => {
-    for (const command of leftToNativeRules)
-      assert.equal(guardDecision(command), null, command);
+  it("asks for remote branch deletion, tags and refs only known at run time", () => {
+    for (const command of asked) assert.equal(decide(command), "ask", command);
   });
-  it("never treats searched, quoted or printed command text as execution", () => {
+  it("resolves HEAD and implicit pushes against the checked-out branch", () => {
+    assert.equal(decide("git push origin HEAD", "main"), "deny");
+    assert.equal(decide("git push origin", "main"), "deny");
+    assert.equal(decide("git push origin HEAD", "chore/x"), null);
+    assert.equal(decide("git push origin", null), null, "detached HEAD");
+  });
+  it("never treats searched, quoted, printed or commit-message text as execution", () => {
     for (const command of harmless)
-      assert.equal(guardDecision(command), null, command);
+      assert.equal(decide(command), null, command);
   });
-  it("only shapes a PreToolUse deny for Bash and stays silent otherwise", () => {
-    const deny = hookOutput({
-      tool_name: "Bash",
-      tool_input: { command: "psql -d yoyi_dev -c 'DROP TABLE x'" },
-    });
-    assert.equal(deny.hookSpecificOutput.hookEventName, "PreToolUse");
-    assert.equal(deny.hookSpecificOutput.permissionDecision, "deny");
-    assert.match(deny.hookSpecificOutput.permissionDecisionReason, /yoyi_dev/u);
+  it("asks instead of failing silently when a command cannot be analysed, and stays fast", () => {
+    assert.equal(
+      decide(
+        `echo ${"$(".repeat(5_000)}${")".repeat(5_000)}; git push origin x`,
+      ),
+      "ask",
+    );
+    const started = performance.now();
+    decide(`echo ${"a".repeat(1_000_000)}`);
+    decide(`psql -d postgres -c "${"yoyi_dev ".repeat(60_000)}"`);
+    assert.ok(performance.now() - started < 2_000, "linear-time analysis");
+  });
+  it("shapes PreToolUse deny and ask decisions for Bash only", () => {
+    const denial = hookOutput(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "psql -d yoyi_dev -c 'DROP TABLE x'" },
+        cwd: root,
+      },
+      { currentBranch: () => "chore/x" },
+    );
+    assert.equal(denial.hookSpecificOutput.hookEventName, "PreToolUse");
+    assert.equal(denial.hookSpecificOutput.permissionDecision, "deny");
+    assert.match(
+      denial.hookSpecificOutput.permissionDecisionReason,
+      /yoyi_dev/u,
+    );
+    const question = hookOutput(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "git push origin :chore/x" },
+        cwd: root,
+      },
+      { currentBranch: () => "chore/x" },
+    );
+    assert.equal(question.hookSpecificOutput.permissionDecision, "ask");
+    assert.equal(
+      hookOutput(
+        {
+          tool_name: "Bash",
+          tool_input: { command: "git push origin" },
+          cwd: root,
+        },
+        { currentBranch: () => "main" },
+      ).hookSpecificOutput.permissionDecision,
+      "deny",
+      "the hook input's cwd locates the checkout",
+    );
     assert.equal(
       hookOutput({ tool_name: "Read", tool_input: { file_path: "x" } }),
       null,
@@ -322,36 +510,50 @@ describe("the reduced Bash guard covers only what native rules cannot express", 
     );
     assert.equal(hookOutput(undefined), null);
   });
-  it("runs as a command hook: JSON in, decision out, exit 0", () => {
-    const run = (input) =>
-      spawnSync(process.execPath, [".claude/hooks/guard-bash.mjs"], {
-        cwd: root,
-        input,
-        encoding: "utf8",
-        timeout: 10_000,
-      });
-    const blocked = run(
-      JSON.stringify({
-        tool_name: "Bash",
-        tool_input: { command: "git -C . push --force origin x" },
-      }),
-    );
-    assert.equal(blocked.status, 0);
-    assert.equal(
-      JSON.parse(blocked.stdout).hookSpecificOutput.permissionDecision,
-      "deny",
-    );
-    const fine = run(
-      JSON.stringify({
-        tool_name: "Bash",
-        tool_input: { command: "rg 'DROP DATABASE' docs/" },
-      }),
-    );
-    assert.equal(fine.status, 0);
-    assert.equal(fine.stdout, "");
-    const garbage = run("not json");
-    assert.equal(garbage.status, 0);
-    assert.equal(garbage.stdout, "");
+  it("runs as a command hook from a real or symlinked path: JSON in, decision out, exit 0", () => {
+    const directory = mkdtempSync(join(tmpdir(), "yoyi-guard-"));
+    const linked = join(directory, "guard-bash.mjs");
+    symlinkSync(join(root, ".claude/hooks/guard-bash.mjs"), linked);
+    try {
+      for (const script of [".claude/hooks/guard-bash.mjs", linked]) {
+        const run = (input) =>
+          spawnSync(process.execPath, [script], {
+            cwd: root,
+            input,
+            encoding: "utf8",
+            timeout: 10_000,
+          });
+        const blocked = run(
+          JSON.stringify({
+            tool_name: "Bash",
+            tool_input: { command: "git -C . push origin x -f" },
+            cwd: root,
+          }),
+        );
+        assert.equal(blocked.status, 0, script);
+        assert.equal(
+          JSON.parse(blocked.stdout).hookSpecificOutput.permissionDecision,
+          "deny",
+          script,
+        );
+        for (const input of [
+          JSON.stringify({
+            tool_name: "Bash",
+            tool_input: { command: "rg 'DROP DATABASE' docs/" },
+          }),
+          JSON.stringify({ tool_name: "Read", tool_input: {} }),
+          JSON.stringify({ tool_name: "Bash" }),
+          "not json",
+          "",
+        ]) {
+          const quiet = run(input);
+          assert.equal(quiet.status, 0, `${script}: ${input}`);
+          assert.equal(quiet.stdout, "", `${script}: ${input}`);
+        }
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -375,6 +577,13 @@ describe("task records, templates and the Owner guide", () => {
       assert.equal(occurrences, 1, id);
     }
     assert.match(form, /labels: \["task"\]/u);
+    const delivery = form.replace(/\s+/gu, " ");
+    assert.doesNotMatch(delivery, /Default stop is a reviewed Draft PR/u);
+    assert.match(
+      delivery,
+      /delivered by independent review, then an expected-head squash merge/u,
+    );
+    assert.match(delivery, /Write a Draft limit here only when one applies/u);
     assert.match(form, /- Web\n\s+- Apple\n\s+- Shared/u);
     assert.match(
       read(".github/ISSUE_TEMPLATE/config.yml"),
@@ -411,6 +620,9 @@ describe("task records, templates and the Owner guide", () => {
     );
     assert.doesNotMatch(readme, /暂存与未提交改动不受影响/u);
     assert.doesNotMatch(readme, /PreToolUse 钩子立即生效/u);
+    assert.doesNotMatch(readme, /合并即生效/u);
+    assert.ok(readme.includes(".claude/settings.local.json"));
+    assert.ok(readme.includes("Draft PR #124"));
     const map = read(
       "docs/governance/history/2026-09-13-workflow-rule-migration-map.md",
     );
@@ -420,8 +632,10 @@ describe("task records, templates and the Owner guide", () => {
     );
     assert.match(
       map,
-      /\| RETIRE\s+\| Native permission rules match those shapes per subcommand/u,
+      /\| RETIRE\s+\| Native permission rules keep fixed leading spellings/u,
     );
+    assert.doesNotMatch(map, /guard hook denies it inside compound commands/u);
+    assert.match(map, /\| Default delivery stop "reviewed Draft PR"/u);
     assert.match(
       map,
       /Readers, idle editors and the incoming session are not writers/u,
