@@ -331,7 +331,13 @@ Active development tracks (independent of the parked cloud track):
    `pnpm db:migrate` against `TEST_DATABASE_URL` before them, and
    `pnpm test:cms` runs through `scripts/editorial/verify-cms.mjs` under its own
    separate check, so test preparation must still be aimed at a disposable
-   target such as the isolated `compose.postgres.yml` container.
+   target such as the isolated `compose.postgres.yml` container. The
+   `wf-test-target-safety` task closes that gap at the preparation entry points:
+   `verify.mjs test`, the migration it runs and `test:cms` now refuse any target
+   that does not carry the explicit `yoyi-disposable-test-target` database
+   comment (see [Local development](development.md)); a hand-run
+   `pnpm test:postgres` keeps the suites' name rule only, and a hand-run
+   `pnpm db:migrate` keeps only its existing content-source probe.
 
    Deferred recommendations, recorded as recommendations only — not implemented,
    not started, and not closure gates: the audit-transaction and data-model
