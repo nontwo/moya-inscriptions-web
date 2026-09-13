@@ -157,6 +157,10 @@ describe("task routing follows the complete changed-path set", () => {
       ["tests/unit/architecture/ci-e2e-policy.test.ts"],
       { web: true, scope: "smoke" },
     ],
+    [
+      ["tests/unit/architecture/workspace-scanner.ts"],
+      { web: true, scope: "smoke" },
+    ],
     [["scripts/confidentiality-scan.test.mjs"], {}],
     [["scripts/confidentiality-scan.mjs"], { web: true, scope: "smoke" }],
     [
@@ -826,6 +830,61 @@ describe("the real CI wiring preserves required-check closure", () => {
       const plan = classifyTask([file]);
       assert.equal(plan.web, true, file);
       assert.equal(plan.scope, "smoke", file);
+    }
+  });
+
+  it("routes the modules the architecture tests import to the Web jobs that run them", () => {
+    const { jobs } = workflowJobs();
+    // The Web test job runs verify.mjs test (the --ci-milestone flag only sets
+    // its CI budget), whose pnpm test reaches the @moya/tests Vitest run that
+    // keeps the unit architecture tests.
+    assert.match(
+      jobs.get("test"),
+      /run: node scripts\/verify\.mjs test --ci-milestone\n/,
+    );
+    assert.match(
+      read("scripts/verify.mjs"),
+      /\btest: \[.*pnpm\("test"\)\],\n/u,
+    );
+    assert.match(
+      JSON.parse(read("package.json")).scripts.test,
+      /turbo run test/,
+    );
+    const vitest = JSON.parse(read("tests/package.json")).scripts.test;
+    assert.match(vitest, /^vitest run /);
+    assert.doesNotMatch(vitest, /unit/);
+    // Follow top-level static imports and re-exports only: indented or quoted
+    // import text in the tests' fixtures is data, not a dependency.
+    const directory = "tests/unit/architecture";
+    const pending = readdirSync(join(root, directory))
+      .filter((file) => file.endsWith(".test.ts"))
+      .map((file) => `${directory}/${file}`);
+    const seen = new Set(pending);
+    const imported = new Set();
+    while (pending.length) {
+      const file = pending.pop();
+      for (const [, specifier] of read(file).matchAll(
+        /^(?:import|export)\s(?:[^;"'`]*?\sfrom\s+)?"(\.{1,2}\/[^"]+)"/gmu,
+      )) {
+        const target = relative(root, resolve(root, dirname(file), specifier));
+        const module = [target.replace(/\.js$/u, ".ts"), target].find(
+          (candidate) => existsSync(join(root, candidate)),
+        );
+        assert.ok(module, `${file} imports ${specifier}`);
+        if (seen.has(module)) continue;
+        seen.add(module);
+        imported.add(module);
+        pending.push(module);
+      }
+    }
+    // The lightweight script tests import the scanner too, so a scanner change
+    // keeps lightweight and adds the Web jobs.
+    assert.ok(imported.has(`${directory}/workspace-scanner.ts`));
+    for (const file of imported) {
+      const plan = classifyTask([file]);
+      assert.equal(plan.web, true, file);
+      assert.equal(plan.scope, "smoke", file);
+      assert.equal(plan.lightweight, true, file);
     }
   });
 
