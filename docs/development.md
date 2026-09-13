@@ -244,14 +244,31 @@ suite under `tests/integration/postgres` enforces this before its first database
 access: the `TEST_DATABASE_URL` database name must be `moya_synthetic_test` or
 carry a whole `test` or `synthetic` segment (CI uses `moya_test`), and
 `yoyi_dev` is refused by name; see
-`tests/integration/postgres/synthetic-test-database.ts`. The guard reads the
-name only, and it covers those suites only: `node scripts/verify.mjs test` still
-runs `pnpm db:migrate` against `TEST_DATABASE_URL` before them, and
-`pnpm test:cms` runs through `scripts/editorial/verify-cms.mjs`, neither of
-which this guard protects — point the variable at a disposable database, and
-prefer the isolated `compose.postgres.yml` container. The CMS verification
-runner generates an isolated synthetic secret and local media workspace.
-Templates never load automatically into CI.
+`tests/integration/postgres/synthetic-test-database.ts`. That guard reads the
+name only. A name, a loopback host or a variable called `TEST_DATABASE_URL` is
+not proof that a database is disposable, so the preparation entry points that
+run before the suites require a second, explicit identification: the target
+database must carry the comment `yoyi-disposable-test-target`
+(`scripts/disposable-test-target.mjs`). `node scripts/verify.mjs test` runs
+`node scripts/test-target.mjs check TEST_DATABASE_URL` before `pnpm db:migrate`
+and sets `MOYA_EXPECT_DISPOSABLE_TARGET=1` so `scripts/migrate.mjs` re-probes
+the marker before its first DDL; `pnpm test:cms` applies the same name rule to
+`CMS_TEST_DATABASE_URL` and probes the marker before the Payload migrations (the
+remote synthetic path keeps its own emptiness preflight instead). The probe is
+read-only and compares the connected database's own name with the one the URL
+names; `yoyi_dev` is refused by name whatever its comment says.
+
+The marker is set on purpose, never inferred: `compose.postgres.yml` mounts
+`infra/test/disposable-test-target.sql` as an initdb script, so a freshly
+created test container is marked on first start (an existing container keeps its
+old data directory — recreate it or mark it explicitly); CI runs the same file
+against its service containers; and a database you know is disposable can be
+marked with `node scripts/test-target.mjs mark <VARIABLE> --yes`, which also
+refuses `yoyi_dev` and any name without a `test`/`synthetic` segment. A bare
+`pnpm db:migrate` or `pnpm test:postgres` run by hand does not set the
+expectation and keeps the name rule only — prefer the verification entries. The
+CMS verification runner generates an isolated synthetic secret and local media
+workspace. Templates never load automatically into CI.
 
 `DATABASE_POOL_MAX` defaults to 5, `DATABASE_IDLE_TIMEOUT_MS` defaults to 10000,
 and Payload keeps `max=5`. Local loopback PostgreSQL does not need TLS; remote

@@ -118,6 +118,9 @@ if (
   if (["all", "test"].includes(mode) && process.env.TEST_DATABASE_URL) {
     process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
     process.env.MOYA_CONTENT_SOURCE = "legacy";
+    // The migration entry below must itself refuse anything but a marked
+    // disposable target; see scripts/disposable-test-target.mjs.
+    process.env.MOYA_EXPECT_DISPOSABLE_TARGET = "1";
   }
   const pnpm = (...args) => ["pnpm", ...args];
   const smoke = [process.execPath, "scripts/ci-e2e-smoke.mjs"];
@@ -133,6 +136,8 @@ if (
       "--filter=@moya/backend-production...",
       "--filter=@moya/catalog-importer...",
     ),
+    // Refuse an unmarked or misnamed target before any migration or DELETE.
+    [process.execPath, "scripts/test-target.mjs", "check", "TEST_DATABASE_URL"],
     pnpm("db:migrate"),
     pnpm("test:postgres"),
   ];

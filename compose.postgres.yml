@@ -3,10 +3,14 @@ services:
     image: postgres:18.4-alpine
     environment:
       POSTGRES_DB: moya_test
-      POSTGRES_PASSWORD: moya_test_password
+      POSTGRES_PASSWORD: synthetic-test-only
       POSTGRES_USER: moya_test
     ports:
       - "54329:5432"
+    volumes:
+      # Marks the container's database as a disposable test target on first
+      # initialisation; test preparation refuses an unmarked target.
+      - ./infra/test/disposable-test-target.sql:/docker-entrypoint-initdb.d/90-disposable-test-target.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U moya_test -d moya_test"]
       interval: 2s

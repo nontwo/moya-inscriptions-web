@@ -22,6 +22,13 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
+import { assertSyntheticTestDatabaseUrl } from "../../tests/integration/postgres/synthetic-test-database.ts";
+import {
+  assertDisposableTestTarget,
+  databaseNameFromUrl,
+  disposableTestTargetProbeSql,
+  isTargetCategory,
+} from "../disposable-test-target.mjs";
 
 export const verificationRoot = fileURLToPath(
   new URL("../../", import.meta.url),
@@ -108,7 +115,50 @@ export function syntheticDatabase(value, environment = process.env) {
     url.hash
   )
     throw new Error("SYNTHETIC_LOOPBACK_DATABASE_REQUIRED");
+  // The suite name rule applies here too: a loopback host proves nothing, and
+  // yoyi_dev is refused by name.
+  try {
+    assertSyntheticTestDatabaseUrl(value, "CMS_TEST_DATABASE_URL");
+  } catch {
+    throw new Error("SYNTHETIC_DATABASE_NAME_REQUIRED");
+  }
   return url.toString();
+}
+
+/**
+ * A loopback target must also carry the disposable marker set by
+ * infra/test/disposable-test-target.sql; the remote path proves emptiness in
+ * verifyRemoteSyntheticDatabase instead. Runs after the library builds and
+ * before the first DDL.
+ */
+export async function verifyLoopbackDisposableTarget(environment, query) {
+  if (environment.CMS_TEST_REMOTE_TARGET_JSON) return;
+  const expected = databaseNameFromUrl(environment.CMS_TEST_DATABASE_URL).name;
+  let pool;
+  try {
+    if (!query) {
+      const { createPostgresPool, parsePostgresConfig } =
+        await import("../../services/catalog-postgres/dist/index.js");
+      pool = createPostgresPool(
+        parsePostgresConfig({
+          DATABASE_URL: environment.CMS_TEST_DATABASE_URL,
+        }),
+      );
+      query = (sql) => pool.query(sql);
+    }
+    const result = await query(disposableTestTargetProbeSql);
+    assertDisposableTestTarget(result.rows, expected);
+  } catch (error) {
+    // Driver errors can echo the connection string; expose a category only.
+    throw new Error(
+      isTargetCategory(error?.message)
+        ? error.message
+        : "DISPOSABLE_TARGET_PROBE_FAILED",
+      { cause: error },
+    );
+  } finally {
+    await pool?.end();
+  }
 }
 
 /** The caller invokes this after library builds and before the first DDL. */
@@ -470,6 +520,7 @@ async function main() {
     ]) {
       if (name === "migrations") {
         await verifyRemoteSyntheticDatabase(session.env);
+        await verifyLoopbackDisposableTarget(session.env);
         session.assertActive();
       }
       const result = await session.run(

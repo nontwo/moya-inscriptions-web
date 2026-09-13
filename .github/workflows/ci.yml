@@ -126,6 +126,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Mark the CI PostgreSQL service as a disposable test target
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}" psql -v
+          ON_ERROR_STOP=1 -U moya_test -d moya_test -f -
+          <infra/test/disposable-test-target.sql
+
       - name: PostgreSQL and ordinary tests within 120 seconds
         run: node scripts/verify.mjs test
 
@@ -137,14 +143,16 @@ jobs:
       postgres:
         image: postgres:18.4-alpine
         env:
-          POSTGRES_DB: cms_qa
+          # The name carries a whole "synthetic"/"test" segment, as the suite
+          # guard requires; the step below adds the disposable marker.
+          POSTGRES_DB: cms_synthetic_test
           POSTGRES_USER: cms_qa
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U cms_qa -d cms_qa" --health-interval 2s
-          --health-timeout 3s --health-retries 20
+          --health-cmd "pg_isready -U cms_qa -d cms_synthetic_test"
+          --health-interval 2s --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -153,10 +161,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Mark the CI PostgreSQL service as a disposable test target
+        run: >-
+          docker exec -i "${{ job.services.postgres.id }}" psql -v
+          ON_ERROR_STOP=1 -U cms_qa -d cms_synthetic_test -f -
+          <infra/test/disposable-test-target.sql
       - name: Real Payload migrations and PostgreSQL integration
         env:
           # Explicitly fictional, isolated CI database; no cloud access.
-          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_qa
+          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_synthetic_test
         run: pnpm test:cms
       - name: Prepare native Admin browser validation
         run: |
@@ -164,7 +177,7 @@ jobs:
           pnpm --filter admin build
       - name: Native Owner create, publish, autosave, batch approval and restore
         env:
-          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_qa
+          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_synthetic_test
         run: pnpm test:cms:browser
 
   build:
