@@ -136,6 +136,10 @@ describe("disposable target identification is explicit and name-independent", ()
 
   it("the marking SQL and the initdb file refuse yoyi_dev and unmarked names identically", () => {
     const file = read("infra/test/disposable-test-target.sql");
+    // The file the container and CI run and the SQL `mark` runs are one block.
+    const block = (text) =>
+      text.slice(text.indexOf("DO $$"), text.indexOf("END $$;") + 7);
+    assert.equal(block(file), block(markCurrentDatabaseDisposableSql));
     for (const text of [markCurrentDatabaseDisposableSql, file]) {
       assert.match(text, /IN \('yoyi_dev'\)/u);
       assert.match(text, /!~\* '\(\^\|_\)\(test\|synthetic\)\(_\|\$\)'/u);
@@ -220,6 +224,22 @@ describe("the command entry rejects unsafe targets before connecting", () => {
       ),
       "DATABASE_NAME_MISSING",
     );
+    for (const query of [
+      "?host=db.example.invalid",
+      "?hostaddr=10.0.0.9",
+      "?port=5433",
+    ])
+      assert.equal(
+        await category(
+          Promise.resolve().then(() =>
+            staticTargetCheck("TEST_DATABASE_URL", {
+              TEST_DATABASE_URL: `${url("moya_test")}${query}`,
+            }),
+          ),
+        ),
+        "LOOPBACK_REQUIRED",
+        query,
+      );
     assert.deepEqual(
       staticTargetCheck("TEST_DATABASE_URL", {
         TEST_DATABASE_URL: url("moya_synthetic_test"),

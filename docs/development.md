@@ -260,14 +260,17 @@ names; `yoyi_dev` is refused by name whatever its comment says.
 
 The marker is set on purpose, never inferred: `compose.postgres.yml` mounts
 `infra/test/disposable-test-target.sql` as an initdb script, so a freshly
-created test container is marked on first start (an existing container keeps its
-old data directory — recreate it or mark it explicitly); CI runs the same file
-against its service containers; and a database you know is disposable can be
-marked with `node scripts/test-target.mjs mark <VARIABLE> --yes`, which also
-refuses `yoyi_dev` and any name without a `test`/`synthetic` segment. A bare
-`pnpm db:migrate` or `pnpm test:postgres` run by hand does not set the
-expectation and keeps the name rule only — prefer the verification entries. The
-CMS verification runner generates an isolated synthetic secret and local media
+created test container is marked on first start; CI runs the same file against
+its service containers; and a database you know is disposable can be marked with
+`node scripts/test-target.mjs mark <VARIABLE> --yes`, which also refuses
+`yoyi_dev` and any name without a `test`/`synthetic` segment. An existing test
+container keeps its old data directory and stays unmarked until
+`docker compose -f compose.postgres.yml down -v` recreates it (a plain
+`up --force-recreate` reuses the volume) or you mark it. Two hand-run commands
+have narrower coverage: `pnpm test:postgres` keeps the suites' name rule only,
+and a bare `pnpm db:migrate` keeps only its existing content-source probe — no
+name rule and no marker — so prefer the verification entries. The CMS
+verification runner generates an isolated synthetic secret and local media
 workspace. Templates never load automatically into CI.
 
 `DATABASE_POOL_MAX` defaults to 5, `DATABASE_IDLE_TIMEOUT_MS` defaults to 10000,

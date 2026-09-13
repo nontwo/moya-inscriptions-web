@@ -1,6 +1,6 @@
 import process from "node:process";
 import console from "node:console";
-import { pathToFileURL } from "node:url";
+import { URL, pathToFileURL } from "node:url";
 import { assertSyntheticTestDatabaseUrl } from "../tests/integration/postgres/synthetic-test-database.ts";
 import {
   assertDisposableTestTarget,
@@ -21,6 +21,14 @@ export function staticTargetCheck(variable, environment = process.env) {
   const value = environment[variable];
   if (value === undefined || value === "") throw new Error("VARIABLE_MISSING");
   const target = databaseNameFromUrl(value);
+  // node-postgres honours host/hostaddr/port query parameters, which could
+  // redirect a loopback-looking URL; refuse them outright.
+  if (
+    [...new URL(value).searchParams.keys()].some((key) =>
+      ["host", "hostaddr", "port"].includes(key.toLowerCase()),
+    )
+  )
+    throw new Error("LOOPBACK_REQUIRED");
   try {
     assertSyntheticTestDatabaseUrl(value, variable);
   } catch (error) {

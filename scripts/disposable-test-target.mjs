@@ -60,7 +60,7 @@ export function databaseNameFromUrl(value) {
   }
   if (!["postgres:", "postgresql:"].includes(url.protocol))
     throw new Error("INVALID_DATABASE_URL");
-  const name = decodeURIComponent(url.pathname.slice(1));
+  const name = decodeURI(url.pathname.slice(1));
   if (name === "" || name.includes("/"))
     throw new Error("DATABASE_NAME_MISSING");
   return {

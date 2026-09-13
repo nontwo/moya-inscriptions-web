@@ -336,7 +336,8 @@ Active development tracks (independent of the parked cloud track):
    `verify.mjs test`, the migration it runs and `test:cms` now refuse any target
    that does not carry the explicit `yoyi-disposable-test-target` database
    comment (see [Local development](development.md)); a hand-run
-   `pnpm db:migrate` keeps the name rule only.
+   `pnpm test:postgres` keeps the suites' name rule only, and a hand-run
+   `pnpm db:migrate` keeps only its existing content-source probe.
 
    Deferred recommendations, recorded as recommendations only — not implemented,
    not started, and not closure gates: the audit-transaction and data-model
