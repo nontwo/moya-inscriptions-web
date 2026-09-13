@@ -118,6 +118,14 @@ export function classifyTask(paths, event = "pull_request") {
       file.startsWith(".agents/") ||
       file.startsWith(".githooks/") ||
       /(?:^|\/)(?:AGENTS|CLAUDE)\.md$/u.test(file) ||
+      // Agent skills, project-scoped Claude configuration, the project MCP
+      // definition, Issue forms and dependency-free script tests are
+      // instruction/tooling changes with lightweight checks only.
+      file.startsWith(".claude/") ||
+      file === ".mcp.json" ||
+      file.startsWith(".github/ISSUE_TEMPLATE/") ||
+      file === "scripts/README.md" ||
+      /^scripts\/[a-z-]+\.test\.mjs$/u.test(file) ||
       (/\.md$/u.test(file) &&
         /^(?:docs|apps\/apple|apps\/web|apps\/admin|packages|services)\//u.test(
           file,
@@ -133,7 +141,7 @@ export function classifyTask(paths, event = "pull_request") {
       webRoots.some((prefix) => file.startsWith(prefix)) ||
       file.startsWith("packages/contracts/src/internal/") ||
       file.startsWith("scripts/editorial/") ||
-      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan(?:\.test)?|install-confidentiality-hooks)\.mjs$/u.test(
+      /^scripts\/(?:migrate(?:-community)?|generate-catalog-import-template|confidentiality-scan(?:\.test)?|install-confidentiality-hooks|disposable-test-target|test-target)\.mjs$/u.test(
         file,
       )
     ) {

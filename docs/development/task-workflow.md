@@ -54,7 +54,12 @@ before continuing. A worktree shares Git configuration, hooks and refs, and may
 share external services; it is not a complete permission or runtime sandbox.
 
 Only one actor writes a mutable worktree at a time, including checkout, stage,
-commit and source-generating commands. An independent reviewer reads the
+commit and source-generating commands. Readers are not writers: an idle editor,
+a terminal, a read-only reviewer or the incoming session opening the directory
+does not compete for the role, and an open file or process id alone is not proof
+of write activity. A competing writer is a newer held claim in the task's
+checkpoint, a conflicting task update, or a source-changing or Git-writing
+process left by the previous execution. An independent reviewer reads the
 assigned diff and exact HEAD. Tests that write files use separate output
 locations, or a separate review worktree when source writes cannot be avoided.
 Return the writer role to the implementer before fixes. Either tool, including a
@@ -135,6 +140,16 @@ root does not preload every descendant's instructions. Claude Code discovers
 when that scope is accessed. Therefore a root-started Apple task must explicitly
 read the Apple rules before planning or writing.
 
+Read the full applicable authority — the root entry, the Constitution, the
+active amendments, this workflow and the local rules for the task's paths — when
+entering a task context: a new task, a tool handoff, or after those files
+changed. Within the same unchanged task context, reuse what was read; a small
+check that the rule files are unchanged (for example their Git blob ids) is
+enough. Read the latest task specification and decisions when they matter, the
+explicit delta and affected rules for a change, and current facts only for a
+status report. Refresh the local instructions when work enters another
+directory's domain.
+
 After rule edits or a tool handoff, have the current session explicitly read the
 root entry, its referenced authority/workflow and the applicable local rules.
 Use this one-time request:
@@ -163,10 +178,15 @@ from file names alone.
 Stop the current writer and source-changing commands, then write a short
 task-specific private handoff. The next tool verifies the live state and resumes
 the same worktree, branch and PR. Preserve staged versus unstaged content,
-untracked files, private configuration and usable environment. Do not reset,
-stash, rebuild a project or perform an extra commit/push merely for handoff. If
-no handoff could be written before quota exhaustion, reconstruct it read-only
-from the actual state before continuing.
+untracked files, local-only commits, private configuration and usable
+environment. Record the local HEAD and the PR head separately: a legitimate
+unpushed local commit is reconciled, not discarded. Compare content identity
+(the recorded diff and untracked-file fingerprints), not only file names. Do not
+reset, stash, rebuild a project or perform an extra commit/push merely for
+handoff. If no handoff could be written before quota exhaustion, reconstruct it
+read-only from the actual state before continuing. The checkpoint is advisory
+coordination, not a lock: when a material unexplained difference or an actual
+competing writer exists, pause writing and ask the smallest necessary question.
 
 ```text
 Task ID and scope: Apple / Web / Shared; allowed paths; non-goals

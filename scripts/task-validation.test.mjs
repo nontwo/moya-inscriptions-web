@@ -114,6 +114,22 @@ describe("task routing follows the complete changed-path set", () => {
     [[".github/workflows/ci.yml", "scripts/verify-task.mjs"], {}],
     [[".githooks/pre-commit", ".agents/skills/example/SKILL.md"], {}],
     [
+      [
+        ".claude/settings.json",
+        ".claude/hooks/guard-bash.mjs",
+        ".claude/skills/yoyi-task/SKILL.md",
+        ".mcp.json",
+        ".github/ISSUE_TEMPLATE/task.yml",
+        "scripts/README.md",
+        "scripts/agent-workflow.test.mjs",
+      ],
+      {},
+    ],
+    [
+      ["scripts/test-target.mjs", "scripts/disposable-test-target.mjs"],
+      { web: true, scope: "smoke" },
+    ],
+    [
       ["apps/apple/ArtVenn/Assets 由艺.xcassets/Contents.json"],
       { apple: true },
     ],
@@ -855,9 +871,7 @@ describe("scoped validation commands and private output", () => {
         "/private/synthetic-output",
       );
       assert.ok(
-        commands.some((command) =>
-          command.includes("scripts/task-validation.test.mjs"),
-        ),
+        commands.some((command) => command.includes("scripts/*.test.mjs")),
       );
       assert.doesNotMatch(
         commands.map((command) => command.join(" ")).join("\n"),

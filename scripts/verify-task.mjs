@@ -72,7 +72,10 @@ export const contractCommands = () => [
 
 export function taskCommands(plan, output) {
   const commands = [
-    [process.execPath, "--test", "scripts/task-validation.test.mjs"],
+    // Every dependency-free script test: routing, gates, the disposable
+    // test-target guard and the agent permission guard get behavioral checks
+    // even when a task touches only lightweight paths.
+    [process.execPath, "--test", "scripts/*.test.mjs"],
   ];
   if (plan.contracts) commands.push(...contractCommands());
   if (plan.web) commands.push([process.execPath, "scripts/verify.mjs"]);
