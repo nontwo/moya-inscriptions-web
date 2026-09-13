@@ -23,7 +23,7 @@ allowlist.
 Never push directly to `main`. Never force-push the shared branch or rewrite
 another contributor's history.
 
-## Local setup
+## Web local setup
 
 Use the Node.js version in `.nvmrc` and the pnpm version pinned by the root
 `package.json`:
@@ -49,10 +49,15 @@ the affected validation. Record each applicable command and result in the PR.
 
 ### Test feedback loop
 
-- Daily mandatory acceptance: `pnpm verify`, with dependencies and Chromium
-  already installed. Formatting, lint, typecheck, ordinary tests, build and
-  existing Formal browser smoke share a 120-second budget. PostgreSQL also runs
-  locally when `TEST_DATABASE_URL` is set and always runs in CI.
+- Select applicable daily acceptance with
+  `node scripts/verify-task.mjs --base origin/main --output <private-output>`;
+  see the [shared task workflow](docs/development/task-workflow.md).
+  `pnpm verify` is the existing Web entry, with dependencies and Chromium
+  already installed; it is not an Apple-only or documentation-only prerequisite.
+  Its formatting, lint, typecheck, ordinary tests, build and Formal browser
+  smoke share the 120-second daily budget. PostgreSQL runs when applicable to
+  the selected Web validation, locally when `TEST_DATABASE_URL` is set and in
+  its selected CI job.
 - Browser-only daily check: `pnpm test:e2e:smoke`; five existing Formal cases,
   desktop Chromium, one worker, zero retries, first failure stops execution.
 - During implementation, run relevant unit files and targeted browser cases for
