@@ -357,6 +357,8 @@ describe("CommunityModerationService", () => {
       all: 2,
     });
     expect(summary.actions).toEqual({
+      delete_body: 0,
+      remove_thread: 0,
       approve: 1,
       reject: 1,
       hide: 0,

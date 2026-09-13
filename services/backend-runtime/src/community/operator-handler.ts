@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import {
   CommunityInputError,
+  CommunityContentOperatorService,
   isCommunityConflictError,
   isCommunityInputError,
   isCommunityNotFoundError,
@@ -16,11 +17,17 @@ import { JsonBodyError, readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
 
-import type { CommunityModerationService } from "@moya/api";
+import type {
+  CommunityContentOperatorPort,
+  DiscussionPort,
+  CommunityModerationService,
+} from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export interface OperatorRouteDependencies {
   readonly moderationService: CommunityModerationService;
+  readonly contentOperatorPort?: CommunityContentOperatorPort | undefined;
+  readonly discussionPort?: DiscussionPort | undefined;
   /** Shared credential the Owner's Payload Admin holds server-side. */
   readonly operatorCredential: string;
 }
@@ -128,7 +135,12 @@ export const handleOperatorRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
   pathname: string,
-  { moderationService, operatorCredential }: OperatorRouteDependencies,
+  {
+    moderationService,
+    operatorCredential,
+    contentOperatorPort,
+    discussionPort,
+  }: OperatorRouteDependencies,
 ): Promise<void> => {
   if (!isAuthorizedOperator(request, operatorCredential)) {
     sendOperatorError(response, 401, "OPERATOR_UNAUTHORIZED");
@@ -138,6 +150,89 @@ export const handleOperatorRequest = async (
   const methodNotAllowed = () =>
     sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
   try {
+    const operatorService = new CommunityContentOperatorService(
+      contentOperatorPort,
+      discussionPort,
+    );
+    const commandBody = async () => {
+      if (new URL(request.url ?? "/", "http://request.invalid").search)
+        throw new CommunityInputError("Unexpected query");
+      return readJsonBody(request, 100000);
+    };
+    if (contentOperatorPort) {
+      if (pathname === "/internal/community/works" && method === "GET") {
+        sendJson(
+          response,
+          200,
+          await operatorService.readWorks(queryOf(request)),
+        );
+        return;
+      }
+      if (pathname === "/internal/community/featured" && method === "GET") {
+        sendJson(
+          response,
+          200,
+          await operatorService.readFeatured(queryOf(request)),
+        );
+        return;
+      }
+      if (pathname === "/internal/community/featured" && method === "PUT") {
+        sendJson(
+          response,
+          200,
+          await operatorService.setFeatured(await commandBody()),
+        );
+        return;
+      }
+      if (
+        pathname === "/internal/community/featured/settings" &&
+        method === "PUT"
+      ) {
+        sendJson(
+          response,
+          200,
+          await operatorService.setFeaturedQuantity(await commandBody()),
+        );
+        return;
+      }
+      const work =
+        /^\/internal\/community\/works\/(work-[0-9a-f]{32})\/moderation$/u.exec(
+          pathname,
+        );
+      if (work && method === "POST") {
+        sendJson(
+          response,
+          200,
+          await operatorService.moderateWork(work[1]!, await commandBody()),
+        );
+        return;
+      }
+    }
+    if (discussionPort) {
+      const deletion =
+        /^\/internal\/community\/comments\/(comment-[0-9a-f]{32})\/(delete-body|remove-thread)$/u.exec(
+          pathname,
+        );
+      if (deletion && method === "POST") {
+        if (deletion[2] === "delete-body") {
+          sendJson(
+            response,
+            200,
+            await operatorService.deleteBody(deletion[1]!, await commandBody()),
+          );
+        } else {
+          sendJson(
+            response,
+            200,
+            await operatorService.removeThread(
+              deletion[1]!,
+              await commandBody(),
+            ),
+          );
+        }
+        return;
+      }
+    }
     if (pathname === "/internal/community/publication-policy") {
       if (method === "GET") {
         sendJson(

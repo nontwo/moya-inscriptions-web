@@ -21,13 +21,17 @@ import type {
   CreateCatalogCommentReplyRequest,
   CreateCatalogCommentRequest,
   PublicUserId,
+  DiscussionReply,
+  DiscussionComment,
 } from "@moya/contracts";
+import type { DiscussionPort } from "../ports/discussion-port.js";
 import type { CommunityCommentPort } from "../ports/community-comment-port.js";
 import type { CatalogPublicationPort } from "../ports/catalog-publication-port.js";
 import type { RandomBytes } from "../session-token.js";
 
 export interface CatalogCommentServiceOptions {
   readonly clock?: () => Date;
+  readonly discussionPort?: DiscussionPort;
   readonly randomBytes?: RandomBytes;
 }
 
@@ -64,6 +68,7 @@ export interface CommentListingInput extends CommentPageInput {
  * visible, and moderation state never leaves the Backend.
  */
 export class CatalogCommentService {
+  private readonly discussion: DiscussionPort | undefined;
   private readonly clock: () => Date;
   private readonly randomBytes: RandomBytes;
 
@@ -72,6 +77,7 @@ export class CatalogCommentService {
     private readonly catalogPublicationPort: CatalogPublicationPort,
     options: CatalogCommentServiceOptions = {},
   ) {
+    this.discussion = options.discussionPort;
     this.clock = options.clock ?? (() => new Date());
     this.randomBytes = options.randomBytes ?? defaultRandomBytes;
   }
@@ -85,8 +91,24 @@ export class CatalogCommentService {
   async readComments(
     catalogId: CatalogId,
     query: CommentListingInput,
+    viewer: PublicUserId | null = null,
   ): Promise<CatalogCommentPage> {
     await this.assertPublishedCatalog(catalogId);
+    if (this.discussion) {
+      const page = await this.discussion.readDiscussion(
+        { type: "catalog", id: catalogId },
+        viewer,
+        query,
+      );
+      return {
+        total: page.total,
+        page: page.page,
+        pageSize: page.pageSize,
+        totalPages: page.totalPages,
+        hot: page.hot.map((r) => legacyRoot(r, catalogId)),
+        items: page.items.map((r) => legacyRoot(r, catalogId)),
+      };
+    }
     const listing = await this.commentPort.readVisibleComments({
       catalogId,
       page: query.page,
@@ -110,7 +132,24 @@ export class CatalogCommentService {
     catalogId: CatalogId,
     rootCommentId: CatalogCommentId,
     query: CommentPageInput,
+    viewer: PublicUserId | null = null,
   ): Promise<CatalogCommentReplyPage> {
+    if (this.discussion) {
+      await this.assertPublishedCatalog(catalogId);
+      const page = await this.discussion.readDiscussionReplies(
+        { type: "catalog", id: catalogId },
+        rootCommentId,
+        viewer,
+        query,
+      );
+      return {
+        total: page.total,
+        page: page.page,
+        pageSize: page.pageSize,
+        totalPages: page.totalPages,
+        items: page.items.map(legacyReply),
+      };
+    }
     await this.assertVisibleRoot(catalogId, rootCommentId);
     return mapCatalogCommentReplyPage(
       await this.commentPort.readVisibleReplies({
@@ -127,6 +166,22 @@ export class CatalogCommentService {
     request: CreateCatalogCommentRequest,
   ): Promise<CommentSubmission<CatalogComment>> {
     await this.assertPublishedCatalog(catalogId);
+    if (this.discussion) {
+      const sent = await this.discussion.submitDiscussion(
+        { type: "catalog", id: catalogId },
+        authorId,
+        request.text,
+      );
+      return {
+        item: {
+          ...legacyReply(sent.item),
+          catalogId,
+          replies: [],
+          replyTotal: 0,
+        },
+        awaitingApproval: false,
+      };
+    }
     const moderation = await this.entryModerationState();
     const created = await this.commentPort.insertComment({
       id: generateOpaqueId("comment", this.randomBytes) as CatalogCommentId,
@@ -148,6 +203,17 @@ export class CatalogCommentService {
     authorId: PublicUserId,
     request: CreateCatalogCommentReplyRequest,
   ): Promise<CommentSubmission<CatalogCommentReply>> {
+    if (this.discussion) {
+      await this.assertPublishedCatalog(catalogId);
+      const sent = await this.discussion.submitDiscussion(
+        { type: "catalog", id: catalogId },
+        authorId,
+        request.text,
+        rootCommentId,
+        request.replyTo,
+      );
+      return { item: legacyReply(sent.item), awaitingApproval: false };
+    }
     await this.assertVisibleRoot(catalogId, rootCommentId);
     if (request.replyTo !== undefined) {
       const target = await this.commentPort.findReply(request.replyTo);
@@ -203,3 +269,20 @@ export class CatalogCommentService {
       throw new CommunityNotFoundError("Root comment is not visible");
   }
 }
+
+const legacyReply = (r: DiscussionReply): CatalogCommentReply => ({
+  id: r.id,
+  author: r.author,
+  text: r.text,
+  createdAt: r.createdAt,
+  ...(r.replyTo ? { replyTo: r.replyTo } : {}),
+});
+const legacyRoot = (
+  r: DiscussionComment,
+  catalogId: CatalogId,
+): CatalogComment => ({
+  ...legacyReply(r),
+  catalogId,
+  replies: r.replies.map(legacyReply),
+  replyTotal: r.replyTotal,
+});

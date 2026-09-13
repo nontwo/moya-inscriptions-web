@@ -1,0 +1,726 @@
+import { asCommunityOperationError } from "./availability.js";
+import { createHash, randomUUID } from "node:crypto";
+import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
+import {
+  discussionCommentSchema,
+  discussionReplySchema,
+  ownCommentSchema,
+} from "@moya/contracts/schemas";
+import type { DiscussionPort, DiscussionQuery } from "@moya/api";
+import type {
+  ContentIdentity,
+  DiscussionComment,
+  DiscussionReply,
+} from "@moya/contracts";
+import type { Pool, PoolClient, QueryResultRow } from "pg";
+
+const opaque = (prefix: string) =>
+  `${prefix}-${randomUUID().replaceAll("-", "")}`;
+const deletedText = "This comment has been deleted";
+const pageMeta = (total: number, q: DiscussionQuery) => ({
+  total,
+  page: q.page,
+  pageSize: q.pageSize,
+  totalPages: Math.ceil(total / q.pageSize),
+});
+/** The same root/reply tables and identity graph serve both kinds of content. */
+const rootPublic =
+  "c.moderation='visible' AND (c.body_deleted_at IS NULL OR c.was_public)";
+const rootEligible = `c.thread_removed_at IS NULL AND u.status='active' AND community.accounts_can_interact($3,c.author_id)
+ AND ((${rootPublic}) OR c.author_id=$3)`;
+const replyEligible = `r.root_comment_id=$4 AND ru.status='active' AND community.accounts_can_interact($3,r.author_id)
+ AND (((${rootPublic}) AND r.moderation='visible' AND (r.body_deleted_at IS NULL OR r.was_public)) OR r.author_id=$3)`;
+const rootFrom = `FROM community.catalog_comments c JOIN community.public_users u ON u.id=c.author_id
+ WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}`;
+const likeCount = (
+  alias: string,
+) => `(SELECT count(*)::integer FROM community.comment_likes l JOIN community.public_users lu ON lu.id=l.user_id
+ WHERE l.comment_id=${alias}.id AND lu.status='active' AND community.accounts_can_interact(l.user_id,${alias}.author_id))`;
+const rootProjection = `c.id,c.author_id,u.display_name,c.text,c.created_at,c.body_deleted_at,
+ CASE WHEN ${rootPublic} AND c.body_deleted_at IS NULL THEN ${likeCount("c")} ELSE 0 END AS like_count,
+ EXISTS(SELECT 1 FROM community.comment_likes WHERE comment_id=c.id AND user_id=$3) AS liked`;
+const replyFrom = `FROM community.catalog_comment_replies r JOIN community.catalog_comments c ON c.id=r.root_comment_id
+ JOIN community.public_users u ON u.id=c.author_id JOIN community.public_users ru ON ru.id=r.author_id
+ WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible} AND ${replyEligible}`;
+const replyProjection = `r.id,r.author_id,ru.display_name,r.text,r.created_at,r.body_deleted_at,
+ CASE WHEN ${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL THEN ${likeCount("r")} ELSE 0 END AS like_count,
+ EXISTS(SELECT 1 FROM community.comment_likes WHERE comment_id=r.id AND user_id=$3) AS liked,
+ (SELECT json_build_object('id',tu.id,'displayName',tu.display_name) FROM community.catalog_comment_replies tr
+ JOIN community.public_users tu ON tu.id=tr.author_id WHERE tr.id=r.reply_to_reply_id AND tu.status='active'
+ AND community.accounts_can_interact($3,tu.id) AND (tr.moderation='visible' OR tr.author_id=$3)) AS reply_to`;
+interface ItemRow extends QueryResultRow {
+  id: string;
+  author_id: string;
+  display_name: string;
+  text: string;
+  created_at: Date;
+  body_deleted_at: Date | null;
+  like_count: number;
+  liked: boolean;
+  reply_to?: unknown;
+}
+const item = (r: ItemRow): DiscussionReply =>
+  discussionReplySchema.parse({
+    id: r.id,
+    author: { id: r.author_id, displayName: r.display_name },
+    text: r.body_deleted_at ? deletedText : r.text,
+    createdAt: r.created_at.toISOString(),
+    deleted: r.body_deleted_at !== null,
+    likeCount: r.like_count,
+    liked: r.body_deleted_at === null && r.like_count > 0 && r.liked,
+    ...(r.reply_to ? { replyTo: r.reply_to } : {}),
+  });
+
+/** Shared persistence extension of the existing community comment adapter. */
+export class PostgresDiscussionStore implements DiscussionPort {
+  constructor(protected readonly pool: Pool) {}
+  private async run<T>(
+    write: boolean,
+    fn: (db: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const db = await this.pool.connect().catch((error) => {
+      throw asCommunityOperationError(error, "connect");
+    });
+    try {
+      await db.query(
+        write ? "BEGIN" : "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+      );
+      const result = await fn(db);
+      await db.query("COMMIT");
+      return result;
+    } catch (error) {
+      await db.query("ROLLBACK").catch(() => undefined);
+      throw asCommunityOperationError(error, "query");
+    } finally {
+      db.release();
+    }
+  }
+  private async workAllowed(
+    db: PoolClient,
+    target: ContentIdentity,
+    viewer: string | null,
+    lock = false,
+  ): Promise<void> {
+    if (target.type !== "work") return;
+    const r = await db.query(
+      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND w.deleted_at IS NULL AND w.operator_state='visible' AND u.status='active' AND community.accounts_can_interact($2,w.author_id)${lock ? " FOR SHARE OF w" : ""}`,
+      [target.id, viewer],
+    );
+    if (r.rowCount !== 1) throw new CommunityNotFoundError();
+  }
+  private async interactionLocks(
+    db: PoolClient,
+    target: ContentIdentity,
+    actor: string,
+    root?: string,
+    reply?: string,
+  ): Promise<void> {
+    const people = (
+      await db.query<{ id: string }>(
+        `SELECT author_id AS id FROM community.works WHERE $1='work' AND id=$2
+   UNION SELECT author_id FROM community.catalog_comments WHERE id=$3
+   UNION SELECT author_id FROM community.catalog_comment_replies WHERE id=$4`,
+        [target.type, target.id, root ?? null, reply ?? null],
+      )
+    ).rows.map((r) => r.id);
+    for (const other of [...new Set(people)].sort()) {
+      await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+        [actor, other].sort().join(":"),
+      ]);
+      if (
+        !(
+          await db.query(
+            "SELECT community.accounts_can_interact($1,$2) AS allowed",
+            [actor, other],
+          )
+        ).rows[0]?.allowed
+      )
+        throw new CommunityNotFoundError();
+    }
+  }
+  private async active(db: PoolClient, actor: string): Promise<void> {
+    if (
+      (
+        await db.query(
+          "SELECT id FROM community.public_users WHERE id=$1 AND status='active' FOR NO KEY UPDATE",
+          [actor],
+        )
+      ).rowCount !== 1
+    )
+      throw new CommunityNotFoundError();
+  }
+  private async receipt<T>(
+    db: PoolClient,
+    actor: string,
+    request: string,
+    command: unknown,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,1))", [
+      `${actor}:${request}`,
+    ]);
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify(command))
+      .digest("hex");
+    const old = (
+      await db.query<{ fingerprint: string; result: T }>(
+        "SELECT fingerprint,result FROM community.discussion_command_receipts WHERE actor_label=$1 AND request_id=$2",
+        [actor, request],
+      )
+    ).rows[0];
+    if (old) {
+      if (old.fingerprint !== fingerprint)
+        throw new CommunityConflictError("Request identity was reused");
+      return old.result;
+    }
+    const result = await fn();
+    await db.query(
+      "INSERT INTO community.discussion_command_receipts VALUES($1,$2,$3,$4::jsonb)",
+      [actor, request, fingerprint, JSON.stringify(result ?? null)],
+    );
+    return result;
+  }
+  private async authorAudit(
+    db: PoolClient,
+    actor: string,
+    action: string,
+    subject: string,
+  ): Promise<void> {
+    await db.query(
+      "INSERT INTO community.author_events(id,actor_id,action,subject_id) VALUES($1,$2,$3,$4)",
+      [opaque("author-event"), actor, action, subject],
+    );
+  }
+  private async root(
+    db: PoolClient,
+    target: ContentIdentity,
+    id: string,
+    viewer: string | null,
+    lock = false,
+  ): Promise<void> {
+    await this.workAllowed(db, target, viewer, lock);
+    if (
+      (
+        await db.query(
+          `SELECT c.id ${rootFrom} AND c.id=$4${lock ? " FOR UPDATE OF c" : ""}`,
+          [target.type, target.id, viewer, id],
+        )
+      ).rowCount !== 1
+    )
+      throw new CommunityNotFoundError();
+  }
+  private async replyPage(
+    db: PoolClient,
+    target: ContentIdentity,
+    root: string,
+    viewer: string | null,
+    q: DiscussionQuery,
+  ) {
+    const args = [target.type, target.id, viewer, root];
+    const total = Number(
+      (await db.query(`SELECT count(*) AS n ${replyFrom}`, args)).rows[0]?.n ??
+        0,
+    );
+    const rows = (
+      await db.query<ItemRow>(
+        `SELECT ${replyProjection} ${replyFrom} ORDER BY r.created_at,r.id LIMIT $5 OFFSET $6`,
+        [...args, q.pageSize, (q.page - 1) * q.pageSize],
+      )
+    ).rows;
+    const visibleTotal = Number(
+      (
+        await db.query(
+          `SELECT count(*) AS n ${replyFrom} AND ${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL`,
+          args,
+        )
+      ).rows[0]?.n ?? 0,
+    );
+    return { items: rows.map(item), ...pageMeta(total, q), visibleTotal };
+  }
+  private async hotIds(
+    db: PoolClient,
+    target: ContentIdentity,
+    viewer: string | null,
+    q: DiscussionQuery,
+  ): Promise<string[]> {
+    if (q.pinned !== undefined) return [...q.pinned];
+    const rows = await db.query<{ id: string }>(
+      `SELECT c.id,${likeCount("c")} AS score ${rootFrom}
+   AND ${rootPublic} AND c.body_deleted_at IS NULL AND ${likeCount("c")}>0 ORDER BY score DESC,c.created_at DESC,c.id DESC LIMIT 3`,
+      [target.type, target.id, viewer],
+    );
+    return rows.rows.map((r) => r.id);
+  }
+  async readDiscussion(
+    target: ContentIdentity,
+    viewer: string | null,
+    q: DiscussionQuery,
+  ) {
+    return this.run(false, async (db) => {
+      await this.workAllowed(db, target, viewer);
+      const pinned = await this.hotIds(db, target, viewer, q),
+        args = [target.type, target.id, viewer, pinned];
+      const hot =
+        q.pinned === undefined
+          ? (
+              await db.query<ItemRow>(
+                `SELECT ${rootProjection} ${rootFrom} AND c.id=ANY($4::text[]) ORDER BY array_position($4::text[],c.id)`,
+                args,
+              )
+            ).rows
+          : [];
+      const total = Number(
+        (
+          await db.query(
+            `SELECT count(*) AS n ${rootFrom} AND c.id<>ALL($4::text[])`,
+            args,
+          )
+        ).rows[0]?.n ?? 0,
+      );
+      const latest = (
+        await db.query<ItemRow>(
+          `SELECT ${rootProjection} ${rootFrom} AND c.id<>ALL($4::text[]) ORDER BY c.created_at DESC,c.id DESC LIMIT $5 OFFSET $6`,
+          [...args, q.pageSize, (q.page - 1) * q.pageSize],
+        )
+      ).rows;
+      const attach = async (r: ItemRow): Promise<DiscussionComment> => {
+        const replies = await this.replyPage(db, target, r.id, viewer, {
+          page: 1,
+          pageSize: 3,
+        });
+        return discussionCommentSchema.parse({
+          ...item(r),
+          target,
+          replies: replies.items,
+          replyTotal: replies.visibleTotal,
+          replyPageTotal: replies.total,
+        });
+      };
+      const hotItems: DiscussionComment[] = [],
+        items: DiscussionComment[] = [];
+      for (const r of hot) hotItems.push(await attach(r));
+      for (const r of latest) items.push(await attach(r));
+      const visibleTotal = Number(
+        (
+          await db.query(
+            `SELECT count(*) AS n ${rootFrom} AND ${rootPublic} AND c.body_deleted_at IS NULL`,
+            [target.type, target.id, viewer],
+          )
+        ).rows[0]?.n ?? 0,
+      );
+      return { hot: hotItems, items, ...pageMeta(total, q), visibleTotal };
+    });
+  }
+  async readDiscussionReplies(
+    target: ContentIdentity,
+    rootId: string,
+    viewer: string | null,
+    q: DiscussionQuery,
+  ) {
+    return this.run(false, async (db) => {
+      await this.root(db, target, rootId, viewer);
+      return this.replyPage(db, target, rootId, viewer, q);
+    });
+  }
+  async submitDiscussion(
+    target: ContentIdentity,
+    actor: string,
+    text: string,
+    rootId?: string,
+    replyTo?: string,
+  ) {
+    return this.run(true, async (db) => {
+      await this.active(db, actor);
+      await this.interactionLocks(db, target, actor, rootId, replyTo);
+      await this.workAllowed(db, target, actor, true);
+      if (rootId) {
+        await this.root(db, target, rootId, actor, true);
+        if (
+          replyTo &&
+          (
+            await db.query(
+              `SELECT r.id ${replyFrom} AND r.id=$5 AND r.body_deleted_at IS NULL`,
+              [target.type, target.id, actor, rootId, replyTo],
+            )
+          ).rowCount !== 1
+        )
+          throw new CommunityNotFoundError();
+        const participants = (
+          await db.query<{ author_id: string }>(
+            "SELECT author_id FROM community.catalog_comments WHERE id=$1 UNION SELECT author_id FROM community.catalog_comment_replies WHERE id=$2",
+            [rootId, replyTo ?? null],
+          )
+        ).rows;
+        for (const p of participants.sort((a, b) =>
+          a.author_id.localeCompare(b.author_id),
+        )) {
+          await db.query(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+            [[actor, p.author_id].sort().join(":")],
+          );
+          if (
+            !(
+              await db.query(
+                "SELECT community.accounts_can_interact($1,$2) AS allowed",
+                [actor, p.author_id],
+              )
+            ).rows[0]?.allowed
+          )
+            throw new CommunityNotFoundError();
+        }
+      }
+      const policy = (
+        await db.query(
+          "SELECT policy FROM community.publication_setting WHERE id='publication' FOR SHARE",
+        )
+      ).rows[0]?.policy;
+      const moderation =
+          policy === "DIRECT_PUBLICATION" ? "visible" : "pending",
+        id = opaque("comment");
+      if (rootId)
+        await db.query(
+          "INSERT INTO community.catalog_comment_replies(id,root_comment_id,author_id,text,moderation,reply_to_reply_id,was_public) VALUES($1,$2,$3,$4,$5,$6,$7)",
+          [
+            id,
+            rootId,
+            actor,
+            text,
+            moderation,
+            replyTo ?? null,
+            moderation === "visible",
+          ],
+        );
+      else
+        await db.query(
+          "INSERT INTO community.catalog_comments(id,catalog_id,target_type,author_id,text,moderation,was_public) VALUES($1,$2,$3,$4,$5,$6,$7)",
+          [
+            id,
+            target.id,
+            target.type,
+            actor,
+            text,
+            moderation,
+            moderation === "visible",
+          ],
+        );
+      await this.authorAudit(db, actor, "comment_sent", id);
+      const author = (
+        await db.query(
+          "SELECT display_name FROM community.public_users WHERE id=$1",
+          [actor],
+        )
+      ).rows[0];
+      const created = (
+        await db.query(
+          `SELECT created_at FROM community.${rootId ? "catalog_comment_replies" : "catalog_comments"} WHERE id=$1`,
+          [id],
+        )
+      ).rows[0];
+      const to = replyTo
+        ? (
+            await db.query(
+              "SELECT u.id,u.display_name FROM community.catalog_comment_replies r JOIN community.public_users u ON u.id=r.author_id WHERE r.id=$1",
+              [replyTo],
+            )
+          ).rows[0]
+        : undefined;
+      return {
+        id,
+        rootId: rootId ?? id,
+        awaitingApproval: moderation === "pending",
+        item: discussionReplySchema.parse({
+          id,
+          author: { id: actor, displayName: author?.display_name },
+          text,
+          createdAt: created?.created_at.toISOString(),
+          likeCount: 0,
+          liked: false,
+          deleted: false,
+          ...(to
+            ? { replyTo: { id: to.id, displayName: to.display_name } }
+            : {}),
+        }),
+      };
+    });
+  }
+  private async subject(db: PoolClient, id: string, lock = true) {
+    const r = (
+      await db.query<{
+        id: string;
+        root_id: string;
+        author_id: string;
+        target_type: "catalog" | "work";
+        catalog_id: string;
+        thread_removed_at: Date | null;
+      }>(
+        `SELECT c.id,c.id AS root_id,c.author_id,c.target_type,c.catalog_id,c.thread_removed_at FROM community.catalog_comments c WHERE c.id=$1
+   UNION ALL SELECT r.id,c.id,r.author_id,c.target_type,c.catalog_id,c.thread_removed_at FROM community.catalog_comment_replies r JOIN community.catalog_comments c ON c.id=r.root_comment_id WHERE r.id=$1`,
+        [id],
+      )
+    ).rows[0];
+    if (!r) throw new CommunityNotFoundError();
+    if (lock)
+      await db.query(
+        "SELECT id FROM community.catalog_comments WHERE id=$1 FOR UPDATE",
+        [r.root_id],
+      );
+    if (
+      (
+        await db.query(
+          "SELECT thread_removed_at FROM community.catalog_comments WHERE id=$1",
+          [r.root_id],
+        )
+      ).rows[0]?.thread_removed_at
+    )
+      throw new CommunityNotFoundError();
+    return r;
+  }
+  async discussionTarget(id: string): Promise<ContentIdentity> {
+    return this.run(false, async (db) => {
+      const s = await this.subject(db, id, false);
+      return { type: s.target_type, id: s.catalog_id };
+    });
+  }
+  async setDiscussionLike(
+    actor: string,
+    id: string,
+    enabled: boolean,
+    request: string,
+  ) {
+    await this.run(true, async (db) => {
+      await this.active(db, actor);
+      return this.receipt(
+        db,
+        actor,
+        request,
+        ["like", id, enabled],
+        async () => {
+          const s = await this.subject(db, id, false),
+            target: ContentIdentity = { type: s.target_type, id: s.catalog_id };
+          await this.interactionLocks(
+            db,
+            target,
+            actor,
+            s.root_id,
+            s.id === s.root_id ? undefined : s.id,
+          );
+          await this.root(db, target, s.root_id, actor, true);
+          await db.query(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+            [[actor, s.author_id].sort().join(":")],
+          );
+          const eligible =
+            s.id === s.root_id
+              ? await db.query(
+                  `SELECT c.id ${rootFrom} AND c.id=$4 AND ${rootPublic} AND c.body_deleted_at IS NULL`,
+                  [target.type, target.id, actor, id],
+                )
+              : await db.query(
+                  `SELECT r.id ${replyFrom} AND r.id=$5 AND ${rootPublic} AND r.moderation='visible' AND r.body_deleted_at IS NULL`,
+                  [target.type, target.id, actor, s.root_id, id],
+                );
+          if (eligible.rowCount !== 1) throw new CommunityNotFoundError();
+          if (enabled)
+            await db.query(
+              "INSERT INTO community.comment_likes(comment_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+              [id, actor],
+            );
+          else
+            await db.query(
+              "DELETE FROM community.comment_likes WHERE comment_id=$1 AND user_id=$2",
+              [id, actor],
+            );
+          await this.authorAudit(
+            db,
+            actor,
+            enabled ? "comment_liked" : "comment_unliked",
+            id,
+          );
+        },
+      );
+    });
+  }
+  async deleteDiscussionBody(actor: string, id: string, request: string) {
+    await this.run(true, async (db) => {
+      await this.active(db, actor);
+      return this.receipt(db, actor, request, ["delete_body", id], async () => {
+        const s = await this.subject(db, id);
+        if (s.author_id !== actor) throw new CommunityNotFoundError();
+        await db.query(
+          `UPDATE community.${s.id === s.root_id ? "catalog_comments" : "catalog_comment_replies"} SET body_deleted_at=COALESCE(body_deleted_at,CURRENT_TIMESTAMP) WHERE id=$1`,
+          [id],
+        );
+        await this.authorAudit(db, actor, "comment_body_deleted", id);
+      });
+    });
+  }
+  private async operatorAudit(
+    db: PoolClient,
+    operator: string,
+    id: string,
+    action: string,
+    kind: string,
+    detail: string,
+  ) {
+    await db.query(
+      "INSERT INTO community.moderation_events(id,operator_label,action,subject_kind,subject_id,detail) VALUES($1,$2,$3,$4,$5,$6)",
+      [opaque("moderation"), operator, action, kind, id, detail],
+    );
+  }
+  async operatorDeleteBody(operator: string, id: string, request: string) {
+    await this.run(true, (db) =>
+      this.receipt(
+        db,
+        `operator:${operator}`,
+        request,
+        ["delete_body", id],
+        async () => {
+          const s = await this.subject(db, id);
+          await db.query(
+            `UPDATE community.${s.id === s.root_id ? "catalog_comments" : "catalog_comment_replies"} SET body_deleted_at=COALESCE(body_deleted_at,CURRENT_TIMESTAMP) WHERE id=$1`,
+            [id],
+          );
+          await this.operatorAudit(
+            db,
+            operator,
+            id,
+            "delete_body",
+            s.id === s.root_id ? "comment" : "reply",
+            "Body deleted; eligible replies retained",
+          );
+        },
+      ),
+    );
+  }
+  async removeDiscussionThread(
+    operator: string,
+    rootId: string,
+    request: string,
+    expectedCount: number,
+  ) {
+    return this.run(true, (db) =>
+      this.receipt(
+        db,
+        `operator:${operator}`,
+        request,
+        ["remove_thread", rootId, expectedCount],
+        async () => {
+          const s = await this.subject(db, rootId);
+          if (s.id !== s.root_id) throw new CommunityNotFoundError();
+          const total =
+            1 +
+            Number(
+              (
+                await db.query(
+                  "SELECT count(*) AS n FROM community.catalog_comment_replies WHERE root_comment_id=$1",
+                  [rootId],
+                )
+              ).rows[0]?.n ?? 0,
+            );
+          if (total !== expectedCount)
+            throw new CommunityConflictError(
+              `Thread now contains ${total} items; review the count before confirming`,
+            );
+          await db.query(
+            "UPDATE community.catalog_comments SET thread_removed_at=CURRENT_TIMESTAMP WHERE id=$1",
+            [rootId],
+          );
+          await this.operatorAudit(
+            db,
+            operator,
+            rootId,
+            "remove_thread",
+            "comment",
+            `Removed ${total} items`,
+          );
+          return { removed: total };
+        },
+      ),
+    );
+  }
+  async ownComments(actor: string, q: DiscussionQuery) {
+    return this.run(false, async (db) => {
+      const own = `FROM (SELECT c.id,c.id AS root_id,c.author_id,c.text,c.created_at,c.body_deleted_at,c.target_type,c.catalog_id,c.thread_removed_at,c.author_id AS root_author,c.moderation AS root_moderation FROM community.catalog_comments c
+   UNION ALL SELECT r.id,c.id,r.author_id,r.text,r.created_at,r.body_deleted_at,c.target_type,c.catalog_id,c.thread_removed_at,c.author_id,c.moderation FROM community.catalog_comment_replies r JOIN community.catalog_comments c ON c.id=r.root_comment_id) x
+   WHERE x.author_id=$1 AND x.thread_removed_at IS NULL`;
+      const total = Number(
+        (await db.query(`SELECT count(*) AS n ${own}`, [actor])).rows[0]?.n ??
+          0,
+      );
+      const rows = (
+        await db.query(
+          `SELECT x.*, (root_moderation='visible' OR root_author=$1) AND community.accounts_can_interact($1,root_author) AND EXISTS(SELECT 1 FROM community.public_users WHERE id=root_author AND status='active') AS context_available ${own} ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`,
+          [actor, q.pageSize, (q.page - 1) * q.pageSize],
+        )
+      ).rows;
+      const items = [];
+      for (const r of rows) {
+        let target: ContentIdentity | null = r.context_available
+          ? { type: r.target_type, id: r.catalog_id }
+          : null;
+        if (target?.type === "work") {
+          try {
+            await this.workAllowed(db, target, actor);
+          } catch (error) {
+            if (error instanceof CommunityNotFoundError) target = null;
+            else throw asCommunityOperationError(error, "query");
+          }
+        }
+        items.push(
+          ownCommentSchema.parse({
+            id: r.id,
+            rootId: r.root_id,
+            text: r.body_deleted_at ? deletedText : r.text,
+            createdAt: r.created_at.toISOString(),
+            deleted: !!r.body_deleted_at,
+            target,
+          }),
+        );
+      }
+      return { items, ...pageMeta(total, q) };
+    });
+  }
+  async locateDiscussion(
+    target: ContentIdentity,
+    id: string,
+    viewer: string,
+    q: DiscussionQuery,
+  ) {
+    return this.run(false, async (db) => {
+      await this.workAllowed(db, target, viewer);
+      const s = (
+        await db.query<{ root_id: string }>(
+          "SELECT id AS root_id FROM community.catalog_comments WHERE id=$1 UNION ALL SELECT root_comment_id FROM community.catalog_comment_replies WHERE id=$1",
+          [id],
+        )
+      ).rows[0];
+      if (!s) throw new CommunityNotFoundError();
+      await this.root(db, target, s.root_id, viewer);
+      const pinned = await this.hotIds(db, target, viewer, q);
+      const row = (
+        await db.query<{ n: string }>(
+          `SELECT n FROM (SELECT c.id,row_number() OVER(ORDER BY c.created_at DESC,c.id DESC) AS n ${rootFrom} AND c.id<>ALL($4::text[])) x WHERE id=$5`,
+          [target.type, target.id, viewer, pinned, s.root_id],
+        )
+      ).rows[0];
+      if (!row && !pinned.includes(s.root_id))
+        throw new CommunityNotFoundError();
+      let replyPage = 1;
+      if (id !== s.root_id) {
+        const reply = (
+          await db.query<{ n: string }>(
+            `SELECT n FROM (SELECT r.id,row_number() OVER(ORDER BY r.created_at,r.id) AS n ${replyFrom}) x WHERE id=$5`,
+            [target.type, target.id, viewer, s.root_id, id],
+          )
+        ).rows[0];
+        if (!reply) throw new CommunityNotFoundError();
+        replyPage = Math.ceil(Number(reply.n) / q.pageSize);
+      }
+      return {
+        rootId: s.root_id,
+        page: row ? Math.ceil(Number(row.n) / q.pageSize) : 1,
+        replyPage,
+      };
+    });
+  }
+}

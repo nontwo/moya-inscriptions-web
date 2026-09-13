@@ -2,7 +2,7 @@ import {
   CommunityOperatorError,
   createCommunityEndpoints,
 } from "admin/community-endpoints";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { OperatorCall } from "admin/community-endpoints";
 import type { Endpoint, PayloadRequest } from "payload";
@@ -277,5 +277,119 @@ describe("Admin community moderation endpoint boundary", () => {
       status: 404,
       body: { ok: false, error: { code: "NOT_FOUND" } },
     });
+  });
+});
+
+describe("Phase 4 Owner command envelopes", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const receipt = "4155b8f6-88e1-49fa-8981-a204b9efc401";
+  it.each([
+    [
+      "moderate-work",
+      {
+        id: "work-" + "1".repeat(32),
+        requestId: receipt,
+        state: "hidden",
+        expectedVersion: 2,
+      },
+      "POST",
+      "works/work-" + "1".repeat(32) + "/moderation",
+    ],
+    [
+      "delete-body",
+      { id: commentId, requestId: receipt },
+      "POST",
+      `comments/${commentId}/delete-body`,
+    ],
+    [
+      "remove-thread",
+      { id: commentId, requestId: receipt, expectedAffectedCount: 4 },
+      "POST",
+      `comments/${commentId}/remove-thread`,
+    ],
+    [
+      "set-featured",
+      {
+        requestId: receipt,
+        target: { type: "work", id: "work-" + "1".repeat(32) },
+        enabled: true,
+        position: 1000,
+        expectedVersion: 0,
+      },
+      "PUT",
+      "featured",
+    ],
+    [
+      "set-featured-quantity",
+      { requestId: receipt, enabledQuantity: null, expectedVersion: 1 },
+      "PUT",
+      "featured/settings",
+    ],
+  ])(
+    "validates %s through Owner-only Development transport",
+    async (name, body, method, path) => {
+      vi.stubEnv("NODE_ENV", "development");
+      const { call, calls } = recorder();
+      const endpoints = createCommunityEndpoints(call);
+      expect(
+        (await invoke(endpoints, String(name), request(body, "automation")))
+          .status,
+      ).toBe(403);
+      expect(calls).toEqual([]);
+      expect(
+        (
+          await invoke(
+            endpoints,
+            String(name),
+            request({ ...(body as object), actor: "owner" }),
+          )
+        ).status,
+      ).toBe(400);
+      expect(calls).toEqual([]);
+      expect(
+        (await invoke(endpoints, String(name), request(body))).status,
+      ).toBe(200);
+      expect(calls[0]).toMatchObject({ method, path });
+      expect(calls[0]?.body).not.toHaveProperty("id");
+      vi.stubEnv("NODE_ENV", "production");
+      expect(
+        (await invoke(endpoints, String(name), request(body))).status,
+      ).toBe(404);
+      expect(calls).toHaveLength(1);
+    },
+  );
+  it("preserves unbounded business quantity and rejects invalid sequence/count controls", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { call, calls } = recorder();
+    const endpoints = createCommunityEndpoints(call);
+    for (const enabledQuantity of [-1, 1.5, "10"]) {
+      expect(
+        (
+          await invoke(
+            endpoints,
+            "set-featured-quantity",
+            request({
+              requestId: receipt,
+              enabledQuantity,
+              expectedVersion: 1,
+            }),
+          )
+        ).status,
+      ).toBe(400);
+    }
+    expect(
+      (
+        await invoke(
+          endpoints,
+          "remove-thread",
+          request({
+            id: commentId,
+            requestId: receipt,
+            expectedAffectedCount: 0,
+          }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(calls).toHaveLength(0);
   });
 });

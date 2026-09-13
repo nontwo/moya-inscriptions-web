@@ -239,6 +239,23 @@ const webT02StaticFilesFile = path.join(webRoot, "lib", "t02-static-files.ts");
 // Web Public API server module; nothing else under app/ reaches it.
 const webCommunityServerImports: ReadonlyMap<string, string> = new Map([
   [
+    path.join(
+      webRoot,
+      "app",
+      "api",
+      "catalog",
+      "[catalogId]",
+      "media",
+      "[mediaId]",
+      "route.ts",
+    ),
+    "{relayServerLocalCatalogMedia}",
+  ],
+  [
+    path.join(webRoot, "app", "api", "community", "[...path]", "route.ts"),
+    "{relayServerAuthorCommunity}",
+  ],
+  [
     path.join(webRoot, "app", "api", "community", "me", "route.ts"),
     "{fetchServerCurrentUser}",
   ],
@@ -678,6 +695,23 @@ const isForbiddenServerReference = (specifier: string): boolean => {
 };
 
 const allowedClientContractTypes = new Set([
+  "ContentIdentity",
+  "ContentCard",
+  "AuthorProfile",
+  "AuthorMedia",
+  "UserWork",
+  "WorkEditDraft",
+  "AuthorPrivacy",
+  "AuthorListQuery",
+  "DiscussionPage",
+  "DiscussionComment",
+  "DiscussionReply",
+  "OwnComment",
+  "DiscoveryPage",
+  "DiscoveryQuery",
+  "InscriptionFilters",
+  "InscriptionFilterOptions",
+
   "CatalogDetail",
   "CatalogId",
   "CatalogKind",
@@ -773,6 +807,7 @@ const isOwnerWorkflowTypes = (
       ([
         "src/community/api.ts",
         "src/community/queue-client.tsx",
+        "src/community/content-client.tsx",
         "src/community/settings-client.tsx",
         "src/community/history-client.tsx",
       ].includes(relative) &&

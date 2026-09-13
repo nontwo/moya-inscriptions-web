@@ -6,6 +6,7 @@ import {
 import { createRouter } from "./http/router.js";
 
 import {
+  AuthorCommunityService,
   CatalogCommentService,
   CatalogReadService,
   CommunityModerationService,
@@ -14,6 +15,10 @@ import {
 import { MappedStorageUrlResolver } from "@moya/image";
 
 import type {
+  AuthorCommunityPort,
+  CommunityContentOperatorPort,
+  DiscussionPort,
+  CommunityDiscoveryPort,
   CatalogPublicationPort,
   CommentAnalysisPort,
   CatalogQueryPort,
@@ -35,6 +40,10 @@ export interface BackendApplicationOptions {
   readonly healthReadinessCheck?: HealthReadinessCheck;
   /** Backend-owned identity and sessions; without it every credential is unauthenticated. */
   readonly communityIdentityPort?: CommunityIdentityPort;
+  readonly authorCommunityPort?: AuthorCommunityPort;
+  readonly discussionPort?: DiscussionPort;
+  readonly contentOperatorPort?: CommunityContentOperatorPort;
+  readonly discoveryPort?: CommunityDiscoveryPort;
   /** Comments, moderation and the publication setting; requires the identity port. */
   readonly communityCommentPort?: CommunityCommentPort;
   /** Answers whether a Catalog record is currently published, from the Catalog read side. */
@@ -80,12 +89,30 @@ const resolveStorageUrlResolver = ({
 const resolveCommunity = (
   options: BackendApplicationOptions,
   catalogPublicationPort: CatalogPublicationPort,
+  storageUrlResolver: StorageUrlResolver,
 ): CommunityRouterDependencies | undefined => {
   const { nodeEnv, communityIdentityPort, communityCommentPort } = options;
   if (communityIdentityPort === undefined) return undefined;
   return {
     sessionService: new CommunitySessionService(communityIdentityPort),
+    ...(nodeEnv === "development" && options.authorCommunityPort !== undefined
+      ? {
+          authorService: new AuthorCommunityService(
+            options.authorCommunityPort,
+            catalogPublicationPort,
+            options.discussionPort,
+            options.discoveryPort,
+            storageUrlResolver,
+          ),
+        }
+      : {}),
     developmentEntry: nodeEnv === "development",
+    ...(nodeEnv === "development"
+      ? {
+          contentOperatorPort: options.contentOperatorPort,
+          discussionPort: options.discussionPort,
+        }
+      : {}),
     // Comments and moderation need their own port; identity works without it.
     ...(communityCommentPort === undefined
       ? {}
@@ -93,12 +120,18 @@ const resolveCommunity = (
           commentService: new CatalogCommentService(
             communityCommentPort,
             catalogPublicationPort,
+            nodeEnv === "development" && options.discussionPort
+              ? { discussionPort: options.discussionPort }
+              : {},
           ),
           moderationService: new CommunityModerationService(
             communityCommentPort,
             communityIdentityPort,
             catalogPublicationPort,
             {
+              ...(nodeEnv === "development" && options.contentOperatorPort
+                ? { contentOperatorPort: options.contentOperatorPort }
+                : {}),
               ...(options.communityAnalysisPort === undefined
                 ? {}
                 : { analysisPort: options.communityAnalysisPort }),
@@ -125,6 +158,7 @@ export const createBackendApplication = (
       readTitle: async (catalogId) =>
         (await catalogQueryPort.getById(catalogId))?.title ?? null,
     },
+    storageUrlResolver,
   );
   return createRouter({
     catalogReadService: new CatalogReadService(
