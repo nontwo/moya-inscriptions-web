@@ -27,7 +27,8 @@ export const operatorWorkSchema = z.strictObject({
   state: z.enum(["visible", "hidden", "removed"]),
   authorDeleted: z.boolean(),
   version,
-  firstPublishedAt: z.iso.datetime(),
+  /** Null for a work never publicly exposed (self-only or pending first submission). */
+  firstPublishedAt: z.iso.datetime().nullable(),
 });
 export const operatorWorkPageSchema = z.strictObject({
   items: z.array(operatorWorkSchema).max(50),

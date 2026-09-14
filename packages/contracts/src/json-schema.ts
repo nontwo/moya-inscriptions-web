@@ -192,3 +192,78 @@ export const authorCommunityJsonSchemas = {
   WorkDraftApply: toJsonSchema(workDraftApplySchema),
   RequestIdentity: toJsonSchema(requestIdentitySchema),
 };
+
+import {
+  createPublishingDraftCommandSchema,
+  createPublishingSessionCommandSchema,
+  editableWorkSchema,
+  mediaEditSchema,
+  openWorkEditDraftCommandSchema,
+  publishingDraftDeletionResultSchema,
+  publishingDraftPageSchema,
+  publishingDraftSaveResultSchema,
+  publishingDraftSchema,
+  publishingLimitsSchema,
+  publishingMediaItemSchema,
+  publishingSessionHeartbeatCommandSchema,
+  publishingSessionSchema,
+  publishingSnapshotPageSchema,
+  publishingUploadResultSchema,
+  registerMediaItemCommandSchema,
+  resolvePublishingConflictCommandSchema,
+  restorePublishingSnapshotCommandSchema,
+  savePublishingDraftCommandSchema,
+  trashRestoreResultSchema,
+  trashedWorkPageSchema,
+  workAuthorshipSchema,
+  workDraftContentSchema,
+  workSubmissionCommandSchema,
+  workSubmissionReceiptSchema,
+  workSubmissionResultSchema,
+  workVisibilityCommandSchema,
+  workVisibilityResultSchema,
+} from "./schemas.js";
+
+/** Work publishing public DTOs, for the Development-only OpenAPI components. */
+export const workPublishingJsonSchemas = {
+  MediaEdit: toJsonSchema(mediaEditSchema),
+  WorkAuthorship: toJsonSchema(workAuthorshipSchema),
+  WorkDraftContent: toJsonSchema(workDraftContentSchema),
+  PublishingMediaItem: toJsonSchema(publishingMediaItemSchema),
+  RegisterMediaItemCommand: toJsonSchema(registerMediaItemCommandSchema),
+  PublishingUploadResult: toJsonSchema(publishingUploadResultSchema),
+  CreatePublishingDraftCommand: toJsonSchema(
+    createPublishingDraftCommandSchema,
+  ),
+  OpenWorkEditDraftCommand: toJsonSchema(openWorkEditDraftCommandSchema),
+  SavePublishingDraftCommand: toJsonSchema(savePublishingDraftCommandSchema),
+  PublishingDraft: toJsonSchema(publishingDraftSchema),
+  PublishingDraftPage: toJsonSchema(publishingDraftPageSchema),
+  PublishingDraftSaveResult: toJsonSchema(publishingDraftSaveResultSchema),
+  PublishingDraftDeletionResult: toJsonSchema(
+    publishingDraftDeletionResultSchema,
+  ),
+  PublishingSnapshotPage: toJsonSchema(publishingSnapshotPageSchema),
+  RestorePublishingSnapshotCommand: toJsonSchema(
+    restorePublishingSnapshotCommandSchema,
+  ),
+  ResolvePublishingConflictCommand: toJsonSchema(
+    resolvePublishingConflictCommandSchema,
+  ),
+  CreatePublishingSessionCommand: toJsonSchema(
+    createPublishingSessionCommandSchema,
+  ),
+  PublishingSessionHeartbeatCommand: toJsonSchema(
+    publishingSessionHeartbeatCommandSchema,
+  ),
+  PublishingSession: toJsonSchema(publishingSessionSchema),
+  WorkSubmissionCommand: toJsonSchema(workSubmissionCommandSchema),
+  WorkSubmissionResult: toJsonSchema(workSubmissionResultSchema),
+  WorkSubmissionReceipt: toJsonSchema(workSubmissionReceiptSchema),
+  EditableWork: toJsonSchema(editableWorkSchema),
+  WorkVisibilityCommand: toJsonSchema(workVisibilityCommandSchema),
+  WorkVisibilityResult: toJsonSchema(workVisibilityResultSchema),
+  TrashedWorkPage: toJsonSchema(trashedWorkPageSchema),
+  TrashRestoreResult: toJsonSchema(trashRestoreResultSchema),
+  PublishingLimits: toJsonSchema(publishingLimitsSchema),
+};

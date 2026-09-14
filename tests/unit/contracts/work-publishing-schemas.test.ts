@@ -1,0 +1,1583 @@
+import { describe, expect, it } from "vitest";
+import {
+  authorMediaSchema,
+  authorPersonSchema,
+  authorProfileSchema,
+  contentCardSchema,
+  createPublishingDraftCommandSchema,
+  editableWorkSchema,
+  mediaCropSchema,
+  mediaEditSchema,
+  mediaItemIdSchema,
+  publishingDraftSaveResultSchema,
+  publishingDraftSchema,
+  publishingDraftSummarySchema,
+  publishingHolderSchema,
+  publishingLimitsSchema,
+  publishingMediaItemSchema,
+  publishingSessionSchema,
+  publishingSnapshotPageSchema,
+  registerMediaItemCommandSchema,
+  trashedWorkPageSchema,
+  workDraftContentSchema,
+  workDraftIdSchema,
+  workMediaSchema,
+  workSchema,
+  workSubmissionCommandSchema,
+  workSubmissionResultSchema,
+} from "@moya/contracts/schemas";
+import {
+  authorCommunityJsonSchemas,
+  workPublishingJsonSchemas,
+} from "@moya/contracts/json-schema";
+import {
+  adminModerateWorkSubmissionRequestSchema,
+  adminPublishingJobRequestSchema,
+  adminSetAccountCapacityClassRequestSchema,
+  operatorAccountCapacitySchema,
+  operatorPublishingJobSchema,
+  operatorWorkSchema,
+  operatorWorkSubmissionQuerySchema,
+  operatorWorkSubmissionSchema,
+  setWorkPublishingSettingsCommandSchema,
+  workPublishingSettingsSchema,
+  workSubmissionModerationResultSchema,
+} from "@moya/contracts/internal/community-operator";
+
+const hex = (character: string) => character.repeat(32);
+const requestId = "9b62b05d-fb9a-48b8-aa9a-a5dafbeb242b";
+const itemId = `media-item-${hex("a")}`;
+const draftId = `work-draft-${hex("b")}`;
+const sessionId = `publishing-session-${hex("c")}`;
+const workId = `work-${hex("d")}`;
+const revisionId = `work-revision-${hex("f")}`;
+const legacySrc = `/api/community/media/user-media-${hex("a")}`;
+const at = "2026-09-13T10:00:00.000Z";
+// Phase 4 accepted a title with LF and a body with CR/CRLF (trimmed, ≤ UTF-16 limit).
+const legacyTitle = "上\n下";
+const legacyBody = "第一行\r\n第二行\r第三行";
+const src = (variant: string, id = itemId) =>
+  `/api/community/publishing/media/${id}/${variant}/base`;
+const baseEdit = { rotation: 0, crop: null };
+const item = (key: string, overrides: Record<string, unknown> = {}) => ({
+  key,
+  itemId: `media-item-${Buffer.from(key).toString("hex").padStart(32, "0")}`,
+  kind: "static",
+  qualityMode: "standard",
+  edit: baseEdit,
+  ...overrides,
+});
+const content = (overrides: Record<string, unknown> = {}) => ({
+  title: "",
+  body: "",
+  authorship: { kind: "original" },
+  visibility: "public",
+  items: [],
+  coverKey: null,
+  coverCrop: null,
+  ...overrides,
+});
+const messagesOf = (result: {
+  success: boolean;
+  error?: { issues: { message: string }[] };
+}) =>
+  result.success ? [] : result.error!.issues.map(({ message }) => message);
+
+describe("work publishing identifiers", () => {
+  it("accepts only the exact platform prefix with 32 lowercase hex", () => {
+    expect(mediaItemIdSchema.safeParse(itemId).success).toBe(true);
+    expect(workDraftIdSchema.safeParse(draftId).success).toBe(true);
+    for (const invalid of [
+      `media-item-${"A".repeat(32)}`,
+      `media-item-${"a".repeat(31)}`,
+      `media-blob-${hex("a")}`,
+      ` ${itemId}`,
+      `${itemId}\n`,
+    ])
+      expect(mediaItemIdSchema.safeParse(invalid).success).toBe(false);
+    expect(workDraftIdSchema.safeParse(`draft-${hex("b")}`).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("media edits", () => {
+  it("accepts crops inside the unit square and refuses edges beyond it", () => {
+    for (const crop of [
+      { x: 0, y: 0, width: 1, height: 1 },
+      { x: 0.3, y: 0.7, width: 0.7, height: 0.3 },
+      { x: 0.1, y: 0.2, width: 0.9, height: 0.8 },
+      { x: 0.99, y: 0.99, width: 0.01, height: 0.01 },
+    ])
+      expect(mediaCropSchema.safeParse(crop).success).toBe(true);
+    for (const crop of [
+      { x: 0.5, y: 0, width: 0.6, height: 1 },
+      { x: 0, y: 0.5, width: 1, height: 0.500001 },
+      { x: -0.1, y: 0, width: 0.5, height: 0.5 },
+      { x: 0, y: 0, width: 0.005, height: 0.5 },
+      { x: 0, y: 0, width: 1.1, height: 1 },
+      { x: Number.NaN, y: 0, width: 0.5, height: 0.5 },
+      { x: 0, y: 0, width: Number.POSITIVE_INFINITY, height: 0.5 },
+      { x: 0, y: 0, width: 0.5, height: 0.5, focus: 1 },
+    ])
+      expect(mediaCropSchema.safeParse(crop).success).toBe(false);
+  });
+
+  it("allows only quarter-turn rotations and a nullable crop", () => {
+    for (const rotation of [0, 90, 180, 270])
+      expect(mediaEditSchema.safeParse({ rotation, crop: null }).success).toBe(
+        true,
+      );
+    for (const rotation of [45, 360, -90, "90"])
+      expect(mediaEditSchema.safeParse({ rotation, crop: null }).success).toBe(
+        false,
+      );
+    expect(mediaEditSchema.safeParse({ rotation: 0 }).success).toBe(false);
+    expect(
+      mediaEditSchema.safeParse({ rotation: 0, crop: null, filter: "sepia" })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("draft and submission content", () => {
+  it("keeps a pending label consistent with the item kind", () => {
+    const pending = {
+      key: "k-pending",
+      itemId: null,
+      kind: "static",
+      qualityMode: "standard",
+      edit: baseEdit,
+    };
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [{ ...pending, pendingLabel: "photo" }] }),
+      ).success,
+    ).toBe(true);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [{ ...pending, pendingLabel: "live" }] }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({
+          items: [{ ...pending, kind: "live", pendingLabel: "photo" }],
+        }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("saves incomplete drafts with pending placeholders and never raw file names", () => {
+    const pending = {
+      key: "k-pending",
+      itemId: null,
+      kind: "live",
+      qualityMode: "original",
+      edit: baseEdit,
+      pendingLabel: "live",
+    };
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [pending], coverKey: "k-pending" }),
+      ).success,
+    ).toBe(true);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [{ ...pending, pendingName: "IMG_0001.HEIC" }] }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [{ ...item("k1"), pendingLabel: "photo" }] }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("requires unique keys and items, a real cover key and a cover crop only with a cover", () => {
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [item("k1"), item("k1")] }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({
+          items: [item("k1"), item("k2", { itemId: item("k1").itemId })],
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ items: [item("k1")], coverKey: "k2" }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({
+          items: [item("k1")],
+          coverKey: null,
+          coverCrop: { x: 0, y: 0, width: 1, height: 1 },
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({
+          items: [item("k1"), item("k2")],
+          coverKey: "k2",
+          coverCrop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("bounds items at the hard schema maximum with the items_limit code", () => {
+    const items = (count: number) =>
+      Array.from({ length: count }, (_, index) => item(`k${index}`));
+    expect(
+      workDraftContentSchema.safeParse(content({ items: items(500) })).success,
+    ).toBe(true);
+    expect(
+      messagesOf(
+        workDraftContentSchema.safeParse(content({ items: items(501) })),
+      ),
+    ).toContain("items_limit");
+  });
+
+  it("keeps authorship to the three kinds with optional references only when referenced", () => {
+    expect(
+      workDraftContentSchema.safeParse(
+        content({
+          authorship: {
+            kind: "copy_practice",
+            referenceTitle: "合成碑帖",
+            originalAuthor: "合成作者",
+            sourceNote: "第一行\n第二行",
+          },
+        }),
+      ).success,
+    ).toBe(true);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ authorship: { kind: "material_sharing" } }),
+      ).success,
+    ).toBe(true);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ authorship: { kind: "original", referenceTitle: "x" } }),
+      ).success,
+    ).toBe(false);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({ authorship: { kind: "copy_practice", tags: ["x"] } }),
+      ).success,
+    ).toBe(false);
+    for (const [authorship, code] of [
+      [{ referenceTitle: "𠀀".repeat(201) }, "reference_title_too_long"],
+      [{ originalAuthor: "作".repeat(101) }, "original_author_too_long"],
+      [{ sourceNote: "𠀀".repeat(501) }, "source_note_too_long"],
+    ] as const)
+      expect(
+        messagesOf(
+          workDraftContentSchema.safeParse(
+            content({ authorship: { kind: "copy_practice", ...authorship } }),
+          ),
+        ),
+      ).toEqual([code]);
+    expect(
+      workDraftContentSchema.safeParse(
+        content({
+          authorship: {
+            kind: "material_sharing",
+            referenceTitle: "𠀀".repeat(200),
+            originalAuthor: "作".repeat(100),
+            sourceNote: "𠀀".repeat(500),
+          },
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("refuses to create an empty draft", () => {
+    expect(
+      messagesOf(
+        createPublishingDraftCommandSchema.safeParse({
+          requestId,
+          content: content({ title: "  ", body: "\r\n" }),
+          deviceClass: "phone",
+        }),
+      ),
+    ).toEqual(["empty_work"]);
+    expect(
+      createPublishingDraftCommandSchema.safeParse({
+        requestId,
+        content: content({ body: "正文" }),
+        deviceClass: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts text-only, title-only and media-only submissions and refuses empty or pending ones", () => {
+    const submit = (overrides: Record<string, unknown>) =>
+      workSubmissionCommandSchema.safeParse({
+        requestId,
+        holder: { draftId },
+        content: content(overrides),
+        baseRevisionId: null,
+      });
+    expect(submit({ body: "正文\n第二行" }).success).toBe(true);
+    expect(submit({ title: "只有标题" }).success).toBe(true);
+    expect(submit({ items: [item("k1")] }).success).toBe(true);
+    expect(messagesOf(submit({ title: " ", body: " " }))).toEqual([
+      "empty_work",
+    ]);
+    // Readiness has one channel: the Backend's not_ready result, never a 422.
+    expect(
+      submit({
+        items: [
+          {
+            key: "k1",
+            itemId: null,
+            kind: "static",
+            qualityMode: "standard",
+            edit: baseEdit,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      messagesOf(
+        submit({
+          title: legacyTitle,
+          authorship: { kind: "copy_practice", referenceTitle: "上\n下" },
+        }),
+      ),
+    ).toEqual(["title_line_break", "line_break"]);
+  });
+});
+
+describe("upload holders and item registration", () => {
+  it("accepts a draft holder or a session holder, never both or neither", () => {
+    expect(publishingHolderSchema.safeParse({ draftId }).success).toBe(true);
+    expect(publishingHolderSchema.safeParse({ sessionId }).success).toBe(true);
+    for (const holder of [
+      { draftId, sessionId },
+      {},
+      { draftId: sessionId },
+      { sessionId: draftId },
+      { workId: `work-${hex("d")}` },
+    ])
+      expect(publishingHolderSchema.safeParse(holder).success).toBe(false);
+  });
+
+  const register = (overrides: Record<string, unknown>) => {
+    const kind = overrides.kind ?? "static";
+    const qualityMode = overrides.qualityMode ?? "standard";
+    return registerMediaItemCommandSchema.safeParse({
+      requestId,
+      holder: { draftId },
+      kind,
+      qualityMode,
+      ...(qualityMode === "standard" && {
+        processingProfile:
+          kind === "live" ? "standard-live-v1" : "standard-image-v1",
+      }),
+      components: [
+        { role: "still", byteSize: 1024, contentType: "image/webp" },
+      ],
+      ...overrides,
+    });
+  };
+  const livePair = [
+    { role: "still", byteSize: 4_000_000, contentType: "image/heic" },
+    { role: "motion", byteSize: 9_000_000, contentType: "video/quicktime" },
+  ];
+  const applePairing = {
+    method: "apple-content-identifier",
+    identifierSha256: "f".repeat(64),
+  };
+
+  it("applies role rules: static is one still, Live is still + motion or one package", () => {
+    expect(register({}).success).toBe(true);
+    expect(
+      register({
+        qualityMode: "original",
+        kind: "live",
+        components: livePair,
+        clientPairing: applePairing,
+      }).success,
+    ).toBe(true);
+    expect(
+      register({
+        qualityMode: "original",
+        kind: "live",
+        components: [
+          { role: "package", byteSize: 5_000_000, contentType: "image/jpeg" },
+        ],
+        clientPairing: { method: "motion-photo-container" },
+      }).success,
+    ).toBe(true);
+    for (const components of [
+      [{ role: "motion", byteSize: 1, contentType: "video/mp4" }],
+      [
+        { role: "still", byteSize: 1, contentType: "image/png" },
+        { role: "still", byteSize: 1, contentType: "image/png" },
+      ],
+      [],
+    ])
+      expect(messagesOf(register({ components }))).toContain(
+        "unsupported_type",
+      );
+    expect(
+      messagesOf(
+        register({
+          kind: "live",
+          qualityMode: "original",
+          components: [livePair[0]],
+          clientPairing: applePairing,
+        }),
+      ),
+    ).toEqual(["unsupported_type"]);
+    expect(
+      register({
+        kind: "live",
+        qualityMode: "original",
+        components: [...livePair, livePair[0]],
+        clientPairing: applePairing,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("refuses sending a HEIC or MOV source as Standard", () => {
+    expect(
+      messagesOf(
+        register({
+          components: [
+            { role: "still", byteSize: 1024, contentType: "image/heic" },
+          ],
+        }),
+      ),
+    ).toEqual(["unsupported_type"]);
+    expect(
+      register({
+        qualityMode: "original",
+        components: [
+          { role: "still", byteSize: 1024, contentType: "image/heic" },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      messagesOf(
+        register({
+          kind: "live",
+          components: [
+            { role: "still", byteSize: 1, contentType: "image/jpeg" },
+            { role: "motion", byteSize: 1, contentType: "video/quicktime" },
+          ],
+          clientPairing: applePairing,
+        }),
+      ),
+    ).toEqual(["unsupported_type"]);
+    expect(
+      messagesOf(
+        register({
+          kind: "live",
+          components: [
+            { role: "package", byteSize: 1, contentType: "image/jpeg" },
+          ],
+          clientPairing: { method: "motion-photo-container" },
+        }),
+      ),
+    ).toEqual(["unsupported_type"]);
+    expect(
+      register({
+        components: [
+          { role: "still", byteSize: 1, contentType: "application/zip" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(register({ qualityMode: "legacy" }).success).toBe(false);
+  });
+
+  it("records the browser profile exactly for Standard items", () => {
+    expect(register({ processingProfile: undefined }).success).toBe(false);
+    expect(register({ processingProfile: "standard-live-v1" }).success).toBe(
+      false,
+    );
+    expect(
+      register({
+        qualityMode: "original",
+        processingProfile: "standard-image-v1",
+      }).success,
+    ).toBe(false);
+    expect(
+      register({
+        kind: "live",
+        components: [
+          { role: "still", byteSize: 1, contentType: "image/jpeg" },
+          { role: "motion", byteSize: 1, contentType: "video/mp4" },
+        ],
+        clientPairing: {
+          method: "apple-content-identifier",
+          identifierSha256: "f".repeat(64),
+          stillTimeMs: 1_500,
+        },
+      }).success,
+    ).toBe(true);
+    expect(register({ processingProfile: "standard-image-v2" }).success).toBe(
+      false,
+    );
+  });
+
+  it("keeps the still time of a paired Live Photo for alignment", () => {
+    const live = {
+      kind: "live",
+      qualityMode: "original",
+      components: [
+        { role: "package", byteSize: 5_000_000, contentType: "image/jpeg" },
+      ],
+    };
+    expect(
+      register({
+        ...live,
+        clientPairing: { method: "motion-photo-container", stillTimeMs: 1_500 },
+      }).success,
+    ).toBe(true);
+    for (const stillTimeMs of [-1, 1.5, 60_001])
+      expect(
+        register({
+          ...live,
+          clientPairing: { method: "motion-photo-container", stillTimeMs },
+        }).success,
+      ).toBe(false);
+    expect(
+      register({ clientPairing: { method: "none", stillTimeMs: 0 } }).success,
+    ).toBe(false);
+  });
+
+  it("requires trustworthy pairing for Live Photos", () => {
+    const live = {
+      kind: "live",
+      qualityMode: "original",
+      components: livePair,
+    };
+    expect(messagesOf(register(live))).toEqual(["pairing_mismatch"]);
+    expect(
+      messagesOf(register({ ...live, clientPairing: { method: "none" } })),
+    ).toEqual(["pairing_mismatch"]);
+    expect(
+      register({
+        ...live,
+        clientPairing: { method: "apple-content-identifier" },
+      }).success,
+    ).toBe(false);
+    expect(
+      register({
+        clientPairing: { method: "none", identifierSha256: "f".repeat(64) },
+      }).success,
+    ).toBe(false);
+    expect(messagesOf(register({ clientPairing: applePairing }))).toEqual([
+      "pairing_mismatch",
+    ]);
+  });
+
+  it("bounds private metadata to 16 KiB serialized with provenance and no NUL", () => {
+    const metadata = (values: Record<string, unknown>, status = "parsed") => ({
+      provenance: { source: "client", parser: "exifr@7.1.3", status },
+      values,
+    });
+    expect(
+      register({
+        metadata: metadata({ Make: "合成", Orientation: 1, FNumber: 1.8 }),
+      }).success,
+    ).toBe(true);
+    expect(register({ metadata: metadata({}, "absent") }).success).toBe(true);
+    expect(
+      register({ metadata: metadata({ Make: "x" }, "absent") }).success,
+    ).toBe(false);
+    const large = Object.fromEntries(
+      Array.from({ length: 40 }, (_, index) => [
+        `Key${index}`,
+        "字".repeat(170),
+      ]),
+    );
+    expect(register({ metadata: metadata(large) }).success).toBe(false);
+    expect(register({ metadata: metadata({ Make: "a\u0000b" }) }).success).toBe(
+      false,
+    );
+    expect(register({ metadata: metadata({ "../path": "x" }) }).success).toBe(
+      false,
+    );
+    expect(
+      register({
+        metadata: {
+          ...metadata({}),
+          provenance: { source: "server", parser: "x", status: "parsed" },
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("media item DTO", () => {
+  const ready = {
+    id: itemId,
+    kind: "live",
+    qualityMode: "original",
+    state: "ready",
+    failureCode: null,
+    components: [
+      {
+        id: `media-component-${hex("1")}`,
+        role: "still",
+        state: "verified",
+        byteSize: 10,
+        receivedBytes: 10,
+      },
+      {
+        id: `media-component-${hex("2")}`,
+        role: "motion",
+        state: "verified",
+        byteSize: 20,
+        receivedBytes: 20,
+      },
+    ],
+    presentation: {
+      width: 4032,
+      height: 3024,
+      durationMs: 2900,
+      hasAudio: true,
+    },
+    media: {
+      thumbSrc: src("thumb"),
+      displaySrc: src("display"),
+      motionSrc: src("motion"),
+    },
+  };
+
+  it("carries same-origin derivative paths exactly when ready", () => {
+    expect(publishingMediaItemSchema.safeParse(ready).success).toBe(true);
+    expect(
+      publishingMediaItemSchema.safeParse({ ...ready, state: "processing" })
+        .success,
+    ).toBe(false);
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        state: "processing",
+        media: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        state: "failed",
+        media: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        state: "failed",
+        failureCode: "decode_failed",
+        media: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("refuses foreign, original or malformed media paths", () => {
+    for (const thumbSrc of [
+      `https://cdn.example/${itemId}/thumb/base`,
+      `/api/community/media/user-media-${hex("a")}`,
+      `/api/community/publishing/media/${itemId}/original/base`,
+      `/api/community/publishing/media/${itemId}/thumb/base?download=1`,
+      `/api/community/publishing/media/../${itemId}/thumb/base`,
+    ])
+      expect(
+        publishingMediaItemSchema.safeParse({
+          ...ready,
+          media: { ...ready.media, thumbSrc },
+        }).success,
+      ).toBe(false);
+  });
+
+  it("requires every derivative path to name this item and its own variant", () => {
+    const otherItem = `media-item-${hex("b")}`;
+    for (const media of [
+      { ...ready.media, thumbSrc: src("thumb", otherItem) },
+      { ...ready.media, motionSrc: src("motion", otherItem) },
+      { ...ready.media, displaySrc: src("thumb") },
+      { ...ready.media, fullSrc: src("display") },
+      { ...ready.media, thumbSrc: legacySrc },
+    ])
+      expect(
+        publishingMediaItemSchema.safeParse({ ...ready, media }).success,
+      ).toBe(false);
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        media: { ...ready.media, fullSrc: src("full") },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("serves a legacy item from its Phase 4 user media path", () => {
+    const legacy = {
+      id: itemId,
+      kind: "static",
+      qualityMode: "legacy",
+      state: "ready",
+      failureCode: null,
+      components: [],
+      presentation: { width: 1200, height: 800 },
+      media: { thumbSrc: legacySrc, displaySrc: legacySrc },
+    };
+    expect(publishingMediaItemSchema.safeParse(legacy).success).toBe(true);
+    for (const invalid of [
+      { media: { thumbSrc: src("thumb"), displaySrc: src("display") } },
+      { media: { ...legacy.media, fullSrc: src("full") } },
+      { media: { ...legacy.media, motionSrc: src("motion") }, kind: "live" },
+      { kind: "live" },
+    ])
+      expect(
+        publishingMediaItemSchema.safeParse({ ...legacy, ...invalid }).success,
+      ).toBe(false);
+  });
+
+  it("keeps kind and component invariants", () => {
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        media: { thumbSrc: src("thumb"), displaySrc: src("display") },
+      }).success,
+    ).toBe(false);
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        kind: "static",
+        components: [ready.components[0]],
+        presentation: { width: 1, height: 1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      publishingMediaItemSchema.safeParse({
+        ...ready,
+        components: [
+          { ...ready.components[0], receivedBytes: 11 },
+          ready.components[1],
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      publishingMediaItemSchema.safeParse({ ...ready, sha256: "f".repeat(64) })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("draft save results, summaries and submission receipts", () => {
+  const draft = {
+    id: draftId,
+    kind: "new",
+    workId: null,
+    baseRevisionId: null,
+    revision: 3,
+    content: content({ body: "正文" }),
+    mediaItems: [],
+    conflict: null,
+    deviceClass: "desktop",
+    createdAt: "2026-09-13T10:00:00.000Z",
+    updatedAt: "2026-09-13T10:05:00.000Z",
+  };
+  const conflict = {
+    id: `work-draft-${hex("e")}`,
+    device: {
+      content: content({ body: "本机版本" }),
+      baseRevision: 2,
+      deviceClass: "phone",
+      savedAt: "2026-09-13T10:06:00.000Z",
+    },
+    account: {
+      content: content({ body: "账户版本" }),
+      revision: 3,
+      deviceClass: "desktop",
+      updatedAt: "2026-09-13T10:05:00.000Z",
+    },
+    createdAt: "2026-09-13T10:06:00.000Z",
+  };
+
+  it("returns saved or a conflict carrying both real versions", () => {
+    expect(
+      publishingDraftSaveResultSchema.safeParse({ status: "saved", draft })
+        .success,
+    ).toBe(true);
+    expect(
+      publishingDraftSaveResultSchema.safeParse({
+        status: "conflict",
+        draft: { ...draft, conflict },
+        conflict,
+      }).success,
+    ).toBe(true);
+    expect(
+      publishingDraftSaveResultSchema.safeParse({
+        status: "conflict",
+        draft: { ...draft, conflict },
+        conflict: { ...conflict, account: undefined },
+      }).success,
+    ).toBe(false);
+    for (const draftConflict of [
+      null,
+      { ...conflict, id: `work-draft-${hex("9")}` },
+    ])
+      expect(
+        publishingDraftSaveResultSchema.safeParse({
+          status: "conflict",
+          draft: { ...draft, conflict: draftConflict },
+          conflict,
+        }).success,
+      ).toBe(false);
+    expect(
+      publishingDraftSaveResultSchema.safeParse({ status: "conflict", draft })
+        .success,
+    ).toBe(false);
+    expect(
+      publishingDraftSaveResultSchema.safeParse({
+        status: "saved",
+        draft: { ...draft, kind: "edit" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("carries the base revision of an edit draft and none for a new draft", () => {
+    const edit = { ...draft, kind: "edit", workId, baseRevisionId: revisionId };
+    expect(publishingDraftSchema.safeParse(edit).success).toBe(true);
+    expect(
+      publishingDraftSchema.safeParse({ ...edit, baseRevisionId: null })
+        .success,
+    ).toBe(false);
+    expect(
+      publishingDraftSchema.safeParse({ ...draft, baseRevisionId: revisionId })
+        .success,
+    ).toBe(false);
+    expect(
+      publishingDraftSchema.safeParse({ ...draft, baseRevisionId: undefined })
+        .success,
+    ).toBe(false);
+  });
+
+  it("summarizes drafts with normalized text and truthful counts", () => {
+    const summary = {
+      id: draftId,
+      kind: "edit",
+      workId: `work-${hex("d")}`,
+      title: "",
+      excerpt: "正文开头",
+      coverSrc: src("cover"),
+      itemCount: 3,
+      missingLocalCount: 1,
+      deviceClass: null,
+      updatedAt: "2026-09-13T10:05:00.000Z",
+    };
+    expect(publishingDraftSummarySchema.safeParse(summary).success).toBe(true);
+    for (const valid of [
+      { title: legacyTitle, excerpt: "第一行\r\n第二行" },
+      { coverSrc: legacySrc },
+      { coverSrc: null },
+      { excerpt: "𠀀".repeat(160) },
+    ])
+      expect(
+        publishingDraftSummarySchema.safeParse({ ...summary, ...valid })
+          .success,
+      ).toBe(true);
+    for (const invalid of [
+      { title: "标题 " },
+      { title: "a\u0000b" },
+      { excerpt: "字".repeat(161) },
+      { missingLocalCount: 4 },
+      { workId: null },
+      { coverSrc: "/api/community/media/x" },
+    ])
+      expect(
+        publishingDraftSummarySchema.safeParse({ ...summary, ...invalid })
+          .success,
+      ).toBe(false);
+  });
+
+  it("confirms submissions author-neutrally or lists items that are not ready", () => {
+    const receipt = {
+      state: "confirmed",
+      requestId,
+      workId: `work-${hex("d")}`,
+      revisionId: `work-revision-${hex("f")}`,
+      visibility: "public",
+      submittedAt: "2026-09-13T10:07:00.000Z",
+    };
+    expect(workSubmissionResultSchema.safeParse(receipt).success).toBe(true);
+    expect(
+      workSubmissionResultSchema.safeParse({
+        ...receipt,
+        disposition: "pending",
+      }).success,
+    ).toBe(false);
+    expect(
+      workSubmissionResultSchema.safeParse({
+        state: "not_ready",
+        itemKeys: ["k1", "k2"],
+      }).success,
+    ).toBe(true);
+    expect(
+      workSubmissionResultSchema.safeParse({ state: "not_ready", itemKeys: [] })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("read shapes for stored and legacy content", () => {
+  const legacyItem = {
+    key: "legacy-1",
+    itemId,
+    kind: "static",
+    qualityMode: "legacy",
+    edit: baseEdit,
+  };
+  const legacyContent = content({
+    title: legacyTitle,
+    body: legacyBody,
+    items: [legacyItem],
+    coverKey: "legacy-1",
+  });
+  const legacyMedia = {
+    id: itemId,
+    kind: "static",
+    qualityMode: "legacy",
+    state: "ready",
+    failureCode: null,
+    components: [],
+    presentation: { width: 1200, height: 800 },
+    media: { thumbSrc: legacySrc, displaySrc: legacySrc },
+  };
+
+  it("opens a legacy Phase 4 work for editing without rewriting its text", () => {
+    const editable = {
+      workId,
+      revisionId,
+      content: legacyContent,
+      mediaItems: [legacyMedia],
+      visibility: "public",
+      firstPublishedAt: at,
+      editedAt: null,
+      draftId: null,
+      version: 4,
+    };
+    const parsed = editableWorkSchema.safeParse(editable);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.content.title).toBe(legacyTitle);
+    expect(parsed.data?.content.body).toBe(legacyBody);
+    for (const invalid of [
+      { revisionId: null },
+      { visibility: "private" },
+      { mediaItems: [{ ...legacyMedia, media: null }] },
+      { content: { ...legacyContent, title: "𠀀".repeat(201) } },
+    ])
+      expect(
+        editableWorkSchema.safeParse({ ...editable, ...invalid }).success,
+      ).toBe(false);
+    // Saving the opened legacy text as a draft still works; submitting asks for a single-line title.
+    expect(
+      createPublishingDraftCommandSchema.safeParse({
+        requestId,
+        content: legacyContent,
+        deviceClass: "desktop",
+      }).success,
+    ).toBe(true);
+    expect(
+      messagesOf(
+        workSubmissionCommandSchema.safeParse({
+          requestId,
+          holder: { draftId },
+          content: legacyContent,
+          baseRevisionId: revisionId,
+        }),
+      ),
+    ).toEqual(["title_line_break"]);
+  });
+
+  it("lists history snapshots including pinned legacy drafts", () => {
+    const snapshot = {
+      id: `work-snapshot-${hex("7")}`,
+      kind: "legacy_draft",
+      draftId: null,
+      workId,
+      sourceRevision: null,
+      pinned: true,
+      createdAt: at,
+      content: legacyContent,
+    };
+    const page = {
+      items: [snapshot],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    };
+    expect(publishingSnapshotPageSchema.safeParse(page).success).toBe(true);
+    for (const invalid of [
+      { ...snapshot, kind: "autosave" },
+      { ...snapshot, id: `draft-${hex("7")}` },
+      { ...snapshot, content: { ...legacyContent, items: undefined } },
+    ])
+      expect(
+        publishingSnapshotPageSchema.safeParse({ ...page, items: [invalid] })
+          .success,
+      ).toBe(false);
+    expect(
+      publishingSnapshotPageSchema.safeParse({
+        ...page,
+        items: Array.from({ length: 51 }, () => snapshot),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("lists trashed works with stored text, either cover path and restorability", () => {
+    const trashed = {
+      workId,
+      title: legacyTitle,
+      excerpt: "第一行\r\n第二行",
+      coverSrc: legacySrc,
+      itemCount: 1,
+      trashedAt: at,
+      purgeAfter: "2026-10-13T10:00:00.000Z",
+      restorable: false,
+    };
+    const page = (item: Record<string, unknown>) => ({
+      items: [item],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
+    expect(trashedWorkPageSchema.safeParse(page(trashed)).success).toBe(true);
+    expect(
+      trashedWorkPageSchema.safeParse(
+        page({ ...trashed, title: "", coverSrc: src("cover") }),
+      ).success,
+    ).toBe(true);
+    for (const invalid of [
+      { title: " 标题" },
+      { excerpt: "字".repeat(161) },
+      { coverSrc: "/api/community/media/../x" },
+      { itemCount: 501 },
+      { restorable: undefined },
+    ])
+      expect(
+        trashedWorkPageSchema.safeParse(page({ ...trashed, ...invalid }))
+          .success,
+      ).toBe(false);
+  });
+
+  it("describes no-save sessions with a lease and client limits", () => {
+    const session = {
+      id: sessionId,
+      state: "active",
+      workId: null,
+      leaseExpiresAt: "2026-09-13T16:00:00.000Z",
+      createdAt: at,
+    };
+    expect(publishingSessionSchema.safeParse(session).success).toBe(true);
+    for (const invalid of [
+      { state: "paused" },
+      { leaseExpiresAt: null },
+      { id: draftId },
+      { draftId },
+    ])
+      expect(
+        publishingSessionSchema.safeParse({ ...session, ...invalid }).success,
+      ).toBe(false);
+    const limits = {
+      maxItems: 50,
+      originalItemMaxBytes: 134_217_728,
+      standardComponentMaxBytes: 268_435_456,
+      titleMax: 200,
+      bodyMax: 10_000,
+    };
+    expect(publishingLimitsSchema.safeParse(limits).success).toBe(true);
+    for (const invalid of [
+      { maxItems: 0 },
+      { maxItems: 501 },
+      { originalItemMaxBytes: 0 },
+      { dailyNewWorkLimit: 100 },
+    ])
+      expect(
+        publishingLimitsSchema.safeParse({ ...limits, ...invalid }).success,
+      ).toBe(false);
+  });
+});
+
+describe("backward-compatible Phase 4 adjustments", () => {
+  it("lets cards carry an empty title, a bounded excerpt and a LIVE flag", () => {
+    const card = {
+      aliases: [],
+      target: { type: "work", id: `work-${hex("d")}` },
+      title: "",
+      kind: null,
+      authorId: `user-${hex("1")}`,
+      firstPublishedAt: null,
+      media: null,
+    };
+    expect(contentCardSchema.safeParse(card).success).toBe(true);
+    expect(
+      contentCardSchema.safeParse({
+        ...card,
+        excerpt: "𠀀".repeat(160),
+        live: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      contentCardSchema.safeParse({ ...card, excerpt: "𠀀".repeat(161) })
+        .success,
+    ).toBe(false);
+    expect(
+      contentCardSchema.safeParse({ ...card, title: " 标题" }).success,
+    ).toBe(false);
+  });
+
+  it("leaves the avatar media contract exactly as Phase 4 shipped it", () => {
+    const legacy = {
+      id: `user-media-${hex("a")}`,
+      src: legacySrc,
+      width: 1200,
+      height: 800,
+    };
+    expect(Object.keys(authorMediaSchema.shape).sort()).toEqual([
+      "height",
+      "id",
+      "src",
+      "width",
+    ]);
+    expect(authorProfileSchema.shape.avatar.unwrap()).toBe(authorMediaSchema);
+    expect(authorPersonSchema.shape.avatar.unwrap()).toBe(authorMediaSchema);
+    expect(authorMediaSchema.safeParse(legacy).success).toBe(true);
+    for (const invalid of [
+      { id: itemId },
+      { src: src("display") },
+      { width: 8193 },
+      { kind: "static" },
+      { motionSrc: src("motion") },
+      { src: "https://example.test/a" },
+    ])
+      expect(
+        authorMediaSchema.safeParse({ ...legacy, ...invalid }).success,
+      ).toBe(false);
+    expect(authorCommunityJsonSchemas.AuthorMedia).toMatchObject({
+      additionalProperties: false,
+      required: ["id", "src", "width", "height"],
+      properties: {
+        width: { maximum: 8192 },
+        height: { maximum: 8192 },
+      },
+    });
+    expect(
+      Object.keys(
+        (authorCommunityJsonSchemas.AuthorMedia as { properties: object })
+          .properties,
+      ),
+    ).toEqual(["id", "src", "width", "height"]);
+  });
+
+  it("gives work media its own shape with matching ids, paths and Live fields", () => {
+    const legacy = {
+      id: `user-media-${hex("a")}`,
+      src: legacySrc,
+      width: 1200,
+      height: 800,
+    };
+    const live = {
+      id: itemId,
+      src: src("display"),
+      width: 8688,
+      height: 5792,
+      kind: "live",
+      motionSrc: src("motion"),
+      hasAudio: true,
+    };
+    for (const valid of [
+      legacy,
+      live,
+      { id: itemId, src: src("display"), width: 1, height: 1, kind: "static" },
+      { id: itemId, src: legacySrc, width: 1200, height: 800 },
+      { ...live, hasAudio: undefined },
+    ])
+      expect(workMediaSchema.safeParse(valid).success).toBe(true);
+    for (const invalid of [
+      { ...legacy, src: `/api/community/media/user-media-${hex("b")}` },
+      { ...legacy, src: src("display") },
+      { ...legacy, kind: "live", motionSrc: src("motion") },
+      { ...live, src: src("display", `media-item-${hex("b")}`) },
+      { ...live, src: src("motion") },
+      { ...live, motionSrc: undefined },
+      { ...live, motionSrc: src("motion", `media-item-${hex("b")}`) },
+      { ...live, motionSrc: src("display") },
+      { ...live, kind: "static" },
+      { ...live, kind: undefined },
+      { id: itemId, src: legacySrc, width: 1, height: 1, kind: "live" },
+      { ...legacy, hasAudio: false },
+    ])
+      expect(workMediaSchema.safeParse(invalid).success).toBe(false);
+    expect(workSchema.shape.media.element).toBe(workMediaSchema);
+  });
+
+  it("accepts existing works and the new nullable first publication and author-only fields", () => {
+    const work = {
+      id: `work-${hex("d")}`,
+      authorId: `user-${hex("1")}`,
+      authorName: "合成作者",
+      title: "合成标题",
+      text: "正文",
+      media: [],
+      firstPublishedAt: "2026-09-01T00:00:00.000Z",
+      version: 1,
+      canEdit: false,
+      available: true,
+    };
+    expect(workSchema.safeParse(work).success).toBe(true);
+    expect(
+      workSchema.safeParse({
+        ...work,
+        title: "",
+        firstPublishedAt: null,
+        canEdit: true,
+        editedAt: null,
+        visibility: "self",
+        authorship: { kind: "original" },
+        trashedAt: null,
+      }).success,
+    ).toBe(true);
+    // Attribution is visible to readers without any author-only field.
+    expect(
+      workSchema.safeParse({
+        ...work,
+        title: legacyTitle,
+        text: legacyBody,
+        media: [
+          {
+            id: itemId,
+            src: src("display"),
+            width: 4032,
+            height: 3024,
+            kind: "live",
+            motionSrc: src("motion"),
+          },
+        ],
+        editedAt: at,
+        authorship: {
+          kind: "copy_practice",
+          referenceTitle: "合成碑帖",
+          originalAuthor: "合成作者",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      workSchema.safeParse({ ...work, visibility: "private" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("operator work publishing shapes", () => {
+  const settings = {
+    requestId,
+    expectedVersion: 1,
+    policy: "PRE_MODERATION",
+    maxItemsPerWork: 50,
+    originalItemMaxBytes: 134_217_728,
+    standardComponentMaxBytes: 268_435_456,
+    ordinaryAccountCapacityBytes: 10_737_418_240,
+    ownerAccountCapacityBytes: 21_474_836_480,
+    maxActiveDrafts: 100,
+    dailyNewWorkLimit: 100,
+    historyLimit: 20,
+    trashRetentionDays: 30,
+    orphanGraceDays: 7,
+    unsavedSessionLeaseMinutes: 360,
+  };
+
+  it("accepts the documented defaults and refuses out-of-bound or extra settings", () => {
+    expect(
+      setWorkPublishingSettingsCommandSchema.safeParse(settings).success,
+    ).toBe(true);
+    for (const invalid of [
+      { maxItemsPerWork: 0 },
+      { maxItemsPerWork: 501 },
+      { originalItemMaxBytes: 1_000 },
+      { trashRetentionDays: 0 },
+      { policy: "AUTO" },
+      { expectedVersion: -1 },
+      { requestId: undefined },
+      { avatarDailyLimit: 1 },
+    ])
+      expect(
+        setWorkPublishingSettingsCommandSchema.safeParse({
+          ...settings,
+          ...invalid,
+        }).success,
+      ).toBe(false);
+  });
+
+  it("uses strict Admin envelopes carrying the subject id", () => {
+    const moderation = {
+      id: `work-revision-${hex("f")}`,
+      requestId,
+      action: "approve",
+      expectedVersion: 2,
+    };
+    expect(
+      adminModerateWorkSubmissionRequestSchema.safeParse(moderation).success,
+    ).toBe(true);
+    for (const invalid of [
+      { action: "hide" },
+      { id: `work-${hex("f")}` },
+      { expectedVersion: undefined },
+      { note: "x" },
+    ])
+      expect(
+        adminModerateWorkSubmissionRequestSchema.safeParse({
+          ...moderation,
+          ...invalid,
+        }).success,
+      ).toBe(false);
+    const capacity = {
+      accountId: `user-${hex("1")}`,
+      capacityClass: "owner",
+      requestId,
+      expectedVersion: 0,
+    };
+    expect(
+      adminSetAccountCapacityClassRequestSchema.safeParse(capacity).success,
+    ).toBe(true);
+    for (const invalid of [
+      { accountId: "owner-handle" },
+      { capacityClass: "unlimited" },
+      { capacityBytes: 1 },
+    ])
+      expect(
+        adminSetAccountCapacityClassRequestSchema.safeParse({
+          ...capacity,
+          ...invalid,
+        }).success,
+      ).toBe(false);
+    expect(
+      adminPublishingJobRequestSchema.safeParse({
+        id: `publishing-job-${hex("9")}`,
+        action: "retry",
+        requestId,
+      }).success,
+    ).toBe(true);
+    expect(
+      adminPublishingJobRequestSchema.safeParse({
+        id: `publishing-job-${hex("9")}`,
+        action: "delete",
+        requestId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("reads settings, capacity and the Phase 4 work list for never-public works", () => {
+    const current: Record<string, unknown> = {
+      ...settings,
+      version: 3,
+      updatedAt: at,
+      updatedBy: null,
+    };
+    delete current.requestId;
+    delete current.expectedVersion;
+    expect(workPublishingSettingsSchema.safeParse(current).success).toBe(true);
+    for (const invalid of [
+      { updatedAt: "2026-09-13T10:00:00+08:00" },
+      { requestId },
+      { ownerAccountCapacityBytes: 2 * 1024 ** 4 },
+    ])
+      expect(
+        workPublishingSettingsSchema.safeParse({ ...current, ...invalid })
+          .success,
+      ).toBe(false);
+    const capacity = {
+      accountId: `user-${hex("1")}`,
+      capacityClass: "owner",
+      capacityBytes: 21_474_836_480,
+      committedBytes: 1_024,
+      reservedBytes: 0,
+      version: 1,
+      updatedAt: null,
+    };
+    expect(operatorAccountCapacitySchema.safeParse(capacity).success).toBe(
+      true,
+    );
+    for (const invalid of [
+      { accountId: "handle" },
+      { reservedBytes: -1 },
+      { capacityClass: "admin" },
+    ])
+      expect(
+        operatorAccountCapacitySchema.safeParse({ ...capacity, ...invalid })
+          .success,
+      ).toBe(false);
+    const work = {
+      id: workId,
+      title: "",
+      text: "正文",
+      authorId: `user-${hex("1")}`,
+      authorName: "合成作者",
+      authorStatus: "active",
+      state: "visible",
+      authorDeleted: false,
+      version: 1,
+      firstPublishedAt: null,
+    };
+    expect(operatorWorkSchema.safeParse(work).success).toBe(true);
+    expect(
+      operatorWorkSchema.safeParse({ ...work, firstPublishedAt: at }).success,
+    ).toBe(true);
+  });
+
+  it("queues only public submissions, with legacy text as stored", () => {
+    const submission = {
+      revisionId,
+      workId,
+      sequence: 1,
+      origin: "legacy",
+      author: {
+        id: `user-${hex("1")}`,
+        handle: "synthetic-author",
+        displayName: "合成作者",
+        status: "active",
+      },
+      title: legacyTitle,
+      body: legacyBody,
+      authorship: { kind: "original" },
+      coverItemId: itemId,
+      coverCrop: null,
+      items: [
+        {
+          position: 1,
+          itemId,
+          kind: "static",
+          qualityMode: "legacy",
+          state: "ready",
+          edit: baseEdit,
+          editKey: "base",
+          presentation: { width: 1200, height: 800 },
+          variants: [],
+        },
+      ],
+      disposition: "approved",
+      latest: true,
+      workState: "visible",
+      workTrashed: false,
+      submittedAt: at,
+      decidedAt: at,
+      decidedBy: null,
+      version: 1,
+    };
+    expect(operatorWorkSubmissionSchema.safeParse(submission).success).toBe(
+      true,
+    );
+    for (const invalid of [
+      { disposition: "not_required" },
+      { requestedVisibility: "self" },
+      { title: " 标题" },
+      { body: "𠀀".repeat(10_001) },
+      { items: [{ ...submission.items[0], variants: ["thumb", "thumb"] }] },
+    ])
+      expect(
+        operatorWorkSubmissionSchema.safeParse({ ...submission, ...invalid })
+          .success,
+      ).toBe(false);
+    expect(
+      operatorWorkSubmissionQuerySchema.safeParse({ state: "not_required" })
+        .success,
+    ).toBe(false);
+    const result = {
+      revisionId,
+      workId,
+      disposition: "approved",
+      version: 2,
+    };
+    expect(workSubmissionModerationResultSchema.safeParse(result).success).toBe(
+      true,
+    );
+    expect(
+      workSubmissionModerationResultSchema.safeParse({
+        ...result,
+        disposition: "pending",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps jobs content-free and queues bounded", () => {
+    const job = {
+      id: `publishing-job-${hex("9")}`,
+      kind: "purge_blob",
+      subjectId: `media-blob-${hex("8")}`,
+      state: "failed",
+      attempts: 5,
+      maxAttempts: 5,
+      runAfter: "2026-09-13T10:00:00.000Z",
+      leaseExpiresAt: null,
+      lastErrorCode: "unlink_failed",
+      createdAt: "2026-09-13T09:00:00.000Z",
+      updatedAt: "2026-09-13T10:00:00.000Z",
+      finishedAt: "2026-09-13T10:00:00.000Z",
+    };
+    expect(operatorPublishingJobSchema.safeParse(job).success).toBe(true);
+    for (const invalid of [
+      { lastErrorCode: "ENOENT: /srv/media/blobs/aa/bb/file" },
+      { subjectId: "blobs/aa/bb/IMG_0001.HEIC" },
+      { payload: {} },
+    ])
+      expect(
+        operatorPublishingJobSchema.safeParse({ ...job, ...invalid }).success,
+      ).toBe(false);
+    expect(
+      operatorWorkSubmissionQuerySchema.parse({ state: "pending", page: "2" }),
+    ).toEqual({ state: "pending", page: 2, pageSize: 20 });
+    expect(
+      operatorWorkSubmissionQuerySchema.safeParse({ pageSize: "51" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("work publishing JSON Schemas", () => {
+  it("exports strict components free of forbidden OpenAPI terms and names", () => {
+    const serialized = JSON.stringify(workPublishingJsonSchemas).toLowerCase();
+    for (const term of [
+      "rawsource",
+      "candidate",
+      "evidence",
+      "review",
+      "lifecycle",
+      "objectkey",
+      "object_key",
+      "bucket",
+      "storageprovider",
+      "storage_provider",
+      "images",
+      "city",
+      "sourceid",
+      "source_id",
+      "workflow",
+      "moderation",
+      "operator",
+      "internal",
+    ])
+      expect(serialized).not.toContain(term);
+    for (const name of Object.keys(workPublishingJsonSchemas))
+      expect(authorCommunityJsonSchemas).not.toHaveProperty(name);
+    expect(workPublishingJsonSchemas.PublishingMediaItem).toMatchObject({
+      additionalProperties: false,
+      type: "object",
+    });
+    expect(
+      JSON.stringify(workPublishingJsonSchemas.RegisterMediaItemCommand),
+    ).not.toMatch(/pendingName|fileName|filename|gps/iu);
+  });
+});

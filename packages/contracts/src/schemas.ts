@@ -1,5 +1,19 @@
 import { z } from "zod";
 
+import {
+  workAuthorshipSchema,
+  workMediaSchema,
+  workVisibilitySchema,
+} from "./work-publishing-schemas.js";
+import {
+  WORK_EXCERPT_MAXIMUM,
+  WORK_ITEMS_HARD_MAXIMUM,
+  codePointLength,
+} from "./work-publishing-text.js";
+
+export * from "./work-publishing-text.js";
+export * from "./work-publishing-schemas.js";
+
 const exactTextSchema = (maximum: number) =>
   z
     .string()
@@ -496,13 +510,23 @@ export const workSchema = z.strictObject({
   id: workId,
   authorId: userId,
   authorName: z.string(),
+  /** May be empty: an untitled work keeps an empty title in storage. */
   title: z.string(),
   text: z.string(),
-  media: z.array(authorMediaSchema),
-  firstPublishedAt: z.iso.datetime(),
+  /** Phase 4 PNG media or work publishing media items; avatars keep `authorMediaSchema`. */
+  media: z.array(workMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),
+  /** Null until the first public exposure (a self-only or pending first submission). */
+  firstPublishedAt: z.iso.datetime().nullable(),
   version,
   canEdit: z.boolean(),
   available: z.boolean(),
+  /** Set after a real content update of a public revision. */
+  editedAt: z.iso.datetime().nullable().optional(),
+  /** Attribution readers see: original, copy or practice, or material sharing with its reference. */
+  authorship: workAuthorshipSchema.optional(),
+  /** Author-only fields: present only in the author's own view. */
+  visibility: workVisibilitySchema.optional(),
+  trashedAt: z.iso.datetime().nullable().optional(),
 });
 export const workEditDraftSchema = z.strictObject({
   id: z.string().regex(/^draft-[0-9a-f]{32}$/u),
@@ -669,7 +693,14 @@ export type OwnComment = z.infer<typeof ownCommentSchema>;
 export const contentCardSchema = z.strictObject({
   aliases: catalogSummarySchema.shape.aliases,
   target: contentIdentitySchema,
-  title: authorText(500).min(1),
+  /** Empty for an untitled work; the UI never invents a title. */
+  title: authorText(500),
+  /** The opening of a work body, for text cards. */
+  excerpt: authorText(WORK_EXCERPT_MAXIMUM * 2)
+    .refine((s) => codePointLength(s) <= WORK_EXCERPT_MAXIMUM)
+    .optional(),
+  /** A Live Photo cover: static image plus a LIVE indicator, never autoplay. */
+  live: z.boolean().optional(),
   kind: catalogKindSchema.nullable(),
   authorId: userId.nullable(),
   firstPublishedAt: z.iso.datetime().nullable(),

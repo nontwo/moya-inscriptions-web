@@ -81,6 +81,88 @@ describe("contracts package surface", () => {
     }
   });
 
+  it("pins the work publishing public types on the root declaration", async () => {
+    const declaration = await readFile(
+      path.join(contractsRoot, "dist", "index.d.ts"),
+      "utf8",
+    );
+    const approved = [
+      "CreatePublishingDraftCommand",
+      "CreatePublishingSessionCommand",
+      "EditableWork",
+      "MediaClientPairing",
+      "MediaComponentDeclaration",
+      "MediaComponentRole",
+      "MediaComponentState",
+      "MediaContentType",
+      "MediaCrop",
+      "MediaEdit",
+      "MediaFailureCode",
+      "MediaItemKind",
+      "MediaItemState",
+      "MediaMetadata",
+      "MediaPairingMethod",
+      "MediaPresentation",
+      "MediaProcessingProfile",
+      "MediaQualityMode",
+      "MediaRotation",
+      "MediaUploadQualityMode",
+      "MediaVariant",
+      "OpenWorkEditDraftCommand",
+      "PublishingDeviceClass",
+      "PublishingDraft",
+      "PublishingDraftConflict",
+      "PublishingDraftDeletionResult",
+      "PublishingDraftKind",
+      "PublishingDraftPage",
+      "PublishingDraftSaveResult",
+      "PublishingDraftSummary",
+      "PublishingHolder",
+      "PublishingLimits",
+      "PublishingMediaComponent",
+      "PublishingMediaItem",
+      "PublishingMediaSources",
+      "PublishingPageQuery",
+      "PublishingSession",
+      "PublishingSessionState",
+      "PublishingSnapshot",
+      "PublishingSnapshotPage",
+      "PublishingUploadResult",
+      "RegisterMediaItemCommand",
+      "ResolvePublishingConflictCommand",
+      "RestorePublishingSnapshotCommand",
+      "SavePublishingDraftCommand",
+      "TrashRestoreResult",
+      "TrashedWork",
+      "TrashedWorkPage",
+      "WorkAuthorship",
+      "WorkAuthorshipKind",
+      "WorkDraftContent",
+      "WorkDraftItem",
+      "WorkMedia",
+      "WorkPublishingFailureCode",
+      "WorkSnapshotKind",
+      "WorkSubmissionCommand",
+      "WorkSubmissionContent",
+      "WorkSubmissionNotReady",
+      "WorkSubmissionReceipt",
+      "WorkSubmissionResult",
+      "WorkVisibility",
+      "WorkVisibilityCommand",
+      "WorkVisibilityResult",
+    ];
+    const exportBlock = declaration.match(
+      /export type\s*\{([^}]*)\}\s*from\s*"\.\/work-publishing-schemas\.js"/,
+    )?.[1];
+    const exported = (exportBlock ?? "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => name !== "")
+      .sort();
+
+    expect(exported).toEqual(approved.sort());
+  });
+
   it("keeps the root JavaScript empty and free of Zod imports", async () => {
     const runtime = await readFile(
       path.join(contractsRoot, "dist", "index.js"),
@@ -135,6 +217,11 @@ describe("contracts package surface", () => {
       "OperatorComment",
       "ModerationResult",
       "CommentModerationState",
+      "WorkPublishingSettings",
+      "OperatorWorkSubmission",
+      "WorkSubmissionDisposition",
+      "OperatorAccountCapacity",
+      "OperatorPublishingJob",
     ]) {
       expect(publicDeclaration).not.toContain(name);
       expect(operatorDeclaration).toContain(name);
