@@ -2,15 +2,20 @@ import { DefaultTemplate } from "@payloadcms/next/templates";
 import type { AdminViewServerProps } from "payload";
 
 import { isOwner } from "../editorial/access";
+import { AccountCapacityClient } from "./account-capacity-client";
 import { CommunityContentClient } from "./content-client";
 import { CommunityHistoryClient } from "./history-client";
+import { PublishingJobsClient } from "./publishing-jobs-client";
 import { CommunityQueueClient } from "./queue-client";
 import { CommunitySettingsClient } from "./settings-client";
+import { WorkSubmissionsQueueClient } from "./work-submissions-client";
 
 /**
- * The three Community views inside the standard Admin shell: the review
- * queue (the primary working surface), the publication setting and the
- * operation history. Each is Owner-only; `automation` never moderates.
+ * The Community views inside the standard Admin shell: the review queue (the
+ * primary working surface), the publication setting and the operation
+ * history, plus the Development-only content and work publishing views (work
+ * submissions, account capacity, publishing jobs). Each is Owner-only;
+ * `automation` never moderates.
  */
 const OwnerOnly = ({
   children,
@@ -37,7 +42,9 @@ export const CommunityModerationView = (props: AdminViewServerProps) => (
 
 export const CommunitySettingsView = (props: AdminViewServerProps) => (
   <OwnerOnly props={props}>
-    <CommunitySettingsClient />
+    <CommunitySettingsClient
+      workPublishing={process.env.NODE_ENV === "development"}
+    />
   </OwnerOnly>
 );
 
@@ -54,5 +61,36 @@ export const CommunityContentView = (props: AdminViewServerProps) => (
     ) : (
       <p>此页面暂不可用。</p>
     )}
+  </OwnerOnly>
+);
+
+const DevelopmentOnly = ({
+  children,
+}: {
+  readonly children: React.ReactNode;
+}) =>
+  process.env.NODE_ENV === "development" ? children : <p>此页面暂不可用。</p>;
+
+export const WorkSubmissionsView = (props: AdminViewServerProps) => (
+  <OwnerOnly props={props}>
+    <DevelopmentOnly>
+      <WorkSubmissionsQueueClient />
+    </DevelopmentOnly>
+  </OwnerOnly>
+);
+
+export const AccountCapacityView = (props: AdminViewServerProps) => (
+  <OwnerOnly props={props}>
+    <DevelopmentOnly>
+      <AccountCapacityClient />
+    </DevelopmentOnly>
+  </OwnerOnly>
+);
+
+export const PublishingJobsView = (props: AdminViewServerProps) => (
+  <OwnerOnly props={props}>
+    <DevelopmentOnly>
+      <PublishingJobsClient />
+    </DevelopmentOnly>
   </OwnerOnly>
 );

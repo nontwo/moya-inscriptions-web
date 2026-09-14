@@ -298,7 +298,11 @@ export const CommunityContentClient = () => {
                         <p className={styles.fullText}>{item.text}</p>
                       </details>
                       <span className={styles.secondary}>
-                        首次发布 {formatTime(item.firstPublishedAt)}
+                        {/* Null for a work never publicly exposed (self-only or
+                            still awaiting its first approval). */}
+                        {item.firstPublishedAt === null
+                          ? "尚未公开发布"
+                          : `首次发布 ${formatTime(item.firstPublishedAt)}`}
                       </span>
                     </td>
                     <td>

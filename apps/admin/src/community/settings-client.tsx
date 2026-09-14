@@ -13,6 +13,7 @@ import {
   policyLabels,
 } from "./api";
 import styles from "./community.module.css";
+import { WorkPublishingSettingsCard } from "./work-publishing-settings-client";
 
 import type {
   PublicationPolicy,
@@ -27,8 +28,14 @@ const policies: readonly PublicationPolicy[] = [
 /**
  * The Owner-controlled publication setting. Switching affects future
  * submissions only; nothing already pending, visible or hidden changes.
+ * In Development the independent work publishing setting follows as its own
+ * card; the two are stored and switched separately.
  */
-export const CommunitySettingsClient = () => {
+export const CommunitySettingsClient = ({
+  workPublishing = false,
+}: {
+  readonly workPublishing?: boolean;
+}) => {
   const [policy, setPolicy] = useState<PublicationPolicyState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,7 +86,9 @@ export const CommunitySettingsClient = () => {
         <div>
           <h1 className={styles.title}>发布设置</h1>
           <p className={styles.lead}>
-            全站唯一的发布模式，由后端保存并执行。
+            {workPublishing
+              ? "评论与回复的发布模式和作品发布设置分别保存、互不影响，均由后端执行。"
+              : "全站唯一的发布模式，由后端保存并执行。"}
             <Link href="/admin/community-moderation">返回审核队列</Link>
             {" · "}
             <Link href="/admin">工作台</Link>
@@ -93,11 +102,15 @@ export const CommunitySettingsClient = () => {
         </p>
       ) : null}
 
+      {workPublishing ? (
+        <h2 className={styles.sectionTitle}>评论与回复发布模式</h2>
+      ) : null}
+
       {/* Options are unavailable only until the current mode is known; while a
           switch is in flight the group is busy and clicks are ignored. */}
       <div
         aria-busy={busy}
-        aria-label="发布模式"
+        aria-label={workPublishing ? "评论与回复发布模式" : "发布模式"}
         className={styles.tabs}
         role="radiogroup"
       >
@@ -144,6 +157,8 @@ export const CommunitySettingsClient = () => {
           {receipt.text}
         </p>
       )}
+
+      {workPublishing ? <WorkPublishingSettingsCard /> : null}
     </div>
   );
 };

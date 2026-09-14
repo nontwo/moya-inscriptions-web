@@ -55,6 +55,7 @@ const operatorToken = (): string => {
   return value;
 };
 
+/** A refused request (400/422) keeps its status so a view never offers to re-send it. */
 const statusCode = (status: number): number =>
   status === 404
     ? 404
@@ -62,9 +63,11 @@ const statusCode = (status: number): number =>
       ? 409
       : status === 400
         ? 400
-        : status === 503
-          ? 503
-          : 502;
+        : status === 422
+          ? 422
+          : status === 503
+            ? 503
+            : 502;
 
 /**
  * The Backend's bare codes become Admin codes the view can explain: a stale
@@ -112,4 +115,249 @@ export const callCommunityOperator = async <Result>(
       statusCode(response.status),
     );
   return (await response.json()) as Result;
+};
+
+/**
+ * Submission media reach the Owner only as Backend derivatives (thumb,
+ * display, full, cover, motion); an original or a master is never a variant.
+ * The relay accepts exactly these rendered types and nothing a browser could
+ * run as a document.
+ */
+export const OPERATOR_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  "image/webp",
+  "image/jpeg",
+  "image/png",
+  "video/mp4",
+]);
+
+/** A derivative is bounded; a larger answer is refused rather than relayed. */
+export const OPERATOR_MEDIA_MAXIMUM_BYTES = 256 * 1024 * 1024;
+/**
+ * Waiting for the Backend's headers, and the longest the relay goes without
+ * moving a byte: a stalled Backend and a viewer that stopped reading (a
+ * paused video) are both cut off; the browser asks again with a range.
+ */
+export const OPERATOR_MEDIA_WAIT_MS = 15_000;
+/** No single relayed response lives longer than this, reading or not. */
+export const OPERATOR_MEDIA_LIFETIME_MS = 10 * 60_000;
+
+const contentRangePattern = /^bytes (\d{1,15})-(\d{1,15})\/(\d{1,15})$/u;
+const contentLengthPattern = /^\d{1,15}$/u;
+const requestedRangePattern = /^bytes=(\d{0,15})-(\d{0,15})$/u;
+
+export interface OperatorMediaResponse {
+  readonly status: 200 | 206;
+  readonly contentType: string;
+  readonly contentLength: string | null;
+  readonly contentRange: string | null;
+  /** True only when the Backend itself serves byte ranges. */
+  readonly acceptsRanges: boolean;
+  readonly body: ReadableStream<Uint8Array>;
+}
+
+export type OperatorMediaCall = (
+  path: string,
+  range: string | null,
+  /** The viewer's request; its abort cancels the Backend request. */
+  signal?: AbortSignal,
+) => Promise<OperatorMediaResponse>;
+
+const discard = (response: Response): void => {
+  void response.body?.cancel().catch(() => undefined);
+};
+
+/**
+ * A 206 answer must be exactly the one range that was asked for: the start
+ * the viewer named (or the suffix it named), the end it named clamped to the
+ * resource, and a declared length that matches the span.
+ */
+const partialAnswerMatches = (
+  requested: string | null,
+  contentRange: string | null,
+  contentLength: string | null,
+): boolean => {
+  const answer =
+    contentRange === null ? null : contentRangePattern.exec(contentRange);
+  const asked =
+    requested === null ? null : requestedRangePattern.exec(requested);
+  if (answer === null || asked === null) return false;
+  const start = Number(answer[1]);
+  const end = Number(answer[2]);
+  const size = Number(answer[3]);
+  if (start > end || end >= size) return false;
+  if (contentLength !== null && Number(contentLength) !== end - start + 1)
+    return false;
+  const first = asked[1];
+  const last = asked[2];
+  if (first === "")
+    // A suffix range: the last N bytes.
+    return end === size - 1 && start === Math.max(0, size - Number(last));
+  if (start !== Number(first)) return false;
+  return end === (last === "" ? size - 1 : Math.min(Number(last), size - 1));
+};
+
+/**
+ * Streams one operator media response without buffering it. The credential
+ * stays server-side; only an allow-listed content type, a validated length
+ * and range, and the bytes themselves are handed back. A stalled Backend, a
+ * viewer that stops reading and an overlong response are cut off; a viewer
+ * that goes away cancels the Backend request, before or after its headers.
+ */
+export const openCommunityOperatorMedia: OperatorMediaCall = async (
+  path,
+  range,
+  signal,
+) => {
+  const url = new URL(`internal/community/${path}`, operatorBaseUrl());
+  const token = operatorToken();
+  const controller = new AbortController();
+  let finished = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let relay: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  let lifetimeTimer: ReturnType<typeof setTimeout> | undefined;
+  const settle = (): void => {
+    finished = true;
+    clearTimeout(stallTimer);
+    clearTimeout(lifetimeTimer);
+    signal?.removeEventListener("abort", cutOff);
+  };
+  /** Ends the relay from outside a read: the Backend request is aborted and the viewer's body fails. */
+  const cutOff = (): void => {
+    if (finished) return;
+    settle();
+    controller.abort();
+    void reader?.cancel().catch(() => undefined);
+    relay?.error(new CommunityOperatorError("OPERATOR_UNREACHABLE", 502));
+  };
+  // Any progress re-arms the stall timer, whether or not the viewer is reading.
+  const armStall = (): void => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(cutOff, OPERATOR_MEDIA_WAIT_MS);
+  };
+  signal?.addEventListener("abort", cutOff, { once: true });
+  if (signal?.aborted === true) cutOff();
+  const headerTimer = setTimeout(
+    () => controller.abort(),
+    OPERATOR_MEDIA_WAIT_MS,
+  );
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      redirect: "error",
+      signal: controller.signal,
+      headers: {
+        Accept: [...OPERATOR_MEDIA_TYPES].join(", "),
+        "Accept-Encoding": "identity",
+        Authorization: `Bearer ${token}`,
+        ...(range === null ? {} : { Range: range }),
+      },
+    });
+  } catch {
+    settle();
+    // Never surface the URL, the credential or a driver message.
+    throw new CommunityOperatorError("OPERATOR_UNREACHABLE", 502);
+  } finally {
+    clearTimeout(headerTimer);
+  }
+  const refusal = (code: string, status: number): CommunityOperatorError => {
+    discard(response);
+    settle();
+    return new CommunityOperatorError(code, status);
+  };
+  if (finished) throw refusal("OPERATOR_UNREACHABLE", 502);
+  if (response.status === 416) throw refusal("RANGE_NOT_SATISFIABLE", 416);
+  if (!response.ok)
+    throw refusal(
+      operatorFailureCode(response.status),
+      statusCode(response.status),
+    );
+  const contentType = (response.headers.get("content-type") ?? "")
+    .split(";")[0]!
+    .trim()
+    .toLowerCase();
+  const encoding = (response.headers.get("content-encoding") ?? "identity")
+    .trim()
+    .toLowerCase();
+  const declaredLength = response.headers.get("content-length");
+  const contentLength =
+    declaredLength !== null && contentLengthPattern.test(declaredLength)
+      ? declaredLength
+      : null;
+  const contentRange = response.headers.get("content-range");
+  const source = response.body;
+  if (
+    (response.status !== 200 && response.status !== 206) ||
+    !OPERATOR_MEDIA_TYPES.has(contentType) ||
+    encoding !== "identity" ||
+    source === null ||
+    (declaredLength !== null && contentLength === null) ||
+    (contentLength !== null &&
+      Number(contentLength) > OPERATOR_MEDIA_MAXIMUM_BYTES) ||
+    (response.status === 206 &&
+      !partialAnswerMatches(range, contentRange, contentLength))
+  )
+    throw refusal("OPERATOR_RESPONSE_INVALID", 502);
+  // Never more than declared, and never more than the derivative bound.
+  const limit =
+    contentLength === null
+      ? OPERATOR_MEDIA_MAXIMUM_BYTES
+      : Number(contentLength);
+  const backend = source.getReader();
+  reader = backend;
+  let relayed = 0;
+  const body = new ReadableStream<Uint8Array>({
+    start(stream) {
+      relay = stream;
+      armStall();
+      lifetimeTimer = setTimeout(cutOff, OPERATOR_MEDIA_LIFETIME_MS);
+    },
+    async pull(stream) {
+      if (finished) return;
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await backend.read();
+      } catch {
+        if (finished) return;
+        settle();
+        stream.error(new CommunityOperatorError("OPERATOR_UNREACHABLE", 502));
+        return;
+      }
+      if (finished) return;
+      if (chunk.done) {
+        settle();
+        stream.close();
+        return;
+      }
+      relayed += chunk.value.byteLength;
+      if (relayed > limit) {
+        settle();
+        controller.abort();
+        void backend.cancel().catch(() => undefined);
+        stream.error(
+          new CommunityOperatorError("OPERATOR_RESPONSE_INVALID", 502),
+        );
+        return;
+      }
+      armStall();
+      stream.enqueue(chunk.value);
+    },
+    async cancel() {
+      settle();
+      controller.abort();
+      await backend.cancel().catch(() => undefined);
+    },
+  });
+  return {
+    status: response.status === 206 ? 206 : 200,
+    contentType,
+    contentLength,
+    contentRange: response.status === 206 ? contentRange : null,
+    acceptsRanges:
+      response.status === 206 ||
+      response.headers.get("accept-ranges")?.trim().toLowerCase() === "bytes",
+    body,
+  };
 };
