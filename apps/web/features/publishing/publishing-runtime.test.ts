@@ -31,7 +31,6 @@ import type {
 import type {
   PublishingDraft,
   PublishingDraftConflict,
-  PublishingHolder,
   PublishingMediaItem,
   PublishingReadiness,
   RegisterMediaItemCommand,
@@ -112,17 +111,12 @@ const setup = () => {
       conflictCopies: 0,
       mediaItems: 1,
     })),
-    readiness: vi.fn(
-      async (
-        _holder: PublishingHolder,
-        _content: WorkDraftContent,
-      ): Promise<PublishingReadiness> => ({
-        ready: true,
-        pendingItemKeys: [],
-        failedItemKeys: [],
-        editKeys: {},
-      }),
-    ),
+    readiness: vi.fn(async (): Promise<PublishingReadiness> => ({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: {},
+    })),
   };
   const services: PublishingServices = {
     client: client as unknown as PublishingClientPort,

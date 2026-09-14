@@ -76,10 +76,8 @@ import type {
 import type { EditorSessionStore } from "../editor/editor-session-state";
 import type {
   PublishingDraft,
-  PublishingHolder,
   PublishingMediaItem,
   PublishingReadiness,
-  WorkDraftContent,
 } from "@moya/contracts";
 import type { Root } from "react-dom/client";
 
@@ -118,17 +116,12 @@ const fixture = ({ maxItems = 50, preprocess }: FixtureOptions = {}) => {
     saveDraftNow: vi.fn(),
     createDraft: vi.fn(),
     draft: vi.fn(),
-    readiness: vi.fn(
-      async (
-        _holder: PublishingHolder,
-        _content: WorkDraftContent,
-      ): Promise<PublishingReadiness> => ({
-        ready: true,
-        pendingItemKeys: [],
-        failedItemKeys: [],
-        editKeys: {},
-      }),
-    ),
+    readiness: vi.fn(async (): Promise<PublishingReadiness> => ({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: {},
+    })),
   };
   const services: PublishingServices = {
     client: client as unknown as PublishingClientPort,

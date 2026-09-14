@@ -6,12 +6,12 @@ import {
   workMediaIdSchema,
   workMediaSchema,
   workVisibilitySchema,
-} from "./work-publishing-schemas.js";
+} from "./work-publishing-schemas.ts";
 import {
   WORK_EXCERPT_MAXIMUM,
   WORK_ITEMS_HARD_MAXIMUM,
   codePointLength,
-} from "./work-publishing-text.js";
+} from "./work-publishing-text.ts";
 
 // Explicit re-exports: bundlers resolving the `.js` specifiers to these
 // TypeScript sources cannot enumerate a star re-export statically.
@@ -36,14 +36,14 @@ export {
   publishingBodyRule,
   publishingContentIssues,
   publishingTitleRule,
-} from "./work-publishing-text.js";
+} from "./work-publishing-text.ts";
 export type {
   PublishingContentInput,
   PublishingContentIssue,
   PublishingTextCheck,
   PublishingTextIssue,
   PublishingTextRule,
-} from "./work-publishing-text.js";
+} from "./work-publishing-text.ts";
 export {
   MEDIA_CROP_MINIMUM,
   MEDIA_METADATA_MAXIMUM_BYTES,
@@ -134,7 +134,7 @@ export {
   workVisibilityCommandSchema,
   workVisibilityResultSchema,
   workVisibilitySchema,
-} from "./work-publishing-schemas.js";
+} from "./work-publishing-schemas.ts";
 export type {
   CreatePublishingDraftCommand,
   CreatePublishingSessionCommand,
@@ -206,7 +206,7 @@ export type {
   WorkVisibility,
   WorkVisibilityCommand,
   WorkVisibilityResult,
-} from "./work-publishing-schemas.js";
+} from "./work-publishing-schemas.ts";
 
 const exactTextSchema = (maximum: number) =>
   z

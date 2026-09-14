@@ -17,7 +17,7 @@ import {
   publishingBodyRule,
   publishingTitleRule,
   type PublishingTextRule,
-} from "./work-publishing-text.js";
+} from "./work-publishing-text.ts";
 
 /**
  * Work publishing public shapes (work-publishing-v1): drafts, no-save
