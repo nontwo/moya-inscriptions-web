@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { UNTITLED_WORK_LABEL } from "../../../authors/content-card";
+import { toWorkAuthorshipPresentation } from "../../../detail/catalog-detail-presentation";
 import { CatalogDetailScreen } from "../../../detail/catalog-detail-screen";
 import detailStyles from "../../../detail/catalog-detail.module.css";
 import { sharedPreviewCache } from "../media/bounded-preview";
@@ -30,7 +31,7 @@ import type { BoundedImage, PreviewHandle } from "../media/bounded-preview";
 import type { EditedFrameImage } from "../media/edited-frame";
 import type { UploadManagerSnapshot } from "../../upload-manager";
 import type { EditorSessionState } from "./editor-session-state";
-import type { MediaEdit } from "@moya/contracts";
+import type { MediaEdit, WorkAuthorship } from "@moya/contracts";
 
 /** UI-only placeholder for an empty title (C07); never stored. */
 export const UNNAMED_WORK = UNTITLED_WORK_LABEL;
@@ -287,7 +288,10 @@ export const useEditorMediaSources = (
 
 /** The real work presentation (Detail) built from the editor's local state. */
 export const editorPreviewPresentation = (
-  state: Pick<EditorSessionState, "title" | "body" | "workId">,
+  state: Pick<EditorSessionState, "title" | "body" | "workId"> & {
+    /** The authorship section readers will see (omitted: none shown). */
+    readonly authorship?: WorkAuthorship;
+  },
   media: readonly EditorMediaSource[],
   author: { readonly id: string; readonly displayName: string },
 ): CatalogDetailPresentation => {
@@ -306,6 +310,9 @@ export const editorPreviewPresentation = (
     facts: [],
     sections:
       body === "" ? [] : [{ key: "description", title: "正文", text: body }],
+    ...(state.authorship === undefined
+      ? {}
+      : { authorship: toWorkAuthorshipPresentation(state.authorship) }),
     media: media.map((entry, index): DetailMediaPresentation => ({
       id: entry.key,
       src: entry.src,

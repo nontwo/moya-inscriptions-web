@@ -23,6 +23,9 @@ const { author, shell, client, versions } = vi.hoisted(() => ({
         ) => import("@moya/contracts").PublishingDraft)
       | null,
     restored: null as import("@moya/contracts").PublishingDraft | null,
+    /** History's latest restore callback, to answer after something changed. */
+    onRestored: null as
+      ((draft: import("@moya/contracts").PublishingDraft) => void) | null,
   },
 }));
 
@@ -69,29 +72,53 @@ vi.mock("../media/media-section", () => ({
 vi.mock("../drafts/history-panel", () => ({
   HistoryPanel: ({
     onRestored,
+    onClose,
+    onChooseVersion,
   }: {
     onRestored: (draft: import("@moya/contracts").PublishingDraft) => void;
-  }) => (
-    <div data-history-stub="">
-      <button
-        data-history-restore=""
-        onClick={() => onRestored(versions.restored!)}
-        type="button"
-      >
-        恢复为当前编辑
-      </button>
-    </div>
-  ),
+    onClose: () => void;
+    onChooseVersion?: () => void;
+  }) => {
+    versions.onRestored = onRestored;
+    return (
+      <div data-history-stub="">
+        <button
+          data-history-restore=""
+          onClick={() => onRestored(versions.restored!)}
+          type="button"
+        >
+          恢复为当前编辑
+        </button>
+        {onChooseVersion === undefined ? null : (
+          <button
+            data-history-choose-version=""
+            onClick={onChooseVersion}
+            type="button"
+          >
+            选择版本
+          </button>
+        )}
+        <button data-history-close="" onClick={onClose} type="button">
+          关闭历史版本
+        </button>
+      </div>
+    );
+  },
 }));
 vi.mock("../drafts/conflict-chooser", () => ({
   ConflictChooser: ({
     conflict,
     onResolved,
+    onClose,
   }: {
     conflict: { id: string };
     onResolved: (draft: import("@moya/contracts").PublishingDraft) => void;
+    onClose: () => void;
   }) => (
     <div data-conflict-stub={conflict.id}>
+      <button data-conflict-close="" onClick={onClose} type="button">
+        关闭版本选择
+      </button>
       <button
         data-choose="device"
         onClick={() => onResolved(versions.resolve!("device"))}
@@ -123,6 +150,7 @@ import {
   fakePreprocess,
   fakeTransfer,
   manualTimers,
+  recoveryDouble,
   settle,
   uuid,
 } from "../../upload-manager.test-support";
@@ -138,11 +166,14 @@ import type {
   ProductShellEditorOverlayControls,
 } from "../../../product-shell/product-shell";
 import type { EditorTarget } from "../../../product-shell/product-history";
+import type { LocalRecoveryStore } from "../../local-recovery";
 import type {
   EditableWork,
   PublishingDraft,
   PublishingDraftConflict,
+  PublishingMediaItem,
   WorkDraftContent,
+  WorkDraftItem,
 } from "@moya/contracts";
 import type { Root } from "react-dom/client";
 
@@ -195,7 +226,7 @@ const receipt = (requestId: string) => ({
   submittedAt: T,
 });
 
-const makeServices = () => {
+const makeServices = (recovery: LocalRecoveryStore | null = null) => {
   const uploads = fakeClient();
   const transfer = fakeTransfer();
   let revision = 1;
@@ -250,7 +281,7 @@ const makeServices = () => {
     createTransfer: () => transfer.transfer,
     createPreprocess: () => fakePreprocess(),
     createHasher: () => null,
-    createRecovery: () => null,
+    createRecovery: () => recovery,
     identifyFiles: (files) => identifyFiles(files),
     preprocessConcurrency: () => 1,
     transferConcurrency: 2,
@@ -297,8 +328,9 @@ const flush = async () => {
 const renderEditor = async (
   target: EditorTarget,
   prepare: () => void = () => undefined,
+  options: { readonly recovery?: LocalRecoveryStore } = {},
 ): Promise<Harness> => {
-  const { services, transfer } = makeServices();
+  const { services, transfer } = makeServices(options.recovery ?? null);
   prepare();
   let guard: ProductShellEditorLeaveGuard | null = null;
   const controls = {
@@ -488,6 +520,7 @@ afterEach(async () => {
   staged.current = null;
   versions.resolve = null;
   versions.restored = null;
+  versions.onRestored = null;
   for (const key of Object.keys(client)) delete client[key];
   vi.clearAllMocks();
 });
@@ -532,6 +565,24 @@ describe("Publishing editor", () => {
       query('[data-editor-preview="continuous"] [data-detail-title]')
         ?.textContent,
     ).toBe("临兰亭序");
+    // The preview shows the authorship section readers will see.
+    const previewAuthorship = () =>
+      query(
+        '[data-editor-preview="continuous"] [data-detail-section="authorship"]',
+      );
+    expect(previewAuthorship()?.textContent).toContain("原创");
+    await act(async () => {
+      query<HTMLInputElement>(
+        '[data-editor-field="authorship"] input[value="copy_practice"]',
+      )!.click();
+    });
+    await type(
+      query<HTMLInputElement>('input[data-editor-input="referenceTitle"]'),
+      "兰亭序",
+    );
+    await flush();
+    expect(previewAuthorship()?.textContent).toContain("临摹或练习");
+    expect(previewAuthorship()?.textContent).toContain("参考作品兰亭序");
     await type(titleInput(), "临兰亭序（二）");
 
     shell.platform = "phone";
@@ -915,9 +966,10 @@ describe("Publishing editor", () => {
     await click(buttonByText("删除草稿并关闭"));
     await flush();
     expect(fn("deleteDraft")).toHaveBeenCalledTimes(1);
-    expect(fn("deleteDraft")).toHaveBeenCalledWith(DRAFT_ID, {
-      requestId: expect.any(String),
-    });
+    expect(fn("deleteDraft")).toHaveBeenCalledWith(
+      DRAFT_ID,
+      expect.objectContaining({ requestId: expect.any(String) }),
+    );
     expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
     // The content stays on screen; the entry no longer names the deleted draft.
     expect(titleInput()?.value).toBe("已保存的草稿");
@@ -977,7 +1029,7 @@ describe("Publishing editor", () => {
       id: WORK_ID,
     });
   });
-  it("removes an edit draft it opened only while the account still holds it unchanged", async () => {
+  it("removes an edit draft it opened on the condition that the account still holds that revision", async () => {
     const editable: EditableWork = {
       workId: WORK_ID,
       revisionId: REVISION_ID,
@@ -996,22 +1048,29 @@ describe("Publishing editor", () => {
       baseRevisionId: REVISION_ID,
       revision: 1,
     });
-    const harness = await renderEditor({ type: "work", id: WORK_ID }, () => {
-      fn("editableWork").mockResolvedValue(editable);
-      fn("openWorkEditDraft").mockResolvedValue(opened);
-      fn("draft").mockResolvedValue(opened);
-    });
+    const recovery = recoveryDouble();
+    const harness = await renderEditor(
+      { type: "work", id: WORK_ID },
+      () => {
+        fn("editableWork").mockResolvedValue(editable);
+        fn("openWorkEditDraft").mockResolvedValue(opened);
+      },
+      { recovery },
+    );
     expect(titleInput() ?? query("[data-media-section]")).not.toBeNull();
     await leaveOverlay(harness);
-    // Read back first; unchanged, so it is removed.
-    expect(fn("draft")).toHaveBeenCalledWith(EDIT_DRAFT_ID);
+    // One conditional deletion: no read-back window before it.
+    expect(fn("draft")).not.toHaveBeenCalled();
     expect(fn("deleteDraft")).toHaveBeenCalledTimes(1);
     expect(fn("deleteDraft")).toHaveBeenCalledWith(EDIT_DRAFT_ID, {
       requestId: expect.any(String),
+      expectedRevision: 1,
     });
+    // This browser's copies go only after the confirmed deletion.
+    expect(recovery.clearDraft).toHaveBeenCalledWith(ACCOUNT, EDIT_DRAFT_ID);
   });
 
-  it("keeps an edit draft another device has saved to meanwhile", async () => {
+  it("keeps an edit draft another device has saved to meanwhile, without telling anyone", async () => {
     const editable: EditableWork = {
       workId: WORK_ID,
       revisionId: REVISION_ID,
@@ -1030,20 +1089,35 @@ describe("Publishing editor", () => {
       baseRevisionId: REVISION_ID,
       revision: 1,
     });
-    const harness = await renderEditor({ type: "work", id: WORK_ID }, () => {
-      fn("editableWork").mockResolvedValue(editable);
-      fn("openWorkEditDraft").mockResolvedValue(opened);
-      // Another device saved real edits into the same edit draft.
-      fn("draft").mockResolvedValue({
-        ...opened,
-        revision: 2,
-        updatedAt: "2026-09-13T12:05:00.000Z",
-        content: emptyContent({ title: "另一台设备的修改" }),
-      });
-    });
+    const recovery = recoveryDouble();
+    const harness = await renderEditor(
+      { type: "work", id: WORK_ID },
+      () => {
+        fn("editableWork").mockResolvedValue(editable);
+        fn("openWorkEditDraft").mockResolvedValue(opened);
+        // Another device saved real edits into the same edit draft: the
+        // account refuses the deletion at the opened revision.
+        fn("deleteDraft").mockRejectedValueOnce(
+          clientError(409, "草稿已在别处更改，未删除", false, "draft_changed"),
+        );
+      },
+      { recovery },
+    );
     await leaveOverlay(harness);
-    expect(fn("draft")).toHaveBeenCalledWith(EDIT_DRAFT_ID);
-    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+    expect(fn("deleteDraft")).toHaveBeenCalledExactlyOnceWith(EDIT_DRAFT_ID, {
+      requestId: expect.any(String),
+      expectedRevision: 1,
+    });
+    expect(fn("draft")).not.toHaveBeenCalled();
+    expect(recovery.clearDraft).not.toHaveBeenCalled();
+    expect(author.notify).not.toHaveBeenCalled();
+
+    // Reopening the work waits for nothing more and opens its draft again.
+    fn("openWorkEditDraft").mockResolvedValueOnce({ ...opened, revision: 2 });
+    await harness.show(true);
+    expect(fn("openWorkEditDraft")).toHaveBeenCalledTimes(2);
+    expect(query("[data-editor-unavailable]")).toBeNull();
+    expect(query("[role='alert']")).toBeNull();
   });
 
   it("resumes saving after the author keeps this device's version, including input typed after the conflict", async () => {
@@ -1159,6 +1233,55 @@ describe("Publishing editor", () => {
     expect(saveStatus()).toBe("saved");
   });
 
+  it("adopts nothing from a version answer for another draft or after the account changed", async () => {
+    const saved = draftOf(emptyContent({ title: "当前" }), { revision: 3 });
+    await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    const restoreLater = async (
+      restored: PublishingDraft,
+      meanwhile: () => void = () => undefined,
+    ) => {
+      await click(query("[data-editor-menu]"));
+      await click(query("[data-editor-menu-history]"));
+      const answer = versions.onRestored!;
+      await act(async () => {
+        meanwhile();
+        answer(restored);
+        author.viewer = { id: ACCOUNT, displayName: "测试作者" };
+      });
+      await flush();
+    };
+
+    // An answer for a draft this session no longer saves to.
+    await restoreLater(
+      draftOf(emptyContent({ title: "别的草稿" }), {
+        id: `work-draft-${"8".repeat(32)}`,
+        revision: 9,
+      }),
+    );
+    expect(titleInput()?.value).toBe("当前");
+    expect(saveStatus()).not.toBe("pending");
+
+    // The answer arrives once another account is confirmed.
+    await restoreLater(
+      draftOf(emptyContent({ title: "历史标题" }), { revision: 7 }),
+      () => {
+        author.viewer = { id: `user-${"9".repeat(32)}`, displayName: "另一人" };
+      },
+    );
+    expect(query("[data-history-stub]")).toBeNull();
+    expect(titleInput()?.value).toBe("当前");
+
+    await type(titleInput(), "当前（改）");
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow").mock.calls.at(-1)![1]).toMatchObject({
+      baseRevision: 3,
+      content: { title: "当前（改）" },
+    });
+  });
+
   it("never overwrites an edit draft saved elsewhere when drafts are turned back on", async () => {
     const editable: EditableWork = {
       workId: WORK_ID,
@@ -1241,6 +1364,231 @@ describe("Publishing editor", () => {
     expect(harness.controls.replaceTarget).toHaveBeenCalledWith({
       type: "new",
     });
+  });
+
+  it("adopts a chosen version at once while uploads run, and never adds back what it left out", async () => {
+    const saved = draftOf(emptyContent({ title: "起点" }), { revision: 3 });
+    const account = emptyContent({ title: "别处标题" });
+    const harness = await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await act(async () => {
+      await staged.current!.stageFiles([fileOf(jpeg({}))], "picker");
+    });
+    await flush();
+    await act(async () => {
+      expect(staged.current!.confirm().ok).toBe(true);
+    });
+    await flush();
+    await flush();
+    expect(harness.transfer.starts.length).toBe(1);
+    await goToStep("text");
+    await type(titleInput(), "本设备标题");
+    fn("saveDraftNow").mockImplementationOnce(
+      async (_id: string, cmd: { content: WorkDraftContent }) => {
+        const conflict = conflictOf(cmd.content, account);
+        return {
+          status: "conflict",
+          draft: draftOf(account, { revision: 4, conflict }),
+          conflict,
+        };
+      },
+    );
+    await click(query("[data-editor-save-now]"));
+    expect(saveStatus()).toBe("conflict");
+    expect(
+      (fn("saveDraftNow").mock.calls[0]![1] as { content: WorkDraftContent })
+        .content.items,
+    ).toHaveLength(1);
+    // The upload is still running: the chooser opens anyway, and so does history.
+    expect(query("[data-conflict-stub]")).not.toBeNull();
+    versions.resolve = () => draftOf(account, { revision: 5 });
+    await click(query('[data-choose="account"]'));
+    expect(query("[data-conflict-stub]")).toBeNull();
+    expect(titleInput()?.value).toBe("别处标题");
+    expect(saveStatus()).toBe("saved");
+    // Nothing restarted: the same transfer runs, nothing was cancelled or discarded.
+    expect(harness.transfer.starts.length).toBe(1);
+    expect(fn("cancelItem")).not.toHaveBeenCalled();
+    expect(fn("discardSession")).not.toHaveBeenCalled();
+    await click(query("[data-editor-menu]"));
+    expect(
+      query("[data-editor-menu-history]")?.hasAttribute("aria-disabled"),
+    ).toBe(false);
+    expect(query("[data-editor-menu]")?.textContent ?? "").not.toContain(
+      "图片上传完成后可用",
+    );
+    // A history version is adopted the same way while the upload still runs.
+    await click(query("[data-editor-menu-history]"));
+    versions.restored = draftOf(emptyContent({ title: "历史标题" }), {
+      revision: 6,
+    });
+    await click(query("[data-history-restore]"));
+    expect(query("[data-history-stub]")).toBeNull();
+    expect(titleInput()?.value).toBe("历史标题");
+    expect(saveStatus()).toBe("saved");
+    expect(harness.transfer.starts.length).toBe(1);
+    expect(fn("cancelItem")).not.toHaveBeenCalled();
+    expect(fn("discardSession")).not.toHaveBeenCalled();
+
+    // The left-out upload changes state; the album does not take it back.
+    await act(async () => {
+      harness.transfer.starts[0]!.callbacks.onSettled({
+        status: 0,
+        responseText: "",
+        stalled: true,
+      });
+    });
+    await flush();
+    fn("saveDraftNow").mockClear();
+    await type(titleInput(), "历史标题（改）");
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow")).toHaveBeenCalledTimes(1);
+    expect(fn("saveDraftNow").mock.calls[0]![1]).toMatchObject({
+      baseRevision: 6,
+      content: { title: "历史标题（改）", items: [] },
+    });
+  });
+
+  it("never shows history and the version chooser together, and history leads back to the chooser", async () => {
+    const saved = draftOf(emptyContent({ title: "起点" }), { revision: 3 });
+    await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    const shown = () => ({
+      history: query("[data-history-stub]") !== null,
+      chooser: query("[data-conflict-stub]") !== null,
+    });
+    await goToStep("text");
+    await click(query("[data-editor-menu]"));
+    await click(query("[data-editor-menu-history]"));
+    expect(shown()).toEqual({ history: true, chooser: false });
+    // Without two versions there is no chooser to go back to.
+    expect(query("[data-history-choose-version]")).toBeNull();
+
+    // A conflict arriving while history is open takes its place.
+    await type(titleInput(), "本设备标题");
+    const conflict = conflictOf(
+      emptyContent({ title: "本设备标题" }),
+      emptyContent({ title: "别处标题" }),
+    );
+    fn("saveDraftNow").mockResolvedValueOnce({
+      status: "conflict",
+      draft: draftOf(emptyContent({ title: "别处标题" }), {
+        revision: 4,
+        conflict,
+      }),
+      conflict,
+    });
+    await click(query("[data-editor-save-now]"));
+    expect(shown()).toEqual({ history: false, chooser: true });
+
+    // Closed, then history: blocked restores, but a way back to the chooser.
+    await click(query("[data-conflict-close]"));
+    expect(shown()).toEqual({ history: false, chooser: false });
+    await click(query("[data-editor-menu]"));
+    await click(query("[data-editor-menu-history]"));
+    expect(shown()).toEqual({ history: true, chooser: false });
+    await click(query("[data-history-choose-version]"));
+    expect(shown()).toEqual({ history: false, chooser: true });
+
+    // Opening history from the menu while choosing replaces the chooser.
+    await click(query("[data-editor-menu]"));
+    await click(query("[data-editor-menu-history]"));
+    expect(shown()).toEqual({ history: true, chooser: false });
+    // 选择版本 in the return bar replaces history.
+    await click(
+      query("[data-save-status]")!.querySelector<HTMLButtonElement>("button"),
+    );
+    expect(shown()).toEqual({ history: false, chooser: true });
+  });
+
+  it("keeps saving the draft and says so when it changed elsewhere before the deletion", async () => {
+    const saved = draftOf(emptyContent({ title: "已保存的草稿" }), {
+      revision: 3,
+    });
+    const harness = await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+      fn("deleteDraft").mockRejectedValueOnce(
+        clientError(409, "草稿已在别处更改，未删除", false, "draft_changed"),
+      );
+    });
+    await goToStep("text");
+    await click(draftSwitch());
+    await click(buttonByText("删除草稿并关闭"));
+    await flush();
+    expect(fn("deleteDraft")).toHaveBeenCalledTimes(1);
+    // A final answer: no retry is offered for a draft that is not the one confirmed.
+    expect(
+      document.querySelector('[data-editor-dialog="draft-deletion"]'),
+    ).toBeNull();
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
+    expect(query("[data-editor-notice]")?.textContent).toContain(
+      "这份草稿刚在别处保存了新的更改，没有删除，草稿仍在保存",
+    );
+    expect(titleInput()?.value).toBe("已保存的草稿");
+    expect(harness.controls.replaceTarget).not.toHaveBeenCalledWith({
+      type: "new",
+    });
+  });
+
+  it("counts a no-save edit's existing items against the item limit", async () => {
+    const itemId = (n: number) => `media-item-${String(n).repeat(32)}`;
+    const items: WorkDraftItem[] = [1, 2].map((n) => ({
+      key: `existing-${n}`,
+      itemId: itemId(n),
+      kind: "static",
+      qualityMode: "standard",
+      edit: { rotation: 0, crop: null },
+    }));
+    const ready = (id: string): PublishingMediaItem => ({
+      id,
+      kind: "static",
+      qualityMode: "standard",
+      state: "ready",
+      failureCode: null,
+      components: [],
+      presentation: { width: 4, height: 3 },
+      media: {
+        thumbSrc: `/api/community/publishing/media/${id}/thumb/base`,
+        displaySrc: `/api/community/publishing/media/${id}/display/base`,
+      },
+    });
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: emptyContent({ title: "旧作", items }),
+      mediaItems: items.map((item) => ready(item.itemId!)),
+      visibility: "public",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    await renderEditor({ type: "work", id: WORK_ID }, () => {
+      fn("limits").mockResolvedValue({
+        maxItems: 2,
+        originalItemMaxBytes: 1_000_000,
+        standardComponentMaxBytes: 1_000_000,
+        titleMax: 200,
+        bodyMax: 10_000,
+      });
+      fn("editableWork").mockResolvedValue(editable);
+      fn("openWorkEditDraft").mockRejectedValueOnce(
+        clientError(409, "草稿数量已达上限", false, "draft_limit"),
+      );
+    });
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => {
+      await staged.current!.stageFiles([fileOf(jpeg({}))], "picker");
+    });
+    await flush();
+    let result: ReturnType<NonNullable<typeof staged.current>["confirm"]>;
+    await act(async () => {
+      result = staged.current!.confirm();
+    });
+    expect(result!).toMatchObject({ ok: false, error: "items_limit" });
+    expect(fn("registerItem")).not.toHaveBeenCalled();
   });
 
   it("closes the phone preview on the browser's Back without leaving the editor", async () => {

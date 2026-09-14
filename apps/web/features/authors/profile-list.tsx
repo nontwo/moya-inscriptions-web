@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ContentCard as Card } from "@moya/contracts";
+import type { ContentCard as Card, UserWork } from "@moya/contracts";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors } from "./author-context";
 import { readLocalHistory } from "./local-library";
@@ -9,7 +9,57 @@ import { CatalogMasonry } from "../home/catalog-masonry";
 import { useProductShell } from "../product-shell/product-shell";
 import { ContentCard } from "./content-card";
 import { DraftsCard } from "../publishing/ui/drafts/drafts-card";
+import {
+  WORK_EXCERPT_MAXIMUM,
+  codePointLength,
+  normalizePublishingBody,
+} from "../publishing/publishing-data";
 import type { ProfileTab } from "../product-shell/product-history";
+
+/**
+ * The opening of a work body for its card: the shared normalization, then at
+ * most the excerpt maximum in code points, trimmed after cutting (the same
+ * excerpt the discovery feed builds).
+ */
+export const workCardExcerpt = (body: string): string => {
+  const normalized = normalizePublishingBody(body);
+  return codePointLength(normalized) <= WORK_EXCERPT_MAXIMUM
+    ? normalized
+    : [...normalized].slice(0, WORK_EXCERPT_MAXIMUM).join("").trim();
+};
+
+/**
+ * A Works tab card from the work itself, like the feed's: the revision's
+ * cover (the chosen cover, else the first media), a LIVE indicator when that
+ * cover is a Live Photo, and the body's opening so a text-only work shows its
+ * text instead of a cover.
+ */
+export const workCard = (work: UserWork): Card => {
+  const cover =
+    work.media.find((media) => media.id === work.coverMediaId) ??
+    work.media[0] ??
+    null;
+  const excerpt = workCardExcerpt(work.text);
+  return {
+    target: { type: "work", id: work.id },
+    title: work.title,
+    ...(excerpt === "" ? {} : { excerpt }),
+    aliases: [],
+    kind: null,
+    authorId: work.authorId,
+    firstPublishedAt: work.firstPublishedAt,
+    live: cover?.kind === "live",
+    media:
+      cover === null
+        ? null
+        : {
+            id: cover.id,
+            src: cover.src,
+            width: cover.width,
+            height: cover.height,
+          },
+  };
+};
 interface ListState {
   items: Card[];
   page: number;
@@ -77,17 +127,7 @@ export const ProfileList = ({
     if (tab === "works") {
       const result = await authorClient.works(authorId, q.page);
       return {
-        items: result.items
-          .filter((w) => w.available || owner)
-          .map((w) => ({
-            target: { type: "work" as const, id: w.id },
-            title: w.title,
-            aliases: [],
-            kind: null,
-            authorId: w.authorId,
-            firstPublishedAt: w.firstPublishedAt,
-            media: w.media[0] ?? null,
-          })),
+        items: result.items.filter((w) => w.available || owner).map(workCard),
         total: result.total,
       };
     }

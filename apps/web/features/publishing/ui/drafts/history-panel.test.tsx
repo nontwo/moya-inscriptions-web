@@ -43,7 +43,10 @@ import {
 const rows = (node: HTMLElement) =>
   Array.from(node.querySelectorAll<HTMLLIElement>("li[data-snapshot-id]"));
 
-const renderPanel = async (prepareRestore?: () => Promise<boolean>) => {
+const renderPanel = async (
+  prepareRestore?: () => Promise<boolean>,
+  onChooseVersion?: () => void,
+) => {
   const onRestored = vi.fn();
   const onClose = vi.fn();
   const node = await render(
@@ -52,6 +55,7 @@ const renderPanel = async (prepareRestore?: () => Promise<boolean>) => {
       onClose={onClose}
       onRestored={onRestored}
       {...(prepareRestore === undefined ? {} : { prepareRestore })}
+      {...(onChooseVersion === undefined ? {} : { onChooseVersion })}
     />,
   );
   await flush();
@@ -267,6 +271,36 @@ describe("History panel", () => {
     expect(target.querySelector('[role="alert"]')?.textContent).toBe(
       "这份草稿有两个版本待选择，请先选择要继续编辑的版本",
     );
+  });
+
+  it("offers the way to the version chooser while the draft holds two versions", async () => {
+    uploadSession.set({
+      ...editingDraft(draftId(1), "conflict"),
+      hasUnsavedChanges: () => true,
+    });
+    client.draftHistory.mockResolvedValue(page([snapshot(1)]));
+    const onChooseVersion = vi.fn();
+    const { node, onClose } = await renderPanel(undefined, onChooseVersion);
+    const offer = node.querySelector("[data-history-conflict]");
+    expect(offer?.textContent).toContain(
+      "这份草稿有两个版本待选择，请先选择要继续编辑的版本",
+    );
+    await click(buttonByText(node, "选择版本"));
+    expect(onChooseVersion).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(client.restoreSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("offers no chooser without two versions or without the editor's way there", async () => {
+    uploadSession.set(editingDraft(draftId(1), "saved"));
+    client.draftHistory.mockResolvedValue(page([snapshot(1)]));
+    const clean = await renderPanel(undefined, vi.fn());
+    expect(clean.node.querySelector("[data-history-conflict]")).toBeNull();
+    await cleanup();
+
+    uploadSession.set(editingDraft(draftId(1), "conflict"));
+    const without = await renderPanel();
+    expect(without.node.querySelector("[data-history-conflict]")).toBeNull();
   });
 
   it("retries the page that failed to load", async () => {

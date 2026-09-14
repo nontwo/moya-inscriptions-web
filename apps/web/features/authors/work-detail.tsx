@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { WorkVisibility } from "@moya/contracts";
-import { toWorkMediaPresentation } from "../detail/catalog-detail-presentation";
+import {
+  toWorkAuthorshipPresentation,
+  toWorkMediaPresentation,
+} from "../detail/catalog-detail-presentation";
 import { useCatalogDetailWithdrawal } from "../detail/catalog-detail-withdrawal";
 import type { CatalogDetailPresentation } from "../detail/catalog-detail-presentation";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
@@ -19,12 +22,24 @@ import { ContentActions } from "./content-actions";
 import { UNTITLED_WORK_LABEL } from "./content-card";
 import { useProductShell } from "../product-shell/product-shell";
 import { recordLocalHistory } from "./local-library";
+import {
+  ownWorkAudienceNote,
+  readOwnWorkAudience,
+  recordOwnWorkAudience,
+  setOwnWorkAudience,
+  useOwnWorkAudience,
+} from "./own-work-audience";
+
+/** The pause before the one repeated read of the author's work. */
+const READ_BACK_RETRY_MS = 2000;
 export const loadWorkDetail: CatalogDetailPresentationLoader = async (
   id,
   signal,
 ) => {
   try {
     const work = await authorClient.work(id, signal);
+    // Whether others can see the author's own work now (author-only).
+    recordOwnWorkAudience(work);
     const label = work.title === "" ? UNTITLED_WORK_LABEL : work.title;
     return {
       state: "loaded",
@@ -46,6 +61,9 @@ export const loadWorkDetail: CatalogDetailPresentationLoader = async (
         sections: work.text
           ? [{ key: "description", title: "正文", text: work.text }]
           : [],
+        ...(work.authorship === undefined
+          ? {}
+          : { authorship: toWorkAuthorshipPresentation(work.authorship) }),
         media: work.media.map((m) => toWorkMediaPresentation(m, label)),
         source: "runtime",
         sourceCitations: [],
@@ -383,56 +401,124 @@ export const DetailActions = ({
     readonly id: string;
     readonly value: WorkVisibility;
   } | null>(null);
+  const readBack = useRef(0);
+  // A read-back still waiting when the actions leave is not repeated.
+  useEffect(
+    () => () => {
+      readBack.current += 1;
+    },
+    [],
+  );
   const target = {
     type: detail.contentType === "work" ? "work" : "catalog",
     id: detail.id,
   } as const;
+  // Only the confirmed author sees management; a third party never does.
+  const owner =
+    detail.contentType === "work" &&
+    detail.canEdit &&
+    author.viewer !== null &&
+    author.viewer.id === detail.authorId;
+  const ownerId = owner ? author.viewer!.id : null;
+  // What the author's own view says about others seeing the work; null when
+  // it never said (the loaded fields below decide then).
+  const audience = useOwnWorkAudience(ownerId, owner ? detail.id : null);
+  const trashed = trashedId === detail.id;
+  const changedVisibility =
+    visibilityChange?.id === detail.id ? visibilityChange.value : null;
+  // Likes, favorites, sharing and the history record are public
+  // interactions: for the author they follow whether others can see the
+  // work now. Without that record, only a loaded public work that nothing
+  // on this page changed counts.
+  const ownerPublic =
+    audience !== null
+      ? audience.publiclyVisible === true
+      : detail.contentType === "work" &&
+        changedVisibility === null &&
+        detail.visibility === "public" &&
+        detail.firstPublishedAt !== null &&
+        detail.firstPublishedAt !== undefined;
+  const recordable =
+    detail.contentType !== "work" ||
+    (detail.available && !trashed && (!owner || ownerPublic));
   useEffect(() => {
-    if (
-      author.checking ||
-      author.sessionError ||
-      (detail.contentType === "work" && !detail.available)
-    )
-      return;
+    if (author.checking || author.sessionError || !recordable) return;
     try {
       recordLocalHistory(author.viewer?.id ?? null, target);
     } catch {
       author.notify("浏览记录无法保存在本机");
     }
-  }, [detail.id, author.viewer?.id, author.checking]);
+  }, [detail.id, author.viewer?.id, author.checking, recordable]);
   if (detail.contentType !== "work")
     return (
       <div>
         <ContentActions target={target} title={detail.title} />{" "}
       </div>
     );
-  // Only the confirmed author sees management; a third party never does.
-  const owner =
-    detail.canEdit &&
-    author.viewer !== null &&
-    author.viewer.id === detail.authorId;
-  const trashed = trashedId === detail.id;
-  const changedVisibility =
-    visibilityChange?.id === detail.id ? visibilityChange.value : null;
+  /**
+   * The answer names the visibility only. Self-only is never seen by others;
+   * after 公开 the work is read again, because the work publication policy
+   * decides whether others see it yet.
+   */
+  const followVisibility = (value: WorkVisibility) => {
+    setVisibilityChange({ id: detail.id, value });
+    if (ownerId === null) return;
+    const run = ++readBack.current;
+    setOwnWorkAudience(ownerId, detail.id, {
+      publiclyVisible: value === "self" ? false : null,
+      visibility: value,
+    });
+    if (value === "self") return;
+    // Until the answer, nothing is offered and nothing is claimed. A failed
+    // read is tried once more; after that the note says only that it cannot
+    // be told, until the work loads again.
+    const workId = detail.id;
+    const replaced = () => run !== readBack.current;
+    const readAgain = () => authorClient.work(workId);
+    void Promise.resolve()
+      .then(readAgain)
+      .catch(async () => {
+        await new Promise((resolve) => setTimeout(resolve, READ_BACK_RETRY_MS));
+        if (replaced()) throw new Error("replaced");
+        return readAgain();
+      })
+      .then((work) => {
+        if (
+          !replaced() &&
+          work.id === workId &&
+          work.canEdit &&
+          work.authorId === ownerId
+        )
+          recordOwnWorkAudience(work);
+      })
+      .catch(() => {
+        // Only the unknown state this change left, never a later load's record.
+        if (
+          !replaced() &&
+          readOwnWorkAudience(ownerId, workId)?.publiclyVisible === null
+        )
+          setOwnWorkAudience(ownerId, workId, {
+            publiclyVisible: null,
+            visibility: value,
+            unconfirmed: true,
+          });
+      });
+  };
   // `available` lets the author open their own self-only or not yet public
-  // work, so it is never labelled; a note appears only when the work is not
-  // shown to others for another reason (e.g. hidden by an operator).
-  const notice = detail.available
-    ? null
-    : owner
-      ? "此作品当前不对其他人显示。"
-      : "此作品当前不可公开访问。";
-  // Likes, favorites and sharing are public interactions: for the author
-  // they are offered only while the loaded work is public to others. After a
-  // visibility change here that is known again only when the work reloads.
-  const interactive =
-    detail.available &&
-    !trashed &&
-    (!owner ||
-      (changedVisibility === null &&
-        detail.visibility === "public" &&
-        detail.firstPublishedAt !== null &&
-        detail.firstPublishedAt !== undefined));
+  // work; a note tells the author when others cannot see it, never with a
+  // pending or review label.
+  const notice = !owner
+    ? detail.available
+      ? null
+      : "此作品当前不可公开访问。"
+    : trashed
+      ? null
+      : audience !== null
+        ? ownWorkAudienceNote(audience)
+        : detail.available
+          ? null
+          : "此作品当前不对其他人显示。";
+  const interactive = detail.available && !trashed && (!owner || ownerPublic);
   return (
     <div>
       <div className="phase4-actions">
@@ -448,9 +534,7 @@ export const DetailActions = ({
         <WorkManagement
           detail={detail}
           onTrashed={() => setTrashedId(detail.id)}
-          onVisibility={(value) =>
-            setVisibilityChange({ id: detail.id, value })
-          }
+          onVisibility={followVisibility}
           trashed={trashed}
           visibility={changedVisibility ?? detail.visibility}
         />

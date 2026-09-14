@@ -4,6 +4,8 @@ import type {
   CatalogDetail,
   CatalogKind,
   PublicSourceCitation,
+  WorkAuthorship,
+  WorkAuthorshipKind,
   WorkMedia,
   WorkVisibility,
 } from "@moya/contracts";
@@ -35,6 +37,17 @@ export interface CatalogDetailSourceCitationPresentation {
 export interface DetailLiveMotionPresentation {
   readonly motionSrc: string;
   readonly hasAudio: boolean;
+}
+
+/**
+ * A work's authorship as readers see it (C05): 原创, 临摹或练习 or 素材分享,
+ * and for the latter two only the references the author named.
+ */
+export interface DetailAuthorshipPresentation {
+  readonly kind: WorkAuthorshipKind;
+  readonly label: string;
+  /** 参考作品 / 原作者 / 来源, in that order, only when named. */
+  readonly references: readonly CatalogDetailFact[];
 }
 
 export interface DetailMediaPresentation {
@@ -74,8 +87,37 @@ export type CatalogDetailPresentation = DetailPresentationBase &
         readonly editedAt?: string | null;
         /** Author-only: the requested visibility of the author's own work. */
         readonly visibility?: WorkVisibility;
+        /** Shown to every reader when the work carries it. */
+        readonly authorship?: DetailAuthorshipPresentation;
       }
   );
+
+const authorshipLabels = {
+  original: "原创",
+  copy_practice: "临摹或练习",
+  material_sharing: "素材分享",
+} as const satisfies Readonly<Record<WorkAuthorshipKind, string>>;
+
+/** The authorship section of a work Detail; whitespace-only references are omitted. */
+export const toWorkAuthorshipPresentation = (
+  authorship: WorkAuthorship,
+): DetailAuthorshipPresentation => ({
+  kind: authorship.kind,
+  label: authorshipLabels[authorship.kind],
+  references:
+    authorship.kind === "original"
+      ? []
+      : (
+          [
+            ["参考作品", authorship.referenceTitle],
+            ["原作者", authorship.originalAuthor],
+            ["来源", authorship.sourceNote],
+          ] as const
+        ).flatMap(([label, value]) => {
+          const text = value?.trim() ?? "";
+          return text === "" ? [] : [{ label, value: text }];
+        }),
+});
 
 /**
  * One work media item for Detail and Viewer: a Live Photo keeps its still as

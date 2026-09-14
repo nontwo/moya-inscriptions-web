@@ -24,9 +24,10 @@ import type {
  *   reached, the edit continues without saving and says so.
  *
  * An edit draft this session created and never changed is removed again
- * when the author leaves (D02), but only after reading it back: a draft
- * another device has saved to meanwhile is never removed. Reopening the
- * same work waits for that removal first.
+ * when the author leaves (D02), conditionally on the revision it was opened
+ * with: a draft another device has saved to meanwhile is refused as
+ * `draft_changed` by the account and kept. Reopening the same work waits for
+ * that removal first.
  */
 
 export type UploadSessionApi = ReturnType<typeof useUploadSession>;
@@ -43,7 +44,7 @@ export interface EditorLoaderClient {
   ): Promise<PublishingDraft>;
   deleteDraft(
     draftId: string,
-    cmd: { readonly requestId: string },
+    cmd: { readonly requestId: string; readonly expectedRevision?: number },
   ): Promise<PublishingDraftDeletionResult>;
   saveDraft(
     draftId: string,
@@ -79,9 +80,15 @@ export const removalSettled = (
 
 /**
  * Removes an edit draft this session opened, only while the account still
- * holds it exactly as it was opened (same revision and update time, no
- * conflict). Anything else (a save from this or another device, a draft
- * already gone, a failed read) keeps it.
+ * holds it at the revision it was opened with: the deletion names that
+ * revision, so a save from this or another device in between is refused
+ * (`draft_changed`) and the draft is kept without telling anyone. A draft
+ * already gone or a failed request keeps nothing else either; this browser's
+ * local copies are cleared only after a confirmed deletion.
+ *
+ * The account compares the draft revision only. An edit draft is opened at
+ * its first revision, so no save on an older base (a conflict copy) can
+ * exist for it without a later revision.
  */
 export const removeUnchangedEditDraft = (
   accountId: string,
@@ -95,17 +102,9 @@ export const removeUnchangedEditDraft = (
   const run: Promise<void> = previous
     .then(async () => {
       if (deps.currentAccount() !== accountId) return;
-      const current = await deps.client.draft(opened.id);
-      if (
-        current.kind !== "edit" ||
-        current.revision !== opened.revision ||
-        current.updatedAt !== opened.updatedAt ||
-        current.conflict !== null ||
-        deps.currentAccount() !== accountId
-      )
-        return;
       await deps.client.deleteDraft(opened.id, {
         requestId: deps.requestId(),
+        expectedRevision: opened.revision,
       });
       await deps.forgetLocalCopies?.(opened.id);
     })
@@ -121,7 +120,6 @@ const openedFrom = (draft: PublishingDraft): OpenedEditDraft => ({
   id: draft.id,
   workId: draft.workId ?? "",
   revision: draft.revision,
-  updatedAt: draft.updatedAt,
 });
 
 /** The edit version the runtime has already received for this store. */
@@ -262,18 +260,20 @@ const load = async (
       );
       return;
     }
-    // Editing stays possible; only saving a draft is not.
+    // Editing stays possible; only saving a draft is not. The work's items
+    // count against the item limit from the start.
+    const content: WorkDraftContent = {
+      ...editable.content,
+      visibility: editable.visibility,
+    };
     deps.upload().startSession({
       target,
       saveMode: "unsaved",
       workId: editable.workId,
       baseRevisionId: editable.revisionId,
+      content,
     });
-    adoptLoaded(
-      store,
-      { ...editable.content, visibility: editable.visibility },
-      editable.mediaItems,
-    );
+    adoptLoaded(store, content, editable.mediaItems);
     store.setLoaded({ kind: "edit", workId: editable.workId });
     store.setNotice("草稿数量已达上限，本次编辑不会保存草稿");
     return;

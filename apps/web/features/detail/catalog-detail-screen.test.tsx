@@ -361,6 +361,97 @@ describe("CatalogDetailScreen", () => {
     );
   });
 
+  it("shows a work's authorship to every reader as its own section in every composition", () => {
+    const work = (
+      authorship?: import("./catalog-detail-presentation").DetailAuthorshipPresentation,
+      media = true,
+    ) => ({
+      detail: {
+        aliases: [],
+        authorId: `user-${"a".repeat(32)}`,
+        authorName: "临帖人",
+        available: true,
+        canEdit: false,
+        contentType: "work" as const,
+        facts: [],
+        id: `work-${"f".repeat(32)}`,
+        media: media
+          ? [
+              {
+                id: `item-${"f".repeat(32)}`,
+                src: "/still.jpg",
+                alt: "作品",
+                width: 400,
+                height: 300,
+              },
+            ]
+          : [],
+        sections: [
+          { key: "description" as const, title: "正文", text: "临帖一通" },
+        ],
+        source: "runtime" as const,
+        sourceCitations: [],
+        title: "春日临帖",
+        ...(authorship === undefined ? {} : { authorship }),
+      },
+      state: "loaded" as const,
+    });
+    const copy = work({
+      kind: "copy_practice",
+      label: "临摹或练习",
+      references: [
+        { label: "参考作品", value: "兰亭序" },
+        { label: "原作者", value: "王羲之" },
+        { label: "来源", value: "碑帖拓本" },
+      ],
+    });
+    const comments = <section data-comment-section="">comments</section>;
+    for (const markup of [
+      renderState(copy),
+      renderState(copy, comments),
+      renderState(copy, comments, "tablet", "landscape"),
+      renderState(copy, comments, "pc", "landscape"),
+      renderState(copy, undefined, "pc", "landscape"),
+    ]) {
+      expect(markup).toContain('data-detail-section="authorship"');
+      expect(markup).toContain('data-detail-authorship="copy_practice"');
+      expect(markup).toContain("<h2>作品性质</h2>");
+      expect(markup).toContain("临摹或练习");
+      for (const text of [
+        "<dt>参考作品</dt><dd>兰亭序</dd>",
+        "<dt>原作者</dt><dd>王羲之</dd>",
+        "<dt>来源</dt><dd>碑帖拓本</dd>",
+      ])
+        expect(markup).toContain(text);
+      // After the body, in the reading flow.
+      expect(markup.indexOf("临帖一通")).toBeLessThan(
+        markup.indexOf('data-detail-section="authorship"'),
+      );
+    }
+
+    const original = renderState(
+      work({ kind: "original", label: "原创", references: [] }, false),
+      comments,
+      "pc",
+      "landscape",
+    );
+    expect(original).toContain('data-detail-authorship="original"');
+    expect(original).toContain("原创");
+    expect(original).not.toContain("data-detail-authorship-references");
+
+    // A reading flow of authorship alone still renders.
+    const onlyAuthorship = renderState({
+      ...work({ kind: "original", label: "原创", references: [] }),
+      detail: {
+        ...work({ kind: "original", label: "原创", references: [] }).detail,
+        sections: [],
+      },
+    });
+    expect(onlyAuthorship).toContain('data-detail-section="authorship"');
+
+    expect(renderState(work())).not.toContain("data-detail-authorship");
+  });
+
   it("replaces media, actions and comments with a withdrawal notice", () => {
     const markup = renderToStaticMarkup(
       <CatalogDetailScreen

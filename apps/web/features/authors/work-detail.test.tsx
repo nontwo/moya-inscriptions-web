@@ -81,6 +81,8 @@ vi.mock("./author-dialog", () => ({
 }));
 
 import { CatalogDetailWithdrawalContext } from "../detail/catalog-detail-withdrawal";
+import { recordLocalHistory } from "./local-library";
+import { resetOwnWorkAudiences } from "./own-work-audience";
 import { DetailActions, loadWorkDetail } from "./work-detail";
 
 import type { UserWork } from "@moya/contracts";
@@ -160,7 +162,11 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
+  resetOwnWorkAudiences();
+  // Answers queued for reads a test did not make never reach the next test.
+  mocks.work.mockReset();
   document.body.replaceChildren();
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
@@ -307,7 +313,7 @@ describe("Work detail actions for the author", () => {
     expect(view.status()).toBe("作品已移到回收站");
   });
 
-  it("never labels the author's own self-only or not yet public work, and offers public interactions only on a public work", () => {
+  it("without the author's visibility record, never labels the author's own self-only or not yet public work, and offers public interactions only on a public work", () => {
     const actions = (view: ReturnType<typeof render>) =>
       view.container.querySelector("[data-content-actions]");
     // The Backend lets the author open these (available), but likes,
@@ -465,6 +471,316 @@ describe("Work detail actions for the author", () => {
   });
 });
 
+const authorWork = (overrides: Partial<UserWork> = {}): UserWork => ({
+  id: WORK,
+  authorId: AUTHOR,
+  authorName: "临帖人",
+  title: "春日临帖",
+  text: "正文",
+  media: [],
+  firstPublishedAt: "2026-09-10T08:00:00.000Z",
+  editedAt: null,
+  version: 1,
+  canEdit: true,
+  available: true,
+  visibility: "public",
+  trashedAt: null,
+  publiclyVisible: true,
+  ...overrides,
+});
+
+/** Loads the work as the Detail does, so the author's own record exists. */
+const loaded = async (work: UserWork) => {
+  mocks.work.mockResolvedValueOnce(work);
+  const state = await loadWorkDetail(work.id, new AbortController().signal);
+  if (state.state !== "loaded") throw new Error("not loaded");
+  return state.detail;
+};
+
+describe("Work detail follows whether others can see the author's work", () => {
+  const actions = (view: ReturnType<typeof render>) =>
+    view.container.querySelector("[data-content-actions]");
+  const note = (view: ReturnType<typeof render>) =>
+    view.container.querySelector("[data-work-notice]")?.textContent ?? null;
+
+  it("offers no like, favorite, share or history record on a work only its author can see, and says so", async () => {
+    const view = render(
+      await loaded(
+        authorWork({
+          visibility: "self",
+          firstPublishedAt: null,
+          publiclyVisible: false,
+        }),
+      ),
+    );
+    expect(note(view)).toBe("此作品当前仅你可见。");
+    expect(actions(view)).toBeNull();
+    expect(recordLocalHistory).not.toHaveBeenCalled();
+    // Management stays.
+    expect(view.button("编辑")).toBeDefined();
+    expect(view.container.textContent).not.toMatch(/审核|待发布|等待/u);
+  });
+
+  it("uses neutral wording for a public work others cannot see yet, with no pending label", async () => {
+    // e.g. a first submission under pre-moderation, or hidden by an operator.
+    const view = render(
+      await loaded(
+        authorWork({ firstPublishedAt: null, publiclyVisible: false }),
+      ),
+    );
+    expect(note(view)).toBe("此作品当前不对其他人显示。");
+    expect(actions(view)).toBeNull();
+    expect(recordLocalHistory).not.toHaveBeenCalled();
+    expect(view.container.textContent).not.toMatch(/审核|待发布|等待|审批/u);
+  });
+
+  it("offers the public interactions and records history once others can see it", async () => {
+    const view = render(await loaded(authorWork()));
+    expect(note(view)).toBeNull();
+    expect(actions(view)?.getAttribute("data-content-actions")).toBe(
+      "春日临帖",
+    );
+    expect(recordLocalHistory).toHaveBeenCalledWith(AUTHOR, {
+      type: "work",
+      id: WORK,
+    });
+  });
+
+  it("trusts the author's record over the loaded publication time", async () => {
+    // Public and published once, but others cannot see it now.
+    const view = render(await loaded(authorWork({ publiclyVisible: false })));
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBe("此作品当前不对其他人显示。");
+  });
+
+  it("keeps a third party's view unchanged, whatever the author's browser recorded", async () => {
+    await loaded(authorWork({ visibility: "self", publiclyVisible: false }));
+    mocks.author.viewer = { id: OTHER };
+    const view = render(detail({ canEdit: false }));
+    expect(note(view)).toBeNull();
+    expect(actions(view)).not.toBeNull();
+    expect(recordLocalHistory).toHaveBeenCalledWith(OTHER, {
+      type: "work",
+      id: WORK,
+    });
+    // A third party's own read records nothing.
+    mocks.work.mockResolvedValueOnce({
+      ...authorWork({ canEdit: false }),
+      visibility: undefined,
+      trashedAt: undefined,
+      publiclyVisible: undefined,
+    });
+    await loadWorkDetail(WORK, new AbortController().signal);
+    mocks.author.viewer = { id: AUTHOR };
+    const author = render(detail({}));
+    expect(note(author)).toBe("此作品当前仅你可见。");
+  });
+
+  it("hides the interactions with the self-only note as soon as the author makes the work self-only", async () => {
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "self",
+    });
+    const view = render(await loaded(authorWork()));
+    expect(actions(view)).not.toBeNull();
+    act(() => view.button("仅自己可见")!.click());
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
+        .click(),
+    );
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBe("此作品当前仅你可见。");
+    // Self-only is known without reading the work again.
+    expect(mocks.work).toHaveBeenCalledOnce();
+  });
+
+  it("reads the work again after 公开 and offers the interactions only once others can see it", async () => {
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(
+      await loaded(
+        authorWork({
+          visibility: "self",
+          publiclyVisible: false,
+        }),
+      ),
+    );
+    let answer: (work: UserWork) => void = () => undefined;
+    mocks.work.mockImplementationOnce(
+      () =>
+        new Promise<UserWork>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await act(async () => view.button("公开")!.click());
+    expect(view.status()).toBe("可见范围已改为公开");
+    // Not known yet: nothing offered, nothing claimed.
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBeNull();
+    expect(mocks.work).toHaveBeenCalledTimes(2);
+    expect(mocks.work.mock.calls[1]).toEqual([WORK]);
+
+    // Under pre-moderation the work is not seen by others yet.
+    await act(async () => answer(authorWork({ publiclyVisible: false })));
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBe("此作品当前不对其他人显示。");
+    expect(view.container.textContent).not.toMatch(/审核|待发布|等待/u);
+  });
+
+  it("offers the interactions again when the read-back says others can see the work", async () => {
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(
+      await loaded(authorWork({ visibility: "self", publiclyVisible: false })),
+    );
+    expect(recordLocalHistory).not.toHaveBeenCalled();
+    mocks.work.mockResolvedValueOnce(authorWork({ publiclyVisible: true }));
+    await act(async () => view.button("公开")!.click());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(actions(view)).not.toBeNull();
+    expect(note(view)).toBeNull();
+    // Others can see it now: the visit is recorded like any public work's.
+    expect(recordLocalHistory).toHaveBeenCalledWith(AUTHOR, {
+      type: "work",
+      id: WORK,
+    });
+  });
+
+  it("reads the work once more after a failed read-back, then says only that it cannot tell", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(
+      await loaded(authorWork({ visibility: "self", publiclyVisible: false })),
+    );
+    mocks.work
+      .mockRejectedValueOnce(new Error("网络不可用"))
+      .mockRejectedValueOnce(new Error("网络不可用"));
+    await act(async () => view.button("公开")!.click());
+    expect(mocks.work).toHaveBeenCalledTimes(2);
+    // Waiting before the repeated read: nothing offered, nothing claimed.
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1999);
+    });
+    expect(mocks.work).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.work).toHaveBeenCalledTimes(3);
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBe("暂时无法确认其他人能否看到此作品。");
+    expect(recordLocalHistory).not.toHaveBeenCalled();
+    expect(view.container.textContent).not.toMatch(/审核|待发布|等待/u);
+    // No further reads on its own.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(mocks.work).toHaveBeenCalledTimes(3);
+  });
+
+  it("follows the repeated read-back when it answers", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(
+      await loaded(authorWork({ visibility: "self", publiclyVisible: false })),
+    );
+    mocks.work
+      .mockRejectedValueOnce(new Error("网络不可用"))
+      .mockResolvedValueOnce(authorWork({ publiclyVisible: true }));
+    await act(async () => view.button("公开")!.click());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(mocks.work).toHaveBeenCalledTimes(3);
+    expect(actions(view)).not.toBeNull();
+    expect(note(view)).toBeNull();
+  });
+
+  it("does not repeat a read-back once the actions have left", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(
+      await loaded(authorWork({ visibility: "self", publiclyVisible: false })),
+    );
+    mocks.work.mockRejectedValueOnce(new Error("网络不可用"));
+    await act(async () => view.button("公开")!.click());
+    expect(mocks.work).toHaveBeenCalledTimes(2);
+    for (const root of roots.splice(0)) act(() => root.unmount());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(mocks.work).toHaveBeenCalledTimes(2);
+  });
+
+  it("never marks a later load's record as unknown when an older read-back fails", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(
+      await loaded(authorWork({ visibility: "self", publiclyVisible: false })),
+    );
+    mocks.work.mockRejectedValueOnce(new Error("网络不可用"));
+    await act(async () => view.button("公开")!.click());
+    // The work loads again meanwhile (e.g. the Detail refreshed).
+    await act(async () => {
+      await loaded(authorWork({ publiclyVisible: false }));
+    });
+    expect(note(view)).toBe("此作品当前不对其他人显示。");
+    // The repeated read fails too; the newer record stays.
+    mocks.work.mockRejectedValueOnce(new Error("网络不可用"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(mocks.work).toHaveBeenCalledTimes(4);
+    expect(note(view)).toBe("此作品当前不对其他人显示。");
+  });
+
+  it("ignores a read-back that a later change replaced", async () => {
+    mocks.publishing.setVisibility
+      .mockResolvedValueOnce({ workId: WORK, visibility: "public" })
+      .mockResolvedValueOnce({ workId: WORK, visibility: "self" });
+    const view = render(
+      await loaded(authorWork({ visibility: "self", publiclyVisible: false })),
+    );
+    let answer: (work: UserWork) => void = () => undefined;
+    mocks.work.mockImplementationOnce(
+      () =>
+        new Promise<UserWork>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await act(async () => view.button("公开")!.click());
+    act(() => view.button("仅自己可见")!.click());
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
+        .click(),
+    );
+    await act(async () => answer(authorWork({ publiclyVisible: true })));
+    expect(actions(view)).toBeNull();
+    expect(note(view)).toBe("此作品当前仅你可见。");
+  });
+});
+
 describe("loadWorkDetail", () => {
   it("maps Live media, the edited marker and the author's visibility", async () => {
     const item = `item-${"d".repeat(32)}`;
@@ -491,6 +807,12 @@ describe("loadWorkDetail", () => {
       canEdit: true,
       available: true,
       visibility: "self",
+      authorship: {
+        kind: "copy_practice",
+        referenceTitle: "兰亭序",
+        originalAuthor: "  ",
+        sourceNote: "故宫博物院藏\n摹本",
+      },
     } satisfies UserWork);
     const state = await loadWorkDetail(WORK, new AbortController().signal);
     expect(state).toMatchObject({
@@ -501,6 +823,14 @@ describe("loadWorkDetail", () => {
         firstPublishedAt: "2026-09-10T08:00:00.000Z",
         editedAt: "2026-09-12T08:00:00.000Z",
         visibility: "self",
+        authorship: {
+          kind: "copy_practice",
+          label: "临摹或练习",
+          references: [
+            { label: "参考作品", value: "兰亭序" },
+            { label: "来源", value: "故宫博物院藏\n摹本" },
+          ],
+        },
         media: [
           {
             id: item,
@@ -513,5 +843,25 @@ describe("loadWorkDetail", () => {
         ],
       },
     });
+  });
+
+  it("shows an original work's authorship to everyone and leaves it out when the work has none", async () => {
+    mocks.work.mockResolvedValueOnce({
+      ...authorWork({ canEdit: false, authorship: { kind: "original" } }),
+      visibility: undefined,
+      trashedAt: undefined,
+      publiclyVisible: undefined,
+    });
+    const third = await loadWorkDetail(WORK, new AbortController().signal);
+    expect(third).toMatchObject({
+      detail: {
+        authorship: { kind: "original", label: "原创", references: [] },
+      },
+    });
+    mocks.work.mockResolvedValueOnce(authorWork());
+    const without = await loadWorkDetail(WORK, new AbortController().signal);
+    expect(without.state === "loaded" && "authorship" in without.detail).toBe(
+      false,
+    );
   });
 });

@@ -215,21 +215,11 @@
   background: var(--yoyi-color-background-muted);
 }
 
-.menu button[aria-disabled="true"] {
-  color: var(--yoyi-color-text-disabled);
-  cursor: not-allowed;
-}
-
 .menuLabel {
   display: grid;
   gap: 2px;
   padding: var(--yoyi-space-2) 0;
   text-align: left;
-}
-
-.menuLabel small {
-  color: var(--yoyi-color-text-tertiary);
-  font-size: var(--yoyi-type-caption-size);
 }
 
 /* Body -------------------------------------------------------------------- */

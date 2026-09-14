@@ -5,7 +5,10 @@ import { CatalogMediaCarousel } from "./catalog-media-carousel";
 import styles from "./catalog-detail.module.css";
 
 import type { ReactNode, RefObject } from "react";
-import type { CatalogDetailPresentation } from "./catalog-detail-presentation";
+import type {
+  CatalogDetailPresentation,
+  DetailAuthorshipPresentation,
+} from "./catalog-detail-presentation";
 import type { CatalogDetailPresentationState } from "./catalog-detail-presentation";
 import type { CatalogDetailWithdrawalNotice } from "./catalog-detail-withdrawal";
 import type { PresentationPlatform } from "../shell/device-platform";
@@ -132,13 +135,50 @@ const DetailIdentity = ({
   );
 };
 
+/** A work's authorship (C05), one section for every reader when present. */
+const authorshipOf = (detail: CatalogDetailPresentation) =>
+  detail.contentType === "work" ? (detail.authorship ?? null) : null;
+
+const hasReadingFlow = (detail: CatalogDetailPresentation) =>
+  (detail.sections ?? []).length > 0 ||
+  authorshipOf(detail) !== null ||
+  detail.sourceCitations.length > 0;
+
+const DetailAuthorship = ({
+  authorship,
+}: {
+  readonly authorship: DetailAuthorshipPresentation;
+}) => (
+  <section
+    className={styles.readingSection}
+    data-detail-authorship={authorship.kind}
+    data-detail-section="authorship"
+  >
+    <h2>作品性质</h2>
+    <p data-detail-authorship-label="">{authorship.label}</p>
+    {authorship.references.length === 0 ? null : (
+      <div className={styles.factsSection}>
+        <dl className={styles.facts} data-detail-authorship-references="">
+          {authorship.references.map((reference) => (
+            <div key={reference.label}>
+              <dt>{reference.label}</dt>
+              <dd>{reference.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    )}
+  </section>
+);
+
 const DetailReadingFlow = ({
   detail,
 }: {
   readonly detail: CatalogDetailPresentation;
 }) => {
   const sections = detail.sections ?? [];
-  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+  const authorship = authorshipOf(detail);
+  if (!hasReadingFlow(detail)) return null;
 
   return (
     <div className={styles.readingFlow}>
@@ -152,6 +192,9 @@ const DetailReadingFlow = ({
           <p>{section.text}</p>
         </section>
       ))}
+      {authorship === null ? null : (
+        <DetailAuthorship authorship={authorship} />
+      )}
       {detail.sourceCitations.length === 0 ? null : (
         <section
           className={styles.readingSection}
@@ -189,8 +232,7 @@ const DetailReadingDisclosure = ({
 }: {
   readonly detail: CatalogDetailPresentation;
 }) => {
-  const sections = detail.sections ?? [];
-  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+  if (!hasReadingFlow(detail)) return null;
 
   return (
     <details

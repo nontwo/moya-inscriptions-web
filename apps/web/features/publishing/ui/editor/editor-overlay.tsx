@@ -46,6 +46,7 @@ import {
   useEditorStoreState,
 } from "./editor-session-provider";
 import {
+  authorshipOf,
   contentOf,
   failureField,
   fieldStep,
@@ -80,7 +81,6 @@ import type {
   EditorField,
   EditorSessionState,
   EditorSessionStore,
-  PendingVersion,
 } from "./editor-session-state";
 import type { LeaveDialogVariant } from "./leave-dialog";
 import type { EditorMediaScope } from "./preview";
@@ -95,7 +95,6 @@ import type {
   PublishingDraft,
   PublishingDraftConflict,
   PublishingMediaItem,
-  WorkDraftContent,
 } from "@moya/contracts";
 import type { ReactNode, RefObject } from "react";
 
@@ -108,16 +107,9 @@ const editorTitle = (target: EditorTarget, state: EditorSessionState | null) =>
     : "发布作品";
 
 type UploadSessionApi = ReturnType<typeof useUploadSession>;
-type AdoptDraft = (draft: PublishingDraft, content: WorkDraftContent) => void;
 
-/**
- * The runtime's adoption of a chosen draft as the base of the next
- * conditional save, once the publishing provider exposes it.
- */
-const adoptDraftOf = (api: UploadSessionApi): AdoptDraft | null => {
-  const candidate = (api as { readonly adoptDraft?: unknown }).adoptDraft;
-  return typeof candidate === "function" ? (candidate as AdoptDraft) : null;
-};
+/** The one version panel open at a time: history or the conflict chooser. */
+type VersionsPanel = "history" | "conflict" | null;
 
 const settledPhases: ReadonlySet<string> = new Set([
   "ready",
@@ -136,9 +128,11 @@ interface ErrorShape {
   readonly message?: unknown;
 }
 
+const errorShape = (error: unknown): ErrorShape =>
+  typeof error === "object" && error !== null ? (error as ErrorShape) : {};
+
 const draftModeErrorText = (error: unknown): string => {
-  const shape: ErrorShape =
-    typeof error === "object" && error !== null ? (error as ErrorShape) : {};
+  const shape = errorShape(error);
   if (shape.code === "draft_limit") return "草稿数量已达上限，暂时无法保存草稿";
   return typeof shape.message === "string" && typeof shape.status === "number"
     ? shape.message
@@ -530,7 +524,7 @@ const UnavailablePanel = ({
  * Leaving the editor (overlay unmounted): the runtime keeps the session when
  * leaving would lose work (uploads continue; the progress entry returns),
  * otherwise it ends. An edit draft this session opened is removed again only
- * while the account still holds it exactly as opened (read back first).
+ * while the account still holds it at the revision it was opened with.
  */
 const closeOnLeave = async (
   registry: EditorSessionRegistry,
@@ -612,7 +606,11 @@ const OtherSessionPanel = ({
       const result = await latest.current.closeSession({ discard: true });
       if (other !== null) {
         if (result === "ended" && opened !== null)
-          void removeUnchangedEditDraft(other.accountId, opened, deps);
+          void removeUnchangedEditDraft(other.accountId, opened, {
+            ...deps,
+            forgetLocalCopies: (draftId) =>
+              latest.current.forgetDraftLocalCopies(draftId),
+          });
         registry.dispose(other);
       }
     } finally {
@@ -738,8 +736,7 @@ const EditorWorkspace = ({
   const [previewOpen, setPreviewOpen] = useState<{
     readonly opener: HTMLElement;
   } | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [conflictOpen, setConflictOpen] = useState(false);
+  const [versionsPanel, setVersionsPanel] = useState<VersionsPanel>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -795,14 +792,29 @@ const EditorWorkspace = ({
     upload.localStill,
     mediaScope,
   );
+  const authorshipKind = state.authorshipKind;
+  const reference = state.reference;
   const presentation = useMemo(
     () =>
       editorPreviewPresentation(
-        { title: state.title, body: state.body, workId: state.workId },
+        {
+          title: state.title,
+          body: state.body,
+          workId: state.workId,
+          authorship: authorshipOf({ authorshipKind, reference }),
+        },
         media.sources,
         viewer,
       ),
-    [state.title, state.body, state.workId, media.sources, viewer],
+    [
+      state.title,
+      state.body,
+      state.workId,
+      authorshipKind,
+      reference,
+      media.sources,
+      viewer,
+    ],
   );
   // The continuous preview follows typing without holding it up.
   const deferredPresentation = useDeferredValue(presentation);
@@ -845,20 +857,34 @@ const EditorWorkspace = ({
     submitting ||
     submission.state.status === "submitting" ||
     submission.state.status === "reconciling";
-  const adoptDraft = adoptDraftOf(upload);
   const unfinished = unfinishedUploads(uploads);
-  // Without the runtime's adoption the session restarts from the chosen
-  // draft, which is only safe while no upload or submission is in flight.
-  const versionReady =
-    adoptDraft !== null ||
-    (unfinished === 0 && !stagingActive && !submissionBusy);
-  const pendingVersion = state.pendingVersion;
 
-  /** A version the author chose (conflict chooser or history). */
+  /**
+   * A version the author chose (conflict chooser or history). The runtime
+   * adopts it at once as the base of the next conditional save, together
+   * with the content now on screen, so no later edit or item sync can reach
+   * the account on the replaced base; uploads keep running. This browser's
+   * local copies of the chosen draft's media are then reopened. An answer
+   * that arrives once the account, this editor session or the draft it
+   * saves to has changed belongs to none of them: nothing is adopted, and a
+   * later save of that draft still meets the account's newer revision.
+   */
   const chooseVersion = (
     draft: PublishingDraft,
     conflict: PublishingDraftConflict | null,
   ) => {
+    const api = uploadRef.current;
+    const heldDraftId =
+      api.session?.saveMode === "saved"
+        ? (api.autosave?.draftId ?? api.session.draftId ?? null)
+        : null;
+    if (
+      !deps.alive(store) ||
+      deps.currentAccount() !== store.accountId ||
+      api.accountId !== store.accountId ||
+      heldDraftId !== draft.id
+    )
+      return;
     const screen = store.content();
     let keepScreen = false;
     let notice: string | null = null;
@@ -873,96 +899,33 @@ const EditorWorkspace = ({
     }
     if (keepScreen) store.mergeServerItems(draft.mediaItems);
     else store.adoptContent(draft.content, draft.mediaItems);
+    // The adopted content carries every edit made so far.
     markEditVersionSent(store, store.get().editVersion);
-    store.setPendingVersion({ draft, conflictId: conflict?.id ?? null });
+    api.adoptDraft(draft, store.content());
+    void api.restoreDraftMedia(draft).catch(() => undefined);
     if (notice !== null) store.setNotice(notice);
   };
 
-  const applyVersion = useCallback(
-    async ({ draft }: PendingVersion) => {
-      const api = uploadRef.current;
-      const adopt = adoptDraftOf(api);
-      if (adopt !== null) {
-        const content = store.content();
-        api.edit(content);
-        markEditVersionSent(store, store.get().editVersion);
-        adopt(draft, content);
-        await api.restoreDraftMedia(draft);
-        return;
-      }
-      const current = store.get();
-      store.mergeServerItems(
-        (api.uploads?.items ?? []).flatMap((item) =>
-          item.serverItem === null ? [] : [item.serverItem],
-        ),
-      );
-      store.setRestarting(true);
-      try {
-        await api.closeSession({ discard: true });
-        const next = uploadRef.current;
-        next.startSession({
-          target: current.target,
-          saveMode: "saved",
-          draft,
-          workId: current.workId,
-          baseRevisionId: draft.baseRevisionId,
-        });
-        const content = store.content();
-        if (!sameAuthorContent(content, draft.content)) next.edit(content);
-        markEditVersionSent(store, store.get().editVersion);
-        await next.restoreDraftMedia(draft);
-      } finally {
-        store.setRestarting(false);
-      }
-    },
-    [store],
-  );
-
-  const applying = useRef<PendingVersion | null>(null);
-  useEffect(() => {
-    if (
-      pendingVersion === null ||
-      applying.current === pendingVersion ||
-      !versionReady
-    )
-      return;
-    applying.current = pendingVersion;
-    void applyVersion(pendingVersion)
-      .catch(() => undefined)
-      .finally(() => {
-        applying.current = null;
-        if (store.get().pendingVersion === pendingVersion)
-          store.setPendingVersion(null);
-      });
-  }, [applyVersion, pendingVersion, store, versionReady]);
-
-  const conflict =
-    autosave?.status === "conflict" && pendingVersion === null
-      ? autosave.conflict
-      : null;
+  const conflict = autosave?.status === "conflict" ? autosave.conflict : null;
   const conflictId = conflict?.id ?? null;
   const shownConflict = useRef<string | null>(null);
   useEffect(() => {
     if (
       conflictId === null ||
-      !versionReady ||
       state.restarting ||
       shownConflict.current === conflictId
     )
       return;
     shownConflict.current = conflictId;
-    setHistoryOpen(false);
-    setConflictOpen(true);
-  }, [conflictId, state.restarting, versionReady]);
+    // A new conflict takes over from history: never two panels at once.
+    setVersionsPanel("conflict");
+  }, [conflictId, state.restarting]);
 
-  const saveNote =
-    pendingVersion !== null
-      ? versionReady
-        ? "正在应用所选版本…"
-        : "上传完成后保存所选版本"
-      : conflict !== null && !versionReady
-        ? "有两个版本，上传完成后可选择"
-        : null;
+  // The chooser is gone with its conflict (chosen here or settled elsewhere).
+  const shownPanel: VersionsPanel =
+    versionsPanel === "conflict" && conflict === null ? null : versionsPanel;
+  const closePanel = (panel: Exclude<VersionsPanel, null>) =>
+    setVersionsPanel((current) => (current === panel ? null : current));
 
   // -- leave guard ----------------------------------------------------------
 
@@ -1083,7 +1046,16 @@ const EditorWorkspace = ({
         store.setTarget(next);
         controls.replaceTarget(next);
       }
-    } catch {
+    } catch (error) {
+      if (errorShape(error).code === "draft_changed") {
+        // Confirmed against a revision the account no longer holds: nothing
+        // was deleted, and a retry would not delete what the author saw.
+        setDraftDeletion(null);
+        store.setNotice(
+          "这份草稿刚在别处保存了新的更改，没有删除，草稿仍在保存",
+        );
+        return;
+      }
       setDraftDeletion({
         busy: false,
         error: "暂时无法删除草稿，草稿仍在保存，请重试",
@@ -1292,7 +1264,6 @@ const EditorWorkspace = ({
   const canSaveNow =
     saveMode === "saved" &&
     autosave !== null &&
-    pendingVersion === null &&
     autosave.status !== "saving" &&
     autosave.status !== "reconciling" &&
     autosave.status !== "conflict" &&
@@ -1334,12 +1305,11 @@ const EditorWorkspace = ({
           </button>
           {menuOpen ? (
             <EditorMenu
-              historyAvailable={versionReady && pendingVersion === null}
               id={menuId}
               onClose={() => setMenuOpen(false)}
               onHistory={() => {
                 setMenuOpen(false);
-                setHistoryOpen(true);
+                setVersionsPanel("history");
               }}
             />
           ) : null}
@@ -1464,8 +1434,7 @@ const EditorWorkspace = ({
         status={
           <SaveStatus
             autosave={autosave}
-            note={saveNote}
-            onChooseVersion={() => setConflictOpen(true)}
+            onChooseVersion={() => setVersionsPanel("conflict")}
             onRetry={() => void upload.retrySave()}
             saveMode={saveMode}
           />
@@ -1572,20 +1541,18 @@ const EditorWorkspace = ({
 
       {leave === null ? null : (
         <LeaveDialog
-          canChooseVersion={conflict !== null && versionReady}
+          canChooseVersion={conflict !== null}
           error={leave.failed ? leaveErrorText(autosave) : null}
           hasDraft={leaveHasDraft}
           isEdit={state.kind === "edit"}
           onChooseVersion={() => {
             setLeave(null);
-            setConflictOpen(true);
+            setVersionsPanel("conflict");
           }}
           onContinue={() => setLeave(null)}
           onDiscard={discardAndLeave}
           onSaveAndLeave={() => void saveAndLeave()}
-          saveBlocked={
-            autosave?.status === "conflict" || pendingVersion !== null
-          }
+          saveBlocked={autosave?.status === "conflict"}
           saving={leave.saving}
           unfinishedUploads={unfinished}
           variant={leave.variant}
@@ -1602,25 +1569,28 @@ const EditorWorkspace = ({
         />
       )}
 
-      {historyOpen && draftId !== null && !conflictOpen ? (
+      {shownPanel === "history" && draftId !== null ? (
         <HistoryPanel
           draftId={draftId}
-          onClose={() => setHistoryOpen(false)}
+          onClose={() => closePanel("history")}
+          {...(conflict === null
+            ? {}
+            : { onChooseVersion: () => setVersionsPanel("conflict") })}
           onRestored={(draft) => {
-            setHistoryOpen(false);
+            closePanel("history");
             chooseVersion(draft, null);
           }}
         />
       ) : null}
 
-      {conflictOpen && draftId !== null && conflict !== null ? (
+      {shownPanel === "conflict" && draftId !== null && conflict !== null ? (
         <ConflictChooser
           conflict={conflict}
           draftId={draftId}
           {...conflictMediaItems(state, uploads, conflict)}
-          onClose={() => setConflictOpen(false)}
+          onClose={() => closePanel("conflict")}
           onResolved={(draft) => {
-            setConflictOpen(false);
+            closePanel("conflict");
             chooseVersion(draft, conflict);
           }}
         />
@@ -1631,20 +1601,16 @@ const EditorWorkspace = ({
 
 const EditorMenu = ({
   id,
-  historyAvailable,
   onClose,
   onHistory,
 }: {
   readonly id: string;
-  /** False while a chosen version could not be applied yet (uploads running). */
-  readonly historyAvailable: boolean;
   readonly onClose: () => void;
   readonly onHistory: () => void;
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef(onClose);
   latest.current = onClose;
-  const hintId = useId();
   useEffect(() => {
     const menu = ref.current;
     const opener =
@@ -1677,19 +1643,12 @@ const EditorMenu = ({
   return (
     <div className={styles.menu} id={id} ref={ref} role="menu">
       <button
-        aria-describedby={historyAvailable ? undefined : hintId}
-        aria-disabled={historyAvailable ? undefined : true}
         data-editor-menu-history=""
-        onClick={historyAvailable ? onHistory : undefined}
+        onClick={onHistory}
         role="menuitem"
         type="button"
       >
-        <span className={styles.menuLabel}>
-          历史版本
-          {historyAvailable ? null : (
-            <small id={hintId}>图片上传完成后可用</small>
-          )}
-        </span>
+        <span className={styles.menuLabel}>历史版本</span>
       </button>
     </div>
   );

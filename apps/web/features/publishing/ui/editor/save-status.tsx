@@ -50,40 +50,33 @@ const statusText: Readonly<Record<SaveStatusKind, string>> = {
 /**
  * The return bar's save state (D02, V03). The visible text follows every
  * autosave; only states that ask something of the author (a failed save,
- * two versions, a choice being applied) are announced, so typing does not
- * make a screen reader repeat 保存中… and 已保存.
+ * two versions) are announced, so typing does not make a screen reader
+ * repeat 保存中… and 已保存.
  */
 export const SaveStatus = ({
   saveMode,
   autosave,
-  note = null,
   onRetry,
   onChooseVersion,
 }: {
   readonly saveMode: SaveMode | null;
   readonly autosave: AutosaveState | null;
-  /** Replaces the state and its action while a version choice is applied. */
-  readonly note?: string | null;
   readonly onRetry: () => void;
   readonly onChooseVersion: () => void;
 }) => {
   const kind = saveStatusOf(saveMode, autosave);
   const text =
-    note ??
-    (kind === "error" && autosave?.error
+    kind === "error" && autosave?.error
       ? autosave.error.message
-      : statusText[kind]);
-  const announced = note !== null || kind === "error" || kind === "conflict";
+      : statusText[kind];
+  const announced = kind === "error" || kind === "conflict";
   return (
-    <span
-      className={styles.saveStatus}
-      data-save-status={note === null ? kind : "version"}
-    >
+    <span className={styles.saveStatus} data-save-status={kind}>
       <span aria-hidden={announced ? undefined : true}>{text}</span>
       <span aria-live="polite" className={styles.visuallyHidden} role="status">
         {announced ? text : ""}
       </span>
-      {note !== null ? null : kind === "error" ? (
+      {kind === "error" ? (
         <button className={styles.inlineAction} onClick={onRetry} type="button">
           重试
         </button>

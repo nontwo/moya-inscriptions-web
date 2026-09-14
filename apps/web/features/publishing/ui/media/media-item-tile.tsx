@@ -158,9 +158,12 @@ export const MediaItemTile = ({
               {cover === "chosen" ? "封面" : "默认封面"}
             </span>
           )}
-          {view?.notCameraOriginal === true && (
+          {/* Pasted media keeps its label after a reload or restore (the content carries it). */}
+          {(item.origin === "clipboard" ||
+            view?.notCameraOriginal === true) && (
             <span
               className={styles.badge}
+              data-media-clipboard=""
               title="剪贴板中的图片不是相机原始文件"
             >
               来自剪贴板

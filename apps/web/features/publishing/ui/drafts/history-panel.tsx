@@ -51,17 +51,25 @@ interface HistoryList {
  * edit. Restoring never publishes. The Backend keeps only what the account
  * has saved, so the open editor's input is saved first and a restore waits
  * while any of it is not on the account: newer input is never cleared (V05).
+ * While the draft holds two versions, restoring waits for that choice; with
+ * `onChooseVersion` the panel offers the way to the chooser.
  */
 export const HistoryPanel = ({
   draftId,
   onRestored,
   onClose,
+  onChooseVersion,
   prepareRestore,
 }: {
   readonly draftId: string;
   /** The draft as it is after the restore; the editor continues from it. */
   readonly onRestored: (draft: PublishingDraft) => void;
   readonly onClose: () => void;
+  /**
+   * Leaves history for the conflict chooser (the editor closes this panel
+   * and opens the chooser in its place).
+   */
+  readonly onChooseVersion?: () => void;
   /**
    * Puts the editor's input on the account before a restore and resolves
    * false when some of it is still not saved. Without it, the panel saves
@@ -84,8 +92,20 @@ export const HistoryPanel = ({
   const state = useRef<HistoryList | null>(null);
   const failedPage = useRef(1);
   const panelRef = useRef<HTMLDivElement>(null);
-  const latest = useRef({ onRestored, onClose, prepareRestore, upload });
-  latest.current = { onRestored, onClose, prepareRestore, upload };
+  const latest = useRef({
+    onRestored,
+    onClose,
+    onChooseVersion,
+    prepareRestore,
+    upload,
+  });
+  latest.current = {
+    onRestored,
+    onClose,
+    onChooseVersion,
+    prepareRestore,
+    upload,
+  };
 
   const editsThisDraft =
     upload.session !== null &&
@@ -234,6 +254,24 @@ export const HistoryPanel = ({
         <p className={styles.lead}>
           恢复后成为当前编辑的内容，不会直接发布；账号中已保存的内容会保留在历史版本中。
         </p>
+        {inConflict && onChooseVersion !== undefined ? (
+          <div className={styles.actions} data-history-conflict="">
+            <p className={`${styles.notice} ${styles.warning}`}>
+              {RESTORE_CONFLICT_TEXT}
+            </p>
+            <button
+              aria-disabled={restoring !== null || undefined}
+              className={styles.button}
+              data-history-choose-version=""
+              onClick={() => {
+                if (restoring === null) latest.current.onChooseVersion?.();
+              }}
+              type="button"
+            >
+              选择版本
+            </button>
+          </div>
+        ) : null}
         <p aria-live="polite" className={styles.status} role="status">
           {loading && list === null ? "正在读取历史版本…" : announcement}
         </p>

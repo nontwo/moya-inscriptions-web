@@ -146,6 +146,60 @@ describe("editor session store", () => {
     expect(mergeManagedItems(merged, [])).toBe(merged);
   });
 
+  it("keeps the clipboard provenance of a key from either side", () => {
+    const pasted = { ...item("a", null), origin: "clipboard" as const };
+    // The content says so (a restored draft); the manager's entry does not.
+    const fromContent = mergeManagedItems(
+      [pasted],
+      [
+        {
+          key: "a",
+          itemId: itemId(1),
+          kind: "static",
+          qualityMode: "standard",
+        },
+      ],
+    );
+    expect(fromContent).toEqual([
+      { ...item("a", itemId(1)), origin: "clipboard" },
+    ]);
+    // The manager says so (pasted here); the content item does not yet.
+    const fromManager = mergeManagedItems(
+      [item("a", itemId(1))],
+      [
+        {
+          key: "a",
+          itemId: itemId(1),
+          kind: "static",
+          qualityMode: "standard",
+          origin: "clipboard",
+        },
+        {
+          key: "b",
+          itemId: null,
+          kind: "static",
+          qualityMode: "standard",
+          pendingLabel: "photo",
+          origin: "clipboard",
+        },
+      ],
+    );
+    expect(fromManager.map((entry) => [entry.key, entry.origin])).toEqual([
+      ["a", "clipboard"],
+      ["b", "clipboard"],
+    ]);
+    expect(
+      mergeManagedItems(fromManager, [
+        {
+          key: "a",
+          itemId: itemId(1),
+          kind: "static",
+          qualityMode: "standard",
+        },
+      ]),
+    ).toBe(fromManager);
+  });
+
   it("reports exact readiness counts of retained items only", () => {
     const store = createEditorSessionStore(ACCOUNT, { type: "new" });
     store.setMedia({

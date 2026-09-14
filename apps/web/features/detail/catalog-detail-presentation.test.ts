@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { toCatalogDetailPresentation } from "./catalog-detail-presentation";
+import {
+  toCatalogDetailPresentation,
+  toWorkAuthorshipPresentation,
+} from "./catalog-detail-presentation";
 
 import type { CatalogDetail, CatalogId, MediaId } from "@moya/contracts";
 
@@ -145,5 +148,42 @@ describe("Catalog Detail presentation", () => {
     expect(presentation.sourceCitations).toEqual([
       { label: "缺失正文仍保留的来源", scopeLabel: "历史背景" },
     ]);
+  });
+});
+
+describe("Work authorship presentation", () => {
+  it("names the kind and only the references the author named, in order", () => {
+    expect(toWorkAuthorshipPresentation({ kind: "original" })).toEqual({
+      kind: "original",
+      label: "原创",
+      references: [],
+    });
+    expect(
+      toWorkAuthorshipPresentation({
+        kind: "copy_practice",
+        sourceNote: "  碑帖拓本\n第二行 ",
+        referenceTitle: "兰亭序",
+        originalAuthor: "王羲之",
+      }),
+    ).toEqual({
+      kind: "copy_practice",
+      label: "临摹或练习",
+      references: [
+        { label: "参考作品", value: "兰亭序" },
+        { label: "原作者", value: "王羲之" },
+        { label: "来源", value: "碑帖拓本\n第二行" },
+      ],
+    });
+    expect(
+      toWorkAuthorshipPresentation({
+        kind: "material_sharing",
+        referenceTitle: " ",
+        sourceNote: "自摄",
+      }),
+    ).toEqual({
+      kind: "material_sharing",
+      label: "素材分享",
+      references: [{ label: "来源", value: "自摄" }],
+    });
   });
 });

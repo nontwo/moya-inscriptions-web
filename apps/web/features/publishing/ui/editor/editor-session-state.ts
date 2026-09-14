@@ -26,7 +26,6 @@ import type {
   WorkDraftContent,
   WorkDraftItem,
   WorkPublishingFailureCode,
-  PublishingDraft,
   WorkVisibility,
 } from "@moya/contracts";
 
@@ -101,26 +100,15 @@ export interface EditorSessionState {
    * again on leaving only while the account still holds it unchanged.
    */
   readonly openedEditDraft: OpenedEditDraft | null;
-  /** The runtime session is being replaced (drafts turned on, a version applied). */
+  /** The runtime session is being replaced (drafts turned on for an edit). */
   readonly restarting: boolean;
-  /**
-   * A version the author chose (conflict or history) whose save base the
-   * runtime has not taken over yet; the content on screen already shows it.
-   */
-  readonly pendingVersion: PendingVersion | null;
 }
 
 export interface OpenedEditDraft {
   readonly id: string;
   readonly workId: string;
+  /** The revision the deletion is conditional on. */
   readonly revision: number;
-  readonly updatedAt: string;
-}
-
-export interface PendingVersion {
-  readonly draft: PublishingDraft;
-  /** The conflict this choice settled, if any (never offered again). */
-  readonly conflictId: string | null;
 }
 
 const emptyReference: ReferenceFields = {
@@ -159,13 +147,15 @@ export const createEditorState = (
   notice: null,
   openedEditDraft: null,
   restarting: false,
-  pendingVersion: null,
 });
 
 // ---------------------------------------------------------------------------
 // Content
 
-const authorshipOf = (state: EditorSessionState): WorkAuthorship => {
+/** The authorship the state describes (references only when typed). */
+export const authorshipOf = (
+  state: Pick<EditorSessionState, "authorshipKind" | "reference">,
+): WorkAuthorship => {
   if (state.authorshipKind === "original") return { kind: "original" };
   const fields: { -readonly [K in ReferenceField]?: string } = {};
   for (const field of [
@@ -191,13 +181,15 @@ export const contentOf = (state: EditorSessionState): WorkDraftContent => ({
 
 type ManagedItem = Pick<
   WorkDraftItem,
-  "key" | "itemId" | "kind" | "qualityMode" | "pendingLabel"
+  "key" | "itemId" | "kind" | "qualityMode" | "pendingLabel" | "origin"
 >;
 
 /**
  * The same rule the runtime applies before saving: identities and quality of
  * items the manager knows follow the manager; items it adds are appended as
- * pending entries in the order they were confirmed.
+ * pending entries in the order they were confirmed. The clipboard provenance
+ * of a key is kept once either side names it (a restored draft carries it in
+ * its content).
  */
 export const mergeManagedItems = (
   items: readonly WorkDraftItem[],
@@ -207,10 +199,12 @@ export const mergeManagedItems = (
   let changed = false;
   const merged = items.map((item): WorkDraftItem => {
     const current = byKey.get(item.key);
+    if (!current) return item;
+    const origin = item.origin ?? current.origin;
     if (
-      !current ||
-      (current.itemId === item.itemId &&
-        current.qualityMode === item.qualityMode)
+      current.itemId === item.itemId &&
+      current.qualityMode === item.qualityMode &&
+      origin === item.origin
     )
       return item;
     changed = true;
@@ -219,6 +213,7 @@ export const mergeManagedItems = (
       kind: item.kind,
       qualityMode: current.qualityMode,
       edit: item.edit,
+      ...(origin === undefined ? {} : { origin }),
     };
     return current.itemId === null
       ? {
@@ -520,7 +515,6 @@ export interface EditorSessionStore {
   /** The opened edit draft is no longer this session's to remove. */
   keepOpenedEditDraft(): void;
   setRestarting(restarting: boolean): void;
-  setPendingVersion(pending: PendingVersion | null): void;
   setUnavailable(message: string): void;
   setLoading(): void;
   setTarget(target: EditorTarget): void;
@@ -749,12 +743,6 @@ export const createEditorSessionStore = (
     setRestarting: (restarting) =>
       update((state) =>
         state.restarting === restarting ? state : { ...state, restarting },
-      ),
-    setPendingVersion: (pendingVersion) =>
-      update((state) =>
-        state.pendingVersion === pendingVersion
-          ? state
-          : { ...state, pendingVersion },
       ),
     setUnavailable: (message) =>
       update((state) => ({

@@ -11,6 +11,7 @@ import { useProductShell } from "../product-shell/product-shell";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors, contentKey } from "./author-context";
 import { useDiscussionAvatars } from "./discussion-avatars";
+import { useOwnWorkAudience } from "./own-work-audience";
 import { requestIdentity } from "../shell/request-identity";
 const row = (r: DiscussionReply): CommentReply => ({
   id: r.id,
@@ -58,6 +59,25 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
     listRef = useRef<CommentItem[]>([]);
   listRef.current = [...hot, ...items];
   const withAvatar = useDiscussionAvatars(listRef.current);
+  // On the author's own work that others cannot see now (or not known again
+  // after a visibility change), no comment can be sent: the composer gives
+  // way to a truthful note, without any pending or review wording. Readers
+  // of a public work, and every other target, keep the composer.
+  const audience = useOwnWorkAudience(
+    target.type === "work" ? (author.viewer?.id ?? null) : null,
+    target.type === "work" ? target.id : null,
+  );
+  const composerClosed = audience !== null && audience.publiclyVisible !== true;
+  const closedNote =
+    audience === null || audience.publiclyVisible === true
+      ? null
+      : audience.publiclyVisible === false
+        ? audience.visibility === "self"
+          ? "此作品当前仅你可见，暂时无法发表评论。"
+          : "此作品当前不对其他人显示，暂时无法发表评论。"
+        : audience.unconfirmed === true
+          ? "暂时无法确认其他人能否看到此作品，暂时无法发表评论。"
+          : null;
   const present = (comment: CommentItem): CommentItem => ({
     ...comment,
     user: withAvatar(comment.user),
@@ -198,7 +218,8 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
     void locate();
   }, [page, author.checking]);
   const send = async (text: string, root?: string, reply?: string) => {
-    if (sendLock.current || !author.viewer || author.checking) return false;
+    if (sendLock.current || !author.viewer || author.checking || composerClosed)
+      return false;
     sendLock.current = true;
     const run = epoch.current;
     setSubmitting(true);
@@ -269,6 +290,12 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
           </button>
         </div>
       )}
+      {closedNote === null ? null : (
+        // Outside the section's notice line, so a comment error never hides it.
+        <p className="phase4-muted" data-discussion-closed="" role="status">
+          {closedNote}
+        </p>
+      )}
       <CommentSection
         contentKey={contentKey(target)}
         currentUser={
@@ -312,7 +339,8 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
         {...(highlight ? { highlightCommentId: highlight } : {})}
         presentation="live"
         viewer={
-          author.checking
+          // A closed composer renders nothing in its place (the note says why).
+          author.checking || composerClosed
             ? { state: "checking" }
             : author.sessionError
               ? { state: "unavailable" }

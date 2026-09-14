@@ -412,6 +412,93 @@ describe("MediaSection staging", () => {
     );
   });
 
+  it("keeps the clipboard label of restored items from the draft content", async () => {
+    const readyId = `media-item-${"6".repeat(32)}`;
+    const stamp = "2026-09-13T12:00:00.000Z";
+    const clipboardItem = (
+      key: string,
+      itemId: string | null,
+    ): PublishingDraft["content"]["items"][number] =>
+      itemId === null
+        ? {
+            key,
+            itemId: null,
+            kind: "static",
+            qualityMode: "standard",
+            edit: { rotation: 0, crop: null },
+            pendingLabel: "photo",
+            origin: "clipboard",
+          }
+        : {
+            key,
+            itemId,
+            kind: "static",
+            qualityMode: "standard",
+            edit: { rotation: 0, crop: null },
+            origin: "clipboard",
+          };
+    const draft: PublishingDraft = {
+      id: DRAFT_ID,
+      kind: "new",
+      workId: null,
+      baseRevisionId: null,
+      revision: 2,
+      content: {
+        title: "",
+        body: "",
+        authorship: { kind: "original" },
+        visibility: "public",
+        items: [
+          clipboardItem("pasted-ready", readyId),
+          clipboardItem("pasted-missing", null),
+          {
+            key: "picked",
+            itemId: null,
+            kind: "static",
+            qualityMode: "standard",
+            edit: { rotation: 0, crop: null },
+            pendingLabel: "photo",
+          },
+        ],
+        coverKey: null,
+        coverCrop: null,
+      },
+      mediaItems: [readyItem(readyId)],
+      conflict: null,
+      deviceClass: "desktop",
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+    await render("desktop", { draft });
+    const labelled = () =>
+      [...container.querySelectorAll<HTMLElement>("[data-media-key]")]
+        .filter((tile) => tile.querySelector("[data-media-clipboard]") !== null)
+        .map((tile) => tile.dataset.mediaKey);
+    // The account's items alone (no manager entry on this browser).
+    await act(async () => {
+      probe.store!.adoptContent(draft.content, draft.mediaItems);
+      await settle();
+    });
+    await until(() => tiles().length === 3);
+    expect(labelled()).toEqual(["pasted-ready", "pasted-missing"]);
+    // Reopened on this browser: the manager's entries keep it too.
+    await act(async () => {
+      await probe.upload!.restoreDraftMedia(draft);
+      await settle();
+    });
+    await until(() => tiles()[1]?.status === "missing_local");
+    expect(labelled()).toEqual(["pasted-ready", "pasted-missing"]);
+    expect(
+      container.querySelector(
+        '[data-media-key="pasted-missing"] [data-media-clipboard]',
+      )?.textContent,
+    ).toBe("来自剪贴板");
+    // The label never becomes author content that disappears on sync.
+    expect(probe.store!.get().items.map((item) => item.origin ?? null)).toEqual(
+      ["clipboard", "clipboard", null],
+    );
+  });
+
   it("offers 跳过，只发布文字 only while the phone step has no media", async () => {
     await render();
     await click(buttonByText("跳过，只发布文字"));
