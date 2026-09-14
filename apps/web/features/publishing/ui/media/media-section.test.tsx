@@ -78,6 +78,8 @@ import type {
   PublishingDraft,
   PublishingMediaItem,
   PublishingReadiness,
+  WorkDraftContent,
+  PublishingHolder,
 } from "@moya/contracts";
 import type { Root } from "react-dom/client";
 
@@ -116,7 +118,12 @@ const fixture = ({ maxItems = 50, preprocess }: FixtureOptions = {}) => {
     saveDraftNow: vi.fn(),
     createDraft: vi.fn(),
     draft: vi.fn(),
-    readiness: vi.fn(async (): Promise<PublishingReadiness> => ({
+    readiness: vi.fn<
+      (
+        holder: PublishingHolder,
+        content: WorkDraftContent,
+      ) => Promise<PublishingReadiness>
+    >(async () => ({
       ready: true,
       pendingItemKeys: [],
       failedItemKeys: [],

@@ -33,6 +33,7 @@ import type {
   PublishingDraftConflict,
   PublishingMediaItem,
   PublishingReadiness,
+  PublishingHolder,
   RegisterMediaItemCommand,
   WorkDraftContent,
   WorkDraftItem,
@@ -111,7 +112,12 @@ const setup = () => {
       conflictCopies: 0,
       mediaItems: 1,
     })),
-    readiness: vi.fn(async (): Promise<PublishingReadiness> => ({
+    readiness: vi.fn<
+      (
+        holder: PublishingHolder,
+        content: WorkDraftContent,
+      ) => Promise<PublishingReadiness>
+    >(async () => ({
       ready: true,
       pendingItemKeys: [],
       failedItemKeys: [],
