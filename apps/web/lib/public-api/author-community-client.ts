@@ -4,9 +4,6 @@ import {
   authorPeoplePageSchema,
   workSchema,
   workPageSchema,
-  workDraftPageSchema,
-  workDraftResultSchema,
-  workApplyResultSchema,
   avatarUpdateResultSchema,
   guestFavoriteMergeResultSchema,
   discussionPageSchema,
@@ -16,7 +13,6 @@ import {
   discussionLocationSchema,
   savedResultSchema,
   deletedResultSchema,
-  discardedResultSchema,
   publicUserProfileSchema,
   contentCardSchema,
   discoveryPageSchema,
@@ -117,6 +113,8 @@ export const authorClient = {
     expectedAccount = id;
   },
   account: () => expectedAccount,
+  /** Increases on every account change, so a late answer from an earlier account (even A→B→A) is detectable. */
+  accountEpoch: () => accountEpoch,
   me: (signal?: AbortSignal) =>
     request("me", publicUserProfileSchema, { ...(signal ? { signal } : {}) }),
   profile: (id: string, signal?: AbortSignal) =>
@@ -140,11 +138,7 @@ export const authorClient = {
   command: (path: string, body: unknown, method = "POST") =>
     request<unknown>(
       path,
-      path.includes("/drafts/") && method === "DELETE"
-        ? discardedResultSchema
-        : method === "DELETE"
-          ? deletedResultSchema
-          : savedResultSchema,
+      method === "DELETE" ? deletedResultSchema : savedResultSchema,
       { method, body },
     ),
   upload: (blob: Blob, requestId: string) =>
@@ -155,21 +149,6 @@ export const authorClient = {
     }),
   avatar: (body: unknown) =>
     request("me/avatar", avatarUpdateResultSchema, { method: "POST", body }),
-  drafts: (work: string, page = 1) =>
-    request(
-      `works/${work}/drafts?page=${page}&pageSize=20`,
-      workDraftPageSchema,
-    ),
-  saveDraft: (work: string, body: unknown) =>
-    request(`works/${work}/drafts`, workDraftResultSchema, {
-      method: "POST",
-      body,
-    }),
-  applyDraft: (work: string, body: unknown) =>
-    request(`works/${work}/drafts/apply`, workApplyResultSchema, {
-      method: "POST",
-      body,
-    }),
   merge: (body: unknown) =>
     request("favorites/merge", guestFavoriteMergeResultSchema, {
       method: "POST",

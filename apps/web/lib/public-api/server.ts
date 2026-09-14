@@ -412,3 +412,408 @@ export const relayServerLocalCatalogMedia = async (
     return fail(503);
   }
 };
+
+// Work publishing (Development): dedicated streaming relays. JSON commands keep
+// using relayServerAuthorCommunity; these two carry raw component bytes and
+// private derivative bytes, which are never buffered in Web memory.
+
+const publishingPrivateHeaders = {
+  "cache-control": "private, no-store",
+  vary: "Cookie",
+  "x-content-type-options": "nosniff",
+} as const;
+/**
+ * Sanity ceiling only, equal to the largest per-item and per-component size the
+ * operator settings contract allows (8 GiB); the Backend enforces each
+ * component's registered size exactly and the relay never buffers the body.
+ */
+const publishingUploadCeilingBytes = 8 * 1024 * 1024 * 1024;
+/**
+ * Marks an upload answer the relay produced because no usable Backend answer
+ * arrived. The transfer's outcome is then unknown (the Backend may have
+ * refused, failed or committed), so the client reconciles by reading the item
+ * again. A genuine Backend refusal never carries this header.
+ */
+const publishingRelayHeader = "x-publishing-relay";
+/** Bounded wait for the Backend's answer after the last component byte, or once an early answer begins. */
+const publishingUploadResponseWaitMs = 60_000;
+/** Bounded wait for derivative response headers; the body then streams without a timeout. */
+const publishingMediaResponseWaitMs = 15_000;
+const publishingUploadResponseMaxBytes = 64 * 1024;
+const publishingUploadStatuses: ReadonlySet<number> = new Set([
+  200, 401, 404, 409, 413, 422, 503,
+]);
+const publishingMediaTypes: ReadonlySet<string> = new Set([
+  "image/webp",
+  "image/jpeg",
+  "image/png",
+  "video/mp4",
+]);
+const publishingMediaVariants: ReadonlySet<string> = new Set([
+  "thumb",
+  "display",
+  "full",
+  "cover",
+  "motion",
+]);
+const publishingAccountPattern = /^user-[0-9a-f]{32}$/u;
+const publishingAttemptPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const publishingComponentIdPattern = /^media-component-[0-9a-f]{32}$/u;
+const publishingItemIdPattern = /^media-item-[0-9a-f]{32}$/u;
+const publishingEditKeyPattern = /^(?:base|[0-9a-f]{32})$/u;
+/** One range only: `bytes=start-`, `bytes=start-end` or a suffix `bytes=-length`. */
+const publishingRangePattern = /^bytes=(?:(\d{1,16})-(\d{0,16})|-\d{1,16})$/u;
+
+/**
+ * A browser write must come from this origin. Unlike the generic relay, any
+ * Fetch Metadata value other than same-origin is refused. A request without
+ * Origin is not a browser cross-site write and still needs the session cookie.
+ */
+const isSameOriginPublishingWrite = (request: Request): boolean => {
+  const site = request.headers.get("sec-fetch-site");
+  if (site !== null && site !== "same-origin") return false;
+  const origin = request.headers.get("origin");
+  if (origin === null) return true;
+  const incoming = new URL(request.url);
+  // Host is the browser's requested authority; forwarded-host is never trusted.
+  const authority = request.headers.get("host") ?? incoming.host;
+  try {
+    const source = new URL(origin);
+    return (
+      source.origin === origin &&
+      source.host === authority &&
+      source.protocol === incoming.protocol
+    );
+  } catch {
+    return false;
+  }
+};
+
+const cancelQuietly = async (
+  body: ReadableStream<Uint8Array> | null,
+): Promise<void> => {
+  try {
+    await body?.cancel();
+  } catch {
+    /* The upstream body is already closed. */
+  }
+};
+
+/** Reads a small upstream body with a running cap; null when it is larger. */
+const readBoundedUpstreamBody = async (
+  body: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer> | null> => {
+  if (body === null) return new Uint8Array();
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const part = await reader.read();
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(part.value);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+};
+
+const mediaTypeOf = (response: Response): string | undefined =>
+  response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+
+/**
+ * Development streaming relay for one media component upload (POST, raw
+ * bytes). Web never buffers the body: a chunk is pulled from the browser only
+ * when the Backend connection accepts more, so memory stays bounded to one
+ * chunk. A browser disconnect aborts the Backend request. No timeout applies
+ * while bytes flow; the answer after the last byte has a bounded wait. The
+ * session cookie becomes a Bearer credential and redirects are never followed.
+ *
+ * A Backend JSON answer (200/401/404/409/413/422/503) passes through. When no
+ * usable answer arrives the relay answers with `x-publishing-relay`: 502
+ * `interrupted` (the Backend connection failed or closed before a complete
+ * answer, e.g. an early refusal that closed the socket while bytes still
+ * flowed), 504 `timeout` (the bounded answer wait elapsed) or 502
+ * `invalid-answer` (an answer outside this contract). Those outcomes are
+ * unknown to the browser, which must read the item again.
+ */
+export const relayServerPublishingUpload = async (
+  request: Request,
+  componentId: string,
+): Promise<Response> => {
+  const fail = (status: number) =>
+    new Response(null, { status, headers: publishingPrivateHeaders });
+  if (request.method !== "POST") return fail(405);
+  if (!isSameOriginPublishingWrite(request)) return fail(403);
+  if (
+    new URL(request.url).search !== "" ||
+    !publishingComponentIdPattern.test(componentId)
+  )
+    return fail(404);
+  const account = request.headers.get("x-author-account");
+  const attempt = request.headers.get("x-upload-attempt");
+  if (
+    account === null ||
+    !publishingAccountPattern.test(account) ||
+    attempt === null ||
+    !publishingAttemptPattern.test(attempt) ||
+    request.headers.get("content-type") !== "application/octet-stream" ||
+    request.headers.has("transfer-encoding")
+  )
+    return fail(422);
+  const length = request.headers.get("content-length");
+  if (length === null) return fail(411);
+  if (!/^[1-9]\d{0,15}$/u.test(length)) return fail(422);
+  const declared = Number(length);
+  if (declared > publishingUploadCeilingBytes) return fail(413);
+  const source = request.body;
+  if (source === null) return fail(422);
+  const token = readCommunitySessionToken(request.headers.get("cookie"));
+  if (token === undefined) return fail(401);
+  let target: URL;
+  try {
+    target = new URL(
+      `v1/community/publishing/uploads/${componentId}`,
+      parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL),
+    );
+  } catch {
+    return fail(503);
+  }
+  if (request.signal.aborted) return fail(400);
+
+  const upstreamAbort = new AbortController();
+  const abortUpstream = () => upstreamAbort.abort();
+  request.signal.addEventListener("abort", abortUpstream, { once: true });
+  const reader = source.getReader();
+  let relayed = 0;
+  let complete = false;
+  let lengthIssue: 413 | 422 | null = null;
+  let responseWait: ReturnType<typeof setTimeout> | undefined;
+  let answerTimedOut = false;
+  /** Starts the one bounded wait: after the last byte, or once an answer has begun. */
+  const boundAnswer = () => {
+    responseWait ??= setTimeout(() => {
+      answerTimedOut = true;
+      abortUpstream();
+    }, publishingUploadResponseWaitMs);
+  };
+  /** An answer without a usable Backend answer; see the relay contract above. */
+  const unanswered = (
+    status: 502 | 504,
+    reason: "interrupted" | "timeout" | "invalid-answer",
+  ) =>
+    new Response(null, {
+      status,
+      headers: { ...publishingPrivateHeaders, [publishingRelayHeader]: reason },
+    });
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull: async (controller) => {
+        const next = await reader.read();
+        if (next.done) {
+          if (relayed !== declared) {
+            lengthIssue = 422;
+            controller.error(new RangeError("upload ended before its length"));
+            abortUpstream();
+            return;
+          }
+          complete = true;
+          controller.close();
+          boundAnswer();
+          return;
+        }
+        relayed += next.value.byteLength;
+        if (relayed > declared) {
+          lengthIssue = 413;
+          controller.error(new RangeError("upload exceeds its length"));
+          abortUpstream();
+          return;
+        }
+        controller.enqueue(next.value);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const init: RequestInit & { duplex: "half" } = {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/octet-stream",
+      "content-length": length,
+      "x-author-account": account,
+      "x-upload-attempt": attempt,
+    },
+    body,
+    duplex: "half",
+    cache: "no-store",
+    redirect: "error",
+    signal: upstreamAbort.signal,
+  };
+  try {
+    const upstream = await fetch(target, init);
+    boundAnswer();
+    try {
+      if (!publishingUploadStatuses.has(upstream.status)) {
+        await cancelQuietly(upstream.body);
+        return unanswered(502, "invalid-answer");
+      }
+      if (mediaTypeOf(upstream) !== "application/json") {
+        await cancelQuietly(upstream.body);
+        return upstream.status === 200
+          ? unanswered(502, "invalid-answer")
+          : fail(upstream.status);
+      }
+      const answer = await readBoundedUpstreamBody(
+        upstream.body,
+        publishingUploadResponseMaxBytes,
+      );
+      if (answer === null) return unanswered(502, "invalid-answer");
+      return new Response(answer, {
+        status: upstream.status,
+        headers: {
+          ...publishingPrivateHeaders,
+          "content-type": "application/json",
+        },
+      });
+    } finally {
+      // An answer before the last byte (a superseded attempt, a size refusal)
+      // ends the relay of the remaining bytes.
+      if (!complete) upstreamAbort.abort();
+    }
+  } catch {
+    if (lengthIssue !== null) return fail(lengthIssue);
+    // Nobody is left to read an answer for a browser that went away.
+    if (request.signal.aborted) return fail(400);
+    return answerTimedOut
+      ? unanswered(504, "timeout")
+      : unanswered(502, "interrupted");
+  } finally {
+    clearTimeout(responseWait);
+    request.signal.removeEventListener("abort", abortUpstream);
+  }
+};
+
+/**
+ * Development streaming relay for one private derivative (GET, at most one
+ * byte range). The Backend authorizes the viewer; Web forwards the session as
+ * a Bearer credential when present, streams the body back without a body
+ * timeout and aborts the Backend read when the browser goes away.
+ */
+export const relayServerPublishingMedia = async (
+  request: Request,
+  itemId: string,
+  variant: string,
+  editKey: string,
+): Promise<Response> => {
+  const fail = (status: number, extra: Record<string, string> = {}) =>
+    new Response(null, {
+      status,
+      headers: { ...publishingPrivateHeaders, ...extra },
+    });
+  if (request.method !== "GET" && request.method !== "HEAD") return fail(405);
+  if (
+    new URL(request.url).search !== "" ||
+    !publishingItemIdPattern.test(itemId) ||
+    !publishingMediaVariants.has(variant) ||
+    !publishingEditKeyPattern.test(editKey)
+  )
+    return fail(404);
+  const range = request.headers.get("range");
+  if (range !== null) {
+    const bounds = publishingRangePattern.exec(range);
+    if (
+      bounds === null ||
+      (bounds[1] !== undefined &&
+        bounds[2] !== undefined &&
+        bounds[2] !== "" &&
+        Number(bounds[1]) > Number(bounds[2]))
+    )
+      return fail(416);
+  }
+  let target: URL;
+  try {
+    target = new URL(
+      `v1/community/publishing/media/${itemId}/${variant}/${editKey}`,
+      parsePublicApiBaseUrl(process.env.MOYA_PUBLIC_API_BASE_URL),
+    );
+  } catch {
+    return fail(503);
+  }
+  if (request.signal.aborted) return fail(400);
+  const token = readCommunitySessionToken(request.headers.get("cookie"));
+  const outgoing: Record<string, string> = {
+    accept: "image/webp, image/jpeg, image/png, video/mp4",
+  };
+  if (token !== undefined) outgoing.Authorization = `Bearer ${token}`;
+  if (range !== null) outgoing.range = range;
+
+  const upstreamAbort = new AbortController();
+  const abortUpstream = () => upstreamAbort.abort();
+  request.signal.addEventListener("abort", abortUpstream, { once: true });
+  const headersWait = setTimeout(abortUpstream, publishingMediaResponseWaitMs);
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      method: "GET",
+      headers: outgoing,
+      cache: "no-store",
+      redirect: "error",
+      signal: upstreamAbort.signal,
+    });
+  } catch {
+    request.signal.removeEventListener("abort", abortUpstream);
+    return fail(503);
+  } finally {
+    clearTimeout(headersWait);
+  }
+  const contentRange = upstream.headers.get("content-range");
+  if (upstream.status === 416) {
+    await cancelQuietly(upstream.body);
+    return fail(
+      416,
+      contentRange !== null && /^bytes \*\/\d{1,16}$/u.test(contentRange)
+        ? { "content-range": contentRange }
+        : {},
+    );
+  }
+  if (upstream.status !== 200 && upstream.status !== 206) {
+    await cancelQuietly(upstream.body);
+    return fail(
+      [401, 404, 503].includes(upstream.status) ? upstream.status : 502,
+    );
+  }
+  const type = mediaTypeOf(upstream);
+  const length = upstream.headers.get("content-length");
+  if (
+    type === undefined ||
+    !publishingMediaTypes.has(type) ||
+    upstream.body === null ||
+    (length !== null && !/^\d{1,16}$/u.test(length)) ||
+    (upstream.status === 206 &&
+      (contentRange === null ||
+        !/^bytes \d{1,16}-\d{1,16}\/\d{1,16}$/u.test(contentRange)))
+  ) {
+    await cancelQuietly(upstream.body);
+    return fail(502);
+  }
+  const headers: Record<string, string> = {
+    ...publishingPrivateHeaders,
+    "content-type": type,
+    "cross-origin-resource-policy": "same-origin",
+  };
+  if (length !== null) headers["content-length"] = length;
+  if (upstream.status === 206 && contentRange !== null)
+    headers["content-range"] = contentRange;
+  if (upstream.headers.get("accept-ranges") === "bytes")
+    headers["accept-ranges"] = "bytes";
+  if (request.method === "HEAD") {
+    await cancelQuietly(upstream.body);
+    return new Response(null, { status: upstream.status, headers });
+  }
+  return new Response(upstream.body, { status: upstream.status, headers });
+};
