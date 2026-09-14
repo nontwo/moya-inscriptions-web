@@ -55,4 +55,22 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "1ec448477421f0f926b10db6461254ab2e092a7d21bc99201dc6bfa5b01063b0",
     }),
+    Object.freeze({
+      migrationId: "20260914090000",
+      filename: "20260914090000_work_publishing_storage.sql",
+      checksum:
+        "c62bc3cd53e5704023905a70193ac7f304dfe7ab97c06fa0cf57f1975f1e4c21",
+    }),
+    Object.freeze({
+      migrationId: "20260914091000",
+      filename: "20260914091000_work_publishing_revisions.sql",
+      checksum:
+        "cfaedc3fd5396610c636500b169c206cdc351c4542842170c4efde269aeac148",
+    }),
+    Object.freeze({
+      migrationId: "20260914092000",
+      filename: "20260914092000_work_publishing_legacy_backfill.sql",
+      checksum:
+        "cb6238b56dd6f92b219a04f78443522a818010893f25cac4754f4c2e136aecba",
+    }),
   ]);

@@ -37,6 +37,22 @@ describe("community migration family", () => {
         checksum,
       })),
     ).toEqual(requiredCommunityMigrations);
+    // Append-only: Phase 4 plus the three work-publishing-v1 forward files.
+    expect(requiredCommunityMigrations.map(({ filename }) => filename)).toEqual(
+      [
+        "20260912030000_community_identity_sessions.sql",
+        "20260912050000_community_comments_moderation.sql",
+        "20260912080000_community_direct_publication_default.sql",
+        "20260912100000_community_moderation_reject_and_history.sql",
+        "20260913090000_author_community_foundations.sql",
+        "20260913100000_discussion_lifecycle.sql",
+        "20260913110000_discovery_sequences.sql",
+        "20260913120000_featured_operator_versions.sql",
+        "20260914090000_work_publishing_storage.sql",
+        "20260914091000_work_publishing_revisions.sql",
+        "20260914092000_work_publishing_legacy_backfill.sql",
+      ],
+    );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);
     expect(files.some((file) => /CREATE SCHEMA/i.test(file.sql))).toBe(false);
   });

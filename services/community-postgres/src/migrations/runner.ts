@@ -143,12 +143,34 @@ const assertAppliedMigrationMatches = (
   }
 };
 
-/** Explicit DDL path for migration-privileged credentials; never called at startup. */
+// The whole verified set, or its prefix ending at an exact manifest ID.
+const selectThrough = (
+  files: readonly CommunityMigrationFile[],
+  through: string | undefined,
+): readonly CommunityMigrationFile[] => {
+  if (through === undefined) return files;
+  const last = files.findIndex(({ migrationId }) => migrationId === through);
+  if (last === -1) {
+    throw new CommunityMigrationStateError(
+      `Unknown community migration ${through}`,
+    );
+  }
+  return files.slice(0, last + 1);
+};
+
+/**
+ * Explicit DDL path for migration-privileged credentials; never called at startup.
+ * `through` applies only the verified prefix ending at that migration ID (upgrade tests).
+ */
 export const runCommunityMigrations = async (
   pool: Pool,
   directory: string,
+  options: { readonly through?: string } = {},
 ): Promise<readonly string[]> => {
-  const files = await readCommunityMigrationFiles(directory);
+  const files = selectThrough(
+    await readCommunityMigrationFiles(directory),
+    options.through,
+  );
   const client = await acquireClient(pool);
   const appliedNow: string[] = [];
   try {
