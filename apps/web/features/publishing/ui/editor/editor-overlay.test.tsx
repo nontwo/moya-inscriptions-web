@@ -1,0 +1,1262 @@
+// @vitest-environment jsdom
+import { act, createRef } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { author, shell, client, versions } = vi.hoisted(() => ({
+  author: {
+    checking: false,
+    viewer: null as { id: string; displayName: string } | null,
+    signInHref: "/dev/community",
+    notify: (() => undefined) as (text: string) => void,
+  },
+  shell: {
+    platform: "phone" as "phone" | "tablet" | "pc",
+    orientation: "portrait" as "portrait" | "landscape",
+  },
+  client: {} as Record<string, unknown>,
+  /** What the drafts panels (C3) hand back when the author chooses. */
+  versions: {
+    resolve: null as
+      | ((
+          choice: "device" | "account",
+        ) => import("@moya/contracts").PublishingDraft)
+      | null,
+    restored: null as import("@moya/contracts").PublishingDraft | null,
+  },
+}));
+
+vi.mock("../../../authors/author-context", () => ({
+  useAuthors: () => author,
+}));
+vi.mock("../../../authors/author-data", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../../../authors/author-data")>();
+  return {
+    ...original,
+    authorClient: {
+      ...original.authorClient,
+      account: () => author.viewer?.id ?? null,
+    },
+  };
+});
+vi.mock("../../../product-shell/product-shell", () => ({
+  useProductShell: () => shell,
+}));
+vi.mock("../../publishing-data", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../publishing-data")>()),
+  publishingClient: client,
+}));
+// The media section (C1b) and the drafts panels (C3) have their own tests.
+vi.mock("../media/media-section", () => ({
+  MediaSection: ({
+    sessionKey,
+    onSkip,
+  }: {
+    sessionKey: string;
+    onSkip?: () => void;
+  }) => (
+    <div data-media-section={sessionKey}>
+      {onSkip ? (
+        <button data-media-skip="" onClick={onSkip} type="button">
+          跳过，只发布文字
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+// Stubs with the real callback contract: a choice hands the resulting draft back.
+vi.mock("../drafts/history-panel", () => ({
+  HistoryPanel: ({
+    onRestored,
+  }: {
+    onRestored: (draft: import("@moya/contracts").PublishingDraft) => void;
+  }) => (
+    <div data-history-stub="">
+      <button
+        data-history-restore=""
+        onClick={() => onRestored(versions.restored!)}
+        type="button"
+      >
+        恢复为当前编辑
+      </button>
+    </div>
+  ),
+}));
+vi.mock("../drafts/conflict-chooser", () => ({
+  ConflictChooser: ({
+    conflict,
+    onResolved,
+  }: {
+    conflict: { id: string };
+    onResolved: (draft: import("@moya/contracts").PublishingDraft) => void;
+  }) => (
+    <div data-conflict-stub={conflict.id}>
+      <button
+        data-choose="device"
+        onClick={() => onResolved(versions.resolve!("device"))}
+        type="button"
+      >
+        使用本设备版本
+      </button>
+      <button
+        data-choose="account"
+        onClick={() => onResolved(versions.resolve!("account"))}
+        type="button"
+      >
+        使用账号中的版本
+      </button>
+    </div>
+  ),
+}));
+
+import { identifyFiles } from "../../import-grouping";
+import { fileOf, jpeg } from "../../parsers/synthetic-media.test-support";
+import { PublishingProvider, useStagedItems } from "../../publishing-provider";
+import {
+  ACCOUNT,
+  DRAFT_ID,
+  SESSION_ID,
+  absentMetadata,
+  clientError,
+  fakeClient,
+  fakePreprocess,
+  fakeTransfer,
+  manualTimers,
+  settle,
+  uuid,
+} from "../../upload-manager.test-support";
+import { EditorOverlay } from "./editor-overlay";
+import { EditorSessionProvider } from "./editor-session-provider";
+
+import type {
+  PublishingClientPort,
+  PublishingServices,
+} from "../../publishing-runtime";
+import type {
+  ProductShellEditorLeaveGuard,
+  ProductShellEditorOverlayControls,
+} from "../../../product-shell/product-shell";
+import type { EditorTarget } from "../../../product-shell/product-history";
+import type {
+  EditableWork,
+  PublishingDraft,
+  PublishingDraftConflict,
+  WorkDraftContent,
+} from "@moya/contracts";
+import type { Root } from "react-dom/client";
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+const T = "2026-09-13T12:00:00.000Z";
+const WORK_ID = `work-${"c".repeat(32)}`;
+const REVISION_ID = `work-revision-${"f".repeat(32)}`;
+const EDIT_DRAFT_ID = `work-draft-${"e".repeat(32)}`;
+
+const emptyContent = (
+  change: Partial<WorkDraftContent> = {},
+): WorkDraftContent => ({
+  title: "",
+  body: "",
+  authorship: { kind: "original" },
+  visibility: "public",
+  items: [],
+  coverKey: null,
+  coverCrop: null,
+  ...change,
+});
+
+const draftOf = (
+  content: WorkDraftContent,
+  change: Partial<PublishingDraft> = {},
+): PublishingDraft => ({
+  id: DRAFT_ID,
+  kind: "new",
+  workId: null,
+  baseRevisionId: null,
+  revision: 1,
+  content,
+  mediaItems: [],
+  conflict: null,
+  deviceClass: "phone",
+  createdAt: T,
+  updatedAt: T,
+  ...change,
+});
+
+const receipt = (requestId: string) => ({
+  state: "confirmed" as const,
+  requestId,
+  workId: WORK_ID,
+  revisionId: REVISION_ID,
+  visibility: "public" as const,
+  submittedAt: T,
+});
+
+const makeServices = () => {
+  const uploads = fakeClient();
+  const transfer = fakeTransfer();
+  let revision = 1;
+  Object.assign(client, uploads.client, {
+    limits: vi.fn(async () => ({
+      maxItems: 50,
+      originalItemMaxBytes: 1_000_000,
+      standardComponentMaxBytes: 1_000_000,
+      titleMax: 200,
+      bodyMax: 10_000,
+    })),
+    createSession: vi.fn(async () => ({
+      id: SESSION_ID,
+      state: "active",
+      workId: null,
+      leaseExpiresAt: T,
+      createdAt: T,
+    })),
+    heartbeatSession: vi.fn(),
+    discardSession: vi.fn(async () => ({ discarded: true })),
+    deleteDraft: vi.fn(async () => ({
+      deleted: true,
+      snapshots: 2,
+      conflictCopies: 1,
+      mediaItems: 0,
+    })),
+    createDraft: vi.fn(async (cmd: { content: WorkDraftContent }) =>
+      draftOf(cmd.content, { revision }),
+    ),
+    saveDraft: vi.fn(
+      async (id: string, cmd: { content: WorkDraftContent }) => ({
+        status: "saved",
+        draft: draftOf(cmd.content, { id, revision: (revision += 1) }),
+      }),
+    ),
+    saveDraftNow: vi.fn(
+      async (id: string, cmd: { content: WorkDraftContent }) => ({
+        status: "saved",
+        draft: draftOf(cmd.content, { id, revision: (revision += 1) }),
+      }),
+    ),
+    draft: vi.fn(),
+    editableWork: vi.fn(),
+    openWorkEditDraft: vi.fn(),
+    submit: vi.fn(async (cmd: { requestId: string }) => receipt(cmd.requestId)),
+    submissionReceipt: vi.fn(async () => null),
+  });
+  const services: PublishingServices = {
+    client: client as unknown as PublishingClientPort,
+    currentAccount: () => ACCOUNT,
+    requestId: uuid,
+    createTransfer: () => transfer.transfer,
+    createPreprocess: () => fakePreprocess(),
+    createHasher: () => null,
+    createRecovery: () => null,
+    identifyFiles: (files) => identifyFiles(files),
+    preprocessConcurrency: () => 1,
+    transferConcurrency: 2,
+    deviceClass: () => "phone",
+    timers: manualTimers().timers,
+    metadata: absentMetadata,
+  };
+  return { services, transfer };
+};
+
+const fn = (name: string) => client[name] as ReturnType<typeof vi.fn>;
+
+const staged: { current: ReturnType<typeof useStagedItems> | null } = {
+  current: null,
+};
+const StagingProbe = () => {
+  staged.current = useStagedItems();
+  return null;
+};
+
+interface Harness {
+  readonly container: HTMLDivElement;
+  readonly controls: ProductShellEditorOverlayControls & {
+    close: ReturnType<typeof vi.fn>;
+    completeWith: ReturnType<typeof vi.fn>;
+    replaceTarget: ReturnType<typeof vi.fn>;
+  };
+  readonly guard: () => ProductShellEditorLeaveGuard | null;
+  readonly rerender: (target?: EditorTarget) => Promise<void>;
+  readonly show: (visible: boolean) => Promise<void>;
+  readonly transfer: ReturnType<typeof fakeTransfer>;
+}
+
+let root: Root | null = null;
+let container: HTMLDivElement | null = null;
+
+const flush = async () => {
+  await act(async () => {
+    await settle();
+  });
+};
+
+/** `prepare` sets client answers before the editor mounts. */
+const renderEditor = async (
+  target: EditorTarget,
+  prepare: () => void = () => undefined,
+): Promise<Harness> => {
+  const { services, transfer } = makeServices();
+  prepare();
+  let guard: ProductShellEditorLeaveGuard | null = null;
+  const controls = {
+    backButtonRef: createRef<HTMLButtonElement>(),
+    close: vi.fn(),
+    completeWith: vi.fn(),
+    replaceTarget: vi.fn(),
+    registerLeaveGuard: vi.fn((next: ProductShellEditorLeaveGuard) => {
+      guard = next;
+      return () => {
+        if (guard === next) guard = null;
+      };
+    }),
+  };
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  let current = target;
+  let shown = true;
+  const draw = () =>
+    root!.render(
+      <PublishingProvider services={services}>
+        <EditorSessionProvider>
+          <StagingProbe />
+          {shown ? (
+            <EditorOverlay controls={controls} target={current} />
+          ) : null}
+        </EditorSessionProvider>
+      </PublishingProvider>,
+    );
+  await act(async () => draw());
+  await flush();
+  return {
+    container,
+    controls,
+    guard: () => guard,
+    rerender: async (next) => {
+      if (next) current = next;
+      await act(async () => draw());
+      await flush();
+    },
+    show: async (visible) => {
+      // The shell unmounts the overlay when the editor entry is left.
+      shown = visible;
+      await act(async () => draw());
+      await flush();
+    },
+    transfer,
+  };
+};
+
+const query = <E extends Element = HTMLElement>(selector: string) =>
+  container!.querySelector<E & HTMLElement>(selector);
+
+const buttonByText = (text: string) =>
+  Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => button.textContent?.trim() === text,
+  ) ?? null;
+
+const click = async (element: HTMLElement | null) => {
+  expect(element).not.toBeNull();
+  await act(async () => {
+    element!.click();
+  });
+  await flush();
+};
+
+const type = async (
+  element: HTMLInputElement | HTMLTextAreaElement | null,
+  value: string,
+) => {
+  expect(element).not.toBeNull();
+  const prototype =
+    element instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(
+      element,
+      value,
+    );
+    element!.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
+const titleInput = () =>
+  query<HTMLInputElement>('input[data-editor-input="title"]');
+const bodyInput = () =>
+  query<HTMLTextAreaElement>('textarea[data-editor-input="body"]');
+const step = () =>
+  query("[data-editor-step]")?.getAttribute("data-editor-step") ?? null;
+const draftSwitch = () =>
+  query<HTMLButtonElement>('[data-editor-switch="drafts"] [role="switch"]');
+
+const saveStatus = () =>
+  query("[data-save-status]")?.getAttribute("data-save-status") ?? null;
+
+const setViewport = async (
+  platform: "phone" | "tablet" | "pc",
+  width: number,
+) => {
+  shell.platform = platform;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: width,
+  });
+  await act(async () => {
+    window.dispatchEvent(new Event("resize"));
+  });
+  await flush();
+};
+
+const nextFrames = async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+};
+
+const leaveOverlay = async (harness: Harness) => {
+  await harness.show(false);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await flush();
+};
+
+const conflictOf = (
+  device: WorkDraftContent,
+  account: WorkDraftContent,
+): PublishingDraftConflict => ({
+  id: `work-draft-${"9".repeat(32)}`,
+  device: {
+    content: device,
+    baseRevision: 3,
+    deviceClass: "phone",
+    savedAt: T,
+  },
+  account: {
+    content: account,
+    revision: 4,
+    deviceClass: "desktop",
+    updatedAt: T,
+  },
+  createdAt: T,
+});
+
+const goToStep = async (target: "text" | "confirm") => {
+  if (step() === "media") {
+    await click(query("[data-media-skip]") ?? buttonByText("下一步"));
+  }
+  if (target === "confirm" && step() === "text")
+    await click(buttonByText("下一步"));
+  expect(step()).toBe(target);
+};
+
+beforeEach(() => {
+  shell.platform = "phone";
+  shell.orientation = "portrait";
+  author.viewer = { id: ACCOUNT, displayName: "测试作者" };
+  author.notify = vi.fn();
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 390,
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.removeAttribute("open");
+    },
+  });
+});
+
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  container?.remove();
+  root = null;
+  container = null;
+  staged.current = null;
+  versions.resolve = null;
+  versions.restored = null;
+  for (const key of Object.keys(client)) delete client[key];
+  vi.clearAllMocks();
+});
+
+describe("Publishing editor", () => {
+  it("keeps one session's input across steps and a resize into the desktop editor", async () => {
+    const harness = await renderEditor({ type: "new" });
+    expect(query('[role="dialog"]')?.getAttribute("aria-label")).toBe(
+      "发布作品",
+    );
+    // D01/Q01: both switches are visible before any selection or typing.
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
+    expect(
+      query('[data-editor-switch="original"] [role="switch"]')?.getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("false");
+
+    await goToStep("text");
+    await type(titleInput(), "临兰亭序");
+    await type(bodyInput(), "第一行\n第二行");
+    await click(buttonByText("上一步"));
+    expect(step()).toBe("media");
+    await click(buttonByText("下一步") ?? query("[data-media-skip]"));
+    expect(titleInput()?.value).toBe("临兰亭序");
+
+    // Resize: the shell reports a PC platform; the same session renders wide.
+    shell.platform = "pc";
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1280,
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    await harness.rerender();
+    expect(query('[data-editor-layout="desktop"]')).not.toBeNull();
+    expect(titleInput()?.value).toBe("临兰亭序");
+    expect(bodyInput()?.value).toBe("第一行\n第二行");
+    // The continuous preview renders the real work presentation.
+    expect(
+      query('[data-editor-preview="continuous"] [data-detail-title]')
+        ?.textContent,
+    ).toBe("临兰亭序");
+    await type(titleInput(), "临兰亭序（二）");
+
+    shell.platform = "phone";
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    await harness.rerender();
+    expect(step()).toBe("text");
+    expect(titleInput()?.value).toBe("临兰亭序（二）");
+    expect(bodyInput()?.value).toBe("第一行\n第二行");
+  });
+
+  it("switches a tablet between the phone steps and the desktop editor at 896px, keeping the field being typed in", async () => {
+    await setViewport("tablet", 895);
+    await renderEditor({ type: "new" });
+    await nextFrames();
+    expect(query('[data-editor-layout="phone"]')).not.toBeNull();
+    await goToStep("text");
+    const phoneBody = bodyInput()!;
+    await act(async () => phoneBody.focus());
+    await type(phoneBody, "正文在平板上");
+
+    // Only the viewport changes: the shell still reports a tablet.
+    await setViewport("tablet", 896);
+    await nextFrames();
+    expect(query('[data-editor-layout="desktop"]')).not.toBeNull();
+    expect(bodyInput()?.value).toBe("正文在平板上");
+    expect(document.activeElement).toBe(bodyInput());
+
+    await act(async () => titleInput()!.focus());
+    await type(titleInput(), "横屏标题");
+    await setViewport("tablet", 820);
+    await nextFrames();
+    expect(step()).toBe("text");
+    expect(document.activeElement).toBe(titleInput());
+    expect(titleInput()?.value).toBe("横屏标题");
+    expect(bodyInput()?.value).toBe("正文在平板上");
+
+    // A dialog of one layout never reopens by itself after a round trip.
+    await setViewport("tablet", 1024);
+    await click(query("[data-editor-open-confirmation]"));
+    expect(query('[data-editor-dialog="confirmation"]')).not.toBeNull();
+    await setViewport("tablet", 820);
+    await setViewport("tablet", 1024);
+    expect(query('[data-editor-dialog="confirmation"]')).toBeNull();
+  });
+
+  it("keeps a session with running uploads when the editor is left and returns to it", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await act(async () => {
+      await staged.current!.stageFiles([fileOf(jpeg({}))], "picker");
+    });
+    await flush();
+    await act(async () => {
+      expect(staged.current!.confirm().ok).toBe(true);
+    });
+    await flush();
+    await flush();
+    await goToStep("text");
+    await type(titleInput(), "上传中离开");
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow")).toHaveBeenCalledTimes(1);
+    expect(query("[data-save-status]")?.textContent).toContain("已保存");
+
+    // Uploads alone never hold the author: leaving is allowed (the browser
+    // still asks before unloading the page).
+    expect(harness.guard()?.("close")).toBe("allow");
+    expect(harness.guard()?.("unload")).toBe("blocked");
+    await harness.show(false);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    await flush();
+
+    // The progress entry reopens the same session with the same content.
+    await harness.show(true);
+    expect(step()).toBe("text");
+    expect(titleInput()?.value).toBe("上传中离开");
+    await click(buttonByText("上一步"));
+    expect(query("[data-media-section]")).not.toBeNull();
+    expect(harness.transfer.starts.length).toBe(1);
+    expect(fn("cancelItem")).not.toHaveBeenCalled();
+  });
+
+  it("ends a clean session when the editor is left", async () => {
+    const harness = await renderEditor({ type: "new" });
+    const firstKey = query("[data-media-section]")?.getAttribute(
+      "data-media-section",
+    );
+    expect(harness.guard()).toBeNull();
+    await harness.show(false);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    await flush();
+    await harness.show(true);
+    const secondKey = query("[data-media-section]")?.getAttribute(
+      "data-media-section",
+    );
+    expect(secondKey).toBeTruthy();
+    expect(secondKey).not.toBe(firstKey);
+    expect(query("[data-editor-other-session]")).toBeNull();
+  });
+
+  it("lets a text-only work skip the media step", async () => {
+    await renderEditor({ type: "new" });
+    expect(step()).toBe("media");
+    await click(query("[data-media-skip]"));
+    expect(step()).toBe("text");
+    expect(titleInput()).not.toBeNull();
+    expect(query("[data-editor-recommendation]")?.textContent).toBe(
+      "建议添加标题和图片",
+    );
+    // A step change moves focus to the new step's heading.
+    expect(document.activeElement?.textContent).toBe("文字与设置");
+  });
+
+  it("focuses the first control on open and previews the real work presentation on a phone", async () => {
+    await renderEditor({ type: "new" });
+    // Focus moves after the shell's own focus, in the next animation frame.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(document.activeElement).toBe(draftSwitch());
+
+    await goToStep("text");
+    await type(titleInput(), "预览标题");
+    await type(bodyInput(), "正文\n第二行");
+    await click(buttonByText("预览"));
+    const preview = document.querySelector('[data-editor-preview="phone"]');
+    expect(preview?.querySelector("[data-detail-title]")?.textContent).toBe(
+      "预览标题",
+    );
+    expect(preview?.textContent).toContain("正文\n第二行");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("返回");
+    await click(
+      preview!.querySelector<HTMLButtonElement>('button[aria-label="返回"]'),
+    );
+    expect(document.querySelector('[data-editor-preview="phone"]')).toBeNull();
+    expect(titleInput()?.value).toBe("预览标题");
+    expect(document.activeElement?.textContent).toBe("预览");
+  });
+
+  it("blocks the confirmation while retained items are not ready and lists exact counts", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await act(async () => {
+      await staged.current!.stageFiles(
+        [fileOf(jpeg({ width: 40, height: 30 })), fileOf(jpeg({}))],
+        "picker",
+      );
+    });
+    await flush();
+    await act(async () => {
+      expect(staged.current!.confirm().ok).toBe(true);
+    });
+    await flush();
+    await flush();
+    expect(harness.transfer.starts.length).toBe(2);
+    // One transfer stalls and fails; the other is still uploading.
+    await act(async () => {
+      harness.transfer.starts[0]!.callbacks.onSettled({
+        status: 0,
+        responseText: "",
+        stalled: true,
+      });
+    });
+    await flush();
+
+    await click(buttonByText("下一步"));
+    await click(buttonByText("下一步"));
+    expect(step()).toBe("confirm");
+    expect(query("[data-editor-readiness]")?.textContent).toBe(
+      "1 项仍在上传，1 项失败。全部就绪或移除后才能发布",
+    );
+    expect(query<HTMLButtonElement>("[data-editor-submit]")?.disabled).toBe(
+      true,
+    );
+    expect(fn("submit")).not.toHaveBeenCalled();
+  });
+
+  it("submits once and opens the submitted work on success", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await goToStep("text");
+    await type(titleInput(), "新作");
+    await goToStep("confirm");
+    expect(query("[data-editor-summary='text']")).toBeNull();
+    expect(query("[data-editor-summary-visibility]")?.textContent).toBe("公开");
+    await click(query("[data-editor-submit]"));
+    expect(fn("submit")).toHaveBeenCalledTimes(1);
+    expect(fn("submit").mock.calls[0]![0]).toMatchObject({
+      holder: { draftId: DRAFT_ID },
+      content: { title: "新作", visibility: "public" },
+      baseRevisionId: null,
+    });
+    expect(harness.controls.completeWith).toHaveBeenCalledWith({
+      type: "work",
+      id: WORK_ID,
+    });
+    expect(author.notify).toHaveBeenCalledWith("作品已提交");
+  });
+
+  it("shows 正在确认结果… for a lost answer and completes on the receipt", async () => {
+    const harness = await renderEditor({ type: "new" });
+    let answerReceipt: (value: unknown) => void = () => undefined;
+    fn("submit").mockRejectedValueOnce(
+      clientError(0, "网络连接中断，结果尚未确认", true),
+    );
+    fn("submissionReceipt").mockImplementationOnce(
+      (requestId: string) =>
+        new Promise((resolve) => {
+          answerReceipt = () => resolve(receipt(requestId));
+        }),
+    );
+    await goToStep("text");
+    await type(bodyInput(), "只有正文");
+    await goToStep("confirm");
+    expect(query("[data-editor-summary='text']")?.textContent).toBe("只有正文");
+    expect(query("[data-unnamed]")?.textContent).toBe("未命名作品");
+    await click(query("[data-editor-submit]"));
+    expect(query("[data-editor-submission]")?.textContent).toBe(
+      "正在确认结果…",
+    );
+    expect(harness.controls.completeWith).not.toHaveBeenCalled();
+    // Leaving now would lose the result: the guard holds the editor.
+    expect(harness.guard()?.("close")).toBe("blocked");
+    await flush();
+    expect(
+      document.querySelector('[data-editor-dialog="leave"] h2')?.textContent,
+    ).toBe("正在确认结果…");
+    await click(buttonByText("继续等待"));
+    await act(async () => answerReceipt(null));
+    await flush();
+    expect(fn("submit")).toHaveBeenCalledTimes(1);
+    expect(harness.controls.completeWith).toHaveBeenCalledWith({
+      type: "work",
+      id: WORK_ID,
+    });
+  });
+
+  it("places a Backend field failure at its field", async () => {
+    await renderEditor({ type: "new" });
+    fn("submit").mockRejectedValueOnce(
+      Object.assign(new Error("标题过长"), {
+        status: 422,
+        code: "title_too_long",
+        outcomeUnknown: false,
+      }),
+    );
+    await goToStep("text");
+    await type(titleInput(), "标题");
+    await goToStep("confirm");
+    await click(query("[data-editor-submit]"));
+    await click(buttonByText("前往查看"));
+    expect(step()).toBe("text");
+    expect(
+      query('[data-editor-field="title"]')?.querySelector("p")?.textContent,
+    ).toBe("标题过长");
+  });
+
+  it("asks before leaving a no-save session: 返回编辑 or 放弃并结束", async () => {
+    const harness = await renderEditor({ type: "new" });
+    // Nothing to protect yet: no guard is registered.
+    expect(harness.guard()).toBeNull();
+    await click(draftSwitch());
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
+    expect(query("[data-save-status]")?.textContent).toContain("未保存到账号");
+    await goToStep("text");
+    await type(titleInput(), "不保存的内容");
+    await flush();
+
+    expect(harness.guard()?.("close")).toBe("blocked");
+    await flush();
+    expect(buttonByText("返回编辑")).not.toBeNull();
+    await click(buttonByText("返回编辑"));
+    expect(document.querySelector('[data-editor-dialog="leave"]')).toBeNull();
+    expect(harness.controls.close).not.toHaveBeenCalled();
+    expect(titleInput()?.value).toBe("不保存的内容");
+
+    expect(harness.guard()?.("history")).toBe("blocked");
+    await flush();
+    await click(buttonByText("放弃并结束"));
+    expect(harness.controls.close).toHaveBeenCalledTimes(1);
+    expect(fn("createDraft")).not.toHaveBeenCalled();
+  });
+
+  it("offers 保存并离开 / 继续编辑 / 放弃本次未保存的更改 for unsaved draft changes", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await goToStep("text");
+    await type(titleInput(), "草稿标题");
+    await flush();
+    expect(query("[data-save-status]")?.textContent).toContain(
+      "有未保存的更改",
+    );
+    expect(harness.guard()?.("history")).toBe("blocked");
+    await flush();
+    for (const label of ["保存并离开", "继续编辑", "放弃本次未保存的更改"])
+      expect(buttonByText(label)).not.toBeNull();
+    await click(buttonByText("继续编辑"));
+    expect(harness.controls.close).not.toHaveBeenCalled();
+
+    expect(harness.guard()?.("close")).toBe("blocked");
+    await flush();
+    await click(buttonByText("保存并离开"));
+    await flush();
+    expect(fn("createDraft")).toHaveBeenCalledTimes(1);
+    expect(fn("saveDraftNow")).toHaveBeenCalledTimes(1);
+    expect(harness.controls.close).toHaveBeenCalledTimes(1);
+    // The new work's draft became the editor entry.
+    expect(harness.controls.replaceTarget).toHaveBeenCalledWith({
+      type: "draft",
+      id: DRAFT_ID,
+    });
+  });
+
+  it("says a new work without a draft loses everything when discarded", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await goToStep("text");
+    await type(titleInput(), "不要了");
+    await flush();
+    expect(harness.guard()?.("close")).toBe("blocked");
+    await flush();
+    expect(document.querySelector("[data-leave-scope]")?.textContent).toContain(
+      "这些内容还没有保存到账号",
+    );
+    await click(buttonByText("放弃本次未保存的更改"));
+    expect(harness.controls.close).toHaveBeenCalledTimes(1);
+    expect(fn("createDraft")).not.toHaveBeenCalled();
+    expect(fn("saveDraftNow")).not.toHaveBeenCalled();
+  });
+
+  it("discards only the unsaved changes of a saved draft and keeps the draft", async () => {
+    const saved = draftOf(emptyContent({ title: "已保存" }), { revision: 3 });
+    const harness = await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    await type(titleInput(), "已保存（未保存的更改）");
+    await flush();
+    expect(harness.guard()?.("close")).toBe("blocked");
+    await flush();
+    expect(document.querySelector("[data-leave-scope]")?.textContent).toBe(
+      "有更改还没有保存到草稿。放弃会丢弃这些未保存的更改，草稿保留上次保存的内容。",
+    );
+    await click(buttonByText("放弃本次未保存的更改"));
+    expect(harness.controls.close).toHaveBeenCalledTimes(1);
+    await leaveOverlay(harness);
+    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+    expect(fn("saveDraft")).not.toHaveBeenCalled();
+    expect(fn("saveDraftNow")).not.toHaveBeenCalled();
+  });
+
+  it("names the targeted deletion scope before turning drafts off for a saved draft", async () => {
+    const saved = draftOf(emptyContent({ title: "已保存的草稿" }), {
+      revision: 3,
+    });
+    const harness = await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    expect(titleInput()?.value).toBe("已保存的草稿");
+    expect(query("[data-save-status]")?.textContent).toContain("已保存");
+
+    await click(draftSwitch());
+    const dialog = document.querySelector(
+      '[data-editor-dialog="draft-deletion"]',
+    );
+    expect(dialog).not.toBeNull();
+    const text = dialog!.textContent ?? "";
+    expect(text).toContain(
+      "关闭后将删除这份草稿、它的全部历史版本和冲突副本，以及只被它们使用的图片。",
+    );
+    expect(text).toContain("其他草稿和已发布的作品不受影响。");
+    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+
+    await click(buttonByText("继续保存草稿"));
+    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
+
+    await click(draftSwitch());
+    await click(buttonByText("删除草稿并关闭"));
+    await flush();
+    expect(fn("deleteDraft")).toHaveBeenCalledTimes(1);
+    expect(fn("deleteDraft")).toHaveBeenCalledWith(DRAFT_ID, {
+      requestId: expect.any(String),
+    });
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
+    // The content stays on screen; the entry no longer names the deleted draft.
+    expect(titleInput()?.value).toBe("已保存的草稿");
+    expect(harness.controls.replaceTarget).toHaveBeenCalledWith({
+      type: "new",
+    });
+    expect(query("[data-editor-notice]")?.textContent).toContain(
+      "已不再保存草稿",
+    );
+  });
+
+  it("opens an existing work's edit draft with the work's visibility", async () => {
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: emptyContent({ title: "旧作", visibility: "self" }),
+      mediaItems: [],
+      visibility: "self",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    const harness = await renderEditor({ type: "work", id: WORK_ID }, () => {
+      fn("editableWork").mockResolvedValue(editable);
+      fn("openWorkEditDraft").mockResolvedValue(
+        draftOf(emptyContent({ title: "旧作", visibility: "public" }), {
+          id: EDIT_DRAFT_ID,
+          kind: "edit",
+          workId: WORK_ID,
+          baseRevisionId: REVISION_ID,
+        }),
+      );
+    });
+    expect(query('[role="dialog"]')?.getAttribute("aria-label")).toBe(
+      "编辑作品",
+    );
+    await goToStep("text");
+    expect(titleInput()?.value).toBe("旧作");
+    const checked = query<HTMLInputElement>(
+      '[data-editor-field="visibility"] input:checked',
+    );
+    expect(checked?.value).toBe("self");
+    await goToStep("confirm");
+    expect(query("[data-editor-summary-visibility]")?.textContent).toBe(
+      "仅自己可见",
+    );
+    expect(query("[data-editor-submit]")?.textContent).toBe("保存更新");
+    await click(query("[data-editor-submit]"));
+    expect(fn("submit").mock.calls[0]![0]).toMatchObject({
+      holder: { draftId: EDIT_DRAFT_ID },
+      baseRevisionId: REVISION_ID,
+      content: { visibility: "self" },
+    });
+    expect(harness.controls.completeWith).toHaveBeenCalledWith({
+      type: "work",
+      id: WORK_ID,
+    });
+  });
+  it("removes an edit draft it opened only while the account still holds it unchanged", async () => {
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: emptyContent({ title: "旧作" }),
+      mediaItems: [],
+      visibility: "public",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    const opened = draftOf(emptyContent({ title: "旧作" }), {
+      id: EDIT_DRAFT_ID,
+      kind: "edit",
+      workId: WORK_ID,
+      baseRevisionId: REVISION_ID,
+      revision: 1,
+    });
+    const harness = await renderEditor({ type: "work", id: WORK_ID }, () => {
+      fn("editableWork").mockResolvedValue(editable);
+      fn("openWorkEditDraft").mockResolvedValue(opened);
+      fn("draft").mockResolvedValue(opened);
+    });
+    expect(titleInput() ?? query("[data-media-section]")).not.toBeNull();
+    await leaveOverlay(harness);
+    // Read back first; unchanged, so it is removed.
+    expect(fn("draft")).toHaveBeenCalledWith(EDIT_DRAFT_ID);
+    expect(fn("deleteDraft")).toHaveBeenCalledTimes(1);
+    expect(fn("deleteDraft")).toHaveBeenCalledWith(EDIT_DRAFT_ID, {
+      requestId: expect.any(String),
+    });
+  });
+
+  it("keeps an edit draft another device has saved to meanwhile", async () => {
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: emptyContent({ title: "旧作" }),
+      mediaItems: [],
+      visibility: "public",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    const opened = draftOf(emptyContent({ title: "旧作" }), {
+      id: EDIT_DRAFT_ID,
+      kind: "edit",
+      workId: WORK_ID,
+      baseRevisionId: REVISION_ID,
+      revision: 1,
+    });
+    const harness = await renderEditor({ type: "work", id: WORK_ID }, () => {
+      fn("editableWork").mockResolvedValue(editable);
+      fn("openWorkEditDraft").mockResolvedValue(opened);
+      // Another device saved real edits into the same edit draft.
+      fn("draft").mockResolvedValue({
+        ...opened,
+        revision: 2,
+        updatedAt: "2026-09-13T12:05:00.000Z",
+        content: emptyContent({ title: "另一台设备的修改" }),
+      });
+    });
+    await leaveOverlay(harness);
+    expect(fn("draft")).toHaveBeenCalledWith(EDIT_DRAFT_ID);
+    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+  });
+
+  it("resumes saving after the author keeps this device's version, including input typed after the conflict", async () => {
+    const saved = draftOf(emptyContent({ title: "起点" }), { revision: 3 });
+    const device = emptyContent({ title: "本设备标题" });
+    const account = emptyContent({ title: "别处标题" });
+    const conflict = conflictOf(device, account);
+    await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    await type(titleInput(), "本设备标题");
+    fn("saveDraftNow").mockResolvedValueOnce({
+      status: "conflict",
+      draft: draftOf(account, { revision: 4, conflict }),
+      conflict,
+    });
+    await click(query("[data-editor-save-now]"));
+    expect(saveStatus()).toBe("conflict");
+    // The chooser opens by itself; input typed meanwhile is kept.
+    expect(query(`[data-conflict-stub="${conflict.id}"]`)).not.toBeNull();
+    await type(titleInput(), "本设备标题（续）");
+    versions.resolve = (choice) =>
+      draftOf(choice === "device" ? device : account, { revision: 5 });
+    await click(query('[data-choose="device"]'));
+    await flush();
+
+    expect(query("[data-conflict-stub]")).toBeNull();
+    expect(titleInput()?.value).toBe("本设备标题（续）");
+    expect(saveStatus()).toBe("pending");
+    fn("saveDraftNow").mockClear();
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow")).toHaveBeenCalledTimes(1);
+    expect(fn("saveDraftNow").mock.calls[0]![1]).toMatchObject({
+      baseRevision: 5,
+      content: { title: "本设备标题（续）" },
+    });
+    expect(saveStatus()).toBe("saved");
+
+    // Saving keeps working for later edits, each on the last saved revision.
+    const first = (await fn("saveDraftNow").mock.results[0]!.value) as {
+      draft: PublishingDraft;
+    };
+    await type(titleInput(), "本设备标题（再续）");
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow").mock.calls[1]![1]).toMatchObject({
+      baseRevision: first.draft.revision,
+      content: { title: "本设备标题（再续）" },
+    });
+    expect(saveStatus()).toBe("saved");
+    expect(query("[data-editor-notice]")).toBeNull();
+  });
+
+  it("continues from the account's version when chosen and says newer input was not kept", async () => {
+    const saved = draftOf(emptyContent({ title: "起点" }), { revision: 3 });
+    const device = emptyContent({ title: "本设备标题" });
+    const account = emptyContent({ title: "别处标题", body: "别处正文" });
+    const conflict = conflictOf(device, account);
+    await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    await type(titleInput(), "本设备标题");
+    fn("saveDraftNow").mockResolvedValueOnce({
+      status: "conflict",
+      draft: draftOf(account, { revision: 4, conflict }),
+      conflict,
+    });
+    await click(query("[data-editor-save-now]"));
+    await type(titleInput(), "冲突后的输入");
+    versions.resolve = (choice) =>
+      draftOf(choice === "device" ? device : account, { revision: 5 });
+    await click(query('[data-choose="account"]'));
+    await flush();
+
+    expect(titleInput()?.value).toBe("别处标题");
+    expect(bodyInput()?.value).toBe("别处正文");
+    expect(query("[data-editor-notice]")?.textContent).toContain(
+      "选择前在本设备新输入的更改没有保留",
+    );
+    expect(saveStatus()).toBe("saved");
+    fn("saveDraftNow").mockClear();
+    await type(titleInput(), "别处标题（改）");
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow").mock.calls[0]![1]).toMatchObject({
+      baseRevision: 5,
+      content: { title: "别处标题（改）", body: "别处正文" },
+    });
+    expect(saveStatus()).toBe("saved");
+  });
+
+  it("continues saving from a restored history version", async () => {
+    const saved = draftOf(emptyContent({ title: "当前" }), { revision: 3 });
+    await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    await click(query("[data-editor-menu]"));
+    await click(query("[data-editor-menu-history]"));
+    versions.restored = draftOf(emptyContent({ title: "历史标题" }), {
+      revision: 7,
+    });
+    await click(query("[data-history-restore]"));
+    await flush();
+    expect(query("[data-history-stub]")).toBeNull();
+    expect(titleInput()?.value).toBe("历史标题");
+    await type(titleInput(), "历史标题（改）");
+    await click(query("[data-editor-save-now]"));
+    expect(fn("saveDraftNow").mock.calls.at(-1)![1]).toMatchObject({
+      baseRevision: 7,
+      content: { title: "历史标题（改）" },
+    });
+    expect(saveStatus()).toBe("saved");
+  });
+
+  it("never overwrites an edit draft saved elsewhere when drafts are turned back on", async () => {
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: emptyContent({ title: "旧作" }),
+      mediaItems: [],
+      visibility: "public",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    const elsewhere = draftOf(emptyContent({ title: "别处的编辑" }), {
+      id: EDIT_DRAFT_ID,
+      kind: "edit",
+      workId: WORK_ID,
+      baseRevisionId: REVISION_ID,
+      revision: 3,
+    });
+    await renderEditor({ type: "work", id: WORK_ID }, () => {
+      fn("editableWork").mockResolvedValue(editable);
+      fn("openWorkEditDraft")
+        .mockRejectedValueOnce(
+          clientError(409, "草稿数量已达上限", false, "draft_limit"),
+        )
+        .mockResolvedValueOnce(elsewhere);
+    });
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
+    await goToStep("text");
+    await type(titleInput(), "本页的修改");
+    const screen = emptyContent({ title: "本页的修改" });
+    const conflict = conflictOf(screen, elsewhere.content);
+    fn("saveDraft").mockResolvedValueOnce({
+      status: "conflict",
+      draft: { ...elsewhere, revision: 3, conflict },
+      conflict,
+    });
+    await click(draftSwitch());
+    await flush();
+
+    // The screen content went to the account on an earlier base: both kept.
+    expect(fn("saveDraft")).toHaveBeenCalledTimes(1);
+    expect(fn("saveDraft").mock.calls[0]).toEqual([
+      EDIT_DRAFT_ID,
+      expect.objectContaining({
+        baseRevision: 2,
+        content: expect.objectContaining({ title: "本页的修改" }),
+      }),
+    ]);
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
+    expect(saveStatus()).toBe("conflict");
+    expect(query(`[data-conflict-stub="${conflict.id}"]`)).not.toBeNull();
+    expect(titleInput()?.value).toBe("本页的修改");
+  });
+
+  it("does not end another session whose changes could not be saved", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await goToStep("text");
+    await type(titleInput(), "另一项编辑");
+    await flush();
+    await leaveOverlay(harness);
+    await harness.rerender({ type: "work", id: WORK_ID });
+    await harness.show(true);
+    expect(query("[data-editor-other-session]")).not.toBeNull();
+    expect(query("[data-editor-other-scope]")?.textContent).toContain(
+      "结束前会先保存那项编辑的更改",
+    );
+
+    fn("createDraft").mockRejectedValueOnce(
+      clientError(409, "草稿数量已达上限", false, "draft_limit"),
+    );
+    await click(buttonByText("结束那项编辑"));
+    expect(fn("createDraft")).toHaveBeenCalledTimes(1);
+    expect(
+      query("[data-editor-other-session] [role='alert']")?.textContent,
+    ).toContain("暂时无法结束");
+    expect(query("[data-editor-other-session]")).not.toBeNull();
+
+    await click(buttonByText("回到那项编辑"));
+    expect(harness.controls.replaceTarget).toHaveBeenCalledWith({
+      type: "new",
+    });
+  });
+
+  it("closes the phone preview on the browser's Back without leaving the editor", async () => {
+    const harness = await renderEditor({ type: "new" });
+    await goToStep("text");
+    await click(buttonByText("预览"));
+    expect(
+      document.querySelector('[data-editor-preview="phone"]'),
+    ).not.toBeNull();
+    expect(query("[data-editor-body]")?.hasAttribute("inert")).toBe(true);
+    expect(harness.guard()?.("history")).toBe("blocked");
+    await flush();
+    expect(document.querySelector('[data-editor-preview="phone"]')).toBeNull();
+    expect(query("[data-editor-body]")?.hasAttribute("inert")).toBe(false);
+    expect(harness.controls.close).not.toHaveBeenCalled();
+    // Nothing to protect afterwards: the guard is released again.
+    expect(harness.guard()).toBeNull();
+  });
+});

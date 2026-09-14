@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProductApplication } from "./product-application";
 import { DiscussionSection } from "../authors/discussion-section";
 import { CreateWorkAction } from "../publishing/create-action";
-import { renderPublishingEditorOverlay } from "../publishing/publishing-entry";
+import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
 import {
   CatalogSearchHeaderAction,
   CatalogSearchNavigationAction,
@@ -14,14 +14,33 @@ import type { ReactElement } from "react";
 
 import type { T02pProductPreviewProps } from "../product-preview/t02p-product-preview";
 
-const { previewMock } = vi.hoisted(() => ({ previewMock: vi.fn() }));
-
-vi.mock("../product-preview/t02p-product-preview", () => ({
-  T02pProductPreview: (props: unknown) => {
-    previewMock(props);
-    return <div data-clean-product-preview="" />;
-  },
+const { previewMock, providersMock } = vi.hoisted(() => ({
+  previewMock: vi.fn(),
+  providersMock: vi.fn(),
 }));
+
+vi.mock("../product-preview/t02p-product-preview", async () => {
+  const { useUploadSession } =
+    await import("../publishing/publishing-provider");
+  const { useEditorSessionRegistry } =
+    await import("../publishing/ui/editor/editor-session-provider");
+  return {
+    T02pProductPreview: (props: unknown) => {
+      previewMock(props);
+      // Whether the shell (and so the editor overlay) renders inside the
+      // publishing runtime and the editor session registry.
+      let inside = true;
+      try {
+        useUploadSession();
+        useEditorSessionRegistry();
+      } catch {
+        inside = false;
+      }
+      providersMock(inside);
+      return <div data-clean-product-preview="" />;
+    },
+  };
+});
 
 const states = {
   identity: "states",
@@ -29,7 +48,10 @@ const states = {
 const lastPreviewProps = () =>
   previewMock.mock.calls.at(-1)?.[0] as T02pProductPreviewProps;
 
-beforeEach(() => previewMock.mockReset());
+beforeEach(() => {
+  previewMock.mockReset();
+  providersMock.mockReset();
+});
 
 describe("ProductApplication", () => {
   it("keeps the accepted Detail without a comment section when comments are not composed", () => {
@@ -102,7 +124,9 @@ describe("ProductApplication", () => {
         headerStart?: unknown;
       }>;
     expect(element(props.navigationAction).type).toBe(CreateWorkAction);
-    expect(props.renderEditorOverlay).toBe(renderPublishingEditorOverlay);
+    expect(props.renderEditorOverlay).toBe(renderEditorOverlay);
+    // Uploads and editor sessions live above the shell, not inside the overlay.
+    expect(providersMock).toHaveBeenLastCalledWith(true);
     expect(element(props.headerStart).type).toBe(CatalogSearchHeaderAction);
     for (const page of [props.discoveryHome, props.filteredInscriptions])
       expect(element(element(page).props.headerStart).type).toBe(
@@ -123,5 +147,6 @@ describe("ProductApplication", () => {
     expect(lastPreviewProps().navigationAction).toBe(navigationAction);
     expect(lastPreviewProps()).not.toHaveProperty("renderEditorOverlay");
     expect(lastPreviewProps()).not.toHaveProperty("headerStart");
+    expect(providersMock).toHaveBeenLastCalledWith(false);
   });
 });
