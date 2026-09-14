@@ -32,11 +32,17 @@ const failureCodes: ReadonlySet<string> = new Set(
 export type TransferRefusalStatus = 401 | 404 | 409 | 413 | 422 | 503;
 
 /**
- * An error answer for a transfer whose body may still be arriving. Closing a
- * socket with unread request bytes resets it, and a client that is still
- * sending would lose the answer. So the answer is written at once, the
- * remaining bytes are read and discarded until the body ends or `readMs`
- * passed, and only then the response ends and the connection closes.
+ * An error answer for a transfer whose body may still be arriving.
+ *
+ * The answer does not announce `Connection: close`: a client still streaming
+ * the body (the Web relay's half-duplex fetch) is not told to give up the
+ * exchange, reads the answer and decides itself when to stop sending. Closing
+ * a socket with unread request bytes resets it, so the complete answer is
+ * written at once and the connection stays open while the remaining bytes are
+ * read and discarded, until the body ends or `readMs` passed. Only then the
+ * response ends and the connection closes: gracefully after a body that
+ * ended, at once while bytes are still arriving. A body that had already
+ * arrived keeps the connection the client asked for.
  */
 export const refuseTransfer = (
   request: IncomingMessage,
@@ -50,38 +56,60 @@ export const refuseTransfer = (
   const payload = JSON.stringify(
     apiErrorSchema.parse({ error: { code, message, requestId: randomUUID() } }),
   );
+  // A client error listener keeps a reset during the window from surfacing
+  // as an unhandled stream error; `close` follows it.
+  request.on("error", () => undefined);
   response.writeHead(status, {
     "content-length": Buffer.byteLength(payload),
     "content-type": "application/json; charset=utf-8",
     ...privateHeaders,
-    connection: "close",
   });
   if (request.complete || request.readableEnded || request.destroyed) {
     response.end(payload);
+    // Bytes the parser already received but nobody read: bounded, drop them.
+    if (!request.readableEnded && !request.destroyed) request.resume();
     return;
   }
   response.write(payload);
+  const socket = request.socket;
   let finished = false;
   const discard = () => {
     while (request.read() !== null);
   };
-  const finish = () => {
+  const finish = (bodyEnded: boolean) => {
     if (finished) return;
     finished = true;
     clearTimeout(window);
     request.off("readable", discard);
-    request.off("end", finish);
-    request.off("close", finish);
-    if (!response.destroyed) response.end();
+    request.off("end", onEnd);
+    request.off("close", onClose);
+    if (response.destroyed || socket.destroyed) return;
+    if (bodyEnded) {
+      // Nothing unread is left: the answer ends, then the connection closes
+      // after it flushed.
+      response.end(() => {
+        socket.destroySoon();
+      });
+      return;
+    }
+    // The grace passed while bytes still arrive: this connection cannot
+    // continue, and its client had the whole window to read the answer.
+    response.end();
+    socket.destroy();
   };
-  const window = setTimeout(finish, readMs);
+  const onEnd = () => {
+    finish(true);
+  };
+  const onClose = () => {
+    finish(false);
+  };
+  const window = setTimeout(() => {
+    finish(false);
+  }, readMs);
   window.unref();
-  // A client error listener keeps a reset during the window from surfacing
-  // as an unhandled stream error; `close` follows it.
-  request.on("error", () => undefined);
   request.on("readable", discard);
-  request.once("end", finish);
-  request.once("close", finish);
+  request.once("end", onEnd);
+  request.once("close", onClose);
   discard();
 };
 

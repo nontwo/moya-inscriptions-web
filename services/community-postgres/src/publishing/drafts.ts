@@ -8,6 +8,7 @@ import type {
   OpenWorkEditDraftCommand,
   PublishingDeviceClass,
   PublishingDraft,
+  PublishingDraftDeletionCommand,
   PublishingDraftPage,
   PublishingDraftSaveResult,
   PublishingDraftSummary,
@@ -20,6 +21,7 @@ import type {
   WorkSnapshotKind,
 } from "@moya/contracts";
 import {
+  PUBLISHING_DRAFT_CHANGED,
   normalizePublishingBody,
   normalizePublishingTitle,
   publishingDraftPageSchema,
@@ -28,10 +30,7 @@ import {
   publishingSnapshotPageSchema,
   workDraftContentSchema,
 } from "@moya/contracts/schemas";
-import type {
-  PublishingCommandIdentity,
-  PublishingDraftDeletion,
-} from "@moya/api";
+import type { PublishingDraftDeletion } from "@moya/api";
 import type { WorkPublishingSettings } from "@moya/contracts/internal/community-operator";
 import type { Pool } from "pg";
 
@@ -66,7 +65,7 @@ import {
   type RefHolderKind,
   type RefRelease,
 } from "./media.js";
-import { workExcerpt } from "./media-read.js";
+import { clipboardOriginSql, workExcerpt } from "./media-read.js";
 
 /*
  * Persistent drafts: creation, conditional saves with conflict copies,
@@ -809,7 +808,7 @@ export const deleteDraft = async (
   pool: Pool,
   actorId: string,
   draftId: string,
-  command: PublishingCommandIdentity,
+  command: PublishingDraftDeletionCommand,
   now: Date,
 ): Promise<PublishingDraftDeletion> =>
   authorCommand(
@@ -824,6 +823,15 @@ export const deleteDraft = async (
     },
     async (db) => {
       const draft = await lockActiveDraft(db, actorId, draftId);
+      // The author confirmed the deletion scope of an older draft revision:
+      // nothing is removed. Only the draft revision is compared; a conflict
+      // copy saved since (on an outdated base) leaves it unchanged and is
+      // deleted with the draft.
+      if (
+        command.expectedRevision !== undefined &&
+        draft.revision !== command.expectedRevision
+      )
+        throw new CommunityConflictError(PUBLISHING_DRAFT_CHANGED);
       const copies = (
         await db.query<{ id: string; content: WorkDraftContent }>(
           "SELECT id,content FROM community.work_drafts WHERE conflict_of=$1 AND owner_id=$2 ORDER BY id FOR UPDATE",
@@ -1179,8 +1187,9 @@ export const openEditDraft = async (
         };
         kind: "static" | "live";
         quality_mode: "standard" | "original" | "legacy";
+        clipboard: boolean;
       }>(
-        `SELECT ri.item_id, ri.edit, i.kind, i.quality_mode
+        `SELECT ri.item_id, ri.edit, i.kind, i.quality_mode, ${clipboardOriginSql("i")} AS clipboard
          FROM community.work_revision_items ri JOIN community.media_items i ON i.id=ri.item_id
          WHERE ri.revision_id=$1 ORDER BY ri.position`,
         [work.author_revision_id],
@@ -1219,6 +1228,7 @@ export const openEditDraft = async (
             rotation: item.edit.rotation ?? 0,
             crop: item.edit.crop ?? null,
           },
+          ...(item.clipboard ? { origin: "clipboard" } : {}),
         })),
         coverKey,
         coverCrop: coverKey === null ? null : revision.cover_crop,

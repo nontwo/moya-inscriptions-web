@@ -228,7 +228,9 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
    * author on their own work outside the recycle bin unless an operator hid
    * or removed it (self-only and pending works included, so no pending state
    * is implied). Comments, likes and favorites are still only written on
-   * effectively public works.
+   * effectively public works. `coverMediaId` names the cover entry of the
+   * same revision; only the author learns `publiclyVisible` (whether third
+   * parties can see the work now, community.work_is_public).
    */
   private async workDto(
     db: PoolClient,
@@ -246,16 +248,18 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
               [revisionId],
             )
           ).rows[0];
+    const { media, coverMediaId } = await revisionMedia(
+      db,
+      revision === undefined ? null : revisionId,
+    );
     return workSchema.parse({
       id: row.id,
       authorId: row.author_id,
       authorName: row.display_name,
       title: revision?.title ?? row.title,
       text: revision?.body ?? row.text,
-      media: await revisionMedia(
-        db,
-        revision === undefined ? null : revisionId,
-      ),
+      media,
+      coverMediaId,
       firstPublishedAt: row.first_published_at?.toISOString() ?? null,
       version: row.version,
       canEdit: owner,
@@ -268,6 +272,7 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
         ? {
             visibility: row.visibility,
             trashedAt: row.trashed_at?.toISOString() ?? null,
+            publiclyVisible: row.is_public,
           }
         : {}),
     });
@@ -609,8 +614,11 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
           [id, viewer, q.pageSize, offset(q)],
         )
       ).rows;
+      // One client runs one query at a time: map the rows in order.
+      const items: UserWork[] = [];
+      for (const row of rows) items.push(await this.workDto(db, row, viewer));
       return {
-        items: await Promise.all(rows.map((r) => this.workDto(db, r, viewer))),
+        items,
         total,
         page: q.page,
         pageSize: q.pageSize,

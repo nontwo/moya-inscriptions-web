@@ -163,7 +163,7 @@ export const handleWorkPublishingRequest = async (
             await service.deleteDraft(
               actor,
               draftId,
-              command("requestIdentity", await body()),
+              command("deleteDraft", await body()),
             ),
           );
           return;

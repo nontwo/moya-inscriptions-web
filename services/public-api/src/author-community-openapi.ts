@@ -556,12 +556,18 @@ const accountAssertion = {
     "The authenticated account; a missing or different account rejects. Does not authorize a request.",
   schema: { type: "string", pattern: "^user-[0-9a-f]{32}$" },
 };
+interface PublishingOperationOptions {
+  readonly list?: boolean;
+  readonly created?: boolean;
+  /** Replaces the generic CONFLICT description. */
+  readonly conflict?: string;
+}
 const publishingOperation = (
   name: string,
   path: string,
   output: string,
   input: string | null,
-  options: { readonly list?: boolean; readonly created?: boolean } = {},
+  options: PublishingOperationOptions = {},
 ) => {
   const base = operation(name, path, output, input, true, options.list);
   return {
@@ -573,6 +579,9 @@ const publishingOperation = (
     responses: {
       [options.created ? "201" : "200"]: response(output),
       ...publishingFailures,
+      ...(options.conflict === undefined
+        ? {}
+        : { "409": failure(options.conflict) }),
     },
   };
 };
@@ -582,7 +591,7 @@ const publishingRoutes: readonly [
   string,
   string,
   string | null,
-  { readonly list?: boolean; readonly created?: boolean }?,
+  PublishingOperationOptions?,
 ][] = [
   [
     "/v1/community/publishing/limits",
@@ -619,7 +628,11 @@ const publishingRoutes: readonly [
     "delete",
     "deletePublishingDraft",
     "PublishingDraftDeletionResult",
-    "RequestIdentity",
+    "PublishingDraftDeletionCommand",
+    {
+      conflict:
+        "The draft revision differs from the confirmed expectedRevision (message draft_changed; nothing was deleted; a conflict copy saved on an outdated base does not change the revision), the draft is no longer active, or a request identity was reused with different content",
+    },
   ],
   [
     "/v1/community/publishing/drafts/{draftId}/save",
@@ -788,7 +801,7 @@ authorCommunityPaths["/v1/community/publishing/uploads/{componentId}"] = {
       null,
     ),
     description:
-      "Work publishing, Development only. One registered media component as a raw byte stream behind an attempt fence: content-length is required and must equal the declared component bytes, and the server checksum is authoritative. No automatic retry: a new attempt follows an explicit component reset. A cancelled or superseded attempt answers CONFLICT and stores nothing. A refusal may be answered while bytes are still arriving: the server then reads on for a few seconds before it closes the connection, so a client that keeps sending longer can see the connection close instead of the answer. A transfer that delivers no bytes for two minutes is closed without an answer. Private, no-store.",
+      "Work publishing, Development only. One registered media component as a raw byte stream behind an attempt fence: content-length is required and must equal the declared component bytes, and the server checksum is authoritative. No automatic retry: a new attempt follows an explicit component reset. A cancelled or superseded attempt answers CONFLICT and stores nothing. A refusal (including an invalid session or account assertion) may be answered while bytes are still arriving: the answer does not announce a connection close; the server reads on and discards bytes until the body ends or a few seconds passed, and only then closes the connection, so a client that keeps sending longer sees the connection close after the answer. A transfer that delivers no bytes for two minutes is closed without an answer. Private, no-store.",
     parameters: [
       {
         name: "componentId",

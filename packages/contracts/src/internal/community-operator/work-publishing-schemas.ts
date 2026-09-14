@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   WORK_BODY_MAXIMUM,
+  WORK_ITEMS_CONFIGURABLE_MAXIMUM,
   WORK_ITEMS_HARD_MAXIMUM,
   WORK_TITLE_MAXIMUM,
   mediaEditKeySchema,
@@ -51,7 +52,8 @@ const pageSize = z
 
 /** Every configurable limit with its sane bound; the Backend enforces the stored values. */
 const workPublishingLimitsShape = {
-  maxItemsPerWork: z.number().int().min(1).max(WORK_ITEMS_HARD_MAXIMUM),
+  /** At most 100, so a full draft save with realistic text stays within the 100 KB JSON command limit. */
+  maxItemsPerWork: z.number().int().min(1).max(WORK_ITEMS_CONFIGURABLE_MAXIMUM),
   originalItemMaxBytes: z
     .number()
     .int()
@@ -116,7 +118,13 @@ export const operatorWorkSubmissionQuerySchema = z.strictObject({
   pageSize,
 });
 
-/** One revision item as a content-free descriptor; bytes come from the operator media proxy. */
+/**
+ * One revision item as a content-free descriptor; bytes come from the operator
+ * media proxy. `editKey` addresses the display, full and motion variants (the
+ * item edit alone). `coverEditKey` addresses the thumb and cover variants of
+ * the revision's cover item (its edit and the revision cover crop); it is null
+ * for every other item, whose thumb and cover use `editKey`.
+ */
 export const operatorSubmissionMediaSchema = z.strictObject({
   position: z.number().int().min(1).max(WORK_ITEMS_HARD_MAXIMUM),
   itemId: mediaItemIdSchema,
@@ -125,6 +133,7 @@ export const operatorSubmissionMediaSchema = z.strictObject({
   state: mediaItemStateSchema,
   edit: mediaEditSchema,
   editKey: mediaEditKeySchema,
+  coverEditKey: mediaEditKeySchema.nullable(),
   presentation: mediaPresentationSchema.nullable(),
   variants: z
     .array(mediaVariantSchema)
@@ -139,33 +148,47 @@ export const operatorSubmissionMediaSchema = z.strictObject({
  * autosaves and self-only submissions never appear here. Text is returned as
  * stored, including legacy Phase 4 line breaks.
  */
-export const operatorWorkSubmissionSchema = z.strictObject({
-  revisionId: workRevisionIdSchema,
-  workId,
-  sequence: z.number().int().min(1).max(2147483647),
-  origin: z.enum(["submission", "legacy"]),
-  author: z.strictObject({
-    id: strictUserId,
-    handle: publicUserHandleSchema,
-    displayName: publicUserDisplayNameSchema,
-    status: z.enum(["active", "suspended"]),
-  }),
-  title: storedPublishingTextSchema(WORK_TITLE_MAXIMUM),
-  body: storedPublishingTextSchema(WORK_BODY_MAXIMUM),
-  authorship: workAuthorshipSchema,
-  coverItemId: mediaItemIdSchema.nullable(),
-  coverCrop: mediaCropSchema.nullable(),
-  items: z.array(operatorSubmissionMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),
-  disposition: workSubmissionQueueStateSchema,
-  /** Only the latest explicit submission of a work can be approved. */
-  latest: z.boolean(),
-  workState: z.enum(["visible", "hidden", "removed"]),
-  workTrashed: z.boolean(),
-  submittedAt: timestamp,
-  decidedAt: timestamp.nullable(),
-  decidedBy: operatorLabelSchema.nullable(),
-  version,
-});
+export const operatorWorkSubmissionSchema = z
+  .strictObject({
+    revisionId: workRevisionIdSchema,
+    workId,
+    sequence: z.number().int().min(1).max(2147483647),
+    origin: z.enum(["submission", "legacy"]),
+    author: z.strictObject({
+      id: strictUserId,
+      handle: publicUserHandleSchema,
+      displayName: publicUserDisplayNameSchema,
+      status: z.enum(["active", "suspended"]),
+    }),
+    title: storedPublishingTextSchema(WORK_TITLE_MAXIMUM),
+    body: storedPublishingTextSchema(WORK_BODY_MAXIMUM),
+    authorship: workAuthorshipSchema,
+    coverItemId: mediaItemIdSchema.nullable(),
+    coverCrop: mediaCropSchema.nullable(),
+    items: z.array(operatorSubmissionMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),
+    disposition: workSubmissionQueueStateSchema,
+    /** Only the latest explicit submission of a work can be approved. */
+    latest: z.boolean(),
+    workState: z.enum(["visible", "hidden", "removed"]),
+    workTrashed: z.boolean(),
+    submittedAt: timestamp,
+    decidedAt: timestamp.nullable(),
+    decidedBy: operatorLabelSchema.nullable(),
+    version,
+  })
+  .superRefine((submission, context) => {
+    submission.items.forEach((item, index) => {
+      if (
+        (item.coverEditKey !== null) !==
+        (item.itemId === submission.coverItemId)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["items", index, "coverEditKey"],
+          message: "only the cover item carries a cover edit key",
+        });
+    });
+  });
 
 export const operatorWorkSubmissionPageSchema = z.strictObject({
   items: z.array(operatorWorkSubmissionSchema).max(50),

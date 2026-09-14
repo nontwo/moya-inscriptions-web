@@ -2293,6 +2293,10 @@
                       "enum": ["static", "live"],
                       "type": "string"
                     },
+                    "origin": {
+                      "const": "clipboard",
+                      "type": "string"
+                    },
                     "pendingLabel": {
                       "enum": ["photo", "live"],
                       "type": "string"
@@ -3842,6 +3846,10 @@
                       "enum": ["static", "live"],
                       "type": "string"
                     },
+                    "origin": {
+                      "const": "clipboard",
+                      "type": "string"
+                    },
                     "pendingLabel": {
                       "enum": ["photo", "live"],
                       "type": "string"
@@ -5093,6 +5101,10 @@
                                   "enum": ["static", "live"],
                                   "type": "string"
                                 },
+                                "origin": {
+                                  "const": "clipboard",
+                                  "type": "string"
+                                },
                                 "pendingLabel": {
                                   "enum": ["photo", "live"],
                                   "type": "string"
@@ -5363,6 +5375,10 @@
                                   "enum": ["static", "live"],
                                   "type": "string"
                                 },
+                                "origin": {
+                                  "const": "clipboard",
+                                  "type": "string"
+                                },
                                 "pendingLabel": {
                                   "enum": ["photo", "live"],
                                   "type": "string"
@@ -5621,6 +5637,10 @@
                     },
                     "kind": {
                       "enum": ["static", "live"],
+                      "type": "string"
+                    },
+                    "origin": {
+                      "const": "clipboard",
                       "type": "string"
                     },
                     "pendingLabel": {
@@ -5914,6 +5934,24 @@
           "createdAt",
           "updatedAt"
         ],
+        "type": "object"
+      },
+      "PublishingDraftDeletionCommand": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "requestId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": ["requestId"],
         "type": "object"
       },
       "PublishingDraftDeletionResult": {
@@ -6284,6 +6322,10 @@
                                           "enum": ["static", "live"],
                                           "type": "string"
                                         },
+                                        "origin": {
+                                          "const": "clipboard",
+                                          "type": "string"
+                                        },
                                         "pendingLabel": {
                                           "enum": ["photo", "live"],
                                           "type": "string"
@@ -6563,6 +6605,10 @@
                                           "enum": ["static", "live"],
                                           "type": "string"
                                         },
+                                        "origin": {
+                                          "const": "clipboard",
+                                          "type": "string"
+                                        },
                                         "pendingLabel": {
                                           "enum": ["photo", "live"],
                                           "type": "string"
@@ -6825,6 +6871,10 @@
                             },
                             "kind": {
                               "enum": ["static", "live"],
+                              "type": "string"
+                            },
+                            "origin": {
+                              "const": "clipboard",
                               "type": "string"
                             },
                             "pendingLabel": {
@@ -7329,6 +7379,10 @@
                                   "enum": ["static", "live"],
                                   "type": "string"
                                 },
+                                "origin": {
+                                  "const": "clipboard",
+                                  "type": "string"
+                                },
                                 "pendingLabel": {
                                   "enum": ["photo", "live"],
                                   "type": "string"
@@ -7597,6 +7651,10 @@
                                 },
                                 "kind": {
                                   "enum": ["static", "live"],
+                                  "type": "string"
+                                },
+                                "origin": {
+                                  "const": "clipboard",
                                   "type": "string"
                                 },
                                 "pendingLabel": {
@@ -7886,6 +7944,10 @@
                                           "enum": ["static", "live"],
                                           "type": "string"
                                         },
+                                        "origin": {
+                                          "const": "clipboard",
+                                          "type": "string"
+                                        },
                                         "pendingLabel": {
                                           "enum": ["photo", "live"],
                                           "type": "string"
@@ -8165,6 +8227,10 @@
                                           "enum": ["static", "live"],
                                           "type": "string"
                                         },
+                                        "origin": {
+                                          "const": "clipboard",
+                                          "type": "string"
+                                        },
                                         "pendingLabel": {
                                           "enum": ["photo", "live"],
                                           "type": "string"
@@ -8427,6 +8493,10 @@
                             },
                             "kind": {
                               "enum": ["static", "live"],
+                              "type": "string"
+                            },
+                            "origin": {
+                              "const": "clipboard",
                               "type": "string"
                             },
                             "pendingLabel": {
@@ -8748,7 +8818,7 @@
             "type": "integer"
           },
           "maxItems": {
-            "maximum": 500,
+            "maximum": 100,
             "minimum": 1,
             "type": "integer"
           },
@@ -9195,6 +9265,10 @@
                           },
                           "kind": {
                             "enum": ["static", "live"],
+                            "type": "string"
+                          },
+                          "origin": {
+                            "const": "clipboard",
                             "type": "string"
                           },
                           "pendingLabel": {
@@ -9650,6 +9724,10 @@
               "provenance": {
                 "additionalProperties": false,
                 "properties": {
+                  "clientSource": {
+                    "enum": ["picker", "drop", "clipboard"],
+                    "type": "string"
+                  },
                   "parser": {
                     "pattern": "^[A-Za-z0-9@._/-]{1,64}$",
                     "type": "string"
@@ -10015,6 +10093,10 @@
                       "enum": ["static", "live"],
                       "type": "string"
                     },
+                    "origin": {
+                      "const": "clipboard",
+                      "type": "string"
+                    },
                     "pendingLabel": {
                       "enum": ["photo", "live"],
                       "type": "string"
@@ -10256,6 +10338,25 @@
           "canEdit": {
             "type": "boolean"
           },
+          "coverMediaId": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "pattern": "^user-media-[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  {
+                    "pattern": "^media-item-[0-9a-f]{32}$",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "editedAt": {
             "anyOf": [
               {
@@ -10339,6 +10440,9 @@
             },
             "maxItems": 500,
             "type": "array"
+          },
+          "publiclyVisible": {
+            "type": "boolean"
           },
           "text": {
             "type": "string"
@@ -10626,6 +10730,10 @@
                   "enum": ["static", "live"],
                   "type": "string"
                 },
+                "origin": {
+                  "const": "clipboard",
+                  "type": "string"
+                },
                 "pendingLabel": {
                   "enum": ["photo", "live"],
                   "type": "string"
@@ -10743,6 +10851,25 @@
                 "canEdit": {
                   "type": "boolean"
                 },
+                "coverMediaId": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "pattern": "^user-media-[0-9a-f]{32}$",
+                          "type": "string"
+                        },
+                        {
+                          "pattern": "^media-item-[0-9a-f]{32}$",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "editedAt": {
                   "anyOf": [
                     {
@@ -10826,6 +10953,9 @@
                   },
                   "maxItems": 500,
                   "type": "array"
+                },
+                "publiclyVisible": {
+                  "type": "boolean"
                 },
                 "text": {
                   "type": "string"
@@ -11085,6 +11215,10 @@
                     },
                     "kind": {
                       "enum": ["static", "live"],
+                      "type": "string"
+                    },
+                    "origin": {
+                      "const": "clipboard",
                       "type": "string"
                     },
                     "pendingLabel": {
@@ -15012,7 +15146,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RequestIdentity"
+                "$ref": "#/components/schemas/PublishingDraftDeletionCommand"
               }
             }
           },
@@ -15057,7 +15191,7 @@
                 }
               }
             },
-            "description": "Stale state (for example a draft already submitted or an ended session), or a request identity reused with different content"
+            "description": "The draft revision differs from the confirmed expectedRevision (message draft_changed; nothing was deleted; a conflict copy saved on an outdated base does not change the revision), the draft is no longer active, or a request identity was reused with different content"
           },
           "422": {
             "content": {
@@ -16971,7 +17105,7 @@
     },
     "/v1/community/publishing/uploads/{componentId}": {
       "post": {
-        "description": "Work publishing, Development only. One registered media component as a raw byte stream behind an attempt fence: content-length is required and must equal the declared component bytes, and the server checksum is authoritative. No automatic retry: a new attempt follows an explicit component reset. A cancelled or superseded attempt answers CONFLICT and stores nothing. A refusal may be answered while bytes are still arriving: the server then reads on for a few seconds before it closes the connection, so a client that keeps sending longer can see the connection close instead of the answer. A transfer that delivers no bytes for two minutes is closed without an answer. Private, no-store.",
+        "description": "Work publishing, Development only. One registered media component as a raw byte stream behind an attempt fence: content-length is required and must equal the declared component bytes, and the server checksum is authoritative. No automatic retry: a new attempt follows an explicit component reset. A cancelled or superseded attempt answers CONFLICT and stores nothing. A refusal (including an invalid session or account assertion) may be answered while bytes are still arriving: the answer does not announce a connection close; the server reads on and discards bytes until the body ends or a few seconds passed, and only then closes the connection, so a client that keeps sending longer sees the connection close after the answer. A transfer that delivers no bytes for two minutes is closed without an answer. Private, no-store.",
         "operationId": "uploadMediaComponent",
         "parameters": [
           {

@@ -7,6 +7,7 @@ import type {
   MediaVariant,
   OpenWorkEditDraftCommand,
   PublishingDraft,
+  PublishingDraftDeletionCommand,
   PublishingDraftDeletionResult,
   PublishingDraftPage,
   PublishingDraftSaveResult,
@@ -171,11 +172,16 @@ export type PublishingProcessingSource =
     };
 
 /**
- * What the worker hands to `PublishingMediaProcessorPort.process` (it adds its
- * own signal, and for a legacy source the component it built from the legacy
- * bytes). A legacy item is always mode `derive` with a non-`base` edit key,
- * kind `static` and quality mode `standard` (a lossless PNG decoded like a
- * retained Standard master).
+ * What the port hands the worker for one `process_item` or `derive_edit` job.
+ * For an `upload` source the worker adds its own signal and passes the rest to
+ * the processor as `PublishingProcessInput`. For a `legacy_user_media` source
+ * `components` is empty and no component is built: the worker reads the PNG
+ * bytes with `readLegacyMediaBytes(itemId)`, checks their size and signature,
+ * and hands them to the Backend's media processor, whose input carries the
+ * still bytes of a legacy item (`PublishingProcessInput` in this package has
+ * no field for them). A legacy item is always mode `derive` with a non-`base`
+ * edit key, kind `static` and quality mode `standard` (a lossless PNG decoded
+ * like a retained Standard master).
  */
 export type PublishingProcessingInput = Omit<
   PublishingProcessInput,
@@ -355,7 +361,8 @@ export type PublishingTrashPurge = "purged" | "not_due" | "missing";
 export interface PublishingSettingsOperations {
   /**
    * The single settings row (policy and every enforced limit); the service
-   * derives the author `PublishingLimits` from it.
+   * derives the author `PublishingLimits` from it. A stored item maximum
+   * above the configurable 100 is enforced and read as 100.
    */
   readSettings(): Promise<WorkPublishingSettings>;
   /**
@@ -501,12 +508,18 @@ export interface PublishingDraftOperations {
    * Author command. Targeted deletion (D06): the draft, its snapshots and its
    * conflict copies are deleted; items referenced only by them are cancelled
    * and `purge_item` jobs enqueued at `now`. Other drafts and every work
-   * revision are untouched. Counts describe what was removed.
+   * revision are untouched. Counts describe what was removed. With
+   * `expectedRevision`, a draft whose revision differs (a save on its
+   * current base advanced it after the author confirmed) throws
+   * `CommunityConflictError("draft_changed")` and nothing is removed or
+   * receipted; a replay of a completed deletion returns its receipt. Only the
+   * draft revision is compared: a conflict copy created or replaced since (a
+   * save on an outdated base) does not change it and is deleted.
    */
   deleteDraft(
     actorId: string,
     draftId: string,
-    command: PublishingCommandIdentity,
+    command: PublishingDraftDeletionCommand,
     now: Date,
   ): Promise<PublishingDraftDeletion>;
   /** Snapshots of the draft's lineage (its work, else the draft), newest first. */
@@ -732,8 +745,10 @@ export interface PublishingUploadOperations {
 export interface PublishingSubmissionOperations {
   /**
    * Author command, receipted only when `confirmed`. Holder: the actor's
-   * active draft or active unexpired session (a submitted, discarded, deleted
-   * or expired holder throws `CommunityConflictError`). An edit of a trashed
+   * active draft or active unexpired session (a draft no longer active, or a
+   * submitted, discarded or lapsed session, throws `CommunityConflictError`;
+   * a deleted draft, a conflict copy and any holder the actor does not own
+   * throw `CommunityNotFoundError`). An edit of a trashed
    * or removed work throws `work_unavailable`; a `baseRevisionId` other than
    * the work's author revision (or non-null for a new work) throws
    * `CommunityConflictError`. `items_limit` applies the configured maximum;

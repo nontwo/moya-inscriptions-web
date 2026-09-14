@@ -14,6 +14,7 @@ import type {
   MediaVariant,
   OpenWorkEditDraftCommand,
   PublishingDraft,
+  PublishingDraftDeletionCommand,
   PublishingDraftDeletionResult,
   PublishingDraftPage,
   PublishingDraftSaveResult,
@@ -384,10 +385,15 @@ export class WorkPublishingService {
     return this.port.snapshotDraft(actorId, draftId, command, this.clock());
   }
 
+  /**
+   * Targeted deletion; an `expectedRevision` the draft revision moved past is
+   * a `CommunityConflictError("draft_changed")` and deletes nothing. Conflict
+   * copies do not move the revision.
+   */
   async deleteDraft(
     actorId: string,
     draftId: string,
-    command: PublishingCommandIdentity,
+    command: PublishingDraftDeletionCommand,
   ): Promise<PublishingDraftDeletionResult> {
     const before = this.transfers.mark();
     const deletion = await this.port.deleteDraft(

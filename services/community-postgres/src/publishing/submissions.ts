@@ -498,15 +498,25 @@ const comparableText = (raw: string | undefined): string | undefined => {
   return value === "" ? undefined : value;
 };
 
+/** Content items without their presentation provenance (`origin`). */
+const comparableItems = (content: WorkDraftContent): unknown[] =>
+  content.items.map((item) => {
+    const comparable: Partial<WorkDraftContent["items"][number]> = { ...item };
+    delete comparable.origin;
+    return comparable;
+  });
+
 /**
  * Stored draft content in the form a submission of the same input stores:
- * normalized text, and authorship without empty optional fields (JSON drops
- * the fields left undefined). Only compared as JSON.
+ * normalized text, authorship without empty optional fields (JSON drops the
+ * fields left undefined), and items without their presentation provenance.
+ * Only compared as JSON.
  */
 const comparableDraftContent = (content: WorkDraftContent): unknown => {
   const source = content.authorship;
   return {
     ...content,
+    items: comparableItems(content),
     title: normalizePublishingTitle(content.title),
     body: normalizePublishingBody(content.body),
     authorship:
@@ -567,7 +577,10 @@ const transferHolder = async (
     const same = (
       await db.query<{ same: boolean }>("SELECT $1::jsonb=$2::jsonb AS same", [
         JSON.stringify(comparableDraftContent(holder.content)),
-        JSON.stringify(normalized.content),
+        JSON.stringify({
+          ...normalized.content,
+          items: comparableItems(normalized.content),
+        }),
       ])
     ).rows[0]?.same;
     if (same !== true)

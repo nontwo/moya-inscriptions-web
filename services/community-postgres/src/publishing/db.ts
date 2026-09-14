@@ -10,6 +10,7 @@ import type {
   OperatorAccountCapacity,
   WorkPublishingSettings,
 } from "@moya/contracts/internal/community-operator";
+import { WORK_ITEMS_CONFIGURABLE_MAXIMUM } from "@moya/contracts/schemas";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import { asCommunityOperationError } from "../availability.js";
@@ -398,7 +399,10 @@ interface SettingsRow extends QueryResultRow {
 /**
  * The single settings row as the operator contract. `lock` adds `FOR SHARE`
  * (a decision that must not race a settings change) or `FOR UPDATE` (the
- * settings command itself).
+ * settings command itself). The storage constraint still admits an item
+ * maximum up to 500; a stored value above the configurable maximum (100, the
+ * bound that keeps full draft saves within the JSON command limit) is
+ * enforced as that maximum.
  */
 export const selectSettings = async (
   db: PublishingDb,
@@ -413,7 +417,10 @@ export const selectSettings = async (
     throw new Error("Work publishing settings are not initialized");
   return workPublishingSettingsSchema.parse({
     policy: row.publication_policy,
-    maxItemsPerWork: row.max_items_per_work,
+    maxItemsPerWork: Math.min(
+      row.max_items_per_work,
+      WORK_ITEMS_CONFIGURABLE_MAXIMUM,
+    ),
     originalItemMaxBytes: safeInteger(row.original_item_max_bytes),
     standardComponentMaxBytes: safeInteger(row.standard_component_max_bytes),
     ordinaryAccountCapacityBytes: safeInteger(

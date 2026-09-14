@@ -7,6 +7,7 @@ import type {
   MediaVariant,
   OpenWorkEditDraftCommand,
   PublishingDraft,
+  PublishingDraftDeletionCommand,
   PublishingDraftPage,
   PublishingDraftSaveResult,
   PublishingMediaItem,
@@ -139,7 +140,7 @@ export class PostgresWorkPublishingAdapter implements WorkPublishingPort {
   deleteDraft(
     actorId: string,
     draftId: string,
-    command: PublishingCommandIdentity,
+    command: PublishingDraftDeletionCommand,
     now: Date,
   ): Promise<PublishingDraftDeletion> {
     return drafts.deleteDraft(this.pool, actorId, draftId, command, now);

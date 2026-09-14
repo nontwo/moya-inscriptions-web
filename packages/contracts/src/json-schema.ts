@@ -189,6 +189,7 @@ import {
   editableWorkSchema,
   mediaEditSchema,
   openWorkEditDraftCommandSchema,
+  publishingDraftDeletionCommandSchema,
   publishingDraftDeletionResultSchema,
   publishingDraftPageSchema,
   publishingDraftSaveResultSchema,
@@ -230,6 +231,9 @@ export const workPublishingJsonSchemas = {
   PublishingDraft: toJsonSchema(publishingDraftSchema),
   PublishingDraftPage: toJsonSchema(publishingDraftPageSchema),
   PublishingDraftSaveResult: toJsonSchema(publishingDraftSaveResultSchema),
+  PublishingDraftDeletionCommand: toJsonSchema(
+    publishingDraftDeletionCommandSchema,
+  ),
   PublishingDraftDeletionResult: toJsonSchema(
     publishingDraftDeletionResultSchema,
   ),

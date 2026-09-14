@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   workAuthorshipSchema,
+  workMediaIdSchema,
   workMediaSchema,
   workVisibilitySchema,
 } from "./work-publishing-schemas.js";
@@ -498,28 +499,69 @@ export const authorProfileSchema = z.strictObject({
   }),
   nextAvatarChangeAt: z.iso.datetime().nullable(),
 });
-export const workSchema = z.strictObject({
-  id: workId,
-  authorId: userId,
-  authorName: z.string(),
-  /** May be empty: an untitled work keeps an empty title in storage. */
-  title: z.string(),
-  text: z.string(),
-  /** Phase 4 PNG media or work publishing media items; avatars keep `authorMediaSchema`. */
-  media: z.array(workMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),
-  /** Null until the first public exposure (a self-only or pending first submission). */
-  firstPublishedAt: z.iso.datetime().nullable(),
-  version,
-  canEdit: z.boolean(),
-  available: z.boolean(),
-  /** Set after a real content update of a public revision. */
-  editedAt: z.iso.datetime().nullable().optional(),
-  /** Attribution readers see: original, copy or practice, or material sharing with its reference. */
-  authorship: workAuthorshipSchema.optional(),
-  /** Author-only fields: present only in the author's own view. */
-  visibility: workVisibilitySchema.optional(),
-  trashedAt: z.iso.datetime().nullable().optional(),
-});
+export const workSchema = z
+  .strictObject({
+    id: workId,
+    authorId: userId,
+    authorName: z.string(),
+    /** May be empty: an untitled work keeps an empty title in storage. */
+    title: z.string(),
+    text: z.string(),
+    /** Phase 4 PNG media or work publishing media items; avatars keep `authorMediaSchema`. */
+    media: z.array(workMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),
+    /**
+     * The id of the `media` entry the viewer's revision uses as its cover (the
+     * public revision for third parties, the author revision for the author):
+     * the chosen cover item, else the first entry; null without media.
+     */
+    coverMediaId: workMediaIdSchema.nullable().optional(),
+    /** Null until the first public exposure (a self-only or pending first submission). */
+    firstPublishedAt: z.iso.datetime().nullable(),
+    version,
+    canEdit: z.boolean(),
+    available: z.boolean(),
+    /** Set after a real content update of a public revision. */
+    editedAt: z.iso.datetime().nullable().optional(),
+    /** Attribution readers see: original, copy or practice, or material sharing with its reference. */
+    authorship: workAuthorshipSchema.optional(),
+    /** Author-only fields: present only in the author's own view. */
+    visibility: workVisibilitySchema.optional(),
+    trashedAt: z.iso.datetime().nullable().optional(),
+    /**
+     * Author-only: true exactly when third parties can currently see the work
+     * (public, not trashed, not hidden or removed by an operator, and a public
+     * revision exists). A pending first submission or a hidden work is false.
+     */
+    publiclyVisible: z.boolean().optional(),
+  })
+  .superRefine((work, context) => {
+    if (work.publiclyVisible !== undefined && !work.canEdit)
+      context.addIssue({
+        code: "custom",
+        path: ["publiclyVisible"],
+        message: "only the author's own view says whether a work is public",
+      });
+    if (
+      work.publiclyVisible === true &&
+      (work.visibility === "self" ||
+        (work.trashedAt !== undefined && work.trashedAt !== null))
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["publiclyVisible"],
+        message: "a self-only or trashed work is not public",
+      });
+    if (
+      work.coverMediaId !== undefined &&
+      work.coverMediaId !== null &&
+      !work.media.some((media) => media.id === work.coverMediaId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["coverMediaId"],
+        message: "the cover names one of the work's media",
+      });
+  });
 export const profileUpdateSchema = z.strictObject({
   requestId,
   displayName: authorText(40).refine((s) => s.length > 0),

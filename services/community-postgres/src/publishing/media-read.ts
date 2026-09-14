@@ -15,6 +15,15 @@ import { legacyMediaSrc, publishingMediaSrc } from "./media.js";
  * The path builders live in ./media.ts (one definition each).
  */
 
+/**
+ * SQL for one media item row alias: true when its private registration
+ * metadata says the browser received it from a clipboard paste. Editable
+ * content derived from a revision carries that as the item's presentation
+ * `origin`; the metadata itself never leaves storage.
+ */
+export const clipboardOriginSql = (item: string): string =>
+  `COALESCE(${item}.private_metadata #>> '{provenance,clientSource}' = 'clipboard', FALSE)`;
+
 /** Card, draft and recycle bin excerpts: the first 160 code points of the body, trimmed after cutting. */
 export const workExcerpt = (body: string): string =>
   [...body].slice(0, WORK_EXCERPT_MAXIMUM).join("").trim();
@@ -160,6 +169,18 @@ interface RevisionMediaRow extends QueryResultRow {
   display_key: string;
   display_width: number | null;
   display_height: number | null;
+  is_cover: boolean;
+}
+
+/** One revision's ordered media and the entry its card cover uses. */
+export interface RevisionMediaView {
+  readonly media: WorkMedia[];
+  /**
+   * The media id (a legacy user media id for an unedited legacy item) of the
+   * revision's chosen cover item when it is shown, else of the first shown
+   * entry (legacy revisions name no cover); null without shown media.
+   */
+  readonly coverMediaId: string | null;
 }
 
 /**
@@ -171,13 +192,15 @@ interface RevisionMediaRow extends QueryResultRow {
 export const revisionMedia = async (
   db: PublishingDb,
   revisionId: string | null,
-): Promise<WorkMedia[]> => {
-  if (revisionId === null) return [];
+): Promise<RevisionMediaView> => {
+  if (revisionId === null) return { media: [], coverMediaId: null };
   const rows = (
     await db.query<RevisionMediaRow>(
       `SELECT ri.item_id,i.kind,i.state,i.legacy_media_id,um.width AS legacy_width,um.height AS legacy_height,
-        i.presentation,k.display_key,d.width AS display_width,d.height AS display_height
+        i.presentation,k.display_key,d.width AS display_width,d.height AS display_height,
+        ri.item_id IS NOT DISTINCT FROM r.cover_item_id AS is_cover
       FROM community.work_revision_items ri
+      JOIN community.work_revisions r ON r.id=ri.revision_id
       JOIN community.media_items i ON i.id=ri.item_id
       CROSS JOIN LATERAL (SELECT community.media_edit_key(ri.edit,NULL) AS display_key) k
       LEFT JOIN community.user_media um ON um.id=i.legacy_media_id AND um.owner_id=i.owner_id
@@ -188,17 +211,20 @@ export const revisionMedia = async (
     )
   ).rows;
   const media: WorkMedia[] = [];
+  let chosenCover: string | null = null;
   for (const row of rows) {
     if (row.legacy_media_id !== null && row.display_key === "base") {
       const width = dimension(row.legacy_width);
       const height = dimension(row.legacy_height);
-      if (width !== null && height !== null)
+      if (width !== null && height !== null) {
         media.push({
           id: row.legacy_media_id,
           src: legacyMediaSrc(row.legacy_media_id),
           width,
           height,
         });
+        if (row.is_cover) chosenCover = row.legacy_media_id;
+      }
       continue;
     }
     if (row.state !== "ready") continue;
@@ -207,6 +233,7 @@ export const revisionMedia = async (
     const height =
       dimension(row.display_height) ?? dimension(row.presentation?.height);
     if (width === null || height === null) continue;
+    if (row.is_cover) chosenCover = row.item_id;
     media.push({
       id: row.item_id,
       src: publishingMediaSrc(row.item_id, "display", row.display_key),
@@ -227,7 +254,7 @@ export const revisionMedia = async (
         : {}),
     });
   }
-  return media;
+  return { media, coverMediaId: chosenCover ?? media[0]?.id ?? null };
 };
 
 export interface MediaReadTargetRow extends QueryResultRow {

@@ -22,6 +22,17 @@ export const AUTHORSHIP_SOURCE_NOTE_MAXIMUM = 500;
 export const DRAFT_TEXT_RAW_ALLOWANCE = 2_000;
 /** The hard schema bound on items in one work; the configured maximum is enforced by the Backend. */
 export const WORK_ITEMS_HARD_MAXIMUM = 500;
+/**
+ * The largest configurable item maximum (`maxItemsPerWork`). A draft save
+ * with this many items, every optional item field and full-length realistic
+ * text (up to 3 UTF-8 bytes per code point, with the raw draft allowance as
+ * trimmable whitespace) stays within the 100 KB JSON command limit of the Web
+ * relay and the Backend. It is not a bound on every schema-valid save: 4-byte
+ * characters at every limit, or the allowance spent on characters JSON
+ * escapes, can serialize past 100 KB, and the command size limit refuses such
+ * a save.
+ */
+export const WORK_ITEMS_CONFIGURABLE_MAXIMUM = 100;
 /** Card and draft excerpts: the opening of the body. */
 export const WORK_EXCERPT_MAXIMUM = 160;
 

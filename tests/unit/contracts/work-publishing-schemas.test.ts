@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  PUBLISHING_DRAFT_CHANGED,
+  WORK_ITEMS_CONFIGURABLE_MAXIMUM,
   authorMediaSchema,
   authorPersonSchema,
   authorProfileSchema,
@@ -9,6 +11,7 @@ import {
   mediaCropSchema,
   mediaEditSchema,
   mediaItemIdSchema,
+  publishingDraftDeletionCommandSchema,
   publishingDraftSaveResultSchema,
   publishingDraftSchema,
   publishingDraftSummarySchema,
@@ -18,6 +21,7 @@ import {
   publishingSessionSchema,
   publishingSnapshotPageSchema,
   registerMediaItemCommandSchema,
+  savePublishingDraftCommandSchema,
   trashedWorkPageSchema,
   workDraftContentSchema,
   workDraftIdSchema,
@@ -243,6 +247,107 @@ describe("draft and submission content", () => {
         workDraftContentSchema.safeParse(content({ items: items(501) })),
       ),
     ).toContain("items_limit");
+  });
+
+  it("keeps the clipboard origin of uploaded and pending items as presentation only", () => {
+    const pending = {
+      key: "k-pending",
+      itemId: null,
+      kind: "static",
+      qualityMode: "standard",
+      edit: baseEdit,
+      pendingLabel: "photo",
+    };
+    for (const items of [
+      [item("k1", { origin: "clipboard" })],
+      [{ ...pending, origin: "clipboard" }],
+    ]) {
+      expect(workDraftContentSchema.safeParse(content({ items })).success).toBe(
+        true,
+      );
+      expect(
+        workSubmissionCommandSchema.safeParse({
+          requestId,
+          holder: { draftId },
+          content: content({ title: "标题", items }),
+          baseRevisionId: null,
+        }).success,
+      ).toBe(true);
+    }
+    for (const origin of ["camera", "picker", "drop", "", null])
+      expect(
+        workDraftContentSchema.safeParse(
+          content({ items: [item("k1", { origin })] }),
+        ).success,
+      ).toBe(false);
+  });
+
+  it("keeps a full save of the configurable item maximum with realistic text within the 100 KB command limit", () => {
+    expect(WORK_ITEMS_CONFIGURABLE_MAXIMUM).toBe(100);
+    // Realistic worst case: CJK text (3 UTF-8 bytes per code point) at every
+    // text limit, line breaks in the body, the longest item keys, Original
+    // Live items with a rotation, a full-precision crop and the clipboard
+    // origin, and a cropped cover. `trailing` adds the raw draft allowance as
+    // trimmable ideographic spaces, the most bytes it can realistically add.
+    const saveOf = (trailing: number, character = "碑") => {
+      const cjk = (length: number) => character.repeat(length);
+      const pad = "\u3000".repeat(trailing);
+      const lines = Array.from({ length: 200 }, () => cjk(49)).join("\n");
+      const body = `${lines}${cjk(10_000 - [...lines].length)}${pad}`;
+      const crop = {
+        x: 0.12345678901234568,
+        y: 0.2345678901234568,
+        width: 0.7654321098765432,
+        height: 0.6543210987654321,
+      };
+      const items = Array.from(
+        { length: WORK_ITEMS_CONFIGURABLE_MAXIMUM },
+        (_, index) => ({
+          key: `k${String(index).padStart(3, "0")}-${"x".repeat(59)}`,
+          itemId: `media-item-${index.toString(16).padStart(32, "f")}`,
+          kind: "live",
+          qualityMode: "original",
+          edit: { rotation: 270, crop },
+          origin: "clipboard",
+        }),
+      );
+      return {
+        baseRevision: 2_147_483_647,
+        content: {
+          title: `${cjk(200)}${pad}`,
+          body,
+          authorship: {
+            kind: "material_sharing",
+            referenceTitle: `${cjk(200)}${pad}`,
+            originalAuthor: `${cjk(100)}${pad}`,
+            sourceNote: `${cjk(500)}${pad}`,
+          },
+          visibility: "public",
+          items,
+          coverKey: items[99]!.key,
+          coverCrop: crop,
+        },
+        deviceClass: "desktop",
+      };
+    };
+    for (const trailing of [0, 2_000]) {
+      const save = saveOf(trailing);
+      expect(savePublishingDraftCommandSchema.safeParse(save).success).toBe(
+        true,
+      );
+      const bytes = Buffer.byteLength(JSON.stringify(save), "utf8");
+      expect(bytes).toBeGreaterThan(trailing === 0 ? 55_000 : 80_000);
+      expect(bytes).toBeLessThan(100_000);
+    }
+    // Not a bound on every valid save: 4-byte characters at every limit pass
+    // the schema and serialize past the command limit, which refuses them.
+    const astral = saveOf(2_000, "\u{20000}");
+    expect(savePublishingDraftCommandSchema.safeParse(astral).success).toBe(
+      true,
+    );
+    expect(Buffer.byteLength(JSON.stringify(astral), "utf8")).toBeGreaterThan(
+      100_000,
+    );
   });
 
   it("keeps authorship to the three kinds with optional references only when referenced", () => {
@@ -676,6 +781,33 @@ describe("upload holders and item registration", () => {
         },
       }).success,
     ).toBe(false);
+    // How the browser received the file: untrusted, private provenance.
+    for (const clientSource of ["picker", "drop", "clipboard"]) {
+      const withSource = {
+        ...metadata({}, "absent"),
+        provenance: {
+          source: "client",
+          parser: "exifr@7.1.3",
+          status: "absent",
+          clientSource,
+        },
+      };
+      expect(register({ metadata: withSource }).success).toBe(true);
+    }
+    for (const clientSource of ["camera", "url", "", null])
+      expect(
+        register({
+          metadata: {
+            ...metadata({}, "absent"),
+            provenance: {
+              source: "client",
+              parser: "exifr@7.1.3",
+              status: "absent",
+              clientSource,
+            },
+          },
+        }).success,
+      ).toBe(false);
   });
 });
 
@@ -906,6 +1038,27 @@ describe("draft save results, summaries and submission receipts", () => {
         draft: { ...draft, kind: "edit" },
       }).success,
     ).toBe(false);
+  });
+
+  it("confirms a draft deletion optionally against the revision the author saw", () => {
+    expect(PUBLISHING_DRAFT_CHANGED).toBe("draft_changed");
+    for (const command of [{ requestId }, { requestId, expectedRevision: 1 }])
+      expect(
+        publishingDraftDeletionCommandSchema.safeParse(command).success,
+      ).toBe(true);
+    for (const invalid of [
+      {},
+      { expectedRevision: 3 },
+      { requestId, expectedRevision: 0 },
+      { requestId, expectedRevision: 1.5 },
+      { requestId, expectedRevision: "3" },
+      { requestId, expectedRevision: null },
+      { requestId, expectedRevision: 2_147_483_648 },
+      { requestId, expectedRevision: 3, scope: "all" },
+    ])
+      expect(
+        publishingDraftDeletionCommandSchema.safeParse(invalid).success,
+      ).toBe(false);
   });
 
   it("carries the base revision of an edit draft and none for a new draft", () => {
@@ -1161,8 +1314,12 @@ describe("read shapes for stored and legacy content", () => {
       bodyMax: 10_000,
     };
     expect(publishingLimitsSchema.safeParse(limits).success).toBe(true);
+    expect(
+      publishingLimitsSchema.safeParse({ ...limits, maxItems: 100 }).success,
+    ).toBe(true);
     for (const invalid of [
       { maxItems: 0 },
+      { maxItems: 101 },
       { maxItems: 501 },
       { originalItemMaxBytes: 0 },
       { dailyNewWorkLimit: 100 },
@@ -1340,6 +1497,75 @@ describe("backward-compatible Phase 4 adjustments", () => {
       workSchema.safeParse({ ...work, visibility: "private" }).success,
     ).toBe(false);
   });
+
+  it("names the cover among the work's media and tells only the author whether it is public", () => {
+    const legacyId = `user-media-${hex("a")}`;
+    const work = {
+      id: `work-${hex("d")}`,
+      authorId: `user-${hex("1")}`,
+      authorName: "合成作者",
+      title: "",
+      text: "正文",
+      media: [
+        { id: legacyId, src: legacySrc, width: 1200, height: 800 },
+        {
+          id: itemId,
+          src: src("display"),
+          width: 4032,
+          height: 3024,
+          kind: "static",
+        },
+      ],
+      firstPublishedAt: at,
+      version: 1,
+      canEdit: false,
+      available: true,
+    };
+    for (const coverMediaId of [itemId, legacyId])
+      expect(workSchema.safeParse({ ...work, coverMediaId }).success).toBe(
+        true,
+      );
+    expect(
+      workSchema.safeParse({ ...work, media: [], coverMediaId: null }).success,
+    ).toBe(true);
+    for (const coverMediaId of [
+      `media-item-${hex("e")}`,
+      `user-media-${hex("e")}`,
+      "cover",
+    ])
+      expect(workSchema.safeParse({ ...work, coverMediaId }).success).toBe(
+        false,
+      );
+
+    const own = {
+      ...work,
+      canEdit: true,
+      visibility: "public",
+      trashedAt: null,
+      coverMediaId: itemId,
+    };
+    for (const publiclyVisible of [true, false])
+      expect(workSchema.safeParse({ ...own, publiclyVisible }).success).toBe(
+        true,
+      );
+    // A pending first submission or an operator-hidden work is not public.
+    expect(
+      workSchema.safeParse({
+        ...own,
+        firstPublishedAt: null,
+        visibility: "self",
+        publiclyVisible: false,
+      }).success,
+    ).toBe(true);
+    for (const invalid of [
+      { canEdit: false, publiclyVisible: false },
+      { canEdit: false, publiclyVisible: true },
+      { visibility: "self", publiclyVisible: true },
+      { trashedAt: at, publiclyVisible: true },
+      { publiclyVisible: "yes" },
+    ])
+      expect(workSchema.safeParse({ ...own, ...invalid }).success).toBe(false);
+  });
 });
 
 describe("operator work publishing shapes", () => {
@@ -1364,8 +1590,15 @@ describe("operator work publishing shapes", () => {
     expect(
       setWorkPublishingSettingsCommandSchema.safeParse(settings).success,
     ).toBe(true);
+    expect(
+      setWorkPublishingSettingsCommandSchema.safeParse({
+        ...settings,
+        maxItemsPerWork: WORK_ITEMS_CONFIGURABLE_MAXIMUM,
+      }).success,
+    ).toBe(true);
     for (const invalid of [
       { maxItemsPerWork: 0 },
+      { maxItemsPerWork: 101 },
       { maxItemsPerWork: 501 },
       { originalItemMaxBytes: 1_000 },
       { trashRetentionDays: 0 },
@@ -1524,6 +1757,7 @@ describe("operator work publishing shapes", () => {
           state: "ready",
           edit: baseEdit,
           editKey: "base",
+          coverEditKey: "base",
           presentation: { width: 1200, height: 800 },
           variants: [],
         },
@@ -1550,6 +1784,48 @@ describe("operator work publishing shapes", () => {
       expect(
         operatorWorkSubmissionSchema.safeParse({ ...submission, ...invalid })
           .success,
+      ).toBe(false);
+
+    // Thumb and cover of a cropped cover item use their own key; every other
+    // item names none.
+    const croppedKey = "c".repeat(32);
+    const second = {
+      ...submission.items[0]!,
+      position: 2,
+      itemId: `media-item-${hex("e")}`,
+      edit: { rotation: 90, crop: null },
+      editKey: "e".repeat(32),
+      coverEditKey: null,
+    };
+    const cropped = {
+      ...submission,
+      coverCrop: { x: 0, y: 0.25, width: 1, height: 0.5 },
+      items: [
+        {
+          ...submission.items[0]!,
+          coverEditKey: croppedKey,
+          variants: ["thumb", "display", "cover"],
+        },
+        second,
+      ],
+    };
+    expect(operatorWorkSubmissionSchema.safeParse(cropped).success).toBe(true);
+    expect(
+      operatorWorkSubmissionSchema.safeParse({
+        ...cropped,
+        coverItemId: null,
+        coverCrop: null,
+        items: [{ ...cropped.items[0], coverEditKey: null }, second],
+      }).success,
+    ).toBe(true);
+    for (const items of [
+      [{ ...cropped.items[0], coverEditKey: null }, second],
+      [cropped.items[0], { ...second, coverEditKey: croppedKey }],
+      [cropped.items[0], { ...second, coverEditKey: undefined }],
+      [{ ...cropped.items[0], coverEditKey: "cover" }, second],
+    ])
+      expect(
+        operatorWorkSubmissionSchema.safeParse({ ...cropped, items }).success,
       ).toBe(false);
     expect(
       operatorWorkSubmissionQuerySchema.safeParse({ state: "not_required" })
@@ -1638,5 +1914,12 @@ describe("work publishing JSON Schemas", () => {
     expect(
       JSON.stringify(workPublishingJsonSchemas.RegisterMediaItemCommand),
     ).not.toMatch(/pendingName|fileName|filename|gps/iu);
+    expect(
+      workPublishingJsonSchemas.PublishingDraftDeletionCommand,
+    ).toMatchObject({
+      additionalProperties: false,
+      required: ["requestId"],
+      type: "object",
+    });
   });
 });

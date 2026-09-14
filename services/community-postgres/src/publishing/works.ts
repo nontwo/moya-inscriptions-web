@@ -41,6 +41,7 @@ import type { PublishingDb } from "./db.js";
 import { insertJob } from "./jobs.js";
 import { cancelItems, releaseHolderRefs, selectMediaItems } from "./media.js";
 import {
+  clipboardOriginSql,
   revisionCover,
   revisionCoverColumns,
   revisionCoverJoin,
@@ -140,6 +141,7 @@ interface RevisionItemRow extends QueryResultRow {
   edit: MediaEdit;
   kind: "static" | "live";
   quality_mode: "standard" | "original" | "legacy";
+  clipboard: boolean;
 }
 
 /** WorkPublishingPort.readEditableWork */
@@ -167,7 +169,7 @@ export const readEditableWork = async (
     if (revision === undefined) throw new CommunityNotFoundError();
     const items = (
       await db.query<RevisionItemRow>(
-        "SELECT ri.item_id,ri.edit,i.kind,i.quality_mode FROM community.work_revision_items ri JOIN community.media_items i ON i.id=ri.item_id WHERE ri.revision_id=$1 ORDER BY ri.position",
+        `SELECT ri.item_id,ri.edit,i.kind,i.quality_mode,${clipboardOriginSql("i")} AS clipboard FROM community.work_revision_items ri JOIN community.media_items i ON i.id=ri.item_id WHERE ri.revision_id=$1 ORDER BY ri.position`,
         [revision.id],
       )
     ).rows;
@@ -191,6 +193,7 @@ export const readEditableWork = async (
           kind: item.kind,
           qualityMode: item.quality_mode,
           edit: item.edit,
+          ...(item.clipboard ? { origin: "clipboard" } : {}),
         })),
         coverKey: revision.cover_item_id,
         coverCrop: revision.cover_item_id === null ? null : revision.cover_crop,

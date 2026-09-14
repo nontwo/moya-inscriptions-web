@@ -279,9 +279,19 @@ describe("work publishing operator HTTP surface", () => {
     expect(saved.status).toBe(200);
     expect(fake.named("setSettings")[0]?.args).toEqual(["owner", command, now]);
 
+    // The configurable item maximum stays within 100 (a full draft save must
+    // fit the JSON command limit).
+    const bounded = await fetch(`${base}/settings`, {
+      method: "PUT",
+      headers: operatorHeaders(true),
+      body: JSON.stringify({ ...command, maxItemsPerWork: 100 }),
+    });
+    expect(bounded.status).toBe(200);
     for (const body of [
       { ...command, operator: "someone" },
       { ...command, maxItemsPerWork: 0 },
+      { ...command, maxItemsPerWork: 101 },
+      { ...command, maxItemsPerWork: 500 },
       { ...command, requestId: "not-a-uuid" },
     ])
       await expectOperatorError(
@@ -316,7 +326,9 @@ describe("work publishing operator HTTP surface", () => {
       405,
       "METHOD_NOT_ALLOWED",
     );
-    expect(fake.named("setSettings")).toHaveLength(1);
+    expect(fake.named("setSettings").map((call) => call.args[1])).toMatchObject(
+      [{ maxItemsPerWork: limits.maxItemsPerWork }, { maxItemsPerWork: 100 }],
+    );
   });
 
   it("lists and moderates explicit submissions with strict queries and stale-version conflicts", async () => {

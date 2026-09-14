@@ -28,6 +28,7 @@ import { sendApiError } from "../http/api-error-response.js";
 import { JsonBodyError, readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
+import { refuseTransfer } from "./publishing-upload.js";
 import { readBearerToken } from "./session-credential.js";
 import { handleWorkPublishingRequest } from "./work-publishing-handler.js";
 import type {
@@ -61,9 +62,20 @@ export const handleAuthorRequest = async (
   sessions: CommunitySessionService,
   publishing?: WorkPublishingService,
 ): Promise<void> => {
+  // A component transfer whose body may still be arriving when its session
+  // is refused.
+  let transfer: WorkPublishingService | null = null;
   try {
     const url = new URL(request.url ?? "/", "http://request.invalid");
     const path = url.pathname.slice("/v1/community/".length).split("/");
+    if (
+      publishing !== undefined &&
+      request.method === "POST" &&
+      path.length === 3 &&
+      path[0] === "publishing" &&
+      path[1] === "uploads"
+    )
+      transfer = publishing;
     const token = readBearerToken(request);
     if (request.headers.authorization !== undefined && token === undefined)
       throw new Unauthorized();
@@ -473,7 +485,25 @@ export const handleAuthorRequest = async (
     }
     sendApiError(response, "ITEM_NOT_FOUND", "Not found");
   } catch (error) {
-    if (error instanceof Unauthorized)
+    if (transfer !== null) {
+      // Only the session check runs before the transfer handler, which
+      // answers everything else itself.
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      const unauthorized = error instanceof Unauthorized;
+      refuseTransfer(
+        request,
+        response,
+        unauthorized ? 401 : 503,
+        unauthorized ? "UNAUTHENTICATED" : "SERVICE_UNAVAILABLE",
+        unauthorized
+          ? "A valid session is required"
+          : "Community service is temporarily unavailable",
+        transfer.transferPolicy.refusalReadMs,
+      );
+    } else if (error instanceof Unauthorized)
       sendApiError(response, "UNAUTHENTICATED", "A valid session is required");
     else if (error instanceof InvalidInput || error instanceof JsonBodyError)
       sendApiError(response, "INVALID_INPUT", "Invalid community input");

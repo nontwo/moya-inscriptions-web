@@ -6,6 +6,7 @@ import {
   AUTHORSHIP_SOURCE_NOTE_MAXIMUM,
   DRAFT_TEXT_RAW_ALLOWANCE,
   WORK_EXCERPT_MAXIMUM,
+  WORK_ITEMS_CONFIGURABLE_MAXIMUM,
   WORK_ITEMS_HARD_MAXIMUM,
   WORK_TITLE_MAXIMUM,
   checkPublishingText,
@@ -318,6 +319,14 @@ export const workDraftItemKeySchema = z
   .regex(/^[A-Za-z0-9_-]{1,64}$/u);
 
 /**
+ * Presentation provenance of one draft item: `clipboard` marks media pasted
+ * from the clipboard, so the editor keeps labelling it as not camera-original
+ * after a reload or restore. Private to the author's drafts and editable
+ * content; never used for authorization, readiness or publication decisions.
+ */
+export const workDraftItemOriginSchema = z.literal("clipboard");
+
+/**
  * One logical item in draft content. A pending placeholder (no `itemId`) is
  * allowed only in drafts; raw file names are never stored, only a coarse label.
  */
@@ -329,6 +338,7 @@ export const workDraftItemSchema = z
     qualityMode: mediaQualityModeSchema,
     edit: mediaEditSchema,
     pendingLabel: z.enum(["photo", "live"]).optional(),
+    origin: workDraftItemOriginSchema.optional(),
   })
   .superRefine((item, context) => {
     if (item.itemId !== null && item.pendingLabel !== undefined)
@@ -470,6 +480,12 @@ export const legacyMediaSrcSchema = z
   .regex(/^\/api\/community\/media\/user-media-[0-9a-f]{32}$/u);
 
 const legacyMediaIdSchema = platformId("user-media");
+
+/** The id of one work media entry: a Phase 4 user media PNG or a media item. */
+export const workMediaIdSchema = z.union([
+  legacyMediaIdSchema,
+  mediaItemIdSchema,
+]);
 
 /** The item id and variant a derivative path names, or null for any other path. */
 const publishingMediaSrcParts = (
@@ -644,7 +660,7 @@ export const publishingMediaItemSchema = z
  */
 export const workMediaSchema = z
   .strictObject({
-    id: z.union([legacyMediaIdSchema, mediaItemIdSchema]),
+    id: workMediaIdSchema,
     src: stillSrcSchema,
     width: dimensionSchema,
     height: dimensionSchema,
@@ -769,6 +785,12 @@ const metadataScalarSchema = z.union([
 ]);
 
 /**
+ * How the browser received the selected file: the native picker, a desktop
+ * drop or a clipboard paste. Untrusted presentation provenance only.
+ */
+export const mediaClientSourceSchema = z.enum(["picker", "drop", "clipboard"]);
+
+/**
  * Private, untrusted, bounded metadata read before optimization, with its
  * provenance. Stored privately only; never in public JSON, logs or derivatives.
  */
@@ -778,6 +800,7 @@ export const mediaMetadataSchema = z
       source: z.literal("client"),
       parser: z.string().regex(/^[A-Za-z0-9@._/-]{1,64}$/u),
       status: z.enum(["parsed", "partial", "absent"]),
+      clientSource: mediaClientSourceSchema.optional(),
     }),
     values: z.record(
       z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/u),
@@ -1086,6 +1109,26 @@ export const publishingDraftSaveResultSchema = z.discriminatedUnion("status", [
     }),
 ]);
 
+/**
+ * Targeted draft deletion (D06). `expectedRevision` is the draft revision the
+ * author confirmed the deletion against; when the stored draft revision
+ * differs (a save from another device on the current base advanced it), the
+ * deletion is refused with a 409 CONFLICT whose message is `draft_changed`
+ * and nothing is removed. Without it the current draft is deleted.
+ *
+ * The guard covers the draft revision only. A save on an outdated base
+ * creates or replaces a conflict copy without changing that revision, so a
+ * deletion at the confirmed revision still removes a conflict copy saved
+ * after the confirmation.
+ */
+export const publishingDraftDeletionCommandSchema = z.strictObject({
+  requestId: requestIdSchema,
+  expectedRevision: revisionSchema.optional(),
+});
+
+/** The conflict message of a draft deletion confirmed against an older revision. */
+export const PUBLISHING_DRAFT_CHANGED = "draft_changed";
+
 /** The targeted deletion scope: that draft, its history, conflict copies and exclusive media. */
 export const publishingDraftDeletionResultSchema = z.strictObject({
   deleted: z.literal(true),
@@ -1215,7 +1258,7 @@ export const trashRestoreResultSchema = z.strictObject({
 
 /** What the client needs for honest counters and early feedback; the Backend still enforces. */
 export const publishingLimitsSchema = z.strictObject({
-  maxItems: z.number().int().min(1).max(WORK_ITEMS_HARD_MAXIMUM),
+  maxItems: z.number().int().min(1).max(WORK_ITEMS_CONFIGURABLE_MAXIMUM),
   originalItemMaxBytes: byteSizeSchema,
   standardComponentMaxBytes: byteSizeSchema,
   titleMax: z.number().int().positive(),
@@ -1250,6 +1293,7 @@ export type MediaCrop = z.infer<typeof mediaCropSchema>;
 export type MediaRotation = z.infer<typeof mediaRotationSchema>;
 export type MediaEdit = z.infer<typeof mediaEditSchema>;
 export type WorkDraftItem = z.infer<typeof workDraftItemSchema>;
+export type WorkDraftItemOrigin = z.infer<typeof workDraftItemOriginSchema>;
 export type WorkDraftContent = z.infer<typeof workDraftContentSchema>;
 export type WorkSubmissionContent = z.infer<typeof workSubmissionContentSchema>;
 export type PublishingMediaComponent = z.infer<
@@ -1272,6 +1316,7 @@ export type MediaProcessingProfile = z.infer<
 >;
 export type WorkMedia = z.infer<typeof workMediaSchema>;
 export type MediaMetadata = z.infer<typeof mediaMetadataSchema>;
+export type MediaClientSource = z.infer<typeof mediaClientSourceSchema>;
 export type PublishingHolder = z.infer<typeof publishingHolderSchema>;
 export type RegisterMediaItemCommand = z.infer<
   typeof registerMediaItemCommandSchema
@@ -1299,6 +1344,9 @@ export type PublishingDraftSummary = z.infer<
 export type PublishingDraftPage = z.infer<typeof publishingDraftPageSchema>;
 export type PublishingDraftSaveResult = z.infer<
   typeof publishingDraftSaveResultSchema
+>;
+export type PublishingDraftDeletionCommand = z.infer<
+  typeof publishingDraftDeletionCommandSchema
 >;
 export type PublishingDraftDeletionResult = z.infer<
   typeof publishingDraftDeletionResultSchema

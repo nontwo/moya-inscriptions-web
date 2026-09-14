@@ -35,11 +35,13 @@ import type {
  * state throws `CommunityConflictError`, changing and recording nothing.
  */
 export interface PublishingOperatorPort {
+  /** The settings row; a stored item maximum above 100 reads as 100. */
   readSettings(): Promise<WorkPublishingSettings>;
   /**
    * Replaces the policy and every limit when `expectedVersion` matches; the
    * version increases and `updatedBy` becomes `operator`. Prospective only:
-   * existing revisions keep their dispositions.
+   * existing revisions keep their dispositions. An item maximum outside
+   * 1..100 throws `CommunityInputError` (storage alone admits up to 500).
    */
   setSettings(
     operator: string,
@@ -54,7 +56,11 @@ export interface PublishingOperatorPort {
   listSubmissions(
     query: OperatorWorkSubmissionQuery,
   ): Promise<OperatorWorkSubmissionPage>;
-  /** One queue-visible revision; a `not_required` revision is not found. */
+  /**
+   * One queue-visible revision; a `not_required` revision is not found. Its
+   * cover item names `coverEditKey` (`community.media_edit_key(edit,
+   * cover_crop)`, the key of its thumb and cover); other items name null.
+   */
   readSubmission(revisionId: string): Promise<OperatorWorkSubmission>;
   /**
    * Approves or rejects the work's latest explicit submission (P08). Only a

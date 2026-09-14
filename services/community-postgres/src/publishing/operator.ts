@@ -1,4 +1,9 @@
-import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
+import {
+  CommunityConflictError,
+  CommunityInputError,
+  CommunityNotFoundError,
+} from "@moya/api";
+import { WORK_ITEMS_CONFIGURABLE_MAXIMUM } from "@moya/contracts/schemas";
 import {
   operatorPublishingJobPageSchema,
   operatorPublishingJobSchema,
@@ -68,8 +73,8 @@ export const setSettings = async (
   operator: string,
   command: SetWorkPublishingSettingsCommand,
   now: Date,
-): Promise<WorkPublishingSettings> =>
-  operatorCommand(
+): Promise<WorkPublishingSettings> => {
+  const settings = await operatorCommand(
     pool,
     {
       operator,
@@ -80,6 +85,13 @@ export const setSettings = async (
       now,
     },
     async (db) => {
+      // The contract bound, kept here too: storage alone admits up to 500.
+      if (
+        !Number.isSafeInteger(command.maxItemsPerWork) ||
+        command.maxItemsPerWork < 1 ||
+        command.maxItemsPerWork > WORK_ITEMS_CONFIGURABLE_MAXIMUM
+      )
+        throw new CommunityInputError("items_limit");
       const current = await selectSettings(db, "update");
       if (current.version !== command.expectedVersion)
         throw new CommunityConflictError("Work publishing settings changed");
@@ -110,6 +122,16 @@ export const setSettings = async (
       return selectSettings(db);
     },
   );
+  // A receipt written before the configurable maximum existed may replay a
+  // larger value; it is enforced as that maximum, like the stored setting.
+  return {
+    ...settings,
+    maxItemsPerWork: Math.min(
+      settings.maxItemsPerWork,
+      WORK_ITEMS_CONFIGURABLE_MAXIMUM,
+    ),
+  };
+};
 
 interface SubmissionRow extends QueryResultRow, RevisionAuthorshipColumns {
   id: string;
@@ -155,14 +177,17 @@ interface SubmissionItemRow extends QueryResultRow {
   state: OperatorSubmissionMedia["state"];
   presentation: Record<string, unknown> | null;
   edit_key: string;
+  cover_edit_key: string | null;
   variants: MediaVariant[];
 }
 
 /**
- * Each item is described under the edit key of its own edit (`editKey`);
- * `variants` lists every derivative the revision shows, including the thumb
- * and cover a cover crop produces under their own key. The operator media read
- * resolves a variant of a revision item by that item edit key.
+ * Each item is described under the edit key of its own edit (`editKey`, for
+ * display, full and motion); the revision's cover item also names the key of
+ * its edit with the revision cover crop (`coverEditKey`, for thumb and
+ * cover), null for other items. `variants` lists every derivative the
+ * revision shows. The operator media read resolves a variant of a revision
+ * item by either key.
  */
 const submissionDtos = async (
   db: PublishingDb,
@@ -171,6 +196,7 @@ const submissionDtos = async (
   const items = (
     await db.query<SubmissionItemRow>(
       `SELECT ri.revision_id,ri.position,ri.item_id,ri.edit,i.kind,i.quality_mode,i.state,i.presentation,k.edit_key,
+        CASE WHEN ri.item_id=r.cover_item_id THEN community.media_edit_key(ri.edit,r.cover_crop) END AS cover_edit_key,
         ARRAY(
           SELECT d.variant FROM community.media_derivatives d
           JOIN community.media_blobs b ON b.id=d.blob_id AND b.state='committed'
@@ -214,6 +240,7 @@ const submissionDtos = async (
           state: item.state,
           edit: item.edit,
           editKey: item.edit_key,
+          coverEditKey: item.cover_edit_key,
           presentation: presentationDto(item.kind, item.presentation),
           variants: item.variants,
         })),

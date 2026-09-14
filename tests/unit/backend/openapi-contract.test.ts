@@ -692,6 +692,32 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         Object.keys(asObject(operationOf(path, "post").responses)),
       ).toContain("201");
 
+    // A draft deletion may be confirmed against the revision the author saw.
+    const draftDeletion = operationOf(
+      "/v1/community/publishing/drafts/{draftId}",
+      "delete",
+    );
+    expect(asObject(draftDeletion.requestBody)).toEqual({
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            $ref: "#/components/schemas/PublishingDraftDeletionCommand",
+          },
+        },
+      },
+    });
+    expect(
+      asObject(asObject(draftDeletion.responses)["409"]).description,
+    ).toContain("draft_changed");
+    expect(schemas.PublishingDraftDeletionCommand).toMatchObject({
+      additionalProperties: false,
+      required: ["requestId"],
+      properties: {
+        expectedRevision: { type: "integer", minimum: 1 },
+      },
+    });
+
     const upload = operationOf(
       "/v1/community/publishing/uploads/{componentId}",
       "post",

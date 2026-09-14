@@ -7,6 +7,7 @@ import {
   mediaItemIdSchema,
   mediaVariantSchema,
   openWorkEditDraftCommandSchema,
+  publishingDraftDeletionCommandSchema,
   publishingPageQuerySchema,
   publishingSessionHeartbeatCommandSchema,
   publishingSessionIdSchema,
@@ -34,9 +35,7 @@ import {
  */
 
 interface Parser<T> {
-  safeParse(
-    input: unknown,
-  ):
+  safeParse(input: unknown):
     | { readonly success: true; readonly data: T }
     | {
         readonly success: false;
@@ -78,6 +77,7 @@ const pattern = (expression: RegExp): Parser<string> => ({
 const commandSchemas = {
   createDraft: createPublishingDraftCommandSchema,
   saveDraft: savePublishingDraftCommandSchema,
+  deleteDraft: publishingDraftDeletionCommandSchema,
   openEditDraft: openWorkEditDraftCommandSchema,
   restoreSnapshot: restorePublishingSnapshotCommandSchema,
   resolveConflict: resolvePublishingConflictCommandSchema,

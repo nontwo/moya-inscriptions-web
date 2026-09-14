@@ -21,6 +21,7 @@ import {
 import {
   apiErrorSchema,
   developmentSessionSchema,
+  publishingDraftDeletionResultSchema,
   publishingDraftSaveResultSchema,
   publishingDraftSchema,
   publishingLimitsSchema,
@@ -300,6 +301,8 @@ interface StartOptions {
     readonly refusalReadMs?: number;
   };
   readonly requestDeadlineMs?: number;
+  /** Set `unavailable` on it to make session checks fail. */
+  readonly identity?: InMemoryCommunityIdentityPort;
 }
 
 const operatorCredential = "synthetic-operator-credential-for-unit-tests";
@@ -311,11 +314,12 @@ const start = async ({
   transfers,
   transferPolicy,
   requestDeadlineMs,
+  identity = new InMemoryCommunityIdentityPort(),
 }: StartOptions) => {
   const server = createBackendServer(
     createBackendApplication({
       nodeEnv,
-      communityIdentityPort: new InMemoryCommunityIdentityPort(),
+      communityIdentityPort: identity,
       communityCommentPort: new InMemoryCommunityCommentPort(),
       catalogPublicationPort: new FixtureCatalogPublicationPort(),
       communityOperatorCredential: operatorCredential,
@@ -603,6 +607,161 @@ const sendingClient = (
 };
 
 const statusOf = (answer: string) => Number(answer.split(" ")[1]);
+/** The lowercased response head of a raw answer. */
+const headersOf = (answer: string) =>
+  answer.slice(0, answer.indexOf("\r\n\r\n")).toLowerCase();
+/** Well-formed, but no session has this token. */
+const unknownSession = `Bearer ${"A".repeat(43)}`;
+
+interface RelayAnswer {
+  readonly status: number;
+  readonly contentType: string | null;
+  readonly body: unknown;
+  /** Body chunks the client had handed to the transfer when the answer arrived. */
+  readonly chunksBeforeAnswer: number;
+}
+
+/**
+ * The Web upload relay's way of talking to the Backend: undici fetch with a
+ * streamed half-duplex body of the declared length, pulled chunk by chunk
+ * (like the relay's pull from the browser). The answer is read while body
+ * bytes are still flowing; the transfer is then aborted, as the relay does
+ * once an answer arrived before its last byte.
+ */
+const relayUpload = (
+  base: string,
+  headers: Record<string, string>,
+  { chunkBytes = 64 * KiB, tickMs = 1 } = {},
+) => {
+  let chunks = 0;
+  const abort = new AbortController();
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull: async (controller) => {
+        await new Promise((resolve) => setTimeout(resolve, tickMs));
+        chunks += 1;
+        controller.enqueue(randomBytes(chunkBytes));
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const init: RequestInit & { duplex: "half" } = {
+    method: "POST",
+    headers,
+    body,
+    duplex: "half",
+    signal: abort.signal,
+  };
+  const answer = (async (): Promise<RelayAnswer> => {
+    try {
+      const response = await fetch(
+        `${base}/v1/community/publishing/uploads/${componentId}`,
+        init,
+      );
+      const chunksBeforeAnswer = chunks;
+      return {
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        body: await response.json(),
+        chunksBeforeAnswer,
+      };
+    } finally {
+      abort.abort();
+    }
+  })();
+  return { answer, chunks: () => chunks };
+};
+
+/**
+ * A raw TCP client that sends the request head, then after `bodyDelayMs` the
+ * whole body in one write. It resolves with everything the server answered
+ * once the server closed the connection, or once it stayed silent and open
+ * for `idleMs`. `next` is written on the same connection after the first
+ * answer arrived.
+ */
+const finiteClient = (
+  base: string,
+  headers: Record<string, string>,
+  body: Buffer,
+  {
+    bodyDelayMs = 0,
+    idleMs = 1_500,
+    next,
+  }: { bodyDelayMs?: number; idleMs?: number; next?: string } = {},
+) => {
+  const { hostname, port } = new URL(base);
+  const socket = connect({ host: hostname, port: Number(port) });
+  let received = "";
+  let bodySentAt: number | null = null;
+  let wroteNext = false;
+  return new Promise<{
+    readonly answer: string;
+    readonly answeredBeforeBody: boolean;
+    /** Milliseconds from the body write until the server closed; null when it stayed open. */
+    readonly closedAfterBodyMs: number | null;
+    /**
+     * How the connection ended: `end` is the server's graceful FIN, `error`
+     * carries the socket error code (a reset), null when it stayed open.
+     */
+    readonly ending: "end" | `error:${string}` | "close" | null;
+  }>((resolve) => {
+    let settled = false;
+    let answeredBeforeBody = false;
+    const settle = (ending: "end" | `error:${string}` | "close" | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(idle);
+      socket.destroy();
+      resolve({
+        answer: received,
+        answeredBeforeBody,
+        closedAfterBodyMs:
+          ending !== null && bodySentAt !== null
+            ? Date.now() - bodySentAt
+            : null,
+        ending,
+      });
+    };
+    const idle = setTimeout(() => settle(null), idleMs + bodyDelayMs);
+    socket.on("data", (data: Buffer) => {
+      if (received === "" && bodySentAt === null) answeredBeforeBody = true;
+      received += data.toString("utf8");
+      idle.refresh();
+      if (next !== undefined && !wroteNext && received.includes("}")) {
+        wroteNext = true;
+        socket.write(next);
+      }
+    });
+    socket.on("end", () => settle("end"));
+    socket.on("close", () => settle("close"));
+    socket.on("error", (error: NodeJS.ErrnoException) =>
+      settle(`error:${error.code ?? "unknown"}`),
+    );
+    socket.once("connect", () => {
+      const head = [
+        `POST /v1/community/publishing/uploads/${componentId} HTTP/1.1`,
+        `host: ${hostname}:${port}`,
+        ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
+        "",
+        "",
+      ].join("\r\n");
+      const send = () => {
+        socket.write(body);
+        bodySentAt = Date.now();
+      };
+      // Without a delay the body travels in the same write as the head, so
+      // the server has the complete request before any handler answers.
+      if (bodyDelayMs === 0) {
+        socket.write(Buffer.concat([Buffer.from(head, "latin1"), body]));
+        bodySentAt = Date.now();
+      } else {
+        socket.write(head, "latin1");
+        setTimeout(send, bodyDelayMs);
+      }
+    });
+  });
+};
+
 const errorOf = (answer: string) =>
   apiErrorSchema.parse(JSON.parse(answer.slice(answer.indexOf("\r\n\r\n") + 4)))
     .error;
@@ -662,7 +821,6 @@ describe("work publishing author HTTP surface", () => {
     larger.client.end(Buffer.concat([body, Buffer.from([1])]));
     const tooLarge = await larger.answer;
     expect(tooLarge.status).toBe(413);
-    expect(tooLarge.headers.connection).toBe("close");
     expect(apiErrorSchema.parse(JSON.parse(tooLarge.text)).error).toMatchObject(
       {
         code: "INVALID_INPUT",
@@ -685,7 +843,6 @@ describe("work publishing author HTTP surface", () => {
       refused.client.end(body);
       const answer = await refused.answer;
       expect(answer.status).toBe(422);
-      expect(answer.headers.connection).toBe("close");
     }
 
     // No content-length (chunked): refused before the fence.
@@ -764,7 +921,6 @@ describe("work publishing author HTTP surface", () => {
 
     const answer = await upload.answer;
     expect(answer.status).toBe(409);
-    expect(answer.headers.connection).toBe("close");
     expect(apiErrorSchema.parse(JSON.parse(answer.text)).error.code).toBe(
       "CONFLICT",
     );
@@ -863,7 +1019,9 @@ describe("work publishing author HTTP surface", () => {
 
     const { answer, openAfterAnswerMs } = await sending;
     expect(statusOf(answer)).toBe(409);
-    expect(answer.toLowerCase()).toContain("connection: close");
+    // A close announcement would end a half-duplex relay before it read the
+    // answer (see the relay-style client test below).
+    expect(headersOf(answer)).not.toContain("connection: close");
     expect(errorOf(answer).message).toBe("The transfer was cancelled");
     // The connection stayed open (bytes read and discarded) for the window.
     expect(openAfterAnswerMs).toBeGreaterThanOrEqual(300);
@@ -876,10 +1034,12 @@ describe("work publishing author HTTP surface", () => {
   it("delivers refusals before the fence to a client that keeps sending", async () => {
     const declared = 64 * KiB;
     const fake = uploadPort(declared);
+    const identity = new InMemoryCommunityIdentityPort();
     const { base, signIn } = await start({
       port: fake.port,
       store: new MemoryMediaStore(),
       transferPolicy: { refusalReadMs: 400 },
+      identity,
     });
     const token = await signIn();
     // Far more than the client can send during the test.
@@ -892,6 +1052,12 @@ describe("work publishing author HTTP surface", () => {
         401,
         "A valid session is required",
       ],
+      // A well-formed credential of no session: refused before dispatch.
+      [
+        { ...uploadHeaders(token, huge), authorization: unknownSession },
+        401,
+        "A valid session is required",
+      ],
       [
         uploadHeaders(token, huge, "not-a-uuid"),
         422,
@@ -900,11 +1066,157 @@ describe("work publishing author HTTP surface", () => {
     ] as const) {
       const { answer, openAfterAnswerMs } = await sendingClient(base, headers);
       expect(statusOf(answer)).toBe(status);
+      expect(headersOf(answer)).not.toContain("connection: close");
       expect(errorOf(answer).message).toBe(message);
       expect(openAfterAnswerMs).toBeGreaterThanOrEqual(300);
       expect(openAfterAnswerMs).toBeLessThan(3_000);
     }
+
+    // The session check itself fails: a 503 answer, read on for the window.
+    identity.unavailable = true;
+    const { answer, openAfterAnswerMs } = await sendingClient(
+      base,
+      uploadHeaders(token, huge),
+    );
+    expect(statusOf(answer)).toBe(503);
+    expect(headersOf(answer)).not.toContain("connection: close");
+    expect(errorOf(answer)).toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      message: "Community service is temporarily unavailable",
+    });
+    expect(openAfterAnswerMs).toBeGreaterThanOrEqual(300);
+    expect(openAfterAnswerMs).toBeLessThan(3_000);
     expect(fake.named("beginComponentUpload")).toHaveLength(1);
+  });
+
+  it("lets a relay-style half-duplex client read early refusals as their JSON answers", async () => {
+    const store = new MemoryMediaStore();
+    const declared = 1024 * 1024 * KiB;
+    const fake = uploadPort(declared, {
+      cancelItem: () => ({
+        item: mediaItem(declared, "cancelled"),
+        cancelledComponentIds: [componentId],
+      }),
+    });
+    const identity = new InMemoryCommunityIdentityPort();
+    const { base, signIn } = await start({
+      port: fake.port,
+      store,
+      transferPolicy: { refusalReadMs: 2_000 },
+      identity,
+    });
+    const token = await signIn();
+
+    // Cancelled mid-stream: the relay still sends when the 409 arrives.
+    const cancelled = relayUpload(base, uploadHeaders(token, declared));
+    await until(() => store.received >= 256 * KiB, "streamed bytes");
+    const cancel = await fetch(
+      `${base}/v1/community/publishing/items/${itemId}/cancel`,
+      json(token, { requestId: randomUUID() }),
+    );
+    expect(cancel.status).toBe(200);
+    const answer = await cancelled.answer;
+    expect(answer.status).toBe(409);
+    expect(answer.contentType).toBe("application/json; charset=utf-8");
+    expect(apiErrorSchema.parse(answer.body).error).toMatchObject({
+      code: "CONFLICT",
+      message: "The transfer was cancelled",
+    });
+    expect(answer.chunksBeforeAnswer).toBeGreaterThan(4);
+    expect(answer.chunksBeforeAnswer * 64 * KiB).toBeLessThan(declared);
+    await until(() => fake.named("abortComponentUpload").length === 1, "abort");
+    expect(fake.named("commitComponentUpload")).toHaveLength(0);
+    expect(store.blobs.size).toBe(0);
+
+    // Refused at the head (length, account, session): the same JSON answers.
+    for (const [headers, status, message] of [
+      [uploadHeaders(token, declared + 1), 413, "component_too_large"],
+      [
+        { ...uploadHeaders(token, declared), "x-author-account": other },
+        401,
+        "A valid session is required",
+      ],
+      [
+        { ...uploadHeaders(token, declared), authorization: unknownSession },
+        401,
+        "A valid session is required",
+      ],
+    ] as const) {
+      const refused = await relayUpload(base, headers).answer;
+      expect(refused.status).toBe(status);
+      expect(apiErrorSchema.parse(refused.body).error.message).toBe(message);
+    }
+    identity.unavailable = true;
+    const unavailable = await relayUpload(base, uploadHeaders(token, declared))
+      .answer;
+    expect(unavailable.status).toBe(503);
+    expect(apiErrorSchema.parse(unavailable.body).error).toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      message: "Community service is temporarily unavailable",
+    });
+    expect(fake.named("beginComponentUpload")).toHaveLength(2);
+    expect(store.blobs.size).toBe(0);
+  });
+
+  it("closes a refused transfer once its body ended and keeps a connection whose body had already arrived", async () => {
+    const fake = uploadPort(64 * KiB, { readSettings: () => settings });
+    const identity = new InMemoryCommunityIdentityPort();
+    const { base, signIn, address } = await start({
+      port: fake.port,
+      store: new MemoryMediaStore(),
+      transferPolicy: { refusalReadMs: 2_000 },
+      identity,
+    });
+    const token = await signIn();
+
+    // The answer precedes the body; the connection ends gracefully (a FIN,
+    // no reset) right after the body ended, long before the read window
+    // would have passed.
+    const lateBody = async (headers: Record<string, string>) => {
+      const late = await finiteClient(base, headers, randomBytes(256 * KiB), {
+        bodyDelayMs: 150,
+      });
+      expect(late.answeredBeforeBody).toBe(true);
+      expect(headersOf(late.answer)).not.toContain("connection: close");
+      expect(late.ending).toBe("end");
+      expect(late.closedAfterBodyMs).not.toBeNull();
+      expect(late.closedAfterBodyMs).toBeLessThan(1_000);
+      return late.answer;
+    };
+    const wrongAccount = await lateBody({
+      ...uploadHeaders(token, 256 * KiB),
+      "x-author-account": other,
+    });
+    expect(statusOf(wrongAccount)).toBe(401);
+    expect(errorOf(wrongAccount).code).toBe("UNAUTHENTICATED");
+    identity.unavailable = true;
+    const unavailable = await lateBody(uploadHeaders(token, 256 * KiB));
+    expect(statusOf(unavailable)).toBe(503);
+    expect(errorOf(unavailable).code).toBe("SERVICE_UNAVAILABLE");
+    identity.unavailable = false;
+
+    // The whole body came with the head: a plain answer, and the same
+    // connection serves the next request.
+    const kept = await finiteClient(
+      base,
+      { ...uploadHeaders(token, 16), "x-author-account": other },
+      randomBytes(16),
+      {
+        idleMs: 500,
+        next: [
+          "GET /v1/community/publishing/limits HTTP/1.1",
+          `host: ${address.address}:${address.port}`,
+          `authorization: Bearer ${token}`,
+          "",
+          "",
+        ].join("\r\n"),
+      },
+    );
+    expect(statusOf(kept.answer)).toBe(401);
+    expect(kept.answer).toContain("HTTP/1.1 200 OK");
+    expect(kept.closedAfterBodyMs).toBeNull();
+    expect(kept.ending).toBeNull();
+    expect(fake.named("beginComponentUpload")).toHaveLength(0);
   });
 
   it.each([
@@ -1348,7 +1660,6 @@ describe("work publishing author HTTP surface", () => {
     upload.client.end(randomBytes(KiB));
     const refused = await upload.answer;
     expect(refused.status).toBe(401);
-    expect(refused.headers.connection).toBe("close");
     expect(fake.calls).toHaveLength(0);
 
     const created = await fetch(
@@ -1675,6 +1986,70 @@ describe("work publishing author HTTP surface", () => {
           )
         ).status,
       ).toBe(404);
+  });
+
+  it("deletes a draft only at the confirmed revision and answers draft_changed as a conflict", async () => {
+    const removal = {
+      result: { deleted: true, snapshots: 1, conflictCopies: 1, mediaItems: 0 },
+      cancelledComponentIds: [],
+    };
+    const fake = fakePort({
+      deleteDraft: (
+        _actor: string,
+        _draft: string,
+        command: { readonly expectedRevision?: number },
+      ) => {
+        if (
+          command.expectedRevision !== undefined &&
+          command.expectedRevision !== draft.revision
+        )
+          throw new CommunityConflictError("draft_changed");
+        return removal;
+      },
+    });
+    const { base, signIn } = await start({ port: fake.port });
+    const token = await signIn();
+    const url = `${base}/v1/community/publishing/drafts/${draftId}`;
+
+    const stale = { requestId: randomUUID(), expectedRevision: 1 };
+    await expectApiError(
+      await fetch(url, json(token, stale, "DELETE")),
+      409,
+      "CONFLICT",
+      "draft_changed",
+    );
+    const current = { requestId: randomUUID(), expectedRevision: 2 };
+    const deleted = await fetch(url, json(token, current, "DELETE"));
+    expect(deleted.status).toBe(200);
+    expect(
+      publishingDraftDeletionResultSchema.parse(await deleted.json()),
+    ).toEqual(removal.result);
+    const unconditional = { requestId: randomUUID() };
+    expect(
+      (await fetch(url, json(token, unconditional, "DELETE"))).status,
+    ).toBe(200);
+    expect(fake.named("deleteDraft").map((call) => call.args)).toEqual([
+      [actor, draftId, stale, now],
+      [actor, draftId, current, now],
+      [actor, draftId, unconditional, now],
+    ]);
+
+    fake.calls.length = 0;
+    for (const body of [
+      { requestId: randomUUID(), expectedRevision: 0 },
+      { requestId: randomUUID(), expectedRevision: 1.5 },
+      { requestId: randomUUID(), expectedRevision: "2" },
+      { requestId: randomUUID(), expectedRevision: null },
+      { requestId: randomUUID(), expectedRevision: 2, extra: true },
+      { expectedRevision: 2 },
+    ])
+      await expectApiError(
+        await fetch(url, json(token, body, "DELETE")),
+        422,
+        "INVALID_INPUT",
+        "Invalid community input",
+      );
+    expect(fake.calls).toHaveLength(0);
   });
 
   it("ensures derivatives only for a not_ready answer and never for a refused submission", async () => {
@@ -2023,7 +2398,6 @@ describe("work publishing session expiry through the shared upload registry", ()
 
     const answer = await upload.answer;
     expect(answer.status).toBe(409);
-    expect(answer.headers.connection).toBe("close");
     expect(apiErrorSchema.parse(JSON.parse(answer.text)).error.code).toBe(
       "CONFLICT",
     );

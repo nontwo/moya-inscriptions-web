@@ -2081,13 +2081,17 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         ),
       ).toBeNull();
       const submission = await operators.readSubmission(work.revisionId);
+      const coverEditKey = await editKeyOf(identity, crop);
+      expect(coverEditKey).toBe(keys.cover);
       expect(submission.items).toEqual([
-        // The cropped cover's thumb and cover are listed under the item
-        // edit key and resolve to their cover-crop derivatives.
+        // The cropped cover's thumb and cover are listed with their own
+        // cover edit key (media_edit_key(edit, cover_crop)); display, full
+        // and motion keep the item edit key.
         expect.objectContaining({
           position: 1,
           itemId: cover.itemId,
           editKey: "base",
+          coverEditKey,
           variants: ["thumb", "display", "full", "cover"],
           presentation: { width: 640, height: 480 },
         }),
@@ -2096,10 +2100,38 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
           itemId: live.itemId,
           kind: "live",
           editKey: "base",
+          coverEditKey: null,
           variants: ["thumb", "display", "full", "cover", "motion"],
         }),
       ]);
       expect(submission.coverCrop).toEqual(crop);
+      const croppedThumb = (
+        await pool.query<{ storage_key: string }>(
+          "SELECT b.storage_key FROM community.media_derivatives d JOIN community.media_blobs b ON b.id=d.blob_id WHERE d.item_id=$1 AND d.variant='thumb' AND d.edit_key=$2",
+          [cover.itemId, coverEditKey],
+        )
+      ).rows[0]!.storage_key;
+      expect(
+        await operators.resolveMediaRead(
+          work.revisionId,
+          cover.itemId,
+          "thumb",
+          coverEditKey,
+        ),
+      ).toMatchObject({ storageKey: croppedThumb });
+      // Without a cover crop the cover item's cover key equals its edit key.
+      const plain = await publish(
+        a,
+        {
+          title: "无裁切封面",
+          items: [entry(live.itemId, identity, "live")],
+          coverKey: entry(live.itemId).key,
+        },
+        now,
+      );
+      expect(
+        (await operators.readSubmission(plain.revisionId)).items,
+      ).toMatchObject([{ itemId: live.itemId, coverEditKey: "base" }]);
       const croppedCover = (
         await pool.query<{ storage_key: string }>(
           "SELECT b.storage_key FROM community.media_derivatives d JOIN community.media_blobs b ON b.id=d.blob_id WHERE d.item_id=$1 AND d.variant='cover' AND d.edit_key=$2",
@@ -3406,6 +3438,380 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         ),
         CommunityNotFoundError,
       );
+    });
+
+    it("names the cover of each viewer's revision and tells only the author whether the work is public now", async () => {
+      const now = at("2026-07-22T08:00:00.000Z");
+      const [first, second, third, fourth, fifth] = await Promise.all(
+        Array.from({ length: 5 }, () => mediaItem(a)),
+      );
+      const entries = [first!, second!, third!].map((item) =>
+        entry(item.itemId),
+      );
+      const [e1, e2, e3] = entries as [
+        ReturnType<typeof entry>,
+        ReturnType<typeof entry>,
+        ReturnType<typeof entry>,
+      ];
+      const album = await publish(
+        a,
+        { title: "封面", items: [e1, e2, e3], coverKey: e2.key },
+        now,
+      );
+      for (const viewer of [b, null]) {
+        const read = await authors.readWork(album.workId, viewer);
+        expect(read.coverMediaId).toBe(second!.itemId);
+        expect(read).not.toHaveProperty("publiclyVisible");
+        expect(read).not.toHaveProperty("visibility");
+      }
+      expect(await authors.readWork(album.workId, a)).toMatchObject({
+        coverMediaId: second!.itemId,
+        visibility: "public",
+        publiclyVisible: true,
+      });
+
+      // An edit awaiting approval: others keep the public revision's cover,
+      // the author sees the latest revision's cover.
+      await setPolicy("PRE_MODERATION");
+      const pending = confirmed(
+        await editWork(
+          a,
+          album.workId,
+          { title: "新封面", items: [e3, e1], coverKey: e3.key },
+          now,
+        ),
+      );
+      expect(await revisionRow(pending.revisionId)).toMatchObject({
+        disposition: "pending",
+      });
+      expect((await authors.readWork(album.workId, b)).coverMediaId).toBe(
+        second!.itemId,
+      );
+      expect(await authors.readWork(album.workId, a)).toMatchObject({
+        media: [{ id: third!.itemId }, { id: first!.itemId }],
+        coverMediaId: third!.itemId,
+        publiclyVisible: true,
+      });
+      await setPolicy("DIRECT_PUBLICATION");
+
+      // No chosen cover: the first entry; no media: none.
+      const uncovered = await publish(
+        a,
+        {
+          title: "无封面",
+          items: [entry(fourth!.itemId), entry(fifth!.itemId)],
+        },
+        now,
+      );
+      expect((await authors.readWork(uncovered.workId, b)).coverMediaId).toBe(
+        fourth!.itemId,
+      );
+      const textOnly = await publish(a, { body: "只有文字" }, now);
+      expect(await authors.readWork(textOnly.workId, a)).toMatchObject({
+        media: [],
+        coverMediaId: null,
+        publiclyVisible: true,
+      });
+
+      // A legacy work names no cover: its first Phase 4 PNG.
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const [legacyFirst, legacySecond] = [id("user-media"), id("user-media")];
+      await pool.query(
+        "INSERT INTO community.user_media(id,owner_id,mime_type,width,height,sha256,bytes) VALUES($1,$3,'image/png',30,40,$4,$5),($2,$3,'image/png',50,60,$4,$5)",
+        [legacyFirst, legacySecond, a, "c".repeat(64), png],
+      );
+      const legacy = id("work");
+      await pool.query(
+        "INSERT INTO community.works(id,author_id,title,text,media_ids,first_published_at,synthetic_provenance) VALUES($1,$2,'旧式封面','',$3,'2026-01-05T00:00:00Z','work-publishing-bridge-test')",
+        [legacy, a, [legacySecond, legacyFirst]],
+      );
+      expect((await authors.readWork(legacy, b)).coverMediaId).toBe(
+        legacySecond,
+      );
+      expect(await authors.readWork(legacy, a)).toMatchObject({
+        coverMediaId: legacySecond,
+        publiclyVisible: true,
+      });
+
+      // Not public to third parties right now: self-only, operator-hidden
+      // and a first submission awaiting approval.
+      await adapter.setVisibility(
+        a,
+        uncovered.workId,
+        { requestId: randomUUID(), visibility: "self" },
+        now,
+      );
+      expect(await authors.readWork(uncovered.workId, a)).toMatchObject({
+        visibility: "self",
+        publiclyVisible: false,
+        coverMediaId: fourth!.itemId,
+      });
+      await contentOperator.moderateWork(textOnly.workId, operator, {
+        requestId: randomUUID(),
+        state: "hidden",
+        expectedVersion: (await authors.readWork(textOnly.workId, a)).version,
+      });
+      expect(await authors.readWork(textOnly.workId, a)).toMatchObject({
+        visibility: "public",
+        publiclyVisible: false,
+      });
+      await setPolicy("PRE_MODERATION");
+      const pendingFirst = await publish(a, { title: "首次待审" }, now);
+      expect(await authors.readWork(pendingFirst.workId, a)).toMatchObject({
+        firstPublishedAt: null,
+        visibility: "public",
+        publiclyVisible: false,
+      });
+
+      // Lists: the author's own list says it for every work, others never.
+      const own = await authors.listWorks(a, a, listQuery);
+      expect(
+        Object.fromEntries(
+          own.items.map((work) => [work.id, work.publiclyVisible]),
+        ),
+      ).toEqual({
+        [album.workId]: true,
+        [uncovered.workId]: false,
+        [textOnly.workId]: false,
+        [legacy]: true,
+        [pendingFirst.workId]: false,
+      });
+      const visitor = await authors.listWorks(a, b, listQuery);
+      expect(visitor.items.map((work) => work.id).sort()).toEqual(
+        [album.workId, legacy].sort(),
+      );
+      for (const work of visitor.items)
+        expect(work).not.toHaveProperty("publiclyVisible");
+    });
+
+    it("refuses an item maximum above 100 and enforces a larger stored maximum as 100", async () => {
+      const now = at("2026-07-23T08:00:00.000Z");
+      const settings = await operators.readSettings();
+      const { version, updatedAt, updatedBy, ...limits } = settings;
+      void [updatedAt, updatedBy];
+      const change = (maxItemsPerWork: number) => ({
+        ...limits,
+        maxItemsPerWork,
+        requestId: randomUUID(),
+        expectedVersion: version,
+      });
+      for (const maxItemsPerWork of [101, 500, 0])
+        await expectRejection(
+          operators.setSettings(operator, change(maxItemsPerWork), now),
+          CommunityInputError,
+        );
+      expect(await operators.readSettings()).toEqual(settings);
+      expect(
+        await count(
+          "SELECT count(*) AS n FROM community.content_operator_receipts WHERE operator_label=$1",
+          [operator],
+        ),
+      ).toBe(0);
+      const accepted = change(100);
+      expect(
+        (await operators.setSettings(operator, accepted, now)).maxItemsPerWork,
+      ).toBe(100);
+      // A receipt from before the bound may hold a larger value: its replay
+      // is enforced as 100 too.
+      await pool.query(
+        "UPDATE community.content_operator_receipts SET result=jsonb_set(result,'{maxItemsPerWork}','500') WHERE operator_label=$1 AND request_id=$2",
+        [operator, accepted.requestId],
+      );
+      expect(
+        (await operators.setSettings(operator, accepted, now)).maxItemsPerWork,
+      ).toBe(100);
+
+      // Storage alone still admits up to 500: a larger stored value (written
+      // outside the operator command) is read and enforced as 100.
+      await pool.query(
+        "UPDATE community.work_publishing_settings SET max_items_per_work=200 WHERE id='settings'",
+      );
+      expect((await operators.readSettings()).maxItemsPerWork).toBe(100);
+      expect((await adapter.readSettings()).maxItemsPerWork).toBe(100);
+      const placeholders = (length: number) =>
+        Array.from({ length }, (_, index) => ({
+          key: `pending-${index}`,
+          itemId: null,
+          kind: "static" as const,
+          qualityMode: "standard" as const,
+          edit: identity,
+        }));
+      await expectRejection(
+        adapter.submit(
+          a,
+          command(
+            { sessionId: await holdSession(a) },
+            { title: "超过上限", items: placeholders(101) },
+          ),
+          now,
+        ),
+        CommunityInputError,
+        "items_limit",
+      );
+      expect(
+        await adapter.submit(
+          a,
+          command(
+            { sessionId: await holdSession(a) },
+            { title: "上限以内", items: placeholders(100) },
+          ),
+          now,
+        ),
+      ).toMatchObject({ state: "not_ready" });
+    });
+
+    it("keeps clipboard provenance private and carries it into editable content without making submissions differ", async () => {
+      const now = at("2026-07-24T08:00:00.000Z");
+      const clipboardMetadata = (clientSource: string) => ({
+        provenance: {
+          source: "client",
+          parser: "exifr@7.1.3",
+          status: "absent",
+          clientSource,
+        },
+        values: {},
+      });
+
+      // Registration: the client source is stored privately only.
+      const draft = await adapter.createDraft(
+        a,
+        {
+          requestId: randomUUID(),
+          content: contentOf({ title: "粘贴的图" }),
+          deviceClass: "desktop",
+        },
+        now,
+      );
+      const registered = await adapter.registerItem(
+        a,
+        {
+          requestId: randomUUID(),
+          holder: { draftId: draft.id },
+          kind: "static",
+          qualityMode: "standard",
+          processingProfile: "standard-image-v1",
+          components: [
+            {
+              role: "still",
+              byteSize: 2048,
+              contentType: "image/jpeg",
+              standardOutcome: "optimized",
+            },
+          ],
+          metadata: {
+            provenance: {
+              source: "client",
+              parser: "exifr@7.1.3",
+              status: "absent",
+              clientSource: "clipboard",
+            },
+            values: {},
+          },
+        },
+        now,
+      );
+      expect(JSON.stringify(registered)).not.toContain("clipboard");
+      expect(
+        (
+          await pool.query<{ metadata: unknown }>(
+            "SELECT private_metadata AS metadata FROM community.media_items WHERE id=$1",
+            [registered.id],
+          )
+        ).rows[0]!.metadata,
+      ).toMatchObject({ provenance: { clientSource: "clipboard" } });
+
+      // Draft content keeps an item's origin through a save, a read and history.
+      const pasted = { ...entry(registered.id), origin: "clipboard" as const };
+      const saved = await adapter.snapshotDraft(
+        a,
+        draft.id,
+        {
+          baseRevision: draft.revision,
+          content: contentOf({ title: "粘贴的图", items: [pasted] }),
+          deviceClass: "desktop",
+        },
+        now,
+      );
+      expect(saved.status).toBe("saved");
+      expect((await adapter.readDraft(a, draft.id)).content.items).toEqual([
+        pasted,
+      ]);
+      expect(
+        (await adapter.listHistory(a, draft.id, { page: 1, pageSize: 20 }))
+          .items[0]?.content.items,
+      ).toEqual([pasted]);
+
+      // A published item pasted from the clipboard reopens with its origin.
+      const clip = await mediaItem(a);
+      const picked = await mediaItem(a);
+      for (const [itemId, source] of [
+        [clip.itemId, "clipboard"],
+        [picked.itemId, "picker"],
+      ] as const)
+        await pool.query(
+          "UPDATE community.media_items SET private_metadata=$2::jsonb WHERE id=$1",
+          [itemId, JSON.stringify(clipboardMetadata(source))],
+        );
+      const work = await publish(
+        a,
+        {
+          title: "带粘贴图",
+          items: [
+            { ...entry(clip.itemId), origin: "clipboard" },
+            entry(picked.itemId),
+          ],
+        },
+        now,
+      );
+      const editable = await adapter.readEditableWork(a, work.workId);
+      expect(editable.content.items.map((item) => item.origin)).toEqual([
+        "clipboard",
+        undefined,
+      ]);
+      const editDraft = await adapter.openEditDraft(
+        a,
+        work.workId,
+        { requestId: randomUUID(), deviceClass: "phone" },
+        now,
+      );
+      expect(editDraft.content.items.map((item) => item.origin)).toEqual([
+        "clipboard",
+        undefined,
+      ]);
+      // Public reads, cards and the operator view never carry it.
+      expect(
+        JSON.stringify(await authors.readWork(work.workId, b)),
+      ).not.toMatch(/clipboard|picker|clientSource|"origin"/u);
+      expect(
+        JSON.stringify(await operators.readSubmission(work.revisionId)),
+      ).not.toMatch(/clipboard|picker|clientSource/u);
+
+      // Submitting the edit draft's content without origins is the same
+      // content: no conflict copy is kept.
+      const withoutOrigin = editDraft.content.items.map((item) => {
+        const copy: Partial<typeof item> = { ...item };
+        delete copy.origin;
+        return copy as typeof item;
+      });
+      confirmed(
+        await adapter.submit(
+          a,
+          command(
+            { draftId: editDraft.id },
+            { title: "带粘贴图", items: withoutOrigin },
+            editable.revisionId,
+          ),
+          now,
+        ),
+      );
+      expect(
+        (
+          await pool.query<{ kind: string }>(
+            "SELECT kind FROM community.work_draft_snapshots WHERE draft_id=$1 ORDER BY kind",
+            [editDraft.id],
+          )
+        ).rows,
+      ).toEqual([{ kind: "submitted" }]);
     });
 
     /** The key community.media_edit_key gives an edit and optional cover crop. */

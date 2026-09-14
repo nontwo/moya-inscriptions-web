@@ -1060,6 +1060,98 @@ export const registerWorkPublishingMediaTests = (
       );
     });
 
+    it("refuses a draft deletion confirmed against an older revision and removes nothing", async () => {
+      const draft = await newDraft(a, text("草稿"));
+      const item = await adapter.registerItem(
+        a,
+        staticCommand({ draftId: draft.id }),
+        t0,
+      );
+      // Another device saved after this one showed the deletion scope.
+      expect(
+        await adapter.saveDraft(
+          a,
+          draft.id,
+          {
+            baseRevision: 1,
+            content: text("另一台设备", [entry(item)]),
+            deviceClass: "phone",
+          },
+          at(minute),
+        ),
+      ).toMatchObject({ status: "saved", draft: { revision: 2 } });
+      const stale = { requestId: randomUUID(), expectedRevision: 1 };
+      await expect(
+        adapter.deleteDraft(a, draft.id, stale, at(2 * minute)),
+      ).rejects.toMatchObject({
+        name: "CommunityConflictError",
+        message: "draft_changed",
+      });
+      expect(await adapter.readDraft(a, draft.id)).toMatchObject({
+        revision: 2,
+        content: { body: "另一台设备" },
+      });
+      expect(await itemState(item.id)).toBe("awaiting_upload");
+      expect(await refsOf(item.id)).toEqual([
+        { holder_kind: "draft", holder_id: draft.id },
+      ]);
+      const recorded = async (requestId: string) =>
+        (
+          await pool.query(
+            "SELECT 1 FROM community.author_command_receipts WHERE actor_id=$1 AND request_id=$2",
+            [a, requestId],
+          )
+        ).rowCount;
+      expect(await recorded(stale.requestId)).toBe(0);
+
+      // Confirmed against the current revision: the targeted deletion runs,
+      // and a replay answers from its receipt.
+      const current = { requestId: randomUUID(), expectedRevision: 2 };
+      const deletion = await adapter.deleteDraft(
+        a,
+        draft.id,
+        current,
+        at(3 * minute),
+      );
+      expect(deletion.result).toEqual({
+        deleted: true,
+        snapshots: 0,
+        conflictCopies: 0,
+        mediaItems: 1,
+      });
+      expect(
+        await adapter.deleteDraft(a, draft.id, current, at(4 * minute)),
+      ).toEqual(deletion);
+      expect(await recorded(current.requestId)).toBe(1);
+      expect(await itemState(item.id)).toBe("cancelled");
+      await expect(
+        adapter.deleteDraft(
+          a,
+          draft.id,
+          { requestId: randomUUID(), expectedRevision: 2 },
+          at(5 * minute),
+        ),
+      ).rejects.toMatchObject({ name: "CommunityNotFoundError" });
+      // Without an expected revision the current draft is deleted.
+      const other = await newDraft(a, text("无条件删除"));
+      await adapter.saveDraft(
+        a,
+        other.id,
+        { baseRevision: 1, content: text("已更新"), deviceClass: null },
+        at(minute),
+      );
+      expect(
+        (
+          await adapter.deleteDraft(
+            a,
+            other.id,
+            { requestId: randomUUID() },
+            at(2 * minute),
+          )
+        ).result.deleted,
+      ).toBe(true);
+    });
+
     it("expires a no-save session on virtual time while protecting a streaming transfer", async () => {
       const session = await adapter.createSession(
         a,
