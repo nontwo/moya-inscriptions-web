@@ -142,5 +142,36 @@ export type {
   DiscoveryPageRecord,
 } from "./modules/community/application/ports/community-discovery-port.js";
 export type { CommunityContentOperatorPort } from "./modules/community/application/ports/community-content-operator-port.js";
+export type {
+  PublishingBlobContentType,
+  PublishingBlobPurpose,
+  PublishingMediaBlobListing,
+  PublishingMediaBlobListOptions,
+  PublishingMediaByteRange,
+  PublishingMediaReadResult,
+  PublishingMediaStoreFailureCode,
+  PublishingMediaStorePort,
+  PublishingMediaWriteOptions,
+  PublishingMediaWriteResult,
+} from "./modules/community/application/ports/publishing-media-store-port.js";
+export type {
+  PublishingClientPairing,
+  PublishingComponentRole,
+  PublishingDerivativeRecord,
+  PublishingDerivativeVariant,
+  PublishingMediaEdit,
+  PublishingMediaFailureCode,
+  PublishingMediaKind,
+  PublishingMediaPairing,
+  PublishingMediaPresentation,
+  PublishingMediaProcessorPort,
+  PublishingNormalizedCrop,
+  PublishingPairingMethod,
+  PublishingProcessInput,
+  PublishingProcessMode,
+  PublishingProcessOutcome,
+  PublishingProcessorComponent,
+  PublishingQualityMode,
+} from "./modules/community/application/ports/publishing-media-processor-port.js";
 
 export { CommunityContentOperatorService } from "./modules/community/application/services/community-content-operator-service.js";
