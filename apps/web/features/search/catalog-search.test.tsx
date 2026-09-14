@@ -8,6 +8,7 @@ vi.mock("../product-shell/product-shell", () => ({
 }));
 import {
   CatalogSearch,
+  CatalogSearchHeaderAction,
   CatalogSearchNavigationAction,
   CatalogSearchProvider,
 } from "./catalog-search";
@@ -115,6 +116,76 @@ describe("real Catalog Search utility", () => {
     expect(container.textContent).toContain("搜索馆藏资料");
     expect(container.textContent).not.toMatch(/QA|最近搜索|搜索建议|龙门/);
     expect(loader).not.toHaveBeenCalled();
+  });
+  it("opens the same panel from a header trigger and returns focus to the one used", () => {
+    const frames: FrameRequestCallback[] = [];
+    const frameSpy = vi.spyOn(window, "requestAnimationFrame");
+    frameSpy.mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const flushFrames = () =>
+      act(() => {
+        for (const frame of frames.splice(0)) frame(0);
+      });
+    const loader = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    act(() =>
+      root.render(
+        <CatalogSearchProvider>
+          <div data-product-shell="" data-detail-open="false">
+            <div data-primary-navigation-pager="">
+              {(["home", "inscriptions", "calligraphy"] as const).map(
+                (destination) => (
+                  <section
+                    data-primary-destination={destination}
+                    hidden={destination !== "inscriptions"}
+                    key={destination}
+                  >
+                    <header data-author-bar="">
+                      <CatalogSearchHeaderAction />
+                    </header>
+                  </section>
+                ),
+              )}
+            </div>
+            <CatalogSearch loadPage={loader} />
+          </div>
+        </CatalogSearchProvider>,
+      ),
+    );
+    const triggers = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        '[data-search-trigger-placement="header"]',
+      ),
+    );
+    expect(triggers).toHaveLength(3);
+    expect(
+      triggers.every((t) => t.getAttribute("aria-label") === "打开搜索"),
+    ).toBe(true);
+    const visible = triggers[1]!;
+
+    act(() => visible.click());
+    expect(container.querySelector("[data-search-panel]")).not.toBeNull();
+    expect(document.activeElement).toBe(element(container, "input"));
+    expect(visible.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      element(container, "[data-primary-navigation-pager]").hasAttribute(
+        "inert",
+      ),
+    ).toBe(true);
+
+    act(() =>
+      element<HTMLButtonElement>(container, "[data-search-close]").click(),
+    );
+    flushFrames();
+    expect(container.querySelector("[data-search-panel]")).toBeNull();
+    expect(document.activeElement).toBe(visible);
+    expect(loader).not.toHaveBeenCalled();
+    frameSpy.mockRestore();
   });
   it("submits backend requests and opens the existing Detail with the real identity", async () => {
     const loader = vi.fn().mockResolvedValue(success());

@@ -14,6 +14,7 @@ import { HomeScreen } from "../home/home-screen";
 import type { HomeSurfaceData, HomeFeed } from "../home/home-feed";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import homeStyles from "../home/home-screen.module.css";
+import type { ReactNode } from "react";
 const emptyFilters: InscriptionFilters = {
   dynasty: [],
   textAuthor: [],
@@ -49,24 +50,30 @@ export const AuthorTrigger = () => {
 export const DiscoveryHome = ({
   data,
   initialFeed,
+  headerStart = <span aria-hidden="true" />,
 }: {
   data: HomeSurfaceData;
   initialFeed: HomeFeed;
+  headerStart?: ReactNode;
 }) => (
   <HomeScreen
     data={data}
     initialFeed={initialFeed}
-    headerStart={<span aria-hidden="true" />}
+    headerStart={headerStart}
     headerEnd={<AuthorTrigger />}
     renderDiscover={(active) => <DiscoveryFeed kind="all" active={active} />}
   />
 );
-export const FilteredInscriptions = () => {
+export const FilteredInscriptions = ({
+  headerStart = <span aria-hidden="true" />,
+}: {
+  headerStart?: ReactNode;
+}) => {
   const shell = useProductShell();
   return (
     <div className="phase4-inscriptions" data-phase4-inscriptions="">
       <header className={homeStyles.homeHeader} data-author-bar="">
-        <span aria-hidden="true" />
+        {headerStart}
         <strong>碑刻</strong>
         <AuthorTrigger />
       </header>

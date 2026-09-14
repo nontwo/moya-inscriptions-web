@@ -15,7 +15,11 @@ import { TopicDetail } from "../topics/topic-detail";
 import type { T02pDevelopmentCatalogDestinationStates } from "./catalog-scenarios";
 import type { CatalogDetailPresentationLoader } from "../detail/load-catalog-detail";
 import type { ContentIdentity } from "@moya/contracts";
-import type { ProductShellProfileOverlayRenderProps } from "../product-shell/product-shell";
+import type {
+  ProductShellEditorOverlayControls,
+  ProductShellProfileOverlayRenderProps,
+} from "../product-shell/product-shell";
+import type { EditorTarget } from "../product-shell/product-history";
 import type { CatalogDetailPresentation } from "../detail/catalog-detail-presentation";
 import type { ReactNode, RefObject } from "react";
 import type { HomeCatalogState } from "../home/catalog-state";
@@ -63,6 +67,10 @@ export interface T02pProductPreviewProps {
   readonly renderProfileOverlay?: (
     properties: ProductShellProfileOverlayRenderProps,
   ) => ReactNode;
+  readonly renderEditorOverlay?: (
+    target: EditorTarget,
+    controls: ProductShellEditorOverlayControls,
+  ) => ReactNode;
   readonly workDetailLoader?: CatalogDetailPresentationLoader;
   readonly renderDiscussion?: (target: ContentIdentity) => ReactNode;
   readonly renderDetailActions?: (
@@ -90,6 +98,7 @@ export const T02pProductPreview = ({
   headerStart,
   headerEnd,
   renderProfileOverlay,
+  renderEditorOverlay,
   workDetailLoader,
   renderDiscussion,
   renderDetailActions,
@@ -138,6 +147,7 @@ export const T02pProductPreview = ({
         filteredInscriptions ?? <PreviewBrowse state={states.inscriptions} />
       }
       {...(renderProfileOverlay ? { renderProfileOverlay } : {})}
+      {...(renderEditorOverlay ? { renderEditorOverlay } : {})}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
       renderDetailOverlay={({
         backButtonRef,

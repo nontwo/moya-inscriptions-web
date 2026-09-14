@@ -3,6 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProductApplication } from "./product-application";
 import { DiscussionSection } from "../authors/discussion-section";
+import { CreateWorkAction } from "../publishing/create-action";
+import { renderPublishingEditorOverlay } from "../publishing/publishing-entry";
+import {
+  CatalogSearchHeaderAction,
+  CatalogSearchNavigationAction,
+} from "../search/catalog-search";
+
+import type { ReactElement } from "react";
 
 import type { T02pProductPreviewProps } from "../product-preview/t02p-product-preview";
 
@@ -71,5 +79,49 @@ describe("ProductApplication", () => {
     expect(section.props).toEqual({
       target: { type: "catalog", id: "catalog-one" },
     });
+  });
+
+  it("gives the author composition the plus dock action, header Search, and the editor seam", () => {
+    renderToStaticMarkup(
+      <ProductApplication
+        comments={{ signInHref: "/dev/community" }}
+        authorCommunity
+        initialPlatform="phone"
+        navigationAction={<CatalogSearchNavigationAction />}
+        states={
+          {
+            ...states,
+            home: { identity: "home" },
+          } as unknown as T02pProductPreviewProps["states"]
+        }
+      />,
+    );
+    const props = lastPreviewProps();
+    const element = (node: unknown) =>
+      node as ReactElement<{
+        headerStart?: unknown;
+      }>;
+    expect(element(props.navigationAction).type).toBe(CreateWorkAction);
+    expect(props.renderEditorOverlay).toBe(renderPublishingEditorOverlay);
+    expect(element(props.headerStart).type).toBe(CatalogSearchHeaderAction);
+    for (const page of [props.discoveryHome, props.filteredInscriptions])
+      expect(element(element(page).props.headerStart).type).toBe(
+        CatalogSearchHeaderAction,
+      );
+  });
+
+  it("keeps the Search dock action and no editor outside the author composition", () => {
+    const navigationAction = <CatalogSearchNavigationAction />;
+    renderToStaticMarkup(
+      <ProductApplication
+        comments={{ signInHref: "/dev/community" }}
+        initialPlatform="phone"
+        navigationAction={navigationAction}
+        states={states}
+      />,
+    );
+    expect(lastPreviewProps().navigationAction).toBe(navigationAction);
+    expect(lastPreviewProps()).not.toHaveProperty("renderEditorOverlay");
+    expect(lastPreviewProps()).not.toHaveProperty("headerStart");
   });
 });

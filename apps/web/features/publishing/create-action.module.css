@@ -1,0 +1,36 @@
+/*
+ * Geometry, focus ring and dock collapse come from the Search trigger. The
+ * element selector outranks that module regardless of stylesheet order.
+ */
+button.action {
+  color: white;
+  background: var(--yoyi-color-seal-red);
+  border-color: var(--yoyi-color-seal-red);
+}
+
+/* A touch tap must not leave a sticky hover colour behind. */
+@media (hover: hover) {
+  button.action:hover:not(:disabled) {
+    background: var(--yoyi-color-seal-red-hover);
+    border-color: var(--yoyi-color-seal-red-hover);
+  }
+}
+
+button.action:active:not(:disabled) {
+  background: var(--yoyi-color-seal-red-pressed);
+  border-color: var(--yoyi-color-seal-red-pressed);
+}
+
+button.action:disabled {
+  cursor: progress;
+}
+
+/* The Search icon's 27px optical size and 1.8 stroke. */
+.icon {
+  width: 27px;
+  height: 27px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}

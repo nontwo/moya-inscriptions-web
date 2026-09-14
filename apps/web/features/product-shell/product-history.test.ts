@@ -5,11 +5,16 @@ import {
   detailHistoryState,
   detailLocation,
   directCatalogIdFromLocation,
+  directEditorTargetFromLocation,
   directMediaIdFromLocation,
+  editorHistoryState,
+  editorLocation,
   isPrimaryDestination,
   mergeProductHistoryState,
   parseProductHistoryState,
   primaryHistoryState,
+  primaryLocation,
+  sameEditorLink,
   settingsHistoryState,
   topicHistoryState,
   topicLocation,
@@ -144,10 +149,106 @@ describe("Product Shell history", () => {
     ).toBe("/dev/t02p?cb=exact-head#topic-%E4%B8%93%E9%A2%98%20%E4%B8%80");
   });
 
+  it("parses the bounded Editor layer, its URL and exact direct links", () => {
+    const draftId = `work-draft-${"c".repeat(32)}`;
+    const workId = `work-${"b".repeat(32)}`;
+    for (const target of [
+      { type: "new" },
+      { type: "draft", id: draftId },
+      { type: "work", id: workId },
+    ] as const) {
+      const state = editorHistoryState(target, "calligraphy", 147);
+      expect(parseProductHistoryState(state)).toEqual(state);
+    }
+    expect(
+      editorHistoryState({ type: "new" }, "home", -10).sourceScrollTop,
+    ).toBe(0);
+    const location = {
+      origin: "https://example.test",
+      pathname: "/dev/t02p",
+      search: `?feed=nearby&workId=${workId}&authorId=user-a&image=m`,
+    } as Location;
+    expect(editorLocation(location, { type: "new" })).toBe(
+      "/dev/t02p?feed=nearby#editor",
+    );
+    // A private draft is never addressable by link.
+    expect(editorLocation(location, { type: "draft", id: draftId })).toBe(
+      "/dev/t02p?feed=nearby#editor",
+    );
+    expect(editorLocation(location, { type: "work", id: workId })).toBe(
+      `/dev/t02p?feed=nearby&workId=${workId}#editor`,
+    );
+    const stale = {
+      origin: "https://example.test",
+      pathname: "/dev/t02p",
+      search: `?feed=nearby&draftId=${draftId}`,
+    } as Location;
+    expect(primaryLocation(stale)).toBe("/dev/t02p?feed=nearby");
+    expect(editorLocation(stale, { type: "draft", id: draftId })).toBe(
+      "/dev/t02p?feed=nearby#editor",
+    );
+    expect(detailLocation(stale, { type: "work", id: workId })).toBe(
+      `/dev/t02p?feed=nearby&workId=${workId}#detail`,
+    );
+    expect(
+      sameEditorLink({ type: "new" }, { type: "draft", id: draftId }),
+    ).toBe(true);
+    expect(
+      sameEditorLink(
+        { type: "work", id: workId },
+        { type: "work", id: workId },
+      ),
+    ).toBe(true);
+    expect(sameEditorLink({ type: "new" }, { type: "work", id: workId })).toBe(
+      false,
+    );
+    expect(
+      directEditorTargetFromLocation({ hash: "#editor", search: "?feed=x" }),
+    ).toEqual({ type: "new" });
+    expect(
+      directEditorTargetFromLocation({
+        hash: "#editor",
+        search: `?workId=${workId}`,
+      }),
+    ).toEqual({ type: "work", id: workId });
+    for (const [hash, search] of [
+      ["#detail", `?workId=${workId}`],
+      ["#editor", `?draftId=${draftId}`],
+      ["#editor", "?draftId=work-draft-short"],
+      ["#editor", `?draftId=${draftId}&workId=${workId}`],
+      ["#editor", `?workId=${workId}&workId=${workId}`],
+      ["#editor", "?workId=work-short"],
+      ["#editor", `?catalogId=catalog-one`],
+      ["#editor", `?workId=${workId}&image=media-one`],
+    ] as const)
+      expect(directEditorTargetFromLocation({ hash, search })).toBeNull();
+  });
+
   it.each([
     null,
     {},
     { kind: "primary", version: PRODUCT_SHELL_HISTORY_VERSION },
+    {
+      editorTarget: { type: "draft", id: "work-draft-invalid" },
+      kind: "editor",
+      sourceDestination: "home",
+      sourceScrollTop: 0,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      editorTarget: { type: "new" },
+      kind: "editor",
+      sourceDestination: "home",
+      sourceScrollTop: -1,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
+    {
+      editorTarget: { type: "catalog", id: "catalog-one" },
+      kind: "editor",
+      sourceDestination: "home",
+      sourceScrollTop: 0,
+      version: PRODUCT_SHELL_HISTORY_VERSION,
+    },
     {
       destination: "unknown",
       kind: "primary",

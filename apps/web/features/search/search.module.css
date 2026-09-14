@@ -25,6 +25,23 @@
   width: 27px;
   height: 27px;
 }
+/* Mirrors the 44px author avatar in the 48px leading header column. */
+.trigger[data-search-trigger-placement="header"] {
+  /* Contains the glass highlight, which would otherwise fill the header. */
+  position: relative;
+  width: 44px;
+  height: 44px;
+  justify-self: end;
+}
+/* Calligraphy centres its header items, the avatar included. */
+:global([data-calligraphy-category-surface] > header)
+  > .trigger[data-search-trigger-placement="header"] {
+  justify-self: center;
+}
+.trigger[data-search-trigger-placement="header"] :global(.yoyi-icon) {
+  width: 24px;
+  height: 24px;
+}
 .panel {
   position: fixed;
   top: var(--qa-search-viewport-top, 0px);

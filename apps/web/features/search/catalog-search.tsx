@@ -59,6 +59,19 @@ export const CatalogSearchNavigationAction = () => {
     />
   );
 };
+/** The same Search in a primary header's leading slot (author composition). */
+export const CatalogSearchHeaderAction = () => {
+  const { open, setOpen, openerRef, inputRef } = useSearchContext();
+  return (
+    <SearchTrigger
+      open={open}
+      onOpenChange={setOpen}
+      openerRef={openerRef}
+      placement="header"
+      searchInputRef={inputRef}
+    />
+  );
+};
 
 export type CatalogSearchLoader = (
   query: CatalogSearchTransportQuery,
