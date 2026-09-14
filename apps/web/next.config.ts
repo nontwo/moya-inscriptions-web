@@ -15,6 +15,10 @@ const nextConfig: NextConfig = {
     incomingRequests: { ignore: [/^\/api\/catalog-search(?:[/?]|$)/u] },
   },
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
+  // The bundled contracts source uses Node ESM `.js` specifiers between its
+  // TypeScript modules; resolve them to the sibling `.ts` sources when no
+  // emitted `.js` file exists.
+  experimental: { extensionAlias: { ".js": [".js", ".ts", ".tsx"] } },
   outputFileTracingRoot: new URL("../../", import.meta.url).pathname,
   outputFileTracingIncludes: {
     "/": [
