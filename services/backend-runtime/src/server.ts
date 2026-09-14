@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import type { RequestListener, Server } from "node:http";
+import type { IncomingMessage, RequestListener, Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
 export interface InternalListenOptions {
@@ -27,11 +27,45 @@ const assertInternalListenOptions = ({
   }
 };
 
+export interface BackendServerOptions {
+  /**
+   * Time a request may take to deliver its whole body; the default equals
+   * Node's own `requestTimeout`. Streaming uploads are exempt and bound their
+   * body by an idle timeout instead.
+   */
+  readonly requestDeadlineMs?: number;
+}
+
+const defaultRequestDeadlineMs = 300_000;
+const deadlineExemptRequests = new WeakSet<IncomingMessage>();
+
+/**
+ * Exempts a request whose handler bounds its body itself (a component upload
+ * that may stream far longer than the deadline while bytes keep arriving).
+ */
+export const exemptFromRequestDeadline = (request: IncomingMessage): void => {
+  deadlineExemptRequests.add(request);
+};
+
 export const createBackendServer = (
   requestListener: RequestListener,
+  { requestDeadlineMs = defaultRequestDeadlineMs }: BackendServerOptions = {},
 ): Server => {
-  const server = createServer(requestListener);
-  server.on("request", (_request, response) => {
+  if (!Number.isSafeInteger(requestDeadlineMs) || requestDeadlineMs <= 0) {
+    throw new Error("Request deadline must be a positive integer");
+  }
+  // Node's requestTimeout ends every request still receiving its body, even
+  // while bytes flow; the same deadline is kept below for all other requests.
+  const server = createServer({ requestTimeout: 0 }, requestListener);
+  server.on("request", (request, response) => {
+    const deadline = setTimeout(() => {
+      if (request.complete || deadlineExemptRequests.has(request)) return;
+      request.socket.destroy();
+    }, requestDeadlineMs);
+    deadline.unref();
+    response.once("close", () => {
+      clearTimeout(deadline);
+    });
     response.once("finish", () => {
       if (!server.listening) server.closeIdleConnections();
     });

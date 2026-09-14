@@ -35,7 +35,11 @@ import {
   readJpegXmpPackets,
   readMotionPhotoDirectory,
 } from "./motion-photo.js";
-import { COVER_CROPPED_VARIANTS, METADATA_HEAD_BYTES } from "./profiles.js";
+import {
+  COVER_CROPPED_VARIANTS,
+  LEGACY_USER_MEDIA_MAX_BYTES,
+  METADATA_HEAD_BYTES,
+} from "./profiles.js";
 import {
   SIGNATURE_HEAD_BYTES,
   countGifFrames,
@@ -69,13 +73,41 @@ export type ProcessorVariant =
 export type ProcessorPairingMethod =
   "apple-content-identifier" | "motion-photo-container" | "none";
 
+/**
+ * A legacy item's source: the user media PNG of an earlier work (structural
+ * mirror of the port's `legacy_user_media` processing source).
+ */
+export interface ProcessorLegacySource {
+  readonly kind: "legacy_user_media";
+  readonly legacyMediaId: string;
+  readonly byteSize: number;
+  readonly contentType: "image/png";
+}
+
+/** Where an item's source bytes live; uploaded items name no source or `upload`. */
+export type ProcessorSource =
+  { readonly kind: "upload" } | ProcessorLegacySource;
+
 /** Structural mirror of `PublishingProcessInput` (`@moya/api`). */
 export interface ProcessorInput {
   readonly mode: ProcessorMode;
   readonly itemId: string;
   readonly ownerId: string;
   readonly kind: "static" | "live";
+  /** Legacy (`legacy_user_media`) edits arrive as `standard`. */
   readonly qualityMode: "standard" | "original";
+  /**
+   * Uploaded items (no source, or `upload`) read `components` from the media
+   * store. A `legacy_user_media` source is valid only for mode `derive` of a
+   * static item without components: its still is `legacyStill`.
+   */
+  readonly source?: ProcessorSource | null;
+  /**
+   * The legacy PNG, exactly `source.byteSize` bytes, which the worker read
+   * from user media for this job only. It is written into the job input and
+   * never into the media store or back to user media.
+   */
+  readonly legacyStill?: Uint8Array;
   readonly components: readonly {
     readonly role: ProcessorComponentRole;
     readonly storageKey: string;
@@ -165,6 +197,7 @@ export interface PublishingMediaProcessorOptions {
 type Component = ProcessorInput["components"][number];
 
 const ITEM_ID_PATTERN = /^media-item-[0-9a-f]{32}$/;
+const LEGACY_MEDIA_ID_PATTERN = /^user-media-[0-9a-f]{32}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_STILL_TIME_MS = 60_000;
 const VARIANTS = new Set<string>([
@@ -205,6 +238,36 @@ const invalidClientPairing = (pairing: ProcessorInput["clientPairing"]) =>
         !Number.isSafeInteger(pairing.stillTimeMs) ||
         pairing.stillTimeMs < 0 ||
         pairing.stillTimeMs > MAX_STILL_TIME_MS)));
+
+/** The legacy source of a well-formed legacy input; `null` for uploads. */
+const legacySourceOf = (
+  input: ProcessorInput,
+): ProcessorLegacySource | null => {
+  const source = input.source;
+  if (source === undefined || source === null || source.kind === "upload") {
+    if (input.legacyStill !== undefined) throw new MediaProcessingInputError();
+    return null;
+  }
+  const still = input.legacyStill;
+  if (
+    source.kind !== "legacy_user_media" ||
+    typeof source.legacyMediaId !== "string" ||
+    !LEGACY_MEDIA_ID_PATTERN.test(source.legacyMediaId) ||
+    source.contentType !== "image/png" ||
+    !Number.isSafeInteger(source.byteSize) ||
+    source.byteSize < 1 ||
+    source.byteSize > LEGACY_USER_MEDIA_MAX_BYTES ||
+    !(still instanceof Uint8Array) ||
+    still.byteLength !== source.byteSize ||
+    input.mode !== "derive" ||
+    input.kind !== "static" ||
+    !Array.isArray(input.components) ||
+    input.components.length !== 0
+  ) {
+    throw new MediaProcessingInputError();
+  }
+  return source;
+};
 
 const assertInput = (input: ProcessorInput) => {
   const roles = input.components.map((component) => component.role);
@@ -289,6 +352,23 @@ async function materialize(
   if (hash.digest("hex") !== component.sha256) {
     throw new MediaProcessingUnavailableError(null);
   }
+}
+
+/** Writes the worker-read legacy PNG as the job's still input (never a link). */
+async function writeLegacyStill(
+  job: MediaToolJob,
+  bytes: Uint8Array,
+  signal: AbortSignal | undefined,
+) {
+  if (signal?.aborted) throw new MediaToolError("aborted");
+  const target = job.inputPath("still");
+  const handle = await open(target, "wx", 0o644);
+  try {
+    await handle.writeFile(bytes, withSignal(signal));
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
+  await chmod(target, 0o644);
 }
 
 async function copyRange(
@@ -682,8 +762,12 @@ async function processItem(
   { store, runner }: PublishingMediaProcessorOptions,
   input: ProcessorInput,
 ): Promise<ProcessorOutcome> {
+  const legacy = legacySourceOf(input);
   assertInput(input);
-  const layout = componentLayout(input);
+  // A legacy still has no stored components; its bytes come with the input.
+  const layout = legacy
+    ? { still: null, motion: null, pack: null }
+    : componentLayout(input);
   const edit = parseEdit(input.edit);
   const coverCrop = parseCrop(input.coverCrop);
   const usesCoverCrop = input.variants.some((variant) =>
@@ -708,7 +792,10 @@ async function processItem(
     let stillDeclared: string | undefined;
     let motionDeclared: string | undefined;
     let packageType: PublishingMediaStoreContentType | null = null;
-    if (layout.pack) {
+    if (legacy) {
+      await writeLegacyStill(job, input.legacyStill!, signal);
+      stillDeclared = legacy.contentType;
+    } else if (layout.pack) {
       await materialize(store, job, layout.pack, signal);
       packageType = await splitMotionPhoto(
         job,
@@ -719,9 +806,9 @@ async function processItem(
       stillDeclared = packageType;
       motionDeclared = "video/mp4";
     } else {
-      if (needStill) await materialize(store, job, layout.still, signal);
+      if (needStill) await materialize(store, job, layout.still!, signal);
       if (needMotion) await materialize(store, job, layout.motion!, signal);
-      stillDeclared = layout.still.declaredType;
+      stillDeclared = layout.still!.declaredType;
       motionDeclared = layout.motion?.declaredType;
     }
 

@@ -46,6 +46,7 @@ describe("@moya/backend-runtime package boundary", () => {
       "createBackendApplication",
       "createBackendServer",
       "createDevelopmentCatalogFixtureQueryPort",
+      "createPublishingTransferRegistry",
       "installProcessShutdownHandlers",
       "parseRuntimeConfig",
       "startBackendProcess",

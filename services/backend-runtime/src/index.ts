@@ -1,4 +1,7 @@
-export { createBackendApplication } from "./application.js";
+export {
+  createBackendApplication,
+  createPublishingTransferRegistry,
+} from "./application.js";
 export { createDevelopmentCatalogFixtureQueryPort } from "./catalog/development-catalog-fixture.js";
 export { parseRuntimeConfig } from "./config.js";
 export {

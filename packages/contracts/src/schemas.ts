@@ -498,14 +498,6 @@ export const authorProfileSchema = z.strictObject({
   }),
   nextAvatarChangeAt: z.iso.datetime().nullable(),
 });
-export const workTextSchema = z.strictObject({
-  title: authorText(200).refine((s) => s.length > 0),
-  text: authorText(10000),
-  mediaIds: z
-    .array(mediaId)
-    .max(12)
-    .refine((ids) => new Set(ids).size === ids.length),
-});
 export const workSchema = z.strictObject({
   id: workId,
   authorId: userId,
@@ -527,16 +519,6 @@ export const workSchema = z.strictObject({
   /** Author-only fields: present only in the author's own view. */
   visibility: workVisibilitySchema.optional(),
   trashedAt: z.iso.datetime().nullable().optional(),
-});
-export const workEditDraftSchema = z.strictObject({
-  id: z.string().regex(/^draft-[0-9a-f]{32}$/u),
-  workId,
-  version,
-  baseWorkVersion: version,
-  baseDraftVersion: version,
-  content: workTextSchema,
-  savedAt: z.iso.datetime(),
-  conflicted: z.boolean(),
 });
 export const profileUpdateSchema = z.strictObject({
   requestId,
@@ -563,16 +545,6 @@ export const guestFavoriteMergeSchema = z.strictObject({
   expectedAccountId: userId,
   items: z.array(contentIdentitySchema).min(1).max(100),
 });
-export const workDraftSaveSchema = z.strictObject({
-  requestId,
-  baseWorkVersion: version,
-  baseDraftVersion: version,
-  content: workTextSchema,
-});
-export const workDraftApplySchema = z.strictObject({
-  requestId,
-  draftId: z.string().regex(/^draft-[0-9a-f]{32}$/u),
-});
 export const requestIdentitySchema = z.strictObject({ requestId });
 export const authorListQuerySchema = z.strictObject({
   page: z
@@ -591,8 +563,6 @@ export type AuthorPrivacy = z.infer<typeof authorPrivacySchema>;
 export type AuthorMedia = z.infer<typeof authorMediaSchema>;
 export type AuthorProfile = z.infer<typeof authorProfileSchema>;
 export type UserWork = z.infer<typeof workSchema>;
-export type WorkText = z.infer<typeof workTextSchema>;
-export type WorkEditDraft = z.infer<typeof workEditDraftSchema>;
 export type AuthorListQuery = z.infer<typeof authorListQuerySchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 export type PrivacyUpdate = z.infer<typeof privacyUpdateSchema>;
@@ -600,8 +570,6 @@ export type AvatarUpdate = z.infer<typeof avatarUpdateSchema>;
 export type RelationshipUpdate = z.infer<typeof relationshipUpdateSchema>;
 export type ContentRelationUpdate = z.infer<typeof contentRelationUpdateSchema>;
 export type GuestFavoriteMerge = z.infer<typeof guestFavoriteMergeSchema>;
-export type WorkDraftSave = z.infer<typeof workDraftSaveSchema>;
-export type WorkDraftApply = z.infer<typeof workDraftApplySchema>;
 
 const pageOf = <T extends z.ZodType>(item: T) =>
   z.strictObject({
@@ -618,19 +586,6 @@ export const authorPersonSchema = z.strictObject({
 });
 export const authorPeoplePageSchema = pageOf(authorPersonSchema);
 export const workPageSchema = pageOf(workSchema);
-export const workDraftPageSchema = pageOf(workEditDraftSchema).extend({
-  currentVersion: version,
-});
-export const workDraftResultSchema = z.strictObject({
-  draft: workEditDraftSchema,
-  conflict: z.boolean(),
-  latestVersion: version,
-});
-export const workApplyResultSchema = z.strictObject({
-  applied: z.boolean(),
-  conflict: z.boolean(),
-  workVersion: version,
-});
 export const guestFavoriteMergeResultSchema = z.strictObject({
   acknowledged: z.array(contentIdentitySchema).max(100),
 });

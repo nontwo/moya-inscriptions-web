@@ -45,6 +45,18 @@
     "./internal/publishing-processing": {
       "types": "./src/publishing/processing/index.ts",
       "import": "./dist/publishing/processing/index.js"
+    },
+    "./internal/publishing-config": {
+      "types": "./src/publishing/config.ts",
+      "import": "./dist/publishing/config.js"
+    },
+    "./internal/publishing-job-handlers": {
+      "types": "./src/publishing/job-handlers.ts",
+      "import": "./dist/publishing/job-handlers.js"
+    },
+    "./internal/publishing-worker": {
+      "types": "./src/publishing/worker.ts",
+      "import": "./dist/publishing/worker.js"
     }
   },
   "scripts": {

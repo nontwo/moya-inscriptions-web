@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   authorCommunityJsonSchemas,
+  workPublishingJsonSchemas,
   apiErrorJsonSchema,
   catalogCitationScopeJsonSchema,
   catalogCommentIdJsonSchema,
@@ -56,8 +57,36 @@ const schemaProperty = (schema: unknown, propertyName: string): JsonObject =>
 const requiredProperties = (schema: unknown): string[] =>
   (asObject(schema).required ?? []) as string[];
 
+/** Work publishing author routes (design §10); the retired Phase 4 draft routes are gone. */
+const publishingMethods: Record<string, string[]> = {
+  "/v1/community/publishing/limits": ["get"],
+  "/v1/community/publishing/drafts": ["post", "get"],
+  "/v1/community/publishing/drafts/{draftId}": ["get", "delete"],
+  "/v1/community/publishing/drafts/{draftId}/save": ["post"],
+  "/v1/community/publishing/drafts/{draftId}/snapshot": ["post"],
+  "/v1/community/publishing/drafts/{draftId}/history": ["get"],
+  "/v1/community/publishing/drafts/{draftId}/restore": ["post"],
+  "/v1/community/publishing/drafts/{draftId}/resolve": ["post"],
+  "/v1/community/publishing/works/{workId}/draft": ["post"],
+  "/v1/community/publishing/works/{workId}/editable": ["get"],
+  "/v1/community/publishing/works/{workId}/visibility": ["post"],
+  "/v1/community/publishing/sessions": ["post"],
+  "/v1/community/publishing/sessions/{sessionId}/heartbeat": ["post"],
+  "/v1/community/publishing/sessions/{sessionId}/discard": ["post"],
+  "/v1/community/publishing/items": ["post"],
+  "/v1/community/publishing/items/{itemId}": ["get"],
+  "/v1/community/publishing/items/{itemId}/cancel": ["post"],
+  "/v1/community/publishing/items/{itemId}/components/{role}/reset": ["post"],
+  "/v1/community/publishing/uploads/{componentId}": ["post"],
+  "/v1/community/publishing/media/{itemId}/{variant}/{editKey}": ["get"],
+  "/v1/community/publishing/submissions": ["post"],
+  "/v1/community/publishing/submissions/{requestId}": ["get"],
+  "/v1/community/publishing/trash": ["get"],
+  "/v1/community/publishing/trash/{workId}/restore": ["post"],
+};
+
 describe("inscription-first OpenAPI 3.1.1 contract", () => {
-  it("contains exactly the approved Catalog, Community V1 and Phase 4 routes", () => {
+  it("contains exactly the approved Catalog, Community V1, Phase 4 and work publishing routes", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.jsonSchemaDialect).toBe(
       "https://json-schema.org/draft/2020-12/schema",
@@ -100,9 +129,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         "/v1/community/relationships/block",
         "/v1/community/relationships/follow",
         "/v1/community/works/{workId}",
-        "/v1/community/works/{workId}/drafts",
-        "/v1/community/works/{workId}/drafts/apply",
-        "/v1/community/works/{workId}/drafts/{draftId}",
+        ...Object.keys(publishingMethods),
       ].sort(),
     );
     // The Development session lifecycle is not a Public API operation, and the
@@ -160,9 +187,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       "/v1/community/relationships/block": ["post"],
       "/v1/community/relationships/follow": ["post"],
       "/v1/community/works/{workId}": ["get", "delete"],
-      "/v1/community/works/{workId}/drafts": ["get", "post"],
-      "/v1/community/works/{workId}/drafts/apply": ["post"],
-      "/v1/community/works/{workId}/drafts/{draftId}": ["delete"],
+      ...publishingMethods,
     };
     for (const [name, pathItem] of Object.entries(paths)) {
       expect(Object.keys(asObject(pathItem))).toEqual(
@@ -384,6 +409,7 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
   it("uses only contract-derived public components", () => {
     expect(schemas).toEqual({
       ...authorCommunityJsonSchemas,
+      ...workPublishingJsonSchemas,
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
       CatalogContributorRole: catalogContributorRoleJsonSchema,
@@ -632,6 +658,110 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
     expect(citation.additionalProperties).toBe(false);
     expect(citation).not.toHaveProperty("default");
     expect(appliesTo).not.toHaveProperty("default");
+  });
+
+  it("documents the work publishing operations with their session, transfer and range rules", () => {
+    const operationOf = (path: string, method: string): JsonObject =>
+      asObject(asObject(paths[path])[method]);
+    for (const [path, methods] of Object.entries(publishingMethods))
+      for (const method of methods) {
+        const operation = operationOf(path, method);
+        const header = ((operation.parameters ?? []) as unknown[])
+          .map(asObject)
+          .find((parameter) => parameter.name === "x-author-account");
+        if (path.endsWith("/{editKey}")) {
+          // Eligible public derivatives are readable without a session.
+          expect(operation.security).toEqual([{}, { session: [] }]);
+          expect(header).toBeUndefined();
+          continue;
+        }
+        expect(operation.security).toEqual([{ session: [] }]);
+        // Every command asserts the session account; reads do not.
+        if (method === "get") expect(header).toBeUndefined();
+        else expect(header).toMatchObject({ in: "header", required: true });
+        expect(Object.keys(asObject(operation.responses))).toEqual(
+          expect.arrayContaining(["401", "404", "422", "503"]),
+        );
+      }
+    for (const path of [
+      "/v1/community/publishing/drafts",
+      "/v1/community/publishing/sessions",
+      "/v1/community/publishing/items",
+    ])
+      expect(
+        Object.keys(asObject(operationOf(path, "post").responses)),
+      ).toContain("201");
+
+    const upload = operationOf(
+      "/v1/community/publishing/uploads/{componentId}",
+      "post",
+    );
+    expect(Object.keys(asObject(asObject(upload.requestBody).content))).toEqual(
+      ["application/octet-stream"],
+    );
+    expect(
+      ((upload.parameters ?? []) as unknown[])
+        .map(asObject)
+        .filter((parameter) => parameter.in === "header")
+        .map((parameter) => [parameter.name, parameter.required]),
+    ).toEqual([
+      ["x-author-account", true],
+      ["x-upload-attempt", true],
+      ["content-length", true],
+    ]);
+    expect(Object.keys(asObject(upload.responses)).sort()).toEqual([
+      "200",
+      "401",
+      "404",
+      "409",
+      "413",
+      "422",
+      "503",
+    ]);
+
+    const media = operationOf(
+      "/v1/community/publishing/media/{itemId}/{variant}/{editKey}",
+      "get",
+    );
+    expect(Object.keys(asObject(media.responses)).sort()).toEqual([
+      "200",
+      "206",
+      "401",
+      "404",
+      "416",
+      "422",
+      "503",
+    ]);
+    expect(
+      Object.keys(
+        asObject(asObject(asObject(media.responses)["206"]).content),
+      ).sort(),
+    ).toEqual(["image/webp", "video/mp4"]);
+
+    const trash = operationOf("/v1/community/works/{workId}", "delete");
+    expect(trash.operationId).toBe("moveOwnWorkToTrash");
+    expect(
+      ((trash.parameters ?? []) as unknown[])
+        .map(asObject)
+        .filter((parameter) => parameter.in === "header")
+        .map((parameter) => [parameter.name, parameter.required]),
+    ).toEqual([["x-author-account", true]]);
+    // The retired Phase 4 work-edit draft shapes are neither referenced nor
+    // published as components.
+    for (const retired of [
+      "WorkDraftPage",
+      "WorkDraftResult",
+      "WorkApplyResult",
+      "WorkDraftSave",
+      "WorkDraftApply",
+      "WorkEditDraft",
+      "WorkText",
+    ]) {
+      expect(JSON.stringify(openApiDocument)).not.toContain(
+        `#/components/schemas/${retired}"`,
+      );
+      expect(Object.keys(schemas)).not.toContain(retired);
+    }
   });
 
   it("uses stable public error codes", () => {

@@ -58,6 +58,7 @@ import type {
 } from "@moya/api";
 import type {
   MediaFailureCode,
+  ProcessorInput,
   MediaToolProcess,
   MediaToolSpawn,
   MediaToolSpawnOptions,
@@ -2112,6 +2113,148 @@ describe("publishing media processor", () => {
     expect(failure).toMatchObject({ systemCode: "EIO" });
     expect(JSON.stringify(failure)).not.toContain(storeRoot);
     expect((failure as Error).message).not.toContain(storeRoot);
+    expect(await readdir(work)).toEqual([]);
+  });
+});
+
+describe("publishing media processor legacy user media stills", () => {
+  const LEGACY_MEDIA_ID = `user-media-${"3".repeat(32)}`;
+  const translucentPng = () =>
+    sharp({
+      create: {
+        width: 40,
+        height: 20,
+        channels: 4,
+        background: { r: 200, g: 10, b: 10, alpha: 0.5 },
+      },
+    })
+      .png()
+      .toBuffer();
+  const legacyInput = (
+    bytes: Buffer,
+    extra: Partial<ProcessorInput> = {},
+  ): ProcessorInput => ({
+    ...baseInput,
+    mode: "derive",
+    kind: "static",
+    qualityMode: "standard",
+    source: {
+      kind: "legacy_user_media",
+      legacyMediaId: LEGACY_MEDIA_ID,
+      byteSize: bytes.byteLength,
+      contentType: "image/png",
+    },
+    legacyStill: bytes,
+    components: [],
+    editKey: "f".repeat(32),
+    edit: { rotation: 90, crop: null },
+    coverCrop: { x: 0, y: 0, width: 1, height: 0.5 },
+    variants: ["thumb", "display", "cover"],
+    ...extra,
+  });
+  const storedBlobs = async (count: () => Promise<number>) =>
+    count().catch(() => 0);
+
+  it("derives an edited legacy PNG from the job input and stores only its derivatives", async () => {
+    const { store, tools, blobCount, toolsRun } = await setup();
+    const processor = createPublishingMediaProcessor({ store, runner: tools });
+    const png = await translucentPng();
+    const untouched = Buffer.from(png);
+    const outcome = await processor.process(legacyInput(png));
+    if (outcome.status !== "derived") {
+      throw new Error(`expected derived, got ${JSON.stringify(outcome)}`);
+    }
+    // Rotated to 20 × 40; the card variants take the upper half.
+    expect(
+      outcome.derivatives.map((d) => [
+        d.variant,
+        d.editKey,
+        d.contentType,
+        d.width,
+        d.height,
+      ]),
+    ).toEqual([
+      ["thumb", "f".repeat(32), "image/webp", 20, 20],
+      ["display", "f".repeat(32), "image/webp", 20, 40],
+      ["cover", "f".repeat(32), "image/webp", 20, 20],
+    ]);
+    const read = await store.openRead(outcome.derivatives[1]!.storageKey);
+    if (read?.status !== "ok") throw new Error("expected derivative");
+    const parts: Buffer[] = [];
+    for await (const part of read.body) parts.push(part as Buffer);
+    const metadata = await sharp(Buffer.concat(parts)).metadata();
+    expect([metadata.format, metadata.hasAlpha]).toEqual(["webp", true]);
+    // Only derivatives were stored; the source never enters the media store.
+    expect(await storedBlobs(blobCount)).toBe(3);
+    expect(png.equals(untouched)).toBe(true);
+    expect(toolsRun()).toEqual([]);
+    expect(await readdir(work)).toEqual([]);
+  });
+
+  it("rejects legacy bytes that are not a still PNG without storing anything", async () => {
+    const { store, tools, blobCount, toolsRun } = await setup();
+    const processor = createPublishingMediaProcessor({ store, runner: tools });
+    const jpeg = await orientedJpeg();
+    expectRejected(
+      await processor.process(legacyInput(jpeg)),
+      "unsupported_type",
+    );
+    const animated = pngFile(8, 8, [
+      pngChunk("acTL", Buffer.from([0, 0, 0, 2, 0, 0, 0, 0])),
+    ]);
+    expectRejected(
+      await processor.process(legacyInput(animated)),
+      "animated_image_unsupported",
+    );
+    expect(await storedBlobs(blobCount)).toBe(0);
+    expect(toolsRun()).toEqual([]);
+    expect(await readdir(work)).toEqual([]);
+  });
+
+  it("throws input errors for legacy sources outside an edit of a static item", async () => {
+    const { store, tools, put } = await setup();
+    const processor = createPublishingMediaProcessor({ store, runner: tools });
+    const png = await translucentPng();
+    const valid = legacyInput(png);
+    const source = valid.source as Extract<
+      ProcessorInput["source"],
+      { kind: "legacy_user_media" }
+    >;
+    const still = await put(await orientedJpeg());
+    const upload: ProcessorInput = {
+      ...baseInput,
+      mode: "derive",
+      kind: "static",
+      qualityMode: "original",
+      components: [{ role: "still", declaredType: "image/jpeg", ...still }],
+      variants: ["display"],
+    };
+    for (const input of [
+      { ...valid, mode: "process" as const },
+      { ...valid, kind: "live" as const, variants: ["display" as const] },
+      { ...valid, components: upload.components },
+      { ...valid, legacyStill: png.subarray(1) },
+      // A legacy source without the bytes the worker reads for it.
+      { ...valid, legacyStill: undefined } as unknown as ProcessorInput,
+      { ...valid, source: { ...source, byteSize: 4 * 1024 * 1024 + 1 } },
+      { ...valid, source: { ...source, legacyMediaId: "user-media-1" } },
+      {
+        ...valid,
+        source: { ...source, contentType: "image/jpeg" as "image/png" },
+      },
+      { ...upload, legacyStill: png },
+      // Legacy edits carry the standard quality mode; no other mode exists.
+      { ...valid, qualityMode: "legacy" as unknown as "standard" },
+    ]) {
+      await expect(processor.process(input)).rejects.toBeInstanceOf(
+        MediaProcessingInputError,
+      );
+    }
+    expect((await processor.process(upload)).status).toBe("derived");
+    expect(
+      (await processor.process({ ...upload, source: { kind: "upload" } }))
+        .status,
+    ).toBe("derived");
     expect(await readdir(work)).toEqual([]);
   });
 });

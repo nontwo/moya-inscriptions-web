@@ -111,9 +111,6 @@ import {
   authorMediaSchema,
   workSchema,
   workPageSchema,
-  workDraftPageSchema,
-  workDraftResultSchema,
-  workApplyResultSchema,
   profileUpdateSchema,
   privacyUpdateSchema,
   avatarUpdateSchema,
@@ -122,8 +119,6 @@ import {
   contentRelationUpdateSchema,
   guestFavoriteMergeSchema,
   guestFavoriteMergeResultSchema,
-  workDraftSaveSchema,
-  workDraftApplySchema,
   requestIdentitySchema,
 } from "./schemas.js";
 
@@ -177,9 +172,6 @@ export const authorCommunityJsonSchemas = {
   AuthorMedia: toJsonSchema(authorMediaSchema),
   UserWork: toJsonSchema(workSchema),
   WorkPage: toJsonSchema(workPageSchema),
-  WorkDraftPage: toJsonSchema(workDraftPageSchema),
-  WorkDraftResult: toJsonSchema(workDraftResultSchema),
-  WorkApplyResult: toJsonSchema(workApplyResultSchema),
   ProfileUpdate: toJsonSchema(profileUpdateSchema),
   PrivacyUpdate: toJsonSchema(privacyUpdateSchema),
   AvatarUpdate: toJsonSchema(avatarUpdateSchema),
@@ -188,8 +180,6 @@ export const authorCommunityJsonSchemas = {
   ContentRelationUpdate: toJsonSchema(contentRelationUpdateSchema),
   GuestFavoriteMerge: toJsonSchema(guestFavoriteMergeSchema),
   GuestFavoriteMergeResult: toJsonSchema(guestFavoriteMergeResultSchema),
-  WorkDraftSave: toJsonSchema(workDraftSaveSchema),
-  WorkDraftApply: toJsonSchema(workDraftApplySchema),
   RequestIdentity: toJsonSchema(requestIdentitySchema),
 };
 

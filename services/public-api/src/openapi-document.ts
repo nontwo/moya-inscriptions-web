@@ -1,5 +1,8 @@
 import { authorCommunityPaths } from "./author-community-openapi.js";
-import { authorCommunityJsonSchemas } from "@moya/contracts/json-schema";
+import {
+  authorCommunityJsonSchemas,
+  workPublishingJsonSchemas,
+} from "@moya/contracts/json-schema";
 import type { ApiErrorCode } from "@moya/contracts";
 import {
   apiErrorJsonSchema,
@@ -362,6 +365,7 @@ export const openApiDocument: JsonObject = {
     },
     schemas: {
       ...authorCommunityJsonSchemas,
+      ...workPublishingJsonSchemas,
       CatalogId: catalogIdJsonSchema,
       CatalogKind: catalogKindJsonSchema,
       CatalogContributorRole: catalogContributorRoleJsonSchema,

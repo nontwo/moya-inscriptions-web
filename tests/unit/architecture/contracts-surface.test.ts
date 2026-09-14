@@ -164,6 +164,51 @@ describe("contracts package surface", () => {
     expect(exported).toEqual(approved.sort());
   });
 
+  it("retires the Phase 4 work-edit draft contracts", async () => {
+    const declaration = await readFile(
+      path.join(contractsRoot, "dist", "index.d.ts"),
+      "utf8",
+    );
+    const schemaDeclaration = await readFile(
+      path.join(contractsRoot, "dist", "schemas.d.ts"),
+      "utf8",
+    );
+    const schemas: Record<string, unknown> =
+      await import("@moya/contracts/schemas");
+    const jsonSchemas = await import("@moya/contracts/json-schema");
+    for (const retired of [
+      "WorkText",
+      "WorkEditDraft",
+      "WorkDraftSave",
+      "WorkDraftApply",
+    ]) {
+      expect(declaration).not.toMatch(new RegExp(`\\b${retired}\\b`, "u"));
+      expect(schemaDeclaration).not.toMatch(
+        new RegExp(`\\btype ${retired}\\b`, "u"),
+      );
+    }
+    for (const retired of [
+      "workTextSchema",
+      "workEditDraftSchema",
+      "workDraftSaveSchema",
+      "workDraftApplySchema",
+      "workDraftPageSchema",
+      "workDraftResultSchema",
+      "workApplyResultSchema",
+    ])
+      expect(schemas[retired]).toBeUndefined();
+    for (const retired of [
+      "WorkDraftPage",
+      "WorkDraftResult",
+      "WorkApplyResult",
+      "WorkDraftSave",
+      "WorkDraftApply",
+    ])
+      expect(Object.keys(jsonSchemas.authorCommunityJsonSchemas)).not.toContain(
+        retired,
+      );
+  });
+
   it("keeps the root JavaScript empty and free of Zod imports", async () => {
     const runtime = await readFile(
       path.join(contractsRoot, "dist", "index.js"),

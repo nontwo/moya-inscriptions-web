@@ -38,8 +38,6 @@ export type {
   AuthorMedia,
   AuthorProfile,
   UserWork,
-  WorkText,
-  WorkEditDraft,
   AuthorListQuery,
   ProfileUpdate,
   PrivacyUpdate,
@@ -47,8 +45,6 @@ export type {
   RelationshipUpdate,
   ContentRelationUpdate,
   GuestFavoriteMerge,
-  WorkDraftSave,
-  WorkDraftApply,
 } from "./schemas.js";
 export type {
   DiscussionReply,

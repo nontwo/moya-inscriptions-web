@@ -5,6 +5,8 @@ import {
   parseCommentListingQuery,
   isCommunityInputError,
   isCommunityNotFoundError,
+  parseWorkPublishingCommand,
+  parseWorkPublishingSegment,
 } from "@moya/api";
 import {
   authorListQuerySchema,
@@ -20,21 +22,25 @@ import {
   profileUpdateSchema,
   relationshipUpdateSchema,
   requestIdentitySchema,
-  workDraftApplySchema,
-  workDraftSaveSchema,
+  workPublishingFailureCodeSchema,
 } from "@moya/contracts/schemas";
 import { sendApiError } from "../http/api-error-response.js";
 import { JsonBodyError, readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
 import { readBearerToken } from "./session-credential.js";
+import { handleWorkPublishingRequest } from "./work-publishing-handler.js";
 import type {
   AuthorCommunityService,
   CommunitySessionService,
+  WorkPublishingService,
 } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 const noStore = { "cache-control": "private, no-store", vary: "Authorization" };
+const publishingFailureCodes: ReadonlySet<string> = new Set(
+  workPublishingFailureCodeSchema.options,
+);
 class Unauthorized extends Error {}
 class InvalidInput extends Error {}
 const parsed = <T>(
@@ -53,6 +59,7 @@ export const handleAuthorRequest = async (
   response: ServerResponse,
   service: AuthorCommunityService,
   sessions: CommunitySessionService,
+  publishing?: WorkPublishingService,
 ): Promise<void> => {
   try {
     const url = new URL(request.url ?? "/", "http://request.invalid");
@@ -63,6 +70,16 @@ export const handleAuthorRequest = async (
     const session = token === undefined ? null : await sessions.identify(token);
     if (token !== undefined && session === null) throw new Unauthorized();
     const viewer = session?.id ?? null;
+    if (publishing !== undefined && path[0] === "publishing") {
+      await handleWorkPublishingRequest(
+        request,
+        response,
+        path.slice(1),
+        publishing,
+        { viewer },
+      );
+      return;
+    }
     const requireActor = () => {
       if (viewer === null) throw new Unauthorized();
       const expected = request.headers["x-author-account"];
@@ -388,53 +405,22 @@ export const handleAuthorRequest = async (
         reply(await service.port.readWork(id, viewer));
         return;
       }
-      const actor = requireActor();
-      if (path.length === 2 && method === "DELETE") {
-        await service.port.deleteWork(
-          actor,
-          id,
-          parsed(requestIdentitySchema, await body()).requestId,
-        );
-        reply({ deleted: true });
-        return;
-      }
-      if (path.length === 3 && path[2] === "drafts") {
-        if (method === "GET") {
-          reply(await service.port.listDrafts(actor, id, query()));
-          return;
-        }
-        if (method === "POST") {
-          reply(
-            await service.port.saveDraft(
-              actor,
-              id,
-              parsed(workDraftSaveSchema, await body()),
-            ),
-          );
-          return;
-        }
-      }
-      if (path.length === 4 && path[2] === "drafts") {
-        if (path[3] === "apply" && method === "POST") {
-          reply(
-            await service.port.applyDraft(
-              actor,
-              id,
-              parsed(workDraftApplySchema, await body()),
-            ),
-          );
-          return;
-        }
-        if (method === "DELETE" && path[3]) {
-          await service.port.discardDraft(
+      // Moves the work to the recycle bin (design §2.4, §9.3); the retired
+      // Phase 4 draft routes under works/:id/drafts no longer exist. Like
+      // every publishing command it requires the account assertion.
+      if (path.length === 2 && method === "DELETE" && publishing) {
+        const actor = requireActor();
+        if (request.headers["x-author-account"] !== actor)
+          throw new Unauthorized();
+        const workId = parseWorkPublishingSegment("workId", id);
+        reply(
+          await publishing.trashWork(
             actor,
-            id,
-            path[3],
-            parsed(requestIdentitySchema, await body()).requestId,
-          );
-          reply({ discarded: true });
-          return;
-        }
+            workId,
+            parseWorkPublishingCommand("requestIdentity", await body()),
+          ),
+        );
+        return;
       }
     }
     if (path[0] === "media") {
@@ -489,12 +475,16 @@ export const handleAuthorRequest = async (
   } catch (error) {
     if (error instanceof Unauthorized)
       sendApiError(response, "UNAUTHENTICATED", "A valid session is required");
-    else if (
-      error instanceof InvalidInput ||
-      error instanceof JsonBodyError ||
-      isCommunityInputError(error)
-    )
+    else if (error instanceof InvalidInput || error instanceof JsonBodyError)
       sendApiError(response, "INVALID_INPUT", "Invalid community input");
+    else if (isCommunityInputError(error))
+      sendApiError(
+        response,
+        "INVALID_INPUT",
+        publishingFailureCodes.has(error.message)
+          ? error.message
+          : "Invalid community input",
+      );
     else if (isCommunityNotFoundError(error))
       sendApiError(response, "ITEM_NOT_FOUND", "This item is unavailable");
     else if (isCommunityConflictError(error))

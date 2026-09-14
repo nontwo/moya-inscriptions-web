@@ -174,3 +174,9 @@ export const MEDIA_TOOL_SANDBOX = {
 
 /** Leading bytes read for Exif/XMP scanning of JPEG stills and packages. */
 export const METADATA_HEAD_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Largest legacy user media still (a Phase 4 work PNG kept in PostgreSQL) the
+ * worker reads into a job for edit derivatives; the same bound as user media.
+ */
+export const LEGACY_USER_MEDIA_MAX_BYTES = 4 * 1024 * 1024;

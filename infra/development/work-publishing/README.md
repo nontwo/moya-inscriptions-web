@@ -41,6 +41,65 @@ docker run --rm --network none --entrypoint heif-dec yoyi-work-publishing-media-
 docker run --rm --network none --entrypoint ffmpeg yoyi-work-publishing-media-tools:v1 -hide_banner -filters | grep -E ' (zscale|tonemap|setparams) '
 ```
 
+## Backend configuration
+
+**Development only.** The Backend reads these keys only when
+`NODE_ENV=development`; Production never reads them and composes no publishing
+routes, media store or worker. `turbo.json` passes them through to the
+Development Backend. Values are local to one machine, so none of them is set in
+`infra/env/local.env.example`; export them in the shell (or a private, untracked
+env file) that starts the Development Backend.
+
+| Key                             | Required           | Meaning                                                                                                        |
+| ------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `WORK_MEDIA_STORE_DIR`          | with the two below | Private store for committed blobs (`blobs/aa/bb/<32hex>`) and upload staging (`staging/<uuid>.part`).          |
+| `WORK_MEDIA_TOOLS_IMAGE`        | with the other two | The local media tools image with an explicit tag or digest, for example `yoyi-work-publishing-media-tools:v1`. |
+| `WORK_MEDIA_WORK_DIR`           | with the other two | Private directory for sandboxed tool jobs (`job-<32hex>/`), mounted into the tools container.                  |
+| `WORK_MEDIA_WORKER_CONCURRENCY` | no (default `1`)   | Publishing jobs one worker leases and runs at once, an integer from 1 to 4.                                    |
+
+- All or nothing. With none of the first three keys set the Backend still
+  starts: publishing uploads, item registration and media reads answer 503
+  (`SERVICE_UNAVAILABLE`, content-free), no item is accepted, no worker runs and
+  `WORK_MEDIA_WORKER_CONCURRENCY` is ignored. Setting only some of them, or an
+  unusable value, fails startup before any database pool opens; the message
+  names the key and never echoes its value.
+- Directories (`WORK_MEDIA_STORE_DIR`, `WORK_MEDIA_WORK_DIR`): absolute,
+  normalized paths without a trailing separator and without `,`, `"` or line
+  breaks; they must already exist as real directories (not symlinks), be owned
+  by the Backend user with owner-only permissions (no group or other bits, for
+  example `0700`), and lie outside `/tmp`, `/private/tmp`, `/var/folders`,
+  `/private/var/folders` and any Git working tree. The two must not contain each
+  other, and neither may overlap `CMS_MEDIA_DIR` (Payload media). Create them
+  once, for example:
+
+  ```sh
+  mkdir -p "$HOME/.local/share/yoyi-work-publishing/store" "$HOME/.local/share/yoyi-work-publishing/work"
+  chmod 700 "$HOME/.local/share/yoyi-work-publishing/store" "$HOME/.local/share/yoyi-work-publishing/work"
+  ```
+
+- Image (`WORK_MEDIA_TOOLS_IMAGE`): `name[:tag][@sha256:digest]` with a tag or
+  digest; it is never pulled (`--pull never`), so build it first (above). A
+  missing image does not fail startup; processing jobs then fail with a
+  content-free `media_tool_*` code, are retried with backoff and finally mark
+  the item failed so the author can remove it or reset a component.
+- Worker (`WORK_MEDIA_WORKER_CONCURRENCY`): one in-process worker starts after
+  the Backend listens, polls the PostgreSQL job queue every second with a
+  five-minute renewed lease, and on shutdown waits up to 30 s for running jobs
+  before giving their leases back. JPEG, PNG and WebP stills are decoded in the
+  Backend process; HEIC/HEIF stills and motion run in the sandbox below, one
+  container at a time per job, so at most this many tool containers run at once.
+- Uploads and the worker share one in-process transfer registry. A no-save
+  session whose lease lapsed is not expired while one of its component uploads
+  began within the last session lease period (`unsaved_session_lease_minutes`,
+  Admin setting). When the worker does expire it, any upload for its components
+  still open in this Backend process (one that began before that period) is
+  stopped, and a commit presented afterwards, from any process, is refused by
+  the attempt fence.
+- Edits of media carried over from earlier PNG works (legacy user media) are
+  derived by the worker too: it reads the PNG (at most 4 MiB, signature checked)
+  into the job input and renders the requested derivatives. It never writes user
+  media, and those PNGs never enter the publishing store as sources.
+
 ## How the Backend runs it
 
 The Development composition passes `WORK_MEDIA_TOOLS_IMAGE` (the tag above) to

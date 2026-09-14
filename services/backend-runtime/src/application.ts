@@ -11,6 +11,9 @@ import {
   CatalogReadService,
   CommunityModerationService,
   CommunitySessionService,
+  PublishingOperatorService,
+  PublishingTransferRegistry,
+  WorkPublishingService,
 } from "@moya/api";
 import { MappedStorageUrlResolver } from "@moya/image";
 
@@ -25,7 +28,12 @@ import type {
   CatalogSearchQueryPort,
   CommunityCommentPort,
   CommunityIdentityPort,
+  PublishingMediaProcessorPort,
+  PublishingMediaStorePort,
+  PublishingOperatorPort,
+  PublishingTransferPolicy,
   StorageUrlResolver,
+  WorkPublishingPort,
 } from "@moya/api";
 import type { NodeEnvironment } from "./config.js";
 import type { HealthReadinessCheck } from "./health/health-handler.js";
@@ -52,7 +60,36 @@ export interface BackendApplicationOptions {
   readonly communityAnalysisPort?: CommentAnalysisPort;
   /** The Owner's operator credential; empty leaves the internal subpath closed. */
   readonly communityOperatorCredential?: string;
+  /** Work publishing persistence; composed only under NODE_ENV=development with the author port. */
+  readonly workPublishingPort?: WorkPublishingPort;
+  /** Owner work publishing operations; composed only under NODE_ENV=development. */
+  readonly publishingOperatorPort?: PublishingOperatorPort;
+  /** Private media bytes; without it uploads and media reads answer 503. */
+  readonly publishingMediaStore?: PublishingMediaStorePort;
+  /** Derivative processing; without it no media item is accepted (503). */
+  readonly publishingMediaProcessor?: PublishingMediaProcessorPort;
+  /**
+   * Shared with the publishing worker in the same process so cancels and
+   * session expiry stop transfers; create it with
+   * {@link createPublishingTransferRegistry}. A private registry otherwise.
+   */
+  readonly publishingTransfers?: PublishingTransferRegistry;
+  /** Injected clock for publishing commands; defaults to the system clock. */
+  readonly publishingClock?: () => Date;
+  /** Upload idle timeout and refusal read window; defaults 120 s and 5 s. */
+  readonly publishingTransferPolicy?: Partial<PublishingTransferPolicy>;
 }
+
+/**
+ * The in-process registry of streaming component uploads. A composition root
+ * that also runs the publishing worker creates exactly one, passes it as
+ * `publishingTransfers` and hands its `stop(componentIds)` to the worker, so a
+ * session the worker expires stops its live transfers early; the port fence
+ * refuses their commits in any case. Composition roots never import the
+ * application package for this.
+ */
+export const createPublishingTransferRegistry =
+  (): PublishingTransferRegistry => new PublishingTransferRegistry();
 
 const resolveCatalogQueryPort = ({
   nodeEnv,
@@ -82,6 +119,45 @@ const resolveStorageUrlResolver = ({
   );
 };
 
+// Work publishing exists only under NODE_ENV=development: the author routes
+// with the author port, the operator routes with the operator port.
+const resolvePublishing = (
+  options: BackendApplicationOptions,
+): Pick<
+  CommunityRouterDependencies,
+  "publishingService" | "publishingOperatorService"
+> => {
+  if (options.nodeEnv !== "development") return {};
+  const shared = {
+    store: options.publishingMediaStore,
+    clock: options.publishingClock,
+  };
+  return {
+    ...(options.authorCommunityPort !== undefined &&
+    options.workPublishingPort !== undefined
+      ? {
+          publishingService: new WorkPublishingService(
+            options.workPublishingPort,
+            {
+              ...shared,
+              processor: options.publishingMediaProcessor,
+              transfers: options.publishingTransfers,
+              transferPolicy: options.publishingTransferPolicy,
+            },
+          ),
+        }
+      : {}),
+    ...(options.publishingOperatorPort !== undefined
+      ? {
+          publishingOperatorService: new PublishingOperatorService(
+            options.publishingOperatorPort,
+            shared,
+          ),
+        }
+      : {}),
+  };
+};
+
 // Without an identity and comment port no session or comment can exist and no
 // community route is composed; the production composition root always wires the
 // App-role adapters. The Development sign-in entry itself exists only under
@@ -106,6 +182,8 @@ const resolveCommunity = (
           ),
         }
       : {}),
+    // Work publishing is Development only, like the Phase 4 author surface.
+    ...resolvePublishing(options),
     developmentEntry: nodeEnv === "development",
     ...(nodeEnv === "development"
       ? {
