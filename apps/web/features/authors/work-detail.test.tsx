@@ -858,8 +858,11 @@ describe("loadWorkDetail", () => {
         authorship: { kind: "original", label: "原创", references: [] },
       },
     });
+    // C05: a work whose revision declares none carries no authorship field,
+    // so the Detail has no 作品性质 section and invents no 原创 claim.
     mocks.work.mockResolvedValueOnce(authorWork());
     const without = await loadWorkDetail(WORK, new AbortController().signal);
+    expect(without.state).toBe("loaded");
     expect(without.state === "loaded" && "authorship" in without.detail).toBe(
       false,
     );

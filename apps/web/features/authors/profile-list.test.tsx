@@ -173,17 +173,84 @@ describe("Profile works drafts card", () => {
 });
 
 describe("Profile works cards", () => {
+  /** A cover derivative under a cover crop: never the display image. */
+  const croppedCover = (n: number) =>
+    `/api/community/publishing/media/${itemId(n)}/cover/${"3".repeat(32)}`;
+
   it("uses the revision's chosen cover, marks a Live cover and passes only the card media fields", () => {
     const card = workCard(
-      work(1, { media: [still(1), live(2)], coverMediaId: itemId(2) }),
+      work(1, {
+        media: [still(1), live(2)],
+        coverMediaId: itemId(2),
+        coverSrc: croppedCover(2),
+      }),
     );
     expect(card.media).toEqual({
       id: itemId(2),
-      src: `/api/community/publishing/media/${itemId(2)}/display/base`,
+      src: croppedCover(2),
       width: 900,
       height: 1200,
     });
     expect(card.live).toBe(true);
+  });
+
+  it("takes the card still from the revision's cover crop, not the display image", () => {
+    // M03/L10: the cover crop belongs to the revision, so the Works tab must
+    // not fall back to the uncropped display image of the cover item.
+    const cropped = workCard(
+      work(1, {
+        media: [still(1), still(2)],
+        coverMediaId: itemId(2),
+        coverSrc: croppedCover(2),
+      }),
+    );
+    expect(cropped.media?.src).toBe(croppedCover(2));
+    expect(cropped.media?.src).not.toBe(still(2).src);
+    // The bytes are the cover's; the measurements are still the entry's own,
+    // because a work record carries no size beside `coverSrc`, so the box
+    // reserved before the image loads can differ from the Home feed's.
+    expect(cropped.media?.width).toBe(still(2).width);
+    expect(cropped.media?.height).toBe(still(2).height);
+    // Only a record without the field at all falls back to the cover entry.
+    const legacy = workCard(
+      work(1, { media: [still(1), still(2)], coverMediaId: itemId(2) }),
+    );
+    expect(legacy.media).toEqual({
+      id: itemId(2),
+      src: still(2).src,
+      width: still(2).width,
+      height: still(2).height,
+    });
+  });
+
+  it("shows the work's text when the account reports no presentable cover", () => {
+    const card = workCard(
+      work(1, {
+        title: "",
+        text: "只有正文可展示",
+        media: [live(2)],
+        coverMediaId: itemId(2),
+        coverSrc: null,
+      }),
+    );
+    expect(card.media).toBeNull();
+    // Nothing claims a Live cover that is not shown.
+    expect(card.live).toBe(false);
+    expect(card.excerpt).toBe("只有正文可展示");
+  });
+
+  it("gives an untitled work with media the body opening while its title stays empty", () => {
+    const card = workCard(
+      work(1, {
+        title: "",
+        text: "  正文开头，卡片用它做文字行  ",
+        media: [still(1)],
+        coverSrc: still(1).src,
+      }),
+    );
+    expect(card.title).toBe("");
+    expect(card.excerpt).toBe("正文开头，卡片用它做文字行");
+    expect(card.media?.src).toBe(still(1).src);
   });
 
   it("falls back to the first media without a known cover, and a static cover is not Live", () => {
@@ -223,8 +290,12 @@ describe("Profile works cards", () => {
   it("renders the Works tab from the works themselves", async () => {
     works.mockResolvedValue({
       items: [
-        work(1, { media: [still(1), live(2)], coverMediaId: itemId(2) }),
-        work(2, { title: "", text: "只有正文" }),
+        work(1, {
+          media: [still(1), live(2)],
+          coverMediaId: itemId(2),
+          coverSrc: croppedCover(2),
+        }),
+        work(2, { title: "", text: "只有正文", coverSrc: null }),
       ],
       page: 1,
       pageSize: 12,
@@ -235,7 +306,7 @@ describe("Profile works cards", () => {
     expect(cardItems.at(-2)).toMatchObject({
       target: { type: "work", id: work(1).id },
       live: true,
-      media: { id: itemId(2) },
+      media: { id: itemId(2), src: croppedCover(2) },
     });
     expect(cardItems.at(-1)).toMatchObject({
       target: { type: "work", id: work(2).id },

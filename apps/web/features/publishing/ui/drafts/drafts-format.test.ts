@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  authorshipDetails,
+  authorshipLabel,
   compareContent,
   draftDeletionScopeText,
   draftKindLabel,
@@ -74,6 +76,21 @@ describe("drafts wording", () => {
     expect(
       compareContent(base, { ...base, visibility: "self", title: "异" }),
     ).toMatchObject({ title: true, settings: true, body: false });
+    // An undeclared 作品性质 is its own setting, never the same as 原创 (C05).
+    const unset = { ...base, authorship: null };
+    expect(compareContent(unset, base)).toMatchObject({ settings: true });
+    expect(compareContent(unset, { ...unset })).toMatchObject({
+      settings: false,
+    });
+  });
+
+  it("reads an undeclared 作品性质 as 未设置 and gives it no references", () => {
+    expect(authorshipLabel(null)).toBe("未设置");
+    expect(authorshipLabel({ kind: "original" })).toBe("原创");
+    expect(
+      authorshipLabel({ kind: "copy_practice", referenceTitle: "兰亭序" }),
+    ).toBe("临摹或练习");
+    expect(authorshipDetails(null)).toEqual([]);
   });
 });
 

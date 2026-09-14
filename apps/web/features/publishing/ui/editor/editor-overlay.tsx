@@ -1049,11 +1049,10 @@ const EditorWorkspace = ({
     } catch (error) {
       if (errorShape(error).code === "draft_changed") {
         // Confirmed against a revision the account no longer holds: nothing
-        // was deleted, and a retry would not delete what the author saw.
+        // was deleted, and a retry would not delete what the author saw. A
+        // final answer, so the author reopens the draft and decides again.
         setDraftDeletion(null);
-        store.setNotice(
-          "这份草稿刚在别处保存了新的更改，没有删除，草稿仍在保存",
-        );
+        store.setNotice("这份草稿在别处有新的更改，未删除；请重新打开后再决定");
         return;
       }
       setDraftDeletion({
@@ -1068,6 +1067,16 @@ const EditorWorkspace = ({
   const changeDraftMode = async (saving: boolean) => {
     if (!saving) {
       if (saveMode !== "saved") return;
+      if (conflict !== null) {
+        // Two versions are waiting here: the account refuses to delete a
+        // draft that still has an unresolved copy, so the deletion would
+        // come back as 在别处有新的更改 — which is not what is in the way,
+        // and reopening would show this same choice. Name the real block
+        // and bring the chooser back instead of the deletion dialog.
+        setVersionsPanel("conflict");
+        store.setNotice("有两个版本待选择，选择版本后才能停止保存草稿");
+        return;
+      }
       const pendingDraft =
         draftId !== null ||
         autosave?.status === "saving" ||

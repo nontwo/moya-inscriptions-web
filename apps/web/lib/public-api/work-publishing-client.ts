@@ -17,6 +17,7 @@ import {
   publishingDraftSchema,
   publishingLimitsSchema,
   publishingMediaItemSchema,
+  publishingOpenedEditDraftSchema,
   publishingPageQuerySchema,
   publishingSessionHeartbeatCommandSchema,
   publishingSessionIdSchema,
@@ -51,6 +52,7 @@ import type {
   PublishingDraftSaveResult,
   PublishingLimits,
   PublishingMediaItem,
+  PublishingOpenedEditDraft,
   PublishingSession,
   PublishingSnapshotPage,
   PublishingUploadResult,
@@ -542,14 +544,19 @@ export const publishingClient = {
       signal,
     ),
 
+  /**
+   * Opens (or returns) the work's private edit draft. `created` is true only
+   * when this call inserted it, so an untouched draft is removed again on
+   * leaving only by the editor that created it.
+   */
   openWorkEditDraft: async (
     workId: string,
     cmd: OpenWorkEditDraftCommand,
     signal?: AbortSignal,
-  ): Promise<PublishingDraft> =>
+  ): Promise<PublishingOpenedEditDraft> =>
     post(
       `publishing/works/${workSegment(workId)}/draft`,
-      publishingDraftSchema,
+      publishingOpenedEditDraftSchema,
       command(openWorkEditDraftCommandSchema, cmd),
       signal,
     ),

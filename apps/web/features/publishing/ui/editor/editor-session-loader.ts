@@ -9,6 +9,7 @@ import type {
   PublishingDeviceClass,
   PublishingDraft,
   PublishingDraftDeletionResult,
+  PublishingOpenedEditDraft,
   PublishingDraftSaveResult,
   SavePublishingDraftCommand,
   WorkDraftContent,
@@ -24,10 +25,12 @@ import type {
  *   reached, the edit continues without saving and says so.
  *
  * An edit draft this session created and never changed is removed again
- * when the author leaves (D02), conditionally on the revision it was opened
- * with: a draft another device has saved to meanwhile is refused as
- * `draft_changed` by the account and kept. Reopening the same work waits for
- * that removal first.
+ * when the author leaves (D02). Only the account's own answer says whether
+ * this request inserted the draft (`created`); a draft that already existed
+ * belongs to another device or an earlier visit and is always kept. The
+ * removal is conditional on the revision it was opened with, so a draft
+ * another device has saved to meanwhile is refused as `draft_changed` by the
+ * account and kept. Reopening the same work waits for that removal first.
  */
 
 export type UploadSessionApi = ReturnType<typeof useUploadSession>;
@@ -41,7 +44,7 @@ export interface EditorLoaderClient {
       readonly requestId: string;
       readonly deviceClass: PublishingDeviceClass | null;
     },
-  ): Promise<PublishingDraft>;
+  ): Promise<PublishingOpenedEditDraft>;
   deleteDraft(
     draftId: string,
     cmd: { readonly requestId: string; readonly expectedRevision?: number },
@@ -242,9 +245,9 @@ const load = async (
   }
   if (!deps.alive(store)) return;
 
-  let draft: PublishingDraft;
+  let opened: PublishingOpenedEditDraft;
   try {
-    draft = await deps.client.openWorkEditDraft(target.id, {
+    opened = await deps.client.openWorkEditDraft(target.id, {
       requestId: deps.requestId(),
       deviceClass: deps.deviceClass(),
     });
@@ -278,7 +281,11 @@ const load = async (
     store.setNotice("草稿数量已达上限，本次编辑不会保存草稿");
     return;
   }
-  const created = editable.draftId === null;
+  // Only the account itself can say whether this request inserted the draft:
+  // another device (or an earlier request of this one) may have opened the
+  // same draft between the editable read and this call. A draft this editor
+  // did not create is never removed on leaving.
+  const { draft, created } = opened;
   if (!deps.alive(store)) {
     // Left while the draft was being opened: nothing was changed in it.
     if (created)
@@ -341,7 +348,7 @@ export const enableEditDrafts = async (
   if (state.workId === null) return "ended";
   if (!startable(deps.upload())) return "uploads_started";
   await removalSettled(store.accountId, state.workId);
-  const draft = await deps.client.openWorkEditDraft(state.workId, {
+  const { draft } = await deps.client.openWorkEditDraft(state.workId, {
     requestId: deps.requestId(),
     deviceClass: deps.deviceClass(),
   });

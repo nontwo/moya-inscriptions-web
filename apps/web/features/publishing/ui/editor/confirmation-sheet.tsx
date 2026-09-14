@@ -22,6 +22,8 @@ const authorshipLabels = {
   copy_practice: "临摹或练习",
   material_sharing: "素材分享",
 } as const;
+/** Nothing is claimed for a work whose author declared no 作品性质 (C05). */
+const AUTHORSHIP_UNSET = "未设置";
 
 const EXCERPT_POINTS = 80;
 
@@ -139,7 +141,13 @@ export const ConfirmationSheet = forwardRef<
             </div>
             <div>
               <dt>作品性质</dt>
-              <dd>{authorshipLabels[state.authorshipKind]}</dd>
+              <dd
+                data-editor-summary-authorship={state.authorshipKind ?? "unset"}
+              >
+                {state.authorshipKind === null
+                  ? AUTHORSHIP_UNSET
+                  : authorshipLabels[state.authorshipKind]}
+              </dd>
             </div>
             <div>
               <dt>图片</dt>

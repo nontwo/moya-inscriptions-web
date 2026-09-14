@@ -297,7 +297,13 @@ const ScopedDiscussionSection = ({ target }: { target: ContentIdentity }) => {
         </p>
       )}
       <CommentSection
-        contentKey={contentKey(target)}
+        // The closed box is its own editor scope. CommentSection has no prop
+        // for a closed box, so 回复 there still sets a reply target nothing
+        // shows; scoping it away means the box never reopens in 回复 X mode
+        // on a comment the author answered while nobody else could see the
+        // work. Only the editor (its draft and reply target) is scoped by
+        // this value, so the comments themselves stay as they are.
+        contentKey={`${contentKey(target)}${composerClosed ? ":closed" : ""}`}
         currentUser={
           author.viewer
             ? withAvatar({

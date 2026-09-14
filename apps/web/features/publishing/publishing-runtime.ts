@@ -304,10 +304,11 @@ const withManagedItems = <
     : { ...content, items: [...items, ...missing] };
 };
 
+/** The placeholder before the editor has sent any content; claims nothing (C05). */
 const emptyContent = (): WorkDraftContent => ({
   title: "",
   body: "",
-  authorship: { kind: "original" },
+  authorship: null,
   visibility: "public",
   items: [],
   coverKey: null,
@@ -609,7 +610,8 @@ export class PublishingRuntime {
    * targeted deletion scope (D06): autosave stops and any draft save or
    * creation still in flight finishes first (so the draft it produces is the
    * one deleted), uploads stop, then that draft (its history, conflict copies
-   * and media only it references) is deleted and its local copies cleared.
+   * and media only it references) is deleted at the revision the author saw
+   * and its local copies cleared.
    * The editor content stays in memory under a new temporary session; media
    * of the published work an edit draft started from keeps its identity.
    * When the deletion fails nothing changes except that uploads wait for the
@@ -630,12 +632,17 @@ export class PublishingRuntime {
     autosave?.suspend();
     manager.suspendForHolderChange();
     let draftId: string | null;
+    let expectedRevision: number | undefined;
     try {
       await autosave?.idle();
       draftId =
         (await autosave?.resolveCreatedDraft()) ??
         autosave?.store.get().draftId ??
         session.view.draftId;
+      // The revision the author confirmed the scope against; the account
+      // refuses the deletion (`draft_changed`) when another device saved a
+      // newer one meanwhile, and nothing is deleted (D06).
+      expectedRevision = autosave?.store.get().revision ?? undefined;
     } catch (error) {
       this.abortHolderChange(account, session);
       throw error;
@@ -645,6 +652,7 @@ export class PublishingRuntime {
       try {
         result = await this.services.client.deleteDraft(draftId, {
           requestId: this.services.requestId(),
+          ...(expectedRevision === undefined ? {} : { expectedRevision }),
         });
       } catch (error) {
         this.abortHolderChange(account, session);

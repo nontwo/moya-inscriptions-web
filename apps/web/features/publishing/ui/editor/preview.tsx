@@ -289,8 +289,8 @@ export const useEditorMediaSources = (
 /** The real work presentation (Detail) built from the editor's local state. */
 export const editorPreviewPresentation = (
   state: Pick<EditorSessionState, "title" | "body" | "workId"> & {
-    /** The authorship section readers will see (omitted: none shown). */
-    readonly authorship?: WorkAuthorship;
+    /** The authorship section readers will see; null (or absent) shows none. */
+    readonly authorship?: WorkAuthorship | null;
   },
   media: readonly EditorMediaSource[],
   author: { readonly id: string; readonly displayName: string },
@@ -310,7 +310,7 @@ export const editorPreviewPresentation = (
     facts: [],
     sections:
       body === "" ? [] : [{ key: "description", title: "正文", text: body }],
-    ...(state.authorship === undefined
+    ...(state.authorship === undefined || state.authorship === null
       ? {}
       : { authorship: toWorkAuthorshipPresentation(state.authorship) }),
     media: media.map((entry, index): DetailMediaPresentation => ({

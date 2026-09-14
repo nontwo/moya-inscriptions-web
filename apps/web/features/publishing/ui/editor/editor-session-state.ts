@@ -79,7 +79,8 @@ export interface EditorSessionState {
   readonly workId: string | null;
   readonly title: string;
   readonly body: string;
-  readonly authorshipKind: WorkAuthorshipKind;
+  /** `null` = 未设置: nothing is preselected and a choice can be cleared (C05). */
+  readonly authorshipKind: WorkAuthorshipKind | null;
   /** Kept while switching kinds, so 原创 → 临摹 → back restores what was typed. */
   readonly reference: ReferenceFields;
   readonly visibility: WorkVisibility;
@@ -132,7 +133,8 @@ export const createEditorState = (
   workId: target.type === "work" ? target.id : null,
   title: "",
   body: "",
-  authorshipKind: "original",
+  // Nothing is claimed on the author's behalf: 未设置 until they choose (C05).
+  authorshipKind: null,
   reference: emptyReference,
   // New works default to public (P03); edits inherit when loaded.
   visibility: "public",
@@ -152,10 +154,14 @@ export const createEditorState = (
 // ---------------------------------------------------------------------------
 // Content
 
-/** The authorship the state describes (references only when typed). */
+/**
+ * The authorship the state describes (references only when typed), or `null`
+ * while none is set: no kind is ever inferred for the author (C05).
+ */
 export const authorshipOf = (
   state: Pick<EditorSessionState, "authorshipKind" | "reference">,
-): WorkAuthorship => {
+): WorkAuthorship | null => {
+  if (state.authorshipKind === null) return null;
   if (state.authorshipKind === "original") return { kind: "original" };
   const fields: { -readonly [K in ReferenceField]?: string } = {};
   for (const field of [
@@ -248,16 +254,18 @@ export const sameAuthorContent = (
     JSON.stringify([
       content.title,
       content.body,
-      [
-        content.authorship.kind,
-        content.authorship.kind === "original"
-          ? null
-          : [
-              content.authorship.referenceTitle ?? "",
-              content.authorship.originalAuthor ?? "",
-              content.authorship.sourceNote ?? "",
-            ],
-      ],
+      content.authorship === null
+        ? null
+        : [
+            content.authorship.kind,
+            content.authorship.kind === "original"
+              ? null
+              : [
+                  content.authorship.referenceTitle ?? "",
+                  content.authorship.originalAuthor ?? "",
+                  content.authorship.sourceNote ?? "",
+                ],
+          ],
       content.visibility,
       content.items.map((item) => [
         item.key,
@@ -316,7 +324,7 @@ export const bodyCheck = (state: EditorSessionState) =>
   check("body", "正文", state.body, bodyRule);
 
 export const referenceChecks = (state: EditorSessionState): FieldCheck[] =>
-  state.authorshipKind === "original"
+  state.authorshipKind === null || state.authorshipKind === "original"
     ? []
     : [
         check(
@@ -481,7 +489,8 @@ export interface EditorSessionStore {
   // Author changes (each is an edit).
   setTitle(value: string): void;
   setBody(value: string): void;
-  setAuthorshipKind(kind: WorkAuthorshipKind): void;
+  /** `null` clears the choice back to 未设置. */
+  setAuthorshipKind(kind: WorkAuthorshipKind | null): void;
   setReference(field: ReferenceField, value: string): void;
   setVisibility(visibility: WorkVisibility): void;
   moveItem(key: string, toIndex: number): void;
@@ -605,7 +614,7 @@ export const createEditorSessionStore = (
       edit(null, (state) => ({
         authorshipKind: kind,
         fieldErrors:
-          kind === "original"
+          kind === null || kind === "original"
             ? withoutField(
                 withoutField(
                   withoutField(state.fieldErrors, "referenceTitle"),
@@ -698,9 +707,9 @@ export const createEditorSessionStore = (
         ...state,
         title: content.title,
         body: content.body,
-        authorshipKind: content.authorship.kind,
+        authorshipKind: content.authorship?.kind ?? null,
         reference:
-          content.authorship.kind === "original"
+          content.authorship === null || content.authorship.kind === "original"
             ? state.reference
             : referenceOf(content.authorship),
         visibility: content.visibility,

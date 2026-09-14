@@ -11,7 +11,7 @@ import {
 import {
   absoluteTime,
   authorshipDetails,
-  authorshipLabels,
+  authorshipLabel,
   compareContent,
   deviceClassLabels,
   displayTitle,
@@ -244,7 +244,7 @@ const VersionColumn = ({
           <Differs when={differences.settings} />
         </dt>
         <dd>
-          {`作品性质：${authorshipLabels[content.authorship.kind]}`}
+          {`作品性质：${authorshipLabel(content.authorship)}`}
           {details.map((detail) => (
             <span key={detail.label}>
               <br />

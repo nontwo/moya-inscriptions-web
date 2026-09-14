@@ -119,6 +119,19 @@ describe("ContentCard for works", () => {
     );
   });
 
+  it("gives an untitled card with media the body opening as its text line", () => {
+    // C07: the stored title stays empty and no placeholder is drawn into the
+    // card; the opening of the body is the line the reader gets instead.
+    const untitled = render(card({ title: "", excerpt: "正文开头做标题行" }));
+    expect(untitled.hasAttribute("data-card-text-only")).toBe(false);
+    expect(untitled.querySelector("img")?.getAttribute("src")).toBe(cover.src);
+    expect(untitled.querySelector("h3")).toBeNull();
+    expect(untitled.querySelector("[data-card-excerpt]")?.textContent).toBe(
+      "正文开头做标题行",
+    );
+    expect(untitled.textContent).not.toContain("未命名作品");
+  });
+
   it("lets a media-only work omit its empty title", () => {
     const mediaOnly = render(card({ title: "" }));
     expect(mediaOnly.querySelector("img")).not.toBeNull();

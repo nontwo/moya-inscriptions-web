@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useRef } from "react";
 
 import {
   originalAuthorRule,
@@ -57,7 +57,11 @@ const referenceInputs: readonly {
   { field: "sourceNote", label: "来源", rule: sourceNoteRule, multiline: true },
 ];
 
-/** 作品性质 (C05): only these fields, the references optional. */
+/**
+ * 作品性质 (C05): only these fields, the references optional. Nothing is
+ * preselected — the work stays 未设置 until the author chooses, and a choice
+ * can be cleared again, so no claim is ever made on their behalf.
+ */
 export const AuthorshipFields = ({
   state,
   store,
@@ -66,10 +70,42 @@ export const AuthorshipFields = ({
   readonly store: EditorSessionStore;
 }) => {
   const name = useId();
+  const options = useRef<HTMLDivElement>(null);
   return (
     <fieldset className={styles.field} data-editor-field="authorship">
-      <legend>作品性质</legend>
-      <div className={styles.options}>
+      <legend>
+        作品性质
+        <span className={styles.optional}>可选</span>
+      </legend>
+      <div
+        className={styles.fieldHead}
+        data-editor-authorship-state={state.authorshipKind ?? "unset"}
+      >
+        <span className={styles.hint}>
+          {state.authorshipKind === null
+            ? "未设置"
+            : (kinds.find((entry) => entry.kind === state.authorshipKind)
+                ?.label ?? "未设置")}
+        </span>
+        {state.authorshipKind === null ? null : (
+          <button
+            className={styles.inlineAction}
+            data-editor-authorship-clear=""
+            onClick={() => {
+              store.setAuthorshipKind(null);
+              // The button goes away with the choice it clears, so the
+              // keyboard stays in the field instead of falling to the page.
+              options.current
+                ?.querySelector<HTMLInputElement>('input[type="radio"]')
+                ?.focus();
+            }}
+            type="button"
+          >
+            清除选择
+          </button>
+        )}
+      </div>
+      <div className={styles.options} ref={options}>
         {kinds.map((entry) => (
           <label className={styles.option} key={entry.kind}>
             <input
@@ -86,7 +122,8 @@ export const AuthorshipFields = ({
           </label>
         ))}
       </div>
-      {state.authorshipKind === "original" ? null : (
+      {state.authorshipKind === null ||
+      state.authorshipKind === "original" ? null : (
         <div className={styles.referenceFields} data-editor-references="">
           {referenceInputs.map((input) => (
             <TextField

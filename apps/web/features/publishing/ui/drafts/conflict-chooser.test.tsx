@@ -151,6 +151,33 @@ describe("Conflict chooser", () => {
     expect(node.textContent).toContain("未选择的版本会保留在历史版本中");
   });
 
+  it("says 未设置 for a version whose author declared no 作品性质", async () => {
+    const node = await render(
+      <ConflictChooser
+        conflict={{
+          ...sample,
+          device: {
+            ...sample.device,
+            content: { ...sample.device.content, authorship: null },
+          },
+        }}
+        draftId={draftId(1)}
+        onClose={vi.fn()}
+        onResolved={vi.fn()}
+      />,
+    );
+    await flush();
+    const device = version(node, "device");
+    expect(device.textContent).toContain("作品性质：未设置");
+    expect(device.textContent).not.toContain("作品性质：原创");
+    // Still a difference the chooser marks against the other version.
+    expect(
+      Array.from(device.querySelectorAll("dl[data-differs] dt")).map((dt) =>
+        dt.firstChild?.textContent?.trim(),
+      ),
+    ).toContain("设置");
+  });
+
   it("uses media the editor already has instead of reading the draft", async () => {
     const node = await render(
       <ConflictChooser

@@ -87,6 +87,51 @@ describe("editor session store", () => {
     expect(store.get().editVersion).toBe(2);
   });
 
+  it("claims no authorship until the author chooses one, and lets them clear it", () => {
+    const store = createEditorSessionStore(ACCOUNT, { type: "new" });
+    expect(store.get().authorshipKind).toBeNull();
+    expect(contentOf(store.get()).authorship).toBeNull();
+    store.setAuthorshipKind("copy_practice");
+    store.setReference("referenceTitle", "兰亭序");
+    expect(contentOf(store.get()).authorship).toEqual({
+      kind: "copy_practice",
+      referenceTitle: "兰亭序",
+    });
+    // Clearing is an author change and drops the reference from the content
+    // while what was typed stays for a later choice.
+    const before = store.get().editVersion;
+    store.setAuthorshipKind(null);
+    expect(store.get().editVersion).toBe(before + 1);
+    expect(contentOf(store.get()).authorship).toBeNull();
+    expect(localIssues(store.get())).toEqual([]);
+    expect(store.get().reference.referenceTitle).toBe("兰亭序");
+    store.setAuthorshipKind("material_sharing");
+    expect(contentOf(store.get()).authorship).toEqual({
+      kind: "material_sharing",
+      referenceTitle: "兰亭序",
+    });
+  });
+
+  it("adopts an undeclared authorship as undeclared and never as 原创", () => {
+    const store = createEditorSessionStore(ACCOUNT, { type: "new" });
+    store.setAuthorshipKind("original");
+    const loaded = {
+      ...contentOf(store.get()),
+      authorship: null,
+    };
+    store.adoptContent(loaded);
+    expect(store.get().authorshipKind).toBeNull();
+    expect(contentOf(store.get()).authorship).toBeNull();
+    // An undeclared work is not the same author input as an 原创 one.
+    expect(
+      sameAuthorContent(loaded, {
+        ...loaded,
+        authorship: { kind: "original" },
+      }),
+    ).toBe(false);
+    expect(sameAuthorContent(loaded, { ...loaded })).toBe(true);
+  });
+
   it("keeps reference fields while switching authorship and omits empty ones", () => {
     const store = createEditorSessionStore(ACCOUNT, { type: "new" });
     store.setAuthorshipKind("copy_practice");

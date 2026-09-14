@@ -112,11 +112,20 @@ export const authorshipLabels = {
   material_sharing: "素材分享",
 } as const satisfies Record<WorkAuthorship["kind"], string>;
 
+/** How an undeclared 作品性质 reads; nothing defaults to 原创 (C05). */
+export const AUTHORSHIP_UNSET_LABEL = "未设置";
+
+/** The label of a declared authorship, or 未设置 when the author set none. */
+export const authorshipLabel = (authorship: WorkAuthorship | null): string =>
+  authorship === null
+    ? AUTHORSHIP_UNSET_LABEL
+    : authorshipLabels[authorship.kind];
+
 /** The optional reference fields of a copy/practice or material-sharing work. */
 export const authorshipDetails = (
-  authorship: WorkAuthorship,
+  authorship: WorkAuthorship | null,
 ): readonly { readonly label: string; readonly value: string }[] => {
-  if (authorship.kind === "original") return [];
+  if (authorship === null || authorship.kind === "original") return [];
   return [
     { label: "参考作品", value: authorship.referenceTitle?.trim() ?? "" },
     { label: "原作者", value: authorship.originalAuthor?.trim() ?? "" },
@@ -239,8 +248,11 @@ export interface ContentComparison {
   readonly settings: boolean;
 }
 
-const sameAuthorship = (a: WorkAuthorship, b: WorkAuthorship): boolean =>
-  a.kind === b.kind &&
+const sameAuthorship = (
+  a: WorkAuthorship | null,
+  b: WorkAuthorship | null,
+): boolean =>
+  (a?.kind ?? null) === (b?.kind ?? null) &&
   JSON.stringify(authorshipDetails(a)) === JSON.stringify(authorshipDetails(b));
 
 /** Which parts of two versions differ, for the conflict chooser's markers. */

@@ -611,7 +611,10 @@ describe("work publishing client", () => {
         }),
       `publishing/works/${workId}/draft`,
       "POST",
-      { ...draft, kind: "edit", workId, baseRevisionId: revisionId },
+      {
+        draft: { ...draft, kind: "edit", workId, baseRevisionId: revisionId },
+        created: true,
+      },
     ],
     [
       "restoreSnapshot",
@@ -661,6 +664,55 @@ describe("work publishing client", () => {
       expect(init?.body).toBeTypeOf("string");
     },
   );
+
+  describe("opening a work's edit draft", () => {
+    const editDraft = {
+      ...draft,
+      kind: "edit",
+      workId,
+      baseRevisionId: revisionId,
+      revision: 1,
+    } as const;
+
+    it("keeps the account's own answer about who created the draft", async () => {
+      for (const created of [true, false]) {
+        answer({ draft: editDraft, created });
+        await expect(
+          publishingClient.openWorkEditDraft(workId, {
+            requestId,
+            deviceClass: "desktop",
+          }),
+        ).resolves.toEqual({ draft: editDraft, created });
+      }
+    });
+
+    it("refuses an answer that is only a draft, or names no creator", async () => {
+      answer(editDraft);
+      await refused(
+        publishingClient.openWorkEditDraft(workId, {
+          requestId,
+          deviceClass: null,
+        }),
+      );
+      answer({ draft: editDraft });
+      await refused(
+        publishingClient.openWorkEditDraft(workId, {
+          requestId,
+          deviceClass: null,
+        }),
+      );
+    });
+
+    it("refuses an opened draft that is not an edit draft", async () => {
+      answer({ draft, created: true });
+      await refused(
+        publishingClient.openWorkEditDraft(workId, {
+          requestId,
+          deviceClass: null,
+        }),
+      );
+    });
+  });
 
   describe("conditional draft deletion", () => {
     const deletion = {

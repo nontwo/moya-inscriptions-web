@@ -217,6 +217,15 @@ const draftOf = (
   ...change,
 });
 
+/**
+ * The account's answer of `POST publishing/works/:workId/draft`: the draft
+ * and whether this request inserted it.
+ */
+const openedDraft = (draft: PublishingDraft, created = true) => ({
+  draft,
+  created,
+});
+
 const receipt = (requestId: string) => ({
   state: "confirmed" as const,
   requestId,
@@ -565,12 +574,13 @@ describe("Publishing editor", () => {
       query('[data-editor-preview="continuous"] [data-detail-title]')
         ?.textContent,
     ).toBe("临兰亭序");
-    // The preview shows the authorship section readers will see.
+    // The preview shows the authorship section readers will see. Nothing is
+    // claimed for a new work until the author chooses one (C05).
     const previewAuthorship = () =>
       query(
         '[data-editor-preview="continuous"] [data-detail-section="authorship"]',
       );
-    expect(previewAuthorship()?.textContent).toContain("原创");
+    expect(previewAuthorship()).toBeNull();
     await act(async () => {
       query<HTMLInputElement>(
         '[data-editor-field="authorship"] input[value="copy_practice"]',
@@ -725,6 +735,68 @@ describe("Publishing editor", () => {
     expect(document.querySelector('[data-editor-preview="phone"]')).toBeNull();
     expect(titleInput()?.value).toBe("预览标题");
     expect(document.activeElement?.textContent).toBe("预览");
+  });
+
+  it("preselects no 作品性质, lets the author clear one, and submits none as none", async () => {
+    await renderEditor({ type: "new" });
+    await goToStep("text");
+    const authorshipState = () =>
+      query("[data-editor-authorship-state]")?.getAttribute(
+        "data-editor-authorship-state",
+      );
+    const radios = () =>
+      Array.from(
+        document.querySelectorAll<HTMLInputElement>(
+          '[data-editor-field="authorship"] input[type="radio"]',
+        ),
+      );
+    // C05: nothing is claimed for the author before they choose.
+    expect(authorshipState()).toBe("unset");
+    expect(query("[data-editor-authorship-state]")?.textContent).toContain(
+      "未设置",
+    );
+    expect(radios().every((radio) => !radio.checked)).toBe(true);
+    expect(query("[data-editor-authorship-clear]")).toBeNull();
+    expect(query("[data-editor-references]")).toBeNull();
+
+    await goToStep("confirm");
+    expect(
+      query("[data-editor-summary-authorship]")?.getAttribute(
+        "data-editor-summary-authorship",
+      ),
+    ).toBe("unset");
+    expect(query("[data-editor-summary-authorship]")?.textContent).toBe(
+      "未设置",
+    );
+    await click(buttonByText("上一步"));
+
+    await act(async () => {
+      radios()
+        .find((radio) => radio.value === "original")!
+        .click();
+    });
+    expect(authorshipState()).toBe("original");
+    expect(query("[data-editor-authorship-state]")?.textContent).toContain(
+      "原创",
+    );
+
+    // The choice can be taken back; 未设置 is not a kind of its own.
+    await click(query("[data-editor-authorship-clear]"));
+    expect(authorshipState()).toBe("unset");
+    expect(radios().every((radio) => !radio.checked)).toBe(true);
+    // 清除选择 goes away with the choice it cleared: the keyboard stays in
+    // the field instead of dropping to the page.
+    expect(document.activeElement).toBe(radios()[0]);
+
+    await type(titleInput(), "未声明性质的作品");
+    await goToStep("confirm");
+    expect(query("[data-editor-summary-authorship]")?.textContent).toBe(
+      "未设置",
+    );
+    await click(query("[data-editor-submit]"));
+    expect(fn("submit").mock.calls[0]![0]).toMatchObject({
+      content: { title: "未声明性质的作品", authorship: null },
+    });
   });
 
   it("blocks the confirmation while retained items are not ready and lists exact counts", async () => {
@@ -966,10 +1038,11 @@ describe("Publishing editor", () => {
     await click(buttonByText("删除草稿并关闭"));
     await flush();
     expect(fn("deleteDraft")).toHaveBeenCalledTimes(1);
-    expect(fn("deleteDraft")).toHaveBeenCalledWith(
-      DRAFT_ID,
-      expect.objectContaining({ requestId: expect.any(String) }),
-    );
+    // Conditional on the revision the author confirmed the scope against.
+    expect(fn("deleteDraft")).toHaveBeenCalledWith(DRAFT_ID, {
+      requestId: expect.any(String),
+      expectedRevision: 3,
+    });
     expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
     // The content stays on screen; the entry no longer names the deleted draft.
     expect(titleInput()?.value).toBe("已保存的草稿");
@@ -996,12 +1069,14 @@ describe("Publishing editor", () => {
     const harness = await renderEditor({ type: "work", id: WORK_ID }, () => {
       fn("editableWork").mockResolvedValue(editable);
       fn("openWorkEditDraft").mockResolvedValue(
-        draftOf(emptyContent({ title: "旧作", visibility: "public" }), {
-          id: EDIT_DRAFT_ID,
-          kind: "edit",
-          workId: WORK_ID,
-          baseRevisionId: REVISION_ID,
-        }),
+        openedDraft(
+          draftOf(emptyContent({ title: "旧作", visibility: "public" }), {
+            id: EDIT_DRAFT_ID,
+            kind: "edit",
+            workId: WORK_ID,
+            baseRevisionId: REVISION_ID,
+          }),
+        ),
       );
     });
     expect(query('[role="dialog"]')?.getAttribute("aria-label")).toBe(
@@ -1029,6 +1104,54 @@ describe("Publishing editor", () => {
       id: WORK_ID,
     });
   });
+  it("keeps a legacy work's undeclared 作品性质 undeclared through an edit", async () => {
+    // A Phase 4 work whose author never declared one: editing and saving it
+    // again must not put 原创 on it (C05).
+    const undeclared = emptyContent({ title: "旧作", authorship: null });
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: undeclared,
+      mediaItems: [],
+      visibility: "public",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    await renderEditor({ type: "work", id: WORK_ID }, () => {
+      fn("editableWork").mockResolvedValue(editable);
+      fn("openWorkEditDraft").mockResolvedValue(
+        openedDraft(
+          draftOf(undeclared, {
+            id: EDIT_DRAFT_ID,
+            kind: "edit",
+            workId: WORK_ID,
+            baseRevisionId: REVISION_ID,
+          }),
+        ),
+      );
+    });
+    await goToStep("text");
+    expect(
+      query("[data-editor-authorship-state]")?.getAttribute(
+        "data-editor-authorship-state",
+      ),
+    ).toBe("unset");
+    expect(
+      document.querySelector('[data-editor-field="authorship"] input:checked'),
+    ).toBeNull();
+    await type(titleInput(), "旧作（改）");
+    await goToStep("confirm");
+    expect(query("[data-editor-summary-authorship]")?.textContent).toBe(
+      "未设置",
+    );
+    await click(query("[data-editor-submit]"));
+    expect(fn("submit").mock.calls[0]![0]).toMatchObject({
+      content: { title: "旧作（改）", authorship: null },
+    });
+  });
+
   it("removes an edit draft it opened on the condition that the account still holds that revision", async () => {
     const editable: EditableWork = {
       workId: WORK_ID,
@@ -1053,7 +1176,7 @@ describe("Publishing editor", () => {
       { type: "work", id: WORK_ID },
       () => {
         fn("editableWork").mockResolvedValue(editable);
-        fn("openWorkEditDraft").mockResolvedValue(opened);
+        fn("openWorkEditDraft").mockResolvedValue(openedDraft(opened));
       },
       { recovery },
     );
@@ -1068,6 +1191,44 @@ describe("Publishing editor", () => {
     });
     // This browser's copies go only after the confirmed deletion.
     expect(recovery.clearDraft).toHaveBeenCalledWith(ACCOUNT, EDIT_DRAFT_ID);
+  });
+
+  it("keeps an edit draft the account did not create for this editor, even when the work read saw none", async () => {
+    // The race the account settles: the editable read still showed no draft,
+    // and another device opened one before this request reached the account.
+    const editable: EditableWork = {
+      workId: WORK_ID,
+      revisionId: REVISION_ID,
+      content: emptyContent({ title: "旧作" }),
+      mediaItems: [],
+      visibility: "public",
+      firstPublishedAt: T,
+      editedAt: null,
+      draftId: null,
+      version: 1,
+    };
+    const opened = draftOf(emptyContent({ title: "旧作" }), {
+      id: EDIT_DRAFT_ID,
+      kind: "edit",
+      workId: WORK_ID,
+      baseRevisionId: REVISION_ID,
+      revision: 1,
+    });
+    const recovery = recoveryDouble();
+    const harness = await renderEditor(
+      { type: "work", id: WORK_ID },
+      () => {
+        fn("editableWork").mockResolvedValue(editable);
+        fn("openWorkEditDraft").mockResolvedValue(openedDraft(opened, false));
+      },
+      { recovery },
+    );
+    expect(titleInput() ?? query("[data-media-section]")).not.toBeNull();
+    await leaveOverlay(harness);
+    // Not this editor's draft to remove: the other device keeps it.
+    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+    expect(recovery.clearDraft).not.toHaveBeenCalled();
+    expect(author.notify).not.toHaveBeenCalled();
   });
 
   it("keeps an edit draft another device has saved to meanwhile, without telling anyone", async () => {
@@ -1094,7 +1255,7 @@ describe("Publishing editor", () => {
       { type: "work", id: WORK_ID },
       () => {
         fn("editableWork").mockResolvedValue(editable);
-        fn("openWorkEditDraft").mockResolvedValue(opened);
+        fn("openWorkEditDraft").mockResolvedValue(openedDraft(opened));
         // Another device saved real edits into the same edit draft: the
         // account refuses the deletion at the opened revision.
         fn("deleteDraft").mockRejectedValueOnce(
@@ -1113,7 +1274,9 @@ describe("Publishing editor", () => {
     expect(author.notify).not.toHaveBeenCalled();
 
     // Reopening the work waits for nothing more and opens its draft again.
-    fn("openWorkEditDraft").mockResolvedValueOnce({ ...opened, revision: 2 });
+    fn("openWorkEditDraft").mockResolvedValueOnce(
+      openedDraft({ ...opened, revision: 2 }),
+    );
     await harness.show(true);
     expect(fn("openWorkEditDraft")).toHaveBeenCalledTimes(2);
     expect(query("[data-editor-unavailable]")).toBeNull();
@@ -1169,6 +1332,45 @@ describe("Publishing editor", () => {
     });
     expect(saveStatus()).toBe("saved");
     expect(query("[data-editor-notice]")).toBeNull();
+  });
+
+  it("names the version choice, not a change elsewhere, when drafts are turned off in a conflict", async () => {
+    const saved = draftOf(emptyContent({ title: "起点" }), { revision: 3 });
+    const device = emptyContent({ title: "本设备标题" });
+    const account = emptyContent({ title: "别处标题" });
+    const conflict = conflictOf(device, account);
+    await renderEditor({ type: "draft", id: DRAFT_ID }, () => {
+      fn("draft").mockResolvedValue(saved);
+    });
+    await goToStep("text");
+    await type(titleInput(), "本设备标题");
+    fn("saveDraftNow").mockResolvedValueOnce({
+      status: "conflict",
+      draft: draftOf(account, { revision: 4, conflict }),
+      conflict,
+    });
+    await click(query("[data-editor-save-now]"));
+    expect(saveStatus()).toBe("conflict");
+    // The author puts the chooser aside and reaches for the switch instead.
+    await click(query("[data-conflict-close]"));
+    expect(query("[data-conflict-stub]")).toBeNull();
+
+    await click(draftSwitch());
+    // Nothing could be deleted while a copy waits, and nothing changed
+    // elsewhere: the switch says what is actually in the way and brings the
+    // choice back, without offering a deletion that would be refused.
+    expect(
+      document.querySelector('[data-editor-dialog="draft-deletion"]'),
+    ).toBeNull();
+    expect(fn("deleteDraft")).not.toHaveBeenCalled();
+    expect(query("[data-editor-notice]")?.textContent).toContain(
+      "有两个版本待选择，选择版本后才能停止保存草稿",
+    );
+    expect(query("[data-editor-notice]")?.textContent).not.toContain(
+      "在别处有新的更改",
+    );
+    expect(query(`[data-conflict-stub="${conflict.id}"]`)).not.toBeNull();
+    expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("continues from the account's version when chosen and says newer input was not kept", async () => {
@@ -1307,7 +1509,7 @@ describe("Publishing editor", () => {
         .mockRejectedValueOnce(
           clientError(409, "草稿数量已达上限", false, "draft_limit"),
         )
-        .mockResolvedValueOnce(elsewhere);
+        .mockResolvedValueOnce(openedDraft(elsewhere, false));
     });
     expect(draftSwitch()?.getAttribute("aria-checked")).toBe("false");
     await goToStep("text");
@@ -1524,7 +1726,7 @@ describe("Publishing editor", () => {
     ).toBeNull();
     expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
     expect(query("[data-editor-notice]")?.textContent).toContain(
-      "这份草稿刚在别处保存了新的更改，没有删除，草稿仍在保存",
+      "这份草稿在别处有新的更改，未删除；请重新打开后再决定",
     );
     expect(titleInput()?.value).toBe("已保存的草稿");
     expect(harness.controls.replaceTarget).not.toHaveBeenCalledWith({

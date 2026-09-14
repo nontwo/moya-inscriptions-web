@@ -29,16 +29,25 @@ export const workCardExcerpt = (body: string): string => {
 };
 
 /**
- * A Works tab card from the work itself, like the feed's: the revision's
- * cover (the chosen cover, else the first media), a LIVE indicator when that
- * cover is a Live Photo, and the body's opening so a text-only work shows its
- * text instead of a cover.
+ * A Works tab card from the work itself, showing the same still the Home
+ * feed shows: `coverSrc` is the revision's card cover under its edit and
+ * cover crop (M03). Only a work record without the field at all falls back
+ * to the cover entry's display image; `null` is the account saying this
+ * revision has no presentable cover, and then the card is its text. The
+ * entry named by `coverMediaId` (else the first media) still supplies the
+ * card's identity, the LIVE indicator and the measurements — those are the
+ * display image's, not the cover crop's, so the box reserved before the
+ * image loads can still differ from Home's until a work record carries the
+ * cover's own size. The body's opening rides along so an untitled card
+ * shows real text instead of nothing (C07).
  */
 export const workCard = (work: UserWork): Card => {
   const cover =
     work.media.find((media) => media.id === work.coverMediaId) ??
     work.media[0] ??
     null;
+  const src =
+    work.coverSrc === undefined ? (cover?.src ?? null) : work.coverSrc;
   const excerpt = workCardExcerpt(work.text);
   return {
     target: { type: "work", id: work.id },
@@ -48,13 +57,13 @@ export const workCard = (work: UserWork): Card => {
     kind: null,
     authorId: work.authorId,
     firstPublishedAt: work.firstPublishedAt,
-    live: cover?.kind === "live",
+    live: cover?.kind === "live" && src !== null,
     media:
-      cover === null
+      cover === null || src === null
         ? null
         : {
             id: cover.id,
-            src: cover.src,
+            src,
             width: cover.width,
             height: cover.height,
           },

@@ -989,6 +989,9 @@ describe("publishing runtime", () => {
       ? confirmed.confirmed.map((entry) => entry.key)
       : [];
     const created = test.client.createDraft.mock.calls[0]![0].content;
+    // The first save of a session the editor has not written to yet claims
+    // no 作品性质 for the author (C05).
+    expect(created.authorship).toBeNull();
     expect(
       created.items.map((item: WorkDraftItem) => [item.key, item.origin]),
     ).toEqual([

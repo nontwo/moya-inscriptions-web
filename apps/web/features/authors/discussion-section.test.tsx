@@ -381,6 +381,42 @@ describe("Discussion composer on the author's own work", () => {
     expect(composer()).toBeNull();
   });
 
+  it("starts no reply while the comment box is closed, and does not reopen in reply mode", async () => {
+    // 回复 is still a control inside CommentSection, which has no prop for a
+    // closed box: the composer's place is empty, so nothing of a reply target
+    // is rendered and no reply can be started here.
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: false,
+      visibility: "self",
+    });
+    await renderWork();
+    const reply = node.querySelector<HTMLButtonElement>(
+      "[data-comment-reply-action]",
+    );
+    expect(reply).not.toBeNull();
+    await act(async () => reply!.click());
+    expect(composer()).toBeNull();
+    expect(node.querySelector("[data-comment-reply-mode]")).toBeNull();
+    expect(node.querySelector("textarea")).toBeNull();
+    expect(node.textContent).not.toContain("回复 ");
+    expect(note()).toBe("此作品当前仅你可见，暂时无法发表评论。");
+
+    // Others can see the work again: the box comes back empty, never already
+    // answering the comment the closed box could not reply to.
+    await act(async () =>
+      setOwnWorkAudience("owner", work.id, {
+        publiclyVisible: true,
+        visibility: "public",
+      }),
+    );
+    expect(composer()).not.toBeNull();
+    expect(note()).toBeNull();
+    expect(node.querySelector("[data-comment-reply-mode]")).toBeNull();
+    expect(node.querySelector("textarea")?.getAttribute("aria-label")).toBe(
+      "写下你的评论",
+    );
+  });
+
   it("keeps the composer for other accounts, works without a record and catalog items", async () => {
     setOwnWorkAudience("someone-else", work.id, {
       publiclyVisible: false,
