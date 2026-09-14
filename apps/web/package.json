@@ -18,6 +18,7 @@
     "@moya/design-tokens": "workspace:*",
     "@moya/ui": "workspace:*",
     "@uppy/core": "6.0.1",
+    "@uppy/react": "6.0.0",
     "@uppy/xhr-upload": "6.0.0",
     "embla-carousel": "8.6.0",
     "exifr": "7.1.3",
