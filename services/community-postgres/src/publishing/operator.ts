@@ -29,7 +29,7 @@ import type {
 } from "@moya/contracts/internal/community-operator";
 import type {
   PublishingCommandIdentity,
-  PublishingMediaReadTarget,
+  PublishingOperatorPort,
 } from "@moya/api";
 import type { Pool, QueryResultRow } from "pg";
 
@@ -180,6 +180,7 @@ interface SubmissionItemRow extends QueryResultRow {
   edit_key: string;
   cover_edit_key: string | null;
   variants: MediaVariant[];
+  legacy_display: boolean;
 }
 
 /**
@@ -197,6 +198,9 @@ const submissionDtos = async (
   const items = (
     await db.query<SubmissionItemRow>(
       `SELECT ri.revision_id,ri.position,ri.item_id,ri.edit,i.kind,i.quality_mode,i.state,i.presentation,k.edit_key,
+        (i.quality_mode='legacy' AND i.state='ready' AND k.edit_key='base' AND i.owner_id=r.author_id AND EXISTS (
+          SELECT 1 FROM community.user_media m WHERE m.id=i.legacy_media_id AND m.owner_id=i.owner_id
+            AND m.mime_type='image/png')) AS legacy_display,
         CASE WHEN ri.item_id=r.cover_item_id THEN community.media_edit_key(ri.edit,r.cover_crop) END AS cover_edit_key,
         ARRAY(
           SELECT d.variant FROM community.media_derivatives d
@@ -243,7 +247,12 @@ const submissionDtos = async (
           editKey: item.edit_key,
           coverEditKey: item.cover_edit_key,
           presentation: presentationDto(item.kind, item.presentation),
-          variants: item.variants,
+          variants: [
+            ...new Set([
+              ...item.variants,
+              ...(item.legacy_display ? ["display"] : []),
+            ]),
+          ],
         })),
       disposition: row.disposition,
       latest: row.latest,
@@ -400,9 +409,9 @@ export const resolveMediaRead = async (
   itemId: string,
   variant: MediaVariant,
   editKey: string,
-): Promise<PublishingMediaReadTarget | null> =>
-  readTransaction(pool, async (db) =>
-    mediaReadTarget(
+): ReturnType<PublishingOperatorPort["resolveMediaRead"]> =>
+  readTransaction(pool, async (db) => {
+    const derivative = mediaReadTarget(
       (
         await db.query<MediaReadTargetRow>(
           `SELECT b.storage_key,d.content_type,b.byte_size,b.sha256
@@ -418,8 +427,28 @@ export const resolveMediaRead = async (
           [itemId, variant, editKey, revisionId],
         )
       ).rows[0],
-    ),
-  );
+    );
+    if (derivative !== null) return derivative;
+    if (variant !== "display" || editKey !== "base") return null;
+    // Only the selected unedited legacy item of an operator-readable revision.
+    // Never use a guessed public URL, an avatar lookup, or a publishing source.
+    const row = (
+      await db.query<{ bytes: Buffer; sha256: string }>(
+        `SELECT m.bytes,m.sha256 FROM community.work_revisions r
+       JOIN community.works w ON w.id=r.work_id
+       JOIN community.work_revision_items ri ON ri.revision_id=r.id AND ri.item_id=$2
+       JOIN community.media_items i ON i.id=ri.item_id AND i.owner_id=r.author_id
+         AND i.quality_mode='legacy' AND i.state='ready'
+       JOIN community.user_media m ON m.id=i.legacy_media_id AND m.owner_id=i.owner_id AND m.mime_type='image/png'
+       WHERE r.id=$1 AND r.disposition<>'not_required' AND w.deleted_at IS NULL
+         AND community.media_edit_key(ri.edit,NULL)='base'`,
+        [revisionId, itemId],
+      )
+    ).rows[0];
+    return row === undefined
+      ? null
+      : { legacyPng: row.bytes, sha256: row.sha256 };
+  });
 
 /** PublishingOperatorPort.readCapacity */
 export const readCapacity = async (

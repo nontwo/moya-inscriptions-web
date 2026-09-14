@@ -121,19 +121,70 @@ export class PublishingOperatorService {
     );
   }
 
-  /** A derivative of an item in a queue-visible submission, for the Admin media proxy. */
-  openMedia(
+  /** Submitted derivatives or the unedited legacy PNG, for the private Admin proxy. */
+  async openMedia(
     revisionId: string,
     itemId: string,
     variant: MediaVariant,
     editKey: string,
     range?: PublishingMediaByteRange,
   ): Promise<PublishingMediaDelivery> {
-    return openPublishingMedia(
-      this.store,
-      () => this.port.resolveMediaRead(revisionId, itemId, variant, editKey),
-      range,
+    const target = await this.port.resolveMediaRead(
+      revisionId,
+      itemId,
+      variant,
+      editKey,
     );
+    if (target !== null && "legacyPng" in target) {
+      const byteSize = target.legacyPng.byteLength;
+      const start =
+        range === undefined
+          ? 0
+          : "suffixLength" in range
+            ? Math.max(0, byteSize - range.suffixLength)
+            : range.start;
+      const end =
+        range !== undefined && "start" in range
+          ? Math.min(range.end ?? byteSize - 1, byteSize - 1)
+          : byteSize - 1;
+      if (
+        byteSize === 0 ||
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start < 0 ||
+        end < start ||
+        start >= byteSize ||
+        (range !== undefined &&
+          "suffixLength" in range &&
+          (!Number.isSafeInteger(range.suffixLength) ||
+            range.suffixLength <= 0))
+      )
+        return {
+          contentType: "image/png",
+          sha256: target.sha256,
+          read: { status: "range_not_satisfiable", byteSize },
+        };
+      let bytes: Uint8Array | null = target.legacyPng.subarray(start, end + 1);
+      return {
+        contentType: "image/png",
+        sha256: target.sha256,
+        read: {
+          status: "ok",
+          byteSize,
+          start,
+          end,
+          contentLength: end - start + 1,
+          body: (async function* () {
+            if (bytes !== null) yield bytes;
+            bytes = null;
+          })(),
+          close: async () => {
+            bytes = null;
+          },
+        },
+      };
+    }
+    return openPublishingMedia(this.store, async () => target, range);
   }
 
   readCapacity(accountId: string): Promise<OperatorAccountCapacity> {

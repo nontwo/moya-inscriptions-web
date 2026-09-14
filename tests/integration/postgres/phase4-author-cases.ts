@@ -642,7 +642,9 @@ export const registerPhase4AuthorTests = (
       expect(first.hot.map((r) => r.likeCount)).toEqual([1, 1, 1]);
       expect(first.items.map((r) => r.id)).toEqual([zero.id]);
       expect(first.total).toBe(2);
-      expect(first.visibleTotal).toBe(5);
+      // r3 counts the five visible roots plus the visible reply; only roots
+      // participate in heat ranking and the latest-root pagination below.
+      expect(first.visibleTotal).toBe(6);
       expect(first.items[0]?.likeCount).toBe(0);
       expect(first.items[0]?.replies[0]?.likeCount).toBe(1);
       const next = await discussion.readDiscussion(target, null, {
@@ -652,6 +654,7 @@ export const registerPhase4AuthorTests = (
         pinned: expectedHot,
       });
       expect(next.hot).toEqual([]);
+      expect(next.visibleTotal).toBe(6);
       expect(next.items.map((r) => r.id)).toEqual([older.id]);
       const traversal = [...first.hot, ...first.items, ...next.items].map(
         (r) => r.id,

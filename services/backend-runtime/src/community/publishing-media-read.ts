@@ -8,6 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 /** Derivative types the media routes may ever send; anything else is refused. */
 const deliverableTypes: ReadonlySet<string> = new Set([
+  "image/png", // Operator-only unedited legacy user-media compatibility.
   "image/webp",
   "video/mp4",
 ]);

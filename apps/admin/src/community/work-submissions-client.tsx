@@ -830,7 +830,7 @@ export const SubmissionDetail = ({
 /** Why an item shows no still: its state, a legacy image without derivatives, or none rendered yet. */
 const noPreviewText = (item: OperatorSubmissionMedia): string =>
   item.qualityMode === "legacy"
-    ? "早期作品图片不经过此预览，可在作品管理中查看"
+    ? "早期作品图片当前没有可用预览"
     : item.state === "ready"
       ? "暂无可用预览"
       : `${mediaStateLabels[item.state]}，暂无预览`;

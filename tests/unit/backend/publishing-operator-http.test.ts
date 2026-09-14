@@ -424,6 +424,45 @@ describe("work publishing operator HTTP surface", () => {
     expect(fake.named("readSubmission")).toHaveLength(1);
   });
 
+  it("serves authorized legacy PNG previews with bounded ranges and denies guests", async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const fake = fakeOperatorPort({
+      resolveMediaRead: () => ({ legacyPng: bytes, sha256: "b".repeat(64) }),
+    });
+    const base = await start(fake.port);
+    const url = `${base}/media/${revisionId}/${itemId}/display/base`;
+    const guest = await fetch(url);
+    expect(guest.status).toBe(401);
+    expect(fake.named("resolveMediaRead")).toHaveLength(0);
+    const whole = await fetch(url, { headers: operatorHeaders() });
+    expect(whole.status).toBe(200);
+    expect(whole.headers.get("content-type")).toBe("image/png");
+    expect(whole.headers.get("cache-control")).toBe("private, no-store");
+    expect(Buffer.from(await whole.arrayBuffer())).toEqual(bytes);
+    for (const [range, expected] of [
+      ["bytes=1-3", bytes.subarray(1, 4)],
+      ["bytes=-2", bytes.subarray(6)],
+    ] as const) {
+      const response = await fetch(url, {
+        headers: { ...operatorHeaders(), range },
+      });
+      expect(response.status).toBe(206);
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(expected);
+    }
+    const invalid = await fetch(url, {
+      headers: { ...operatorHeaders(), range: "bytes=20-" },
+    });
+    expect(invalid.status).toBe(416);
+    expect(invalid.headers.get("content-range")).toBe("bytes */8");
+    await invalid.arrayBuffer();
+    const head = await fetch(url, {
+      method: "HEAD",
+      headers: operatorHeaders(),
+    });
+    expect(head.status).toBe(200);
+    expect((await head.arrayBuffer()).byteLength).toBe(0);
+  });
+
   it("proxies submission derivatives with ranges and answers 503 without a store", async () => {
     const bytes = randomBytes(2048);
     const fake = fakeOperatorPort({
@@ -481,7 +520,16 @@ describe("work publishing operator HTTP surface", () => {
       "METHOD_NOT_ALLOWED",
     );
 
-    const storeless = fakeOperatorPort({});
+    // Resolve the authorized representation first: legacy PNGs are database
+    // backed; a publishing derivative still requires the private blob store.
+    const storeless = fakeOperatorPort({
+      resolveMediaRead: () => ({
+        storageKey,
+        contentType: "image/webp",
+        byteSize: bytes.byteLength,
+        sha256: "0".repeat(64),
+      }),
+    });
     const unavailable = await start(storeless.port);
     await expectOperatorError(
       await fetch(`${unavailable}/media/${revisionId}/${itemId}/display/base`, {
@@ -490,7 +538,7 @@ describe("work publishing operator HTTP surface", () => {
       503,
       "STORE_UNAVAILABLE",
     );
-    expect(storeless.calls).toHaveLength(0);
+    expect(storeless.named("resolveMediaRead")).toHaveLength(1);
   });
 
   it("designates account capacity on the immutable account id and manages content-free jobs", async () => {

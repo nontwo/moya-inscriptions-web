@@ -79,14 +79,19 @@ export interface PublishingOperatorPort {
   ): Promise<WorkSubmissionModerationResult>;
   /**
    * A derivative of an item that belongs to this queue-visible revision, for
-   * the Admin media proxy; `null` otherwise. Sources are never returned.
+   * the Admin media proxy; `null` otherwise. An unedited legacy display may
+   * return its existing user-media PNG. Publishing originals/masters never do.
    */
   resolveMediaRead(
     revisionId: string,
     itemId: string,
     variant: MediaVariant,
     editKey: string,
-  ): Promise<PublishingMediaReadTarget | null>;
+  ): Promise<
+    | PublishingMediaReadTarget
+    | { readonly legacyPng: Uint8Array; readonly sha256: string }
+    | null
+  >;
   /**
    * The account's capacity; an account without a capacity row reads as
    * ordinary with zero counters, version 0 and `updatedAt` null.

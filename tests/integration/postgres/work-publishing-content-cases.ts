@@ -2254,6 +2254,54 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         expect(read.coverSrc).toBe(`/api/community/media/${second}`);
       }
       expect((await operators.readSubmission(revision)).authorship).toBeNull();
+      const oldImages = (await operators.readSubmission(revision)).items;
+      expect(oldImages.map((item) => item.variants)).toEqual([
+        ["display"],
+        ["display"],
+      ]);
+      const oldItem = oldImages[0]!.itemId;
+      // Admin inspects the submitted representation even after it is hidden.
+      await pool.query(
+        "UPDATE community.works SET operator_state='hidden' WHERE id=$1",
+        [work],
+      );
+      expect(await authors.readMedia(second, b)).toBeNull();
+      expect(
+        await operators.resolveMediaRead(revision, oldItem, "display", "base"),
+      ).toEqual({ legacyPng: png, sha256: "b".repeat(64) });
+      for (const [r, i, variant, key] of [
+        [id("work-revision"), oldItem, "display", "base"],
+        [revision, id("media-item"), "display", "base"],
+        [revision, oldItem, "motion", "base"],
+        [revision, oldItem, "display", "not-the-submitted-edit"],
+      ] as const)
+        expect(await operators.resolveMediaRead(r, i, variant, key)).toBeNull();
+      await pool.query(
+        "UPDATE community.work_revisions SET disposition='not_required' WHERE id=$1",
+        [revision],
+      );
+      expect(
+        await operators.resolveMediaRead(revision, oldItem, "display", "base"),
+      ).toBeNull();
+      await pool.query(
+        "UPDATE community.work_revisions SET disposition='approved' WHERE id=$1",
+        [revision],
+      );
+      await pool.query(
+        "UPDATE community.works SET deleted_at=now() WHERE id=$1",
+        [work],
+      );
+      expect(
+        await operators.resolveMediaRead(revision, oldItem, "display", "base"),
+      ).toBeNull();
+      await pool.query(
+        "UPDATE community.works SET deleted_at=NULL WHERE id=$1",
+        [work],
+      );
+      await pool.query(
+        "UPDATE community.works SET operator_state='visible' WHERE id=$1",
+        [work],
+      );
       const editable = await adapter.readEditableWork(a, work);
       expect(editable.content.authorship).toBeNull();
       expect(editable.content.items.map((item) => item.qualityMode)).toEqual([

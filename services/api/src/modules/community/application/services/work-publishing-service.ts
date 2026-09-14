@@ -163,7 +163,7 @@ const defaultTransferPolicy: PublishingTransferPolicy = {
 
 /** A derivative ready to stream: its allowlisted type and the opened byte range. */
 export interface PublishingMediaDelivery {
-  readonly contentType: PublishingMediaReadTarget["contentType"];
+  readonly contentType: PublishingMediaReadTarget["contentType"] | "image/png";
   readonly sha256: string;
   readonly read: PublishingMediaReadResult;
 }

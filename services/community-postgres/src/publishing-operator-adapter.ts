@@ -15,7 +15,6 @@ import type {
 } from "@moya/contracts/internal/community-operator";
 import type {
   PublishingCommandIdentity,
-  PublishingMediaReadTarget,
   PublishingOperatorPort,
 } from "@moya/api";
 import type { Pool } from "pg";
@@ -66,7 +65,7 @@ export class PostgresPublishingOperatorAdapter implements PublishingOperatorPort
     itemId: string,
     variant: MediaVariant,
     editKey: string,
-  ): Promise<PublishingMediaReadTarget | null> {
+  ): ReturnType<PublishingOperatorPort["resolveMediaRead"]> {
     return operations.resolveMediaRead(
       this.pool,
       revisionId,

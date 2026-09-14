@@ -145,9 +145,19 @@ describe.each(["clean", "phase4-upgrade"] as const)(
         [actor, `qa-${suffix}-a`, other, `qa-${suffix}-b`],
       );
       if (kind === "phase4-upgrade") {
+        const legacyMedia = opaque("user-media");
         await setup.query(
-          "INSERT INTO community.works(id,author_id,title,text,first_published_at) VALUES($1,$2,'升级前作品','旧正文',$3)",
-          [legacy, actor, now],
+          "INSERT INTO community.user_media(id,owner_id,mime_type,width,height,sha256,bytes) VALUES($1,$2,'image/png',1,1,$3,$4)",
+          [
+            legacyMedia,
+            actor,
+            "b".repeat(64),
+            Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+          ],
+        );
+        await setup.query(
+          "INSERT INTO community.works(id,author_id,title,text,first_published_at,media_ids) VALUES($1,$2,'升级前作品','旧正文',$3,$4)",
+          [legacy, actor, now, [legacyMedia]],
         );
         await setup.query(
           "INSERT INTO community.work_edit_drafts(id,work_id,author_id,version,base_work_version,base_draft_version,title,text,media_ids,conflicted) VALUES($1,$2,$3,1,1,0,'升级前草稿','保留内容','{}',FALSE)",
@@ -491,6 +501,26 @@ describe.each(["clean", "phase4-upgrade"] as const)(
         expect((await authors.readWork(legacy, other)).title).toBe(
           "升级前作品",
         );
+        const legacyRevision = (
+          await app.query(
+            "SELECT public_revision_id AS id FROM community.works WHERE id=$1",
+            [legacy],
+          )
+        ).rows[0].id;
+        const legacyItem = (await operators.readSubmission(legacyRevision))
+          .items[0]!;
+        expect(legacyItem.variants).toContain("display");
+        expect(
+          await operators.resolveMediaRead(
+            legacyRevision,
+            legacyItem.itemId,
+            "display",
+            "base",
+          ),
+        ).toEqual({
+          legacyPng: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+          sha256: "b".repeat(64),
+        });
         // The committed legacy backfill preserves old edits as history snapshots,
         // not active drafts. Reopen the work through the App role to read them.
         const legacyDraft = (
