@@ -11,6 +11,7 @@ import {
   readinessOf,
   resolveSession,
   sameAuthorContent,
+  preserveLaterConflictEdits,
 } from "./editor-session-state";
 
 import type {
@@ -463,5 +464,52 @@ describe("editor session store", () => {
     ).toBe("other");
     expect(resolveSession(null, { type: "new" }, null).kind).toBe("create");
     expect(resolveSession(null, { type: "new" }, view).kind).toBe("other");
+  });
+});
+
+describe("conflict edits made after the recorded device version", () => {
+  const base = contentOf(
+    createEditorSessionStore(ACCOUNT, { type: "new" }).get(),
+  );
+  it("keeps later text and settings while taking untouched fields from the chosen version", () => {
+    const device = { ...base, title: "设备", body: "原文" };
+    const selected = { ...base, title: "账号", body: "账号正文" };
+    expect(
+      preserveLaterConflictEdits(selected, device, {
+        ...device,
+        title: "",
+        visibility: "self",
+      }),
+    ).toEqual({ ...selected, title: "", visibility: "self" });
+  });
+  it("keeps a later album and its cover together without resurrecting removed items", () => {
+    const device = {
+      ...base,
+      items: [item("old", itemId(1))],
+      coverKey: "old",
+    };
+    const selected = {
+      ...base,
+      items: [item("account", itemId(2))],
+      coverKey: "account",
+    };
+    const screen = {
+      ...base,
+      items: [item("new", itemId(3))],
+      coverKey: "new",
+    };
+    expect(preserveLaterConflictEdits(selected, device, screen)).toEqual(
+      screen,
+    );
+  });
+  it("does not treat a completed upload as a later author edit", () => {
+    const device = { ...base, items: [item("a", null)] };
+    const selected = { ...base, title: "账号", items: [item("b", itemId(2))] };
+    expect(
+      preserveLaterConflictEdits(selected, device, {
+        ...device,
+        items: [item("a", itemId(1))],
+      }),
+    ).toEqual(selected);
   });
 });

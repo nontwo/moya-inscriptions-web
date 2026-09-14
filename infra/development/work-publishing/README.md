@@ -10,6 +10,46 @@ is outside this task.
 JPEG, PNG and WebP stills are decoded in the Backend process by `sharp`; only
 HEIC/HEIF stills and motion components go through this image.
 
+## App-role bootstrap (Development)
+
+After applying the committed community migration set as the migration/setup
+role, apply `grant-runtime.sql` explicitly with psql:
+
+```sh
+psql --no-psqlrc --set ON_ERROR_STOP=1 --set app_role=yoyi_dev_app \
+  --file infra/development/work-publishing/grant-runtime.sql
+```
+
+Use protected libpq configuration for the already verified Development database;
+do not put passwords or connection strings in command arguments or evidence.
+Verify the database/container identity before this write. The role must already
+exist as a non-owner login with NOSUPERUSER, NOBYPASSRLS, NOCREATEDB and
+NOCREATEROLE. Do not transfer schema/table ownership. The script requires the
+published Catalog projections and the complete Phase 4/publishing migration set.
+It grants only the runtime statements' relations and UPDATE columns, including
+snapshot conflict resolution, with no DDL or audit/ledger mutation privileges.
+Applying the same script again is idempotent. It does not create credentials.
+
+For this publishing environment, this is the complete task-scoped runtime grant
+path; the older `infra/development/grant-community-app.sql` covers the initial
+comment/session domain only and is insufficient for Phase 4/publishing. Backend
+startup never applies either script. Payload authentication remains separate:
+the authenticated Admin bridge calls Backend, whose App SQL role also serves the
+in-process worker. CMS and public Catalog read roles gain no community grant.
+
+`tests/integration/postgres/work-publishing-app-role.test.ts` exercises clean
+installation and a Phase 4 upgrade with an independently connected non-owner App
+login, checks active identity/flags and denied DDL/identity/audit/ledger writes,
+and executes draft conflicts, submission, visibility, moderation, trash/restore
+and worker lease operations. Privileged connections perform only isolated setup,
+migration and exact-resource cleanup. The test first requires a marked loopback
+disposable administration target; it never runs on `yoyi_dev`.
+
+Existing retained acceptance grants and provenance are historical evidence. Do
+not reset retained data, edit an applied migration or rewrite its SQL ledger to
+match new code. If a forward schema update becomes necessary, preserve a
+verified recoverable backup first and record the update separately.
+
 ## Build
 
 ```sh

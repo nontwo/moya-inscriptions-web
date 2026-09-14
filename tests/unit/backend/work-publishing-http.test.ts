@@ -1399,6 +1399,7 @@ describe("work publishing author HTTP surface", () => {
       requestDeadlineMs: 300,
     });
     expect(server.requestTimeout).toBe(0);
+    expect(server.headersTimeout).toBe(300);
     const token = await signIn();
 
     const bytes = randomBytes(declared);

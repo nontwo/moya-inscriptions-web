@@ -191,7 +191,7 @@ describe("Standard Live output checks", () => {
     ).toBe(true);
   });
 
-  it("retains an already compatible H.264 MP4 only when re-encoding saves < 5 %", () => {
+  it("never retains source MP4 motion under the still-only retention exception", () => {
     const avc = planMotionConversion(
       {
         ...iphoneMotion,
@@ -201,8 +201,8 @@ describe("Standard Live output checks", () => {
       },
       supported,
     ) as MotionPlan;
-    expect(avc.retainable).toBe(true);
-    expect(shouldRetainMotionInput(avc, 1_000_000, 990_000)).toBe(true);
+    expect(avc.retainable).toBe(false);
+    expect(shouldRetainMotionInput(avc, 1_000_000, 990_000)).toBe(false);
     expect(shouldRetainMotionInput(avc, 1_000_000, 800_000)).toBe(false);
     expect(shouldRetainMotionInput(plan, 1_000_000, 990_000)).toBe(false);
   });

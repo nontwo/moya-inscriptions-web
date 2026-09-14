@@ -1152,6 +1152,27 @@ export const resolveConflict = async (
           settings.historyLimit,
           now,
         );
+      } else {
+        // The chosen account version must remain recoverable when this
+        // browser subsequently saves input typed after the conflict appeared.
+        await insertSnapshot(db, {
+          ownerId: actorId,
+          draftId: draft.id,
+          workId: draft.work_id,
+          kind: "saved",
+          content: draft.content,
+          sourceRevision: draft.revision,
+          pinned: false,
+          createdAt: now,
+        });
+        const settings = await selectSettings(db, "share");
+        await trimHistory(
+          db,
+          actorId,
+          lineageOf(draft),
+          settings.historyLimit,
+          now,
+        );
       }
       await db.query(
         "UPDATE community.work_drafts SET resolved_at=$2::timestamptz, updated_at=$2::timestamptz WHERE id=$1",

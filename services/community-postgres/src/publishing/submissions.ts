@@ -242,10 +242,9 @@ export const applyPublicRevision = async (
 
 /**
  * A self-only work that asks to become public again under pre-moderation
- * never re-exposes an older public revision whose content differs from the
- * pending one: that content was replaced while others could not see it, so
- * the work stays unseen until the pending revision is approved. An older
- * public revision with the same content stays in effect.
+ * stays unseen until the pending revision is approved, including unchanged
+ * previously approved content. Call only when the work was self-only; a
+ * work that stayed public retains V1 while its V2 submission is pending.
  */
 export const withholdReplacedPublicRevision = async (
   db: PublishingDb,
@@ -254,9 +253,8 @@ export const withholdReplacedPublicRevision = async (
 ): Promise<void> => {
   await db.query(
     `UPDATE community.works w SET public_revision_id=NULL,title='',text=''
-    FROM community.work_revisions p, community.work_revisions r
-    WHERE w.id=$1 AND p.id=w.public_revision_id AND r.id=$2 AND r.work_id=w.id
-      AND p.content_sha256<>r.content_sha256`,
+    FROM community.work_revisions r
+    WHERE w.id=$1 AND r.id=$2 AND r.work_id=w.id`,
     [workId, pendingRevisionId],
   );
 };

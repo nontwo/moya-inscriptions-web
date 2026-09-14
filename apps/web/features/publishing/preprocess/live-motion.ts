@@ -72,9 +72,9 @@ export interface MotionPlan {
   /** Frames are tagged BT.709 explicitly when the source is untagged. */
   readonly tagBt709: boolean;
   /**
-   * Whether an unchanged source may be kept when re-encoding saves too
-   * little: an MP4 that already fits the profile. QuickTime is never
-   * retained as Standard; its transcoded MP4 is sent instead.
+   * Whether an unchanged source may be kept. Current policy always sets
+   * this false: the retention exception covers JPEG/PNG/WebP stills only.
+   * Standard motion sends the validated transcoded MP4.
    */
   readonly retainable: boolean;
 }
@@ -140,7 +140,6 @@ export const planMotionConversion = (
     }
   }
   const target = standardMotionTarget(facts.display);
-  const long = Math.max(facts.display.width, facts.display.height);
   return {
     target,
     frameRate:
@@ -150,12 +149,7 @@ export const planMotionConversion = (
     videoBitrate: standardMotionBitrate(target),
     audio,
     tagBt709: colorUntagged(facts.colorSpace),
-    retainable:
-      facts.container === "mp4" &&
-      facts.videoCodec === "avc" &&
-      long <= STANDARD_MOTION.maxLongEdge &&
-      facts.frameRate <= STANDARD_MOTION.maxFrameRate &&
-      (facts.audio === null || audioIsCopyable(facts)),
+    retainable: false,
   };
 };
 
@@ -185,7 +179,7 @@ export const acceptMotionOutput = (
   output.meanFrameDifference !== null &&
   output.meanFrameDifference <= STANDARD_MOTION.fidelityMaxMeanDifference;
 
-/** Keep the unchanged MP4 source only when it already fits and re-encoding saved < 5 %. */
+/** Legacy worker result helper; current plans never permit retained motion. */
 export const shouldRetainMotionInput = (
   plan: MotionPlan,
   inputBytes: number,

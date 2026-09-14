@@ -16,7 +16,6 @@ import type {
   ConfirmedSource,
   IdentifiedStill,
   LogicalSource,
-  MotionType,
   StillType,
 } from "./import-grouping";
 import type {
@@ -1378,18 +1377,11 @@ export class UploadManager {
             source.still.motionPhoto.videoType,
           )
         : source.motion.file;
-    const motionType: MotionType =
-      source.layout === "container"
-        ? source.still.motionPhoto.videoType
-        : source.motion.type;
     const motionResult = await this.options.preprocess.motion(
       motionBlob,
       signal,
     );
-    return [
-      stillComponent,
-      this.motionComponent(record, motionBlob, motionType, motionResult),
-    ];
+    return [stillComponent, this.motionComponent(record, motionResult)];
   }
 
   private async preprocessStill(
@@ -1465,8 +1457,6 @@ export class UploadManager {
 
   private motionComponent(
     record: ItemRecord,
-    blob: Blob,
-    type: MotionType,
     result: MotionPreprocessResult,
   ): PreparedComponent {
     if (result.status === "optimized")
@@ -1477,14 +1467,7 @@ export class UploadManager {
         standardOutcome: "optimized",
       };
     if (result.status === "retained") {
-      // Only MP4 motion may be kept unchanged; QuickTime is never sent as Standard.
-      if (type === "video/mp4")
-        return {
-          role: "motion",
-          blob,
-          contentType: type,
-          standardOutcome: "retained",
-        };
+      // Retention is a still-only exception; stale workers cannot upload source motion.
       this.needsChoice(record, "standard_not_smaller");
     } else if (
       result.status === "unsupported" &&

@@ -3095,8 +3095,8 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       });
       expect((await authors.readWork(firstPublic.workId, b)).media).toEqual([]);
 
-      // A public submission on a self-only work: replaced content stays
-      // withheld, unchanged content stays in effect.
+      // A public submission on a self-only work follows current policy even
+      // when its content matches an earlier approved revision (Owner r2).
       await setPolicy("DIRECT_PUBLICATION");
       const unchanged = await publish(a, { title: "内容未变" }, t0);
       const replaced = await publish(a, { title: "内容已变" }, t0);
@@ -3114,12 +3114,11 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       confirmed(
         await editWork(a, replaced.workId, { title: "内容再次改变" }, t0),
       );
-      expect((await authors.readWork(unchanged.workId, b)).title).toBe(
-        "内容未变",
+      await expectRejection(
+        authors.readWork(unchanged.workId, b),
+        CommunityNotFoundError,
       );
-      expect((await workRow(unchanged.workId)).public_revision_id).toBe(
-        unchanged.revisionId,
-      );
+      expect((await workRow(unchanged.workId)).public_revision_id).toBeNull();
       await expectRejection(
         authors.readWork(replaced.workId, b),
         CommunityNotFoundError,

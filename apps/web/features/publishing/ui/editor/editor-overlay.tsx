@@ -56,6 +56,7 @@ import {
   readinessOf,
   resolveSession,
   sameAuthorContent,
+  preserveLaterConflictEdits,
 } from "./editor-session-state";
 import { LeaveDialog } from "./leave-dialog";
 import {
@@ -888,24 +889,27 @@ const EditorWorkspace = ({
     )
       return;
     const screen = store.content();
-    let keepScreen = false;
-    let notice: string | null = null;
-    if (
-      conflict !== null &&
-      !sameAuthorContent(screen, conflict.device.content)
-    ) {
-      // Input typed after the conflict appeared is newer than 本设备版本.
-      if (sameAuthorContent(draft.content, conflict.device.content))
-        keepScreen = true;
-      else notice = "已使用账号中的版本，选择前在本设备新输入的更改没有保留";
-    }
-    if (keepScreen) store.mergeServerItems(draft.mediaItems);
-    else store.adoptContent(draft.content, draft.mediaItems);
+    const hasLaterEdits =
+      conflict !== null && !sameAuthorContent(screen, conflict.device.content);
+    const content =
+      conflict === null
+        ? draft.content
+        : preserveLaterConflictEdits(
+            draft.content,
+            conflict.device.content,
+            screen,
+          );
+    store.adoptContent(content, draft.mediaItems);
     // The adopted content carries every edit made so far.
     markEditVersionSent(store, store.get().editVersion);
     api.adoptDraft(draft, store.content());
     void api.restoreDraftMedia(draft).catch(() => undefined);
-    if (notice !== null) store.setNotice(notice);
+    if (
+      hasLaterEdits &&
+      conflict !== null &&
+      !sameAuthorContent(draft.content, conflict.device.content)
+    )
+      store.setNotice("已选择版本，并保留冲突出现后在本设备输入的更改");
   };
 
   const conflict = autosave?.status === "conflict" ? autosave.conflict : null;

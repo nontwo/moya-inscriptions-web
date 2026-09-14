@@ -281,6 +281,34 @@ export const sameAuthorContent = (
   return project(left) === project(right);
 };
 
+/** Apply only author changes made after a conflict to the chosen version. */
+export const preserveLaterConflictEdits = (
+  selected: WorkDraftContent,
+  device: WorkDraftContent,
+  screen: WorkDraftContent,
+): WorkDraftContent => {
+  const changed = (patch: Partial<WorkDraftContent>) =>
+    !sameAuthorContent(device, { ...device, ...patch });
+  // Album, cover and cover crop move together: a cover must name a retained item.
+  const album = {
+    items: screen.items,
+    coverKey: screen.coverKey,
+    coverCrop: screen.coverCrop,
+  };
+  return {
+    ...selected,
+    ...(changed({ title: screen.title }) ? { title: screen.title } : {}),
+    ...(changed({ body: screen.body }) ? { body: screen.body } : {}),
+    ...(changed({ authorship: screen.authorship })
+      ? { authorship: screen.authorship }
+      : {}),
+    ...(changed({ visibility: screen.visibility })
+      ? { visibility: screen.visibility }
+      : {}),
+    ...(changed(album) ? album : {}),
+  };
+};
+
 const referenceOf = (authorship: WorkAuthorship): ReferenceFields =>
   authorship.kind === "original"
     ? emptyReference

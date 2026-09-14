@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -83,20 +83,22 @@ const render = async (props: {
   authorId: string | null;
   owner: boolean;
   tab?: "works" | "favorites" | "likes";
+  strict?: boolean;
 }) => {
   const node = document.createElement("div");
   document.body.append(node);
   root = createRoot(node);
+  const content = (
+    <ProfileList
+      active
+      authorId={props.authorId}
+      entryId="entry-1"
+      owner={props.owner}
+      tab={props.tab ?? "works"}
+    />
+  );
   await act(async () =>
-    root!.render(
-      <ProfileList
-        active
-        authorId={props.authorId}
-        entryId="entry-1"
-        owner={props.owner}
-        tab={props.tab ?? "works"}
-      />,
-    ),
+    root!.render(props.strict ? <StrictMode>{content}</StrictMode> : content),
   );
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -129,6 +131,22 @@ afterEach(async () => {
 });
 
 describe("Profile works drafts card", () => {
+  it("finishes revalidating cached Works when StrictMode replays the mount", async () => {
+    author.viewer = { id: OWNER };
+    author.cache.set(`list:${OWNER}:entry-1:${OWNER}:works`, {
+      items: [workCard(work(1))],
+      page: 1,
+      total: 1,
+      search: "",
+      kind: "all",
+      revision: author.revision,
+    });
+    works.mockResolvedValue({ items: [work(2)], total: 1 });
+    const node = await render({ authorId: OWNER, owner: true, strict: true });
+    expect(cards(node)).toEqual(["drafts", work(2).id]);
+    expect(node.textContent).not.toContain("正在加载");
+  });
+
   it("puts the drafts card first in the signed-in owner's own Works tab", async () => {
     author.viewer = { id: OWNER };
     const node = await render({ authorId: OWNER, owner: true });

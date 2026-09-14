@@ -238,6 +238,9 @@ export const ProfileList = ({
     () => () => {
       epoch.current++;
       loading.current = false;
+      // A replayed mount must replace the retired request even when cached
+      // pages already match the account revision (for example Back from Detail).
+      wasActive.current = false;
     },
     [],
   );

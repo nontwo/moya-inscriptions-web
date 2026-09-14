@@ -1,9 +1,67 @@
 # Work publishing and draft editing — work-publishing-v1
 
-Task: `work-publishing-v1`. Revision: r1. Owner-approved requirements provided
-on 2026-09-13 (implementation assignment for image/text publishing and draft
-editing). Phase 4 (#125/#126) is merged; this task starts from `main`
-`362781c18a85711e6b456be7933b30a70afba04a` in its own worktree and one Draft PR.
+Task: `work-publishing-v1`. Revision: r2. r1 remains in Git history.
+Owner-approved requirements provided on 2026-09-13 (implementation assignment
+for image/text publishing and draft editing). Phase 4 (#125/#126) is merged;
+this task starts from `main` `362781c18a85711e6b456be7933b30a70afba04a` in its
+own worktree and one Draft PR.
+
+## r2 — Owner QA and corrected import boundary (2026-09-14)
+
+This revision records the explicit Owner QA/debug assignment for Issue #137 /
+Draft PR #138. The same task, branch and worktree continue; Codex is the
+incoming QA/debug writer. The complete r1 remains available at
+`5cde007f76d2598e64e59b90320101e9d3dbee35`. Requirements below supersede only
+the identified earlier statements; every unaffected rule and Behavior Matrix row
+remains binding.
+
+- Official product name: 由于艺 / ArtVenn. Existing technical identifiers stay.
+- Complete Live Photo import uses an iPhone-native PhotosUI/PhotoKit path. Its
+  implementation and authorization belong to a separate Apple task; this QA pass
+  writes no `apps/apple/**`. Web owns ordinary image/text editing, upload
+  sessions, drafts, permissions, storage/processing and cross-platform playback.
+  Camera brand is not the upload boundary. No Android/vendor importer expansion.
+- Original compatibility means the complete selected representation actually
+  exported by the supported native Photos path, including Photos-recognized
+  third-party camera content. OS-edited and unmodified resources must be
+  distinguished; bytes never supplied cannot be recovered or promised.
+- Browser still-only input is an ordinary image, never a complete Live Photo.
+  Existing paired parsers, checksums, quotas, private media, derivatives and
+  Viewer stay useful backend/browser evidence. Mac paired-file selection is not
+  the main acceptance journey. Missing native importer, hardware and motion
+  samples are separate dependencies, not waived requirements. Web readiness,
+  backend Live/playback evidence, native import and physical acceptance are
+  recorded separately. This supersedes the r1 Media paths and real-sample
+  feasibility statements that treated file exports as the primary journey or
+  missing motion as Owner waiver.
+- Standard sends supported optimized bytes before upload. Only already-small
+  JPEG/PNG/WebP retention is permitted; retained HEIC/HEIF or any source motion
+  (including QuickTime and MP4) is not. Unsupported optimization offers
+  Original/remove before source upload.
+- Every self-only → public transition follows the current publication policy,
+  including unchanged previously approved content and a new matching revision.
+  There is no prior-approval exemption. A work that stayed public may retain V1
+  while V2 waits for approval; that different case is preserved.
+- Conflict selection preserves later author input and recoverable unchosen
+  versions; an older response never clears newer typing. The former private
+  implementation note proposing such loss is not an accepted exception.
+- QA may add focused regressions, necessary local helpers, exact reproducible
+  App-role grants and forward product migrations within the existing task.
+  Applied migrations and SQL ledger records must not be rewritten. Retained
+  acceptance data is read-only unless a necessary reviewed forward update has a
+  verified recoverable backup. Mutating tests use separately verified disposable
+  databases, accounts and private storage.
+- Local verification and core-credential budgets retain their accumulated
+  ledgers. Historic timeouts remain failures; extra execution requires a
+  specifically bounded Owner allowance. No workflow, CI, hooks, policy,
+  unrelated task or Production changes are authorized.
+
+| Correction scenario  | Development                                                      | Production         | Must preserve                                                |
+| -------------------- | ---------------------------------------------------------------- | ------------------ | ------------------------------------------------------------ |
+| Re-publication       | Current policy gates all self-only to public paths               | No exposure change | Still-public V1 while V2 pending; timestamp and interactions |
+| Conflict choice      | Chosen version plus later typing, with recoverable versions      | No exposure        | No lost input, no automatic publication                      |
+| Complete Live import | Separate native dependency; truthful Web image fallback          | No exposure        | Grouping, private bytes, playback; no false LIVE             |
+| Initialization       | Reproducible exact App-role bootstrap and isolated upgrade proof | No deployment      | Retained ledger/data, identity and role separation           |
 
 ## Authority and delivery stop
 

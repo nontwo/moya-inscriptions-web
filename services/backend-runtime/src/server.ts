@@ -56,7 +56,15 @@ export const createBackendServer = (
   }
   // Node's requestTimeout ends every request still receiving its body, even
   // while bytes flow; the same deadline is kept below for all other requests.
-  const server = createServer({ requestTimeout: 0 }, requestListener);
+  const server = createServer(
+    {
+      requestTimeout: 0,
+      // Node derives its default headersTimeout from requestTimeout. Keep
+      // headers bounded before a route can identify a streaming upload.
+      headersTimeout: Math.min(60_000, requestDeadlineMs),
+    },
+    requestListener,
+  );
   server.on("request", (request, response) => {
     const deadline = setTimeout(() => {
       if (request.complete || deadlineExemptRequests.has(request)) return;

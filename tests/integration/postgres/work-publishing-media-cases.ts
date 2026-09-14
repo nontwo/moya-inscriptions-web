@@ -1244,7 +1244,7 @@ export const registerWorkPublishingMediaTests = (
       expect(
         (await adapter.deleteDraft(a, draft.id, current, at(4 * minute)))
           .result,
-      ).toMatchObject({ deleted: true, conflictCopies: 1, snapshots: 1 });
+      ).toMatchObject({ deleted: true, conflictCopies: 1, snapshots: 2 });
       expect(await rows()).toEqual({ drafts: "0", snapshots: "0" });
 
       // Without an expected revision the draft goes with its unresolved copy.
@@ -2444,7 +2444,17 @@ export const registerWorkPublishingMediaTests = (
         page: 1,
         pageSize: 10,
       });
+      // Both choices survive: the selected account version is an important
+      // snapshot before newer in-flight typing can autosave over it.
       expect(snapshots.items[0]).toMatchObject({
+        kind: "saved",
+        pinned: false,
+        content: { body: "第五版" },
+      });
+      const conflictSnapshot = snapshots.items.find(
+        (snapshot) => snapshot.kind === "conflict",
+      );
+      expect(conflictSnapshot).toMatchObject({
         kind: "conflict",
         pinned: true,
         content: { body: "旧设备" },
@@ -2452,7 +2462,7 @@ export const registerWorkPublishingMediaTests = (
       expect(await refsOf(item.id)).toEqual(
         [
           { holder_kind: "draft", holder_id: created.id },
-          { holder_kind: "snapshot", holder_id: snapshots.items[0]?.id ?? "" },
+          { holder_kind: "snapshot", holder_id: conflictSnapshot?.id ?? "" },
         ].sort((left, right) =>
           left.holder_kind < right.holder_kind ? -1 : 1,
         ),

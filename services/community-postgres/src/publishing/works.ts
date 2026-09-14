@@ -269,13 +269,9 @@ export const setVisibility = async (
         )
       ).rows[0];
       if (revision === undefined) throw new CommunityNotFoundError();
-      // Self-only → public follows the current policy for the author's
-      // current revision (P10): an approved revision is public again at once;
-      // otherwise (self-only, withdrawn or rejected) direct publication
-      // approves it and pre-moderation queues it again.
-      if (revision.disposition === "approved") {
-        await applyPublicRevision(db, workId, work.author_revision_id, now);
-      } else if (settings.policy === "DIRECT_PUBLICATION") {
+      // Re-publication is a new public intent, even for unchanged content
+      // approved before the work became self-only. Apply the current policy.
+      if (settings.policy === "DIRECT_PUBLICATION") {
         await closePendingRevisions(
           db,
           workId,

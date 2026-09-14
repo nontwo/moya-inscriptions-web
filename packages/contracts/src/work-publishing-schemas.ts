@@ -717,7 +717,7 @@ export const workMediaSchema = z
 
 /**
  * How a Standard component's bytes were produced: `optimized` is browser
- * output; `retained` keeps an already-small JPEG, PNG, WebP or MP4 input
+ * output; `retained` keeps an already-small JPEG, PNG or WebP input
  * unchanged only after the browser's optimization attempt produced no
  * meaningful saving (Q04); HEIC/HEIF and QuickTime are never retained. An
  * Original component names neither.
@@ -880,7 +880,7 @@ const retainedStandardStillContentTypes: readonly string[] = [
   "image/png",
   "image/webp",
 ];
-const retainedStandardMotionContentTypes: readonly string[] = ["video/mp4"];
+const retainedStandardMotionContentTypes: readonly string[] = [];
 
 /**
  * Registers one logical item before any bytes move: a static image (one

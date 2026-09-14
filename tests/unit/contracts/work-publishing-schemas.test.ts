@@ -663,7 +663,7 @@ describe("upload holders and item registration", () => {
     expect(register({ qualityMode: "legacy" }).success).toBe(false);
   });
 
-  it("keeps an already-small JPEG, PNG, WebP or MP4 as a Standard master only when the browser retained it", () => {
+  it("limits retained Standard masters to already-small JPEG, PNG and WebP stills", () => {
     for (const contentType of ["image/jpeg", "image/png", "image/webp"]) {
       expect(
         register({
@@ -697,7 +697,7 @@ describe("upload holders and item registration", () => {
         ],
         clientPairing: applePairing,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       register({
         components: [

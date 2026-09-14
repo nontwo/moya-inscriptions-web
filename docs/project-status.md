@@ -364,8 +364,9 @@ Active development tracks (independent of the parked cloud track):
    verification. Owner acceptance does not waive failed checks. This is a
    Development milestone, with no Production deployment or release authority.
 
-3. **Work publishing and draft editing (`work-publishing-v1`)** — Draft PR open,
-   pending Owner manual and real-device acceptance. Owner-approved on
+3. **Work publishing and draft editing (`work-publishing-v1`)** — Draft PR #138,
+   r2 QA corrections in progress; independent final-head review and Owner
+   visual/real-device acceptance remain separate gates. Owner-approved on
    2026-09-13: album-style works (new and edited), static and complete Live
    Photo media in Standard and Original modes, private media storage with
    derivatives, account-scoped background uploads, optional persistent drafts
@@ -375,9 +376,13 @@ Active development tracks (independent of the parked cloud track):
    a plus and Search moves to the upper-left. Scope, Behavior Matrix,
    feasibility note and proof limits are in
    [work-publishing-v1](community/work-publishing-v1.md); the Draft PR records
-   the exact base/head, checks and review state. Complete Live Photo originals
-   from the three named devices remain NOT TESTED by Owner decision. This is a
-   Development milestone with no Production deployment or release authority.
+   the exact base/head, checks and review state. The 2026-09-14 Owner correction
+   makes complete Live Photo import an iPhone PhotosUI/PhotoKit dependency in a
+   separate Apple task, including third-party camera content recognized by
+   Photos. Web image/text/drafts and backend paired-media/playback evidence are
+   assessed separately. Missing importer, hardware and complete motion samples
+   remain pending dependencies, not waivers. This is a Development milestone
+   with no Production deployment or release authority.
 4. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.

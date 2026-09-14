@@ -1519,7 +1519,7 @@ describe("Publishing editor", () => {
     expect(draftSwitch()?.getAttribute("aria-checked")).toBe("true");
   });
 
-  it("continues from the account's version when chosen and says newer input was not kept", async () => {
+  it("uses the account version while preserving later typing and the chosen save base", async () => {
     const saved = draftOf(emptyContent({ title: "起点" }), { revision: 3 });
     const device = emptyContent({ title: "本设备标题" });
     const account = emptyContent({ title: "别处标题", body: "别处正文" });
@@ -1541,12 +1541,12 @@ describe("Publishing editor", () => {
     await click(query('[data-choose="account"]'));
     await flush();
 
-    expect(titleInput()?.value).toBe("别处标题");
+    expect(titleInput()?.value).toBe("冲突后的输入");
     expect(bodyInput()?.value).toBe("别处正文");
     expect(query("[data-editor-notice]")?.textContent).toContain(
-      "选择前在本设备新输入的更改没有保留",
+      "保留冲突出现后在本设备输入的更改",
     );
-    expect(saveStatus()).toBe("saved");
+    expect(saveStatus()).toBe("pending");
     fn("saveDraftNow").mockClear();
     await type(titleInput(), "别处标题（改）");
     await click(query("[data-editor-save-now]"));
