@@ -1229,6 +1229,29 @@ describe("MediaSection across remounts and interruptions", () => {
     ).not.toBeNull();
   });
 
+  it("shows the not-reducible copy and offers 上传原图 when a HEIC cannot be reduced in Standard", async () => {
+    const chooseOriginal = vi.spyOn(UploadManager.prototype, "chooseOriginal");
+    await render("phone", {
+      preprocess: () => {
+        const preprocess = fakePreprocess();
+        preprocess.still.mockResolvedValueOnce({
+          status: "unsupported",
+          reason: "standard_not_smaller",
+        });
+        return preprocess;
+      },
+    });
+    await addStatic(1);
+    await until(() => tiles()[0]?.status === "needs_choice");
+    expect(container.textContent).toContain(
+      "此文件无法以标准画质缩小，可上传原图或移除",
+    );
+    expect(buttonByText("移除第 1 项")).not.toBeNull();
+    await click(buttonByText("上传原图：第 1 项"));
+    expect(chooseOriginal).toHaveBeenCalledWith(storeKeys()[0]);
+    await until(() => probe.store!.get().items[0]?.qualityMode === "original");
+  });
+
   it("continues paused uploads with 继续上传", async () => {
     const draftItems = vi.spyOn(UploadManager.prototype, "draftItems");
     const continueUploads = vi.spyOn(

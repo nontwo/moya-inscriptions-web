@@ -717,8 +717,9 @@ export const workMediaSchema = z
 
 /**
  * How a Standard component's bytes were produced: `optimized` is browser
- * output; `retained` keeps an acceptable input unchanged only after the
- * browser's optimization attempt produced no meaningful saving (Q04). An
+ * output; `retained` keeps an already-small JPEG, PNG, WebP or MP4 input
+ * unchanged only after the browser's optimization attempt produced no
+ * meaningful saving (Q04); HEIC/HEIF and QuickTime are never retained. An
  * Original component names neither.
  */
 export const standardComponentOutcomeSchema = z.enum(["optimized", "retained"]);
@@ -863,8 +864,10 @@ const packageContentTypes: readonly string[] = [
 ];
 /**
  * Optimized Standard masters are browser output. A retained Standard master
- * may keep an acceptable input type only after an optimization attempt proved
- * no saving; an unattempted HEIC or MOV source is never accepted as Standard.
+ * keeps an already-small JPEG, PNG or WebP (or MP4 motion) input unchanged
+ * only after an optimization attempt proved no saving; a HEIC/HEIF still or
+ * QuickTime motion is never accepted as Standard, retained or not — the
+ * browser offers Original or remove instead.
  */
 const standardStillContentTypes: readonly string[] = [
   "image/jpeg",
@@ -873,14 +876,11 @@ const standardStillContentTypes: readonly string[] = [
 ];
 const standardMotionContentTypes: readonly string[] = ["video/mp4"];
 const retainedStandardStillContentTypes: readonly string[] = [
-  ...standardStillContentTypes,
-  "image/heic",
-  "image/heif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
 ];
-const retainedStandardMotionContentTypes: readonly string[] = [
-  "video/mp4",
-  "video/quicktime",
-];
+const retainedStandardMotionContentTypes: readonly string[] = ["video/mp4"];
 
 /**
  * Registers one logical item before any bytes move: a static image (one

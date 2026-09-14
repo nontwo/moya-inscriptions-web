@@ -72,8 +72,9 @@ are added.
 
 ## Dependencies
 
-Pinned, open-source, added only where used: `@uppy/core` 6.0.1 and
-`@uppy/xhr-upload` 6.0.0 (MIT) for transfer mechanics with automatic retries
+Pinned, open-source, added only where used: `@uppy/core` 6.0.1, `@uppy/react`
+6.0.0 (its headless React hooks for selection, as the Owner instruction names)
+and `@uppy/xhr-upload` 6.0.0 (MIT) for transfer mechanics with automatic retries
 disabled; `mediabunny` 1.56.2 (MPL-2.0) for WebCodecs container demux/mux in a
 worker; `exifr` 7.1.3 (MIT) for bounded metadata extraction; `@dnd-kit/core`
 6.3.1, `@dnd-kit/sortable` 10.0.0, `@dnd-kit/utilities` 3.2.2 (MIT, already in
@@ -160,13 +161,13 @@ so saved-draft recovery uses a bounded account-scoped IndexedDB store; WebKit
 ignored a requested AAC bitrate and Chromium's H.264 output carried a
 color-matrix tagging mismatch, so compatible audio is copied and color space is
 set explicitly with a fidelity check; tall images need width-bounded display
-derivatives. Live Development runs confirmed that WebKit keeps the untouched
-input as the Standard master when its own JPEG/PNG encoding would not be at
-least 5 % smaller (including a 24 MP HEIC still); that retained master stays in
-the private store, the served derivatives carry no EXIF or GPS, and the item is
-presented as Standard because no optimization was applied. Development tool
-timings: HEIC decode about 0.46 s, motion transcode about 1.1 s including
-container start.
+derivatives. Live Development runs showed WebKit keeping an untouched input as
+the Standard master whenever its own encoding was not smaller, including a 24 MP
+HEIC still; the Matrix does not allow a source to be sent as Standard without an
+explicit choice, so retention is limited to already-small JPEG, PNG or WebP
+inputs, and a HEIC/HEIF still or QuickTime motion that Standard cannot reduce
+enters the explicit Original-or-remove choice. Development tool timings: HEIC
+decode about 0.46 s, motion transcode about 1.1 s including container start.
 
 Real samples: two iPhone 17 Pro Max HEIC Live stills and two Insta360 Luna Ultra
 JPEG Live stills were provided without motion components. By Owner decision only

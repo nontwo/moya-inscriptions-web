@@ -79,6 +79,21 @@ describe("retention rule", () => {
       }),
     ).toBe(false);
   });
+
+  it("retains only JPEG, PNG and WebP sources; HEIC/HEIF never, even decoded and not smaller", () => {
+    for (const sourceType of ["image/png", "image/webp"] as const)
+      expect(
+        shouldRetainStaticInput({ ...base, sourceType, outputBytes: 1220 }),
+      ).toBe(true);
+    for (const sourceType of ["image/heic", "image/heif"] as const) {
+      expect(
+        shouldRetainStaticInput({ ...base, sourceType, outputBytes: 1220 }),
+      ).toBe(false);
+      expect(
+        shouldRetainStaticInput({ ...base, sourceType, outputBytes: null }),
+      ).toBe(false);
+    }
+  });
 });
 
 interface FakeOptions {
@@ -181,7 +196,11 @@ describe("Standard static preprocessing", () => {
 
   it("retains an oriented input unchanged when re-encoding grows it (server derivatives orient it)", async () => {
     // WebKit's JPEG fallback grew the orientation-6 probe fixture by 21 %.
-    for (const sourceType of ["image/jpeg", "image/heic"] as const) {
+    for (const sourceType of [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ] as const) {
       const fake = fakeDeps({
         webp: false,
         outputBytes: 1210,
@@ -192,6 +211,7 @@ describe("Standard static preprocessing", () => {
           sourceType,
           exifOrientation: 6,
           headerDimensions: { width: 400, height: 300 },
+          mayHaveAlpha: false,
         }),
         fake.deps,
       );
@@ -207,6 +227,31 @@ describe("Standard static preprocessing", () => {
       fakeDeps({ webp: false, outputBytes: 900 }).deps,
     );
     expect(smaller.status).toBe("optimized");
+  });
+
+  it("never retains a decoded HEIC/HEIF: not ≥ 5 % smaller is an explicit choice, smaller is optimized", async () => {
+    // WebKit decodes HEIC; the source bytes must never leave as Standard (D3).
+    for (const sourceType of ["image/heic", "image/heif"] as const) {
+      for (const outputBytes of [1210, 1000, 951]) {
+        const fake = fakeDeps({
+          outputBytes,
+          decoded: { width: 300, height: 400 },
+        });
+        expect(
+          await preprocessStaticImage(
+            request({ sourceType, exifOrientation: 6 }),
+            fake.deps,
+          ),
+        ).toEqual({ status: "unsupported", reason: "standard_not_smaller" });
+        expect(fake.close).toHaveBeenCalledOnce();
+      }
+      expect(
+        await preprocessStaticImage(
+          request({ sourceType }),
+          fakeDeps({ outputBytes: 950 }).deps,
+        ),
+      ).toMatchObject({ status: "optimized", contentType: "image/webp" });
+    }
   });
 
   it("treats a canvas that silently drew nothing as unsupported, after the constrained retry", async () => {

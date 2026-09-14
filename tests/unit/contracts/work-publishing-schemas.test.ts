@@ -663,30 +663,35 @@ describe("upload holders and item registration", () => {
     expect(register({ qualityMode: "legacy" }).success).toBe(false);
   });
 
-  it("keeps an acceptable source as a Standard master only when the browser retained it", () => {
-    const heic = {
-      role: "still",
-      byteSize: 2_046_617,
-      contentType: "image/heic",
-    };
-    expect(
-      register({ components: [{ ...heic, standardOutcome: "retained" }] })
-        .success,
-    ).toBe(true);
-    expect(
-      messagesOf(
-        register({ components: [{ ...heic, standardOutcome: "optimized" }] }),
-      ),
-    ).toEqual(["unsupported_type"]);
+  it("keeps an already-small JPEG, PNG, WebP or MP4 as a Standard master only when the browser retained it", () => {
+    for (const contentType of ["image/jpeg", "image/png", "image/webp"]) {
+      expect(
+        register({
+          components: [
+            {
+              role: "still",
+              byteSize: 638_780,
+              contentType,
+              standardOutcome: "retained",
+            },
+          ],
+        }).success,
+      ).toBe(true);
+    }
     expect(
       register({
         kind: "live",
         components: [
-          { ...heic, standardOutcome: "retained" },
+          {
+            role: "still",
+            byteSize: 638_780,
+            contentType: "image/jpeg",
+            standardOutcome: "retained",
+          },
           {
             role: "motion",
-            byteSize: 2_377_146,
-            contentType: "video/quicktime",
+            byteSize: 2_009_858,
+            contentType: "video/mp4",
             standardOutcome: "retained",
           },
         ],
@@ -708,9 +713,83 @@ describe("upload holders and item registration", () => {
     expect(
       register({
         qualityMode: "original",
-        components: [{ ...heic, standardOutcome: "retained" }],
+        components: [
+          {
+            role: "still",
+            byteSize: 1,
+            contentType: "image/jpeg",
+            standardOutcome: "retained",
+          },
+        ],
       }).success,
     ).toBe(false);
+  });
+
+  it("never accepts a HEIC/HEIF still or QuickTime motion as Standard, even declared retained", () => {
+    const heic = {
+      role: "still",
+      byteSize: 1_853_402,
+      contentType: "image/heic",
+    };
+    for (const contentType of ["image/heic", "image/heif"]) {
+      for (const standardOutcome of ["retained", "optimized"]) {
+        expect(
+          messagesOf(
+            register({
+              components: [{ ...heic, contentType, standardOutcome }],
+            }),
+          ),
+        ).toEqual(["unsupported_type"]);
+      }
+    }
+    expect(
+      messagesOf(
+        register({
+          kind: "live",
+          components: [
+            { ...heic, standardOutcome: "retained" },
+            {
+              role: "motion",
+              byteSize: 2_377_146,
+              contentType: "video/quicktime",
+              standardOutcome: "retained",
+            },
+          ],
+          clientPairing: applePairing,
+        }),
+      ),
+    ).toEqual(["unsupported_type", "unsupported_type"]);
+    expect(
+      messagesOf(
+        register({
+          kind: "live",
+          components: [
+            {
+              role: "still",
+              byteSize: 1,
+              contentType: "image/webp",
+              standardOutcome: "optimized",
+            },
+            {
+              role: "motion",
+              byteSize: 2_377_146,
+              contentType: "video/quicktime",
+              standardOutcome: "retained",
+            },
+          ],
+          clientPairing: applePairing,
+        }),
+      ),
+    ).toEqual(["unsupported_type"]);
+    // Original mode still accepts the source types themselves.
+    expect(
+      register({
+        kind: "live",
+        qualityMode: "original",
+        components: livePair,
+        clientPairing: applePairing,
+      }).success,
+    ).toBe(true);
   });
 
   it("records the browser profile exactly for Standard items", () => {

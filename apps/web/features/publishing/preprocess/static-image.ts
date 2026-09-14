@@ -13,16 +13,27 @@ import type { Dimensions } from "./profiles";
  * worker transport so the decisions are testable: decode with EXIF
  * orientation applied, fit the profile, encode (WebP q0.92 or JPEG q0.92;
  * alpha as WebP q1 or PNG), then keep the unchanged input when re-encoding
- * saves less than 5 % and the input is acceptable (§8.2). A retained input
- * keeps its EXIF orientation; the server derivatives apply it (autoOrient /
- * irot), so it is never applied twice. Anything the browser cannot decode or
- * encode becomes an explicit choice, never a silent fallback.
+ * saves less than 5 % and the input is an already-small JPEG, PNG or WebP
+ * (§8.2). A retained input keeps its EXIF orientation; the server derivatives
+ * apply it (autoOrient / irot), so it is never applied twice. A HEIC/HEIF
+ * source is never retained: when the browser cannot decode it, or its
+ * Standard output is not at least 5 % smaller, the item becomes an explicit
+ * choice (Original or remove) — never a silent fallback to the source bytes.
  */
 
 export type StandardStillSourceType =
   "image/jpeg" | "image/png" | "image/webp" | "image/heic" | "image/heif";
 
 export type StandardStillOutputType = "image/webp" | "image/jpeg" | "image/png";
+
+/** The only source types the unchanged input may be kept as a Standard master. */
+export type RetainedStandardStillType =
+  "image/jpeg" | "image/png" | "image/webp";
+
+export const isRetainableStandardStillType = (
+  type: StandardStillSourceType,
+): type is RetainedStandardStillType =>
+  type === "image/jpeg" || type === "image/png" || type === "image/webp";
 
 export interface StaticPreprocessRequest {
   readonly file: Blob;
@@ -35,8 +46,15 @@ export interface StaticPreprocessRequest {
   readonly mayHaveAlpha: boolean;
 }
 
+/**
+ * `standard_not_smaller`: a HEIC/HEIF source whose Standard output would not
+ * be at least 5 % smaller; the author chooses Original or remove.
+ */
 export type StaticUnsupportedReason =
-  "decode_unsupported" | "encode_unsupported" | "input_too_large";
+  | "decode_unsupported"
+  | "encode_unsupported"
+  | "input_too_large"
+  | "standard_not_smaller";
 
 export type StaticPreprocessResult =
   | {
@@ -48,7 +66,7 @@ export type StaticPreprocessResult =
     }
   | {
       readonly status: "retained";
-      readonly contentType: StandardStillSourceType;
+      readonly contentType: RetainedStandardStillType;
       readonly width: number;
       readonly height: number;
     }
@@ -99,9 +117,10 @@ export interface StaticImageDeps {
 
 /**
  * The mandatory retention rule (§8.2, §9.1): the unchanged input becomes the
- * Standard master when it is an acceptable type the browser decoded, already
- * within the profile, and re-encoding did not save at least 5 %. EXIF
- * orientation does not prevent retention: the server derivatives apply it.
+ * Standard master only when it is a JPEG, PNG or WebP the browser decoded,
+ * already within the profile, and re-encoding did not save at least 5 %.
+ * HEIC/HEIF is never retained (D3). EXIF orientation does not prevent
+ * retention: the server derivatives apply it.
  */
 export const shouldRetainStaticInput = (facts: {
   readonly sourceType: StandardStillSourceType;
@@ -111,6 +130,7 @@ export const shouldRetainStaticInput = (facts: {
   readonly inputBytes: number;
   readonly outputBytes: number | null;
 }): boolean =>
+  isRetainableStandardStillType(facts.sourceType) &&
   facts.decodedInBrowser &&
   withinStandardStatic(facts.decoded) &&
   (facts.outputBytes === null ||
@@ -276,6 +296,7 @@ export async function preprocessStaticImage(
     if (output === null)
       return { status: "unsupported", reason: "encode_unsupported" };
     if (
+      isRetainableStandardStillType(request.sourceType) &&
       shouldRetainStaticInput({
         sourceType: request.sourceType,
         decodedInBrowser: true,
@@ -290,6 +311,16 @@ export async function preprocessStaticImage(
         width: decoded.width,
         height: decoded.height,
       };
+    // A HEIC/HEIF whose Standard output saves < 5 % is neither kept nor grown silently.
+    if (
+      isHeif(request.sourceType) &&
+      !meaningfulSaving(
+        request.file.size,
+        output.blob.size,
+        STANDARD_STATIC.minimumSaving,
+      )
+    )
+      return { status: "unsupported", reason: "standard_not_smaller" };
     return {
       status: "optimized",
       blob: output.blob,

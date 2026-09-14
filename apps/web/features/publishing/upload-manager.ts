@@ -8,6 +8,7 @@ import {
   STANDARD_IMAGE_PROFILE,
   STANDARD_LIVE_PROFILE,
 } from "./preprocess/profiles";
+import { isRetainableStandardStillType } from "./preprocess/static-image";
 import { createExternalStore } from "./upload-manager-store";
 
 import type { BlobHasher } from "./hashing";
@@ -228,6 +229,7 @@ const choiceMessages: Readonly<Record<string, string>> = {
     "此浏览器无法处理这张 HEIC/HEIF 照片的标准画质，可上传原图或移除",
   encode_unsupported: "此浏览器无法生成标准画质，可上传原图或移除",
   input_too_large: "图片尺寸过大，无法生成标准画质，可上传原图或移除",
+  standard_not_smaller: "此文件无法以标准画质缩小，可上传原图或移除",
   webcodecs_unavailable: "此浏览器无法处理实况照片的动态部分，可上传原图或移除",
   video_decode_unsupported: "此浏览器无法解码实况照片的视频，可上传原图或移除",
   video_encode_unsupported:
@@ -1436,14 +1438,18 @@ export class UploadManager {
         contentType: result.contentType,
         standardOutcome: "optimized",
       };
-    if (result.status === "retained")
-      return {
-        role: "still",
-        blob,
-        contentType: type,
-        standardOutcome: "retained",
-      };
-    if (result.status === "unsupported")
+    if (result.status === "retained") {
+      // Only an already-small JPEG/PNG/WebP may leave unchanged as Standard;
+      // a HEIC/HEIF source is an explicit choice, never sent silently (D3).
+      if (isRetainableStandardStillType(type))
+        return {
+          role: "still",
+          blob,
+          contentType: type,
+          standardOutcome: "retained",
+        };
+      this.needsChoice(record, "standard_not_smaller");
+    } else if (result.status === "unsupported")
       this.needsChoice(record, result.reason);
     else
       this.fail(record, {
@@ -1470,14 +1476,17 @@ export class UploadManager {
         contentType: "video/mp4",
         standardOutcome: "optimized",
       };
-    if (result.status === "retained")
-      return {
-        role: "motion",
-        blob,
-        contentType: type,
-        standardOutcome: "retained",
-      };
-    if (
+    if (result.status === "retained") {
+      // Only MP4 motion may be kept unchanged; QuickTime is never sent as Standard.
+      if (type === "video/mp4")
+        return {
+          role: "motion",
+          blob,
+          contentType: type,
+          standardOutcome: "retained",
+        };
+      this.needsChoice(record, "standard_not_smaller");
+    } else if (
       result.status === "unsupported" &&
       !FINAL_MOTION_REASONS.has(result.reason)
     )

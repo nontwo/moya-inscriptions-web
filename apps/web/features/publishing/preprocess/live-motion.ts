@@ -35,6 +35,8 @@ export interface MotionColorSpace {
 }
 
 export interface MotionSourceFacts {
+  /** Container the bytes were demuxed from; only `mp4` may ever be retained. */
+  readonly container: "mp4" | "quicktime" | "other";
   readonly videoTracks: number;
   readonly audioTracks: number;
   readonly durationMs: number;
@@ -69,7 +71,11 @@ export interface MotionPlan {
   readonly audio: "none" | "copy" | "encode";
   /** Frames are tagged BT.709 explicitly when the source is untagged. */
   readonly tagBt709: boolean;
-  /** Whether an unchanged source may be kept when re-encoding saves too little. */
+  /**
+   * Whether an unchanged source may be kept when re-encoding saves too
+   * little: an MP4 that already fits the profile. QuickTime is never
+   * retained as Standard; its transcoded MP4 is sent instead.
+   */
   readonly retainable: boolean;
 }
 
@@ -145,6 +151,7 @@ export const planMotionConversion = (
     audio,
     tagBt709: colorUntagged(facts.colorSpace),
     retainable:
+      facts.container === "mp4" &&
       facts.videoCodec === "avc" &&
       long <= STANDARD_MOTION.maxLongEdge &&
       facts.frameRate <= STANDARD_MOTION.maxFrameRate &&
@@ -178,7 +185,7 @@ export const acceptMotionOutput = (
   output.meanFrameDifference !== null &&
   output.meanFrameDifference <= STANDARD_MOTION.fidelityMaxMeanDifference;
 
-/** Keep the unchanged source only when it already fits and re-encoding saved < 5 %. */
+/** Keep the unchanged MP4 source only when it already fits and re-encoding saved < 5 %. */
 export const shouldRetainMotionInput = (
   plan: MotionPlan,
   inputBytes: number,

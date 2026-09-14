@@ -164,6 +164,103 @@ describe("upload manager: preparation and registration", () => {
     ]);
     expect(test.transfer.starts[0]!.request.body).toBe(source.still.file);
   });
+
+  it("offers Original or remove when a HEIC cannot be reduced in Standard, never the source bytes as Standard", async () => {
+    const test = createTestManager();
+    test.preprocess.still.mockResolvedValueOnce({
+      status: "unsupported",
+      reason: "standard_not_smaller",
+    });
+    const source: LogicalSource = {
+      kind: "static",
+      still: liveSource(IDENTIFIER).still,
+    };
+    test.manager.addConfirmed([confirm("heic", source)]);
+    await settle();
+    expect(test.item("heic")).toMatchObject({
+      phase: "needs_choice",
+      choice: {
+        reason: "standard_not_smaller",
+        message: "此文件无法以标准画质缩小，可上传原图或移除",
+      },
+    });
+    expect(test.client.client.registerItem).not.toHaveBeenCalled();
+    expect(test.transfer.starts).toHaveLength(0);
+    test.manager.chooseOriginal("heic");
+    await settle();
+    expect(test.client.client.registerItem.mock.calls[0]![0]).toMatchObject({
+      qualityMode: "original",
+      components: [
+        { role: "still", contentType: "image/heic", byteSize: 1000 },
+      ],
+    });
+    expect(test.transfer.starts[0]!.request.body).toBe(source.still.file);
+  });
+
+  it("never registers a HEIC/HEIF still or QuickTime motion as retained Standard, even if preprocessing says so", async () => {
+    // A stale worker answer must not turn into a silent source upload (D3).
+    const test = createTestManager();
+    test.preprocess.still.mockResolvedValueOnce({
+      status: "retained",
+      contentType: "image/jpeg",
+      width: 4,
+      height: 3,
+    });
+    test.manager.addConfirmed([
+      confirm("heic", { kind: "static", still: liveSource(IDENTIFIER).still }),
+    ]);
+    await settle();
+    expect(test.item("heic")).toMatchObject({
+      phase: "needs_choice",
+      choice: { reason: "standard_not_smaller" },
+    });
+    test.preprocess.still.mockResolvedValueOnce({
+      status: "optimized",
+      blob: new Blob([new Uint8Array(100)], { type: "image/webp" }),
+      contentType: "image/webp",
+      width: 4,
+      height: 3,
+    });
+    test.preprocess.motion.mockResolvedValueOnce({
+      status: "retained",
+      durationMs: 2900,
+      hasAudio: true,
+    });
+    test.manager.addConfirmed([confirm("live", liveSource(IDENTIFIER))]);
+    await settle();
+    expect(test.item("live")).toMatchObject({
+      phase: "needs_choice",
+      choice: { reason: "standard_not_smaller" },
+    });
+    expect(test.client.client.registerItem).not.toHaveBeenCalled();
+    expect(test.transfer.starts).toHaveLength(0);
+  });
+
+  it("makes a Live Photo whose HEIC still cannot be reduced an explicit choice for the whole item", async () => {
+    const test = createTestManager();
+    test.preprocess.still.mockResolvedValueOnce({
+      status: "unsupported",
+      reason: "standard_not_smaller",
+    });
+    test.manager.addConfirmed([confirm("live", liveSource(IDENTIFIER))]);
+    await settle();
+    expect(test.item("live")).toMatchObject({
+      phase: "needs_choice",
+      choice: { reason: "standard_not_smaller" },
+    });
+    expect(test.preprocess.motion).not.toHaveBeenCalled();
+    expect(test.client.client.registerItem).not.toHaveBeenCalled();
+    test.manager.chooseOriginal("live");
+    await settle();
+    expect(test.client.client.registerItem.mock.calls[0]![0]).toMatchObject({
+      kind: "live",
+      qualityMode: "original",
+      components: [
+        { role: "still", contentType: "image/heic" },
+        { role: "motion", contentType: "video/quicktime" },
+      ],
+    });
+  });
 });
 
 describe("upload manager: cancellation and stale answers", () => {

@@ -15,7 +15,9 @@ import {
   CanvasSink,
   Conversion,
   Input,
+  MP4,
   Mp4OutputFormat,
+  QTFF,
   Output,
   VideoSample,
 } from "mediabunny";
@@ -73,12 +75,21 @@ const FIDELITY_WIDTH = 64;
 
 let active: Conversion | null = null;
 
+const describeContainer = async (
+  input: Input,
+): Promise<MotionSourceFacts["container"]> => {
+  const format = await input.getFormat();
+  return format === MP4 ? "mp4" : format === QTFF ? "quicktime" : "other";
+};
+
 const describeSource = async (input: Input): Promise<MotionSourceFacts> => {
+  const container = await describeContainer(input);
   const videos = await input.getVideoTracks();
   const audios = await input.getAudioTracks();
   const video = videos[0];
   if (video === undefined)
     return {
+      container,
       videoTracks: 0,
       audioTracks: audios.length,
       durationMs: 0,
@@ -95,6 +106,7 @@ const describeSource = async (input: Input): Promise<MotionSourceFacts> => {
   const audioConfig = audio ? await audio.getDecoderConfig() : null;
   const stats = await video.computePacketStats(120);
   return {
+    container,
     videoTracks: videos.length,
     audioTracks: audios.length,
     durationMs: Math.round((await input.computeDuration()) * 1000),

@@ -16,6 +16,7 @@ import {
 import type { MotionPlan, MotionSourceFacts } from "./live-motion";
 
 const iphoneMotion: MotionSourceFacts = {
+  container: "quicktime",
   videoTracks: 1,
   audioTracks: 1,
   durationMs: 2900,
@@ -190,10 +191,11 @@ describe("Standard Live output checks", () => {
     ).toBe(true);
   });
 
-  it("retains an already compatible H.264 source only when re-encoding saves < 5 %", () => {
+  it("retains an already compatible H.264 MP4 only when re-encoding saves < 5 %", () => {
     const avc = planMotionConversion(
       {
         ...iphoneMotion,
+        container: "mp4",
         videoCodec: "avc",
         display: { width: 1080, height: 1920 },
       },
@@ -203,6 +205,22 @@ describe("Standard Live output checks", () => {
     expect(shouldRetainMotionInput(avc, 1_000_000, 990_000)).toBe(true);
     expect(shouldRetainMotionInput(avc, 1_000_000, 800_000)).toBe(false);
     expect(shouldRetainMotionInput(plan, 1_000_000, 990_000)).toBe(false);
+  });
+
+  it("never retains QuickTime motion, even compatible H.264 that re-encodes no smaller (D3)", () => {
+    for (const container of ["quicktime", "other"] as const) {
+      const mov = planMotionConversion(
+        {
+          ...iphoneMotion,
+          container,
+          videoCodec: "avc",
+          display: { width: 1080, height: 1920 },
+        },
+        supported,
+      ) as MotionPlan;
+      expect(mov.retainable).toBe(false);
+      expect(shouldRetainMotionInput(mov, 1_000_000, 1_000_000)).toBe(false);
+    }
   });
 
   it("measures picture difference over RGB channels only", () => {
