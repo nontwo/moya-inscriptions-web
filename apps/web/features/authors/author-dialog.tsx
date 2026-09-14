@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { Icon } from "@moya/ui";
 import type { ReactNode } from "react";
 import { requestIdentity } from "../shell/request-identity";
 
@@ -8,12 +9,15 @@ export const AuthorDialog = ({
   title,
   dirty = false,
   dismissible = true,
+  closeRequested = false,
   onClose,
   children,
 }: {
   title: string;
   dirty?: boolean;
   dismissible?: boolean;
+  /** Finish this modal's Back transition before a caller changes the parent view. */
+  closeRequested?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) => {
@@ -32,6 +36,9 @@ export const AuthorDialog = ({
       window.history.back();
     else latest.current.onClose();
   };
+  useEffect(() => {
+    if (closeRequested) close();
+  }, [closeRequested]);
   useEffect(() => {
     const dialog = ref.current;
     dialog?.showModal();
@@ -106,8 +113,14 @@ export const AuthorDialog = ({
     >
       <div>
         <header className="phase4-actions">
-          <button type="button" onClick={close} disabled={!dismissible}>
-            返回
+          <button
+            className="phase4-back"
+            aria-label="返回"
+            type="button"
+            onClick={close}
+            disabled={!dismissible}
+          >
+            <Icon aria-hidden="true" name="back" />
           </button>
           <h2>{title}</h2>
         </header>

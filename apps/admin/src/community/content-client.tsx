@@ -10,7 +10,15 @@ import type {
   OperatorWorkPage,
 } from "@moya/contracts/internal/community-operator";
 import type { ContentIdentity } from "@moya/contracts";
-import { call, describeFailure, formatTime } from "./api";
+import {
+  call,
+  describeFailure,
+  formatTime,
+  submissionStateLabels,
+  UNTITLED_WORK,
+} from "./api";
+import type { OperatorWorkSubmission } from "./api";
+import { SubmissionDetail } from "./work-submissions-client";
 import styles from "./community.module.css";
 
 type Tab = "works" | "featured";
@@ -25,7 +33,7 @@ type Operation = {
   input: Record<string, unknown>;
   label: string;
 };
-const labels = { visible: "公开", hidden: "已隐藏", removed: "已移除" };
+const labels = { visible: "正常", hidden: "已隐藏", removed: "已移除" };
 const PAGE_SIZE = 20;
 const Pager = ({
   page,
@@ -68,6 +76,9 @@ const Pager = ({
 export const CommunityContentClient = () => {
   const params = useSearchParams();
   const { openModal, closeModal } = useModal();
+  const [selectedWork, setSelectedWork] = useState<OperatorWork | null>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
+  const detailRequest = useRef(0);
   const [tab, setTab] = useState<Tab>("works");
   const [query, setQuery] = useState({
     page: 1,
@@ -96,7 +107,15 @@ export const CommunityContentClient = () => {
           ...query,
           pageSize: PAGE_SIZE,
         });
-        if (epoch === request.current) setWorks(result);
+        if (epoch === request.current) {
+          setWorks(result);
+          setSelectedWork((current) =>
+            current === null
+              ? null
+              : (result.items.find((item) => item.id === current.id) ??
+                current),
+          );
+        }
       } else {
         const result = await call<FeaturedPage>("read-featured", {
           ...query,
@@ -124,6 +143,7 @@ export const CommunityContentClient = () => {
     void load();
     return () => {
       request.current++;
+      detailRequest.current++;
     };
   }, [load]);
   const run = async (op: Operation) => {
@@ -132,7 +152,13 @@ export const CommunityContentClient = () => {
     setBusy(true);
     setNotice(null);
     try {
-      await call(op.name, op.input);
+      const result = await call(op.name, op.input);
+      if (op.name === "moderate-work") {
+        const updated = result as OperatorWork;
+        setSelectedWork((current) =>
+          current?.id === updated.id ? updated : current,
+        );
+      }
       setRetry(null);
       setNotice(`${op.label}已保存。`);
       await load();
@@ -163,6 +189,8 @@ export const CommunityContentClient = () => {
     });
   const disabled = busy || retry !== null;
   const chooseTab = (next: Tab) => {
+    detailRequest.current++;
+    setSelectedWork(null);
     setTab(next);
     setQuery({ page: 1, search: "" });
     setSearch("");
@@ -186,6 +214,71 @@ export const CommunityContentClient = () => {
     });
     openModal("community-work-confirm");
   };
+  const openWork = async (
+    id: string,
+    opener: HTMLElement,
+    known?: OperatorWork,
+  ) => {
+    const sequence = ++detailRequest.current;
+    detailOpener.current = opener;
+    setSelectedWork(null);
+    try {
+      const item =
+        known ??
+        (
+          await call<OperatorWorkPage>("read-works", {
+            page: 1,
+            pageSize: 20,
+            search: id,
+          })
+        ).items.find((work) => work.id === id);
+      if (sequence !== detailRequest.current) return;
+      if (!item) {
+        setNotice("该作品当前不可用。");
+        return;
+      }
+      setSelectedWork(item);
+    } catch (error) {
+      if (sequence === detailRequest.current)
+        setNotice(describeFailure(error).text);
+    }
+  };
+  const workActions = (item: OperatorWork) => (
+    <div className={styles.actions}>
+      {(["visible", "hidden", "removed"] as const)
+        .filter((state) => state !== item.state)
+        .map((state) => (
+          <button
+            type="button"
+            className={styles.actionButton}
+            key={state}
+            disabled={disabled || item.authorDeleted}
+            onClick={() => confirmWork(item, state)}
+          >
+            {state === "visible"
+              ? "解除管理限制"
+              : state === "hidden"
+                ? "隐藏作品"
+                : "移除作品"}
+          </button>
+        ))}
+      <button
+        className={styles.actionButton}
+        type="button"
+        disabled={disabled || item.authorDeleted}
+        onClick={() =>
+          feature(
+            { type: "work", id: item.id },
+            item.latestSubmission
+              ? item.latestSubmission.title || UNTITLED_WORK
+              : item.title || UNTITLED_WORK,
+          )
+        }
+      >
+        加入推荐
+      </button>
+    </div>
+  );
   return (
     <div className={styles.workspace}>
       <SetStepNav
@@ -291,12 +384,37 @@ export const CommunityContentClient = () => {
                 {works.items.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <strong>{item.title}</strong>
+                      <button
+                        type="button"
+                        className={styles.rowLink}
+                        onClick={(event) =>
+                          void openWork(item.id, event.currentTarget, item)
+                        }
+                      >
+                        {item.latestSubmission
+                          ? item.latestSubmission.title || UNTITLED_WORK
+                          : item.title || UNTITLED_WORK}
+                      </button>
+                      {item.latestSubmission ? (
+                        <span className={styles.secondary}>
+                          最新公开提交 ·{" "}
+                          {
+                            submissionStateLabels[
+                              item.latestSubmission.disposition
+                            ]
+                          }
+                        </span>
+                      ) : null}
                       <span className={styles.secondary}>{item.id}</span>
-                      <details>
-                        <summary>查看全文</summary>
-                        <p className={styles.fullText}>{item.text}</p>
-                      </details>
+                      <button
+                        type="button"
+                        className={styles.actionButton}
+                        onClick={(event) =>
+                          void openWork(item.id, event.currentTarget, item)
+                        }
+                      >
+                        查看详情与管理
+                      </button>
                       <span className={styles.secondary}>
                         {/* Null for a work never publicly exposed (self-only or
                             still awaiting its first approval). */}
@@ -315,38 +433,13 @@ export const CommunityContentClient = () => {
                     </td>
                     <td>
                       {item.authorDeleted ? "作者已删除" : labels[item.state]}
+                      <span className={styles.secondary}>
+                        {item.publiclyVisible
+                          ? "当前对外公开"
+                          : "当前不对外显示"}
+                      </span>
                     </td>
-                    <td>
-                      <div className={styles.actions}>
-                        {(["visible", "hidden", "removed"] as const)
-                          .filter((state) => state !== item.state)
-                          .map((state) => (
-                            <button
-                              type="button"
-                              className={styles.actionButton}
-                              key={state}
-                              disabled={disabled || item.authorDeleted}
-                              onClick={() => confirmWork(item, state)}
-                            >
-                              {state === "visible"
-                                ? "恢复公开"
-                                : state === "hidden"
-                                  ? "隐藏作品"
-                                  : "移除作品"}
-                            </button>
-                          ))}
-                        <button
-                          className={styles.actionButton}
-                          type="button"
-                          disabled={disabled || item.authorDeleted}
-                          onClick={() =>
-                            feature({ type: "work", id: item.id }, item.title)
-                          }
-                        >
-                          加入推荐
-                        </button>
-                      </div>
-                    </td>
+                    <td>{workActions(item)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -421,6 +514,7 @@ export const CommunityContentClient = () => {
                   <tbody>
                     {featured.items.map((item) => (
                       <FeaturedRow
+                        onOpenWork={(id, opener) => void openWork(id, opener)}
                         key={`${item.target.type}:${item.target.id}:${item.version}`}
                         item={item}
                         disabled={disabled}
@@ -459,8 +553,20 @@ export const CommunityContentClient = () => {
           </p>
         </>
       ) : null}
+      {selectedWork === null ? null : (
+        <WorkDetailPanel
+          key={selectedWork.id}
+          item={selectedWork}
+          actions={workActions(selectedWork)}
+          onClose={() => {
+            detailRequest.current++;
+            setSelectedWork(null);
+            detailOpener.current?.focus();
+          }}
+        />
+      )}
       <ConfirmationModal
-        heading="确认作品可见性变更"
+        heading="确认作品管理状态变更"
         modalSlug="community-work-confirm"
         cancelLabel="取消"
         confirmLabel="确认保存"
@@ -468,7 +574,7 @@ export const CommunityContentClient = () => {
         body={
           <p>
             {confirmation?.label}
-            。变更立即影响作者主页、发现、收藏、详情与讨论访问；原有身份、首次发布时间和审计记录保留。
+            。隐藏或移除会限制访问；解除管理限制仍遵循作者的可见范围和当前审核结果，不会代替审核通过。原有身份、首次发布时间和审计记录保留。
           </p>
         }
         onConfirm={async () => {
@@ -485,10 +591,12 @@ const FeaturedRow = ({
   item,
   disabled,
   onSave,
+  onOpenWork,
 }: {
   item: FeaturedPage["items"][number];
   disabled: boolean;
   onSave: (position: number, enabled: boolean) => void;
+  onOpenWork: (id: string, opener: HTMLElement) => void;
 }) => {
   const [position, setPosition] = useState(String(item.position));
   const [enabled, setEnabled] = useState(item.enabled);
@@ -496,7 +604,17 @@ const FeaturedRow = ({
   return (
     <tr>
       <td>
-        {item.title ?? "当前不可用的内容"}
+        {item.target.type === "work" ? (
+          <button
+            type="button"
+            className={styles.rowLink}
+            onClick={(event) => onOpenWork(item.target.id, event.currentTarget)}
+          >
+            {item.title || UNTITLED_WORK} · 查看详情
+          </button>
+        ) : (
+          (item.title ?? "当前不可用的内容")
+        )}
         <span className={styles.secondary}>
           {item.target.type === "work" ? "用户作品" : "资料"} · {item.target.id}
         </span>
@@ -648,6 +766,117 @@ const CatalogPicker = ({
           />
         </>
       ) : null}
+    </section>
+  );
+};
+
+const WorkDetailPanel = ({
+  item,
+  actions,
+  onClose,
+}: {
+  item: OperatorWork;
+  actions: React.ReactNode;
+  onClose: () => void;
+}) => {
+  const panel = useRef<HTMLElement | null>(null);
+  const [revision, setRevision] = useState(
+    item.latestSubmission?.revisionId ?? item.publicRevisionId,
+  );
+  const [detail, setDetail] = useState<OperatorWorkSubmission | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    panel.current?.focus();
+    panel.current?.scrollIntoView({ block: "start" });
+  }, []);
+  useEffect(() => {
+    let current = true;
+    setDetail(null);
+    setError(null);
+    if (revision)
+      void call<OperatorWorkSubmission>("read-work-submission", {
+        id: revision,
+      }).then(
+        (data) => {
+          if (current) setDetail(data);
+        },
+        (error) => {
+          if (current) setError(describeFailure(error).text);
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [revision, retry]);
+  return (
+    <section
+      className={styles.panel}
+      ref={panel}
+      tabIndex={-1}
+      aria-label="作品详情与管理"
+      data-work-management-detail=""
+    >
+      <div className={styles.panelHeader}>
+        <h2>作品详情与管理</h2>
+        <button type="button" className={styles.actionButton} onClick={onClose}>
+          返回列表
+        </button>
+      </div>
+      <p>
+        {item.publiclyVisible ? "当前对外公开" : "当前不对外显示"} · 管理状态：
+        {labels[item.state]}
+      </p>
+      {actions}
+      <div className={styles.tabs}>
+        {item.latestSubmission ? (
+          <button
+            className={styles.tab}
+            type="button"
+            aria-pressed={revision === item.latestSubmission.revisionId}
+            onClick={() => setRevision(item.latestSubmission!.revisionId)}
+          >
+            最新公开提交
+          </button>
+        ) : null}
+        {item.publicRevisionId &&
+        item.publicRevisionId !== item.latestSubmission?.revisionId ? (
+          <button
+            className={styles.tab}
+            type="button"
+            aria-pressed={revision === item.publicRevisionId}
+            onClick={() => setRevision(item.publicRevisionId)}
+          >
+            {item.publiclyVisible ? "当前公开版本" : "上次公开版本"}
+          </button>
+        ) : null}
+      </div>
+      {!revision ? (
+        <p>
+          暂无可供管理查看的公开提交。私人草稿和仅自己可见的提交不在此展示。
+        </p>
+      ) : error ? (
+        <p role="alert">
+          {error}{" "}
+          <button type="button" onClick={() => setRetry((n) => n + 1)}>
+            重试读取详情
+          </button>
+        </p>
+      ) : detail === null ? (
+        <p role="status">正在读取详情…</p>
+      ) : (
+        <SubmissionDetail
+          key={detail.revisionId}
+          data={detail}
+          actions={
+            <Link
+              href={`/admin/community-moderation/work-submissions?item=${encodeURIComponent(detail.revisionId)}`}
+            >
+              打开提交审核与处理
+            </Link>
+          }
+        />
+      )}
     </section>
   );
 };

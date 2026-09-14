@@ -29,6 +29,27 @@ export const operatorWorkSchema = z.strictObject({
   version,
   /** Null for a work never publicly exposed (self-only or pending first submission). */
   firstPublishedAt: z.iso.datetime().nullable(),
+  /** Only queue-readable immutable submissions; never a private draft. */
+  latestSubmission: z
+    .strictObject({
+      revisionId: z.string().regex(/^work-revision-[0-9a-f]{32}$/u),
+      title: z.string(),
+      disposition: z.enum([
+        "pending",
+        "approved",
+        "rejected",
+        "superseded",
+        "withdrawn",
+      ]),
+    })
+    .nullable()
+    .optional(),
+  publicRevisionId: z
+    .string()
+    .regex(/^work-revision-[0-9a-f]{32}$/u)
+    .nullable()
+    .optional(),
+  publiclyVisible: z.boolean().optional(),
 });
 export const operatorWorkPageSchema = z.strictObject({
   items: z.array(operatorWorkSchema).max(50),

@@ -50,6 +50,33 @@ const render = async (onClose: () => void, dirty = false) => {
   return element;
 };
 describe("author modal history ownership", () => {
+  it("finishes the modal Back before navigating to a parent profile view", async () => {
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const navigate = vi.fn();
+    await render(navigate);
+    await act(async () =>
+      root!.render(
+        <StrictMode>
+          <AuthorDialog title="编辑" onClose={navigate} closeRequested>
+            <input aria-label="私有文本" defaultValue="草稿" />
+          </AuthorDialog>
+        </StrictMode>,
+      ),
+    );
+    expect(back).toHaveBeenCalledOnce();
+    expect(navigate).not.toHaveBeenCalled();
+    await act(async () => {
+      window.history.replaceState(
+        { screen: "detail" },
+        "",
+        window.location.href,
+      );
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: { screen: "detail" } }),
+      );
+    });
+    expect(navigate).toHaveBeenCalledOnce();
+  });
   it("registers once under StrictMode and browser Back closes only the modal", async () => {
     const push = vi.spyOn(window.history, "pushState"),
       close = vi.fn(),

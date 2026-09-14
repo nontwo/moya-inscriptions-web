@@ -15,7 +15,6 @@ import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
 import { PeopleList } from "./people-list";
 import { TrashPanel } from "../publishing/ui/drafts/trash-panel";
-import draftStyles from "../publishing/ui/drafts/drafts.module.css";
 import { requestIdentity } from "../shell/request-identity";
 import styles from "../user/user-presentation.module.css";
 const tabs = ["works", "favorites", "likes", "history"] as const;
@@ -201,6 +200,7 @@ const ScopedAuthorProfileOverlay = ({
                 {profile.totals.following !== null && (
                   <button
                     type="button"
+                    className="phase4-inline-total"
                     onClick={() =>
                       setPeople(people === "following" ? null : "following")
                     }
@@ -211,6 +211,7 @@ const ScopedAuthorProfileOverlay = ({
                 {profile.totals.followers !== null && (
                   <button
                     type="button"
+                    className="phase4-inline-total"
                     onClick={() =>
                       setPeople(people === "followers" ? null : "followers")
                     }
@@ -218,36 +219,7 @@ const ScopedAuthorProfileOverlay = ({
                     粉丝 {profile.totals.followers}
                   </button>
                 )}
-                {profile.isOwner ? (
-                  <>
-                    <button type="button" onClick={() => setModal("edit")}>
-                      编辑资料
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onViewChange(
-                          state.tab === "comments" ? "works" : "comments",
-                          0,
-                        )
-                      }
-                    >
-                      我的评论
-                    </button>
-                    {/* The same check as the panel: a cached profile after an
-                        account switch never offers an entry that opens nothing. */}
-                    {trashAllowed && (
-                      <button
-                        type="button"
-                        aria-haspopup="dialog"
-                        className={draftStyles.profileEntry}
-                        onClick={() => setModal("trash")}
-                      >
-                        回收站
-                      </button>
-                    )}
-                  </>
-                ) : author.viewer ? (
+                {!profile.isOwner && author.viewer ? (
                   <>
                     <button
                       type="button"
@@ -297,9 +269,9 @@ const ScopedAuthorProfileOverlay = ({
                       屏蔽
                     </button>
                   </>
-                ) : (
+                ) : !profile.isOwner ? (
                   <a href={author.signInHref}>登录后关注</a>
-                )}
+                ) : null}
               </div>
               {people &&
                 (profile.isOwner || profile.privacy[people] === "public") && (
@@ -411,6 +383,12 @@ const ScopedAuthorProfileOverlay = ({
           profile={profile}
           onClose={() => setModal(null)}
           onSaved={save}
+          onOpenEdit={() => setModal("edit")}
+          onOpenComments={() => {
+            setModal(null);
+            onViewChange("comments", 0);
+          }}
+          {...(trashAllowed ? { onOpenTrash: () => setModal("trash") } : {})}
         />
       )}
     </section>

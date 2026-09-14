@@ -271,38 +271,41 @@ export const EditorOverlay = ({
   useVisualViewportFrame(hostRef);
   const viewer = author.viewer;
   return (
-    <section
-      ref={hostRef}
-      aria-label={label}
-      aria-modal="true"
-      className={`${detailStyles.experience} ${hostStyles.host} ${styles.overlay}`}
-      data-publishing-editor={target.type}
-      role="dialog"
-    >
-      {viewer !== null ? (
-        // A different account never inherits another account's session.
-        <EditorSessionHost
-          controls={controls}
-          hostRef={hostRef}
-          key={viewer.id}
-          onTitle={setLabel}
-          target={target}
-          viewer={viewer}
-        />
-      ) : (
-        <>
-          <ReturnBar controls={controls} title={label} />
-          {author.checking ? null : (
-            <div className={styles.message}>
-              <p>登录后可发布与编辑作品。</p>
-              <div className="phase4-actions">
-                <a href={author.signInHref}>使用开发测试账户登录</a>
+    <>
+      <div aria-hidden="true" className={styles.viewportBackdrop} />
+      <section
+        ref={hostRef}
+        aria-label={label}
+        aria-modal="true"
+        className={`${detailStyles.experience} ${hostStyles.host} ${styles.overlay}`}
+        data-publishing-editor={target.type}
+        role="dialog"
+      >
+        {viewer !== null ? (
+          // A different account never inherits another account's session.
+          <EditorSessionHost
+            controls={controls}
+            hostRef={hostRef}
+            key={viewer.id}
+            onTitle={setLabel}
+            target={target}
+            viewer={viewer}
+          />
+        ) : (
+          <>
+            <ReturnBar controls={controls} title={label} />
+            {author.checking ? null : (
+              <div className={styles.message}>
+                <p>登录后可发布与编辑作品。</p>
+                <div className="phase4-actions">
+                  <a href={author.signInHref}>使用开发测试账户登录</a>
+                </div>
               </div>
-            </div>
-          )}
-        </>
-      )}
-    </section>
+            )}
+          </>
+        )}
+      </section>
+    </>
   );
 };
 

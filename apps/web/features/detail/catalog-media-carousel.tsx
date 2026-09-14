@@ -1,5 +1,6 @@
 "use client";
 
+import { mediaDotWindow } from "./media-dot-window";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Icon } from "@moya/ui";
@@ -659,34 +660,41 @@ export const CatalogMediaCarousel = ({
               onClick={() => selectIndex(activeIndex + 1)}
               type="button"
             />
-            <div
-              aria-label="选择图像"
-              className={styles.mediaDots}
-              data-detail-media-control=""
-              data-detail-media-dots=""
-              role="group"
-            >
-              {media.map((item, index) => (
+          </>
+        ) : null}
+      </div>
+      {media.length > 1 ? (
+        <>
+          <div
+            aria-label="选择图像"
+            className={styles.mediaDots}
+            data-detail-media-control=""
+            data-detail-media-dots=""
+            role="group"
+          >
+            {mediaDotWindow(media.length, activeIndex).map(
+              ({ index, edge }) => (
                 <button
                   aria-current={index === activeIndex ? "true" : undefined}
-                  aria-label={`第 ${index + 1} 张图像：${item.alt}`}
+                  aria-label={`第 ${index + 1} 张图像：${media[index]!.alt}`}
                   className={styles.mediaDotTarget}
                   data-active={index === activeIndex ? "true" : "false"}
                   data-detail-media-dot=""
-                  key={item.id}
+                  data-edge={edge ? "true" : undefined}
+                  key={media[index]!.id}
                   onClick={() => selectIndex(index)}
                   type="button"
                 >
                   <span aria-hidden="true" />
                 </button>
-              ))}
-            </div>
-            <span className={styles.mediaCounter} data-detail-media-index="">
-              {activeIndex + 1} / {media.length}
-            </span>
-          </>
-        ) : null}
-      </div>
+              ),
+            )}
+          </div>
+          <span className={styles.mediaCounter} data-detail-media-index="">
+            {activeIndex + 1} / {media.length}
+          </span>
+        </>
+      ) : null}
     </section>
   );
 };

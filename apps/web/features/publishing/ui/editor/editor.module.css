@@ -517,8 +517,9 @@
 
 .input:focus-visible,
 .textarea:focus-visible {
-  outline: 2px solid var(--yoyi-color-focus-ring);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--yoyi-color-focus-ring);
+  box-shadow: 0 0 0 1px var(--yoyi-color-focus-ring);
 }
 
 .input[aria-invalid="true"],
@@ -896,4 +897,12 @@
   padding: 0 max(var(--yoyi-space-5), env(safe-area-inset-right))
     calc(var(--yoyi-space-6) + env(safe-area-inset-bottom))
     max(var(--yoyi-space-5), env(safe-area-inset-left));
+}
+
+/* Keep the underlying feed covered under Safari's translucent input chrome. */
+.viewportBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--yoyi-z-index-overlay);
+  background: var(--yoyi-color-background-page);
 }

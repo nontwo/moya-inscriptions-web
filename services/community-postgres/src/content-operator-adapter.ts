@@ -28,8 +28,17 @@ interface WorkRow extends QueryResultRow {
   deleted_at: Date | null;
   version: number;
   first_published_at: Date | null;
+  public_revision_id: string | null;
+  latest_submission: OperatorWork["latestSubmission"];
+  publicly_visible: boolean;
 }
-const workProjection = `SELECT w.*,u.display_name,u.status AS author_status FROM community.works w JOIN community.public_users u ON u.id=w.author_id`;
+const workProjection = `SELECT w.*,u.display_name,u.status AS author_status,
+  community.work_is_public(w) AND u.status='active' AS publicly_visible,
+  (SELECT json_build_object('revisionId',r.id,'title',r.title,'disposition',r.disposition)
+   FROM community.work_revisions r WHERE r.work_id=w.id
+   AND r.disposition<>'not_required' AND w.deleted_at IS NULL
+   ORDER BY r.sequence DESC LIMIT 1) AS latest_submission
+  FROM community.works w JOIN community.public_users u ON u.id=w.author_id`;
 const workDto = (w: WorkRow): OperatorWork =>
   operatorWorkSchema.parse({
     id: w.id,
@@ -42,6 +51,9 @@ const workDto = (w: WorkRow): OperatorWork =>
     authorDeleted: w.deleted_at !== null,
     version: w.version,
     firstPublishedAt: w.first_published_at?.toISOString() ?? null,
+    latestSubmission: w.latest_submission,
+    publicRevisionId: w.deleted_at === null ? w.public_revision_id : null,
+    publiclyVisible: w.publicly_visible,
   });
 export class PostgresCommunityContentOperatorAdapter implements CommunityContentOperatorPort {
   constructor(private readonly pool: Pool) {}

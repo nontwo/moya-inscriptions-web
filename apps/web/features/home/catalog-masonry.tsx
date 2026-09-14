@@ -143,6 +143,14 @@ export const CatalogMasonry = <T,>({
     });
   }, []);
 
+  // Adaptive span widths can change image/text height after placement.
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(onMediaSettled);
+    for (const element of itemRefs.current.values()) observer.observe(element);
+    return () => observer.disconnect();
+  }, [items, onMediaSettled]);
+
   useLayoutEffect(
     () => () => {
       if (settleFrameRef.current !== null) {
@@ -190,7 +198,9 @@ export const CatalogMasonry = <T,>({
             }}
             className={styles.masonryItem}
             data-home-masonry-item=""
-            data-home-masonry-span={spans[index] ? "full" : undefined}
+            data-home-masonry-span={
+              position?.width === width && columns > 1 ? "full" : undefined
+            }
             role="presentation"
             style={style}
           >

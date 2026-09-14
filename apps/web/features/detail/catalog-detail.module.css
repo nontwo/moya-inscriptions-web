@@ -341,6 +341,7 @@
 }
 
 .carousel {
+  position: relative;
   min-width: 0;
 }
 
@@ -714,16 +715,12 @@
 }
 
 .mediaDots {
-  position: absolute;
-  z-index: 4;
-  bottom: 10px;
-  left: 50%;
   display: flex;
+  width: max-content;
+  min-height: 32px;
   align-items: center;
-  padding: 2px 5px;
-  border-radius: var(--yoyi-radius-full);
-  background: var(--yoyi-color-overlay);
-  transform: translateX(-50%);
+  justify-content: center;
+  margin: 6px auto 0;
 }
 
 .mediaDotTarget {
@@ -741,11 +738,7 @@
   width: 6px;
   height: 6px;
   border-radius: var(--yoyi-radius-full);
-  background: color-mix(
-    in srgb,
-    var(--yoyi-color-paper-light) 58%,
-    transparent
-  );
+  background: var(--yoyi-color-border-strong);
   transition:
     width 220ms cubic-bezier(0.22, 1, 0.36, 1),
     height 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -755,14 +748,18 @@
 .mediaDotTarget[data-active="true"] > span {
   width: 8px;
   height: 8px;
-  background: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-text-primary);
+}
+.mediaDotTarget[data-edge="true"] > span {
+  width: 4px;
+  height: 4px;
 }
 
 .mediaCounter {
   position: absolute;
   z-index: 4;
   right: 12px;
-  bottom: 12px;
+  top: 12px;
   padding: 4px 8px;
   color: var(--yoyi-color-paper-light);
   background: var(--yoyi-color-overlay);

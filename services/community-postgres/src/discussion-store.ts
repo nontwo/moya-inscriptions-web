@@ -28,8 +28,9 @@ const rootPublic =
   "c.moderation='visible' AND (c.body_deleted_at IS NULL OR c.was_public)";
 const rootEligible = `c.thread_removed_at IS NULL AND community.accounts_can_interact($3,c.author_id)
  AND ((${rootPublic}) OR (c.author_id=$3 AND u.status='active'))`;
-const replyEligible = `r.root_comment_id=$4 AND community.accounts_can_interact($3,r.author_id)
+const replyAudience = `community.accounts_can_interact($3,r.author_id)
  AND (((${rootPublic}) AND r.moderation='visible' AND (r.body_deleted_at IS NULL OR r.was_public)) OR (r.author_id=$3 AND ru.status='active'))`;
+const replyEligible = `r.root_comment_id=$4 AND ${replyAudience}`;
 const rootFrom = `FROM community.catalog_comments c JOIN community.public_users u ON u.id=c.author_id
  WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}`;
 const likeCount = (
@@ -312,7 +313,15 @@ export class PostgresDiscussionStore implements DiscussionPort {
       const visibleTotal = Number(
         (
           await db.query(
-            `SELECT count(*) AS n ${rootFrom} AND ${rootPublic} AND c.body_deleted_at IS NULL`,
+            `SELECT
+              (SELECT count(*) ${rootFrom} AND ${rootPublic} AND c.body_deleted_at IS NULL)
+              + (SELECT count(*) FROM community.catalog_comment_replies r
+                 JOIN community.catalog_comments c ON c.id=r.root_comment_id
+                 JOIN community.public_users u ON u.id=c.author_id
+                 JOIN community.public_users ru ON ru.id=r.author_id
+                 WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}
+                 AND ${replyAudience} AND ${rootPublic}
+                 AND r.moderation='visible' AND r.body_deleted_at IS NULL) AS n`,
             [target.type, target.id, viewer],
           )
         ).rows[0]?.n ?? 0,

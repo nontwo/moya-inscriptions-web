@@ -69,6 +69,28 @@ describe("layoutHomeMasonry", () => {
     expect(result.height).toBe(230);
   });
 
+  it("fills the shorter column instead of making a panorama leave a large hole", () => {
+    const result = layoutHomeMasonry(
+      [
+        { height: 240 },
+        { height: 80 },
+        { height: 50, spanAll: true },
+        { height: 60 },
+      ],
+      220,
+      2,
+      20,
+    );
+    expect(result.positions[2]).toEqual({
+      height: 50,
+      width: 100,
+      x: 120,
+      y: 100,
+    });
+    expect(result.positions[3]?.y).toBe(170);
+    expect(result.height).toBe(240);
+  });
+
   it("never places a card outside the measured container", () => {
     const width = 760;
     const result = layoutHomeMasonry(

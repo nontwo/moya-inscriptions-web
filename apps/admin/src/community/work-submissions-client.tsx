@@ -668,7 +668,7 @@ const editSummary = (item: OperatorSubmissionMedia): string =>
 const mediaLabel = (item: OperatorSubmissionMedia): string =>
   `第 ${item.position} 项${item.kind === "live" ? "（实况照片静态画面）" : ""}`;
 
-const SubmissionDetail = ({
+export const SubmissionDetail = ({
   data,
   actions,
 }: {
@@ -715,9 +715,9 @@ const SubmissionDetail = ({
       </div>
       {actions}
       <div>
-        <h3>可见范围</h3>
+        <h3>提交时请求的可见范围</h3>
         <p className={styles.excerpt}>
-          公开（进入此队列的提交都请求公开；仅自己可见的提交不需要审核）
+          公开。实际展示仍取决于作品当前可见范围、审核结果和管理状态。
         </p>
       </div>
       <div>

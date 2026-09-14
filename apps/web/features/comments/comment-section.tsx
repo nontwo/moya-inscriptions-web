@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { useCommentComposerPortalTarget } from "./comment-composer-portal";
+import { formatCommentCount, usePublishCommentCount } from "./comment-count";
 import styles from "./comment-section.module.css";
 
 import type { FormEvent, ReactNode } from "react";
@@ -79,7 +80,7 @@ export interface CommentSectionProps {
   readonly viewer?: CommentViewerState;
   readonly status?: "not-found" | "unavailable" | "unexpected-error" | null;
   readonly notice?: CommentSectionNotice | null;
-  /** Root comments the Backend counted; replaces the loaded-item count. */
+  /** Visible comments including replies across all pages, counted by Backend. */
   readonly totalCount?: number;
   readonly loadMore?: CommentLoadMore;
   readonly onLoadMoreReplies?: (commentId: string) => void;
@@ -138,7 +139,7 @@ const Avatar = ({ user }: { readonly user: CommentUserPresentation }) => {
     >
       <span
         aria-label={`${user.name}的头像`}
-        className={styles.avatar}
+        className={styles.avatarContent}
         data-comment-avatar=""
         role="img"
       >
@@ -500,6 +501,7 @@ export const CommentSection = ({
       (total, comment) => total + 1 + comment.replies.length,
       0,
     );
+  usePublishCommentCount(loading || status != null ? null : count);
   const sortedItems = useMemo(() => {
     if (live) return items;
     const local = items.filter((item) => item.isQaGenerated);
@@ -646,7 +648,10 @@ export const CommentSection = ({
           <h2 id={`comment-title-${catalogId}`}>
             评论
             {loading || status !== null ? null : (
-              <span aria-label={`${count} 条`}> {count}</span>
+              <span aria-label={`${count} 条`}>
+                {" "}
+                {formatCommentCount(count)}
+              </span>
             )}
           </h2>
           {loading || live ? null : (

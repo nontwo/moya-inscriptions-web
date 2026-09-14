@@ -10,6 +10,7 @@ import {
 import {
   PostgresAuthorCommunityAdapter,
   PostgresCommunityCommentAdapter,
+  PostgresCommunityContentOperatorAdapter,
   PostgresCommunityDiscoveryAdapter,
   PostgresPublishingOperatorAdapter,
   PostgresWorkPublishingAdapter,
@@ -417,6 +418,34 @@ describe.each(["clean", "phase4-upgrade"] as const)(
           now,
         ),
       ).rejects.toThrow();
+      const managed = await new PostgresCommunityContentOperatorAdapter(
+        app,
+      ).readWorks({ page: 1, pageSize: 20, search: original.workId });
+      expect(managed.items[0]).toMatchObject({
+        latestSubmission: { revisionId: v2.revisionId, title: "待审 V2" },
+        publicRevisionId: original.revisionId,
+        publiclyVisible: true,
+      });
+      const discussionTarget = { type: "work" as const, id: original.workId };
+      const rootComment = await comments.submitDiscussion(
+        discussionTarget,
+        actor,
+        "Public root",
+      );
+      await comments.submitDiscussion(
+        discussionTarget,
+        other,
+        "Public reply",
+        rootComment.id,
+      );
+      expect(
+        (
+          await comments.readDiscussion(discussionTarget, other, {
+            page: 1,
+            pageSize: 1,
+          })
+        ).visibleTotal,
+      ).toBe(2);
       const review = await operators.readSubmission(v2.revisionId);
       await operators.moderateSubmission(
         v2.revisionId,

@@ -1972,6 +1972,9 @@ describe("operator work publishing shapes", () => {
       authorDeleted: false,
       version: 1,
       firstPublishedAt: null,
+      latestSubmission: null,
+      publicRevisionId: null,
+      publiclyVisible: false,
     };
     expect(operatorWorkSchema.safeParse(work).success).toBe(true);
     expect(

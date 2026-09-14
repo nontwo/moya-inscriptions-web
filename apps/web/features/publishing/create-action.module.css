@@ -126,3 +126,9 @@ button.action[data-paused="true"]
     animation: none;
   }
 }
+
+/* Optical inset for the solid disk beside the lighter glass disk; hit area stays44px. */
+:global([data-primary-navigation-dock][data-minimized="true"]) button.action {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}

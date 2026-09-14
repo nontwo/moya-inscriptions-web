@@ -66,7 +66,6 @@ export const SearchPresentation = ({
   open: isOpen,
   onKeywordChange,
   onSubmit,
-  onClear,
   onOpenChange,
   openerRef,
   searchInputRef,
@@ -155,10 +154,7 @@ export const SearchPresentation = ({
     const value = keyword.trim();
     if (composingRef.current || value.length === 0) return;
     onSubmit(value);
-  };
-  const clear = () => {
-    onClear();
-    inputRef.current?.focus({ preventScroll: true });
+    inputRef.current?.blur();
   };
   return (
     <div
@@ -232,17 +228,6 @@ export const SearchPresentation = ({
                 type="search"
                 value={keyword}
               />
-              {keyword.length === 0 ? null : (
-                <button
-                  aria-label="清空搜索"
-                  className={styles.inlineAction}
-                  data-search-clear=""
-                  onClick={clear}
-                  type="button"
-                >
-                  <Icon aria-hidden="true" name="close" />
-                </button>
-              )}
             </form>
             <button
               aria-label="关闭搜索"

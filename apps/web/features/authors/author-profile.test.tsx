@@ -37,7 +37,13 @@ vi.mock("./avatar-editor", () => ({
 vi.mock("./profile-list", () => ({ ProfileList: () => null }));
 vi.mock("./people-list", () => ({ PeopleList: () => null }));
 vi.mock("./profile-editor", () => ({ ProfileEditor: () => null }));
-vi.mock("./profile-settings", () => ({ ProfileSettings: () => null }));
+vi.mock("./profile-settings", () => ({
+  ProfileSettings: ({ onOpenTrash }: { onOpenTrash?: () => void }) => (
+    <div data-settings-stub="">
+      {onOpenTrash ? <button onClick={onOpenTrash}>回收站</button> : null}
+    </div>
+  ),
+}));
 vi.mock("../publishing/ui/drafts/trash-panel", () => ({
   TrashPanel: (props: {
     onClose: () => void;
@@ -131,6 +137,11 @@ describe("Profile recycle bin entry", () => {
     author.viewer = { id: OWNER };
     profileRead.mockResolvedValue(profile(true));
     const node = await render();
+    expect(node.textContent).not.toContain("登录后关注");
+    expect(findButton(node, "回收站")).toBeUndefined();
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>('[aria-label="设置"]')!.click(),
+    );
     const entry = findButton(node, "回收站");
     expect(entry).toBeDefined();
     expect(node.querySelector("[data-trash-panel-stub]")).toBeNull();
@@ -155,6 +166,9 @@ describe("Profile recycle bin entry", () => {
     author.viewer = { id: OWNER };
     profileRead.mockResolvedValue(profile(true));
     const node = await render();
+    await act(async () =>
+      node.querySelector<HTMLButtonElement>('[aria-label="设置"]')!.click(),
+    );
     await act(async () => findButton(node, "回收站")!.click());
     expect(node.querySelector("[data-trash-panel-stub]")).not.toBeNull();
     author.viewer = { id: VISITOR };

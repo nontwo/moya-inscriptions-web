@@ -537,3 +537,42 @@
   inset: min(0px, calc((100% - 44px) / 2)) 0;
   content: "";
 }
+
+/* Private drafts reuse the home card's image-first/text-only presentation. */
+.draftGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.draftCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.draftCover {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  border-radius: 0;
+}
+.draftCard .rowBody {
+  padding: var(--yoyi-space-4);
+  min-height: 180px;
+}
+.draftCard .button {
+  padding-inline: var(--yoyi-space-3);
+  font-size: var(--yoyi-type-label-size);
+}
+.draftCard .actions {
+  gap: var(--yoyi-space-2);
+}
+.draftCard .confirm,
+.draftCard .alert {
+  margin: var(--yoyi-space-3);
+}
+@media (max-width: 359px) {
+  .draftGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

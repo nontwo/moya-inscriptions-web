@@ -25,6 +25,7 @@ import {
   useFocusAfterRemoval,
 } from "./drafts-shared";
 import styles from "./drafts.module.css";
+import homeStyles from "../../../home/home-screen.module.css";
 
 import type {
   PublishingDraftDeletionResult,
@@ -296,7 +297,7 @@ export const DraftsPicker = ({
         <ul
           ref={listRef}
           aria-label="草稿列表"
-          className={styles.list}
+          className={`${styles.list} ${styles.draftGrid}`}
           hidden={items.length === 0}
           tabIndex={-1}
         >
@@ -316,13 +317,18 @@ export const DraftsPicker = ({
             return (
               <li
                 key={draft.id}
-                className={styles.row}
+                className={`${homeStyles.card} ${homeStyles.feedCard} ${styles.row} ${styles.draftCard}`}
                 data-draft-active={active ? "" : undefined}
                 data-draft-id={draft.id}
                 data-draft-kind={draft.kind}
               >
-                {/* The row already shows the text; a text-only draft gets a plain mark. */}
-                <CoverThumb src={draft.coverSrc} text="" />
+                {draft.itemCount > 0 ? (
+                  <CoverThumb
+                    className={`${styles.thumb} ${styles.draftCover}`}
+                    src={draft.coverSrc}
+                    text=""
+                  />
+                ) : null}
                 <div className={styles.rowBody}>
                   {draft.kind === "new" ? (
                     <>

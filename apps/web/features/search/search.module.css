@@ -155,6 +155,9 @@
   gap: var(--yoyi-space-3);
 }
 .form {
+  position: relative;
+  isolation: isolate;
+  box-shadow: var(--yoyi-shadow-dialog);
   display: flex;
   min-width: 0;
   min-height: 56px;
@@ -214,7 +217,6 @@
   width: 27px;
   height: 27px;
 }
-.form:focus-within,
 .trigger:focus-visible,
 .close:focus-visible,
 .submit:focus-visible,
@@ -257,4 +259,16 @@
 .retry:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
   outline-offset: 2px;
+}
+
+.form:focus-within {
+  border-color: var(--yoyi-color-border-strong);
+}
+.trigger[data-search-trigger-placement="header"] {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.trigger[data-search-trigger-placement="header"]::before {
+  display: none;
 }

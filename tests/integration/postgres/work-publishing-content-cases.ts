@@ -1128,6 +1128,22 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         disposition: "pending",
         sequence: 2,
       });
+      const managed = (
+        await contentOperator.readWorks({
+          page: 1,
+          pageSize: 20,
+          search: work.workId,
+        })
+      ).items[0];
+      expect(managed).toMatchObject({
+        latestSubmission: {
+          revisionId: edit.revisionId,
+          title: "新的标题",
+          disposition: "pending",
+        },
+        publicRevisionId: work.revisionId,
+        publiclyVisible: true,
+      });
       expect(await authors.readWork(work.workId, b)).toMatchObject({
         title: "原来的标题",
         text: "原来的正文",
@@ -3219,6 +3235,30 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         pending.workId,
         older.workId,
       ]);
+      expect(page.items[0]).toMatchObject({
+        latestSubmission: null,
+        publicRevisionId: null,
+        publiclyVisible: false,
+      });
+      expect(page.items[1]).toMatchObject({
+        latestSubmission: {
+          revisionId: pending.revisionId,
+          title: "等待审核的标题",
+          disposition: "pending",
+        },
+        publicRevisionId: null,
+        publiclyVisible: false,
+      });
+      expect(page.items[2]).toMatchObject({
+        latestSubmission: {
+          revisionId: older.revisionId,
+          title: "早已公开",
+          disposition: "approved",
+        },
+        publicRevisionId: older.revisionId,
+        publiclyVisible: true,
+      });
+      expect(JSON.stringify(page)).not.toContain("只给自己看的标题");
       expect(
         (
           await contentOperator.readWorks({

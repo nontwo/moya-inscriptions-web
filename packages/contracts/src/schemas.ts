@@ -856,6 +856,7 @@ export const discussionCommentSchema = discussionReplySchema.extend({
   replyPageTotal: z.number().int().nonnegative(),
 });
 export const discussionPageSchema = z.strictObject({
+  /** Publicly visible, undeleted roots and replies, filtered for this reader. */
   visibleTotal: z.number().int().nonnegative(),
   hot: z.array(discussionCommentSchema).max(3),
   items: z.array(discussionCommentSchema).max(50),

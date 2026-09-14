@@ -365,16 +365,19 @@ Active development tracks (independent of the parked cloud track):
    Development milestone, with no Production deployment or release authority.
 
 3. **Work publishing and draft editing (`work-publishing-v1`)** — Draft PR #138,
-   r2 QA candidate prepared; the PR records exact validation and independent
-   final-head review. Owner visual/real-device acceptance remains pending.
-   Owner-approved on 2026-09-13: album-style works (new and edited), static and
-   complete Live Photo media in Standard and Original modes, private media
-   storage with derivatives, account-scoped background uploads, optional
-   persistent drafts and no-save sessions, version conflicts and history,
-   public/self-only visibility with an independent work publication policy, a
-   recycle bin, bounded cleanup, quotas and essential Admin controls; the dock
-   action becomes a plus and Search moves to the upper-left. Scope, Behavior
-   Matrix, feasibility note and proof limits are in
+   r3 applies Owner phone feedback to discussion avatars/counts, album controls,
+   profile/settings, draft cards, search, keyboard backing and feed spacing;
+   Admin gains complete submitted details with existing management operations.
+   The PR records exact validation and independent final-head review status.
+   Owner visual/real-device acceptance remains pending. Owner-approved on
+   2026-09-13: album-style works (new and edited), static and complete Live
+   Photo media in Standard and Original modes, private media storage with
+   derivatives, account-scoped background uploads, optional persistent drafts
+   and no-save sessions, version conflicts and history, public/self-only
+   visibility with an independent work publication policy, a recycle bin,
+   bounded cleanup, quotas and essential Admin controls; the dock action becomes
+   a plus and Search moves to the upper-left. Scope, Behavior Matrix,
+   feasibility note and proof limits are in
    [work-publishing-v1](community/work-publishing-v1.md); the Draft PR records
    the exact base/head, checks and review state. The 2026-09-14 Owner correction
    makes complete Live Photo import an iPhone PhotosUI/PhotoKit dependency in a

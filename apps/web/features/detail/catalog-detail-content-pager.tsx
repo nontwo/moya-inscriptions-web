@@ -3,6 +3,10 @@
 import { useId, useRef, useState } from "react";
 
 import { CommentComposerPortalProvider } from "../comments/comment-composer-portal";
+import {
+  CommentCountLabel,
+  CommentCountProvider,
+} from "../comments/comment-count";
 import { HorizontalPager } from "../shell/horizontal-pager";
 import styles from "./catalog-detail.module.css";
 
@@ -19,7 +23,7 @@ export interface CatalogDetailContentPagerProps {
   readonly platform: Exclude<PresentationPlatform, "pc">;
 }
 
-export const CatalogDetailContentPager = ({
+const ScopedCatalogDetailContentPager = ({
   comments,
   information,
   platform,
@@ -63,7 +67,7 @@ export const CatalogDetailContentPager = ({
           role="tab"
           type="button"
         >
-          评论
+          <CommentCountLabel />
         </button>
       </div>
       <HorizontalPager
@@ -102,3 +106,11 @@ export const CatalogDetailContentPager = ({
     </section>
   );
 };
+
+export const CatalogDetailContentPager = (
+  props: CatalogDetailContentPagerProps,
+) => (
+  <CommentCountProvider>
+    <ScopedCatalogDetailContentPager {...props} />
+  </CommentCountProvider>
+);

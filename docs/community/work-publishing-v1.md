@@ -1,10 +1,40 @@
 # Work publishing and draft editing — work-publishing-v1
 
-Task: `work-publishing-v1`. Revision: r2. r1 remains in Git history.
+Task: `work-publishing-v1`. Revision: r3. r1/r2 remain in Git history.
 Owner-approved requirements provided on 2026-09-13 (implementation assignment
 for image/text publishing and draft editing). Phase 4 (#125/#126) is merged;
 this task starts from `main` `362781c18a85711e6b456be7933b30a70afba04a` in its
 own worktree and one Draft PR.
+
+## r3 — Owner visual acceptance corrections (2026-09-14)
+
+The Owner reported displaced discussion avatars, a missing comment-tab total,
+and no complete work/image inspection entry in Admin Works & Featured. Continue
+the same task/PR with the following bounded correction. The Owner's final
+explicit selection is complete details plus existing management operations.
+Earlier conflicting text allowing direct content editing was clarified by that
+final choice: this revision does not add operator content editing or change the
+existing author-only editing rule.
+
+| Scenario           | Development                                                                                                                                                                | Production                        | Must preserve                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Comment avatars    | Center image and fallback initial in one circular button for roots, replies and composer at phone/desktop sizes                                                            | No exposure change                | Existing profile action, artwork and avatar identity                                                      |
+| Comment total      | Tab and section show visible roots plus replies across all pages; 0–99, then 99+                                                                                           | Same presentation when enabled    | Existing audience/moderation/deletion filters and root pagination; never expose private counts            |
+| Admin work details | Open complete operator-readable submitted title/body, authorship, cover and ordered media from Works & Featured; distinguish latest submission and current public revision | No deployment or authority change | No private autosaves/self-only submission disclosure; immutable revisions and existing management actions |
+
+The second Owner phone screenshot batch adds these visual corrections:
+
+| Scenario         | Development                                                                                                                               | Production                    | Must preserve                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| Album indicators | Bounded dot window below the image, outside its scroller; phone number at image top-right                                                 | Same component, no deployment | Native swipe, selected image, Viewer, original bytes                            |
+| Profile/settings | Inline follow/follower totals; edit profile, own comments and trash entries inside Settings; icon-only Back                               | No permission changes         | Privacy, account isolation, unsaved-change checks and Back                      |
+| Draft picker     | Home-style image-first or text-only cards                                                                                                 | No new persistence            | Recent-edit ordering, exact draft deletion, recovery and missing-local warnings |
+| Search           | Fixed top-bar magnifier without a visible button frame; floating single-border input, no duplicate inner close; submit dismisses keyboard | No search semantics change    | IME composition, query/results, accessible focus and close                      |
+| Feed layout      | Avoid large holes caused by a wide-card barrier; equal apparent minimized dock circles                                                    | No sorting/storage changes    | Card identity, append stability, media fidelity and navigation                  |
+| Input viewport   | Opaque page backdrop behind the keyboard-sized editor; subtle search surface transition                                                   | No OS UI override             | Visual-viewport bounds, safe areas and native input controls                    |
+
+This does not waive native iPhone import, independent review or Owner device
+acceptance, and grants no additional validation budget or delivery authority.
 
 ## r2 — Owner QA and corrected import boundary (2026-09-14)
 
@@ -109,7 +139,7 @@ compatibility; nothing is migrated out of their stores or deleted.
   `services/backend-production/src/**`.
 - New forward files in `database/community-migrations/` and the manifest.
 - `apps/web/app/api/community/publishing/**`; `apps/web/lib/public-api/**`;
-  `apps/web/features/{publishing,authors,detail,product-application,product-preview,product-shell,shell,home,calligraphy,search,quick-actions}/**`;
+  `apps/web/features/{publishing,authors,comments,detail,product-application,product-preview,product-shell,shell,home,calligraphy,search,quick-actions}/**`;
   `apps/web/app/page.tsx`; `packages/ui/src/{assets.ts,assets/icons/**}` for new
   icons; `apps/web/package.json` and `pnpm-lock.yaml` for the pinned
   dependencies below.
@@ -119,7 +149,8 @@ compatibility; nothing is migrated out of their stores or deleted.
   instructions); `turbo.json` pass-through keys for the Development Backend.
 - `tests/unit/{contracts,backend,architecture,community}/**` product assertions
   and exact pinned-surface updates;
-  `tests/integration/postgres/work-publishing*` plus registration in the
+  `tests/integration/postgres/work-publishing*`, the r3 discussion regression in
+  `tests/integration/postgres/phase4-author-cases.ts`, plus registration in the
   existing community suite; colocated product tests; this document and
   `docs/project-status.md`.
 

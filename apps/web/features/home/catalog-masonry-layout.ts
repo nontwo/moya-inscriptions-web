@@ -68,7 +68,13 @@ export const layoutHomeMasonry = (
 
   for (const item of items) {
     const height = Number.isFinite(item.height) ? Math.max(0, item.height) : 0;
-    if (item.spanAll === true && safeColumns > 1) {
+    // A panorama spans only an approximately level row. Otherwise it fills
+    // the shortest column, without reordering items or leaving a tall hole.
+    if (
+      item.spanAll === true &&
+      safeColumns > 1 &&
+      Math.max(...heights) - Math.min(...heights) <= safeGap
+    ) {
       const y = Math.max(...heights);
       positions.push({ height, width: safeWidth, x: 0, y });
       const nextHeight = y + height + safeGap;

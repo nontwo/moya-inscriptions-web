@@ -189,6 +189,65 @@ export const registerPhase4AuthorTests = (
       expect(response.status).toBe(201);
       return response.json() as Promise<AuthorMedia>;
     };
+    it("counts visible roots and all replies independently of pagination without private or deleted bodies", async () => {
+      await pool.query(
+        "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",
+      );
+      const target = { type: "work" as const, id: work };
+      const first = await discussion.submitDiscussion(target, a, "First root");
+      const replies = [];
+      for (let n = 0; n < 4; n++)
+        replies.push(
+          await discussion.submitDiscussion(target, b, `Reply ${n}`, first.id),
+        );
+      const second = await discussion.submitDiscussion(
+        target,
+        b,
+        "Second root",
+      );
+      await discussion.submitDiscussion(target, a, "Other reply", second.id);
+      for (const viewer of [null, a, b]) {
+        for (const page of [1, 2]) {
+          const result = await discussion.readDiscussion(target, viewer, {
+            ...query,
+            page,
+            pageSize: 1,
+          });
+          expect(result.visibleTotal).toBe(7);
+          expect(result.total).toBe(2);
+          expect(result.items).toHaveLength(1);
+        }
+      }
+      await pool.query(
+        "UPDATE community.catalog_comment_replies SET moderation='hidden' WHERE id=$1",
+        [replies[0]!.id],
+      );
+      await pool.query(
+        "UPDATE community.catalog_comment_replies SET moderation='pending' WHERE id=$1",
+        [replies[1]!.id],
+      );
+      await pool.query(
+        "UPDATE community.catalog_comment_replies SET body_deleted_at=now(),was_public=true WHERE id=$1",
+        [replies[2]!.id],
+      );
+      for (const viewer of [null, a, b]) {
+        expect(
+          (await discussion.readDiscussion(target, viewer, query)).visibleTotal,
+        ).toBe(4);
+      }
+      await discussion.deleteDiscussionBody(a, first.id, randomUUID());
+      // The deleted root's surviving public reply still counts.
+      expect(
+        (await discussion.readDiscussion(target, null, query)).visibleTotal,
+      ).toBe(3);
+      await pool.query(
+        "UPDATE community.catalog_comments SET thread_removed_at=now() WHERE id=$1",
+        [first.id],
+      );
+      expect(
+        (await discussion.readDiscussion(target, null, query)).visibleTotal,
+      ).toBe(2);
+    });
     it("preserves suspended authors' visible Catalog threads while revoking auth and refusing their new writes", async () => {
       await pool.query(
         "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",
@@ -265,7 +324,8 @@ export const registerPhase4AuthorTests = (
         const page = (await response.json()) as Awaited<
           ReturnType<typeof discussion.readDiscussion>
         >;
-        expect(page.visibleTotal).toBe(2);
+        // r3: two roots plus three public replies, including suspended authors.
+        expect(page.visibleTotal).toBe(5);
         expect(page.hot.map((item) => item.id)).toEqual([root.id]);
         expect(page.hot[0]).toMatchObject({
           text: "停用后仍公开的历史根",
