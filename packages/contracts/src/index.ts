@@ -99,6 +99,7 @@ export type {
   PublishingMediaComponent,
   PublishingMediaItem,
   PublishingMediaSources,
+  PublishingOpenedEditDraft,
   PublishingPageQuery,
   PublishingSession,
   PublishingSessionState,

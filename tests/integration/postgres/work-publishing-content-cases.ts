@@ -2009,6 +2009,11 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       expect(
         await adapter.resolveMediaRead(b, cover.itemId, "cover", keys.cover!),
       ).not.toBeNull();
+      // Every work read names the card cover under the cover crop's key.
+      for (const viewer of [a, b, null])
+        expect((await authors.readWork(work.workId, viewer)).coverSrc).toBe(
+          `/api/community/publishing/media/${cover.itemId}/cover/${keys.cover!}`,
+        );
       // The uncropped cover is not what the public revision shows.
       expect(
         await adapter.resolveMediaRead(b, cover.itemId, "cover", "base"),
@@ -2211,7 +2216,30 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         src: `/api/community/media/${second}`,
       });
       expect(await authors.readMedia(first, b)).not.toBeNull();
+      // Phase 4 authors never declared authorship: nothing claims one.
+      expect(
+        (
+          await pool.query(
+            "SELECT authorship_kind,reference_title,original_author,source_note FROM community.work_revisions WHERE id=$1",
+            [revision],
+          )
+        ).rows,
+      ).toEqual([
+        {
+          authorship_kind: null,
+          reference_title: null,
+          original_author: null,
+          source_note: null,
+        },
+      ]);
+      for (const viewer of [a, b, null]) {
+        const read = await authors.readWork(work, viewer);
+        expect(read).not.toHaveProperty("authorship");
+        expect(read.coverSrc).toBe(`/api/community/media/${second}`);
+      }
+      expect((await operators.readSubmission(revision)).authorship).toBeNull();
       const editable = await adapter.readEditableWork(a, work);
+      expect(editable.content.authorship).toBeNull();
       expect(editable.content.items.map((item) => item.qualityMode)).toEqual([
         "legacy",
         "legacy",
@@ -2236,6 +2264,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
           {
             title: "旧式作品",
             body: "旧式正文",
+            authorship: editable.content.authorship,
             items: legacyItems,
             coverKey: editable.content.coverKey,
           },
@@ -2443,6 +2472,11 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
           },
         },
       );
+      // Work reads name the same cropped legacy cover as the card.
+      for (const viewer of [a, b, null])
+        expect((await authors.readWork(work, viewer)).coverSrc).toBe(
+          `/api/community/publishing/media/${secondItem.itemId}/cover/${croppedKey}`,
+        );
       expect(
         await adapter.resolveMediaRead(
           b,
@@ -2839,7 +2873,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
           [[same, changed]],
         ),
       ).toBe(0);
-      const editDraft = await adapter.openEditDraft(
+      const { draft: editDraft } = await adapter.openEditDraft(
         a,
         work.workId,
         { requestId: randomUUID(), deviceClass: null },
@@ -3458,9 +3492,12 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         { title: "封面", items: [e1, e2, e3], coverKey: e2.key },
         now,
       );
+      const coverSrc = (itemId: string) =>
+        `/api/community/publishing/media/${itemId}/cover/base`;
       for (const viewer of [b, null]) {
         const read = await authors.readWork(album.workId, viewer);
         expect(read.coverMediaId).toBe(second!.itemId);
+        expect(read.coverSrc).toBe(coverSrc(second!.itemId));
         expect(read).not.toHaveProperty("publiclyVisible");
         expect(read).not.toHaveProperty("visibility");
       }
@@ -3484,14 +3521,27 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       expect(await revisionRow(pending.revisionId)).toMatchObject({
         disposition: "pending",
       });
-      expect((await authors.readWork(album.workId, b)).coverMediaId).toBe(
-        second!.itemId,
-      );
+      expect(await authors.readWork(album.workId, b)).toMatchObject({
+        coverMediaId: second!.itemId,
+        coverSrc: coverSrc(second!.itemId),
+      });
       expect(await authors.readWork(album.workId, a)).toMatchObject({
         media: [{ id: third!.itemId }, { id: first!.itemId }],
         coverMediaId: third!.itemId,
+        coverSrc: coverSrc(third!.itemId),
         publiclyVisible: true,
       });
+      // Lists read the same revision as the single read.
+      expect(
+        (await authors.listWorks(a, b, listQuery)).items.find(
+          (item) => item.id === album.workId,
+        )?.coverSrc,
+      ).toBe(coverSrc(second!.itemId));
+      expect(
+        (await authors.listWorks(a, a, listQuery)).items.find(
+          (item) => item.id === album.workId,
+        )?.coverSrc,
+      ).toBe(coverSrc(third!.itemId));
       await setPolicy("DIRECT_PUBLICATION");
 
       // No chosen cover: the first entry; no media: none.
@@ -3503,13 +3553,15 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         },
         now,
       );
-      expect((await authors.readWork(uncovered.workId, b)).coverMediaId).toBe(
-        fourth!.itemId,
-      );
+      expect(await authors.readWork(uncovered.workId, b)).toMatchObject({
+        coverMediaId: fourth!.itemId,
+        coverSrc: coverSrc(fourth!.itemId),
+      });
       const textOnly = await publish(a, { body: "只有文字" }, now);
       expect(await authors.readWork(textOnly.workId, a)).toMatchObject({
         media: [],
         coverMediaId: null,
+        coverSrc: null,
         publiclyVisible: true,
       });
 
@@ -3525,11 +3577,13 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         "INSERT INTO community.works(id,author_id,title,text,media_ids,first_published_at,synthetic_provenance) VALUES($1,$2,'旧式封面','',$3,'2026-01-05T00:00:00Z','work-publishing-bridge-test')",
         [legacy, a, [legacySecond, legacyFirst]],
       );
-      expect((await authors.readWork(legacy, b)).coverMediaId).toBe(
-        legacySecond,
-      );
+      expect(await authors.readWork(legacy, b)).toMatchObject({
+        coverMediaId: legacySecond,
+        coverSrc: `/api/community/media/${legacySecond}`,
+      });
       expect(await authors.readWork(legacy, a)).toMatchObject({
         coverMediaId: legacySecond,
+        coverSrc: `/api/community/media/${legacySecond}`,
         publiclyVisible: true,
       });
 
@@ -3768,7 +3822,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         "clipboard",
         undefined,
       ]);
-      const editDraft = await adapter.openEditDraft(
+      const { draft: editDraft } = await adapter.openEditDraft(
         a,
         work.workId,
         { requestId: randomUUID(), deviceClass: "phone" },

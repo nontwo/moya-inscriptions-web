@@ -6,7 +6,6 @@ import {
 import {
   editableWorkSchema,
   trashedWorkPageSchema,
-  workAuthorshipSchema,
 } from "@moya/contracts/schemas";
 import type {
   EditableWork,
@@ -16,7 +15,6 @@ import type {
   PublishingPageQuery,
   TrashRestoreResult,
   TrashedWorkPage,
-  WorkAuthorship,
   WorkVisibilityCommand,
   WorkVisibilityResult,
 } from "@moya/contracts";
@@ -38,6 +36,8 @@ import {
   writeTransaction,
 } from "./db.js";
 import type { PublishingDb } from "./db.js";
+import { revisionAuthorship } from "./authorship.js";
+import type { RevisionAuthorshipColumns } from "./authorship.js";
 import { insertJob } from "./jobs.js";
 import { cancelItems, releaseHolderRefs, selectMediaItems } from "./media.js";
 import {
@@ -60,32 +60,6 @@ import {
  * (T01-T03) and the retention purge. Every author command runs under the
  * actor lock with its receipt and audit row (./db.ts authorCommand).
  */
-
-export interface RevisionAuthorshipColumns {
-  readonly authorship_kind: string;
-  readonly reference_title: string | null;
-  readonly original_author: string | null;
-  readonly source_note: string | null;
-}
-
-/** The stored authorship of a revision as the contract shape. */
-export const revisionAuthorship = (
-  row: RevisionAuthorshipColumns,
-): WorkAuthorship =>
-  workAuthorshipSchema.parse(
-    row.authorship_kind === "original"
-      ? { kind: "original" }
-      : {
-          kind: row.authorship_kind,
-          ...(row.reference_title === null
-            ? {}
-            : { referenceTitle: row.reference_title }),
-          ...(row.original_author === null
-            ? {}
-            : { originalAuthor: row.original_author }),
-          ...(row.source_note === null ? {} : { sourceNote: row.source_note }),
-        },
-  );
 
 const activeActor = async (db: PublishingDb, actorId: string) => {
   const active = await db.query(

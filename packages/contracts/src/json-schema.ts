@@ -196,6 +196,7 @@ import {
   publishingDraftSchema,
   publishingLimitsSchema,
   publishingMediaItemSchema,
+  publishingOpenedEditDraftSchema,
   publishingSessionHeartbeatCommandSchema,
   publishingSessionSchema,
   publishingSnapshotPageSchema,
@@ -229,6 +230,7 @@ export const workPublishingJsonSchemas = {
   OpenWorkEditDraftCommand: toJsonSchema(openWorkEditDraftCommandSchema),
   SavePublishingDraftCommand: toJsonSchema(savePublishingDraftCommandSchema),
   PublishingDraft: toJsonSchema(publishingDraftSchema),
+  PublishingOpenedEditDraft: toJsonSchema(publishingOpenedEditDraftSchema),
   PublishingDraftPage: toJsonSchema(publishingDraftPageSchema),
   PublishingDraftSaveResult: toJsonSchema(publishingDraftSaveResultSchema),
   PublishingDraftDeletionCommand: toJsonSchema(

@@ -12,6 +12,7 @@ import type {
   PublishingDraftPage,
   PublishingDraftSaveResult,
   PublishingMediaItem,
+  PublishingOpenedEditDraft,
   PublishingPageQuery,
   PublishingSession,
   PublishingSnapshotPage,
@@ -510,11 +511,11 @@ export interface PublishingDraftOperations {
    * and `purge_item` jobs enqueued at `now`. Other drafts and every work
    * revision are untouched. Counts describe what was removed. With
    * `expectedRevision`, a draft whose revision differs (a save on its
-   * current base advanced it after the author confirmed) throws
+   * current base advanced it after the author confirmed) or that has any
+   * unresolved conflict copy (a save on an outdated base) throws
    * `CommunityConflictError("draft_changed")` and nothing is removed or
-   * receipted; a replay of a completed deletion returns its receipt. Only the
-   * draft revision is compared: a conflict copy created or replaced since (a
-   * save on an outdated base) does not change it and is deleted.
+   * receipted; a replay of a completed deletion returns its receipt. Without
+   * `expectedRevision` the draft and its conflict copies are deleted.
    */
   deleteDraft(
     actorId: string,
@@ -553,15 +554,18 @@ export interface PublishingDraftOperations {
   /**
    * Author command. Returns the work's active primary edit draft, or creates
    * one from the author revision (`baseRevisionId` = that revision, legacy
-   * items included, draft refs for every item). Creating counts toward
-   * `draft_limit`. A trashed or removed work throws `work_unavailable`.
+   * items included, draft refs for every item; authorship not set when the
+   * revision declares none). `created` is true only when this request
+   * inserted the draft (a replayed request identity answers as the original
+   * request did). Creating counts toward `draft_limit`. A trashed or removed
+   * work throws `work_unavailable`.
    */
   openEditDraft(
     actorId: string,
     workId: string,
     command: OpenWorkEditDraftCommand,
     now: Date,
-  ): Promise<PublishingDraft>;
+  ): Promise<PublishingOpenedEditDraft>;
 }
 
 /** Media items, processing results and derivative readiness (L02-L06, A05-A06). */

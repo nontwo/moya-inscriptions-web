@@ -60,8 +60,14 @@ export {
   publishingJobActions,
   submissionDecidable,
   submissionUndecidableReason,
+  submissionVariantKey,
 } from "./work-publishing-rules";
-export { OperatorFailure, outcomeUnknown } from "./api";
+export {
+  AUTHORSHIP_NOT_SET,
+  OperatorFailure,
+  authorshipLabel,
+  outcomeUnknown,
+} from "./api";
 
 import type { OperatorMediaCall } from "./backend";
 import type {

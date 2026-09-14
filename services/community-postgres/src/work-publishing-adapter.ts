@@ -7,6 +7,7 @@ import type {
   MediaVariant,
   OpenWorkEditDraftCommand,
   PublishingDraft,
+  PublishingOpenedEditDraft,
   PublishingDraftDeletionCommand,
   PublishingDraftPage,
   PublishingDraftSaveResult,
@@ -173,7 +174,7 @@ export class PostgresWorkPublishingAdapter implements WorkPublishingPort {
     workId: string,
     command: OpenWorkEditDraftCommand,
     now: Date,
-  ): Promise<PublishingDraft> {
+  ): Promise<PublishingOpenedEditDraft> {
     return drafts.openEditDraft(this.pool, actorId, workId, command, now);
   }
   readSettings(): Promise<WorkPublishingSettings> {

@@ -8,7 +8,7 @@ import { ConfirmationModal, SetStepNav, useModal } from "@payloadcms/ui";
 import {
   TIME_ZONE_NOTE,
   UNTITLED_WORK,
-  authorshipLabels,
+  authorshipLabel,
   call,
   describeFailure,
   describeFinalFailure,
@@ -32,6 +32,7 @@ import {
   itemPreviewVariant,
   submissionDecidable,
   submissionUndecidableReason,
+  submissionVariantKey,
 } from "./work-publishing-rules";
 
 import type {
@@ -488,7 +489,7 @@ export const WorkSubmissionsQueueClient = () => {
                             ? "纯文字"
                             : `${item.items.length} 项媒体`}
                           {" · "}
-                          {authorshipLabels[item.authorship.kind]}
+                          {authorshipLabel(item.authorship)}
                         </span>
                       </td>
                       <td>
@@ -741,10 +742,9 @@ const SubmissionDetail = ({
       </div>
       <div>
         <h3>作品性质</h3>
-        <p className={styles.excerpt}>
-          {authorshipLabels[data.authorship.kind]}
-        </p>
-        {data.authorship.kind === "original" ? null : (
+        <p className={styles.excerpt}>{authorshipLabel(data.authorship)}</p>
+        {data.authorship === null ||
+        data.authorship.kind === "original" ? null : (
           <dl className={styles.contextBox}>
             <dt className={styles.secondary}>参考作品</dt>
             <dd className={styles.excerpt}>
@@ -863,7 +863,7 @@ const CoverPreview = ({ data }: { readonly data: OperatorWorkSubmission }) => {
               data.revisionId,
               item.itemId,
               preview.variant,
-              item.editKey,
+              preview.editKey,
             )}
           />
           {/* The cover crop is normalized to the edited image; over the
@@ -947,7 +947,7 @@ const MediaTile = ({
                 data.revisionId,
                 item.itemId,
                 variant,
-                item.editKey,
+                submissionVariantKey(data, item, variant) ?? item.editKey,
               )}
             />
           )}
@@ -979,7 +979,12 @@ const MediaPreview = ({
   const variant = itemPreviewVariant(data, item, "preview");
   const motion = item.kind === "live" && item.variants.includes("motion");
   const src = (name: OperatorSubmissionMedia["variants"][number]) =>
-    workSubmissionMediaSrc(data.revisionId, item.itemId, name, item.editKey);
+    workSubmissionMediaSrc(
+      data.revisionId,
+      item.itemId,
+      name,
+      submissionVariantKey(data, item, name) ?? item.editKey,
+    );
   return (
     <div className={styles.contextBox} data-submission-preview={item.position}>
       {playing && motion ? (

@@ -269,7 +269,12 @@ const authorshipSchema = (stage: PublishingTextStage) => {
   ]);
 };
 
-/** Authorship in drafts and in every read; submissions add the single-line rule. */
+/**
+ * A declared authorship in drafts and in every read; submissions add the
+ * single-line rule. Content carries `null` while the author has declared
+ * none (legacy Phase 4 works never declared one); nothing defaults to
+ * `original` (C05).
+ */
 export const workAuthorshipSchema = authorshipSchema("draft");
 
 export const MEDIA_CROP_MINIMUM = 0.01;
@@ -375,8 +380,11 @@ const workContentShape = (stage: PublishingTextStage) => ({
     { tooLong: "body_too_long", lineBreak: "line_break" },
     stage,
   ),
-  authorship:
-    stage === "draft" ? workAuthorshipSchema : authorshipSchema(stage),
+  /** `null` = not set: no authorship is claimed for the work. */
+  authorship: (stage === "draft"
+    ? workAuthorshipSchema
+    : authorshipSchema(stage)
+  ).nullable(),
   visibility: workVisibilitySchema,
   items: z
     .array(workDraftItemSchema)
@@ -502,6 +510,12 @@ const stillSrcSchema = z.union([
   publishingMediaSrcSchema,
   legacyMediaSrcSchema,
 ]);
+
+/** A work's card cover still: a still derivative path or a Phase 4 PNG, never motion. */
+export const workCoverSrcSchema = stillSrcSchema.refine(
+  (src) => publishingMediaSrcParts(src)?.variant !== "motion",
+  { message: "a cover is a still image" },
+);
 
 export const publishingMediaComponentSchema = z
   .strictObject({
@@ -1067,6 +1081,24 @@ export const publishingDraftSchema = z
     },
   );
 
+/**
+ * The answer of `POST publishing/works/:workId/draft`: the work's active edit
+ * draft, and whether this request inserted it. `created` is false when an
+ * existing draft (from another device or an earlier request) was returned, so
+ * a client deletes an untouched edit draft on leaving only when it created
+ * that draft itself. A retried request identity answers as the original
+ * request did.
+ */
+export const publishingOpenedEditDraftSchema = z
+  .strictObject({
+    draft: publishingDraftSchema,
+    created: z.boolean(),
+  })
+  .refine(({ draft }) => draft.kind === "edit", {
+    path: ["draft", "kind"],
+    message: "an opened edit draft is an edit draft",
+  });
+
 export const publishingDraftSummarySchema = z
   .strictObject({
     id: workDraftIdSchema,
@@ -1111,15 +1143,15 @@ export const publishingDraftSaveResultSchema = z.discriminatedUnion("status", [
 
 /**
  * Targeted draft deletion (D06). `expectedRevision` is the draft revision the
- * author confirmed the deletion against; when the stored draft revision
- * differs (a save from another device on the current base advanced it), the
- * deletion is refused with a 409 CONFLICT whose message is `draft_changed`
- * and nothing is removed. Without it the current draft is deleted.
- *
- * The guard covers the draft revision only. A save on an outdated base
- * creates or replaces a conflict copy without changing that revision, so a
- * deletion at the confirmed revision still removes a conflict copy saved
- * after the confirmation.
+ * author confirmed the deletion against. The deletion is refused with a 409
+ * CONFLICT whose message is `draft_changed`, and nothing is removed, when the
+ * stored draft revision differs (a save from another device on the current
+ * base advanced it) or when the draft has any unresolved conflict copy (a
+ * save on an outdated base, which leaves the revision unchanged). A guarded
+ * deletion therefore never removes content saved elsewhere unseen; while a
+ * conflict copy is unresolved it is refused even when the author saw that
+ * copy. Without `expectedRevision` nothing is checked: the current draft is
+ * deleted with its conflict copies.
  */
 export const publishingDraftDeletionCommandSchema = z.strictObject({
   requestId: requestIdSchema,
@@ -1330,6 +1362,9 @@ export type CreatePublishingDraftCommand = z.infer<
 >;
 export type OpenWorkEditDraftCommand = z.infer<
   typeof openWorkEditDraftCommandSchema
+>;
+export type PublishingOpenedEditDraft = z.infer<
+  typeof publishingOpenedEditDraftSchema
 >;
 export type SavePublishingDraftCommand = z.infer<
   typeof savePublishingDraftCommandSchema

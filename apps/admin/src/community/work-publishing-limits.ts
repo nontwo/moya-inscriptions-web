@@ -56,8 +56,8 @@ export const WORK_PUBLISHING_LIMIT_FIELDS: readonly WorkPublishingLimitField[] =
       unit: "项",
       ...count,
       minimum: 1,
-      maximum: 500,
-      hint: "一张实况照片计为 1 项。调低后只限制之后的添加与提交。",
+      maximum: 100,
+      hint: "一张实况照片计为 1 项，最多可设为 100 项。调低后只限制之后的添加与提交。",
     },
     {
       name: "originalItemMaxBytes",

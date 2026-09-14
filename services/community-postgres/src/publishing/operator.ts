@@ -50,8 +50,9 @@ import { failProcessingItems } from "./jobs.js";
 import { mediaReadTarget, variantEditKeySql } from "./media-read.js";
 import type { MediaReadTargetRow } from "./media-read.js";
 import { applyPublicRevision, touchWork } from "./submissions.js";
-import { presentationDto, revisionAuthorship } from "./works.js";
-import type { RevisionAuthorshipColumns } from "./works.js";
+import { revisionAuthorship } from "./authorship.js";
+import type { RevisionAuthorshipColumns } from "./authorship.js";
+import { presentationDto } from "./works.js";
 
 /*
  * Operator work publishing commands: the independent policy and limits, the

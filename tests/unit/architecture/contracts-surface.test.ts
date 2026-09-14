@@ -125,6 +125,7 @@ describe("contracts package surface", () => {
       "PublishingMediaComponent",
       "PublishingMediaItem",
       "PublishingMediaSources",
+      "PublishingOpenedEditDraft",
       "PublishingPageQuery",
       "PublishingSession",
       "PublishingSessionState",

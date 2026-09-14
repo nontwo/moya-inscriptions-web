@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   workAuthorshipSchema,
+  workCoverSrcSchema,
   workMediaIdSchema,
   workMediaSchema,
   workVisibilitySchema,
@@ -515,6 +516,13 @@ export const workSchema = z
      * the chosen cover item, else the first entry; null without media.
      */
     coverMediaId: workMediaIdSchema.nullable().optional(),
+    /**
+     * The card cover still of the same revision: the cover item's `cover`
+     * derivative under its edit and the revision cover crop (else its display
+     * derivative), the Phase 4 PNG for an unedited legacy item, the first item
+     * when no cover was chosen; null without a presentable cover.
+     */
+    coverSrc: workCoverSrcSchema.nullable().optional(),
     /** Null until the first public exposure (a self-only or pending first submission). */
     firstPublishedAt: z.iso.datetime().nullable(),
     version,
@@ -522,7 +530,11 @@ export const workSchema = z
     available: z.boolean(),
     /** Set after a real content update of a public revision. */
     editedAt: z.iso.datetime().nullable().optional(),
-    /** Attribution readers see: original, copy or practice, or material sharing with its reference. */
+    /**
+     * Attribution readers see: original, copy or practice, or material sharing
+     * with its reference. Absent when the viewer's revision declares none
+     * (legacy Phase 4 works and submissions without a declaration).
+     */
     authorship: workAuthorshipSchema.optional(),
     /** Author-only fields: present only in the author's own view. */
     visibility: workVisibilitySchema.optional(),

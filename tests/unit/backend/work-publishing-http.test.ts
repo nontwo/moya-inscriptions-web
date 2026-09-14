@@ -26,6 +26,7 @@ import {
   publishingDraftSchema,
   publishingLimitsSchema,
   publishingMediaItemSchema,
+  publishingOpenedEditDraftSchema,
   publishingUploadResultSchema,
 } from "@moya/contracts/schemas";
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
@@ -1677,6 +1678,39 @@ describe("work publishing author HTTP surface", () => {
       },
     );
     expect(read.status).toBe(200);
+  });
+
+  it("answers an opened edit draft with whether the request created it", async () => {
+    const edit = {
+      ...draft,
+      kind: "edit",
+      workId,
+      baseRevisionId: `work-revision-${"6".repeat(32)}`,
+      content: { ...content, authorship: null },
+    } as const;
+    let created = true;
+    const fake = fakePort({
+      openEditDraft: () => ({ draft: edit, created }),
+    });
+    const { base, signIn } = await start({ port: fake.port });
+    const token = await signIn();
+    const command = { requestId: randomUUID(), deviceClass: "phone" };
+    for (const expected of [true, false]) {
+      created = expected;
+      const answer = await fetch(
+        `${base}/v1/community/publishing/works/${workId}/draft`,
+        json(token, command),
+      );
+      expect(answer.status).toBe(200);
+      expect(answer.headers.get("cache-control")).toBe("private, no-store");
+      expect(
+        publishingOpenedEditDraftSchema.parse(await answer.json()),
+      ).toEqual({ draft: edit, created: expected });
+    }
+    expect(fake.named("openEditDraft").map((call) => call.args)).toEqual([
+      [actor, workId, command, now],
+      [actor, workId, command, now],
+    ]);
   });
 
   it("parses queries and bodies strictly and surfaces publishing rule codes", async () => {

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,9 @@ import {
 } from "@moya/catalog-postgres";
 import {
   CommunityMigrationStateError,
+  PostgresAuthorCommunityAdapter,
+  PostgresPublishingOperatorAdapter,
+  PostgresWorkPublishingAdapter,
   requiredCommunityMigrations,
   runCommunityMigrations,
 } from "@moya/community-postgres";
@@ -42,8 +45,10 @@ const workPublishingMigrations = [
   "20260914091000",
   "20260914092000",
   "20260914093000",
+  "20260914094000",
 ];
 const backfillMigration = "20260914092000";
+const bridgeMigration = "20260914093000";
 
 const endpoint = new URL(testDatabaseUrl);
 if (
@@ -137,7 +142,8 @@ const sha256 = (value: Buffer | string) =>
   createHash("sha256").update(value).digest("hex");
 // The canonical text community.work_content_sha256 hashes for a legacy
 // baseline, rebuilt independently: jsonb array text with ", " separators and
-// line breaks compared as LF.
+// line breaks compared as LF. A legacy baseline declares no authorship, so
+// its kind and reference fields are JSON null.
 const legacyCanonicalContent = (
   title: string,
   body: string,
@@ -147,7 +153,7 @@ const legacyCanonicalContent = (
     JSON.stringify(value.replace(/\r\n?/gu, "\n"));
   const items = itemIds.map((id) => `[${JSON.stringify(id)}, 0, null]`);
   const cover = itemIds[0] === undefined ? "null" : JSON.stringify(itemIds[0]);
-  return `[${text(title)}, ${text(body)}, "original", null, null, null, [${items.join(", ")}], ${cover}, null]`;
+  return `[${text(title)}, ${text(body)}, null, null, null, null, [${items.join(", ")}], ${cover}, null]`;
 };
 const opaque = (prefix: string) =>
   `${prefix}-${randomBytes(16).toString("hex")}`;
@@ -518,7 +524,7 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
           origin: "legacy",
           title: work.title,
           body: work.text,
-          authorship_kind: "original",
+          authorship_kind: null,
           reference_title: null,
           original_author: null,
           source_note: null,
@@ -612,8 +618,8 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
       const content = {
         title: "标题",
         body: "第一行\n第二行",
-        kind: "copy_practice",
-        referenceTitle: "参考",
+        kind: "copy_practice" as string | null,
+        referenceTitle: "参考" as string | null,
         originalAuthor: null as string | null,
         sourceNote: "来源" as string | null,
         items: [
@@ -688,6 +694,53 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
       ] satisfies Partial<Content>[]) {
         expect(await hash(override), JSON.stringify(override)).not.toBe(base);
       }
+      // No declared authorship is its own content, distinct from a declared
+      // original: the kind is the JSON null element.
+      const undeclared = { kind: null, referenceTitle: null, sourceNote: null };
+      const notSet = await hash(undeclared);
+      expect(notSet).toBe(
+        sha256(
+          `["标题", "第一行\\n第二行", null, null, null, null, [["${item("a")}", 90, {"x": 0.1, "y": 0, "width": 0.5, "height": 0.5}], ["${item("b")}", 0, null]], "${item("a")}", {"x": 0, "y": 0, "width": 1, "height": 1}]`,
+        ),
+      );
+      expect(await hash({ ...undeclared, kind: "original" })).not.toBe(notSet);
+    });
+
+    it("shows no authorship claim on upgraded Phase 4 works in any read", async () => {
+      const authors = new PostgresAuthorCommunityAdapter(pool);
+      for (const workId of [works.single, works.textOnly, works.triple])
+        for (const viewer of [other, author, null])
+          expect(
+            await authors.readWork(workId, viewer),
+            `${workId} ${viewer}`,
+          ).not.toHaveProperty("authorship");
+      const listed = await authors.listWorks(author, author, {
+        page: 1,
+        pageSize: 50,
+        search: "",
+        kind: "all",
+      });
+      expect(listed.items.length).toBeGreaterThan(0);
+      for (const item of listed.items)
+        expect(item).not.toHaveProperty("authorship");
+      expect((await authors.readWork(works.triple, other)).coverSrc).toBe(
+        `/api/community/media/${media.second}`,
+      );
+      expect(
+        (
+          await new PostgresWorkPublishingAdapter(pool).readEditableWork(
+            author,
+            works.triple,
+          )
+        ).content.authorship,
+      ).toBeNull();
+      expect(
+        (
+          await new PostgresPublishingOperatorAdapter(pool).readSubmission(
+            legacyRevision(works.triple),
+          )
+        ).authorship,
+      ).toBeNull();
     });
 
     it("maps each referenced user_media row to one ready legacy item in place", async () => {
@@ -789,7 +842,7 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
           content: {
             title: " 草稿 1 ",
             body: "草稿正文 1",
-            authorship: { kind: "original" },
+            authorship: null,
             visibility: "public",
             items: [media.third, media.draftOnly].map((mediaId) => ({
               key: legacyItem(mediaId),
@@ -814,7 +867,7 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
           content: {
             title: " 草稿 2 ",
             body: "草稿正文 2",
-            authorship: { kind: "original" },
+            authorship: null,
             visibility: "public",
             items: [],
             coverKey: null,
@@ -1105,6 +1158,7 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
       );
       const expectBridged = async (
         workId: string,
+        title: string,
         mediaIds: readonly string[],
       ) => {
         const revisionId = legacyRevision(workId);
@@ -1130,7 +1184,7 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
         expect(
           await rows(
             pool,
-            "SELECT r.origin, r.disposition, r.sequence, r.cover_item_id, (SELECT array_agg(i.item_id ORDER BY i.position) FROM community.work_revision_items i WHERE i.revision_id = r.id) AS items, (SELECT array_agg(f.item_id ORDER BY f.item_id) FROM community.media_item_refs f WHERE f.holder_kind = 'revision' AND f.holder_id = r.id) AS refs FROM community.work_revisions r WHERE r.work_id = $1",
+            "SELECT r.origin, r.disposition, r.sequence, r.cover_item_id, r.authorship_kind, r.reference_title, r.original_author, r.source_note, r.content_sha256, (SELECT array_agg(i.item_id ORDER BY i.position) FROM community.work_revision_items i WHERE i.revision_id = r.id) AS items, (SELECT array_agg(f.item_id ORDER BY f.item_id) FROM community.media_item_refs f WHERE f.holder_kind = 'revision' AND f.holder_id = r.id) AS refs FROM community.work_revisions r WHERE r.work_id = $1",
             [workId],
           ),
         ).toEqual([
@@ -1139,13 +1193,28 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
             disposition: "approved",
             sequence: 1,
             cover_item_id: expectedItems[0] ?? null,
+            authorship_kind: null,
+            reference_title: null,
+            original_author: null,
+            source_note: null,
+            content_sha256: sha256(
+              legacyCanonicalContent(title, "正文", expectedItems),
+            ),
             items: expectedItems.length === 0 ? null : expectedItems,
             refs: expectedItems.length === 0 ? null : [...expectedItems].sort(),
           },
         ]);
+        // No read claims an authorship the Phase 4 author never declared.
+        for (const viewer of [author, null])
+          expect(
+            await new PostgresAuthorCommunityAdapter(pool).readWork(
+              workId,
+              viewer,
+            ),
+          ).not.toHaveProperty("authorship");
       };
       // The bridge migration's one-time pass covers the work written between.
-      await expectBridged(between, [secondMedia, firstMedia]);
+      await expectBridged(between, "迁移之间", [secondMedia, firstMedia]);
 
       // After the bridge, the trigger covers every later direct insert.
       const later = opaque("work");
@@ -1154,10 +1223,14 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
         secondMedia,
         firstMedia,
       ]);
-      await expectBridged(later, [firstMedia, secondMedia, firstMedia]);
+      await expectBridged(later, "迁移之后", [
+        firstMedia,
+        secondMedia,
+        firstMedia,
+      ]);
       const textOnly = opaque("work");
       await insertPhase4Work(textOnly, "只有文字", []);
-      await expectBridged(textOnly, []);
+      await expectBridged(textOnly, "只有文字", []);
       // Shared user media stays one legacy item per (owner, media).
       expect(
         await rows(
@@ -1197,6 +1270,383 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
           .sort()
           .map((id) => ({ id, public_revision_id: null })),
       );
+      expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual(
+        [],
+      );
+    });
+  });
+
+  describe("legacy authorship migration", () => {
+    it("stops legacy baselines claiming original while every declared revision keeps its content identity", async () => {
+      const pool = await createDedicatedDatabase("upgrade");
+      expect(
+        await runCommunityMigrations(pool, migrationsDirectory, {
+          through: bridgeMigration,
+        }),
+      ).toEqual(
+        requiredCommunityMigrations
+          .map(({ migrationId }) => migrationId)
+          .filter((id) => id <= bridgeMigration),
+      );
+      const author = opaque("user");
+      await pool.query(
+        "INSERT INTO community.public_users(id, handle, display_name) VALUES($1, $2, '合成作者')",
+        [author, `wp-authorship-${author.slice(-8)}`],
+      );
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 7]);
+      const mediaId = opaque("user-media");
+      await pool.query(
+        "INSERT INTO community.user_media(id, owner_id, mime_type, width, height, sha256, bytes, created_at) VALUES($1, $2, 'image/png', 12, 34, $3, $4, '2026-02-01T00:00:00Z')",
+        [mediaId, author, sha256(png), png],
+      );
+      // A Phase 4 style insert bridged by the previous function body.
+      const legacyWork = opaque("work");
+      await pool.query(
+        "INSERT INTO community.works(id, author_id, title, text, media_ids, first_published_at, updated_at, synthetic_provenance) VALUES($1, $2, '旧作', '旧文', $3, '2026-03-01T08:00:00Z', '2026-03-02T08:00:00Z', 'work-publishing-authorship-test')",
+        [legacyWork, author, [mediaId]],
+      );
+      const legacyItems = [legacyItem(mediaId)];
+      const [bridged] = await rows<{
+        authorship_kind: string | null;
+        content_sha256: string;
+      }>(
+        pool,
+        "SELECT authorship_kind, content_sha256 FROM community.work_revisions WHERE id = $1",
+        [legacyRevision(legacyWork)],
+      );
+      expect(bridged?.authorship_kind).toBe("original");
+
+      // Explicit submissions with every declared authorship shape, hashed by
+      // the one definition before the migration.
+      const work = opaque("work");
+      await pool.query(
+        "INSERT INTO community.works(id, author_id, title, text, created_via, visibility, first_submitted_at) VALUES($1, $2, '', '', 'publishing', 'public', '2026-04-01T00:00:00Z')",
+        [work, author],
+      );
+      const item = opaque("media-item");
+      await pool.query(
+        "INSERT INTO community.media_items(id, owner_id, kind, quality_mode, source, state, presentation) VALUES($1, $2, 'static', 'standard', 'upload', 'ready', '{\"width\":640,\"height\":480}')",
+        [item, author],
+      );
+      const submissions = [
+        ["original", null, null, null, null, null],
+        [
+          "copy_practice",
+          "兰亭序",
+          "王羲之",
+          "第一行\n第二行",
+          item,
+          { x: 0, y: 0.25, width: 1, height: 0.5 },
+        ],
+        ["material_sharing", null, "佚名", null, item, null],
+      ] as const;
+      const submitted: { id: string; sha: string }[] = [];
+      for (const [index, entry] of submissions.entries()) {
+        const [kind, reference, original, source, coverItem, coverCrop] = entry;
+        const id = opaque("work-revision");
+        const items = JSON.stringify(
+          coverItem === null
+            ? []
+            : [{ itemId: coverItem, edit: { rotation: 90, crop: null } }],
+        );
+        await pool.query(
+          `INSERT INTO community.work_revisions(id, work_id, author_id, sequence, origin, title, body, authorship_kind, reference_title, original_author, source_note, requested_visibility, cover_item_id, cover_crop, content_sha256, disposition, submitted_at, request_id)
+           VALUES($1, $2, $3, $4, 'submission', $5, '正文', $6, $7, $8, $9, 'public', $10, $11::jsonb,
+             community.work_content_sha256($5, '正文', $6, $7, $8, $9, $12::jsonb, $10, $11::jsonb),
+             'superseded', '2026-04-01T00:00:00Z', gen_random_uuid())`,
+          [
+            id,
+            work,
+            author,
+            index + 1,
+            `提交 ${index + 1}`,
+            kind,
+            reference,
+            original,
+            source,
+            coverItem,
+            coverCrop === null ? null : JSON.stringify(coverCrop),
+            items,
+          ],
+        );
+        if (coverItem !== null)
+          await pool.query(
+            "INSERT INTO community.work_revision_items(revision_id, position, item_id, edit) VALUES($1, 1, $2, $3)",
+            [id, coverItem, { rotation: 90, crop: null }],
+          );
+        const [row] = await rows<{ content_sha256: string }>(
+          pool,
+          "SELECT content_sha256 FROM community.work_revisions WHERE id = $1",
+          [id],
+        );
+        submitted.push({ id, sha: row!.content_sha256 });
+      }
+      // Snapshots and drafts: only legacy draft snapshots lose the claim.
+      const content = (kind: string) => ({
+        title: "草稿",
+        body: "",
+        authorship: { kind },
+        visibility: "public",
+        items: [],
+        coverKey: null,
+        coverCrop: null,
+      });
+      const [legacyDraft, savedSnapshot] = [
+        opaque("work-snapshot"),
+        opaque("work-snapshot"),
+      ];
+      await pool.query(
+        "INSERT INTO community.work_draft_snapshots(id, owner_id, work_id, kind, content, source_revision, pinned) VALUES($1, $3, $4, 'legacy_draft', $5, 1, TRUE), ($2, $3, $4, 'saved', $5, 1, FALSE)",
+        [legacyDraft, savedSnapshot, author, legacyWork, content("original")],
+      );
+      const draft = opaque("work-draft");
+      await pool.query(
+        "INSERT INTO community.work_drafts(id, owner_id, content, content_sha256) VALUES($1, $2, $3, $4)",
+        [draft, author, content("original"), "b".repeat(64)],
+      );
+      // Edit drafts of legacy baselines opened before the migration were
+      // seeded with the old default. One stays untouched (Save now on
+      // unchanged content keeps revision 1 and records a saved snapshot of
+      // it); the other is saved with a change, so its later content is the
+      // author's.
+      const publishing = new PostgresWorkPublishingAdapter(pool);
+      const editedWork = opaque("work");
+      await pool.query(
+        "INSERT INTO community.works(id, author_id, title, text, media_ids, first_published_at, updated_at, synthetic_provenance) VALUES($1, $2, '另一旧作', '', $3, '2026-03-03T08:00:00Z', '2026-03-03T08:00:00Z', 'work-publishing-authorship-test')",
+        [editedWork, author, [mediaId]],
+      );
+      const seededAt = new Date("2026-09-14T01:00:00.000Z");
+      const openSeeded = async (workId: string) => {
+        const opened = await publishing.openEditDraft(
+          author,
+          workId,
+          { requestId: randomUUID(), deviceClass: "phone" },
+          seededAt,
+        );
+        expect(opened).toMatchObject({
+          created: true,
+          draft: { revision: 1, content: { authorship: { kind: "original" } } },
+        });
+        expect(
+          await publishing.snapshotDraft(
+            author,
+            opened.draft.id,
+            {
+              baseRevision: 1,
+              content: opened.draft.content,
+              deviceClass: "phone",
+            },
+            new Date("2026-09-14T01:01:00.000Z"),
+          ),
+        ).toMatchObject({ status: "saved", draft: { revision: 1 } });
+        return opened.draft;
+      };
+      const untouched = await openSeeded(legacyWork);
+      const changed = await openSeeded(editedWork);
+      expect(
+        await publishing.snapshotDraft(
+          author,
+          changed.id,
+          {
+            baseRevision: 1,
+            content: { ...changed.content, title: "另一旧作（改）" },
+            deviceClass: "phone",
+          },
+          new Date("2026-09-14T01:02:00.000Z"),
+        ),
+      ).toMatchObject({ status: "saved", draft: { revision: 2 } });
+      const draftTimes = await rows<{ id: string; updated_at: Date }>(
+        pool,
+        "SELECT id, updated_at FROM community.work_drafts WHERE id = ANY($1::text[]) ORDER BY id",
+        [[untouched.id, changed.id]],
+      );
+
+      expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual([
+        "20260914094000",
+      ]);
+
+      // Declared submissions: stored hashes unchanged and still exactly what
+      // the definition computes from the stored revision.
+      const recomputed = await rows<{
+        id: string;
+        authorship_kind: string | null;
+        content_sha256: string;
+        matches: boolean;
+      }>(
+        pool,
+        `SELECT r.id, r.authorship_kind, r.content_sha256, r.content_sha256 = community.work_content_sha256(
+           r.title, r.body, r.authorship_kind, r.reference_title, r.original_author, r.source_note,
+           COALESCE((SELECT jsonb_agg(jsonb_build_object('itemId', i.item_id, 'edit', i.edit) ORDER BY i.position)
+                     FROM community.work_revision_items i WHERE i.revision_id = r.id), '[]'::jsonb),
+           r.cover_item_id, r.cover_crop) AS matches
+         FROM community.work_revisions r WHERE r.work_id = ANY($1::text[]) ORDER BY r.work_id = $2 DESC, r.sequence`,
+        [[work, legacyWork], work],
+      );
+      expect(recomputed).toEqual([
+        ...submitted.map(({ id, sha }, index) => ({
+          id,
+          authorship_kind: submissions[index]![0],
+          content_sha256: sha,
+          matches: true,
+        })),
+        {
+          id: legacyRevision(legacyWork),
+          authorship_kind: null,
+          content_sha256: sha256(
+            legacyCanonicalContent("旧作", "旧文", legacyItems),
+          ),
+          matches: true,
+        },
+      ]);
+      // The legacy hash changed only by the authorship claim.
+      expect(bridged?.content_sha256).not.toBe(recomputed[3]?.content_sha256);
+      expect(bridged?.content_sha256).toBe(
+        sha256(
+          legacyCanonicalContent("旧作", "旧文", legacyItems).replace(
+            "null, null, null, null",
+            '"original", null, null, null',
+          ),
+        ),
+      );
+      expect(
+        await rows(
+          pool,
+          "SELECT id, content -> 'authorship' AS authorship FROM community.work_draft_snapshots WHERE id = ANY($1::text[]) UNION ALL SELECT id, content -> 'authorship' FROM community.work_drafts WHERE id = $2 ORDER BY id",
+          [[legacyDraft, savedSnapshot], draft],
+        ),
+      ).toEqual(
+        [
+          { id: legacyDraft, authorship: null },
+          { id: savedSnapshot, authorship: { kind: "original" } },
+          { id: draft, authorship: { kind: "original" } },
+        ].sort((left, right) => (left.id < right.id ? -1 : 1)),
+      );
+      // The untouched seeded draft and every snapshot of its seeded content
+      // lose the default, with the adapter's content hash; the draft keeps its
+      // revision and time. The changed draft and its later snapshot keep what
+      // the author saved.
+      expect(
+        await rows(
+          pool,
+          `SELECT id, revision, content -> 'authorship' AS authorship, updated_at,
+             content_sha256 = encode(sha256(convert_to(content::text, 'UTF8')), 'hex') AS hashed
+           FROM community.work_drafts WHERE id = ANY($1::text[]) ORDER BY id`,
+          [[untouched.id, changed.id]],
+        ),
+      ).toEqual(
+        draftTimes.map(({ id, updated_at }) => ({
+          id,
+          revision: id === untouched.id ? 1 : 2,
+          authorship: id === untouched.id ? null : { kind: "original" },
+          updated_at,
+          hashed: true,
+        })),
+      );
+      expect(
+        await rows(
+          pool,
+          "SELECT draft_id, kind, source_revision, content -> 'authorship' AS authorship FROM community.work_draft_snapshots WHERE draft_id = ANY($1::text[]) ORDER BY draft_id = $2 DESC, source_revision",
+          [[untouched.id, changed.id], untouched.id],
+        ),
+      ).toEqual([
+        {
+          draft_id: untouched.id,
+          kind: "saved",
+          source_revision: 1,
+          authorship: null,
+        },
+        {
+          draft_id: changed.id,
+          kind: "saved",
+          source_revision: 1,
+          authorship: null,
+        },
+        {
+          draft_id: changed.id,
+          kind: "saved",
+          source_revision: 2,
+          authorship: { kind: "original" },
+        },
+      ]);
+      // The same draft opens without a claim, the editable work points at it,
+      // and saving what it shows is no change (its stored hash is the one the
+      // adapter computes).
+      const reopened = await publishing.openEditDraft(
+        author,
+        legacyWork,
+        { requestId: randomUUID(), deviceClass: "desktop" },
+        new Date("2026-09-14T02:00:00.000Z"),
+      );
+      expect(reopened).toMatchObject({
+        created: false,
+        draft: { id: untouched.id, revision: 1, content: { authorship: null } },
+      });
+      expect(
+        await publishing.readEditableWork(author, legacyWork),
+      ).toMatchObject({ draftId: untouched.id, content: { authorship: null } });
+      expect(
+        await publishing.saveDraft(
+          author,
+          untouched.id,
+          {
+            baseRevision: 1,
+            content: reopened.draft.content,
+            deviceClass: "desktop",
+          },
+          new Date("2026-09-14T02:01:00.000Z"),
+        ),
+      ).toMatchObject({
+        status: "saved",
+        draft: { revision: 1, content: { authorship: null } },
+      });
+
+      // Not set carries no references; a submission may declare nothing.
+      const client = await pool.connect();
+      const insert = (reference: string | null) =>
+        client.query(
+          `INSERT INTO community.work_revisions(id, work_id, author_id, sequence, origin, title, body, authorship_kind, reference_title, requested_visibility, content_sha256, disposition, submitted_at, request_id)
+           VALUES($1, $2, $3, 9, 'submission', '', '正文', NULL, $4, 'self', $5, 'not_required', CURRENT_TIMESTAMP, gen_random_uuid())`,
+          [opaque("work-revision"), work, author, reference, "a".repeat(64)],
+        );
+      try {
+        await client.query("BEGIN");
+        await client.query("SAVEPOINT reference_without_kind");
+        await expect(insert("兰亭序")).rejects.toMatchObject({
+          code: "23514",
+          constraint: "work_revisions_authorship_references_need_kind",
+        });
+        await client.query("ROLLBACK TO SAVEPOINT reference_without_kind");
+        await insert(null);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+
+      // Later Phase 4 style inserts are bridged without a claim.
+      const later = opaque("work");
+      await pool.query(
+        "INSERT INTO community.works(id, author_id, title, text, media_ids, first_published_at, updated_at, synthetic_provenance) VALUES($1, $2, '新旧作', '', $3, '2026-03-05T08:00:00Z', '2026-03-05T08:00:00Z', 'work-publishing-authorship-test')",
+        [later, author, [mediaId]],
+      );
+      expect(
+        await rows(
+          pool,
+          "SELECT authorship_kind, content_sha256 FROM community.work_revisions WHERE id = $1",
+          [legacyRevision(later)],
+        ),
+      ).toEqual([
+        {
+          authorship_kind: null,
+          content_sha256: sha256(
+            legacyCanonicalContent("新旧作", "", legacyItems),
+          ),
+        },
+      ]);
+      const authors = new PostgresAuthorCommunityAdapter(pool);
+      for (const workId of [legacyWork, later])
+        expect(await authors.readWork(workId, null)).not.toHaveProperty(
+          "authorship",
+        );
       expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual(
         [],
       );

@@ -2116,63 +2116,70 @@
             "additionalProperties": false,
             "properties": {
               "authorship": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "original",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "original",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "copy_practice",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "material_sharing",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    ]
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "copy_practice",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "material_sharing",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    "type": "null"
                   }
                 ]
               },
@@ -3669,63 +3676,70 @@
             "additionalProperties": false,
             "properties": {
               "authorship": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "original",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "original",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "copy_practice",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "material_sharing",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    ]
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "copy_practice",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "material_sharing",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    "type": "null"
                   }
                 ]
               },
@@ -4919,63 +4933,70 @@
                         "additionalProperties": false,
                         "properties": {
                           "authorship": {
-                            "oneOf": [
+                            "anyOf": [
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "original",
-                                    "type": "string"
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "original",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "copy_practice",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "material_sharing",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                ]
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "copy_practice",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "material_sharing",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                "type": "null"
                               }
                             ]
                           },
@@ -5193,63 +5214,70 @@
                         "additionalProperties": false,
                         "properties": {
                           "authorship": {
-                            "oneOf": [
+                            "anyOf": [
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "original",
-                                    "type": "string"
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "original",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "copy_practice",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "material_sharing",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                ]
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "copy_practice",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "material_sharing",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                "type": "null"
                               }
                             ]
                           },
@@ -5462,63 +5490,70 @@
             "additionalProperties": false,
             "properties": {
               "authorship": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "original",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "original",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "copy_practice",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "material_sharing",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    ]
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "copy_practice",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "material_sharing",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    "type": "null"
                   }
                 ]
               },
@@ -6135,63 +6170,70 @@
                                 "additionalProperties": false,
                                 "properties": {
                                   "authorship": {
-                                    "oneOf": [
+                                    "anyOf": [
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "original",
-                                            "type": "string"
+                                        "oneOf": [
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "original",
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "copy_practice",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "material_sharing",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
                                           }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        ]
                                       },
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "copy_practice",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
-                                      },
-                                      {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "material_sharing",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -6418,63 +6460,70 @@
                                 "additionalProperties": false,
                                 "properties": {
                                   "authorship": {
-                                    "oneOf": [
+                                    "anyOf": [
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "original",
-                                            "type": "string"
+                                        "oneOf": [
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "original",
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "copy_practice",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "material_sharing",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
                                           }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        ]
                                       },
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "copy_practice",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
-                                      },
-                                      {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "material_sharing",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -6696,63 +6745,70 @@
                     "additionalProperties": false,
                     "properties": {
                       "authorship": {
-                        "oneOf": [
+                        "anyOf": [
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "const": "original",
-                                "type": "string"
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "original",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind"],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "copy_practice",
+                                    "type": "string"
+                                  },
+                                  "originalAuthor": {
+                                    "maxLength": 4200,
+                                    "type": "string"
+                                  },
+                                  "referenceTitle": {
+                                    "maxLength": 4400,
+                                    "type": "string"
+                                  },
+                                  "sourceNote": {
+                                    "maxLength": 5000,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind"],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "material_sharing",
+                                    "type": "string"
+                                  },
+                                  "originalAuthor": {
+                                    "maxLength": 4200,
+                                    "type": "string"
+                                  },
+                                  "referenceTitle": {
+                                    "maxLength": 4400,
+                                    "type": "string"
+                                  },
+                                  "sourceNote": {
+                                    "maxLength": 5000,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind"],
-                            "type": "object"
+                            ]
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "const": "copy_practice",
-                                "type": "string"
-                              },
-                              "originalAuthor": {
-                                "maxLength": 4200,
-                                "type": "string"
-                              },
-                              "referenceTitle": {
-                                "maxLength": 4400,
-                                "type": "string"
-                              },
-                              "sourceNote": {
-                                "maxLength": 5000,
-                                "type": "string"
-                              }
-                            },
-                            "required": ["kind"],
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "const": "material_sharing",
-                                "type": "string"
-                              },
-                              "originalAuthor": {
-                                "maxLength": 4200,
-                                "type": "string"
-                              },
-                              "referenceTitle": {
-                                "maxLength": 4400,
-                                "type": "string"
-                              },
-                              "sourceNote": {
-                                "maxLength": 5000,
-                                "type": "string"
-                              }
-                            },
-                            "required": ["kind"],
-                            "type": "object"
+                            "type": "null"
                           }
                         ]
                       },
@@ -7197,63 +7253,70 @@
                         "additionalProperties": false,
                         "properties": {
                           "authorship": {
-                            "oneOf": [
+                            "anyOf": [
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "original",
-                                    "type": "string"
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "original",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "copy_practice",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "material_sharing",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                ]
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "copy_practice",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "material_sharing",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                "type": "null"
                               }
                             ]
                           },
@@ -7471,63 +7534,70 @@
                         "additionalProperties": false,
                         "properties": {
                           "authorship": {
-                            "oneOf": [
+                            "anyOf": [
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "original",
-                                    "type": "string"
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "original",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "copy_practice",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "material_sharing",
+                                        "type": "string"
+                                      },
+                                      "originalAuthor": {
+                                        "maxLength": 4200,
+                                        "type": "string"
+                                      },
+                                      "referenceTitle": {
+                                        "maxLength": 4400,
+                                        "type": "string"
+                                      },
+                                      "sourceNote": {
+                                        "maxLength": 5000,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                ]
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "copy_practice",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "material_sharing",
-                                    "type": "string"
-                                  },
-                                  "originalAuthor": {
-                                    "maxLength": 4200,
-                                    "type": "string"
-                                  },
-                                  "referenceTitle": {
-                                    "maxLength": 4400,
-                                    "type": "string"
-                                  },
-                                  "sourceNote": {
-                                    "maxLength": 5000,
-                                    "type": "string"
-                                  }
-                                },
-                                "required": ["kind"],
-                                "type": "object"
+                                "type": "null"
                               }
                             ]
                           },
@@ -7757,63 +7827,70 @@
                                 "additionalProperties": false,
                                 "properties": {
                                   "authorship": {
-                                    "oneOf": [
+                                    "anyOf": [
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "original",
-                                            "type": "string"
+                                        "oneOf": [
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "original",
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "copy_practice",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "material_sharing",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
                                           }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        ]
                                       },
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "copy_practice",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
-                                      },
-                                      {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "material_sharing",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -8040,63 +8117,70 @@
                                 "additionalProperties": false,
                                 "properties": {
                                   "authorship": {
-                                    "oneOf": [
+                                    "anyOf": [
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "original",
-                                            "type": "string"
+                                        "oneOf": [
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "original",
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "copy_practice",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "kind": {
+                                                "const": "material_sharing",
+                                                "type": "string"
+                                              },
+                                              "originalAuthor": {
+                                                "maxLength": 4200,
+                                                "type": "string"
+                                              },
+                                              "referenceTitle": {
+                                                "maxLength": 4400,
+                                                "type": "string"
+                                              },
+                                              "sourceNote": {
+                                                "maxLength": 5000,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": ["kind"],
+                                            "type": "object"
                                           }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        ]
                                       },
                                       {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "copy_practice",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
-                                      },
-                                      {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "kind": {
-                                            "const": "material_sharing",
-                                            "type": "string"
-                                          },
-                                          "originalAuthor": {
-                                            "maxLength": 4200,
-                                            "type": "string"
-                                          },
-                                          "referenceTitle": {
-                                            "maxLength": 4400,
-                                            "type": "string"
-                                          },
-                                          "sourceNote": {
-                                            "maxLength": 5000,
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": ["kind"],
-                                        "type": "object"
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -8318,63 +8402,70 @@
                     "additionalProperties": false,
                     "properties": {
                       "authorship": {
-                        "oneOf": [
+                        "anyOf": [
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "const": "original",
-                                "type": "string"
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "original",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind"],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "copy_practice",
+                                    "type": "string"
+                                  },
+                                  "originalAuthor": {
+                                    "maxLength": 4200,
+                                    "type": "string"
+                                  },
+                                  "referenceTitle": {
+                                    "maxLength": 4400,
+                                    "type": "string"
+                                  },
+                                  "sourceNote": {
+                                    "maxLength": 5000,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind"],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "material_sharing",
+                                    "type": "string"
+                                  },
+                                  "originalAuthor": {
+                                    "maxLength": 4200,
+                                    "type": "string"
+                                  },
+                                  "referenceTitle": {
+                                    "maxLength": 4400,
+                                    "type": "string"
+                                  },
+                                  "sourceNote": {
+                                    "maxLength": 5000,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind"],
-                            "type": "object"
+                            ]
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "const": "copy_practice",
-                                "type": "string"
-                              },
-                              "originalAuthor": {
-                                "maxLength": 4200,
-                                "type": "string"
-                              },
-                              "referenceTitle": {
-                                "maxLength": 4400,
-                                "type": "string"
-                              },
-                              "sourceNote": {
-                                "maxLength": 5000,
-                                "type": "string"
-                              }
-                            },
-                            "required": ["kind"],
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "const": "material_sharing",
-                                "type": "string"
-                              },
-                              "originalAuthor": {
-                                "maxLength": 4200,
-                                "type": "string"
-                              },
-                              "referenceTitle": {
-                                "maxLength": 4400,
-                                "type": "string"
-                              },
-                              "sourceNote": {
-                                "maxLength": 5000,
-                                "type": "string"
-                              }
-                            },
-                            "required": ["kind"],
-                            "type": "object"
+                            "type": "null"
                           }
                         ]
                       },
@@ -9035,6 +9126,1095 @@
         ],
         "type": "object"
       },
+      "PublishingOpenedEditDraft": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "draft": {
+            "additionalProperties": false,
+            "properties": {
+              "baseRevisionId": {
+                "anyOf": [
+                  {
+                    "pattern": "^work-revision-[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "conflict": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "account": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "authorship": {
+                                "anyOf": [
+                                  {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "original",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["kind"],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "copy_practice",
+                                            "type": "string"
+                                          },
+                                          "originalAuthor": {
+                                            "maxLength": 4200,
+                                            "type": "string"
+                                          },
+                                          "referenceTitle": {
+                                            "maxLength": 4400,
+                                            "type": "string"
+                                          },
+                                          "sourceNote": {
+                                            "maxLength": 5000,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["kind"],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "material_sharing",
+                                            "type": "string"
+                                          },
+                                          "originalAuthor": {
+                                            "maxLength": 4200,
+                                            "type": "string"
+                                          },
+                                          "referenceTitle": {
+                                            "maxLength": 4400,
+                                            "type": "string"
+                                          },
+                                          "sourceNote": {
+                                            "maxLength": 5000,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["kind"],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "body": {
+                                "maxLength": 24000,
+                                "type": "string"
+                              },
+                              "coverCrop": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "height": {
+                                        "maximum": 1,
+                                        "minimum": 0.01,
+                                        "type": "number"
+                                      },
+                                      "width": {
+                                        "maximum": 1,
+                                        "minimum": 0.01,
+                                        "type": "number"
+                                      },
+                                      "x": {
+                                        "maximum": 1,
+                                        "minimum": 0,
+                                        "type": "number"
+                                      },
+                                      "y": {
+                                        "maximum": 1,
+                                        "minimum": 0,
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": ["x", "y", "width", "height"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "coverKey": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "items": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "edit": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "crop": {
+                                          "anyOf": [
+                                            {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "height": {
+                                                  "maximum": 1,
+                                                  "minimum": 0.01,
+                                                  "type": "number"
+                                                },
+                                                "width": {
+                                                  "maximum": 1,
+                                                  "minimum": 0.01,
+                                                  "type": "number"
+                                                },
+                                                "x": {
+                                                  "maximum": 1,
+                                                  "minimum": 0,
+                                                  "type": "number"
+                                                },
+                                                "y": {
+                                                  "maximum": 1,
+                                                  "minimum": 0,
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "x",
+                                                "y",
+                                                "width",
+                                                "height"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "rotation": {
+                                          "enum": [0, 90, 180, 270],
+                                          "type": "number"
+                                        }
+                                      },
+                                      "required": ["rotation", "crop"],
+                                      "type": "object"
+                                    },
+                                    "itemId": {
+                                      "anyOf": [
+                                        {
+                                          "pattern": "^media-item-[0-9a-f]{32}$",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "key": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "enum": ["static", "live"],
+                                      "type": "string"
+                                    },
+                                    "origin": {
+                                      "const": "clipboard",
+                                      "type": "string"
+                                    },
+                                    "pendingLabel": {
+                                      "enum": ["photo", "live"],
+                                      "type": "string"
+                                    },
+                                    "qualityMode": {
+                                      "enum": [
+                                        "standard",
+                                        "original",
+                                        "legacy"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "itemId",
+                                    "kind",
+                                    "qualityMode",
+                                    "edit"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 500,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 4400,
+                                "type": "string"
+                              },
+                              "visibility": {
+                                "enum": ["public", "self"],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "body",
+                              "authorship",
+                              "visibility",
+                              "items",
+                              "coverKey",
+                              "coverCrop"
+                            ],
+                            "type": "object"
+                          },
+                          "deviceClass": {
+                            "anyOf": [
+                              {
+                                "enum": ["phone", "tablet", "desktop"],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revision": {
+                            "maximum": 2147483647,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "content",
+                          "revision",
+                          "deviceClass",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                        "type": "string"
+                      },
+                      "device": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "baseRevision": {
+                            "maximum": 2147483647,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "authorship": {
+                                "anyOf": [
+                                  {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "original",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["kind"],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "copy_practice",
+                                            "type": "string"
+                                          },
+                                          "originalAuthor": {
+                                            "maxLength": 4200,
+                                            "type": "string"
+                                          },
+                                          "referenceTitle": {
+                                            "maxLength": 4400,
+                                            "type": "string"
+                                          },
+                                          "sourceNote": {
+                                            "maxLength": 5000,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["kind"],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "material_sharing",
+                                            "type": "string"
+                                          },
+                                          "originalAuthor": {
+                                            "maxLength": 4200,
+                                            "type": "string"
+                                          },
+                                          "referenceTitle": {
+                                            "maxLength": 4400,
+                                            "type": "string"
+                                          },
+                                          "sourceNote": {
+                                            "maxLength": 5000,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["kind"],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "body": {
+                                "maxLength": 24000,
+                                "type": "string"
+                              },
+                              "coverCrop": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "height": {
+                                        "maximum": 1,
+                                        "minimum": 0.01,
+                                        "type": "number"
+                                      },
+                                      "width": {
+                                        "maximum": 1,
+                                        "minimum": 0.01,
+                                        "type": "number"
+                                      },
+                                      "x": {
+                                        "maximum": 1,
+                                        "minimum": 0,
+                                        "type": "number"
+                                      },
+                                      "y": {
+                                        "maximum": 1,
+                                        "minimum": 0,
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": ["x", "y", "width", "height"],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "coverKey": {
+                                "anyOf": [
+                                  {
+                                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "items": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "edit": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "crop": {
+                                          "anyOf": [
+                                            {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "height": {
+                                                  "maximum": 1,
+                                                  "minimum": 0.01,
+                                                  "type": "number"
+                                                },
+                                                "width": {
+                                                  "maximum": 1,
+                                                  "minimum": 0.01,
+                                                  "type": "number"
+                                                },
+                                                "x": {
+                                                  "maximum": 1,
+                                                  "minimum": 0,
+                                                  "type": "number"
+                                                },
+                                                "y": {
+                                                  "maximum": 1,
+                                                  "minimum": 0,
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "x",
+                                                "y",
+                                                "width",
+                                                "height"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "rotation": {
+                                          "enum": [0, 90, 180, 270],
+                                          "type": "number"
+                                        }
+                                      },
+                                      "required": ["rotation", "crop"],
+                                      "type": "object"
+                                    },
+                                    "itemId": {
+                                      "anyOf": [
+                                        {
+                                          "pattern": "^media-item-[0-9a-f]{32}$",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "key": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "enum": ["static", "live"],
+                                      "type": "string"
+                                    },
+                                    "origin": {
+                                      "const": "clipboard",
+                                      "type": "string"
+                                    },
+                                    "pendingLabel": {
+                                      "enum": ["photo", "live"],
+                                      "type": "string"
+                                    },
+                                    "qualityMode": {
+                                      "enum": [
+                                        "standard",
+                                        "original",
+                                        "legacy"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "itemId",
+                                    "kind",
+                                    "qualityMode",
+                                    "edit"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 500,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 4400,
+                                "type": "string"
+                              },
+                              "visibility": {
+                                "enum": ["public", "self"],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "body",
+                              "authorship",
+                              "visibility",
+                              "items",
+                              "coverKey",
+                              "coverCrop"
+                            ],
+                            "type": "object"
+                          },
+                          "deviceClass": {
+                            "anyOf": [
+                              {
+                                "enum": ["phone", "tablet", "desktop"],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "savedAt": {
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "content",
+                          "baseRevision",
+                          "deviceClass",
+                          "savedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "pattern": "^work-draft-[0-9a-f]{32}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "device", "account", "createdAt"],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "content": {
+                "additionalProperties": false,
+                "properties": {
+                  "authorship": {
+                    "anyOf": [
+                      {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "original",
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind"],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "copy_practice",
+                                "type": "string"
+                              },
+                              "originalAuthor": {
+                                "maxLength": 4200,
+                                "type": "string"
+                              },
+                              "referenceTitle": {
+                                "maxLength": 4400,
+                                "type": "string"
+                              },
+                              "sourceNote": {
+                                "maxLength": 5000,
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind"],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "material_sharing",
+                                "type": "string"
+                              },
+                              "originalAuthor": {
+                                "maxLength": 4200,
+                                "type": "string"
+                              },
+                              "referenceTitle": {
+                                "maxLength": 4400,
+                                "type": "string"
+                              },
+                              "sourceNote": {
+                                "maxLength": 5000,
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind"],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "body": {
+                    "maxLength": 24000,
+                    "type": "string"
+                  },
+                  "coverCrop": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "height": {
+                            "maximum": 1,
+                            "minimum": 0.01,
+                            "type": "number"
+                          },
+                          "width": {
+                            "maximum": 1,
+                            "minimum": 0.01,
+                            "type": "number"
+                          },
+                          "x": {
+                            "maximum": 1,
+                            "minimum": 0,
+                            "type": "number"
+                          },
+                          "y": {
+                            "maximum": 1,
+                            "minimum": 0,
+                            "type": "number"
+                          }
+                        },
+                        "required": ["x", "y", "width", "height"],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "coverKey": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "items": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "edit": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "crop": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "height": {
+                                      "maximum": 1,
+                                      "minimum": 0.01,
+                                      "type": "number"
+                                    },
+                                    "width": {
+                                      "maximum": 1,
+                                      "minimum": 0.01,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 1,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 1,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": ["x", "y", "width", "height"],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "rotation": {
+                              "enum": [0, 90, 180, 270],
+                              "type": "number"
+                            }
+                          },
+                          "required": ["rotation", "crop"],
+                          "type": "object"
+                        },
+                        "itemId": {
+                          "anyOf": [
+                            {
+                              "pattern": "^media-item-[0-9a-f]{32}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "key": {
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": ["static", "live"],
+                          "type": "string"
+                        },
+                        "origin": {
+                          "const": "clipboard",
+                          "type": "string"
+                        },
+                        "pendingLabel": {
+                          "enum": ["photo", "live"],
+                          "type": "string"
+                        },
+                        "qualityMode": {
+                          "enum": ["standard", "original", "legacy"],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "itemId",
+                        "kind",
+                        "qualityMode",
+                        "edit"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 500,
+                    "type": "array"
+                  },
+                  "title": {
+                    "maxLength": 4400,
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "enum": ["public", "self"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "body",
+                  "authorship",
+                  "visibility",
+                  "items",
+                  "coverKey",
+                  "coverCrop"
+                ],
+                "type": "object"
+              },
+              "createdAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              },
+              "deviceClass": {
+                "anyOf": [
+                  {
+                    "enum": ["phone", "tablet", "desktop"],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "pattern": "^work-draft-[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": ["new", "edit"],
+                "type": "string"
+              },
+              "mediaItems": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "components": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "byteSize": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "id": {
+                            "pattern": "^media-component-[0-9a-f]{32}$",
+                            "type": "string"
+                          },
+                          "receivedBytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "role": {
+                            "enum": ["still", "motion", "package"],
+                            "type": "string"
+                          },
+                          "state": {
+                            "enum": [
+                              "awaiting",
+                              "receiving",
+                              "received",
+                              "verified",
+                              "rejected",
+                              "cancelled"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "role",
+                          "state",
+                          "byteSize",
+                          "receivedBytes"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 2,
+                      "type": "array"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "unsupported_type",
+                            "decode_failed",
+                            "dimensions_exceeded",
+                            "duration_exceeded",
+                            "stream_layout_unsupported",
+                            "animated_image_unsupported",
+                            "pairing_mismatch",
+                            "size_mismatch",
+                            "processing_timeout",
+                            "processing_failed"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "pattern": "^media-item-[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": ["static", "live"],
+                      "type": "string"
+                    },
+                    "media": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "displaySrc": {
+                              "anyOf": [
+                                {
+                                  "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+                                  "type": "string"
+                                },
+                                {
+                                  "pattern": "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "fullSrc": {
+                              "anyOf": [
+                                {
+                                  "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+                                  "type": "string"
+                                },
+                                {
+                                  "pattern": "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "motionSrc": {
+                              "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+                              "type": "string"
+                            },
+                            "thumbSrc": {
+                              "anyOf": [
+                                {
+                                  "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+                                  "type": "string"
+                                },
+                                {
+                                  "pattern": "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["thumbSrc", "displaySrc"],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "presentation": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "durationMs": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 60000,
+                              "type": "integer"
+                            },
+                            "hasAudio": {
+                              "type": "boolean"
+                            },
+                            "height": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 65535,
+                              "type": "integer"
+                            },
+                            "width": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 65535,
+                              "type": "integer"
+                            }
+                          },
+                          "required": ["width", "height"],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "qualityMode": {
+                      "enum": ["standard", "original", "legacy"],
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "awaiting_upload",
+                        "processing",
+                        "ready",
+                        "failed",
+                        "cancelled",
+                        "purged"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "qualityMode",
+                    "state",
+                    "failureCode",
+                    "components",
+                    "presentation",
+                    "media"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              "revision": {
+                "maximum": 2147483647,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "updatedAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              },
+              "workId": {
+                "anyOf": [
+                  {
+                    "pattern": "^work-[0-9a-f]{32}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "workId",
+              "baseRevisionId",
+              "revision",
+              "content",
+              "mediaItems",
+              "conflict",
+              "deviceClass",
+              "createdAt",
+              "updatedAt"
+            ],
+            "type": "object"
+          }
+        },
+        "required": ["draft", "created"],
+        "type": "object"
+      },
       "PublishingSession": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -9090,63 +10270,70 @@
                   "additionalProperties": false,
                   "properties": {
                     "authorship": {
-                      "oneOf": [
+                      "anyOf": [
                         {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "original",
-                              "type": "string"
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "original",
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind"],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "copy_practice",
+                                  "type": "string"
+                                },
+                                "originalAuthor": {
+                                  "maxLength": 4200,
+                                  "type": "string"
+                                },
+                                "referenceTitle": {
+                                  "maxLength": 4400,
+                                  "type": "string"
+                                },
+                                "sourceNote": {
+                                  "maxLength": 5000,
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind"],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "material_sharing",
+                                  "type": "string"
+                                },
+                                "originalAuthor": {
+                                  "maxLength": 4200,
+                                  "type": "string"
+                                },
+                                "referenceTitle": {
+                                  "maxLength": 4400,
+                                  "type": "string"
+                                },
+                                "sourceNote": {
+                                  "maxLength": 5000,
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["kind"],
+                              "type": "object"
                             }
-                          },
-                          "required": ["kind"],
-                          "type": "object"
+                          ]
                         },
                         {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "copy_practice",
-                              "type": "string"
-                            },
-                            "originalAuthor": {
-                              "maxLength": 4200,
-                              "type": "string"
-                            },
-                            "referenceTitle": {
-                              "maxLength": 4400,
-                              "type": "string"
-                            },
-                            "sourceNote": {
-                              "maxLength": 5000,
-                              "type": "string"
-                            }
-                          },
-                          "required": ["kind"],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "material_sharing",
-                              "type": "string"
-                            },
-                            "originalAuthor": {
-                              "maxLength": 4200,
-                              "type": "string"
-                            },
-                            "referenceTitle": {
-                              "maxLength": 4400,
-                              "type": "string"
-                            },
-                            "sourceNote": {
-                              "maxLength": 5000,
-                              "type": "string"
-                            }
-                          },
-                          "required": ["kind"],
-                          "type": "object"
+                          "type": "null"
                         }
                       ]
                     },
@@ -9916,63 +11103,70 @@
             "additionalProperties": false,
             "properties": {
               "authorship": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "original",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "original",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "copy_practice",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "material_sharing",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    ]
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "copy_practice",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "material_sharing",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    "type": "null"
                   }
                 ]
               },
@@ -10357,6 +11551,25 @@
               }
             ]
           },
+          "coverSrc": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+                    "type": "string"
+                  },
+                  {
+                    "pattern": "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "editedAt": {
             "anyOf": [
               {
@@ -10553,63 +11766,70 @@
         "additionalProperties": false,
         "properties": {
           "authorship": {
-            "oneOf": [
+            "anyOf": [
               {
-                "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "const": "original",
-                    "type": "string"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "original",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "copy_practice",
+                        "type": "string"
+                      },
+                      "originalAuthor": {
+                        "maxLength": 4200,
+                        "type": "string"
+                      },
+                      "referenceTitle": {
+                        "maxLength": 4400,
+                        "type": "string"
+                      },
+                      "sourceNote": {
+                        "maxLength": 5000,
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "material_sharing",
+                        "type": "string"
+                      },
+                      "originalAuthor": {
+                        "maxLength": 4200,
+                        "type": "string"
+                      },
+                      "referenceTitle": {
+                        "maxLength": 4400,
+                        "type": "string"
+                      },
+                      "sourceNote": {
+                        "maxLength": 5000,
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind"],
+                    "type": "object"
                   }
-                },
-                "required": ["kind"],
-                "type": "object"
+                ]
               },
               {
-                "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "const": "copy_practice",
-                    "type": "string"
-                  },
-                  "originalAuthor": {
-                    "maxLength": 4200,
-                    "type": "string"
-                  },
-                  "referenceTitle": {
-                    "maxLength": 4400,
-                    "type": "string"
-                  },
-                  "sourceNote": {
-                    "maxLength": 5000,
-                    "type": "string"
-                  }
-                },
-                "required": ["kind"],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "const": "material_sharing",
-                    "type": "string"
-                  },
-                  "originalAuthor": {
-                    "maxLength": 4200,
-                    "type": "string"
-                  },
-                  "referenceTitle": {
-                    "maxLength": 4400,
-                    "type": "string"
-                  },
-                  "sourceNote": {
-                    "maxLength": 5000,
-                    "type": "string"
-                  }
-                },
-                "required": ["kind"],
-                "type": "object"
+                "type": "null"
               }
             ]
           },
@@ -10870,6 +12090,25 @@
                     }
                   ]
                 },
+                "coverSrc": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "pattern": "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+                          "type": "string"
+                        },
+                        {
+                          "pattern": "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "editedAt": {
                   "anyOf": [
                     {
@@ -11040,63 +12279,70 @@
             "additionalProperties": false,
             "properties": {
               "authorship": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "original",
-                        "type": "string"
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "original",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "copy_practice",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "material_sharing",
+                            "type": "string"
+                          },
+                          "originalAuthor": {
+                            "maxLength": 4200,
+                            "type": "string"
+                          },
+                          "referenceTitle": {
+                            "maxLength": 4400,
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "maxLength": 5000,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    ]
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "copy_practice",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "material_sharing",
-                        "type": "string"
-                      },
-                      "originalAuthor": {
-                        "maxLength": 4200,
-                        "type": "string"
-                      },
-                      "referenceTitle": {
-                        "maxLength": 4400,
-                        "type": "string"
-                      },
-                      "sourceNote": {
-                        "maxLength": 5000,
-                        "type": "string"
-                      }
-                    },
-                    "required": ["kind"],
-                    "type": "object"
+                    "type": "null"
                   }
                 ]
               },
@@ -15191,7 +16437,7 @@
                 }
               }
             },
-            "description": "The draft revision differs from the confirmed expectedRevision (message draft_changed; nothing was deleted; a conflict copy saved on an outdated base does not change the revision), the draft is no longer active, or a request identity was reused with different content"
+            "description": "With expectedRevision, the draft revision differs from it or the draft has an unresolved conflict copy (message draft_changed; nothing was deleted); or the draft is no longer active, or a request identity was reused with different content"
           },
           "422": {
             "content": {
@@ -17278,7 +18524,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublishingDraft"
+                  "$ref": "#/components/schemas/PublishingOpenedEditDraft"
                 }
               }
             },

@@ -92,7 +92,8 @@ const authorshipRule = (
 export interface NormalizedSubmission {
   readonly title: string;
   readonly body: string;
-  readonly authorship: WorkAuthorship;
+  /** Null when the submission declares no authorship. */
+  readonly authorship: WorkAuthorship | null;
   readonly referenceTitle: string | null;
   readonly originalAuthor: string | null;
   readonly sourceNote: string | null;
@@ -127,8 +128,9 @@ export const normalizeSubmission = (
     tooLong: "body_too_long",
   });
   if (isEmptyWorkContent(content)) fail("empty_work");
+  // Not set stays not set: nothing is stored as `original` unless declared.
   const source = content.authorship;
-  const referenced = source.kind !== "original";
+  const referenced = source !== null && source.kind !== "original";
   const referenceTitle = referenced
     ? optionalText(
         source.referenceTitle,
@@ -150,15 +152,17 @@ export const normalizeSubmission = (
         "source_note_too_long",
       )
     : null;
-  const authorship: WorkAuthorship =
-    source.kind === "original"
-      ? { kind: "original" }
-      : {
-          kind: source.kind,
-          ...(referenceTitle === null ? {} : { referenceTitle }),
-          ...(originalAuthor === null ? {} : { originalAuthor }),
-          ...(sourceNote === null ? {} : { sourceNote }),
-        };
+  const authorship: WorkAuthorship | null =
+    source === null
+      ? null
+      : source.kind === "original"
+        ? { kind: "original" }
+        : {
+            kind: source.kind,
+            ...(referenceTitle === null ? {} : { referenceTitle }),
+            ...(originalAuthor === null ? {} : { originalAuthor }),
+            ...(sourceNote === null ? {} : { sourceNote }),
+          };
   const keys = new Set(content.items.map((item) => item.key));
   const itemIds = content.items.flatMap((item) =>
     item.itemId === null ? [] : [item.itemId],
@@ -520,14 +524,16 @@ const comparableDraftContent = (content: WorkDraftContent): unknown => {
     title: normalizePublishingTitle(content.title),
     body: normalizePublishingBody(content.body),
     authorship:
-      source.kind === "original"
-        ? { kind: "original" }
-        : {
-            kind: source.kind,
-            referenceTitle: comparableText(source.referenceTitle),
-            originalAuthor: comparableText(source.originalAuthor),
-            sourceNote: comparableText(source.sourceNote),
-          },
+      source === null
+        ? null
+        : source.kind === "original"
+          ? { kind: "original" }
+          : {
+              kind: source.kind,
+              referenceTitle: comparableText(source.referenceTitle),
+              originalAuthor: comparableText(source.originalAuthor),
+              sourceNote: comparableText(source.sourceNote),
+            },
   };
 };
 
@@ -692,7 +698,7 @@ const submitInTransaction = async (
       sequence,
       normalized.title,
       normalized.body,
-      normalized.authorship.kind,
+      normalized.authorship?.kind ?? null,
       normalized.referenceTitle,
       normalized.originalAuthor,
       normalized.sourceNote,

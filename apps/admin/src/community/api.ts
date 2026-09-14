@@ -262,13 +262,21 @@ export const submissionDoneLabels: Record<
 };
 
 export const authorshipLabels: Record<
-  OperatorWorkSubmission["authorship"]["kind"],
+  NonNullable<OperatorWorkSubmission["authorship"]>["kind"],
   string
 > = {
   original: "原创",
   copy_practice: "临摹或练习",
   material_sharing: "素材分享",
 };
+
+/** Shown when a revision declares no authorship; nothing is presented as 原创 unless declared. */
+export const AUTHORSHIP_NOT_SET = "未设置";
+
+export const authorshipLabel = (
+  authorship: OperatorWorkSubmission["authorship"],
+): string =>
+  authorship === null ? AUTHORSHIP_NOT_SET : authorshipLabels[authorship.kind];
 
 export const workStateLabels: Record<
   OperatorWorkSubmission["workState"],

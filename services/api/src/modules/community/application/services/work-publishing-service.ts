@@ -20,6 +20,7 @@ import type {
   PublishingDraftSaveResult,
   PublishingLimits,
   PublishingMediaItem,
+  PublishingOpenedEditDraft,
   PublishingPageQuery,
   PublishingSession,
   PublishingSnapshotPage,
@@ -386,9 +387,9 @@ export class WorkPublishingService {
   }
 
   /**
-   * Targeted deletion; an `expectedRevision` the draft revision moved past is
-   * a `CommunityConflictError("draft_changed")` and deletes nothing. Conflict
-   * copies do not move the revision.
+   * Targeted deletion; with `expectedRevision`, a draft revision that moved
+   * past it or an unresolved conflict copy is a
+   * `CommunityConflictError("draft_changed")` and deletes nothing.
    */
   async deleteDraft(
     actorId: string,
@@ -430,11 +431,12 @@ export class WorkPublishingService {
     return this.port.resolveConflict(actorId, draftId, command, this.clock());
   }
 
+  /** The work's edit draft and whether this request created it. */
   openEditDraft(
     actorId: string,
     workId: string,
     command: OpenWorkEditDraftCommand,
-  ): Promise<PublishingDraft> {
+  ): Promise<PublishingOpenedEditDraft> {
     return this.port.openEditDraft(actorId, workId, command, this.clock());
   }
 

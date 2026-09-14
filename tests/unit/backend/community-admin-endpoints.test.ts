@@ -1,4 +1,5 @@
 import {
+  AUTHORSHIP_NOT_SET,
   CommunityOperatorError,
   OPERATOR_MEDIA_LIFETIME_MS,
   OPERATOR_MEDIA_MAXIMUM_BYTES,
@@ -6,6 +7,7 @@ import {
   OPERATOR_MEDIA_WAIT_MS,
   OperatorFailure,
   WORK_PUBLISHING_LIMIT_FIELDS,
+  authorshipLabel,
   capacityDesignationAllowed,
   coverPreview,
   createCommunityEndpoints,
@@ -17,6 +19,7 @@ import {
   readLimitInput,
   submissionDecidable,
   submissionUndecidableReason,
+  submissionVariantKey,
 } from "admin/community-endpoints";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -468,6 +471,7 @@ describe("Work publishing Owner envelopes (Development)", () => {
         state: "ready",
         edit: { rotation: 90, crop: null },
         editKey: "c".repeat(32),
+        coverEditKey: "e".repeat(32),
         presentation: {
           width: 1920,
           height: 1440,
@@ -688,7 +692,7 @@ describe("Work publishing Owner envelopes (Development)", () => {
     ["set-work-publishing-settings", { ...setSettings, policy: "HOLD" }],
     ["set-work-publishing-settings", { ...setSettings, requestId: "retry-1" }],
     ["set-work-publishing-settings", { ...setSettings, maxItemsPerWork: 0 }],
-    ["set-work-publishing-settings", { ...setSettings, maxItemsPerWork: 501 }],
+    ["set-work-publishing-settings", { ...setSettings, maxItemsPerWork: 101 }],
     [
       "set-work-publishing-settings",
       { ...setSettings, originalItemMaxBytes: 1048576.5 },
@@ -776,6 +780,49 @@ describe("Work publishing Owner envelopes (Development)", () => {
       expect(calls).toEqual([]);
     },
   );
+
+  it("relays a submission that declares no authorship and labels it as not set", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const legacy = {
+      ...submission,
+      origin: "legacy",
+      disposition: "approved",
+      authorship: null,
+    };
+    const { call } = answering((_method, path) =>
+      path.startsWith("publishing/submissions?") ? page([legacy]) : legacy,
+    );
+    const endpoints = createCommunityEndpoints(call);
+    for (const [name, body] of [
+      ["read-work-submission", { id: revisionId }],
+      ["read-work-submissions", {}],
+    ] as const) {
+      const result = await invoke(endpoints, name, request(body));
+      expect(result.status, name).toBe(200);
+      expect(JSON.stringify(result.body), name).toContain('"authorship":null');
+    }
+    expect(AUTHORSHIP_NOT_SET).toBe("未设置");
+    expect(authorshipLabel(null)).toBe("未设置");
+    expect(authorshipLabel({ kind: "original" })).toBe("原创");
+    expect(
+      authorshipLabel({ kind: "copy_practice", referenceTitle: "兰亭序" }),
+    ).toBe("临摹或练习");
+    // An absent authorship is outside the contract; nothing defaults to original.
+    const withoutAuthorship: Partial<typeof submission> = { ...submission };
+    delete withoutAuthorship.authorship;
+    const refusing = createCommunityEndpoints(
+      answering(() => withoutAuthorship).call,
+    );
+    expect(
+      (
+        await invoke(
+          refusing,
+          "read-work-submission",
+          request({ id: revisionId }),
+        )
+      ).status,
+    ).toBe(502);
+  });
 
   it("refuses a Backend answer outside the operator contract without echoing or logging it", async () => {
     vi.stubEnv("NODE_ENV", "development");
@@ -1003,6 +1050,7 @@ describe("Work publishing view rules", () => {
     state: "ready",
     edit: { rotation: 0, crop: null },
     editKey: "base",
+    coverEditKey: null,
     presentation: { width: 100, height: 100 },
     variants,
   });
@@ -1079,33 +1127,60 @@ describe("Work publishing view rules", () => {
       );
   });
 
-  it("never requests a cover-keyed derivative of a cropped cover item with the item's edit key", () => {
+  it("requests thumb and cover of the cover item with its cover edit key, never the item's edit key", () => {
     const crop = { x: 0, y: 0.25, width: 1, height: 0.5 };
     const all: OperatorSubmissionMedia["variants"] = [
       "thumb",
       "display",
       "cover",
     ];
-    const cover = media(1, all);
+    const coverKey = "d".repeat(32);
+    const cover = { ...media(1, all), coverEditKey: coverKey };
     const other = media(2, all);
     const cropped = { coverItemId: cover.itemId, coverCrop: crop };
+    // Display, full and motion use the edit key; thumb and cover of the cover
+    // item use the cover key; other items use their edit key throughout.
+    for (const variant of ["display", "full", "motion"] as const)
+      expect(submissionVariantKey(cropped, cover, variant)).toBe("base");
+    expect(submissionVariantKey(cropped, cover, "thumb")).toBe(coverKey);
+    expect(submissionVariantKey(cropped, cover, "cover")).toBe(coverKey);
+    expect(submissionVariantKey(cropped, other, "thumb")).toBe("base");
+    // A cropped cover item without a described cover key is never guessed.
+    expect(
+      submissionVariantKey(cropped, { ...cover, coverEditKey: null }, "cover"),
+    ).toBeNull();
+    // Tiles show the album image: the cropped cover item's thumb is the card crop.
     expect(itemPreviewVariant(cropped, cover, "tile")).toBe("display");
     expect(itemPreviewVariant(cropped, cover, "preview")).toBe("display");
     expect(itemPreviewVariant(cropped, other, "tile")).toBe("thumb");
     expect(itemPreviewVariant(cropped, media(1, ["thumb"]), "tile")).toBeNull();
+    // The card cover: its own cover derivative under the cover key, no outline.
     expect(
       coverPreview({ ...cropped, items: [cover, other] })?.preview,
-    ).toEqual({ variant: "display", outline: true });
+    ).toEqual({ variant: "cover", editKey: coverKey, outline: false });
     expect(
-      coverPreview({ ...cropped, items: [media(1, ["thumb", "cover"])] })
+      coverPreview({
+        ...cropped,
+        items: [{ ...cover, variants: ["thumb", "display"] }],
+      })?.preview,
+    ).toEqual({ variant: "display", editKey: "base", outline: true });
+    expect(
+      coverPreview({ ...cropped, items: [{ ...cover, variants: ["thumb"] }] })
         ?.preview,
+    ).toEqual({ variant: "thumb", editKey: coverKey, outline: false });
+    expect(
+      coverPreview({
+        ...cropped,
+        items: [{ ...cover, coverEditKey: null, variants: ["thumb", "cover"] }],
+      })?.preview,
     ).toBeNull();
-    // Without a crop the cover item's own derivatives share the edit key.
+    // Without a crop the cover key equals the edit key.
     const uncropped = { coverItemId: cover.itemId, coverCrop: null };
-    expect(itemPreviewVariant(uncropped, cover, "tile")).toBe("thumb");
-    expect(coverPreview({ ...uncropped, items: [cover] })).toMatchObject({
+    const plain = { ...media(1, all), coverEditKey: "base" };
+    expect(itemPreviewVariant(uncropped, plain, "tile")).toBe("thumb");
+    expect(coverPreview({ ...uncropped, items: [plain] })).toMatchObject({
       chosen: true,
-      preview: { variant: "cover", outline: false },
+      preview: { variant: "cover", editKey: "base", outline: false },
     });
     // No chosen cover: the card uses the first item.
     expect(
@@ -1117,7 +1192,7 @@ describe("Work publishing view rules", () => {
     ).toMatchObject({
       item: { position: 1 },
       chosen: false,
-      preview: { variant: "thumb", outline: false },
+      preview: { variant: "thumb", editKey: "base", outline: false },
     });
     expect(
       coverPreview({ coverItemId: itemId(9), coverCrop: null, items: [cover] }),

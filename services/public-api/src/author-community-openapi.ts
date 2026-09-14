@@ -631,7 +631,7 @@ const publishingRoutes: readonly [
     "PublishingDraftDeletionCommand",
     {
       conflict:
-        "The draft revision differs from the confirmed expectedRevision (message draft_changed; nothing was deleted; a conflict copy saved on an outdated base does not change the revision), the draft is no longer active, or a request identity was reused with different content",
+        "With expectedRevision, the draft revision differs from it or the draft has an unresolved conflict copy (message draft_changed; nothing was deleted); or the draft is no longer active, or a request identity was reused with different content",
     },
   ],
   [
@@ -674,7 +674,7 @@ const publishingRoutes: readonly [
     "/v1/community/publishing/works/{workId}/draft",
     "post",
     "openWorkEditDraft",
-    "PublishingDraft",
+    "PublishingOpenedEditDraft",
     "OpenWorkEditDraftCommand",
   ],
   [

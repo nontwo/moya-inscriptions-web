@@ -12,6 +12,7 @@ import type {
   PublishingDraftPage,
   PublishingDraftSaveResult,
   PublishingDraftSummary,
+  PublishingOpenedEditDraft,
   PublishingPageQuery,
   PublishingSnapshotPage,
   ResolvePublishingConflictCommand,
@@ -27,6 +28,7 @@ import {
   publishingDraftPageSchema,
   publishingDraftSaveResultSchema,
   publishingDraftSchema,
+  publishingOpenedEditDraftSchema,
   publishingSnapshotPageSchema,
   workDraftContentSchema,
 } from "@moya/contracts/schemas";
@@ -66,6 +68,7 @@ import {
   type RefRelease,
 } from "./media.js";
 import { clipboardOriginSql, workExcerpt } from "./media-read.js";
+import { revisionAuthorship } from "./authorship.js";
 
 /*
  * Persistent drafts: creation, conditional saves with conflict copies,
@@ -83,8 +86,9 @@ import { clipboardOriginSql, workExcerpt } from "./media-read.js";
  * that moment; items registered to the draft but not yet in its content keep
  * theirs, so an autosave racing a registration never releases a transfer.
  *
- * Receipts of draft commands hold only the draft id: a replay reads the
- * draft again, so a deleted draft's content never survives in a receipt.
+ * Receipts of draft commands hold only the draft id (and, for an opened edit
+ * draft, whether that request created it): a replay reads the draft again, so
+ * a deleted draft's content never survives in a receipt.
  */
 
 const MEDIA_ITEMS_MAXIMUM = 500;
@@ -429,6 +433,11 @@ export const trimHistory = async (
 /** Content-free receipt of a draft command. */
 interface DraftReceipt {
   readonly draftId: string;
+}
+
+/** Content-free receipt of an opened edit draft; receipts written before `created` existed read as false. */
+interface OpenedDraftReceipt extends DraftReceipt {
+  readonly created?: boolean;
 }
 
 /**
@@ -823,15 +832,23 @@ export const deleteDraft = async (
     },
     async (db) => {
       const draft = await lockActiveDraft(db, actorId, draftId);
-      // The author confirmed the deletion scope of an older draft revision:
-      // nothing is removed. Only the draft revision is compared; a conflict
-      // copy saved since (on an outdated base) leaves it unchanged and is
-      // deleted with the draft.
-      if (
-        command.expectedRevision !== undefined &&
-        draft.revision !== command.expectedRevision
-      )
-        throw new CommunityConflictError(PUBLISHING_DRAFT_CHANGED);
+      // The author confirmed the deletion scope of one draft revision with no
+      // pending conflict: nothing is removed when the revision moved on (a
+      // save on the current base) or an unresolved conflict copy exists (a
+      // save on an outdated base leaves the revision unchanged). Conflict
+      // copies are only written under the primary draft's row lock, which is
+      // held here, so none can appear before this transaction ends.
+      if (command.expectedRevision !== undefined) {
+        const unresolvedCopy =
+          (
+            await db.query(
+              "SELECT 1 FROM community.work_drafts WHERE conflict_of=$1 AND owner_id=$2 AND state='active' AND resolved_at IS NULL LIMIT 1",
+              [draft.id, actorId],
+            )
+          ).rowCount !== 0;
+        if (draft.revision !== command.expectedRevision || unresolvedCopy)
+          throw new CommunityConflictError(PUBLISHING_DRAFT_CHANGED);
+      }
       const copies = (
         await db.query<{ id: string; content: WorkDraftContent }>(
           "SELECT id,content FROM community.work_drafts WHERE conflict_of=$1 AND owner_id=$2 ORDER BY id FOR UPDATE",
@@ -1119,7 +1136,7 @@ export const resolveConflict = async (
 interface EditableRevisionRow {
   title: string;
   body: string;
-  authorship_kind: "original" | "copy_practice" | "material_sharing";
+  authorship_kind: "original" | "copy_practice" | "material_sharing" | null;
   reference_title: string | null;
   original_author: string | null;
   source_note: string | null;
@@ -1127,15 +1144,31 @@ interface EditableRevisionRow {
   cover_crop: WorkDraftContent["coverCrop"];
 }
 
-/** WorkPublishingPort.openEditDraft */
+/**
+ * WorkPublishingPort.openEditDraft. `created` is true only when this request
+ * inserted the draft; the receipt keeps it, so a retried request identity
+ * answers the same, and an older receipt without it answers false.
+ */
 export const openEditDraft = async (
   pool: Pool,
   actorId: string,
   workId: string,
   command: OpenWorkEditDraftCommand,
   now: Date,
-): Promise<PublishingDraft> =>
-  draftCommand(
+): Promise<PublishingOpenedEditDraft> => {
+  const fresh: { opened?: PublishingOpenedEditDraft } = {};
+  const answer = async (
+    db: PublishingDb,
+    row: DraftRow,
+    created: boolean,
+  ): Promise<OpenedDraftReceipt> => {
+    fresh.opened = publishingOpenedEditDraftSchema.parse({
+      draft: await draftDto(db, row),
+      created,
+    });
+    return { draftId: row.id, created };
+  };
+  const receipt = await authorCommand<OpenedDraftReceipt>(
     pool,
     {
       actorId,
@@ -1166,7 +1199,7 @@ export const openEditDraft = async (
           [actorId, workId],
         )
       ).rows[0];
-      if (existing !== undefined) return draftDto(db, existing);
+      if (existing !== undefined) return answer(db, existing, false);
       if (work.author_revision_id === null)
         throw new CommunityInputError("work_unavailable");
       const settings = await selectSettings(db, "share");
@@ -1194,17 +1227,6 @@ export const openEditDraft = async (
          WHERE ri.revision_id=$1 ORDER BY ri.position`,
         [work.author_revision_id],
       );
-      const references = {
-        ...(revision.reference_title === null
-          ? {}
-          : { referenceTitle: revision.reference_title }),
-        ...(revision.original_author === null
-          ? {}
-          : { originalAuthor: revision.original_author }),
-        ...(revision.source_note === null
-          ? {}
-          : { sourceNote: revision.source_note }),
-      };
       const coverKey = items.rows.some(
         (item) => item.item_id === revision.cover_item_id,
       )
@@ -1213,10 +1235,8 @@ export const openEditDraft = async (
       const content = workDraftContentSchema.parse({
         title: revision.title,
         body: revision.body,
-        authorship:
-          revision.authorship_kind === "original"
-            ? { kind: "original" }
-            : { kind: revision.authorship_kind, ...references },
+        // A revision without a declaration (a legacy baseline) opens as not set.
+        authorship: revisionAuthorship(revision),
         visibility: work.visibility,
         // Stored item ids are stable client keys as well (as legacy snapshots use).
         items: items.rows.map((item) => ({
@@ -1258,6 +1278,14 @@ export const openEditDraft = async (
       await ensureContentDerivatives(db, actorId, content, now, {
         settle: { itemIds },
       });
-      return draftDto(db, row);
+      return answer(db, row, true);
     },
   );
+  return (
+    fresh.opened ??
+    publishingOpenedEditDraftSchema.parse({
+      draft: await readDraft(pool, actorId, receipt.draftId),
+      created: receipt.created === true,
+    })
+  );
+};

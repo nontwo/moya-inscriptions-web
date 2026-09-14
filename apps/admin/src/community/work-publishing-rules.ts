@@ -88,6 +88,8 @@ type StillVariant = "thumb" | "display" | "cover";
 
 export interface SubmissionPreview {
   readonly variant: StillVariant;
+  /** The edit key that addresses `variant` of this item. */
+  readonly editKey: string;
   /** Draw the cover crop over the image: it is the uncropped edited still. */
   readonly outline: boolean;
 }
@@ -95,25 +97,42 @@ export interface SubmissionPreview {
 type CoverContext = Pick<OperatorWorkSubmission, "coverItemId" | "coverCrop">;
 
 /**
- * The descriptor carries the item's edit key, which addresses display, full
- * and motion. Thumb and cover of the cover item are keyed by its cover crop
- * as well (design §9.2), so for a cropped cover item they are never requested
- * with that key; the display still and an outline stand in.
+ * Display, full and motion are keyed by the item's edit (`editKey`). Thumb
+ * and cover are keyed by `coverEditKey` for the revision's cover item (its
+ * edit and the cover crop, design §9.2) and by `editKey` for every other
+ * item. Null when that key is not described (never guessed).
  */
-const keyedByCoverCrop = (
+export const submissionVariantKey = (
+  submission: CoverContext,
+  item: Pick<OperatorSubmissionMedia, "itemId" | "editKey" | "coverEditKey">,
+  variant: OperatorSubmissionMedia["variants"][number],
+): string | null => {
+  if (variant !== "thumb" && variant !== "cover") return item.editKey;
+  if (item.itemId !== submission.coverItemId) return item.editKey;
+  return (
+    item.coverEditKey ?? (submission.coverCrop === null ? item.editKey : null)
+  );
+};
+
+/** The item's thumb is its album still only when no cover crop is keyed into it. */
+const croppedCover = (
   submission: CoverContext,
   item: Pick<OperatorSubmissionMedia, "itemId">,
 ): boolean =>
   submission.coverCrop !== null && item.itemId === submission.coverItemId;
 
-/** The still for a numbered tile, or the larger preview of one item. */
+/**
+ * The still for a numbered tile, or the larger preview of one item. Tiles
+ * show the album image, so a cropped cover item (whose thumb is cropped to
+ * the card cover) shows its display still.
+ */
 export const itemPreviewVariant = (
   submission: CoverContext,
   item: Pick<OperatorSubmissionMedia, "itemId" | "variants">,
   purpose: "tile" | "preview",
 ): "thumb" | "display" | null => {
   const thumb =
-    item.variants.includes("thumb") && !keyedByCoverCrop(submission, item);
+    item.variants.includes("thumb") && !croppedCover(submission, item);
   const display = item.variants.includes("display");
   if (purpose === "tile") return thumb ? "thumb" : display ? "display" : null;
   return display ? "display" : thumb ? "thumb" : null;
@@ -121,8 +140,9 @@ export const itemPreviewVariant = (
 
 /**
  * The card cover: the author's chosen item, or the first item when none was
- * chosen. Its own cover derivative when that is addressable with the item's
- * key; otherwise the display still, outlined when a crop was chosen.
+ * chosen. Its own cover derivative (or thumb) under the cover edit key, which
+ * already applies the cover crop; otherwise the display still, outlined when
+ * a crop was chosen.
  */
 export const coverPreview = (
   submission: CoverContext & Pick<OperatorWorkSubmission, "items">,
@@ -138,14 +158,18 @@ export const coverPreview = (
       )
     : [...submission.items].sort((a, b) => a.position - b.position)[0];
   if (item === undefined) return null;
-  const cropped = keyedByCoverCrop(submission, item);
+  const coverKey = submissionVariantKey(submission, item, "cover");
   const preview: SubmissionPreview | null =
-    !cropped && item.variants.includes("cover")
-      ? { variant: "cover", outline: false }
+    coverKey !== null && item.variants.includes("cover")
+      ? { variant: "cover", editKey: coverKey, outline: false }
       : item.variants.includes("display")
-        ? { variant: "display", outline: cropped }
-        : !cropped && item.variants.includes("thumb")
-          ? { variant: "thumb", outline: false }
+        ? {
+            variant: "display",
+            editKey: item.editKey,
+            outline: croppedCover(submission, item),
+          }
+        : coverKey !== null && item.variants.includes("thumb")
+          ? { variant: "thumb", editKey: coverKey, outline: false }
           : null;
   return { item, chosen, preview };
 };

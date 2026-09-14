@@ -162,7 +162,8 @@ export const operatorWorkSubmissionSchema = z
     }),
     title: storedPublishingTextSchema(WORK_TITLE_MAXIMUM),
     body: storedPublishingTextSchema(WORK_BODY_MAXIMUM),
-    authorship: workAuthorshipSchema,
+    /** Null when the revision declares no authorship (legacy baselines, undeclared submissions). */
+    authorship: workAuthorshipSchema.nullable(),
     coverItemId: mediaItemIdSchema.nullable(),
     coverCrop: mediaCropSchema.nullable(),
     items: z.array(operatorSubmissionMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),

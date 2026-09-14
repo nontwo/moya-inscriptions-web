@@ -24,8 +24,14 @@ import type {
 } from "@moya/contracts";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { revisionMedia } from "./publishing/media-read.js";
-import { revisionAuthorship } from "./publishing/works.js";
+import {
+  revisionCover,
+  revisionCoverColumns,
+  revisionCoverJoin,
+  revisionMedia,
+} from "./publishing/media-read.js";
+import type { RevisionCoverColumns } from "./publishing/media-read.js";
+import { revisionAuthorship } from "./publishing/authorship.js";
 
 interface UserRow extends QueryResultRow {
   id: string;
@@ -55,10 +61,10 @@ interface WorkRow extends QueryResultRow {
   operator_state: "visible" | "hidden" | "removed";
   is_public: boolean;
 }
-interface WorkRevisionRow extends QueryResultRow {
+interface WorkRevisionRow extends RevisionCoverColumns {
   title: string;
   body: string;
-  authorship_kind: string;
+  authorship_kind: string | null;
   reference_title: string | null;
   original_author: string | null;
   source_note: string | null;
@@ -229,8 +235,10 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
    * or removed it (self-only and pending works included, so no pending state
    * is implied). Comments, likes and favorites are still only written on
    * effectively public works. `coverMediaId` names the cover entry of the
-   * same revision; only the author learns `publiclyVisible` (whether third
-   * parties can see the work now, community.work_is_public).
+   * same revision and `coverSrc` its card cover still (the rule Home cards
+   * use); `authorship` is present only when that revision declares one. Only
+   * the author learns `publiclyVisible` (whether third parties can see the
+   * work now, community.work_is_public).
    */
   private async workDto(
     db: PoolClient,
@@ -244,7 +252,8 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
         ? undefined
         : (
             await db.query<WorkRevisionRow>(
-              "SELECT title,body,authorship_kind,reference_title,original_author,source_note FROM community.work_revisions WHERE id=$1",
+              `SELECT r.title,r.body,r.authorship_kind,r.reference_title,r.original_author,r.source_note,${revisionCoverColumns("cov")}
+              FROM community.work_revisions r ${revisionCoverJoin("r", "cov")} WHERE r.id=$1`,
               [revisionId],
             )
           ).rows[0];
@@ -252,6 +261,8 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       db,
       revision === undefined ? null : revisionId,
     );
+    const authorship =
+      revision === undefined ? null : revisionAuthorship(revision);
     return workSchema.parse({
       id: row.id,
       authorId: row.author_id,
@@ -260,14 +271,14 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       text: revision?.body ?? row.text,
       media,
       coverMediaId,
+      coverSrc:
+        revision === undefined ? null : (revisionCover(revision)?.src ?? null),
       firstPublishedAt: row.first_published_at?.toISOString() ?? null,
       version: row.version,
       canEdit: owner,
       available: row.is_public || (owner && row.operator_state === "visible"),
       editedAt: row.edited_at?.toISOString() ?? null,
-      ...(revision === undefined
-        ? {}
-        : { authorship: revisionAuthorship(revision) }),
+      ...(authorship === null ? {} : { authorship }),
       ...(owner
         ? {
             visibility: row.visibility,

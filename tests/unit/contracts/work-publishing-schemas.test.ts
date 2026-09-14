@@ -18,12 +18,14 @@ import {
   publishingHolderSchema,
   publishingLimitsSchema,
   publishingMediaItemSchema,
+  publishingOpenedEditDraftSchema,
   publishingSessionSchema,
   publishingSnapshotPageSchema,
   registerMediaItemCommandSchema,
   savePublishingDraftCommandSchema,
   trashedWorkPageSchema,
   workDraftContentSchema,
+  workCoverSrcSchema,
   workDraftIdSchema,
   workMediaSchema,
   workSchema,
@@ -402,6 +404,51 @@ describe("draft and submission content", () => {
         }),
       ).success,
     ).toBe(true);
+  });
+
+  it("treats a null authorship as not set in drafts, submissions and editable content, never as original", () => {
+    const notSet = content({ title: "旧作", authorship: null });
+    expect(workDraftContentSchema.parse(notSet).authorship).toBeNull();
+    expect(
+      workSubmissionCommandSchema.parse({
+        requestId,
+        holder: { sessionId },
+        content: notSet,
+        baseRevisionId: null,
+      }).content.authorship,
+    ).toBeNull();
+    expect(
+      editableWorkSchema.safeParse({
+        workId,
+        revisionId,
+        content: notSet,
+        mediaItems: [],
+        visibility: "public",
+        firstPublishedAt: at,
+        editedAt: null,
+        draftId: null,
+        version: 1,
+      }).success,
+    ).toBe(true);
+    // The key stays required: an absent authorship is not a default.
+    const absent: Record<string, unknown> = { ...notSet };
+    delete absent.authorship;
+    for (const invalid of [
+      absent,
+      content({ authorship: {} }),
+      content({ authorship: { kind: null } }),
+      content({ authorship: "original" }),
+    ]) {
+      expect(workDraftContentSchema.safeParse(invalid).success).toBe(false);
+      expect(
+        workSubmissionCommandSchema.safeParse({
+          requestId,
+          holder: { sessionId },
+          content: { ...invalid, title: "旧作" },
+          baseRevisionId: null,
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("refuses to create an empty draft", () => {
@@ -1040,6 +1087,30 @@ describe("draft save results, summaries and submission receipts", () => {
     ).toBe(false);
   });
 
+  it("answers an opened edit draft with whether this request created it", () => {
+    const edit = { ...draft, kind: "edit", workId, baseRevisionId: revisionId };
+    for (const created of [true, false])
+      expect(
+        publishingOpenedEditDraftSchema.parse({ draft: edit, created }),
+      ).toEqual({ draft: edit, created });
+    for (const invalid of [
+      { draft: edit },
+      { draft: edit, created: "yes" },
+      { draft: edit, created: true, extra: 1 },
+      { draft, created: true },
+      edit,
+    ])
+      expect(
+        publishingOpenedEditDraftSchema.safeParse(invalid).success,
+        JSON.stringify(invalid).slice(0, 40),
+      ).toBe(false);
+    expect(workPublishingJsonSchemas.PublishingOpenedEditDraft).toMatchObject({
+      additionalProperties: false,
+      required: ["draft", "created"],
+      type: "object",
+    });
+  });
+
   it("confirms a draft deletion optionally against the revision the author saw", () => {
     expect(PUBLISHING_DRAFT_CHANGED).toBe("draft_changed");
     for (const command of [{ requestId }, { requestId, expectedRevision: 1 }])
@@ -1496,6 +1567,52 @@ describe("backward-compatible Phase 4 adjustments", () => {
     expect(
       workSchema.safeParse({ ...work, visibility: "private" }).success,
     ).toBe(false);
+    // Not set is absent: a work never carries a null or defaulted authorship.
+    expect(workSchema.parse(work)).not.toHaveProperty("authorship");
+    expect(workSchema.safeParse({ ...work, authorship: null }).success).toBe(
+      false,
+    );
+  });
+
+  it("names the card cover still of the viewer's revision", () => {
+    const work = {
+      id: `work-${hex("d")}`,
+      authorId: `user-${hex("1")}`,
+      authorName: "合成作者",
+      title: "",
+      text: "正文",
+      media: [],
+      firstPublishedAt: at,
+      version: 1,
+      canEdit: false,
+      available: true,
+    };
+    expect(workSchema.shape.coverSrc.unwrap().unwrap()).toBe(
+      workCoverSrcSchema,
+    );
+    for (const coverSrc of [
+      undefined,
+      null,
+      legacySrc,
+      src("cover"),
+      `/api/community/publishing/media/${itemId}/cover/${hex("7")}`,
+      src("display"),
+    ])
+      expect(
+        workSchema.safeParse({ ...work, coverSrc }).success,
+        String(coverSrc),
+      ).toBe(true);
+    for (const coverSrc of [
+      "",
+      src("motion"),
+      `/api/community/publishing/media/${itemId}/original/base`,
+      "https://example.com/cover.webp",
+      `/api/community/media/${itemId}`,
+    ])
+      expect(
+        workSchema.safeParse({ ...work, coverSrc }).success,
+        coverSrc,
+      ).toBe(false);
   });
 
   it("names the cover among the work's media and tells only the author whether it is public", () => {
@@ -1745,7 +1862,7 @@ describe("operator work publishing shapes", () => {
       },
       title: legacyTitle,
       body: legacyBody,
-      authorship: { kind: "original" },
+      authorship: null,
       coverItemId: itemId,
       coverCrop: null,
       items: [
@@ -1774,7 +1891,16 @@ describe("operator work publishing shapes", () => {
     expect(operatorWorkSubmissionSchema.safeParse(submission).success).toBe(
       true,
     );
+    // A legacy baseline declares no authorship; a declared one is kept.
+    expect(
+      operatorWorkSubmissionSchema.safeParse({
+        ...submission,
+        authorship: { kind: "copy_practice", referenceTitle: "合成碑帖" },
+      }).success,
+    ).toBe(true);
     for (const invalid of [
+      { authorship: undefined },
+      { authorship: { kind: "unknown" } },
       { disposition: "not_required" },
       { requestedVisibility: "self" },
       { title: " 标题" },

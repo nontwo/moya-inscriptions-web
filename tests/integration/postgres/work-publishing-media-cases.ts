@@ -1152,6 +1152,104 @@ export const registerWorkPublishingMediaTests = (
       ).toBe(true);
     });
 
+    it("refuses a confirmed draft deletion while an unresolved conflict copy exists", async () => {
+      const draft = await newDraft(a, text("本机草稿"));
+      const item = await adapter.registerItem(
+        a,
+        staticCommand({ draftId: draft.id }),
+        t0,
+      );
+      // Another device saved on an outdated base: its content is kept as a
+      // conflict copy and the draft revision stays 1.
+      const conflicted = await adapter.saveDraft(
+        a,
+        draft.id,
+        {
+          baseRevision: 9,
+          content: text("另一台设备", [entry(item)]),
+          deviceClass: "phone",
+        },
+        at(minute),
+      );
+      if (conflicted.status !== "conflict") throw new Error("no conflict");
+      expect(conflicted.draft.revision).toBe(1);
+      const copyId = conflicted.conflict.id;
+      const recorded = async (requestId: string) =>
+        (
+          await pool.query(
+            "SELECT 1 FROM community.author_command_receipts WHERE actor_id=$1 AND request_id=$2",
+            [a, requestId],
+          )
+        ).rowCount;
+      const rows = async () =>
+        (
+          await pool.query<{ drafts: string; snapshots: string }>(
+            "SELECT (SELECT count(*) FROM community.work_drafts WHERE id=$1 OR conflict_of=$1) AS drafts, (SELECT count(*) FROM community.work_draft_snapshots WHERE draft_id=$1) AS snapshots",
+            [draft.id],
+          )
+        ).rows[0];
+      const before = await rows();
+      expect(before).toEqual({ drafts: "2", snapshots: "1" });
+      const confirmedAtCurrent = {
+        requestId: randomUUID(),
+        expectedRevision: 1,
+      };
+      await expect(
+        adapter.deleteDraft(a, draft.id, confirmedAtCurrent, at(2 * minute)),
+      ).rejects.toMatchObject({
+        name: "CommunityConflictError",
+        message: "draft_changed",
+      });
+      expect(await rows()).toEqual(before);
+      expect(await adapter.readDraft(a, draft.id)).toMatchObject({
+        revision: 1,
+        conflict: { id: copyId, device: { content: { body: "另一台设备" } } },
+      });
+      expect(await itemState(item.id)).toBe("awaiting_upload");
+      expect(await recorded(confirmedAtCurrent.requestId)).toBe(0);
+
+      // Once the author has seen and resolved the conflict, a deletion
+      // confirmed at the current revision removes the draft, the resolved
+      // copy and the history.
+      const resolved = await adapter.resolveConflict(
+        a,
+        draft.id,
+        { requestId: randomUUID(), conflictId: copyId, choice: "account" },
+        at(3 * minute),
+      );
+      expect(resolved.conflict).toBeNull();
+      const current = {
+        requestId: randomUUID(),
+        expectedRevision: resolved.revision,
+      };
+      expect(
+        (await adapter.deleteDraft(a, draft.id, current, at(4 * minute)))
+          .result,
+      ).toMatchObject({ deleted: true, conflictCopies: 1, snapshots: 1 });
+      expect(await rows()).toEqual({ drafts: "0", snapshots: "0" });
+
+      // Without an expected revision the draft goes with its unresolved copy.
+      const other = await newDraft(a, text("无条件删除"));
+      expect(
+        await adapter.saveDraft(
+          a,
+          other.id,
+          { baseRevision: 5, content: text("旧基础"), deviceClass: null },
+          at(minute),
+        ),
+      ).toMatchObject({ status: "conflict" });
+      expect(
+        (
+          await adapter.deleteDraft(
+            a,
+            other.id,
+            { requestId: randomUUID() },
+            at(2 * minute),
+          )
+        ).result,
+      ).toMatchObject({ deleted: true, conflictCopies: 1 });
+    });
+
     it("expires a no-save session on virtual time while protecting a streaming transfer", async () => {
       const session = await adapter.createSession(
         a,
@@ -1949,12 +2047,17 @@ export const registerWorkPublishingMediaTests = (
         "UPDATE community.works SET author_revision_id=$1 WHERE id=$2",
         [revisionId, work],
       );
-      const opened = await adapter.openEditDraft(
+      const openRequest = {
+        requestId: randomUUID(),
+        deviceClass: "tablet",
+      } as const;
+      const { draft: opened, created } = await adapter.openEditDraft(
         a,
         work,
-        { requestId: randomUUID(), deviceClass: "tablet" },
+        openRequest,
         at(minute),
       );
+      expect(created).toBe(true);
       expect(opened).toMatchObject({
         kind: "edit",
         workId: work,
@@ -1979,16 +2082,19 @@ export const registerWorkPublishingMediaTests = (
         },
         mediaItems: [{ id: item.id, state: "ready" }],
       });
+      // Another request returns the same draft without claiming to create it;
+      // a retry of the creating request answers as that request did.
       expect(
-        (
-          await adapter.openEditDraft(
-            a,
-            work,
-            { requestId: randomUUID(), deviceClass: null },
-            at(2 * minute),
-          )
-        ).id,
-      ).toBe(opened.id);
+        await adapter.openEditDraft(
+          a,
+          work,
+          { requestId: randomUUID(), deviceClass: null },
+          at(2 * minute),
+        ),
+      ).toMatchObject({ created: false, draft: { id: opened.id } });
+      expect(
+        await adapter.openEditDraft(a, work, openRequest, at(2 * minute)),
+      ).toMatchObject({ created: true, draft: { id: opened.id, revision: 1 } });
       expect(await refsOf(item.id)).toEqual([
         ...[draft.id, opened.id]
           .sort()
@@ -3161,12 +3267,15 @@ export const registerWorkPublishingMediaTests = (
         "INSERT INTO community.works(id,author_id,title,text,media_ids,first_published_at) VALUES($1,$2,'旧作','',$3,'2026-01-01T00:00:00Z')",
         [workId, a, [mediaId]],
       );
-      const draft = await adapter.openEditDraft(
+      const { draft, created } = await adapter.openEditDraft(
         a,
         workId,
         { requestId: randomUUID(), deviceClass: "desktop" },
         t0,
       );
+      expect(created).toBe(true);
+      // A Phase 4 work opens without an authorship claim.
+      expect(draft.content.authorship).toBeNull();
       const legacy = draft.content.items[0];
       if (legacy?.itemId == null) throw new Error("legacy item missing");
       expect(legacy.qualityMode).toBe("legacy");

@@ -717,6 +717,56 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
         expectedRevision: { type: "integer", minimum: 1 },
       },
     });
+    expect(
+      asObject(asObject(draftDeletion.responses)["409"]).description,
+    ).toContain("unresolved conflict copy");
+
+    // Opening an edit draft says whether this request created it.
+    expect(
+      asObject(
+        operationOf("/v1/community/publishing/works/{workId}/draft", "post")
+          .responses,
+      )["200"],
+    ).toMatchObject({
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/PublishingOpenedEditDraft" },
+        },
+      },
+    });
+    expect(schemas.PublishingOpenedEditDraft).toMatchObject({
+      additionalProperties: false,
+      required: ["draft", "created"],
+      properties: { created: { type: "boolean" } },
+    });
+    // Authorship may be not set (null); a work read may name its card cover.
+    expect(
+      JSON.stringify(
+        asObject(asObject(schemas.WorkDraftContent).properties).authorship,
+      ),
+    ).toContain('{"type":"null"}');
+    // The card cover is an optional media path of a work read, or null.
+    expect(asObject(schemas.UserWork).required).not.toContain("coverSrc");
+    expect(
+      asObject(asObject(asObject(schemas.UserWork).properties).coverSrc),
+    ).toEqual({
+      anyOf: [
+        {
+          anyOf: [
+            {
+              type: "string",
+              pattern:
+                "^\\/api\\/community\\/publishing\\/media\\/(media-item-[0-9a-f]{32})\\/(thumb|display|full|motion|cover)\\/(?:base|[0-9a-f]{32})$",
+            },
+            {
+              type: "string",
+              pattern: "^\\/api\\/community\\/media\\/user-media-[0-9a-f]{32}$",
+            },
+          ],
+        },
+        { type: "null" },
+      ],
+    });
 
     const upload = operationOf(
       "/v1/community/publishing/uploads/{componentId}",
