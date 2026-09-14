@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContentCard as Card } from "@moya/contracts";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors } from "./author-context";
@@ -8,6 +8,7 @@ import { resolveLocalContent } from "./local-content-list";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import { useProductShell } from "../product-shell/product-shell";
 import { ContentCard } from "./content-card";
+import { DraftsCard } from "../publishing/ui/drafts/drafts-card";
 import type { ProfileTab } from "../product-shell/product-history";
 interface ListState {
   items: Card[];
@@ -17,6 +18,11 @@ interface ListState {
   kind: string;
   revision: number;
 }
+/** The owner's drafts card, placed before the works in the Works tab. */
+const draftsEntry = { drafts: true } as const;
+type ListEntry = Card | typeof draftsEntry;
+const isDraftsEntry = (entry: ListEntry): entry is typeof draftsEntry =>
+  "drafts" in entry;
 interface Read {
   page: number;
   replace: boolean;
@@ -186,6 +192,20 @@ export const ProfileList = ({
     },
     [],
   );
+  // Drafts are private: only the signed-in account viewing its own Works tab
+  // gets the card; visitors and guests never do.
+  const draftsOwner =
+    tab === "works" &&
+    owner &&
+    authorId !== null &&
+    context.viewer !== null &&
+    context.viewer.id === authorId
+      ? authorId
+      : null;
+  const entries = useMemo<ListEntry[]>(
+    () => (draftsOwner === null ? list.items : [draftsEntry, ...list.items]),
+    [draftsOwner, list.items],
+  );
   useEffect(() => {
     if (
       !sentinel.current ||
@@ -213,15 +233,31 @@ export const ProfileList = ({
           收藏保存在此浏览器；登录后可合并到账户。清除浏览器数据可能移除本机收藏。
         </p>
       )}
-      <CatalogMasonry
-        items={list.items}
-        getKey={(i) => `${i.target.type}:${i.target.id}`}
-        isFullSpan={(i) => !!i.media && i.media.width / i.media.height >= 2.4}
+      <CatalogMasonry<ListEntry>
+        items={entries}
+        getKey={(i) =>
+          isDraftsEntry(i) ? "drafts" : `${i.target.type}:${i.target.id}`
+        }
+        isFullSpan={(i) =>
+          !isDraftsEntry(i) &&
+          !!i.media &&
+          i.media.width / i.media.height >= 2.4
+        }
         platform={shell.platform}
         feedLayout={shell.feedLayout}
-        renderItem={(item, onMediaSettled) => (
-          <ContentCard item={item} onMediaSettled={onMediaSettled} />
-        )}
+        renderItem={(item, onMediaSettled) =>
+          isDraftsEntry(item) ? (
+            draftsOwner === null ? null : (
+              <DraftsCard
+                accountId={draftsOwner}
+                active={active}
+                onSettled={onMediaSettled}
+              />
+            )
+          ) : (
+            <ContentCard item={item} onMediaSettled={onMediaSettled} />
+          )
+        }
       />
       {error ? (
         <div role="alert">

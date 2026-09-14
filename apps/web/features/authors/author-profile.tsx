@@ -14,6 +14,8 @@ import { ProfileEditor } from "./profile-editor";
 import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
 import { PeopleList } from "./people-list";
+import { TrashPanel } from "../publishing/ui/drafts/trash-panel";
+import draftStyles from "../publishing/ui/drafts/drafts.module.css";
 import { requestIdentity } from "../shell/request-identity";
 import styles from "../user/user-presentation.module.css";
 const tabs = ["works", "favorites", "likes", "history"] as const;
@@ -38,7 +40,7 @@ const ScopedAuthorProfileOverlay = ({
       () => (author.cache.get(cacheKey) as AuthorProfile | undefined) ?? null,
     ),
     [error, setError] = useState(""),
-    [modal, setModal] = useState<"edit" | "settings" | null>(null),
+    [modal, setModal] = useState<"edit" | "settings" | "trash" | null>(null),
     [people, setPeople] = useState<"following" | "followers" | null>(null),
     [revision, setRevision] = useState(0),
     [progress, setProgress] = useState(
@@ -52,6 +54,12 @@ const ScopedAuthorProfileOverlay = ({
     viewTab = visibleTabs.includes(currentTab as (typeof tabs)[number])
       ? currentTab
       : "works";
+  // The recycle bin is the signed-in owner's own: the entry and the panel
+  // use this one check, and a panel whose viewer changed closes.
+  const trashAllowed = !!profile?.isOwner && profile.id === author.viewer?.id;
+  useEffect(() => {
+    if (modal === "trash" && !trashAllowed) setModal(null);
+  }, [modal, trashAllowed]);
   useEffect(() => {
     let current = true;
     setError("");
@@ -226,6 +234,18 @@ const ScopedAuthorProfileOverlay = ({
                     >
                       我的评论
                     </button>
+                    {/* The same check as the panel: a cached profile after an
+                        account switch never offers an entry that opens nothing. */}
+                    {trashAllowed && (
+                      <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        className={draftStyles.profileEntry}
+                        onClick={() => setModal("trash")}
+                      >
+                        回收站
+                      </button>
+                    )}
                   </>
                 ) : author.viewer ? (
                   <>
@@ -377,6 +397,14 @@ const ScopedAuthorProfileOverlay = ({
           onSaved={save}
         />
       )}{" "}
+      {profile && trashAllowed && modal === "trash" && (
+        <TrashPanel
+          key={profile.id}
+          onClose={() => setModal(null)}
+          // A restored work returns to the owner's lists as self-only.
+          onRestored={() => author.mutate()}
+        />
+      )}
       {owner && modal === "settings" && (
         <ProfileSettings
           key={profile?.id ?? "guest"}

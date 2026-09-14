@@ -1,0 +1,539 @@
+/*
+ * Drafts card, drafts picker, history, conflict chooser and recycle bin.
+ * Existing tokens only; light/dark come from the token layer.
+ */
+
+/* -- Drafts card (first card of the owner's Works tab) ---------------------- */
+
+.stack {
+  position: relative;
+  padding-top: 14px;
+}
+
+/* Two sheets peeking above the card read as a stack of drafts. */
+.stackLayer {
+  position: absolute;
+  height: 28px;
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  pointer-events: none;
+}
+
+.stackLayer[data-layer="back"] {
+  top: 0;
+  right: 18px;
+  left: 18px;
+  background: var(--yoyi-color-background-muted);
+}
+
+.stackLayer[data-layer="middle"] {
+  top: 7px;
+  right: 9px;
+  left: 9px;
+  background: var(--yoyi-color-background-elevated);
+  border-color: var(--yoyi-color-border-default);
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.cardCover {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+}
+
+.cardCover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cardCover :global(.yoyi-icon) {
+  width: 28px;
+  height: 28px;
+}
+
+.coverText {
+  display: -webkit-box;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: calc(5 * 1.6em + 2 * var(--yoyi-space-4));
+  align-self: start;
+  margin: 0;
+  overflow: hidden;
+  padding: var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.cardMeta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -- Shared controls ------------------------------------------------------- */
+
+.panel {
+  position: relative;
+  display: grid;
+  gap: var(--yoyi-space-5);
+  padding-bottom: env(safe-area-inset-bottom);
+  font-family: var(--yoyi-font-interface);
+}
+
+.lead {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+}
+
+.status {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+/* An empty live region stays in the accessibility tree (only out of the
+   layout), so text added later is announced. */
+.status:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  margin: 0;
+  color: var(--yoyi-color-error);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+}
+
+.button {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--yoyi-space-5);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-lg);
+  font: inherit;
+  font-size: var(--yoyi-type-button-size);
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.primary {
+  color: white;
+  background: var(--yoyi-color-seal-red);
+  border-color: var(--yoyi-color-seal-red);
+}
+
+@media (hover: hover) {
+  .primary:hover:not(:disabled, [aria-disabled="true"]) {
+    background: var(--yoyi-color-seal-red-hover);
+    border-color: var(--yoyi-color-seal-red-hover);
+  }
+}
+
+.primary:active:not(:disabled, [aria-disabled="true"]) {
+  background: var(--yoyi-color-seal-red-pressed);
+  border-color: var(--yoyi-color-seal-red-pressed);
+}
+
+.quiet {
+  color: var(--yoyi-color-error);
+  background: transparent;
+}
+
+.loadMore {
+  justify-self: center;
+}
+
+/* Focus targets for moving focus programmatically (never by Tab). */
+.panel:focus,
+.empty:focus {
+  outline: none;
+}
+
+.empty {
+  display: grid;
+  min-height: 200px;
+  place-items: center;
+  align-content: center;
+  gap: var(--yoyi-space-3);
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  text-align: center;
+}
+
+.empty :global(.yoyi-icon) {
+  width: 32px;
+  height: 32px;
+}
+
+/* -- Rows (drafts, history, trash) ----------------------------------------- */
+
+.list {
+  display: grid;
+  gap: var(--yoyi-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list:focus {
+  outline: none;
+}
+
+.row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--yoyi-space-4);
+  padding: var(--yoyi-space-4);
+  background: var(--yoyi-color-background-surface);
+  border-radius: 16px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.row[data-row-kind="history"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.thumb {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-lg);
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbText {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  padding: var(--yoyi-space-2);
+  font-size: var(--yoyi-type-caption-size);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.rowBody {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--yoyi-space-2);
+}
+
+.rowBody > .actions {
+  margin-top: var(--yoyi-space-3);
+}
+
+/* A confirmation or failure uses the whole row, not the text column. */
+.row > .confirm,
+.row > .alert {
+  grid-column: 1 / -1;
+}
+
+.label {
+  justify-self: start;
+  margin: 0;
+  padding: 2px var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-label-size);
+  line-height: 1.5;
+}
+
+.label[data-snapshot-kind="conflict"] {
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+}
+
+.rowTitle {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--yoyi-type-list-title-size);
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.rowTitle[data-unnamed] {
+  color: var(--yoyi-color-text-secondary);
+  font-weight: 500;
+}
+
+.excerpt {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--yoyi-space-3);
+  margin: 0;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-metadata-size);
+  line-height: 1.6;
+}
+
+.warning {
+  color: var(--yoyi-color-warning);
+}
+
+.notice {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.5;
+}
+
+.notice.warning {
+  color: var(--yoyi-color-warning);
+}
+
+/* -- Inline confirmation ---------------------------------------------------- */
+
+.confirm {
+  display: grid;
+  gap: var(--yoyi-space-3);
+  padding: var(--yoyi-space-4);
+  background: var(--yoyi-color-background-elevated);
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-lg);
+}
+
+.confirm:focus-within {
+  border-color: var(--yoyi-color-border-strong);
+}
+
+.confirmTitle {
+  margin: 0;
+  font-size: var(--yoyi-type-body-size);
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.confirmText {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* -- Conflict chooser -------------------------------------------------------- */
+
+.versions {
+  display: grid;
+  gap: var(--yoyi-space-5);
+}
+
+@media (min-width: 720px) {
+  .versions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.version {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-4);
+  padding: var(--yoyi-space-5);
+  background: var(--yoyi-color-background-surface);
+  border-radius: 16px;
+  box-shadow: var(--yoyi-shadow-subtle);
+}
+
+.versionHeading {
+  display: grid;
+  gap: var(--yoyi-space-1);
+}
+
+.versionHeading h3 {
+  margin: 0;
+  font-size: var(--yoyi-type-card-title-size);
+  line-height: 1.4;
+}
+
+.field {
+  display: grid;
+  gap: var(--yoyi-space-2);
+  margin: 0;
+}
+
+.field dt {
+  display: flex;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-label-size);
+}
+
+.field dd {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.differs {
+  color: var(--yoyi-color-seal-red);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.body {
+  max-height: 12em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overscroll-behavior: contain;
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yoyi-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  place-items: center;
+  color: var(--yoyi-color-text-secondary);
+  background: var(--yoyi-color-background-muted);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-md);
+  font-size: var(--yoyi-type-caption-size);
+  text-align: center;
+}
+
+.tile[data-cover] {
+  border: 2px solid var(--yoyi-color-seal-red);
+}
+
+.tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tileNumber,
+.tileCover {
+  position: absolute;
+  padding: 0 4px;
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-background-inverse);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.tileNumber {
+  top: 0;
+  left: 0;
+  border-radius: 0 0 var(--yoyi-radius-sm) 0;
+}
+
+.tileCover {
+  right: 0;
+  bottom: 0;
+  color: white;
+  background: var(--yoyi-color-seal-red);
+  border-radius: var(--yoyi-radius-sm) 0 0 0;
+}
+
+.tileState {
+  padding: 2px;
+  line-height: 1.2;
+}
+
+/* -- Profile entry ------------------------------------------------------------ */
+
+/* The shared profile action row keeps its look; the hit area reaches 44px. */
+.profileEntry {
+  position: relative;
+}
+
+.profileEntry::after {
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2)) 0;
+  content: "";
+}
