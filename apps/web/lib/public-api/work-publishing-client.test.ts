@@ -1,7 +1,10 @@
+import * as contracts from "@moya/contracts/schemas";
 import type { WorkDraftContent } from "@moya/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as publishingData from "../../features/publishing/publishing-data";
 import { AuthorRequestError, authorClient } from "./author-community-client";
+import * as client from "./work-publishing-client";
 import {
   PublishingRequestError,
   publishingClient,
@@ -658,6 +661,103 @@ describe("work publishing client", () => {
       expect(init?.body).toBeTypeOf("string");
     },
   );
+
+  describe("conditional draft deletion", () => {
+    const deletion = {
+      deleted: true,
+      snapshots: 1,
+      conflictCopies: 1,
+      mediaItems: 0,
+    } as const;
+
+    it("sends the revision the deletion was confirmed against, and nothing extra without one", async () => {
+      answer(deletion);
+      await expect(
+        publishingClient.deleteDraft(draftId, {
+          requestId,
+          expectedRevision: 3,
+        }),
+      ).resolves.toEqual(deletion);
+      expect(JSON.parse(String(upstream.mock.calls[0]![1]?.body))).toEqual({
+        requestId,
+        expectedRevision: 3,
+      });
+      answer(deletion);
+      await publishingClient.deleteDraft(draftId, { requestId });
+      expect(JSON.parse(String(upstream.mock.calls[1]![1]?.body))).toEqual({
+        requestId,
+      });
+    });
+
+    it("maps a 409 draft_changed to its own code with product text", async () => {
+      answer(refusalBody("draft_changed", "CONFLICT"), 409);
+      const error = await refused(
+        publishingClient.deleteDraft(draftId, {
+          requestId,
+          expectedRevision: 3,
+        }),
+      );
+      expect(error).toMatchObject({
+        status: 409,
+        code: "draft_changed",
+        message: "草稿已在别处更改，未删除",
+        outcomeUnknown: false,
+      });
+      // Another conflict keeps the generic wording and no code.
+      answer(refusalBody("Request identity was already used", "CONFLICT"), 409);
+      expect(
+        await refused(publishingClient.deleteDraft(draftId, { requestId })),
+      ).toMatchObject({ status: 409, code: null });
+      // draft_changed is only a deletion conflict, never a field code of a 422.
+      answer(refusalBody("draft_changed"), 422);
+      expect(
+        await refused(publishingClient.deleteDraft(draftId, { requestId })),
+      ).toMatchObject({ status: 422, code: null });
+    });
+
+    it("refuses an invalid expected revision without sending it", async () => {
+      for (const expectedRevision of [0, -1, 1.5]) {
+        const error = await refused(
+          publishingClient.deleteDraft(draftId, {
+            requestId,
+            expectedRevision,
+          }),
+        );
+        expect(error).toMatchObject({ status: 422 });
+      }
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
+  it("re-exports the shared text rule and limits for Web counters", () => {
+    for (const name of [
+      "codePointLength",
+      "normalizePublishingTitle",
+      "normalizePublishingBody",
+      "publishingContentIssues",
+      "checkPublishingText",
+      "publishingTitleRule",
+      "publishingBodyRule",
+      "WORK_TITLE_MAXIMUM",
+      "WORK_BODY_MAXIMUM",
+      "WORK_ITEMS_HARD_MAXIMUM",
+      "WORK_ITEMS_CONFIGURABLE_MAXIMUM",
+      "DRAFT_TEXT_RAW_ALLOWANCE",
+      "AUTHORSHIP_REFERENCE_TITLE_MAXIMUM",
+      "AUTHORSHIP_ORIGINAL_AUTHOR_MAXIMUM",
+      "AUTHORSHIP_SOURCE_NOTE_MAXIMUM",
+    ] as const) {
+      expect(client[name]).toBe(contracts[name]);
+      expect(publishingData[name]).toBe(contracts[name]);
+    }
+    expect(client.codePointLength("𠀀字")).toBe(2);
+    expect(
+      client.publishingContentIssues(
+        { title: " \r\n ", body: "", itemCount: 0 },
+        { maxItems: 50 },
+      ),
+    ).toEqual(["empty_work"]);
+  });
 
   it("builds bounded page queries for drafts, history and trash", async () => {
     const empty = { items: [], total: 0, page: 2, pageSize: 10, totalPages: 0 };

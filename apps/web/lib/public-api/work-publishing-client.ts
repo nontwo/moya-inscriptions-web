@@ -1,4 +1,5 @@
 import {
+  PUBLISHING_DRAFT_CHANGED,
   apiErrorSchema,
   createPublishingDraftCommandSchema,
   createPublishingSessionCommandSchema,
@@ -9,6 +10,7 @@ import {
   mediaComponentRoleSchema,
   mediaItemIdSchema,
   openWorkEditDraftCommandSchema,
+  publishingDraftDeletionCommandSchema,
   publishingDraftDeletionResultSchema,
   publishingDraftPageSchema,
   publishingDraftSaveResultSchema,
@@ -43,6 +45,7 @@ import type {
   MediaComponentRole,
   OpenWorkEditDraftCommand,
   PublishingDraft,
+  PublishingDraftDeletionCommand,
   PublishingDraftDeletionResult,
   PublishingDraftPage,
   PublishingDraftSaveResult,
@@ -66,6 +69,41 @@ import type {
 } from "@moya/contracts";
 
 import { AuthorRequestError, authorClient } from "./author-community-client";
+
+/**
+ * The shared work publishing text rule (C02) and limits from the contracts,
+ * so Web counters, field checks and the Backend count identically. Client
+ * Components reach them through `features/publishing/publishing-data.ts`.
+ */
+export {
+  AUTHORSHIP_ORIGINAL_AUTHOR_MAXIMUM,
+  AUTHORSHIP_REFERENCE_TITLE_MAXIMUM,
+  AUTHORSHIP_SOURCE_NOTE_MAXIMUM,
+  DRAFT_TEXT_RAW_ALLOWANCE,
+  WORK_BODY_MAXIMUM,
+  WORK_EXCERPT_MAXIMUM,
+  WORK_ITEMS_CONFIGURABLE_MAXIMUM,
+  WORK_ITEMS_HARD_MAXIMUM,
+  WORK_TITLE_MAXIMUM,
+  checkPublishingBody,
+  checkPublishingText,
+  checkPublishingTitle,
+  codePointLength,
+  hasInvalidPublishingCharacters,
+  normalizePublishingBody,
+  normalizePublishingLineBreaks,
+  normalizePublishingTitle,
+  publishingBodyRule,
+  publishingContentIssues,
+  publishingTitleRule,
+} from "@moya/contracts/schemas";
+export type {
+  PublishingContentInput,
+  PublishingContentIssue,
+  PublishingTextCheck,
+  PublishingTextIssue,
+  PublishingTextRule,
+} from "@moya/contracts/schemas";
 
 /**
  * Browser client for work publishing (work-publishing-v1 §10). JSON commands
@@ -104,6 +142,13 @@ export interface PublishingRequestIdentity {
 }
 
 /**
+ * Field and state codes a refusal can carry: the contract's failure codes plus
+ * `draft_changed` (a conditional draft deletion found another revision).
+ */
+export type PublishingRequestErrorCode =
+  WorkPublishingFailureCode | typeof PUBLISHING_DRAFT_CHANGED;
+
+/**
  * A refused or failed publishing request. `message` is always product text
  * (Backend wording is never shown). `code` carries the field-specific failure
  * the Backend named (422, or a 409/413 whose message is a code) so the editor
@@ -113,7 +158,7 @@ export class PublishingRequestError extends AuthorRequestError {
   constructor(
     status: number,
     message: string,
-    readonly code: WorkPublishingFailureCode | null = null,
+    readonly code: PublishingRequestErrorCode | null = null,
     /**
      * True only for a write (or upload) that may have taken effect without a
      * confirmed answer: the connection failed or timed out after sending, a
@@ -135,7 +180,7 @@ const networkMessage = "网络连接中断，请检查后重试";
 const networkUnconfirmedMessage = "网络连接中断，结果尚未确认";
 const unconfirmedMessage = "暂时无法确认结果，请稍后检查";
 
-const failureMessages: Readonly<Record<WorkPublishingFailureCode, string>> = {
+const failureMessages: Readonly<Record<PublishingRequestErrorCode, string>> = {
   empty_work: "标题、正文和图片不能都为空",
   title_too_long: "标题过长",
   title_line_break: "标题不能换行",
@@ -153,6 +198,7 @@ const failureMessages: Readonly<Record<WorkPublishingFailureCode, string>> = {
   unsupported_type: "格式不支持",
   pairing_mismatch: "实况照片的图片与视频不匹配",
   work_unavailable: "作品不可用",
+  [PUBLISHING_DRAFT_CHANGED]: "草稿已在别处更改，未删除",
 };
 
 const statusMessage = (status: number): string => {
@@ -177,6 +223,15 @@ const failureCodeOf = (value: unknown): WorkPublishingFailureCode | null => {
   return parsed.success ? parsed.data : null;
 };
 
+/** The failure code a refusal names: a contract code, or `draft_changed` on a 409. */
+const refusalCodeOf = (
+  status: number,
+  message: unknown,
+): PublishingRequestErrorCode | null =>
+  status === 409 && message === PUBLISHING_DRAFT_CHANGED
+    ? PUBLISHING_DRAFT_CHANGED
+    : failureCodeOf(message);
+
 const errorMessageOf = (body: unknown): unknown =>
   typeof body === "object" &&
   body !== null &&
@@ -194,7 +249,7 @@ const errorMessageOf = (body: unknown): unknown =>
 const refusal = (status: number, body: unknown): PublishingRequestError => {
   const code =
     status === 409 || status === 413 || status === 422
-      ? failureCodeOf(errorMessageOf(body))
+      ? refusalCodeOf(status, errorMessageOf(body))
       : null;
   return code === null
     ? new PublishingRequestError(status, statusMessage(status))
@@ -431,10 +486,15 @@ export const publishingClient = {
       signal,
     ),
 
-  /** Deletes that draft, its history, conflict copies and exclusively held media. */
+  /**
+   * Deletes that draft, its history, conflict copies and exclusively held
+   * media. With `expectedRevision` the deletion only happens while the draft
+   * still has that revision; otherwise it is refused with code
+   * `draft_changed` and nothing is deleted.
+   */
   deleteDraft: async (
     draftId: string,
-    cmd: PublishingRequestIdentity,
+    cmd: PublishingDraftDeletionCommand,
     signal?: AbortSignal,
   ): Promise<PublishingDraftDeletionResult> =>
     request(
@@ -442,7 +502,7 @@ export const publishingClient = {
       publishingDraftDeletionResultSchema,
       {
         method: "DELETE",
-        body: command(requestIdentitySchema, cmd),
+        body: command(publishingDraftDeletionCommandSchema, cmd),
         signal,
       },
     ),

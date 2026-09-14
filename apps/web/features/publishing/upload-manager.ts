@@ -1,6 +1,6 @@
 import { pairingDigest } from "./import-grouping";
 import { planDraftRestore } from "./local-recovery";
-import { extractMediaMetadata } from "./metadata";
+import { extractMediaMetadata, withClientSource } from "./metadata";
 import { blobByteReader, readHead } from "./parsers/bytes";
 import { readImageHeader } from "./parsers/signature";
 import { JPEG_LIMITS, readJpegDimensions } from "./parsers/tiff-exif";
@@ -31,6 +31,7 @@ import type { ExternalStore } from "./upload-manager-store";
 import type { TransferOutcome, TransferPort } from "./uppy-transfer";
 import type {
   MediaClientPairing,
+  MediaClientSource,
   MediaComponentRole,
   MediaContentType,
   MediaFailureCode,
@@ -280,6 +281,8 @@ interface ItemRecord {
   prepared: PreparedComponent[] | null;
   pairing: MediaClientPairing | undefined;
   metadata: MediaMetadata | undefined;
+  /** How the item was selected; null when unknown (a restored item that was not pasted). */
+  clientSource: MediaClientSource | null;
   registerRequestId: string | null;
   componentIds: Map<MediaComponentRole, string>;
   /** Active transfer id per role (component id + attempt). */
@@ -371,6 +374,9 @@ export const canRetryProcessing = (item: UploadItemView): boolean =>
   item.serverItem.failureCode !== null &&
   RETRYABLE_PROCESSING.has(item.serverItem.failureCode);
 
+const metadataEntry = (metadata: MediaMetadata | undefined) =>
+  metadata ? { metadata } : {};
+
 const isAbort = (error: unknown) =>
   typeof error === "object" &&
   error !== null &&
@@ -449,10 +455,13 @@ export class UploadManager {
     return source.still.file;
   }
 
-  /** Draft content entries for the current items (pending until registered). */
+  /**
+   * Draft content entries for the current items (pending until registered);
+   * a clipboard item carries its presentation provenance.
+   */
   draftItems(): Pick<
     WorkDraftItem,
-    "key" | "itemId" | "kind" | "qualityMode" | "pendingLabel"
+    "key" | "itemId" | "kind" | "qualityMode" | "pendingLabel" | "origin"
   >[] {
     return this.order.flatMap((key) => {
       const record = this.records.get(key);
@@ -462,7 +471,8 @@ export class UploadManager {
         record.view.phase === "cleanup"
       )
         return [];
-      const { itemId, kind, qualityMode } = record.view;
+      const { itemId, kind, qualityMode, notCameraOriginal } = record.view;
+      const origin = notCameraOriginal ? { origin: "clipboard" as const } : {};
       return [
         itemId === null
           ? {
@@ -471,8 +481,9 @@ export class UploadManager {
               kind,
               qualityMode,
               pendingLabel: kind === "live" ? "live" : "photo",
+              ...origin,
             }
-          : { key, itemId, kind, qualityMode },
+          : { key, itemId, kind, qualityMode, ...origin },
       ];
     });
   }
@@ -507,6 +518,8 @@ export class UploadManager {
         prepared: null,
         pairing: undefined,
         metadata: undefined,
+        clientSource:
+          entry.clientSource ?? (entry.notCameraOriginal ? "clipboard" : null),
         registerRequestId: null,
         componentIds: new Map(),
         transfers: new Map(),
@@ -1135,7 +1148,8 @@ export class UploadManager {
           key: entry.itemKey,
           kind: content.kind,
           qualityMode: content.qualityMode,
-          notCameraOriginal: false,
+          // The clipboard label survives a restore through the draft content.
+          notCameraOriginal: content.origin === "clipboard",
           phase: "missing_local",
           itemId: content.itemId,
           components: roles.map((role) => componentView(role, "missing_local")),
@@ -1156,6 +1170,7 @@ export class UploadManager {
           })) ?? null,
         pairing: undefined,
         metadata: undefined,
+        clientSource: content.origin === "clipboard" ? "clipboard" : null,
         registerRequestId: null,
         componentIds: new Map(
           server?.components.map((c) => [c.role, c.id]) ?? [],
@@ -1583,7 +1598,7 @@ export class UploadManager {
           : {}),
       })),
       ...(record.pairing ? { clientPairing: record.pairing } : {}),
-      ...(record.metadata ? { metadata: record.metadata } : {}),
+      ...metadataEntry(withClientSource(record.metadata, record.clientSource)),
     };
     let item: PublishingMediaItem;
     try {

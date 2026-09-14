@@ -14,6 +14,7 @@ import {
 import type { ByteReader } from "./parsers/bytes";
 import type { MotionPhotoContainer } from "./parsers/motion-photo";
 import type { SniffedMediaType } from "./parsers/signature";
+import type { MediaClientSource } from "@moya/contracts";
 
 /**
  * Selection staging (Q01–Q03, L01–L04): every selected file is identified by
@@ -29,6 +30,14 @@ export type StillType =
 export type MotionType = "video/quicktime" | "video/mp4";
 
 export type FileOrigin = "picker" | "drop" | "paste";
+
+/**
+ * Where a confirmed item was selected, as its registration provenance names
+ * it (`clientSource`). Presentation provenance only: never an authorization
+ * or originality proof.
+ */
+export const selectionSourceOf = (origin: FileOrigin): MediaClientSource =>
+  origin === "paste" ? "clipboard" : origin;
 
 export type UnsupportedReason =
   | "empty_file"
@@ -272,6 +281,8 @@ export interface StagingBatch {
   /** Original quality for this batch (default off, reset after each batch). */
   readonly original: boolean;
   readonly entries: readonly StagedEntry[];
+  /** How each staged file was selected (a later pick keeps its own origin). */
+  readonly fileOrigins?: ReadonlyMap<File, FileOrigin>;
 }
 
 export type KeyFactory = () => string;
@@ -404,6 +415,7 @@ export const createStagingBatch = (
   origin,
   original: false,
   entries: markPasted(groupIdentifiedFiles(files, newKey), origin),
+  fileOrigins: new Map(files.map((file) => [file.file, origin])),
 });
 
 const entryFiles = (entry: StagedEntry): File[] => {
@@ -443,6 +455,9 @@ export const addToStagingBatch = (
   const pastedFiles = new Set(
     origin === "paste" ? incoming.map((file) => file.file) : [],
   );
+  const fileOrigins = new Map(batch.fileOrigins ?? []);
+  for (const file of incoming)
+    if (!fileOrigins.has(file.file)) fileOrigins.set(file.file, origin);
   const waiting = batch.entries.filter(
     (entry) =>
       entry.status === "needs_counterpart" ||
@@ -491,6 +506,7 @@ export const addToStagingBatch = (
   );
   return {
     ...batch,
+    fileOrigins,
     entries: [
       ...batch.entries.filter(
         (entry) =>
@@ -717,6 +733,8 @@ export interface ConfirmedSource {
   readonly qualityMode: "standard" | "original";
   /** Clipboard images are not camera originals (labelled in the UI). */
   readonly notCameraOriginal: boolean;
+  /** How the item was selected (registration provenance). */
+  readonly clientSource?: MediaClientSource;
 }
 
 export type ConfirmStagingResult =
@@ -727,6 +745,24 @@ export type ConfirmStagingResult =
       readonly remaining: StagingBatch | null;
     }
   | { readonly ok: false; readonly error: "items_limit" | "nothing_ready" };
+
+/**
+ * How a ready entry was selected: any file from the clipboard makes it a
+ * clipboard item; otherwise the origin of its first file with a known origin.
+ * A file without one (a counterpart chosen later) was picked explicitly.
+ */
+const entrySelectionSource = (
+  batch: StagingBatch,
+  entry: StagedEntry & { readonly status: "ready" },
+): MediaClientSource => {
+  const origins = entryFiles(entry).flatMap((file) => {
+    const origin = batch.fileOrigins?.get(file);
+    return origin === undefined ? [] : [origin];
+  });
+  if (entry.pasted === true || origins.includes("paste")) return "clipboard";
+  const known = origins[0] ?? batch.origin;
+  return known === "paste" ? "picker" : selectionSourceOf(known);
+};
 
 /**
  * Confirms the ready entries under the batch's quality mode. Refused as a
@@ -743,18 +779,19 @@ export const confirmStaging = (
   if (count.ready === 0) return { ok: false, error: "nothing_ready" };
   if (!count.withinLimit) return { ok: false, error: "items_limit" };
   const qualityMode = batch.original ? "original" : "standard";
-  const confirmed = batch.entries.flatMap((entry): ConfirmedSource[] =>
-    entry.status === "ready"
-      ? [
-          {
-            key: entry.key,
-            source: entry.source,
-            qualityMode,
-            notCameraOriginal: entry.pasted === true,
-          },
-        ]
-      : [],
-  );
+  const confirmed = batch.entries.flatMap((entry): ConfirmedSource[] => {
+    if (entry.status !== "ready") return [];
+    const clientSource = entrySelectionSource(batch, entry);
+    return [
+      {
+        key: entry.key,
+        source: entry.source,
+        qualityMode,
+        notCameraOriginal: clientSource === "clipboard",
+        clientSource,
+      },
+    ];
+  });
   const waiting = batch.entries.filter(
     (entry) => entry.status !== "ready" && entry.status !== "unsupported",
   );

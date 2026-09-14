@@ -5,6 +5,7 @@ import {
   buildMediaMetadata,
   extractMediaMetadata,
   gpsDecimal,
+  withClientSource,
 } from "./metadata";
 
 const facts = {
@@ -121,5 +122,53 @@ describe("bounded private metadata", () => {
     expect(
       new TextEncoder().encode(JSON.stringify(metadata)).byteLength,
     ).toBeLessThanOrEqual(16 * 1024);
+  });
+
+  it("records how the item was selected in the provenance, within the bound", () => {
+    const parsed = buildMediaMetadata({ Make: "Apple" }, false, null);
+    expect(withClientSource(parsed, "clipboard")).toEqual({
+      provenance: {
+        source: "client",
+        parser: "exifr@7.1.3",
+        status: "parsed",
+        clientSource: "clipboard",
+      },
+      values: { "exif:Make": "Apple" },
+    });
+    expect(withClientSource(parsed, null)).toBe(parsed);
+    // Without extracted metadata the provenance alone is recorded.
+    expect(withClientSource(undefined, "drop")).toEqual({
+      provenance: {
+        source: "client",
+        parser: "exifr@7.1.3",
+        status: "absent",
+        clientSource: "drop",
+      },
+      values: {},
+    });
+    expect(withClientSource(undefined, null)).toBeUndefined();
+    // Metadata just within the serialized bound drops its last value, never the provenance.
+    const bytes = (value: unknown) =>
+      new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const values: Record<string, string> = {};
+    const full = {
+      provenance: {
+        source: "client" as const,
+        parser: "exifr@7.1.3",
+        status: "parsed" as const,
+      },
+      values,
+    };
+    for (let index = 0; bytes(full) < 16 * 1024 - 16; index += 1)
+      values[`exif:Key${index}`] = "x".repeat(
+        Math.min(100, Math.max(1, 16 * 1024 - 16 - bytes(full) - 20)),
+      );
+    const count = Object.keys(values).length;
+    expect(bytes(full)).toBeLessThanOrEqual(16 * 1024);
+    const bounded = withClientSource(full, "picker")!;
+    expect(bytes(bounded)).toBeLessThanOrEqual(16 * 1024);
+    expect(bounded.provenance.clientSource).toBe("picker");
+    expect(Object.keys(bounded.values)).toHaveLength(count - 1);
+    expect(Object.keys(full.values)).toHaveLength(count);
   });
 });

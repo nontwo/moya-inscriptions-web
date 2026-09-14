@@ -189,6 +189,8 @@ export const useUploadSession = () => {
         draft?: PublishingDraft | null;
         workId?: string | null;
         baseRevisionId?: string | null;
+        /** What the editor opens with when no draft carries it (counts against the item limit). */
+        content?: WorkDraftContent | null;
       }) => runtime.startSession(options),
       restoreDraftMedia: (draft: PublishingDraft) =>
         runtime.restoreDraftMedia(draft),
@@ -199,12 +201,20 @@ export const useUploadSession = () => {
       forgetDraftLocalCopies: (draftId: string) =>
         runtime.forgetDraftLocalCopies(draftId),
       edit: (content: WorkDraftContent) => runtime.edit(content),
+      /**
+       * Adopts a version chosen in the conflict chooser or history: the
+       * session continues from that draft's revision with `content`, and
+       * items that content leaves out are not added back.
+       */
+      adoptDraft: (draft: PublishingDraft, content: WorkDraftContent) =>
+        runtime.adoptDraft(draft, content),
       saveNow: () => runtime.autosave()?.saveNow() ?? Promise.resolve(),
       retrySave: () => runtime.autosave()?.retry() ?? Promise.resolve(),
       hasUnsavedChanges: () => runtime.autosave()?.hasUnsavedChanges() ?? false,
       enableSaving: () => runtime.enableSaving(),
       disableSaving: () => runtime.disableSaving(),
-      draftItems: () => manager?.draftItems() ?? [],
+      /** Upload identities of the album's items (never items a chosen version left out). */
+      draftItems: () => runtime.draftItems(),
       localStill: (key: string) => manager?.localStill(key) ?? null,
       cancelItem: (key: string) =>
         manager?.cancelItem(key) ?? Promise.resolve(),
@@ -261,7 +271,10 @@ export const useGlobalUploadProgress = () => {
     runtime.autosave()?.store ?? idleAutosave,
   );
   return useMemo(() => {
-    const summary = uploads ? summarizeUploads(uploads) : null;
+    // Items a chosen version left out are neither counted nor unfinished here.
+    const summary = uploads
+      ? summarizeUploads(runtime.albumUploads(uploads))
+      : null;
     const unsaved =
       autosave !== null &&
       (autosave.editVersion > autosave.savedVersion ||

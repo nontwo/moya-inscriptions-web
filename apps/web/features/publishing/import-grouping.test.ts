@@ -333,4 +333,43 @@ describe("staging counts against the item limit", () => {
       second.ok && second.confirmed.map((c) => c.notCameraOriginal),
     ).toEqual([true, false]);
   });
+
+  it("names each confirmed item's selection source, whatever the batch began with", () => {
+    const mixed = addToStagingBatch(
+      addToStagingBatch(
+        createStagingBatch([staticStill(8)], "drop", keys),
+        [staticStill(9)],
+        "paste",
+        keys,
+      ),
+      [staticStill(10)],
+      "picker",
+      keys,
+    );
+    const confirmed = confirmStaging(mixed, 0, 50);
+    expect(
+      confirmed.ok &&
+        confirmed.confirmed.map((c) => [c.clientSource, c.notCameraOriginal]),
+    ).toEqual([
+      ["drop", false],
+      ["clipboard", true],
+      ["picker", false],
+    ]);
+    // A Live half pasted and completed by an explicitly picked counterpart stays a clipboard item.
+    const [half, counterpart] = livePair(IDENTIFIER);
+    const pastedHalf = createStagingBatch([half!], "paste", keys);
+    const waiting = pastedHalf.entries[0]!;
+    expect(waiting.status).toBe("needs_counterpart");
+    const paired = attachStagedCounterpart(
+      pastedHalf,
+      waiting.key,
+      counterpart!,
+    );
+    expect(paired.ok).toBe(true);
+    const live = paired.ok ? confirmStaging(paired.batch, 0, 50) : null;
+    expect(live?.ok && live.confirmed[0]).toMatchObject({
+      clientSource: "clipboard",
+      notCameraOriginal: true,
+    });
+  });
 });

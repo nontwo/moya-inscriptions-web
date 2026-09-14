@@ -33,6 +33,7 @@ import type {
 import type {
   UploadClientPort,
   UploadManagerOptions,
+  UploadManagerSnapshot,
   UploadTimers,
 } from "./upload-manager";
 import type { ExternalStore } from "./upload-manager-store";
@@ -74,7 +75,7 @@ export interface PublishingClientPort
   ): Promise<{ discarded: true }>;
   deleteDraft(
     draftId: string,
-    cmd: { requestId: string },
+    cmd: { requestId: string; expectedRevision?: number },
   ): Promise<PublishingDraftDeletionResult>;
 }
 
@@ -142,12 +143,28 @@ interface SessionRecord {
   autosave: DraftAutosave | null;
   submission: SubmissionController;
   latest: WorkDraftContent | null;
+  /**
+   * The content the editor opened with when no draft carries it (a no-save
+   * edit of a published work): until the first edit arrives it stands in for
+   * `latest` in the album (item limits, managed items), never for whether the
+   * session holds content of its own.
+   */
+  readonly baseline: WorkDraftContent | null;
   sessionRequestId: string | null;
   sessionTask: Promise<string> | null;
   heartbeat: unknown;
   closed: boolean;
   /** Stops following the submission store. */
   unsubscribe: () => void;
+  /**
+   * Keys of items confirmed from staging in this session that the editor
+   * content has not listed yet: only these are appended by themselves. Once
+   * the editor lists an item, or an adopted version leaves it out, the
+   * content alone decides whether it belongs to the album (V04).
+   */
+  appendable: Set<string>;
+  /** The item count last published for staging limits. */
+  itemCount: number;
 }
 
 const liveItemCount = (manager: UploadManager) =>
@@ -157,6 +174,70 @@ const liveItemCount = (manager: UploadManager) =>
       (item) => item.phase !== "cancelled" && item.phase !== "cleanup",
     ).length;
 
+/** The content that decides the album: the latest edit, else what the editor opened with. */
+const albumContent = (session: SessionRecord): WorkDraftContent | null =>
+  session.latest ?? session.baseline;
+
+/**
+ * Keys of the manager's items that belong to the session's album: items the
+ * album content lists and confirmed items it does not list yet. Null while
+ * there is no album content (every manager item belongs to it then).
+ */
+const albumKeys = (
+  session: SessionRecord | null,
+): ReadonlySet<string> | null => {
+  if (session === null || session.closed) return null;
+  const content = albumContent(session);
+  if (content === null) return null;
+  const keys = new Set(content.items.map((item) => item.key));
+  for (const key of session.appendable) keys.add(key);
+  return keys;
+};
+
+/** The manager snapshot restricted to the album (the same object when nothing is left out). */
+const albumSnapshot = (
+  snapshot: UploadManagerSnapshot,
+  session: SessionRecord | null,
+): UploadManagerSnapshot => {
+  const keys = albumKeys(session);
+  if (keys === null || snapshot.items.every((item) => keys.has(item.key)))
+    return snapshot;
+  return {
+    ...snapshot,
+    items: snapshot.items.filter((item) => keys.has(item.key)),
+  };
+};
+
+/**
+ * The items the work would hold now: every item the album content lists
+ * (including media the manager does not track, such as legacy or other-device
+ * items of an edit) except ones the manager has cancelled (they are leaving
+ * the album), plus confirmed items the content does not list yet. Without a
+ * session, the manager's live items.
+ */
+const albumItemCount = (
+  manager: UploadManager,
+  session: SessionRecord | null,
+): number => {
+  if (session === null || session.closed) return liveItemCount(manager);
+  const leaving = new Set(
+    manager
+      .getSnapshot()
+      .items.filter(
+        (item) => item.phase === "cancelled" || item.phase === "cleanup",
+      )
+      .map((item) => item.key),
+  );
+  const keys = new Set(
+    (albumContent(session)?.items ?? [])
+      .map((item) => item.key)
+      .filter((key) => !leaving.has(key)),
+  );
+  for (const item of manager.draftItems())
+    if (session.appendable.has(item.key)) keys.add(item.key);
+  return keys.size;
+};
+
 const hasContent = (content: WorkDraftContent | null): boolean =>
   content !== null &&
   (content.title.trim() !== "" ||
@@ -165,26 +246,34 @@ const hasContent = (content: WorkDraftContent | null): boolean =>
 
 type ManagedItem = ReturnType<UploadManager["draftItems"]>[number];
 
+const NOTHING_APPENDABLE: ReadonlySet<string> = new Set();
+
 /**
- * Brings item identities (and quality after an explicit Original choice) from
- * the manager into content items with the same key; with `append`, items the
- * content does not list yet are added as pending entries.
+ * Brings item identities, quality after an explicit Original choice and the
+ * clipboard provenance from the manager into content items with the same
+ * key; items the content does not list yet are added as pending entries only
+ * when their key is `appendable` (confirmed from staging and not yet listed
+ * or left out by the editor). Manager items outside both are never re-added:
+ * a restored or chosen version decides the album.
  */
 const withManagedItems = <
   C extends { readonly items: readonly WorkDraftItem[] },
 >(
   content: C,
   managed: readonly ManagedItem[],
-  append: boolean,
+  appendable: ReadonlySet<string> = NOTHING_APPENDABLE,
 ): C => {
   const byKey = new Map(managed.map((item) => [item.key, item]));
   let changed = false;
   const items = content.items.map((item): WorkDraftItem => {
     const current = byKey.get(item.key);
+    if (!current) return item;
+    // Provenance never changes for a key: once from the clipboard, always.
+    const origin = item.origin ?? current.origin;
     if (
-      !current ||
-      (current.itemId === item.itemId &&
-        current.qualityMode === item.qualityMode)
+      current.itemId === item.itemId &&
+      current.qualityMode === item.qualityMode &&
+      origin === item.origin
     )
       return item;
     changed = true;
@@ -193,6 +282,7 @@ const withManagedItems = <
       kind: item.kind,
       qualityMode: current.qualityMode,
       edit: item.edit,
+      ...(origin === undefined ? {} : { origin }),
     };
     return current.itemId === null
       ? {
@@ -203,14 +293,12 @@ const withManagedItems = <
       : { ...base, itemId: current.itemId };
   });
   const known = new Set(content.items.map((item) => item.key));
-  const missing = append
-    ? managed
-        .filter((item) => !known.has(item.key))
-        .map((item): WorkDraftItem => ({
-          ...item,
-          edit: { rotation: 0, crop: null },
-        }))
-    : [];
+  const missing = managed
+    .filter((item) => !known.has(item.key) && appendable.has(item.key))
+    .map((item): WorkDraftItem => ({
+      ...item,
+      edit: { rotation: 0, crop: null },
+    }));
   return !changed && missing.length === 0
     ? content
     : { ...content, items: [...items, ...missing] };
@@ -308,7 +396,10 @@ export class PublishingRuntime {
         // Registration assigns item ids: the saved content follows without the editor.
         const next = manager
           .draftItems()
-          .map((item) => `${item.key}:${item.itemId}:${item.qualityMode}`)
+          .map(
+            (item) =>
+              `${item.key}:${item.itemId}:${item.qualityMode}:${item.origin ?? ""}`,
+          )
           .join("|");
         if (next !== identities) {
           identities = next;
@@ -335,11 +426,40 @@ export class PublishingRuntime {
     return this.current()?.session?.autosave ?? null;
   }
 
+  /**
+   * The manager's draft entries that belong to the session's album: items the
+   * content lists and confirmed items it does not list yet. Items a chosen
+   * version left out stay tracked (their uploads are not cancelled) but are
+   * not offered to the editor again.
+   */
+  draftItems(): ManagedItem[] {
+    const account = this.current();
+    if (!account) return [];
+    const items = account.manager.draftItems();
+    const keys = albumKeys(account.session);
+    return keys === null ? items : items.filter((item) => keys.has(item.key));
+  }
+
+  /**
+   * `snapshot` (the current manager's) restricted to the album's items, for
+   * progress and readiness outside the editor: items a chosen version left
+   * out are neither counted nor shown as unfinished there.
+   */
+  albumUploads(snapshot: UploadManagerSnapshot): UploadManagerSnapshot {
+    const account = this.current();
+    return account && account.manager.accountId === snapshot.accountId
+      ? albumSnapshot(snapshot, account.session)
+      : snapshot;
+  }
+
   // -- editor session ------------------------------------------------------
 
   /**
    * Opens the one editor session of this account. A saved draft (reopened or
    * an edit draft) is passed in; a new work starts without any server record.
+   * `content` is what the editor opens with when no draft carries it (a
+   * no-save edit of a published work): its items count against the item
+   * limit before the first edit arrives.
    */
   startSession(options: {
     readonly target: EditorTarget;
@@ -347,6 +467,7 @@ export class PublishingRuntime {
     readonly draft?: PublishingDraft | null;
     readonly workId?: string | null;
     readonly baseRevisionId?: string | null;
+    readonly content?: WorkDraftContent | null;
   }): EditorSessionView | null {
     const account = this.current();
     if (!account) return null;
@@ -371,11 +492,14 @@ export class PublishingRuntime {
       autosave: null,
       submission,
       latest: draft?.content ?? null,
+      baseline: draft ? null : (options.content ?? null),
       sessionRequestId: null,
       sessionTask: null,
       heartbeat: null,
       closed: false,
       unsubscribe: () => undefined,
+      appendable: new Set(),
+      itemCount: (draft?.content ?? options.content)?.items.length ?? 0,
     };
     // However the confirmation arrives (answer, receipt, explicit retry), the session completes.
     record.unsubscribe = submission.store.subscribe(() => {
@@ -404,19 +528,59 @@ export class PublishingRuntime {
     return account.manager.restoreDraft(draft);
   }
 
-  /** Latest editor content; saved mode forwards it to autosave. */
+  /**
+   * Latest editor content; saved mode forwards it to autosave. Items the
+   * editor lists are its own from now on: leaving one out later removes it.
+   */
   edit(content: WorkDraftContent): void {
     const account = this.current();
     const session = account?.session;
     if (!account || !session || session.closed) return;
+    for (const item of content.items) session.appendable.delete(item.key);
     const merged = withManagedItems(
       content,
       account.manager.draftItems(),
-      true,
+      session.appendable,
     );
     session.latest = merged;
     session.autosave?.edit(merged);
-    this.updateHasContent(session, merged);
+    this.updateContentView(account, session, merged);
+  }
+
+  /**
+   * Adopts a draft version the author chose outside autosave (conflict
+   * resolution or history restore). `content` is what the editor now shows
+   * for it: it becomes the session's latest content, and autosave leaves
+   * the conflict and continues from the chosen draft's revision. Items the
+   * manager still tracks that this content leaves out are not re-added
+   * (V04); items confirmed from staging afterwards are.
+   */
+  adoptDraft(draft: PublishingDraft, content: WorkDraftContent): void {
+    const account = this.current();
+    const session = account?.session;
+    if (!account || !session || session.closed) return;
+    session.appendable.clear();
+    const adopted = withManagedItems(content, account.manager.draftItems());
+    session.latest = adopted;
+    if (session.view.saveMode === "saved") {
+      const view = session.view;
+      if (
+        view.draftId !== draft.id ||
+        view.baseRevisionId !== draft.baseRevisionId ||
+        (draft.workId !== null && view.workId !== draft.workId)
+      ) {
+        session.view = {
+          ...view,
+          draftId: draft.id,
+          baseRevisionId: draft.baseRevisionId,
+          workId: draft.workId ?? view.workId,
+        };
+        account.manager.setDraftId(draft.id);
+        this.publish();
+      }
+    }
+    session.autosave?.adoptDraft(draft, adopted);
+    this.updateContentView(account, session, adopted);
   }
 
   /**
@@ -518,7 +682,8 @@ export class PublishingRuntime {
    * Leaves the editor session.
    *
    * - `discard: false` (leave): the session stays alive — for the global
-   *   progress entry, `"kept"` — while any item is not yet ready (preparing,
+   *   progress entry, `"kept"` — while any album item (never one a chosen
+   *   version left out) is not yet ready (preparing,
    *   transferring, processing, paused, failed or waiting for a choice; in a
    *   saved draft an item already missing on this browser loses nothing), a
    *   saved draft has unsaved input, or a no-save session holds any content
@@ -578,7 +743,8 @@ export class PublishingRuntime {
     account: AccountRuntime,
     session: SessionRecord,
   ): boolean {
-    const snapshot = account.manager.getSnapshot();
+    // Items a chosen version left out lose nothing the author still has in the album.
+    const snapshot = albumSnapshot(account.manager.getSnapshot(), session);
     const uploads = summarizeUploads(snapshot);
     // A saved draft's item missing on this browser loses nothing by leaving; any other
     // unfinished item would drop local bytes or a pending choice.
@@ -702,7 +868,8 @@ export class PublishingRuntime {
     const account = this.current();
     if (!account?.staging || !account.session || account.session.closed)
       return { ok: false, error: "nothing_ready" };
-    const existing = liveItemCount(account.manager);
+    const session = account.session;
+    const existing = albumItemCount(account.manager, session);
     const result = confirmStaging(
       account.staging,
       existing,
@@ -710,7 +877,11 @@ export class PublishingRuntime {
     );
     if (!result.ok) return result;
     account.staging = result.remaining;
+    // Appendable before the manager publishes, so the content follows at once.
+    for (const confirmed of result.confirmed)
+      session.appendable.add(confirmed.key);
     account.manager.addConfirmed(result.confirmed);
+    session.itemCount = albumItemCount(account.manager, session);
     this.publish();
     return result;
   }
@@ -737,11 +908,7 @@ export class PublishingRuntime {
       return controller.store.get();
     controller.reset();
     // Registration may have assigned ids the editor content does not carry yet.
-    const current = withManagedItems(
-      content,
-      account.manager.draftItems(),
-      false,
-    );
+    const current = withManagedItems(content, account.manager.draftItems());
     let holder: PublishingHolder;
     try {
       holder = await this.resolveHolder(account, session, current);
@@ -828,15 +995,16 @@ export class PublishingRuntime {
     return autosave;
   }
 
-  /** The content with the manager's items (pending entries for ones it does not list yet). */
+  /** The content with the manager's items (pending entries for confirmed ones it does not list yet). */
   private contentWithItems(
     account: AccountRuntime,
+    session: SessionRecord,
     content: WorkDraftContent | null,
   ): WorkDraftContent {
     return withManagedItems(
       content ?? emptyContent(),
       account.manager.draftItems(),
-      true,
+      session.appendable,
     );
   }
 
@@ -844,21 +1012,27 @@ export class PublishingRuntime {
   private syncManagedItems(account: AccountRuntime): void {
     const session = account.session;
     if (!session || session.closed || session.latest === null) return;
-    const merged = this.contentWithItems(account, session.latest);
+    const merged = this.contentWithItems(account, session, session.latest);
     if (sameDraftContent(merged, session.latest)) return;
     session.latest = merged;
     // Suspended for another account, autosave records it and sends nothing.
     session.autosave?.edit(merged);
-    this.updateHasContent(session, merged);
+    this.updateContentView(account, session, merged);
   }
 
-  private updateHasContent(
+  /** Republishes when the content changes whether there is content or how many items the album holds. */
+  private updateContentView(
+    account: AccountRuntime,
     session: SessionRecord,
     content: WorkDraftContent,
   ): void {
     const next = hasContent(content);
-    if (next === session.view.hasContent) return;
-    session.view = { ...session.view, hasContent: next };
+    const itemCount = albumItemCount(account.manager, session);
+    if (next === session.view.hasContent && itemCount === session.itemCount)
+      return;
+    session.itemCount = itemCount;
+    if (next !== session.view.hasContent)
+      session.view = { ...session.view, hasContent: next };
     if (this.current()?.session === session) this.publish();
   }
 
@@ -873,7 +1047,11 @@ export class PublishingRuntime {
     if (session.view.saveMode === "saved" && session.autosave) {
       const existing = session.autosave.store.get().draftId;
       if (existing !== null) return { draftId: existing };
-      const next = this.contentWithItems(account, content ?? session.latest);
+      const next = this.contentWithItems(
+        account,
+        session,
+        content ?? session.latest,
+      );
       session.latest = next;
       session.autosave.edit(next);
       return { draftId: await session.autosave.ensureDraft() };
@@ -954,7 +1132,9 @@ export class PublishingRuntime {
   private snapshot(): RuntimeSnapshot {
     const account = this.current();
     const staging = account?.staging ?? null;
-    const existing = account ? liveItemCount(account.manager) : 0;
+    const existing = account
+      ? albumItemCount(account.manager, account.session)
+      : 0;
     return {
       accountId: this.accountId,
       session: account?.session?.view ?? null,

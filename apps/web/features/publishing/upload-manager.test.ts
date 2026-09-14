@@ -853,3 +853,128 @@ describe("upload manager: switching a saved draft to no-save", () => {
     expect(test.client.client.cancelItem).toHaveBeenCalledTimes(cancels);
   });
 });
+
+describe("upload manager: clipboard provenance", () => {
+  it("sends each item's selection source privately and marks clipboard items in the draft entries", async () => {
+    const test = createTestManager();
+    test.manager.addConfirmed([
+      {
+        ...confirm("pasted", staticSource()),
+        notCameraOriginal: true,
+        clientSource: "clipboard",
+      },
+      { ...confirm("dropped", staticSource()), clientSource: "drop" },
+      confirm("legacy-literal", staticSource()),
+    ]);
+    await settle();
+    const provenance = test.client.client.registerItem.mock.calls.map(
+      ([command]) => command.metadata?.provenance,
+    );
+    expect(provenance).toEqual([
+      expect.objectContaining({ status: "absent", clientSource: "clipboard" }),
+      expect.objectContaining({ status: "absent", clientSource: "drop" }),
+      expect.not.objectContaining({ clientSource: expect.anything() }),
+    ]);
+    expect(
+      test.manager.draftItems().map((item) => [item.key, item.origin]),
+    ).toEqual([
+      ["pasted", "clipboard"],
+      ["dropped", undefined],
+      ["legacy-literal", undefined],
+    ]);
+    expect(test.item("pasted").notCameraOriginal).toBe(true);
+  });
+
+  it("records the provenance even when metadata extraction fails", async () => {
+    const test = createTestManager({
+      metadata: async () => {
+        throw new Error("unreadable");
+      },
+    });
+    test.manager.addConfirmed([
+      {
+        ...confirm("pasted", staticSource()),
+        notCameraOriginal: true,
+        clientSource: "clipboard",
+      },
+    ]);
+    await settle();
+    expect(test.client.client.registerItem.mock.calls[0]![0].metadata).toEqual({
+      provenance: {
+        source: "client",
+        parser: "exifr@7.1.3",
+        status: "absent",
+        clientSource: "clipboard",
+      },
+      values: {},
+    });
+  });
+
+  it("keeps the clipboard label of a restored draft item from its content origin", async () => {
+    const test = createTestManager();
+    await test.manager.restoreDraft({
+      id: DRAFT_ID,
+      kind: "new",
+      workId: null,
+      baseRevisionId: null,
+      revision: 2,
+      content: {
+        title: "",
+        body: "",
+        authorship: { kind: "original" },
+        visibility: "public",
+        items: [
+          {
+            key: "pasted",
+            itemId: null,
+            kind: "static",
+            qualityMode: "standard",
+            edit: { rotation: 0, crop: null },
+            pendingLabel: "photo",
+            origin: "clipboard",
+          },
+          {
+            key: "picked",
+            itemId: null,
+            kind: "static",
+            qualityMode: "standard",
+            edit: { rotation: 0, crop: null },
+            pendingLabel: "photo",
+          },
+        ],
+        coverKey: null,
+        coverCrop: null,
+      },
+      mediaItems: [],
+      conflict: null,
+      deviceClass: "desktop",
+      createdAt: "2026-09-13T12:00:00.000Z",
+      updatedAt: "2026-09-13T12:00:00.000Z",
+    });
+    expect(
+      test.manager
+        .getSnapshot()
+        .items.map((item) => [item.key, item.phase, item.notCameraOriginal]),
+    ).toEqual([
+      ["pasted", "missing_local", true],
+      ["picked", "missing_local", false],
+    ]);
+    expect(test.manager.draftItems()).toEqual([
+      {
+        key: "pasted",
+        itemId: null,
+        kind: "static",
+        qualityMode: "standard",
+        pendingLabel: "photo",
+        origin: "clipboard",
+      },
+      {
+        key: "picked",
+        itemId: null,
+        kind: "static",
+        qualityMode: "standard",
+        pendingLabel: "photo",
+      },
+    ]);
+  });
+});

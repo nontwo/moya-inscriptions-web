@@ -1,4 +1,4 @@
-import type { MediaMetadata } from "@moya/contracts";
+import type { MediaClientSource, MediaMetadata } from "@moya/contracts";
 
 /**
  * Bounded, private metadata read from the source before Standard
@@ -130,6 +130,21 @@ export interface ClientStillFacts {
 const serializedBytes = (value: unknown): number =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
+/** Stays within the serialized bound by dropping the last value keys if needed. */
+const withinSerializedBound = (metadata: MediaMetadata): MediaMetadata => {
+  if (serializedBytes(metadata) <= MAX_SERIALIZED_BYTES) return metadata;
+  const values: Record<string, unknown> = { ...metadata.values };
+  const bounded = { ...metadata, values } as MediaMetadata;
+  while (
+    serializedBytes(bounded) > MAX_SERIALIZED_BYTES &&
+    Object.keys(values).length > 0
+  ) {
+    const last = Object.keys(values).pop()!;
+    delete values[last];
+  }
+  return bounded;
+};
+
 /**
  * Builds contract metadata from exifr output plus client parser facts.
  * `status` is `parsed` when exifr produced facts, `partial` when only the
@@ -173,19 +188,28 @@ export const buildMediaMetadata = (
       : exifKeys > 0 && !exifFailed
         ? "parsed"
         : "partial";
-  const metadata: MediaMetadata = {
+  return withinSerializedBound({
     provenance: { source: "client", parser: METADATA_PARSER, status },
     values: status === "absent" ? {} : values,
-  };
-  // Stay within the serialized bound by dropping the last keys if needed.
-  while (
-    serializedBytes(metadata) > MAX_SERIALIZED_BYTES &&
-    Object.keys(metadata.values).length > 0
-  ) {
-    const last = Object.keys(metadata.values).pop()!;
-    delete (metadata.values as Record<string, unknown>)[last];
-  }
-  return metadata;
+  });
+};
+
+/**
+ * Adds how the item was selected (picker, drop or clipboard) to its private
+ * metadata provenance. Presentation provenance only; it proves nothing about
+ * originality and never authorizes anything. Without extracted metadata the
+ * provenance is recorded with no values.
+ */
+export const withClientSource = (
+  metadata: MediaMetadata | undefined,
+  clientSource: MediaClientSource | null,
+): MediaMetadata | undefined => {
+  if (clientSource === null) return metadata;
+  const base = metadata ?? buildMediaMetadata(undefined, true, null);
+  return withinSerializedBound({
+    ...base,
+    provenance: { ...base.provenance, clientSource },
+  });
 };
 
 /** Reads bounded metadata from a still source; never throws. */

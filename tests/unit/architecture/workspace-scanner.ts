@@ -735,7 +735,6 @@ const allowedClientContractTypes = new Set([
   "AuthorProfile",
   "AuthorMedia",
   "UserWork",
-  "WorkEditDraft",
   "AuthorPrivacy",
   "AuthorListQuery",
   "DiscussionPage",
