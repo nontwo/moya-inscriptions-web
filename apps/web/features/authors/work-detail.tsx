@@ -180,6 +180,8 @@ const WorkManagement = ({
         await publishingClient.trashWork(detail.id, { requestId });
         if (!mounted.current) return;
         setUnconfirmed(null);
+        // A toast of an earlier action (作品已提交) no longer describes this work.
+        author.notify("");
         author.mutate();
         if (withdraw !== null) {
           // The Detail replaces media, actions and discussion with the result.
@@ -199,6 +201,7 @@ const WorkManagement = ({
       // The answer, not the request, decides what is shown.
       onVisibility(result.visibility);
       setUnconfirmed(null);
+      author.notify("");
       setMessage({
         tone: "status",
         text: visibilityResultText(intent.visibility, result.visibility),
@@ -245,11 +248,10 @@ const WorkManagement = ({
           <button
             aria-disabled={unavailable}
             onClick={(event) => {
-              if (!busyRef.current)
-                openEditor(
-                  { type: "work", id: detail.id },
-                  event.currentTarget,
-                );
+              if (busyRef.current) return;
+              // The editor's own status replaces any earlier toast.
+              author.notify("");
+              openEditor({ type: "work", id: detail.id }, event.currentTarget);
             }}
             type="button"
           >

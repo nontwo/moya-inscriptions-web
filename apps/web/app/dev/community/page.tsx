@@ -119,7 +119,7 @@ export default async function CommunityDevelopmentPage({
               list="community-handles"
               required
               autoComplete="off"
-              pattern="[a-z][a-z0-9-]{2,31}"
+              pattern="[a-z][a-z0-9\-]{2,31}"
               defaultValue={suggestedHandle}
               className={styles.input}
             />

@@ -219,6 +219,7 @@ export interface FakeUploadSession {
   readonly hasUnsavedChanges: () => boolean;
   readonly saveNow: () => Promise<void>;
   readonly forgetDraftLocalCopies: (draftId: string) => Promise<void>;
+  readonly countLocalDraftItems: (draftId: string) => Promise<number>;
 }
 
 const idleSession = (): FakeUploadSession => ({
@@ -228,6 +229,7 @@ const idleSession = (): FakeUploadSession => ({
   hasUnsavedChanges: vi.fn(() => false),
   saveNow: vi.fn(async () => undefined),
   forgetDraftLocalCopies: vi.fn(async () => undefined),
+  countLocalDraftItems: vi.fn(async () => 0),
 });
 
 /**

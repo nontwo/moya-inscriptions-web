@@ -33,8 +33,8 @@
   height: 44px;
   justify-self: end;
 }
-/* Calligraphy centres its header items, the avatar included. */
-:global([data-calligraphy-category-surface] > header)
+/* Calligraphy without the author bar centres its header items. */
+:global([data-calligraphy-category-surface] > header:not([data-author-bar]))
   > .trigger[data-search-trigger-placement="header"] {
   justify-self: center;
 }

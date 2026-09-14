@@ -31,10 +31,13 @@ import type {
 import type {
   PublishingDraft,
   PublishingDraftConflict,
+  PublishingHolder,
   PublishingMediaItem,
+  PublishingReadiness,
   RegisterMediaItemCommand,
   WorkDraftContent,
   WorkDraftItem,
+  WorkSubmissionResult,
 } from "@moya/contracts";
 
 const stamp = "2026-09-13T12:00:00.000Z";
@@ -83,14 +86,16 @@ const setup = () => {
     ),
     saveDraftNow: vi.fn(),
     draft: vi.fn(),
-    submit: vi.fn(async (cmd: { requestId: string }) => ({
-      state: "confirmed" as const,
-      requestId: cmd.requestId,
-      workId: `work-${"9".repeat(32)}`,
-      revisionId: `work-revision-${"8".repeat(32)}`,
-      visibility: "public" as const,
-      submittedAt: stamp,
-    })),
+    submit: vi.fn(
+      async (cmd: { requestId: string }): Promise<WorkSubmissionResult> => ({
+        state: "confirmed" as const,
+        requestId: cmd.requestId,
+        workId: `work-${"9".repeat(32)}`,
+        revisionId: `work-revision-${"8".repeat(32)}`,
+        visibility: "public" as const,
+        submittedAt: stamp,
+      }),
+    ),
     submissionReceipt: vi.fn(async () => null),
     createSession: vi.fn(async () => ({
       id: SESSION_ID,
@@ -107,6 +112,17 @@ const setup = () => {
       conflictCopies: 0,
       mediaItems: 1,
     })),
+    readiness: vi.fn(
+      async (
+        _holder: PublishingHolder,
+        _content: WorkDraftContent,
+      ): Promise<PublishingReadiness> => ({
+        ready: true,
+        pendingItemKeys: [],
+        failedItemKeys: [],
+        editKeys: {},
+      }),
+    ),
   };
   const services: PublishingServices = {
     client: client as unknown as PublishingClientPort,
@@ -1046,5 +1062,102 @@ describe("publishing runtime", () => {
       key: pastedKey,
       origin: "clipboard",
     });
+  });
+});
+
+describe("edit derivative readiness (D1)", () => {
+  const turnedContent = (rotation: 0 | 90): WorkDraftContent => ({
+    title: "",
+    body: "",
+    authorship: null,
+    visibility: "public",
+    items: [
+      {
+        key: "k1",
+        itemId: `media-item-${"5".repeat(32)}`,
+        kind: "static",
+        qualityMode: "standard",
+        edit: { rotation, crop: null },
+      },
+    ],
+    coverKey: null,
+    coverCrop: null,
+  });
+
+  it("asks the account after an edit settles, using the saved draft as holder, and polls a not_ready submission", async () => {
+    const t = setup();
+    t.signIn(ACCOUNT);
+    await settle();
+    t.runtime.startSession({
+      target: { type: "draft", id: DRAFT_ID },
+      saveMode: "saved",
+      draft: draftOf(turnedContent(0)),
+    });
+    expect(t.runtime.editReadiness()?.get()).toEqual({
+      status: "idle",
+      answered: null,
+    });
+    // No edit needs derivatives: nothing is asked.
+    t.timers.fireAll();
+    await settle();
+    expect(t.client.readiness).not.toHaveBeenCalled();
+
+    t.client.readiness.mockResolvedValueOnce({
+      ready: false,
+      pendingItemKeys: ["k1"],
+      failedItemKeys: [],
+      editKeys: {},
+    });
+    t.runtime.edit(turnedContent(90));
+    expect(t.runtime.editReadiness()?.get().status).toBe("idle");
+    expect([...t.timers.pending.values()].map((timer) => timer.ms)).toContain(
+      1000,
+    );
+    t.timers.fireAll();
+    await settle();
+    expect(t.client.readiness).toHaveBeenCalledTimes(1);
+    expect(t.client.readiness.mock.calls[0]![0]).toEqual({ draftId: DRAFT_ID });
+    expect(t.runtime.editReadiness()?.get()).toMatchObject({
+      status: "not_ready",
+      answered: { pendingItemKeys: new Set(["k1"]) },
+    });
+    t.client.readiness.mockResolvedValueOnce({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: { k1: "d".repeat(32) },
+    });
+    t.timers.fireAll();
+    await settle();
+    expect(t.runtime.editReadiness()?.get()).toMatchObject({
+      status: "ready",
+      answered: { editKeys: { k1: "d".repeat(32) } },
+    });
+
+    // A refused submission marks its keys pending and asks again.
+    t.client.submit.mockResolvedValueOnce({
+      state: "not_ready" as const,
+      itemKeys: ["k1"],
+    });
+    const result = await t.runtime.submit(turnedContent(90));
+    expect(result?.status).toBe("not_ready");
+    expect(t.runtime.editReadiness()?.get()).toMatchObject({
+      status: "not_ready",
+      answered: { ready: false, pendingItemKeys: new Set(["k1"]) },
+    });
+    t.client.readiness.mockResolvedValueOnce({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: { k1: "d".repeat(32) },
+    });
+    t.timers.fireAll();
+    await settle();
+    expect(t.client.readiness).toHaveBeenCalledTimes(3);
+    expect(t.runtime.editReadiness()?.get().status).toBe("ready");
+
+    // Leaving the session ends the tracking.
+    await t.runtime.closeSession({ discard: true });
+    expect(t.runtime.editReadiness()).toBeNull();
   });
 });

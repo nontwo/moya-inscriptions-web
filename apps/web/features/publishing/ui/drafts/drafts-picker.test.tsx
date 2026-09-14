@@ -93,6 +93,7 @@ describe("Drafts picker", () => {
       ]),
     );
     const { node, onChanged } = await renderPicker();
+    await flush();
     expect(client.listDrafts).toHaveBeenCalledWith(
       { page: 1, pageSize: 20 },
       expect.any(AbortSignal),
@@ -118,6 +119,32 @@ describe("Drafts picker", () => {
       2,
       expect.objectContaining({ id: first?.dataset.draftId }),
     );
+  });
+
+  it("warns only about pending items this browser does not hold itself (D6)", async () => {
+    const held = vi.fn(async (id: string) =>
+      id === draftId(1) ? 1 : id === draftId(2) ? 2 : 0,
+    );
+    uploadSession.set({ countLocalDraftItems: held });
+    client.listDrafts.mockResolvedValue(
+      page([
+        summary(1, { itemCount: 3, missingLocalCount: 2 }),
+        summary(2, { itemCount: 2, missingLocalCount: 2 }),
+        summary(3, { itemCount: 1, missingLocalCount: 0 }),
+      ]),
+    );
+    const { node } = await renderPicker();
+    await flush();
+    const [one, two, three] = rows(node);
+    // Two pending on the account, one of them recoverable here: one is missing here.
+    expect(one?.querySelector("[data-missing-local]")?.textContent).toBe(
+      "1 项尚未上传，打开后需重新选择文件",
+    );
+    // Every pending item is on this browser (device A): nothing to warn about.
+    expect(two?.querySelector("[data-missing-local]")).toBeNull();
+    expect(three?.querySelector("[data-missing-local]")).toBeNull();
+    expect(held).toHaveBeenCalledTimes(2);
+    expect(held).not.toHaveBeenCalledWith(draftId(3));
   });
 
   it("shows the truthful empty state", async () => {
@@ -303,8 +330,12 @@ describe("Drafts picker", () => {
       ]),
     );
     const { node, onOpenDraft } = await renderPicker();
+    await flush();
     const [other, active] = rows(node);
     expect(other?.hasAttribute("data-draft-active")).toBe(false);
+    expect(other?.querySelector("[data-missing-local]")?.textContent).toBe(
+      "1 项尚未上传，打开后需重新选择文件",
+    );
     expect(buttonByText(other!, "删除").disabled).toBe(false);
     expect(active?.hasAttribute("data-draft-active")).toBe(true);
     expect(active?.textContent).toContain("正在编辑");

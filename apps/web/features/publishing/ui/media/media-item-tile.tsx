@@ -4,11 +4,13 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { THUMBNAIL_EDGE } from "./bounded-preview";
+import { FULL_EDIT } from "./media-geometry";
 import { EditedImage, useBoundedPreview } from "./media-preview";
 import { isVerifiedLive, itemStatus } from "./media-status";
 import styles from "./media.module.css";
 
 import type { RetryPlan } from "./media-status";
+import type { ItemDerivation } from "../../edit-readiness";
 import type { UploadItemView } from "../../upload-manager";
 import type { PublishingMediaItem, WorkDraftItem } from "@moya/contracts";
 import type { CSSProperties, KeyboardEvent } from "react";
@@ -35,6 +37,10 @@ export interface MediaItemTileProps {
   readonly cover: CoverRole;
   /** The editor has loaded: an item nobody can describe is unavailable, not loading. */
   readonly loaded: boolean;
+  /** Whether the item's edit derivatives exist on the account (edit-readiness.ts). */
+  readonly derivation: ItemDerivation;
+  /** The account's thumbnail of the edited item, once its derivatives exist. */
+  readonly editedThumbSrc: string | null;
   readonly reducedMotion: boolean;
   readonly onMove: (key: string, offset: -1 | 1) => void;
   readonly onRemove: (key: string) => void;
@@ -58,6 +64,8 @@ export const MediaItemTile = ({
   localStill,
   cover,
   loaded,
+  derivation,
+  editedThumbSrc,
   reducedMotion,
   onMove,
   onRemove,
@@ -74,7 +82,7 @@ export const MediaItemTile = ({
     ...(reducedMotion ? { transition: null } : {}),
   });
   const number = index + 1;
-  const status = itemStatus(view, server, { loaded, item });
+  const status = itemStatus(view, server, { loaded, item, derivation });
   const account = view === undefined ? (server ?? null) : view.serverItem;
   const serverMedia = account?.media ?? null;
   // A bounded copy of the local still, never the original, at tile size.
@@ -82,9 +90,16 @@ export const MediaItemTile = ({
     serverMedia === null ? localStill : null,
     THUMBNAIL_EDGE,
   );
-  const previewSrc = serverMedia?.thumbSrc ?? local.url;
-  const presentation =
-    account?.presentation ?? (serverMedia === null ? local.size : null);
+  // The account's edited thumbnail already carries the edit; anything else
+  // is shown in its edited frame here.
+  const edited = editedThumbSrc !== null && serverMedia !== null;
+  const previewSrc = edited
+    ? editedThumbSrc
+    : (serverMedia?.thumbSrc ?? local.url);
+  const previewEdit = edited ? FULL_EDIT : item.edit;
+  const presentation = edited
+    ? null
+    : (account?.presentation ?? (serverMedia === null ? local.size : null));
   const live = isVerifiedLive(view, server);
   const statusId = `media-item-${item.key}-status`;
   const style: CSSProperties = {
@@ -112,6 +127,7 @@ export const MediaItemTile = ({
       data-dragging={sortable.isDragging ? "true" : undefined}
       data-media-key={item.key}
       data-media-status={status.kind}
+      data-media-thumb={edited ? "edited" : undefined}
       style={style}
     >
       <button
@@ -130,7 +146,7 @@ export const MediaItemTile = ({
           {number}
         </span>
         <EditedImage
-          edit={item.edit}
+          edit={previewEdit}
           fallback={kindText(item)}
           knownSize={presentation}
           src={previewSrc}

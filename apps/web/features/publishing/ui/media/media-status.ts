@@ -1,5 +1,6 @@
 import { canRetryProcessing } from "../../upload-manager";
 
+import type { ItemDerivation } from "../../edit-readiness";
 import type { UploadItemView } from "../../upload-manager";
 import type { MediaComponentRole, PublishingMediaItem } from "@moya/contracts";
 
@@ -100,6 +101,12 @@ export interface StatusContext {
   /** The editor and the upload manager have loaded (no view will still arrive). */
   readonly loaded: boolean;
   readonly item: { readonly itemId: string | null };
+  /**
+   * Whether the item's edit derivatives (rotation, crop, cover crop) exist
+   * on the account (edit-readiness.ts): a ready item is 处理中 until they
+   * do, and 失败 when their derivation failed.
+   */
+  readonly derivation?: ItemDerivation;
 }
 
 const missingLocal = (): ItemStatus => ({
@@ -149,7 +156,34 @@ const serverStatus = (
   }
 };
 
+/** A ready item with unconfirmed or failed edit derivatives is not ready (QA D1). */
+const withDerivation = (
+  status: ItemStatus,
+  context: StatusContext | undefined,
+): ItemStatus => {
+  if (status.kind !== "ready") return status;
+  switch (context?.derivation) {
+    case "pending":
+      return { kind: "processing", label: "处理中" };
+    case "failed":
+      return {
+        kind: "failed",
+        label: "失败",
+        message: "编辑处理失败，可重新编辑或移除",
+        retry: null,
+      };
+    default:
+      return status;
+  }
+};
+
 export const itemStatus = (
+  item: UploadItemView | undefined,
+  server?: PublishingMediaItem,
+  context?: StatusContext,
+): ItemStatus => withDerivation(baseStatus(item, server, context), context);
+
+const baseStatus = (
   item: UploadItemView | undefined,
   server?: PublishingMediaItem,
   context?: StatusContext,

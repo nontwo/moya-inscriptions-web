@@ -52,7 +52,10 @@ export interface DetailAuthorshipPresentation {
 
 export interface DetailMediaPresentation {
   readonly id: string;
+  /** The display derivative: cards, the carousel and the Detail page. */
   readonly src: string;
+  /** The `full` derivative, shown by the Viewer when the work carries one. */
+  readonly fullSrc?: string;
   readonly alt: string;
   readonly width: number;
   readonly height: number;
@@ -124,11 +127,13 @@ export const toWorkAuthorshipPresentation = (
  * the image and carries its motion separately (never preloaded).
  */
 export const toWorkMediaPresentation = (
-  media: WorkMedia,
+  // `fullSrc` is read structurally until the work media contract names it.
+  media: WorkMedia & { readonly fullSrc?: string },
   alt: string,
 ): DetailMediaPresentation => ({
   id: media.id,
   src: media.src,
+  ...(media.fullSrc === undefined ? {} : { fullSrc: media.fullSrc }),
   alt,
   width: media.width,
   height: media.height,

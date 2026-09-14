@@ -428,14 +428,26 @@ const ScopedDiscoveryFeed = ({
           </button>
         </div>
       )}
+      {/*
+        The footer keeps one stable 加载更多 element across loads and every
+        re-render above (author, shell or publishing progress updates): the
+        button stays mounted while a page loads (disabled, aria-busy) and the
+        status text sits beside it, so nothing is torn down and re-created
+        while the sentinel keeps fetching.
+      */}
       <div ref={sentinel} className="phase4-load">
-        {busy ? (
-          <span role="status">正在加载…</span>
-        ) : snapshot.cursor?.hasMore ? (
-          <button className="phase4-button" onClick={() => void load()}>
+        {snapshot.cursor?.hasMore ? (
+          <button
+            aria-busy={busy || undefined}
+            className="phase4-button"
+            disabled={busy}
+            onClick={() => void load()}
+            type="button"
+          >
             加载更多
           </button>
         ) : null}
+        {busy ? <span role="status">正在加载…</span> : null}
       </div>
     </section>
   );

@@ -113,4 +113,14 @@ describe("CommunityDevelopmentPage", () => {
       expect(markup).not.toContain('role="status"');
     }
   });
+
+  it("declares a handle pattern browsers accept under the v flag", async () => {
+    const markup = renderToStaticMarkup(await CommunityDevelopmentPage({}));
+    const pattern = /pattern="([^"]+)"/u.exec(markup)?.[1];
+    expect(pattern).toBeDefined();
+    // Browsers compile `pattern` with the `v` flag: a bare `-` inside a class is a syntax error there.
+    const compiled = new RegExp(`^(?:${pattern!})$`, "v");
+    expect(compiled.test("dev-user-01")).toBe(true);
+    expect(compiled.test("1abc")).toBe(false);
+  });
 });

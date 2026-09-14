@@ -85,6 +85,10 @@ export const DraftsPicker = ({
     readonly text: string;
   } | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  /** Items of each listed draft this browser still holds locally (by draft id). */
+  const [localCounts, setLocalCounts] = useState<
+    Readonly<Record<string, number>>
+  >({});
   const listRef = useRef<HTMLUListElement>(null);
   const emptyRef = useRef<HTMLParagraphElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -164,6 +168,34 @@ export const DraftsPicker = ({
     void load(1);
     return () => controller.current?.abort();
   }, [load]);
+
+  // The account counts items no device has uploaded yet; the ones this
+  // browser still holds (recoverable on opening) are not missing here.
+  const pendingDrafts = (list?.items ?? [])
+    .filter((draft) => draft.missingLocalCount > 0)
+    .map((draft) => draft.id)
+    .join(" ");
+  useEffect(() => {
+    if (pendingDrafts === "") return undefined;
+    let active = true;
+    const runtime = latest.current.upload;
+    if (runtime.accountId !== accountId) return undefined;
+    for (const id of pendingDrafts.split(" ")) {
+      if (id in localCounts) continue;
+      void runtime
+        .countLocalDraftItems(id)
+        .catch(() => 0)
+        .then((count) => {
+          if (active)
+            setLocalCounts((current) =>
+              id in current ? current : { ...current, [id]: count },
+            );
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [accountId, localCounts, pendingDrafts]);
 
   const focusAfterRemoval = useFocusAfterRemoval(list?.items.length ?? 0, {
     list: listRef,
@@ -275,6 +307,12 @@ export const DraftsPicker = ({
             const updated = relativeTime(draft.updatedAt, now);
             const active = draft.id === activeDraftId;
             const activeNoteId = `draft-active-${draft.id}`;
+            // Said only once this browser's own copies are known.
+            const local = localCounts[draft.id];
+            const missingHere =
+              local === undefined
+                ? 0
+                : Math.max(0, draft.missingLocalCount - local);
             return (
               <li
                 key={draft.id}
@@ -323,9 +361,9 @@ export const DraftsPicker = ({
                       {updated === "" ? "" : `${updated}编辑`}
                     </time>
                     {/* A running session still holds its files. */}
-                    {draft.missingLocalCount > 0 && !active ? (
+                    {missingHere > 0 && !active ? (
                       <span className={styles.warning} data-missing-local="">
-                        {missingLocalText(draft.missingLocalCount)}
+                        {missingLocalText(missingHere)}
                       </span>
                     ) : null}
                   </p>

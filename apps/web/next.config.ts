@@ -10,6 +10,8 @@ const allowedDevOrigins =
 
 const nextConfig: NextConfig = {
   agentRules: false,
+  // The dev-only indicator sits over the dock on phone widths (QA D8).
+  devIndicators: false,
   // Search text is private runtime input; keep ordinary dev request logs intact.
   logging: {
     incomingRequests: { ignore: [/^\/api\/catalog-search(?:[/?]|$)/u] },

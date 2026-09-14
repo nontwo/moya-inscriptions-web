@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { derivationSignatures } from "../../edit-readiness";
 import {
   contentOf,
   createEditorSessionStore,
@@ -284,8 +285,95 @@ describe("editor session store", () => {
       ready: 1,
       blocking: 3,
       text: "2 项仍在上传，1 项失败",
+      confirmed: false,
       unknownItemIds: [],
     });
+  });
+
+  it("counts a ready item as processing until the account confirms its edit derivatives (D1)", () => {
+    const store = createEditorSessionStore(ACCOUNT, { type: "new" });
+    store.setMedia({
+      items: [item("a", itemId(1)), item("b", itemId(2)), item("c", itemId(3))],
+      coverKey: "c",
+      coverCrop: null,
+    });
+    store.setItemEdit("a", { rotation: 90, crop: null });
+    const uploads = snapshot([
+      view("a", "ready"),
+      view("b", "ready"),
+      view("c", "ready"),
+    ]);
+    // No answer yet: the turned item waits; the untouched ones are ready.
+    expect(readinessOf(store.get(), uploads, null)).toMatchObject({
+      ready: 2,
+      blocking: 1,
+      text: "1 项正在处理",
+      confirmed: false,
+    });
+    const album = () => ({
+      coverKey: store.get().coverKey,
+      coverCrop: store.get().coverCrop,
+    });
+    const answered = (
+      ready: boolean,
+      pending: string[],
+      failed: string[] = [],
+    ) => ({
+      status: ready ? ("ready" as const) : ("not_ready" as const),
+      answered: {
+        ready,
+        pendingItemKeys: new Set(pending),
+        failedItemKeys: new Set(failed),
+        editKeys: { a: "f".repeat(32) },
+        signatures: derivationSignatures({
+          items: store.get().items,
+          ...album(),
+        }),
+      },
+    });
+    expect(
+      readinessOf(store.get(), uploads, answered(false, ["a"])),
+    ).toMatchObject({
+      ready: 2,
+      blocking: 1,
+      text: "1 项正在处理",
+      confirmed: false,
+    });
+    expect(readinessOf(store.get(), uploads, answered(true, []))).toEqual({
+      total: 3,
+      ready: 3,
+      blocking: 0,
+      text: null,
+      confirmed: true,
+      unknownItemIds: [],
+    });
+    expect(
+      readinessOf(store.get(), uploads, answered(false, [], ["a"])),
+    ).toMatchObject({
+      ready: 2,
+      blocking: 1,
+      text: "1 项失败",
+      confirmed: false,
+    });
+    // A cover crop on the cover item is an edit of its own; an answer for the
+    // earlier content does not cover it.
+    const confirmedBefore = answered(true, []);
+    store.setCoverCrop({ x: 0, y: 0, width: 0.5, height: 0.5 });
+    expect(readinessOf(store.get(), uploads, confirmedBefore)).toMatchObject({
+      ready: 2,
+      blocking: 1,
+      text: "1 项正在处理",
+      confirmed: false,
+    });
+    // Everything ready locally while the account's last word is "not ready":
+    // never 全部已就绪.
+    store.setCoverCrop(null);
+    expect(
+      readinessOf(store.get(), uploads, {
+        ...answered(false, []),
+        answered: null,
+      }),
+    ).toMatchObject({ blocking: 1, confirmed: false });
   });
 
   it("never counts an account item of unknown state as ready", () => {
@@ -312,6 +400,7 @@ describe("editor session store", () => {
       ready: 1,
       blocking: 1,
       text: "1 项正在确认状态",
+      confirmed: false,
       unknownItemIds: [itemId(2)],
     });
   });

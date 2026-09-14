@@ -160,6 +160,30 @@ describe("CatalogViewer", () => {
     ).toHaveLength(1);
   });
 
+  it("shows the full derivative of publishing media and preloads it, falling back to display", () => {
+    const full = `/api/community/publishing/media/media-item-${"1".repeat(32)}/full/base`;
+    const display = `/api/community/publishing/media/media-item-${"1".repeat(32)}/display/base`;
+    const preloaded: string[] = [];
+    // The neighbour preload is an off-DOM Image: record what it asks for.
+    vi.spyOn(HTMLImageElement.prototype, "src", "set").mockImplementation(
+      function (this: HTMLImageElement, value: string) {
+        if (!this.isConnected) preloaded.push(value);
+      },
+    );
+    const { container } = renderViewer({
+      selectedMedia: [
+        { ...media[0]!, fullSrc: full, src: display },
+        { ...media[1]!, src: display },
+      ] as readonly PublicMedia[],
+    });
+    const image = container.querySelector<HTMLImageElement>(
+      "[data-detail-viewer-image]",
+    )!;
+    expect(image.getAttribute("src")).toBe(full);
+    // Carousel and cards keep display: the neighbour without `full` stays on it.
+    expect(preloaded).toEqual([display]);
+  });
+
   it("keeps single media free of pager controls and reports a truthful failure", () => {
     const { container } = renderViewer({ selectedMedia: media.slice(0, 1) });
     expect(container.querySelector("[data-detail-viewer-index]")).toBeNull();

@@ -37,6 +37,13 @@ export interface CropSession {
   readonly area: MediaCrop | null | undefined;
   readonly position: { readonly x: number; readonly y: number };
   readonly zoom: number;
+  /**
+   * The author moved or zoomed the crop in this session. The cropper also
+   * reports an area on its own when it mounts or its frame changes (with a
+   * turned image that area is not the full frame on every layout), and such
+   * a report is never an edit the author asked for.
+   */
+  readonly touched: boolean;
   /** Remounts the cropper when its frame or aspect changes. */
   readonly generation: number;
 }
@@ -50,6 +57,7 @@ export const startCrop = (
   area: undefined,
   position: { x: 0, y: 0 },
   zoom: 1,
+  touched: false,
   generation: 0,
 });
 
@@ -63,6 +71,7 @@ export const restartCrop = (
   area: undefined,
   position: { x: 0, y: 0 },
   zoom: 1,
+  touched: false,
   generation: session.generation + 1,
 });
 
@@ -81,15 +90,27 @@ export const resumeCrop = (session: CropSession): CropSession =>
       };
 
 /**
- * The crop to store: what the cropper reported, else where it was seeded,
- * else the centered crop of the chosen aspect (the full frame is null).
+ * Whether the session's reported area is an explicit crop: it continues a
+ * stored crop (seeded), the author chose an aspect other than 原始比例, or
+ * moved or zoomed the crop. A fresh 原始比例 session left alone is the full
+ * frame, whatever the cropper reported for it.
+ */
+const explicitArea = (session: CropSession): boolean =>
+  session.seed !== undefined ||
+  session.preset !== "original" ||
+  session.touched;
+
+/**
+ * The crop to store: what the cropper reported when that is an explicit
+ * crop, else where it was seeded, else the centered crop of the chosen
+ * aspect (the full frame is null).
  */
 export const resolvedCrop = (
   session: CropSession,
   ratio: number,
   frame: Size | null,
 ): MediaCrop | null => {
-  if (session.area !== undefined) return session.area;
+  if (session.area !== undefined && explicitArea(session)) return session.area;
   if (session.seed !== undefined) return cropFromPercentages(session.seed);
   if (frame === null || session.preset === "original") return null;
   return normalizeCrop(centeredCrop(ratio, frame));
@@ -253,9 +274,22 @@ const CropFrame = ({
           }))
         }
         onCropChange={(position) =>
-          onSession((current) => ({ ...current, position }))
+          onSession((current) =>
+            // The cropper re-reports its position when it mounts or clamps;
+            // only a moved crop is the author's.
+            current.position.x === position.x &&
+            current.position.y === position.y
+              ? current
+              : { ...current, position, touched: true },
+          )
         }
-        onZoomChange={(zoom) => onSession((current) => ({ ...current, zoom }))}
+        onZoomChange={(zoom) =>
+          onSession((current) =>
+            current.zoom === zoom
+              ? current
+              : { ...current, zoom, touched: true },
+          )
+        }
         rotation={rotation}
         showGrid
       />
@@ -267,7 +301,11 @@ const CropFrame = ({
         min="1"
         onChange={(event) => {
           const zoom = Number(event.target.value);
-          onSession((current) => ({ ...current, zoom }));
+          onSession((current) =>
+            current.zoom === zoom
+              ? current
+              : { ...current, zoom, touched: true },
+          );
         }}
         step="0.01"
         type="range"

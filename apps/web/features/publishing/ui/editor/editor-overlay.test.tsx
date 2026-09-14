@@ -238,6 +238,7 @@ const receipt = (requestId: string) => ({
 const makeServices = (recovery: LocalRecoveryStore | null = null) => {
   const uploads = fakeClient();
   const transfer = fakeTransfer();
+  const timers = manualTimers();
   let revision = 1;
   Object.assign(client, uploads.client, {
     limits: vi.fn(async () => ({
@@ -282,6 +283,12 @@ const makeServices = (recovery: LocalRecoveryStore | null = null) => {
     openWorkEditDraft: vi.fn(),
     submit: vi.fn(async (cmd: { requestId: string }) => receipt(cmd.requestId)),
     submissionReceipt: vi.fn(async () => null),
+    readiness: vi.fn(async () => ({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: {},
+    })),
   });
   const services: PublishingServices = {
     client: client as unknown as PublishingClientPort,
@@ -295,10 +302,10 @@ const makeServices = (recovery: LocalRecoveryStore | null = null) => {
     preprocessConcurrency: () => 1,
     transferConcurrency: 2,
     deviceClass: () => "phone",
-    timers: manualTimers().timers,
+    timers: timers.timers,
     metadata: absentMetadata,
   };
-  return { services, transfer };
+  return { services, transfer, timers };
 };
 
 const fn = (name: string) => client[name] as ReturnType<typeof vi.fn>;
@@ -322,6 +329,7 @@ interface Harness {
   readonly rerender: (target?: EditorTarget) => Promise<void>;
   readonly show: (visible: boolean) => Promise<void>;
   readonly transfer: ReturnType<typeof fakeTransfer>;
+  readonly timers: ReturnType<typeof manualTimers>;
 }
 
 let root: Root | null = null;
@@ -339,7 +347,7 @@ const renderEditor = async (
   prepare: () => void = () => undefined,
   options: { readonly recovery?: LocalRecoveryStore } = {},
 ): Promise<Harness> => {
-  const { services, transfer } = makeServices(options.recovery ?? null);
+  const { services, transfer, timers } = makeServices(options.recovery ?? null);
   prepare();
   let guard: ProductShellEditorLeaveGuard | null = null;
   const controls = {
@@ -388,6 +396,7 @@ const renderEditor = async (
       await flush();
     },
     transfer,
+    timers,
   };
 };
 
@@ -834,6 +843,143 @@ describe("Publishing editor", () => {
       true,
     );
     expect(fn("submit")).not.toHaveBeenCalled();
+  });
+
+  describe("edit derivative readiness (D1)", () => {
+    const itemId = `media-item-${"7".repeat(32)}`;
+    const readyItem: PublishingMediaItem = {
+      id: itemId,
+      kind: "static",
+      qualityMode: "standard",
+      state: "ready",
+      failureCode: null,
+      components: [],
+      presentation: { width: 4, height: 3 },
+      media: {
+        thumbSrc: `/api/community/publishing/media/${itemId}/thumb/base`,
+        displaySrc: `/api/community/publishing/media/${itemId}/display/base`,
+      },
+    };
+    const turned = (rotation: 0 | 90): WorkDraftItem => ({
+      key: "turned",
+      itemId,
+      kind: "static",
+      qualityMode: "standard",
+      edit: { rotation, crop: null },
+    });
+    const savedDraft = (rotation: 0 | 90) =>
+      draftOf(emptyContent({ title: "已有图片", items: [turned(rotation)] }), {
+        mediaItems: [readyItem],
+      });
+    const fireTimers = async (harness: Harness) => {
+      await act(async () => {
+        harness.timers.fireAll();
+      });
+      await flush();
+    };
+
+    it("counts a reopened draft's edited item as processing until the account confirms, then shows it ready", async () => {
+      const harness = await renderEditor(
+        { type: "draft", id: DRAFT_ID },
+        () => {
+          fn("draft").mockResolvedValue(savedDraft(90));
+          fn("readiness").mockResolvedValueOnce({
+            ready: false,
+            pendingItemKeys: ["turned"],
+            failedItemKeys: [],
+            editKeys: {},
+          });
+        },
+      );
+      await goToStep("confirm");
+      expect(query("[data-editor-readiness]")?.textContent).toBe(
+        "1 项正在处理。全部就绪或移除后才能发布",
+      );
+      expect(query<HTMLButtonElement>("[data-editor-submit]")?.disabled).toBe(
+        true,
+      );
+      // The debounced check asks with the draft as holder; the answer still names the item.
+      await fireTimers(harness);
+      expect(fn("readiness")).toHaveBeenCalledTimes(1);
+      expect(fn("readiness").mock.calls[0]![0]).toEqual({ draftId: DRAFT_ID });
+      expect(fn("readiness").mock.calls[0]![1]).toMatchObject({
+        items: [{ key: "turned", edit: { rotation: 90, crop: null } }],
+      });
+      expect(query("[data-editor-readiness]")?.textContent).toBe(
+        "1 项正在处理。全部就绪或移除后才能发布",
+      );
+      // The poll (≤ 5 s) learns the derivatives exist.
+      expect(
+        [...harness.timers.pending.values()].some((timer) => timer.ms <= 5000),
+      ).toBe(true);
+      fn("readiness").mockResolvedValueOnce({
+        ready: true,
+        pendingItemKeys: [],
+        failedItemKeys: [],
+        editKeys: { turned: "e".repeat(32) },
+      });
+      await fireTimers(harness);
+      expect(fn("readiness")).toHaveBeenCalledTimes(2);
+      expect(query("[data-editor-readiness]")?.textContent).toBe(
+        "全部 1 项已就绪",
+      );
+      expect(query<HTMLButtonElement>("[data-editor-submit]")?.disabled).toBe(
+        false,
+      );
+    });
+
+    it("shows the pending count of a not_ready submission and keeps asking instead of a bare error", async () => {
+      const harness = await renderEditor(
+        { type: "draft", id: DRAFT_ID },
+        () => {
+          fn("draft").mockResolvedValue(savedDraft(0));
+          fn("submit").mockResolvedValueOnce({
+            state: "not_ready",
+            itemKeys: ["turned"],
+          });
+        },
+      );
+      await goToStep("confirm");
+      expect(query("[data-editor-readiness]")?.textContent).toBe(
+        "全部 1 项已就绪",
+      );
+      await click(query("[data-editor-submit]"));
+      expect(fn("submit")).toHaveBeenCalledTimes(1);
+      expect(query("[data-editor-submission='not_ready']")?.textContent).toBe(
+        "1 项正在处理，完成后可再发布",
+      );
+      expect(query("[data-editor-readiness]")?.textContent).toBe(
+        "1 项正在处理。全部就绪或移除后才能发布",
+      );
+      expect(query("[data-editor-issues]")).toBeNull();
+      expect(query<HTMLButtonElement>("[data-editor-submit]")?.disabled).toBe(
+        true,
+      );
+      // The account is asked again; once ready the sheet lets the author publish.
+      fn("readiness").mockResolvedValueOnce({
+        ready: true,
+        pendingItemKeys: [],
+        failedItemKeys: [],
+        editKeys: {},
+      });
+      await fireTimers(harness);
+      expect(fn("readiness")).toHaveBeenCalledTimes(1);
+      expect(query("[data-editor-readiness]")?.textContent).toBe(
+        "全部 1 项已就绪",
+      );
+      expect(query("[data-editor-submission='not_ready']")?.textContent).toBe(
+        "",
+      );
+      expect(query<HTMLButtonElement>("[data-editor-submit]")?.disabled).toBe(
+        false,
+      );
+      await click(query("[data-editor-submit]"));
+      expect(fn("submit")).toHaveBeenCalledTimes(2);
+      expect(harness.controls.completeWith).toHaveBeenCalledWith({
+        type: "work",
+        id: WORK_ID,
+      });
+    });
   });
 
   it("submits once and opens the submitted work on success", async () => {

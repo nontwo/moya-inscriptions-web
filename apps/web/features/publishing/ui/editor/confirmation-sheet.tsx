@@ -84,7 +84,12 @@ export const ConfirmationSheet = forwardRef<
     submission.status === "submitting" ||
     submission.status === "reconciling" ||
     submission.status === "confirmed";
-  const blocked = empty || readiness.blocking > 0 || issues.length > 0 || busy;
+  const blocked =
+    empty ||
+    readiness.blocking > 0 ||
+    !readiness.confirmed ||
+    issues.length > 0 ||
+    busy;
   const primaryLabel = state.kind === "edit" ? "保存更新" : "发布";
   const recommendation = recommendationText(state);
   const fieldErrors = Object.entries(state.fieldErrors).filter(
@@ -105,7 +110,10 @@ export const ConfirmationSheet = forwardRef<
           ? state.kind === "edit"
             ? "正在保存更新…"
             : "正在发布…"
-          : "";
+          : // Refused as not ready: the count, while the account is asked again.
+            submission.status === "not_ready" && readiness.blocking > 0
+            ? `${submission.itemKeys.length} 项正在处理，完成后可再${primaryLabel}`
+            : "";
 
   return (
     <section
@@ -171,7 +179,9 @@ export const ConfirmationSheet = forwardRef<
         >
           {readiness.blocking > 0 && readiness.text !== null
             ? `${readiness.text}。全部就绪或移除后才能${primaryLabel}`
-            : `全部 ${readiness.ready} 项已就绪`}
+            : readiness.confirmed
+              ? `全部 ${readiness.ready} 项已就绪`
+              : "正在确认图片状态…"}
         </p>
       )}
       {unconfirmedFiles > 0 ? (

@@ -1,4 +1,5 @@
 import { createDraftAutosave, sameDraftContent } from "./draft-autosave";
+import { createEditReadinessTracker } from "./edit-readiness";
 import {
   addToStagingBatch,
   attachStagedCounterpart,
@@ -14,6 +15,10 @@ import { UploadManager, summarizeUploads } from "./upload-manager";
 import { createExternalStore } from "./upload-manager-store";
 
 import type { DraftAutosave, DraftAutosavePort } from "./draft-autosave";
+import type {
+  EditReadinessState,
+  EditReadinessTracker,
+} from "./edit-readiness";
 import type { BlobHasher } from "./hashing";
 import type {
   ConfirmStagingResult,
@@ -46,6 +51,7 @@ import type {
   PublishingDraftDeletionResult,
   PublishingHolder,
   PublishingLimits,
+  PublishingReadiness,
   PublishingSession,
   WorkDraftContent,
   WorkDraftItem,
@@ -77,6 +83,11 @@ export interface PublishingClientPort
     draftId: string,
     cmd: { requestId: string; expectedRevision?: number },
   ): Promise<PublishingDraftDeletionResult>;
+  /** Readiness of the holder's content; starts missing edit derivatives (§10). */
+  readiness(
+    holder: PublishingHolder,
+    content: WorkDraftContent,
+  ): Promise<PublishingReadiness>;
 }
 
 export interface PublishingServices {
@@ -142,6 +153,8 @@ interface SessionRecord {
   view: EditorSessionView;
   autosave: DraftAutosave | null;
   submission: SubmissionController;
+  /** Edit derivative readiness of the album (QA D1). */
+  readonly readiness: EditReadinessTracker;
   latest: WorkDraftContent | null;
   /**
    * The content the editor opened with when no draft carries it (a no-save
@@ -356,6 +369,7 @@ export class PublishingRuntime {
         session.autosave?.resume();
         if (session.view.sessionId !== null)
           this.startHeartbeat(returning, session);
+        session.readiness.poke();
       }
     }
     if (accountId !== null && !this.accounts.has(accountId)) {
@@ -388,11 +402,23 @@ export class PublishingRuntime {
       // Staging counts depend on the manager's item count; progress alone does not republish.
       let itemCount = 0;
       let identities = "";
+      let readyKeys = "";
       manager.store.subscribe(() => {
         const count = liveItemCount(manager);
         if (count !== itemCount && this.accountId === accountId) {
           itemCount = count;
           this.publish();
+        }
+        // An item the account just made ready can now get its edit derivatives.
+        const ready = manager
+          .getSnapshot()
+          .items.filter((item) => item.phase === "ready")
+          .map((item) => item.key)
+          .join("|");
+        if (ready !== readyKeys) {
+          readyKeys = ready;
+          if (ready !== "" && this.accountId === accountId)
+            account.session?.readiness.poke();
         }
         // Registration assigns item ids: the saved content follows without the editor.
         const next = manager
@@ -425,6 +451,12 @@ export class PublishingRuntime {
 
   autosave(): DraftAutosave | null {
     return this.current()?.session?.autosave ?? null;
+  }
+
+  /** The session's edit derivative readiness (see edit-readiness.ts), or null. */
+  editReadiness(): ExternalStore<EditReadinessState> | null {
+    const session = this.current()?.session;
+    return session && !session.closed ? session.readiness.store : null;
   }
 
   /**
@@ -492,6 +524,11 @@ export class PublishingRuntime {
       view,
       autosave: null,
       submission,
+      readiness: createEditReadinessTracker({
+        content: () => this.readinessContent(account, record),
+        check: (content) => this.checkReadiness(account, record, content),
+        timers: this.timers,
+      }),
       latest: draft?.content ?? null,
       baseline: draft ? null : (options.content ?? null),
       sessionRequestId: null,
@@ -517,6 +554,8 @@ export class PublishingRuntime {
       saveMode,
       resolveHolder: () => this.resolveHolder(account, record),
     });
+    // A reopened draft may carry edits whose derivatives do not exist yet.
+    record.readiness.schedule();
     this.publish();
     return view;
   }
@@ -545,6 +584,7 @@ export class PublishingRuntime {
     );
     session.latest = merged;
     session.autosave?.edit(merged);
+    session.readiness.schedule();
     this.updateContentView(account, session, merged);
   }
 
@@ -581,6 +621,7 @@ export class PublishingRuntime {
       }
     }
     session.autosave?.adoptDraft(draft, adopted);
+    session.readiness.schedule();
     this.updateContentView(account, session, adopted);
   }
 
@@ -737,6 +778,22 @@ export class PublishingRuntime {
       : false;
   }
 
+  /**
+   * How many of a saved draft's items this browser still holds local copies
+   * of (the recovery store): the drafts picker subtracts them from the
+   * account's count of items no device has uploaded yet, so a draft whose
+   * pending files are on this very browser is not warned about here.
+   */
+  async countLocalDraftItems(draftId: string): Promise<number> {
+    const account = this.current();
+    if (!account) return 0;
+    const records = await this.services
+      .createRecovery()
+      ?.list(account.manager.accountId, draftId)
+      .catch(() => []);
+    return records?.length ?? 0;
+  }
+
   /** Clears this browser's local copies of a draft deleted elsewhere (e.g. the drafts picker). */
   async forgetDraftLocalCopies(draftId: string): Promise<void> {
     const account = this.current();
@@ -783,6 +840,7 @@ export class PublishingRuntime {
     session.unsubscribe();
     this.stopHeartbeat(session);
     session.autosave?.dispose();
+    session.readiness.dispose();
     if (keepSubmission) {
       account.completed?.dispose();
       account.completed = session.submission;
@@ -935,11 +993,16 @@ export class PublishingRuntime {
       });
     }
     if (session.closed) return controller.store.get();
-    return controller.submit({
+    const result = await controller.submit({
       holder,
       content: current,
       baseRevisionId: session.view.baseRevisionId,
     });
+    // Refused as not ready: those items show as processing and the account
+    // is asked again until they are ready (never a bare error).
+    if (result.status === "not_ready" && !session.closed)
+      session.readiness.markPending(result.itemKeys);
+    return result;
   }
 
   dispose(): void {
@@ -949,6 +1012,7 @@ export class PublishingRuntime {
         account.session.unsubscribe();
         this.stopHeartbeat(account.session);
         account.session.autosave?.dispose();
+        account.session.readiness.dispose();
         account.session.submission.dispose();
       }
       account.completed?.dispose();
@@ -998,6 +1062,8 @@ export class PublishingRuntime {
         session.view = { ...session.view, draftId: created.id };
         account.manager.setDraftId(created.id);
         this.publish();
+        // The draft is the holder a readiness check needs.
+        session.readiness.poke();
       },
     });
     return autosave;
@@ -1044,6 +1110,50 @@ export class PublishingRuntime {
     if (this.current()?.session === session) this.publish();
   }
 
+  /** The album content a readiness check describes (with the manager's items). */
+  private readinessContent(
+    account: AccountRuntime,
+    session: SessionRecord,
+  ): WorkDraftContent | null {
+    if (session.closed) return null;
+    const content = albumContent(session);
+    return content === null
+      ? null
+      : this.contentWithItems(account, session, content);
+  }
+
+  /**
+   * The holder the session already has (a draft or temporary session);
+   * null before one exists. Never creates one: a readiness check that has
+   * nothing to ask about must not open a session on the account.
+   */
+  private existingHolder(session: SessionRecord): PublishingHolder | null {
+    if (session.view.saveMode === "saved") {
+      const draftId =
+        session.autosave?.store.get().draftId ?? session.view.draftId;
+      return draftId === null ? null : { draftId };
+    }
+    return session.view.sessionId === null
+      ? null
+      : { sessionId: session.view.sessionId };
+  }
+
+  private async checkReadiness(
+    account: AccountRuntime,
+    session: SessionRecord,
+    content: WorkDraftContent,
+  ): Promise<PublishingReadiness | null> {
+    if (
+      session.closed ||
+      this.accountId !== account.manager.accountId ||
+      this.services.currentAccount() !== account.manager.accountId
+    )
+      return null;
+    const holder = this.existingHolder(session);
+    if (holder === null) return null;
+    return this.services.client.readiness(holder, content);
+  }
+
   private async resolveHolder(
     account: AccountRuntime,
     session: SessionRecord,
@@ -1078,6 +1188,7 @@ export class PublishingRuntime {
       if (session.closed) throw new Error("The editor session has ended");
       this.startHeartbeat(account, session);
       this.publish();
+      session.readiness.poke();
       return created.id;
     })().catch((error: unknown) => {
       session.sessionTask = null;

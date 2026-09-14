@@ -164,8 +164,12 @@ export interface CatalogViewerProps {
   readonly platform: PresentationPlatform;
 }
 
+/** The Viewer shows the `full` derivative when the work carries one, else display. */
+const viewerSrc = (item: DetailMediaPresentation): string =>
+  item.fullSrc ?? item.src;
+
 const viewerResourceKey = (item: DetailMediaPresentation): string =>
-  JSON.stringify([item.id, item.src]);
+  JSON.stringify([item.id, viewerSrc(item)]);
 
 export const CatalogViewer = ({
   index,
@@ -371,7 +375,7 @@ export const CatalogViewer = ({
     for (const candidate of [media[index - 1], media[index + 1]]) {
       if (candidate === undefined) continue;
       const preload = new Image();
-      preload.src = candidate.src;
+      preload.src = viewerSrc(candidate);
     }
   }, [index, media, open]);
 
@@ -757,7 +761,7 @@ export const CatalogViewer = ({
                     const image = event.currentTarget;
                     if (
                       !image.isConnected ||
-                      image.getAttribute("src") !== item.src
+                      image.getAttribute("src") !== viewerSrc(item)
                     )
                       return;
                     const key = viewerResourceKey(item);
@@ -765,7 +769,7 @@ export const CatalogViewer = ({
                       present.has(key) ? present : new Set(present).add(key),
                     );
                   }}
-                  src={item.src}
+                  src={viewerSrc(item)}
                   style={current ? imageStyle : undefined}
                   width={item.width}
                 />

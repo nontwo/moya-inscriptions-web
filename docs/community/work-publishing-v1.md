@@ -160,8 +160,13 @@ so saved-draft recovery uses a bounded account-scoped IndexedDB store; WebKit
 ignored a requested AAC bitrate and Chromium's H.264 output carried a
 color-matrix tagging mismatch, so compatible audio is copied and color space is
 set explicitly with a fidelity check; tall images need width-bounded display
-derivatives. Development tool timings: HEIC decode about 0.46 s, motion
-transcode about 1.1 s including container start.
+derivatives. Live Development runs confirmed that WebKit keeps the untouched
+input as the Standard master when its own JPEG/PNG encoding would not be at
+least 5 % smaller (including a 24 MP HEIC still); that retained master stays in
+the private store, the served derivatives carry no EXIF or GPS, and the item is
+presented as Standard because no optimization was applied. Development tool
+timings: HEIC decode about 0.46 s, motion transcode about 1.1 s including
+container start.
 
 Real samples: two iPhone 17 Pro Max HEIC Live stills and two Insta360 Luna Ultra
 JPEG Live stills were provided without motion components. By Owner decision only

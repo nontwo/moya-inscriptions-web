@@ -20,6 +20,7 @@ import { MediaItemTile } from "./media-item-tile";
 import styles from "./media.module.css";
 
 import type { CoverRole, MediaItemTileProps } from "./media-item-tile";
+import type { ItemDerivation } from "../../edit-readiness";
 import type { UploadItemView } from "../../upload-manager";
 import type {
   Announcements,
@@ -91,6 +92,11 @@ export interface MediaStripProps extends Pick<
   readonly localStill: (key: string) => Blob | null;
   /** The editor and upload manager have loaded (see `StatusContext`). */
   readonly loaded: boolean;
+  /** Edit derivative state and edited thumbnail per item key (edit-readiness.ts). */
+  readonly derivations: ReadonlyMap<
+    string,
+    { readonly derivation: ItemDerivation; readonly thumbSrc: string | null }
+  >;
   /** Moves `key` to the index the drop landed on. */
   readonly onReorder: (key: string, index: number) => void;
 }
@@ -104,6 +110,7 @@ export const MediaStrip = ({
   coverKey,
   localStill,
   loaded,
+  derivations,
   onReorder,
   ...actions
 }: MediaStripProps) => {
@@ -161,6 +168,8 @@ export const MediaStrip = ({
                 key={item.key}
                 count={items.length}
                 cover={cover}
+                derivation={derivations.get(item.key)?.derivation ?? "none"}
+                editedThumbSrc={derivations.get(item.key)?.thumbSrc ?? null}
                 index={index}
                 item={item}
                 loaded={loaded}

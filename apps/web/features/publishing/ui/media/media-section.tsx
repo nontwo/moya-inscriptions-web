@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useStagedItems, useUploadSession } from "../../publishing-provider";
+import { itemDerivation, itemEditKey, withEditKey } from "../../edit-readiness";
+import {
+  useEditReadiness,
+  useStagedItems,
+  useUploadSession,
+} from "../../publishing-provider";
 import { useEditorSession } from "../editor/editor-session-provider";
 import { CoverCropDialog } from "./cover-crop-dialog";
 import { attachDropGuard } from "./drop-guard";
@@ -122,6 +127,7 @@ const MediaSectionBody = ({
 }) => {
   const session = useUploadSession();
   const staged = useStagedItems();
+  const edits = useEditReadiness();
   const rootRef = useRef<HTMLDivElement>(null);
   const { state, actions } = editor;
   const ui = mediaUiFor(actions);
@@ -145,6 +151,35 @@ const MediaSectionBody = ({
       ),
     [uploads],
   );
+
+  // Edit derivatives per item (QA D1): 处理中 until the account confirms
+  // them, and the account's edited thumbnail once it names an edit key.
+  const derivations = useMemo(() => {
+    const album = { coverKey: value.coverKey, coverCrop: value.coverCrop };
+    return new Map(
+      value.items.map((item) => {
+        const editKey = itemEditKey(item, album, edits);
+        const view = views.get(item.key);
+        const server =
+          view === undefined
+            ? item.itemId === null
+              ? null
+              : (state.serverItems[item.itemId] ?? null)
+            : view.serverItem;
+        const thumb = server?.media?.thumbSrc;
+        return [
+          item.key,
+          {
+            derivation: itemDerivation(item, album, edits),
+            thumbSrc:
+              editKey === null || thumb === undefined
+                ? null
+                : withEditKey(thumb, editKey),
+          },
+        ] as const;
+      }),
+    );
+  }, [value, views, state.serverItems, edits]);
 
   const [announcement, setAnnouncement] = useState("");
   const announce = useCallback((message: string) => {
@@ -540,6 +575,8 @@ const MediaSectionBody = ({
           itemStatus(views.get(dialogItem.key), dialogServer ?? undefined, {
             loaded,
             item: dialogItem,
+            derivation:
+              derivations.get(dialogItem.key)?.derivation ?? ("none" as const),
           }),
         );
   const replacementIndex =
@@ -657,6 +694,7 @@ const MediaSectionBody = ({
       {value.items.length > 0 && (
         <MediaStrip
           coverKey={value.coverKey}
+          derivations={derivations}
           id={`media-strip-${state.key}`}
           items={value.items}
           label="已添加的图片，可调整顺序"

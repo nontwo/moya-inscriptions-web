@@ -74,7 +74,13 @@ import type {
   PublishingServices,
 } from "../../publishing-runtime";
 import type { EditorSessionStore } from "../editor/editor-session-state";
-import type { PublishingDraft, PublishingMediaItem } from "@moya/contracts";
+import type {
+  PublishingDraft,
+  PublishingHolder,
+  PublishingMediaItem,
+  PublishingReadiness,
+  WorkDraftContent,
+} from "@moya/contracts";
 import type { Root } from "react-dom/client";
 
 (
@@ -112,6 +118,17 @@ const fixture = ({ maxItems = 50, preprocess }: FixtureOptions = {}) => {
     saveDraftNow: vi.fn(),
     createDraft: vi.fn(),
     draft: vi.fn(),
+    readiness: vi.fn(
+      async (
+        _holder: PublishingHolder,
+        _content: WorkDraftContent,
+      ): Promise<PublishingReadiness> => ({
+        ready: true,
+        pendingItemKeys: [],
+        failedItemKeys: [],
+        editKeys: {},
+      }),
+    ),
   };
   const services: PublishingServices = {
     client: client as unknown as PublishingClientPort,
@@ -891,6 +908,75 @@ const makeFirstReady = async () => {
   });
   await until(() => tiles()[0]?.status === "ready");
 };
+
+describe("MediaSection edit derivative readiness (D1)", () => {
+  it("shows a turned item as 处理中 until the account confirms, then its edited thumbnail", async () => {
+    await render();
+    await addStatic(1);
+    await makeFirstReady();
+    const itemId = probe.store!.get().items[0]!.itemId!;
+    const tile = () =>
+      container.querySelector<HTMLElement>("[data-media-key]")!;
+    expect(tile().querySelector("img")!.getAttribute("src")).toBe(
+      `/api/community/publishing/media/${itemId}/thumb/base`,
+    );
+
+    current.client.readiness.mockResolvedValueOnce({
+      ready: false,
+      pendingItemKeys: [probe.store!.get().items[0]!.key],
+      failedItemKeys: [],
+      editKeys: {},
+    });
+    await click(buttonByText("编辑第 1 项"));
+    const dialog = document.querySelector<HTMLElement>(
+      "[data-media-edit-dialog]",
+    )!;
+    await click(buttonByText("向右旋转 90°", dialog));
+    await click(buttonByText("完成", dialog));
+    // Immediately after 完成: not 已就绪 any more.
+    expect(tiles()[0]!.status).toBe("processing");
+    expect(tile().querySelector("[data-media-state-label]")!.textContent).toBe(
+      "处理中",
+    );
+    // The editor host forwards the edit to the runtime (as the overlay does).
+    await act(async () => {
+      probe.upload!.edit(probe.store!.content());
+      await settle();
+    });
+    expect(current.client.readiness).not.toHaveBeenCalled();
+    // The debounced check (session holder) still names it pending.
+    await act(async () => {
+      current.timers.fireAll();
+      await settle();
+    });
+    expect(current.client.readiness).toHaveBeenCalledTimes(1);
+    expect(current.client.readiness.mock.calls[0]![0]).toEqual({
+      sessionId: SESSION_ID,
+    });
+    expect(tiles()[0]!.status).toBe("processing");
+    // The poll answers ready with the edit key: the strip shows the edited thumbnail.
+    const editKey = "c".repeat(32);
+    current.client.readiness.mockResolvedValueOnce({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: { [probe.store!.get().items[0]!.key]: editKey },
+    });
+    await act(async () => {
+      current.timers.fireAll();
+      await settle();
+    });
+    await until(() => tiles()[0]?.status === "ready");
+    expect(tile().dataset.mediaThumb).toBe("edited");
+    expect(tile().querySelector("img")!.getAttribute("src")).toBe(
+      `/api/community/publishing/media/${itemId}/thumb/${editKey}`,
+    );
+    // The edited thumbnail is shown as it is (no second rotation in CSS).
+    expect(
+      tile().querySelector("[data-rotation]")!.getAttribute("data-rotation"),
+    ).toBe("0");
+  });
+});
 
 describe("MediaSection across remounts and interruptions", () => {
   it("keeps an open dialog with its unfinished crop and the notice when the layout swaps or the step changes", async () => {

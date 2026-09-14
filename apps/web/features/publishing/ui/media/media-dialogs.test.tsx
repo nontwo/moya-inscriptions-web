@@ -19,6 +19,8 @@ const { crop, frame } = vi.hoisted(() => ({
         area: { x: number; y: number; width: number; height: number },
         pixels: { x: number; y: number; width: number; height: number },
       ) => void;
+      onCropChange: (position: { x: number; y: number }) => void;
+      onZoomChange?: (zoom: number) => void;
     },
   },
   frame: {
@@ -167,7 +169,108 @@ describe("MediaEditDialog", () => {
   });
 });
 
+describe("MediaEditDialog crop intent (D2)", () => {
+  /** What react-easy-crop reports by itself for a turned 4:3 image on a wide layout. */
+  const mountReport = async () => {
+    await act(async () => {
+      crop.props!.onCropChange({ x: 0, y: 0 });
+      crop.props!.onCropAreaChange(
+        { x: 9.375, y: 9.375, width: 81.25, height: 81.25 },
+        { x: 375, y: 281, width: 3250, height: 2437 },
+      );
+    });
+  };
+
+  const renderDialog = async (onApply: (edit: unknown) => void) =>
+    act(async () =>
+      root.render(
+        <MediaEditDialog
+          blob={null}
+          edit={{ rotation: 0, crop: null }}
+          itemNumber={3}
+          kind="static"
+          knownSize={{ width: 4032, height: 3024 }}
+          onApply={onApply}
+          onClose={() => undefined}
+          src="/api/community/publishing/media/example/display/base"
+        />,
+      ),
+    );
+
+  it("stores a rotate-only edit without a crop, whatever the cropper reports on its own", async () => {
+    const onApply = vi.fn();
+    await renderDialog(onApply);
+    await mountReport();
+    await click(buttonByText("向右旋转 90°"));
+    expect(radio("原始比例").checked).toBe(true);
+    await mountReport();
+    await click(buttonByText("完成"));
+    expect(onApply).toHaveBeenCalledWith({ rotation: 90, crop: null });
+  });
+
+  it("stores the crop once the author moves or zooms it, and a full frame stays null", async () => {
+    const onApply = vi.fn();
+    await renderDialog(onApply);
+    await click(buttonByText("向右旋转 90°"));
+    await act(async () => {
+      crop.props!.onZoomChange!(2);
+      crop.props!.onCropAreaChange(
+        { x: 25, y: 25, width: 50, height: 50 },
+        { x: 756, y: 1008, width: 1512, height: 2016 },
+      );
+    });
+    await click(buttonByText("完成"));
+    expect(onApply).toHaveBeenLastCalledWith({
+      rotation: 90,
+      crop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
+    });
+
+    // Dragged back to the full frame within tolerance: no crop is stored.
+    await act(async () => {
+      crop.props!.onCropChange({ x: 3, y: 0 });
+      crop.props!.onCropAreaChange(
+        { x: 0.1, y: 0, width: 99.9, height: 100 },
+        { x: 3, y: 0, width: 3021, height: 4032 },
+      );
+    });
+    await click(buttonByText("完成"));
+    expect(onApply).toHaveBeenLastCalledWith({ rotation: 90, crop: null });
+  });
+});
+
 describe("CoverCropDialog", () => {
+  it("keeps the full frame as the composition when the author leaves 原始比例 alone", async () => {
+    frame.render = vi.fn(async () => ({
+      url: "blob:edited-frame",
+      size: { width: 300, height: 400 },
+      release: vi.fn(),
+    }));
+    const onApply = vi.fn();
+    await act(async () =>
+      root.render(
+        <CoverCropDialog
+          blob={null}
+          coverCrop={null}
+          edit={{ rotation: 90, crop: null }}
+          itemNumber={1}
+          onApply={onApply}
+          onClose={() => undefined}
+          src="/api/community/publishing/media/example/display/base"
+        />,
+      ),
+    );
+    await act(async () => undefined);
+    await act(async () => {
+      crop.props!.onCropChange({ x: 0, y: 0 });
+      crop.props!.onCropAreaChange(
+        { x: 9.375, y: 9.375, width: 81.25, height: 81.25 },
+        { x: 28, y: 37, width: 244, height: 325 },
+      );
+    });
+    await click(buttonByText("完成"));
+    expect(onApply).toHaveBeenCalledWith(null);
+  });
+
   it("composes the card cover inside the edited frame and releases the preview", async () => {
     const release = vi.fn();
     frame.render = vi.fn(async () => ({

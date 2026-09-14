@@ -1,3 +1,4 @@
+import { itemDerivation } from "../../edit-readiness";
 import { createExternalStore } from "../../upload-manager-store";
 import {
   bodyRule,
@@ -10,6 +11,7 @@ import {
 } from "./editor-text";
 
 import type { EditorTextRule } from "./editor-text";
+import type { EditReadinessState } from "../../edit-readiness";
 import type { ExternalStore } from "../../upload-manager-store";
 import type {
   UploadItemView,
@@ -361,6 +363,11 @@ export interface Readiness {
   readonly blocking: number;
   /** Exact wording, e.g. "2 项仍在上传，1 项失败"; null when nothing blocks. */
   readonly text: string | null;
+  /**
+   * Nothing blocks and the account's last readiness answer does not say
+   * otherwise: only then may the editor claim 全部已就绪 (QA D1).
+   */
+  readonly confirmed: boolean;
   /** Account items whose state this editor has not read yet. */
   readonly unknownItemIds: readonly string[];
 }
@@ -383,56 +390,76 @@ const phaseGroups: readonly (readonly [
  * Readiness of the retained album: items the manager tracks use its phases;
  * items only known from the account (an edit's existing media) use their
  * server state, and one whose state is not known yet is never counted as
- * ready. Cancelled items are not retained.
+ * ready. Cancelled items are not retained. An item the account has made
+ * ready still counts as processing while its rotation, crop or cover crop
+ * has no confirmed derivatives (`edits`, QA D1), and as failed when their
+ * derivation failed.
  */
 export const readinessOf = (
   state: EditorSessionState,
   uploads: UploadManagerSnapshot | null,
+  edits: EditReadinessState | null = null,
 ): Readiness => {
   const views = new Map(
     (uploads?.items ?? []).map((item) => [item.key, item] as const),
   );
   const counts = new Map<string, number>();
+  const count = (label: string, by = 1) =>
+    counts.set(label, (counts.get(label) ?? 0) + by);
   let ready = 0;
   let total = 0;
   let other = 0;
   const unknownItemIds: string[] = [];
+  const album = { coverKey: state.coverKey, coverCrop: state.coverCrop };
+  /** A ready item is ready only with its edit derivatives. */
+  const countReady = (item: WorkDraftItem) => {
+    switch (itemDerivation(item, album, edits)) {
+      case "pending":
+        count("正在处理");
+        return;
+      case "failed":
+        count("失败");
+        return;
+      default:
+        ready += 1;
+    }
+  };
   for (const item of state.items) {
     const view = views.get(item.key);
     if (view?.phase === "cancelled" || view?.phase === "cleanup") continue;
     total += 1;
     if (view) {
       if (view.phase === "ready") {
-        ready += 1;
+        countReady(item);
         continue;
       }
       const group = phaseGroups.find(([phases]) => phases.includes(view.phase));
-      if (group) counts.set(group[1], (counts.get(group[1]) ?? 0) + 1);
+      if (group) count(group[1]);
       continue;
     }
     const server =
       item.itemId === null ? undefined : state.serverItems[item.itemId];
     if (item.itemId !== null && server === undefined) {
       unknownItemIds.push(item.itemId);
-      counts.set("正在确认状态", (counts.get("正在确认状态") ?? 0) + 1);
-    } else if (server?.state === "ready") ready += 1;
-    else if (server?.state === "failed")
-      counts.set("失败", (counts.get("失败") ?? 0) + 1);
-    else if (server?.state === "processing")
-      counts.set("正在处理", (counts.get("正在处理") ?? 0) + 1);
+      count("正在确认状态");
+    } else if (server?.state === "ready") countReady(item);
+    else if (server?.state === "failed") count("失败");
+    else if (server?.state === "processing") count("正在处理");
     else other += 1;
   }
-  if (other > 0)
-    counts.set("缺少本地文件", (counts.get("缺少本地文件") ?? 0) + other);
+  if (other > 0) count("缺少本地文件", other);
   const parts = phaseGroups
     .map(([, label]) => label)
     .filter((label) => (counts.get(label) ?? 0) > 0)
     .map((label) => `${counts.get(label)} 项${label}`);
+  const blocking = total - ready;
   return {
     total,
     ready,
-    blocking: total - ready,
+    blocking,
     text: parts.length === 0 ? null : parts.join("，"),
+    // The account's last word stands: not ready is never shown as ready.
+    confirmed: blocking === 0 && edits?.status !== "not_ready",
     unknownItemIds,
   };
 };

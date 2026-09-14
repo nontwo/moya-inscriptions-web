@@ -23,6 +23,7 @@ import { requestIdentity } from "../../../shell/request-identity";
 import hostStyles from "../../publishing-entry.module.css";
 import { publishingClient } from "../../publishing-data";
 import {
+  useEditReadiness,
   useStagedItems,
   useSubmission,
   useUploadSession,
@@ -708,6 +709,7 @@ const EditorWorkspace = ({
   const upload = useUploadSession();
   const staged = useStagedItems();
   const submission = useSubmission();
+  const edits = useEditReadiness();
   const shell = useProductShell();
   const author = useAuthors();
   const width = useViewportWidth();
@@ -778,7 +780,7 @@ const EditorWorkspace = ({
   const staging = staged.staging;
   const stagingActive = staging !== null && staging.batch.entries.length > 0;
 
-  const readiness = readinessOf(state, uploads);
+  const readiness = readinessOf(state, uploads, edits);
   const issues = localIssues(state);
   const mediaScope: EditorMediaScope =
     layout === "desktop" || previewOpen !== null
@@ -1152,10 +1154,9 @@ const EditorWorkspace = ({
         [failureField(submissionState.code)]: submissionState.message,
       });
     } else if (submissionState.status === "not_ready") {
+      // The runtime shows those items as processing and asks the account
+      // again; the sheet names the count (no field error).
       submitIntentRef.current = false;
-      store.setFieldErrors({
-        media: `${submissionState.itemKeys.length} 项尚未就绪，请等待完成或移除后再试`,
-      });
     }
   }, [controls, notify, registry, store, submissionState]);
 
@@ -1360,9 +1361,11 @@ const EditorWorkspace = ({
   const uploadSummary =
     readiness.total === 0
       ? ""
-      : readiness.text === null
-        ? `全部 ${readiness.ready} 项已就绪`
-        : readiness.text;
+      : readiness.text !== null
+        ? readiness.text
+        : readiness.confirmed
+          ? `全部 ${readiness.ready} 项已就绪`
+          : "正在确认图片状态…";
 
   const notices = (
     <>

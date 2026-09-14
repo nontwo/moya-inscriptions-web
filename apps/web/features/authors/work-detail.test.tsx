@@ -285,6 +285,23 @@ describe("Work detail actions for the author", () => {
     expect(view.button("编辑")).toBeUndefined();
     expect(view.container.querySelector("[data-content-actions]")).toBeNull();
     expect(mocks.author.mutate).toHaveBeenCalledOnce();
+    // The earlier 作品已提交 toast no longer describes this work.
+    expect(mocks.author.notify).toHaveBeenCalledWith("");
+  });
+
+  it("clears an earlier status toast when the visibility changes or the editor reopens", async () => {
+    mocks.publishing.setVisibility.mockResolvedValue({
+      workId: WORK,
+      visibility: "public",
+    });
+    const view = render(detail({ visibility: "self" }));
+    expect(mocks.author.notify).not.toHaveBeenCalled();
+    await act(async () => view.button("公开")!.click());
+    expect(mocks.author.notify).toHaveBeenCalledExactlyOnceWith("");
+    mocks.author.notify.mockClear();
+    act(() => view.button("编辑")!.click());
+    expect(mocks.author.notify).toHaveBeenCalledExactlyOnceWith("");
+    expect(mocks.entry.openEditor).toHaveBeenCalledOnce();
   });
 
   it("shows a field-neutral failure and repeats an unconfirmed command with the same request", async () => {

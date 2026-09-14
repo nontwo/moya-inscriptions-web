@@ -25,6 +25,7 @@ import {
   preprocessConcurrency,
 } from "./preprocess/capabilities";
 import { createWorkerPreprocess } from "./preprocess/worker-client";
+import { IDLE_EDIT_READINESS } from "./edit-readiness";
 import { publishingClient } from "./publishing-data";
 import { PublishingRuntime } from "./publishing-runtime";
 import {
@@ -35,6 +36,7 @@ import {
 import { createUppyTransfer } from "./uppy-transfer";
 
 import type { AutosaveState } from "./draft-autosave";
+import type { EditReadinessState } from "./edit-readiness";
 import type { FileOrigin } from "./import-grouping";
 import type {
   PublishingServices,
@@ -147,6 +149,13 @@ const idleSubmission: ExternalStore<SubmissionState> = {
   subscribe: () => () => undefined,
 };
 
+const idleEditReadiness: ExternalStore<EditReadinessState> = {
+  get: () => IDLE_EDIT_READINESS,
+  set: () => undefined,
+  update: () => undefined,
+  subscribe: () => () => undefined,
+};
+
 const idleUploads: ExternalStore<UploadManagerSnapshot | null> = {
   get: () => null,
   set: () => undefined,
@@ -200,6 +209,9 @@ export const useUploadSession = () => {
       hasUnfinishedWork: () => runtime.hasUnfinishedWork(),
       forgetDraftLocalCopies: (draftId: string) =>
         runtime.forgetDraftLocalCopies(draftId),
+      /** Items of a saved draft this browser holds local copies of (drafts picker). */
+      countLocalDraftItems: (draftId: string) =>
+        runtime.countLocalDraftItems(draftId),
       edit: (content: WorkDraftContent) => runtime.edit(content),
       /**
        * Adopts a version chosen in the conflict chooser or history: the
@@ -229,6 +241,19 @@ export const useUploadSession = () => {
       continueUploads: () => manager?.continueUploads() ?? Promise.resolve(),
     }),
     [runtime, manager, snapshot, autosave, uploads],
+  );
+};
+
+/**
+ * Readiness of the album's edit derivatives as the account last confirmed
+ * it (QA D1): an edited item counts as processing until then. Idle without
+ * a session.
+ */
+export const useEditReadiness = (): EditReadinessState => {
+  const runtime = useRuntime();
+  useRuntimeSnapshot(runtime);
+  return useStore<EditReadinessState>(
+    runtime.editReadiness() ?? idleEditReadiness,
   );
 };
 
