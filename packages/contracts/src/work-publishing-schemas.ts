@@ -685,10 +685,19 @@ export const workMediaSchema = z
       });
   });
 
+/**
+ * How a Standard component's bytes were produced: `optimized` is browser
+ * output; `retained` keeps an acceptable input unchanged only after the
+ * browser's optimization attempt produced no meaningful saving (Q04). An
+ * Original component names neither.
+ */
+export const standardComponentOutcomeSchema = z.enum(["optimized", "retained"]);
+
 export const mediaComponentDeclarationSchema = z.strictObject({
   role: mediaComponentRoleSchema,
   byteSize: byteSizeSchema,
   contentType: mediaContentTypeSchema,
+  standardOutcome: standardComponentOutcomeSchema.optional(),
 });
 
 /**
@@ -815,13 +824,26 @@ const packageContentTypes: readonly string[] = [
   "image/heic",
   "image/heif",
 ];
-/** Standard masters are browser output; sending a HEIC or MOV source as Standard is refused. */
+/**
+ * Optimized Standard masters are browser output. A retained Standard master
+ * may keep an acceptable input type only after an optimization attempt proved
+ * no saving; an unattempted HEIC or MOV source is never accepted as Standard.
+ */
 const standardStillContentTypes: readonly string[] = [
   "image/jpeg",
   "image/png",
   "image/webp",
 ];
 const standardMotionContentTypes: readonly string[] = ["video/mp4"];
+const retainedStandardStillContentTypes: readonly string[] = [
+  ...standardStillContentTypes,
+  "image/heic",
+  "image/heif",
+];
+const retainedStandardMotionContentTypes: readonly string[] = [
+  "video/mp4",
+  "video/quicktime",
+];
 
 /**
  * Registers one logical item before any bytes move: a static image (one
@@ -868,14 +890,26 @@ export const registerMediaItemCommandSchema = z
       return;
     }
     command.components.forEach((component, index) => {
+      if (standard !== (component.standardOutcome !== undefined))
+        context.addIssue({
+          code: "custom",
+          path: ["components", index, "standardOutcome"],
+          message:
+            "a Standard component names its outcome and an Original component names none",
+        });
+      const retained = component.standardOutcome === "retained";
       const allowed =
         component.role === "still"
           ? standard
-            ? standardStillContentTypes
+            ? retained
+              ? retainedStandardStillContentTypes
+              : standardStillContentTypes
             : stillContentTypes
           : component.role === "motion"
             ? standard
-              ? standardMotionContentTypes
+              ? retained
+                ? retainedStandardMotionContentTypes
+                : standardMotionContentTypes
               : motionContentTypes
             : standard
               ? []
@@ -1226,6 +1260,9 @@ export type PublishingMediaSources = z.infer<
   typeof publishingMediaSourcesSchema
 >;
 export type PublishingMediaItem = z.infer<typeof publishingMediaItemSchema>;
+export type StandardComponentOutcome = z.infer<
+  typeof standardComponentOutcomeSchema
+>;
 export type MediaComponentDeclaration = z.infer<
   typeof mediaComponentDeclarationSchema
 >;

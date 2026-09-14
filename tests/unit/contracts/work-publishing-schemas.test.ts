@@ -371,9 +371,20 @@ describe("upload holders and item registration", () => {
       expect(publishingHolderSchema.safeParse(holder).success).toBe(false);
   });
 
+  // Standard components default to browser-optimized output unless a case
+  // names its outcome (or `standardOutcome: undefined` to omit it).
   const register = (overrides: Record<string, unknown>) => {
     const kind = overrides.kind ?? "static";
     const qualityMode = overrides.qualityMode ?? "standard";
+    const components = (
+      (overrides.components as Record<string, unknown>[] | undefined) ?? [
+        { role: "still", byteSize: 1024, contentType: "image/webp" },
+      ]
+    ).map((component) =>
+      qualityMode === "standard" && !("standardOutcome" in component)
+        ? { ...component, standardOutcome: "optimized" }
+        : component,
+    );
     return registerMediaItemCommandSchema.safeParse({
       requestId,
       holder: { draftId },
@@ -383,10 +394,8 @@ describe("upload holders and item registration", () => {
         processingProfile:
           kind === "live" ? "standard-live-v1" : "standard-image-v1",
       }),
-      components: [
-        { role: "still", byteSize: 1024, contentType: "image/webp" },
-      ],
       ...overrides,
+      components,
     });
   };
   const livePair = [
@@ -498,6 +507,56 @@ describe("upload holders and item registration", () => {
       }).success,
     ).toBe(false);
     expect(register({ qualityMode: "legacy" }).success).toBe(false);
+  });
+
+  it("keeps an acceptable source as a Standard master only when the browser retained it", () => {
+    const heic = {
+      role: "still",
+      byteSize: 2_046_617,
+      contentType: "image/heic",
+    };
+    expect(
+      register({ components: [{ ...heic, standardOutcome: "retained" }] })
+        .success,
+    ).toBe(true);
+    expect(
+      messagesOf(
+        register({ components: [{ ...heic, standardOutcome: "optimized" }] }),
+      ),
+    ).toEqual(["unsupported_type"]);
+    expect(
+      register({
+        kind: "live",
+        components: [
+          { ...heic, standardOutcome: "retained" },
+          {
+            role: "motion",
+            byteSize: 2_377_146,
+            contentType: "video/quicktime",
+            standardOutcome: "retained",
+          },
+        ],
+        clientPairing: applePairing,
+      }).success,
+    ).toBe(true);
+    expect(
+      register({
+        components: [
+          {
+            role: "still",
+            byteSize: 1,
+            contentType: "image/png",
+            standardOutcome: undefined,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      register({
+        qualityMode: "original",
+        components: [{ ...heic, standardOutcome: "retained" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("records the browser profile exactly for Standard items", () => {

@@ -92,6 +92,7 @@ describe("contracts package surface", () => {
       "EditableWork",
       "MediaClientPairing",
       "MediaComponentDeclaration",
+      "StandardComponentOutcome",
       "MediaComponentRole",
       "MediaComponentState",
       "MediaContentType",

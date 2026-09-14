@@ -70,6 +70,7 @@ export type {
   EditableWork,
   MediaClientPairing,
   MediaComponentDeclaration,
+  StandardComponentOutcome,
   MediaComponentRole,
   MediaComponentState,
   MediaContentType,
