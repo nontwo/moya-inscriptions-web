@@ -35,7 +35,7 @@ export interface MotionColorSpace {
 }
 
 export interface MotionSourceFacts {
-  /** Container the bytes were demuxed from; only `mp4` may ever be retained. */
+  /** Container the input bytes were demuxed from; Standard transcodes motion. */
   readonly container: "mp4" | "quicktime" | "other";
   readonly videoTracks: number;
   readonly audioTracks: number;

@@ -864,10 +864,11 @@ const packageContentTypes: readonly string[] = [
 ];
 /**
  * Optimized Standard masters are browser output. A retained Standard master
- * keeps an already-small JPEG, PNG or WebP (or MP4 motion) input unchanged
+ * keeps an already-small JPEG, PNG or WebP input unchanged
  * only after an optimization attempt proved no saving; a HEIC/HEIF still or
  * QuickTime motion is never accepted as Standard, retained or not — the
- * browser offers Original or remove instead.
+ * browser offers Original or remove instead. Source motion is never retained;
+ * Standard motion must be a transcoded MP4 master.
  */
 const standardStillContentTypes: readonly string[] = [
   "image/jpeg",

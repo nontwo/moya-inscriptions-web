@@ -144,7 +144,7 @@ try {
   completed.push(stage);
 
   stage = "native-incomplete-draft-save";
-  await page.getByRole("combobox").first().click();
+  await page.locator("#field-kind").getByRole("combobox").click();
   await page.getByRole("option", { name: "书法", exact: true }).click();
   const create = saveResponse();
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
