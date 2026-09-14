@@ -364,12 +364,26 @@ Active development tracks (independent of the parked cloud track):
    verification. Owner acceptance does not waive failed checks. This is a
    Development milestone, with no Production deployment or release authority.
 
-3. **Home Discover progressive loading** — NOT STARTED. Small product task using
+3. **Work publishing and draft editing (`work-publishing-v1`)** — Draft PR open,
+   pending Owner manual and real-device acceptance. Owner-approved on
+   2026-09-13: album-style works (new and edited), static and complete Live
+   Photo media in Standard and Original modes, private media storage with
+   derivatives, account-scoped background uploads, optional persistent drafts
+   and no-save sessions, version conflicts and history, public/self-only
+   visibility with an independent work publication policy, a recycle bin,
+   bounded cleanup, quotas and essential Admin controls; the dock action becomes
+   a plus and Search moves to the upper-left. Scope, Behavior Matrix,
+   feasibility note and proof limits are in
+   [work-publishing-v1](community/work-publishing-v1.md); the Draft PR records
+   the exact base/head, checks and review state. Complete Live Photo originals
+   from the three named devices remain NOT TESTED by Owner decision. This is a
+   Development milestone with no Production deployment or release authority.
+4. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.
-4. **Editorial hardening on the local P2-R2A environment** — NOT STARTED.
+5. **Editorial hardening on the local P2-R2A environment** — NOT STARTED.
    Independent of Community work.
-5. **Content growth** — NOT STARTED. Separately scoped research delivery through
+6. **Content growth** — NOT STARTED. Separately scoped research delivery through
    `catalog-import/v2`; parallel, non-blocking.
 
 ## Current remote lineage disposition
