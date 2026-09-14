@@ -1,0 +1,780 @@
+import {
+  CommunityInputError,
+  CommunityNotFoundError,
+  isCommunityConflictError,
+} from "../errors/community-request-errors.js";
+import { CommunityStoreUnavailableError } from "../errors/community-store-unavailable-error.js";
+import { mapPublishingLimits } from "../mappers/work-publishing-limits-mapper.js";
+
+import type {
+  CreatePublishingDraftCommand,
+  CreatePublishingSessionCommand,
+  EditableWork,
+  MediaComponentRole,
+  MediaVariant,
+  OpenWorkEditDraftCommand,
+  PublishingDraft,
+  PublishingDraftDeletionResult,
+  PublishingDraftPage,
+  PublishingDraftSaveResult,
+  PublishingLimits,
+  PublishingMediaItem,
+  PublishingPageQuery,
+  PublishingSession,
+  PublishingSnapshotPage,
+  PublishingUploadResult,
+  RegisterMediaItemCommand,
+  ResolvePublishingConflictCommand,
+  RestorePublishingSnapshotCommand,
+  SavePublishingDraftCommand,
+  TrashRestoreResult,
+  TrashedWorkPage,
+  WorkSubmissionCommand,
+  WorkSubmissionReceipt,
+  WorkSubmissionResult,
+  WorkVisibilityCommand,
+  WorkVisibilityResult,
+} from "@moya/contracts";
+import type { PublishingMediaProcessorPort } from "../ports/publishing-media-processor-port.js";
+import type {
+  PublishingMediaByteRange,
+  PublishingMediaReadResult,
+  PublishingMediaStoreFailureCode,
+  PublishingMediaStorePort,
+  PublishingMediaWriteResult,
+} from "../ports/publishing-media-store-port.js";
+import type {
+  PublishingCommandIdentity,
+  PublishingMediaReadTarget,
+  PublishingUploadCommit,
+  PublishingUploadFence,
+  WorkPublishingPort,
+} from "../ports/work-publishing-port.js";
+
+/*
+ * Author use cases of work publishing (design.md §3.1, §9.6, §10). Commands
+ * and route ids arrive strictly parsed by the transport parsers; the port
+ * adapter owns ownership checks, receipts and atomicity. Nothing here logs,
+ * and no title, body, file name or storage key leaves through an error.
+ *
+ * Error meaning at this boundary (the HTTP handler maps the classes):
+ * - `CommunityNotFoundError` (404): unknown, foreign or deleted subjects. A
+ *   deleted draft is removed, so any late write to it (autosave, save now,
+ *   restore, resolve, item registration, submission) is not found.
+ * - `CommunityConflictError` (409): the subject exists but moved on (a draft
+ *   already submitted, an ended session, a stale base, an upload attempt
+ *   that was superseded or cancelled).
+ * - `CommunityInputError` (422): the message is one rule code. For media,
+ *   `unsupported_type` means a real type failure of the bytes; edits of
+ *   legacy items are supported and derived like any other edit.
+ */
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+const storeFailureCodes: ReadonlySet<string> =
+  new Set<PublishingMediaStoreFailureCode>([
+    "invalid_argument",
+    "invalid_key",
+    "size_limit_exceeded",
+    "size_mismatch",
+    "empty_content",
+    "aborted",
+    "not_regular_file",
+    "unavailable",
+  ]);
+
+/** The content-free code of a `PublishingMediaStoreError`; nothing else matches. */
+const storeFailureCode = (
+  error: unknown,
+): PublishingMediaStoreFailureCode | undefined => {
+  if (
+    !(error instanceof Error) ||
+    error.name !== "PublishingMediaStoreError" ||
+    !("code" in error)
+  )
+    return undefined;
+  const { code } = error as { readonly code: unknown };
+  return typeof code === "string" && storeFailureCodes.has(code)
+    ? (code as PublishingMediaStoreFailureCode)
+    : undefined;
+};
+
+/** Transfer timing of component uploads. */
+export interface PublishingTransferPolicy {
+  /** A transfer that delivers no byte for this long is ended as stalled. */
+  readonly idleTimeoutMs: number;
+  /**
+   * How long the transport keeps reading (and discarding) a refused
+   * transfer's remaining bytes so its early answer reaches a client that is
+   * still sending, before the connection closes.
+   */
+  readonly refusalReadMs: number;
+}
+
+const defaultTransferPolicy: PublishingTransferPolicy = {
+  idleTimeoutMs: 120_000,
+  refusalReadMs: 5_000,
+};
+
+/** A derivative ready to stream: its allowlisted type and the opened byte range. */
+export interface PublishingMediaDelivery {
+  readonly contentType: PublishingMediaReadTarget["contentType"];
+  readonly sha256: string;
+  readonly read: PublishingMediaReadResult;
+}
+
+/** Resolves a derivative read target against the private media store. */
+export const openPublishingMedia = async (
+  store: PublishingMediaStorePort | undefined,
+  resolve: () => Promise<PublishingMediaReadTarget | null>,
+  range: PublishingMediaByteRange | undefined,
+): Promise<PublishingMediaDelivery> => {
+  if (store === undefined) throw new CommunityStoreUnavailableError();
+  const target = await resolve();
+  if (target === null) throw new CommunityNotFoundError();
+  const read = await store.openRead(target.storageKey, range);
+  if (read === null) throw new CommunityNotFoundError();
+  return { contentType: target.contentType, sha256: target.sha256, read };
+};
+
+interface TransferEntry {
+  readonly stop: () => void;
+  /** Registry sequence at which the fence opened; `null` before that. */
+  streamingSince: number | null;
+}
+
+/** One transfer registered in a {@link PublishingTransferRegistry}. */
+export interface PublishingTransferClaim {
+  /**
+   * Marks the transfer as streaming once its fence opened (the port accepted
+   * the owner's attempt). Only streaming transfers are ever stopped.
+   */
+  markStreaming(): void;
+  /** True while another transfer of the same component streams here. */
+  othersStreaming(): boolean;
+  /** Idempotent; never releases another transfer. */
+  release(): void;
+}
+
+/**
+ * In-process registry of component transfers. A command that cancels uploads
+ * (item cancel, component reset, draft deletion, session discard or expiry)
+ * stops the listed transfers that stream here so the transport answers early
+ * and nothing is committed. One registry is shared by the HTTP composition and
+ * any worker running in the same process.
+ *
+ * Registering never blocks another request: a transfer counts only after its
+ * fence opened, so a caller that does not own the component cannot hold it.
+ */
+export class PublishingTransferRegistry {
+  readonly #entries = new Map<string, Set<TransferEntry>>();
+  #sequence = 0;
+
+  /** True while a transfer for this component streams in this process. */
+  isActive(componentId: string): boolean {
+    for (const entry of this.#entries.get(componentId) ?? [])
+      if (entry.streamingSince !== null) return true;
+    return false;
+  }
+
+  /** Number of transfers registered in this process. */
+  get size(): number {
+    let size = 0;
+    for (const entries of this.#entries.values()) size += entries.size;
+    return size;
+  }
+
+  /**
+   * The current position. Take it before a cancelling transaction and pass it
+   * to {@link stop}: a transfer whose fence opened later (a new attempt after
+   * a reset) is then never stopped by that command.
+   */
+  mark(): number {
+    return this.#sequence;
+  }
+
+  /** Registers one transfer; `stop` runs at most once, synchronously. */
+  claim(componentId: string, stop: () => void): PublishingTransferClaim {
+    const entry: TransferEntry = { stop, streamingSince: null };
+    const entries = this.#entries.get(componentId) ?? new Set<TransferEntry>();
+    entries.add(entry);
+    this.#entries.set(componentId, entries);
+    return {
+      markStreaming: () => {
+        this.#sequence += 1;
+        entry.streamingSince = this.#sequence;
+      },
+      othersStreaming: () => {
+        for (const other of this.#entries.get(componentId) ?? [])
+          if (other !== entry && other.streamingSince !== null) return true;
+        return false;
+      },
+      release: () => this.#remove(componentId, entry),
+    };
+  }
+
+  /**
+   * Stops the listed components' streaming transfers; with `before`, only
+   * those whose fence opened at or before that {@link mark}. Returns how many
+   * stopped.
+   */
+  stop(
+    componentIds: readonly string[],
+    options: { readonly before?: number } = {},
+  ): number {
+    let stopped = 0;
+    for (const componentId of new Set(componentIds)) {
+      for (const entry of [...(this.#entries.get(componentId) ?? [])]) {
+        if (
+          entry.streamingSince === null ||
+          (options.before !== undefined &&
+            entry.streamingSince > options.before)
+        )
+          continue;
+        this.#remove(componentId, entry);
+        stopped += 1;
+        try {
+          entry.stop();
+        } catch {
+          // One failing stop never keeps the other transfers running.
+        }
+      }
+    }
+    return stopped;
+  }
+
+  #remove(componentId: string, entry: TransferEntry): void {
+    const entries = this.#entries.get(componentId);
+    if (entries === undefined || !entries.delete(entry)) return;
+    if (entries.size === 0) this.#entries.delete(componentId);
+  }
+}
+
+/** One component transfer as the transport hands it over. */
+export interface PublishingComponentTransfer {
+  /** The `x-upload-attempt` UUID. */
+  readonly attempt: string;
+  /** The transfer's content length; it must equal the declared bytes. */
+  readonly contentLength: number;
+  /** The raw bytes, consumed at most once. */
+  readonly source: AsyncIterable<Uint8Array>;
+  /** Aborted when the client goes away. */
+  readonly signal: AbortSignal;
+  /**
+   * Called at most once, synchronously, when a cancel in this process stops
+   * the transfer; the transport answers 409 at once and stops reading.
+   */
+  readonly onStopped?: (() => void) | undefined;
+}
+
+/**
+ * `committed`: stored and recorded. `superseded` / `cancelled`: nothing
+ * stored (409). `too_large`: more bytes than declared (413). `incomplete`:
+ * fewer bytes than declared (422). `aborted`: the client went away; nothing
+ * stored and nobody to answer. `stalled`: no byte arrived within the idle
+ * timeout; nothing stored and the transport closes the connection.
+ */
+export type PublishingComponentUploadOutcome =
+  | { readonly status: "committed"; readonly result: PublishingUploadResult }
+  | { readonly status: "superseded" | "cancelled" }
+  | { readonly status: "too_large" | "incomplete" | "aborted" | "stalled" };
+
+export interface WorkPublishingServiceOptions {
+  /** Private media bytes; without it uploads and media reads are unavailable. */
+  readonly store?: PublishingMediaStorePort | undefined;
+  /** Derivative processing; without it no media item is accepted. */
+  readonly processor?: PublishingMediaProcessorPort | undefined;
+  /** Shared with a worker in the same process; a private one otherwise. */
+  readonly transfers?: PublishingTransferRegistry | undefined;
+  readonly clock?: (() => Date) | undefined;
+  /** Upload idle timeout and refusal read window; defaults 120 s and 5 s. */
+  readonly transferPolicy?: Partial<PublishingTransferPolicy> | undefined;
+}
+
+const positiveMilliseconds = (value: number, name: string): number => {
+  if (!Number.isSafeInteger(value) || value <= 0)
+    throw new Error(`${name} must be a positive integer`);
+  return value;
+};
+
+export class WorkPublishingService {
+  readonly transfers: PublishingTransferRegistry;
+  readonly transferPolicy: PublishingTransferPolicy;
+  private readonly store: PublishingMediaStorePort | undefined;
+  private readonly processor: PublishingMediaProcessorPort | undefined;
+  private readonly clock: () => Date;
+
+  constructor(
+    private readonly port: WorkPublishingPort,
+    options: WorkPublishingServiceOptions = {},
+  ) {
+    this.store = options.store;
+    this.processor = options.processor;
+    this.transfers = options.transfers ?? new PublishingTransferRegistry();
+    this.clock = options.clock ?? (() => new Date());
+    const policy = { ...defaultTransferPolicy, ...options.transferPolicy };
+    this.transferPolicy = {
+      idleTimeoutMs: positiveMilliseconds(
+        policy.idleTimeoutMs,
+        "idleTimeoutMs",
+      ),
+      refusalReadMs: positiveMilliseconds(
+        policy.refusalReadMs,
+        "refusalReadMs",
+      ),
+    };
+  }
+
+  /** True when media items may be registered and uploaded. */
+  get acceptsMedia(): boolean {
+    return this.store !== undefined && this.processor !== undefined;
+  }
+
+  /** True when stored derivatives can be read. */
+  get readsMedia(): boolean {
+    return this.store !== undefined;
+  }
+
+  private mediaStore(): PublishingMediaStorePort {
+    if (this.store === undefined || this.processor === undefined)
+      throw new CommunityStoreUnavailableError();
+    return this.store;
+  }
+
+  async limits(): Promise<PublishingLimits> {
+    return mapPublishingLimits(await this.port.readSettings());
+  }
+
+  createDraft(
+    actorId: string,
+    command: CreatePublishingDraftCommand,
+  ): Promise<PublishingDraft> {
+    return this.port.createDraft(actorId, command, this.clock());
+  }
+
+  listDrafts(
+    actorId: string,
+    query: PublishingPageQuery,
+  ): Promise<PublishingDraftPage> {
+    return this.port.listDrafts(actorId, query);
+  }
+
+  readDraft(actorId: string, draftId: string): Promise<PublishingDraft> {
+    return this.port.readDraft(actorId, draftId);
+  }
+
+  /**
+   * Revision-conditional autosave. A deleted draft is not found; a submitted
+   * one conflicts; another base keeps both versions (`conflict`).
+   */
+  saveDraft(
+    actorId: string,
+    draftId: string,
+    command: SavePublishingDraftCommand,
+  ): Promise<PublishingDraftSaveResult> {
+    return this.port.saveDraft(actorId, draftId, command, this.clock());
+  }
+
+  snapshotDraft(
+    actorId: string,
+    draftId: string,
+    command: SavePublishingDraftCommand,
+  ): Promise<PublishingDraftSaveResult> {
+    return this.port.snapshotDraft(actorId, draftId, command, this.clock());
+  }
+
+  async deleteDraft(
+    actorId: string,
+    draftId: string,
+    command: PublishingCommandIdentity,
+  ): Promise<PublishingDraftDeletionResult> {
+    const before = this.transfers.mark();
+    const deletion = await this.port.deleteDraft(
+      actorId,
+      draftId,
+      command,
+      this.clock(),
+    );
+    this.transfers.stop(deletion.cancelledComponentIds, { before });
+    return deletion.result;
+  }
+
+  listHistory(
+    actorId: string,
+    draftId: string,
+    query: PublishingPageQuery,
+  ): Promise<PublishingSnapshotPage> {
+    return this.port.listHistory(actorId, draftId, query);
+  }
+
+  restoreSnapshot(
+    actorId: string,
+    draftId: string,
+    command: RestorePublishingSnapshotCommand,
+  ): Promise<PublishingDraft> {
+    return this.port.restoreSnapshot(actorId, draftId, command, this.clock());
+  }
+
+  resolveConflict(
+    actorId: string,
+    draftId: string,
+    command: ResolvePublishingConflictCommand,
+  ): Promise<PublishingDraft> {
+    return this.port.resolveConflict(actorId, draftId, command, this.clock());
+  }
+
+  openEditDraft(
+    actorId: string,
+    workId: string,
+    command: OpenWorkEditDraftCommand,
+  ): Promise<PublishingDraft> {
+    return this.port.openEditDraft(actorId, workId, command, this.clock());
+  }
+
+  readEditableWork(actorId: string, workId: string): Promise<EditableWork> {
+    return this.port.readEditableWork(actorId, workId);
+  }
+
+  setVisibility(
+    actorId: string,
+    workId: string,
+    command: WorkVisibilityCommand,
+  ): Promise<WorkVisibilityResult> {
+    return this.port.setVisibility(actorId, workId, command, this.clock());
+  }
+
+  createSession(
+    actorId: string,
+    command: CreatePublishingSessionCommand,
+  ): Promise<PublishingSession> {
+    return this.port.createSession(actorId, command, this.clock());
+  }
+
+  heartbeatSession(
+    actorId: string,
+    sessionId: string,
+  ): Promise<PublishingSession> {
+    return this.port.heartbeatSession(actorId, sessionId, this.clock());
+  }
+
+  async discardSession(
+    actorId: string,
+    sessionId: string,
+    command: PublishingCommandIdentity,
+  ): Promise<{ readonly discarded: true }> {
+    const before = this.transfers.mark();
+    const discard = await this.port.discardSession(
+      actorId,
+      sessionId,
+      command,
+      this.clock(),
+    );
+    this.transfers.stop(discard.cancelledComponentIds, { before });
+    return discard.result;
+  }
+
+  registerItem(
+    actorId: string,
+    command: RegisterMediaItemCommand,
+  ): Promise<PublishingMediaItem> {
+    this.mediaStore();
+    return this.port.registerItem(actorId, command, this.clock());
+  }
+
+  readItem(actorId: string, itemId: string): Promise<PublishingMediaItem> {
+    return this.port.readItem(actorId, itemId);
+  }
+
+  async cancelItem(
+    actorId: string,
+    itemId: string,
+    command: PublishingCommandIdentity,
+  ): Promise<PublishingMediaItem> {
+    const before = this.transfers.mark();
+    const change = await this.port.cancelItem(
+      actorId,
+      itemId,
+      command,
+      this.clock(),
+    );
+    this.transfers.stop(change.cancelledComponentIds, { before });
+    return change.item;
+  }
+
+  async resetComponent(
+    actorId: string,
+    itemId: string,
+    role: MediaComponentRole,
+    command: PublishingCommandIdentity,
+  ): Promise<PublishingMediaItem> {
+    this.mediaStore();
+    const before = this.transfers.mark();
+    const change = await this.port.resetComponent(
+      actorId,
+      itemId,
+      role,
+      command,
+      this.clock(),
+    );
+    this.transfers.stop(change.cancelledComponentIds, { before });
+    return change.item;
+  }
+
+  /**
+   * Streams one component behind the attempt/cancel fence: begin (the
+   * component becomes `receiving` under this attempt), store the bytes with
+   * the declared size as the exact limit, then commit, or abort and remove
+   * what was written. A cancel in this process stops the stream early and
+   * nothing is committed afterwards; a transfer that delivers no byte within
+   * the idle timeout ends as `stalled`.
+   */
+  async uploadComponent(
+    actorId: string,
+    componentId: string,
+    transfer: PublishingComponentTransfer,
+  ): Promise<PublishingComponentUploadOutcome> {
+    const store = this.mediaStore();
+    if (
+      !uuidPattern.test(transfer.attempt) ||
+      !Number.isSafeInteger(transfer.contentLength) ||
+      transfer.contentLength < 1
+    )
+      throw new CommunityInputError("invalid_input");
+
+    const controller = new AbortController();
+    let stopped = false;
+    let stalled = false;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    // Registering never blocks anyone: the entry only counts once the port
+    // opened the fence, i.e. once the actor is proven to own the component.
+    const claim = this.transfers.claim(componentId, () => {
+      if (stopped) return;
+      stopped = true;
+      controller.abort();
+      transfer.onStopped?.();
+    });
+    const onClientAbort = () => controller.abort();
+    transfer.signal.addEventListener("abort", onClientAbort, { once: true });
+    if (transfer.signal.aborted) controller.abort();
+    const ended = (): PublishingComponentUploadOutcome =>
+      stopped
+        ? { status: "cancelled" }
+        : stalled
+          ? { status: "stalled" }
+          : { status: "aborted" };
+    const { idleTimeoutMs } = this.transferPolicy;
+    const source = transfer.source;
+    const idleBounded: AsyncIterable<Uint8Array> = {
+      [Symbol.asyncIterator]: () => {
+        const iterator = source[Symbol.asyncIterator]();
+        return {
+          next: async () => {
+            idleTimer = setTimeout(() => {
+              stalled = true;
+              controller.abort();
+            }, idleTimeoutMs);
+            try {
+              return await iterator.next();
+            } finally {
+              clearTimeout(idleTimer);
+            }
+          },
+          return: async () => {
+            await iterator.return?.();
+            return { value: undefined, done: true };
+          },
+        };
+      },
+    };
+
+    try {
+      const fence = await this.beginTransfer(
+        actorId,
+        componentId,
+        transfer,
+        claim,
+      );
+      claim.markStreaming();
+      if (controller.signal.aborted) {
+        await this.abortQuietly(fence);
+        return ended();
+      }
+
+      let blob: PublishingMediaWriteResult;
+      try {
+        blob = await store.writeStream(
+          fence.ownerId,
+          fence.purpose,
+          fence.contentType,
+          fence.byteSize,
+          idleBounded,
+          { signal: controller.signal, requireExactSize: true },
+        );
+      } catch (error) {
+        await this.abortQuietly(fence);
+        if (controller.signal.aborted) return ended();
+        const code = storeFailureCode(error);
+        if (code === "size_limit_exceeded") return { status: "too_large" };
+        if (code === "size_mismatch" || code === "empty_content")
+          return { status: "incomplete" };
+        throw error;
+      }
+
+      if (stopped) {
+        await this.removeQuietly(store, blob.storageKey);
+        await this.abortQuietly(fence);
+        return { status: "cancelled" };
+      }
+
+      let commit: PublishingUploadCommit;
+      try {
+        commit = await this.port.commitComponentUpload(
+          fence,
+          blob,
+          this.clock(),
+        );
+      } catch (error) {
+        // The outcome is unknown: the row may exist although the answer was
+        // lost, so the blob stays. Capacity reconciliation removes it after
+        // the grace period only when no row records it.
+        await this.abortQuietly(fence);
+        throw error;
+      }
+      if (commit.status === "committed") return commit;
+      await this.removeQuietly(store, blob.storageKey);
+      return commit.status === "size_mismatch"
+        ? { status: "too_large" }
+        : { status: commit.status };
+    } finally {
+      clearTimeout(idleTimer);
+      transfer.signal.removeEventListener("abort", onClientAbort);
+      claim.release();
+    }
+  }
+
+  /**
+   * Opens the fence without taking over first, so ownership is checked before
+   * anything else. A component still `receiving` is taken over only when no
+   * other transfer of it streams in this process (a transfer that died
+   * elsewhere, or before its abort was recorded).
+   */
+  private async beginTransfer(
+    actorId: string,
+    componentId: string,
+    transfer: PublishingComponentTransfer,
+    claim: PublishingTransferClaim,
+  ): Promise<PublishingUploadFence> {
+    const begin = (supersede: boolean) =>
+      this.port.beginComponentUpload(
+        actorId,
+        componentId,
+        {
+          attempt: transfer.attempt,
+          contentLength: transfer.contentLength,
+          supersede,
+        },
+        this.clock(),
+      );
+    try {
+      return await begin(false);
+    } catch (error) {
+      // A conflict comes after the ownership check: the actor owns it.
+      if (!isCommunityConflictError(error) || claim.othersStreaming())
+        throw error;
+      return begin(true);
+    }
+  }
+
+  private async abortQuietly(fence: PublishingUploadFence): Promise<void> {
+    try {
+      await this.port.abortComponentUpload(fence, this.clock());
+    } catch {
+      // The session lease and cleanup jobs recover a component left receiving.
+    }
+  }
+
+  private async removeQuietly(
+    store: PublishingMediaStorePort,
+    storageKey: string,
+  ): Promise<void> {
+    try {
+      await store.remove(storageKey);
+    } catch {
+      // An unrecorded blob is removed by capacity reconciliation later.
+    }
+  }
+
+  /** Streams an authorized derivative; sources are never addressable. */
+  openMedia(
+    viewerId: string | null,
+    itemId: string,
+    variant: MediaVariant,
+    editKey: string,
+    range?: PublishingMediaByteRange,
+  ): Promise<PublishingMediaDelivery> {
+    return openPublishingMedia(
+      this.store,
+      () => this.port.resolveMediaRead(viewerId, itemId, variant, editKey),
+      range,
+    );
+  }
+
+  /**
+   * Explicit, idempotent submission, submitted first. The port confirms
+   * atomically or answers `not_ready`; a refused submission (deleted or
+   * ended holder, stale base, unavailable work, item limit, daily limit)
+   * throws before anything is queued. Only a `not_ready` answer ensures the
+   * derivatives of the submitted edits (for uploaded and legacy items alike)
+   * and, when they are all ready already, submits once more; otherwise the
+   * first `not_ready` answer stands while the worker derives them.
+   */
+  async submit(
+    actorId: string,
+    command: WorkSubmissionCommand,
+  ): Promise<WorkSubmissionResult> {
+    const first = await this.port.submit(actorId, command, this.clock());
+    if (first.state !== "not_ready") return first;
+    const readiness = await this.port.ensureEditDerivatives(
+      actorId,
+      command.content,
+      this.clock(),
+    );
+    return readiness.ready
+      ? this.port.submit(actorId, command, this.clock())
+      : first;
+  }
+
+  async readSubmissionReceipt(
+    actorId: string,
+    requestId: string,
+  ): Promise<WorkSubmissionReceipt> {
+    if (!uuidPattern.test(requestId)) throw new CommunityNotFoundError();
+    const receipt = await this.port.readSubmissionReceipt(actorId, requestId);
+    if (receipt === null) throw new CommunityNotFoundError();
+    return receipt;
+  }
+
+  trashWork(
+    actorId: string,
+    workId: string,
+    command: PublishingCommandIdentity,
+  ): Promise<{ readonly deleted: true }> {
+    return this.port.trashWork(actorId, workId, command, this.clock());
+  }
+
+  listTrash(
+    actorId: string,
+    query: PublishingPageQuery,
+  ): Promise<TrashedWorkPage> {
+    return this.port.listTrash(actorId, query, this.clock());
+  }
+
+  restoreWork(
+    actorId: string,
+    workId: string,
+    command: PublishingCommandIdentity,
+  ): Promise<TrashRestoreResult> {
+    return this.port.restoreWork(actorId, workId, command, this.clock());
+  }
+}

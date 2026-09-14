@@ -14,6 +14,7 @@ import {
   PostgresAuthorCommunityAdapter,
   PostgresCommunityContentOperatorAdapter,
   PostgresCommunityCommentAdapter,
+  PostgresWorkPublishingAdapter,
 } from "../services/community-postgres/dist/index.js";
 import {
   editorialPublishSchema,
@@ -562,6 +563,8 @@ async function main() {
           )
         ).rows[0].first_published_at.toISOString();
       }
+      // A direct legacy insert: the works_legacy_bridge trigger gives it its
+      // legacy public and author revision in this statement.
       const row = (
         await ownerDb.query(
           "INSERT INTO community.works(id,author_id,title,text,media_ids,first_published_at,version,operator_state,synthetic_provenance) VALUES($1,$2,$3,$4,$5,CURRENT_TIMESTAMP,1,'visible',$6) RETURNING first_published_at",
@@ -651,7 +654,7 @@ async function main() {
     saveJournal,
     once,
     ownerDb,
-    authors,
+    publishing: new PostgresWorkPublishingAdapter(pool),
     discussion: new PostgresCommunityCommentAdapter(pool),
     counters,
   });
@@ -687,6 +690,16 @@ async function main() {
       ),
       "WORK_IDENTITY_CHANGED",
     );
+  // Every seeded work is served through its revisions (the legacy bridge
+  // gave each one; later acceptance edits keep an author revision).
+  assert(
+    (
+      await ownerDb.query(
+        "SELECT count(*)::int AS n FROM community.works w JOIN community.work_revisions r ON r.id=w.author_revision_id AND r.work_id=w.id",
+      )
+    ).rows[0].n === 10,
+    "WORK_REVISIONS_MISSING",
+  );
   for (const asset of mediaById.values()) {
     if (asset.owner.type === "user") {
       const row = (

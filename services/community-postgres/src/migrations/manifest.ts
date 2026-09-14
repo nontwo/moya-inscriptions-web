@@ -73,4 +73,10 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "cb6238b56dd6f92b219a04f78443522a818010893f25cac4754f4c2e136aecba",
     }),
+    Object.freeze({
+      migrationId: "20260914093000",
+      filename: "20260914093000_work_publishing_legacy_bridge.sql",
+      checksum:
+        "b5312208eb20df808b6e070748de4d377d84b105c123688b2b5882d1c98893fc",
+    }),
   ]);

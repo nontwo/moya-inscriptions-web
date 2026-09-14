@@ -41,7 +41,9 @@ const workPublishingMigrations = [
   "20260914090000",
   "20260914091000",
   "20260914092000",
+  "20260914093000",
 ];
+const backfillMigration = "20260914092000";
 
 const endpoint = new URL(testDatabaseUrl);
 if (
@@ -1041,6 +1043,163 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
           [work],
         ),
       ).toEqual([{ public_revision_id: legacyRevision(work) }]);
+    });
+  });
+
+  describe("legacy bridge for Phase 4 style inserts after the backfill", () => {
+    it("bridges works inserted between the backfill and the bridge, and every later direct insert", async () => {
+      const pool = await createDedicatedDatabase("upgrade");
+      expect(
+        await runCommunityMigrations(pool, migrationsDirectory, {
+          through: backfillMigration,
+        }),
+      ).toEqual(
+        requiredCommunityMigrations
+          .map(({ migrationId }) => migrationId)
+          .filter((id) => id <= backfillMigration),
+      );
+      const author = opaque("user");
+      await pool.query(
+        "INSERT INTO community.public_users(id, handle, display_name) VALUES($1, $2, '合成作者')",
+        [author, `wp-bridge-${author.slice(-8)}`],
+      );
+      const [firstMedia, secondMedia] = [
+        opaque("user-media"),
+        opaque("user-media"),
+      ];
+      for (const [mediaId, seed] of [
+        [firstMedia, 1],
+        [secondMedia, 2],
+      ] as const) {
+        const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, seed]);
+        await pool.query(
+          "INSERT INTO community.user_media(id, owner_id, mime_type, width, height, sha256, bytes, created_at) VALUES($1, $2, 'image/png', $3, $4, $5, $6, '2026-02-01T00:00:00Z')",
+          [mediaId, author, 10 * seed, 20 * seed, sha256(bytes), bytes],
+        );
+      }
+      // The acceptance seed's own statement shape (no created_via, no revision).
+      const insertPhase4Work = (
+        id: string,
+        title: string,
+        mediaIds: readonly string[],
+        deletedAt: string | null = null,
+      ) =>
+        pool.query(
+          "INSERT INTO community.works(id, author_id, title, text, media_ids, first_published_at, updated_at, version, operator_state, deleted_at, synthetic_provenance) VALUES($1, $2, $3, '正文', $4, '2026-03-01T08:00:00Z', '2026-03-02T08:00:00Z', 1, 'visible', $5, 'work-publishing-bridge-test')",
+          [id, author, title, [...mediaIds], deletedAt],
+        );
+      const between = opaque("work");
+      await insertPhase4Work(between, "迁移之间", [secondMedia, firstMedia]);
+      const unbridged = await rows<{
+        public_revision_id: string | null;
+        visible: boolean;
+      }>(
+        pool,
+        "SELECT w.public_revision_id, community.work_is_public(w) AS visible FROM community.works w WHERE id = $1",
+        [between],
+      );
+      expect(unbridged).toEqual([{ public_revision_id: null, visible: false }]);
+
+      expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual(
+        workPublishingMigrations.filter((id) => id > backfillMigration),
+      );
+      const expectBridged = async (
+        workId: string,
+        mediaIds: readonly string[],
+      ) => {
+        const revisionId = legacyRevision(workId);
+        expect(
+          await rows(
+            pool,
+            "SELECT w.public_revision_id, w.author_revision_id, w.created_via, w.version, w.updated_at, w.first_published_at, w.first_submitted_at, community.work_is_public(w) AS visible FROM community.works w WHERE id = $1",
+            [workId],
+          ),
+        ).toEqual([
+          {
+            public_revision_id: revisionId,
+            author_revision_id: revisionId,
+            created_via: "legacy",
+            version: 1,
+            updated_at: new Date("2026-03-02T08:00:00Z"),
+            first_published_at: new Date("2026-03-01T08:00:00Z"),
+            first_submitted_at: new Date("2026-03-01T08:00:00Z"),
+            visible: true,
+          },
+        ]);
+        const expectedItems = firstOccurrences(mediaIds).map(legacyItem);
+        expect(
+          await rows(
+            pool,
+            "SELECT r.origin, r.disposition, r.sequence, r.cover_item_id, (SELECT array_agg(i.item_id ORDER BY i.position) FROM community.work_revision_items i WHERE i.revision_id = r.id) AS items, (SELECT array_agg(f.item_id ORDER BY f.item_id) FROM community.media_item_refs f WHERE f.holder_kind = 'revision' AND f.holder_id = r.id) AS refs FROM community.work_revisions r WHERE r.work_id = $1",
+            [workId],
+          ),
+        ).toEqual([
+          {
+            origin: "legacy",
+            disposition: "approved",
+            sequence: 1,
+            cover_item_id: expectedItems[0] ?? null,
+            items: expectedItems.length === 0 ? null : expectedItems,
+            refs: expectedItems.length === 0 ? null : [...expectedItems].sort(),
+          },
+        ]);
+      };
+      // The bridge migration's one-time pass covers the work written between.
+      await expectBridged(between, [secondMedia, firstMedia]);
+
+      // After the bridge, the trigger covers every later direct insert.
+      const later = opaque("work");
+      await insertPhase4Work(later, "迁移之后", [
+        firstMedia,
+        secondMedia,
+        firstMedia,
+      ]);
+      await expectBridged(later, [firstMedia, secondMedia, firstMedia]);
+      const textOnly = opaque("work");
+      await insertPhase4Work(textOnly, "只有文字", []);
+      await expectBridged(textOnly, []);
+      // Shared user media stays one legacy item per (owner, media).
+      expect(
+        await rows(
+          pool,
+          "SELECT id, legacy_media_id, state, quality_mode, source FROM community.media_items ORDER BY legacy_media_id",
+        ),
+      ).toEqual(
+        [firstMedia, secondMedia].sort().map((mediaId) => ({
+          id: legacyItem(mediaId),
+          legacy_media_id: mediaId,
+          state: "ready",
+          quality_mode: "legacy",
+          source: "legacy_user_media",
+        })),
+      );
+      // Deleted and publishing-path rows are never bridged.
+      const deleted = opaque("work");
+      await insertPhase4Work(
+        deleted,
+        "已删除",
+        [firstMedia],
+        "2026-04-01T00:00:00Z",
+      );
+      const publishing = opaque("work");
+      await pool.query(
+        "INSERT INTO community.works(id, author_id, title, text, created_via, visibility, first_submitted_at) VALUES($1, $2, '', '正文', 'publishing', 'self', CURRENT_TIMESTAMP)",
+        [publishing, author],
+      );
+      expect(
+        await rows(
+          pool,
+          "SELECT id, public_revision_id FROM community.works WHERE id = ANY($1::text[]) ORDER BY id",
+          [[deleted, publishing]],
+        ),
+      ).toEqual(
+        [deleted, publishing]
+          .sort()
+          .map((id) => ({ id, public_revision_id: null })),
+      );
+      expect(await runCommunityMigrations(pool, migrationsDirectory)).toEqual(
+        [],
+      );
     });
   });
 

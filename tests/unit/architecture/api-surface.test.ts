@@ -60,6 +60,9 @@ describe("@moya/api server-only surface", () => {
       "CommunitySessionService",
       "CommunityStoreUnavailableError",
       "DisabledCommentAnalysisPort",
+      "PublishingOperatorService",
+      "PublishingTransferRegistry",
+      "WorkPublishingService",
       "deriveCatalogPeriodLabel",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
@@ -77,6 +80,8 @@ describe("@moya/api server-only surface", () => {
       "parseCommentPageQuery",
       "parseCreateCommentRequest",
       "parseCreateReplyRequest",
+      "parseWorkPublishingCommand",
+      "parseWorkPublishingSegment",
     ]);
   });
 

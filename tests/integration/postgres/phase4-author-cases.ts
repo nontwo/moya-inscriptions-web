@@ -9,6 +9,7 @@ import {
   PostgresAuthorCommunityAdapter,
   PostgresCommunityIdentityAdapter,
   PostgresCommunityCommentAdapter,
+  PostgresWorkPublishingAdapter,
 } from "@moya/community-postgres";
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import sharp from "sharp";
@@ -21,6 +22,8 @@ import type {
   PublicUserId,
 } from "@moya/contracts";
 import type { BackendProcessHandle } from "@moya/backend-runtime";
+
+import { cleanupPublishingData } from "./work-publishing-content-cases.js";
 
 const id = (prefix: string) => `${prefix}-${randomUUID().replaceAll("-", "")}`;
 const query: AuthorListQuery = {
@@ -37,6 +40,7 @@ export const registerPhase4AuthorTests = (
     let a: string, b: string, work: string;
     const adapter = new PostgresAuthorCommunityAdapter(pool);
     const discussion = new PostgresCommunityCommentAdapter(pool);
+    const publishing = new PostgresWorkPublishingAdapter(pool);
     let process: BackendProcessHandle | undefined;
     const handles = new Map<string, string>();
     beforeEach(async () => {
@@ -110,6 +114,8 @@ export const registerPhase4AuthorTests = (
         "DELETE FROM community.work_edit_drafts WHERE author_id=ANY($1)",
         [users],
       );
+      // Work publishing rows reference works, user media and accounts.
+      await cleanupPublishingData(pool, users);
       await pool.query("DELETE FROM community.works WHERE author_id=ANY($1)", [
         users,
       ]);
@@ -863,64 +869,47 @@ export const registerPhase4AuthorTests = (
       ).rejects.toBeInstanceOf(CommunityConflictError);
       expect((await adapter.readProfile(a, a)).displayName).toBe("已保存");
     });
-    it("keeps last published text visible while retaining two device drafts and newer text after apply", async () => {
-      const first = await adapter.saveDraft(a, work, {
-        requestId: randomUUID(),
-        baseWorkVersion: 1,
-        baseDraftVersion: 0,
-        content: { title: "第一个版本", text: "草稿一", mediaIds: [] },
+    it("keeps a directly inserted Phase 4 work public through its legacy revision and edits it through publishing without changing its identity", async () => {
+      // The legacy bridge gives the fixture work its public and author revision.
+      const legacy = await adapter.readWork(work, b);
+      expect(legacy).toMatchObject({
+        title: "合成作品",
+        text: "原始已发布内容",
+        firstPublishedAt: "2026-01-01T00:00:00.000Z",
+        editedAt: null,
+        available: true,
+        version: 1,
       });
-      const other = await adapter.saveDraft(a, work, {
-        requestId: randomUUID(),
-        baseWorkVersion: 1,
-        baseDraftVersion: 0,
-        content: { title: "另一设备", text: "草稿二不能丢", mediaIds: [] },
-      });
-      expect(first.conflict).toBe(false);
-      expect(other.conflict).toBe(true);
-      expect((await adapter.readWork(work, b)).text).toBe("原始已发布内容");
-      await expect(adapter.listDrafts(b, work, query)).rejects.toBeInstanceOf(
-        CommunityNotFoundError,
+      const editable = await publishing.readEditableWork(a, work);
+      const session = id("publishing-session");
+      await pool.query(
+        "INSERT INTO community.publishing_sessions(id,owner_id,save_mode,work_id,state,lease_expires_at) VALUES($1,$2,'unsaved',$3,'active','2100-01-01T00:00:00Z')",
+        [session, a, work],
       );
-      expect(
-        await adapter.applyDraft(a, work, {
+      const editedAt = new Date("2026-09-13T12:00:00.000Z");
+      const receipt = await publishing.submit(
+        a,
+        {
           requestId: randomUUID(),
-          draftId: first.draft.id,
-        }),
-      ).toMatchObject({ applied: true, workVersion: 2 });
-      expect(
-        (await adapter.listDrafts(a, work, query)).items.map(
-          (d) => d.content.text,
-        ),
-      ).toEqual(["草稿二不能丢"]);
-      expect((await adapter.readWork(work, b)).firstPublishedAt).toBe(
-        "2026-01-01T00:00:00.000Z",
+          holder: { sessionId: session },
+          content: { ...editable.content, body: "发布后的新正文" },
+          baseRevisionId: editable.revisionId,
+        },
+        editedAt,
       );
-      expect(
-        await adapter.applyDraft(a, work, {
-          requestId: randomUUID(),
-          draftId: other.draft.id,
-        }),
-      ).toMatchObject({ applied: false, conflict: true });
-      await adapter.discardDraft(a, work, other.draft.id, randomUUID());
-      const empty = await adapter.listDrafts(a, work, query);
-      expect(empty.items).toEqual([]);
-      expect(empty.currentVersion).toBe(2);
-      const resumed = await adapter.saveDraft(a, work, {
-        requestId: randomUUID(),
-        baseWorkVersion: 2,
-        baseDraftVersion: empty.currentVersion,
-        content: { title: "恢复编辑", text: "第三稿", mediaIds: [] },
+      expect(receipt).toMatchObject({ state: "confirmed", workId: work });
+      expect(await adapter.readWork(work, b)).toMatchObject({
+        id: work,
+        authorId: a,
+        text: "发布后的新正文",
+        firstPublishedAt: "2026-01-01T00:00:00.000Z",
+        editedAt: editedAt.toISOString(),
       });
-      expect(resumed.conflict).toBe(false);
+      await expect(adapter.readWork(work, null)).resolves.toMatchObject({
+        text: "发布后的新正文",
+      });
     });
-    it("cannot publish an edit to an operator-hidden work and deletion leaves the favorite relation", async () => {
-      const draft = await adapter.saveDraft(a, work, {
-        requestId: randomUUID(),
-        baseWorkVersion: 1,
-        baseDraftVersion: 0,
-        content: { title: "更新", text: "更新", mediaIds: [] },
-      });
+    it("keeps an operator-hidden work hidden after an edit and moving it to the recycle bin leaves the favorite relation", async () => {
       await adapter.changeRelation(b, "favorite", {
         requestId: randomUUID(),
         target: { type: "work", id: work },
@@ -930,14 +919,35 @@ export const registerPhase4AuthorTests = (
         "UPDATE community.works SET operator_state='hidden' WHERE id=$1",
         [work],
       );
-      await expect(
-        adapter.applyDraft(a, work, {
+      const editable = await publishing.readEditableWork(a, work);
+      const session = id("publishing-session");
+      await pool.query(
+        "INSERT INTO community.publishing_sessions(id,owner_id,save_mode,work_id,state,lease_expires_at) VALUES($1,$2,'unsaved',$3,'active','2100-01-01T00:00:00Z')",
+        [session, a, work],
+      );
+      await publishing.submit(
+        a,
+        {
           requestId: randomUUID(),
-          draftId: draft.draft.id,
-        }),
-      ).rejects.toBeInstanceOf(CommunityConflictError);
-      expect((await adapter.readWork(work, a)).available).toBe(false);
-      await adapter.deleteWork(a, work, randomUUID());
+          holder: { sessionId: session },
+          content: { ...editable.content, title: "更新" },
+          baseRevisionId: editable.revisionId,
+        },
+        new Date("2026-09-13T12:00:00.000Z"),
+      );
+      await expect(adapter.readWork(work, b)).rejects.toBeInstanceOf(
+        CommunityNotFoundError,
+      );
+      expect(await adapter.readWork(work, a)).toMatchObject({
+        title: "更新",
+        available: false,
+      });
+      await publishing.trashWork(
+        a,
+        work,
+        { requestId: randomUUID() },
+        new Date("2026-09-13T13:00:00.000Z"),
+      );
       await expect(adapter.readWork(work, a)).rejects.toBeInstanceOf(
         CommunityNotFoundError,
       );
@@ -994,14 +1004,6 @@ export const registerPhase4AuthorTests = (
           })
         ).status,
       ).toBe(404);
-      await expect(
-        adapter.saveDraft(b, work, {
-          requestId: randomUUID(),
-          baseWorkVersion: 1,
-          baseDraftVersion: 0,
-          content: { title: "窃取", text: "", mediaIds: [image.id] },
-        }),
-      ).rejects.toBeInstanceOf(CommunityNotFoundError);
       await expect(
         adapter.updateAvatar(b, { requestId: randomUUID(), mediaId: image.id }),
       ).rejects.toBeInstanceOf(CommunityNotFoundError);
@@ -1061,11 +1063,14 @@ export const registerPhase4AuthorTests = (
       ).toBe(401);
       expect(
         (
-          await post(`works/${work}/drafts`, {
+          await post("me/privacy", {
             requestId: randomUUID(),
-            baseWorkVersion: 2147483648,
-            baseDraftVersion: 0,
-            content: { title: "无效", text: "", mediaIds: [] },
+            privacy: {
+              following: "public",
+              followers: "public",
+              favorites: "public",
+              likes: 2147483648,
+            },
           })
         ).status,
       ).toBe(422);
@@ -1161,7 +1166,7 @@ export const registerPhase4AuthorTests = (
         `discussion/work/${work}`,
         "me/comments",
         "me/blocks",
-        `works/${work}/drafts`,
+        "publishing/drafts",
       ])
         expect((await fetch(`${base}/v1/community/${route}`)).status).toBe(404);
       expect((await fetch(`${base}/v1/community/authors/${a}`)).status).toBe(

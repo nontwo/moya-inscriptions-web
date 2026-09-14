@@ -27,7 +27,7 @@ interface WorkRow extends QueryResultRow {
   operator_state: "visible" | "hidden" | "removed";
   deleted_at: Date | null;
   version: number;
-  first_published_at: Date;
+  first_published_at: Date | null;
 }
 const workProjection = `SELECT w.*,u.display_name,u.status AS author_status FROM community.works w JOIN community.public_users u ON u.id=w.author_id`;
 const workDto = (w: WorkRow): OperatorWork =>
@@ -41,7 +41,7 @@ const workDto = (w: WorkRow): OperatorWork =>
     state: w.operator_state,
     authorDeleted: w.deleted_at !== null,
     version: w.version,
-    firstPublishedAt: w.first_published_at.toISOString(),
+    firstPublishedAt: w.first_published_at?.toISOString() ?? null,
   });
 export class PostgresCommunityContentOperatorAdapter implements CommunityContentOperatorPort {
   constructor(private readonly pool: Pool) {}
@@ -120,16 +120,23 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       ).rows[0]?.title ?? null
     );
   }
+  /**
+   * Works newest first by first publication, else first submission. Search
+   * covers the public text and, for a pending or never-public work, the text
+   * of the author's current revision when it requested public visibility
+   * (content operators already see in the submission queue); self-only
+   * content stays unsearchable.
+   */
   async readWorks(query: OperatorContentQuery): Promise<OperatorWorkPage> {
     return this.transaction(async (db) => {
-      const where =
-        " WHERE ($1='' OR position(lower($1) in lower(w.id||' '||w.title||' '||w.text||' '||u.display_name||' '||u.handle))>0)";
+      const where = ` LEFT JOIN community.work_revisions ar ON ar.id=w.author_revision_id AND ar.requested_visibility='public'
+        WHERE ($1='' OR position(lower($1) in lower(w.id||' '||w.title||' '||w.text||' '||COALESCE(ar.title,'')||' '||COALESCE(ar.body,'')||' '||u.display_name||' '||u.handle))>0)`;
       const total = await db.query(
         `SELECT COUNT(*)::integer AS total FROM community.works w JOIN community.public_users u ON u.id=w.author_id${where}`,
         [query.search],
       );
       const rows = await db.query<WorkRow>(
-        `${workProjection}${where} ORDER BY w.first_published_at DESC,w.id LIMIT $2 OFFSET $3`,
+        `${workProjection}${where} ORDER BY COALESCE(w.first_published_at,w.first_submitted_at,w.updated_at) DESC,w.id LIMIT $2 OFFSET $3`,
         [query.search, query.pageSize, (query.page - 1) * query.pageSize],
       );
       return operatorWorkPageSchema.parse({
@@ -183,7 +190,7 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
         ])
       ).rows[0].total;
       const rows = await db.query(
-        `SELECT f.*,COALESCE(c.title,w.title) AS title,CASE WHEN f.content_type='catalog' THEN c.catalog_id IS NOT NULL ELSE w.id IS NOT NULL AND w.deleted_at IS NULL AND w.operator_state='visible' AND u.status='active' END AS eligible ${from}${where} ORDER BY f.position,f.content_type,f.content_id LIMIT $2 OFFSET $3`,
+        `SELECT f.*,COALESCE(c.title,w.title) AS title,CASE WHEN f.content_type='catalog' THEN c.catalog_id IS NOT NULL ELSE w.id IS NOT NULL AND community.work_is_public(w) AND u.status='active' END AS eligible ${from}${where} ORDER BY f.position,f.content_type,f.content_id LIMIT $2 OFFSET $3`,
         [query.search, query.pageSize, (query.page - 1) * query.pageSize],
       );
       const settings = (
@@ -239,6 +246,22 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
           );
           if (!exists.rows.length) throw new CommunityNotFoundError();
         }
+        // Featuring is a public exposure: a work that is not effectively
+        // public (self-only, pending first submission, trashed, hidden,
+        // removed or by an inactive author) cannot be enabled.
+        if (
+          input.target.type === "work" &&
+          input.enabled &&
+          (
+            await db.query(
+              "SELECT 1 FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND community.work_is_public(w) AND u.status='active' FOR SHARE OF w",
+              [input.target.id],
+            )
+          ).rowCount !== 1
+        )
+          throw new CommunityConflictError(
+            "Only a public work can be featured",
+          );
         const updated = await db.query(
           "INSERT INTO community.featured_content(content_type,content_id,enabled,position) VALUES($1,$2,$3,$4) ON CONFLICT(content_type,content_id) DO UPDATE SET enabled=EXCLUDED.enabled,position=EXCLUDED.position,version=community.featured_content.version+1 RETURNING version",
           [input.target.type, input.target.id, input.enabled, input.position],

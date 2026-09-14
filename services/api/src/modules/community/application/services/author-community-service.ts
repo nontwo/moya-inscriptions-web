@@ -42,8 +42,8 @@ export class AuthorCommunityService {
     return items.map((item) => {
       const m = item.media;
       if (!m) return { ...item, media: null };
-      const src =
-        m.type === "work" ? `/api/community/media/${m.id}` : urls?.get(m.id);
+      // Work cards carry the path the adapter resolved for the viewer's revision.
+      const src = m.type === "work" ? m.src : urls?.get(m.id);
       if (!src) throw new CommunityNotFoundError("Media unavailable");
       return {
         ...item,

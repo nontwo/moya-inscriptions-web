@@ -95,6 +95,14 @@ export class PostgresDiscussionStore implements DiscussionPort {
       db.release();
     }
   }
+  /**
+   * Work discussions follow effective work visibility (community.work_is_public
+   * with an active, unblocked author). Reads (`lock` false) also admit the
+   * work's author on their own self-only or pending work outside the recycle
+   * bin that no operator hid or removed; writes and likes
+   * (`lock` true) never happen on a work others cannot see. Comment rows are
+   * never rewritten by visibility changes.
+   */
   private async workAllowed(
     db: PoolClient,
     target: ContentIdentity,
@@ -103,7 +111,8 @@ export class PostgresDiscussionStore implements DiscussionPort {
   ): Promise<void> {
     if (target.type !== "work") return;
     const r = await db.query(
-      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND w.deleted_at IS NULL AND w.operator_state='visible' AND u.status='active' AND community.accounts_can_interact($2,w.author_id)${lock ? " FOR SHARE OF w" : ""}`,
+      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND u.status='active' AND community.accounts_can_interact($2,w.author_id)
+      AND (community.work_is_public(w)${lock ? "" : " OR (w.author_id=$2 AND w.deleted_at IS NULL AND w.trashed_at IS NULL AND w.operator_state='visible')"})${lock ? " FOR SHARE OF w" : ""}`,
       [target.id, viewer],
     );
     if (r.rowCount !== 1) throw new CommunityNotFoundError();

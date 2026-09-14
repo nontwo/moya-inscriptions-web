@@ -10,9 +10,6 @@ import type {
   ProfileUpdate,
   RelationshipUpdate,
   UserWork,
-  WorkDraftApply,
-  WorkDraftSave,
-  WorkEditDraft,
 } from "@moya/contracts";
 
 export interface AuthorPage<T> {
@@ -26,16 +23,6 @@ export interface AuthorListItem {
   readonly handle: string;
   readonly displayName: string;
   readonly avatar: AuthorMedia | null;
-}
-export interface WorkDraftResult {
-  readonly draft: WorkEditDraft;
-  readonly conflict: boolean;
-  readonly latestVersion: number;
-}
-export interface WorkApplyResult {
-  readonly applied: boolean;
-  readonly conflict: boolean;
-  readonly workVersion: number;
 }
 export interface OwnedMediaInput {
   readonly requestId?: string;
@@ -83,28 +70,6 @@ export interface AuthorCommunityPort {
     viewerId: string | null,
     query: AuthorListQuery,
   ): Promise<AuthorPage<UserWork>>;
-  deleteWork(actorId: string, id: string, requestId: string): Promise<void>;
-  saveDraft(
-    actorId: string,
-    workId: string,
-    input: WorkDraftSave,
-  ): Promise<WorkDraftResult>;
-  listDrafts(
-    actorId: string,
-    workId: string,
-    query: AuthorListQuery,
-  ): Promise<AuthorPage<WorkEditDraft> & { readonly currentVersion: number }>;
-  applyDraft(
-    actorId: string,
-    workId: string,
-    input: WorkDraftApply,
-  ): Promise<WorkApplyResult>;
-  discardDraft(
-    actorId: string,
-    workId: string,
-    draftId: string,
-    requestId: string,
-  ): Promise<void>;
   changeRelation(
     actorId: string,
     relation: "favorite" | "like",

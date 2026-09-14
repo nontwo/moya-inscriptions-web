@@ -37,7 +37,7 @@ describe("community migration family", () => {
         checksum,
       })),
     ).toEqual(requiredCommunityMigrations);
-    // Append-only: Phase 4 plus the three work-publishing-v1 forward files.
+    // Append-only: Phase 4 plus the four work-publishing-v1 forward files.
     expect(requiredCommunityMigrations.map(({ filename }) => filename)).toEqual(
       [
         "20260912030000_community_identity_sessions.sql",
@@ -51,6 +51,7 @@ describe("community migration family", () => {
         "20260914090000_work_publishing_storage.sql",
         "20260914091000_work_publishing_revisions.sql",
         "20260914092000_work_publishing_legacy_backfill.sql",
+        "20260914093000_work_publishing_legacy_bridge.sql",
       ],
     );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);
