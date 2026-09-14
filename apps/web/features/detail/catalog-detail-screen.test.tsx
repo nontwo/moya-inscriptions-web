@@ -239,4 +239,179 @@ describe("CatalogDetailScreen", () => {
       /简介|释文|历史背景|学术研究|transcription|Viewer|Gallery/u,
     );
   });
+  it("marks a real content update as 已编辑 beside the first publication time", () => {
+    const work = (overrides: Record<string, unknown>) =>
+      renderState({
+        detail: {
+          aliases: [],
+          authorId: `user-${"a".repeat(32)}`,
+          authorName: "临帖人",
+          available: true,
+          canEdit: true,
+          contentType: "work",
+          facts: [],
+          id: `work-${"b".repeat(32)}`,
+          media: [],
+          sections: [],
+          source: "runtime",
+          sourceCitations: [],
+          title: "春日临帖",
+          firstPublishedAt: "2026-09-10T08:00:00.000Z",
+          editedAt: null,
+          ...overrides,
+        },
+        state: "loaded",
+      });
+
+    const edited = work({ editedAt: "2026-09-12T08:00:00.000Z" });
+    const publication = edited.slice(
+      edited.indexOf("data-detail-publication"),
+      edited.indexOf("</p>", edited.indexOf("data-detail-publication")),
+    );
+    expect(publication).toContain('dateTime="2026-09-10T08:00:00.000Z"');
+    expect(publication).toContain("2026年9月");
+    expect(publication).toContain("已编辑");
+
+    const unedited = work({});
+    expect(unedited).toContain("data-detail-publication");
+    expect(unedited).not.toContain("已编辑");
+
+    // Never publicly exposed: no time and no pending wording.
+    const notYetPublic = work({
+      firstPublishedAt: null,
+      editedAt: null,
+      visibility: "self",
+    });
+    expect(notYetPublic).not.toContain("data-detail-publication");
+    expect(notYetPublic).not.toMatch(/审核|待发布|未发布|不可用/u);
+  });
+
+  it("names an untitled work only for assistive technology", () => {
+    const markup = renderState({
+      detail: {
+        aliases: [],
+        authorId: `user-${"a".repeat(32)}`,
+        authorName: "临帖人",
+        available: true,
+        canEdit: false,
+        contentType: "work",
+        facts: [],
+        id: `work-${"c".repeat(32)}`,
+        media: [],
+        sections: [{ key: "description", title: "正文", text: "只有正文" }],
+        source: "runtime",
+        sourceCitations: [],
+        title: "",
+      },
+      state: "loaded",
+    });
+    // No visible title is invented; heading navigation still finds the work.
+    expect(markup).not.toContain("data-detail-title");
+    expect(markup).toMatch(
+      /<h1 class="[^"]*visuallyHidden[^"]*" data-detail-untitled="">未命名作品<\/h1>/u,
+    );
+    expect(markup).toContain("临帖人");
+    expect(markup).toContain("只有正文");
+  });
+
+  it("presents a text-only work without a missing-image block in every composition", () => {
+    const state = {
+      detail: {
+        aliases: [],
+        authorId: `user-${"a".repeat(32)}`,
+        authorName: "临帖人",
+        available: true,
+        canEdit: false,
+        contentType: "work" as const,
+        facts: [],
+        id: `work-${"d".repeat(32)}`,
+        media: [],
+        sections: [
+          {
+            key: "description" as const,
+            title: "正文",
+            text: "只有文字的作品",
+          },
+        ],
+        source: "runtime" as const,
+        sourceCitations: [],
+        title: "文字作品",
+      },
+      state: "loaded" as const,
+    };
+    const comments = <section data-comment-section="">comments</section>;
+    for (const markup of [
+      renderState(state),
+      renderState(state, comments),
+      renderState(state, comments, "tablet", "landscape"),
+      renderState(state, comments, "pc", "landscape"),
+      renderState(state, undefined, "pc", "landscape"),
+    ]) {
+      expect(markup).not.toContain("data-detail-media-state");
+      expect(markup).not.toContain("暂无公开图像");
+      expect(markup).not.toContain("data-detail-media-carousel");
+      expect(markup).not.toContain("data-detail-paged-media");
+      expect(markup).not.toContain("data-detail-landscape-media");
+      // Without media the text is the work: never collapsed behind 详情.
+      expect(markup).not.toContain("data-detail-reading-disclosure");
+      expect(markup).toContain("只有文字的作品");
+    }
+    expect(renderState(state, comments, "pc", "landscape")).toContain(
+      "data-detail-text-only",
+    );
+  });
+
+  it("replaces media, actions and comments with a withdrawal notice", () => {
+    const markup = renderToStaticMarkup(
+      <CatalogDetailScreen
+        activeMediaIndex={0}
+        backButtonRef={createRef<HTMLButtonElement>()}
+        commentSection={<section data-comment-section="">comments</section>}
+        detailActions={<div data-test-actions="" />}
+        onActiveMediaIndexChange={vi.fn()}
+        onBack={vi.fn()}
+        onOpenViewer={vi.fn()}
+        orientation="portrait"
+        platform="phone"
+        state={{
+          detail: {
+            aliases: [],
+            authorId: `user-${"a".repeat(32)}`,
+            authorName: "临帖人",
+            available: true,
+            canEdit: true,
+            contentType: "work",
+            facts: [],
+            id: `work-${"e".repeat(32)}`,
+            media: [
+              {
+                id: `item-${"e".repeat(32)}`,
+                src: "/still.jpg",
+                alt: "作品",
+                width: 400,
+                height: 300,
+              },
+            ],
+            sections: [],
+            source: "runtime",
+            sourceCitations: [],
+            title: "春日临帖",
+          },
+          state: "loaded",
+        }}
+        withdrawn={{
+          title: "作品已移到回收站",
+          description: "保留期内可以在回收站中恢复，恢复后为仅自己可见。",
+        }}
+      />,
+    );
+    expect(markup).toContain("data-detail-withdrawn");
+    expect(markup).toContain("作品已移到回收站");
+    expect(markup).not.toContain("data-detail-media-carousel");
+    expect(markup).not.toContain("data-test-actions");
+    expect(markup).not.toContain("data-comment-section");
+    expect(markup).not.toContain("春日临帖");
+    // The way back stays.
+    expect(markup).toContain('aria-label="返回"');
+  });
 });

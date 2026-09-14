@@ -4,6 +4,8 @@ import type {
   CatalogDetail,
   CatalogKind,
   PublicSourceCitation,
+  WorkMedia,
+  WorkVisibility,
 } from "@moya/contracts";
 
 export type CatalogDetailSourceIdentity = "qa" | "runtime";
@@ -29,12 +31,20 @@ export interface CatalogDetailSourceCitationPresentation {
   readonly url?: string;
 }
 
+/** A Live Photo's motion: loaded only when the viewer explicitly plays it. */
+export interface DetailLiveMotionPresentation {
+  readonly motionSrc: string;
+  readonly hasAudio: boolean;
+}
+
 export interface DetailMediaPresentation {
   readonly id: string;
   readonly src: string;
   readonly alt: string;
   readonly width: number;
   readonly height: number;
+  /** Present only for a Live Photo; the still stays the presented image. */
+  readonly live?: DetailLiveMotionPresentation;
 }
 interface DetailPresentationBase {
   readonly aliases: readonly string[];
@@ -58,8 +68,37 @@ export type CatalogDetailPresentation = DetailPresentationBase &
         readonly authorName: string;
         readonly canEdit: boolean;
         readonly available: boolean;
+        /** Null until the first public exposure; never labelled as pending. */
+        readonly firstPublishedAt?: string | null;
+        /** Set after a real content update; shown as 已编辑 beside the first publication time. */
+        readonly editedAt?: string | null;
+        /** Author-only: the requested visibility of the author's own work. */
+        readonly visibility?: WorkVisibility;
       }
   );
+
+/**
+ * One work media item for Detail and Viewer: a Live Photo keeps its still as
+ * the image and carries its motion separately (never preloaded).
+ */
+export const toWorkMediaPresentation = (
+  media: WorkMedia,
+  alt: string,
+): DetailMediaPresentation => ({
+  id: media.id,
+  src: media.src,
+  alt,
+  width: media.width,
+  height: media.height,
+  ...(media.kind === "live" && media.motionSrc !== undefined
+    ? {
+        live: {
+          motionSrc: media.motionSrc,
+          hasAudio: media.hasAudio === true,
+        },
+      }
+    : {}),
+});
 
 export type CatalogDetailPresentationState =
   | { readonly state: "loading" }

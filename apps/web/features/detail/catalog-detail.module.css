@@ -279,6 +279,17 @@
   line-height: 1.5;
 }
 
+.publication {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--yoyi-space-3);
+  margin: 4px 0 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-metadata-size);
+  line-height: 1.5;
+}
+
 .summary {
   margin: 14px 0 0;
   line-height: 1.7;
@@ -424,6 +435,37 @@
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/* A Live Photo slide keeps the still's box; its control sits top-left. */
+.liveSlideFrame {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.viewer .viewerLiveFrame {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * The previous-page edge target leaves the Live control's top-left corner
+ * free; its arrow keeps the full-height centre so it never moves between Live
+ * and other items. The next-page edge is unchanged.
+ */
+.mainStage[data-active-live="true"] .carouselEdgePrevious {
+  top: 60px;
+  height: calc(100% - 60px);
+}
+
+.viewerStage[data-active-live="true"] .viewerEdgePrevious {
+  top: 60px;
+}
+
+.viewerStage[data-active-live="true"] .viewerEdgePrevious::after {
+  top: calc(50% - 30px);
 }
 
 .viewer {
@@ -756,6 +798,108 @@
   right: 0;
 }
 
+/* The author's own work controls, under the identity like the content actions. */
+.workManagement {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-3);
+  margin-block: var(--yoyi-space-3);
+}
+
+.workManagementRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+}
+
+.workManagement button {
+  min-height: 44px;
+  padding: var(--yoyi-space-3) var(--yoyi-space-5);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  font-size: var(--yoyi-type-button-size);
+  cursor: pointer;
+}
+
+/* Busy controls stay focusable (aria-disabled), so the focus is never lost. */
+.workManagement button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.workManagement button:focus-visible,
+.workManagementStatus:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.visibilitySwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--yoyi-space-1);
+  padding: var(--yoyi-space-1) var(--yoyi-space-1) var(--yoyi-space-1)
+    var(--yoyi-space-4);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+}
+
+.workManagementLabel {
+  margin-inline-end: var(--yoyi-space-2);
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-label-size);
+}
+
+.visibilitySwitch button {
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border-color: transparent;
+}
+
+.visibilitySwitch button[aria-pressed="true"] {
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-muted);
+  border-color: var(--yoyi-color-border-default);
+  font-weight: 650;
+}
+
+.workManagementStatus {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.5;
+}
+
+/* Hidden only visually while empty: the polite status must stay rendered. */
+.workManagementStatus:empty,
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.workManagementNote {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.5;
+}
+
+.workManagementStatus[data-tone="error"] {
+  color: var(--yoyi-color-error);
+}
+
 .readingFlow {
   display: grid;
   width: min(100%, 820px);
@@ -812,6 +956,12 @@
 
 .message h1 {
   margin: 0 0 12px;
+}
+
+.message[data-detail-withdrawn]:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 16px;
 }
 
 .message p {
@@ -929,9 +1079,30 @@
   font-size: 28px;
 }
 
+/*
+ * A text-only work has no media column: identity, actions and the full text
+ * read in one centred column, and the identity card does not stick over it.
+ */
+.detail[data-detail-composition] .hero[data-detail-text-only],
+.detail[data-detail-composition] .landscapeStage[data-detail-text-only] {
+  width: min(100%, 820px);
+  margin-inline: auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.detail[data-detail-composition] [data-detail-text-only] .identityPanel {
+  position: static;
+}
+
 @media (min-width: 1100px) {
   .carousel[data-platform="pc"] .carouselEdge {
     display: block;
+  }
+
+  .carousel[data-platform="pc"]
+    .mainStage[data-active-live="true"]
+    .carouselEdgePrevious::after {
+    top: calc(50% - 30px);
   }
 
   .carousel[data-platform="pc"] .carouselEdge::after {

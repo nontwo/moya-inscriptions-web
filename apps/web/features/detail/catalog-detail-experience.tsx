@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { CatalogDetailScreen } from "./catalog-detail-screen";
+import { CatalogDetailWithdrawalContext } from "./catalog-detail-withdrawal";
 import { CatalogViewer } from "./catalog-viewer";
 import styles from "./catalog-detail.module.css";
 
@@ -21,6 +22,7 @@ import type {
   WheelEvent as ReactWheelEvent,
 } from "react";
 import type { CatalogDetailPresentationState } from "./catalog-detail-presentation";
+import type { CatalogDetailWithdrawalNotice } from "./catalog-detail-withdrawal";
 import type { PresentationPlatform } from "../shell/device-platform";
 
 export interface CatalogDetailExperienceProps {
@@ -84,7 +86,22 @@ export const CatalogDetailExperience = ({
   const viewerWasOpenRef = useRef(false);
   const viewerOpenSuppressedUntilRef = useRef(0);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const media = state.state === "loaded" ? state.detail.media : [];
+  const [withdrawal, setWithdrawal] = useState<{
+    readonly id: string;
+    readonly notice: CatalogDetailWithdrawalNotice;
+  } | null>(null);
+  const withdraw = useCallback(
+    (id: string, notice: CatalogDetailWithdrawalNotice) =>
+      setWithdrawal({ id, notice }),
+    [],
+  );
+  const withdrawn =
+    state.state === "loaded" && withdrawal?.id === state.detail.id
+      ? withdrawal.notice
+      : null;
+  // A withdrawn Detail offers no media: the Viewer closes and nothing plays.
+  const media =
+    state.state === "loaded" && withdrawn === null ? state.detail.media : [];
   const requestedViewerIndex =
     activeViewerMediaId === null
       ? -1
@@ -181,7 +198,26 @@ export const CatalogDetailExperience = ({
 
   useEffect(() => {
     setActiveMediaIndex(0);
+    setWithdrawal(null);
   }, [catalogId]);
+
+  // The notice replaces the content in place: read from the top, focused.
+  useEffect(() => {
+    if (withdrawn === null) return;
+    const scroller = scrollRef.current;
+    if (scroller !== null) {
+      desiredScrollTopRef.current = 0;
+      scroller.scrollTop = 0;
+      onScrollTopChange(0);
+    }
+    const frame = window.requestAnimationFrame(() => {
+      scrollRef.current
+        ?.querySelector<HTMLElement>("[data-detail-withdrawn]")
+        ?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // Only a new notice moves the focus and the scroll.
+  }, [withdrawn]);
 
   useEffect(() => {
     if (activeViewerMediaId === null || state.state === "loading") return;
@@ -291,34 +327,38 @@ export const CatalogDetailExperience = ({
         onWheel={handleWheel}
         ref={scrollRef}
       >
-        <CatalogDetailScreen
-          activeMediaIndex={activeMediaIndex}
-          backButtonRef={backButtonRef}
-          commentSection={commentSection}
-          detailActions={detailActions}
-          onActiveMediaIndexChange={setActiveMediaIndex}
-          onBack={onBack}
-          onOpenViewer={(index, opener) => {
-            const item = media[index];
-            if (
-              item === undefined ||
-              performance.now() < viewerOpenSuppressedUntilRef.current
-            ) {
-              return;
-            }
-            const scroller = scrollRef.current;
-            if (scroller !== null) {
-              desiredScrollTopRef.current = scroller.scrollTop;
-              onScrollTopChange(scroller.scrollTop);
-            }
-            viewerOpenerRef.current = opener;
-            setActiveMediaIndex(index);
-            onOpenViewer(item.id);
-          }}
-          orientation={orientation}
-          platform={platform}
-          state={state}
-        />
+        <CatalogDetailWithdrawalContext.Provider value={withdraw}>
+          <CatalogDetailScreen
+            activeMediaIndex={activeMediaIndex}
+            backButtonRef={backButtonRef}
+            commentSection={commentSection}
+            detailActions={detailActions}
+            mediaMotionSuspended={viewerOpen}
+            onActiveMediaIndexChange={setActiveMediaIndex}
+            onBack={onBack}
+            onOpenViewer={(index, opener) => {
+              const item = media[index];
+              if (
+                item === undefined ||
+                performance.now() < viewerOpenSuppressedUntilRef.current
+              ) {
+                return;
+              }
+              const scroller = scrollRef.current;
+              if (scroller !== null) {
+                desiredScrollTopRef.current = scroller.scrollTop;
+                onScrollTopChange(scroller.scrollTop);
+              }
+              viewerOpenerRef.current = opener;
+              setActiveMediaIndex(index);
+              onOpenViewer(item.id);
+            }}
+            orientation={orientation}
+            platform={platform}
+            state={state}
+            withdrawn={withdrawn}
+          />
+        </CatalogDetailWithdrawalContext.Provider>
       </div>
       <CatalogViewer
         index={activeMediaIndex}

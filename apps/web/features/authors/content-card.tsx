@@ -7,6 +7,18 @@ import { QuickActionCardAction } from "../quick-actions/quick-action-card-action
 import { useProductShell } from "../product-shell/product-shell";
 import { useContentActions } from "./content-actions";
 import styles from "../home/home-screen.module.css";
+
+/**
+ * The UI-only name of an untitled work where a label is required (action
+ * labels, share text); the stored title stays empty (C07).
+ */
+export const UNTITLED_WORK_LABEL = "未命名作品";
+
+export const contentLabel = (item: Pick<Card, "target" | "title">) =>
+  item.target.type === "work" && item.title === ""
+    ? UNTITLED_WORK_LABEL
+    : item.title;
+
 export const ContentCard = ({
   item,
   onMediaSettled,
@@ -16,12 +28,22 @@ export const ContentCard = ({
   onMediaSettled?: () => void;
   variant?: CatalogCardVariant;
 }) => {
+  const label = contentLabel(item);
   const shell = useProductShell(),
-    actions = useContentActions(item.target, item.title);
+    actions = useContentActions(item.target, label);
+  const excerpt = item.excerpt?.trim() ?? "";
+  // A work without media is its text: no placeholder cover is invented (C07).
+  const textOnly =
+    item.target.type === "work" &&
+    item.media === null &&
+    (item.title !== "" || excerpt !== "");
+  const metadata = variant === "inscription" && item.kind === "inscription";
   return (
     <div>
       <article
         className={`${styles.card} ${variant === "inscription" ? styles.inscriptionCard : styles.feedCard}`}
+        data-card-live={item.live === true && item.media ? "" : undefined}
+        data-card-text-only={textOnly ? "" : undefined}
         data-catalog-card-variant={variant}
         data-catalog-id={
           item.target.type === "catalog" ? item.target.id : undefined
@@ -30,39 +52,62 @@ export const ContentCard = ({
         data-content-id={item.target.id}
         role={variant === "feed" ? "listitem" : undefined}
       >
-        <CatalogCardMedia
-          media={
-            item.media
-              ? {
-                  ...item.media,
-                  src:
-                    item.target.type === "catalog"
-                      ? localCatalogMediaSrc(
-                          item.media.src,
-                          item.target.id,
-                          item.media.id,
-                        )
-                      : item.media.src,
-                  alt: item.title,
-                }
-              : undefined
-          }
-          title={item.title}
-          variant={variant}
-          {...(onMediaSettled ? { onMediaSettled } : {})}
-        />
-        <div className={styles.cardBody}>
-          <h3 className={styles.cardTitle}>{item.title}</h3>
-          {variant === "inscription" && item.kind === "inscription" && (
-            <p className={styles.cardMetadata}>碑刻</p>
-          )}
-        </div>
+        {textOnly ? (
+          <div className={styles.cardText} data-card-text="">
+            {item.title === "" ? null : (
+              <h3 className={styles.cardTitle}>{item.title}</h3>
+            )}
+            {excerpt === "" ? null : (
+              <p className={styles.cardExcerpt} data-card-excerpt="">
+                {excerpt}
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            <CatalogCardMedia
+              live={item.live === true}
+              media={
+                item.media
+                  ? {
+                      ...item.media,
+                      src:
+                        item.target.type === "catalog"
+                          ? localCatalogMediaSrc(
+                              item.media.src,
+                              item.target.id,
+                              item.media.id,
+                            )
+                          : item.media.src,
+                      alt: label,
+                    }
+                  : undefined
+              }
+              title={label}
+              variant={variant}
+              {...(onMediaSettled ? { onMediaSettled } : {})}
+            />
+            {/* A media-only work omits its empty title rather than inventing one. */}
+            {item.title === "" && excerpt === "" && !metadata ? null : (
+              <div className={styles.cardBody}>
+                {item.title !== "" ? (
+                  <h3 className={styles.cardTitle}>{item.title}</h3>
+                ) : excerpt === "" ? null : (
+                  <p className={styles.cardSummary} data-card-excerpt="">
+                    {excerpt}
+                  </p>
+                )}
+                {metadata && <p className={styles.cardMetadata}>碑刻</p>}
+              </div>
+            )}
+          </>
+        )}
         <QuickActionCardAction
           className={styles.cardAction}
           content={{
             kind: item.target.type,
             id: item.target.id,
-            title: item.title,
+            title: label,
           }}
           environment={actions.environment}
           onActivate={(opener) => shell.openContent(item.target, opener)}
