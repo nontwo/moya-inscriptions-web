@@ -18,10 +18,13 @@ import type {
   PublishingDraftDeletionResult,
   PublishingDraftPage,
   PublishingDraftSaveResult,
+  PublishingHolder,
   PublishingLimits,
   PublishingMediaItem,
   PublishingOpenedEditDraft,
   PublishingPageQuery,
+  PublishingReadiness,
+  PublishingReadinessCommand,
   PublishingSession,
   PublishingSnapshotPage,
   PublishingUploadResult,
@@ -47,6 +50,7 @@ import type {
 } from "../ports/publishing-media-store-port.js";
 import type {
   PublishingCommandIdentity,
+  PublishingEditReadiness,
   PublishingMediaReadTarget,
   PublishingUploadCommit,
   PublishingUploadFence,
@@ -100,6 +104,44 @@ const storeFailureCode = (
   return typeof code === "string" && storeFailureCodes.has(code)
     ? (code as PublishingMediaStoreFailureCode)
     : undefined;
+};
+
+/**
+ * The author's readiness answer for one content: keys still waiting
+ * (placeholders, uploads, processing, derivations in progress), keys that
+ * cannot become ready as they are (failed items, failed derivations,
+ * cancelled, purged or foreign items) and the non-`base` thumb keys of ready
+ * items. `ready` is the port's verdict (every item `ready`).
+ */
+const mapPublishingReadiness = (
+  readiness: PublishingEditReadiness,
+): PublishingReadiness => {
+  const pendingItemKeys: string[] = [];
+  const failedItemKeys: string[] = [];
+  const editKeys: Record<string, string> = {};
+  for (const item of readiness.items) {
+    switch (item.state) {
+      case "ready":
+        if (item.editKey !== null && item.editKey !== "base")
+          editKeys[item.key] = item.editKey;
+        break;
+      case "failed":
+      case "unavailable":
+        failedItemKeys.push(item.key);
+        break;
+      default:
+        pendingItemKeys.push(item.key);
+    }
+  }
+  return {
+    ready:
+      readiness.ready &&
+      pendingItemKeys.length === 0 &&
+      failedItemKeys.length === 0,
+    pendingItemKeys,
+    failedItemKeys,
+    editKeys,
+  };
 };
 
 /** Transfer timing of component uploads. */
@@ -751,6 +793,29 @@ export class WorkPublishingService {
     return readiness.ready
       ? this.port.submit(actorId, command, this.clock())
       : first;
+  }
+
+  /**
+   * Explicit readiness of a holder's current content, so the editor can
+   * show and wait for what a submission would refuse as `not_ready`. The
+   * port verifies the holder (foreign or deleted: not found; submitted draft
+   * or ended session: conflict), starts every missing edit derivative at
+   * once (settle-delayed jobs move up to now, as a submission retry does) and
+   * reports each item; nothing else changes.
+   */
+  async readiness(
+    actorId: string,
+    holder: PublishingHolder,
+    command: PublishingReadinessCommand,
+  ): Promise<PublishingReadiness> {
+    return mapPublishingReadiness(
+      await this.port.ensureEditDerivatives(
+        actorId,
+        command.content,
+        this.clock(),
+        { holder },
+      ),
+    );
   }
 
   async readSubmissionReceipt(

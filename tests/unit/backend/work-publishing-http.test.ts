@@ -27,6 +27,7 @@ import {
   publishingLimitsSchema,
   publishingMediaItemSchema,
   publishingOpenedEditDraftSchema,
+  publishingReadinessSchema,
   publishingUploadResultSchema,
 } from "@moya/contracts/schemas";
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
@@ -2084,6 +2085,198 @@ describe("work publishing author HTTP surface", () => {
         "Invalid community input",
       );
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("answers an explicit readiness check for a draft or session holder from the port's item states", async () => {
+    const sessionId = `publishing-session-${"7".repeat(32)}`;
+    const editKey = "0123456789abcdef0123456789abcdef";
+    const readinessContent = {
+      ...content,
+      items: [
+        {
+          key: "pending",
+          itemId: null,
+          kind: "static",
+          qualityMode: "standard",
+          edit: { rotation: 0, crop: null },
+          pendingLabel: "photo",
+        },
+        {
+          key: "rotated",
+          itemId: `media-item-${"a".repeat(32)}`,
+          kind: "static",
+          qualityMode: "standard",
+          edit: { rotation: 90, crop: null },
+        },
+        {
+          key: "plain",
+          itemId: `media-item-${"b".repeat(32)}`,
+          kind: "static",
+          qualityMode: "standard",
+          edit: { rotation: 0, crop: null },
+        },
+        {
+          key: "broken",
+          itemId: `media-item-${"c".repeat(32)}`,
+          kind: "static",
+          qualityMode: "standard",
+          edit: { rotation: 0, crop: null },
+        },
+        {
+          key: "gone",
+          itemId: `media-item-${"d".repeat(32)}`,
+          kind: "static",
+          qualityMode: "standard",
+          edit: { rotation: 0, crop: null },
+        },
+      ],
+      coverKey: "rotated",
+    } as const;
+    const answers: unknown[] = [];
+    const fake = fakePort({
+      ensureEditDerivatives: () => {
+        const answer = answers.shift();
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    });
+    const { base, signIn } = await start({ port: fake.port });
+    const token = await signIn();
+    const check = (path: string, account: string | null = actor) =>
+      fetch(
+        `${base}/v1/community/publishing/${path}/readiness`,
+        json(token, { content: readinessContent }, "POST", account),
+      );
+    const itemOf = (
+      key: string,
+      state: string,
+      itemEditKey: string | null = null,
+    ) => ({
+      key,
+      itemId:
+        readinessContent.items.find((item) => item.key === key)?.itemId ?? null,
+      state,
+      editKey: itemEditKey,
+    });
+
+    // Pending: placeholders, uploads, processing and derivations still wait.
+    answers.push({
+      ready: false,
+      items: [
+        itemOf("pending", "pending"),
+        itemOf("rotated", "deriving"),
+        itemOf("plain", "uploading"),
+        itemOf("broken", "processing"),
+        itemOf("gone", "ready", "base"),
+      ],
+    });
+    const pending = await check(`drafts/${draftId}`);
+    expect(pending.status).toBe(200);
+    expect(pending.headers.get("cache-control")).toBe("private, no-store");
+    expect(publishingReadinessSchema.parse(await pending.json())).toEqual({
+      ready: false,
+      pendingItemKeys: ["pending", "rotated", "plain", "broken"],
+      failedItemKeys: [],
+      editKeys: {},
+    });
+    expect(
+      fake.named("ensureEditDerivatives").map((call) => call.args),
+    ).toEqual([[actor, readinessContent, now, { holder: { draftId } }]]);
+
+    // Ready: only edited items name their thumb key; base keys are implied.
+    answers.push({
+      ready: true,
+      items: [
+        itemOf("rotated", "ready", editKey),
+        itemOf("plain", "ready", "base"),
+      ],
+    });
+    const ready = await check(`sessions/${sessionId}`);
+    expect(publishingReadinessSchema.parse(await ready.json())).toEqual({
+      ready: true,
+      pendingItemKeys: [],
+      failedItemKeys: [],
+      editKeys: { rotated: editKey },
+    });
+    expect(fake.named("ensureEditDerivatives")[1]?.args).toEqual([
+      actor,
+      readinessContent,
+      now,
+      { holder: { sessionId } },
+    ]);
+
+    // Failed: failed items and derivations, and items that are not usable.
+    answers.push({
+      ready: false,
+      items: [
+        itemOf("rotated", "failed"),
+        itemOf("plain", "ready", "base"),
+        itemOf("gone", "unavailable"),
+      ],
+    });
+    expect(
+      publishingReadinessSchema.parse(
+        await (await check(`drafts/${draftId}`)).json(),
+      ),
+    ).toEqual({
+      ready: false,
+      pendingItemKeys: [],
+      failedItemKeys: ["rotated", "gone"],
+      editKeys: {},
+    });
+
+    // A foreign or deleted holder is unavailable; an ended one conflicts.
+    answers.push(new CommunityNotFoundError());
+    await expectApiError(
+      await check(`drafts/${draftId}`),
+      404,
+      "ITEM_NOT_FOUND",
+    );
+    answers.push(new CommunityConflictError("The session has ended"));
+    await expectApiError(
+      await check(`sessions/${sessionId}`),
+      409,
+      "CONFLICT",
+      "The session has ended",
+    );
+    expect(fake.named("ensureEditDerivatives")).toHaveLength(5);
+
+    // The account assertion, the body and the holder id are checked first.
+    await expectApiError(
+      await check(`drafts/${draftId}`, other),
+      401,
+      "UNAUTHENTICATED",
+    );
+    await expectApiError(
+      await fetch(
+        `${base}/v1/community/publishing/drafts/${draftId}/readiness`,
+        json(token, { content: readinessContent, extra: 1 }),
+      ),
+      422,
+      "INVALID_INPUT",
+    );
+    await expectApiError(
+      await fetch(
+        `${base}/v1/community/publishing/drafts/${draftId}/readiness?x=1`,
+        json(token, { content: readinessContent }),
+      ),
+      422,
+      "INVALID_INPUT",
+    );
+    await expectApiError(
+      await check("drafts/work-draft-short"),
+      404,
+      "ITEM_NOT_FOUND",
+    );
+    expect(
+      (
+        await fetch(
+          `${base}/v1/community/publishing/drafts/${draftId}/readiness`,
+          { headers: { authorization: `Bearer ${token}` } },
+        )
+      ).status,
+    ).toBe(404);
+    expect(fake.named("ensureEditDerivatives")).toHaveLength(5);
   });
 
   it("ensures derivatives only for a not_ready answer and never for a refused submission", async () => {

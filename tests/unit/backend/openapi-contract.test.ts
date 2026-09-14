@@ -67,12 +67,14 @@ const publishingMethods: Record<string, string[]> = {
   "/v1/community/publishing/drafts/{draftId}/history": ["get"],
   "/v1/community/publishing/drafts/{draftId}/restore": ["post"],
   "/v1/community/publishing/drafts/{draftId}/resolve": ["post"],
+  "/v1/community/publishing/drafts/{draftId}/readiness": ["post"],
   "/v1/community/publishing/works/{workId}/draft": ["post"],
   "/v1/community/publishing/works/{workId}/editable": ["get"],
   "/v1/community/publishing/works/{workId}/visibility": ["post"],
   "/v1/community/publishing/sessions": ["post"],
   "/v1/community/publishing/sessions/{sessionId}/heartbeat": ["post"],
   "/v1/community/publishing/sessions/{sessionId}/discard": ["post"],
+  "/v1/community/publishing/sessions/{sessionId}/readiness": ["post"],
   "/v1/community/publishing/items": ["post"],
   "/v1/community/publishing/items/{itemId}": ["get"],
   "/v1/community/publishing/items/{itemId}/cancel": ["post"],
@@ -739,6 +741,47 @@ describe("inscription-first OpenAPI 3.1.1 contract", () => {
       required: ["draft", "created"],
       properties: { created: { type: "boolean" } },
     });
+    // Readiness checks are holder commands answering the holder's readiness.
+    for (const path of [
+      "/v1/community/publishing/drafts/{draftId}/readiness",
+      "/v1/community/publishing/sessions/{sessionId}/readiness",
+    ]) {
+      const readiness = operationOf(path, "post");
+      expect(asObject(readiness.requestBody)).toEqual({
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/PublishingReadinessCommand",
+            },
+          },
+        },
+      });
+      expect(asObject(readiness.responses)["200"]).toMatchObject({
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/PublishingReadiness" },
+          },
+        },
+      });
+      expect(Object.keys(asObject(readiness.responses))).not.toContain("201");
+    }
+    expect(schemas.PublishingReadinessCommand).toMatchObject({
+      additionalProperties: false,
+      required: ["content"],
+      properties: {
+        content: { type: "object", additionalProperties: false },
+      },
+    });
+    expect(schemas.PublishingReadiness).toMatchObject({
+      additionalProperties: false,
+      required: ["ready", "pendingItemKeys", "failedItemKeys", "editKeys"],
+      properties: {
+        ready: { type: "boolean" },
+        editKeys: { type: "object" },
+      },
+    });
+
     // Authorship may be not set (null); a work read may name its card cover.
     expect(
       JSON.stringify(

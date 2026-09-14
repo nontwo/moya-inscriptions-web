@@ -2310,8 +2310,18 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       ).toEqual({
         ready: false,
         items: [
-          { key: secondItem.key, itemId: secondItem.itemId, state: "deriving" },
-          { key: firstItem.key, itemId: firstItem.itemId, state: "deriving" },
+          {
+            key: secondItem.key,
+            itemId: secondItem.itemId,
+            state: "deriving",
+            editKey: null,
+          },
+          {
+            key: firstItem.key,
+            itemId: firstItem.itemId,
+            state: "deriving",
+            editKey: null,
+          },
         ],
       });
       const rotatedKey = (

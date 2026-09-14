@@ -31,6 +31,8 @@ import {
   workSchema,
   workSubmissionCommandSchema,
   workSubmissionResultSchema,
+  publishingReadinessCommandSchema,
+  publishingReadinessSchema,
 } from "@moya/contracts/schemas";
 import {
   authorCommunityJsonSchemas,
@@ -1214,6 +1216,56 @@ describe("draft save results, summaries and submission receipts", () => {
         .success,
     ).toBe(false);
   });
+
+  it("checks a holder's readiness with the draft content and reports keys and thumb edit keys", () => {
+    const editKey = "0123456789abcdef0123456789abcdef";
+    expect(
+      publishingReadinessCommandSchema.safeParse({
+        content: content({
+          items: [
+            item("k1"),
+            item("pending", { itemId: null, pendingLabel: "photo" }),
+          ],
+        }),
+      }).success,
+    ).toBe(true);
+    expect(
+      publishingReadinessCommandSchema.safeParse({
+        content: content(),
+        requestId,
+      }).success,
+    ).toBe(false);
+    expect(publishingReadinessCommandSchema.safeParse({}).success).toBe(false);
+    const pending = {
+      ready: false,
+      pendingItemKeys: ["k1", "pending"],
+      failedItemKeys: ["k2"],
+      editKeys: { k3: editKey },
+    };
+    expect(publishingReadinessSchema.safeParse(pending).success).toBe(true);
+    expect(
+      publishingReadinessSchema.safeParse({
+        ready: true,
+        pendingItemKeys: [],
+        failedItemKeys: [],
+        editKeys: {},
+      }).success,
+    ).toBe(true);
+    for (const invalid of [
+      { ready: true },
+      { ready: true, pendingItemKeys: ["k1"] },
+      { ready: false, pendingItemKeys: [], failedItemKeys: [] },
+      { editKeys: { k3: "base" } },
+      { editKeys: { k3: "not-a-key" } },
+      { editKeys: { "bad key": editKey } },
+      { pendingItemKeys: ["bad key"] },
+      { failedItemKeys: "k2" },
+      { items: [] },
+    ])
+      expect(
+        publishingReadinessSchema.safeParse({ ...pending, ...invalid }).success,
+      ).toBe(false);
+  });
 });
 
 describe("read shapes for stored and legacy content", () => {
@@ -2046,6 +2098,17 @@ describe("work publishing JSON Schemas", () => {
       additionalProperties: false,
       required: ["requestId"],
       type: "object",
+    });
+    expect(workPublishingJsonSchemas.PublishingReadinessCommand).toMatchObject({
+      additionalProperties: false,
+      required: ["content"],
+      type: "object",
+    });
+    expect(workPublishingJsonSchemas.PublishingReadiness).toMatchObject({
+      additionalProperties: false,
+      required: ["ready", "pendingItemKeys", "failedItemKeys", "editKeys"],
+      type: "object",
+      properties: { editKeys: { type: "object" } },
     });
   });
 });

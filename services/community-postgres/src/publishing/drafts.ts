@@ -79,9 +79,10 @@ import { revisionAuthorship } from "./authorship.js";
  *
  * A primary draft has `conflict_of` NULL. A conflict copy is a draft row with
  * `conflict_of` = its primary draft, holding the device content a stale save
- * carried; it is resolved (never deleted) by `resolveConflict` and always has
- * a pinned `conflict` snapshot; a later stale save from the same device class
- * on the same base replaces that copy and its snapshot. Draft refs follow
+ * carried; it is resolved (never deleted) by `resolveConflict` and has a
+ * pinned `conflict` snapshot while unresolved or unchosen (a chosen copy's
+ * snapshot becomes a plain `saved` one); a later stale save from the same
+ * device class on the same base replaces that copy and its snapshot. Draft refs follow
  * content: items a save drops lose their ref and wait the orphan grace from
  * that moment; items registered to the draft but not yet in its content keep
  * theirs, so an autosave racing a registration never releases a transfer.
@@ -1119,12 +1120,45 @@ export const resolveConflict = async (
           copy.content,
           now,
         );
+        // The chosen device content is no longer a conflict copy: its
+        // pinned `conflict` snapshot (the copy's own, matched like a stale
+        // save finds it) becomes the unpinned `saved` snapshot of the new
+        // revision, as a Save now of this content would record, and the
+        // lineage is trimmed the same way. Only unchosen content stays a
+        // pinned conflict snapshot.
+        await db.query(
+          `UPDATE community.work_draft_snapshots
+           SET kind='saved', pinned=false, source_revision=$3, created_at=$4::timestamptz
+           WHERE id=(
+             SELECT id FROM community.work_draft_snapshots
+             WHERE draft_id=$1 AND owner_id=$2 AND kind='conflict' AND pinned
+               AND source_revision=$5 AND created_at=$6::timestamptz AND content=$7::jsonb
+             ORDER BY id LIMIT 1)`,
+          [
+            draft.id,
+            actorId,
+            current.revision,
+            nowParam(now),
+            copy.revision,
+            nowParam(copy.created_at),
+            JSON.stringify(copy.content),
+          ],
+        );
+        const settings = await selectSettings(db, "share");
+        await trimHistory(
+          db,
+          actorId,
+          lineageOf(draft),
+          settings.historyLimit,
+          now,
+        );
       }
       await db.query(
         "UPDATE community.work_drafts SET resolved_at=$2::timestamptz, updated_at=$2::timestamptz WHERE id=$1",
         [copy.id, nowParam(now)],
       );
-      // The device content keeps its pinned conflict snapshot and its refs.
+      // An unchosen device content keeps its pinned conflict snapshot; the
+      // copy's own refs go either way (the snapshot keeps its own).
       await releaseRefs(db, "draft", [copy.id], now);
       await ensureContentDerivatives(db, actorId, current.content, now, {
         settle: { itemIds: contentItemIds(draft.content) },

@@ -212,6 +212,8 @@ import {
   workSubmissionCommandSchema,
   workSubmissionReceiptSchema,
   workSubmissionResultSchema,
+  publishingReadinessCommandSchema,
+  publishingReadinessSchema,
   workVisibilityCommandSchema,
   workVisibilityResultSchema,
 } from "./schemas.js";
@@ -255,6 +257,8 @@ export const workPublishingJsonSchemas = {
   PublishingSession: toJsonSchema(publishingSessionSchema),
   WorkSubmissionCommand: toJsonSchema(workSubmissionCommandSchema),
   WorkSubmissionResult: toJsonSchema(workSubmissionResultSchema),
+  PublishingReadinessCommand: toJsonSchema(publishingReadinessCommandSchema),
+  PublishingReadiness: toJsonSchema(publishingReadinessSchema),
   WorkSubmissionReceipt: toJsonSchema(workSubmissionReceiptSchema),
   EditableWork: toJsonSchema(editableWorkSchema),
   WorkVisibilityCommand: toJsonSchema(workVisibilityCommandSchema),

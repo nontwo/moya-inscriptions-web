@@ -1244,6 +1244,49 @@ export const workSubmissionResultSchema = z.discriminatedUnion("state", [
   workSubmissionNotReadySchema,
 ]);
 
+/**
+ * Explicit readiness check of a holder's current content (`POST
+ * drafts/:draftId/readiness`, `sessions/:sessionId/readiness`): the Backend
+ * starts any missing edit derivative at once and reports which item keys
+ * still wait or failed, so the editor never claims readiness the
+ * submission would refuse as `not_ready`.
+ */
+export const publishingReadinessCommandSchema = z.strictObject({
+  content: workDraftContentSchema,
+});
+
+/**
+ * `pendingItemKeys`: placeholders, items still uploading or processing, and
+ * ready items whose edit derivatives are still being made. `failedItemKeys`:
+ * failed or unavailable items and edits whose derivation failed (remove or
+ * retry). `editKeys`: for ready items whose thumb and cover derivatives are
+ * stored under an edit key other than `base` (the cover crop included for
+ * the cover item), that key; the thumb path is `<media path>/thumb/<key>`.
+ */
+export const publishingReadinessSchema = z
+  .strictObject({
+    ready: z.boolean(),
+    pendingItemKeys: z
+      .array(workDraftItemKeySchema)
+      .max(WORK_ITEMS_HARD_MAXIMUM),
+    failedItemKeys: z
+      .array(workDraftItemKeySchema)
+      .max(WORK_ITEMS_HARD_MAXIMUM),
+    editKeys: z.record(workDraftItemKeySchema, mediaEditKeySchema),
+  })
+  .refine(
+    (readiness) =>
+      readiness.ready ===
+      (readiness.pendingItemKeys.length === 0 &&
+        readiness.failedItemKeys.length === 0),
+    { path: ["ready"], message: "ready exactly when no item waits or failed" },
+  )
+  .refine(
+    (readiness) =>
+      Object.values(readiness.editKeys).every((key) => key !== "base"),
+    { path: ["editKeys"], message: "base thumbs keep the item's own src" },
+  );
+
 /** The author's current revision prepared for editing. */
 export const editableWorkSchema = z.strictObject({
   workId: workIdSchema,
@@ -1406,6 +1449,10 @@ export type WorkSubmissionNotReady = z.infer<
   typeof workSubmissionNotReadySchema
 >;
 export type WorkSubmissionResult = z.infer<typeof workSubmissionResultSchema>;
+export type PublishingReadinessCommand = z.infer<
+  typeof publishingReadinessCommandSchema
+>;
+export type PublishingReadiness = z.infer<typeof publishingReadinessSchema>;
 export type EditableWork = z.infer<typeof editableWorkSchema>;
 export type WorkVisibilityCommand = z.infer<typeof workVisibilityCommandSchema>;
 export type WorkVisibilityResult = z.infer<typeof workVisibilityResultSchema>;

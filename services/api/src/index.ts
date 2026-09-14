@@ -179,6 +179,7 @@ export type {
   PublishingDerivedOutcome,
   PublishingDeriveEditPayload,
   PublishingDraftDeletion,
+  PublishingEditReadinessOptions,
   PublishingDraftOperations,
   PublishingEditItemState,
   PublishingEditReadiness,

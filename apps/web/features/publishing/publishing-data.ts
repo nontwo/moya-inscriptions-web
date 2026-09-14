@@ -30,7 +30,10 @@ export {
 export type {
   PublishingContentInput,
   PublishingContentIssue,
+  PublishingHolder,
   PublishingPageQueryInput,
+  PublishingReadiness,
+  PublishingReadinessCommand,
   PublishingRequestErrorCode,
   PublishingRequestIdentity,
   PublishingTextCheck,

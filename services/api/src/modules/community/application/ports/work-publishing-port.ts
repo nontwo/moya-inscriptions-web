@@ -11,6 +11,7 @@ import type {
   PublishingDraftDeletionResult,
   PublishingDraftPage,
   PublishingDraftSaveResult,
+  PublishingHolder,
   PublishingMediaItem,
   PublishingOpenedEditDraft,
   PublishingPageQuery,
@@ -244,7 +245,26 @@ export interface PublishingEditReadiness {
     readonly key: string;
     readonly itemId: string | null;
     readonly state: PublishingEditItemState;
+    /**
+     * For a `ready` item, the edit key (computed in SQL) under which its
+     * `thumb` and `cover` derivatives are recorded: the cover crop is part
+     * of it for the cover item; `base` for an unedited item. `null` in every
+     * other state.
+     */
+    readonly editKey: string | null;
   }[];
+}
+
+/** `ensureEditDerivatives` options. */
+export interface PublishingEditReadinessOptions {
+  /**
+   * The holder whose content is checked (an explicit readiness route). It
+   * is verified like an item registration: the actor's active primary draft
+   * or active unlapsed session; unknown, foreign or lapsed throws
+   * `CommunityNotFoundError`, a submitted draft or an ended session
+   * `CommunityConflictError`, and nothing is enqueued then.
+   */
+  readonly holder?: PublishingHolder;
 }
 
 /** A private derivative the media route may stream (sources are never addressable). */
@@ -543,7 +563,13 @@ export interface PublishingDraftOperations {
   /**
    * Author command. `device` makes the conflict copy's content current at
    * revision + 1; `account` keeps the current content. The copy is resolved;
-   * the unchosen content stays recoverable as a pinned `conflict` snapshot.
+   * the unchosen content stays recoverable as a pinned `conflict` snapshot
+   * (the account content gets one; the copy keeps its own). A chosen copy's
+   * snapshot stops reading as a conflict copy: it becomes an unpinned
+   * `saved` snapshot of the new revision at `now`, and the lineage is
+   * trimmed to `history_limit` like a Save now. So a pinned `conflict`
+   * snapshot always holds unchosen content, and pinned snapshots are never
+   * evicted.
    */
   resolveConflict(
     actorId: string,
@@ -691,12 +717,15 @@ export interface PublishingMediaOperations {
    * Placeholders are `pending`; items the actor does not own are
    * `unavailable`. `submit` enqueues nothing itself: the service submits
    * first and, only on a `not_ready` answer, calls this and submits again
-   * when everything is ready.
+   * when everything is ready. The explicit readiness routes call this with
+   * the `holder` option (verified first, see
+   * {@link PublishingEditReadinessOptions}).
    */
   ensureEditDerivatives(
     actorId: string,
     content: PublishingEditTarget,
     now: Date,
+    options?: PublishingEditReadinessOptions,
   ): Promise<PublishingEditReadiness>;
 }
 

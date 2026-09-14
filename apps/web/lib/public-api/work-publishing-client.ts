@@ -19,6 +19,8 @@ import {
   publishingMediaItemSchema,
   publishingOpenedEditDraftSchema,
   publishingPageQuerySchema,
+  publishingReadinessCommandSchema,
+  publishingReadinessSchema,
   publishingSessionHeartbeatCommandSchema,
   publishingSessionIdSchema,
   publishingSessionSchema,
@@ -50,9 +52,12 @@ import type {
   PublishingDraftDeletionResult,
   PublishingDraftPage,
   PublishingDraftSaveResult,
+  PublishingHolder,
   PublishingLimits,
   PublishingMediaItem,
   PublishingOpenedEditDraft,
+  PublishingReadiness,
+  PublishingReadinessCommand,
   PublishingSession,
   PublishingSnapshotPage,
   PublishingUploadResult,
@@ -106,6 +111,11 @@ export type {
   PublishingTextIssue,
   PublishingTextRule,
 } from "@moya/contracts/schemas";
+export type {
+  PublishingHolder,
+  PublishingReadiness,
+  PublishingReadinessCommand,
+};
 
 /**
  * Browser client for work publishing (work-publishing-v1 §10). JSON commands
@@ -732,6 +742,29 @@ export const publishingClient = {
       throw new PublishingRequestError(502, unconfirmedMessage, null, true);
     return parsed.data;
   },
+
+  /**
+   * Explicit readiness of the holder's current content: the Backend starts
+   * any missing edit derivative at once and answers which item keys still
+   * wait (`pendingItemKeys`) or failed (`failedItemKeys`), and for ready
+   * edited items the edit key of their thumb
+   * (`/api/community/publishing/media/<itemId>/thumb/<editKey>`). A
+   * submission is refused as `not_ready` exactly while `ready` is false, so
+   * the editor shows this instead of its own guess. Not receipted.
+   */
+  readiness: async (
+    holder: PublishingHolder,
+    content: PublishingReadinessCommand["content"],
+    signal?: AbortSignal,
+  ): Promise<PublishingReadiness> =>
+    post(
+      "draftId" in holder
+        ? `publishing/drafts/${draftSegment(holder.draftId)}/readiness`
+        : `publishing/sessions/${sessionSegment(holder.sessionId)}/readiness`,
+      publishingReadinessSchema,
+      command(publishingReadinessCommandSchema, { content }),
+      signal,
+    ),
 
   submit: async (
     cmd: WorkSubmissionCommand,

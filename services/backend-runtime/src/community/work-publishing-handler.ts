@@ -48,6 +48,9 @@ export interface WorkPublishingViewer {
  * command requires `x-author-account` equal to the session account. Rule
  * rejections answer 422 INVALID_INPUT with the failure code as the message;
  * a stale state answers 409 CONFLICT; a conflicting draft save is a 200 result.
+ * `POST drafts/:draftId/readiness` and `sessions/:sessionId/readiness` are
+ * commands too (they may enqueue derivative jobs) and answer 200 with the
+ * holder's readiness.
  */
 export const handleWorkPublishingRequest = async (
   request: IncomingMessage,
@@ -186,12 +189,21 @@ export const handleWorkPublishingRequest = async (
           (leaf === "save" ||
             leaf === "snapshot" ||
             leaf === "restore" ||
-            leaf === "resolve")
+            leaf === "resolve" ||
+            leaf === "readiness")
         ) {
           const actor = requireActor();
           const draftId = segment("draftId", id);
           const value = await body();
-          if (leaf === "save")
+          if (leaf === "readiness")
+            reply(
+              await service.readiness(
+                actor,
+                { draftId },
+                command("readiness", value),
+              ),
+            );
+          else if (leaf === "save")
             reply(
               await service.saveDraft(
                 actor,
@@ -289,6 +301,18 @@ export const handleWorkPublishingRequest = async (
               actor,
               sessionId,
               command("requestIdentity", await body()),
+            ),
+          );
+          return;
+        }
+        if (leaf === "readiness") {
+          const actor = requireActor();
+          const sessionId = segment("sessionId", id);
+          reply(
+            await service.readiness(
+              actor,
+              { sessionId },
+              command("readiness", await body()),
             ),
           );
           return;

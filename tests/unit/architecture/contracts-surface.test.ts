@@ -127,6 +127,8 @@ describe("contracts package surface", () => {
       "PublishingMediaSources",
       "PublishingOpenedEditDraft",
       "PublishingPageQuery",
+      "PublishingReadiness",
+      "PublishingReadinessCommand",
       "PublishingSession",
       "PublishingSessionState",
       "PublishingSnapshot",

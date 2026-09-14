@@ -543,6 +543,55 @@ describe("work publishing client", () => {
     ).toBe(401);
   });
 
+  it("checks readiness for a draft or session holder and parses the answer", async () => {
+    const editKey = "0123456789abcdef0123456789abcdef";
+    const readiness = {
+      ready: false,
+      pendingItemKeys: ["item-1"],
+      failedItemKeys: [],
+      editKeys: { "item-2": editKey },
+    };
+    answer(readiness);
+    await expect(
+      publishingClient.readiness({ draftId }, content),
+    ).resolves.toEqual(readiness);
+    const [draftTarget, draftInit] = upstream.mock.calls[0]!;
+    expect(draftTarget).toBe(
+      `/api/community/publishing/drafts/${draftId}/readiness`,
+    );
+    expect(draftInit?.method).toBe("POST");
+    expect(JSON.parse(String(draftInit?.body))).toEqual({ content });
+    expect(new Headers(draftInit?.headers).get("x-author-account")).toBe(
+      account,
+    );
+
+    answer({ ...readiness, ready: true, pendingItemKeys: [] });
+    await expect(
+      publishingClient.readiness({ sessionId }, content),
+    ).resolves.toEqual({ ...readiness, ready: true, pendingItemKeys: [] });
+    expect(upstream.mock.calls[1]![0]).toBe(
+      `/api/community/publishing/sessions/${sessionId}/readiness`,
+    );
+
+    // A contradictory answer breaks the contract and is never handed over.
+    answer({ ...readiness, ready: true });
+    expect(
+      (await refused(publishingClient.readiness({ draftId }, content))).status,
+    ).toBe(502);
+    // Invalid content never leaves the browser.
+    expect(
+      (
+        await refused(
+          publishingClient.readiness(
+            { draftId },
+            { ...content, coverKey: "missing" },
+          ),
+        )
+      ).status,
+    ).toBe(422);
+    expect(upstream).toHaveBeenCalledTimes(3);
+  });
+
   it("parses both submission outcomes", async () => {
     const command = {
       requestId,
@@ -839,6 +888,8 @@ describe("work publishing client", () => {
       }),
     () => publishingClient.submissionReceipt("not-a-request"),
     () => publishingClient.heartbeatSession(draftId),
+    () => publishingClient.readiness({ draftId: sessionId }, content),
+    () => publishingClient.readiness({ sessionId: "../x" }, content),
   ])("never builds a path from an invalid id (%#)", async (call) => {
     const error = await refused(Promise.resolve().then(call));
     expect(error.status).toBe(404);

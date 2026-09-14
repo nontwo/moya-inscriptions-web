@@ -534,7 +534,7 @@ authorCommunityPaths["/v1/community/media/{mediaId}"] = {
 };
 
 const publishingDescription =
-  "Work publishing, Development only; absent in Production. Requires the session credential; responses are private, no-store with Vary: Authorization. Commands require x-author-account equal to the session account and accept no query; list reads accept only page and pageSize, and other reads accept no query. A rule rejection answers INVALID_INPUT whose message is the rule code; a stale state answers CONFLICT; a conflicting draft save answers 200 with status conflict and keeps both versions. RequestIdentity commands are replay-safe for their actor.";
+  "Work publishing, Development only; absent in Production. Requires the session credential; responses are private, no-store with Vary: Authorization. Commands require x-author-account equal to the session account and accept no query; list reads accept only page and pageSize, and other reads accept no query. A rule rejection answers INVALID_INPUT whose message is the rule code; a stale state answers CONFLICT; a conflicting draft save answers 200 with status conflict and keeps both versions. RequestIdentity commands are replay-safe for their actor. A readiness check names the holder's current content: the Backend starts any missing edit derivative at once and answers which item keys still wait or failed, plus the thumb edit key of ready edited items; it has no other effect and is not receipted.";
 const publishingFailures = {
   "401": failure("A valid session is required"),
   "404": failure(
@@ -671,6 +671,14 @@ const publishingRoutes: readonly [
     "ResolvePublishingConflictCommand",
   ],
   [
+    "/v1/community/publishing/drafts/{draftId}/readiness",
+    "post",
+    "checkPublishingDraftReadiness",
+    "PublishingReadiness",
+    "PublishingReadinessCommand",
+    { conflict: "The draft is no longer active (already submitted)" },
+  ],
+  [
     "/v1/community/publishing/works/{workId}/draft",
     "post",
     "openWorkEditDraft",
@@ -712,6 +720,14 @@ const publishingRoutes: readonly [
     "discardPublishingSession",
     "DiscardedResult",
     "RequestIdentity",
+  ],
+  [
+    "/v1/community/publishing/sessions/{sessionId}/readiness",
+    "post",
+    "checkPublishingSessionReadiness",
+    "PublishingReadiness",
+    "PublishingReadinessCommand",
+    { conflict: "The session has ended (discarded or submitted)" },
   ],
   [
     "/v1/community/publishing/items",

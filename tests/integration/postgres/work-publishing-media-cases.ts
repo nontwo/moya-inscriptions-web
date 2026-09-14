@@ -816,6 +816,9 @@ export const registerWorkPublishingMediaTests = (
         conflict: null,
         deviceClass: "phone",
       });
+      // The chosen device content is the draft's saved content now (its
+      // former conflict snapshot, re-kinded at the new revision); only the
+      // unchosen account content remains a pinned conflict copy.
       const kept = await adapter.listHistory(a, draft.id, {
         page: 1,
         pageSize: 20,
@@ -824,12 +827,28 @@ export const registerWorkPublishingMediaTests = (
         kept.items.map((snapshot) => [
           snapshot.kind,
           snapshot.pinned,
+          snapshot.sourceRevision,
+          snapshot.createdAt,
           snapshot.content.body,
         ]),
       ).toEqual([
-        ["conflict", true, "第三版"],
-        ["conflict", true, "手机版本"],
+        ["saved", false, 4, at(6 * minute).toISOString(), "手机版本"],
+        [
+          "conflict",
+          true,
+          3,
+          new Date(at(6 * minute).getTime() - 1).toISOString(),
+          "第三版",
+        ],
       ]);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int AS n FROM community.work_draft_snapshots WHERE owner_id=$1 AND kind='conflict'",
+            [a],
+          )
+        ).rows[0],
+      ).toEqual({ n: 1 });
       await expect(
         adapter.resolveConflict(
           a,
@@ -1719,17 +1738,19 @@ export const registerWorkPublishingMediaTests = (
       ).toEqual({
         ready: false,
         items: [
-          { key: live.id, itemId: live.id, state: "deriving" },
-          { key: still.id, itemId: still.id, state: "failed" },
+          { key: live.id, itemId: live.id, state: "deriving", editKey: null },
+          { key: still.id, itemId: still.id, state: "failed", editKey: null },
           {
             key: expect.stringMatching(/^pending-/u),
             itemId: null,
             state: "pending",
+            editKey: null,
           },
           {
             key: "foreign",
             itemId: expect.stringMatching(/^media-item-/u),
             state: "unavailable",
+            editKey: null,
           },
         ],
       });
@@ -1812,7 +1833,10 @@ export const registerWorkPublishingMediaTests = (
         ),
       ).toEqual({
         ready: true,
-        items: [{ key: live.id, itemId: live.id, state: "ready" }],
+        // The cover item's thumb key carries its cover crop.
+        items: [
+          { key: live.id, itemId: live.id, state: "ready", editKey: coverKey },
+        ],
       });
       const page = await adapter.listDrafts(a, { page: 1, pageSize: 20 });
       expect(page.items[0]).toMatchObject({
@@ -3322,7 +3346,14 @@ export const registerWorkPublishingMediaTests = (
       );
       expect(readiness).toEqual({
         ready: false,
-        items: [{ key: legacy.key, itemId: legacy.itemId, state: "deriving" }],
+        items: [
+          {
+            key: legacy.key,
+            itemId: legacy.itemId,
+            state: "deriving",
+            editKey: null,
+          },
+        ],
       });
       const [job] = await jobsFor(legacy.itemId);
       expect(job?.run_after).toEqual(at(2 * second));
@@ -3350,9 +3381,17 @@ export const registerWorkPublishingMediaTests = (
         ),
       ).toEqual({
         ready: true,
-        items: [{ key: legacy.key, itemId: legacy.itemId, state: "ready" }],
+        items: [
+          {
+            key: legacy.key,
+            itemId: legacy.itemId,
+            state: "ready",
+            editKey: key,
+          },
+        ],
       });
-      // The unedited legacy form needs nothing derived.
+      // The unedited legacy form needs nothing derived (its thumb is the
+      // user media PNG, reported as the base key).
       expect(
         await adapter.ensureEditDerivatives(
           a,
@@ -3361,9 +3400,198 @@ export const registerWorkPublishingMediaTests = (
         ),
       ).toEqual({
         ready: true,
-        items: [{ key: legacy.key, itemId: legacy.itemId, state: "ready" }],
+        items: [
+          {
+            key: legacy.key,
+            itemId: legacy.itemId,
+            state: "ready",
+            editKey: "base",
+          },
+        ],
       });
       expect((await capacity(a)).committedBytes).toBe(4000);
+    });
+
+    it("checks readiness for a named holder like a registration and names the thumb edit key of ready edited items", async () => {
+      const draft = await newDraft(a);
+      const item = await adapter.registerItem(
+        a,
+        staticCommand({ draftId: draft.id }),
+        t0,
+      );
+      await uploadAll(a, item);
+      await adapter.markItemReady(item.id, processedOutcome(item), t0);
+      const cropped: MediaCrop = { x: 0.1, y: 0.2, width: 0.5, height: 0.5 };
+      const placeholder = entry(null);
+      const content: WorkDraftContent = {
+        ...text("就绪", [entry(item, { rotation: 90 }), placeholder]),
+        coverKey: item.id,
+        coverCrop: cropped,
+      };
+      const coverKey = sha(
+        '[{"crop": null, "rotation": 90}, {"x": 0.1, "y": 0.2, "width": 0.5, "height": 0.5}]',
+      ).slice(0, 32);
+      const derives = async () =>
+        (await jobsFor(item.id))
+          .filter((job) => job.kind === "derive_edit")
+          .map((job) => job.run_after);
+      await adapter.saveDraft(
+        a,
+        draft.id,
+        { baseRevision: 1, content, deviceClass: "phone" },
+        at(minute),
+      );
+      expect(await derives()).toEqual([
+        at(minute + 30 * second),
+        at(minute + 30 * second),
+      ]);
+
+      // A foreign or unknown holder is unavailable and moves nothing.
+      for (const holder of [
+        { draftId: draft.id },
+        { sessionId: `publishing-session-${hex()}` },
+      ] as const)
+        await expect(
+          adapter.ensureEditDerivatives(b, content, at(minute + second), {
+            holder,
+          }),
+        ).rejects.toMatchObject({ name: "CommunityNotFoundError" });
+      await expect(
+        adapter.ensureEditDerivatives(a, content, at(minute + second), {
+          holder: { draftId: `work-draft-${hex()}` },
+        }),
+      ).rejects.toMatchObject({ name: "CommunityNotFoundError" });
+      expect(await derives()).toEqual([
+        at(minute + 30 * second),
+        at(minute + 30 * second),
+      ]);
+
+      // The owner's check moves the settling jobs up to now.
+      expect(
+        await adapter.ensureEditDerivatives(
+          a,
+          content,
+          at(minute + 2 * second),
+          {
+            holder: { draftId: draft.id },
+          },
+        ),
+      ).toEqual({
+        ready: false,
+        items: [
+          { key: item.id, itemId: item.id, state: "deriving", editKey: null },
+          {
+            key: placeholder.key,
+            itemId: null,
+            state: "pending",
+            editKey: null,
+          },
+        ],
+      });
+      expect(await derives()).toEqual([
+        at(minute + 2 * second),
+        at(minute + 2 * second),
+      ]);
+      const claims = (
+        await adapter.claimJobs(
+          {
+            owner: `worker-${hex()}`,
+            limit: 100,
+            leaseMs: minute,
+            kinds: ["derive_edit"],
+          },
+          at(minute + 3 * second),
+        )
+      ).filter((claim) => claim.subjectId === item.id);
+      expect(claims).toHaveLength(2);
+      for (const claim of claims) {
+        await adapter.recordDerivatives(
+          item.id,
+          {
+            status: "derived",
+            derivatives: derivativesOf(
+              claim.payload?.variants ?? [],
+              claim.payload?.editKey ?? "",
+            ),
+          },
+          at(minute + 4 * second),
+        );
+        await adapter.completeJob(claim, at(minute + 4 * second));
+      }
+
+      // Ready: the cover item's thumb key includes its cover crop; an
+      // unedited item reports the base key. A session holder answers alike.
+      const readyContent: WorkDraftContent = {
+        ...content,
+        items: [content.items[0] as WorkDraftItem],
+      };
+      expect(
+        await adapter.ensureEditDerivatives(a, readyContent, at(2 * minute), {
+          holder: { draftId: draft.id },
+        }),
+      ).toEqual({
+        ready: true,
+        items: [
+          { key: item.id, itemId: item.id, state: "ready", editKey: coverKey },
+        ],
+      });
+      const session = await adapter.createSession(
+        a,
+        { requestId: randomUUID(), workId: null },
+        at(2 * minute),
+      );
+      expect(
+        await adapter.ensureEditDerivatives(
+          a,
+          { items: [entry(item)], coverKey: null, coverCrop: null },
+          at(2 * minute),
+          { holder: { sessionId: session.id } },
+        ),
+      ).toEqual({
+        ready: true,
+        items: [
+          { key: item.id, itemId: item.id, state: "ready", editKey: "base" },
+        ],
+      });
+
+      // A lapsed session is unavailable; an ended holder conflicts.
+      await expect(
+        adapter.ensureEditDerivatives(a, readyContent, at(day), {
+          holder: { sessionId: session.id },
+        }),
+      ).rejects.toMatchObject({ name: "CommunityNotFoundError" });
+      await adapter.discardSession(
+        a,
+        session.id,
+        { requestId: randomUUID() },
+        at(3 * minute),
+      );
+      await expect(
+        adapter.ensureEditDerivatives(a, readyContent, at(3 * minute), {
+          holder: { sessionId: session.id },
+        }),
+      ).rejects.toMatchObject({ name: "CommunityConflictError" });
+      const submitted = await adapter.submit(
+        a,
+        {
+          requestId: randomUUID(),
+          holder: { draftId: draft.id },
+          content: readyContent,
+          baseRevisionId: null,
+        },
+        at(3 * minute),
+      );
+      expect(submitted.state).toBe("confirmed");
+      await expect(
+        adapter.ensureEditDerivatives(a, readyContent, at(3 * minute), {
+          holder: { draftId: draft.id },
+        }),
+      ).rejects.toMatchObject({ name: "CommunityConflictError" });
+      // Without a holder (a submission retry) the same content is just checked.
+      expect(
+        (await adapter.ensureEditDerivatives(a, readyContent, at(3 * minute)))
+          .ready,
+      ).toBe(true);
     });
   });
 };

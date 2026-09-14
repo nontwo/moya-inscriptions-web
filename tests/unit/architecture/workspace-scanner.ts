@@ -799,6 +799,8 @@ const allowedClientContractTypes = new Set([
   "PublishingMediaSources",
   "PublishingOpenedEditDraft",
   "PublishingPageQuery",
+  "PublishingReadiness",
+  "PublishingReadinessCommand",
   "PublishingSession",
   "PublishingSessionState",
   "PublishingSnapshot",

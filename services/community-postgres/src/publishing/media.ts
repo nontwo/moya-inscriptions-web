@@ -27,6 +27,7 @@ import type {
   PublishingDerivedOutcome,
   PublishingEditItemState,
   PublishingEditReadiness,
+  PublishingEditReadinessOptions,
   PublishingEditTarget,
   PublishingItemChange,
   PublishingJobClaim,
@@ -534,23 +535,37 @@ export const ensureContentDerivatives = async (
     key: string;
     itemId: string | null;
     state: PublishingEditItemState;
+    editKey: string | null;
   }[] = [];
   for (const [ord, item] of content.items.entries()) {
     if (item.itemId === null) {
-      items.push({ key: item.key, itemId: null, state: "pending" });
+      items.push({
+        key: item.key,
+        itemId: null,
+        state: "pending",
+        editKey: null,
+      });
       continue;
     }
     const row = rows.get(ord);
+    const isCover = item.key === content.coverKey;
     const state = await itemReadiness(
       db,
       row,
       item.edit,
-      item.key === content.coverKey,
+      isCover,
       content.coverCrop,
       now,
       runAfter,
     );
-    items.push({ key: item.key, itemId: item.itemId, state });
+    // The thumb and cover of the cover item carry its cover crop in their key.
+    const editKey =
+      state === "ready" && row !== undefined
+        ? isCover
+          ? row.cover_key
+          : row.edit_key
+        : null;
+    items.push({ key: item.key, itemId: item.itemId, state, editKey });
   }
   // The (item, edit key) pairs this content needs.
   const wanted = [...rows.values()].flatMap((row) =>
@@ -1524,7 +1539,12 @@ export const ensureEditDerivatives = async (
   actorId: string,
   content: PublishingEditTarget,
   now: Date,
+  options: PublishingEditReadinessOptions = {},
 ): Promise<PublishingEditReadiness> =>
-  actorTransaction(pool, actorId, (db) =>
-    ensureContentDerivatives(db, actorId, content, now),
-  );
+  actorTransaction(pool, actorId, async (db) => {
+    // An explicit readiness route names its holder: verified like an item
+    // registration, before anything is enqueued.
+    if (options.holder !== undefined)
+      await lockHolder(db, actorId, options.holder, now);
+    return ensureContentDerivatives(db, actorId, content, now);
+  });

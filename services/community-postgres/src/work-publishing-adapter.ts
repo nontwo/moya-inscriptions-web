@@ -38,6 +38,7 @@ import type {
   PublishingDerivedOutcome,
   PublishingDraftDeletion,
   PublishingEditReadiness,
+  PublishingEditReadinessOptions,
   PublishingEditTarget,
   PublishingItemChange,
   PublishingJobClaim,
@@ -254,8 +255,15 @@ export class PostgresWorkPublishingAdapter implements WorkPublishingPort {
     actorId: string,
     content: PublishingEditTarget,
     now: Date,
+    options?: PublishingEditReadinessOptions,
   ): Promise<PublishingEditReadiness> {
-    return media.ensureEditDerivatives(this.pool, actorId, content, now);
+    return media.ensureEditDerivatives(
+      this.pool,
+      actorId,
+      content,
+      now,
+      options,
+    );
   }
   beginComponentUpload(
     actorId: string,
