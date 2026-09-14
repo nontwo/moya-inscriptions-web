@@ -2,7 +2,7 @@
  * Dedicated worker: streaming SHA-256 of one component Blob in bounded
  * chunks. Answers `{ ok, sha256 }` only; no content or names leave it.
  */
-import { sha256HexOfBlob } from "./hashing";
+import { sha256HexOfBlob } from "./sha256";
 
 interface HashWorkerScope {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
