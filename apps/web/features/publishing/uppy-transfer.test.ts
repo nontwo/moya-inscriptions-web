@@ -62,7 +62,7 @@ class FakeXhr {
 
 const flush = async () => {
   for (let index = 0; index < 10; index += 1)
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.advanceTimersByTimeAsync(0);
 };
 
 const manualTimers = () => {
@@ -102,11 +102,21 @@ const request = (id: string, size = 32) => ({
 describe("Uppy component transfer", () => {
   const original = globalThis.XMLHttpRequest;
   beforeEach(() => {
+    vi.useFakeTimers();
     FakeXhr.sends = [];
     globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
   });
-  afterEach(() => {
-    globalThis.XMLHttpRequest = original;
+  afterEach(async () => {
+    // Uppy schedules its initial online check for 3s and does not cancel it
+    // in destroy(). Execute pending library timers before jsdom is torn down;
+    // errors still fail here instead of leaking into an unrelated test file.
+    try {
+      await vi.runAllTimersAsync();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      globalThis.XMLHttpRequest = original;
+    }
   });
 
   it("posts the raw component bytes to its own endpoint with its own headers", async () => {
@@ -143,7 +153,7 @@ describe("Uppy component transfer", () => {
     await flush();
     FakeXhr.sends[0]!.fail();
     await flush();
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await vi.advanceTimersByTimeAsync(700);
     expect(failed).toHaveBeenCalledOnce();
     expect(failed.mock.calls[0]![0]).toMatchObject({
       status: 0,
@@ -161,7 +171,7 @@ describe("Uppy component transfer", () => {
     expect(FakeXhr.sends[1]!.url).toContain("0003");
     FakeXhr.sends[1]!.answer(503, "");
     await flush();
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await vi.advanceTimersByTimeAsync(700);
     expect(serverError).toHaveBeenCalledWith({
       status: 503,
       responseText: "",

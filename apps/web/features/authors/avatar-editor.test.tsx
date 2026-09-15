@@ -154,7 +154,7 @@ const render = async (next: string | null = null) =>
   );
 const button = (name: string) =>
   Array.from(node.querySelectorAll("button")).find(
-    (b) => b.textContent === name,
+    (b) => (b.getAttribute("aria-label") ?? b.textContent) === name,
   )!;
 const click = async (name = "保存头像") =>
   act(async () => button(name).click());

@@ -57,7 +57,8 @@ let root: Root;
 
 const buttonByText = (text: string) => {
   const found = [...document.querySelectorAll("button")].find(
-    (button) => button.textContent === text,
+    (button) =>
+      (button.getAttribute("aria-label") ?? button.textContent) === text,
   );
   if (!found) throw new Error(`No button ${text}`);
   return found;
