@@ -35,7 +35,7 @@ const confirm = (
 
 describe("upload manager: preparation and registration", () => {
   it.each(["standard", "original"] as const)(
-    "sends only the static resource from a supported container in %s mode",
+    "keeps static presentation and honors supplied-byte rules in %s mode",
     async (quality) => {
       const test = createTestManager();
       const base = staticSource();
@@ -63,10 +63,27 @@ describe("upload manager: preparation and registration", () => {
       await settle();
       expect(test.preprocess.motion).not.toHaveBeenCalled();
       expect(test.transfer.starts).toHaveLength(1);
-      expect(test.transfer.starts[0]!.request.body.size).toBe(300);
+      const body = test.transfer.starts[0]!.request.body;
+      const expected =
+        quality === "original"
+          ? source.still.file
+          : source.still.file.slice(0, 300);
+      expect(body.size).toBe(expected.size);
+      expect(await body.arrayBuffer()).toEqual(await expected.arrayBuffer());
+      if (quality === "original") {
+        expect(body).toBe(source.still.file);
+        expect(
+          await crypto.subtle.digest("SHA-256", await body.arrayBuffer()),
+        ).toEqual(
+          await crypto.subtle.digest(
+            "SHA-256",
+            await source.still.file.arrayBuffer(),
+          ),
+        );
+      }
       expect(test.client.client.registerItem.mock.calls[0]![0]).toMatchObject({
         kind: "static",
-        components: [{ role: "still", byteSize: 300 }],
+        components: [{ role: "still", byteSize: expected.size }],
       });
       test.manager.dispose();
     },

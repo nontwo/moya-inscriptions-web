@@ -1315,15 +1315,9 @@ export class UploadManager {
       return [
         {
           role: "still",
-          // A supported container contributes only its selected still resource.
-          blob:
-            source.still.motionPhoto === null
-              ? source.still.file
-              : source.still.file.slice(
-                  0,
-                  source.still.motionPhoto.primaryLength,
-                  source.still.type,
-                ),
+          // Static presentation does not permit altering an Original source.
+          // Any embedded motion remains private and is not a playback component.
+          blob: source.still.file,
           contentType: source.still.type,
           standardOutcome: null,
         },

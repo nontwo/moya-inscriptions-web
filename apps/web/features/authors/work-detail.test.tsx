@@ -146,7 +146,9 @@ const render = (
   draw(presentation);
   const button = (name: string) =>
     [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-      (candidate) => (candidate.getAttribute("aria-label") ?? candidate.textContent) === name,
+      (candidate) =>
+        (candidate.getAttribute("aria-label") ?? candidate.textContent) ===
+        name,
     );
   const status = () =>
     container.querySelector("[data-work-management-status]")?.textContent;
@@ -195,11 +197,13 @@ describe("Work detail actions for the author", () => {
   });
 
   it("links an unframed author identity to the profile for every reader", () => {
-    mocks.author.viewer={id:OTHER};
-    const view=render(detail({canEdit:false}));
-    const identity=[...view.container.querySelectorAll<HTMLButtonElement>("button")].find((button)=>button.textContent?.includes("临帖人"))!;
-    act(()=>identity.click());
-    expect(mocks.shell.openProfile).toHaveBeenCalledWith(AUTHOR,identity);
+    mocks.author.viewer = { id: OTHER };
+    const view = render(detail({ canEdit: false }));
+    const identity = [
+      ...view.container.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((button) => button.textContent?.includes("临帖人"))!;
+    act(() => identity.click());
+    expect(mocks.shell.openProfile).toHaveBeenCalledWith(AUTHOR, identity);
     expect(identity.querySelector("span")).not.toBeNull();
   });
   it("opens the editor for this work", () => {
