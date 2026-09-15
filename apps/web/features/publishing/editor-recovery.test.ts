@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { identifyFiles, addStaticPhotosToStaging } from "./import-grouping";
 import { fileOf, jpeg } from "./parsers/synthetic-media.test-support";
 
+import { RECOVERY_MAX_TOTAL_BYTES } from "./local-recovery";
 import { EditorInterruptionRecovery, recoveryBytes } from "./editor-recovery";
 import { contentOf, createEditorState } from "./ui/editor/editor-session-state";
 
@@ -171,6 +172,27 @@ describe("manual draft interruption recovery", () => {
     test.backend.put.mockRejectedValueOnce(new Error("quota"));
     expect(await recovery.save(state, checkpoint)).toBe(false);
     expect(test.disk.size).toBe(0);
+  });
+
+  it("does not subtract an already removed record from the global byte cap", async () => {
+    const test = setup(),
+      recovery = test.create();
+    const pending = (id: string, value: string) => ({
+      ...checkpoint,
+      pendingFiles: [
+        {
+          id,
+          files: [new File([value], "source.jpg")],
+          origin: "picker" as const,
+          original: false,
+        },
+      ],
+    });
+    await recovery.save(state, pending("old", "old-original"));
+    test.backend.bytes = async () => RECOVERY_MAX_TOTAL_BYTES;
+    test.backend.put.mockClear();
+    expect(await recovery.save(state, pending("new", "n"))).toBe(false);
+    expect(test.backend.put).not.toHaveBeenCalled();
   });
 
   it("reports quota failure without claiming a complete file recovery", async () => {

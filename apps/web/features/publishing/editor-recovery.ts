@@ -177,7 +177,7 @@ export class EditorInterruptionRecovery {
         // Once Standard preprocessing succeeded, its full source must no longer
         // remain hidden in an older recovery record, even if the next put fails.
         const old = parseEditorRecovery(existing, account);
-        if (
+        const removed = !!(
           old &&
           (old.runtime.pendingFiles.some(
             (p) => !runtime.pendingFiles.some((next) => next.id === p.id),
@@ -198,8 +198,8 @@ export class EditorInterruptionRecovery {
                     next.prepared,
                 ),
             ))
-        )
-          await this.backend.remove(record.id);
+        );
+        if (removed) await this.backend.remove(record.id);
         const size = await this.backend.bytes();
         const { quota, usage } = await this.estimate();
         if (
@@ -207,7 +207,8 @@ export class EditorInterruptionRecovery {
           ((quota !== undefined &&
             usage !== undefined &&
             bytes > Math.max(0, quota - usage) * RECOVERY_QUOTA_FRACTION) ||
-            size - recoveryBytes(existing) + bytes > RECOVERY_MAX_TOTAL_BYTES)
+            size - (removed ? 0 : recoveryBytes(existing)) + bytes >
+              RECOVERY_MAX_TOTAL_BYTES)
         )
           return false;
         if ((this.epochs.get(account) ?? 0) !== epoch) return false;
