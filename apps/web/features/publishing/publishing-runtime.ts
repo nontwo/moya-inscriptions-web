@@ -334,6 +334,8 @@ export class PublishingRuntime {
   private readonly accounts = new Map<string, AccountRuntime>();
   private accountId: string | null = null;
   private readonly timers: UploadTimers;
+  private selectionTail: Promise<void> = Promise.resolve();
+  private selectionEpoch = 0;
 
   constructor(services: PublishingServices) {
     this.services = services;
@@ -353,6 +355,7 @@ export class PublishingRuntime {
    */
   setAccount(accountId: string | null): void {
     if (accountId === this.accountId) return;
+    this.selectionEpoch += 1;
     for (const [id, account] of this.accounts)
       if (id !== accountId) {
         account.manager.pause("account");
@@ -874,25 +877,45 @@ export class PublishingRuntime {
 
   // -- staging -------------------------------------------------------------
 
-  /** Identifies and groups newly selected files into the staging batch. */
-  async stageFiles(files: readonly File[], origin: FileOrigin): Promise<void> {
+  /** Preserve selection order and fence identification to its original session.
+   * The optional acceptance callback survives media-step navigation, but never
+   * runs after logout, session replacement, discard or explicit cancellation.
+   */
+  stageFiles(
+    files: readonly File[],
+    origin: FileOrigin,
+    onReady?: () => void,
+  ): Promise<void> {
     const account = this.current();
-    if (!account || files.length === 0) return;
+    if (!account || files.length === 0) return Promise.resolve();
+    const session = account.session;
+    const epoch = this.selectionEpoch;
+    const active = () =>
+      this.current() === account &&
+      account.session === session &&
+      session?.closed !== true &&
+      this.selectionEpoch === epoch;
     account.identifying += files.length;
     this.publish();
-    let identified: IdentifiedFile[];
-    try {
-      identified = await this.services.identifyFiles(files);
-    } finally {
-      account.identifying = Math.max(0, account.identifying - files.length);
-    }
-    if (this.current() !== account) return;
-    account.staging = addStaticPhotosToStaging(
-      account.staging,
-      identified,
-      origin,
-    );
-    this.publish();
+    const task = this.selectionTail.then(async () => {
+      let identified: IdentifiedFile[] | null = null;
+      try {
+        if (active()) identified = await this.services.identifyFiles(files);
+      } finally {
+        account.identifying = Math.max(0, account.identifying - files.length);
+        this.publish();
+      }
+      if (identified === null || !active()) return;
+      account.staging = addStaticPhotosToStaging(
+        account.staging,
+        identified,
+        origin,
+      );
+      this.publish();
+      onReady?.();
+    });
+    this.selectionTail = task.catch(() => undefined);
+    return task;
   }
 
   setStagingOriginal(original: boolean): void {
@@ -956,9 +979,10 @@ export class PublishingRuntime {
     return result;
   }
 
-  cancelStaging(): void {
+  cancelStaging(cancelPending = true): void {
     const account = this.current();
     if (!account) return;
+    if (cancelPending) this.selectionEpoch += 1;
     account.staging = null;
     this.publish();
   }

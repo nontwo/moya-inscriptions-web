@@ -18,14 +18,17 @@ import type { CSSProperties, KeyboardEvent } from "react";
 /**
  * One ordered item (M02, M03, U03): visible order number, preview in its
  * edited frame, quality/LIVE/cover badges, the upload state, and the item
- * actions. The preview is the drag handle: pointer drag, long-press on touch
- * and the keyboard sensor all start there; Alt + ↑/↓ and 上移/下移 move
- * without dragging.
+ * actions. The whole non-control card is draggable; the preview remains the
+ * keyboard activator. Touch long press also selects the card. Child action
+ * buttons keep their own gestures and never start sorting.
  */
 
 export type CoverRole = "chosen" | "default" | null;
 
 export interface MediaItemTileProps {
+  readonly selecting: boolean;
+  readonly selected: boolean;
+  readonly onToggleSelection: (key: string) => void;
   readonly item: WorkDraftItem;
   readonly index: number;
   readonly count: number;
@@ -56,6 +59,9 @@ const kindText = (item: WorkDraftItem) =>
   item.kind === "live" ? "实况照片" : "照片";
 
 export const MediaItemTile = ({
+  selecting,
+  selected,
+  onToggleSelection,
   item,
   index,
   count,
@@ -107,7 +113,7 @@ export const MediaItemTile = ({
     ...(sortable.transition ? { transition: sortable.transition } : {}),
   };
 
-  const onHandleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+  const onHandleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (
       event.altKey &&
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
@@ -119,6 +125,10 @@ export const MediaItemTile = ({
     }
     sortable.listeners?.onKeyDown?.(event);
   };
+  const cardTarget = (target: EventTarget | null) =>
+    target instanceof Element &&
+    (target.closest("button,input,select,textarea,a") === null ||
+      target.closest("[data-media-handle]") !== null);
 
   return (
     <li
@@ -128,18 +138,46 @@ export const MediaItemTile = ({
       data-media-key={item.key}
       data-media-status={status.kind}
       data-media-thumb={edited ? "edited" : undefined}
+      data-selected={selected ? "true" : undefined}
       style={style}
+      onPointerDown={(event) => {
+        if (cardTarget(event.target))
+          sortable.listeners?.onPointerDown?.(event);
+      }}
+      onTouchStart={(event) => {
+        if (cardTarget(event.target)) sortable.listeners?.onTouchStart?.(event);
+      }}
+      onKeyDown={(event) => {
+        if (cardTarget(event.target)) onHandleKeyDown(event);
+      }}
+      onClick={(event) => {
+        if (selecting && !sortable.isDragging && cardTarget(event.target))
+          onToggleSelection(item.key);
+      }}
+      onContextMenu={(event) => {
+        if (cardTarget(event.target)) event.preventDefault();
+      }}
     >
+      <button
+        aria-label={`选择第 ${number} 项`}
+        aria-pressed={selected}
+        className={
+          selecting ? styles.selectionButton : styles.selectionShortcut
+        }
+        data-media-select={item.key}
+        onClick={() => onToggleSelection(item.key)}
+        type="button"
+      >
+        <span aria-hidden="true">{selected ? "✓" : "○"}</span>
+      </button>
       <button
         ref={sortable.setActivatorNodeRef}
         {...sortable.attributes}
-        {...sortable.listeners}
         aria-describedby={`${sortable.attributes["aria-describedby"]} ${statusId}`}
         aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-        aria-label={`第 ${number} 项，${kindText(item)}，拖动可调整顺序`}
+        aria-label={`第 ${number} 项，${kindText(item)}，长按可拖动排序或多选`}
         className={styles.handle}
         data-media-handle={item.key}
-        onKeyDown={onHandleKeyDown}
         type="button"
       >
         <span aria-hidden="true" className={styles.orderNumber}>

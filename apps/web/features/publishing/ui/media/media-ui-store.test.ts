@@ -75,6 +75,8 @@ describe("media UI store", () => {
     ui.setReplacement(null);
     expect(ui.get()).toEqual({
       dialog: null,
+      selecting: false,
+      selectedKeys: [],
       replacement: null,
       notice: "封面已移除，现在以第 1 项作为封面",
     });

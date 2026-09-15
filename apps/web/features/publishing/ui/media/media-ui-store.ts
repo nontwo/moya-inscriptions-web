@@ -66,6 +66,8 @@ export interface MediaUiState {
   readonly dialog: MediaDialog | null;
   readonly replacement: Replacement | null;
   readonly notice: string | null;
+  readonly selecting: boolean;
+  readonly selectedKeys: readonly string[];
 }
 
 export interface MediaUiStore {
@@ -85,12 +87,18 @@ export interface MediaUiStore {
   setReplacement(replacement: Replacement | null): void;
   markReplacementStaged(): void;
   setNotice(notice: string | null): void;
+  select(key: string): void;
+  toggleSelection(key: string): void;
+  clearSelection(): void;
+  retainSelection(keys: readonly string[]): void;
 }
 
 const initialState: MediaUiState = {
   dialog: null,
   replacement: null,
   notice: null,
+  selecting: false,
+  selectedKeys: [],
 };
 
 const sameDialog = (left: MediaDialog | null, right: MediaDialog | null) =>
@@ -115,6 +123,37 @@ export const createMediaUiStore = (): MediaUiStore => {
     store,
     get: () => store.get(),
     subscribe: (listener) => store.subscribe(listener),
+    select: (key) =>
+      store.update((state) => ({
+        ...state,
+        selecting: true,
+        selectedKeys: state.selectedKeys.includes(key)
+          ? state.selectedKeys
+          : [...state.selectedKeys, key],
+      })),
+    toggleSelection: (key) =>
+      store.update((state) => ({
+        ...state,
+        selecting: true,
+        selectedKeys: state.selectedKeys.includes(key)
+          ? state.selectedKeys.filter((item) => item !== key)
+          : [...state.selectedKeys, key],
+      })),
+    clearSelection: () =>
+      store.update((state) => ({
+        ...state,
+        selecting: false,
+        selectedKeys: [],
+      })),
+    retainSelection: (keys) =>
+      store.update((state) => {
+        const selectedKeys = state.selectedKeys.filter((key) =>
+          keys.includes(key),
+        );
+        return selectedKeys.length === state.selectedKeys.length
+          ? state
+          : { ...state, selectedKeys };
+      }),
     openDialog: (dialog) => {
       if (sameDialog(store.get().dialog, dialog)) return;
       draft = null;

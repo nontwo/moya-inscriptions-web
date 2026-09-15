@@ -835,30 +835,42 @@
   outline-offset: 2px;
 }
 
-.visibilitySwitch {
+.workManagement .visibilitySwitch {
   display: inline-flex;
   align-items: center;
-  gap: var(--yoyi-space-1);
-  padding: 0;
-  background: var(--yoyi-color-background-surface);
+  gap: var(--yoyi-space-2);
+  padding: 0 var(--yoyi-space-2);
   border: 0;
-  box-shadow: inset 0 0 0 1px var(--yoyi-color-border-subtle);
-  border-radius: var(--yoyi-radius-full);
-}
-
-.workManagementLabel {
-  margin-inline-end: var(--yoyi-space-2);
-  color: var(--yoyi-color-text-secondary);
-  font-size: var(--yoyi-type-label-size);
-}
-
-.visibilitySwitch button {
-  padding: 0 var(--yoyi-space-3);
-  font-size: var(--yoyi-type-body-small-size);
-  white-space: nowrap;
-  color: var(--yoyi-color-text-secondary);
   background: transparent;
-  border-color: transparent;
+  white-space: nowrap;
+}
+
+.visibilityTrack {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  flex: 0 0 40px;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-text-tertiary);
+}
+
+.visibilityTrack::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--yoyi-color-background-surface);
+  content: "";
+}
+
+.visibilitySwitch[aria-checked="true"] .visibilityTrack {
+  background: var(--yoyi-color-seal-red);
+}
+
+.visibilitySwitch[aria-checked="true"] .visibilityTrack::after {
+  transform: translateX(16px);
 }
 
 .workManagement .workIcon {
@@ -916,13 +928,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.8;
-}
-
-.visibilitySwitch button[aria-pressed="true"] {
-  color: var(--yoyi-color-text-primary);
-  background: var(--yoyi-color-background-muted);
-  border-color: var(--yoyi-color-border-default);
-  font-weight: 650;
 }
 
 .workManagementStatus {

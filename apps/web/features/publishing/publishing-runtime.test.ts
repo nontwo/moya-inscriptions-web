@@ -56,7 +56,9 @@ const draftOf = (content: WorkDraftContent, revision = 1): PublishingDraft => ({
   updatedAt: stamp,
 });
 
-const setup = () => {
+const setup = (
+  identify: PublishingServices["identifyFiles"] = identifyFiles,
+) => {
   const uploads = fakeClient();
   const transfers: ReturnType<typeof fakeTransfer>[] = [];
   const preprocessors: ReturnType<typeof fakePreprocess>[] = [];
@@ -140,7 +142,7 @@ const setup = () => {
     },
     createHasher: () => null,
     createRecovery: () => recovery,
-    identifyFiles: (files) => identifyFiles(files),
+    identifyFiles: identify,
     preprocessConcurrency: () => 1,
     transferConcurrency: 2,
     deviceClass: () => "phone",
@@ -174,6 +176,49 @@ const content = (title: string): WorkDraftContent => ({
 });
 
 describe("publishing runtime", () => {
+  it.each(["logout", "cancel", "replace-session"])(
+    "fences a slow picker response after %s",
+    async (action) => {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const test = setup(async (files) => {
+        await pending;
+        return identifyFiles(files);
+      });
+      test.signIn(ACCOUNT);
+      test.runtime.startSession({
+        target: { type: "new" },
+        saveMode: "unsaved",
+      });
+      const accepted = vi.fn(() => test.runtime.confirmStaging());
+      const selected = test.runtime.stageFiles(
+        [fileOf(jpeg({}))],
+        "picker",
+        accepted,
+      );
+      await settle();
+      if (action === "logout") {
+        test.signIn(null);
+        test.signIn(ACCOUNT);
+      } else if (action === "cancel") test.runtime.cancelStaging();
+      else {
+        await test.runtime.closeSession({ discard: true });
+        test.runtime.startSession({
+          target: { type: "new" },
+          saveMode: "unsaved",
+        });
+      }
+      release();
+      await selected;
+      expect(accepted).not.toHaveBeenCalled();
+      expect(test.runtime.store.get().staging).toBeNull();
+      expect(test.client.registerItem).not.toHaveBeenCalled();
+      test.runtime.dispose();
+    },
+  );
+
   it("keeps one manager per account and pauses the previous account on a switch", async () => {
     const test = setup();
     test.signIn(ACCOUNT);

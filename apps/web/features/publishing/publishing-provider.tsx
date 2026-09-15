@@ -264,8 +264,12 @@ export const useStagedItems = () => {
   return useMemo(
     () => ({
       staging: snapshot.staging,
-      stageFiles: (files: readonly File[], origin: FileOrigin) =>
-        runtime.stageFiles(files, origin),
+      current: () => runtime.store.get().staging,
+      stageFiles: (
+        files: readonly File[],
+        origin: FileOrigin,
+        onReady?: () => void,
+      ) => runtime.stageFiles(files, origin, onReady),
       setOriginal: (original: boolean) => runtime.setStagingOriginal(original),
       remove: (key: string) => runtime.removeStaged(key),
       keepStill: (key: string) => runtime.keepStagedStill(key),
@@ -277,7 +281,7 @@ export const useStagedItems = () => {
         motionIndex: number,
       ) => runtime.resolveAmbiguous(key, stillIndex, motionIndex),
       confirm: () => runtime.confirmStaging(),
-      cancel: () => runtime.cancelStaging(),
+      cancel: (cancelPending = true) => runtime.cancelStaging(cancelPending),
     }),
     [runtime, snapshot],
   );

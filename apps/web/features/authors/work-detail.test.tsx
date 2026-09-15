@@ -216,37 +216,22 @@ describe("Work detail actions for the author", () => {
     );
   });
 
-  it("asks before making the work self-only, then reports exactly what changed", async () => {
+  it("switches to self-only in place and keeps edit and trash before the switch", async () => {
     mocks.publishing.setVisibility.mockResolvedValue({
       workId: WORK,
       visibility: "self",
     });
     const view = render(detail({}));
-    const group = view.container.querySelector('[role="group"]')!;
-    expect(group.getAttribute("data-work-visibility")).toBe("public");
-    expect(view.button("公开")?.getAttribute("aria-pressed")).toBe("true");
-
-    act(() => view.button("仅自己可见")!.click());
-    const dialog = view.container.querySelector('[role="dialog"]');
-    expect(dialog?.getAttribute("aria-label")).toBe("设为仅自己可见");
-    expect(dialog?.textContent).toContain("其他人将无法打开这件作品");
-    expect(mocks.publishing.setVisibility).not.toHaveBeenCalled();
-
-    // Cancelling changes nothing.
-    act(() =>
-      [...dialog!.querySelectorAll("button")]
-        .find((b) => b.textContent === "取消")!
-        .click(),
-    );
+    const toggle = view.button("公开")!;
+    expect(toggle.getAttribute("role")).toBe("switch");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect([...toggle.parentElement!.querySelectorAll("button")]).toEqual([
+      view.button("编辑"),
+      view.button("移到回收站"),
+      toggle,
+    ]);
+    await act(async () => toggle.click());
     expect(view.container.querySelector('[role="dialog"]')).toBeNull();
-    expect(mocks.publishing.setVisibility).not.toHaveBeenCalled();
-
-    act(() => view.button("仅自己可见")!.click());
-    await act(async () =>
-      view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
-        .click(),
-    );
     expect(mocks.publishing.setVisibility).toHaveBeenCalledExactlyOnceWith(
       WORK,
       {
@@ -254,10 +239,8 @@ describe("Work detail actions for the author", () => {
         visibility: "self",
       },
     );
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(view.status()).toBe("可见范围已改为仅自己可见");
-    expect(view.button("仅自己可见")?.getAttribute("aria-pressed")).toBe(
-      "true",
-    );
     expect(mocks.author.mutate).toHaveBeenCalledOnce();
   });
 
@@ -402,12 +385,7 @@ describe("Work detail actions for the author", () => {
     expect(
       view.container.querySelector("[data-content-actions]"),
     ).not.toBeNull();
-    act(() => view.button("仅自己可见")!.click());
-    await act(async () =>
-      view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
-        .click(),
-    );
+    await act(async () => view.button("公开")!.click());
     expect(view.container.querySelector("[data-content-actions]")).toBeNull();
   });
 
@@ -420,14 +398,10 @@ describe("Work detail actions for the author", () => {
         }),
     );
     const view = render(detail({}));
-    const privateButton = view.button("仅自己可见")!;
+    const privateButton = view.button("公开")!;
     privateButton.focus();
     act(() => privateButton.click());
-    act(() =>
-      view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
-        .click(),
-    );
+
     expect(view.container.querySelector('[role="dialog"]')).toBeNull();
     // Unavailable but still focusable: the focus is not dropped to the page.
     expect(document.activeElement).toBe(privateButton);
@@ -453,9 +427,7 @@ describe("Work detail actions for the author", () => {
     const view = render(detail({ visibility: "self" }));
     await act(async () => view.button("公开")!.click());
     expect(view.status()).toBe("可见范围：仅自己可见");
-    expect(view.button("仅自己可见")?.getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(view.button("公开")?.getAttribute("aria-checked")).toBe("false");
   });
 
   it("hands the focus from 重试 to the result once the repeated command is confirmed", async () => {
@@ -613,12 +585,7 @@ describe("Work detail follows whether others can see the author's work", () => {
     });
     const view = render(await loaded(authorWork()));
     expect(actions(view)).not.toBeNull();
-    act(() => view.button("仅自己可见")!.click());
-    await act(async () =>
-      view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
-        .click(),
-    );
+    await act(async () => view.button("公开")!.click());
     expect(actions(view)).toBeNull();
     expect(note(view)).toBe("此作品当前仅你可见。");
     // Self-only is known without reading the work again.
@@ -799,12 +766,7 @@ describe("Work detail follows whether others can see the author's work", () => {
         }),
     );
     await act(async () => view.button("公开")!.click());
-    act(() => view.button("仅自己可见")!.click());
-    await act(async () =>
-      view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-private]")!
-        .click(),
-    );
+    await act(async () => view.button("公开")!.click());
     await act(async () => answer(authorWork({ publiclyVisible: true })));
     expect(actions(view)).toBeNull();
     expect(note(view)).toBe("此作品当前仅你可见。");

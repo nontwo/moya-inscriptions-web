@@ -93,8 +93,8 @@ export const PhoneSteps = ({
       </div>
       <nav aria-label="步骤" className={styles.stepFooter}>
         <div>
-          {step === "media" && mediaItemCount > 1 ? (
-            <p className={styles.reorderHint}>长按拖动可以调整顺序</p>
+          {step === "media" && mediaItemCount > 0 ? (
+            <p className={styles.reorderHint}>长按可拖动排序，也可多选移除</p>
           ) : null}
           {step === "media" ? null : (
             <button

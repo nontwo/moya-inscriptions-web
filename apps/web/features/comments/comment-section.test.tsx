@@ -151,7 +151,12 @@ describe("CommentSection", () => {
     const { container } = render();
     const firstComment = container.querySelector("[data-comment-id]");
     const firstId = firstComment?.getAttribute("data-comment-id");
-    click(firstComment?.querySelector("[data-comment-reply-action]") ?? null);
+    const entry = firstComment!.querySelector("[data-comment-reply-action]")!;
+    expect(entry.tagName).toBe("DIV");
+    expect(entry.getAttribute("role")).toBe("button");
+    expect(entry.textContent).not.toBe("回复");
+    click(entry);
+    expect(document.activeElement).toBe(container.querySelector("textarea"));
     expect(container.textContent).toContain("回复 墨池散人");
     fill(container.querySelector("textarea"), "赞同这个观察。");
     click(
@@ -163,6 +168,9 @@ describe("CommentSection", () => {
     const like = firstComment?.querySelector("[data-comment-like]");
     click(like ?? null);
     expect(like?.getAttribute("aria-pressed")).toBe("true");
+    expect(like?.textContent).toBe("");
+    expect(like?.querySelector("svg")).not.toBeNull();
+    expect(container.querySelector("[data-comment-reply-mode]")).toBeNull();
     expect(
       container
         .querySelector("[data-comment-id]")

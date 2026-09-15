@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { WorkVisibility } from "@moya/contracts";
 import {
   toWorkAuthorshipPresentation,
@@ -136,18 +136,16 @@ const WorkManagement = ({
   const author = useAuthors();
   const { openEditor } = usePublishingEntry();
   const withdraw = useCatalogDetailWithdrawal();
-  const [confirm, setConfirm] = useState<"private" | "trash" | null>(null);
+  const [confirm, setConfirm] = useState<"trash" | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{
     readonly tone: "status" | "error";
     readonly text: string;
   } | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<PendingIntent | null>(null);
-  const privateRef = useRef<HTMLButtonElement>(null);
   const trashRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const busyRef = useRef(false);
-  const visibilityLabel = useId();
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -271,44 +269,6 @@ const WorkManagement = ({
               <path d="m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 14z" />
             </svg>
           </button>
-          {visibility === undefined ? null : (
-            <div
-              aria-labelledby={visibilityLabel}
-              className={detailStyles.visibilitySwitch}
-              data-work-visibility={visibility}
-              role="group"
-            >
-              <span
-                className={detailStyles.visuallyHidden}
-                id={visibilityLabel}
-              >
-                可见范围
-              </span>
-              <button
-                aria-disabled={unavailable}
-                aria-pressed={visibility === "public"}
-                onClick={() => {
-                  if (!busyRef.current && visibility !== "public")
-                    start({ kind: "visibility", visibility: "public" });
-                }}
-                type="button"
-              >
-                公开
-              </button>
-              <button
-                aria-disabled={unavailable}
-                aria-pressed={visibility === "self"}
-                onClick={() => {
-                  if (!busyRef.current && visibility !== "self")
-                    setConfirm("private");
-                }}
-                ref={privateRef}
-                type="button"
-              >
-                仅自己可见
-              </button>
-            </div>
-          )}
           <button
             aria-disabled={unavailable}
             aria-label="移到回收站"
@@ -333,6 +293,35 @@ const WorkManagement = ({
               <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
             </svg>
           </button>
+          {visibility === undefined ? null : (
+            <button
+              aria-checked={visibility === "public"}
+              aria-disabled={unavailable}
+              aria-label="公开"
+              className={detailStyles.visibilitySwitch}
+              data-work-visibility={visibility}
+              onClick={() => {
+                if (!busyRef.current)
+                  start({
+                    kind: "visibility",
+                    visibility: visibility === "public" ? "self" : "public",
+                  });
+              }}
+              role="switch"
+              title={
+                visibility === "public"
+                  ? "关闭后仅自己可见"
+                  : "开启后按当前发布规则公开"
+              }
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className={detailStyles.visibilityTrack}
+              />
+              <span>公开</span>
+            </button>
+          )}
         </div>
       )}
       <p
@@ -358,34 +347,6 @@ const WorkManagement = ({
             重试
           </button>
         </div>
-      ) : null}
-      {confirm === "private" ? (
-        <AuthorDialog
-          onClose={() => closeConfirm(privateRef.current)}
-          title="设为仅自己可见"
-        >
-          <p className="phase4-muted">
-            设为仅自己可见后，其他人将无法打开这件作品，也无法查看或参与它的评论。作品内容、评论、喜欢和收藏都会保留，之后可以随时改回公开，改回时按当前的作品发布规则处理。
-          </p>
-          <div className="phase4-actions">
-            <button
-              data-confirm-private=""
-              onClick={() => {
-                closeConfirm(privateRef.current);
-                start({ kind: "visibility", visibility: "self" });
-              }}
-              type="button"
-            >
-              设为仅自己可见
-            </button>
-            <button
-              onClick={() => closeConfirm(privateRef.current)}
-              type="button"
-            >
-              取消
-            </button>
-          </div>
-        </AuthorDialog>
       ) : null}
       {confirm === "trash" ? (
         <AuthorDialog

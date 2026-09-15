@@ -81,7 +81,11 @@ export interface MediaStripProps extends Pick<
   | "onRetry"
   | "onChooseOriginal"
   | "onReselect"
+  | "onToggleSelection"
 > {
+  readonly selecting: boolean;
+  readonly selectedKeys: readonly string[];
+  readonly onSelect: (key: string) => void;
   readonly id: string;
   readonly label: string;
   readonly items: readonly WorkDraftItem[];
@@ -112,6 +116,9 @@ export const MediaStrip = ({
   loaded,
   derivations,
   onReorder,
+  selecting,
+  selectedKeys,
+  onSelect,
   ...actions
 }: MediaStripProps) => {
   const reducedMotion = usePrefersReducedMotion();
@@ -151,6 +158,9 @@ export const MediaStrip = ({
       accessibility={{ announcements, screenReaderInstructions }}
       collisionDetection={closestCenter}
       id={id}
+      onDragStart={({ active, activatorEvent }) => {
+        if (activatorEvent.type === "touchstart") onSelect(String(active.id));
+      }}
       onDragEnd={onDragEnd}
       sensors={sensors}
     >
@@ -165,6 +175,8 @@ export const MediaStrip = ({
                   : "chosen";
             return (
               <MediaItemTile
+                selecting={selecting}
+                selected={selectedKeys.includes(item.key)}
                 key={item.key}
                 count={items.length}
                 cover={cover}

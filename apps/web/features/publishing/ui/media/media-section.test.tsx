@@ -89,10 +89,15 @@ import type { Root } from "react-dom/client";
 
 interface FixtureOptions {
   readonly maxItems?: number;
+  readonly identify?: PublishingServices["identifyFiles"];
   readonly preprocess?: () => ReturnType<typeof fakePreprocess>;
 }
 
-const fixture = ({ maxItems = 50, preprocess }: FixtureOptions = {}) => {
+const fixture = ({
+  maxItems = 50,
+  preprocess,
+  identify,
+}: FixtureOptions = {}) => {
   const uploads = fakeClient();
   const transfer = fakeTransfer();
   const timers = manualTimers();
@@ -138,7 +143,7 @@ const fixture = ({ maxItems = 50, preprocess }: FixtureOptions = {}) => {
     createPreprocess: () => (preprocess ?? fakePreprocess)(),
     createHasher: () => null,
     createRecovery: () => null,
-    identifyFiles: (files) => identifyFiles(files),
+    identifyFiles: identify ?? ((files) => identifyFiles(files)),
     preprocessConcurrency: () => 1,
     transferConcurrency: 2,
     deviceClass: () => "phone",
@@ -284,8 +289,6 @@ const addStatic = async (count: number) => {
       fileOf(jpeg({ width: 4 + index }), `photo-${index}.jpg`),
     ),
   );
-  await until(() => container.querySelector("[data-media-staging]") !== null);
-  await click(buttonByText(`添加 ${count} 项（标准）`));
   await until(() => tiles().length === count);
 };
 
@@ -322,34 +325,140 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe("MediaSection staging", () => {
+describe("MediaSection automatic photo selection", () => {
+  it("long-presses the card body to select, then removes selected transfers without resurrection", async () => {
+    await render();
+    await addStatic(3);
+    await until(registered);
+    await until(() => current.transfer.starts.length === 2);
+    const [first, second, third] = storeKeys();
+    const cards = [
+      ...container.querySelectorAll<HTMLElement>("[data-media-key]"),
+    ];
+    const target = cards[0]!.querySelector("p")!;
+    vi.useFakeTimers();
+    try {
+      const point: Touch = {
+        identifier: 1,
+        clientX: 180,
+        clientY: 80,
+        pageX: 180,
+        pageY: 80,
+        screenX: 180,
+        screenY: 80,
+        radiusX: 1,
+        radiusY: 1,
+        rotationAngle: 0,
+        force: 1,
+        target,
+      };
+      await act(async () => {
+        target.dispatchEvent(
+          new TouchEvent("touchstart", {
+            bubbles: true,
+            cancelable: true,
+            touches: [point],
+          }),
+        );
+        await vi.advanceTimersByTimeAsync(260);
+      });
+      expect(cards[0]!.dataset.selected).toBe("true");
+      expect(cards[0]!.dataset.dragging).toBe("true");
+      await act(async () => {
+        target.dispatchEvent(
+          new TouchEvent("touchend", {
+            bubbles: true,
+            changedTouches: [point],
+          }),
+        );
+        // dnd-kit briefly suppresses the release click after a drag.
+        await vi.advanceTimersByTimeAsync(60);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await click(cards[1]!.querySelector("p")!);
+    expect(cards[1]!.dataset.selected).toBe("true");
+    expect(container.textContent).toContain("已选择 2 项");
+    const late = [...current.transfer.starts];
+    await click(buttonByText("移除所选"));
+    expect(storeKeys()).toEqual([third]);
+    await act(async () => {
+      for (const transfer of late)
+        transfer.callbacks.onSettled({
+          status: 200,
+          responseText: "{}",
+          stalled: false,
+        });
+      await settle();
+    });
+    expect(storeKeys()).toEqual([third]);
+    expect(probe.upload!.draftItems().map((item) => item.key)).not.toContain(
+      first,
+    );
+    expect(probe.upload!.draftItems().map((item) => item.key)).not.toContain(
+      second,
+    );
+  });
+
+  it("accepts a slow selection after navigating away and keeps separate picks in selection order", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    await render("phone", {
+      identify: async (files) => {
+        if (calls++ === 0) await pending;
+        return identifyFiles(files);
+      },
+    });
+    await act(async () => probe.store!.setOriginalNext(true));
+    await setFiles(pickerInput(), [fileOf(jpeg({ width: 4 }), "first.jpg")]);
+    await setFiles(pickerInput(), [fileOf(jpeg({ width: 8 }), "second.jpg")]);
+    await setView({ layout: "phone", shown: false });
+    await act(async () => {
+      release();
+      await settle();
+    });
+    await until(() => storeKeys().length === 2);
+    expect(probe.store!.get().items.map((item) => item.qualityMode)).toEqual([
+      "original",
+      "standard",
+    ]);
+    await setView({ layout: "phone", shown: true });
+    expect(tiles()).toHaveLength(2);
+    expect(container.querySelector("[data-media-staging]")).toBeNull();
+  });
+
+  it("rejects an over-limit selection as a whole without disturbing completed items", async () => {
+    await render("phone", { maxItems: 2 });
+    await addStatic(1);
+    const kept = storeKeys();
+    await setFiles(pickerInput(), [
+      fileOf(jpeg({ width: 7 })),
+      fileOf(jpeg({ width: 8 })),
+    ]);
+    await until(() => container.textContent!.includes("本次选择未加入"));
+    expect(storeKeys()).toEqual(kept);
+    expect(container.querySelector("[data-media-staging]")).toBeNull();
+  });
+
   it("adds selected static photos directly under the explicit batch quality choice", async () => {
     await render();
+    // The explicit Original choice precedes the native picker.
+    await act(async () => probe.store!.setOriginalNext(true));
     await setFiles(pickerInput(), [
       fileOf(jpeg({}), "plain.jpg"),
       fileOf(heic({ identifier: IDENTIFIER }), "IMG_0001.HEIC"),
       fileOf(heic({ identifier: OTHER_IDENTIFIER }), "IMG_0002.HEIC"),
       fileOf(animatedGif(), "moving.gif"),
     ]);
-    await until(
-      () =>
-        container.querySelectorAll("[data-staged-status=ready]").length === 3,
-    );
-    expect(
-      container.querySelector("[data-staged-status=needs_counterpart]"),
-    ).toBeNull();
-    expect(container.textContent).not.toContain("补选动态文件");
-    const gif = container.querySelector<HTMLElement>(
-      "[data-staged-status=unsupported]",
-    )!;
-    expect(gif.textContent).toContain("暂不支持动图");
-    await click(buttonByText("移除", gif));
-    // 原图画质 from the session applies to this batch and resets afterwards.
-    await act(async () => probe.store!.setOriginalNext(true));
-    const confirm = buttonByText("添加 3 项（原图）");
-    await click(confirm);
     await until(() => tiles().length === 3);
     expect(container.querySelector("[data-media-staging]")).toBeNull();
+    expect(container.textContent).not.toContain("补选动态文件");
+    expect(container.textContent).toContain("1 个不支持的文件未添加");
+    expect(container.textContent).not.toContain("全部取消");
     const state = probe.store!.get();
     expect(state.originalNext).toBe(false);
     expect(state.items.map((item) => [item.kind, item.qualityMode])).toEqual([
@@ -358,9 +467,9 @@ describe("MediaSection staging", () => {
       ["static", "original"],
     ]);
     expect(tiles().map((tile) => tile.handle)).toEqual([
-      "第 1 项，照片，拖动可调整顺序",
-      "第 2 项，照片，拖动可调整顺序",
-      "第 3 项，照片，拖动可调整顺序",
+      "第 1 项，照片，长按可拖动排序或多选",
+      "第 2 项，照片，长按可拖动排序或多选",
+      "第 3 项，照片，长按可拖动排序或多选",
     ]);
     expect(
       container.querySelectorAll("[data-media-quality=original]"),
@@ -381,11 +490,6 @@ describe("MediaSection staging", () => {
       document.body.dispatchEvent(event);
       await settle();
     });
-    await until(() => container.querySelector("[data-staged-status]") !== null);
-    expect(
-      container.querySelector("[data-media-staging]")!.textContent,
-    ).toContain("来自剪贴板");
-    await click(buttonByText("添加 1 项（标准）"));
     await until(() => tiles().length === 1);
     expect(container.querySelector("[data-media-key]")!.textContent).toContain(
       "来自剪贴板",
@@ -643,7 +747,7 @@ describe("MediaSection strip", () => {
       b!.key,
     ]);
     expect(tiles().map((tile) => tile.handle)).toEqual([
-      "第 1 项，照片，拖动可调整顺序",
+      "第 1 项，照片，长按可拖动排序或多选",
     ]);
     expect(document.activeElement?.getAttribute("data-media-handle")).toBe(
       b!.key,
@@ -673,17 +777,14 @@ describe("MediaSection strip", () => {
 
   it("does not fabricate LIVE when Web receives a still and a separate video", async () => {
     await render();
+    await act(async () => probe.store!.setOriginalNext(true));
     await setFiles(pickerInput(), [
       fileOf(heic({ identifier: IDENTIFIER })),
       fileOf(motion({ identifier: IDENTIFIER })),
       fileOf(jpeg({})),
     ]);
-    await until(() => container.querySelector("[data-media-staging]") !== null);
-    expect(
-      container.querySelectorAll("[data-staged-status=unsupported]"),
-    ).toHaveLength(1);
-    await act(async () => probe.store!.setOriginalNext(true));
-    await click(buttonByText("添加 2 项（原图）"));
+    await until(() => tiles().length === 2);
+    expect(container.textContent).toContain("1 个不支持的文件未添加");
     await until(() => current.transfer.starts.length === 2, 40);
     expect(probe.store!.get().items.map((item) => item.kind)).toEqual([
       "static",
@@ -1015,25 +1116,11 @@ describe("MediaSection across remounts and interruptions", () => {
       [fileOf(jpeg({ width: 6 }), "again.jpg")],
     );
     await until(
-      () => container.querySelector("[data-staged-status=ready]") !== null,
+      () => storeKeys().length === 2 && !storeKeys().includes("gone"),
     );
-    const staging = container.querySelector<HTMLElement>(
-      "[data-media-staging]",
-    )!;
-    expect(staging.textContent).toContain(
-      "确认后，新选择的文件将替换第 2 项（原为原图画质），同类文件沿用原来的旋转和裁剪",
-    );
-    expect(staging.textContent).not.toContain("请先移除");
-    // The missing item's quality is the batch's.
-    expect(probe.store!.get().originalNext).toBe(true);
-
-    // 下一步 and back before confirming: the re-selection is still pending.
+    // Replacement is already committed; navigation preserves it.
     await setView({ layout: "phone", shown: false });
     await setView({ layout: "phone", shown: true });
-    const confirm = buttonByText("添加 1 项（原图）");
-    expect(confirm.disabled).toBe(false);
-    await click(confirm);
-
     const state = probe.store!.get();
     expect(state.items.map((item) => item.key)).toHaveLength(2);
     const [first, second] = state.items;
@@ -1047,7 +1134,6 @@ describe("MediaSection across remounts and interruptions", () => {
     expect(state.coverKey).toBe(second!.key);
     expect(state.coverCrop).toBe(null);
     expect(state.originalNext).toBe(false);
-    expect(announcer()).toContain("已替换第 2 项");
     await flush();
     expect(probe.upload!.draftItems().map((item) => item.key)).toEqual([
       "done",
@@ -1056,7 +1142,7 @@ describe("MediaSection across remounts and interruptions", () => {
     expect(container.querySelector("[data-media-staging]")).toBeNull();
   });
 
-  it("stages files dropped anywhere in the section and never lets a dropped file replace the editor", async () => {
+  it("uploads files dropped anywhere in the section and never lets a dropped file replace the editor", async () => {
     await render("desktop");
     const outside = document.createElement("div");
     document.body.append(outside);
@@ -1066,10 +1152,6 @@ describe("MediaSection across remounts and interruptions", () => {
       container.querySelector("[data-media-picker]")!,
       fileDrag("drop", [fileOf(jpeg({}), "zone.jpg")]),
     );
-    await until(
-      () => container.querySelectorAll("[data-staged-key]").length === 1,
-    );
-    await click(buttonByText("添加 1 项（标准）"));
     await until(() => tiles().length === 1);
 
     // Outside the section: the browser does not open the file, nothing is staged.
@@ -1099,10 +1181,6 @@ describe("MediaSection across remounts and interruptions", () => {
       tile,
       fileDrag("drop", [fileOf(jpeg({ width: 9 }), "strip.jpg")]),
     );
-    await until(
-      () => container.querySelectorAll("[data-staged-key]").length === 1,
-    );
-    await click(buttonByText("添加 1 项（标准）"));
     await until(() => tiles().length === 2);
   });
 
@@ -1193,17 +1271,29 @@ describe("MediaSection across remounts and interruptions", () => {
     await until(() => current.transfer.starts.length === 2);
   });
 
-  it("names why nothing can be added once the session has ended", async () => {
-    await render();
+  it("ignores late identification after the session ends", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await render("phone", {
+      identify: async (files) => {
+        await pending;
+        return identifyFiles(files);
+      },
+    });
     await setFiles(pickerInput(), [fileOf(jpeg({}), "late.jpg")]);
-    await until(
-      () => container.querySelector("[data-staged-status=ready]") !== null,
-    );
     await act(async () => {
       probe.upload!.closeSession({ discard: true });
       await settle();
     });
+    await act(async () => {
+      release();
+      await settle();
+    });
     await flush();
+    expect(current.uploads.client.registerItem).not.toHaveBeenCalled();
+    expect(current.transfer.starts).toHaveLength(0);
     const picker = container.querySelector("[data-media-picker]")!;
     expect(picker.textContent).toContain("暂时无法添加图片");
     expect(picker.querySelector<HTMLButtonElement>("button")!.disabled).toBe(

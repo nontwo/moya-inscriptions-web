@@ -1,6 +1,6 @@
 # Work publishing and draft editing — work-publishing-v1
 
-Task: `work-publishing-v1`. Revision: r4. Earlier revision records remain in
+Task: `work-publishing-v1`. Revision: r5. Earlier revision records remain in
 this file and Git history. Owner-approved requirements provided on 2026-09-13
 (implementation assignment for image/text publishing and draft editing). Phase 4
 (#125/#126) is merged; this task starts from `main`
@@ -302,3 +302,24 @@ User bulk operations currently cover recommendation/unrecommendation. Suspension
 and reinstatement require the pending explicit Owner selection; account deletion
 is excluded. Prior test results and cumulative execution/security ledgers remain
 valid historical records; this scope delta itself adds no test time.
+
+## r5 — Owner mobile interaction corrections (2026-09-15)
+
+The Owner's three annotated screenshots explicitly replace the affected r4
+interactions on the same Issue #137 and Draft PR #138. All other requirements
+and historical evidence remain unchanged.
+
+| Scenario                     | Development                                                                                                                                                                                                                            | Production                        | Must preserve                                                                                                                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Media ordering and selection | The whole non-control area of each media card supports long-press drag; long press also enters selection, then tapping cards selects more for one remove action. Explain both gestures in the media-step footer.                       | Same when publishing is available | Ordinary scrolling, independent child controls, keyboard access, stable item identities/order, cancellation fences, existing media references and cover fallback                                       |
+| File selection               | Selecting, dropping or pasting supported photos starts upload automatically; remove the intermediate ready-file confirmation list and Add/Cancel-all buttons. Reject an excessive selection clearly without dropping existing uploads. | Same when publishing is available | Explicit selection-stage Standard/Original, source-byte guarantees, 50 logical items, unsupported-file feedback, manual failure retry, account/session isolation, correct missing-resource replacement |
+| Work visibility              | Adjacent edit/trash icons, then one visual public on/off switch acting in place without another screen or private-confirmation dialog.                                                                                                 | Same presentation                 | Author-only commands, busy lock, idempotent unknown-result retry, truthful server read-back and current publication policy; work trash confirmation remains                                            |
+| Comment controls             | Trash icon for body deletion; heart icon only for likes; activate the comment text entry to reply using the existing composer.                                                                                                         | Same presentation                 | Accessible action names and keyboard activation, correct root/sibling target, text selection, no nested-control bubbling, owner-only body deletion, unchanged moderation and ephemeral draft rules     |
+
+Allowed changes are the existing Web publishing/editor, comment and detail
+feature paths, their focused tests, this specification and project status. No
+new backend capability, public contract, migration, dependency, workflow policy,
+Apple code, production action or merge is part of r5. Tests retain the
+cumulative ledger. The Owner approved a combined remaining 480-second allowance
+(mobile 90, Admin 240, full local 120, focused recheck 30), including r5 time
+already charged after the request; the earlier entries and failures remain.

@@ -64,7 +64,12 @@ test("QA comments send, reply, like, sort and reset on refresh", async ({
   const fixtureComment = comments
     .locator('[data-comment-id$="fixture-comment-1"]')
     .first();
-  await fixtureComment.locator("[data-comment-reply-action]").first().click();
+  const replyEntry = fixtureComment
+    .locator("[data-comment-reply-action]")
+    .first();
+  await expect(replyEntry).toHaveAttribute("role", "button");
+  await replyEntry.click();
+  await expect(composer.getByRole("textbox")).toBeFocused();
   await expect(composer.locator("[data-comment-reply-mode]")).toContainText(
     "回复 墨池散人",
   );

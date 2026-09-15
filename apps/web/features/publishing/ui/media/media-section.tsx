@@ -31,7 +31,6 @@ import { MediaStrip } from "./media-strip";
 import { mediaUiFor, useMediaUiState } from "./media-ui-store";
 import styles from "./media.module.css";
 import { attachPasteCapture } from "./paste-capture";
-import { StagedChoices } from "./staged-choices";
 
 import type { MediaValue } from "./media-order";
 import type { RetryPlan } from "./media-status";
@@ -43,7 +42,7 @@ import type {
 } from "../../import-grouping";
 import type { UploadItemPhase, UploadItemView } from "../../upload-manager";
 import type { EditorSessionHandle } from "../editor/editor-session-provider";
-import type { MediaCrop, MediaEdit, WorkDraftItem } from "@moya/contracts";
+import type { MediaCrop, MediaEdit } from "@moya/contracts";
 
 /**
  * Step 1 of the phone editor, or the media column of the desktop editor
@@ -100,9 +99,6 @@ const coverFallbackNotice = (value: MediaValue) =>
     ? "封面已移除，现在以第 1 项作为封面"
     : "封面已移除，没有图片时作品以文字展示";
 
-const qualityText = (mode: WorkDraftItem["qualityMode"]) =>
-  mode === "original" ? "原图" : mode === "standard" ? "标准" : null;
-
 const announcedPhases: Partial<Record<UploadItemPhase, string>> = {
   ready: "已就绪",
   failed: "上传失败",
@@ -131,7 +127,8 @@ const MediaSectionBody = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const { state, actions } = editor;
   const ui = mediaUiFor(actions);
-  const { dialog, replacement, notice } = useMediaUiState(ui);
+  const { dialog, replacement, notice, selecting, selectedKeys } =
+    useMediaUiState(ui);
   const uploads = session.uploads;
   const staging = staged.staging;
   const maxItems = session.limits?.maxItems ?? 50;
@@ -202,6 +199,7 @@ const MediaSectionBody = ({
   const reselectInput = useRef<HTMLInputElement>(null);
   const reselectTarget = useRef<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
+  const acceptSelection = useRef<(original: boolean) => void>(() => undefined);
 
   const canSelect = session.accountId !== null && session.session !== null;
 
@@ -243,6 +241,7 @@ const MediaSectionBody = ({
   // A dialog whose item left the album (removed elsewhere, another version) ends.
   useEffect(() => {
     if (dialog !== null && indexOfKey(value, dialog.key) < 0) ui.closeDialog();
+    ui.retainSelection(value.items.map((item) => item.key));
   }, [dialog, value, ui]);
 
   // A re-selection ends with its target, or when its files leave staging.
@@ -306,12 +305,29 @@ const MediaSectionBody = ({
       if (files.length === 0) return;
       setStageError(null);
       setConfirmError(null);
-      staged.stageFiles(files, origin).catch(() => {
-        onFailed?.();
-        setStageError("文件无法读取，请重新选择");
-      });
+      const original = actions.get().originalNext;
+      const replacing = ui.get().replacement;
+      actions.setOriginalNext(false);
+      staged
+        .stageFiles(files, origin, () => {
+          // Removing a missing item while its replacement is being read must
+          // never turn that late replacement into an unrelated new upload.
+          if (
+            replacing !== null &&
+            (ui.get().replacement?.target !== replacing.target ||
+              indexOfKey(current(), replacing.target) < 0)
+          ) {
+            staged.cancel(false);
+            return;
+          }
+          acceptSelection.current(original);
+        })
+        .catch(() => {
+          onFailed?.();
+          setStageError("文件无法读取，请重新选择");
+        });
     },
-    [staged],
+    [staged, actions, ui, current],
   );
   const refuse = useCallback(() => announce(SELECTION_UNAVAILABLE), [announce]);
   const latest = useRef({ stage, canSelect, refuse });
@@ -346,6 +362,7 @@ const MediaSectionBody = ({
   /** The re-selection whose files are ready to confirm now, if any. */
   const readyReplacement = () => {
     const pending = ui.get().replacement;
+    const staging = staged.current();
     if (
       pending === null ||
       staging === null ||
@@ -359,28 +376,24 @@ const MediaSectionBody = ({
     );
     return ready ? pending : null;
   };
-  const replacementNow = readyReplacement();
-  const limitCredit =
-    replacementNow !== null && holdsSlot(views.get(replacementNow.target))
-      ? 1
-      : 0;
-
-  const confirm = () => {
+  const confirm = (original: boolean) => {
     if (session.session === null) {
       setConfirmError("本次编辑已结束，无法添加");
       return;
     }
-    const original = actions.get().originalNext;
+    const staging = staged.current();
     if (staging !== null && staging.batch.original !== original)
       staged.setOriginal(original);
     const pending = readyReplacement();
+    const limitCredit =
+      pending !== null && holdsSlot(views.get(pending.target)) ? 1 : 0;
+    const unsupported = staging?.count.unsupported ?? 0;
     // The missing item gives its place (and its slot in the limit) to its
     // replacement: cancelled first, only when the confirmation then fits.
     let cancelledTarget: Promise<void> | null = null;
     if (
       pending !== null &&
       staging !== null &&
-      staging.identifying === 0 &&
       staging.count.overBy <= limitCredit
     )
       cancelledTarget = session.cancelItem(pending.target);
@@ -388,12 +401,16 @@ const MediaSectionBody = ({
     if (!result.ok) {
       setConfirmError(
         result.error === "items_limit"
-          ? `作品最多 ${maxItems} 项，请先移除部分内容`
-          : "没有可以添加的项",
+          ? `作品最多 ${maxItems} 项，本次选择未加入，请减少所选照片或先移除部分内容`
+          : "所选文件无法添加，请选择支持的静态照片",
       );
+      staged.cancel(false);
+      ui.setReplacement(null);
       return;
     }
     setConfirmError(null);
+    // Rejected files are explained below, not kept in an invisible staging batch.
+    staged.cancel(false);
     const added = confirmedItems(result.confirmed);
     let next = current();
     let replaced: number | null = null;
@@ -421,20 +438,15 @@ const MediaSectionBody = ({
       }
     }
     actions.setMedia(appendItems(next, added));
-    // 原图画质 applies to one batch; entries still waiting for a choice belong to it.
-    if (result.remaining === null) actions.setOriginalNext(false);
+    if (unsupported > 0)
+      setStageError(`${unsupported} 个不支持的文件未添加，其余照片已开始上传`);
     announce(
       `已添加 ${added.length} 项，${original ? "原图" : "标准"}画质${
         replaced === null ? "" : `，已替换第 ${replaced} 项`
       }`,
     );
   };
-
-  const cancelStaging = () => {
-    staged.cancel();
-    ui.setReplacement(null);
-    setConfirmError(null);
-  };
+  acceptSelection.current = confirm;
 
   // -- item actions --------------------------------------------------------
 
@@ -456,31 +468,46 @@ const MediaSectionBody = ({
   const reorder = (key: string, index: number) =>
     actions.setMedia(moveToIndex(current(), key, index));
 
-  const remove = (key: string) => {
+  const removeMany = (keys: readonly string[]) => {
     const before = current();
-    const index = indexOfKey(before, key);
-    if (index < 0) return;
-    const view = views.get(key);
-    // Cancelled through the runtime before the album changes (never re-added).
-    const cancelled =
-      view === undefined ||
-      view.phase === "cleanup" ||
-      view.phase === "cancelled"
-        ? Promise.resolve()
-        : session.cancelItem(key);
-    const result = removeItem(before, key);
+    const removing = before.items.filter((item) => keys.includes(item.key));
+    if (removing.length === 0) return;
+    const index = indexOfKey(before, removing[0]!.key);
+    let result = { value: before, coverRemoved: false };
+    // Fence every selected transfer first, then publish one album edit.
+    for (const { key } of removing) {
+      const view = views.get(key);
+      const cancelled =
+        view === undefined ||
+        view.phase === "cleanup" ||
+        view.phase === "cancelled"
+          ? Promise.resolve()
+          : session.cancelItem(key);
+      const next = removeItem(result.value, key);
+      result = {
+        value: next.value,
+        coverRemoved: result.coverRemoved || next.coverRemoved,
+      };
+      void cancelled.then(
+        () => session.forgetItem(key),
+        () => showNotice("图片已移除，上传清理尚未完成"),
+      );
+      if (ui.get().replacement?.target === key) ui.setReplacement(null);
+    }
     const neighbour =
       result.value.items[index]?.key ?? result.value.items[index - 1]?.key;
     pendingFocus.current =
       neighbour === undefined ? "picker" : `[data-media-handle="${neighbour}"]`;
     actions.setMedia(result.value);
-    void cancelled.then(() => session.forgetItem(key));
-    if (ui.get().replacement?.target === key) ui.setReplacement(null);
+    ui.clearSelection();
     showNotice(
       result.coverRemoved ? coverFallbackNotice(result.value) : null,
-      `已移除第 ${index + 1} 项`,
+      removing.length === 1
+        ? `已移除第 ${index + 1} 项`
+        : `已移除 ${removing.length} 项`,
     );
   };
+  const remove = (key: string) => removeMany([key]);
 
   const chooseCover = (key: string) => {
     const before = current();
@@ -579,18 +606,6 @@ const MediaSectionBody = ({
               derivations.get(dialogItem.key)?.derivation ?? ("none" as const),
           }),
         );
-  const replacementIndex =
-    replacement === null ? -1 : indexOfKey(value, replacement.target);
-  const replacementNote = (() => {
-    if (replacement === null || replacementIndex < 0) return null;
-    const mode = qualityText(replacement.previous.qualityMode);
-    const keepsEdit =
-      replacement.previous.edit.rotation !== 0 ||
-      replacement.previous.edit.crop !== null;
-    return `确认后，新选择的文件将替换第 ${replacementIndex + 1} 项${
-      mode === null ? "" : `（原为${mode}画质）`
-    }${keepsEdit ? "，同类文件沿用原来的旋转和裁剪" : ""}`;
-  })();
   const showSkip =
     layout === "phone" &&
     onSkip !== undefined &&
@@ -639,26 +654,11 @@ const MediaSectionBody = ({
         </p>
       )}
 
-      {staging !== null && (
-        <StagedChoices
-          confirmError={confirmError}
-          limitCredit={limitCredit}
-          onAttach={(key, file) => staged.attachCounterpart(key, file)}
-          onCancel={cancelStaging}
-          onConfirm={confirm}
-          onKeepStill={(key) => {
-            staged.keepStill(key);
-          }}
-          onRemove={(key) => {
-            staged.remove(key);
-          }}
-          onResolve={(key, still, motion) =>
-            staged.resolveAmbiguous(key, still, motion)
-          }
-          originalQuality={state.originalNext}
-          replacementNote={replacementNote}
-          staging={staging}
-        />
+      {(staging?.identifying ?? 0) > 0 && <p role="status">正在读取照片…</p>}
+      {confirmError !== null && (
+        <p className={styles.fieldError} role="alert">
+          {confirmError}
+        </p>
       )}
 
       {paused && (
@@ -691,8 +691,32 @@ const MediaSectionBody = ({
         </div>
       )}
 
+      {selecting && (
+        <div className={styles.selectionBar} aria-label="图片多选">
+          <span>已选择 {selectedKeys.length} 项</span>
+          <button
+            className={styles.actionButton}
+            disabled={selectedKeys.length === 0}
+            onClick={() => removeMany(selectedKeys)}
+            type="button"
+          >
+            移除所选
+          </button>
+          <button
+            className={styles.textButton}
+            onClick={() => ui.clearSelection()}
+            type="button"
+          >
+            完成
+          </button>
+        </div>
+      )}
       {value.items.length > 0 && (
         <MediaStrip
+          selecting={selecting}
+          selectedKeys={selectedKeys}
+          onSelect={(key) => ui.select(key)}
+          onToggleSelection={(key) => ui.toggleSelection(key)}
           coverKey={value.coverKey}
           derivations={derivations}
           id={`media-strip-${state.key}`}

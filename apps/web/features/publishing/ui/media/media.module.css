@@ -410,6 +410,78 @@
   border-bottom: 1px solid var(--yoyi-color-border-subtle);
 }
 
+.tile {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.tile[data-selected="true"] {
+  background: var(--yoyi-color-seal-red-muted);
+}
+
+.selectionBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+}
+
+.selectionBar button {
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  cursor: pointer;
+}
+
+.selectionBar button:disabled {
+  color: var(--yoyi-color-text-disabled);
+  cursor: default;
+}
+
+.selectionButton,
+.selectionShortcut:focus-visible {
+  position: absolute;
+  top: var(--yoyi-space-4);
+  right: 0;
+  z-index: 3;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-background-surface);
+  color: var(--yoyi-color-seal-red);
+  font: inherit;
+  cursor: pointer;
+}
+
+.selectionShortcut:not(:focus-visible) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.tile:has(.selectionButton) .tileTitle {
+  padding-right: 44px;
+}
+
+.selectionBar button:focus-visible,
+.selectionButton:focus-visible,
+.selectionShortcut:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
 .section[data-layout="desktop"] .tile {
   grid-template-columns: 112px minmax(0, 1fr);
 }
