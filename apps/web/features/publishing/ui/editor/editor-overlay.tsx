@@ -35,7 +35,6 @@ import { ConfirmationSheet } from "./confirmation-sheet";
 import { DesktopEditor } from "./desktop-editor";
 import { EditorDialog } from "./editor-dialog";
 import {
-  enableEditDrafts,
   markEditVersionSent,
   openEditorSession,
   removeUnchangedEditDraft,
@@ -59,12 +58,7 @@ import {
   preserveLaterConflictEdits,
 } from "./editor-session-state";
 import { LeaveDialog } from "./leave-dialog";
-import {
-  DraftDeletionDialog,
-  DraftModeSwitch,
-  ModeSwitches,
-  OriginalQualitySwitch,
-} from "./mode-switches";
+import { ModeSwitches, OriginalQualitySwitch } from "./mode-switches";
 import { PhoneSteps } from "./phone-steps";
 import {
   ContinuousPreview,
@@ -123,23 +117,6 @@ const settledPhases: ReadonlySet<string> = new Set([
 const unfinishedUploads = (uploads: UploadManagerSnapshot | null): number =>
   (uploads?.items ?? []).filter((item) => !settledPhases.has(item.phase))
     .length;
-
-interface ErrorShape {
-  readonly status?: unknown;
-  readonly code?: unknown;
-  readonly message?: unknown;
-}
-
-const errorShape = (error: unknown): ErrorShape =>
-  typeof error === "object" && error !== null ? (error as ErrorShape) : {};
-
-const draftModeErrorText = (error: unknown): string => {
-  const shape = errorShape(error);
-  if (shape.code === "draft_limit") return "草稿数量已达上限，暂时无法保存草稿";
-  return typeof shape.message === "string" && typeof shape.status === "number"
-    ? shape.message
-    : "暂时无法开始保存草稿，请重试";
-};
 
 // ---------------------------------------------------------------------------
 // Viewport
@@ -409,8 +386,11 @@ const EditorSessionHost = ({
   const deps = useMemo<EditorLoaderDeps>(
     () => ({
       client: publishingClient,
+      recovery: registry.recovery,
       upload: () => uploadRef.current,
-      alive: (candidate) => registry.current(candidate.accountId) === candidate,
+      alive: (candidate) =>
+        registry.accountId === candidate.accountId &&
+        registry.current(candidate.accountId) === candidate,
       requestId: requestIdentity,
       deviceClass: () =>
         typeof navigator === "undefined" ? null : detectDeviceClass(navigator),
@@ -596,13 +576,14 @@ const OtherSessionPanel = ({
     setError(null);
     try {
       if (!unsaved) {
-        await latest.current.saveNow().catch(() => undefined);
+        await latest.current.saveNow();
         if (latest.current.hasUnsavedChanges()) {
           const status = latest.current.autosave?.status;
           setError(
             status === "conflict"
               ? `那项编辑有两个版本待选择，暂时无法结束。${otherTarget === null ? "" : "请回到那项编辑选择版本。"}`
-              : `那项编辑的更改没有保存完成，暂时无法结束。${otherTarget === null ? "请稍后重试。" : "可以回到那项编辑处理。"}`,
+              : (latest.current.autosave?.error?.message ??
+                  `那项编辑的更改没有保存完成，暂时无法结束。${otherTarget === null ? "请稍后重试。" : "可以回到那项编辑处理。"}`),
           );
           return;
         }
@@ -618,6 +599,10 @@ const OtherSessionPanel = ({
           });
         registry.dispose(other);
       }
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "草稿未保存，请回到编辑后重试",
+      );
     } finally {
       setBusy(false);
     }
@@ -660,7 +645,7 @@ const OtherSessionPanel = ({
           onClick={() => void end()}
           type="button"
         >
-          {busy ? "正在结束…" : "结束那项编辑"}
+          {busy ? "正在保存…" : "保存草稿并结束那项编辑"}
         </button>
       </div>
     </div>
@@ -733,11 +718,6 @@ const EditorWorkspace = ({
   const uploads = upload.uploads;
 
   const [leave, setLeave] = useState<LeaveState | null>(null);
-  const [draftDeletion, setDraftDeletion] = useState<{
-    readonly busy: boolean;
-    readonly error: string | null;
-  } | null>(null);
-  const [modeBusy, setModeBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState<{
     readonly opener: HTMLElement;
@@ -992,10 +972,10 @@ const EditorWorkspace = ({
       ? "submitting"
       : now.noSaveContent
         ? "unsaved"
-        : now.unsavedText
+        : now.unsavedText || now.unfinishedWork
           ? "saved"
           : null;
-    // Uploads alone never block: the session stays and the progress entry returns.
+    // Unsaved text and unfinished media both require an explicit leave choice.
     if (variant === null) return "allow" as const;
     setLeave({ variant, saving: false, failed: false });
     return "blocked" as const;
@@ -1016,7 +996,17 @@ const EditorWorkspace = ({
     setLeave(
       (current) => current && { ...current, saving: true, failed: false },
     );
-    await uploadRef.current.saveNow().catch(() => undefined);
+    try {
+      await uploadRef.current.saveNow();
+    } catch (error) {
+      store.setNotice(
+        error instanceof Error ? error.message : "保存失败，请重试",
+      );
+      setLeave(
+        (current) => current && { ...current, saving: false, failed: true },
+      );
+      return;
+    }
     if (!uploadRef.current.hasUnsavedChanges()) {
       leaveNow();
       return;
@@ -1030,94 +1020,6 @@ const EditorWorkspace = ({
     registry.markLeaving(store, "discarded");
     void uploadRef.current.closeSession({ discard: true });
     leaveNow();
-  };
-
-  // -- draft mode -----------------------------------------------------------
-
-  const draftModeDisabledReason =
-    saveMode === "unsaved" &&
-    (session?.sessionId != null ||
-      (state.kind === "edit" && (uploads?.items.length ?? 0) > 0))
-      ? "本次编辑已开始上传，无法再改为保存草稿"
-      : null;
-
-  const turnDraftsOff = async () => {
-    setDraftDeletion((current) => current && { ...current, busy: true });
-    setModeBusy(true);
-    try {
-      await uploadRef.current.disableSaving();
-      setDraftDeletion(null);
-      store.keepOpenedEditDraft();
-      store.setNotice("已不再保存草稿，本次内容只保留在当前页面");
-      const current = store.get();
-      if (current.kind === "edit" && current.target.type === "draft") {
-        const next: EditorTarget = { type: "work", id: current.workId! };
-        store.setTarget(next);
-        controls.replaceTarget(next);
-      }
-    } catch (error) {
-      if (errorShape(error).code === "draft_changed") {
-        // Confirmed against a revision the account no longer holds: nothing
-        // was deleted, and a retry would not delete what the author saw. A
-        // final answer, so the author reopens the draft and decides again.
-        setDraftDeletion(null);
-        store.setNotice("这份草稿在别处有新的更改，未删除；请重新打开后再决定");
-        return;
-      }
-      setDraftDeletion({
-        busy: false,
-        error: "暂时无法删除草稿，草稿仍在保存，请重试",
-      });
-    } finally {
-      setModeBusy(false);
-    }
-  };
-
-  const changeDraftMode = async (saving: boolean) => {
-    if (!saving) {
-      if (saveMode !== "saved") return;
-      if (conflict !== null) {
-        // Two versions are waiting here: the account refuses to delete a
-        // draft that still has an unresolved copy, so the deletion would
-        // come back as 在别处有新的更改 — which is not what is in the way,
-        // and reopening would show this same choice. Name the real block
-        // and bring the chooser back instead of the deletion dialog.
-        setVersionsPanel("conflict");
-        store.setNotice("有两个版本待选择，选择版本后才能停止保存草稿");
-        return;
-      }
-      const pendingDraft =
-        draftId !== null ||
-        autosave?.status === "saving" ||
-        autosave?.status === "reconciling" ||
-        autosave?.status === "error";
-      if (pendingDraft) setDraftDeletion({ busy: false, error: null });
-      else await turnDraftsOff();
-      return;
-    }
-    if (saveMode !== "unsaved") return;
-    setModeBusy(true);
-    try {
-      if (state.kind === "edit") {
-        const result = await enableEditDrafts(store, deps);
-        store.setNotice(
-          result === "uploads_started"
-            ? "本次编辑已开始上传，无法再改为保存草稿"
-            : result === "draft_in_conflict"
-              ? "这件作品已有一份编辑草稿，其中有两个版本待选择，暂时无法在此保存草稿"
-              : null,
-        );
-      } else {
-        const enabled = uploadRef.current.enableSaving();
-        store.setNotice(
-          enabled ? null : "本次编辑已开始上传，无法再改为保存草稿",
-        );
-      }
-    } catch (error) {
-      store.setNotice(draftModeErrorText(error));
-    } finally {
-      setModeBusy(false);
-    }
   };
 
   // -- submission -----------------------------------------------------------
@@ -1279,6 +1181,7 @@ const EditorWorkspace = ({
   // -- rendering --------------------------------------------------------------
 
   const canSaveNow =
+    !submissionBusy &&
     saveMode === "saved" &&
     autosave !== null &&
     autosave.status !== "saving" &&
@@ -1290,7 +1193,14 @@ const EditorWorkspace = ({
 
   const saveNow = async () => {
     setAnnouncement("");
-    await uploadRef.current.saveNow().catch(() => undefined);
+    try {
+      await uploadRef.current.saveNow();
+    } catch (error) {
+      store.setNotice(
+        error instanceof Error ? error.message : "保存失败，请重试",
+      );
+      return;
+    }
     if (!uploadRef.current.hasUnsavedChanges()) setAnnouncement("已保存");
   };
 
@@ -1304,7 +1214,7 @@ const EditorWorkspace = ({
           onClick={() => void saveNow()}
           type="button"
         >
-          立即保存
+          保存草稿
         </button>
       ) : null}
       {saveMode === "saved" && draftId !== null ? (
@@ -1345,20 +1255,10 @@ const EditorWorkspace = ({
     </>
   );
 
-  const draftSwitch = (autoFocus: boolean) => (
-    <DraftModeSwitch
-      autoFocus={autoFocus}
-      busy={modeBusy}
-      disabledReason={draftModeDisabledReason}
-      onChange={(saving) => void changeDraftMode(saving)}
-      saving={saveMode !== "unsaved"}
-    />
-  );
-
-  const switches = (autoFocus: boolean) => (
+  const switches = () => (
     <ModeSwitches>
-      {draftSwitch(autoFocus)}
       <OriginalQualitySwitch
+        autoFocus={layout === "phone"}
         onChange={store.setOriginalNext}
         original={state.originalNext}
       />
@@ -1454,7 +1354,7 @@ const EditorWorkspace = ({
           <SaveStatus
             autosave={autosave}
             onChooseVersion={() => setVersionsPanel("conflict")}
-            onRetry={() => void upload.retrySave()}
+            onRetry={() => void saveNow()}
             saveMode={saveMode}
           />
         }
@@ -1482,7 +1382,7 @@ const EditorWorkspace = ({
             focusHeading
             media={
               <>
-                {switches(true)}
+                {switches()}
                 {notices}
                 {mediaSection("phone")}
               </>
@@ -1493,7 +1393,6 @@ const EditorWorkspace = ({
             text={
               <TextSettings
                 autoFocusTitle
-                draftMode={draftSwitch(false)}
                 progress={
                   <>
                     {notices}
@@ -1520,7 +1419,7 @@ const EditorWorkspace = ({
                 {progressLine}
               </div>
             }
-            switches={switches(false)}
+            switches={switches()}
             text={<TextSettings autoFocusTitle state={state} store={store} />}
           />
         )}
@@ -1576,16 +1475,6 @@ const EditorWorkspace = ({
           saving={leave.saving}
           unfinishedUploads={unfinished}
           variant={leave.variant}
-        />
-      )}
-
-      {draftDeletion === null ? null : (
-        <DraftDeletionDialog
-          busy={draftDeletion.busy}
-          error={draftDeletion.error}
-          isEdit={state.kind === "edit"}
-          onCancel={() => setDraftDeletion(null)}
-          onConfirm={() => void turnDraftsOff()}
         />
       )}
 

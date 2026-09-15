@@ -42,6 +42,7 @@ import type {
   PublishingServices,
   RuntimeSnapshot,
   SaveMode,
+  PublishingCheckpoint,
 } from "./publishing-runtime";
 import type { SubmissionState } from "./submission-reconcile";
 import type { UploadItemView, UploadManagerSnapshot } from "./upload-manager";
@@ -220,8 +221,11 @@ export const useUploadSession = () => {
        */
       adoptDraft: (draft: PublishingDraft, content: WorkDraftContent) =>
         runtime.adoptDraft(draft, content),
-      saveNow: () => runtime.autosave()?.saveNow() ?? Promise.resolve(),
-      retrySave: () => runtime.autosave()?.retry() ?? Promise.resolve(),
+      saveNow: () => runtime.saveNow(),
+      checkpoint: () => runtime.checkpoint(),
+      restoreCheckpoint: (checkpoint: PublishingCheckpoint) =>
+        runtime.restoreCheckpoint(checkpoint),
+      retrySave: () => runtime.saveNow(),
       hasUnsavedChanges: () => runtime.autosave()?.hasUnsavedChanges() ?? false,
       enableSaving: () => runtime.enableSaving(),
       disableSaving: () => runtime.disableSaving(),
@@ -269,7 +273,8 @@ export const useStagedItems = () => {
         files: readonly File[],
         origin: FileOrigin,
         onReady?: () => void,
-      ) => runtime.stageFiles(files, origin, onReady),
+        original = false,
+      ) => runtime.stageFiles(files, origin, onReady, original),
       setOriginal: (original: boolean) => runtime.setStagingOriginal(original),
       remove: (key: string) => runtime.removeStaged(key),
       keepStill: (key: string) => runtime.keepStagedStill(key),

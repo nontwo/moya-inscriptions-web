@@ -14,23 +14,12 @@ import type {
   SavePublishingDraftCommand,
   WorkDraftContent,
 } from "@moya/contracts";
+import type { EditorInterruptionRecovery } from "../../editor-recovery";
 
 /**
- * Opens the runtime session behind an editor store, once per store:
- * - a new work starts in saved mode without any server record (D02);
- * - a draft is read and reopened with its media on this browser;
- * - an existing work is read as its editable revision and its private edit
- *   draft is opened (saved mode); a new edit draft inherits the work's
- *   visibility (P03). When no draft can be opened because the draft limit is
- *   reached, the edit continues without saving and says so.
- *
- * An edit draft this session created and never changed is removed again
- * when the author leaves (D02). Only the account's own answer says whether
- * this request inserted the draft (`created`); a draft that already existed
- * belongs to another device or an earlier visit and is always kept. The
- * removal is conditional on the revision it was opened with, so a draft
- * another device has saved to meanwhile is refused as `draft_changed` by the
- * account and kept. Reopening the same work waits for that removal first.
+ * Resume this tab's interruption record first; otherwise read the requested
+ * draft or editable work. Opening an editor never creates a cloud draft.
+ * Legacy conditional removal helpers remain for sessions opened before r6.
  */
 
 export type UploadSessionApi = ReturnType<typeof useUploadSession>;
@@ -56,6 +45,7 @@ export interface EditorLoaderClient {
 }
 
 export interface EditorLoaderDeps {
+  readonly recovery?: EditorInterruptionRecovery | null;
   readonly client: EditorLoaderClient;
   readonly upload: () => UploadSessionApi;
   /** Whether the store is still the account's editor session. */
@@ -119,12 +109,6 @@ export const removeUnchangedEditDraft = (
   return run;
 };
 
-const openedFrom = (draft: PublishingDraft): OpenedEditDraft => ({
-  id: draft.id,
-  workId: draft.workId ?? "",
-  revision: draft.revision,
-});
-
 /** The edit version the runtime has already received for this store. */
 export const sentEditVersion = (store: EditorSessionStore): number =>
   sent.get(store) ?? 0;
@@ -164,7 +148,12 @@ export const openEditorSession = (
 ): Promise<void> => {
   const existing = loads.get(store);
   if (existing) return existing;
-  const run = load(store, target, deps);
+  const run = load(store, target, deps).finally(() => {
+    if (store.get().phase === "loading") {
+      loads.delete(store);
+      store.setUnavailable("加载已暂停，请重试");
+    }
+  });
   loads.set(store, run);
   return run;
 };
@@ -194,6 +183,25 @@ const load = async (
   target: EditorTarget,
   deps: EditorLoaderDeps,
 ): Promise<void> => {
+  store.setLoading();
+  const recovered = await deps.recovery?.load(store.accountId);
+  if (!deps.alive(store)) return;
+  if (recovered) {
+    await deps.upload().restoreCheckpoint(recovered.runtime);
+    if (!deps.alive(store)) return;
+    store.store.set({
+      ...recovered.state,
+      key: store.key,
+      accountId: store.accountId,
+      phase: "ready",
+      restarting: false,
+      unavailableMessage: null,
+      notice: "已恢复本机未完成的编辑；点击保存草稿后才会同步到其他端",
+    });
+    deps.upload().edit(store.content());
+    markEditVersionSent(store, store.get().editVersion);
+    return;
+  }
   if (target.type === "new") {
     deps.upload().startSession({ target, saveMode: "saved" });
     markEditVersionSent(store, store.get().editVersion);
@@ -245,77 +253,43 @@ const load = async (
   }
   if (!deps.alive(store)) return;
 
-  let opened: PublishingOpenedEditDraft;
-  try {
-    opened = await deps.client.openWorkEditDraft(target.id, {
-      requestId: deps.requestId(),
-      deviceClass: deps.deviceClass(),
-    });
-  } catch (error) {
-    if (!deps.alive(store)) return;
-    if (shape(error).code !== "draft_limit") {
-      store.setUnavailable(
-        unavailableText(
-          error,
-          "这件作品已不可编辑",
-          "暂时无法打开作品，请重试",
-        ),
-      );
+  if (editable.draftId !== null) {
+    let draft: PublishingDraft;
+    try {
+      draft = await deps.client.draft(editable.draftId);
+    } catch (error) {
+      if (deps.alive(store))
+        store.setUnavailable(
+          unavailableText(
+            error,
+            "这份草稿已不可用",
+            "暂时无法打开草稿，请重试",
+          ),
+        );
       return;
     }
-    // Editing stays possible; only saving a draft is not. The work's items
-    // count against the item limit from the start.
-    const content: WorkDraftContent = {
-      ...editable.content,
-      visibility: editable.visibility,
-    };
-    deps.upload().startSession({
-      target,
-      saveMode: "unsaved",
-      workId: editable.workId,
-      baseRevisionId: editable.revisionId,
-      content,
-    });
-    adoptLoaded(store, content, editable.mediaItems);
+    if (!deps.alive(store)) return;
+    deps.upload().startSession({ target, saveMode: "saved", draft });
+    adoptLoaded(store, draft.content, draft.mediaItems);
     store.setLoaded({ kind: "edit", workId: editable.workId });
-    store.setNotice("草稿数量已达上限，本次编辑不会保存草稿");
-    return;
-  }
-  // Only the account itself can say whether this request inserted the draft:
-  // another device (or an earlier request of this one) may have opened the
-  // same draft between the editable read and this call. A draft this editor
-  // did not create is never removed on leaving.
-  const { draft, created } = opened;
-  if (!deps.alive(store)) {
-    // Left while the draft was being opened: nothing was changed in it.
-    if (created)
-      void removeUnchangedEditDraft(store.accountId, openedFrom(draft), deps);
+    await deps.upload().restoreDraftMedia(draft);
     return;
   }
 
+  // Reading a work never creates a cloud draft. Save Draft opens it explicitly.
+  const content: WorkDraftContent = {
+    ...editable.content,
+    visibility: editable.visibility,
+  };
   deps.upload().startSession({
     target,
     saveMode: "saved",
-    draft,
     workId: editable.workId,
-    baseRevisionId: draft.baseRevisionId,
+    baseRevisionId: editable.revisionId,
+    content,
   });
-  // A fresh edit draft inherits the work's current visibility (P03). It is
-  // not an author change: it reaches the draft with the first real edit and
-  // is part of what 保存更新 submits either way.
-  adoptLoaded(
-    store,
-    created
-      ? { ...draft.content, visibility: editable.visibility }
-      : draft.content,
-    [...editable.mediaItems, ...draft.mediaItems],
-  );
-  store.setLoaded({
-    kind: "edit",
-    workId: editable.workId,
-    openedEditDraft: created ? openedFrom(draft) : null,
-  });
-  await deps.upload().restoreDraftMedia(draft);
+  adoptLoaded(store, content, editable.mediaItems);
+  store.setLoaded({ kind: "edit", workId: editable.workId });
 };
 
 export type EnableEditDraftsResult =

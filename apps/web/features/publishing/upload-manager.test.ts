@@ -34,6 +34,22 @@ const confirm = (
 });
 
 describe("upload manager: preparation and registration", () => {
+  it("r6 replaces the local Standard source with the actual prepared bytes", async () => {
+    const test = createTestManager();
+    const source = staticSource();
+    test.manager.addConfirmed([confirm("local-recovery", source)]);
+    await settle();
+    const [entry] = test.manager.checkpoint();
+    expect(entry?.source).toBeNull();
+    expect(entry?.prepared?.[0]?.blob).toBe(
+      test.transfer.starts[0]!.request.body,
+    );
+    expect(entry?.view.itemId).toMatch(/^media-item-/u);
+    await test.manager.cancelItem("local-recovery");
+    expect(test.manager.checkpoint()).toEqual([]);
+    test.manager.dispose();
+  });
+
   it.each(["standard", "original"] as const)(
     "keeps static presentation and honors supplied-byte rules in %s mode",
     async (quality) => {

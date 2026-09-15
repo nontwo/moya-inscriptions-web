@@ -71,20 +71,17 @@ export const BodyField = ({
 
 /**
  * Step 2 (phone) and the desktop text column (E04–E05): title, body,
- * authorship, visibility and the draft mode; upload progress stays visible
+ * authorship and visibility; upload progress stays visible
  * through the editor's own status line.
  */
 export const TextSettings = ({
   state,
   store,
-  draftMode,
   progress,
   autoFocusTitle = false,
 }: {
   readonly state: EditorSessionState;
   readonly store: EditorSessionStore;
-  /** The 保存草稿到账号 switch, repeated here for text-only works. */
-  readonly draftMode?: ReactNode;
   /** Upload progress summary kept visible while typing. */
   readonly progress?: ReactNode;
   readonly autoFocusTitle?: boolean;
@@ -102,12 +99,6 @@ export const TextSettings = ({
       )}
       <AuthorshipFields state={state} store={store} />
       <VisibilityField state={state} store={store} />
-      {draftMode === undefined ? null : (
-        <div className={styles.field}>
-          <span className={styles.label}>草稿</span>
-          {draftMode}
-        </div>
-      )}
     </div>
   );
 };

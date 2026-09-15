@@ -294,6 +294,18 @@ interface ItemRecord {
   draftId: string | null;
 }
 
+/** Local interruption state. Prepared Standard bytes replace the source copy. */
+export type UploadCheckpoint = Pick<
+  ItemRecord,
+  | "view"
+  | "source"
+  | "prepared"
+  | "pairing"
+  | "metadata"
+  | "clientSource"
+  | "registerRequestId"
+>;
+
 const TERMINAL: ReadonlySet<UploadItemPhase> = new Set([
   "ready",
   "cancelled",
@@ -454,6 +466,97 @@ export class UploadManager {
     if (!source)
       return record?.prepared?.find((c) => c.role !== "motion")?.blob ?? null;
     return source.still.file;
+  }
+
+  checkpoint(): UploadCheckpoint[] {
+    return this.order.flatMap((key) => {
+      const r = this.records.get(key);
+      if (!r || r.view.phase === "cancelled" || r.view.phase === "cleanup")
+        return [];
+      return [
+        {
+          view: r.view,
+          source: r.prepared ? null : r.source,
+          prepared: r.prepared,
+          pairing: r.pairing,
+          metadata: r.metadata,
+          clientSource: r.clientSource,
+          registerRequestId: r.registerRequestId,
+        },
+      ];
+    });
+  }
+
+  /** Restore without starting a transfer; only Continue resumes interrupted work. */
+  async restoreCheckpoint(entries: readonly UploadCheckpoint[]): Promise<void> {
+    this.pause("offline");
+    for (const entry of entries) {
+      const key = entry.view.key;
+      if (this.records.has(key)) continue;
+      const record: ItemRecord = {
+        ...entry,
+        epoch: 0,
+        controller: new AbortController(),
+        componentIds: new Map(
+          entry.view.serverItem?.components.map((c) => [c.role, c.id]) ?? [],
+        ),
+        transfers: new Map(),
+        hashes: new Map(),
+        pollTimer: null,
+        pollAttempt: 0,
+        draftId: this.draftId,
+      };
+      this.records.set(key, record);
+      this.order.push(key);
+      if (record.view.itemId !== null) {
+        const read = await this.fetchItem(record, record.epoch);
+        if (!this.records.has(key) || !this.guardAccount()) return;
+        if (
+          read &&
+          "item" in read &&
+          !["cancelled", "purged"].includes(read.item.state)
+        ) {
+          record.componentIds = new Map(
+            read.item.components.map((c) => [c.role, c.id]),
+          );
+          this.applyServerItem(record, read.item, false);
+          for (const component of record.view.components) {
+            if (component.phase !== "received" && record.prepared)
+              this.patchComponent(record, component.role, {
+                phase: "paused",
+                failure: null,
+              });
+          }
+          this.derivePhase(record);
+          continue;
+        }
+        if (
+          !read ||
+          (!("gone" in read) &&
+            (!("item" in read) ||
+              !["cancelled", "purged"].includes(read.item.state)))
+        ) {
+          this.patch(record, {
+            phase: "failed",
+            failure: {
+              code: "network",
+              message: "暂时无法确认图片，请重试",
+              outcomeUnknown: true,
+            },
+          });
+          continue;
+        }
+        record.registerRequestId = null;
+        record.componentIds.clear();
+        this.patch(record, { itemId: null, serverItem: null });
+      }
+      if (record.view.phase !== "needs_choice")
+        this.patch(record, {
+          phase: record.prepared || record.source ? "waiting" : "missing_local",
+          recoverable: !!(record.prepared || record.source),
+        });
+    }
+    this.publish();
   }
 
   /**

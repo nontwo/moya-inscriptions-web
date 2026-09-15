@@ -295,41 +295,81 @@ describe("publishing runtime", () => {
     });
     expect(test.recovery.save).not.toHaveBeenCalled();
     await test.runtime.closeSession({ discard: true });
-    expect(test.uploads.client.cancelItem).toHaveBeenCalledOnce();
+    expect(test.uploads.client.cancelItem).not.toHaveBeenCalled();
     expect(test.client.discardSession).toHaveBeenCalledWith(
       SESSION_ID,
       expect.anything(),
     );
   });
 
-  it("creates the saved draft with pending media entries before registering media", async () => {
+  it("r6 preserves an uncertain draft-create command across interruption and never sends newer text under its old identity", async () => {
+    const first = setup();
+    first.signIn(ACCOUNT);
+    first.runtime.startSession({ target: { type: "new" }, saveMode: "saved" });
+    first.runtime.edit(content("saved request"));
+    first.client.createDraft.mockRejectedValueOnce(
+      clientError(0, "lost response", true),
+    );
+    await first.runtime.saveNow();
+    const command = first.client.createDraft.mock.calls[0]![0];
+    first.runtime.edit(content("newer local text"));
+    const snapshot = first.runtime.checkpoint()!;
+    first.runtime.dispose();
+    const next = setup();
+    next.signIn(ACCOUNT);
+    await next.runtime.restoreCheckpoint(snapshot);
+    expect(next.client.createDraft).not.toHaveBeenCalled();
+    await next.runtime.saveNow();
+    expect(next.client.createDraft.mock.calls[0]![0]).toEqual(command);
+    expect(next.runtime.autosave()!.hasUnsavedChanges()).toBe(true);
+    await next.runtime.saveNow();
+    expect(next.client.saveDraft.mock.calls[0]![1].content.title).toBe(
+      "newer local text",
+    );
+  });
+
+  const receiveStill = async (test: ReturnType<typeof setup>, index = 0) => {
+    const id = test.runtime.manager()!.getSnapshot().items[index]!.itemId!;
+    test.transfers[0]!.starts[index]!.callbacks.onSettled({
+      status: 200,
+      responseText: test.uploads.receive(id, "still"),
+      stalled: false,
+    });
+    await settle();
+    expect(test.runtime.manager()!.getSnapshot().items[index]!.phase).toBe(
+      "processing",
+    );
+  };
+
+  it("r6 uploads under a temporary holder, then explicitly saves registered identities without cancelling them", async () => {
     const test = setup();
     test.signIn(ACCOUNT);
     test.runtime.startSession({ target: { type: "new" }, saveMode: "saved" });
     await test.runtime.stageFiles([fileOf(jpeg({}))], "picker");
     const confirmed = test.runtime.confirmStaging();
     await settle();
-    expect(test.client.createDraft).toHaveBeenCalledOnce();
-    const created = test.client.createDraft.mock.calls[0]![0].content;
-    expect(created.items).toEqual([
-      {
-        key: confirmed.ok ? confirmed.confirmed[0]!.key : "",
-        itemId: null,
-        kind: "static",
-        qualityMode: "standard",
-        pendingLabel: "photo",
-        edit: { rotation: 0, crop: null },
-      },
-    ]);
+    test.timers.fireAll();
+    await settle();
+    expect(test.client.createDraft).not.toHaveBeenCalled();
     expect(test.uploads.client.registerItem.mock.calls[0]![0].holder).toEqual({
-      draftId: DRAFT_ID,
+      sessionId: SESSION_ID,
     });
-    expect(
-      test.uploads.client.registerItem.mock.calls[0]![0].metadata?.provenance
-        .clientSource,
-    ).toBe("picker");
-    expect(test.runtime.store.get().session?.draftId).toBe(DRAFT_ID);
-    expect(test.recovery.save).toHaveBeenCalledOnce();
+    await expect(test.runtime.saveNow()).rejects.toThrow("图片还未准备好");
+    expect(test.client.createDraft).not.toHaveBeenCalled();
+    await receiveStill(test);
+    await test.runtime.saveNow();
+    expect(test.client.createDraft).toHaveBeenCalledOnce();
+    expect(test.client.createDraft.mock.calls[0]![0].content.items).toEqual([
+      expect.objectContaining({
+        key: confirmed.ok ? confirmed.confirmed[0]!.key : "",
+        itemId: expect.stringMatching(/^media-item-/u),
+      }),
+    ]);
+    expect(test.client.saveDraftNow).not.toHaveBeenCalled();
+    await test.runtime.closeSession({ discard: true });
+    // Session discard removes only unreferenced items; direct cancel would cancel draft media.
+    expect(test.client.discardSession).toHaveBeenCalledOnce();
+    expect(test.uploads.client.cancelItem).not.toHaveBeenCalled();
   });
 
   it("enforces the photo limit while refusing separate motion in Web r4", async () => {
@@ -392,7 +432,7 @@ describe("publishing runtime", () => {
     expect(state?.status).toBe("confirmed");
     expect(test.client.submit).toHaveBeenCalledOnce();
     expect(test.client.submit.mock.calls[0]![0]).toMatchObject({
-      holder: { draftId: DRAFT_ID },
+      holder: { sessionId: SESSION_ID },
       baseRevisionId: null,
     });
   });
@@ -428,7 +468,7 @@ describe("publishing runtime", () => {
     expect(await test.runtime.closeSession({ discard: true })).toBe("ended");
     expect(test.runtime.store.get().session).toBeNull();
     expect(manager.getSnapshot().items).toEqual([]);
-    expect(test.uploads.client.cancelItem).toHaveBeenCalledOnce();
+    expect(test.uploads.client.cancelItem).not.toHaveBeenCalled();
     expect(test.client.discardSession).toHaveBeenCalledOnce();
 
     // A saved-mode item that failed (nothing in flight) still needs the author.
@@ -495,6 +535,8 @@ describe("publishing runtime", () => {
     test.signIn(ACCOUNT);
     test.timers.fireAll();
     await settle();
+    expect(test.client.createDraft).not.toHaveBeenCalled();
+    await test.runtime.saveNow();
     expect(test.client.createDraft).toHaveBeenCalledOnce();
     expect(test.client.createDraft.mock.calls[0]![0].content.title).toBe(
       "A 的草稿",
@@ -531,6 +573,7 @@ describe("publishing runtime", () => {
     test.signIn(ACCOUNT);
     test.runtime.startSession({ target: { type: "new" }, saveMode: "saved" });
     test.runtime.edit(content("第一稿"));
+    void test.runtime.saveNow();
     test.timers.fireAll();
     await settle();
     expect(test.client.createDraft).toHaveBeenCalledOnce();
@@ -564,7 +607,9 @@ describe("publishing runtime", () => {
     expect(itemId).toMatch(/^media-item-/u);
     test.timers.fireAll();
     await settle();
-    const saved = test.client.saveDraft.mock.calls.at(-1)![1].content;
+    await receiveStill(test);
+    await test.runtime.saveNow();
+    const saved = test.client.createDraft.mock.calls.at(-1)![0].content;
     expect(saved.items).toEqual([expect.objectContaining({ itemId })]);
     expect(saved.items[0]).not.toHaveProperty("pendingLabel");
     // A later editor edit without the id keeps it.
@@ -574,6 +619,7 @@ describe("publishing runtime", () => {
     });
     test.timers.fireAll();
     await settle();
+    await test.runtime.saveNow();
     expect(
       test.client.saveDraft.mock.calls.at(-1)![1].content.items[0],
     ).toEqual(expect.objectContaining({ itemId }));
@@ -586,6 +632,7 @@ describe("publishing runtime", () => {
     test.runtime.edit(content("题"));
     test.timers.fireAll();
     await settle();
+    await test.runtime.saveNow();
     test.runtime.edit(content("题（改）"));
     const state = await test.runtime.submit(content("题（改）"));
     expect(state?.status).toBe("confirmed");
@@ -601,10 +648,10 @@ describe("publishing runtime", () => {
 
   it("shows a submit that failed before sending in the submission state", async () => {
     const test = setup();
-    test.client.createDraft.mockRejectedValueOnce(
-      Object.assign(new Error("草稿数量已达上限"), {
-        status: 409,
-        code: "draft_limit",
+    test.client.createSession.mockRejectedValueOnce(
+      Object.assign(new Error("暂时无法创建上传会话"), {
+        status: 503,
+        code: "session_unavailable",
         outcomeUnknown: false,
       }),
     );
@@ -614,8 +661,8 @@ describe("publishing runtime", () => {
     const state = await test.runtime.submit(content("题"));
     expect(state).toEqual({
       status: "failed",
-      code: "draft_limit",
-      message: "草稿数量已达上限",
+      code: "session_unavailable",
+      message: "暂时无法创建上传会话",
     });
     expect(test.runtime.submission()?.store.get()).toEqual(state);
     expect(test.client.submit).not.toHaveBeenCalled();
@@ -657,6 +704,7 @@ describe("publishing runtime", () => {
         conflict,
       } as never);
       test.runtime.edit(content("本设备"));
+      await test.runtime.saveNow();
       test.timers.fireAll();
       await settle();
       expect(test.runtime.autosave()!.store.get()).toMatchObject({
@@ -685,6 +733,7 @@ describe("publishing runtime", () => {
       expect(test.client.saveDraft).toHaveBeenCalledOnce();
 
       test.runtime.edit(content("账号，继续编辑"));
+      await test.runtime.saveNow();
       test.timers.fireAll();
       await settle();
       expect(test.client.saveDraft).toHaveBeenCalledTimes(2);
@@ -709,6 +758,8 @@ describe("publishing runtime", () => {
       await settle();
       test.timers.fireAll();
       await settle();
+      await receiveStill(test);
+      await test.runtime.saveNow();
       const saved = test.client.saveDraft.mock.calls.at(-1)![1];
       expect(saved.baseRevision).toBe(4);
       expect(saved.content.title).toBe("账号");
@@ -733,6 +784,7 @@ describe("publishing runtime", () => {
       });
       test.timers.fireAll();
       await settle();
+      await test.runtime.saveNow();
       expect(test.client.saveDraft.mock.calls.at(-1)![1]).toMatchObject({
         baseRevision: 4,
         content: { title: "本设备，还在输入" },
@@ -810,6 +862,8 @@ describe("publishing runtime", () => {
       test.runtime.edit({ ...version, title: "只有一张，改题" });
       test.timers.fireAll();
       await settle();
+      await receiveStill(test);
+      await test.runtime.saveNow();
       const next = test.client.saveDraft.mock.calls.at(-1)![1];
       expect(next.baseRevision).toBe(5);
       expect(next.content.items.map((item) => item.key)).toEqual([kept!.key]);
@@ -859,6 +913,9 @@ describe("publishing runtime", () => {
         kept!.key,
         newKey,
       ]);
+      await receiveStill(test, 0);
+      await receiveStill(test, 2);
+      await test.runtime.saveNow();
       expect(
         test.client.saveDraft.mock.calls
           .at(-1)![1]
@@ -929,6 +986,8 @@ describe("publishing runtime", () => {
     await settle();
     test.timers.fireAll();
     await settle();
+    await receiveStill(test);
+    await test.runtime.saveNow();
     expect(
       test.client.createDraft.mock.calls.at(-1)![0].content.items,
     ).toHaveLength(1);
@@ -941,6 +1000,7 @@ describe("publishing runtime", () => {
     expect(test.runtime.draftItems()).toEqual([]);
     test.timers.fireAll();
     await settle();
+    await test.runtime.saveNow();
     expect(test.client.saveDraft.mock.calls.at(-1)![1].content).toMatchObject({
       title: "不要图了",
       items: [],
@@ -1076,6 +1136,9 @@ describe("publishing runtime", () => {
     const [pastedKey, droppedKey] = confirmed.ok
       ? confirmed.confirmed.map((entry) => entry.key)
       : [];
+    await receiveStill(test, 0);
+    await receiveStill(test, 1);
+    await test.runtime.saveNow();
     const created = test.client.createDraft.mock.calls[0]![0].content;
     // The first save of a session the editor has not written to yet claims
     // no 作品性质 for the author (C05).
@@ -1106,6 +1169,7 @@ describe("publishing runtime", () => {
     });
     test.timers.fireAll();
     await settle();
+    await test.runtime.saveNow();
     const saved = test.client.saveDraft.mock.calls.at(-1)![1].content;
     expect(
       saved.items.map((item: WorkDraftItem) => [item.key, item.origin]),

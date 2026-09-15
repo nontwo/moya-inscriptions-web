@@ -266,6 +266,7 @@ describe("PublishingProvider hooks", () => {
       latest.current!.session.edit(contentOf("本设备"));
       fake.timers.fireAll();
       await settle();
+      await latest.current!.session.saveNow();
     });
     expect(latest.current!.session.autosave).toMatchObject({
       status: "conflict",
@@ -290,6 +291,7 @@ describe("PublishingProvider hooks", () => {
       latest.current!.session.edit(contentOf("账号，继续编辑"));
       fake.timers.fireAll();
       await settle();
+      await latest.current!.session.saveNow();
     });
     expect(fake.drafts.saveDraft).toHaveBeenCalledTimes(2);
     expect(fake.drafts.saveDraft.mock.calls[1]![1]).toMatchObject({

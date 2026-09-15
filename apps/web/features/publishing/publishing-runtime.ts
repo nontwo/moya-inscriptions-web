@@ -40,17 +40,20 @@ import type {
   UploadManagerOptions,
   UploadManagerSnapshot,
   UploadTimers,
+  UploadCheckpoint,
 } from "./upload-manager";
 import type { ExternalStore } from "./upload-manager-store";
 import type { TransferPort } from "./uppy-transfer";
 import type { EditorTarget } from "../product-shell/product-history";
 import type {
   CreatePublishingSessionCommand,
+  CreatePublishingDraftCommand,
   PublishingDeviceClass,
   PublishingDraft,
   PublishingDraftDeletionResult,
   PublishingHolder,
   PublishingLimits,
+  PublishingOpenedEditDraft,
   PublishingReadiness,
   PublishingSession,
   WorkDraftContent,
@@ -71,6 +74,10 @@ import type {
 export interface PublishingClientPort
   extends UploadClientPort, DraftAutosavePort, SubmissionPort {
   limits(): Promise<PublishingLimits>;
+  openWorkEditDraft?(
+    workId: string,
+    cmd: { requestId: string; deviceClass: PublishingDeviceClass | null },
+  ): Promise<PublishingOpenedEditDraft>;
   createSession(
     cmd: CreatePublishingSessionCommand,
   ): Promise<PublishingSession>;
@@ -120,6 +127,22 @@ export interface EditorSessionView {
   readonly hasContent: boolean;
 }
 
+export interface PublishingCheckpoint {
+  readonly draftCreation?: CreatePublishingDraftCommand | null;
+  readonly view: EditorSessionView;
+  readonly savedDraft: PublishingDraft | null;
+  readonly baseline: WorkDraftContent | null;
+  readonly content: WorkDraftContent | null;
+  readonly uploads: readonly UploadCheckpoint[];
+  readonly staging: StagingBatch | null;
+  readonly pendingFiles: readonly {
+    id: string;
+    files: readonly File[];
+    origin: FileOrigin;
+    original: boolean;
+  }[];
+}
+
 export interface StagingView {
   readonly batch: StagingBatch;
   readonly count: StagingCount;
@@ -150,7 +173,19 @@ interface AccountRuntime {
 }
 
 interface SessionRecord {
+  draftCreation: CreatePublishingDraftCommand | null;
   view: EditorSessionView;
+  savedDraft: PublishingDraft | null;
+  pendingFiles: Map<
+    symbol,
+    {
+      id: string;
+      files: readonly File[];
+      origin: FileOrigin;
+      original: boolean;
+    }
+  >;
+  submitting: boolean;
   autosave: DraftAutosave | null;
   submission: SubmissionController;
   /** Edit derivative readiness of the album (QA D1). */
@@ -525,7 +560,11 @@ export class PublishingRuntime {
       requestId: this.services.requestId,
     });
     const record: SessionRecord = {
+      draftCreation: null,
       view,
+      savedDraft: draft,
+      pendingFiles: new Map(),
+      submitting: false,
       autosave: null,
       submission,
       readiness: createEditReadinessTracker({
@@ -554,6 +593,7 @@ export class PublishingRuntime {
     account.completed?.dispose();
     account.completed = null;
     account.session = record;
+    account.manager.resumeIfIdle();
     account.manager.setDraftId(view.draftId);
     account.manager.bindSession({
       saveMode,
@@ -571,6 +611,112 @@ export class PublishingRuntime {
     if (!account?.session || account.session.view.saveMode !== "saved")
       return [];
     return account.manager.restoreDraft(draft);
+  }
+
+  checkpoint(): PublishingCheckpoint | null {
+    const account = this.current();
+    const session = account?.session;
+    if (!account || !session || session.closed) return null;
+    return {
+      view: session.view,
+      draftCreation: session.draftCreation,
+      savedDraft: session.savedDraft,
+      baseline: session.baseline,
+      content: session.latest,
+      uploads: account.manager.checkpoint(),
+      staging: account.staging,
+      pendingFiles: [...session.pendingFiles.values()],
+    };
+  }
+
+  async restoreCheckpoint(checkpoint: PublishingCheckpoint): Promise<void> {
+    const view = this.startSession({
+      ...checkpoint.view,
+      saveMode: "saved",
+      draft: checkpoint.savedDraft,
+      content: checkpoint.baseline,
+    });
+    const account = this.current();
+    const session = account?.session;
+    if (!view || !account || !session) return;
+    session.draftCreation = checkpoint.draftCreation ?? null;
+    session.view = {
+      ...session.view,
+      sessionId: checkpoint.view.sessionId,
+      baseRevisionId: checkpoint.view.baseRevisionId,
+    };
+    if (session.view.sessionId !== null) {
+      const previous = session.view.sessionId;
+      try {
+        await this.services.client.heartbeatSession(previous);
+      } catch (error) {
+        if (
+          (error as { status?: number })?.status === 404 &&
+          this.current() === account
+        ) {
+          // Release an expired holder before retrying its cancelled bytes; this
+          // preserves any draft/revision references and releases old reservations.
+          await this.services.client
+            .discardSession(previous, { requestId: this.services.requestId() })
+            .catch(() => undefined);
+          session.view = { ...session.view, sessionId: null };
+        }
+      }
+      if (this.current() !== account || session.closed) return;
+      if (session.view.sessionId !== null)
+        this.startHeartbeat(account, session);
+    }
+    await account.manager.restoreCheckpoint(checkpoint.uploads);
+    if (this.current() !== account || session.closed) return;
+    account.staging = checkpoint.staging;
+    if (checkpoint.content) this.edit(checkpoint.content);
+    if (account.staging?.entries.length) this.confirmStaging();
+    for (const pending of checkpoint.pendingFiles) {
+      await this.stageFiles(
+        pending.files,
+        pending.origin,
+        () => {
+          this.setStagingOriginal(pending.original);
+          this.confirmStaging();
+        },
+        pending.original,
+      );
+    }
+    this.publish();
+  }
+
+  async saveNow(): Promise<void> {
+    const account = this.current();
+    const session = account?.session;
+    if (!account || !session || session.closed || !session.autosave) return;
+    if (session.submitting) throw new Error("正在提交作品，请等待结果");
+    // A saved draft must contain complete uploaded bytes. Derivatives may still
+    // process, but another device must not depend on this tab's local files.
+    if (
+      session.pendingSelections.size > 0 ||
+      account.staging?.entries.length ||
+      this.draftItems().some((item) => {
+        const upload = account.manager
+          .getSnapshot()
+          .items.find((entry) => entry.key === item.key);
+        if (item.itemId && upload?.serverItem?.state === "ready") return false;
+        return (
+          item.itemId === null ||
+          !upload ||
+          upload.components.length === 0 ||
+          upload.components.some((component) => component.phase !== "received")
+        );
+      })
+    )
+      throw new Error("图片还未准备好，请完成上传或移除失败项后保存草稿");
+    const content = this.contentWithItems(
+      account,
+      session,
+      session.latest ?? session.baseline,
+    );
+    session.latest = content;
+    session.autosave.edit(content);
+    await session.autosave.saveNow();
   }
 
   /**
@@ -753,24 +899,33 @@ export class PublishingRuntime {
     const account = this.current();
     const session = account?.session;
     if (!account || !session || session.closed) return "none";
+    if (session.submitting) return "kept";
     if (!options.discard) {
       if (this.leaveWouldLoseWork(account, session)) return "kept";
-    } else if (session.view.saveMode === "unsaved") {
+    } else {
       this.selectionEpoch += 1;
       session.pendingSelections.clear();
+      session.pendingFiles.clear();
       const manager = account.manager;
+      // Fence saves before releasing temporary ownership. A confirmed draft's
+      // references preserve its uploads; explicit cancelItem would not.
+      session.autosave?.suspend();
+      await session.autosave?.idle();
+      manager.pause("offline");
       manager.bindSession(null);
-      for (const item of manager.getSnapshot().items)
-        await manager.cancelItem(item.key);
-      for (const item of manager.getSnapshot().items) manager.forget(item.key);
+      manager.release();
       await session.sessionTask?.catch(() => undefined);
-      if (session.view.sessionId !== null)
+      if (
+        session.view.sessionId !== null &&
+        this.services.currentAccount() === account.manager.accountId
+      )
         // A refused or lost discard leaves only a lease that expires on the account.
         await this.services.client
           .discardSession(session.view.sessionId, {
             requestId: this.services.requestId(),
           })
           .catch(() => undefined);
+      session.view = { ...session.view, sessionId: null };
     }
     if (!session.closed) this.endSession(account, session);
     return "ended";
@@ -845,6 +1000,15 @@ export class PublishingRuntime {
     keepSubmission = false,
   ): void {
     session.closed = true;
+    if (
+      session.view.sessionId !== null &&
+      this.services.currentAccount() === account.manager.accountId
+    )
+      void this.services.client
+        .discardSession(session.view.sessionId, {
+          requestId: this.services.requestId(),
+        })
+        .catch(() => undefined);
     session.unsubscribe();
     this.stopHeartbeat(session);
     session.autosave?.dispose();
@@ -890,6 +1054,7 @@ export class PublishingRuntime {
     files: readonly File[],
     origin: FileOrigin,
     onReady?: () => void,
+    original = false,
   ): Promise<void> {
     const account = this.current();
     if (!account || files.length === 0) return Promise.resolve();
@@ -902,6 +1067,12 @@ export class PublishingRuntime {
       this.selectionEpoch === epoch;
     const selection = Symbol();
     session?.pendingSelections.add(selection);
+    session?.pendingFiles.set(selection, {
+      id: this.services.requestId(),
+      files,
+      origin,
+      original,
+    });
     account.identifying += files.length;
     this.publish();
     const task = this.selectionTail.then(async () => {
@@ -919,6 +1090,7 @@ export class PublishingRuntime {
       } finally {
         account.identifying = Math.max(0, account.identifying - files.length);
         session?.pendingSelections.delete(selection);
+        session?.pendingFiles.delete(selection);
         this.publish();
       }
     });
@@ -993,6 +1165,7 @@ export class PublishingRuntime {
     if (cancelPending) {
       this.selectionEpoch += 1;
       account.session?.pendingSelections.clear();
+      account.session?.pendingFiles.clear();
     }
     account.staging = null;
     this.publish();
@@ -1008,6 +1181,7 @@ export class PublishingRuntime {
     const session = account?.session;
     if (!account || !session || session.closed) return null;
     const controller = session.submission;
+    if (session.submitting) return controller.store.get();
     const status = controller.store.get().status;
     if (status !== "idle" && status !== "failed" && status !== "not_ready")
       return controller.store.get();
@@ -1015,9 +1189,12 @@ export class PublishingRuntime {
     // Registration may have assigned ids the editor content does not carry yet.
     const current = withManagedItems(content, account.manager.draftItems());
     let holder: PublishingHolder;
+    session.submitting = true;
     try {
+      await session.autosave?.idle();
       holder = await this.resolveHolder(account, session, current);
     } catch (error) {
+      session.submitting = false;
       const shape = (error ?? {}) as {
         message?: unknown;
         status?: unknown;
@@ -1031,12 +1208,16 @@ export class PublishingRuntime {
             : "暂时无法发布，请重试",
       });
     }
-    if (session.closed) return controller.store.get();
+    if (session.closed) {
+      session.submitting = false;
+      return controller.store.get();
+    }
     const result = await controller.submit({
       holder,
       content: current,
       baseRevisionId: session.view.baseRevisionId,
     });
+    session.submitting = false;
     // Refused as not ready: those items show as processing and the account
     // is asked again until they are ready (never a bare error).
     if (result.status === "not_ready" && !session.closed)
@@ -1089,15 +1270,64 @@ export class PublishingRuntime {
     draft: PublishingDraft | null,
   ): DraftAutosave {
     const autosave = createDraftAutosave({
-      port: this.services.client,
+      manualOnly: true,
+      port: {
+        draft: (id) => this.services.client.draft(id),
+        saveDraft: (id, cmd) => this.services.client.saveDraft(id, cmd),
+        saveDraftNow: (id, cmd) => this.services.client.saveDraftNow(id, cmd),
+        createDraft: async (input) => {
+          const cmd = (session.draftCreation ??= input);
+          this.publish();
+          const workId = session.view.workId;
+          if (workId === null) return this.services.client.createDraft(cmd);
+          const open = this.services.client.openWorkEditDraft;
+          if (!open) throw new Error("无法保存作品草稿，请重试");
+          const { draft: opened, created } = await open(workId, {
+            requestId: cmd.requestId,
+            deviceClass: cmd.deviceClass,
+          });
+          if (
+            this.services.currentAccount() !== account.manager.accountId ||
+            session.closed
+          )
+            throw new Error("账号已切换，本次保存已暂停");
+          if (opened.baseRevisionId !== session.view.baseRevisionId)
+            throw new Error(
+              "作品已在别处更新，请重新打开后比较；本次内容仍保留在本机",
+            );
+          if (opened.conflict || sameDraftContent(opened.content, cmd.content))
+            return opened;
+          if (
+            !created &&
+            opened.revision === 1 &&
+            session.baseline !== null &&
+            !sameDraftContent(opened.content, session.baseline)
+          )
+            throw new Error(
+              "这件作品已有其他草稿，请先打开那份草稿；本次内容仍保留在本机",
+            );
+          // A draft already edited elsewhere is a conflict, never an overwrite.
+          const result = await this.services.client.saveDraft(opened.id, {
+            baseRevision:
+              opened.revision > 1 ? opened.revision - 1 : opened.revision,
+            content: cmd.content,
+            deviceClass: cmd.deviceClass,
+          });
+          return result.draft;
+        },
+      },
       requestId: this.services.requestId,
       deviceClass: this.services.deviceClass(),
       draft,
       accountId: account.manager.accountId,
       currentAccount: this.services.currentAccount,
+      onDraftSaved: (saved) => {
+        session.savedDraft = saved;
+      },
       ...(this.services.timers ? { timers: this.services.timers } : {}),
       onDraftCreated: (created) => {
         if (session.closed) return;
+        session.draftCreation = null;
         session.view = { ...session.view, draftId: created.id };
         account.manager.setDraftId(created.id);
         this.publish();
@@ -1170,7 +1400,7 @@ export class PublishingRuntime {
     if (session.view.saveMode === "saved") {
       const draftId =
         session.autosave?.store.get().draftId ?? session.view.draftId;
-      return draftId === null ? null : { draftId };
+      if (draftId !== null) return { draftId };
     }
     return session.view.sessionId === null
       ? null
@@ -1201,17 +1431,13 @@ export class PublishingRuntime {
     if (session.closed) throw new Error("The editor session has ended");
     if (this.services.currentAccount() !== account.manager.accountId)
       throw new Error("The account changed");
-    if (session.view.saveMode === "saved" && session.autosave) {
+    if (
+      content !== undefined &&
+      session.view.saveMode === "saved" &&
+      session.autosave
+    ) {
       const existing = session.autosave.store.get().draftId;
       if (existing !== null) return { draftId: existing };
-      const next = this.contentWithItems(
-        account,
-        session,
-        content ?? session.latest,
-      );
-      session.latest = next;
-      session.autosave.edit(next);
-      return { draftId: await session.autosave.ensureDraft() };
     }
     if (session.view.sessionId !== null)
       return { sessionId: session.view.sessionId };

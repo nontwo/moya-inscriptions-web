@@ -82,6 +82,9 @@ export interface DraftAutosaveOptions {
   readonly deviceClass: PublishingDeviceClass | null;
   /** An existing draft (reopened or edit draft). */
   readonly draft?: PublishingDraft | null;
+  /** r6: production editors save only on an explicit action. */
+  readonly manualOnly?: boolean;
+  readonly onDraftSaved?: (draft: PublishingDraft) => void;
   readonly debounceMs?: number;
   readonly timers?: AutosaveTimers;
   readonly now?: () => number;
@@ -258,6 +261,7 @@ export const createDraftAutosave = (
 
   const schedule = () => {
     clearTimer();
+    if (options.manualOnly) return;
     if (disposed || suspended || state().status === "conflict") return;
     timer = timers.setTimeout(() => {
       timer = null;
@@ -266,6 +270,7 @@ export const createDraftAutosave = (
   };
 
   const markSaved = (draft: PublishingDraft, version: number) => {
+    options.onDraftSaved?.(draft);
     const current = state();
     set({
       draftId: draft.id,
@@ -299,6 +304,17 @@ export const createDraftAutosave = (
       pendingCreate = null;
       lastCreateError = null;
       options.onDraftCreated?.(draft);
+      if (draft.conflict) {
+        options.onDraftSaved?.(draft);
+        set({
+          draftId: draft.id,
+          revision: draft.revision,
+          status: "conflict",
+          conflict: draft.conflict,
+          error: null,
+        });
+        return draft;
+      }
       // Newer edits than the frozen command stay pending and are saved next.
       markSaved(
         draft,
@@ -419,6 +435,7 @@ export const createDraftAutosave = (
     if (disposed) return;
     if (result.status === "conflict") {
       clearTimer();
+      options.onDraftSaved?.(result.draft);
       set({
         status: "conflict",
         revision: result.draft.revision,
@@ -462,9 +479,24 @@ export const createDraftAutosave = (
     store,
     edit(content) {
       if (disposed) return;
+      if (
+        options.manualOnly &&
+        latest !== null &&
+        sameDraftContent(latest, content)
+      )
+        return;
       latest = content;
       const current = state();
       const editVersion = current.editVersion + 1;
+      if (
+        options.manualOnly &&
+        current.draftId === null &&
+        pendingCreate === null &&
+        isEmptyDraftContent(content)
+      ) {
+        set({ editVersion, savedVersion: editVersion, status: "idle" });
+        return;
+      }
       if (current.status === "conflict") {
         // Newer input is kept while the author chooses; nothing saves meanwhile.
         set({ editVersion });
@@ -481,7 +513,7 @@ export const createDraftAutosave = (
       // the timer's save into its single coalesced follow-up.
       schedule();
     },
-    saveNow: () => flush("snapshot"),
+    saveNow: () => flush(options.manualOnly ? "autosave" : "snapshot"),
     retry: () => {
       const current = state();
       if (current.status !== "error") return Promise.resolve();
@@ -501,6 +533,7 @@ export const createDraftAutosave = (
       return draftId;
     },
     adoptDraft(draft, content) {
+      options.onDraftSaved?.(draft);
       clearTimer();
       latest = content;
       const current = state();
@@ -538,6 +571,7 @@ export const createDraftAutosave = (
       suspended = false;
       if (!accountConfirmed()) return;
       if (unreconciled !== null) {
+        if (options.manualOnly) return;
         void flush("autosave");
         return;
       }

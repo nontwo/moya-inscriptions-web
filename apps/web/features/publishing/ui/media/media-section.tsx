@@ -314,19 +314,24 @@ const MediaSectionBody = ({
           : replacing.previous.qualityMode === "original";
       if (replacing === null) actions.setOriginalNext(false);
       staged
-        .stageFiles(files, origin, () => {
-          // Removing a missing item while its replacement is being read must
-          // never turn that late replacement into an unrelated new upload.
-          if (
-            replacing !== null &&
-            (!ui.isCurrentReplacement(replacing) ||
-              indexOfKey(current(), replacing.target) < 0)
-          ) {
-            staged.cancel(false);
-            return;
-          }
-          acceptSelection.current(original, replacing);
-        })
+        .stageFiles(
+          files,
+          origin,
+          () => {
+            // Removing a missing item while its replacement is being read must
+            // never turn that late replacement into an unrelated new upload.
+            if (
+              replacing !== null &&
+              (!ui.isCurrentReplacement(replacing) ||
+                indexOfKey(current(), replacing.target) < 0)
+            ) {
+              staged.cancel(false);
+              return;
+            }
+            acceptSelection.current(original, replacing);
+          },
+          original,
+        )
         .catch(() => {
           onFailed?.();
           showNotice("文件无法读取，请重新选择");

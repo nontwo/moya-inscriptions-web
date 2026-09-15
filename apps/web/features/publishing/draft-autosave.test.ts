@@ -94,6 +94,59 @@ describe("draft autosave", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  it("r6 never saves on typing or account resume; explicit saves keep one latest draft without snapshots", async () => {
+    const { api } = port();
+    const controller = createDraftAutosave({
+      port: api,
+      requestId,
+      deviceClass: "phone",
+      manualOnly: true,
+    });
+    controller.edit(content("第一稿"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    controller.suspend();
+    controller.resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(api.createDraft).not.toHaveBeenCalled();
+    await controller.saveNow();
+    expect(api.createDraft).toHaveBeenCalledOnce();
+    controller.edit(content("最新稿"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(api.saveDraft).not.toHaveBeenCalled();
+    await controller.saveNow();
+    expect(api.saveDraft).toHaveBeenCalledWith(
+      draftId,
+      expect.objectContaining({ baseRevision: 1, content: content("最新稿") }),
+    );
+    expect(api.saveDraftNow).not.toHaveBeenCalled();
+    expect(api.createDraft).toHaveBeenCalledOnce();
+  });
+
+  it("r6 leaves typing after a save click unsaved, including a first create still in flight", async () => {
+    const { api } = port();
+    const created = deferred<PublishingDraft>();
+    api.createDraft.mockReturnValueOnce(created.promise);
+    const controller = createDraftAutosave({
+      port: api,
+      requestId,
+      deviceClass: "phone",
+      manualOnly: true,
+    });
+    controller.edit(content("点击时的内容"));
+    const saving = controller.saveNow();
+    controller.edit(content("保存期间继续输入"));
+    created.resolve(draft(1, content("点击时的内容")));
+    await saving;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(controller.hasUnsavedChanges()).toBe(true);
+    expect(api.saveDraft).not.toHaveBeenCalled();
+    await controller.saveNow();
+    expect(api.saveDraft.mock.calls[0]![1].content.title).toBe(
+      "保存期间继续输入",
+    );
+    expect(controller.hasUnsavedChanges()).toBe(false);
+  });
+
   it("creates no draft for empty or whitespace-only content", async () => {
     const { api } = port();
     const autosave = createDraftAutosave({

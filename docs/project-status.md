@@ -365,33 +365,39 @@ Active development tracks (independent of the parked cloud track):
    Development milestone, with no Production deployment or release authority.
 
 3. **Work publishing and draft editing (`work-publishing-v1`)** — Draft PR #138,
-   r5 adds whole-card media drag/selection and bulk removal, automatic photo
-   upload after selection, an in-place public switch and icon-based comment
-   actions with entry-to-reply activation. r4 adds the Owner-requested
-   current-recommendation list/order, selected-work bulk management, public-user
-   details and automatic recommendation of a selected user's eligible public
-   works. Web photo selection is static-only; existing Live playback and backend
-   compatibility remain. The author header, compact actions and phone ordering
-   follow the latest Owner feedback. r3 discussion, album, profile/settings,
-   draft, search and spacing refinements remain; Admin content management does
-   not edit authors' title/body/images. The PR records exact validation and
-   independent final-head review status. Owner visual/real-device acceptance
-   remains pending. Owner-approved on 2026-09-13: album-style works (new and
-   edited), static and complete Live Photo media in Standard and Original modes,
-   private media storage with derivatives, account-scoped background uploads,
-   optional persistent drafts and no-save sessions, version conflicts and
-   history, public/self-only visibility with an independent work publication
-   policy, a recycle bin, bounded cleanup, quotas and essential Admin controls;
-   the dock action becomes a plus and Search moves to the upper-left. Scope,
-   Behavior Matrix, feasibility note and proof limits are in
-   [work-publishing-v1](community/work-publishing-v1.md); the Draft PR records
-   the exact base/head, checks and review state. The 2026-09-14 Owner correction
-   makes complete Live Photo import an iPhone PhotosUI/PhotoKit dependency in a
-   separate Apple task, including third-party camera content recognized by
-   Photos. Web image/text/drafts and backend paired-media/playback evidence are
-   assessed separately. Missing importer, hardware and complete motion samples
-   remain pending dependencies, not waivers. This is a Development milestone
-   with no Production deployment or release authority.
+   r6 implements the Owner's explicit Save Draft model: no cloud autosave or
+   autosave option, one latest ordinary saved draft, local interruption recovery
+   and unsaved-change exit prompts. Targeted regressions, mobile Chromium with
+   two independent browser contexts, and the complete local verification entry
+   pass. Exact-head CI and the final independent review are recorded in PR #138;
+   Owner physical-device acceptance remains pending. Historical local failures
+   and timeouts are preserved. r5 adds whole-card media drag/selection and bulk
+   removal, automatic photo upload after selection, an in-place public switch
+   and icon-based comment actions with entry-to-reply activation. r4 adds the
+   Owner-requested current-recommendation list/order, selected-work bulk
+   management, public-user details and automatic recommendation of a selected
+   user's eligible public works. Web photo selection is static-only; existing
+   Live playback and backend compatibility remain. The author header, compact
+   actions and phone ordering follow the latest Owner feedback. r3 discussion,
+   album, profile/settings, draft, search and spacing refinements remain; Admin
+   content management does not edit authors' title/body/images. The PR records
+   exact validation and independent final-head review status. Owner
+   visual/real-device acceptance remains pending. Owner-approved on 2026-09-13:
+   album-style works (new and edited), static and complete Live Photo media in
+   Standard and Original modes, private media storage with derivatives,
+   account-scoped background uploads, optional persistent drafts and no-save
+   sessions, version conflicts and history, public/self-only visibility with an
+   independent work publication policy, a recycle bin, bounded cleanup, quotas
+   and essential Admin controls; the dock action becomes a plus and Search moves
+   to the upper-left. Scope, Behavior Matrix, feasibility note and proof limits
+   are in [work-publishing-v1](community/work-publishing-v1.md); the Draft PR
+   records the exact base/head, checks and review state. The 2026-09-14 Owner
+   correction makes complete Live Photo import an iPhone PhotosUI/PhotoKit
+   dependency in a separate Apple task, including third-party camera content
+   recognized by Photos. Web image/text/drafts and backend paired-media/playback
+   evidence are assessed separately. Missing importer, hardware and complete
+   motion samples remain pending dependencies, not waivers. This is a
+   Development milestone with no Production deployment or release authority.
 4. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.

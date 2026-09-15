@@ -142,7 +142,7 @@ export const LeaveDialog = ({
         </>
       }
       onCancel={onContinue}
-      title="离开前保存更改？"
+      title="草稿未保存，是否先保存？"
     >
       <div className={styles.dialogActions}>
         {saveBlocked ? (
@@ -163,7 +163,7 @@ export const LeaveDialog = ({
             onClick={onSaveAndLeave}
             type="button"
           >
-            {saving ? "保存中…" : "保存并离开"}
+            {saving ? "保存中…" : "保存草稿并离开"}
           </button>
         )}
         <button

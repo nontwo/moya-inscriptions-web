@@ -5,11 +5,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 
 import { useUploadSession } from "../../publishing-provider";
+import { createBrowserEditorRecovery } from "../../editor-recovery";
 import { contentOf, createEditorSessionStore } from "./editor-session-state";
 
 import type {
@@ -27,6 +29,7 @@ import type { ReactNode } from "react";
  * ends with the runtime session it describes).
  */
 export class EditorSessionRegistry {
+  readonly recovery = createBrowserEditorRecovery();
   private readonly stores = new Map<string, EditorSessionStore>();
   private readonly listeners = new Set<() => void>();
   private readonly mounted = new Map<string, number>();
@@ -51,6 +54,7 @@ export class EditorSessionRegistry {
   /** The author discarded the session or it was submitted: nothing is kept on leaving. */
   markLeaving(store: EditorSessionStore, reason: "discarded" | "completed") {
     this.leaving.set(store.key, reason);
+    this.recovery?.discard(store.accountId);
   }
 
   leavingReason(store: EditorSessionStore): "discarded" | "completed" | null {
@@ -86,6 +90,7 @@ export class EditorSessionRegistry {
   dispose(store: EditorSessionStore): void {
     if (this.stores.get(store.accountId) !== store) return;
     this.cancelClose(store);
+    this.recovery?.discard(store.accountId);
     this.stores.delete(store.accountId);
     this.mounted.delete(store.key);
     this.leaving.delete(store.key);
@@ -143,8 +148,61 @@ export const EditorSessionProvider = ({
   readonly children: ReactNode;
 }) => {
   const [registry] = useState(() => new EditorSessionRegistry());
-  const { accountId, session } = useUploadSession();
+  const upload = useUploadSession();
+  const { accountId, session } = upload;
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
   registry.accountId = accountId;
+  const current = useSyncExternalStore(
+    registry.subscribe,
+    () => registry.current(accountId),
+    () => null,
+  );
+
+  useEffect(() => {
+    if (!current) return;
+    let generation = 0;
+    let active = true;
+    const persist = () => {
+      const state = current.get();
+      if (state.phase !== "ready" || registry.leavingReason(current)) return;
+      const checkpoint = uploadRef.current.checkpoint?.();
+      if (!checkpoint) return;
+      const intent = ++generation;
+      const work = registry.recovery
+        ? registry.recovery.save(state, {
+            ...checkpoint,
+            content: contentOf(state),
+          })
+        : Promise.resolve(false);
+      if (work)
+        void work.then((saved) => {
+          if (
+            !active ||
+            generation !== intent ||
+            registry.leavingReason(current)
+          )
+            return;
+          const warning = "本机恢复未能保存，请先保存草稿再离开，避免内容丢失";
+          const atRisk =
+            uploadRef.current.hasUnsavedChanges() ||
+            checkpoint.pendingFiles.length > 0;
+          if (!saved && atRisk && current.get().notice === null)
+            current.setNotice(warning);
+          else if ((saved || !atRisk) && current.get().notice === warning)
+            current.setNotice(null);
+        });
+    };
+    persist();
+    const unsubscribe = current.subscribe(persist);
+    const background = () => persist();
+    document.addEventListener("visibilitychange", background);
+    return () => {
+      active = false;
+      unsubscribe();
+      document.removeEventListener("visibilitychange", background);
+    };
+  }, [registry, current, upload]);
 
   // A session that ended while no editor showed it (e.g. its last upload was
   // discarded elsewhere) leaves nothing to return to. A store whose runtime

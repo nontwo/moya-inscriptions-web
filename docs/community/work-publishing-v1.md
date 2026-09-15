@@ -323,3 +323,33 @@ Apple code, production action or merge is part of r5. Tests retain the
 cumulative ledger. The Owner approved a combined remaining 480-second allowance
 (mobile 90, Admin 240, full local 120, focused recheck 30), including r5 time
 already charged after the request; the earlier entries and failures remain.
+
+## r6 — Explicit draft saving and interruption recovery (2026-09-15)
+
+The Owner replaces automatic cloud draft saving and its save/no-save option with
+an explicit Save Draft action on this same task and Draft PR. This replaces
+D02/D05 and the affected r1–r5 autosave/mode-switch behavior only. Historical
+requirements and evidence above remain historical; they do not authorize an
+automatic cloud save in r6.
+
+| Scenario                                       | Development and Production                                                                                                                             | Must preserve                                                                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Editing, uploading, or returning to an account | No draft creation or cloud content save without an explicit Save Draft action; no autosave option                                                      | Temporary upload ownership, private storage, Standard/Original, quotas and manual upload retry                                                                       |
+| Save Draft                                     | Create the draft on the first explicit save; subsequent ordinary saves replace that draft's current content, without adding ordinary history snapshots | Revision-conditional writes, idempotent outcomes, newer typing, unresolved conflict copies and existing historical records                                           |
+| Another device                                 | Sees only explicitly saved content; unsaved local edits do not synchronize                                                                             | Same-account authorization and conflict protection; no last-writer-wins data loss                                                                                    |
+| Unexpected interruption                        | Restore the local editor content and available local upload resources in the same browser/account                                                      | Local recovery is separate from account drafts; bounded storage, visible storage failures, no hidden original retained after Standard preparation, account isolation |
+| Intentional in-app return or exit              | Unsaved-draft prompt offers Save Draft and Leave, Continue Editing, or Discard Changes                                                                 | Failed saves stay open; discard removes only this session's unsaved state, preserving the last saved draft and referenced media                                      |
+| Refresh or tab close                           | Native browser unsaved-changes warning plus independently persisted local recovery                                                                     | Browser-controlled warning text and mobile lifecycle limits are disclosed; no asynchronous cloud save during unload                                                  |
+
+Allowed changes are the existing Web publishing runtime/editor/local recovery,
+their focused tests and these task records. Existing Backend draft/session APIs
+are reused. No new dependency, public contract, migration, Apple implementation,
+workflow policy, production operation or merge is authorized by this delta. Save
+Draft waits for complete uploaded component bytes; derivative processing may
+continue. A failed or incomplete upload remains unsaved and recoverable locally,
+with an explicit message.
+
+Local recovery does not promise survival of cleared browser storage or a write
+that the OS interrupted before completion. The existing cumulative execution and
+credential ledgers remain in force; additional test time requires the Owner's
+separate bounded approval.
