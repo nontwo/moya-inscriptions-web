@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BulkActions } from "../../../apps/admin/src/community/bulk-actions";
+import { BulkActions } from "admin/community-bulk-actions";
 
 afterEach(() => {
   cleanup();
