@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => {
     entry: { checking: false, openEditor: vi.fn(() => true) },
     publishing: { setVisibility: vi.fn(), trashWork: vi.fn() },
     work: vi.fn(),
+    profile: vi.fn(async () => ({ avatar: null })),
   };
 });
 vi.mock("./author-context", () => ({ useAuthors: () => mocks.author }));
@@ -50,7 +51,7 @@ vi.mock("../publishing/publishing-data", () => ({
   PublishingRequestError: mocks.PublishingRequestError,
 }));
 vi.mock("./author-data", () => ({
-  authorClient: { work: mocks.work },
+  authorClient: { work: mocks.work, profile: mocks.profile },
   AuthorRequestError: mocks.AuthorRequestError,
 }));
 vi.mock("./content-actions", () => ({
@@ -145,7 +146,7 @@ const render = (
   draw(presentation);
   const button = (name: string) =>
     [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-      (candidate) => candidate.textContent === name,
+      (candidate) => (candidate.getAttribute("aria-label") ?? candidate.textContent) === name,
     );
   const status = () =>
     container.querySelector("[data-work-management-status]")?.textContent;
@@ -193,6 +194,14 @@ describe("Work detail actions for the author", () => {
     expect(guest.container.querySelector("[data-work-management]")).toBeNull();
   });
 
+  it("links an unframed author identity to the profile for every reader", () => {
+    mocks.author.viewer={id:OTHER};
+    const view=render(detail({canEdit:false}));
+    const identity=[...view.container.querySelectorAll<HTMLButtonElement>("button")].find((button)=>button.textContent?.includes("临帖人"))!;
+    act(()=>identity.click());
+    expect(mocks.shell.openProfile).toHaveBeenCalledWith(AUTHOR,identity);
+    expect(identity.querySelector("span")).not.toBeNull();
+  });
   it("opens the editor for this work", () => {
     const view = render(detail({}));
     const edit = view.button("编辑")!;

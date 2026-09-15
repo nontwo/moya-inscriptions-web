@@ -1,4 +1,5 @@
 import { asCommunityOperationError } from "./availability.js";
+import { effectiveFeatured } from "./featured-content.js";
 import { randomUUID } from "node:crypto";
 import { CommunityNotFoundError, CommunityConflictError } from "@moya/api";
 import type { CommunityDiscoveryPort, DiscoveryCardRecord } from "@moya/api";
@@ -232,9 +233,9 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
           [sequence, viewer, fingerprint],
         );
         await db.query(
-          `${eligible}, filtered AS (SELECT e.* FROM eligible e WHERE ${filter}), featured AS (
+          `${eligible}, ${effectiveFeatured}, filtered AS (SELECT e.* FROM eligible e WHERE ${filter}), featured AS (
       SELECT f.content_type,f.content_id,row_number() OVER(ORDER BY f.position,f.content_type,f.content_id) AS featured_order
-      FROM community.featured_content f JOIN filtered e USING(content_type,content_id) WHERE f.enabled
+      FROM effective_featured f JOIN filtered e USING(content_type,content_id) WHERE f.enabled
       ORDER BY f.position,f.content_type,f.content_id LIMIT (SELECT enabled_quantity FROM community.featured_settings WHERE id=TRUE)
      ), ordered AS (SELECT e.content_type,e.content_id,row_number() OVER(ORDER BY (f.featured_order IS NULL),f.featured_order,e.first_published_at DESC NULLS LAST,e.content_type,e.content_id) AS ordinal
       FROM filtered e LEFT JOIN featured f USING(content_type,content_id))

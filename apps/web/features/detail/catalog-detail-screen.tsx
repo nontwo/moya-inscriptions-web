@@ -102,7 +102,22 @@ const DetailIdentity = ({
       ) : (
         <h1 data-detail-title="">{detail.title}</h1>
       )}
-      <p className={styles.kindPeriod}>{identity}</p>
+      {detail.contentType !== "work" ? (
+        <p className={styles.kindPeriod}>{identity}</p>
+      ) : null}
+      {detail.contentType === "work"
+        ? (detail.sections ?? [])
+            .filter((section) => section.key === "description")
+            .map((section) => (
+              <p
+                key={section.key}
+                className={styles.workBody}
+                data-detail-section="description"
+              >
+                {section.text}
+              </p>
+            ))
+        : null}
       {detail.contentType === "work" ? (
         <WorkPublication
           editedAt={detail.editedAt}
@@ -140,7 +155,9 @@ const authorshipOf = (detail: CatalogDetailPresentation) =>
   detail.contentType === "work" ? (detail.authorship ?? null) : null;
 
 const hasReadingFlow = (detail: CatalogDetailPresentation) =>
-  (detail.sections ?? []).length > 0 ||
+  (detail.sections ?? []).some(
+    (section) => detail.contentType !== "work" || section.key !== "description",
+  ) ||
   authorshipOf(detail) !== null ||
   detail.sourceCitations.length > 0;
 
@@ -176,7 +193,9 @@ const DetailReadingFlow = ({
 }: {
   readonly detail: CatalogDetailPresentation;
 }) => {
-  const sections = detail.sections ?? [];
+  const sections = (detail.sections ?? []).filter(
+    (section) => detail.contentType !== "work" || section.key !== "description",
+  );
   const authorship = authorshipOf(detail);
   if (!hasReadingFlow(detail)) return null;
 

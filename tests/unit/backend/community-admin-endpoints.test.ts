@@ -78,6 +78,43 @@ const invoke = async (
 };
 
 describe("Admin community moderation endpoint boundary", () => {
+  it("restricts the new user controls to Owner and rejects spoofed commands", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { call, calls } = recorder();
+    const endpoints = createCommunityEndpoints(call);
+    const command = {
+      requestId: "00000000-0000-4000-8000-000000000004",
+      id: userId,
+      enabled: true,
+      expectedVersion: 0,
+    };
+    for (const role of [null, "automation"] as const) {
+      expect(
+        (await invoke(endpoints, "read-users", request({}, role))).status,
+      ).toBe(403);
+      expect(
+        (await invoke(endpoints, "recommend-user", request(command, role)))
+          .status,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await invoke(
+          endpoints,
+          "recommend-user",
+          request({ ...command, operator: "other" }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(calls).toHaveLength(0);
+    expect(
+      (await invoke(endpoints, "recommend-user", request(command))).status,
+    ).toBe(200);
+    expect(calls).toEqual([
+      { method: "PUT", path: "users/recommendation", body: command },
+    ]);
+  });
+
   it("approves through the complete envelope and forwards only the command body", async () => {
     const { call, calls } = recorder();
     const endpoints = createCommunityEndpoints(call);

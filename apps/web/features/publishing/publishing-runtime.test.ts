@@ -261,7 +261,7 @@ describe("publishing runtime", () => {
     expect(test.recovery.save).toHaveBeenCalledOnce();
   });
 
-  it("enforces the account's item limit in staging with a Live pair counted once", async () => {
+  it("enforces the photo limit while refusing separate motion in Web r4", async () => {
     const test = setup();
     test.signIn(ACCOUNT);
     await settle();
@@ -277,6 +277,7 @@ describe("publishing runtime", () => {
     );
     expect(test.runtime.store.get().staging?.count).toMatchObject({
       ready: 3,
+      unsupported: 1,
       maxItems: 2,
       overBy: 1,
     });

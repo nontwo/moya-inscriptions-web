@@ -1,5 +1,9 @@
 import type {
-  OperatorContentQuery,
+  OperatorWorksQuery,
+  OperatorFeaturedQuery,
+  OperatorUsersQuery,
+  OperatorUserPage,
+  RecommendUserCommand,
   OperatorWork,
   OperatorWorkPage,
   ModerateWorkCommand,
@@ -9,13 +13,18 @@ import type {
 } from "@moya/contracts/internal/community-operator";
 export interface CommunityContentOperatorPort {
   readWorkTitle(id: string): Promise<string | null>;
-  readWorks(query: OperatorContentQuery): Promise<OperatorWorkPage>;
+  readWorks(query: OperatorWorksQuery): Promise<OperatorWorkPage>;
+  readUsers(query: OperatorUsersQuery): Promise<OperatorUserPage>;
+  recommendUser(
+    operator: string,
+    input: RecommendUserCommand,
+  ): Promise<{ version: number }>;
   moderateWork(
     id: string,
     operator: string,
     input: ModerateWorkCommand,
   ): Promise<OperatorWork>;
-  readFeatured(query: OperatorContentQuery): Promise<FeaturedPage>;
+  readFeatured(query: OperatorFeaturedQuery): Promise<FeaturedPage>;
   setFeatured(
     operator: string,
     input: FeaturedMutation,

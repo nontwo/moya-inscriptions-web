@@ -365,6 +365,12 @@
   gap: var(--yoyi-space-3);
 }
 
+.reorderHint {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-caption-size);
+}
+
 /* Desktop ----------------------------------------------------------------- */
 
 .desktop {

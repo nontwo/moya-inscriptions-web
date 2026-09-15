@@ -224,6 +224,7 @@ const ScopedAuthorProfileOverlay = ({
                     <button
                       type="button"
                       aria-pressed={profile.following}
+                      className="phase4-inline-total phase4-follow-toggle"
                       onClick={async () => {
                         try {
                           await authorClient.command("relationships/follow", {

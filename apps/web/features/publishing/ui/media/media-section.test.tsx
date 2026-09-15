@@ -323,7 +323,7 @@ afterEach(async () => {
 });
 
 describe("MediaSection staging", () => {
-  it("requires explicit choices before items are added under the batch mode", async () => {
+  it("adds selected static photos directly under the explicit batch quality choice", async () => {
     await render();
     await setFiles(pickerInput(), [
       fileOf(jpeg({}), "plain.jpg"),
@@ -333,54 +333,17 @@ describe("MediaSection staging", () => {
     ]);
     await until(
       () =>
-        container.querySelectorAll("[data-staged-status=needs_counterpart]")
-          .length === 2,
+        container.querySelectorAll("[data-staged-status=ready]").length === 3,
     );
-    const staging = container.querySelector<HTMLElement>(
-      "[data-media-staging]",
-    )!;
-    expect(staging.textContent).toContain(
-      "可添加 1 项，2 项需要选择，1 项无法添加",
-    );
-    expect(buttonByText("添加 1 项（标准）", staging).disabled).toBe(false);
-
-    const [first, second] = [
-      ...staging.querySelectorAll<HTMLElement>(
-        "[data-staged-status=needs_counterpart]",
-      ),
-    ];
-    const counterpart = staging.querySelector<HTMLInputElement>(
-      'input[aria-label="补选实况照片的另一部分"]',
-    )!;
-    // A motion file of another Live Photo is refused at the entry.
-    await click(buttonByText("补选动态文件", first!));
-    await setFiles(counterpart, [
-      fileOf(motion({ identifier: OTHER_IDENTIFIER }), "other.MOV"),
-    ]);
-    await until(() => first!.querySelector("[role=alert]") !== null);
-    expect(first!.querySelector("[role=alert]")!.textContent).toBe(
-      "所选视频与这张照片不属于同一张实况照片",
-    );
-    // The matching motion completes the pair.
-    await click(buttonByText("补选动态文件", first!));
-    await setFiles(counterpart, [
-      fileOf(motion({ identifier: IDENTIFIER }), "IMG_0001.MOV"),
-    ]);
-    await until(
-      () =>
-        container.querySelectorAll("[data-staged-status=ready]").length === 2,
-    );
-    // The second still is kept as a static photo; the GIF is removed.
-    await click(buttonByText("作为静态照片", second!));
+    expect(
+      container.querySelector("[data-staged-status=needs_counterpart]"),
+    ).toBeNull();
+    expect(container.textContent).not.toContain("补选动态文件");
     const gif = container.querySelector<HTMLElement>(
       "[data-staged-status=unsupported]",
     )!;
     expect(gif.textContent).toContain("暂不支持动图");
     await click(buttonByText("移除", gif));
-    expect(
-      container.querySelector("[data-staged-status=unsupported]"),
-    ).toBeNull();
-
     // 原图画质 from the session applies to this batch and resets afterwards.
     await act(async () => probe.store!.setOriginalNext(true));
     const confirm = buttonByText("添加 3 项（原图）");
@@ -391,12 +354,12 @@ describe("MediaSection staging", () => {
     expect(state.originalNext).toBe(false);
     expect(state.items.map((item) => [item.kind, item.qualityMode])).toEqual([
       ["static", "original"],
-      ["live", "original"],
+      ["static", "original"],
       ["static", "original"],
     ]);
     expect(tiles().map((tile) => tile.handle)).toEqual([
       "第 1 项，照片，拖动可调整顺序",
-      "第 2 项，实况照片，拖动可调整顺序",
+      "第 2 项，照片，拖动可调整顺序",
       "第 3 项，照片，拖动可调整顺序",
     ]);
     expect(
@@ -708,69 +671,25 @@ describe("MediaSection strip", () => {
     await until(() => current.transfer.starts.length === 2);
   });
 
-  it("shows LIVE only once a verified Live Photo is ready", async () => {
+  it("does not fabricate LIVE when Web receives a still and a separate video", async () => {
     await render();
     await setFiles(pickerInput(), [
-      fileOf(heic({ identifier: IDENTIFIER }), "IMG_1.HEIC"),
-      fileOf(motion({ identifier: IDENTIFIER }), "IMG_1.MOV"),
-      fileOf(jpeg({}), "plain.jpg"),
+      fileOf(heic({ identifier: IDENTIFIER })),
+      fileOf(motion({ identifier: IDENTIFIER })),
+      fileOf(jpeg({})),
     ]);
     await until(() => container.querySelector("[data-media-staging]") !== null);
+    expect(
+      container.querySelectorAll("[data-staged-status=unsupported]"),
+    ).toHaveLength(1);
     await act(async () => probe.store!.setOriginalNext(true));
     await click(buttonByText("添加 2 项（原图）"));
     await until(() => current.transfer.starts.length === 2, 40);
-    const [live, still] = probe.store!.get().items;
-    expect(live!.kind).toBe("live");
-
-    // Every component arrives (two transfers at a time).
-    let settled = 0;
-    while (settled < 3) {
-      await until(() => current.transfer.starts.length > settled, 40);
-      const start = current.transfer.starts[settled]!;
-      settled += 1;
-      const componentId = start.request.endpoint.split("/").at(-1)!;
-      const [itemId, item] = [...current.uploads.items].find(([, entry]) =>
-        entry.components.some((component) => component.id === componentId),
-      )!;
-      const role = item.components.find(
-        (component) => component.id === componentId,
-      )!.role;
-      await act(async () => {
-        start.callbacks.onSettled({
-          status: 200,
-          responseText: current.uploads.receive(itemId, role),
-          stalled: false,
-        });
-        await settle();
-      });
-    }
-    const liveId = probe.upload!.draftItems()[0]!.itemId!;
-    const stillId = probe.upload!.draftItems()[1]!.itemId!;
-    await until(() =>
-      tiles().every(
-        (tile) => tile.status === "uploaded" || tile.status === "processing",
-      ),
-    );
+    expect(probe.store!.get().items.map((item) => item.kind)).toEqual([
+      "static",
+      "static",
+    ]);
     expect(container.querySelector("[data-media-live]")).toBeNull();
-
-    current.uploads.makeReady(liveId);
-    current.uploads.makeReady(stillId);
-    await act(async () => {
-      current.timers.fireAll();
-      await settle();
-    });
-    await until(() => tiles().every((tile) => tile.status === "ready"));
-    const badges = [...container.querySelectorAll("[data-media-live]")];
-    expect(badges).toHaveLength(1);
-    // Read as 实况照片; LIVE itself is only seen.
-    expect(badges[0]!.textContent).toBe("LIVE实况照片");
-    expect(badges[0]!.querySelector("[aria-hidden=true]")!.textContent).toBe(
-      "LIVE",
-    );
-    expect(
-      badges[0]!.closest<HTMLElement>("[data-media-key]")!.dataset.mediaKey,
-    ).toBe(live!.key);
-    expect(still!.kind).toBe("static");
   });
 
   it("applies rotation and crop from the edit dialog and reverts to the full frame", async () => {

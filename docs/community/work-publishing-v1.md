@@ -1,10 +1,10 @@
 # Work publishing and draft editing — work-publishing-v1
 
-Task: `work-publishing-v1`. Revision: r3. r1/r2 remain in Git history.
-Owner-approved requirements provided on 2026-09-13 (implementation assignment
-for image/text publishing and draft editing). Phase 4 (#125/#126) is merged;
-this task starts from `main` `362781c18a85711e6b456be7933b30a70afba04a` in its
-own worktree and one Draft PR.
+Task: `work-publishing-v1`. Revision: r4. Earlier revision records remain in
+this file and Git history. Owner-approved requirements provided on 2026-09-13
+(implementation assignment for image/text publishing and draft editing). Phase 4
+(#125/#126) is merged; this task starts from `main`
+`362781c18a85711e6b456be7933b30a70afba04a` in its own worktree and one Draft PR.
 
 ## r3 — Owner visual acceptance corrections (2026-09-14)
 
@@ -269,3 +269,36 @@ TESTED.
 The private task artifacts hold the feasibility measurements, sample manifests,
 environment ownership and walkthrough. The Draft PR records exact base/head,
 checks, review and the acceptance state.
+
+## r4 — Owner acceptance and Admin management delta (2026-09-14)
+
+The Owner explicitly requested the following changes on the same Issue #137,
+branch and Draft PR #138. This revision supersedes only the identified r1–r3
+behavior; those records remain above and in Git history. No merge, deployment,
+Apple implementation, account deletion or direct administrator editing of an
+author's title/body/images is authorized.
+
+| Scenario                     | Development                                                                                                                             | Production                                 | Must preserve                                                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New Web photo selection      | Treat selected supported images as static photos; no Live pairing/missing-component choices; refuse video inputs                        | Same behavior when publishing is available | Standard/Original remains explicit; Standard never silently sends a retained HEIC or hidden motion source; existing Live media and playback remain supported     |
+| Work identity and text       | All readable works show an unframed avatar/name linking to the author; body follows title without a duplicate name or body heading      | Same presentation                          | Author identity, plain text/newlines, truthful publication dates, one existing Detail/Viewer                                                                     |
+| Author management and follow | Compact one-row icon edit/trash and visibility controls; follow toggles beside profile totals                                           | Same presentation                          | Only author management, current publication policy, destructive-action confirmation, accessible names and touch targets                                          |
+| Phone ordering               | Long-press sorting with a bottom hint on the media step; no visible up/down buttons on phone                                            | Same presentation                          | Desktop and keyboard sorting, stable media keys, cover choice, upload state and order independent of completion                                                  |
+| Recommended works            | List all currently eligible recommended works with pagination and adjustable order; active recommendation appears black and toggles off | Existing Development-only gate retained    | Recommendation never approves or exposes private, pending-only, hidden, removed or trashed content; deterministic public order                                   |
+| Bulk work management         | Explicit selection with bulk recommend, cancel recommendation, hide and remove; show individual outcomes                                | Existing Development-only gate retained    | Existing authenticated Owner Admin bridge, audit and idempotence; removal uses the existing operator removal semantics, not physical deletion                    |
+| Public-user management       | Paginated users, user details and their operator-readable submitted works; same selected-work operations                                | Existing Development-only gate retained    | Public users remain Backend-owned and distinct from Payload accounts; no draft/autosave/private-submission disclosure                                            |
+| Recommended users            | Toggle and bulk-toggle automatic recommendation of existing and future eligible public works                                            | Existing Development-only gate retained    | Public/moderation restrictions always apply; turning user recommendation off removes its automatic contribution while explicit work choices remain authoritative |
+
+Allowed supporting changes are the existing Web/Admin feature paths, internal
+community contracts and authenticated HTTP bridge, API/application/PostgreSQL
+adapter, necessary additive forward community migration and exact runtime
+grants, focused product tests, this specification and project status. No new
+dependency, workflow/scanner/CI policy change, new product task or PR. Retained
+Owner data is never disposable; any acceptance schema upgrade requires a
+verified private backup and an isolated recovery check before the reviewed
+forward path. Native PhotosUI/PhotoKit import remains a separate pending task.
+
+User bulk operations currently cover recommendation/unrecommendation. Suspension
+and reinstatement require the pending explicit Owner selection; account deletion
+is excluded. Prior test results and cumulative execution/security ledgers remain
+valid historical records; this scope delta itself adds no test time.

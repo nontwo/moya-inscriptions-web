@@ -740,3 +740,25 @@
 .contextBox dd {
   margin: 0;
 }
+.tab[aria-pressed="true"],
+.actionButton[aria-pressed="true"] {
+  border-color: #000;
+  background: #000;
+  color: #fff;
+}
+.bulkBar,
+.userDetail {
+  padding: 12px;
+  border: 1px solid var(--theme-elevation-200, #ddd);
+  border-radius: 6px;
+}
+.bulkBar ul {
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.userDetail p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

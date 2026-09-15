@@ -1315,7 +1315,15 @@ export class UploadManager {
       return [
         {
           role: "still",
-          blob: source.still.file,
+          // A supported container contributes only its selected still resource.
+          blob:
+            source.still.motionPhoto === null
+              ? source.still.file
+              : source.still.file.slice(
+                  0,
+                  source.still.motionPhoto.primaryLength,
+                  source.still.type,
+                ),
           contentType: source.still.type,
           standardOutcome: null,
         },
@@ -1353,12 +1361,8 @@ export class UploadManager {
   ): Promise<PreparedComponent[]> {
     const still = source.still;
     const stillBlob =
-      source.kind === "live" && source.layout === "container"
-        ? still.file.slice(
-            0,
-            source.still.motionPhoto.primaryLength,
-            still.type,
-          )
+      still.motionPhoto !== null
+        ? still.file.slice(0, still.motionPhoto.primaryLength, still.type)
         : still.file;
     const stillResult = await this.preprocessStill(stillBlob, still, signal);
     const stillComponent = this.stillComponent(

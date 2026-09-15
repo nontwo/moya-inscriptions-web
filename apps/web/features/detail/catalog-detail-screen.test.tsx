@@ -310,7 +310,9 @@ describe("CatalogDetailScreen", () => {
     expect(markup).toMatch(
       /<h1 class="[^"]*visuallyHidden[^"]*" data-detail-untitled="">未命名作品<\/h1>/u,
     );
-    expect(markup).toContain("临帖人");
+    // r4: author identity belongs to the injected actions above, not a duplicate in this body panel.
+    expect(markup).not.toContain("临帖人");
+    expect(markup).not.toContain("<h2>正文</h2>");
     expect(markup).toContain("只有正文");
   });
 

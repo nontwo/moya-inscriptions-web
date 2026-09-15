@@ -25,6 +25,7 @@ const steps: readonly {
 export const PhoneSteps = ({
   step,
   canContinue,
+  mediaItemCount,
   media,
   text,
   confirm,
@@ -35,6 +36,7 @@ export const PhoneSteps = ({
   readonly step: EditorStep;
   /** Step 1 offers 下一步 once there is media (or a selection to finish later). */
   readonly canContinue: boolean;
+  readonly mediaItemCount: number;
   readonly media: ReactNode;
   readonly text: ReactNode;
   readonly confirm: ReactNode;
@@ -91,6 +93,9 @@ export const PhoneSteps = ({
       </div>
       <nav aria-label="步骤" className={styles.stepFooter}>
         <div>
+          {step === "media" && mediaItemCount > 1 ? (
+            <p className={styles.reorderHint}>长按拖动可以调整顺序</p>
+          ) : null}
           {step === "media" ? null : (
             <button
               className={styles.textButton}

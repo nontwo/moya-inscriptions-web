@@ -911,6 +911,7 @@ const isOwnerWorkflowTypes = (
         "src/community/api.ts",
         "src/community/queue-client.tsx",
         "src/community/content-client.tsx",
+        "src/community/users-client.tsx",
         "src/community/settings-client.tsx",
         "src/community/history-client.tsx",
       ].includes(relative) &&

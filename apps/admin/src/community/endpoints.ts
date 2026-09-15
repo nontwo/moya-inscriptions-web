@@ -1,6 +1,11 @@
 import {
   adminBulkModerateCommentsRequestSchema,
   operatorContentQuerySchema,
+  operatorWorksQuerySchema,
+  operatorFeaturedQuerySchema,
+  operatorUsersQuerySchema,
+  operatorUserPageSchema,
+  recommendUserCommandSchema,
   adminModerateWorkRequestSchema,
   featuredMutationSchema,
   featuredSettingsMutationSchema,
@@ -181,13 +186,30 @@ export const communityOperations = (
   call: OperatorCall,
 ): Readonly<Record<string, CommunityOperation>> => ({
   "read-works": async (_req, input) =>
-    call("GET", `works${toQuery(parse(operatorContentQuerySchema, input))}`),
+    call("GET", `works${toQuery(parse(operatorWorksQuerySchema, input))}`),
+  "read-users": async (_req, input) =>
+    checked(
+      operatorUserPageSchema,
+      await call(
+        "GET",
+        `users${toQuery(parse(operatorUsersQuerySchema, input))}`,
+      ),
+    ),
+  "recommend-user": async (_req, input) =>
+    call(
+      "PUT",
+      "users/recommendation",
+      parse(recommendUserCommandSchema, input),
+    ),
   "moderate-work": async (_req, input) => {
     const { id, ...command } = parse(adminModerateWorkRequestSchema, input);
     return call("POST", `works/${segment(id)}/moderation`, command);
   },
   "read-featured": async (_req, input) =>
-    call("GET", `featured${toQuery(parse(operatorContentQuerySchema, input))}`),
+    call(
+      "GET",
+      `featured${toQuery(parse(operatorFeaturedQuerySchema, input))}`,
+    ),
   "set-featured": async (_req, input) =>
     call("PUT", "featured", parse(featuredMutationSchema, input)),
   "set-featured-quantity": async (_req, input) =>
@@ -433,6 +455,8 @@ export const communityOperations = (
 });
 
 const phase4Operations = new Set([
+  "read-users",
+  "recommend-user",
   "read-works",
   "moderate-work",
   "read-featured",

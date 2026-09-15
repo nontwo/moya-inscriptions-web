@@ -16,7 +16,7 @@ import type { FileOrigin } from "../../import-grouping";
  * run in the upload manager's own Uppy instance after confirmation.
  */
 
-/** Stills and the motion files of Live Photos; staging identifies bytes, never names. */
+/** New Web selections are static photos; staging identifies bytes, never names. */
 export const MEDIA_ACCEPT = [
   "image/jpeg",
   "image/png",
@@ -25,9 +25,6 @@ export const MEDIA_ACCEPT = [
   "image/heif",
   ".heic",
   ".heif",
-  "video/quicktime",
-  "video/mp4",
-  ".mov",
 ].join(",");
 
 const silentLogger = {
@@ -112,7 +109,7 @@ const PickerSurface = ({
       <input
         ref={inputRef}
         accept={MEDIA_ACCEPT}
-        aria-label="选择照片或实况照片文件"
+        aria-label="选择照片"
         disabled={disabled}
         hidden
         id={input.id}
@@ -134,8 +131,8 @@ const PickerSurface = ({
         {disabled && disabledReason !== null
           ? disabledReason
           : wide
-            ? "也可以把照片拖到这里，或粘贴剪贴板中的图片。从 iPhone 照片图库完整导入实况照片的功能尚未提供，单独选择的照片只包含静态画面。"
-            : "可一次选择多张。从 iPhone 照片图库完整导入实况照片的功能尚未提供，单独选择的照片只包含静态画面。"}
+            ? "也可以把照片拖到这里，或粘贴剪贴板中的图片。本次上传静态照片。"
+            : "可一次选择多张，本次上传静态照片。"}
       </p>
     </div>
   );

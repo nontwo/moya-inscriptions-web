@@ -323,3 +323,8 @@
   border-radius: 0;
   color: var(--yoyi-color-text-secondary);
 }
+.phase4-actions .phase4-follow-toggle[aria-pressed="true"] {
+  color: var(--yoyi-color-seal-red);
+  font-weight: 650;
+  background: transparent;
+}

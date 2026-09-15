@@ -176,6 +176,25 @@ export const handleOperatorRequest = async (
       return readJsonBody(request, 100000);
     };
     if (contentOperatorPort) {
+      if (pathname === "/internal/community/users" && method === "GET") {
+        sendJson(
+          response,
+          200,
+          await operatorService.readUsers(queryOf(request)),
+        );
+        return;
+      }
+      if (
+        pathname === "/internal/community/users/recommendation" &&
+        method === "PUT"
+      ) {
+        sendJson(
+          response,
+          200,
+          await operatorService.recommendUser(await commandBody()),
+        );
+        return;
+      }
       if (pathname === "/internal/community/works" && method === "GET") {
         sendJson(
           response,

@@ -1478,6 +1478,7 @@ const EditorWorkspace = ({
               </>
             }
             canContinue={state.items.length > 0 || stagingActive}
+            mediaItemCount={state.items.length}
             focusHeading
             media={
               <>

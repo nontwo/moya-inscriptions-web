@@ -247,6 +247,8 @@ const WorkManagement = ({
         <div className={detailStyles.workManagementRow}>
           <button
             aria-disabled={unavailable}
+            aria-label="编辑"
+            className={detailStyles.workIcon}
             onClick={(event) => {
               if (busyRef.current) return;
               // The editor's own status replaces any earlier toast.
@@ -255,7 +257,19 @@ const WorkManagement = ({
             }}
             type="button"
           >
-            编辑
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 14z" />
+            </svg>
           </button>
           {visibility === undefined ? null : (
             <div
@@ -265,7 +279,7 @@ const WorkManagement = ({
               role="group"
             >
               <span
-                className={detailStyles.workManagementLabel}
+                className={detailStyles.visuallyHidden}
                 id={visibilityLabel}
               >
                 可见范围
@@ -297,13 +311,27 @@ const WorkManagement = ({
           )}
           <button
             aria-disabled={unavailable}
+            aria-label="移到回收站"
+            className={detailStyles.workIcon}
             onClick={() => {
               if (!busyRef.current) setConfirm("trash");
             }}
             ref={trashRef}
             type="button"
           >
-            移到回收站
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+            </svg>
           </button>
         </div>
       )}
@@ -391,13 +419,73 @@ const WorkManagement = ({
   );
 };
 
+const WorkAuthor = ({ detail }: { detail: WorkDetail }) => {
+  const author = useAuthors();
+  const shell = useProductShell();
+  const scope = `${author.viewer?.id ?? "guest"}:${author.revision}:${detail.authorId}`;
+  const [avatar, setAvatar] = useState<{
+    scope: string;
+    src: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (
+      author.checking ||
+      author.sessionError ||
+      author.viewer?.id === detail.authorId
+    )
+      return;
+    const controller = new AbortController();
+    void authorClient
+      .profile(detail.authorId, controller.signal)
+      .then((profile) => {
+        if (!controller.signal.aborted)
+          setAvatar({ scope, src: profile.avatar?.src ?? null });
+      })
+      .catch(() => {
+        /* An unavailable profile uses the initial fallback. */
+      });
+    return () => controller.abort();
+  }, [
+    scope,
+    author.checking,
+    author.sessionError,
+    author.viewer?.id,
+    detail.authorId,
+  ]);
+  const src =
+    author.checking || author.sessionError
+      ? null
+      : author.viewer?.id === detail.authorId
+        ? author.avatarSrc
+        : avatar?.scope === scope
+          ? avatar.src
+          : null;
+  return (
+    <button
+      type="button"
+      className={detailStyles.workAuthor}
+      onClick={(event) =>
+        shell.openProfile(detail.authorId, event.currentTarget)
+      }
+    >
+      <span className={detailStyles.workAuthorAvatar}>
+        {src ? (
+          <img src={src} alt="" width="36" height="36" />
+        ) : (
+          [...detail.authorName][0]
+        )}
+      </span>
+      <span>{detail.authorName}</span>
+    </button>
+  );
+};
+
 export const DetailActions = ({
   detail,
 }: {
   detail: CatalogDetailPresentation;
 }) => {
-  const author = useAuthors(),
-    shell = useProductShell();
+  const author = useAuthors();
   const [trashedId, setTrashedId] = useState<string | null>(null);
   const [visibilityChange, setVisibilityChange] = useState<{
     readonly id: string;
@@ -523,13 +611,8 @@ export const DetailActions = ({
   const interactive = detail.available && !trashed && (!owner || ownerPublic);
   return (
     <div>
-      <div className="phase4-actions">
-        <button
-          type="button"
-          onClick={(e) => shell.openProfile(detail.authorId, e.currentTarget)}
-        >
-          {detail.authorName}
-        </button>
+      <div className={detailStyles.workAuthorRow}>
+        <WorkAuthor detail={detail} />
         {notice === null ? null : <p data-work-notice="">{notice}</p>}
       </div>
       {owner ? (

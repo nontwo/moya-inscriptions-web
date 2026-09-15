@@ -743,3 +743,7 @@
     transition: none;
   }
 }
+.section[data-layout="phone"] [data-media-action="up"],
+.section[data-layout="phone"] [data-media-action="down"] {
+  display: none;
+}

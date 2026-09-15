@@ -1,7 +1,7 @@
 import { createDraftAutosave, sameDraftContent } from "./draft-autosave";
 import { createEditReadinessTracker } from "./edit-readiness";
 import {
-  addToStagingBatch,
+  addStaticPhotosToStaging,
   attachStagedCounterpart,
   confirmStaging,
   countStaging,
@@ -887,7 +887,11 @@ export class PublishingRuntime {
       account.identifying = Math.max(0, account.identifying - files.length);
     }
     if (this.current() !== account) return;
-    account.staging = addToStagingBatch(account.staging, identified, origin);
+    account.staging = addStaticPhotosToStaging(
+      account.staging,
+      identified,
+      origin,
+    );
     this.publish();
   }
 

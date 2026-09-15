@@ -365,9 +365,13 @@ Active development tracks (independent of the parked cloud track):
    Development milestone, with no Production deployment or release authority.
 
 3. **Work publishing and draft editing (`work-publishing-v1`)** — Draft PR #138,
-   r3 applies Owner phone feedback to discussion avatars/counts, album controls,
-   profile/settings, draft cards, search, keyboard backing and feed spacing;
-   Admin gains complete submitted details with existing management operations.
+   r4 adds the Owner-requested current-recommendation list/order, selected-work
+   bulk management, public-user details and automatic recommendation of a
+   selected user's eligible public works. Web photo selection is static-only;
+   existing Live playback and backend compatibility remain. The author header,
+   compact actions and phone ordering follow the latest Owner feedback. r3
+   discussion, album, profile/settings, draft, search and spacing refinements
+   remain; Admin content management does not edit authors' title/body/images.
    The PR records exact validation and independent final-head review status.
    Owner visual/real-device acceptance remains pending. Owner-approved on
    2026-09-13: album-style works (new and edited), static and complete Live

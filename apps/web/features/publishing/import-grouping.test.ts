@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addToStagingBatch,
+  addStaticPhotosToStaging,
   attachStagedCounterpart,
   confirmStaging,
   countStaging,
@@ -371,5 +372,28 @@ describe("staging counts against the item limit", () => {
       clientSource: "clipboard",
       notCameraOriginal: true,
     });
+  });
+});
+
+describe("Web r4 static selection", () => {
+  it("accepts a Live-marked still as one photo and refuses all separate videos without choices", async () => {
+    const files = await identifyFiles([
+      fileOf(jpeg({ identifier: IDENTIFIER })),
+      fileOf(motion({ identifier: IDENTIFIER })),
+      fileOf(jpeg({})),
+    ]);
+    const batch = addStaticPhotosToStaging(null, files, "picker");
+    expect(batch.entries.map((e) => e.status)).toEqual([
+      "ready",
+      "unsupported",
+      "ready",
+    ]);
+    const result = confirmStaging(batch, 0, 50);
+    expect(
+      result.ok && result.confirmed.map((item) => item.source.kind),
+    ).toEqual(["static", "static"]);
+    expect(
+      addStaticPhotosToStaging(batch, files, "picker").entries,
+    ).toHaveLength(3);
   });
 });

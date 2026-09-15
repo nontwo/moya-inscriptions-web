@@ -34,6 +34,44 @@ const confirm = (
 });
 
 describe("upload manager: preparation and registration", () => {
+  it.each(["standard", "original"] as const)(
+    "sends only the static resource from a supported container in %s mode",
+    async (quality) => {
+      const test = createTestManager();
+      const base = staticSource();
+      const source: LogicalSource = {
+        kind: "static",
+        still: {
+          ...base.still,
+          motionPhoto: {
+            primaryLength: 300,
+            videoStart: 300,
+            videoLength: 700,
+            videoType: "video/mp4",
+            stillTimeMs: null,
+          },
+        },
+      };
+      if (quality === "standard")
+        test.preprocess.still.mockResolvedValue({
+          status: "retained",
+          contentType: "image/jpeg",
+          width: 20,
+          height: 20,
+        });
+      test.manager.addConfirmed([confirm("photo", source, quality)]);
+      await settle();
+      expect(test.preprocess.motion).not.toHaveBeenCalled();
+      expect(test.transfer.starts).toHaveLength(1);
+      expect(test.transfer.starts[0]!.request.body.size).toBe(300);
+      expect(test.client.client.registerItem.mock.calls[0]![0]).toMatchObject({
+        kind: "static",
+        components: [{ role: "still", byteSize: 300 }],
+      });
+      test.manager.dispose();
+    },
+  );
+
   it("registers a Standard item with final byte sizes before any transfer, sends each component once and polls until ready", async () => {
     const test = createTestManager();
     test.manager.addConfirmed([confirm("k1", staticSource())]);

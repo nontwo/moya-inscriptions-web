@@ -524,6 +524,51 @@ export const setBatchOriginal = (
   original: boolean,
 ): StagingBatch => ({ ...batch, original });
 
+/** Web r4 imports photos only. Keep the parser facts for bounded extraction,
+ * but never turn a new selection into Live media or wait for another file.
+ * Compatibility pairing above is retained for backend/browser fixtures.
+ */
+export const addStaticPhotosToStaging = (
+  batch: StagingBatch | null,
+  files: readonly IdentifiedFile[],
+  origin: FileOrigin,
+  newKey: KeyFactory = randomKey,
+): StagingBatch => {
+  const staged = new Set(batch?.entries.flatMap(entryFiles) ?? []);
+  const incoming = files.filter((file) => !staged.has(file.file));
+  const entries = incoming.map((file): StagedEntry => {
+    if (file.kind === "unsupported")
+      return {
+        key: newKey(),
+        status: "unsupported",
+        file: file.file,
+        reason: file.reason,
+      };
+    if (file.kind === "motion" || file.motionPhotoInvalid)
+      return {
+        key: newKey(),
+        status: "unsupported",
+        file: file.file,
+        reason: file.kind === "motion" ? "independent_video" : "unreadable",
+      };
+    return {
+      key: newKey(),
+      status: "ready",
+      source: { kind: "static", still: file },
+      ...(origin === "paste" ? { pasted: true as const } : {}),
+    };
+  });
+  return {
+    origin: batch?.origin ?? origin,
+    original: batch?.original ?? false,
+    entries: [...(batch?.entries ?? []), ...entries],
+    fileOrigins: new Map([
+      ...(batch?.fileOrigins ?? []),
+      ...incoming.map((file) => [file.file, origin] as const),
+    ]),
+  };
+};
+
 const replaceEntry = (
   batch: StagingBatch,
   key: string,

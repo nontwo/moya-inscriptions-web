@@ -806,9 +806,9 @@
 
 .workManagementRow {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--yoyi-space-3);
+  gap: var(--yoyi-space-2);
 }
 
 .workManagement button {
@@ -839,10 +839,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--yoyi-space-1);
-  padding: var(--yoyi-space-1) var(--yoyi-space-1) var(--yoyi-space-1)
-    var(--yoyi-space-4);
+  padding: 0;
   background: var(--yoyi-color-background-surface);
-  border: 1px solid var(--yoyi-color-border-subtle);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--yoyi-color-border-subtle);
   border-radius: var(--yoyi-radius-full);
 }
 
@@ -853,9 +853,69 @@
 }
 
 .visibilitySwitch button {
+  padding: 0 var(--yoyi-space-3);
+  font-size: var(--yoyi-type-body-small-size);
+  white-space: nowrap;
   color: var(--yoyi-color-text-secondary);
   background: transparent;
   border-color: transparent;
+}
+
+.workManagement .workIcon {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.workAuthor {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0;
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workAuthor > span:last-child {
+  overflow-wrap: anywhere;
+}
+.workAuthorAvatar {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--yoyi-color-background-muted);
+}
+.workAuthorAvatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.workAuthor:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+.workBody {
+  margin: var(--yoyi-space-3) 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
 }
 
 .visibilitySwitch button[aria-pressed="true"] {
@@ -1140,4 +1200,9 @@
   to {
     background-position: -200% 0;
   }
+}
+.workAuthorRow {
+  display: grid;
+  gap: var(--yoyi-space-2);
+  justify-items: start;
 }

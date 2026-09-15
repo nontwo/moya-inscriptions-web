@@ -50,6 +50,9 @@ GRANT SELECT, INSERT ON TABLE community.user_media, community.author_command_rec
 GRANT INSERT (id, actor_id, action, subject_id, occurred_at) ON TABLE community.author_events TO :"app_role";
 
 -- Featured content and discovery sequences.
+GRANT SELECT ON TABLE community.featured_users TO :"app_role";
+GRANT INSERT (user_id, enabled) ON TABLE community.featured_users TO :"app_role";
+GRANT UPDATE (enabled, version) ON TABLE community.featured_users TO :"app_role";
 GRANT SELECT ON TABLE community.featured_content, community.featured_settings TO :"app_role";
 GRANT INSERT (content_type, content_id, enabled, position) ON TABLE community.featured_content TO :"app_role";
 GRANT UPDATE (enabled, position, version) ON TABLE community.featured_content TO :"app_role";

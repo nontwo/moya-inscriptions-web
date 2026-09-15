@@ -436,6 +436,131 @@ describe.each(["clean", "phase4-upgrade"] as const)(
         publicRevisionId: original.revisionId,
         publiclyVisible: true,
       });
+      // r4: inherited membership remains subordinate to publication and explicit work choices.
+      const contentOperator = new PostgresCommunityContentOperatorAdapter(app);
+      const recommend = {
+        ...commandId(),
+        id: actor,
+        enabled: true,
+        expectedVersion: 0,
+      };
+      expect(
+        await contentOperator.recommendUser("qa-operator", recommend),
+      ).toEqual({ version: 1 });
+      expect(
+        await contentOperator.recommendUser("qa-operator", recommend),
+      ).toEqual({ version: 1 });
+      await expect(
+        contentOperator.recommendUser("qa-operator", {
+          ...recommend,
+          ...commandId(),
+        }),
+      ).rejects.toThrow();
+      const users = await contentOperator.readUsers({
+        page: 1,
+        pageSize: 20,
+        search: "",
+        userId: actor,
+      });
+      expect(users.items).toHaveLength(1);
+      expect(users.items[0]).toMatchObject({
+        id: actor,
+        recommended: true,
+        recommendationVersion: 1,
+      });
+      expect(
+        (
+          await contentOperator.readWorks({
+            page: 1,
+            pageSize: 50,
+            search: "",
+            authorId: actor,
+          })
+        ).items.every((w) => w.authorId === actor),
+      ).toBe(true);
+      const recommendations = () =>
+        contentOperator.readFeatured({
+          page: 1,
+          pageSize: 50,
+          search: "",
+          filter: "active",
+        });
+      expect(
+        (await recommendations()).items.some(
+          (w) => w.target.id === original.workId,
+        ),
+      ).toBe(true);
+      const future = await publish("推荐用户的新提交");
+      expect(
+        (await recommendations()).items.some(
+          (w) => w.target.id === future.workId,
+        ),
+      ).toBe(false);
+      const futureReview = await operators.readSubmission(future.revisionId);
+      await operators.moderateSubmission(
+        future.revisionId,
+        "qa-operator",
+        {
+          ...commandId(),
+          action: "approve",
+          expectedVersion: futureReview.version,
+        },
+        now,
+      );
+      expect(
+        (await recommendations()).items.some(
+          (w) => w.target.id === future.workId,
+        ),
+      ).toBe(true);
+      await contentOperator.setFeatured("qa-operator", {
+        ...commandId(),
+        target: { type: "work", id: future.workId },
+        enabled: false,
+        position: 2,
+        expectedVersion: 0,
+      });
+      expect(
+        (await recommendations()).items.some(
+          (w) => w.target.id === future.workId,
+        ),
+      ).toBe(false);
+      await contentOperator.setFeatured("qa-operator", {
+        ...commandId(),
+        target: { type: "work", id: original.workId },
+        enabled: true,
+        position: 0,
+        expectedVersion: 0,
+      });
+      await contentOperator.recommendUser("qa-operator", {
+        ...commandId(),
+        id: actor,
+        enabled: false,
+        expectedVersion: 1,
+      });
+      expect(
+        (await recommendations()).items.some(
+          (w) => w.target.id === original.workId,
+        ),
+      ).toBe(true);
+      expect(
+        (
+          await discovery.browse(
+            other,
+            discoveryQuerySchema.parse({ pageSize: 1 }),
+          )
+        ).items[0]?.target.id,
+      ).toBe(original.workId);
+      await expect(
+        app.query("DELETE FROM community.featured_users WHERE user_id=$1", [
+          actor,
+        ]),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        app.query(
+          "UPDATE community.featured_users SET user_id=$1 WHERE user_id=$1",
+          [actor],
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
       const discussionTarget = { type: "work" as const, id: original.workId };
       const rootComment = await comments.submitDiscussion(
         discussionTarget,

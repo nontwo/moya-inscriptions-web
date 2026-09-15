@@ -84,6 +84,12 @@ export type {
 
 export {
   operatorContentQuerySchema,
+  operatorWorksQuerySchema,
+  operatorFeaturedQuerySchema,
+  operatorUsersQuerySchema,
+  operatorUserSchema,
+  operatorUserPageSchema,
+  recommendUserCommandSchema,
   operatorWorkSchema,
   operatorWorkPageSchema,
   moderateWorkCommandSchema,
@@ -99,6 +105,12 @@ export {
 } from "./content-schemas.js";
 export type {
   OperatorContentQuery,
+  OperatorWorksQuery,
+  OperatorFeaturedQuery,
+  OperatorUsersQuery,
+  OperatorUser,
+  OperatorUserPage,
+  RecommendUserCommand,
   OperatorWork,
   OperatorWorkPage,
   ModerateWorkCommand,
