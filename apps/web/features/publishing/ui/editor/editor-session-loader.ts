@@ -198,6 +198,8 @@ const load = async (
       unavailableMessage: null,
       notice: "已恢复本机未完成的编辑；点击保存草稿后才会同步到其他端",
     });
+    const content = deps.upload().checkpoint()?.content;
+    if (content) store.adoptContent(content);
     deps.upload().edit(store.content());
     markEditVersionSent(store, store.get().editVersion);
     return;

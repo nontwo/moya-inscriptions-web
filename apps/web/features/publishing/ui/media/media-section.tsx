@@ -331,6 +331,9 @@ const MediaSectionBody = ({
             acceptSelection.current(original, replacing);
           },
           original,
+          replacing
+            ? { target: replacing.target, previous: replacing.previous }
+            : undefined,
         )
         .catch(() => {
           onFailed?.();

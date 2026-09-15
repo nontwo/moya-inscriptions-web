@@ -274,7 +274,14 @@ export const useStagedItems = () => {
         origin: FileOrigin,
         onReady?: () => void,
         original = false,
-      ) => runtime.stageFiles(files, origin, onReady, original),
+        replacement?: {
+          target: string;
+          previous: Pick<
+            WorkDraftContent["items"][number],
+            "kind" | "qualityMode" | "edit"
+          >;
+        },
+      ) => runtime.stageFiles(files, origin, onReady, original, replacement),
       setOriginal: (original: boolean) => runtime.setStagingOriginal(original),
       remove: (key: string) => runtime.removeStaged(key),
       keepStill: (key: string) => runtime.keepStagedStill(key),

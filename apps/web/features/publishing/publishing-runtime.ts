@@ -13,6 +13,7 @@ import {
 import { createSubmissionController } from "./submission-reconcile";
 import { UploadManager, summarizeUploads } from "./upload-manager";
 import { createExternalStore } from "./upload-manager-store";
+import { confirmedItems, replaceItem } from "./ui/media/media-order";
 
 import type { DraftAutosave, DraftAutosavePort } from "./draft-autosave";
 import type {
@@ -140,6 +141,10 @@ export interface PublishingCheckpoint {
     files: readonly File[];
     origin: FileOrigin;
     original: boolean;
+    replacement?: {
+      target: string;
+      previous: Pick<WorkDraftItem, "kind" | "qualityMode" | "edit">;
+    };
   }[];
 }
 
@@ -183,6 +188,10 @@ interface SessionRecord {
       files: readonly File[];
       origin: FileOrigin;
       original: boolean;
+      replacement?: {
+        target: string;
+        previous: Pick<WorkDraftItem, "kind" | "qualityMode" | "edit">;
+      };
     }
   >;
   submitting: boolean;
@@ -668,18 +677,44 @@ export class PublishingRuntime {
     }
     await account.manager.restoreCheckpoint(checkpoint.uploads);
     if (this.current() !== account || session.closed) return;
-    account.staging = checkpoint.staging;
+    // A pending selection may also have published staging before its acceptance
+    // callback. Re-identify its retained files exactly once, with its intent.
+    account.staging = checkpoint.pendingFiles.length
+      ? null
+      : checkpoint.staging;
     if (checkpoint.content) this.edit(checkpoint.content);
     if (account.staging?.entries.length) this.confirmStaging();
-    for (const pending of checkpoint.pendingFiles) {
+    for (const [index, pending] of checkpoint.pendingFiles.entries()) {
+      const replacement = pending.replacement;
+      if (
+        replacement &&
+        (checkpoint.pendingFiles
+          .slice(index + 1)
+          .some((next) => next.replacement?.target === replacement.target) ||
+          !session.latest?.items.some(
+            (item) => item.key === replacement.target,
+          ))
+      )
+        continue;
       await this.stageFiles(
         pending.files,
         pending.origin,
         () => {
           this.setStagingOriginal(pending.original);
-          this.confirmStaging();
+          const before = session.latest;
+          const result = this.confirmStaging(replacement?.target);
+          if (result.ok && replacement && before) {
+            const items = confirmedItems(result.confirmed).map((item) =>
+              item.kind === replacement.previous.kind
+                ? { ...item, edit: replacement.previous.edit }
+                : item,
+            );
+            const next = replaceItem(before, replacement.target, items);
+            this.edit({ ...before, ...next, items: [...next.items] });
+          }
         },
         pending.original,
+        replacement,
       );
     }
     this.publish();
@@ -1055,6 +1090,10 @@ export class PublishingRuntime {
     origin: FileOrigin,
     onReady?: () => void,
     original = false,
+    replacement?: {
+      target: string;
+      previous: Pick<WorkDraftItem, "kind" | "qualityMode" | "edit">;
+    },
   ): Promise<void> {
     const account = this.current();
     if (!account || files.length === 0) return Promise.resolve();
@@ -1072,6 +1111,7 @@ export class PublishingRuntime {
       files,
       origin,
       original,
+      ...(replacement ? { replacement } : {}),
     });
     account.identifying += files.length;
     this.publish();
@@ -1137,12 +1177,18 @@ export class PublishingRuntime {
   }
 
   /** Confirms the ready staging entries under the batch mode and starts their preparation. */
-  confirmStaging(): ConfirmStagingResult {
+  confirmStaging(replacementTarget?: string): ConfirmStagingResult {
     const account = this.current();
     if (!account?.staging || !account.session || account.session.closed)
       return { ok: false, error: "nothing_ready" };
     const session = account.session;
-    const existing = albumItemCount(account.manager, session);
+    const replacing =
+      replacementTarget !== undefined &&
+      albumContent(session)?.items.some(
+        (item) => item.key === replacementTarget,
+      );
+    const existing =
+      albumItemCount(account.manager, session) - (replacing ? 1 : 0);
     const result = confirmStaging(
       account.staging,
       existing,
@@ -1278,42 +1324,56 @@ export class PublishingRuntime {
         createDraft: async (input) => {
           const cmd = (session.draftCreation ??= input);
           this.publish();
-          const workId = session.view.workId;
-          if (workId === null) return this.services.client.createDraft(cmd);
-          const open = this.services.client.openWorkEditDraft;
-          if (!open) throw new Error("无法保存作品草稿，请重试");
-          const { draft: opened, created } = await open(workId, {
-            requestId: cmd.requestId,
-            deviceClass: cmd.deviceClass,
-          });
-          if (
-            this.services.currentAccount() !== account.manager.accountId ||
-            session.closed
-          )
-            throw new Error("账号已切换，本次保存已暂停");
-          if (opened.baseRevisionId !== session.view.baseRevisionId)
-            throw new Error(
-              "作品已在别处更新，请重新打开后比较；本次内容仍保留在本机",
-            );
-          if (opened.conflict || sameDraftContent(opened.content, cmd.content))
-            return opened;
-          if (
-            !created &&
-            opened.revision === 1 &&
-            session.baseline !== null &&
-            !sameDraftContent(opened.content, session.baseline)
-          )
-            throw new Error(
-              "这件作品已有其他草稿，请先打开那份草稿；本次内容仍保留在本机",
-            );
-          // A draft already edited elsewhere is a conflict, never an overwrite.
-          const result = await this.services.client.saveDraft(opened.id, {
-            baseRevision:
-              opened.revision > 1 ? opened.revision - 1 : opened.revision,
-            content: cmd.content,
-            deviceClass: cmd.deviceClass,
-          });
-          return result.draft;
+          try {
+            const workId = session.view.workId;
+            if (workId === null)
+              return await this.services.client.createDraft(cmd);
+            const open = this.services.client.openWorkEditDraft;
+            if (!open) throw new Error("无法保存作品草稿，请重试");
+            const { draft: opened, created } = await open(workId, {
+              requestId: cmd.requestId,
+              deviceClass: cmd.deviceClass,
+            });
+            if (
+              this.services.currentAccount() !== account.manager.accountId ||
+              session.closed
+            )
+              throw new Error("账号已切换，本次保存已暂停");
+            if (opened.baseRevisionId !== session.view.baseRevisionId)
+              throw new Error(
+                "作品已在别处更新，请重新打开后比较；本次内容仍保留在本机",
+              );
+            if (
+              opened.conflict ||
+              sameDraftContent(opened.content, cmd.content)
+            )
+              return opened;
+            if (
+              !created &&
+              opened.revision === 1 &&
+              session.baseline !== null &&
+              !sameDraftContent(opened.content, session.baseline)
+            )
+              throw new Error(
+                "这件作品已有其他草稿，请先打开那份草稿；本次内容仍保留在本机",
+              );
+            // A draft already edited elsewhere is a conflict, never an overwrite.
+            const result = await this.services.client.saveDraft(opened.id, {
+              baseRevision:
+                opened.revision > 1 ? opened.revision - 1 : opened.revision,
+              content: cmd.content,
+              deviceClass: cmd.deviceClass,
+            });
+            return result.draft;
+          } catch (error) {
+            if (
+              (error as { outcomeUnknown?: boolean })?.outcomeUnknown !== true
+            ) {
+              session.draftCreation = null;
+              this.publish();
+            }
+            throw error;
+          }
         },
       },
       requestId: this.services.requestId,

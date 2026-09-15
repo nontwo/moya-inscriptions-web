@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { identifyFiles, addStaticPhotosToStaging } from "./import-grouping";
+import { fileOf, jpeg } from "./parsers/synthetic-media.test-support";
 
 import { EditorInterruptionRecovery, recoveryBytes } from "./editor-recovery";
 import { contentOf, createEditorState } from "./ui/editor/editor-session-state";
@@ -64,12 +66,13 @@ const setup = () => {
     bytes: async () => recoveryBytes([...disk.values()]),
   };
   const estimate = vi.fn(async () => ({ quota: 1024 ** 3, usage: 0 }));
+  let identity = 0;
   const create = () =>
     new EditorInterruptionRecovery(
       backend,
       text,
       estimate,
-      () => "local-edit-one",
+      () => `local-edit-${++identity}`,
       durable,
     );
   return { create, disk, backend, text, durable, estimate };
@@ -94,9 +97,12 @@ describe("manual draft interruption recovery", () => {
     test.text.clear();
     expect((await test.create().load(account))?.state.body).toBe(state.body);
     const restored = test.create();
+    await restored.load(account);
     await restored.save(state, checkpoint);
+    expect(test.disk.size).toBe(1);
     restored.discard(account);
     expect(await restored.load(account)).toBeNull();
+    expect(test.disk.size).toBe(0);
   });
 
   it("keeps the latest keystroke even when a blob write fails", async () => {
@@ -128,6 +134,42 @@ describe("manual draft interruption recovery", () => {
     release();
     await saving;
     expect(await recovery.load(account)).toBeNull();
+    expect(test.disk.size).toBe(0);
+  });
+
+  it("removes an obsolete pending original even when the next optimized recovery write fails", async () => {
+    const test = setup(),
+      recovery = test.create();
+    await recovery.save(state, {
+      ...checkpoint,
+      pendingFiles: [
+        {
+          id: "selected",
+          files: [new File(["original-bytes"], "source.jpg")],
+          origin: "picker",
+          original: false,
+        },
+      ],
+    });
+    expect(test.disk.size).toBe(1);
+    test.backend.put.mockRejectedValueOnce(new Error("quota"));
+    expect(await recovery.save(state, checkpoint)).toBe(false);
+    expect(test.disk.size).toBe(0);
+    expect((await recovery.load(account))?.runtime.pendingFiles).toEqual([]);
+  });
+
+  it("removes an obsolete staged original if a following recovery write fails", async () => {
+    const test = setup(),
+      recovery = test.create();
+    const staging = addStaticPhotosToStaging(
+      null,
+      await identifyFiles([fileOf(jpeg({}))]),
+      "picker",
+    );
+    await recovery.save(state, { ...checkpoint, staging });
+    expect(test.disk.size).toBe(1);
+    test.backend.put.mockRejectedValueOnce(new Error("quota"));
+    expect(await recovery.save(state, checkpoint)).toBe(false);
     expect(test.disk.size).toBe(0);
   });
 

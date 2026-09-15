@@ -133,7 +133,7 @@ export class EditorInterruptionRecovery {
     }
     const record: EditorRecoveryRecord = {
       accountId: account,
-      id: previous?.id ?? this.identity(),
+      id: this.identities.get(account) ?? previous?.id ?? this.identity(),
       updatedAt: Date.now(),
       state,
       runtime,
@@ -178,16 +178,26 @@ export class EditorInterruptionRecovery {
         // remain hidden in an older recovery record, even if the next put fails.
         const old = parseEditorRecovery(existing, account);
         if (
-          old?.runtime.uploads.some(
-            (item) =>
-              item.source &&
-              runtime.uploads.some(
-                (next) =>
-                  next.view.key === item.view.key &&
-                  next.view.qualityMode === "standard" &&
-                  next.prepared,
-              ),
-          )
+          old &&
+          (old.runtime.pendingFiles.some(
+            (p) => !runtime.pendingFiles.some((next) => next.id === p.id),
+          ) ||
+            old.runtime.staging?.entries.some(
+              (entry) =>
+                !runtime.staging?.entries.some(
+                  (next) => next.key === entry.key,
+                ),
+            ) ||
+            old.runtime.uploads.some(
+              (item) =>
+                item.source &&
+                runtime.uploads.some(
+                  (next) =>
+                    next.view.key === item.view.key &&
+                    next.view.qualityMode === "standard" &&
+                    next.prepared,
+                ),
+            ))
         )
           await this.backend.remove(record.id);
         const size = await this.backend.bytes();
@@ -243,6 +253,7 @@ export class EditorInterruptionRecovery {
         account,
       );
       if (!text) return null;
+      this.identities.set(account, text.id);
       const bytes = parseEditorRecovery(
         await this.backend.get(text.id).catch(() => null),
         account,

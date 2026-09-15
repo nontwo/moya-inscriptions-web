@@ -74,8 +74,9 @@ const setup = (
       titleMax: 200,
       bodyMax: 10_000,
     })),
-    createDraft: vi.fn(async (cmd: { content: WorkDraftContent }) =>
-      draftOf(cmd.content),
+    createDraft: vi.fn(
+      async (cmd: { content: WorkDraftContent; requestId: string }) =>
+        draftOf(cmd.content),
     ),
     saveDraft: vi.fn(
       async (
@@ -326,6 +327,81 @@ describe("publishing runtime", () => {
     expect(next.client.saveDraft.mock.calls[0]![1].content.title).toBe(
       "newer local text",
     );
+  });
+
+  it("r6 retries a definitive create refusal with the corrected content and a fresh identity", async () => {
+    const test = setup();
+    test.signIn(ACCOUNT);
+    test.runtime.startSession({ target: { type: "new" }, saveMode: "saved" });
+    test.runtime.edit(content("refused"));
+    test.client.createDraft.mockRejectedValueOnce(
+      clientError(409, "draft limit", false, "draft_limit"),
+    );
+    await test.runtime.saveNow();
+    test.runtime.edit(content("corrected"));
+    await test.runtime.saveNow();
+    expect(test.client.createDraft.mock.calls[1]![0].content.title).toBe(
+      "corrected",
+    );
+    expect(test.client.createDraft.mock.calls[1]![0].requestId).not.toBe(
+      test.client.createDraft.mock.calls[0]![0].requestId,
+    );
+  });
+
+  it("r6 replays only the newest interrupted replacement at its original album position", async () => {
+    const test = setup();
+    test.signIn(ACCOUNT);
+    const previous: WorkDraftItem = {
+      key: "missing",
+      itemId: null,
+      kind: "static",
+      qualityMode: "standard",
+      edit: { rotation: 90, crop: null },
+    };
+    const original = {
+      ...content("replacement"),
+      items: [previous],
+      coverKey: previous.key,
+    };
+    test.runtime.startSession({
+      target: { type: "new" },
+      saveMode: "saved",
+      content: original,
+    });
+    test.runtime.edit(original);
+    const snapshot = test.runtime.checkpoint()!;
+    test.runtime.dispose();
+    const next = setup();
+    next.signIn(ACCOUNT);
+    const older = fileOf(jpeg({})),
+      newer = fileOf(jpeg({}));
+    await next.runtime.restoreCheckpoint({
+      ...snapshot,
+      pendingFiles: [
+        {
+          id: "old",
+          files: [older],
+          origin: "picker",
+          original: false,
+          replacement: { target: previous.key, previous },
+        },
+        {
+          id: "new",
+          files: [newer],
+          origin: "picker",
+          original: false,
+          replacement: { target: previous.key, previous },
+        },
+      ],
+    });
+    const restored = next.runtime.checkpoint()!;
+    expect(restored.content?.items).toHaveLength(1);
+    expect(restored.content?.items[0]!.key).not.toBe(previous.key);
+    expect(restored.content?.items[0]!.edit.rotation).toBe(90);
+    expect(restored.content?.coverKey).toBe(restored.content?.items[0]!.key);
+    expect(restored.uploads).toHaveLength(1);
+    expect(restored.uploads[0]!.source?.still.file).toBe(newer);
+    expect(next.client.createDraft).not.toHaveBeenCalled();
   });
 
   const receiveStill = async (test: ReturnType<typeof setup>, index = 0) => {
