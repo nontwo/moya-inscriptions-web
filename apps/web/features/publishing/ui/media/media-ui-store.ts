@@ -85,6 +85,8 @@ export interface MediaUiStore {
   saveDraft(dialog: EditDialog, draft: EditDraft): void;
   saveDraft(dialog: CoverDialog, draft: CoverDraft): void;
   setReplacement(replacement: Replacement | null): void;
+  isCurrentReplacement(replacement: Replacement): boolean;
+  finishReplacement(replacement: Replacement): void;
   markReplacementStaged(): void;
   setNotice(notice: string | null): void;
   select(key: string): void;
@@ -110,6 +112,8 @@ const sameDialog = (left: MediaDialog | null, right: MediaDialog | null) =>
 
 export const createMediaUiStore = (): MediaUiStore => {
   const store = createExternalStore(initialState, (flush) => flush());
+  // Identification is queued, but the latest explicit choice wins per card.
+  const replacements = new Map<string, Replacement>();
   let draft: {
     readonly dialog: MediaDialog;
     readonly value: EditDraft | CoverDraft;
@@ -167,10 +171,25 @@ export const createMediaUiStore = (): MediaUiStore => {
     // The dialog type fixes the draft type (both are written together).
     draftFor: draftFor as MediaUiStore["draftFor"],
     saveDraft: saveDraft as MediaUiStore["saveDraft"],
-    setReplacement: (replacement) =>
+    setReplacement: (replacement) => {
+      if (replacement !== null)
+        replacements.set(replacement.target, replacement);
       store.update((state) =>
         state.replacement === replacement ? state : { ...state, replacement },
-      ),
+      );
+    },
+    isCurrentReplacement: (replacement) =>
+      replacements.get(replacement.target) === replacement,
+    finishReplacement: (replacement) => {
+      if (replacements.get(replacement.target) === replacement)
+        replacements.delete(replacement.target);
+      store.update((state) =>
+        state.replacement?.target === replacement.target &&
+        state.replacement.files === replacement.files
+          ? { ...state, replacement: null }
+          : state,
+      );
+    },
     markReplacementStaged: () =>
       store.update((state) =>
         state.replacement === null || state.replacement.staged

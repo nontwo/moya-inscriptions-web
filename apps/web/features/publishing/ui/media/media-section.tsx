@@ -308,15 +308,19 @@ const MediaSectionBody = ({
     ) => {
       if (files.length === 0) return;
       ui.setNotice(null);
-      const original = actions.get().originalNext;
-      actions.setOriginalNext(false);
+      const original =
+        replacing === null
+          ? actions.get().originalNext
+          : replacing.previous.qualityMode === "original";
+      if (replacing === null) actions.setOriginalNext(false);
       staged
         .stageFiles(files, origin, () => {
           // Removing a missing item while its replacement is being read must
           // never turn that late replacement into an unrelated new upload.
           if (
             replacing !== null &&
-            indexOfKey(current(), replacing.target) < 0
+            (!ui.isCurrentReplacement(replacing) ||
+              indexOfKey(current(), replacing.target) < 0)
           ) {
             staged.cancel(false);
             return;
@@ -326,6 +330,9 @@ const MediaSectionBody = ({
         .catch(() => {
           onFailed?.();
           showNotice("文件无法读取，请重新选择");
+        })
+        .finally(() => {
+          if (replacing !== null) ui.finishReplacement(replacing);
         });
     },
     [staged, actions, ui, current, showNotice],
@@ -405,7 +412,7 @@ const MediaSectionBody = ({
           : "所选文件无法添加，请选择支持的静态照片",
       );
       staged.cancel(false);
-      if (ui.get().replacement === replacement) ui.setReplacement(null);
+      if (replacement !== null) ui.finishReplacement(replacement);
       return;
     }
     // Rejected files are explained below, not kept in an invisible staging batch.
@@ -433,7 +440,7 @@ const MediaSectionBody = ({
         void (cancelledTarget ?? session.cancelItem(target)).then(() =>
           session.forgetItem(target),
         );
-        if (ui.get().replacement === pending) ui.setReplacement(null);
+        ui.finishReplacement(pending);
       }
     }
     actions.setMedia(appendItems(next, added));
@@ -568,15 +575,11 @@ const MediaSectionBody = ({
       },
     };
     ui.setReplacement(pending);
-    // A lone re-selection keeps the missing item's quality; a batch in
-    // progress keeps the author's switch (the note names the old mode).
-    if (staging === null && item.qualityMode !== "legacy")
-      actions.setOriginalNext(item.qualityMode === "original");
     stage(
       files,
       "picker",
       () => {
-        if (ui.get().replacement === pending) ui.setReplacement(null);
+        ui.finishReplacement(pending);
       },
       pending,
     );

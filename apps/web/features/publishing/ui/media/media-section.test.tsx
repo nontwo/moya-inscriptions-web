@@ -396,6 +396,72 @@ describe("MediaSection automatic photo selection", () => {
     expect(probe.store!.get().coverKey).toBe(storeKeys()[0]);
   });
 
+  it("keeps the newest replacement choice when the same missing card is reselected twice", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const draft: PublishingDraft = {
+      id: DRAFT_ID,
+      kind: "new",
+      workId: null,
+      baseRevisionId: null,
+      revision: 1,
+      content: {
+        title: "",
+        body: "",
+        authorship: { kind: "original" },
+        visibility: "public",
+        items: [
+          {
+            key: "missing",
+            itemId: null,
+            kind: "static",
+            qualityMode: "original",
+            edit: { rotation: 90, crop: null },
+            pendingLabel: "photo",
+          },
+        ],
+        coverKey: "missing",
+        coverCrop: null,
+      },
+      mediaItems: [],
+      conflict: null,
+      deviceClass: "phone",
+      createdAt: "2026-09-13T12:00:00.000Z",
+      updatedAt: "2026-09-13T12:00:00.000Z",
+    };
+    let calls = 0;
+    await render("phone", {
+      draft,
+      identify: async (files) => {
+        if (calls++ === 0) await pending;
+        return identifyFiles(files);
+      },
+    });
+    await act(async () => {
+      probe.store!.adoptContent(draft.content, []);
+      await probe.upload!.restoreDraftMedia(draft);
+      await settle();
+    });
+    const oldFile = fileOf(jpeg({ width: 6 }), "old.jpg");
+    const newFile = fileOf(jpeg({ width: 8 }), "new.jpg");
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="重新选择缺少的文件"]',
+    )!;
+    await click(buttonByText("重新选择第 1 项"));
+    await setFiles(input, [oldFile]);
+    await click(buttonByText("重新选择第 1 项"));
+    await setFiles(input, [newFile]);
+    await act(async () => {
+      release();
+      await settle();
+    });
+    await until(() => current.transfer.starts.length === 1);
+    expect(current.transfer.starts[0]!.request.body).toBe(newFile);
+    expect(storeKeys()).toHaveLength(1);
+  });
+
   it("retains a rejected selection notice when identification finishes on another step", async () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
