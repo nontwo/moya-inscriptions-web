@@ -34,7 +34,7 @@ import { attachPasteCapture } from "./paste-capture";
 
 import type { MediaValue } from "./media-order";
 import type { RetryPlan } from "./media-status";
-import type { MediaDialog } from "./media-ui-store";
+import type { MediaDialog, Replacement } from "./media-ui-store";
 import type {
   ConfirmedSource,
   FileOrigin,
@@ -46,10 +46,9 @@ import type { MediaCrop, MediaEdit } from "@moya/contracts";
 
 /**
  * Step 1 of the phone editor, or the media column of the desktop editor
- * (§11 items 3 and 4): selection (picker, drop, paste) into staging with the
- * required explicit choices, confirmation under the session's 原图画质
- * switch, and the ordered strip of items with their upload state, cover,
- * edits and removal.
+ * (§11 items 3 and 4): selected static photos enter the upload queue under
+ * the selection-stage quality choice. The ordered strip carries upload state,
+ * cover, edits and removal; unsupported compression still needs a choice.
  *
  * The album lives in the editor session (`useEditorSession(sessionKey)`);
  * this section changes it only through the session's media actions. Upload
@@ -194,12 +193,12 @@ const MediaSectionBody = ({
     },
     [ui, announce],
   );
-  const [stageError, setStageError] = useState<string | null>(null);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
   const reselectInput = useRef<HTMLInputElement>(null);
   const reselectTarget = useRef<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
-  const acceptSelection = useRef<(original: boolean) => void>(() => undefined);
+  const acceptSelection = useRef<
+    (original: boolean, replacement: Replacement | null) => void
+  >(() => undefined);
 
   const canSelect = session.accountId !== null && session.session !== null;
 
@@ -301,12 +300,15 @@ const MediaSectionBody = ({
   // -- selection -----------------------------------------------------------
 
   const stage = useCallback(
-    (files: readonly File[], origin: FileOrigin, onFailed?: () => void) => {
+    (
+      files: readonly File[],
+      origin: FileOrigin,
+      onFailed?: () => void,
+      replacing: Replacement | null = null,
+    ) => {
       if (files.length === 0) return;
-      setStageError(null);
-      setConfirmError(null);
+      ui.setNotice(null);
       const original = actions.get().originalNext;
-      const replacing = ui.get().replacement;
       actions.setOriginalNext(false);
       staged
         .stageFiles(files, origin, () => {
@@ -314,20 +316,19 @@ const MediaSectionBody = ({
           // never turn that late replacement into an unrelated new upload.
           if (
             replacing !== null &&
-            (ui.get().replacement?.target !== replacing.target ||
-              indexOfKey(current(), replacing.target) < 0)
+            indexOfKey(current(), replacing.target) < 0
           ) {
             staged.cancel(false);
             return;
           }
-          acceptSelection.current(original);
+          acceptSelection.current(original, replacing);
         })
         .catch(() => {
           onFailed?.();
-          setStageError("文件无法读取，请重新选择");
+          showNotice("文件无法读取，请重新选择");
         });
     },
-    [staged, actions, ui, current],
+    [staged, actions, ui, current, showNotice],
   );
   const refuse = useCallback(() => announce(SELECTION_UNAVAILABLE), [announce]);
   const latest = useRef({ stage, canSelect, refuse });
@@ -360,8 +361,7 @@ const MediaSectionBody = ({
   }, []);
 
   /** The re-selection whose files are ready to confirm now, if any. */
-  const readyReplacement = () => {
-    const pending = ui.get().replacement;
+  const readyReplacement = (pending: Replacement | null) => {
     const staging = staged.current();
     if (
       pending === null ||
@@ -376,15 +376,15 @@ const MediaSectionBody = ({
     );
     return ready ? pending : null;
   };
-  const confirm = (original: boolean) => {
+  const confirm = (original: boolean, replacement: Replacement | null) => {
     if (session.session === null) {
-      setConfirmError("本次编辑已结束，无法添加");
+      showNotice("本次编辑已结束，无法添加");
       return;
     }
     const staging = staged.current();
     if (staging !== null && staging.batch.original !== original)
       staged.setOriginal(original);
-    const pending = readyReplacement();
+    const pending = readyReplacement(replacement);
     const limitCredit =
       pending !== null && holdsSlot(views.get(pending.target)) ? 1 : 0;
     const unsupported = staging?.count.unsupported ?? 0;
@@ -399,16 +399,15 @@ const MediaSectionBody = ({
       cancelledTarget = session.cancelItem(pending.target);
     const result = staged.confirm();
     if (!result.ok) {
-      setConfirmError(
+      showNotice(
         result.error === "items_limit"
           ? `作品最多 ${maxItems} 项，本次选择未加入，请减少所选照片或先移除部分内容`
           : "所选文件无法添加，请选择支持的静态照片",
       );
       staged.cancel(false);
-      ui.setReplacement(null);
+      if (ui.get().replacement === replacement) ui.setReplacement(null);
       return;
     }
-    setConfirmError(null);
     // Rejected files are explained below, not kept in an invisible staging batch.
     staged.cancel(false);
     const added = confirmedItems(result.confirmed);
@@ -434,12 +433,12 @@ const MediaSectionBody = ({
         void (cancelledTarget ?? session.cancelItem(target)).then(() =>
           session.forgetItem(target),
         );
-        ui.setReplacement(null);
+        if (ui.get().replacement === pending) ui.setReplacement(null);
       }
     }
     actions.setMedia(appendItems(next, added));
     if (unsupported > 0)
-      setStageError(`${unsupported} 个不支持的文件未添加，其余照片已开始上传`);
+      showNotice(`${unsupported} 个不支持的文件未添加，其余照片已开始上传`);
     announce(
       `已添加 ${added.length} 项，${original ? "原图" : "标准"}画质${
         replaced === null ? "" : `，已替换第 ${replaced} 项`
@@ -558,7 +557,7 @@ const MediaSectionBody = ({
   const startReplacement = (target: string, files: File[]) => {
     const item = current().items.find((entry) => entry.key === target);
     if (item === undefined) return;
-    ui.setReplacement({
+    const pending: Replacement = {
       target,
       files: new Set(files),
       staged: false,
@@ -567,12 +566,20 @@ const MediaSectionBody = ({
         qualityMode: item.qualityMode,
         edit: item.edit,
       },
-    });
+    };
+    ui.setReplacement(pending);
     // A lone re-selection keeps the missing item's quality; a batch in
     // progress keeps the author's switch (the note names the old mode).
     if (staging === null && item.qualityMode !== "legacy")
       actions.setOriginalNext(item.qualityMode === "original");
-    stage(files, "picker", () => ui.setReplacement(null));
+    stage(
+      files,
+      "picker",
+      () => {
+        if (ui.get().replacement === pending) ui.setReplacement(null);
+      },
+      pending,
+    );
   };
 
   // -- rendering -----------------------------------------------------------
@@ -648,18 +655,7 @@ const MediaSectionBody = ({
         tabIndex={-1}
         type="file"
       />
-      {stageError !== null && (
-        <p className={styles.fieldError} role="alert">
-          {stageError}
-        </p>
-      )}
-
       {(staging?.identifying ?? 0) > 0 && <p role="status">正在读取照片…</p>}
-      {confirmError !== null && (
-        <p className={styles.fieldError} role="alert">
-          {confirmError}
-        </p>
-      )}
 
       {paused && (
         <div className={styles.notice} data-media-paused="">

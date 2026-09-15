@@ -178,6 +178,7 @@ interface SessionRecord {
   appendable: Set<string>;
   /** The item count last published for staging limits. */
   itemCount: number;
+  pendingSelections: Set<symbol>;
 }
 
 const liveItemCount = (manager: UploadManager) =>
@@ -540,6 +541,7 @@ export class PublishingRuntime {
       closed: false,
       unsubscribe: () => undefined,
       appendable: new Set(),
+      pendingSelections: new Set(),
       itemCount: (draft?.content ?? options.content)?.items.length ?? 0,
     };
     // However the confirmation arrives (answer, receipt, explicit retry), the session completes.
@@ -754,6 +756,8 @@ export class PublishingRuntime {
     if (!options.discard) {
       if (this.leaveWouldLoseWork(account, session)) return "kept";
     } else if (session.view.saveMode === "unsaved") {
+      this.selectionEpoch += 1;
+      session.pendingSelections.clear();
       const manager = account.manager;
       manager.bindSession(null);
       for (const item of manager.getSnapshot().items)
@@ -827,6 +831,7 @@ export class PublishingRuntime {
           )
         : uploads.unfinished;
     return (
+      session.pendingSelections.size > 0 ||
       unfinished ||
       (session.autosave?.hasUnsavedChanges() ?? false) ||
       (session.view.saveMode === "unsaved" &&
@@ -895,24 +900,27 @@ export class PublishingRuntime {
       account.session === session &&
       session?.closed !== true &&
       this.selectionEpoch === epoch;
+    const selection = Symbol();
+    session?.pendingSelections.add(selection);
     account.identifying += files.length;
     this.publish();
     const task = this.selectionTail.then(async () => {
-      let identified: IdentifiedFile[] | null = null;
       try {
-        if (active()) identified = await this.services.identifyFiles(files);
+        if (!active()) return;
+        const identified = await this.services.identifyFiles(files);
+        if (!active()) return;
+        account.staging = addStaticPhotosToStaging(
+          account.staging,
+          identified,
+          origin,
+        );
+        this.publish();
+        onReady?.();
       } finally {
         account.identifying = Math.max(0, account.identifying - files.length);
+        session?.pendingSelections.delete(selection);
         this.publish();
       }
-      if (identified === null || !active()) return;
-      account.staging = addStaticPhotosToStaging(
-        account.staging,
-        identified,
-        origin,
-      );
-      this.publish();
-      onReady?.();
     });
     this.selectionTail = task.catch(() => undefined);
     return task;
@@ -982,7 +990,10 @@ export class PublishingRuntime {
   cancelStaging(cancelPending = true): void {
     const account = this.current();
     if (!account) return;
-    if (cancelPending) this.selectionEpoch += 1;
+    if (cancelPending) {
+      this.selectionEpoch += 1;
+      account.session?.pendingSelections.clear();
+    }
     account.staging = null;
     this.publish();
   }

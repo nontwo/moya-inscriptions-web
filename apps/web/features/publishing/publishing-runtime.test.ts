@@ -176,6 +176,32 @@ const content = (title: string): WorkDraftContent => ({
 });
 
 describe("publishing runtime", () => {
+  it("keeps an otherwise empty session when leaving during photo identification", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const test = setup(async (files) => {
+      await pending;
+      return identifyFiles(files);
+    });
+    test.signIn(ACCOUNT);
+    test.runtime.startSession({ target: { type: "new" }, saveMode: "saved" });
+    const accepted = vi.fn(() => test.runtime.confirmStaging());
+    const selected = test.runtime.stageFiles(
+      [fileOf(jpeg({}))],
+      "picker",
+      accepted,
+    );
+    await settle();
+    expect(await test.runtime.closeSession({ discard: false })).toBe("kept");
+    release();
+    await selected;
+    expect(accepted).toHaveBeenCalledOnce();
+    expect(test.runtime.draftItems()).toHaveLength(1);
+    test.runtime.dispose();
+  });
+
   it.each(["logout", "cancel", "replace-session"])(
     "fences a slow picker response after %s",
     async (action) => {
