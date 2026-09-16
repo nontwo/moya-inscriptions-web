@@ -40,3 +40,18 @@ Every task must:
 - run build where applicable
 - list modified files
 - report any deviation from the assigned scope
+
+## Active confidentiality amendment
+
+Read and follow the Owner-revised
+[core-credential quick check](docs/governance/amendments/2026-09-07-confidentiality-and-preflight.md).
+It replaces the former broad privacy gate: only high-confidence core credentials
+cause BLOCK. Ordinary identifiers, types, references, certificates, filenames
+and Git configuration forms are not credential findings or approval gates.
+
+Use incremental staged/message, newly outgoing commit and exact outbound checks,
+with context-aware cache reuse and one shared 120-second security-work allowance.
+WARN continues; INCOMPLETE pauses only the unchecked outward action. Preserve the
+configured anonymous identity, normal code review and functional tests. Do not
+start a separate confidentiality review or reinstate retired privacy blockers.
+Do not expose actual credentials or knowingly publish unrelated private data.
