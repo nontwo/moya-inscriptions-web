@@ -102,8 +102,17 @@ HEAD; otherwise the merge-base with `--base` is used. The mode always unions
 applicable staged, unstaged and untracked content plus necessary dependency
 impact. It does not assume the last commit is the entire unchecked delta.
 Missing or ambiguous checkpoint or scope is reported and fails; it is never
-silently treated as checked. User-visible output and recorded evidence are
-labeled `FEEDBACK ONLY — NOT FULL ACCEPTANCE`. That preview is not formal Owner
+silently treated as checked. Feedback mode selects existing focused checks from
+the feedback delta instead of the general `taskCommands()` plan. A supported
+routine Web presentation change is checked with those limited commands; it does
+not invoke bare `scripts/verify.mjs` and does not run the workspace-wide
+Web/browser/database/CMS path solely because Web is classified. A Web behavior
+change receives the matching focused behavior checks. Broader shared-contract
+impact uses the existing focused contract commands; database, CMS, Apple, and
+other unresolved coverage is reported explicitly and fails. Feedback never
+treats a silent skip or a pass with no relevant checks as successful
+verification. User-visible output and recorded evidence are labeled
+`FEEDBACK ONLY — NOT FULL ACCEPTANCE`. That preview is not formal Owner
 acceptance, not complete task validation, and not permission to merge. A failed
 full run is not a feedback PASS. Do not block every small preview on full CI,
 and do not push every tiny edit solely to obtain another full CI run. Commit,
