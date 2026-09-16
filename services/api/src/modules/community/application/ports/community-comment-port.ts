@@ -207,10 +207,16 @@ export interface CommunityCommentPort {
     readonly updatedBy: string;
   }>;
 
+  /**
+   * Writes the mode; a write of the mode already in force changes nothing.
+   * When `audit` is given, the switch and its moderation event commit in one
+   * transaction, and nothing is recorded when no row changed.
+   */
   writePublicationPolicy(
     policy: PublicationPolicy,
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<void>;
 
   recordModerationEvent(event: ModerationEvent): Promise<void>;

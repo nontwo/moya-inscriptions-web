@@ -5,6 +5,7 @@ import {
   startBackendProcess,
 } from "@moya/backend-runtime";
 import {
+  asPostgresOperationError,
   assertPostgresStartupReady,
   checkPostgresReadiness,
   closePostgresPool,
@@ -306,6 +307,20 @@ export const prepareProductionBackend = async (
       catalogPublicationPort: {
         isPublished: async (catalogId) =>
           (await catalogQueryPort.getById(catalogId)) !== null,
+        // One statement over the same published projection getById reads.
+        publishedIds: async (ids) => {
+          try {
+            const result = await pool.query<{ catalog_id: string }>(
+              "SELECT catalog_id FROM catalog_entries WHERE catalog_id = ANY($1::text[])",
+              [[...ids]],
+            );
+            return new Set(
+              result.rows.map((row) => row.catalog_id as (typeof ids)[number]),
+            );
+          } catch (error) {
+            throw asPostgresOperationError(error, "query");
+          }
+        },
         readTitle: async (catalogId) =>
           (await catalogQueryPort.getById(catalogId))?.title ?? null,
       },

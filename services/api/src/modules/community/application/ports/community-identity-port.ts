@@ -1,6 +1,7 @@
 import type { PublicUserId } from "@moya/contracts";
 
 import type { PublicUserRecord } from "../../domain/public-user.js";
+import type { ModerationEventDraft } from "./community-comment-port.js";
 
 /** A session row as the Backend stores it: the raw token never reaches the port. */
 export interface SessionRecordInput {
@@ -29,16 +30,18 @@ export interface CommunityIdentityPort {
   /** Revokes an active session; false when no active session matched. */
   revokeSession(tokenHash: string, now: Date): Promise<boolean>;
 
-  findUserById(id: PublicUserId): Promise<PublicUserRecord | null>;
-
   /**
    * Suspension refuses new writes and revokes the user's active sessions in one
    * transaction; it changes no comment's moderation state. Null when unknown.
+   * When `audit` is given, its moderation event is written in that same
+   * transaction, and only when the status actually changed: a repeated
+   * transition returns the unchanged user and records nothing.
    */
   setUserStatus(
     id: PublicUserId,
     status: PublicUserRecord["status"],
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<{
     readonly user: PublicUserRecord;
     readonly revokedSessions: number;

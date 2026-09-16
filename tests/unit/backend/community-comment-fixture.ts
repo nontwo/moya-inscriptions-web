@@ -40,8 +40,18 @@ export class FixtureCatalogPublicationPort implements CatalogPublicationPort {
     ]),
   ) {}
 
+  /** Every `publishedIds` call, so a service test can assert one lookup per page. */
+  readonly publishedIdsCalls: (readonly CatalogId[])[] = [];
+
   async isPublished(catalogId: CatalogId): Promise<boolean> {
     return this.published.has(catalogId);
+  }
+
+  async publishedIds(
+    ids: readonly CatalogId[],
+  ): Promise<ReadonlySet<CatalogId>> {
+    this.publishedIdsCalls.push(ids);
+    return new Set(ids.filter((id) => this.published.has(id)));
   }
 
   /** The fixture's published titles; unknown records read as unpublished. */
@@ -77,6 +87,8 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
   policyUpdatedAt = new Date("2026-09-12T00:00:00.000Z");
   policyUpdatedBy = "platform";
   unavailable = false;
+  /** The next audited policy write fails at the audit insert, changing nothing. */
+  failNextAudit = false;
 
   private assertAvailable(): void {
     if (this.unavailable) throw new CommunityStoreUnavailableError();
@@ -413,12 +425,26 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     };
   }
 
+  /** Mirrors the adapter: the switch and its audit row happen together, and only on a change. */
   async writePublicationPolicy(
     policy: PublicationPolicy,
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<void> {
     this.assertAvailable();
+    if (this.policy === policy) return;
+    if (audit !== undefined) {
+      if (this.failNextAudit) {
+        this.failNextAudit = false;
+        throw new Error("Simulated audit insert failure");
+      }
+      this.events.push({
+        ...audit,
+        subjectKind: "setting",
+        subjectId: "publication",
+      });
+    }
     this.policy = policy;
     this.policyUpdatedBy = operatorLabel;
     this.policyUpdatedAt = at;

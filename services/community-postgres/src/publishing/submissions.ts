@@ -572,6 +572,14 @@ const transferHolder = async (
     "UPDATE community.work_drafts SET state='submitted',submitted_at=$2::timestamptz,updated_at=$2::timestamptz,work_id=COALESCE(work_id,$3) WHERE id=$1",
     [holder.id, at, workId],
   );
+  // Unresolved conflict copies of a new work's draft join the work's lineage
+  // too (their content is preserved; only the work binding was missing), so a
+  // later recycle-bin purge finds them as holders and releases their media
+  // references instead of deleting them with dangling refs.
+  await db.query(
+    "UPDATE community.work_drafts SET work_id=COALESCE(work_id,$3) WHERE conflict_of=$1 AND owner_id=$2",
+    [holder.id, actorId, workId],
+  );
   // A new work's draft history joins the work's lineage.
   await db.query(
     "UPDATE community.work_draft_snapshots SET work_id=$2 WHERE draft_id=$1 AND work_id IS NULL",

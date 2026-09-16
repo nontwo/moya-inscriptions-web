@@ -1,6 +1,6 @@
 import { asCommunityOperationError } from "./availability.js";
 import {
-  findUserByIdSql,
+  insertModerationEventSql,
   revokeUserSessionsSql,
   setUserStatusSql,
 } from "./comment-queries.js";
@@ -15,6 +15,7 @@ import { mapPublicUserRow } from "./row-mapper.js";
 import type { PublicUserRow } from "./row-mapper.js";
 import type {
   CommunityIdentityPort,
+  ModerationEventDraft,
   PublicUserRecord,
   SessionRecordInput,
 } from "@moya/api";
@@ -70,17 +71,16 @@ export class PostgresCommunityIdentityAdapter implements CommunityIdentityPort {
     }
   }
 
-  async findUserById(id: PublicUserId): Promise<PublicUserRecord | null> {
-    const result = await this.query<PublicUserRow>(findUserByIdSql, [id]);
-    const row = result[0];
-    return row === undefined ? null : mapPublicUserRow(row);
-  }
-
-  /** Status and session revocation move together or not at all. */
+  /**
+   * Status, session revocation and the audit row move together or not at
+   * all. The UPDATE matches only a real transition, so a repeated suspend
+   * returns the unchanged user and records nothing.
+   */
   async setUserStatus(
     id: PublicUserId,
     status: PublicUserRecord["status"],
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<{
     readonly user: PublicUserRecord;
     readonly revokedSessions: number;
@@ -88,25 +88,31 @@ export class PostgresCommunityIdentityAdapter implements CommunityIdentityPort {
     const client = await this.connect();
     try {
       await client.query("BEGIN");
-      const updated = await client.query<PublicUserRow>(setUserStatusSql, [
-        id,
-        status,
-        at,
-      ]);
+      const updated = await client.query<
+        PublicUserRow & { readonly changed: unknown }
+      >(setUserStatusSql, [id, status, at]);
       const row = updated.rows[0];
       if (row === undefined) {
         await client.query("ROLLBACK");
         return null;
       }
+      const user = mapPublicUserRow(row);
+      if (row.changed === true && audit !== undefined)
+        await client.query(insertModerationEventSql, [
+          audit.id,
+          audit.occurredAt,
+          audit.operatorLabel,
+          audit.action,
+          "user",
+          user.id,
+          audit.detail ?? null,
+        ]);
       const revoked =
         status === "suspended"
           ? await client.query(revokeUserSessionsSql, [id, at])
           : undefined;
       await client.query("COMMIT");
-      return {
-        user: mapPublicUserRow(row),
-        revokedSessions: revoked?.rowCount ?? 0,
-      };
+      return { user, revokedSessions: revoked?.rowCount ?? 0 };
     } catch (error) {
       try {
         await client.query("ROLLBACK");

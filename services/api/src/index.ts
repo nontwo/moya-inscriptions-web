@@ -127,7 +127,6 @@ export type {
   AuthorListItem,
   OwnedMediaInput,
   OwnedMediaRead,
-  StoredContentRelation,
 } from "./modules/community/application/ports/author-community-port.js";
 export { AuthorCommunityService } from "./modules/community/application/services/author-community-service.js";
 export type {

@@ -517,7 +517,7 @@ export const purgeTrashedWork = async (
         id: string;
       }>(
         `SELECT 'revision'::text AS kind,id FROM community.work_revisions WHERE work_id=$1
-        UNION ALL SELECT 'draft',id FROM community.work_drafts WHERE work_id=$1
+        UNION ALL SELECT 'draft',id FROM community.work_drafts WHERE work_id=$1 OR conflict_of=ANY($2::text[])
         UNION ALL SELECT 'snapshot',id FROM community.work_draft_snapshots WHERE work_id=$1 OR draft_id=ANY($2::text[])
         UNION ALL SELECT 'session',id FROM community.publishing_sessions WHERE work_id=$1`,
         [workId, drafts],

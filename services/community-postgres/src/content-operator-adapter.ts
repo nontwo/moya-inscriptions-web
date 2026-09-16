@@ -100,7 +100,8 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
     action: string,
     target: { type: string; id: string } | null,
     input: unknown,
-    change: (db: PoolClient) => Promise<T>,
+    /** `unchanged()` tells the audit that the command found nothing to change; the receipt is still kept. */
+    change: (db: PoolClient, unchanged: () => void) => Promise<T>,
   ): Promise<T> {
     return this.transaction(async (db) => {
       await db.query(
@@ -118,18 +119,22 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
           throw new CommunityConflictError("Request identity already used");
         return old.rows[0].result as T;
       }
-      const result = await change(db);
-      await db.query(
-        "INSERT INTO community.content_operator_events(id,operator_label,action,content_type,content_id,detail) VALUES($1,$2,$3,$4,$5,$6)",
-        [
-          randomUUID(),
-          operator,
-          action,
-          target?.type ?? null,
-          target?.id ?? null,
-          JSON.stringify({ command: input, result }),
-        ],
-      );
+      let audit = true;
+      const result = await change(db, () => {
+        audit = false;
+      });
+      if (audit)
+        await db.query(
+          "INSERT INTO community.content_operator_events(id,operator_label,action,content_type,content_id,detail) VALUES($1,$2,$3,$4,$5,$6)",
+          [
+            randomUUID(),
+            operator,
+            action,
+            target?.type ?? null,
+            target?.id ?? null,
+            JSON.stringify({ command: input, result }),
+          ],
+        );
       await db.query(
         "INSERT INTO community.content_operator_receipts(operator_label,request_id,fingerprint,result) VALUES($1,$2,$3,$4)",
         [operator, requestId, fingerprint, JSON.stringify(result)],
@@ -266,7 +271,7 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       "work.moderate",
       { type: "work", id },
       input,
-      async (db) => {
+      async (db, unchanged) => {
         const before = (
           await db.query<WorkRow>(
             `${workProjection} WHERE w.id=$1 FOR UPDATE OF w`,
@@ -276,6 +281,11 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
         if (!before) throw new CommunityNotFoundError();
         if (before.deleted_at || before.version !== input.expectedVersion)
           throw new CommunityConflictError("Work changed or author deleted it");
+        // Already in the requested state: no version bump and no audit event.
+        if (before.operator_state === input.state) {
+          unchanged();
+          return workDto(before);
+        }
         await db.query(
           "UPDATE community.works SET operator_state=$2,version=version+1,updated_at=statement_timestamp() WHERE id=$1",
           [id, input.state],

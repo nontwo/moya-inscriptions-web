@@ -416,12 +416,34 @@ export class PostgresCommunityCommentAdapter
     };
   }
 
+  /**
+   * The switch and its audit row commit together; a write of the mode already
+   * in force matches no row and records nothing.
+   */
   async writePublicationPolicy(
     policy: PublicationPolicy,
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<void> {
-    await this.query(writePublicationSettingSql, [policy, operatorLabel, at]);
+    const values = [policy, operatorLabel, at];
+    if (audit === undefined) {
+      await this.query(writePublicationSettingSql, values);
+      return;
+    }
+    await this.transaction(async (run) => {
+      const changed = await run(writePublicationSettingSql, values);
+      if (changed.length > 0)
+        await run(insertModerationEventSql, [
+          audit.id,
+          audit.occurredAt,
+          audit.operatorLabel,
+          audit.action,
+          "setting",
+          "publication",
+          audit.detail ?? null,
+        ]);
+    });
   }
 
   async recordModerationEvent(event: ModerationEvent): Promise<void> {

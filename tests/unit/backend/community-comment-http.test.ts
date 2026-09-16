@@ -34,7 +34,8 @@ const start = async (
 ) => {
   const commentPort = options.commentPort ?? new InMemoryCommunityCommentPort();
   const identityPort =
-    options.identityPort ?? new InMemoryCommunityIdentityPort();
+    options.identityPort ??
+    new InMemoryCommunityIdentityPort(undefined, undefined, commentPort.events);
   const server = createBackendServer(
     createBackendApplication({
       nodeEnv: "development",
