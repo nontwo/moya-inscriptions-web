@@ -40,7 +40,10 @@ REVOKE UPDATE ON TABLE
   community.media_items,
   community.media_components,
   community.media_blobs,
-  community.publishing_jobs
+  community.publishing_jobs,
+  community.agent_principals,
+  community.agent_delegations,
+  community.agent_operations
 FROM :"app_role";
 REVOKE INSERT ON TABLE
   community.author_events,
@@ -168,3 +171,18 @@ GRANT EXECUTE ON FUNCTION
   community.media_required_derivatives(TEXT, JSONB, BOOLEAN, JSONB),
   community.work_content_sha256(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, TEXT, JSONB)
 TO :"app_role";
+
+-- Agent administration (Issue #141 r3, Phase B): principals, delegations and
+-- durable prepared operations. Targets are frozen at preparation (no UPDATE
+-- on targets, kind, action, fingerprint or request_id); only lifecycle
+-- columns change. Nothing is ever deleted.
+GRANT SELECT, INSERT ON TABLE
+  community.agent_principals, community.agent_delegations, community.agent_operations
+TO :"app_role";
+GRANT UPDATE (display_name, scopes, enabled, version, updated_at, revoked_at)
+ON TABLE community.agent_principals TO :"app_role";
+GRANT UPDATE (revoked_at, revoked_by) ON TABLE community.agent_delegations TO :"app_role";
+GRANT UPDATE (
+  state, approval, next_index, results, lease_owner, lease_expires_at, version,
+  approved_at, started_at, finished_at, cancel_requested_at
+) ON TABLE community.agent_operations TO :"app_role";

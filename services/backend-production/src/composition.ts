@@ -14,6 +14,7 @@ import {
   PostgresCatalogQueryAdapter,
 } from "@moya/catalog-postgres";
 import {
+  PostgresAgentAdministrationAdapter,
   PostgresCommunityContentOperatorAdapter,
   PostgresAuthorCommunityAdapter,
   PostgresCommunityDiscoveryAdapter,
@@ -292,6 +293,9 @@ export const prepareProductionBackend = async (
               ? { workPublishingPort, publishingTransfers }
               : {}),
             publishingOperatorPort: new PostgresPublishingOperatorAdapter(
+              communityPool,
+            ),
+            agentAdministrationPort: new PostgresAgentAdministrationAdapter(
               communityPool,
             ),
             ...(publishingMedia

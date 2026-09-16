@@ -6,6 +6,7 @@ import {
 import { createRouter } from "./http/router.js";
 
 import {
+  AgentAdministrationService,
   AuthorCommunityService,
   CatalogCommentService,
   CatalogReadService,
@@ -18,6 +19,7 @@ import {
 import { MappedStorageUrlResolver } from "@moya/image";
 
 import type {
+  AgentAdministrationPort,
   AuthorCommunityPort,
   CommunityContentOperatorPort,
   DiscussionPort,
@@ -64,6 +66,8 @@ export interface BackendApplicationOptions {
   readonly workPublishingPort?: WorkPublishingPort;
   /** Owner work publishing operations; composed only under NODE_ENV=development. */
   readonly publishingOperatorPort?: PublishingOperatorPort;
+  /** Agent administration persistence; composed only under NODE_ENV=development. */
+  readonly agentAdministrationPort?: AgentAdministrationPort;
   /** Private media bytes; without it uploads and media reads answer 503. */
   readonly publishingMediaStore?: PublishingMediaStorePort;
   /** Derivative processing; without it no media item is accepted (503). */
@@ -216,6 +220,24 @@ const resolveCommunity = (
             },
           ),
         }),
+    // Agent administration shares the moderation and content operator ports;
+    // it exists only in Development, like every phase 4 operator surface.
+    ...(nodeEnv === "development" &&
+    communityCommentPort !== undefined &&
+    options.agentAdministrationPort !== undefined
+      ? {
+          agentAdministrationService: new AgentAdministrationService(
+            options.agentAdministrationPort,
+            {
+              commentPort: communityCommentPort,
+              identityPort: communityIdentityPort,
+              catalogPort: catalogPublicationPort,
+              contentOperatorPort: options.contentOperatorPort,
+              discussionPort: options.discussionPort,
+            },
+          ),
+        }
+      : {}),
     operatorCredential: options.communityOperatorCredential ?? "",
   };
 };

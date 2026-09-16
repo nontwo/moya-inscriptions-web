@@ -238,3 +238,16 @@ export type {
 export type { PublishingOperatorServiceOptions } from "./modules/community/application/services/publishing-operator-service.js";
 
 export { CommunityContentOperatorService } from "./modules/community/application/services/community-content-operator-service.js";
+
+export {
+  AgentAdministrationService,
+  AgentForbiddenError,
+  isAgentForbiddenError,
+  targetRequestId,
+} from "./modules/community/application/services/agent-administration-service.js";
+export type { AgentAdministrationServiceOptions } from "./modules/community/application/services/agent-administration-service.js";
+export type {
+  AgentAdministrationPort,
+  AgentFeaturedState,
+  AgentOperationDraft,
+} from "./modules/community/application/ports/agent-administration-port.js";

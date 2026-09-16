@@ -33,6 +33,10 @@ const groups = [
         href: "/admin/community-moderation/publishing-jobs",
         label: "发布任务",
       },
+      {
+        href: "/admin/community-moderation/agent-operations",
+        label: "代理操作",
+      },
     ],
   },
   {
@@ -47,6 +51,7 @@ const developmentLinks: ReadonlySet<string> = new Set([
   "/admin/community-moderation/work-submissions",
   "/admin/community-moderation/account-capacity",
   "/admin/community-moderation/publishing-jobs",
+  "/admin/community-moderation/agent-operations",
 ]);
 
 export const CommunityNavGroups = ({

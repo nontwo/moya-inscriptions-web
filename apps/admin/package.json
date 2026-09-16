@@ -57,6 +57,7 @@
     "./migration-guard": "./src/migration/guard.ts",
     "./local-media-read": "./src/media/local-read.ts",
     "./community-endpoints": "./src/community/endpoints.ts",
-    "./community-bulk-actions": "./src/community/bulk-actions.tsx"
+    "./community-bulk-actions": "./src/community/bulk-actions.tsx",
+    "./agent-admin-mcp": "./src/agent-admin/mcp-tools.ts"
   }
 }

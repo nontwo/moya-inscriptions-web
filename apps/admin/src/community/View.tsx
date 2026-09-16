@@ -3,6 +3,7 @@ import type { AdminViewServerProps } from "payload";
 
 import { isOwner } from "../editorial/access";
 import { AccountCapacityClient } from "./account-capacity-client";
+import { AgentOperationsClient } from "./agent-operations-client";
 import { CommunityContentClient } from "./content-client";
 import { CommunityHistoryClient } from "./history-client";
 import { PublishingJobsClient } from "./publishing-jobs-client";
@@ -92,5 +93,16 @@ export const PublishingJobsView = (props: AdminViewServerProps) => (
     <DevelopmentOnly>
       <PublishingJobsClient />
     </DevelopmentOnly>
+  </OwnerOnly>
+);
+
+/** Agent Administration V1 (Development): Owner-only registry, delegations and approvals. */
+export const AgentOperationsView = (props: AdminViewServerProps) => (
+  <OwnerOnly props={props}>
+    {process.env.NODE_ENV === "development" ? (
+      <AgentOperationsClient />
+    ) : (
+      <p role="alert">代理操作仅在开发环境可用。</p>
+    )}
   </OwnerOnly>
 );

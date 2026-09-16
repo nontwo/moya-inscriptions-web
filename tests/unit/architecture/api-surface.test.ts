@@ -49,6 +49,8 @@ describe("@moya/api server-only surface", () => {
     });
     expect(manifest.sideEffects).toBe(false);
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
+      "AgentAdministrationService",
+      "AgentForbiddenError",
       "AuthorCommunityService",
       "COMMENT_EMBEDDED_REPLY_LIMIT",
       "COMMENT_HOT_LIMIT",
@@ -70,6 +72,7 @@ describe("@moya/api server-only surface", () => {
       "PublishingTransferRegistry",
       "WorkPublishingService",
       "deriveCatalogPeriodLabel",
+      "isAgentForbiddenError",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
       "isCommunityConflictError",
@@ -88,6 +91,7 @@ describe("@moya/api server-only surface", () => {
       "parseCreateReplyRequest",
       "parseWorkPublishingCommand",
       "parseWorkPublishingSegment",
+      "targetRequestId",
     ]);
   });
 

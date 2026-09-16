@@ -29,6 +29,7 @@ import type {
   CatalogReadService,
   CommunityModerationService,
   CommunitySessionService,
+  AgentAdministrationService,
   PublishingOperatorService,
   WorkPublishingService,
 } from "@moya/api";
@@ -57,6 +58,8 @@ export interface CommunityRouterDependencies {
   readonly publishingService?: WorkPublishingService;
   /** Work publishing operator routes; composed only in Development. */
   readonly publishingOperatorService?: PublishingOperatorService;
+  /** Agent administration routes; composed only in Development with a port. */
+  readonly agentAdministrationService?: AgentAdministrationService;
   readonly contentOperatorPort?: CommunityContentOperatorPort | undefined;
   readonly discussionPort?: DiscussionPort | undefined;
   /** True only under NODE_ENV=development; Production never composes the entry. */
@@ -231,6 +234,7 @@ export const createRouter =
         contentOperatorPort: community?.contentOperatorPort,
         discussionPort: community?.discussionPort,
         publishingOperatorService: community?.publishingOperatorService,
+        agentAdministrationService: community?.agentAdministrationService,
         operatorCredential: community?.operatorCredential ?? "",
       });
       return;

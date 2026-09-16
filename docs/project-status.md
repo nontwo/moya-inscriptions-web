@@ -417,7 +417,13 @@ Active development tracks (independent of the parked cloud track):
      retained-target application plan are in
      [data-admin-hardening-v1](community/data-admin-hardening-v1.md). Retained
      databases were inspected read-only only; nothing was applied to them. Owner
-     visual acceptance of the Admin changes is pending.
+     visual acceptance of the Admin changes is pending. Phase A closure (r3)
+     added atomic grant convergence, a projection-kind-aware profile regression
+     and per-target retained plans (`641220a`). Phase B (Agent Administration
+     V1, Development only) adds machine principals, bounded delegations,
+     prepared durable operations, ten `artvenn_*` MCP tools, an Owner-only
+     operations view and the `artvenn-admin` skill; record in
+     [agent-admin-v1](community/agent-admin-v1.md).
 4. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.

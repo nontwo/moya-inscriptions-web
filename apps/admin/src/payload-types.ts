@@ -160,6 +160,7 @@ export interface PayloadMcpApiKeyAuthOperations {
 export interface User {
   id: number;
   role: "owner" | "automation";
+  agentPrincipal?: string | null;
   scopeCatalogIds?:
     | {
         [k: string]: unknown;
@@ -653,6 +654,7 @@ export interface PayloadMigration {
  */
 export interface UsersSelect<T extends boolean = true> {
   role?: T;
+  agentPrincipal?: T;
   scopeCatalogIds?: T;
   updatedAt?: T;
   createdAt?: T;

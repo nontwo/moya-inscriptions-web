@@ -883,7 +883,11 @@ export const isAuthorizedCmsServerFile = (
     // Backend operator client; the browser modules are listed with the
     // type-only exceptions below.
     /^src\/community\/(?:View|DashboardCard)\.tsx$/.test(relative) ||
-    /^src\/community\/(?:backend|endpoints)\.ts$/.test(relative) ||
+    /^src\/community\/(?:backend|endpoints|agent-operations)\.ts$/.test(
+      relative,
+    ) ||
+    // Agent Administration V1: the MCP tool adapter is a server module.
+    relative === "src/agent-admin/mcp-tools.ts" ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
@@ -914,6 +918,7 @@ const isOwnerWorkflowTypes = (
         "src/community/users-client.tsx",
         "src/community/settings-client.tsx",
         "src/community/history-client.tsx",
+        "src/community/agent-operations-client.tsx",
       ].includes(relative) &&
         reference.specifier ===
           "@moya/contracts/internal/community-operator") ||

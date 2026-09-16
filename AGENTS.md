@@ -38,6 +38,10 @@ The active amendments are:
   Backend-owned sessions, the Comment V1 model, its API boundary, the
   Owner-controlled publication setting and moderation — through the Mission 2A →
   2B → 2C sequence, with the Owner's product decisions recorded.
+- [`2026-09-16 Agent Administration V1`](docs/governance/amendments/2026-09-16-agent-administration-v1.md),
+  which, in Development and task-owned synthetic QA only, lets a registered
+  machine principal perform Owner-instructed administration through prepared,
+  approved or delegated, durable operations behind the Backend agent boundary.
 
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
