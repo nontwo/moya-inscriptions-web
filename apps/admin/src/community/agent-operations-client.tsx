@@ -428,7 +428,7 @@ export const AgentOperationsClient = () => {
       )}
 
       <section
-        className={styles.panel}
+        className={`${styles.panel} ${styles.agentPanel}`}
         aria-labelledby="agent-operations-title"
       >
         <div className={styles.panelHeader}>

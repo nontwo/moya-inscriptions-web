@@ -923,3 +923,15 @@
     margin-left: 0;
   }
 }
+
+/* The shared .panel is sticky because the other community views use it as a
+   side column. In the full-width agent operations view a positioned section
+   paints over the sections that follow it, so this view opts out and the
+   secondary sections keep their own stacking context. */
+.agentPanel {
+  position: static;
+}
+.agentSection {
+  position: relative;
+  z-index: 1;
+}
