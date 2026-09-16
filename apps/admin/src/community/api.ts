@@ -5,6 +5,7 @@ import type {
   ModerationEventAction,
   ModerationEventSubjectKind,
   OperatorCommentKind,
+  OperatorWork,
   OperatorWorkSubmission,
   PublicationPolicy,
   PublishingJobKind,
@@ -23,6 +24,7 @@ export type {
   OperatorPublishingJob,
   OperatorPublishingJobPage,
   OperatorSubmissionMedia,
+  OperatorWork,
   OperatorWorkSubmission,
   OperatorWorkSubmissionPage,
   PublicationPolicy,
@@ -71,8 +73,8 @@ const messages: Record<string, string> = {
 
 /** What the Owner can do next; never a stack trace, SQL or secret. */
 const hints: Record<string, string> = {
-  STATE_CONFLICT: "请刷新队列后再决定。",
-  NOT_FOUND: "请刷新队列。",
+  STATE_CONFLICT: "请刷新当前列表后再决定。",
+  NOT_FOUND: "请刷新当前列表。",
   OPERATOR_UNAVAILABLE: "稍后可直接重试。",
   OPERATOR_UNREACHABLE: "请确认后端已启动，然后重试。",
   OPERATOR_NOT_CONFIGURED: "配置完成后刷新页面。",
@@ -194,7 +196,7 @@ export const kindLabels: Record<OperatorCommentKind, string> = {
 
 export const actionLabels: Record<ModerationEventAction, string> = {
   approve: "通过并公开",
-  reject: "拒绝（未公开）",
+  reject: "拒绝（不公开）",
   hide: "隐藏",
   unhide: "恢复公开",
   suspend: "停用账号",
@@ -347,6 +349,19 @@ export const workSubmissionMediaSrc = (
 /** The UI-only placeholder for an empty title; storage keeps it empty. */
 export const UNTITLED_WORK = "未命名作品";
 
+/** The title the operator sees for a work: the latest submission's, else the public one, else the placeholder. */
+export const workTitleOf = (item: {
+  readonly title: string;
+  readonly latestSubmission?: { readonly title: string } | null | undefined;
+}): string => item.latestSubmission?.title || item.title || UNTITLED_WORK;
+
+/** Action phrases for a work management change, as the buttons read them. */
+export const workActionPhrases: Record<OperatorWork["state"], string> = {
+  visible: "解除管理限制",
+  hidden: "隐藏作品",
+  removed: "移除作品",
+};
+
 /** Which comment actions a stored state allows; nothing else is offered. */
 export const applicableActions = (
   state: CommentModerationState,
@@ -393,8 +408,11 @@ export const formatPreciseTime = (iso: string): string => {
 
 export const TIME_ZONE_NOTE = "时间均为北京时间（UTC+8）";
 
-export const excerpt = (text: string, length = 80): string =>
-  text.length <= length ? text : `${text.slice(0, length)}…`;
+/** Truncates by code point, so an astral character is never split before the marker. */
+export const excerpt = (text: string, length = 80): string => {
+  const chars = Array.from(text);
+  return chars.length <= length ? text : `${chars.slice(0, length).join("")}…`;
+};
 
 export const shortId = (id: string): string =>
   id.length <= 18 ? id : `${id.slice(0, 12)}…${id.slice(-4)}`;
