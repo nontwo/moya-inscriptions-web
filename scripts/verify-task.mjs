@@ -103,6 +103,282 @@ export function taskCommands(plan, output) {
   return commands;
 }
 
+const FEEDBACK_WEB_CONFIG =
+  /(?:^|\/)(?:package\.json|tsconfig\.json|middleware\.ts|(?:next|vitest|playwright|eslint|prettier)?\.config\.[cm]?[jt]s)$/u;
+const FEEDBACK_PRESENTATION =
+  /\.(?:module\.css|css|scss|sass|less|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf)$/u;
+const FEEDBACK_SOURCE = /\.(?:[cm]?[jt]sx?)$/u;
+const FEEDBACK_LINTABLE = /\.(?:[cm]?[jt]sx?)$/u;
+const FEEDBACK_WEB_TEST = /\.(?:test|spec|integration\.test)\.[cm]?[jt]sx?$/u;
+const FEEDBACK_UNSUPPORTED_DEFAULT =
+  "Use the default verify-task entry for complete validation.";
+
+const FEEDBACK_WORKSPACE_CONFIG = new Set([
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "turbo.json",
+  "tsconfig.base.json",
+  "compose.dev.yml",
+  "compose.postgres.yml",
+  ".nvmrc",
+  ".env.example",
+  ".editorconfig",
+  ".prettierignore",
+  "eslint.config.mjs",
+  "prettier.config.mjs",
+]);
+
+const FEEDBACK_CMS_FILES = new Set([
+  "scripts/disposable-test-target.mjs",
+  "infra/test/disposable-test-target.sql",
+  "tests/integration/postgres/synthetic-test-database.ts",
+]);
+
+function isPublicContractPath(file) {
+  return (
+    (file.startsWith("packages/contracts/") &&
+      !file.startsWith("packages/contracts/src/internal/")) ||
+    file.startsWith("services/public-api/") ||
+    /^services\/backend-runtime\/src\/community\/(?:session|auth|community-handler)/u.test(
+      file,
+    )
+  );
+}
+
+export function classifyFeedbackPath(file) {
+  if (
+    file.startsWith("apps/admin/") ||
+    file.startsWith("tests/cms/") ||
+    file.startsWith("scripts/editorial/") ||
+    FEEDBACK_CMS_FILES.has(file)
+  )
+    return "cms";
+  if (file.startsWith("apps/apple/")) return "apple";
+  if (
+    file.startsWith("database/") ||
+    file.startsWith("services/catalog-postgres/") ||
+    file.startsWith("services/community-postgres/") ||
+    /(?:^|\/)migrations\//u.test(file) ||
+    (file.endsWith(".sql") && !file.startsWith("docs/"))
+  )
+    return "database";
+  if (isPublicContractPath(file) || file.startsWith("packages/contracts/"))
+    return "contracts";
+  if (
+    FEEDBACK_WORKSPACE_CONFIG.has(file) ||
+    file.startsWith("packages/") ||
+    file.startsWith("services/") ||
+    file.startsWith("infra/") ||
+    file.startsWith("tests/") ||
+    file.startsWith("experiments/")
+  )
+    return "shared";
+  if (/^scripts\/[a-z-]+\.(?:test\.)?mjs$/u.test(file)) return "tooling";
+  if (file.startsWith("apps/web/")) {
+    if (FEEDBACK_WEB_CONFIG.test(file)) return "web-config";
+    if (FEEDBACK_PRESENTATION.test(file)) return "presentation";
+    if (FEEDBACK_SOURCE.test(file)) return "behavior";
+    return "shared";
+  }
+  if (
+    file.startsWith("docs/") ||
+    file.startsWith(".agents/") ||
+    file.startsWith(".claude/") ||
+    file.startsWith(".github/") ||
+    file.startsWith(".githooks/") ||
+    file.endsWith(".md") ||
+    file === ".mcp.json" ||
+    file === ".gitignore" ||
+    file === "scripts/README.md"
+  )
+    return "docs";
+  return "shared";
+}
+
+function colocatedWebTests(file, root, exists) {
+  if (FEEDBACK_WEB_TEST.test(file)) return [file];
+  const stem = file.replace(/\.[cm]?[jt]sx?$/u, "");
+  return [
+    `${stem}.test.ts`,
+    `${stem}.test.tsx`,
+    `${stem}.spec.ts`,
+    `${stem}.spec.tsx`,
+    `${stem}.integration.test.ts`,
+    `${stem}.integration.test.tsx`,
+  ].filter((candidate) => exists(join(root, candidate)));
+}
+
+function matchingScriptTests(file, root) {
+  if (/^scripts\/[a-z-]+\.test\.mjs$/u.test(file)) return [file];
+  const match = /^scripts\/([a-z-]+)\.mjs$/u.exec(file);
+  if (!match) return [];
+  const name = match[1];
+  let available = [];
+  try {
+    available = scriptTests(root);
+  } catch {
+    return [];
+  }
+  const dedicated = available.filter(
+    (test) =>
+      test === `scripts/${name}.test.mjs` ||
+      test.startsWith(`scripts/${name}-`),
+  );
+  if (dedicated.length) return dedicated;
+  return available.includes("scripts/task-validation.test.mjs")
+    ? ["scripts/task-validation.test.mjs"]
+    : [];
+}
+
+function feedbackUncheckedCoverage(kinds) {
+  const coverage = [
+    "workspace-wide lint/typecheck/test/build",
+    "browser smoke",
+    "PostgreSQL",
+    "CMS",
+    "Apple",
+    "full acceptance / merge permission",
+  ];
+  if (!kinds.has("tooling"))
+    coverage.splice(5, 0, "complete scripts/ test suite");
+  return coverage;
+}
+
+export function planFeedbackCommands(
+  detail,
+  output = "",
+  { root = process.cwd(), exists = existsSync } = {},
+) {
+  void output;
+  const paths = [...new Set(detail?.feedbackPaths ?? [])].sort();
+  const groups = {
+    presentation: [],
+    behavior: [],
+    contracts: [],
+    tooling: [],
+    docs: [],
+    unsupported: [],
+  };
+  const kinds = new Map();
+  for (const file of paths) {
+    const kind = classifyFeedbackPath(file);
+    kinds.set(file, kind);
+    if (groups[kind]) groups[kind].push(file);
+    else groups.unsupported.push(file);
+  }
+
+  const unsupportedCoverage = groups.unsupported.map(
+    (file) => `${file} (${kinds.get(file)})`,
+  );
+  const commands = [];
+  const prettierFiles = [
+    ...groups.presentation,
+    ...groups.behavior,
+    ...groups.docs,
+  ];
+  const eslintFiles = [...groups.behavior, ...groups.docs].filter((file) =>
+    FEEDBACK_LINTABLE.test(file),
+  );
+  if (prettierFiles.length)
+    commands.push(["pnpm", "exec", "prettier", "--check", ...prettierFiles]);
+  if (eslintFiles.length)
+    commands.push(["pnpm", "exec", "eslint", ...eslintFiles]);
+
+  const webTests = [
+    ...new Set(
+      groups.behavior.flatMap((file) => colocatedWebTests(file, root, exists)),
+    ),
+  ]
+    .sort()
+    .map((file) => file.slice("apps/web/".length));
+  if (groups.behavior.some((file) => FEEDBACK_SOURCE.test(file)))
+    commands.push(["pnpm", "--filter", "web", "typecheck"]);
+  if (webTests.length)
+    commands.push([
+      "pnpm",
+      "--filter",
+      "web",
+      "exec",
+      "vitest",
+      "run",
+      ...webTests,
+    ]);
+
+  const scriptFiles = [
+    ...new Set(
+      groups.tooling.flatMap((file) => matchingScriptTests(file, root)),
+    ),
+  ].sort();
+  if (scriptFiles.length)
+    commands.push([process.execPath, "--test", ...scriptFiles]);
+  if (groups.contracts.length) commands.push(...contractCommands());
+
+  let unresolved = null;
+  if (paths.length === 0) {
+    unresolved =
+      "No committed, staged, unstaged or untracked paths since the feedback checkpoint; no product delta was treated as checked";
+  } else if (unsupportedCoverage.length) {
+    unresolved = `Feedback coverage is unsupported for ${unsupportedCoverage.join(", ")}; not treated as checked. ${FEEDBACK_UNSUPPORTED_DEFAULT}`;
+  } else if (commands.length === 0) {
+    unresolved = `Feedback selected no relevant checks; not treated as checked. ${FEEDBACK_UNSUPPORTED_DEFAULT}`;
+  }
+
+  const missingBehaviorTests = groups.behavior.filter(
+    (file) =>
+      !FEEDBACK_WEB_TEST.test(file) &&
+      colocatedWebTests(file, root, exists).length === 0,
+  );
+
+  return {
+    commands: unresolved ? [] : commands,
+    kinds: Object.fromEntries(kinds),
+    unsupportedCoverage,
+    uncheckedCoverage: [
+      ...feedbackUncheckedCoverage(new Set(kinds.values())),
+      ...missingBehaviorTests.map(
+        (file) => `no colocated Web unit test for ${file}`,
+      ),
+    ],
+    unresolved,
+    note: FEEDBACK_LABEL,
+  };
+}
+
+export function feedbackCommands(detail, output, options) {
+  const planned = planFeedbackCommands(detail, output, options);
+  if (planned.unresolved) throw new Error(planned.unresolved);
+  return planned.commands;
+}
+
+export function formatFeedbackCommandSelection(selection) {
+  const commands = (selection?.commands ?? []).map((command) =>
+    command.join(" "),
+  );
+  const lines = [
+    `selected-commands: ${commands.length ? commands.join(" | ") : "(none)"}`,
+    `unchecked-coverage: ${(selection?.uncheckedCoverage ?? []).join("; ")}`,
+  ];
+  if (selection?.unresolved)
+    lines.push(`unresolved-coverage: ${selection.unresolved}`);
+  lines.push(
+    "This preview is not full acceptance and cannot replace the default verify-task entry.",
+  );
+  return lines.join("\n");
+}
+
+export function selectTaskValidationCommands({
+  mode,
+  plan,
+  detail,
+  output,
+  options,
+}) {
+  return mode === "feedback"
+    ? feedbackCommands(detail, output, options)
+    : taskCommands(plan, output);
+}
+
 export function validationEnvironment(output, head, env = process.env) {
   return {
     ...env,
@@ -388,6 +664,10 @@ export async function validate(
     printed.label = FEEDBACK_LABEL;
     printed.acceptance = false;
     printed.substitutesForTaskGate = false;
+    if (summary.commandSelection) {
+      printed.selectedCommands = summary.commandSelection.commands;
+      printed.uncheckedCoverage = summary.commandSelection.uncheckedCoverage;
+    }
   }
   console.log(JSON.stringify(printed));
   return result.code;
@@ -403,6 +683,7 @@ if (
     process.chdir(root);
     let plan;
     let detail;
+    let feedbackSelection;
     if (options["--mode"] === "lightweight") {
       plan = { lightweight: true };
       detail = {
@@ -423,7 +704,12 @@ if (
         baseRef: options["--base"] ?? "origin/main",
       });
       plan = detail.feedbackPlan;
+      feedbackSelection = planFeedbackCommands(detail);
       console.log(formatFeedbackBanner(detail));
+      console.log(formatFeedbackCommandSelection(feedbackSelection));
+      if (feedbackSelection.unresolved)
+        throw new Error(feedbackSelection.unresolved);
+      detail = { ...detail, commandSelection: feedbackSelection };
     } else if (options["--mode"]) throw new Error("Unknown validation mode");
     else {
       plan = classifyTask(localPaths(options["--base"]), "local");
@@ -440,7 +726,9 @@ if (
       validationEnvironment(output, runGit("rev-parse", "HEAD").trim()),
     );
     process.exitCode = await validate(
-      taskCommands(plan, output),
+      options["--mode"] === "feedback"
+        ? feedbackSelection.commands
+        : taskCommands(plan, output),
       output,
       detail,
     );
