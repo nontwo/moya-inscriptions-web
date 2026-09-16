@@ -370,9 +370,10 @@ export const operatorCommand = <T>(
         JSON.stringify({ command: spec.input, result }),
       ],
     );
+    // The receipt carries the same clock as the audit row above.
     await db.query(
-      "INSERT INTO community.content_operator_receipts(operator_label,request_id,fingerprint,result) VALUES($1,$2,$3,$4::jsonb)",
-      [spec.operator, spec.requestId, fingerprint, JSON.stringify(result)],
+      "INSERT INTO community.content_operator_receipts(operator_label,request_id,fingerprint,result,created_at) VALUES($1,$2,$3,$4::jsonb,$5::timestamptz)",
+      [spec.operator, spec.requestId, fingerprint, JSON.stringify(result), at],
     );
     return result;
   });
