@@ -28,7 +28,15 @@ NOCREATEROLE. Do not transfer schema/table ownership. The script requires the
 published Catalog projections and the complete Phase 4/publishing migration set.
 It grants only the runtime statements' relations and UPDATE columns, including
 snapshot conflict resolution, with no DDL or audit/ledger mutation privileges.
-Applying the same script again is idempotent. It does not create credentials.
+Applying the same script again is idempotent. It does not create credentials. It
+converges an earlier, broader grant path: a role that first received
+`grant-community-app.sql` (table-level `UPDATE` on `sessions`, both comment
+tables and `publication_setting`) keeps those privileges under GRANT alone, so
+the script revokes exactly the table-level privileges it grants at column level
+and then grants the columns again in the same run (PostgreSQL drops column
+entries together with the table-level one). Nothing else is revoked; residue
+beyond that set on a retained role is listed for an Owner decision, never
+removed blindly. `pnpm dev:migrate` applies this script after the bootstrap.
 
 For this publishing environment, this is the complete task-scoped runtime grant
 path; the older `infra/development/grant-community-app.sql` covers the initial
@@ -38,12 +46,14 @@ the authenticated Admin bridge calls Backend, whose App SQL role also serves the
 in-process worker. CMS and public Catalog read roles gain no community grant.
 
 `tests/integration/postgres/work-publishing-app-role.test.ts` exercises clean
-installation and a Phase 4 upgrade with an independently connected non-owner App
-login, checks active identity/flags and denied DDL/identity/audit/ledger writes,
-and executes draft conflicts, submission, visibility, moderation, trash/restore
-and worker lease operations. Privileged connections perform only isolated setup,
-migration and exact-resource cleanup. The test first requires a marked loopback
-disposable administration target; it never runs on `yoyi_dev`.
+installation, a Phase 4 upgrade and an upgrade of the SAME role from the Mission
+2A/2B grant set (it must end with exactly the privilege set of a fresh role)
+with an independently connected non-owner App login, checks active
+identity/flags and denied DDL/identity/audit/ledger writes, and executes draft
+conflicts, submission, visibility, moderation, trash/restore and worker lease
+operations. Privileged connections perform only isolated setup, migration and
+exact-resource cleanup. The test first requires a marked loopback disposable
+administration target; it never runs on `yoyi_dev`.
 
 Existing retained acceptance grants and provenance are historical evidence. Do
 not reset retained data, edit an applied migration or rewrite its SQL ledger to

@@ -9,6 +9,46 @@
 
 GRANT USAGE ON SCHEMA public, community TO :"app_role";
 
+-- Convergence of an earlier, broader grant path. A role that was first set up by
+-- infra/development/grant-community-app.sql (Mission 2A/2B: table-level UPDATE on
+-- sessions, both comment tables and publication_setting) or by a private Phase 4
+-- plan keeps those table-level privileges, because GRANT only adds and the
+-- column lists below never narrow a table-level grant. Revoke exactly the
+-- table-level privileges this plan grants at column level, then grant the
+-- columns again below in this same run: PostgreSQL drops the column-level
+-- entries together with the table-level one, so the re-grant is required.
+-- Revoking an absent privilege is a no-op, so repeated application converges
+-- to the same effective set. Nothing else is revoked here; any other residue on
+-- a retained role is listed for an Owner decision, never removed blindly.
+REVOKE UPDATE ON TABLE
+  community.public_users,
+  community.sessions,
+  community.catalog_comments,
+  community.catalog_comment_replies,
+  community.publication_setting,
+  community.featured_users,
+  community.featured_content,
+  community.featured_settings,
+  community.works,
+  community.work_revisions,
+  community.work_drafts,
+  community.work_draft_snapshots,
+  community.publishing_sessions,
+  community.work_publishing_settings,
+  community.account_publishing_capacity,
+  community.daily_new_work_submissions,
+  community.media_items,
+  community.media_components,
+  community.media_blobs,
+  community.publishing_jobs
+FROM :"app_role";
+REVOKE INSERT ON TABLE
+  community.author_events,
+  community.content_operator_events,
+  community.featured_users,
+  community.featured_content
+FROM :"app_role";
+
 -- Discovery and the featured operator read published Catalog projections only.
 GRANT SELECT ON TABLE public.catalog_discovery, public.catalog_media TO :"app_role";
 

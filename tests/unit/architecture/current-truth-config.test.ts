@@ -63,8 +63,10 @@ describe("current repository truth and local configuration", () => {
     );
     // Community V1 (Mission 2A): the separate family, App-role grants and the
     // Development test accounts follow the Payload migrations, never precede them.
+    // The Phase 4/publishing runtime grant follows the bootstrap grant and
+    // precedes the test accounts (data-admin-hardening-v1).
     expect(scripts["dev:migrate"]).toMatch(
-      /migrate\.mjs --development.*migrate-community\.mjs --development.*grant-community-app\.sql -f \/opt\/yoyi\/community-development-accounts\.sql/,
+      /migrate\.mjs --development.*migrate-community\.mjs --development.*grant-community-app\.sql -f \/opt\/yoyi\/grant-runtime\.sql -f \/opt\/yoyi\/community-development-accounts\.sql/,
     );
     expect(scripts["db:migrate:community"]).toBe(
       "node scripts/migrate-community.mjs",
@@ -194,6 +196,40 @@ describe("current repository truth and local configuration", () => {
     ])
       expect(compose).toContain(
         `./infra/development/${file}:/opt/yoyi/${file}`,
+      );
+    // The Phase 4/publishing runtime grant converges the App role after the
+    // Mission 2A/2B set on the documented `dev:migrate` path: it is mounted, it
+    // follows grant-community-app.sql in the same psql command, and it revokes
+    // the table-level UPDATEs the earlier set granted before re-granting the
+    // column lists (GRANT alone never narrows).
+    expect(compose).toContain(
+      "./infra/development/work-publishing/grant-runtime.sql:/opt/yoyi/grant-runtime.sql:ro",
+    );
+    const devMigrate = (
+      JSON.parse(
+        await readFile(path.join(repositoryRoot, "package.json"), "utf8"),
+      ) as { scripts: Record<string, string> }
+    ).scripts["dev:migrate"]!;
+    expect(devMigrate).toContain("-v app_role=yoyi_dev_app");
+    expect(
+      devMigrate.indexOf("/opt/yoyi/grant-community-app.sql"),
+    ).toBeLessThan(devMigrate.indexOf("/opt/yoyi/grant-runtime.sql"));
+    const runtimeGrants = await readFile(
+      path.join(
+        repositoryRoot,
+        "infra/development/work-publishing/grant-runtime.sql",
+      ),
+      "utf8",
+    );
+    expect(runtimeGrants).not.toMatch(/ALL TABLES|CREATE ON SCHEMA|REVOKE ALL/);
+    for (const table of [
+      "community.sessions",
+      "community.catalog_comments",
+      "community.catalog_comment_replies",
+      "community.publication_setting",
+    ])
+      expect(runtimeGrants.indexOf("REVOKE UPDATE ON TABLE")).toBeLessThan(
+        runtimeGrants.indexOf(`GRANT UPDATE (`, runtimeGrants.indexOf(table)),
       );
   });
 
