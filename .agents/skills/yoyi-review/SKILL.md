@@ -35,6 +35,9 @@ Codex: `$yoyi-review ...`. Claude Code: `/yoyi-review ...`.
 4. Applicable evidence: CI check runs for that head, the task's private
    validation `summary.json` when the writer shared its path, and whether the
    evidence matches the reviewed head (previous-head evidence never counts).
+   Feedback-mode evidence labeled `FEEDBACK ONLY — NOT FULL ACCEPTANCE` is an
+   intermediate preview only; it does not satisfy complete task validation or
+   permission to merge.
 5. Review threads and the PR template sections; Owner gates that apply (visual
    or real-device acceptance, directional decisions, Production authority).
 

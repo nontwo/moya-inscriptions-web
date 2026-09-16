@@ -135,7 +135,7 @@ const PLACEHOLDER =
 const PRIMITIVE =
   /^(?:string|number|boolean|unknown|never|any|void|undefined|null|false|true)$/;
 const CREDENTIAL_NAME =
-  /^(?:(?:[A-Za-z0-9]+[_-])*(?:password|passwd|pwd|secret[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|security[_-]?token|session[_-]?token|client[_-]?secret|token)|(?:db|database|cos|cloud)?(?:Password|SecretKey|ApiKey|AccessToken|RefreshToken)|authorization|cookie)$/i;
+  /^(?:(?:[A-Za-z0-9]+[_-])*(?:password|passwd|pwd|secret[_-]?(?:access[_-]?)?key|api[_-]?key|access[_-]?token|refresh[_-]?token|security[_-]?token|session[_-]?token|client[_-]?secret|token)|(?:db|database|cos|cloud)?(?:Password|SecretKey|ApiKey|AccessToken|RefreshToken)|authorization|cookie)$/i;
 function syntax(filename) {
   return /\.(?:[cm]?js|jsx|tsx?|py)$/i.test(filename)
     ? "code"

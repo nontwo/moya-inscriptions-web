@@ -2,11 +2,34 @@ import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
 import { classifyTask } from "./ci-task-scope.mjs";
 
-export function assertTaskGate(plan, needs) {
+function isFeedbackLabeledPlan(plan) {
+  return (
+    plan?.mode === "feedback" ||
+    plan?.acceptance === false ||
+    plan?.substitutesForTaskGate === false ||
+    plan?.label === "FEEDBACK ONLY — NOT FULL ACCEPTANCE"
+  );
+}
+
+export function assertTaskGate(plan, needs, expectedCumulative) {
+  if (isFeedbackLabeledPlan(plan))
+    throw new Error(
+      "Feedback results cannot satisfy a required cumulative task gate",
+    );
   if (!needs || needs.classify_e2e?.result !== "success")
     throw new Error("Task classification did not succeed");
   if (!plan || !isDeepStrictEqual(plan, classifyTask(plan.paths, plan.event)))
     throw new Error("Missing or inconsistent task plan");
+  if (expectedCumulative?.paths) {
+    const expected = classifyTask(
+      expectedCumulative.paths,
+      expectedCumulative.event ?? plan.event ?? "pull_request",
+    );
+    if (!isDeepStrictEqual(plan, expected))
+      throw new Error(
+        "Tip-only or feedback plan cannot satisfy a required cumulative task gate",
+      );
+  }
   const required = {
     lightweight: true,
     browser_gate: true,

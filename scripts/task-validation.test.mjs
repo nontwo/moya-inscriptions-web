@@ -494,6 +494,46 @@ describe("stable task and browser gates", () => {
       assert.throws(() => assertTaskGate(invalid, needs));
   });
 
+  it("rejects tip-only and feedback-labeled plans when a cumulative plan is required", () => {
+    const tip = classifyTask(["README.md"]);
+    const cumulative = classifyTask([
+      "README.md",
+      "apps/web/page.tsx",
+      "packages/contracts/src/catalog.ts",
+    ]);
+    const tipNeeds = expectedNeeds(tip);
+    const cumulativeNeeds = expectedNeeds(cumulative);
+    assert.match(assertTaskGate(tip, tipNeeds), /N\/A \(not run\)/);
+    assert.throws(
+      () => assertTaskGate(tip, tipNeeds, { paths: cumulative.paths }),
+      /Tip-only or feedback plan cannot satisfy a required cumulative task gate/,
+    );
+    assert.throws(
+      () =>
+        assertTaskGate(
+          {
+            ...tip,
+            mode: "feedback",
+            label: "FEEDBACK ONLY — NOT FULL ACCEPTANCE",
+          },
+          tipNeeds,
+        ),
+      /Feedback results cannot satisfy a required cumulative task gate/,
+    );
+    assert.throws(
+      () =>
+        assertTaskGate(
+          { ...tip, acceptance: false, substitutesForTaskGate: false },
+          tipNeeds,
+        ),
+      /Feedback results cannot satisfy a required cumulative task gate/,
+    );
+    assert.match(
+      assertTaskGate(cumulative, cumulativeNeeds, { paths: cumulative.paths }),
+      /executed successfully/,
+    );
+  });
+
   it("preserves browser N/A, explicit regression and actual native smoke evidence", () => {
     assert.match(
       assertBrowserGate("none", "success", "skipped", "skipped"),

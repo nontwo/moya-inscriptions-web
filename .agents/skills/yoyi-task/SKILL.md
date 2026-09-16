@@ -88,6 +88,13 @@ word selects the mode; an unknown or missing mode is a usage error, not a guess.
   `node scripts/verify-task.mjs --base origin/main --output <new private directory>`
   selects checks from the actual diff; pure Web work may use `pnpm verify`; pure
   Apple work `node scripts/verify-apple.mjs --output <new private directory>`.
+  For an intermediate revision preview after relevant delta checks, use
+  `node scripts/verify-task.mjs --mode feedback --base origin/main --output <new private directory>`.
+  That result is labeled `FEEDBACK ONLY — NOT FULL ACCEPTANCE`: it is not formal
+  Owner acceptance, not complete task validation, and not permission to merge.
+  Do not block every small preview on full CI or push every tiny edit solely to
+  obtain another full CI run. Complete task validation still uses the default
+  entry and the cumulative CI plan. A failed full run is not a feedback PASS.
   One shared 120-second execution budget; a timeout is a failure. Record
   preparation time separately.
 - Commit and push only through the task Git helper: stage the intended paths,
