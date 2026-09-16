@@ -43,8 +43,8 @@ look for another path.
 3. **Execute** only an `approved` operation with `artvenn_operations_execute`.
    It runs at most 100 targets per call (chunks of 50, each persisted) and
    returns progress; keep calling while `state` is `executing` and `leaseHeld`
-   is false. A lost response is safe: call again with a new `requestId`; no
-   target is applied twice.
+   is false. A lost response is safe: call `artvenn_operations_execute` again
+   (its `requestId` only names the call); no target is applied twice.
 4. **Report** from `artvenn_operations_get`: `tally.applied`, `conflicts` (the
    target changed since preparation; nothing was done to it), `notFound`,
    `failed`, `cancelled`. Quote the operation id.
@@ -53,7 +53,10 @@ look for another path.
 6. **Undo** with `artvenn_operations_prepare_undo` only when the Owner asks: it
    prepares the conditional inverse (`hide` ↔ `unhide`; recorded prior
    recommendation rows) as a new operation that needs its own approval.
-   `approve`/`reject` have no inverse and answer `STATE_CONFLICT`.
+   `approve`/`reject` have no inverse and answer `STATE_CONFLICT`. An undo is
+   also possible for a `failed` operation's applied targets. Targets a stalled
+   executor applied just before losing its lease report `conflict` and are not
+   part of an undo; say so when reporting.
 
 ## Rules
 

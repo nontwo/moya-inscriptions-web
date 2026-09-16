@@ -106,13 +106,20 @@ export const registerPhase4AuthorTests = (
       const kind = existing.rows[0]?.kind ?? null;
       if (kind === "v") projectionKind = "view";
       else if (kind === "r") projectionKind = "table";
-      else {
+      else if (kind === null) {
         await pool.query(
           "CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb)",
         );
         projectionKind = "table";
         createdProjection = true;
-      }
+      } else
+        throw new Error(
+          `unsupported catalog_discovery relkind ${kind}: the suite handles a view or a plain table only`,
+        );
+      // Evidence line: which projection branch this run exercised.
+      console.info(
+        `[phase4-author] catalog_discovery projectionKind=${projectionKind}`,
+      );
     });
     afterAll(async () => {
       if (createdProjection)

@@ -300,8 +300,10 @@ own confirmation, never part of the migration/grant steps above.
   `media_item_refs` rows with `holder_kind='draft'` whose `holder_id` has no row
   in `work_drafts` (orphaned by a purge that predates the fix); and
   `work_drafts` rows with `conflict_of IS NOT NULL AND work_id IS NULL` whose
-  `conflict_of` draft has been submitted (the pre-fix conflict copies that the
-  purge would orphan next).
+  `conflict_of` draft has been submitted. Under the rebuilt Backend the purge
+  already treats such copies as holders (`works.ts` includes
+  `conflict_of=ANY(<drafts>)`), so this second selector is lineage tidy-up, not
+  orphan prevention; only the first selector finds actual orphans.
 - Expected rows: UNKNOWN until the selectors run; on the publishing acceptance
   database the ref-to-missing-item check was 0 at 02:34Z, but the holder-side
   selector above was not part of that inspection. Bound each release statement

@@ -351,7 +351,7 @@ export const AgentOperationsClient = () => {
                     <td className={styles.mono}>{operation.principal}</td>
                     <td>
                       <span
-                        className={styles.state}
+                        className={styles.chip}
                         data-state={operation.state}
                       >
                         {stateLabels[operation.state]}

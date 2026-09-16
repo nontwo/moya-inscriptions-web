@@ -6,10 +6,12 @@ creates it in the operations view, and an MCP API key only works after the Owner
 creates it, binds its operator identity to that principal (`agentPrincipal`) and
 enables the `artvenn_*` tools on the key.
 
-Replace `REPLACE_WITH_API_KEY` by supplying the key through the client's own
-secret storage; never commit a real key, never paste it into chat.
+The Authorization header value is the scheme word the Payload MCP plugin expects
+(`Bearer`), one space, and the MCP API key. Supply it through the client's own
+secret storage in place of `REPLACE_WITH_AUTHORIZATION_HEADER`; never commit a
+real key, never paste it into chat.
 
-## Generic MCP client (streamable HTTP, bearer API key)
+## Generic MCP client (streamable HTTP; the Payload MCP API key as a bearer token)
 
 ```json
 {
@@ -19,7 +21,7 @@ secret storage; never commit a real key, never paste it into chat.
       "type": "http",
       "url": "http://127.0.0.1:3001/api/mcp",
       "headers": {
-        "Authorization": "users API-Key REPLACE_WITH_API_KEY"
+        "Authorization": "REPLACE_WITH_AUTHORIZATION_HEADER"
       },
       "tools": [
         "artvenn_users_find",
@@ -48,7 +50,7 @@ secret storage; never commit a real key, never paste it into chat.
       "type": "http",
       "url": "http://127.0.0.1:3001/api/mcp",
       "headers": {
-        "Authorization": "users API-Key REPLACE_WITH_API_KEY"
+        "Authorization": "REPLACE_WITH_AUTHORIZATION_HEADER"
       }
     }
   }

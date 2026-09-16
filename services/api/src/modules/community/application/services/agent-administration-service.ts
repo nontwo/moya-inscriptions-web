@@ -534,6 +534,29 @@ export class AgentAdministrationService {
       return current;
     if (current.state === "prepared")
       throw new CommunityConflictError("Operation is not approved");
+    // The principal must still be able to act, whoever presses run: a
+    // disabled or revoked principal's label never lands on a new audit row.
+    const principal = await this.port.findPrincipal(current.principal);
+    if (
+      principal === null ||
+      !principal.enabled ||
+      principal.revokedAt !== null
+    )
+      throw new CommunityConflictError("Principal can no longer act");
+    // A delegation-approved operation runs only while that delegation is
+    // still active; a revoked or expired delegation retracts the approval
+    // until the Owner approves the operation explicitly (or cancels it).
+    if (
+      current.approval?.kind === "delegation" &&
+      current.state === "approved"
+    ) {
+      const active = await this.port.readDelegations(
+        { principal: current.principal, includeInactive: false },
+        this.clock(),
+      );
+      if (!active.some((d) => d.id === current.approval?.delegationId))
+        throw new CommunityConflictError("Delegation is no longer active");
+    }
     const leaseOwner = `${executor}.${randomUUID()}`;
     const claim = await this.port.claimExecution(
       current.id,
@@ -711,7 +734,11 @@ export class AgentAdministrationService {
     await this.authorize(principal, "operations:undo");
     const command = parse(agentOperationCommandSchema, body);
     const original = await this.owned(principal, command.operationId);
-    if (original.state !== "completed" && original.state !== "cancelled")
+    if (
+      original.state !== "completed" &&
+      original.state !== "cancelled" &&
+      original.state !== "failed"
+    )
       throw new CommunityConflictError("Operation has not finished");
     if (original.undoOf !== null)
       throw new CommunityConflictError("An undo cannot be undone");

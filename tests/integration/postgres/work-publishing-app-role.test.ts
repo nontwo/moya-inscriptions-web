@@ -275,6 +275,19 @@ describe.each(["clean", "phase4-upgrade", "legacy-grants-upgrade"] as const)(
         const beforeFailure = await privilegeSet(setup, role);
         const revokeEnd = grantSql.indexOf("-- Discovery and the featured");
         expect(revokeEnd).toBeGreaterThan(0);
+        // The injection point must follow both REVOKE blocks and precede every
+        // GRANT of the plan (only the schema USAGE grant is allowed before it),
+        // otherwise a reordered script would make this regression vacuous.
+        const revokePrefix = grantSql.slice(0, revokeEnd);
+        expect(revokePrefix).toMatch(/REVOKE UPDATE ON TABLE/);
+        expect(revokePrefix).toMatch(/REVOKE INSERT ON TABLE/);
+        expect(
+          revokePrefix
+            .split("\n")
+            .filter((line) => !line.trim().startsWith("--"))
+            .join("\n")
+            .replace(/GRANT USAGE ON SCHEMA[^;]*;/, ""),
+        ).not.toMatch(/\bGRANT\b/);
         const failingSql = `${grantSql.slice(0, revokeEnd)}SELECT 1/0;\n${grantSql.slice(revokeEnd)}`;
         await expect(setup.query(failingSql)).rejects.toMatchObject({
           code: "22012",

@@ -991,6 +991,102 @@ describe("AgentAdministrationService", () => {
     ]);
   });
 
+  it("retracts a delegation-approved operation when the delegation is revoked, and refuses to run for a disabled principal", async () => {
+    const h = createHarness();
+    await h.principal();
+    const ids = await h.seed(2, "visible");
+    const delegation = await h.service.createDelegation({
+      requestId: requestId(120),
+      principal: PRINCIPAL,
+      kind: "comments.moderate",
+      maxTargets: 5,
+      expiresAt: new Date("2026-09-17T20:00:00.000Z").toISOString(),
+    });
+    const covered = await h.service.prepareComments(PRINCIPAL, {
+      requestId: requestId(121),
+      action: "hide",
+      ids,
+    });
+    expect(covered.state).toBe("approved");
+    await h.service.revokeDelegation({
+      requestId: requestId(122),
+      id: delegation.id,
+    });
+    await expect(
+      h.service.execute(PRINCIPAL, {
+        requestId: requestId(123),
+        operationId: covered.id,
+      }),
+    ).rejects.toThrow("Delegation is no longer active");
+    expect(h.commentPort.events).toHaveLength(0);
+    // The Owner's explicit approval is not possible on an approved operation;
+    // cancel and re-prepare is the documented path. Owner "run now" on an
+    // Owner-approved operation refuses once the principal is disabled.
+    const own = await h.service.prepareComments(PRINCIPAL, {
+      requestId: requestId(124),
+      action: "hide",
+      ids: [ids[0]!],
+    });
+    await h.service.approve({
+      requestId: requestId(125),
+      operationId: own.id,
+    });
+    const current = (await h.service.readPrincipals()).items.find(
+      (p) => p.label === PRINCIPAL,
+    )!;
+    await h.service.writePrincipal({
+      requestId: requestId(126),
+      label: PRINCIPAL,
+      displayName: current.displayName,
+      scopes: current.scopes,
+      enabled: false,
+      expectedVersion: current.version,
+    });
+    await expect(
+      h.service.executeAsOwner({
+        requestId: requestId(127),
+        operationId: own.id,
+      }),
+    ).rejects.toThrow("Principal can no longer act");
+    expect(h.commentPort.events).toHaveLength(0);
+  });
+
+  it("allows an undo of a failed operation's applied targets", async () => {
+    const h = createHarness();
+    await h.principal();
+    const work = (n: number) => `work-${n.toString(16).padStart(32, "0")}`;
+    const prepared = await h.service.prepareFeatured(PRINCIPAL, {
+      requestId: requestId(130),
+      items: [1, 2].map((n) => ({
+        target: { type: "work" as const, id: work(n) },
+        enabled: true,
+        position: n,
+      })),
+    });
+    await h.service.approve({
+      requestId: requestId(131),
+      operationId: prepared.id,
+    });
+    const original = h.contentPort.setFeatured.bind(h.contentPort);
+    let applied = 0;
+    h.contentPort.setFeatured = async (operator, input) => {
+      if (applied === 1) throw new CommunityStoreUnavailableError();
+      applied += 1;
+      return original(operator, input);
+    };
+    const failed = await h.service.execute(PRINCIPAL, {
+      requestId: requestId(132),
+      operationId: prepared.id,
+    });
+    expect(failed.state).toBe("failed");
+    h.contentPort.setFeatured = original;
+    const undo = await h.service.prepareUndo(PRINCIPAL, {
+      requestId: requestId(133),
+      operationId: prepared.id,
+    });
+    expect(undo).toMatchObject({ undoOf: prepared.id, targetCount: 1 });
+  });
+
   it("keeps Owner-side reads and cancels across principals while an agent sees only its own operations", async () => {
     const h = createHarness();
     await h.principal();
