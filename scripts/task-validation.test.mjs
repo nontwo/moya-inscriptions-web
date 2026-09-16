@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execPath as nodeExecPath } from "node:process";
 import { execFileSync, spawnSync, spawn } from "node:child_process";
 import {
   existsSync,
@@ -38,6 +39,13 @@ import {
   remainingAppleBudget,
   assertCompatibleSdk,
   compatibleIphone,
+  appleToolEvidence,
+  observedAppleCommand,
+  appleExecutionResult,
+  appleOverall,
+  safeAppleTestSummary,
+  safeAppleLogSummary,
+  cleanupAppleSimulator,
 } from "./verify-apple.mjs";
 import { runWithinBudget } from "./verify.mjs";
 import { discoverWorkspaces } from "../tests/unit/architecture/workspace-scanner.ts";
@@ -1541,5 +1549,333 @@ describe("scoped validation commands and private output", () => {
       assert.equal(command.at(-1), buildOnly ? "build" : "test");
       assert.ok(!command.includes("-allowProvisioningUpdates"));
     }
+  });
+});
+
+describe("Apple execution and cleanup evidence", () => {
+  const prepared = { result: "PASS", code: 0, reason: "PREPARED" };
+  const passed = () =>
+    appleExecutionResult(
+      { code: 0, durationMs: 40 },
+      { state: "closed", code: 0, signal: null },
+    );
+  const name = "ArtVenn-task-synthetic-owned";
+  const udid = "00000000-0000-4000-8000-000000000001";
+  const foreign = "00000000-0000-4000-8000-000000000002";
+  const devices = (state = "Booted", extra = []) =>
+    JSON.stringify({
+      devices: {
+        runtime: [...(state ? [{ name, udid, state }] : []), ...extra],
+      },
+    });
+  const harness = async (steps, overrides = {}) => {
+    let clock = 0;
+    const calls = [];
+    const result = await cleanupAppleSimulator({
+      createAttempted: true,
+      simulator: udid,
+      name,
+      deadline: 10000,
+      now: () => clock,
+      call: async (command, args, allowanceMs) => {
+        const step = steps.shift();
+        assert.ok(step, "No unplanned cleanup command or retry");
+        assert.equal(command, "xcrun");
+        assert.equal(args[1], step.operation);
+        assert.ok(allowanceMs > 0 && allowanceMs <= 10000 - clock);
+        const durationMs = step.timeout ? allowanceMs : (step.durationMs ?? 10);
+        assert.ok(durationMs <= allowanceMs);
+        calls.push({ args, allowanceMs, start: clock });
+        clock += durationMs;
+        return {
+          stdout: step.stdout ?? "",
+          evidence: appleToolEvidence({
+            error: step.error,
+            timedOut: !!step.timeout,
+            allowanceMs,
+            durationMs,
+          }),
+        };
+      },
+      ...overrides,
+    });
+    assert.equal(steps.length, 0);
+    return { result, calls, clock };
+  };
+
+  it("does not mark a phase checkpoint PASS before cleanup is completed", () => {
+    const result = appleOverall(prepared, passed(), { result: "PENDING" });
+    assert.equal(result.result, "PENDING");
+    assert.notEqual(result.code, 0);
+  });
+  it("records a missing native executable as unobserved exit, not xcodebuild exit -2", async (t) => {
+    const receipt = join(temporary(t), "execution.private.json");
+    const runner = await runWithinBudget(
+      [
+        observedAppleCommand(
+          [join(temporary(t), "absent-native-executable")],
+          receipt,
+        ),
+      ],
+      { budgetMs: 3000, graceMs: 100, stdio: "ignore" },
+    );
+    const observed = JSON.parse(readFileSync(receipt, "utf8"));
+    assert.equal(observed.state, "spawn-failed");
+    const result = appleExecutionResult(runner, observed);
+    assert.equal(result.nativeExitCode, null);
+    assert.equal(result.result, "FAIL");
+  });
+  it("retains execution PASS with cleanup failure and fails overall", () => {
+    const execution = passed();
+    assert.equal(
+      appleOverall(prepared, execution, { result: "FAIL" }).reason,
+      "TASK_SIMULATOR_CLEANUP_INCOMPLETE",
+    );
+    assert.equal(execution.result, "PASS");
+    assert.equal(execution.nativeExitCode, 0);
+  });
+  it("retains deadline, runner code and observed signal when both phases fail", () => {
+    const execution = appleExecutionResult(
+      { code: 124, durationMs: 100 },
+      { state: "closed", code: null, signal: "SIGINT" },
+    );
+    assert.equal(execution.deadlineExpired, true);
+    assert.equal(execution.nativeExitCode, null);
+    assert.equal(execution.nativeSignal, "SIGINT");
+    assert.equal(execution.runnerCode, 124);
+    assert.equal(
+      appleOverall(prepared, execution, { result: "FAIL" }).result,
+      "TIME_BUDGET_EXCEEDED",
+    );
+  });
+  it("does not convert native failure, interruption or missing exit into PASS", () => {
+    for (const [runner, observation, interrupted] of [
+      [{ code: 1 }, { state: "closed", code: 65 }],
+      [{ code: 1 }, { state: "closed", code: null, signal: "SIGTERM" }],
+      [{ code: 0 }, null],
+      [{ code: 130 }, { state: "closed", code: 0 }, true],
+    ]) {
+      const execution = appleExecutionResult(runner, observation, interrupted);
+      assert.notEqual(
+        appleOverall(prepared, execution, { result: "PASS" }).result,
+        "PASS",
+      );
+      assert.equal(
+        execution.deadlineExpired,
+        false,
+        "A signal or failure alone is not a timeout",
+      );
+    }
+  });
+  it("fails overall on cancellation arriving after execution, during diagnostics", () => {
+    const execution = passed();
+    const before = appleOverall(prepared, execution, { result: "PASS" });
+    assert.equal(before.code, 0);
+    const after = appleOverall(prepared, execution, { result: "PASS" }, true);
+    assert.equal(after.code, 130);
+    assert.equal(after.reason, "INTERRUPTED");
+    assert.equal(execution.result, "PASS");
+  });
+  it("does not claim tests ran after preparation failure", () => {
+    const result = appleOverall(
+      { result: "FAIL", code: 1, reason: "MATCHING_IOS_RUNTIME_UNAVAILABLE" },
+      { attempted: false },
+      { result: "PASS" },
+    );
+    assert.equal(result.result, "NOT_TESTED");
+    assert.equal(result.reason, "MATCHING_IOS_RUNTIME_UNAVAILABLE");
+  });
+  it("observes native exit 124 independently from the deadline wrapper", async (t) => {
+    const receipt = join(temporary(t), "execution.private.json");
+    const runner = await runWithinBudget(
+      [
+        observedAppleCommand(
+          [nodeExecPath, "-e", "process.exitCode=124"],
+          receipt,
+        ),
+      ],
+      { budgetMs: 3000, graceMs: 100, stdio: "ignore" },
+    );
+    const observation = JSON.parse(readFileSync(receipt, "utf8"));
+    const result = appleExecutionResult(runner, observation);
+    assert.equal(result.runnerCode, 1);
+    assert.equal(result.nativeExitCode, 124);
+    assert.equal(result.deadlineExpired, false);
+  });
+  it("skips shutdown only for a confirmed stopped owned device and verifies deletion", async () => {
+    const { result, calls } = await harness([
+      {
+        operation: "list",
+        stdout: devices("Shutdown", [
+          { name: "other-task", udid: foreign, state: "Booted" },
+        ]),
+      },
+      { operation: "delete" },
+      { operation: "list", stdout: devices(null) },
+    ]);
+    assert.equal(result.result, "PASS");
+    assert.equal(result.state, "deleted");
+    assert.equal(
+      result.operations.find((op) => op.operation === "shutdown").outcome,
+      "already-stopped",
+    );
+    assert.deepEqual(
+      calls.filter(({ args }) => args[1] !== "list").map(({ args }) => args),
+      [["simctl", "delete", udid]],
+    );
+  });
+  it("confirms an already-absent task without deleting anything", async () => {
+    const { result, calls } = await harness(
+      [{ operation: "list", stdout: devices(null) }],
+      { simulator: undefined },
+    );
+    assert.equal(result.state, "already-absent");
+    assert.equal(result.result, "PASS");
+    assert.equal(calls.length, 1);
+  });
+  it("does not swallow arbitrary shutdown errors", async () => {
+    const { result, calls } = await harness([
+      { operation: "list", stdout: devices() },
+      { operation: "shutdown", error: { code: 5, signal: null } },
+      { operation: "list", stdout: devices() },
+    ]);
+    assert.equal(result.result, "FAIL");
+    assert.equal(result.state, "shutdown-failed");
+    assert.equal(result.operations[1].exitCode, 5);
+    assert.ok(!calls.some(({ args }) => args[1] === "delete"));
+  });
+  it("can resolve a shutdown error with confirmed stopped state", async () => {
+    const { result } = await harness([
+      { operation: "list", stdout: devices() },
+      { operation: "shutdown", error: { code: 149 } },
+      { operation: "list", stdout: devices("Shutdown") },
+      { operation: "delete" },
+      { operation: "list", stdout: devices(null) },
+    ]);
+    assert.equal(result.result, "PASS");
+    assert.equal(
+      result.operations[1].outcome,
+      "failure",
+      "Original shutdown failure remains recorded",
+    );
+  });
+  it("resolves a timed-out deletion once using remaining shared time", async () => {
+    const { result, calls, clock } = await harness([
+      { operation: "list", stdout: devices("Shutdown") },
+      { operation: "delete", timeout: true, error: { signal: "SIGKILL" } },
+      { operation: "list", stdout: devices(null) },
+    ]);
+    assert.equal(result.result, "PASS");
+    assert.equal(result.state, "absence-confirmed-after-delete-error");
+    const deletion = result.operations.find((op) => op.operation === "delete");
+    assert.equal(deletion.deadlineExpired, true);
+    assert.equal(deletion.exitCode, null);
+    assert.equal(
+      deletion.allowanceMs,
+      7990,
+      "Delete may use remaining cleanup time, not a fresh 2s cap",
+    );
+    assert.equal(calls.at(-1).allowanceMs, 2000);
+    assert.ok(clock <= 10000);
+    assert.equal(calls.filter(({ args }) => args[1] === "delete").length, 1);
+  });
+  it("keeps unresolved deletion non-PASS at the shared deadline", async () => {
+    const { result, clock } = await harness([
+      { operation: "list", stdout: devices("Shutdown") },
+      { operation: "delete", timeout: true, error: { signal: "SIGKILL" } },
+      { operation: "list", timeout: true, error: { signal: "SIGKILL" } },
+    ]);
+    assert.equal(result.result, "FAIL");
+    assert.equal(clock, 10000);
+    const exhausted = await harness([], { deadline: 0 });
+    assert.equal(exhausted.result.result, "FAIL");
+    assert.equal(exhausted.result.operations[0].attempted, false);
+  });
+  it("refuses unverified identity, ambiguous names and unsettled native teardown", async () => {
+    for (const stdout of [
+      "invalid json",
+      JSON.stringify({ devices: [] }),
+      devices("Shutdown", [{ name, udid: foreign }]),
+      JSON.stringify({
+        devices: { runtime: [{ name: "other-task", udid, state: "Shutdown" }] },
+      }),
+    ]) {
+      const { result, calls } = await harness([{ operation: "list", stdout }]);
+      assert.equal(result.result, "FAIL");
+      assert.equal(calls.length, 1);
+    }
+    const { result, calls } = await harness([], { runnerSettled: false });
+    assert.equal(result.result, "FAIL");
+    assert.equal(calls.length, 0);
+  });
+  it("publishes only safe categories and counts, never synthetic sensitive payloads", () => {
+    const sensitive = "synthetic-sensitive-fixture-do-not-publish";
+    const evidence = appleToolEvidence({
+      error: { code: 149, message: sensitive, stdout: sensitive },
+      stderr: `domain=com.apple.CoreSimulator.SimError, code=405): ${sensitive}`,
+      allowanceMs: 20,
+      durationMs: 4,
+    });
+    assert.equal(evidence.errorCategory, "COMMAND_FAILED");
+    assert.equal(evidence.errorDomainCode, 405);
+    assert.ok(!JSON.stringify(evidence).includes(sensitive));
+    const summary = safeAppleTestSummary({
+      result: "Passed",
+      startTime: 1,
+      finishTime: 2,
+      totalTestCount: 7,
+      passedTests: 7,
+      failedTests: 0,
+      skippedTests: 0,
+      expectedFailures: 0,
+      title: sensitive,
+      testFailures: [{ failureText: sensitive }],
+      environmentDescription: sensitive,
+    });
+    assert.equal(summary.status, "complete");
+    assert.equal(summary.passedTests, 7);
+    assert.ok(!JSON.stringify(summary).includes(sensitive));
+    const missing = safeAppleTestSummary({ result: "Passed" });
+    assert.equal(missing.status, "partial");
+    assert.equal(missing.failedTests, null);
+    assert.equal(missing.totalTestCount, null);
+  });
+  it("extracts bounded log events without exposing names or claiming whole-scheme totals", () => {
+    const sensitive = "synthetic-sensitive-fixture-do-not-publish";
+    const result = safeAppleLogSummary(
+      `Test Case '${sensitive}' passed (1.00 seconds).\nExecuted 2 tests, with 0 failures (0 unexpected).\n${sensitive}`.replaceAll(
+        "\\n",
+        "\n",
+      ),
+    );
+    assert.equal(result.events.passed, 1);
+    assert.equal(result.events.failed, null);
+    assert.deepEqual(result.lastSuiteReport, { tests: 2, failures: 0 });
+    assert.ok(!JSON.stringify(result).includes(sensitive));
+    assert.equal(safeAppleLogSummary(sensitive).lastSuiteReport, null);
+  });
+  it("allowlists only safe Apple artifacts and records PR source independently", () => {
+    const { jobs } = workflowJobs();
+    const apple = jobs.get("apple");
+    assert.match(
+      apple,
+      /APPLE_SOURCE_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u,
+    );
+    assert.match(apple, /if: \$\{\{ always\(\) \}\}/u);
+    const paths = apple
+      .split("path: |\n")[1]
+      .split("include-hidden-files:")[0]
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split("/").at(-1));
+    assert.deepEqual(paths, [
+      "summary.json",
+      "phase-checkpoint.json",
+      "diagnostic.json",
+    ]);
+    assert.doesNotMatch(
+      apple,
+      /\.private|\.xcresult|\*\*|continue-on-error|milestone-budget/u,
+    );
   });
 });
