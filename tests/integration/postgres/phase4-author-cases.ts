@@ -58,13 +58,24 @@ export const registerPhase4AuthorTests = (
     // readProfile counts Catalog favorites/likes only for records present in
     // the published projection, resolved through search_path like the
     // discovery adapter; the other suites put their own schema in front.
+    let createdProjection = false;
     beforeAll(async () => {
-      await pool.query(
-        "CREATE TABLE IF NOT EXISTS public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb)",
+      // Create the projection only when the database has none, and later
+      // drop only what this suite created (a synthetic database may carry the
+      // real Payload view).
+      const existing = await pool.query(
+        "SELECT to_regclass('public.catalog_discovery') AS rel",
       );
+      if (existing.rows[0]?.rel === null) {
+        await pool.query(
+          "CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb)",
+        );
+        createdProjection = true;
+      }
     });
     afterAll(async () => {
-      await pool.query("DROP TABLE IF EXISTS public.catalog_discovery");
+      if (createdProjection)
+        await pool.query("DROP TABLE IF EXISTS public.catalog_discovery");
     });
     beforeEach(async () => {
       a = id("user");

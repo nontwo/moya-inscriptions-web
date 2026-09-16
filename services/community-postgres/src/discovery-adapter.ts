@@ -58,9 +58,9 @@ const eligible = eligibleFor(false);
 const eligibleItem = `LATERAL (${eligibleBranches(false, true)}\n) e`;
 /**
  * Expired sequences are removed in bounded batches: at most 100 parents per
- * first-page browse and, because ON DELETE CASCADE removes every item of each
- * parent, at most this many cascaded item rows beyond the first parent. A
- * sequence larger than the budget is still removed alone.
+ * first-page browse, oldest first, and the batch stops at the first parent
+ * whose items would not fit this budget, so one call cascades at most the
+ * budget plus one sequence (the first parent always goes, however large).
  */
 export const DISCOVERY_CLEANUP_ITEM_BUDGET = 20_000;
 const filter = `($2='all' OR e.kind=$2) AND ($3='' OR position(lower($3) IN lower(e.title||' '||array_to_string(e.aliases,' ')))>0)
