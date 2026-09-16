@@ -32,7 +32,13 @@ import {
   validationEnvironment,
   workspaceFingerprint,
 } from "./verify-task.mjs";
-import { appleCommand, assertCompatibleSdk } from "./verify-apple.mjs";
+import {
+  appleCommand,
+  appleOptions,
+  remainingAppleBudget,
+  assertCompatibleSdk,
+  compatibleIphone,
+} from "./verify-apple.mjs";
 import { runWithinBudget } from "./verify.mjs";
 import { discoverWorkspaces } from "../tests/unit/architecture/workspace-scanner.ts";
 import { e2eProjects } from "../tests/e2e/support/e2e-report-integrity.ts";
@@ -1387,6 +1393,118 @@ describe("scoped validation commands and private output", () => {
     assert.ok(!existsSync(join(output, "DerivedData")));
   });
 
+  it("selects an installed iPhone supported by the exact runtime", () => {
+    const phone = (name) => ({
+      name,
+      identifier: name,
+      productFamily: "iPhone",
+    });
+    const current = phone("iPhone 18 Pro");
+    const older = phone("iPhone 17 Pro");
+    const ipod = phone("iPod touch (7th generation)");
+    const ipad = {
+      name: "iPad Pro",
+      identifier: "iPad",
+      productFamily: "iPad",
+    };
+    const devices = [current, older, ipad, ipod];
+    const runtime = { supportedDeviceTypes: [older, ipad, ipod] };
+    assert.equal(compatibleIphone(runtime, devices), older);
+    assert.equal(
+      compatibleIphone({ supportedDeviceTypes: [current, older] }, devices),
+      current,
+    );
+    for (const unsupported of [
+      {},
+      { supportedDeviceTypes: [] },
+      { supportedDeviceTypes: [ipad, ipod] },
+      { supportedDeviceTypes: [phone("iPhone absent")] },
+    ]) {
+      assert.throws(
+        () => compatibleIphone(unsupported, devices),
+        /COMPATIBLE_IPHONE_DEVICE_TYPE_UNAVAILABLE/u,
+      );
+    }
+  });
+
+  it("retains the Apple daily budget and requires an explicit bounded milestone", () => {
+    const output = ["--output", "/private/synthetic-apple-output"];
+    assert.deepEqual(appleOptions(output), {
+      output: output[1],
+      buildOnly: false,
+      budgetMs: 120000,
+      validationKind: "DAILY",
+    });
+    assert.equal(appleOptions(["--build-only", ...output]).budgetMs, 120000);
+    for (const value of ["1", "120000", "298765", "300000"]) {
+      const parsed = appleOptions([...output, "--milestone-budget-ms", value]);
+      assert.equal(parsed.budgetMs, Number(value));
+      assert.equal(parsed.validationKind, "AUTHORIZED_LOCAL_MILESTONE");
+    }
+    for (const value of [
+      "",
+      "0",
+      "-1",
+      "NaN",
+      "Infinity",
+      "1.5",
+      "300001",
+      "1e5",
+      " 1000",
+      "9007199254740993",
+    ]) {
+      assert.throws(() =>
+        appleOptions([...output, "--milestone-budget-ms", value]),
+      );
+    }
+    for (const args of [
+      [...output, "--milestone-budget-ms"],
+      [
+        ...output,
+        "--milestone-budget-ms",
+        "200000",
+        "--milestone-budget-ms",
+        "300000",
+      ],
+      [...output, "--output", "/private/duplicate"],
+      [...output, "--unknown"],
+      ["--milestone-budget-ms", "300000"],
+    ])
+      assert.throws(() => appleOptions(args));
+  });
+
+  it("subtracts preparation and reserves Apple cleanup within one deadline", () => {
+    const deadline =
+      1000 + appleOptions(["--output", "/private/output"]).budgetMs;
+    assert.equal(remainingAppleBudget(deadline, 8000, 1000), 112000);
+    assert.equal(remainingAppleBudget(deadline, 8000, 21000), 92000);
+    assert.throws(
+      () => remainingAppleBudget(deadline, 8000, deadline - 8000),
+      /TIME_BUDGET_EXCEEDED/u,
+    );
+    // Cleanup shares the original deadline and cannot gain a new minimum 1ms.
+    const cleanupDeadline = Math.min(deadline, deadline - 3000 + 6000);
+    assert.equal(
+      remainingAppleBudget(cleanupDeadline, 0, deadline - 2000),
+      2000,
+    );
+    for (const now of [deadline, deadline + 1])
+      assert.throws(
+        () => remainingAppleBudget(cleanupDeadline, 0, now),
+        /TIME_BUDGET_EXCEEDED/u,
+      );
+    const milestone = appleOptions([
+      "--output",
+      "/private/output",
+      "--milestone-budget-ms",
+      "298765",
+    ]);
+    assert.equal(
+      remainingAppleBudget(1000 + milestone.budgetMs, 8000, 21000),
+      270765,
+    );
+  });
+
   it("rejects incompatible SDKs and uses unsigned simulator build/test commands", () => {
     const project =
       "IPHONEOS_DEPLOYMENT_TARGET = 26.5;\nIPHONEOS_DEPLOYMENT_TARGET = 26.4;";
@@ -1405,6 +1523,16 @@ describe("scoped validation commands and private output", () => {
       assert.equal(command[0], "xcodebuild");
       assert.equal(value("-sdk"), "iphonesimulator");
       assert.equal(value("-destination"), destination);
+      assert.equal(command.filter((item) => item === "-destination").length, 1);
+      if (buildOnly) assert.ok(!command.includes("-parallel-testing-enabled"));
+      else {
+        assert.equal(value("-parallel-testing-enabled"), "NO");
+        assert.equal(
+          value("-maximum-concurrent-test-simulator-destinations"),
+          "1",
+        );
+        assert.ok(!command.includes("-parallel-testing-worker-count"));
+      }
       assert.equal(value("-configuration"), "Debug");
       assert.equal(value("-scheme"), "ArtVenn");
       assert.equal(value("-derivedDataPath"), join(output, "DerivedData"));

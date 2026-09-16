@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { performance } from "node:perf_hooks";
 import { freshOutput } from "./verify-task.mjs";
 import { runWithinBudget } from "./verify.mjs";
 import { runGit } from "./ci-task-scope.mjs";
@@ -26,6 +27,14 @@ export function appleCommand(output, destination, buildOnly = false) {
     "iphonesimulator",
     "-destination",
     destination,
+    ...(buildOnly
+      ? []
+      : [
+          "-parallel-testing-enabled",
+          "NO",
+          "-maximum-concurrent-test-simulator-destinations",
+          "1",
+        ]),
     "-derivedDataPath",
     join(output, "DerivedData"),
     "-resultBundlePath",
@@ -33,6 +42,52 @@ export function appleCommand(output, destination, buildOnly = false) {
     "CODE_SIGNING_ALLOWED=NO",
     buildOnly ? "build" : "test",
   ];
+}
+
+// Explicit Owner-authorized local milestone only. Callers must pass their
+// remaining cumulative allowance; no environment variable changes the default.
+export function appleOptions(args) {
+  const options = {
+    buildOnly: false,
+    budgetMs: 120000,
+    validationKind: "DAILY",
+  };
+  const seen = new Set();
+  for (let i = 0; i < args.length; i += 1) {
+    const flag = args[i];
+    if (seen.has(flag)) throw new Error("INVALID_APPLE_ARGUMENTS");
+    seen.add(flag);
+    if (flag === "--build-only") options.buildOnly = true;
+    else if (flag === "--output" || flag === "--milestone-budget-ms") {
+      const value = args[++i];
+      if (!value || value.startsWith("--"))
+        throw new Error("INVALID_APPLE_ARGUMENTS");
+      if (flag === "--output") options.output = value;
+      else {
+        const budgetMs = Number(value);
+        if (
+          !/^[1-9]\d*$/u.test(value) ||
+          !Number.isSafeInteger(budgetMs) ||
+          budgetMs > 300000
+        )
+          throw new Error("INVALID_MILESTONE_BUDGET");
+        options.budgetMs = budgetMs;
+        options.validationKind = "AUTHORIZED_LOCAL_MILESTONE";
+      }
+    } else throw new Error("INVALID_APPLE_ARGUMENTS");
+  }
+  if (!options.output) throw new Error("EXPECTED_OUTPUT_ARGUMENT");
+  return options;
+}
+
+export function remainingAppleBudget(
+  deadline,
+  reserveMs = 0,
+  now = performance.now(),
+) {
+  const remaining = Math.floor(deadline - now - reserveMs);
+  if (remaining <= 0) throw new Error("TIME_BUDGET_EXCEEDED");
+  return remaining;
 }
 
 export function assertCompatibleSdk(pbx, sdk) {
@@ -51,15 +106,30 @@ export function assertCompatibleSdk(pbx, sdk) {
     );
 }
 
+export function compatibleIphone(runtime, devicetypes) {
+  const supported = new Set(
+    (runtime.supportedDeviceTypes ?? []).map((item) => item.identifier),
+  );
+  const type = devicetypes.find(
+    (item) =>
+      item.productFamily === "iPhone" &&
+      item.name?.startsWith("iPhone ") &&
+      supported.has(item.identifier),
+  );
+  if (!type) throw new Error("COMPATIBLE_IPHONE_DEVICE_TYPE_UNAVAILABLE");
+  return type;
+}
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
+  const invocationStart = performance.now();
+  let deadline = invocationStart + 120000;
   let output, simulator, currentPreparation;
   let interrupted = false,
     createAttempted = false,
     cleanupComplete = true;
-  let validationStart;
   const simulatorName = `ArtVenn-task-${randomUUID()}`;
   const summary = {
     platform: "Apple",
@@ -67,6 +137,7 @@ if (
     code: 1,
     reason: "PREPARATION_NOT_COMPLETED",
     budgetMs: 120000,
+    validationKind: "DAILY",
   };
   const onSignal = () => {
     interrupted = true;
@@ -104,14 +175,13 @@ if (
       if (!cleanup) currentPreparation = child;
     });
   try {
-    const args = process.argv.slice(2);
-    const buildOnly = args.includes("--build-only");
-    const rest = args.filter((arg) => arg !== "--build-only");
-    if (rest.length !== 2 || rest[0] !== "--output")
-      throw new Error("EXPECTED_OUTPUT_ARGUMENT");
+    const options = appleOptions(process.argv.slice(2));
+    const { buildOnly, budgetMs, validationKind } = options;
+    deadline = invocationStart + budgetMs;
+    Object.assign(summary, { budgetMs, validationKind });
     const root = runGit("rev-parse", "--show-toplevel").trim();
     process.chdir(root);
-    output = freshOutput(rest[1], root);
+    output = freshOutput(options.output, root);
     summary.head = runGit("rev-parse", "HEAD").trim();
     const project = "apps/apple/ArtVenn/ArtVenn.xcodeproj/project.pbxproj";
     if (!existsSync(project))
@@ -119,7 +189,10 @@ if (
     if (process.platform !== "darwin") throw new Error("MACOS_XCODE_REQUIRED");
     const prepStart = Date.now();
     const prepare = (command, args) => {
-      const remaining = 20000 - (Date.now() - prepStart);
+      const remaining = Math.min(
+        20000 - (Date.now() - prepStart),
+        remainingAppleBudget(deadline, 8000),
+      );
       if (remaining <= 0) throw new Error("PREPARATION_BUDGET_EXCEEDED");
       return call(command, args, remaining);
     };
@@ -152,10 +225,7 @@ if (
       const { devicetypes } = JSON.parse(
         await prepare("xcrun", ["simctl", "list", "devicetypes", "--json"]),
       );
-      const type = devicetypes.findLast(
-        (item) => item.productFamily === "iPhone",
-      );
-      if (!type) throw new Error("IPHONE_DEVICE_TYPE_UNAVAILABLE");
+      const type = compatibleIphone(runtime, devicetypes);
       if (interrupted) throw new Error("INTERRUPTED");
       createAttempted = true;
       writeFileSync(
@@ -189,15 +259,18 @@ if (
       ),
     ];
     if (interrupted) throw new Error("INTERRUPTED");
-    validationStart = Date.now();
     const fd = openSync(join(output, "validation.private.log"), "wx", 0o600);
     let result;
     try {
-      // 112s plus at most 6s cleanup fits the same 120s allowance; parent task
-      // cancellation has 8s grace, enough for this exact simulator's cleanup.
+      // Reserve 6s for the exact simulator's cleanup and 2s for finalization.
+      // Preparation and process teardown consume this same effective deadline.
       result = await runWithinBudget(
         [appleCommand(output, destination, buildOnly)],
-        { budgetMs: 112000, graceMs: 1000, stdio: ["ignore", fd, fd] },
+        {
+          budgetMs: remainingAppleBudget(deadline, 8000),
+          graceMs: 1000,
+          stdio: ["ignore", fd, fd],
+        },
       );
     } finally {
       closeSync(fd);
@@ -216,14 +289,16 @@ if (
     summary.reason = /^[A-Z_]+$/u.test(error.message)
       ? error.message
       : "PREPARATION_UNAVAILABLE";
-    summary.code = 1;
+    summary.code = summary.reason === "TIME_BUDGET_EXCEEDED" ? 124 : 1;
+    if (summary.code === 124) summary.result = "TIME_BUDGET_EXCEEDED";
   } finally {
-    const cleanupStart = Date.now();
+    const cleanupStart = performance.now();
+    const cleanupDeadline = Math.min(deadline, cleanupStart + 6000);
     const cleanup = (args) =>
       call(
         "xcrun",
         args,
-        Math.min(2000, Math.max(1, 6000 - (Date.now() - cleanupStart))),
+        Math.min(2000, remainingAppleBudget(cleanupDeadline)),
         true,
       );
     if (createAttempted) {
@@ -264,8 +339,8 @@ if (
     summary.cleanup = cleanupComplete
       ? "complete"
       : "incomplete; use the private creation receipt";
-    summary.cleanupMs = Date.now() - cleanupStart;
-    if (validationStart) summary.durationMs = Date.now() - validationStart;
+    summary.cleanupMs = Math.round(performance.now() - cleanupStart);
+    summary.durationMs = Math.round(performance.now() - invocationStart);
     if (output)
       writeFileSync(
         join(output, "summary.json"),
