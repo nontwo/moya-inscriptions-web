@@ -16,9 +16,17 @@ After applying the committed community migration set as the migration/setup
 role, apply `grant-runtime.sql` explicitly with psql:
 
 ```sh
-psql --no-psqlrc --set ON_ERROR_STOP=1 --set app_role=yoyi_dev_app \
+psql --no-psqlrc --set ON_ERROR_STOP=1 --single-transaction --set app_role=yoyi_dev_app \
   --file infra/development/work-publishing/grant-runtime.sql
 ```
+
+`--single-transaction` matters: the script revokes table-level privileges before
+it grants the column lists, so a failure between those steps would otherwise
+leave the role with fewer privileges than before. With one transaction the
+script either completes or leaves the effective privileges exactly as they were
+(`ON_ERROR_STOP` alone only stops; it does not roll back). The Node adapter path
+used by the tests sends the whole file as one multi-statement query, which
+PostgreSQL runs as one implicit transaction with the same guarantee.
 
 Use protected libpq configuration for the already verified Development database;
 do not put passwords or connection strings in command arguments or evidence.

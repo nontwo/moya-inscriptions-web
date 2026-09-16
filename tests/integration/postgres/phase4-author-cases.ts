@@ -56,20 +56,61 @@ export const registerPhase4AuthorTests = (
     let process: BackendProcessHandle | undefined;
     const handles = new Map<string, string>();
     // readProfile counts Catalog favorites/likes only for records present in
-    // the published projection, resolved through search_path like the
-    // discovery adapter; the other suites put their own schema in front.
+    // the published projection `catalog_discovery`, resolved through
+    // search_path like the discovery adapter (the other suites put their own
+    // schema in front). The projection is whatever the
+    // disposable composition provides: the real Payload VIEW when the Payload
+    // family is installed (rows enter it only through the publication path,
+    // `catalogs._status='published'`), otherwise a plain table this suite
+    // creates and drops itself. Nothing is dropped or replaced when a view
+    // exists, and no case skips on the relation kind.
+    let projectionKind: "view" | "table" | null = null;
     let createdProjection = false;
+    const projection = {
+      async publish(catalogId: string, title: string): Promise<void> {
+        if (projectionKind === "view")
+          await pool.query(
+            "INSERT INTO public.catalogs(catalog_id,source_id,kind,title,_status) VALUES($1,$2,'inscription',$3,'published')",
+            [catalogId, `source-${catalogId}`, title],
+          );
+        else
+          await pool.query(
+            "INSERT INTO public.catalog_discovery(catalog_id,kind,title) VALUES($1,'inscription',$2)",
+            [catalogId, title],
+          );
+      },
+      async withdraw(catalogId: string): Promise<void> {
+        if (projectionKind === "view")
+          await pool.query(
+            "UPDATE public.catalogs SET _status='draft' WHERE catalog_id=$1",
+            [catalogId],
+          );
+        else
+          await pool.query(
+            "DELETE FROM public.catalog_discovery WHERE catalog_id=$1",
+            [catalogId],
+          );
+      },
+      async remove(catalogId: string): Promise<void> {
+        if (projectionKind === "view")
+          await pool.query("DELETE FROM public.catalogs WHERE catalog_id=$1", [
+            catalogId,
+          ]);
+        else await this.withdraw(catalogId);
+      },
+    };
     beforeAll(async () => {
-      // Create the projection only when the database has none, and later
-      // drop only what this suite created (a synthetic database may carry the
-      // real Payload view).
-      const existing = await pool.query(
-        "SELECT to_regclass('public.catalog_discovery') AS rel",
+      const existing = await pool.query<{ kind: string | null }>(
+        "SELECT c.relkind::text AS kind FROM pg_class c WHERE c.oid=to_regclass('public.catalog_discovery')",
       );
-      if (existing.rows[0]?.rel === null) {
+      const kind = existing.rows[0]?.kind ?? null;
+      if (kind === "v") projectionKind = "view";
+      else if (kind === "r") projectionKind = "table";
+      else {
         await pool.query(
           "CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb)",
         );
+        projectionKind = "table";
         createdProjection = true;
       }
     });
@@ -1540,12 +1581,13 @@ export const registerPhase4AuthorTests = (
           (await adapter.listPeople(a, null, "followers", query)).total,
         );
 
+        // Two published records, one later withdrawn through the projection's
+        // own publication path: the total follows the projection, never the
+        // retained relation rows.
         const present = id("catalog"),
           withdrawn = id("catalog");
-        await pool.query(
-          "INSERT INTO public.catalog_discovery(catalog_id,kind,title) VALUES($1,'inscription','仍在发布的资料')",
-          [present],
-        );
+        await projection.publish(present, "仍在发布的资料");
+        await projection.publish(withdrawn, "随后撤回的资料");
         try {
           for (const catalog of [present, withdrawn])
             await pool.query(
@@ -1564,14 +1606,27 @@ export const registerPhase4AuthorTests = (
           for (const viewer of [b, null, a]) {
             expect(
               (await adapter.readProfile(b, viewer)).totals.favorites,
+            ).toBe(2);
+            expect((await service.profile(b, viewer)).totals.favorites).toBe(2);
+          }
+          await projection.withdraw(withdrawn);
+          for (const viewer of [b, null, a]) {
+            expect(
+              (await adapter.readProfile(b, viewer)).totals.favorites,
             ).toBe(1);
             expect((await service.profile(b, viewer)).totals.favorites).toBe(1);
           }
+          expect(
+            (
+              await pool.query(
+                "SELECT count(*) AS n FROM community.content_relations WHERE user_id=$1 AND relation='favorite'",
+                [b],
+              )
+            ).rows[0].n,
+          ).toBe("2");
         } finally {
-          await pool.query(
-            "DELETE FROM public.catalog_discovery WHERE catalog_id=$1",
-            [present],
-          );
+          await projection.remove(present);
+          await projection.remove(withdrawn);
         }
       } finally {
         await removeUsers([suspended, blocked, normal]);

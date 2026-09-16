@@ -214,6 +214,12 @@ describe("current repository truth and local configuration", () => {
     expect(
       devMigrate.indexOf("/opt/yoyi/grant-community-app.sql"),
     ).toBeLessThan(devMigrate.indexOf("/opt/yoyi/grant-runtime.sql"));
+    // The runtime plan revokes before it grants; the supported invocation runs
+    // the whole psql pass as one transaction so a failure between the two
+    // leaves the previous effective privileges untouched.
+    expect(devMigrate).toMatch(
+      /psql -v ON_ERROR_STOP=1 --single-transaction [^&]*-f \/opt\/yoyi\/grant-community-app\.sql -f \/opt\/yoyi\/grant-runtime\.sql/,
+    );
     const runtimeGrants = await readFile(
       path.join(
         repositoryRoot,

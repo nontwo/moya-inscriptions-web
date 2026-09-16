@@ -265,6 +265,32 @@ describe.each(["clean", "phase4-upgrade", "legacy-grants-upgrade"] as const)(
           "publication_setting",
           "sessions",
         ]);
+        // Atomicity of the supported invocation: the script revokes the
+        // table-level privileges before it grants the column lists, so a
+        // failure between the two must leave the previous effective privileges
+        // untouched. The Node path sends the file as one multi-statement query
+        // (one implicit transaction, like `psql --single-transaction` on the
+        // documented path); inject a failure after the REVOKE block and read
+        // the ACLs back from a NEW connection.
+        const beforeFailure = await privilegeSet(setup, role);
+        const revokeEnd = grantSql.indexOf("-- Discovery and the featured");
+        expect(revokeEnd).toBeGreaterThan(0);
+        const failingSql = `${grantSql.slice(0, revokeEnd)}SELECT 1/0;\n${grantSql.slice(revokeEnd)}`;
+        await expect(setup.query(failingSql)).rejects.toMatchObject({
+          code: "22012",
+        });
+        const fresh = poolFor(setupUrl.toString());
+        try {
+          expect(await privilegeSet(fresh, role)).toEqual(beforeFailure);
+          expect(await tableLevelPrivileges(fresh, role, "UPDATE")).toEqual([
+            "catalog_comment_replies",
+            "catalog_comments",
+            "publication_setting",
+            "sessions",
+          ]);
+        } finally {
+          await fresh.end();
+        }
         referenceRole = `${role}_ref`;
         const reference = {
           database: "",

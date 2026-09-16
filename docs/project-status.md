@@ -411,12 +411,13 @@ Active development tracks (independent of the parked cloud track):
      people / discussion / My Comments / Admin queue reads, conflict copies of
      new-work drafts bound to their work so purges release their media, atomic
      suspension and policy audits, receipt timestamps, and targeted Admin
-     usability fixes (pending bulk items kept across view changes, truthful
-     refusals, no-op skips, labels, small-screen detail focus). Findings, Owner
-     decisions, the extension note and the retained-target application plan are
-     in [data-admin-hardening-v1](community/data-admin-hardening-v1.md).
-     Retained databases were inspected read-only only; nothing was applied to
-     them. Owner visual acceptance of the Admin changes is pending.
+     usability fixes (unresolved bulk items block leaving the view and can be
+     discarded explicitly, truthful refusals, no-op skips, labels, small-screen
+     detail focus). Findings, Owner decisions, the extension note and the
+     retained-target application plan are in
+     [data-admin-hardening-v1](community/data-admin-hardening-v1.md). Retained
+     databases were inspected read-only only; nothing was applied to them. Owner
+     visual acceptance of the Admin changes is pending.
 4. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.
