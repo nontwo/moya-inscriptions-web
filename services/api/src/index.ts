@@ -125,8 +125,6 @@ export type {
   AuthorCommunityPort,
   AuthorPage,
   AuthorListItem,
-  WorkDraftResult,
-  WorkApplyResult,
   OwnedMediaInput,
   OwnedMediaRead,
   StoredContentRelation,
@@ -142,5 +140,102 @@ export type {
   DiscoveryPageRecord,
 } from "./modules/community/application/ports/community-discovery-port.js";
 export type { CommunityContentOperatorPort } from "./modules/community/application/ports/community-content-operator-port.js";
+export type {
+  PublishingBlobContentType,
+  PublishingBlobPurpose,
+  PublishingMediaBlobListing,
+  PublishingMediaBlobListOptions,
+  PublishingMediaByteRange,
+  PublishingMediaReadResult,
+  PublishingMediaStoreFailureCode,
+  PublishingMediaStorePort,
+  PublishingMediaWriteOptions,
+  PublishingMediaWriteResult,
+} from "./modules/community/application/ports/publishing-media-store-port.js";
+export type {
+  PublishingClientPairing,
+  PublishingComponentRole,
+  PublishingDerivativeRecord,
+  PublishingDerivativeVariant,
+  PublishingMediaEdit,
+  PublishingMediaFailureCode,
+  PublishingMediaKind,
+  PublishingMediaPairing,
+  PublishingMediaPresentation,
+  PublishingMediaProcessorPort,
+  PublishingNormalizedCrop,
+  PublishingPairingMethod,
+  PublishingProcessInput,
+  PublishingProcessMode,
+  PublishingProcessOutcome,
+  PublishingProcessorComponent,
+  PublishingQualityMode,
+} from "./modules/community/application/ports/publishing-media-processor-port.js";
+export type {
+  PublishingBlobUnlink,
+  PublishingCleanupCounts,
+  PublishingCommandIdentity,
+  PublishingDerivativeCommit,
+  PublishingDerivedOutcome,
+  PublishingDeriveEditPayload,
+  PublishingDraftDeletion,
+  PublishingEditReadinessOptions,
+  PublishingDraftOperations,
+  PublishingEditItemState,
+  PublishingEditReadiness,
+  PublishingEditTarget,
+  PublishingItemChange,
+  PublishingJobClaim,
+  PublishingJobClaimOptions,
+  PublishingJobEnqueue,
+  PublishingJobEnqueued,
+  PublishingJobFailure,
+  PublishingJobFailureOptions,
+  PublishingJobLease,
+  PublishingJobOperations,
+  PublishingMediaOperations,
+  PublishingMediaReadOperations,
+  PublishingMediaReadTarget,
+  PublishingProcessedOutcome,
+  PublishingProcessingInput,
+  PublishingProcessingSource,
+  PublishingPurgePlan,
+  PublishingSessionDiscard,
+  PublishingSessionExpiry,
+  PublishingSessionOperations,
+  PublishingSettingsOperations,
+  PublishingStoppedUploads,
+  PublishingSubmissionOperations,
+  PublishingTrashPurge,
+  PublishingUploadCommit,
+  PublishingUploadFence,
+  PublishingUploadOperations,
+  PublishingUploadStart,
+  PublishingWorkOperations,
+  WorkPublishingPort,
+} from "./modules/community/application/ports/work-publishing-port.js";
+export type { PublishingOperatorPort } from "./modules/community/application/ports/publishing-operator-port.js";
+export {
+  PublishingTransferRegistry,
+  WorkPublishingService,
+} from "./modules/community/application/services/work-publishing-service.js";
+export type {
+  PublishingComponentTransfer,
+  PublishingComponentUploadOutcome,
+  PublishingMediaDelivery,
+  PublishingTransferClaim,
+  PublishingTransferPolicy,
+  WorkPublishingServiceOptions,
+} from "./modules/community/application/services/work-publishing-service.js";
+export { PublishingOperatorService } from "./modules/community/application/services/publishing-operator-service.js";
+export {
+  parseWorkPublishingCommand,
+  parseWorkPublishingSegment,
+} from "./modules/community/transport/work-publishing-request-parsers.js";
+export type {
+  WorkPublishingCommandKind,
+  WorkPublishingSegmentKind,
+} from "./modules/community/transport/work-publishing-request-parsers.js";
+export type { PublishingOperatorServiceOptions } from "./modules/community/application/services/publishing-operator-service.js";
 
 export { CommunityContentOperatorService } from "./modules/community/application/services/community-content-operator-service.js";

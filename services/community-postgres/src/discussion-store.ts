@@ -28,8 +28,9 @@ const rootPublic =
   "c.moderation='visible' AND (c.body_deleted_at IS NULL OR c.was_public)";
 const rootEligible = `c.thread_removed_at IS NULL AND community.accounts_can_interact($3,c.author_id)
  AND ((${rootPublic}) OR (c.author_id=$3 AND u.status='active'))`;
-const replyEligible = `r.root_comment_id=$4 AND community.accounts_can_interact($3,r.author_id)
+const replyAudience = `community.accounts_can_interact($3,r.author_id)
  AND (((${rootPublic}) AND r.moderation='visible' AND (r.body_deleted_at IS NULL OR r.was_public)) OR (r.author_id=$3 AND ru.status='active'))`;
+const replyEligible = `r.root_comment_id=$4 AND ${replyAudience}`;
 const rootFrom = `FROM community.catalog_comments c JOIN community.public_users u ON u.id=c.author_id
  WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}`;
 const likeCount = (
@@ -95,6 +96,14 @@ export class PostgresDiscussionStore implements DiscussionPort {
       db.release();
     }
   }
+  /**
+   * Work discussions follow effective work visibility (community.work_is_public
+   * with an active, unblocked author). Reads (`lock` false) also admit the
+   * work's author on their own self-only or pending work outside the recycle
+   * bin that no operator hid or removed; writes and likes
+   * (`lock` true) never happen on a work others cannot see. Comment rows are
+   * never rewritten by visibility changes.
+   */
   private async workAllowed(
     db: PoolClient,
     target: ContentIdentity,
@@ -103,7 +112,8 @@ export class PostgresDiscussionStore implements DiscussionPort {
   ): Promise<void> {
     if (target.type !== "work") return;
     const r = await db.query(
-      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND w.deleted_at IS NULL AND w.operator_state='visible' AND u.status='active' AND community.accounts_can_interact($2,w.author_id)${lock ? " FOR SHARE OF w" : ""}`,
+      `SELECT w.id FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND u.status='active' AND community.accounts_can_interact($2,w.author_id)
+      AND (community.work_is_public(w)${lock ? "" : " OR (w.author_id=$2 AND w.deleted_at IS NULL AND w.trashed_at IS NULL AND w.operator_state='visible')"})${lock ? " FOR SHARE OF w" : ""}`,
       [target.id, viewer],
     );
     if (r.rowCount !== 1) throw new CommunityNotFoundError();
@@ -303,7 +313,15 @@ export class PostgresDiscussionStore implements DiscussionPort {
       const visibleTotal = Number(
         (
           await db.query(
-            `SELECT count(*) AS n ${rootFrom} AND ${rootPublic} AND c.body_deleted_at IS NULL`,
+            `SELECT
+              (SELECT count(*) ${rootFrom} AND ${rootPublic} AND c.body_deleted_at IS NULL)
+              + (SELECT count(*) FROM community.catalog_comment_replies r
+                 JOIN community.catalog_comments c ON c.id=r.root_comment_id
+                 JOIN community.public_users u ON u.id=c.author_id
+                 JOIN community.public_users ru ON ru.id=r.author_id
+                 WHERE c.target_type=$1 AND c.catalog_id=$2 AND ${rootEligible}
+                 AND ${replyAudience} AND ${rootPublic}
+                 AND r.moderation='visible' AND r.body_deleted_at IS NULL) AS n`,
             [target.type, target.id, viewer],
           )
         ).rows[0]?.n ?? 0,

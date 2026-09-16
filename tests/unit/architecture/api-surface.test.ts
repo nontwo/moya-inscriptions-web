@@ -8,6 +8,12 @@ import {
   repositoryRoot,
 } from "./workspace-scanner.js";
 
+import type {
+  PublishingDraftDeletion,
+  PublishingProcessingInput,
+  PublishingProcessingSource,
+} from "@moya/api";
+
 const apiRoot = path.join(repositoryRoot, "services", "api");
 
 const collectFiles = async (
@@ -60,6 +66,9 @@ describe("@moya/api server-only surface", () => {
       "CommunitySessionService",
       "CommunityStoreUnavailableError",
       "DisabledCommentAnalysisPort",
+      "PublishingOperatorService",
+      "PublishingTransferRegistry",
+      "WorkPublishingService",
       "deriveCatalogPeriodLabel",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
@@ -77,6 +86,40 @@ describe("@moya/api server-only surface", () => {
       "parseCommentPageQuery",
       "parseCreateCommentRequest",
       "parseCreateReplyRequest",
+      "parseWorkPublishingCommand",
+      "parseWorkPublishingSegment",
+    ]);
+  });
+
+  it("exports the work publishing processing source with the port types that name it", async () => {
+    const declaration = await readFile(
+      path.join(apiRoot, "dist", "index.d.ts"),
+      "utf8",
+    );
+    for (const name of [
+      "PublishingProcessingSource",
+      "PublishingProcessingInput",
+      "PublishingDraftDeletion",
+    ])
+      expect(declaration).toMatch(new RegExp(`\\b${name}\\b`, "u"));
+    // Compile-time: both sources are nameable where the worker composes them.
+    const sources: readonly PublishingProcessingSource[] = [
+      { kind: "upload" },
+      {
+        kind: "legacy_user_media",
+        legacyMediaId: `user-media-${"a".repeat(32)}`,
+        byteSize: 1024,
+        contentType: "image/png",
+      },
+    ];
+    const source: PublishingProcessingInput["source"] = sources[1]!;
+    const deletion: PublishingDraftDeletion = {
+      result: { deleted: true, snapshots: 0, conflictCopies: 0, mediaItems: 0 },
+      cancelledComponentIds: [],
+    };
+    expect([source.kind, deletion.result.deleted]).toEqual([
+      "legacy_user_media",
+      true,
     ]);
   });
 

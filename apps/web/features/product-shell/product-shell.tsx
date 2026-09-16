@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  Fragment,
   createContext,
   useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -21,6 +23,12 @@ import {
   detailLocation,
   directContentFromLocation,
   directAuthorFromLocation,
+  directEditorTargetFromLocation,
+  editorHistoryState,
+  editorLocation,
+  parseEditorTarget,
+  sameEditorLink,
+  sameEditorTarget,
   profileHistoryState,
   profileLocation,
   directMediaIdFromLocation,
@@ -64,6 +72,8 @@ import {
 import type { ReactNode, RefObject } from "react";
 import type { ContentIdentity } from "@moya/contracts";
 import type {
+  EditorProductHistoryState,
+  EditorTarget,
   ProfileProductHistoryState,
   ProfileTab,
   ProductHistoryState,
@@ -80,6 +90,12 @@ type ScrollPositions = Record<PrimaryDestination, number>;
 
 const SCROLL_RESTORE_RETRY_FRAMES = 12;
 const DETAIL_HISTORY_SYNC_DELAY_MS = 500;
+/**
+ * How long an approved editor close excuses the popstate its Back causes. A
+ * Back with no earlier entry dispatches none, and the approval must not then
+ * excuse an unrelated later one; a popstate slower than this asks again.
+ */
+const EDITOR_LEAVE_APPROVAL_MS = 1_000;
 
 const historyDocumentId = requestIdentity();
 const historyOffsets = new Map<string, number>();
@@ -90,7 +106,7 @@ const resetHistoryScroll = (state: ProductHistoryState): ProductHistoryState =>
       ? { ...state, detailScrollTop: 0, sourceScrollTop: 0 }
       : state.kind === "profile"
         ? { ...state, profileScrollTop: 0, sourceScrollTop: 0 }
-        : state.kind === "topic"
+        : state.kind === "topic" || state.kind === "editor"
           ? { ...state, sourceScrollTop: 0 }
           : state;
 const entryIdentity = (state: ProductHistoryState | null) =>
@@ -104,7 +120,9 @@ const entryIdentity = (state: ProductHistoryState | null) =>
           ? state.destination
           : state.kind === "topic"
             ? state.topicId
-            : state.kind;
+            : state.kind === "editor"
+              ? `editor:${state.editorTarget.type}:${state.editorTarget.type === "new" ? "" : state.editorTarget.id}`
+              : state.kind;
 const currentProductHistoryState = (state: ProductHistoryState) => ({
   ...mergeProductHistoryState(window.history.state, state),
   __artvennDocument: historyDocumentId,
@@ -145,8 +163,11 @@ export interface ProductShellContextValue {
   readonly activeCatalogId: string | null;
   readonly activeContent: ContentIdentity | null;
   readonly activeProfile: ProfileProductHistoryState | null;
+  readonly activeEditor: EditorTarget | null;
   readonly openContent: (target: ContentIdentity, opener: HTMLElement) => void;
   readonly openProfile: (authorId: string | null, opener: HTMLElement) => void;
+  /** False when the editor is disabled or another layer refuses it. */
+  readonly openEditor: (target: EditorTarget, opener: HTMLElement) => boolean;
   readonly activeDestination: PrimaryDestination;
   readonly activeTopicId: string | null;
   readonly activeViewerMediaId: string | null;
@@ -202,6 +223,11 @@ export interface ProductShellProps {
   readonly renderProfileOverlay?: (
     properties: ProductShellProfileOverlayRenderProps,
   ) => ReactNode;
+  /** Enables the history-owned `#editor` overlay; absent keeps it closed. */
+  readonly renderEditorOverlay?: (
+    target: EditorTarget,
+    controls: ProductShellEditorOverlayControls,
+  ) => ReactNode;
   readonly renderDetailOverlay?: (
     properties: ProductShellDetailOverlayRenderProps,
   ) => ReactNode;
@@ -225,6 +251,36 @@ export interface ProductShellProfileOverlayRenderProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly onClose: () => void;
   readonly onViewChange: (tab: ProfileTab, scrollTop: number) => void;
+}
+
+/** Why the shell asks an editor before it leaves. */
+export type ProductShellEditorLeaveReason = "close" | "history" | "unload";
+/**
+ * Returns "blocked" to keep the editor open: for "close" and "history" the
+ * editor then offers its own choice; for "unload" the browser asks. Register a
+ * guard only while there is something to protect, so the page carries no
+ * `beforeunload` listener otherwise.
+ */
+export type ProductShellEditorLeaveGuard = (
+  reason: ProductShellEditorLeaveReason,
+) => "allow" | "blocked";
+
+export interface ProductShellEditorOverlayControls {
+  readonly backButtonRef: RefObject<HTMLButtonElement | null>;
+  /** Leaves through history after consulting the registered guard. */
+  readonly close: () => void;
+  /**
+   * Leaves for the work just submitted (E07) without consulting the guard:
+   * the editor entry becomes that Detail, whose Back returns to the editor's
+   * origin; if the editor sits on that same Detail, history returns there.
+   */
+  readonly completeWith: (target: ContentIdentity) => void;
+  /** Latest registration wins; the returned function unregisters it. */
+  readonly registerLeaveGuard: (
+    guard: ProductShellEditorLeaveGuard,
+  ) => () => void;
+  /** Replaces the current editor entry, e.g. once a new work gains a draft. */
+  readonly replaceTarget: (target: EditorTarget) => void;
 }
 
 export interface ProductShellTopicOverlayRenderProps {
@@ -265,6 +321,7 @@ export const ProductShell = ({
   primaryUtility,
   navigationAction,
   renderDetailOverlay,
+  renderEditorOverlay,
   renderProfileOverlay,
   renderTopicOverlay,
   showDevelopmentPagerControls = false,
@@ -305,6 +362,23 @@ export const ProductShell = ({
   const [activeProfile, setActiveProfile] =
     useState<ProfileProductHistoryState | null>(null);
   const profileEnabled = renderProfileOverlay !== undefined;
+  const editorRef = useRef<EditorProductHistoryState | null>(null);
+  const editorBackRef = useRef<HTMLButtonElement>(null);
+  const editorOpenerRef = useRef<HTMLElement | null>(null);
+  const editorLeaveGuardRef = useRef<{
+    readonly guard: ProductShellEditorLeaveGuard;
+    readonly dispose: () => void;
+  } | null>(null);
+  const editorLeaveApprovedRef = useRef(false);
+  const editorLeaveApprovalTimerRef = useRef<number | null>(null);
+  // The entry beneath an editor this document opened; null when unknown.
+  const editorBelowRef = useRef<ProductHistoryState | null>(null);
+  const [activeEditor, setActiveEditor] =
+    useState<EditorProductHistoryState | null>(null);
+  // Remounts the host for a different editor, never for replaceTarget.
+  const [editorSession, setEditorSession] = useState(0);
+  const editorOpen = activeEditor !== null;
+  const editorEnabled = renderEditorOverlay !== undefined;
   const viewerMediaIdRef = useRef<string | null>(null);
   const topicIdRef = useRef<string | null>(null);
   const scrollPositionsRef = useRef<ScrollPositions>({
@@ -642,6 +716,7 @@ export const ProductShell = ({
         !settingsOpenRef.current &&
         contentRef.current === null &&
         profileRef.current === null &&
+        editorRef.current === null &&
         topicIdRef.current === null &&
         event.target instanceof Node &&
         (rootRef.current?.contains(event.target) ||
@@ -668,6 +743,7 @@ export const ProductShell = ({
           settingsOpenRef.current ||
           contentRef.current !== null ||
           profileRef.current !== null ||
+          editorRef.current !== null ||
           topicIdRef.current !== null ||
           !opener?.isConnected ||
           opener.closest('[inert], [hidden], [aria-hidden="true"]') !== null
@@ -687,6 +763,7 @@ export const ProductShell = ({
         settingsOpenRef.current ||
         contentRef.current !== null ||
         profileRef.current !== null ||
+        editorRef.current !== null ||
         topicIdRef.current !== null
       ) {
         return;
@@ -743,6 +820,7 @@ export const ProductShell = ({
         settingsOpenRef.current ||
         contentRef.current !== null ||
         profileRef.current !== null ||
+        editorRef.current !== null ||
         topicIdRef.current !== null
       ) {
         return;
@@ -809,6 +887,7 @@ export const ProductShell = ({
         settingsOpenRef.current ||
         contentRef.current !== null ||
         profileRef.current !== null ||
+        editorRef.current !== null ||
         topicIdRef.current !== null
       ) {
         return;
@@ -944,6 +1023,7 @@ export const ProductShell = ({
         settingsOpenRef.current ||
         topicIdRef.current !== null ||
         viewerMediaIdRef.current !== null ||
+        editorRef.current !== null ||
         (target.type === "work" && !profileEnabled)
       )
         return;
@@ -998,6 +1078,7 @@ export const ProductShell = ({
         settingsOpenRef.current ||
         viewerMediaIdRef.current !== null ||
         topicIdRef.current !== null ||
+        editorRef.current !== null ||
         (authorId !== null && !/^user-[0-9a-f]{32}$/.test(authorId))
       )
         return;
@@ -1067,6 +1148,254 @@ export const ProductShell = ({
         }, DETAIL_HISTORY_SYNC_DELAY_MS);
     },
     [],
+  );
+
+  const setEditorLeaveApproval = useCallback((approved: boolean) => {
+    if (editorLeaveApprovalTimerRef.current !== null) {
+      window.clearTimeout(editorLeaveApprovalTimerRef.current);
+      editorLeaveApprovalTimerRef.current = null;
+    }
+    editorLeaveApprovedRef.current = approved;
+    if (approved)
+      editorLeaveApprovalTimerRef.current = window.setTimeout(() => {
+        editorLeaveApprovalTimerRef.current = null;
+        editorLeaveApprovedRef.current = false;
+      }, EDITOR_LEAVE_APPROVAL_MS);
+  }, []);
+  const disposeEditorLeaveGuard = useCallback(() => {
+    editorLeaveGuardRef.current?.dispose();
+    editorLeaveGuardRef.current = null;
+  }, []);
+  /** `keepSession` only for the same editor changing its own target. */
+  const setEditorVisibility = useCallback(
+    (value: EditorProductHistoryState | null, keepSession = false) => {
+      editorRef.current = value;
+      if (!keepSession) {
+        // A closed or different editor never inherits a guard or its origin.
+        disposeEditorLeaveGuard();
+        editorBelowRef.current = null;
+        if (value !== null) setEditorSession((session) => session + 1);
+      }
+      setActiveEditor(value);
+    },
+    [disposeEditorLeaveGuard],
+  );
+  const restoreEditorFocus = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const opener = editorOpenerRef.current;
+      if (
+        editorRef.current === null &&
+        opener?.isConnected &&
+        opener.closest('[inert], [hidden], [aria-hidden="true"]') === null
+      )
+        opener.focus({ preventScroll: true });
+    });
+  }, []);
+  const openEditor = useCallback(
+    (target: EditorTarget, opener: HTMLElement) => {
+      const editorTarget = parseEditorTarget(target);
+      if (
+        !editorEnabled ||
+        editorTarget === null ||
+        settingsOpenRef.current ||
+        viewerMediaIdRef.current !== null ||
+        topicIdRef.current !== null ||
+        editorRef.current !== null
+      )
+        return false;
+      saveCurrentEntry();
+      const below = parseProductHistoryState(window.history.state);
+      const destination = activeDestinationRef.current;
+      const state = editorHistoryState(
+        editorTarget,
+        destination,
+        scrollPositionsRef.current[destination],
+      );
+      editorOpenerRef.current = opener;
+      setEditorLeaveApproval(false);
+      window.history.pushState(
+        currentProductHistoryState(state),
+        "",
+        editorLocation(window.location, editorTarget),
+      );
+      setDetailVisibility(null);
+      setViewerVisibility(null);
+      setProfileVisibility(null);
+      setEditorVisibility(state);
+      editorBelowRef.current = below;
+      return true;
+    },
+    [
+      editorEnabled,
+      saveCurrentEntry,
+      setDetailVisibility,
+      setEditorLeaveApproval,
+      setEditorVisibility,
+      setProfileVisibility,
+      setViewerVisibility,
+    ],
+  );
+  const closeEditor = useCallback(() => {
+    if (
+      editorRef.current === null ||
+      editorLeaveGuardRef.current?.guard("close") === "blocked"
+    )
+      return;
+    if (parseProductHistoryState(window.history.state)?.kind === "editor") {
+      setEditorLeaveApproval(true);
+      window.history.back();
+      return;
+    }
+    const destination = activeDestinationRef.current;
+    setEditorVisibility(null);
+    window.history.replaceState(
+      currentProductHistoryState(
+        primaryHistoryState(
+          destination,
+          scrollPositionsRef.current[destination],
+        ),
+      ),
+      "",
+      primaryLocation(window.location),
+    );
+    restoreScroll(destination, platformRef.current);
+    restoreEditorFocus();
+  }, [
+    restoreEditorFocus,
+    restoreScroll,
+    setEditorLeaveApproval,
+    setEditorVisibility,
+  ]);
+  const completeEditor = useCallback(
+    (target: ContentIdentity) => {
+      const current = editorRef.current;
+      if (
+        current === null ||
+        !target.id ||
+        target.id.length > 128 ||
+        /\s/u.test(target.id) ||
+        (target.type === "work" && !profileEnabled)
+      )
+        return;
+      const below = editorBelowRef.current;
+      const owned =
+        parseProductHistoryState(window.history.state)?.kind === "editor";
+      // The submission is saved: nothing remains for the guard to protect.
+      disposeEditorLeaveGuard();
+      if (
+        owned &&
+        below?.kind === "detail" &&
+        below.target.type === target.type &&
+        below.target.id === target.id
+      ) {
+        // Return to that Detail, reloaded, instead of stacking a second copy.
+        setDetailNavigationRevision((value) => value + 1);
+        window.history.back();
+        return;
+      }
+      const { sourceDestination, sourceScrollTop } = current;
+      if (!owned)
+        window.history.replaceState(
+          currentProductHistoryState(
+            primaryHistoryState(sourceDestination, sourceScrollTop),
+          ),
+          "",
+          primaryLocation(window.location),
+        );
+      window.history[owned ? "replaceState" : "pushState"](
+        currentProductHistoryState(
+          detailHistoryState(target, sourceDestination, sourceScrollTop),
+        ),
+        "",
+        detailLocation(window.location, target),
+      );
+      detailOpenerRef.current = editorOpenerRef.current;
+      detailOpenerIdRef.current = target.id;
+      detailSourceDestinationRef.current = sourceDestination;
+      detailSourceScrollTopRef.current = sourceScrollTop;
+      detailScrollTopRef.current = 0;
+      scrollPositionsRef.current[sourceDestination] = sourceScrollTop;
+      setEditorVisibility(null);
+      setProfileVisibility(null);
+      setViewerVisibility(null);
+      setDetailNavigationRevision((value) => value + 1);
+      setDetailVisibility(target);
+    },
+    [
+      disposeEditorLeaveGuard,
+      profileEnabled,
+      setDetailVisibility,
+      setEditorVisibility,
+      setProfileVisibility,
+      setViewerVisibility,
+    ],
+  );
+  const registerEditorLeaveGuard = useCallback(
+    (guard: ProductShellEditorLeaveGuard) => {
+      if (editorRef.current === null) return () => undefined;
+      editorLeaveGuardRef.current?.dispose();
+      // A new registration protects new work; no earlier approval covers it.
+      setEditorLeaveApproval(false);
+      const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+        if (guard("unload") !== "blocked") return;
+        event.preventDefault();
+        // Older engines still require a return value to show the prompt.
+        event.returnValue = "";
+      };
+      const registration = {
+        guard,
+        dispose: () =>
+          window.removeEventListener("beforeunload", handleBeforeUnload),
+      };
+      window.addEventListener("beforeunload", handleBeforeUnload);
+      editorLeaveGuardRef.current = registration;
+      return () => {
+        registration.dispose();
+        if (editorLeaveGuardRef.current === registration)
+          editorLeaveGuardRef.current = null;
+      };
+    },
+    [setEditorLeaveApproval],
+  );
+  const replaceEditorTarget = useCallback(
+    (target: EditorTarget) => {
+      const current = editorRef.current;
+      const editorTarget = parseEditorTarget(target);
+      if (
+        current === null ||
+        editorTarget === null ||
+        sameEditorTarget(current.editorTarget, editorTarget)
+      )
+        return;
+      const next = editorHistoryState(
+        editorTarget,
+        current.sourceDestination,
+        current.sourceScrollTop,
+      );
+      if (parseProductHistoryState(window.history.state)?.kind === "editor")
+        window.history.replaceState(
+          currentProductHistoryState(next),
+          "",
+          editorLocation(window.location, editorTarget),
+        );
+      setEditorVisibility(next, true);
+    },
+    [setEditorVisibility],
+  );
+  const editorControls = useMemo<ProductShellEditorOverlayControls>(
+    () => ({
+      backButtonRef: editorBackRef,
+      close: closeEditor,
+      completeWith: completeEditor,
+      registerLeaveGuard: registerEditorLeaveGuard,
+      replaceTarget: replaceEditorTarget,
+    }),
+    [
+      closeEditor,
+      completeEditor,
+      registerEditorLeaveGuard,
+      replaceEditorTarget,
+    ],
   );
 
   const openViewer = useCallback(
@@ -1328,7 +1657,8 @@ export const ProductShell = ({
       settingsOpen ||
       activeContent !== null ||
       activeTopicId !== null ||
-      activeProfile !== null
+      activeProfile !== null ||
+      editorOpen
     ) {
       return undefined;
     }
@@ -1390,6 +1720,7 @@ export const ProductShell = ({
     activeProfile,
     activeContent,
     activeTopicId,
+    editorOpen,
     expandNavigation,
     platform,
     scrollElementFor,
@@ -1413,6 +1744,9 @@ export const ProductShell = ({
       : undefined;
     const directMediaId = directMediaIdFromLocation(window.location);
     const directSettings = window.location.hash === "#settings";
+    const directEditor = editorEnabled
+      ? directEditorTargetFromLocation(window.location)
+      : null;
     let destination: PrimaryDestination = "home";
 
     if (initialState?.kind === "primary") {
@@ -1421,7 +1755,8 @@ export const ProductShell = ({
       initialState?.kind === "settings" ||
       initialState?.kind === "detail" ||
       initialState?.kind === "viewer" ||
-      initialState?.kind === "profile"
+      initialState?.kind === "profile" ||
+      initialState?.kind === "editor"
     ) {
       destination = initialState.sourceDestination;
     }
@@ -1436,6 +1771,38 @@ export const ProductShell = ({
     }
 
     if (
+      editorEnabled &&
+      (initialState?.kind === "editor" ||
+        ((initialState === null || initialState.kind === "primary") &&
+          directEditor !== null))
+    ) {
+      const state =
+        initialState?.kind === "editor"
+          ? initialState
+          : editorHistoryState(directEditor ?? { type: "new" }, destination, 0);
+      scrollPositionsRef.current[destination] = state.sourceScrollTop;
+      if (initialState?.kind !== "editor") {
+        window.history.replaceState(
+          currentProductHistoryState(primaryHistoryState(destination, 0)),
+          "",
+          primaryLocation(window.location),
+        );
+        window.history.pushState(
+          currentProductHistoryState(state),
+          "",
+          editorLocation(window.location, state.editorTarget),
+        );
+      }
+      setEditorVisibility(state);
+      // A restored entry's predecessor is unknown; a rebuilt link's is Home.
+      if (initialState?.kind !== "editor")
+        editorBelowRef.current = primaryHistoryState(destination, 0);
+      setProfileVisibility(null);
+      setDetailVisibility(null);
+      setViewerVisibility(null);
+      setTopicVisibility(null);
+      setSettingsVisibility(false);
+    } else if (
       profileEnabled &&
       (initialState?.kind === "profile" || directAuthor !== undefined)
     ) {
@@ -1602,6 +1969,9 @@ export const ProductShell = ({
     const handlePopState = (event: PopStateEvent) => {
       cancelSettingsFocus();
       let state = restoredHistoryState(event.state);
+      // An entry this shell never wrote, such as a native fragment link's.
+      const nativeEntry = state === null;
+      let reloadDetail = false;
       // Following an identical fragment link can be a native same-document
       // navigation with null state. Reconstruct its validated public target;
       // treating it as Home would close the overlay while leaving its URL open.
@@ -1611,7 +1981,18 @@ export const ProductShell = ({
           ? directAuthorFromLocation(window.location)
           : undefined;
         const destination = activeDestinationRef.current;
-        if (author !== undefined) {
+        const editorTarget = editorEnabled
+          ? directEditorTargetFromLocation(window.location)
+          : null;
+        if (editorTarget !== null) {
+          const current = editorRef.current;
+          // A draft shares the plain `#editor` link, so match links, not IDs.
+          state =
+            current !== null &&
+            sameEditorLink(current.editorTarget, editorTarget)
+              ? current
+              : editorHistoryState(editorTarget, destination, 0);
+        } else if (author !== undefined) {
           const current = profileRef.current;
           state =
             current?.authorId === author
@@ -1630,19 +2011,64 @@ export const ProductShell = ({
             media === null
               ? detailHistoryState(target, destination, 0)
               : viewerHistoryState(target, media, destination, 0);
-          setDetailNavigationRevision((value) => value + 1);
+          reloadDetail = true;
         }
-        if (state)
-          window.history.replaceState(currentProductHistoryState(state), "");
       }
+      const openEditorState = editorRef.current;
+      const sameEditor =
+        openEditorState !== null &&
+        state?.kind === "editor" &&
+        sameEditorTarget(openEditorState.editorTarget, state.editorTarget);
+      if (openEditorState !== null) {
+        const approved = editorLeaveApprovedRef.current;
+        setEditorLeaveApproval(false);
+        if (
+          !approved &&
+          !sameEditor &&
+          editorLeaveGuardRef.current?.guard("history") === "blocked"
+        ) {
+          // History has already moved; give the editor its entry back before
+          // anything is written for the refused one. A native link's own new
+          // entry is overwritten rather than left behind the editor.
+          window.history[nativeEntry ? "replaceState" : "pushState"](
+            currentProductHistoryState(openEditorState),
+            "",
+            editorLocation(window.location, openEditorState.editorTarget),
+          );
+          return;
+        }
+      }
+      if (nativeEntry && state !== null)
+        window.history.replaceState(currentProductHistoryState(state), "");
+      if (reloadDetail) setDetailNavigationRevision((value) => value + 1);
       const wasDetailOpen = contentRef.current !== null;
       const wasSettingsOpen = settingsOpenRef.current;
       const wasTopicOpen = topicIdRef.current !== null;
       const wasProfileOpen = profileRef.current !== null;
+      const wasEditorOpen = openEditorState !== null;
       setProfileVisibility(null);
-      if (!wasDetailOpen && !wasTopicOpen && !wasProfileOpen) {
+      if (
+        !wasDetailOpen &&
+        !wasTopicOpen &&
+        !wasProfileOpen &&
+        !wasEditorOpen
+      ) {
         saveScroll(activeDestinationRef.current, platformRef.current);
       }
+
+      if (state?.kind === "editor" && editorEnabled) {
+        activeDestinationRef.current = state.sourceDestination;
+        setActiveDestination(state.sourceDestination);
+        setSettingsVisibility(false);
+        setTopicVisibility(null);
+        setDetailVisibility(null);
+        setViewerVisibility(null);
+        // The same open editor keeps its session and registered guard; a
+        // different one starts a new session with no guard or known origin.
+        if (!sameEditor) setEditorVisibility(state);
+        return;
+      }
+      setEditorVisibility(null);
 
       if (state?.kind === "profile" && profileEnabled) {
         const returningContent = contentRef.current;
@@ -1734,6 +2160,8 @@ export const ProductShell = ({
             profileOpenerRef.current?.isConnected &&
             profileOpenerRef.current.focus({ preventScroll: true }),
         );
+      } else if (wasEditorOpen) {
+        restoreEditorFocus();
       } else if (wasSettingsOpen) {
         restoreSettingsFocus();
       } else if (
@@ -1751,13 +2179,17 @@ export const ProductShell = ({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [
     cancelSettingsFocus,
+    editorEnabled,
     expandNavigation,
     restoreCatalogFocus,
+    restoreEditorFocus,
+    setEditorLeaveApproval,
     restoreScroll,
     restoreSettingsFocus,
     restoreTopicFocus,
     saveScroll,
     setDetailVisibility,
+    setEditorVisibility,
     setSettingsVisibility,
     setTopicVisibility,
     setViewerVisibility,
@@ -1770,7 +2202,8 @@ export const ProductShell = ({
       !settingsOpen &&
       activeContent === null &&
       activeTopicId === null &&
-      activeProfile === null
+      activeProfile === null &&
+      !editorOpen
     ) {
       return undefined;
     }
@@ -1779,6 +2212,7 @@ export const ProductShell = ({
     if (settingsOpen) settingsBackRef.current?.focus();
     else if (activeContent !== null) detailBackRef.current?.focus();
     else if (activeProfile !== null) profileBackRef.current?.focus();
+    else if (editorOpen) editorBackRef.current?.focus();
     else topicBackRef.current?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1791,6 +2225,9 @@ export const ProductShell = ({
     activeTopicId,
     cancelScrollRestore,
     cancelSettingsFocus,
+    editorOpen,
+    // A new editor session mounts a new host and back button.
+    editorSession,
     settingsOpen,
   ]);
 
@@ -1807,6 +2244,10 @@ export const ProductShell = ({
       if (navigationIdleTimerRef.current !== null) {
         window.clearTimeout(navigationIdleTimerRef.current);
       }
+      if (editorLeaveApprovalTimerRef.current !== null) {
+        window.clearTimeout(editorLeaveApprovalTimerRef.current);
+      }
+      editorLeaveGuardRef.current?.dispose();
       synchronizePrimaryNavigationViewportInset(document.documentElement, null);
     },
     [cancelScrollRestore, cancelSettingsFocus],
@@ -1834,8 +2275,10 @@ export const ProductShell = ({
     activeCatalogId:
       activeContent?.type === "catalog" ? activeContent.id : null,
     activeProfile,
+    activeEditor: activeEditor?.editorTarget ?? null,
     openContent,
     openProfile,
+    openEditor,
     activeContent,
     activeDestination,
     activeTopicId,
@@ -1863,7 +2306,8 @@ export const ProductShell = ({
     settingsOpen ||
     activeContent !== null ||
     activeTopicId !== null ||
-    activeProfile !== null;
+    activeProfile !== null ||
+    editorOpen;
 
   return (
     <ProductShellContext.Provider value={contextValue}>
@@ -1873,6 +2317,7 @@ export const ProductShell = ({
         data-active-destination={activeDestination}
         data-feed-layout={feedLayout}
         data-detail-open={activeContent === null ? "false" : "true"}
+        data-editor-open={editorOpen ? "true" : "false"}
         data-orientation={orientation}
         data-primary-navigation-minimized={
           navigationMinimized ? "true" : "false"
@@ -1945,6 +2390,11 @@ export const ProductShell = ({
               onViewChange: updateProfileView,
             })
           : null}
+        {activeEditor !== null && renderEditorOverlay ? (
+          <Fragment key={editorSession}>
+            {renderEditorOverlay(activeEditor.editorTarget, editorControls)}
+          </Fragment>
+        ) : null}
         <LoadingScreen
           active={bootPending}
           className={styles.loading}

@@ -5,9 +5,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CatalogDetailExperience } from "./catalog-detail-experience";
+import { useCatalogDetailWithdrawal } from "./catalog-detail-withdrawal";
 
 import type { Root } from "react-dom/client";
 import type { MediaId } from "@moya/contracts";
+import type { WithdrawCatalogDetail } from "./catalog-detail-withdrawal";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -244,5 +246,106 @@ describe("CatalogDetailExperience", () => {
       ),
     );
     expect(onCloseViewer).toHaveBeenCalledOnce();
+  });
+
+  it("withdraws a Detail in place: the Viewer closes, the notice is read from the top with focus", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false })),
+    });
+    let withdraw: WithdrawCatalogDetail | null = null;
+    const Actions = () => {
+      withdraw = useCatalogDetailWithdrawal();
+      return <div data-test-actions="" />;
+    };
+    const onCloseViewer = vi.fn();
+    const onScrollTopChange = vi.fn();
+    const detail = (id: string) =>
+      ({
+        detail: {
+          aliases: [],
+          authorId: `user-${"a".repeat(32)}`,
+          authorName: "临帖人",
+          available: true,
+          canEdit: true,
+          contentType: "work",
+          facts: [],
+          id,
+          media: [
+            {
+              alt: "作品图像",
+              height: 600,
+              id: "media-one",
+              src: "https://example.test/media-one.jpg",
+              width: 400,
+            },
+          ],
+          source: "runtime",
+          sourceCitations: [],
+          title: "春日临帖",
+        },
+        state: "loaded",
+      }) as const;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const render = (catalogId: string, activeViewerMediaId: string | null) =>
+      act(() =>
+        root.render(
+          <CatalogDetailExperience
+            activeViewerMediaId={activeViewerMediaId}
+            backButtonRef={createRef<HTMLButtonElement>()}
+            catalogId={catalogId}
+            commentSection={<section data-comment-section="">comments</section>}
+            detailActions={<Actions />}
+            initialScrollTop={0}
+            onBack={vi.fn()}
+            onCloseViewer={onCloseViewer}
+            onOpenViewer={vi.fn()}
+            onScrollTopChange={onScrollTopChange}
+            onViewerMediaChange={vi.fn()}
+            orientation="landscape"
+            platform="pc"
+            state={detail(catalogId)}
+          />,
+        ),
+      );
+    render("work-one", "media-one");
+    expect(withdraw).not.toBeNull();
+    const scroller = container.querySelector<HTMLElement>(
+      "[data-detail-scroll]",
+    )!;
+    scroller.scrollTop = 240;
+
+    act(() =>
+      withdraw!("work-one", {
+        title: "作品已移到回收站",
+        description: "保留期内可以在回收站中恢复，恢复后为仅自己可见。",
+      }),
+    );
+    // Re-render as the shell would once the Viewer entry is gone.
+    render("work-one", null);
+    const notice = container.querySelector<HTMLElement>(
+      "[data-detail-withdrawn]",
+    );
+    expect(notice?.textContent).toContain("作品已移到回收站");
+    expect(document.activeElement).toBe(notice);
+    expect(onCloseViewer).toHaveBeenCalled();
+    expect(scroller.scrollTop).toBe(0);
+    expect(onScrollTopChange).toHaveBeenCalledWith(0);
+    expect(container.querySelector("[data-detail-main-image]")).toBeNull();
+    expect(container.querySelector("[data-comment-section]")).toBeNull();
+    expect(container.querySelector("[data-test-actions]")).toBeNull();
+
+    // Another Detail is never affected.
+    render("work-two", null);
+    expect(container.querySelector("[data-detail-withdrawn]")).toBeNull();
+    expect(container.querySelector("[data-test-actions]")).not.toBeNull();
   });
 });

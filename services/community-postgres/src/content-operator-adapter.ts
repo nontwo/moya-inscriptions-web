@@ -1,3 +1,7 @@
+import {
+  effectiveFeatured,
+  INHERITED_FEATURED_POSITION,
+} from "./featured-content.js";
 import { asCommunityOperationError } from "./availability.js";
 import { createHash, randomUUID } from "node:crypto";
 import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
@@ -6,9 +10,14 @@ import {
   operatorWorkSchema,
   operatorWorkPageSchema,
   featuredPageSchema,
+  operatorUserPageSchema,
 } from "@moya/contracts/internal/community-operator";
 import type {
-  OperatorContentQuery,
+  OperatorWorksQuery,
+  OperatorFeaturedQuery,
+  OperatorUsersQuery,
+  OperatorUserPage,
+  RecommendUserCommand,
   OperatorWork,
   OperatorWorkPage,
   ModerateWorkCommand,
@@ -27,9 +36,24 @@ interface WorkRow extends QueryResultRow {
   operator_state: "visible" | "hidden" | "removed";
   deleted_at: Date | null;
   version: number;
-  first_published_at: Date;
+  first_published_at: Date | null;
+  public_revision_id: string | null;
+  latest_submission: OperatorWork["latestSubmission"];
+  publicly_visible: boolean;
+  recommendation: OperatorWork["recommendation"];
 }
-const workProjection = `SELECT w.*,u.display_name,u.status AS author_status FROM community.works w JOIN community.public_users u ON u.id=w.author_id`;
+const workProjection = `SELECT w.*,u.display_name,u.status AS author_status,
+  json_build_object('enabled',COALESCE(f.enabled,fu.enabled,FALSE),
+    'version',COALESCE(f.version,0),'position',COALESCE(f.position,${INHERITED_FEATURED_POSITION}::bigint),
+    'source',CASE WHEN f.content_id IS NOT NULL THEN 'work' WHEN fu.enabled THEN 'user' ELSE 'none' END) AS recommendation,
+  community.work_is_public(w) AND u.status='active' AS publicly_visible,
+  (SELECT json_build_object('revisionId',r.id,'title',r.title,'disposition',r.disposition)
+   FROM community.work_revisions r WHERE r.work_id=w.id
+   AND r.disposition<>'not_required' AND w.deleted_at IS NULL
+   ORDER BY r.sequence DESC LIMIT 1) AS latest_submission
+  FROM community.works w JOIN community.public_users u ON u.id=w.author_id
+  LEFT JOIN community.featured_content f ON f.content_type='work' AND f.content_id=w.id
+  LEFT JOIN community.featured_users fu ON fu.user_id=w.author_id`;
 const workDto = (w: WorkRow): OperatorWork =>
   operatorWorkSchema.parse({
     id: w.id,
@@ -41,7 +65,11 @@ const workDto = (w: WorkRow): OperatorWork =>
     state: w.operator_state,
     authorDeleted: w.deleted_at !== null,
     version: w.version,
-    firstPublishedAt: w.first_published_at.toISOString(),
+    firstPublishedAt: w.first_published_at?.toISOString() ?? null,
+    latestSubmission: w.latest_submission,
+    publicRevisionId: w.deleted_at === null ? w.public_revision_id : null,
+    publiclyVisible: w.publicly_visible,
+    recommendation: w.recommendation,
   });
 export class PostgresCommunityContentOperatorAdapter implements CommunityContentOperatorPort {
   constructor(private readonly pool: Pool) {}
@@ -120,17 +148,30 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       ).rows[0]?.title ?? null
     );
   }
-  async readWorks(query: OperatorContentQuery): Promise<OperatorWorkPage> {
+  /**
+   * Works newest first by first publication, else first submission. Search
+   * covers the public text and, for a pending or never-public work, the text
+   * of the author's current revision when it requested public visibility
+   * (content operators already see in the submission queue); self-only
+   * content stays unsearchable.
+   */
+  async readWorks(query: OperatorWorksQuery): Promise<OperatorWorkPage> {
     return this.transaction(async (db) => {
-      const where =
-        " WHERE ($1='' OR position(lower($1) in lower(w.id||' '||w.title||' '||w.text||' '||u.display_name||' '||u.handle))>0)";
+      const where = ` LEFT JOIN community.work_revisions ar ON ar.id=w.author_revision_id AND ar.requested_visibility='public'
+        WHERE ($1='' OR position(lower($1) in lower(w.id||' '||w.title||' '||w.text||' '||COALESCE(ar.title,'')||' '||COALESCE(ar.body,'')||' '||u.display_name||' '||u.handle))>0)
+        AND ($2::text IS NULL OR (w.author_id=$2 AND w.deleted_at IS NULL AND EXISTS(SELECT 1 FROM community.work_revisions r WHERE r.work_id=w.id AND r.disposition<>'not_required')))`;
       const total = await db.query(
         `SELECT COUNT(*)::integer AS total FROM community.works w JOIN community.public_users u ON u.id=w.author_id${where}`,
-        [query.search],
+        [query.search, query.authorId ?? null],
       );
       const rows = await db.query<WorkRow>(
-        `${workProjection}${where} ORDER BY w.first_published_at DESC,w.id LIMIT $2 OFFSET $3`,
-        [query.search, query.pageSize, (query.page - 1) * query.pageSize],
+        `${workProjection}${where} ORDER BY COALESCE(w.first_published_at,w.first_submitted_at,w.updated_at) DESC,w.id LIMIT $3 OFFSET $4`,
+        [
+          query.search,
+          query.authorId ?? null,
+          query.pageSize,
+          (query.page - 1) * query.pageSize,
+        ],
       );
       return operatorWorkPageSchema.parse({
         items: rows.rows.map(workDto),
@@ -139,6 +180,80 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
         pageSize: query.pageSize,
       });
     }, true);
+  }
+  async readUsers(query: OperatorUsersQuery): Promise<OperatorUserPage> {
+    return this.transaction(async (db) => {
+      const where = `WHERE ($1='' OR position(lower($1) in lower(u.id||' '||u.handle||' '||u.display_name))>0)
+        AND ($2::text IS NULL OR u.id=$2)`;
+      const args = [query.search, query.userId ?? null];
+      const total = (
+        await db.query(
+          `SELECT COUNT(*)::integer AS total FROM community.public_users u ${where}`,
+          args,
+        )
+      ).rows[0].total;
+      const rows = await db.query(
+        `SELECT u.id,u.handle,u.display_name,u.bio,u.status,u.created_at,
+        COALESCE(f.enabled,FALSE) AS recommended,COALESCE(f.version,0) AS recommendation_version,
+        (SELECT COUNT(*)::integer FROM community.works w WHERE w.author_id=u.id AND w.deleted_at IS NULL
+          AND EXISTS(SELECT 1 FROM community.work_revisions r WHERE r.work_id=w.id AND r.disposition<>'not_required')) AS submitted_works
+        FROM community.public_users u LEFT JOIN community.featured_users f ON f.user_id=u.id ${where}
+        ORDER BY u.created_at DESC,u.id LIMIT $3 OFFSET $4`,
+        [...args, query.pageSize, (query.page - 1) * query.pageSize],
+      );
+      return operatorUserPageSchema.parse({
+        items: rows.rows.map((r) => ({
+          id: r.id,
+          handle: r.handle,
+          displayName: r.display_name,
+          bio: r.bio,
+          status: r.status,
+          createdAt: r.created_at.toISOString(),
+          submittedWorks: r.submitted_works,
+          recommended: r.recommended,
+          recommendationVersion: r.recommendation_version,
+        })),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
+    }, true);
+  }
+  recommendUser(
+    operator: string,
+    input: RecommendUserCommand,
+  ): Promise<{ version: number }> {
+    return this.mutate(
+      operator,
+      input.requestId,
+      "user.recommendation",
+      { type: "user", id: input.id },
+      input,
+      async (db) => {
+        if (
+          !(
+            await db.query("SELECT 1 FROM community.public_users WHERE id=$1", [
+              input.id,
+            ])
+          ).rowCount
+        )
+          throw new CommunityNotFoundError();
+        const row = (
+          await db.query(
+            "SELECT version FROM community.featured_users WHERE user_id=$1 FOR UPDATE",
+            [input.id],
+          )
+        ).rows[0];
+        if ((row?.version ?? 0) !== input.expectedVersion)
+          throw new CommunityConflictError("User recommendation changed");
+        const updated = await db.query(
+          `INSERT INTO community.featured_users(user_id,enabled) VALUES($1,$2)
+        ON CONFLICT(user_id) DO UPDATE SET enabled=EXCLUDED.enabled,version=community.featured_users.version+1 RETURNING version`,
+          [input.id, input.enabled],
+        );
+        return { version: updated.rows[0].version };
+      },
+    );
   }
   async moderateWork(
     id: string,
@@ -172,19 +287,28 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       },
     );
   }
-  async readFeatured(query: OperatorContentQuery): Promise<FeaturedPage> {
+  async readFeatured(query: OperatorFeaturedQuery): Promise<FeaturedPage> {
     return this.transaction(async (db) => {
-      const from = `FROM community.featured_content f LEFT JOIN catalog_discovery c ON f.content_type='catalog' AND c.catalog_id=f.content_id LEFT JOIN community.works w ON f.content_type='work' AND w.id=f.content_id LEFT JOIN community.public_users u ON u.id=w.author_id`;
+      const from = `FROM effective_featured f LEFT JOIN catalog_discovery c ON f.content_type='catalog' AND c.catalog_id=f.content_id LEFT JOIN community.works w ON f.content_type='work' AND w.id=f.content_id LEFT JOIN community.public_users u ON u.id=w.author_id`;
+      const eligible =
+        "CASE WHEN f.content_type='catalog' THEN c.catalog_id IS NOT NULL ELSE w.id IS NOT NULL AND community.work_is_public(w) AND u.status='active' END";
       const where =
-        " WHERE ($1='' OR position(lower($1) in lower(COALESCE(c.title,w.title,f.content_id)))>0)";
+        " WHERE ($1='' OR position(lower($1) in lower(COALESCE(c.title,w.title,f.content_id)))>0)" +
+        ` AND ($2::text='all' OR (f.enabled AND ${eligible}))`;
       const total = (
-        await db.query(`SELECT COUNT(*)::integer AS total ${from}${where}`, [
-          query.search,
-        ])
+        await db.query(
+          `WITH ${effectiveFeatured} SELECT COUNT(*)::integer AS total ${from}${where}`,
+          [query.search, query.filter ?? "all"],
+        )
       ).rows[0].total;
       const rows = await db.query(
-        `SELECT f.*,COALESCE(c.title,w.title) AS title,CASE WHEN f.content_type='catalog' THEN c.catalog_id IS NOT NULL ELSE w.id IS NOT NULL AND w.deleted_at IS NULL AND w.operator_state='visible' AND u.status='active' END AS eligible ${from}${where} ORDER BY f.position,f.content_type,f.content_id LIMIT $2 OFFSET $3`,
-        [query.search, query.pageSize, (query.page - 1) * query.pageSize],
+        `WITH ${effectiveFeatured} SELECT f.*,COALESCE(c.title,w.title) AS title,${eligible} AS eligible ${from}${where} ORDER BY f.position,f.content_type,f.content_id LIMIT $3 OFFSET $4`,
+        [
+          query.search,
+          query.filter ?? "all",
+          query.pageSize,
+          (query.page - 1) * query.pageSize,
+        ],
       );
       const settings = (
         await db.query(
@@ -239,6 +363,22 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
           );
           if (!exists.rows.length) throw new CommunityNotFoundError();
         }
+        // Featuring is a public exposure: a work that is not effectively
+        // public (self-only, pending first submission, trashed, hidden,
+        // removed or by an inactive author) cannot be enabled.
+        if (
+          input.target.type === "work" &&
+          input.enabled &&
+          (
+            await db.query(
+              "SELECT 1 FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND community.work_is_public(w) AND u.status='active' FOR SHARE OF w",
+              [input.target.id],
+            )
+          ).rowCount !== 1
+        )
+          throw new CommunityConflictError(
+            "Only a public work can be featured",
+          );
         const updated = await db.query(
           "INSERT INTO community.featured_content(content_type,content_id,enabled,position) VALUES($1,$2,$3,$4) ON CONFLICT(content_type,content_id) DO UPDATE SET enabled=EXCLUDED.enabled,position=EXCLUDED.position,version=community.featured_content.version+1 RETURNING version",
           [input.target.type, input.target.id, input.enabled, input.position],

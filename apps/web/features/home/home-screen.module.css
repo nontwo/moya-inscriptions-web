@@ -165,6 +165,7 @@
 }
 
 .media {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   background: var(--yoyi-color-background-muted);
@@ -175,6 +176,23 @@
   width: 100%;
   height: auto;
   object-fit: contain;
+}
+
+/* A Live Photo cover: a small static badge over the still, never motion. */
+.liveBadge {
+  position: absolute;
+  z-index: 1;
+  top: var(--yoyi-space-3);
+  left: var(--yoyi-space-3);
+  padding: var(--yoyi-space-1) var(--yoyi-space-3);
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-overlay);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-caption-size);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  pointer-events: none;
 }
 
 .mediaFallback {
@@ -237,6 +255,36 @@
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* A work without media shows its own text with the card typography. */
+.cardText {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-2);
+  padding: 12px 12px 13px;
+}
+
+.cardExcerpt {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--yoyi-color-text-primary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+}
+
+.cardTitle + .cardExcerpt {
+  color: var(--yoyi-color-text-secondary);
+  -webkit-line-clamp: 6;
+}
+
+.inscriptionCard[data-card-text-only] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .stateMessage {
@@ -436,6 +484,13 @@
   transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
 }
 
+:global([data-primary-shell][data-platform="pc"]) .masonry .feedCard .cardText {
+  background: var(--yoyi-color-background-surface);
+  border-radius: 18px;
+  box-shadow: var(--yoyi-shadow-subtle);
+  transition: box-shadow var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
 :global([data-primary-shell][data-platform="pc"]) .masonry .feedCard .cardBody {
   padding: var(--yoyi-space-2) 2px 0;
 }
@@ -482,7 +537,11 @@
   :global([data-primary-shell][data-platform="pc"])
     .masonry
     .feedCard:hover
-    .mediaFallback {
+    .mediaFallback,
+  :global([data-primary-shell][data-platform="pc"])
+    .masonry
+    .feedCard:hover
+    .cardText {
     box-shadow: var(--yoyi-shadow-dialog);
   }
 }
@@ -502,7 +561,8 @@
 @media (prefers-reduced-motion: reduce) {
   .masonry .feedCard,
   .masonry .feedCard .feedMedia,
-  .masonry .feedCard .mediaFallback {
+  .masonry .feedCard .mediaFallback,
+  .masonry .feedCard .cardText {
     transition-duration: 1ms;
   }
 }

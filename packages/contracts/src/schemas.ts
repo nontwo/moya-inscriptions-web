@@ -1,5 +1,213 @@
 import { z } from "zod";
 
+import {
+  workAuthorshipSchema,
+  workCoverSrcSchema,
+  workMediaIdSchema,
+  workMediaSchema,
+  workVisibilitySchema,
+} from "./work-publishing-schemas.ts";
+import {
+  WORK_EXCERPT_MAXIMUM,
+  WORK_ITEMS_HARD_MAXIMUM,
+  codePointLength,
+} from "./work-publishing-text.ts";
+
+// Explicit re-exports: bundlers resolving the `.js` specifiers to these
+// TypeScript sources cannot enumerate a star re-export statically.
+export {
+  AUTHORSHIP_ORIGINAL_AUTHOR_MAXIMUM,
+  AUTHORSHIP_REFERENCE_TITLE_MAXIMUM,
+  AUTHORSHIP_SOURCE_NOTE_MAXIMUM,
+  DRAFT_TEXT_RAW_ALLOWANCE,
+  WORK_BODY_MAXIMUM,
+  WORK_EXCERPT_MAXIMUM,
+  WORK_ITEMS_CONFIGURABLE_MAXIMUM,
+  WORK_ITEMS_HARD_MAXIMUM,
+  WORK_TITLE_MAXIMUM,
+  checkPublishingBody,
+  checkPublishingText,
+  checkPublishingTitle,
+  codePointLength,
+  hasInvalidPublishingCharacters,
+  normalizePublishingBody,
+  normalizePublishingLineBreaks,
+  normalizePublishingTitle,
+  publishingBodyRule,
+  publishingContentIssues,
+  publishingTitleRule,
+} from "./work-publishing-text.ts";
+export type {
+  PublishingContentInput,
+  PublishingContentIssue,
+  PublishingTextCheck,
+  PublishingTextIssue,
+  PublishingTextRule,
+} from "./work-publishing-text.ts";
+export {
+  MEDIA_CROP_MINIMUM,
+  MEDIA_METADATA_MAXIMUM_BYTES,
+  PUBLISHING_DRAFT_CHANGED,
+  PUBLISHING_MEDIA_PATH_PREFIX,
+  createPublishingDraftCommandSchema,
+  createPublishingSessionCommandSchema,
+  editableWorkSchema,
+  isEmptyWorkContent,
+  legacyMediaSrcSchema,
+  mediaClientPairingSchema,
+  mediaClientSourceSchema,
+  mediaComponentDeclarationSchema,
+  mediaComponentIdSchema,
+  mediaComponentRoleSchema,
+  mediaComponentStateSchema,
+  mediaContentTypeSchema,
+  mediaCropSchema,
+  mediaEditKeySchema,
+  mediaEditSchema,
+  mediaFailureCodeSchema,
+  mediaItemIdSchema,
+  mediaItemKindSchema,
+  mediaItemStateSchema,
+  mediaMetadataSchema,
+  mediaPairingMethodSchema,
+  mediaPresentationSchema,
+  mediaProcessingProfileSchema,
+  mediaQualityModeSchema,
+  mediaRotationSchema,
+  mediaUploadQualityModeSchema,
+  mediaVariantSchema,
+  openWorkEditDraftCommandSchema,
+  publishingDeviceClassSchema,
+  publishingDraftConflictSchema,
+  publishingDraftDeletionCommandSchema,
+  publishingDraftDeletionResultSchema,
+  publishingDraftKindSchema,
+  publishingDraftPageSchema,
+  publishingDraftSaveResultSchema,
+  publishingDraftSchema,
+  publishingDraftSummarySchema,
+  publishingHolderSchema,
+  publishingLimitsSchema,
+  publishingMediaComponentSchema,
+  publishingMediaItemSchema,
+  publishingMediaSourcesSchema,
+  publishingMediaSrcSchema,
+  publishingOpenedEditDraftSchema,
+  publishingPageQuerySchema,
+  publishingReadinessCommandSchema,
+  publishingReadinessSchema,
+  publishingSessionHeartbeatCommandSchema,
+  publishingSessionIdSchema,
+  publishingSessionSchema,
+  publishingSessionStateSchema,
+  publishingSnapshotPageSchema,
+  publishingSnapshotSchema,
+  publishingUploadResultSchema,
+  registerMediaItemCommandSchema,
+  resolvePublishingConflictCommandSchema,
+  restorePublishingSnapshotCommandSchema,
+  savePublishingDraftCommandSchema,
+  standardComponentOutcomeSchema,
+  storedPublishingTextSchema,
+  trashRestoreResultSchema,
+  trashedWorkPageSchema,
+  trashedWorkSchema,
+  workAuthorshipKindSchema,
+  workAuthorshipSchema,
+  workCoverSrcSchema,
+  workDraftContentSchema,
+  workDraftIdSchema,
+  workDraftItemKeySchema,
+  workDraftItemOriginSchema,
+  workDraftItemSchema,
+  workMediaIdSchema,
+  workMediaSchema,
+  workPublishingFailureCodeSchema,
+  workRevisionIdSchema,
+  workSnapshotIdSchema,
+  workSnapshotKindSchema,
+  workSubmissionCommandSchema,
+  workSubmissionContentSchema,
+  workSubmissionNotReadySchema,
+  workSubmissionReceiptSchema,
+  workSubmissionResultSchema,
+  workVisibilityCommandSchema,
+  workVisibilityResultSchema,
+  workVisibilitySchema,
+} from "./work-publishing-schemas.ts";
+export type {
+  CreatePublishingDraftCommand,
+  CreatePublishingSessionCommand,
+  EditableWork,
+  MediaClientPairing,
+  MediaClientSource,
+  MediaComponentDeclaration,
+  MediaComponentRole,
+  MediaComponentState,
+  MediaContentType,
+  MediaCrop,
+  MediaEdit,
+  MediaFailureCode,
+  MediaItemKind,
+  MediaItemState,
+  MediaMetadata,
+  MediaPairingMethod,
+  MediaPresentation,
+  MediaProcessingProfile,
+  MediaQualityMode,
+  MediaRotation,
+  MediaUploadQualityMode,
+  MediaVariant,
+  OpenWorkEditDraftCommand,
+  PublishingDeviceClass,
+  PublishingDraft,
+  PublishingDraftConflict,
+  PublishingDraftDeletionCommand,
+  PublishingDraftDeletionResult,
+  PublishingDraftKind,
+  PublishingDraftPage,
+  PublishingDraftSaveResult,
+  PublishingDraftSummary,
+  PublishingHolder,
+  PublishingLimits,
+  PublishingMediaComponent,
+  PublishingMediaItem,
+  PublishingMediaSources,
+  PublishingOpenedEditDraft,
+  PublishingPageQuery,
+  PublishingReadiness,
+  PublishingReadinessCommand,
+  PublishingSession,
+  PublishingSessionState,
+  PublishingSnapshot,
+  PublishingSnapshotPage,
+  PublishingUploadResult,
+  RegisterMediaItemCommand,
+  ResolvePublishingConflictCommand,
+  RestorePublishingSnapshotCommand,
+  SavePublishingDraftCommand,
+  StandardComponentOutcome,
+  TrashRestoreResult,
+  TrashedWork,
+  TrashedWorkPage,
+  WorkAuthorship,
+  WorkAuthorshipKind,
+  WorkDraftContent,
+  WorkDraftItem,
+  WorkDraftItemOrigin,
+  WorkMedia,
+  WorkPublishingFailureCode,
+  WorkSnapshotKind,
+  WorkSubmissionCommand,
+  WorkSubmissionContent,
+  WorkSubmissionNotReady,
+  WorkSubmissionReceipt,
+  WorkSubmissionResult,
+  WorkVisibility,
+  WorkVisibilityCommand,
+  WorkVisibilityResult,
+} from "./work-publishing-schemas.ts";
+
 const exactTextSchema = (maximum: number) =>
   z
     .string()
@@ -484,36 +692,80 @@ export const authorProfileSchema = z.strictObject({
   }),
   nextAvatarChangeAt: z.iso.datetime().nullable(),
 });
-export const workTextSchema = z.strictObject({
-  title: authorText(200).refine((s) => s.length > 0),
-  text: authorText(10000),
-  mediaIds: z
-    .array(mediaId)
-    .max(12)
-    .refine((ids) => new Set(ids).size === ids.length),
-});
-export const workSchema = z.strictObject({
-  id: workId,
-  authorId: userId,
-  authorName: z.string(),
-  title: z.string(),
-  text: z.string(),
-  media: z.array(authorMediaSchema),
-  firstPublishedAt: z.iso.datetime(),
-  version,
-  canEdit: z.boolean(),
-  available: z.boolean(),
-});
-export const workEditDraftSchema = z.strictObject({
-  id: z.string().regex(/^draft-[0-9a-f]{32}$/u),
-  workId,
-  version,
-  baseWorkVersion: version,
-  baseDraftVersion: version,
-  content: workTextSchema,
-  savedAt: z.iso.datetime(),
-  conflicted: z.boolean(),
-});
+export const workSchema = z
+  .strictObject({
+    id: workId,
+    authorId: userId,
+    authorName: z.string(),
+    /** May be empty: an untitled work keeps an empty title in storage. */
+    title: z.string(),
+    text: z.string(),
+    /** Phase 4 PNG media or work publishing media items; avatars keep `authorMediaSchema`. */
+    media: z.array(workMediaSchema).max(WORK_ITEMS_HARD_MAXIMUM),
+    /**
+     * The id of the `media` entry the viewer's revision uses as its cover (the
+     * public revision for third parties, the author revision for the author):
+     * the chosen cover item, else the first entry; null without media.
+     */
+    coverMediaId: workMediaIdSchema.nullable().optional(),
+    /**
+     * The card cover still of the same revision: the cover item's `cover`
+     * derivative under its edit and the revision cover crop (else its display
+     * derivative), the Phase 4 PNG for an unedited legacy item, the first item
+     * when no cover was chosen; null without a presentable cover.
+     */
+    coverSrc: workCoverSrcSchema.nullable().optional(),
+    /** Null until the first public exposure (a self-only or pending first submission). */
+    firstPublishedAt: z.iso.datetime().nullable(),
+    version,
+    canEdit: z.boolean(),
+    available: z.boolean(),
+    /** Set after a real content update of a public revision. */
+    editedAt: z.iso.datetime().nullable().optional(),
+    /**
+     * Attribution readers see: original, copy or practice, or material sharing
+     * with its reference. Absent when the viewer's revision declares none
+     * (legacy Phase 4 works and submissions without a declaration).
+     */
+    authorship: workAuthorshipSchema.optional(),
+    /** Author-only fields: present only in the author's own view. */
+    visibility: workVisibilitySchema.optional(),
+    trashedAt: z.iso.datetime().nullable().optional(),
+    /**
+     * Author-only: true exactly when third parties can currently see the work
+     * (public, not trashed, not hidden or removed by an operator, and a public
+     * revision exists). A pending first submission or a hidden work is false.
+     */
+    publiclyVisible: z.boolean().optional(),
+  })
+  .superRefine((work, context) => {
+    if (work.publiclyVisible !== undefined && !work.canEdit)
+      context.addIssue({
+        code: "custom",
+        path: ["publiclyVisible"],
+        message: "only the author's own view says whether a work is public",
+      });
+    if (
+      work.publiclyVisible === true &&
+      (work.visibility === "self" ||
+        (work.trashedAt !== undefined && work.trashedAt !== null))
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["publiclyVisible"],
+        message: "a self-only or trashed work is not public",
+      });
+    if (
+      work.coverMediaId !== undefined &&
+      work.coverMediaId !== null &&
+      !work.media.some((media) => media.id === work.coverMediaId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["coverMediaId"],
+        message: "the cover names one of the work's media",
+      });
+  });
 export const profileUpdateSchema = z.strictObject({
   requestId,
   displayName: authorText(40).refine((s) => s.length > 0),
@@ -539,16 +791,6 @@ export const guestFavoriteMergeSchema = z.strictObject({
   expectedAccountId: userId,
   items: z.array(contentIdentitySchema).min(1).max(100),
 });
-export const workDraftSaveSchema = z.strictObject({
-  requestId,
-  baseWorkVersion: version,
-  baseDraftVersion: version,
-  content: workTextSchema,
-});
-export const workDraftApplySchema = z.strictObject({
-  requestId,
-  draftId: z.string().regex(/^draft-[0-9a-f]{32}$/u),
-});
 export const requestIdentitySchema = z.strictObject({ requestId });
 export const authorListQuerySchema = z.strictObject({
   page: z
@@ -567,8 +809,6 @@ export type AuthorPrivacy = z.infer<typeof authorPrivacySchema>;
 export type AuthorMedia = z.infer<typeof authorMediaSchema>;
 export type AuthorProfile = z.infer<typeof authorProfileSchema>;
 export type UserWork = z.infer<typeof workSchema>;
-export type WorkText = z.infer<typeof workTextSchema>;
-export type WorkEditDraft = z.infer<typeof workEditDraftSchema>;
 export type AuthorListQuery = z.infer<typeof authorListQuerySchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 export type PrivacyUpdate = z.infer<typeof privacyUpdateSchema>;
@@ -576,8 +816,6 @@ export type AvatarUpdate = z.infer<typeof avatarUpdateSchema>;
 export type RelationshipUpdate = z.infer<typeof relationshipUpdateSchema>;
 export type ContentRelationUpdate = z.infer<typeof contentRelationUpdateSchema>;
 export type GuestFavoriteMerge = z.infer<typeof guestFavoriteMergeSchema>;
-export type WorkDraftSave = z.infer<typeof workDraftSaveSchema>;
-export type WorkDraftApply = z.infer<typeof workDraftApplySchema>;
 
 const pageOf = <T extends z.ZodType>(item: T) =>
   z.strictObject({
@@ -594,19 +832,6 @@ export const authorPersonSchema = z.strictObject({
 });
 export const authorPeoplePageSchema = pageOf(authorPersonSchema);
 export const workPageSchema = pageOf(workSchema);
-export const workDraftPageSchema = pageOf(workEditDraftSchema).extend({
-  currentVersion: version,
-});
-export const workDraftResultSchema = z.strictObject({
-  draft: workEditDraftSchema,
-  conflict: z.boolean(),
-  latestVersion: version,
-});
-export const workApplyResultSchema = z.strictObject({
-  applied: z.boolean(),
-  conflict: z.boolean(),
-  workVersion: version,
-});
 export const guestFavoriteMergeResultSchema = z.strictObject({
   acknowledged: z.array(contentIdentitySchema).max(100),
 });
@@ -631,6 +856,7 @@ export const discussionCommentSchema = discussionReplySchema.extend({
   replyPageTotal: z.number().int().nonnegative(),
 });
 export const discussionPageSchema = z.strictObject({
+  /** Publicly visible, undeleted roots and replies, filtered for this reader. */
   visibleTotal: z.number().int().nonnegative(),
   hot: z.array(discussionCommentSchema).max(3),
   items: z.array(discussionCommentSchema).max(50),
@@ -669,7 +895,14 @@ export type OwnComment = z.infer<typeof ownCommentSchema>;
 export const contentCardSchema = z.strictObject({
   aliases: catalogSummarySchema.shape.aliases,
   target: contentIdentitySchema,
-  title: authorText(500).min(1),
+  /** Empty for an untitled work; the UI never invents a title. */
+  title: authorText(500),
+  /** The opening of a work body, for text cards. */
+  excerpt: authorText(WORK_EXCERPT_MAXIMUM * 2)
+    .refine((s) => codePointLength(s) <= WORK_EXCERPT_MAXIMUM)
+    .optional(),
+  /** A Live Photo cover: static image plus a LIVE indicator, never autoplay. */
+  live: z.boolean().optional(),
   kind: catalogKindSchema.nullable(),
   authorId: userId.nullable(),
   firstPublishedAt: z.iso.datetime().nullable(),

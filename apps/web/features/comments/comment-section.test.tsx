@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CommentSection } from "./comment-section";
+import { CommentCountProvider, CommentCountLabel } from "./comment-count";
 import { useQaCommentStore } from "./use-qa-comment-store";
 
 import type { Root } from "react-dom/client";
@@ -78,6 +79,49 @@ afterEach(() => {
 });
 
 describe("CommentSection", () => {
+  it("shares the authoritative total with the tab, caps99+, and clears unavailable or switched content", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const renderCount = (count: number, loading = false, key = "first") =>
+      act(() =>
+        root.render(
+          <CommentCountProvider key={key}>
+            <button role="tab">
+              <CommentCountLabel />
+            </button>
+            <CommentSection
+              currentUser={currentUser}
+              items={[]}
+              presentation="live"
+              totalCount={count}
+              loading={loading}
+              onSendComment={() => undefined}
+              onSendReply={() => undefined}
+            />
+          </CommentCountProvider>,
+        ),
+      );
+    for (const [count, label] of [
+      [0, "0"],
+      [3, "3"],
+      [99, "99"],
+      [100, "99+"],
+      [1234, "99+"],
+    ] as const) {
+      renderCount(count);
+      expect(container.querySelector('[role="tab"]')?.textContent).toBe(
+        `评论 ${label}`,
+      );
+      expect(container.querySelector("h2")?.textContent).toBe(`评论 ${label}`);
+    }
+    renderCount(1234, true);
+    expect(container.querySelector('[role="tab"]')?.textContent).toBe("评论");
+    renderCount(0, false, "next-work");
+    expect(container.querySelector('[role="tab"]')?.textContent).toBe("评论 0");
+  });
+
   it("sends trimmed comments, updates the total count and keeps blank input disabled", () => {
     const { container } = render();
     const title = container.querySelector("h2");
@@ -107,7 +151,12 @@ describe("CommentSection", () => {
     const { container } = render();
     const firstComment = container.querySelector("[data-comment-id]");
     const firstId = firstComment?.getAttribute("data-comment-id");
-    click(firstComment?.querySelector("[data-comment-reply-action]") ?? null);
+    const entry = firstComment!.querySelector("[data-comment-reply-action]")!;
+    expect(entry.tagName).toBe("DIV");
+    expect(entry.getAttribute("role")).toBe("button");
+    expect(entry.textContent).not.toBe("回复");
+    click(entry);
+    expect(document.activeElement).toBe(container.querySelector("textarea"));
     expect(container.textContent).toContain("回复 墨池散人");
     fill(container.querySelector("textarea"), "赞同这个观察。");
     click(
@@ -119,6 +168,9 @@ describe("CommentSection", () => {
     const like = firstComment?.querySelector("[data-comment-like]");
     click(like ?? null);
     expect(like?.getAttribute("aria-pressed")).toBe("true");
+    expect(like?.textContent).toBe("");
+    expect(like?.querySelector("svg")).not.toBeNull();
+    expect(container.querySelector("[data-comment-reply-mode]")).toBeNull();
     expect(
       container
         .querySelector("[data-comment-id]")

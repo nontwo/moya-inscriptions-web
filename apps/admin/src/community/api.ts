@@ -1,10 +1,39 @@
 import type {
+  AccountCapacityClass,
   CommentModerationAction,
   CommentModerationState,
   ModerationEventAction,
   ModerationEventSubjectKind,
   OperatorCommentKind,
+  OperatorWorkSubmission,
   PublicationPolicy,
+  PublishingJobKind,
+  PublishingJobState,
+  WorkSubmissionModerationAction,
+  WorkSubmissionQueueState,
+} from "@moya/contracts/internal/community-operator";
+
+/**
+ * Operator shapes the work publishing browser modules render. Types only:
+ * every value still crosses the same-origin Payload endpoints.
+ */
+export type {
+  AccountCapacityClass,
+  OperatorAccountCapacity,
+  OperatorPublishingJob,
+  OperatorPublishingJobPage,
+  OperatorSubmissionMedia,
+  OperatorWorkSubmission,
+  OperatorWorkSubmissionPage,
+  PublicationPolicy,
+  PublishingJobAction,
+  PublishingJobKind,
+  PublishingJobState,
+  SetWorkPublishingSettingsCommand,
+  WorkPublishingSettings,
+  WorkSubmissionModerationAction,
+  WorkSubmissionModerationResult,
+  WorkSubmissionQueueState,
 } from "@moya/contracts/internal/community-operator";
 
 /**
@@ -17,6 +46,8 @@ export class OperatorFailure extends Error {
   constructor(
     readonly code: string,
     message: string,
+    /** The same-origin endpoint's HTTP status; null when no answer arrived. */
+    readonly status: number | null = null,
   ) {
     super(message);
   }
@@ -32,6 +63,9 @@ const messages: Record<string, string> = {
   JSON_BODY_REQUIRED: "请求格式无效，未执行任何操作。",
   NOT_FOUND: "目标已不存在。",
   STATE_CONFLICT: "该项状态已变化（可能已被处理），本次操作未执行。",
+  OPERATOR_RESPONSE_INVALID:
+    "社区后端返回的数据与约定不符，未显示也未执行后续操作。",
+  RANGE_NOT_SATISFIABLE: "请求的媒体片段不存在。",
   OPERATION_FAILED: "操作未完成，内容不会被自动修改。",
 };
 
@@ -45,6 +79,8 @@ const hints: Record<string, string> = {
   OPERATOR_UNAUTHORIZED: "配置完成后刷新页面。",
   COMMAND_INVALID: "请刷新页面后重试。",
   JSON_BODY_REQUIRED: "请刷新页面后重试。",
+  OPERATOR_RESPONSE_INVALID: "请确认前后端版本一致后刷新页面。",
+  RANGE_NOT_SATISFIABLE: "请刷新页面。",
   OPERATION_FAILED: "可重试一次；若仍失败请刷新页面。",
 };
 
@@ -93,6 +129,7 @@ export async function call<Result>(
     throw new OperatorFailure(
       "OPERATION_FAILED",
       failureMessage("OPERATION_FAILED"),
+      response.status,
     );
   }
   if (
@@ -111,10 +148,38 @@ export async function call<Result>(
       typeof body.error.code === "string"
         ? body.error.code
         : "OPERATION_FAILED";
-    throw new OperatorFailure(code, failureMessage(code));
+    throw new OperatorFailure(code, failureMessage(code), response.status);
   }
   return (body as unknown as { result: Result }).result;
 }
+
+/**
+ * Whether a failed command may still have been applied, so re-sending the
+ * same request identity is the safe next step. An answer the Backend decided
+ * (a refused or invalid request, a conflict, a missing subject, an answer
+ * outside the contract) is final and is never offered again.
+ */
+export const outcomeUnknown = (error: unknown): boolean => {
+  if (!(error instanceof OperatorFailure)) return true;
+  if (
+    error.code === "OPERATOR_UNREACHABLE" ||
+    error.code === "OPERATOR_UNAVAILABLE"
+  )
+    return true;
+  return (
+    error.code === "OPERATION_FAILED" &&
+    error.status !== 400 &&
+    error.status !== 422
+  );
+};
+
+/** The text for a final refusal: nothing was changed and the same request is not re-sent. */
+export const describeFinalFailure = (error: unknown): string => {
+  const { code, text } = describeFailure(error);
+  return code === "OPERATION_FAILED"
+    ? "后端拒绝了该请求，未执行任何操作。请刷新页面后重新检查。"
+    : text;
+};
 
 export const moderationLabels: Record<CommentModerationState, string> = {
   pending: "待审核",
@@ -163,6 +228,124 @@ export const policyDescriptions: Record<PublicationPolicy, string> = {
   DIRECT_PUBLICATION: "新评论与回复通过校验后立即公开；Owner 仍可随时隐藏。",
   PRE_MODERATION: "新评论与回复进入待审核；只有 Owner 通过后才会公开。",
 };
+
+/** The work publication policy: independent of the comment policy, prospective only. */
+export const workPolicyDescriptions: Record<PublicationPolicy, string> = {
+  DIRECT_PUBLICATION:
+    "作者明确提交并选择公开的作品版本通过校验后立即公开；Owner 仍可随时隐藏或移除作品。",
+  PRE_MODERATION:
+    "作者明确提交并选择公开的作品版本进入「作品提交审核」；通过前，其他人只能看到该作品上一次公开的版本，新作品则暂不可见。",
+};
+
+export const submissionStateLabels: Record<WorkSubmissionQueueState, string> = {
+  pending: "待审核",
+  approved: "已通过",
+  rejected: "已拒绝",
+  superseded: "已被新提交取代",
+  withdrawn: "已撤回公开",
+};
+
+export const submissionActionLabels: Record<
+  WorkSubmissionModerationAction,
+  string
+> = {
+  approve: "通过并公开",
+  reject: "拒绝（不公开）",
+};
+
+export const submissionDoneLabels: Record<
+  WorkSubmissionModerationAction,
+  string
+> = {
+  approve: "已通过并公开",
+  reject: "已拒绝，未公开",
+};
+
+export const authorshipLabels: Record<
+  NonNullable<OperatorWorkSubmission["authorship"]>["kind"],
+  string
+> = {
+  original: "原创",
+  copy_practice: "临摹或练习",
+  material_sharing: "素材分享",
+};
+
+/** Shown when a revision declares no authorship; nothing is presented as 原创 unless declared. */
+export const AUTHORSHIP_NOT_SET = "未设置";
+
+export const authorshipLabel = (
+  authorship: OperatorWorkSubmission["authorship"],
+): string =>
+  authorship === null ? AUTHORSHIP_NOT_SET : authorshipLabels[authorship.kind];
+
+export const workStateLabels: Record<
+  OperatorWorkSubmission["workState"],
+  string
+> = {
+  visible: "作品可见",
+  hidden: "作品已隐藏",
+  removed: "作品已移除",
+};
+
+export const qualityModeLabels: Record<
+  OperatorWorkSubmission["items"][number]["qualityMode"],
+  string
+> = {
+  standard: "标准",
+  original: "原图",
+  legacy: "早期作品图片",
+};
+
+export const mediaStateLabels: Record<
+  OperatorWorkSubmission["items"][number]["state"],
+  string
+> = {
+  awaiting_upload: "等待上传",
+  processing: "处理中",
+  ready: "已就绪",
+  failed: "失败",
+  cancelled: "已取消",
+  purged: "已清除",
+};
+
+export const capacityClassLabels: Record<AccountCapacityClass, string> = {
+  ordinary: "普通账号",
+  owner: "Owner 账号",
+};
+
+export const jobKindLabels: Record<PublishingJobKind, string> = {
+  process_item: "处理媒体",
+  derive_edit: "生成编辑后的衍生图",
+  purge_item: "清除媒体项",
+  purge_blob: "清除媒体文件",
+  expire_session: "结束过期临时会话",
+  purge_trashed_work: "清除回收站作品",
+  sweep_staging: "清理上传暂存",
+  reconcile_capacity: "核对账号容量",
+};
+
+export const jobStateLabels: Record<PublishingJobState, string> = {
+  queued: "排队中",
+  running: "运行中",
+  succeeded: "已完成",
+  failed: "已失败",
+  abandoned: "已放弃",
+};
+
+/**
+ * The same-origin relay for one derivative of one submission item. Every
+ * segment comes from a contract-checked descriptor and is encoded once.
+ */
+export const workSubmissionMediaSrc = (
+  revisionId: string,
+  itemId: string,
+  variant: OperatorWorkSubmission["items"][number]["variants"][number],
+  editKey: string,
+): string =>
+  `/api/community-moderation/work-submission-media/${encodeURIComponent(revisionId)}/${encodeURIComponent(itemId)}/${encodeURIComponent(variant)}/${encodeURIComponent(editKey)}`;
+
+/** The UI-only placeholder for an empty title; storage keeps it empty. */
+export const UNTITLED_WORK = "未命名作品";
 
 /** Which comment actions a stored state allows; nothing else is offered. */
 export const applicableActions = (

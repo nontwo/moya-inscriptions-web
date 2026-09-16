@@ -5,8 +5,12 @@ import { CatalogMediaCarousel } from "./catalog-media-carousel";
 import styles from "./catalog-detail.module.css";
 
 import type { ReactNode, RefObject } from "react";
-import type { CatalogDetailPresentation } from "./catalog-detail-presentation";
+import type {
+  CatalogDetailPresentation,
+  DetailAuthorshipPresentation,
+} from "./catalog-detail-presentation";
 import type { CatalogDetailPresentationState } from "./catalog-detail-presentation";
+import type { CatalogDetailWithdrawalNotice } from "./catalog-detail-withdrawal";
 import type { PresentationPlatform } from "../shell/device-platform";
 
 export interface CatalogDetailScreenProps {
@@ -14,13 +18,20 @@ export interface CatalogDetailScreenProps {
   readonly backButtonRef: RefObject<HTMLButtonElement | null>;
   readonly commentSection?: ReactNode;
   readonly detailActions?: ReactNode;
+  /** True while the Viewer covers the Detail: Live motion in the carousel stops. */
+  readonly mediaMotionSuspended?: boolean;
   readonly onActiveMediaIndexChange: (index: number) => void;
   readonly onBack: () => void;
   readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
   readonly orientation: "landscape" | "portrait";
   readonly platform: PresentationPlatform;
   readonly state: CatalogDetailPresentationState;
+  /** Set once the loaded content is no longer offered here (e.g. moved to the recycle bin). */
+  readonly withdrawn?: CatalogDetailWithdrawalNotice | null;
 }
+
+/** An accessible-only name for an untitled work; the stored title stays empty. */
+const UNTITLED_WORK_HEADING = "未命名作品";
 
 const DetailMessage = ({
   description,
@@ -36,6 +47,34 @@ const DetailMessage = ({
     <p>{description}</p>
   </section>
 );
+
+const publicationDate = new Intl.DateTimeFormat("zh-CN", { dateStyle: "long" });
+
+/**
+ * A work's first publication time with 已编辑 after a real content update. A
+ * work never publicly exposed shows no time and no pending wording.
+ */
+const WorkPublication = ({
+  editedAt,
+  firstPublishedAt,
+}: {
+  readonly editedAt: string | null | undefined;
+  readonly firstPublishedAt: string | null | undefined;
+}) => {
+  if (firstPublishedAt === null || firstPublishedAt === undefined) return null;
+  const published = new Date(firstPublishedAt);
+  if (Number.isNaN(published.getTime())) return null;
+  return (
+    <p className={styles.publication} data-detail-publication="">
+      <time dateTime={firstPublishedAt}>
+        {publicationDate.format(published)}
+      </time>
+      {editedAt === null || editedAt === undefined ? null : (
+        <span data-detail-edited="">已编辑</span>
+      )}
+    </p>
+  );
+};
 
 const DetailIdentity = ({
   detail,
@@ -55,8 +94,36 @@ const DetailIdentity = ({
 
   return (
     <section className={styles.identityPanel} data-detail-info-panel="">
-      <h1 data-detail-title="">{detail.title}</h1>
-      <p className={styles.kindPeriod}>{identity}</p>
+      {/* An untitled work keeps its title empty; only assistive technology gets a name. */}
+      {detail.contentType === "work" && detail.title === "" ? (
+        <h1 className={styles.visuallyHidden} data-detail-untitled="">
+          {UNTITLED_WORK_HEADING}
+        </h1>
+      ) : (
+        <h1 data-detail-title="">{detail.title}</h1>
+      )}
+      {detail.contentType !== "work" ? (
+        <p className={styles.kindPeriod}>{identity}</p>
+      ) : null}
+      {detail.contentType === "work"
+        ? (detail.sections ?? [])
+            .filter((section) => section.key === "description")
+            .map((section) => (
+              <p
+                key={section.key}
+                className={styles.workBody}
+                data-detail-section="description"
+              >
+                {section.text}
+              </p>
+            ))
+        : null}
+      {detail.contentType === "work" ? (
+        <WorkPublication
+          editedAt={detail.editedAt}
+          firstPublishedAt={detail.firstPublishedAt}
+        />
+      ) : null}
       {detail.summary === undefined ? null : (
         <p className={styles.summary}>{detail.summary}</p>
       )}
@@ -83,13 +150,54 @@ const DetailIdentity = ({
   );
 };
 
+/** A work's authorship (C05), one section for every reader when present. */
+const authorshipOf = (detail: CatalogDetailPresentation) =>
+  detail.contentType === "work" ? (detail.authorship ?? null) : null;
+
+const hasReadingFlow = (detail: CatalogDetailPresentation) =>
+  (detail.sections ?? []).some(
+    (section) => detail.contentType !== "work" || section.key !== "description",
+  ) ||
+  authorshipOf(detail) !== null ||
+  detail.sourceCitations.length > 0;
+
+const DetailAuthorship = ({
+  authorship,
+}: {
+  readonly authorship: DetailAuthorshipPresentation;
+}) => (
+  <section
+    className={styles.readingSection}
+    data-detail-authorship={authorship.kind}
+    data-detail-section="authorship"
+  >
+    <h2>作品性质</h2>
+    <p data-detail-authorship-label="">{authorship.label}</p>
+    {authorship.references.length === 0 ? null : (
+      <div className={styles.factsSection}>
+        <dl className={styles.facts} data-detail-authorship-references="">
+          {authorship.references.map((reference) => (
+            <div key={reference.label}>
+              <dt>{reference.label}</dt>
+              <dd>{reference.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    )}
+  </section>
+);
+
 const DetailReadingFlow = ({
   detail,
 }: {
   readonly detail: CatalogDetailPresentation;
 }) => {
-  const sections = detail.sections ?? [];
-  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+  const sections = (detail.sections ?? []).filter(
+    (section) => detail.contentType !== "work" || section.key !== "description",
+  );
+  const authorship = authorshipOf(detail);
+  if (!hasReadingFlow(detail)) return null;
 
   return (
     <div className={styles.readingFlow}>
@@ -103,6 +211,9 @@ const DetailReadingFlow = ({
           <p>{section.text}</p>
         </section>
       ))}
+      {authorship === null ? null : (
+        <DetailAuthorship authorship={authorship} />
+      )}
       {detail.sourceCitations.length === 0 ? null : (
         <section
           className={styles.readingSection}
@@ -140,8 +251,7 @@ const DetailReadingDisclosure = ({
 }: {
   readonly detail: CatalogDetailPresentation;
 }) => {
-  const sections = detail.sections ?? [];
-  if (sections.length === 0 && detail.sourceCitations.length === 0) return null;
+  if (!hasReadingFlow(detail)) return null;
 
   return (
     <details
@@ -159,15 +269,30 @@ export const CatalogDetailScreen = ({
   backButtonRef,
   commentSection,
   detailActions,
+  mediaMotionSuspended = false,
   onActiveMediaIndexChange,
   onBack,
   onOpenViewer,
   orientation,
   platform,
   state,
+  withdrawn = null,
 }: CatalogDetailScreenProps) => {
   let body;
-  if (state.state === "loading") {
+  if (state.state === "loaded" && withdrawn !== null) {
+    // Media, actions and discussion are gone; only the neutral result stays.
+    body = (
+      <section
+        className={styles.message}
+        data-detail-withdrawn=""
+        role="status"
+        tabIndex={-1}
+      >
+        <h1>{withdrawn.title}</h1>
+        <p>{withdrawn.description}</p>
+      </section>
+    );
+  } else if (state.state === "loading") {
     body = (
       <div aria-label="正在加载资料" className={styles.skeleton} role="status">
         <span className={styles.skeletonMedia} />
@@ -200,10 +325,13 @@ export const CatalogDetailScreen = ({
     );
   } else {
     const detail = state.detail;
-    const media = (
+    // A text-only work is complete without media: no missing-image block.
+    const textOnly = detail.contentType === "work" && detail.media.length === 0;
+    const media = textOnly ? null : (
       <CatalogMediaCarousel
         activeIndex={activeMediaIndex}
         media={detail.media}
+        motionSuspended={mediaMotionSuspended}
         onActiveIndexChange={onActiveMediaIndexChange}
         onOpenViewer={onOpenViewer}
         platform={platform}
@@ -228,9 +356,11 @@ export const CatalogDetailScreen = ({
 
     body = pagedComments ? (
       <div className={styles.pagedDetail} data-detail-paged-layout="">
-        <div className={styles.pagedMedia} data-detail-paged-media="">
-          {media}
-        </div>
+        {media === null ? null : (
+          <div className={styles.pagedMedia} data-detail-paged-media="">
+            {media}
+          </div>
+        )}
         {detailActions}
         <CatalogDetailContentPager
           comments={commentSection}
@@ -241,12 +371,22 @@ export const CatalogDetailScreen = ({
       </div>
     ) : wideComments ? (
       <div className={styles.landscapeDetail} data-detail-landscape-layout="">
-        <div className={styles.landscapeStage}>
-          <div data-detail-landscape-media="">{media}</div>
+        <div
+          className={styles.landscapeStage}
+          data-detail-text-only={textOnly ? "" : undefined}
+        >
+          {media === null ? null : (
+            <div data-detail-landscape-media="">{media}</div>
+          )}
           <div className={styles.landscapeInfo}>
             <DetailIdentity detail={detail} />
             {detailActions}
-            <DetailReadingDisclosure detail={detail} />
+            {/* Without media the text is the work: it reads in full. */}
+            {textOnly ? (
+              <DetailReadingFlow detail={detail} />
+            ) : (
+              <DetailReadingDisclosure detail={detail} />
+            )}
           </div>
         </div>
         <section
@@ -259,7 +399,10 @@ export const CatalogDetailScreen = ({
       </div>
     ) : (
       <>
-        <div className={styles.hero}>
+        <div
+          className={styles.hero}
+          data-detail-text-only={textOnly ? "" : undefined}
+        >
           {media}
           <DetailIdentity detail={detail} />
           {detailActions}

@@ -70,12 +70,27 @@ const MediaFallback = ({
   </div>
 );
 
+/** A Live Photo cover stays a still; the badge only says motion exists. */
+export const CatalogCardLiveBadge = () => (
+  <span
+    aria-label="实况照片"
+    className={styles.liveBadge}
+    data-card-live-badge=""
+    role="img"
+  >
+    LIVE
+  </span>
+);
+
 export const CatalogCardMedia = ({
+  live = false,
   media,
   onMediaSettled,
   title,
   variant,
 }: {
+  /** Shows the LIVE badge on a valid cover; never plays anything. */
+  readonly live?: boolean;
   readonly media:
     Pick<PublicMedia, "src" | "alt" | "width" | "height"> | undefined;
   readonly onMediaSettled?: () => void;
@@ -129,6 +144,7 @@ export const CatalogCardMedia = ({
         src={media.src}
         width={media.width}
       />
+      {live ? <CatalogCardLiveBadge /> : null}
     </div>
   );
 };

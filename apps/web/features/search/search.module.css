@@ -25,6 +25,23 @@
   width: 27px;
   height: 27px;
 }
+/* Mirrors the 44px author avatar in the 48px leading header column. */
+.trigger[data-search-trigger-placement="header"] {
+  /* Contains the glass highlight, which would otherwise fill the header. */
+  position: relative;
+  width: 44px;
+  height: 44px;
+  justify-self: end;
+}
+/* Calligraphy without the author bar centres its header items. */
+:global([data-calligraphy-category-surface] > header:not([data-author-bar]))
+  > .trigger[data-search-trigger-placement="header"] {
+  justify-self: center;
+}
+.trigger[data-search-trigger-placement="header"] :global(.yoyi-icon) {
+  width: 24px;
+  height: 24px;
+}
 .panel {
   position: fixed;
   top: var(--qa-search-viewport-top, 0px);
@@ -138,6 +155,9 @@
   gap: var(--yoyi-space-3);
 }
 .form {
+  position: relative;
+  isolation: isolate;
+  box-shadow: var(--yoyi-shadow-dialog);
   display: flex;
   min-width: 0;
   min-height: 56px;
@@ -197,7 +217,6 @@
   width: 27px;
   height: 27px;
 }
-.form:focus-within,
 .trigger:focus-visible,
 .close:focus-visible,
 .submit:focus-visible,
@@ -240,4 +259,16 @@
 .retry:focus-visible {
   outline: 2px solid var(--yoyi-color-focus-ring);
   outline-offset: 2px;
+}
+
+.form:focus-within {
+  border-color: var(--yoyi-color-border-strong);
+}
+.trigger[data-search-trigger-placement="header"] {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.trigger[data-search-trigger-placement="header"]::before {
+  display: none;
 }

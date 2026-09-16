@@ -1,5 +1,8 @@
 import {
-  operatorContentQuerySchema,
+  operatorWorksQuerySchema,
+  operatorFeaturedQuerySchema,
+  operatorUsersQuerySchema,
+  recommendUserCommandSchema,
   moderateWorkCommandSchema,
   featuredMutationSchema,
   featuredSettingsMutationSchema,
@@ -37,13 +40,11 @@ export class CommunityContentOperatorService {
     return this.content;
   }
   readWorks(input: unknown) {
-    return this.contentPort().readWorks(
-      parse(operatorContentQuerySchema, input),
-    );
+    return this.contentPort().readWorks(parse(operatorWorksQuerySchema, input));
   }
   readFeatured(input: unknown) {
     return this.contentPort().readFeatured(
-      parse(operatorContentQuerySchema, input),
+      parse(operatorFeaturedQuerySchema, input),
     );
   }
   moderateWork(id: string, input: unknown) {
@@ -51,6 +52,15 @@ export class CommunityContentOperatorService {
       id,
       this.operator,
       parse(moderateWorkCommandSchema, input),
+    );
+  }
+  readUsers(input: unknown) {
+    return this.contentPort().readUsers(parse(operatorUsersQuerySchema, input));
+  }
+  recommendUser(input: unknown) {
+    return this.contentPort().recommendUser(
+      this.operator,
+      parse(recommendUserCommandSchema, input),
     );
   }
   setFeatured(input: unknown) {

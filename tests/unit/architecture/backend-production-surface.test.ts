@@ -38,6 +38,7 @@ describe("@moya/backend-production composition boundary", () => {
       "@moya/community-postgres": "workspace:*",
       "@moya/image": "workspace:*",
       "cos-nodejs-sdk-v5": "3.0.0",
+      sharp: "0.35.4",
     });
   });
 

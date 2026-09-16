@@ -13,6 +13,12 @@ import { DetailActions, loadWorkDetail } from "../authors/work-detail";
 import { LiveCatalogCards } from "../authors/live-catalog-cards";
 import "../authors/author-styles.css";
 import { T02pProductPreview } from "../product-preview/t02p-product-preview";
+import { CreateWorkAction } from "../publishing/create-action";
+import { PublishingEntryProvider } from "../publishing/publishing-entry";
+import { PublishingProvider } from "../publishing/publishing-provider";
+import { renderEditorOverlay } from "../publishing/ui/editor/editor-overlay";
+import { EditorSessionProvider } from "../publishing/ui/editor/editor-session-provider";
+import { CatalogSearchHeaderAction } from "../search/catalog-search";
 
 import type { CommunityCommentSurface } from "./community-comment-surface";
 import type { T02pProductPreviewProps } from "../product-preview/t02p-product-preview";
@@ -31,7 +37,12 @@ export interface ProductApplicationProps extends Pick<
    * section 6); null keeps the accepted Detail without a comment section.
    */
   readonly comments: CommunityCommentSurface | null;
-  /** Formal Development composition; the clean Catalog preview keeps its data. */
+  /**
+   * Formal Development composition; the clean Catalog preview keeps its data.
+   * With comments, it replaces `navigationAction` with the publishing plus and
+   * puts Search in the headers, so it must render inside
+   * `CatalogSearchProvider`.
+   */
   readonly authorCommunity?: boolean;
 }
 
@@ -74,32 +85,49 @@ const AuthorProduct = ({
 }) => {
   const author = useAuthors();
   return (
-    <LiveCatalogCards>
-      {" "}
-      <T02pProductPreview
-        {...preview}
-        detailScopeKey={author.viewer?.id ?? "guest"}
-        renderProfileOverlay={(properties) => (
-          <AuthorProfileOverlay {...properties} />
-        )}
-        workDetailLoader={loadWorkDetail}
-        renderDiscussion={(target) => (
-          <DiscussionSection
-            target={target}
-            key={`${target.type}:${target.id}`}
-          />
-        )}
-        renderDetailActions={(detail) => <DetailActions detail={detail} />}
-        discoveryHome={
-          <DiscoveryHome
-            data={preview.states.home}
-            initialFeed={preview.initialHomeFeed ?? "discover"}
-          />
-        }
-        filteredInscriptions={<FilteredInscriptions />}
-        headerStart={<span aria-hidden="true" />}
-        headerEnd={<AuthorTrigger />}
-      />
-    </LiveCatalogCards>
+    // Uploads and the editor session live above every page and overlay (U01).
+    <PublishingProvider>
+      <EditorSessionProvider>
+        <LiveCatalogCards>
+          {" "}
+          <PublishingEntryProvider>
+            <T02pProductPreview
+              {...preview}
+              detailScopeKey={author.viewer?.id ?? "guest"}
+              // Publishing takes the one dock action; Search moves to the headers.
+              navigationAction={<CreateWorkAction />}
+              renderEditorOverlay={renderEditorOverlay}
+              renderProfileOverlay={(properties) => (
+                <AuthorProfileOverlay {...properties} />
+              )}
+              workDetailLoader={loadWorkDetail}
+              renderDiscussion={(target) => (
+                <DiscussionSection
+                  target={target}
+                  key={`${target.type}:${target.id}`}
+                />
+              )}
+              renderDetailActions={(detail) => (
+                <DetailActions detail={detail} />
+              )}
+              discoveryHome={
+                <DiscoveryHome
+                  data={preview.states.home}
+                  headerStart={<CatalogSearchHeaderAction />}
+                  initialFeed={preview.initialHomeFeed ?? "discover"}
+                />
+              }
+              filteredInscriptions={
+                <FilteredInscriptions
+                  headerStart={<CatalogSearchHeaderAction />}
+                />
+              }
+              headerStart={<CatalogSearchHeaderAction />}
+              headerEnd={<AuthorTrigger />}
+            />
+          </PublishingEntryProvider>
+        </LiveCatalogCards>
+      </EditorSessionProvider>
+    </PublishingProvider>
   );
 };

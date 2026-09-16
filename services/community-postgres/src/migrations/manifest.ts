@@ -55,4 +55,40 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "1ec448477421f0f926b10db6461254ab2e092a7d21bc99201dc6bfa5b01063b0",
     }),
+    Object.freeze({
+      migrationId: "20260914090000",
+      filename: "20260914090000_work_publishing_storage.sql",
+      checksum:
+        "c62bc3cd53e5704023905a70193ac7f304dfe7ab97c06fa0cf57f1975f1e4c21",
+    }),
+    Object.freeze({
+      migrationId: "20260914091000",
+      filename: "20260914091000_work_publishing_revisions.sql",
+      checksum:
+        "cfaedc3fd5396610c636500b169c206cdc351c4542842170c4efde269aeac148",
+    }),
+    Object.freeze({
+      migrationId: "20260914092000",
+      filename: "20260914092000_work_publishing_legacy_backfill.sql",
+      checksum:
+        "cb6238b56dd6f92b219a04f78443522a818010893f25cac4754f4c2e136aecba",
+    }),
+    Object.freeze({
+      migrationId: "20260914093000",
+      filename: "20260914093000_work_publishing_legacy_bridge.sql",
+      checksum:
+        "b5312208eb20df808b6e070748de4d377d84b105c123688b2b5882d1c98893fc",
+    }),
+    Object.freeze({
+      migrationId: "20260914094000",
+      filename: "20260914094000_work_publishing_legacy_authorship.sql",
+      checksum:
+        "c319ca35973bfbba07e9b112410e6e6eb994f3005ec485ad7fcb65f78055be6d",
+    }),
+    Object.freeze({
+      migrationId: "20260915010000",
+      filename: "20260915010000_featured_users.sql",
+      checksum:
+        "582b4c7f66cd8aec707ccaf89ff1969c567efc80640f89c5d3dcd5924e4143de",
+    }),
   ]);

@@ -4,6 +4,10 @@ import type {
   CatalogDetail,
   CatalogKind,
   PublicSourceCitation,
+  WorkAuthorship,
+  WorkAuthorshipKind,
+  WorkMedia,
+  WorkVisibility,
 } from "@moya/contracts";
 
 export type CatalogDetailSourceIdentity = "qa" | "runtime";
@@ -29,12 +33,34 @@ export interface CatalogDetailSourceCitationPresentation {
   readonly url?: string;
 }
 
+/** A Live Photo's motion: loaded only when the viewer explicitly plays it. */
+export interface DetailLiveMotionPresentation {
+  readonly motionSrc: string;
+  readonly hasAudio: boolean;
+}
+
+/**
+ * A work's authorship as readers see it (C05): 原创, 临摹或练习 or 素材分享,
+ * and for the latter two only the references the author named.
+ */
+export interface DetailAuthorshipPresentation {
+  readonly kind: WorkAuthorshipKind;
+  readonly label: string;
+  /** 参考作品 / 原作者 / 来源, in that order, only when named. */
+  readonly references: readonly CatalogDetailFact[];
+}
+
 export interface DetailMediaPresentation {
   readonly id: string;
+  /** The display derivative: cards, the carousel and the Detail page. */
   readonly src: string;
+  /** The `full` derivative, shown by the Viewer when the work carries one. */
+  readonly fullSrc?: string;
   readonly alt: string;
   readonly width: number;
   readonly height: number;
+  /** Present only for a Live Photo; the still stays the presented image. */
+  readonly live?: DetailLiveMotionPresentation;
 }
 interface DetailPresentationBase {
   readonly aliases: readonly string[];
@@ -58,8 +84,68 @@ export type CatalogDetailPresentation = DetailPresentationBase &
         readonly authorName: string;
         readonly canEdit: boolean;
         readonly available: boolean;
+        /** Null until the first public exposure; never labelled as pending. */
+        readonly firstPublishedAt?: string | null;
+        /** Set after a real content update; shown as 已编辑 beside the first publication time. */
+        readonly editedAt?: string | null;
+        /** Author-only: the requested visibility of the author's own work. */
+        readonly visibility?: WorkVisibility;
+        /** Shown to every reader when the work carries it. */
+        readonly authorship?: DetailAuthorshipPresentation;
       }
   );
+
+const authorshipLabels = {
+  original: "原创",
+  copy_practice: "临摹或练习",
+  material_sharing: "素材分享",
+} as const satisfies Readonly<Record<WorkAuthorshipKind, string>>;
+
+/** The authorship section of a work Detail; whitespace-only references are omitted. */
+export const toWorkAuthorshipPresentation = (
+  authorship: WorkAuthorship,
+): DetailAuthorshipPresentation => ({
+  kind: authorship.kind,
+  label: authorshipLabels[authorship.kind],
+  references:
+    authorship.kind === "original"
+      ? []
+      : (
+          [
+            ["参考作品", authorship.referenceTitle],
+            ["原作者", authorship.originalAuthor],
+            ["来源", authorship.sourceNote],
+          ] as const
+        ).flatMap(([label, value]) => {
+          const text = value?.trim() ?? "";
+          return text === "" ? [] : [{ label, value: text }];
+        }),
+});
+
+/**
+ * One work media item for Detail and Viewer: a Live Photo keeps its still as
+ * the image and carries its motion separately (never preloaded).
+ */
+export const toWorkMediaPresentation = (
+  // `fullSrc` is read structurally until the work media contract names it.
+  media: WorkMedia & { readonly fullSrc?: string },
+  alt: string,
+): DetailMediaPresentation => ({
+  id: media.id,
+  src: media.src,
+  ...(media.fullSrc === undefined ? {} : { fullSrc: media.fullSrc }),
+  alt,
+  width: media.width,
+  height: media.height,
+  ...(media.kind === "live" && media.motionSrc !== undefined
+    ? {
+        live: {
+          motionSrc: media.motionSrc,
+          hasAudio: media.hasAudio === true,
+        },
+      }
+    : {}),
+});
 
 export type CatalogDetailPresentationState =
   | { readonly state: "loading" }

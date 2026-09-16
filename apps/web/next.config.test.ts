@@ -21,3 +21,9 @@ describe("Search request confidentiality", () => {
     expect(excluded("/")).toBe(false);
   });
 });
+
+describe("Development indicator", () => {
+  it("keeps the dev-only Next indicator off the dock (phone QA)", () => {
+    expect(nextConfig.devIndicators).toBe(false);
+  });
+});

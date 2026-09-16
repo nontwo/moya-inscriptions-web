@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { LivePhotoFrame } from "../publishing/ui/live/live-photo";
 import styles from "./catalog-detail.module.css";
 
 import type {
@@ -163,8 +164,12 @@ export interface CatalogViewerProps {
   readonly platform: PresentationPlatform;
 }
 
+/** The Viewer shows the `full` derivative when the work carries one, else display. */
+const viewerSrc = (item: DetailMediaPresentation): string =>
+  item.fullSrc ?? item.src;
+
 const viewerResourceKey = (item: DetailMediaPresentation): string =>
-  JSON.stringify([item.id, item.src]);
+  JSON.stringify([item.id, viewerSrc(item)]);
 
 export const CatalogViewer = ({
   index,
@@ -370,7 +375,7 @@ export const CatalogViewer = ({
     for (const candidate of [media[index - 1], media[index + 1]]) {
       if (candidate === undefined) continue;
       const preload = new Image();
-      preload.src = candidate.src;
+      preload.src = viewerSrc(candidate);
     }
   }, [index, media, open]);
 
@@ -719,6 +724,7 @@ export const CatalogViewer = ({
     >
       <div
         className={styles.viewerStage}
+        data-active-live={active?.live === undefined ? undefined : "true"}
         data-viewer-scale={transform.scale > 1.05 ? "zoomed" : "fit"}
         onLostPointerCapture={cancelPointer}
         onPointerCancel={cancelPointer}
@@ -740,6 +746,34 @@ export const CatalogViewer = ({
             const failed =
               item === undefined ||
               failedMediaKeys.has(viewerResourceKey(item));
+            const still =
+              item === undefined || failed ? null : (
+                <img
+                  alt={item.alt}
+                  className={
+                    current ? styles.viewerImage : styles.viewerPeerImage
+                  }
+                  data-detail-viewer-image={current ? "" : undefined}
+                  draggable={false}
+                  height={item.height}
+                  key={viewerResourceKey(item)}
+                  onError={(event) => {
+                    const image = event.currentTarget;
+                    if (
+                      !image.isConnected ||
+                      image.getAttribute("src") !== viewerSrc(item)
+                    )
+                      return;
+                    const key = viewerResourceKey(item);
+                    setFailedMediaKeys((present) =>
+                      present.has(key) ? present : new Set(present).add(key),
+                    );
+                  }}
+                  src={viewerSrc(item)}
+                  style={current ? imageStyle : undefined}
+                  width={item.width}
+                />
+              );
             return (
               <div
                 aria-hidden={!current}
@@ -755,32 +789,21 @@ export const CatalogViewer = ({
                   >
                     图像无法加载
                   </div>
+                ) : item.live === undefined ? (
+                  still
                 ) : (
-                  <img
-                    alt={item.alt}
-                    className={
+                  <LivePhotoFrame
+                    active={current && open}
+                    className={styles.viewerLiveFrame}
+                    controlAttributes={{ "data-detail-viewer-control": "" }}
+                    motion={item.live}
+                    videoClassName={
                       current ? styles.viewerImage : styles.viewerPeerImage
                     }
-                    data-detail-viewer-image={current ? "" : undefined}
-                    draggable={false}
-                    height={item.height}
-                    key={viewerResourceKey(item)}
-                    onError={(event) => {
-                      const image = event.currentTarget;
-                      if (
-                        !image.isConnected ||
-                        image.getAttribute("src") !== item.src
-                      )
-                        return;
-                      const key = viewerResourceKey(item);
-                      setFailedMediaKeys((present) =>
-                        present.has(key) ? present : new Set(present).add(key),
-                      );
-                    }}
-                    src={item.src}
-                    style={current ? imageStyle : undefined}
-                    width={item.width}
-                  />
+                    videoStyle={current ? imageStyle : undefined}
+                  >
+                    {still}
+                  </LivePhotoFrame>
                 )}
               </div>
             );

@@ -29,6 +29,8 @@ import type {
   CatalogReadService,
   CommunityModerationService,
   CommunitySessionService,
+  PublishingOperatorService,
+  WorkPublishingService,
 } from "@moya/api";
 import type { HealthReadinessCheck } from "../health/health-handler.js";
 
@@ -51,6 +53,10 @@ const sendRouteError = (
 export interface CommunityRouterDependencies {
   readonly sessionService: CommunitySessionService;
   readonly authorService?: AuthorCommunityService;
+  /** Work publishing author routes; composed only with the author service in Development. */
+  readonly publishingService?: WorkPublishingService;
+  /** Work publishing operator routes; composed only in Development. */
+  readonly publishingOperatorService?: PublishingOperatorService;
   readonly contentOperatorPort?: CommunityContentOperatorPort | undefined;
   readonly discussionPort?: DiscussionPort | undefined;
   /** True only under NODE_ENV=development; Production never composes the entry. */
@@ -157,6 +163,7 @@ export const createRouter =
         response,
         community.authorService,
         community.sessionService,
+        community.publishingService,
       );
       return;
     }
@@ -223,6 +230,7 @@ export const createRouter =
         moderationService,
         contentOperatorPort: community?.contentOperatorPort,
         discussionPort: community?.discussionPort,
+        publishingOperatorService: community?.publishingOperatorService,
         operatorCredential: community?.operatorCredential ?? "",
       });
       return;

@@ -14,6 +14,7 @@ import { HomeScreen } from "../home/home-screen";
 import type { HomeSurfaceData, HomeFeed } from "../home/home-feed";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import homeStyles from "../home/home-screen.module.css";
+import type { ReactNode } from "react";
 const emptyFilters: InscriptionFilters = {
   dynasty: [],
   textAuthor: [],
@@ -49,24 +50,30 @@ export const AuthorTrigger = () => {
 export const DiscoveryHome = ({
   data,
   initialFeed,
+  headerStart = <span aria-hidden="true" />,
 }: {
   data: HomeSurfaceData;
   initialFeed: HomeFeed;
+  headerStart?: ReactNode;
 }) => (
   <HomeScreen
     data={data}
     initialFeed={initialFeed}
-    headerStart={<span aria-hidden="true" />}
+    headerStart={headerStart}
     headerEnd={<AuthorTrigger />}
     renderDiscover={(active) => <DiscoveryFeed kind="all" active={active} />}
   />
 );
-export const FilteredInscriptions = () => {
+export const FilteredInscriptions = ({
+  headerStart = <span aria-hidden="true" />,
+}: {
+  headerStart?: ReactNode;
+}) => {
   const shell = useProductShell();
   return (
     <div className="phase4-inscriptions" data-phase4-inscriptions="">
       <header className={homeStyles.homeHeader} data-author-bar="">
-        <span aria-hidden="true" />
+        {headerStart}
         <strong>碑刻</strong>
         <AuthorTrigger />
       </header>
@@ -421,14 +428,26 @@ const ScopedDiscoveryFeed = ({
           </button>
         </div>
       )}
+      {/*
+        The footer keeps one stable 加载更多 element across loads and every
+        re-render above (author, shell or publishing progress updates): the
+        button stays mounted while a page loads (disabled, aria-busy) and the
+        status text sits beside it, so nothing is torn down and re-created
+        while the sentinel keeps fetching.
+      */}
       <div ref={sentinel} className="phase4-load">
-        {busy ? (
-          <span role="status">正在加载…</span>
-        ) : snapshot.cursor?.hasMore ? (
-          <button className="phase4-button" onClick={() => void load()}>
+        {snapshot.cursor?.hasMore ? (
+          <button
+            aria-busy={busy || undefined}
+            className="phase4-button"
+            disabled={busy}
+            onClick={() => void load()}
+            type="button"
+          >
             加载更多
           </button>
         ) : null}
+        {busy ? <span role="status">正在加载…</span> : null}
       </div>
     </section>
   );

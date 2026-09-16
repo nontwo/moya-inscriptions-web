@@ -14,6 +14,18 @@
   background: var(--yoyi-color-background-page);
 }
 
+/*
+ * Author composition (search + avatar slots): the same header box as 首页 and
+ * 碑刻 (home-screen.module.css .homeHeader), so the search trigger sits at
+ * the same position and size on every primary destination. The non-author
+ * composition above is unchanged.
+ */
+.header[data-author-bar] {
+  min-height: calc(52px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--yoyi-space-3) 0;
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+
 .tabs {
   position: relative;
   display: grid;
@@ -181,6 +193,11 @@
 }
 
 :global([data-primary-shell][data-platform="tablet"]) .header {
+  padding-inline: var(--yoyi-space-5);
+}
+
+:global([data-primary-shell][data-platform="pc"]) .header[data-author-bar] {
+  min-height: calc(68px + env(safe-area-inset-top));
   padding-inline: var(--yoyi-space-5);
 }
 

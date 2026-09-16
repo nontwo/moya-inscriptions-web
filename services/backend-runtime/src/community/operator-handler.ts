@@ -16,11 +16,13 @@ import {
 import { JsonBodyError, readJsonBody } from "../http/json-body.js";
 import { sendJson } from "../http/json-response.js";
 import { collectTransportQuery } from "../http/transport-query.js";
+import { handlePublishingOperatorRequest } from "./work-publishing-handler.js";
 
 import type {
   CommunityContentOperatorPort,
   DiscussionPort,
   CommunityModerationService,
+  PublishingOperatorService,
 } from "@moya/api";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -28,6 +30,8 @@ export interface OperatorRouteDependencies {
   readonly moderationService: CommunityModerationService;
   readonly contentOperatorPort?: CommunityContentOperatorPort | undefined;
   readonly discussionPort?: DiscussionPort | undefined;
+  /** Work publishing operations (Development only); absent leaves publishing/* unrouted. */
+  readonly publishingOperatorService?: PublishingOperatorService | undefined;
   /** Shared credential the Owner's Payload Admin holds server-side. */
   readonly operatorCredential: string;
 }
@@ -129,6 +133,7 @@ const withDefined = <Value>(
  *   POST /internal/community/users/{id}/status
  *   GET  /internal/community/moderation-events?subjectId&action&page&pageSize
  *   GET  /internal/community/summary?range
+ *   …    /internal/community/publishing/*                  (work-publishing-handler.ts)
  * The subject id always travels in the route; a body carries the command only.
  */
 export const handleOperatorRequest = async (
@@ -140,12 +145,23 @@ export const handleOperatorRequest = async (
     operatorCredential,
     contentOperatorPort,
     discussionPort,
+    publishingOperatorService,
   }: OperatorRouteDependencies,
 ): Promise<void> => {
   if (!isAuthorizedOperator(request, operatorCredential)) {
     sendOperatorError(response, 401, "OPERATOR_UNAUTHORIZED");
     return;
   }
+  if (
+    publishingOperatorService !== undefined &&
+    (await handlePublishingOperatorRequest(
+      request,
+      response,
+      pathname,
+      publishingOperatorService,
+    ))
+  )
+    return;
   const method = request.method ?? "GET";
   const methodNotAllowed = () =>
     sendOperatorError(response, 405, "METHOD_NOT_ALLOWED");
@@ -160,6 +176,25 @@ export const handleOperatorRequest = async (
       return readJsonBody(request, 100000);
     };
     if (contentOperatorPort) {
+      if (pathname === "/internal/community/users" && method === "GET") {
+        sendJson(
+          response,
+          200,
+          await operatorService.readUsers(queryOf(request)),
+        );
+        return;
+      }
+      if (
+        pathname === "/internal/community/users/recommendation" &&
+        method === "PUT"
+      ) {
+        sendJson(
+          response,
+          200,
+          await operatorService.recommendUser(await commandBody()),
+        );
+        return;
+      }
       if (pathname === "/internal/community/works" && method === "GET") {
         sendJson(
           response,

@@ -1,4 +1,5 @@
 import { asCommunityOperationError } from "./availability.js";
+import { effectiveFeatured } from "./featured-content.js";
 import { randomUUID } from "node:crypto";
 import { CommunityNotFoundError, CommunityConflictError } from "@moya/api";
 import type { CommunityDiscoveryPort, DiscoveryCardRecord } from "@moya/api";
@@ -10,14 +11,41 @@ import type {
   MediaId,
 } from "@moya/contracts";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
-/** App-role SELECT is granted only on published Catalog projections, never Payload tables. */
-const eligible = `WITH eligible AS (
+
+import {
+  revisionCover,
+  revisionCoverColumns,
+  revisionCoverJoin,
+  workExcerpt,
+} from "./publishing/media-read.js";
+import type { RevisionCoverColumns } from "./publishing/media-read.js";
+/**
+ * App-role SELECT is granted only on published Catalog projections, never
+ * Payload tables. In feeds, search and collections works are eligible for
+ * every viewer (their author included) only when effectively public
+ * (community.work_is_public) with an active, unblocked author: self-only,
+ * pending first, trashed, hidden, removed and purged works never appear
+ * there. A single card follows the work read rule instead: third parties the
+ * same public rule, the author also their own works outside the recycle bin
+ * (design §2.4 author branch). A card's title, excerpt and cover come from
+ * the public revision (the denormalized public title) for everyone except the
+ * work's author, who sees the author revision (P07: the latest own
+ * submission, never a pending label).
+ */
+const eligibleFor = (authorBranch: boolean) => `WITH eligible AS (
  SELECT 'catalog'::text AS content_type,c.catalog_id AS content_id,c.kind,c.title,c.aliases,c.first_published_at,NULL::text AS author_id,c.filter_metadata
  FROM catalog_discovery c
  UNION ALL
- SELECT 'work',w.id,NULL,w.title,ARRAY[]::varchar[],w.first_published_at,w.author_id,'{}'::jsonb FROM community.works w
- JOIN community.public_users u ON u.id=w.author_id WHERE w.deleted_at IS NULL AND w.operator_state='visible' AND u.status='active' AND community.accounts_can_interact($1,w.author_id)
+ SELECT 'work',w.id,NULL,COALESCE(ar.title,w.title),ARRAY[]::varchar[],w.first_published_at,w.author_id,'{}'::jsonb FROM community.works w
+ JOIN community.public_users u ON u.id=w.author_id
+ LEFT JOIN community.work_revisions ar ON w.author_id=$1 AND ar.id=w.author_revision_id
+ WHERE u.status='active' AND community.accounts_can_interact($1,w.author_id) AND (community.work_is_public(w)${
+   authorBranch
+     ? " OR (w.author_id=$1 AND w.deleted_at IS NULL AND w.trashed_at IS NULL)"
+     : ""
+ })
 )`;
+const eligible = eligibleFor(false);
 const filter = `($2='all' OR e.kind=$2) AND ($3='' OR position(lower($3) IN lower(e.title||' '||array_to_string(e.aliases,' ')))>0)
  AND NOT EXISTS(SELECT 1 FROM jsonb_each($4::jsonb) f WHERE jsonb_array_length(f.value)>0 AND NOT (
  (e.filter_metadata->f.key->'values') ?| ARRAY(SELECT jsonb_array_elements_text(f.value))
@@ -33,6 +61,10 @@ interface CardRow extends QueryResultRow {
   author_id: string | null;
   first_published_at: Date | null;
   ordinal?: string;
+}
+interface WorkCardRow extends RevisionCoverColumns {
+  work_id: string;
+  body: string;
 }
 const emptyFilters = {
   dynasty: [],
@@ -75,6 +107,7 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
   private async project(
     db: PoolClient,
     rows: readonly CardRow[],
+    viewer: string | null,
   ): Promise<DiscoveryCardRecord[]> {
     const catalogs = rows
         .filter((r) => r.content_type === "catalog")
@@ -94,41 +127,63 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
         [catalogs],
       )
     ).rows;
+    // Cards read the viewer's revision (the author revision for the work's
+    // author, else the public revision): its excerpt and its cover (the chosen
+    // cover item under its cover crop, else the first item), static even for
+    // a Live Photo.
     const wm = (
-      await db.query<{
-        work_id: string;
-        id: string;
-        width: number;
-        height: number;
-      }>(
-        "SELECT w.id AS work_id,m.id,m.width,m.height FROM community.works w JOIN community.user_media m ON m.id=w.media_ids[1] AND m.owner_id=w.author_id WHERE w.id=ANY($1::text[])",
-        [works],
+      await db.query<WorkCardRow>(
+        `SELECT w.id AS work_id,r.body,${revisionCoverColumns("cov")}
+        FROM community.works w JOIN community.work_revisions r
+          ON r.id=CASE WHEN w.author_id=$2::text THEN COALESCE(w.author_revision_id,w.public_revision_id) ELSE w.public_revision_id END
+        ${revisionCoverJoin("r", "cov")}
+        WHERE w.id=ANY($1::text[])`,
+        [works, viewer],
       )
     ).rows;
-    return rows.map((r) => {
-      const c = cm.find((m) => m.catalog_id === r.content_id),
-        w = wm.find((m) => m.work_id === r.content_id);
-      return {
-        target: { type: r.content_type, id: r.content_id },
+    return rows.map((r): DiscoveryCardRecord => {
+      const c = cm.find((m) => m.catalog_id === r.content_id);
+      const target = { type: r.content_type, id: r.content_id } as const;
+      const card = {
+        target: target as DiscoveryCardRecord["target"],
         title: r.title,
         aliases: r.aliases,
         kind: r.kind,
         authorId: r.author_id,
         firstPublishedAt: r.first_published_at?.toISOString() ?? null,
-        media:
-          r.content_type === "catalog"
-            ? c
-              ? {
-                  type: "catalog",
-                  id: c.media_id,
-                  objectKey: c.object_key,
-                  width: c.width,
-                  height: c.height,
-                }
-              : null
-            : w
-              ? { type: "work", id: w.id, width: w.width, height: w.height }
-              : null,
+      };
+      if (r.content_type === "catalog")
+        return {
+          ...card,
+          media: c
+            ? {
+                type: "catalog",
+                id: c.media_id,
+                objectKey: c.object_key,
+                width: c.width,
+                height: c.height,
+              }
+            : null,
+        };
+      const w = wm.find((m) => m.work_id === r.content_id);
+      const cover = w ? revisionCover(w) : null;
+      const excerpt = workExcerpt(w?.body ?? "");
+      const media = cover
+        ? {
+            type: "work" as const,
+            id: cover.id,
+            // Unedited legacy covers keep their user media path; every other
+            // cover uses its derivative path.
+            src: cover.src,
+            width: cover.width,
+            height: cover.height,
+          }
+        : null;
+      return {
+        ...card,
+        ...(excerpt === "" ? {} : { excerpt }),
+        live: cover?.live ?? false,
+        media,
       };
     });
   }
@@ -178,9 +233,9 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
           [sequence, viewer, fingerprint],
         );
         await db.query(
-          `${eligible}, filtered AS (SELECT e.* FROM eligible e WHERE ${filter}), featured AS (
+          `${eligible}, ${effectiveFeatured}, filtered AS (SELECT e.* FROM eligible e WHERE ${filter}), featured AS (
       SELECT f.content_type,f.content_id,row_number() OVER(ORDER BY f.position,f.content_type,f.content_id) AS featured_order
-      FROM community.featured_content f JOIN filtered e USING(content_type,content_id) WHERE f.enabled
+      FROM effective_featured f JOIN filtered e USING(content_type,content_id) WHERE f.enabled
       ORDER BY f.position,f.content_type,f.content_id LIMIT (SELECT enabled_quantity FROM community.featured_settings WHERE id=TRUE)
      ), ordered AS (SELECT e.content_type,e.content_id,row_number() OVER(ORDER BY (f.featured_order IS NULL),f.featured_order,e.first_published_at DESC NULLS LAST,e.content_type,e.content_id) AS ordinal
       FROM filtered e LEFT JOIN featured f USING(content_type,content_id))
@@ -207,7 +262,7 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
       const page = rows.slice(0, q.pageSize),
         nextAfter = Number(page.at(-1)?.ordinal ?? q.after);
       return {
-        items: await this.project(db, page),
+        items: await this.project(db, page, viewer),
         sequence,
         nextAfter,
         hasMore: rows.length > q.pageSize,
@@ -252,7 +307,7 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
         )
       ).rows;
       return {
-        items: await this.project(db, rows),
+        items: await this.project(db, rows, viewer),
         total,
         page: q.page,
         pageSize: q.pageSize,
@@ -263,11 +318,11 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
     return this.run(false, async (db) => {
       const rows = (
         await db.query<CardRow>(
-          `${eligible} SELECT e.* FROM eligible e WHERE content_type=$2 AND content_id=$3`,
+          `${eligibleFor(true)} SELECT e.* FROM eligible e WHERE content_type=$2 AND content_id=$3`,
           [viewer, target.type, target.id],
         )
       ).rows;
-      const item = (await this.project(db, rows))[0];
+      const item = (await this.project(db, rows, viewer))[0];
       if (!item) throw new CommunityNotFoundError();
       return item;
     });

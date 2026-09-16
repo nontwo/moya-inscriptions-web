@@ -1,6 +1,11 @@
 import {
   adminBulkModerateCommentsRequestSchema,
   operatorContentQuerySchema,
+  operatorWorksQuerySchema,
+  operatorFeaturedQuerySchema,
+  operatorUsersQuerySchema,
+  operatorUserPageSchema,
+  recommendUserCommandSchema,
   adminModerateWorkRequestSchema,
   featuredMutationSchema,
   featuredSettingsMutationSchema,
@@ -13,22 +18,79 @@ import {
   moderationSummaryQuerySchema,
   operatorCommentQuerySchema,
   setPublicationPolicyCommandSchema,
+  adminModerateWorkSubmissionRequestSchema,
+  adminPublishingJobRequestSchema,
+  adminReadAccountCapacityRequestSchema,
+  adminReadWorkSubmissionRequestSchema,
+  adminSetAccountCapacityClassRequestSchema,
+  operatorAccountCapacitySchema,
+  operatorPublishingJobPageSchema,
+  operatorPublishingJobSchema,
+  operatorPublishingJobQuerySchema,
+  operatorSubmissionMediaSchema,
+  operatorWorkSubmissionPageSchema,
+  operatorWorkSubmissionQuerySchema,
+  operatorWorkSubmissionSchema,
+  setWorkPublishingSettingsCommandSchema,
+  workPublishingSettingsSchema,
+  workSubmissionModerationResultSchema,
 } from "@moya/contracts/internal/community-operator";
+import { z } from "zod";
 
 import { isOwner } from "../editorial/access";
-import { callCommunityOperator, CommunityOperatorError } from "./backend";
+import {
+  callCommunityOperator,
+  CommunityOperatorError,
+  openCommunityOperatorMedia,
+} from "./backend";
 
-export { CommunityOperatorError } from "./backend";
+export {
+  CommunityOperatorError,
+  OPERATOR_MEDIA_LIFETIME_MS,
+  OPERATOR_MEDIA_MAXIMUM_BYTES,
+  OPERATOR_MEDIA_TYPES,
+  OPERATOR_MEDIA_WAIT_MS,
+  openCommunityOperatorMedia,
+} from "./backend";
+export type { OperatorMediaCall, OperatorMediaResponse } from "./backend";
+export {
+  WORK_PUBLISHING_LIMIT_FIELDS,
+  limitDisplayValue,
+  readLimitInput,
+} from "./work-publishing-limits";
+export {
+  capacityDesignationAllowed,
+  coverPreview,
+  itemPreviewVariant,
+  publishingJobActions,
+  submissionDecidable,
+  submissionUndecidableReason,
+  submissionVariantKey,
+} from "./work-publishing-rules";
+export {
+  AUTHORSHIP_NOT_SET,
+  OperatorFailure,
+  authorshipLabel,
+  outcomeUnknown,
+} from "./api";
 
+import type { OperatorMediaCall } from "./backend";
 import type {
   BulkModerationResult,
   ModerationEventPage,
   ModerationResult,
   ModerationSummary,
+  OperatorAccountCapacity,
   OperatorCommentDetail,
   OperatorCommentPage,
+  OperatorPublishingJob,
+  OperatorPublishingJobPage,
+  OperatorWorkSubmission,
+  OperatorWorkSubmissionPage,
   PublicationPolicyState,
   UserModerationResult,
+  WorkPublishingSettings,
+  WorkSubmissionModerationResult,
 } from "@moya/contracts/internal/community-operator";
 import type { Endpoint, PayloadRequest } from "payload";
 
@@ -84,6 +146,37 @@ const toQuery = (
 
 const segment = (id: string): string => encodeURIComponent(id);
 
+/** A read that takes no parameters still refuses any field. */
+const noParameters = z.strictObject({});
+
+/**
+ * Work publishing answers are parsed against the shared operator contracts
+ * before they reach the view, so a media descriptor, id or count the Admin
+ * relies on is exactly what the contract allows. A mismatch is a content-free
+ * failure: the answer itself is never logged or echoed.
+ */
+const checked = <Schema extends z.ZodType>(
+  schema: Schema,
+  value: unknown,
+): z.infer<Schema> => {
+  const result = schema.safeParse(value);
+  if (!result.success)
+    throw new CommunityOperatorError("OPERATOR_RESPONSE_INVALID", 502);
+  return result.data;
+};
+
+/** The Admin envelope for a job action; the id and the action travel in the route. */
+const adminPublishingJobActionRequestSchema =
+  adminPublishingJobRequestSchema.omit({ action: true });
+
+/** Route parameters of one derivative of one item of one explicit submission. */
+const workSubmissionMediaRequestSchema = operatorSubmissionMediaSchema
+  .pick({ itemId: true, editKey: true })
+  .extend({
+    revisionId: adminReadWorkSubmissionRequestSchema.shape.id,
+    variant: operatorSubmissionMediaSchema.shape.variants.element,
+  });
+
 export type CommunityOperation = (
   req: PayloadRequest,
   input: unknown,
@@ -93,13 +186,30 @@ export const communityOperations = (
   call: OperatorCall,
 ): Readonly<Record<string, CommunityOperation>> => ({
   "read-works": async (_req, input) =>
-    call("GET", `works${toQuery(parse(operatorContentQuerySchema, input))}`),
+    call("GET", `works${toQuery(parse(operatorWorksQuerySchema, input))}`),
+  "read-users": async (_req, input) =>
+    checked(
+      operatorUserPageSchema,
+      await call(
+        "GET",
+        `users${toQuery(parse(operatorUsersQuerySchema, input))}`,
+      ),
+    ),
+  "recommend-user": async (_req, input) =>
+    call(
+      "PUT",
+      "users/recommendation",
+      parse(recommendUserCommandSchema, input),
+    ),
   "moderate-work": async (_req, input) => {
     const { id, ...command } = parse(adminModerateWorkRequestSchema, input);
     return call("POST", `works/${segment(id)}/moderation`, command);
   },
   "read-featured": async (_req, input) =>
-    call("GET", `featured${toQuery(parse(operatorContentQuerySchema, input))}`),
+    call(
+      "GET",
+      `featured${toQuery(parse(operatorFeaturedQuerySchema, input))}`,
+    ),
   "set-featured": async (_req, input) =>
     call("PUT", "featured", parse(featuredMutationSchema, input)),
   "set-featured-quantity": async (_req, input) =>
@@ -203,9 +313,150 @@ export const communityOperations = (
     const query = parse(moderationSummaryQuerySchema, input ?? {});
     return call("GET", `summary${toQuery({ range: query.range })}`);
   },
+  // Work publishing (Development): the independent work publication policy
+  // and limits, explicit submissions, account capacity and job outcomes.
+  "read-work-publishing-settings": async (
+    _req,
+    input,
+  ): Promise<WorkPublishingSettings> => {
+    parse(noParameters, input);
+    return checked(
+      workPublishingSettingsSchema,
+      await call("GET", "publishing/settings"),
+    );
+  },
+  "set-work-publishing-settings": async (
+    _req,
+    input,
+  ): Promise<WorkPublishingSettings> =>
+    checked(
+      workPublishingSettingsSchema,
+      await call(
+        "PUT",
+        "publishing/settings",
+        parse(setWorkPublishingSettingsCommandSchema, input),
+      ),
+    ),
+  "read-work-submissions": async (
+    _req,
+    input,
+  ): Promise<OperatorWorkSubmissionPage> => {
+    const query = parse(operatorWorkSubmissionQuerySchema, input);
+    return checked(
+      operatorWorkSubmissionPageSchema,
+      await call(
+        "GET",
+        `publishing/submissions${toQuery({
+          state: query.state,
+          page: query.page,
+          pageSize: query.pageSize,
+        })}`,
+      ),
+    );
+  },
+  "read-work-submission": async (
+    _req,
+    input,
+  ): Promise<OperatorWorkSubmission> => {
+    const { id } = parse(adminReadWorkSubmissionRequestSchema, input);
+    return checked(
+      operatorWorkSubmissionSchema,
+      await call("GET", `publishing/submissions/${segment(id)}`),
+    );
+  },
+  "moderate-work-submission": async (
+    _req,
+    input,
+  ): Promise<WorkSubmissionModerationResult> => {
+    const { id, ...command } = parse(
+      adminModerateWorkSubmissionRequestSchema,
+      input,
+    );
+    return checked(
+      workSubmissionModerationResultSchema,
+      await call(
+        "POST",
+        `publishing/submissions/${segment(id)}/moderation`,
+        command,
+      ),
+    );
+  },
+  "read-account-capacity": async (
+    _req,
+    input,
+  ): Promise<OperatorAccountCapacity> => {
+    const { accountId } = parse(adminReadAccountCapacityRequestSchema, input);
+    return checked(
+      operatorAccountCapacitySchema,
+      await call("GET", `publishing/accounts/${segment(accountId)}/capacity`),
+    );
+  },
+  "set-account-capacity": async (
+    _req,
+    input,
+  ): Promise<OperatorAccountCapacity> => {
+    const { accountId, ...command } = parse(
+      adminSetAccountCapacityClassRequestSchema,
+      input,
+    );
+    return checked(
+      operatorAccountCapacitySchema,
+      await call(
+        "PUT",
+        `publishing/accounts/${segment(accountId)}/capacity`,
+        command,
+      ),
+    );
+  },
+  "read-publishing-jobs": async (
+    _req,
+    input,
+  ): Promise<OperatorPublishingJobPage> => {
+    const query = parse(operatorPublishingJobQuerySchema, input);
+    return checked(
+      operatorPublishingJobPageSchema,
+      await call(
+        "GET",
+        `publishing/jobs${toQuery({
+          state: query.state,
+          kind: query.kind,
+          page: query.page,
+          pageSize: query.pageSize,
+        })}`,
+      ),
+    );
+  },
+  "retry-publishing-job": async (
+    _req,
+    input,
+  ): Promise<OperatorPublishingJob> => {
+    const { id, ...command } = parse(
+      adminPublishingJobActionRequestSchema,
+      input,
+    );
+    return checked(
+      operatorPublishingJobSchema,
+      await call("POST", `publishing/jobs/${segment(id)}/retry`, command),
+    );
+  },
+  "abandon-publishing-job": async (
+    _req,
+    input,
+  ): Promise<OperatorPublishingJob> => {
+    const { id, ...command } = parse(
+      adminPublishingJobActionRequestSchema,
+      input,
+    );
+    return checked(
+      operatorPublishingJobSchema,
+      await call("POST", `publishing/jobs/${segment(id)}/abandon`, command),
+    );
+  },
 });
 
 const phase4Operations = new Set([
+  "read-users",
+  "recommend-user",
   "read-works",
   "moderate-work",
   "read-featured",
@@ -214,7 +465,47 @@ const phase4Operations = new Set([
   "delete-body",
   "remove-thread",
   "read-feature-catalogs",
+  "read-work-publishing-settings",
+  "set-work-publishing-settings",
+  "read-work-submissions",
+  "read-work-submission",
+  "moderate-work-submission",
+  "read-account-capacity",
+  "set-account-capacity",
+  "read-publishing-jobs",
+  "retry-publishing-job",
+  "abandon-publishing-job",
 ]);
+
+/** A single well-formed byte range is relayed; anything else reads the whole derivative. */
+const byteRange = (value: string | null | undefined): string | null => {
+  if (typeof value !== "string") return null;
+  const match = /^bytes=(\d{0,15})-(\d{0,15})$/u.exec(value.trim());
+  if (match === null || (match[1] === "" && match[2] === "")) return null;
+  if (match[1] !== "" && match[2] !== "" && Number(match[1]) > Number(match[2]))
+    return null;
+  return `bytes=${match[1]}-${match[2]}`;
+};
+
+const failure = (error: unknown, req: PayloadRequest): Response => {
+  if (!(error instanceof CommunityOperatorError))
+    req.payload.logger.error({ err: error });
+  return Response.json(
+    {
+      ok: false as const,
+      error: {
+        code:
+          error instanceof CommunityOperatorError
+            ? error.code
+            : "OPERATION_FAILED",
+      },
+    },
+    {
+      status: error instanceof CommunityOperatorError ? error.status : 500,
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
+};
 
 const endpoint = (name: string, operation: CommunityOperation): Endpoint => ({
   path: `/community-moderation/${name}`,
@@ -231,33 +522,73 @@ const endpoint = (name: string, operation: CommunityOperation): Endpoint => ({
         { headers: { "Cache-Control": "no-store" } },
       );
     } catch (error) {
-      if (!(error instanceof CommunityOperatorError))
-        req.payload.logger.error({ err: error });
-      return Response.json(
-        {
-          ok: false as const,
-          error: {
-            code:
-              error instanceof CommunityOperatorError
-                ? error.code
-                : "OPERATION_FAILED",
-          },
-        },
-        {
-          status: error instanceof CommunityOperatorError ? error.status : 500,
-          headers: { "Cache-Control": "no-store" },
-        },
-      );
+      return failure(error, req);
     }
   },
 });
 
-/** The real endpoint set, with the transport injectable for boundary tests. */
+/**
+ * The Owner-only, Development-only binary relay for submission previews:
+ * `<img>`/`<video>` sources on the same origin, streamed from the Backend
+ * operator media route. Only derivatives exist there; the relay repeats the
+ * content-type allow-list, never lets a response be cached, sniffed, framed
+ * into a document or embedded elsewhere.
+ */
+const workSubmissionMediaEndpoint = (
+  openMedia: OperatorMediaCall,
+): Endpoint => ({
+  path: "/community-moderation/work-submission-media/:revisionId/:itemId/:variant/:editKey",
+  method: "get",
+  handler: async (req) => {
+    try {
+      requireOwner(req);
+      if (process.env.NODE_ENV !== "development")
+        throw new CommunityOperatorError("NOT_FOUND", 404);
+      const params = req.routeParams ?? {};
+      const { revisionId, itemId, variant, editKey } = parse(
+        workSubmissionMediaRequestSchema,
+        {
+          revisionId: params.revisionId,
+          itemId: params.itemId,
+          variant: params.variant,
+          editKey: params.editKey,
+        },
+      );
+      const media = await openMedia(
+        `publishing/media/${segment(revisionId)}/${segment(itemId)}/${variant}/${editKey}`,
+        byteRange(req.headers?.get("range")),
+        req.signal,
+      );
+      const headers = new Headers({
+        "Content-Type": media.contentType,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "no-referrer",
+        Vary: "Cookie, Range",
+      });
+      if (media.acceptsRanges) headers.set("Accept-Ranges", "bytes");
+      if (media.contentLength !== null)
+        headers.set("Content-Length", media.contentLength);
+      if (media.contentRange !== null)
+        headers.set("Content-Range", media.contentRange);
+      return new Response(media.body, { status: media.status, headers });
+    } catch (error) {
+      return failure(error, req);
+    }
+  },
+});
+
+/** The real endpoint set, with the transports injectable for boundary tests. */
 export const createCommunityEndpoints = (
   call: OperatorCall = callCommunityOperator,
-): Endpoint[] =>
-  Object.entries(communityOperations(call)).map(([name, operation]) =>
+  openMedia: OperatorMediaCall = openCommunityOperatorMedia,
+): Endpoint[] => [
+  ...Object.entries(communityOperations(call)).map(([name, operation]) =>
     endpoint(name, operation),
-  );
+  ),
+  workSubmissionMediaEndpoint(openMedia),
+];
 
 export const communityEndpoints: Endpoint[] = createCommunityEndpoints();

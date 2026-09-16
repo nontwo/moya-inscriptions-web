@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  DRAFT_TEXT_RAW_ALLOWANCE,
+  WORK_TITLE_MAXIMUM,
+  checkPublishingText,
+  publishingBodyRule,
+  publishingTitleRule,
+} from "../../publishing-data";
+import {
+  bodyRule,
+  checkEditorText,
+  codePointLength,
+  issueMessage,
+  originalAuthorRule,
+  referenceTitleRule,
+  sourceNoteRule,
+  titleRule,
+} from "./editor-text";
+
+// The editor applies the shared rule of packages/contracts/src/work-publishing-text.ts (C02).
+describe("editor text rule", () => {
+  it("is the shared contracts rule, not a restatement", () => {
+    expect(checkEditorText).toBe(checkPublishingText);
+    expect(titleRule).toBe(publishingTitleRule);
+    expect(bodyRule).toBe(publishingBodyRule);
+    expect(referenceTitleRule).toEqual({
+      maximum: 200,
+      singleLine: true,
+      rawAllowance: DRAFT_TEXT_RAW_ALLOWANCE,
+    });
+    expect(originalAuthorRule).toEqual({
+      maximum: 100,
+      singleLine: true,
+      rawAllowance: DRAFT_TEXT_RAW_ALLOWANCE,
+    });
+    expect(sourceNoteRule).toEqual({
+      maximum: 500,
+      singleLine: false,
+      rawAllowance: DRAFT_TEXT_RAW_ALLOWANCE,
+    });
+  });
+
+  it("counts code points after normalization, not UTF-16 units", () => {
+    expect(codePointLength("𠀀𠀁")).toBe(2);
+    expect(checkEditorText("  𠀀 书法 \r\n", bodyRule)).toEqual({
+      value: "𠀀 书法",
+      length: 4,
+      issue: null,
+    });
+  });
+
+  it("normalizes CRLF and lone CR and keeps internal body line breaks", () => {
+    expect(checkEditorText("一\r\n二\r三", bodyRule).value).toBe("一\n二\n三");
+  });
+
+  it("refuses line breaks in a title but not in a body", () => {
+    expect(checkEditorText("上\n下", titleRule).issue).toBe("line_break");
+    expect(checkEditorText("上\n下", bodyRule).issue).toBeNull();
+  });
+
+  it("refuses NUL and lone surrogates without repairing them", () => {
+    expect(checkEditorText("a\u0000b", titleRule).issue).toBe(
+      "invalid_characters",
+    );
+    expect(checkEditorText("a\uD800b", titleRule).issue).toBe(
+      "invalid_characters",
+    );
+    expect(checkEditorText("𠀀", titleRule).issue).toBeNull();
+  });
+
+  it("limits the normalized length and the raw draft allowance", () => {
+    expect(
+      checkEditorText("字".repeat(WORK_TITLE_MAXIMUM), titleRule).issue,
+    ).toBeNull();
+    expect(
+      checkEditorText("字".repeat(WORK_TITLE_MAXIMUM + 1), titleRule).issue,
+    ).toBe("too_long");
+    const padded = `${" ".repeat(WORK_TITLE_MAXIMUM + DRAFT_TEXT_RAW_ALLOWANCE)}字`;
+    expect(checkEditorText(padded, titleRule)).toMatchObject({
+      length: 1,
+      issue: "too_long",
+    });
+    // Within the raw allowance, outer whitespace is not counted.
+    const allowed = `${" ".repeat(DRAFT_TEXT_RAW_ALLOWANCE)}字`;
+    expect(checkEditorText(allowed, titleRule)).toEqual({
+      value: "字",
+      length: 1,
+      issue: null,
+    });
+    expect(checkEditorText("   ", titleRule)).toEqual({
+      value: "",
+      length: 0,
+      issue: null,
+    });
+  });
+
+  it("words issues per field", () => {
+    expect(issueMessage("标题", "too_long", 200)).toBe("标题最多 200 字");
+    expect(issueMessage("标题", "line_break", 200)).toBe("标题不能换行");
+    expect(issueMessage("正文", "invalid_characters", 10_000)).toBe(
+      "正文包含无法保存的字符",
+    );
+  });
+});

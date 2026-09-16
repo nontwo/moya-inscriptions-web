@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProductShell, useProductShell } from "./product-shell";
 import {
+  editorHistoryState,
   profileHistoryState,
   detailHistoryState,
   parseProductHistoryState,
@@ -16,8 +17,10 @@ import {
 } from "./product-history";
 
 import type { ReactNode } from "react";
+import type { EditorTarget } from "./product-history";
 import type {
   ProductShellDetailOverlayRenderProps,
+  ProductShellEditorOverlayControls,
   ProductShellProfileOverlayRenderProps,
   ProductShellContextValue,
 } from "./product-shell";
@@ -309,6 +312,166 @@ const renderAuthorShell = (enabled = true) => {
     ),
   );
   return { container, profile: () => profile!, detail: () => detail! };
+};
+const draftId = "work-draft-" + "c".repeat(32);
+const workTarget = { type: "work", id: workId } as const;
+let editorMounts = 0;
+const EditorMountProbe = () => {
+  useEffect(() => {
+    editorMounts += 1;
+  }, []);
+  return null;
+};
+const renderEditorShell = (enabled = true, withOverlays = false) => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push(root);
+  let editor:
+    | {
+        readonly target: EditorTarget;
+        readonly controls: ProductShellEditorOverlayControls;
+      }
+    | undefined;
+  let profile: ProductShellProfileOverlayRenderProps | undefined,
+    detail: ProductShellDetailOverlayRenderProps | undefined;
+  const editWork = (
+    <button
+      aria-label="编辑作品"
+      onClick={(e) =>
+        observedProductShell?.openEditor(workTarget, e.currentTarget)
+      }
+    >
+      Edit
+    </button>
+  );
+  act(() =>
+    root.render(
+      <ProductShell
+        initialPlatform="phone"
+        home={
+          <>
+            <ProductShellObserver />
+            <button
+              aria-label="发布作品"
+              onClick={(e) =>
+                observedProductShell?.openEditor(
+                  { type: "new" },
+                  e.currentTarget,
+                )
+              }
+            >
+              Create
+            </button>
+          </>
+        }
+        inscriptions={<p>inscriptions</p>}
+        calligraphy={
+          <button
+            aria-label="继续草稿"
+            onClick={(e) =>
+              observedProductShell?.openEditor(
+                { type: "draft", id: draftId },
+                e.currentTarget,
+              )
+            }
+          >
+            Draft
+          </button>
+        }
+        navigationAction={<button aria-label="停靠操作">Action</button>}
+        primaryUtility={<SettingsRequester />}
+        {...(withOverlays
+          ? {
+              renderProfileOverlay: (
+                props: ProductShellProfileOverlayRenderProps,
+              ) => {
+                profile = props;
+                return (
+                  <section role="dialog" aria-label="Profile">
+                    <button
+                      ref={props.backButtonRef}
+                      aria-label="返回主页"
+                      onClick={props.onClose}
+                    >
+                      Back
+                    </button>
+                    {editWork}
+                  </section>
+                );
+              },
+              renderDetailOverlay: (
+                props: ProductShellDetailOverlayRenderProps,
+              ) => {
+                detail = props;
+                return (
+                  <section role="dialog" aria-label="Work">
+                    <button
+                      ref={props.backButtonRef}
+                      aria-label="返回作品"
+                      onClick={props.onClose}
+                    >
+                      Back
+                    </button>
+                    {editWork}
+                  </section>
+                );
+              },
+            }
+          : {})}
+        {...(enabled
+          ? {
+              renderEditorOverlay: (
+                target: EditorTarget,
+                controls: ProductShellEditorOverlayControls,
+              ) => {
+                editor = { target, controls };
+                return (
+                  <section role="dialog" aria-label="Editor">
+                    <EditorMountProbe />
+                    <button
+                      ref={controls.backButtonRef}
+                      aria-label="返回编辑"
+                      onClick={controls.close}
+                    >
+                      Back
+                    </button>
+                  </section>
+                );
+              },
+            }
+          : {})}
+      />,
+    ),
+  );
+  return {
+    container,
+    editor: () => editor!,
+    profile: () => profile!,
+    detail: () => detail!,
+  };
+};
+const editorDialog = (container: ParentNode) =>
+  container.querySelector('[role="dialog"][aria-label="Editor"]');
+const scrollable = (element: HTMLElement) => {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: 1_000,
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: 400,
+  });
+  return element;
+};
+const sameDocument = (state: unknown) => ({
+  ...(state as Record<string, unknown>),
+  __artvennDocument: window.history.state.__artvennDocument,
+});
+const beforeUnloadPrevented = () => {
+  const event = new Event("beforeunload", { cancelable: true });
+  act(() => window.dispatchEvent(event));
+  return event.defaultPrevented;
 };
 const traverse = (state: unknown) =>
   act(() => {
@@ -1775,5 +1938,645 @@ describe("ProductShell", () => {
     );
     expect(observedProductShell?.activeProfile).toBeNull();
     expect(observedProductShell?.activeContent).toBeNull();
+  });
+  it("owns Editor history, inertness, dock hiding, Back scroll, and opener focus", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    const home = scrollable(
+      app.container.querySelector<HTMLElement>(
+        '[data-primary-destination="home"]',
+      )!,
+    );
+    home.scrollTop = 146;
+    const opener = buttonByLabel(app.container, "发布作品");
+
+    click(opener);
+    await act(async () => vi.runAllTimers());
+
+    expect(replaceState).toHaveBeenCalledWith(
+      withHistoryMarkers(primaryHistoryState("home", 146)),
+      "",
+      "/dev/t02p",
+    );
+    expect(pushState).toHaveBeenCalledWith(
+      withHistoryMarkers(editorHistoryState({ type: "new" }, "home", 146)),
+      "",
+      "/dev/t02p#editor",
+    );
+    expect(app.editor().target).toEqual({ type: "new" });
+    expect(observedProductShell?.activeEditor).toEqual({ type: "new" });
+    const layer = app.container.querySelector("[data-product-primary-layer]")!;
+    expect(layer.hasAttribute("inert")).toBe(true);
+    expect(layer.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      app.container
+        .querySelector("[data-primary-navigation-layer]")
+        ?.hasAttribute("hidden"),
+    ).toBe(true);
+    expect(
+      app.container
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-editor-open"),
+    ).toBe("true");
+    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回编辑"),
+    );
+
+    home.scrollTop = 0;
+    traverse(sameDocument(primaryHistoryState("home", 146)));
+    await act(async () => vi.runAllTimers());
+
+    expect(editorDialog(app.container)).toBeNull();
+    expect(observedProductShell?.activeEditor).toBeNull();
+    expect(layer.hasAttribute("inert")).toBe(false);
+    expect(home.scrollTop).toBe(146);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("opens the Editor from another primary destination and returns to its position", async () => {
+    const pushState = vi.spyOn(window.history, "pushState");
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "书帖"));
+    await act(async () => vi.runAllTimers());
+    const calligraphy = scrollable(
+      app.container.querySelector<HTMLElement>(
+        '[data-primary-destination="calligraphy"]',
+      )!,
+    );
+    calligraphy.scrollTop = 212;
+
+    click(buttonByLabel(app.container, "继续草稿"));
+    await act(async () => vi.runAllTimers());
+    // The private draft ID lives in history state, never in the address.
+    expect(pushState).toHaveBeenLastCalledWith(
+      withHistoryMarkers(
+        editorHistoryState({ type: "draft", id: draftId }, "calligraphy", 212),
+      ),
+      "",
+      "/dev/t02p#editor",
+    );
+    expect(window.location.search).toBe("");
+
+    calligraphy.scrollTop = 0;
+    traverse(sameDocument(primaryHistoryState("calligraphy", 212)));
+    await act(async () => vi.runAllTimers());
+    expect(observedProductShell?.activeDestination).toBe("calligraphy");
+    expect(calligraphy.scrollTop).toBe(212);
+    expect(editorDialog(app.container)).toBeNull();
+  });
+
+  it("closes through its return bar by history Back without asking an allowing guard twice", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    back.mockClear();
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "发布作品"));
+    await act(async () => vi.runAllTimers());
+    const guard = vi.fn(() => "allow" as const);
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+
+    click(buttonByLabel(app.container, "返回编辑"));
+    expect(guard).toHaveBeenCalledExactlyOnceWith("close");
+    expect(back).toHaveBeenCalledOnce();
+    traverse(sameDocument(primaryHistoryState("home", 0)));
+    await act(async () => vi.runAllTimers());
+    expect(guard).toHaveBeenCalledOnce();
+    expect(editorDialog(app.container)).toBeNull();
+    expect(beforeUnloadPrevented()).toBe(false);
+  });
+
+  it("expires an approval whose Back never arrived and never lets it cover a new guard", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    back.mockClear();
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "发布作品"));
+    await act(async () => vi.runAllTimers());
+    const guard = vi.fn<(reason: string) => "allow" | "blocked">(() => "allow");
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+
+    click(buttonByLabel(app.container, "返回编辑"));
+    expect(back).toHaveBeenCalledOnce();
+    // No popstate followed; the author keeps editing and later presses Back.
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    guard.mockReturnValue("blocked");
+    traverse(sameDocument(primaryHistoryState("home", 0)));
+    await act(async () => vi.runAllTimers());
+    expect(guard).toHaveBeenLastCalledWith("history");
+    expect(editorDialog(app.container)).not.toBeNull();
+    expect(parseProductHistoryState(window.history.state)?.kind).toBe("editor");
+
+    guard.mockReturnValue("allow");
+    click(buttonByLabel(app.container, "返回编辑"));
+    expect(back).toHaveBeenCalledTimes(2);
+    const blocking = vi.fn(() => "blocked" as const);
+    act(() => {
+      app.editor().controls.registerLeaveGuard(blocking);
+    });
+    traverse(sameDocument(primaryHistoryState("home", 0)));
+    await act(async () => vi.runAllTimers());
+    expect(blocking).toHaveBeenCalledExactlyOnceWith("history");
+    expect(editorDialog(app.container)).not.toBeNull();
+  });
+
+  it("lets a blocking guard keep the Editor through close, popstate, and unload", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    back.mockClear();
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "发布作品"));
+    await act(async () => vi.runAllTimers());
+    expect(beforeUnloadPrevented()).toBe(false);
+    const guard = vi.fn<(reason: string) => "allow" | "blocked">(
+      () => "blocked",
+    );
+    let unregister = () => undefined as void;
+    act(() => {
+      unregister = app.editor().controls.registerLeaveGuard(guard);
+    });
+
+    click(buttonByLabel(app.container, "返回编辑"));
+    expect(guard).toHaveBeenLastCalledWith("close");
+    expect(back).not.toHaveBeenCalled();
+    expect(editorDialog(app.container)).not.toBeNull();
+
+    const pushState = vi.spyOn(window.history, "pushState");
+    traverse(sameDocument(primaryHistoryState("home", 0)));
+    await act(async () => vi.runAllTimers());
+    expect(guard).toHaveBeenLastCalledWith("history");
+    expect(pushState).toHaveBeenCalledWith(
+      withHistoryMarkers(editorHistoryState({ type: "new" }, "home", 0)),
+      "",
+      "/dev/t02p#editor",
+    );
+    expect(parseProductHistoryState(window.history.state)?.kind).toBe("editor");
+    expect(editorDialog(app.container)).not.toBeNull();
+    expect(
+      app.container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+
+    expect(beforeUnloadPrevented()).toBe(true);
+    expect(guard).toHaveBeenLastCalledWith("unload");
+    act(() => unregister());
+    guard.mockClear();
+    expect(beforeUnloadPrevented()).toBe(false);
+    expect(guard).not.toHaveBeenCalled();
+
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+    guard.mockReturnValue("allow");
+    traverse(sameDocument(primaryHistoryState("home", 0)));
+    await act(async () => vi.runAllTimers());
+    expect(editorDialog(app.container)).toBeNull();
+    guard.mockClear();
+    expect(beforeUnloadPrevented()).toBe(false);
+    expect(guard).not.toHaveBeenCalled();
+  });
+
+  it("asks a blocking guard before writing anything for a native link's entry", async () => {
+    const app = renderEditorShell(true, true);
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "发布作品"));
+    await act(async () => vi.runAllTimers());
+    const guard = vi.fn<(reason: string) => "allow" | "blocked">(
+      () => "blocked",
+    );
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const followLink = (url: string) =>
+      act(() => {
+        window.history.replaceState(null, "", url);
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      });
+    replaceState.mockClear();
+    pushState.mockClear();
+
+    followLink(`/dev/t02p?workId=${workId}#detail`);
+    await act(async () => vi.runAllTimers());
+    expect(guard).toHaveBeenCalledExactlyOnceWith("history");
+    expect(pushState).not.toHaveBeenCalled();
+    // The link's own write, then the Editor overwriting that same entry.
+    expect(replaceState).toHaveBeenCalledTimes(2);
+    expect(replaceState).toHaveBeenLastCalledWith(
+      withHistoryMarkers(editorHistoryState({ type: "new" }, "home", 0)),
+      "",
+      "/dev/t02p#editor",
+    );
+    expect(`${window.location.search}${window.location.hash}`).toBe("#editor");
+    expect(observedProductShell?.activeContent).toBeNull();
+    expect(editorDialog(app.container)).not.toBeNull();
+
+    guard.mockReturnValue("allow");
+    followLink(`/dev/t02p?workId=${workId}#detail`);
+    await act(async () => vi.runAllTimers());
+    expect(editorDialog(app.container)).toBeNull();
+    expect(app.detail().target).toEqual(workTarget);
+    // Only the allowed navigation reloaded Detail.
+    expect(app.detail().navigationRevision).toBe(1);
+    expect(parseProductHistoryState(window.history.state)?.kind).toBe("detail");
+  });
+
+  it("replaces its target in place and keeps other overlays and destinations closed", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    const opener = buttonByLabel(app.container, "发布作品");
+    let opened: boolean | undefined;
+    act(() => {
+      opened = observedProductShell?.openEditor({ type: "new" }, opener);
+    });
+    expect(opened).toBe(true);
+    await act(async () => vi.runAllTimers());
+    replaceState.mockClear();
+    pushState.mockClear();
+    const controls = app.editor().controls;
+    const backButton = buttonByLabel(app.container, "返回编辑");
+    const mounts = editorMounts;
+
+    act(() =>
+      app.editor().controls.replaceTarget({ type: "draft", id: draftId }),
+    );
+    expect(replaceState).toHaveBeenCalledOnce();
+    expect(replaceState).toHaveBeenCalledWith(
+      withHistoryMarkers(
+        editorHistoryState({ type: "draft", id: draftId }, "home", 0),
+      ),
+      "",
+      "/dev/t02p#editor",
+    );
+    expect(app.editor().target).toEqual({ type: "draft", id: draftId });
+    // The same session: stable controls, the same host, no remount.
+    expect(app.editor().controls).toBe(controls);
+    expect(buttonByLabel(app.container, "返回编辑")).toBe(backButton);
+    expect(editorMounts).toBe(mounts);
+    act(() =>
+      app.editor().controls.replaceTarget({ type: "draft", id: "invalid" }),
+    );
+    expect(replaceState).toHaveBeenCalledOnce();
+
+    act(() => {
+      opened = observedProductShell?.openEditor({ type: "new" }, opener);
+      observedProductShell?.openCatalog("catalog-one", opener);
+      observedProductShell?.requestSettings(opener);
+    });
+    expect(opened).toBe(false);
+    click(buttonByLabel(app.container, "碑刻"));
+    await act(async () => vi.runAllTimers());
+    expect(pushState).not.toHaveBeenCalled();
+    expect(observedProductShell?.activeContent).toBeNull();
+    expect(observedProductShell?.settingsOpen).toBe(false);
+    expect(observedProductShell?.activeDestination).toBe("home");
+    expect(app.editor().target).toEqual({ type: "draft", id: draftId });
+  });
+
+  it("keeps one session for its own link and starts a guard-free one when history switches editors", async () => {
+    const app = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    click(buttonByLabel(app.container, "发布作品"));
+    await act(async () => vi.runAllTimers());
+    act(() =>
+      app.editor().controls.replaceTarget({ type: "draft", id: draftId }),
+    );
+    const guard = vi.fn<(reason: string) => "allow" | "blocked">(
+      () => "blocked",
+    );
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+    const backButton = buttonByLabel(app.container, "返回编辑");
+    const mounts = editorMounts;
+    const followLink = (url: string) =>
+      act(() => {
+        window.history.replaceState(null, "", url);
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      });
+
+    // The draft's own plain link is the same Editor, not a new work.
+    followLink("/dev/t02p#editor");
+    await act(async () => vi.runAllTimers());
+    expect(guard).not.toHaveBeenCalled();
+    expect(app.editor().target).toEqual({ type: "draft", id: draftId });
+    expect(parseProductHistoryState(window.history.state)).toEqual(
+      editorHistoryState({ type: "draft", id: draftId }, "home", 0),
+    );
+    expect(editorMounts).toBe(mounts);
+
+    followLink(`/dev/t02p?workId=${workId}#editor`);
+    await act(async () => vi.runAllTimers());
+    expect(guard).toHaveBeenCalledExactlyOnceWith("history");
+    expect(app.editor().target).toEqual({ type: "draft", id: draftId });
+    expect(`${window.location.search}${window.location.hash}`).toBe("#editor");
+
+    guard.mockReturnValue("allow");
+    followLink(`/dev/t02p?workId=${workId}#editor`);
+    await act(async () => vi.runAllTimers());
+    expect(app.editor().target).toEqual(workTarget);
+    expect(editorMounts).toBe(mounts + 1);
+    const nextBackButton = buttonByLabel(app.container, "返回编辑");
+    expect(nextBackButton).not.toBe(backButton);
+    expect(document.activeElement).toBe(nextBackButton);
+    guard.mockClear();
+    expect(beforeUnloadPrevented()).toBe(false);
+    expect(guard).not.toHaveBeenCalled();
+  });
+
+  it("opens over Detail and Back returns to that Detail, its scroll and its back button", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const app = renderEditorShell(true, true);
+    await act(async () => vi.runAllTimers());
+    const home = scrollable(
+      app.container.querySelector<HTMLElement>(
+        '[data-primary-destination="home"]',
+      )!,
+    );
+    home.scrollTop = 146;
+    act(() =>
+      observedProductShell?.openContent(
+        workTarget,
+        buttonByLabel(app.container, "发布作品"),
+      ),
+    );
+    act(() => app.detail().onScrollTopChange(73));
+    replaceState.mockClear();
+
+    click(buttonByLabel(app.container, "编辑作品"));
+    const detailEntry = [...replaceState.mock.calls]
+      .reverse()
+      .find(([state]) => parseProductHistoryState(state)?.kind === "detail")
+      ?.at(0);
+    expect(parseProductHistoryState(detailEntry)).toEqual(
+      detailHistoryState(workTarget, "home", 146, 73),
+    );
+    expect(pushState).toHaveBeenLastCalledWith(
+      withHistoryMarkers(editorHistoryState(workTarget, "home", 146)),
+      "",
+      `/dev/t02p?workId=${workId}#editor`,
+    );
+    expect(observedProductShell?.activeContent).toBeNull();
+    expect(
+      app.container.querySelector('[role="dialog"][aria-label="Work"]'),
+    ).toBeNull();
+    await act(async () => vi.runAllTimers());
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回编辑"),
+    );
+
+    home.scrollTop = 20;
+    traverse(detailEntry);
+    await act(async () => vi.runAllTimers());
+    expect(editorDialog(app.container)).toBeNull();
+    expect(app.detail().target).toEqual(workTarget);
+    expect(app.detail().initialScrollTop).toBe(73);
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回作品"),
+    );
+    // Still under Detail: no primary scroll restore, no opener focus.
+    expect(home.scrollTop).toBe(20);
+    expect(
+      app.container
+        .querySelector("[data-product-primary-layer]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
+  });
+
+  it("opens over Profile and Back returns to its tab, scroll and back button", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const app = renderEditorShell(true, true);
+    await act(async () => vi.runAllTimers());
+    act(() =>
+      observedProductShell?.openProfile(
+        authorId,
+        buttonByLabel(app.container, "发布作品"),
+      ),
+    );
+    act(() => app.profile().onViewChange("favorites", 188));
+    replaceState.mockClear();
+
+    click(buttonByLabel(app.container, "编辑作品"));
+    const profileEntry = [...replaceState.mock.calls]
+      .reverse()
+      .find(([state]) => parseProductHistoryState(state)?.kind === "profile")
+      ?.at(0);
+    expect(parseProductHistoryState(profileEntry)).toMatchObject({
+      authorId,
+      profileScrollTop: 188,
+      tab: "favorites",
+    });
+    expect(parseProductHistoryState(window.history.state)).toEqual(
+      editorHistoryState(workTarget, "home", 0),
+    );
+    expect(observedProductShell?.activeProfile).toBeNull();
+    await act(async () => vi.runAllTimers());
+
+    traverse(profileEntry);
+    await act(async () => vi.runAllTimers());
+    expect(editorDialog(app.container)).toBeNull();
+    expect(app.profile().state.tab).toBe("favorites");
+    expect(app.profile().state.profileScrollTop).toBe(188);
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回主页"),
+    );
+  });
+
+  it("completes into the submitted work's Detail, whose Back returns to the browse origin", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const app = renderEditorShell(true, true);
+    await act(async () => vi.runAllTimers());
+    const home = scrollable(
+      app.container.querySelector<HTMLElement>(
+        '[data-primary-destination="home"]',
+      )!,
+    );
+    home.scrollTop = 146;
+    click(buttonByLabel(app.container, "发布作品"));
+    await act(async () => vi.runAllTimers());
+    const guard = vi.fn(() => "blocked" as const);
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+    replaceState.mockClear();
+    pushState.mockClear();
+
+    act(() =>
+      app.editor().controls.completeWith({ type: "catalog", id: "has space" }),
+    );
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(editorDialog(app.container)).not.toBeNull();
+
+    act(() => app.editor().controls.completeWith(workTarget));
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(
+      withHistoryMarkers(detailHistoryState(workTarget, "home", 146)),
+      "",
+      `/dev/t02p?workId=${workId}#detail`,
+    );
+    await act(async () => vi.runAllTimers());
+    expect(editorDialog(app.container)).toBeNull();
+    expect(observedProductShell?.activeEditor).toBeNull();
+    expect(app.detail().target).toEqual(workTarget);
+    expect(app.detail().initialScrollTop).toBe(0);
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回作品"),
+    );
+    expect(beforeUnloadPrevented()).toBe(false);
+    expect(guard).not.toHaveBeenCalled();
+
+    home.scrollTop = 0;
+    traverse(sameDocument(primaryHistoryState("home", 146)));
+    await act(async () => vi.runAllTimers());
+    expect(observedProductShell?.activeContent).toBeNull();
+    expect(home.scrollTop).toBe(146);
+  });
+
+  it("completes back to, and reloads, the same work's Detail it was opened over", async () => {
+    const back = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    back.mockClear();
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const app = renderEditorShell(true, true);
+    await act(async () => vi.runAllTimers());
+    act(() =>
+      observedProductShell?.openContent(
+        workTarget,
+        buttonByLabel(app.container, "发布作品"),
+      ),
+    );
+    const revision = app.detail().navigationRevision;
+    click(buttonByLabel(app.container, "编辑作品"));
+    await act(async () => vi.runAllTimers());
+    const guard = vi.fn(() => "blocked" as const);
+    act(() => {
+      app.editor().controls.registerLeaveGuard(guard);
+    });
+    replaceState.mockClear();
+    pushState.mockClear();
+
+    act(() => app.editor().controls.completeWith(workTarget));
+    expect(back).toHaveBeenCalledOnce();
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+    expect(beforeUnloadPrevented()).toBe(false);
+
+    traverse(sameDocument(detailHistoryState(workTarget, "home", 0)));
+    await act(async () => vi.runAllTimers());
+    expect(guard).not.toHaveBeenCalled();
+    expect(editorDialog(app.container)).toBeNull();
+    expect(app.detail().target).toEqual(workTarget);
+    expect(app.detail().navigationRevision).toBe(revision + 1);
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回作品"),
+    );
+  });
+
+  it("rebuilds exact Editor links above their source and keeps private, disabled or malformed links closed", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      `/dev/t02p?feed=nearby&workId=${workId}#editor`,
+    );
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const app = renderEditorShell(true, true);
+    await act(async () => vi.runAllTimers());
+    // On load, #editor beats the work Detail the same link also names.
+    expect(app.editor().target).toEqual(workTarget);
+    expect(observedProductShell?.activeContent).toBeNull();
+    expect(replaceState).toHaveBeenCalledWith(
+      withHistoryMarkers(primaryHistoryState("home", 0)),
+      "",
+      "/dev/t02p?feed=nearby",
+    );
+    expect(pushState).toHaveBeenCalledWith(
+      withHistoryMarkers(editorHistoryState(workTarget, "home", 0)),
+      "",
+      `/dev/t02p?feed=nearby&workId=${workId}#editor`,
+    );
+    expect(document.activeElement).toBe(
+      buttonByLabel(app.container, "返回编辑"),
+    );
+
+    // A same-document plain #editor link switches to a new work.
+    act(() => {
+      window.history.replaceState(null, "", "/dev/t02p#editor");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    await act(async () => vi.runAllTimers());
+    expect(app.editor().target).toEqual({ type: "new" });
+    expect(observedProductShell?.activeContent).toBeNull();
+
+    // A reload restores a draft from history state alone.
+    for (const root of mountedRoots.splice(0)) act(() => root.unmount());
+    document.body.replaceChildren();
+    window.history.replaceState(
+      {
+        ...editorHistoryState(
+          { type: "draft", id: draftId },
+          "calligraphy",
+          212,
+        ),
+        __artvennDocument: "old-document",
+      },
+      "",
+      "/dev/t02p#editor",
+    );
+    const restored = renderEditorShell();
+    await act(async () => vi.runAllTimers());
+    expect(restored.editor().target).toEqual({ type: "draft", id: draftId });
+    expect(observedProductShell?.activeDestination).toBe("calligraphy");
+    expect(window.location.search).toBe("");
+
+    for (const [enabled, url] of [
+      [true, `/dev/t02p?draftId=${draftId}#editor`],
+      [true, "/dev/t02p?workId=work-invalid#editor"],
+      [false, "/dev/t02p#editor"],
+    ] as const) {
+      for (const root of mountedRoots.splice(0)) act(() => root.unmount());
+      document.body.replaceChildren();
+      window.history.replaceState(null, "", url);
+      const closed = renderEditorShell(enabled);
+      await act(async () => vi.runAllTimers());
+      expect(editorDialog(closed.container)).toBeNull();
+      expect(observedProductShell?.activeEditor).toBeNull();
+      expect(parseProductHistoryState(window.history.state)?.kind).toBe(
+        "primary",
+      );
+      expect(`${window.location.search}${window.location.hash}`).toBe("");
+      let opened: boolean | undefined;
+      act(() => {
+        opened = observedProductShell?.openEditor(
+          { type: "new" },
+          buttonByLabel(closed.container, "发布作品"),
+        );
+      });
+      expect(opened).toBe(enabled);
+      expect(observedProductShell?.activeEditor).toEqual(
+        enabled ? { type: "new" } : null,
+      );
+    }
   });
 });

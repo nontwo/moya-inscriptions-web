@@ -11,6 +11,9 @@ import { CommunityModerationView as CommunityModerationView_86a1b3c9ec56e37b61bf
 import { CommunitySettingsView as CommunitySettingsView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
 import { CommunityContentView as CommunityContentView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
 import { CommunityHistoryView as CommunityHistoryView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
+import { WorkSubmissionsView as WorkSubmissionsView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
+import { AccountCapacityView as AccountCapacityView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
+import { PublishingJobsView as PublishingJobsView_86a1b3c9ec56e37b61bf12e13c3d66d2 } from "../../../src/community/View";
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from "@payloadcms/next/rsc";
 
 /** @type import('payload').ImportMap */
@@ -41,6 +44,12 @@ export const importMap = {
     CommunityContentView_86a1b3c9ec56e37b61bf12e13c3d66d2,
   "/src/community/View#CommunityHistoryView":
     CommunityHistoryView_86a1b3c9ec56e37b61bf12e13c3d66d2,
+  "/src/community/View#WorkSubmissionsView":
+    WorkSubmissionsView_86a1b3c9ec56e37b61bf12e13c3d66d2,
+  "/src/community/View#AccountCapacityView":
+    AccountCapacityView_86a1b3c9ec56e37b61bf12e13c3d66d2,
+  "/src/community/View#PublishingJobsView":
+    PublishingJobsView_86a1b3c9ec56e37b61bf12e13c3d66d2,
   "@payloadcms/next/rsc#CollectionCards":
     CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1,
 };

@@ -12,7 +12,7 @@ export async function seedSupport({
   saveJournal,
   once,
   ownerDb,
-  authors,
+  publishing,
   discussion,
   counters,
 }) {
@@ -305,16 +305,55 @@ export async function seedSupport({
       3,
     ),
   );
+  // Parallel edits of one work now use the publishing draft model (the Phase 4
+  // work edit drafts are retired): the author's edit draft of the work is
+  // opened once, and each version is saved from its own device on the same
+  // base revision, so the later one becomes a recoverable conflict copy. The
+  // base revision is journaled with the opened draft; a replayed save of the
+  // same content is idempotent (saved again, or the same conflict copy).
   const drafts = manifest.supportingScenarios.find(
     (x) => x.fixtureKey === "parallel-work-drafts",
   );
-  for (let index = 0; index < drafts.versions.length; index++)
-    await once("support-draft:" + index, (requestId) =>
-      authors.saveDraft(drafts.authorId, drafts.workId, {
-        requestId,
-        baseWorkVersion: drafts.baseWorkVersion,
-        baseDraftVersion: drafts.baseDraftVersion,
-        content: { ...drafts.versions[index], mediaIds: [] },
-      }),
-    );
+  const draftSteps = drafts.versions.map(
+    (_, index) => "support-draft:" + index,
+  );
+  if (draftSteps.some((key) => !journal.steps[key]?.done)) {
+    const opened = await once("support-draft:open", async (requestId) => {
+      const draft = await publishing.openEditDraft(
+        drafts.authorId,
+        drafts.workId,
+        { requestId, deviceClass: "desktop" },
+        new Date(),
+      );
+      assert(draft.workId === drafts.workId, "SUPPORT_DRAFT_SCOPE_MISMATCH");
+      return { draftId: draft.id, baseRevision: draft.revision };
+    });
+    const devices = ["desktop", "phone", "tablet"];
+    for (let index = 0; index < drafts.versions.length; index++)
+      await once(draftSteps[index], async () => {
+        const current = await publishing.readDraft(
+          drafts.authorId,
+          opened.draftId,
+        );
+        const result = await publishing.saveDraft(
+          drafts.authorId,
+          opened.draftId,
+          {
+            baseRevision: opened.baseRevision,
+            content: {
+              ...current.content,
+              title: drafts.versions[index].title,
+              body: drafts.versions[index].text,
+            },
+            deviceClass: devices[index % devices.length],
+          },
+          new Date(),
+        );
+        assert(
+          result.status === (index === 0 ? "saved" : "conflict"),
+          "SUPPORT_DRAFT_OUTCOME_MISMATCH",
+        );
+        return { draftId: opened.draftId, status: result.status };
+      });
+  }
 }

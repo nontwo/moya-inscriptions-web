@@ -173,16 +173,17 @@ describe("T02pQaSearch", () => {
     });
     const input = element<HTMLInputElement>(container, 'input[type="search"]');
     const label = element<HTMLLabelElement>(container, "label");
-    const clear = element<HTMLButtonElement>(container, "[data-search-clear]");
+    const close = element<HTMLButtonElement>(container, "[data-search-close]");
+    expect(container.querySelector("[data-search-clear]")).toBeNull();
 
     expect(label.textContent).toBe("搜索关键词");
     expect(label.htmlFor).toBe(input.id);
     expect(input.labels?.item(0)).toBe(label);
     expect(input.closest("label")).toBeNull();
-    expect(clear.closest("label")).toBeNull();
+    expect(close.closest("label")).toBeNull();
   });
 
-  it("types, submits and clears only through the presentation callbacks", () => {
+  it("types, submits and empties the input without a duplicate clear action", () => {
     const onClearIntent = vi.fn();
     const onSearchIntent = vi.fn();
     const container = renderSearch({ onClearIntent, onSearchIntent });
@@ -194,9 +195,9 @@ describe("T02pQaSearch", () => {
     expect(onSearchIntent).toHaveBeenCalledWith("龙门石窟");
     expect(container.textContent).toContain("已记录搜索意图：龙门石窟");
 
-    click(element(container, "[data-search-clear]"));
+    typeInto(input, "");
     expect(input.value).toBe("");
-    expect(onClearIntent).toHaveBeenCalledOnce();
+    expect(onClearIntent).not.toHaveBeenCalled();
     expect(container.textContent).toContain("最近搜索");
   });
 
@@ -250,7 +251,10 @@ describe("T02pQaSearch", () => {
       initialOpen: true,
       showEmptyState: true,
     });
-    click(element(clearingContainer, "[data-search-clear]"));
+    typeInto(
+      element<HTMLInputElement>(clearingContainer, 'input[type="search"]'),
+      "",
+    );
     expect(clearingContainer.querySelector("[data-search-empty]")).toBeNull();
     expect(clearingContainer.textContent).toContain("最近搜索");
     expect(clearingContainer.textContent).toContain("暂无搜索记录");
@@ -314,7 +318,7 @@ describe("T02pQaSearch", () => {
     },
   );
 
-  it("submits only trimmed nonempty input and keeps clear distinct from close", () => {
+  it("submits only trimmed nonempty input, blurs and keeps emptying distinct from close", () => {
     const onSearchIntent = vi.fn();
     const container = renderSearch({ initialOpen: true, onSearchIntent });
     const input = element<HTMLInputElement>(container, "input");
@@ -328,12 +332,10 @@ describe("T02pQaSearch", () => {
       ),
     );
     expect(onSearchIntent).toHaveBeenCalledExactlyOnceWith("魏碑");
-    expect(
-      element(container, "[data-search-clear]").getAttribute("aria-label"),
-    ).not.toBe(
-      element(container, "[data-search-close]").getAttribute("aria-label"),
-    );
-    click(element(container, "[data-search-clear]"));
+    expect(document.activeElement).not.toBe(input);
+    expect(container.querySelector("[data-search-clear]")).toBeNull();
+    input.focus();
+    typeInto(input, "");
     expect(container.querySelector("[data-search-panel]")).not.toBeNull();
     expect(document.activeElement).toBe(input);
     expect(input.getAttribute("enterkeyhint")).toBe("search");

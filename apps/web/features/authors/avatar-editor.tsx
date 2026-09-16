@@ -10,22 +10,6 @@ import { useAuthors } from "./author-context";
 import { readAvatarImage, exportAvatarSnapshot } from "./avatar-image";
 import type { AvatarImage } from "./avatar-image";
 import styles from "./avatar-editor.module.css";
-const pngFile = async (file: File): Promise<HTMLImageElement> => {
-  if (file.type !== "image/png" || file.size > 4 * 1024 * 1024)
-    throw Error("请选择不超过 4 MiB 的 PNG 图像");
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    if (img.naturalWidth > 8192 || img.naturalHeight > 8192)
-      throw Error("图像宽高不能超过 8192 像素");
-    return img;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-};
-
 const availableAt = (next: string | null) =>
   next ? new Date(next).getTime() : 0;
 const newYorkTime = (next: string) =>
@@ -338,4 +322,3 @@ export const AvatarEditor = ({
     </AuthorDialog>
   );
 };
-export { pngFile };

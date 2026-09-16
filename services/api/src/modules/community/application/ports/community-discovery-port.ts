@@ -19,7 +19,16 @@ export type DiscoveryCardRecord = Omit<ContentCard, "media"> & {
           }
         | {
             readonly type: "work";
+            /** The media item id, or the user media id of an unedited legacy PNG. */
             readonly id: string;
+            /**
+             * The same-origin still path the card shows: the card derivative
+             * (`/api/community/publishing/media/<itemId>/<variant>/<editKey>`,
+             * the cover variant under the cover crop's edit key when it
+             * exists) or, for an unedited legacy item, its Phase 4 user media
+             * path (`/api/community/media/<user-media-id>`).
+             */
+            readonly src: string;
             readonly width: number;
             readonly height: number;
           }

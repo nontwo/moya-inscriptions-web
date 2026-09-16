@@ -26,6 +26,7 @@ import {
 import type { AuthorListQuery, AuthorPrivacy } from "@moya/contracts";
 import { discoveryQuerySchema } from "@moya/contracts/schemas";
 import { requireSyntheticTestDatabaseUrl } from "./synthetic-test-database.js";
+import { cleanupPublishingData } from "./work-publishing-content-cases.js";
 const id = (prefix: string) => `${prefix}-${randomUUID().replaceAll("-", "")}`;
 export const registerPhase4DiscoveryTests = (
   pool: ReturnType<typeof createPostgresPool>,
@@ -145,6 +146,8 @@ export const registerPhase4DiscoveryTests = (
         "DELETE FROM community.work_edit_drafts WHERE author_id=$1",
         [author],
       );
+      // Work publishing rows (the legacy revision of the fixture work) first.
+      await cleanupPublishingData(pool, [author, visitor]);
       await pool.query("DELETE FROM community.works WHERE id=$1", [work]);
       await pool.query("DELETE FROM community.public_users WHERE id=ANY($1)", [
         [author, visitor],

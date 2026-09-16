@@ -7,13 +7,24 @@ import { ConfirmationModal, SetStepNav, useModal } from "@payloadcms/ui";
 import type {
   FeaturedPage,
   OperatorWork,
+  OperatorUser,
   OperatorWorkPage,
 } from "@moya/contracts/internal/community-operator";
 import type { ContentIdentity } from "@moya/contracts";
-import { call, describeFailure, formatTime } from "./api";
+import {
+  call,
+  describeFailure,
+  formatTime,
+  submissionStateLabels,
+  UNTITLED_WORK,
+} from "./api";
+import type { OperatorWorkSubmission } from "./api";
+import { SubmissionDetail } from "./work-submissions-client";
 import styles from "./community.module.css";
+import { BulkActions } from "./bulk-actions";
+import { CommunityUsers } from "./users-client";
 
-type Tab = "works" | "featured";
+type Tab = "works" | "featured" | "users";
 type CandidatePage = {
   items: { id: string; title: string }[];
   total: number;
@@ -25,7 +36,7 @@ type Operation = {
   input: Record<string, unknown>;
   label: string;
 };
-const labels = { visible: "公开", hidden: "已隐藏", removed: "已移除" };
+const labels = { visible: "正常", hidden: "已隐藏", removed: "已移除" };
 const PAGE_SIZE = 20;
 const Pager = ({
   page,
@@ -68,6 +79,15 @@ const Pager = ({
 export const CommunityContentClient = () => {
   const params = useSearchParams();
   const { openModal, closeModal } = useModal();
+  const [selectedWork, setSelectedWork] = useState<OperatorWork | null>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
+  const detailRequest = useRef(0);
+  const [activeUser, setActiveUser] = useState<OperatorUser | null>(null);
+  const [userReload, setUserReload] = useState(0);
+  const [featuredFilter, setFeaturedFilter] = useState<"active" | "all">(
+    "active",
+  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<Tab>("works");
   const [query, setQuery] = useState({
     page: 1,
@@ -90,16 +110,28 @@ export const CommunityContentClient = () => {
     const epoch = ++request.current;
     setLoading(true);
     setError(null);
+    setSelectedIds(new Set());
+    setUserReload((n) => n + 1);
     try {
       if (tab === "works") {
         const result = await call<OperatorWorkPage>("read-works", {
           ...query,
+          ...(activeUser ? { authorId: activeUser.id } : {}),
           pageSize: PAGE_SIZE,
         });
-        if (epoch === request.current) setWorks(result);
-      } else {
+        if (epoch === request.current) {
+          setWorks(result);
+          setSelectedWork((current) =>
+            current === null
+              ? null
+              : (result.items.find((item) => item.id === current.id) ??
+                current),
+          );
+        }
+      } else if (tab === "featured") {
         const result = await call<FeaturedPage>("read-featured", {
           ...query,
+          filter: featuredFilter,
           pageSize: PAGE_SIZE,
         });
         if (epoch === request.current) {
@@ -119,11 +151,12 @@ export const CommunityContentClient = () => {
     } finally {
       if (epoch === request.current) setLoading(false);
     }
-  }, [tab, query]);
+  }, [tab, query, activeUser, featuredFilter]);
   useEffect(() => {
     void load();
     return () => {
       request.current++;
+      detailRequest.current++;
     };
   }, [load]);
   const run = async (op: Operation) => {
@@ -132,7 +165,29 @@ export const CommunityContentClient = () => {
     setBusy(true);
     setNotice(null);
     try {
-      await call(op.name, op.input);
+      const result = await call(op.name, op.input);
+      if (op.name === "moderate-work") {
+        const updated = result as OperatorWork;
+        setSelectedWork((current) =>
+          current?.id === updated.id ? updated : current,
+        );
+      }
+      if (op.name === "set-featured") {
+        const target = op.input.target as ContentIdentity;
+        setSelectedWork((current) =>
+          current?.id === target.id && target.type === "work"
+            ? {
+                ...current,
+                recommendation: {
+                  enabled: op.input.enabled as boolean,
+                  position: op.input.position as number,
+                  version: (result as { version: number }).version,
+                  source: "work",
+                },
+              }
+            : current,
+        );
+      }
       setRetry(null);
       setNotice(`${op.label}已保存。`);
       await load();
@@ -161,8 +216,16 @@ export const CommunityContentClient = () => {
       input: { ...input, requestId: crypto.randomUUID() },
       label,
     });
-  const disabled = busy || retry !== null;
+  const disabled = busy || retry !== null || loading || error !== null;
+  const bulkBusy = (value: boolean) => {
+    commandLock.current = value;
+    setBusy(value);
+  };
   const chooseTab = (next: Tab) => {
+    detailRequest.current++;
+    setSelectedWork(null);
+    setActiveUser(null);
+    setSelectedIds(new Set());
     setTab(next);
     setQuery({ page: 1, search: "" });
     setSearch("");
@@ -186,6 +249,80 @@ export const CommunityContentClient = () => {
     });
     openModal("community-work-confirm");
   };
+  const openWork = async (
+    id: string,
+    opener: HTMLElement,
+    known?: OperatorWork,
+  ) => {
+    const sequence = ++detailRequest.current;
+    detailOpener.current = opener;
+    setSelectedWork(null);
+    try {
+      const item =
+        known ??
+        (
+          await call<OperatorWorkPage>("read-works", {
+            page: 1,
+            pageSize: 20,
+            search: id,
+          })
+        ).items.find((work) => work.id === id);
+      if (sequence !== detailRequest.current) return;
+      if (!item) {
+        setNotice("该作品当前不可用。");
+        return;
+      }
+      setSelectedWork(item);
+    } catch (error) {
+      if (sequence === detailRequest.current)
+        setNotice(describeFailure(error).text);
+    }
+  };
+  const workActions = (item: OperatorWork) => (
+    <div className={styles.actions}>
+      {(["visible", "hidden", "removed"] as const)
+        .filter((state) => state !== item.state)
+        .map((state) => (
+          <button
+            type="button"
+            className={styles.actionButton}
+            key={state}
+            disabled={disabled || item.authorDeleted}
+            onClick={() => confirmWork(item, state)}
+          >
+            {state === "visible"
+              ? "解除管理限制"
+              : state === "hidden"
+                ? "隐藏作品"
+                : "移除作品"}
+          </button>
+        ))}
+      <button
+        className={styles.actionButton}
+        type="button"
+        aria-pressed={item.recommendation?.enabled ?? false}
+        disabled={
+          disabled ||
+          item.authorDeleted ||
+          (!item.recommendation?.enabled && item.publiclyVisible === false)
+        }
+        onClick={() =>
+          execute(
+            "set-featured",
+            {
+              target: { type: "work", id: item.id },
+              enabled: !item.recommendation?.enabled,
+              position: item.recommendation?.position ?? 0,
+              expectedVersion: item.recommendation?.version ?? 0,
+            },
+            item.recommendation?.enabled ? "取消推荐" : "加入推荐",
+          )
+        }
+      >
+        {item.recommendation?.enabled ? "已推荐" : "加入推荐"}
+      </button>
+    </div>
+  );
   return (
     <div className={styles.workspace}>
       <SetStepNav
@@ -208,6 +345,7 @@ export const CommunityContentClient = () => {
           className={styles.tab}
           type="button"
           aria-pressed={tab === "works"}
+          disabled={busy || retry !== null}
           onClick={() => chooseTab("works")}
         >
           用户作品
@@ -216,11 +354,67 @@ export const CommunityContentClient = () => {
           className={styles.tab}
           type="button"
           aria-pressed={tab === "featured"}
+          disabled={busy || retry !== null}
           onClick={() => chooseTab("featured")}
         >
           推荐内容
         </button>
+        <button
+          className={styles.tab}
+          type="button"
+          aria-pressed={tab === "users"}
+          disabled={busy || retry !== null}
+          onClick={() => chooseTab("users")}
+        >
+          用户管理
+        </button>
       </div>
+      {activeUser && tab === "works" ? (
+        <section className={styles.userDetail} aria-label="用户详情">
+          <button
+            type="button"
+            className={styles.rowLink}
+            disabled={disabled}
+            onClick={() => chooseTab("users")}
+          >
+            返回用户列表
+          </button>
+          <h2>{activeUser.displayName}</h2>
+          <p>
+            @{activeUser.handle} ·{" "}
+            {activeUser.status === "active" ? "正常" : "已停用"}
+          </p>
+          <p>{activeUser.bio || "尚未填写简介"}</p>
+          <p>
+            加入于 {formatTime(activeUser.createdAt)} ·{" "}
+            {activeUser.submittedWorks} 件可管理的已提交作品
+          </p>
+        </section>
+      ) : null}
+      {tab === "users" ? (
+        <CommunityUsers
+          disabled={disabled}
+          reload={userReload}
+          onBusy={bulkBusy}
+          onOpen={(user) => {
+            setActiveUser(user);
+            setTab("works");
+            setQuery({ page: 1, search: "" });
+            setSearch("");
+          }}
+          onRecommend={(user) =>
+            execute(
+              "recommend-user",
+              {
+                id: user.id,
+                enabled: !user.recommended,
+                expectedVersion: user.recommendationVersion,
+              },
+              user.recommended ? "取消推荐用户" : "推荐用户",
+            )
+          }
+        />
+      ) : null}
       {notice ? (
         <div className={styles.notice} role="status">
           {notice}
@@ -235,37 +429,39 @@ export const CommunityContentClient = () => {
           ) : null}
         </div>
       ) : null}
-      <form
-        className={styles.filters}
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery({ page: 1, search: search.trim() });
-        }}
-      >
-        <label>
-          搜索{tab === "works" ? "作品、作者或作品 ID" : "推荐标题"}
-          <input
-            maxLength={200}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-        <button
-          className={styles.actionButton}
-          type="submit"
-          disabled={loading}
+      {tab !== "users" ? (
+        <form
+          className={styles.filters}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuery({ page: 1, search: search.trim() });
+          }}
         >
-          搜索
-        </button>
-        <button
-          className={styles.actionButton}
-          type="button"
-          disabled={loading}
-          onClick={() => void load()}
-        >
-          刷新当前页
-        </button>
-      </form>
+          <label>
+            搜索{tab === "works" ? "作品、作者或作品 ID" : "推荐标题"}
+            <input
+              maxLength={200}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <button
+            className={styles.actionButton}
+            type="submit"
+            disabled={loading}
+          >
+            搜索
+          </button>
+          <button
+            className={styles.actionButton}
+            type="button"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            刷新当前页
+          </button>
+        </form>
+      ) : null}
       {error ? (
         <p className={styles.notice} role="alert">
           {error}
@@ -277,10 +473,70 @@ export const CommunityContentClient = () => {
       {loading ? <p role="status">读取中…</p> : null}
       {tab === "works" && works ? (
         <>
+          <BulkActions
+            key={activeUser?.id ?? "all-works"}
+            count={selectedIds.size}
+            disabled={disabled}
+            onBusy={bulkBusy}
+            onComplete={load}
+            choices={[
+              { value: "feature", label: "批量推荐" },
+              { value: "unfeature", label: "批量取消推荐" },
+              { value: "hidden", label: "批量隐藏", confirm: true },
+              { value: "removed", label: "批量移除", confirm: true },
+            ]}
+            prepare={(action) =>
+              works.items
+                .filter((w) => !w.authorDeleted && selectedIds.has(w.id))
+                .map((w) => ({
+                  id: w.id,
+                  label: w.latestSubmission?.title || w.title || UNTITLED_WORK,
+                  name:
+                    action === "feature" || action === "unfeature"
+                      ? "set-featured"
+                      : "moderate-work",
+                  input:
+                    action === "feature" || action === "unfeature"
+                      ? {
+                          target: { type: "work", id: w.id },
+                          enabled: action === "feature",
+                          position: w.recommendation?.position ?? 0,
+                          expectedVersion: w.recommendation?.version ?? 0,
+                        }
+                      : { id: w.id, state: action, expectedVersion: w.version },
+                }))
+            }
+          />
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label="选择本页所有作品"
+                      disabled={
+                        disabled || !works.items.some((w) => !w.authorDeleted)
+                      }
+                      checked={
+                        works.items.some((w) => !w.authorDeleted) &&
+                        works.items
+                          .filter((w) => !w.authorDeleted)
+                          .every((w) => selectedIds.has(w.id))
+                      }
+                      onChange={(e) =>
+                        setSelectedIds(
+                          new Set(
+                            e.target.checked
+                              ? works.items
+                                  .filter((w) => !w.authorDeleted)
+                                  .map((w) => w.id)
+                              : [],
+                          ),
+                        )
+                      }
+                    />
+                  </th>
                   <th>作品</th>
                   <th>作者</th>
                   <th>状态</th>
@@ -291,14 +547,59 @@ export const CommunityContentClient = () => {
                 {works.items.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <strong>{item.title}</strong>
+                      <input
+                        type="checkbox"
+                        aria-label={`选择作品：${item.latestSubmission?.title || item.title || UNTITLED_WORK}`}
+                        disabled={disabled || item.authorDeleted}
+                        checked={selectedIds.has(item.id)}
+                        onChange={(e) =>
+                          setSelectedIds((old) => {
+                            const next = new Set(old);
+                            if (e.target.checked) next.add(item.id);
+                            else next.delete(item.id);
+                            return next;
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.rowLink}
+                        onClick={(event) =>
+                          void openWork(item.id, event.currentTarget, item)
+                        }
+                      >
+                        {item.latestSubmission
+                          ? item.latestSubmission.title || UNTITLED_WORK
+                          : item.title || UNTITLED_WORK}
+                      </button>
+                      {item.latestSubmission ? (
+                        <span className={styles.secondary}>
+                          最新公开提交 ·{" "}
+                          {
+                            submissionStateLabels[
+                              item.latestSubmission.disposition
+                            ]
+                          }
+                        </span>
+                      ) : null}
                       <span className={styles.secondary}>{item.id}</span>
-                      <details>
-                        <summary>查看全文</summary>
-                        <p className={styles.fullText}>{item.text}</p>
-                      </details>
+                      <button
+                        type="button"
+                        className={styles.actionButton}
+                        onClick={(event) =>
+                          void openWork(item.id, event.currentTarget, item)
+                        }
+                      >
+                        查看详情与管理
+                      </button>
                       <span className={styles.secondary}>
-                        首次发布 {formatTime(item.firstPublishedAt)}
+                        {/* Null for a work never publicly exposed (self-only or
+                            still awaiting its first approval). */}
+                        {item.firstPublishedAt === null
+                          ? "尚未公开发布"
+                          : `首次发布 ${formatTime(item.firstPublishedAt)}`}
                       </span>
                     </td>
                     <td>
@@ -311,38 +612,13 @@ export const CommunityContentClient = () => {
                     </td>
                     <td>
                       {item.authorDeleted ? "作者已删除" : labels[item.state]}
+                      <span className={styles.secondary}>
+                        {item.publiclyVisible
+                          ? "当前对外公开"
+                          : "当前不对外显示"}
+                      </span>
                     </td>
-                    <td>
-                      <div className={styles.actions}>
-                        {(["visible", "hidden", "removed"] as const)
-                          .filter((state) => state !== item.state)
-                          .map((state) => (
-                            <button
-                              type="button"
-                              className={styles.actionButton}
-                              key={state}
-                              disabled={disabled || item.authorDeleted}
-                              onClick={() => confirmWork(item, state)}
-                            >
-                              {state === "visible"
-                                ? "恢复公开"
-                                : state === "hidden"
-                                  ? "隐藏作品"
-                                  : "移除作品"}
-                            </button>
-                          ))}
-                        <button
-                          className={styles.actionButton}
-                          type="button"
-                          disabled={disabled || item.authorDeleted}
-                          onClick={() =>
-                            feature({ type: "work", id: item.id }, item.title)
-                          }
-                        >
-                          加入推荐
-                        </button>
-                      </div>
-                    </td>
+                    <td>{workActions(item)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -359,6 +635,32 @@ export const CommunityContentClient = () => {
       ) : null}
       {tab === "featured" ? (
         <>
+          <div className={styles.tabs} aria-label="推荐筛选">
+            <button
+              type="button"
+              className={styles.tab}
+              aria-pressed={featuredFilter === "active"}
+              disabled={disabled}
+              onClick={() => {
+                setFeaturedFilter("active");
+                setQuery((q) => ({ ...q, page: 1 }));
+              }}
+            >
+              当前推荐
+            </button>
+            <button
+              type="button"
+              className={styles.tab}
+              aria-pressed={featuredFilter === "all"}
+              disabled={disabled}
+              onClick={() => {
+                setFeaturedFilter("all");
+                setQuery((q) => ({ ...q, page: 1 }));
+              }}
+            >
+              全部推荐设置
+            </button>
+          </div>
           {featured ? (
             <>
               <form
@@ -417,6 +719,7 @@ export const CommunityContentClient = () => {
                   <tbody>
                     {featured.items.map((item) => (
                       <FeaturedRow
+                        onOpenWork={(id, opener) => void openWork(id, opener)}
                         key={`${item.target.type}:${item.target.id}:${item.version}`}
                         item={item}
                         disabled={disabled}
@@ -455,8 +758,20 @@ export const CommunityContentClient = () => {
           </p>
         </>
       ) : null}
+      {selectedWork === null ? null : (
+        <WorkDetailPanel
+          key={selectedWork.id}
+          item={selectedWork}
+          actions={workActions(selectedWork)}
+          onClose={() => {
+            detailRequest.current++;
+            setSelectedWork(null);
+            detailOpener.current?.focus();
+          }}
+        />
+      )}
       <ConfirmationModal
-        heading="确认作品可见性变更"
+        heading="确认作品管理状态变更"
         modalSlug="community-work-confirm"
         cancelLabel="取消"
         confirmLabel="确认保存"
@@ -464,7 +779,7 @@ export const CommunityContentClient = () => {
         body={
           <p>
             {confirmation?.label}
-            。变更立即影响作者主页、发现、收藏、详情与讨论访问；原有身份、首次发布时间和审计记录保留。
+            。隐藏或移除会限制访问；解除管理限制仍遵循作者的可见范围和当前审核结果，不会代替审核通过。原有身份、首次发布时间和审计记录保留。
           </p>
         }
         onConfirm={async () => {
@@ -481,18 +796,32 @@ const FeaturedRow = ({
   item,
   disabled,
   onSave,
+  onOpenWork,
 }: {
   item: FeaturedPage["items"][number];
   disabled: boolean;
   onSave: (position: number, enabled: boolean) => void;
+  onOpenWork: (id: string, opener: HTMLElement) => void;
 }) => {
-  const [position, setPosition] = useState(String(item.position));
+  const [position, setPosition] = useState(
+    item.version === 0 ? "" : String(item.position),
+  );
   const [enabled, setEnabled] = useState(item.enabled);
   const [error, setError] = useState(false);
   return (
     <tr>
       <td>
-        {item.title ?? "当前不可用的内容"}
+        {item.target.type === "work" ? (
+          <button
+            type="button"
+            className={styles.rowLink}
+            onClick={(event) => onOpenWork(item.target.id, event.currentTarget)}
+          >
+            {item.title || UNTITLED_WORK} · 查看详情
+          </button>
+        ) : (
+          (item.title ?? "当前不可用的内容")
+        )}
         <span className={styles.secondary}>
           {item.target.type === "work" ? "用户作品" : "资料"} · {item.target.id}
         </span>
@@ -503,8 +832,13 @@ const FeaturedRow = ({
           className={styles.filters}
           onSubmit={(e) => {
             e.preventDefault();
-            const value = Number(position);
-            if (!Number.isSafeInteger(value) || value < 0 || position === "") {
+            const automatic = item.version === 0 && position === "";
+            const value = automatic ? item.position : Number(position);
+            if (
+              !Number.isSafeInteger(value) ||
+              value < 0 ||
+              (position === "" && !automatic)
+            ) {
               setError(true);
               return;
             }
@@ -516,6 +850,7 @@ const FeaturedRow = ({
             顺序
             <input
               aria-label={`顺序：${item.title ?? item.target.id}`}
+              placeholder={item.version === 0 ? "自动" : undefined}
               type="number"
               min="0"
               step="1"
@@ -644,6 +979,117 @@ const CatalogPicker = ({
           />
         </>
       ) : null}
+    </section>
+  );
+};
+
+const WorkDetailPanel = ({
+  item,
+  actions,
+  onClose,
+}: {
+  item: OperatorWork;
+  actions: React.ReactNode;
+  onClose: () => void;
+}) => {
+  const panel = useRef<HTMLElement | null>(null);
+  const [revision, setRevision] = useState(
+    item.latestSubmission?.revisionId ?? item.publicRevisionId,
+  );
+  const [detail, setDetail] = useState<OperatorWorkSubmission | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    panel.current?.focus();
+    panel.current?.scrollIntoView({ block: "start" });
+  }, []);
+  useEffect(() => {
+    let current = true;
+    setDetail(null);
+    setError(null);
+    if (revision)
+      void call<OperatorWorkSubmission>("read-work-submission", {
+        id: revision,
+      }).then(
+        (data) => {
+          if (current) setDetail(data);
+        },
+        (error) => {
+          if (current) setError(describeFailure(error).text);
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [revision, retry]);
+  return (
+    <section
+      className={styles.panel}
+      ref={panel}
+      tabIndex={-1}
+      aria-label="作品详情与管理"
+      data-work-management-detail=""
+    >
+      <div className={styles.panelHeader}>
+        <h2>作品详情与管理</h2>
+        <button type="button" className={styles.actionButton} onClick={onClose}>
+          返回列表
+        </button>
+      </div>
+      <p>
+        {item.publiclyVisible ? "当前对外公开" : "当前不对外显示"} · 管理状态：
+        {labels[item.state]}
+      </p>
+      {actions}
+      <div className={styles.tabs}>
+        {item.latestSubmission ? (
+          <button
+            className={styles.tab}
+            type="button"
+            aria-pressed={revision === item.latestSubmission.revisionId}
+            onClick={() => setRevision(item.latestSubmission!.revisionId)}
+          >
+            最新公开提交
+          </button>
+        ) : null}
+        {item.publicRevisionId &&
+        item.publicRevisionId !== item.latestSubmission?.revisionId ? (
+          <button
+            className={styles.tab}
+            type="button"
+            aria-pressed={revision === item.publicRevisionId}
+            onClick={() => setRevision(item.publicRevisionId)}
+          >
+            {item.publiclyVisible ? "当前公开版本" : "上次公开版本"}
+          </button>
+        ) : null}
+      </div>
+      {!revision ? (
+        <p>
+          暂无可供管理查看的公开提交。私人草稿和仅自己可见的提交不在此展示。
+        </p>
+      ) : error ? (
+        <p role="alert">
+          {error}{" "}
+          <button type="button" onClick={() => setRetry((n) => n + 1)}>
+            重试读取详情
+          </button>
+        </p>
+      ) : detail === null ? (
+        <p role="status">正在读取详情…</p>
+      ) : (
+        <SubmissionDetail
+          key={detail.revisionId}
+          data={detail}
+          actions={
+            <Link
+              href={`/admin/community-moderation/work-submissions?item=${encodeURIComponent(detail.revisionId)}`}
+            >
+              打开提交审核与处理
+            </Link>
+          }
+        />
+      )}
     </section>
   );
 };

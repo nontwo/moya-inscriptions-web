@@ -14,6 +14,7 @@ import { ProfileEditor } from "./profile-editor";
 import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
 import { PeopleList } from "./people-list";
+import { TrashPanel } from "../publishing/ui/drafts/trash-panel";
 import { requestIdentity } from "../shell/request-identity";
 import styles from "../user/user-presentation.module.css";
 const tabs = ["works", "favorites", "likes", "history"] as const;
@@ -38,7 +39,7 @@ const ScopedAuthorProfileOverlay = ({
       () => (author.cache.get(cacheKey) as AuthorProfile | undefined) ?? null,
     ),
     [error, setError] = useState(""),
-    [modal, setModal] = useState<"edit" | "settings" | null>(null),
+    [modal, setModal] = useState<"edit" | "settings" | "trash" | null>(null),
     [people, setPeople] = useState<"following" | "followers" | null>(null),
     [revision, setRevision] = useState(0),
     [progress, setProgress] = useState(
@@ -52,6 +53,12 @@ const ScopedAuthorProfileOverlay = ({
     viewTab = visibleTabs.includes(currentTab as (typeof tabs)[number])
       ? currentTab
       : "works";
+  // The recycle bin is the signed-in owner's own: the entry and the panel
+  // use this one check, and a panel whose viewer changed closes.
+  const trashAllowed = !!profile?.isOwner && profile.id === author.viewer?.id;
+  useEffect(() => {
+    if (modal === "trash" && !trashAllowed) setModal(null);
+  }, [modal, trashAllowed]);
   useEffect(() => {
     let current = true;
     setError("");
@@ -193,6 +200,7 @@ const ScopedAuthorProfileOverlay = ({
                 {profile.totals.following !== null && (
                   <button
                     type="button"
+                    className="phase4-inline-total"
                     onClick={() =>
                       setPeople(people === "following" ? null : "following")
                     }
@@ -203,6 +211,7 @@ const ScopedAuthorProfileOverlay = ({
                 {profile.totals.followers !== null && (
                   <button
                     type="button"
+                    className="phase4-inline-total"
                     onClick={() =>
                       setPeople(people === "followers" ? null : "followers")
                     }
@@ -210,28 +219,12 @@ const ScopedAuthorProfileOverlay = ({
                     粉丝 {profile.totals.followers}
                   </button>
                 )}
-                {profile.isOwner ? (
-                  <>
-                    <button type="button" onClick={() => setModal("edit")}>
-                      编辑资料
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onViewChange(
-                          state.tab === "comments" ? "works" : "comments",
-                          0,
-                        )
-                      }
-                    >
-                      我的评论
-                    </button>
-                  </>
-                ) : author.viewer ? (
+                {!profile.isOwner && author.viewer ? (
                   <>
                     <button
                       type="button"
                       aria-pressed={profile.following}
+                      className="phase4-inline-total phase4-follow-toggle"
                       onClick={async () => {
                         try {
                           await authorClient.command("relationships/follow", {
@@ -277,9 +270,9 @@ const ScopedAuthorProfileOverlay = ({
                       屏蔽
                     </button>
                   </>
-                ) : (
+                ) : !profile.isOwner ? (
                   <a href={author.signInHref}>登录后关注</a>
-                )}
+                ) : null}
               </div>
               {people &&
                 (profile.isOwner || profile.privacy[people] === "public") && (
@@ -377,12 +370,26 @@ const ScopedAuthorProfileOverlay = ({
           onSaved={save}
         />
       )}{" "}
+      {profile && trashAllowed && modal === "trash" && (
+        <TrashPanel
+          key={profile.id}
+          onClose={() => setModal(null)}
+          // A restored work returns to the owner's lists as self-only.
+          onRestored={() => author.mutate()}
+        />
+      )}
       {owner && modal === "settings" && (
         <ProfileSettings
           key={profile?.id ?? "guest"}
           profile={profile}
           onClose={() => setModal(null)}
           onSaved={save}
+          onOpenEdit={() => setModal("edit")}
+          onOpenComments={() => {
+            setModal(null);
+            onViewChange("comments", 0);
+          }}
+          {...(trashAllowed ? { onOpenTrash: () => setModal("trash") } : {})}
         />
       )}
     </section>

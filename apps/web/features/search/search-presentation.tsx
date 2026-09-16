@@ -14,11 +14,14 @@ export const SearchTrigger = ({
   onOpenChange,
   openerRef,
   searchInputRef,
+  placement = "dock",
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly openerRef: RefObject<HTMLButtonElement | null>;
   readonly searchInputRef: RefObject<HTMLInputElement | null>;
+  /** "header" triggers repeat per destination and never own the shared ref. */
+  readonly placement?: "dock" | "header";
 }) => (
   <button
     aria-expanded={open}
@@ -26,12 +29,17 @@ export const SearchTrigger = ({
     aria-label="打开搜索"
     className={`${styles.trigger} yoyi-functional-glass`}
     data-search-trigger=""
-    onClick={() => {
+    data-search-trigger-placement={
+      placement === "header" ? "header" : undefined
+    }
+    onClick={(event) => {
+      // Focus returns to the control actually used, never a hidden sibling.
+      openerRef.current = event.currentTarget;
       // Preserve Safari's user activation through the input's first focus.
       flushSync(() => onOpenChange(true));
       searchInputRef.current?.focus({ preventScroll: true });
     }}
-    ref={openerRef}
+    ref={placement === "dock" ? openerRef : undefined}
     type="button"
   >
     <Icon aria-hidden="true" name="search" />
@@ -58,7 +66,6 @@ export const SearchPresentation = ({
   open: isOpen,
   onKeywordChange,
   onSubmit,
-  onClear,
   onOpenChange,
   openerRef,
   searchInputRef,
@@ -147,10 +154,7 @@ export const SearchPresentation = ({
     const value = keyword.trim();
     if (composingRef.current || value.length === 0) return;
     onSubmit(value);
-  };
-  const clear = () => {
-    onClear();
-    inputRef.current?.focus({ preventScroll: true });
+    inputRef.current?.blur();
   };
   return (
     <div
@@ -224,17 +228,6 @@ export const SearchPresentation = ({
                 type="search"
                 value={keyword}
               />
-              {keyword.length === 0 ? null : (
-                <button
-                  aria-label="清空搜索"
-                  className={styles.inlineAction}
-                  data-search-clear=""
-                  onClick={clear}
-                  type="button"
-                >
-                  <Icon aria-hidden="true" name="close" />
-                </button>
-              )}
             </form>
             <button
               aria-label="关闭搜索"

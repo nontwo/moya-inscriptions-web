@@ -1,0 +1,129 @@
+/*
+ * The frame takes the still's box; the host positions it (a carousel slide
+ * fills its stage, a Viewer slide is absolutely inset). The video sits on the
+ * still's exact geometry and never takes pointer input, so the host's
+ * open-viewer tap, swipe, pan, pinch and long-press behave as before.
+ */
+.frame {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
+/* The still stays visible until the first motion frame is actually playing. */
+.video[data-visible="true"] {
+  opacity: 1;
+}
+
+.controls {
+  position: absolute;
+  z-index: 4;
+  top: var(--yoyi-space-2);
+  left: var(--yoyi-space-2);
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* A 44px target around a compact pill, like the dots and counter. */
+.control {
+  display: grid;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-1);
+  place-items: center;
+  color: var(--yoyi-color-paper-light);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pill,
+.message {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: var(--yoyi-space-2);
+  padding: var(--yoyi-space-2) var(--yoyi-space-4) var(--yoyi-space-2)
+    var(--yoyi-space-3);
+  color: var(--yoyi-color-paper-light);
+  background: var(--yoyi-color-overlay);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-metadata-size);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.message {
+  margin: var(--yoyi-space-3) var(--yoyi-space-2);
+}
+
+.control[aria-pressed="true"] .pill {
+  color: var(--yoyi-color-ink-black);
+  background: var(--yoyi-color-paper-light);
+}
+
+.control:focus-visible {
+  outline: none;
+}
+
+.control:focus-visible .pill {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.message:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* The polite status stays mounted (and announced) while it has no text. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.iconDot {
+  fill: currentColor;
+  stroke: none;
+}

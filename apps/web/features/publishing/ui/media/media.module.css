@@ -1,0 +1,821 @@
+/*
+ * Media step of the work editor. Existing tokens only: monochrome surfaces,
+ * seal red for the one primary action and the cover mark, token radii and
+ * type sizes; light and dark follow the tokens. Every control is at least
+ * 44px tall.
+ */
+
+.section {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-5);
+  color: var(--yoyi-color-text-primary);
+  font-family: var(--yoyi-font-interface);
+}
+
+/* The editor step or column around the section owns safe-area padding. */
+
+.count {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-caption-size);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- buttons --------------------------------------------------------------- */
+
+.primaryButton,
+.secondaryButton,
+.actionButton,
+.textButton,
+.skipButton,
+.pickerButton {
+  min-height: 44px;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.primaryButton {
+  min-width: 72px;
+  padding: 0 var(--yoyi-space-6);
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-seal-red);
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-button-size);
+  font-weight: 650;
+}
+
+.secondaryButton {
+  padding: 0 var(--yoyi-space-5);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-button-size);
+}
+
+.actionButton {
+  min-width: 44px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-label-size);
+  white-space: nowrap;
+}
+
+.textButton,
+.skipButton {
+  padding: 0 var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--yoyi-radius-sm);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.skipButton {
+  justify-self: center;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (hover: hover) {
+  .primaryButton:hover:not(:disabled) {
+    background: var(--yoyi-color-seal-red-hover);
+  }
+
+  .secondaryButton:hover:not(:disabled),
+  .actionButton:hover:not(:disabled),
+  .textButton:hover,
+  .skipButton:hover {
+    color: var(--yoyi-color-text-primary);
+    background: var(--yoyi-color-background-muted);
+  }
+}
+
+.primaryButton:active:not(:disabled) {
+  background: var(--yoyi-color-seal-red-pressed);
+}
+
+.primaryButton:disabled {
+  color: var(--yoyi-color-text-disabled);
+  background: var(--yoyi-color-background-muted);
+  cursor: not-allowed;
+}
+
+.secondaryButton:disabled,
+.actionButton:disabled,
+.pickerButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.actionButton:focus-visible,
+.textButton:focus-visible,
+.skipButton:focus-visible,
+.pickerButton:focus-visible,
+.handle:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* -- picker ---------------------------------------------------------------- */
+
+.picker {
+  display: grid;
+  justify-items: center;
+  gap: var(--yoyi-space-3);
+  text-align: center;
+}
+
+.picker[data-layout="desktop"] {
+  padding: var(--yoyi-space-7) var(--yoyi-space-6);
+  background: var(--yoyi-color-background-surface);
+  border: 1px dashed var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-lg);
+  transition:
+    border-color var(--yoyi-duration-fast) var(--yoyi-easing-standard),
+    background-color var(--yoyi-duration-fast) var(--yoyi-easing-standard);
+}
+
+.picker[data-layout="desktop"][data-over="true"] {
+  background: var(--yoyi-color-seal-red-muted);
+  border-color: var(--yoyi-color-seal-red);
+}
+
+.pickerButton {
+  width: 100%;
+  min-height: 96px;
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px dashed var(--yoyi-color-border-default);
+  border-radius: var(--yoyi-radius-lg);
+  font-size: var(--yoyi-type-button-size);
+  font-weight: 600;
+}
+
+.pickerHint {
+  max-width: 36em;
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-caption-size);
+  line-height: 1.6;
+}
+
+/* -- staging --------------------------------------------------------------- */
+
+.staged {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-4);
+  padding: var(--yoyi-space-5);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-lg);
+}
+
+.stagedHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--yoyi-space-2) var(--yoyi-space-4);
+}
+
+.stagedHeader h3 {
+  margin: 0;
+  font-size: var(--yoyi-type-list-title-size);
+  font-weight: 650;
+}
+
+.stagedSummary,
+.stagedNote {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.stagedList {
+  display: grid;
+  gap: var(--yoyi-space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stagedEntry {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--yoyi-space-4);
+}
+
+.stagedThumb {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--yoyi-color-text-tertiary);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.stagedThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stagedInfo {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-2);
+}
+
+.stagedTitle,
+.tileTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-2);
+  margin: 0;
+  font-size: var(--yoyi-type-body-small-size);
+  font-weight: 600;
+}
+
+.stagedFile {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--yoyi-color-text-tertiary);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.stagedMessage {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+}
+
+.pairing {
+  display: grid;
+  gap: var(--yoyi-space-3);
+}
+
+.pairing fieldset {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pairing legend {
+  margin-bottom: var(--yoyi-space-2);
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.pairing label {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  overflow-wrap: anywhere;
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.pairing input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--yoyi-color-seal-red);
+}
+
+.pairing button {
+  justify-self: start;
+}
+
+.stagedActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--yoyi-space-3);
+}
+
+/* -- badges, notices, errors ----------------------------------------------- */
+
+.badge,
+.coverBadge,
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--yoyi-type-caption-size);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.badge {
+  padding: 0 var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font-weight: 500;
+}
+
+.coverBadge {
+  padding: 0 var(--yoyi-space-3);
+  color: var(--yoyi-color-seal-red);
+  background: var(--yoyi-color-seal-red-muted);
+  border-radius: var(--yoyi-radius-full);
+  font-weight: 600;
+}
+
+.liveBadge {
+  padding: 0 var(--yoyi-space-2);
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-background-inverse);
+  border-radius: var(--yoyi-radius-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yoyi-space-2) var(--yoyi-space-4);
+  padding: var(--yoyi-space-3) var(--yoyi-space-4);
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-md);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.fieldError,
+.errorText {
+  margin: 0;
+  color: var(--yoyi-color-error);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+}
+
+.mutedText {
+  color: var(--yoyi-color-text-secondary);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* -- strip ----------------------------------------------------------------- */
+
+.strip {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--yoyi-space-4);
+  padding: var(--yoyi-space-4) 0;
+  background: var(--yoyi-color-background-page);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+
+.tile {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.tile[data-selected="true"] {
+  background: var(--yoyi-color-seal-red-muted);
+}
+
+.selectionBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+}
+
+.selectionBar button {
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-4);
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-surface);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font: inherit;
+  cursor: pointer;
+}
+
+.selectionBar button:disabled {
+  color: var(--yoyi-color-text-disabled);
+  cursor: default;
+}
+
+.selectionButton,
+.selectionShortcut:focus-visible {
+  position: absolute;
+  top: var(--yoyi-space-4);
+  right: 0;
+  z-index: 3;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-background-surface);
+  color: var(--yoyi-color-seal-red);
+  font: inherit;
+  cursor: pointer;
+}
+
+.selectionShortcut:not(:focus-visible) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.tile:has(.selectionButton) .tileTitle {
+  padding-right: 44px;
+}
+
+.selectionBar button:focus-visible,
+.selectionButton:focus-visible,
+.selectionShortcut:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.section[data-layout="desktop"] .tile {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+.tile[data-dragging="true"] {
+  z-index: 2;
+  background: var(--yoyi-color-background-elevated);
+  border-radius: var(--yoyi-radius-lg);
+  box-shadow: var(--yoyi-shadow-dialog);
+}
+
+.handle {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  place-items: center;
+  overflow: hidden;
+  color: var(--yoyi-color-text-tertiary);
+  background: var(--yoyi-color-background-muted);
+  border: 0;
+  border-radius: var(--yoyi-radius-md);
+  cursor: grab;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tile[data-dragging="true"] .handle {
+  cursor: grabbing;
+}
+
+.orderNumber {
+  position: absolute;
+  z-index: 1;
+  top: var(--yoyi-space-2);
+  left: var(--yoyi-space-2);
+  display: grid;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--yoyi-space-2);
+  box-sizing: border-box;
+  place-items: center;
+  color: var(--yoyi-color-text-inverse);
+  background: var(--yoyi-color-background-inverse);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-caption-size);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.previewBox {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.previewBox[data-orientation="landscape"] {
+  width: 100%;
+}
+
+.previewBox[data-orientation="portrait"] {
+  height: 100%;
+}
+
+.previewBox[data-orientation="unknown"] {
+  width: 100%;
+  height: 100%;
+}
+
+.previewFrame {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  container-type: size;
+}
+
+.previewImage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: fill;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.previewBox[data-orientation="unknown"] .previewImage {
+  object-fit: contain;
+}
+
+.previewFrame[data-rotation="90"] .previewImage,
+.previewFrame[data-rotation="270"] .previewImage {
+  width: 100cqh;
+  height: 100cqw;
+}
+
+.previewFrame[data-rotation="90"] .previewImage {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.previewFrame[data-rotation="180"] .previewImage {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+
+.previewFrame[data-rotation="270"] .previewImage {
+  transform: translate(-50%, -50%) rotate(270deg);
+}
+
+.previewFallback {
+  padding: var(--yoyi-space-2);
+  font-size: var(--yoyi-type-caption-size);
+}
+
+.tileBody {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-2);
+}
+
+.tileStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-1) var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.tile[data-media-status="ready"] .tileStatus {
+  color: var(--yoyi-color-text-primary);
+}
+
+.tile[data-media-status="failed"] [data-media-state-label] {
+  color: var(--yoyi-color-error);
+  font-weight: 600;
+}
+
+.progress {
+  position: relative;
+  width: 96px;
+  height: 4px;
+  overflow: hidden;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-full);
+}
+
+.progress::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--media-progress, 0%);
+  background: var(--yoyi-color-seal-red);
+  border-radius: inherit;
+  content: "";
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yoyi-space-2);
+  margin-top: var(--yoyi-space-1);
+}
+
+/* -- dialogs --------------------------------------------------------------- */
+
+.dialogBody {
+  display: grid;
+  max-width: 640px;
+  gap: var(--yoyi-space-5);
+  margin: var(--yoyi-space-6) auto 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.dialogMessage,
+.dialogNote,
+.dialogMeta {
+  margin: 0;
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+  line-height: 1.6;
+}
+
+.dialogMessage {
+  display: grid;
+  min-height: 160px;
+  padding: var(--yoyi-space-6);
+  place-items: center;
+  text-align: center;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-lg);
+}
+
+.cropViewport {
+  position: relative;
+  width: 100%;
+  height: min(60vh, 520px);
+  min-height: 240px;
+  overflow: hidden;
+  background: var(--yoyi-color-paper-dark);
+  border-radius: var(--yoyi-radius-lg);
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+/* A phone on its side: presets and 完成 stay reachable below the crop. */
+@media (max-height: 500px) {
+  .cropViewport {
+    height: 52vh;
+    min-height: 160px;
+  }
+}
+
+/* The library's own overlay contrast over any photo, in both themes. */
+.cropViewport .cropArea {
+  border: 1px solid rgb(255 255 255 / 85%);
+  color: rgb(0 0 0 / 55%);
+}
+
+.cropViewport :focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.presets {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.presets legend {
+  margin-bottom: var(--yoyi-space-3);
+  color: var(--yoyi-color-text-secondary);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.presetOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yoyi-space-2);
+}
+
+.presetOption {
+  position: relative;
+  display: inline-flex;
+}
+
+.presetOption input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.presetOption span {
+  display: inline-flex;
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 var(--yoyi-space-4);
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  color: var(--yoyi-color-text-secondary);
+  border: 1px solid var(--yoyi-color-border-subtle);
+  border-radius: var(--yoyi-radius-full);
+  font-size: var(--yoyi-type-label-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.presetOption input:checked + span {
+  color: var(--yoyi-color-text-primary);
+  background: var(--yoyi-color-background-elevated);
+  border-color: var(--yoyi-color-text-primary);
+  font-weight: 650;
+}
+
+.presetOption input:focus-visible + span {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.presets:disabled .presetOption span {
+  opacity: 0.45;
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--yoyi-space-4);
+  font-size: var(--yoyi-type-body-small-size);
+}
+
+.zoom input {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  accent-color: var(--yoyi-color-text-primary);
+}
+
+.dialogRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+}
+
+.dialogActions {
+  display: flex;
+  gap: var(--yoyi-space-3);
+}
+
+.dialogActions button {
+  min-height: 48px;
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picker[data-layout="desktop"] {
+    transition: none;
+  }
+}
+.section[data-layout="phone"] [data-media-action="up"],
+.section[data-layout="phone"] [data-media-action="down"] {
+  display: none;
+}

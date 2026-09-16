@@ -1,4 +1,4 @@
-/** Phase 4 application routes. Composition remains Development-only. */
+/** Phase 4 and work publishing application routes. Composition remains Development-only. */
 const reference = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const response = (schema: string) => ({
   description: "Committed result; private responses are never cached.",
@@ -20,16 +20,31 @@ const listParameters = [
     schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
   },
 ];
+const opaquePathPrefixes: Record<string, string> = {
+  workId: "work",
+  draftId: "work-draft",
+  itemId: "media-item",
+  componentId: "media-component",
+  sessionId: "publishing-session",
+};
 const pathSchema = (name: string) => {
   if (name === "type") return { type: "string", enum: ["catalog", "work"] };
   if (name === "commentId" || name === "rootId")
     return reference("CatalogCommentId");
   if (name === "authorId") return reference("PublicUserId");
-  if (name === "workId" || name === "draftId")
+  const opaque = opaquePathPrefixes[name];
+  if (opaque !== undefined)
+    return { type: "string", pattern: `^${opaque}-[0-9a-f]{32}$` };
+  if (name === "requestId") return { type: "string", format: "uuid" };
+  if (name === "role")
+    return { type: "string", enum: ["still", "motion", "package"] };
+  if (name === "variant")
     return {
       type: "string",
-      pattern: `^${name === "workId" ? "work" : "draft"}-[0-9a-f]{32}$`,
+      enum: ["thumb", "display", "full", "motion", "cover"],
     };
+  if (name === "editKey")
+    return { type: "string", pattern: "^(?:base|[0-9a-f]{32})$" };
   return {
     type: "string",
     minLength: 1,
@@ -114,7 +129,7 @@ const operation = (
 ) => ({
   operationId: name,
   description:
-    "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Work draft save/apply can return HTTP 200 with conflict=true and retain unapplied versions.",
+    "Phase 4 Development only; absent in Production. Optional sessions personalize eligibility; malformed supplied credentials reject. All reads are private, no-store with Vary: Authorization. Unknown or duplicate query fields reject. JSON writes accept no query. RequestIdentity commands are replay-safe for their actor; comment submissions do not have a replay receipt. Removing an own work moves it to the recycle bin.",
   security: privateOnly ? [{ session: [] }] : [{}, { session: [] }],
   parameters: [
     ...[...path.matchAll(/\{([^}]+)\}/g)].map((m) => ({
@@ -430,41 +445,8 @@ const routes: readonly [
   [
     "/v1/community/works/{workId}",
     "delete",
-    "deleteOwnWork",
+    "moveOwnWorkToTrash",
     "DeletedResult",
-    "RequestIdentity",
-    true,
-  ],
-  [
-    "/v1/community/works/{workId}/drafts",
-    "get",
-    "readOwnWorkDrafts",
-    "WorkDraftPage",
-    null,
-    true,
-    true,
-  ],
-  [
-    "/v1/community/works/{workId}/drafts",
-    "post",
-    "saveOwnWorkDraft",
-    "WorkDraftResult",
-    "WorkDraftSave",
-    true,
-  ],
-  [
-    "/v1/community/works/{workId}/drafts/apply",
-    "post",
-    "applyOwnWorkDraft",
-    "WorkApplyResult",
-    "WorkDraftApply",
-    true,
-  ],
-  [
-    "/v1/community/works/{workId}/drafts/{draftId}",
-    "delete",
-    "discardOwnWorkDraft",
-    "DiscardedResult",
     "RequestIdentity",
     true,
   ],
@@ -547,6 +529,392 @@ authorCommunityPaths["/v1/community/media/{mediaId}"] = {
       "401": failure("Invalid credential"),
       "404": failure("Unavailable media"),
       "503": failure("Service unavailable"),
+    },
+  },
+};
+
+const publishingDescription =
+  "Work publishing, Development only; absent in Production. Requires the session credential; responses are private, no-store with Vary: Authorization. Commands require x-author-account equal to the session account and accept no query; list reads accept only page and pageSize, and other reads accept no query. A rule rejection answers INVALID_INPUT whose message is the rule code; a stale state answers CONFLICT; a conflicting draft save answers 200 with status conflict and keeps both versions. RequestIdentity commands are replay-safe for their actor. A readiness check names the holder's current content: the Backend starts any missing edit derivative at once and answers which item keys still wait or failed, plus the thumb edit key of ready edited items; it has no other effect and is not receipted.";
+const publishingFailures = {
+  "401": failure("A valid session is required"),
+  "404": failure(
+    "Unavailable, private, deleted or not owned subject; includes a late write to a deleted draft",
+  ),
+  "409": failure(
+    "Stale state (for example a draft already submitted or an ended session), or a request identity reused with different content",
+  ),
+  "422": failure(
+    "Strict input validation failed or a publishing rule rejected the command; the message carries the rule code",
+  ),
+  "503": failure("Service or media unavailable; no success is claimed"),
+};
+const accountAssertion = {
+  name: "x-author-account",
+  in: "header",
+  required: true,
+  description:
+    "The authenticated account; a missing or different account rejects. Does not authorize a request.",
+  schema: { type: "string", pattern: "^user-[0-9a-f]{32}$" },
+};
+interface PublishingOperationOptions {
+  readonly list?: boolean;
+  readonly created?: boolean;
+  /** Replaces the generic CONFLICT description. */
+  readonly conflict?: string;
+}
+const publishingOperation = (
+  name: string,
+  path: string,
+  output: string,
+  input: string | null,
+  options: PublishingOperationOptions = {},
+) => {
+  const base = operation(name, path, output, input, true, options.list);
+  return {
+    ...base,
+    description: publishingDescription,
+    parameters: base.parameters.map((parameter) =>
+      parameter?.name === "x-author-account" ? accountAssertion : parameter,
+    ),
+    responses: {
+      [options.created ? "201" : "200"]: response(output),
+      ...publishingFailures,
+      ...(options.conflict === undefined
+        ? {}
+        : { "409": failure(options.conflict) }),
+    },
+  };
+};
+const publishingRoutes: readonly [
+  string,
+  string,
+  string,
+  string,
+  string | null,
+  PublishingOperationOptions?,
+][] = [
+  [
+    "/v1/community/publishing/limits",
+    "get",
+    "readPublishingLimits",
+    "PublishingLimits",
+    null,
+  ],
+  [
+    "/v1/community/publishing/drafts",
+    "post",
+    "createPublishingDraft",
+    "PublishingDraft",
+    "CreatePublishingDraftCommand",
+    { created: true },
+  ],
+  [
+    "/v1/community/publishing/drafts",
+    "get",
+    "listPublishingDrafts",
+    "PublishingDraftPage",
+    null,
+    { list: true },
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}",
+    "get",
+    "readPublishingDraft",
+    "PublishingDraft",
+    null,
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}",
+    "delete",
+    "deletePublishingDraft",
+    "PublishingDraftDeletionResult",
+    "PublishingDraftDeletionCommand",
+    {
+      conflict:
+        "With expectedRevision, the draft revision differs from it or the draft has an unresolved conflict copy (message draft_changed; nothing was deleted); or the draft is no longer active, or a request identity was reused with different content",
+    },
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}/save",
+    "post",
+    "savePublishingDraft",
+    "PublishingDraftSaveResult",
+    "SavePublishingDraftCommand",
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}/snapshot",
+    "post",
+    "savePublishingDraftNow",
+    "PublishingDraftSaveResult",
+    "SavePublishingDraftCommand",
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}/history",
+    "get",
+    "readPublishingDraftHistory",
+    "PublishingSnapshotPage",
+    null,
+    { list: true },
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}/restore",
+    "post",
+    "restorePublishingSnapshot",
+    "PublishingDraft",
+    "RestorePublishingSnapshotCommand",
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}/resolve",
+    "post",
+    "resolvePublishingConflict",
+    "PublishingDraft",
+    "ResolvePublishingConflictCommand",
+  ],
+  [
+    "/v1/community/publishing/drafts/{draftId}/readiness",
+    "post",
+    "checkPublishingDraftReadiness",
+    "PublishingReadiness",
+    "PublishingReadinessCommand",
+    { conflict: "The draft is no longer active (already submitted)" },
+  ],
+  [
+    "/v1/community/publishing/works/{workId}/draft",
+    "post",
+    "openWorkEditDraft",
+    "PublishingOpenedEditDraft",
+    "OpenWorkEditDraftCommand",
+  ],
+  [
+    "/v1/community/publishing/works/{workId}/editable",
+    "get",
+    "readEditableWork",
+    "EditableWork",
+    null,
+  ],
+  [
+    "/v1/community/publishing/works/{workId}/visibility",
+    "post",
+    "setWorkVisibility",
+    "WorkVisibilityResult",
+    "WorkVisibilityCommand",
+  ],
+  [
+    "/v1/community/publishing/sessions",
+    "post",
+    "createPublishingSession",
+    "PublishingSession",
+    "CreatePublishingSessionCommand",
+    { created: true },
+  ],
+  [
+    "/v1/community/publishing/sessions/{sessionId}/heartbeat",
+    "post",
+    "renewPublishingSession",
+    "PublishingSession",
+    "PublishingSessionHeartbeatCommand",
+  ],
+  [
+    "/v1/community/publishing/sessions/{sessionId}/discard",
+    "post",
+    "discardPublishingSession",
+    "DiscardedResult",
+    "RequestIdentity",
+  ],
+  [
+    "/v1/community/publishing/sessions/{sessionId}/readiness",
+    "post",
+    "checkPublishingSessionReadiness",
+    "PublishingReadiness",
+    "PublishingReadinessCommand",
+    { conflict: "The session has ended (discarded or submitted)" },
+  ],
+  [
+    "/v1/community/publishing/items",
+    "post",
+    "registerMediaItem",
+    "PublishingMediaItem",
+    "RegisterMediaItemCommand",
+    { created: true },
+  ],
+  [
+    "/v1/community/publishing/items/{itemId}",
+    "get",
+    "readMediaItem",
+    "PublishingMediaItem",
+    null,
+  ],
+  [
+    "/v1/community/publishing/items/{itemId}/cancel",
+    "post",
+    "cancelMediaItem",
+    "PublishingMediaItem",
+    "RequestIdentity",
+  ],
+  [
+    "/v1/community/publishing/items/{itemId}/components/{role}/reset",
+    "post",
+    "resetMediaComponent",
+    "PublishingMediaItem",
+    "RequestIdentity",
+  ],
+  [
+    "/v1/community/publishing/submissions",
+    "post",
+    "submitWork",
+    "WorkSubmissionResult",
+    "WorkSubmissionCommand",
+  ],
+  [
+    "/v1/community/publishing/submissions/{requestId}",
+    "get",
+    "readWorkSubmissionReceipt",
+    "WorkSubmissionReceipt",
+    null,
+  ],
+  [
+    "/v1/community/publishing/trash",
+    "get",
+    "listTrashedWorks",
+    "TrashedWorkPage",
+    null,
+    { list: true },
+  ],
+  [
+    "/v1/community/publishing/trash/{workId}/restore",
+    "post",
+    "restoreTrashedWork",
+    "TrashRestoreResult",
+    "RequestIdentity",
+  ],
+];
+// Moving an own work to the recycle bin is a publishing command: the account
+// assertion is required like on every other publishing command.
+const trashOperation = authorCommunityPaths["/v1/community/works/{workId}"]!
+  .delete as { readonly parameters: readonly { readonly name?: string }[] };
+authorCommunityPaths["/v1/community/works/{workId}"]!.delete = {
+  ...trashOperation,
+  parameters: trashOperation.parameters.map((parameter) =>
+    parameter.name === "x-author-account" ? accountAssertion : parameter,
+  ),
+};
+for (const [path, method, name, output, input, options] of publishingRoutes) {
+  authorCommunityPaths[path] ??= {};
+  authorCommunityPaths[path][method] = publishingOperation(
+    name,
+    path,
+    output,
+    input,
+    options,
+  );
+}
+authorCommunityPaths["/v1/community/publishing/uploads/{componentId}"] = {
+  post: {
+    ...publishingOperation(
+      "uploadMediaComponent",
+      "/v1/community/publishing/uploads/{componentId}",
+      "PublishingUploadResult",
+      null,
+    ),
+    description:
+      "Work publishing, Development only. One registered media component as a raw byte stream behind an attempt fence: content-length is required and must equal the declared component bytes, and the server checksum is authoritative. No automatic retry: a new attempt follows an explicit component reset. A cancelled or superseded attempt answers CONFLICT and stores nothing. A refusal (including an invalid session or account assertion) may be answered while bytes are still arriving: the answer does not announce a connection close; the server reads on and discards bytes until the body ends or a few seconds passed, and only then closes the connection, so a client that keeps sending longer sees the connection close after the answer. A transfer that delivers no bytes for two minutes is closed without an answer. Private, no-store.",
+    parameters: [
+      {
+        name: "componentId",
+        in: "path",
+        required: true,
+        schema: pathSchema("componentId"),
+      },
+      accountAssertion,
+      {
+        name: "x-upload-attempt",
+        in: "header",
+        required: true,
+        description:
+          "UUID of this transfer attempt; a later attempt supersedes it.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "content-length",
+        in: "header",
+        required: true,
+        description: "Exactly the declared component bytes.",
+        schema: { type: "integer", minimum: 1 },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/octet-stream": {
+          schema: { type: "string", format: "binary" },
+        },
+      },
+    },
+    responses: {
+      "200": response("PublishingUploadResult"),
+      ...publishingFailures,
+      "409": failure(
+        "The transfer was cancelled or superseded, or another transfer of the component is in progress; nothing was stored",
+      ),
+      "413": failure("More bytes than the declared component size"),
+      "422": failure(
+        "Missing or invalid transfer headers, a length other than the declared size, or fewer bytes than declared",
+      ),
+    },
+  },
+};
+authorCommunityPaths[
+  "/v1/community/publishing/media/{itemId}/{variant}/{editKey}"
+] = {
+  get: {
+    ...operation(
+      "readPublishingMedia",
+      "/v1/community/publishing/media/{itemId}/{variant}/{editKey}",
+      null,
+      null,
+      false,
+    ),
+    description:
+      "Work publishing, Development only. One derivative of a media item for its edit key; sources and originals are never addressable. The owner reads its own items; anyone else only derivatives of an eligible public work. Supports one byte range; a Range header with another unit or several ranges is ignored and the whole derivative is sent. Accepts no query. Private, no-store with Vary: Authorization.",
+    parameters: [
+      ...["itemId", "variant", "editKey"].map((name) => ({
+        name,
+        in: "path",
+        required: true,
+        schema: pathSchema(name),
+      })),
+      {
+        name: "range",
+        in: "header",
+        required: false,
+        description:
+          "One byte range: bytes=start-end, bytes=start- or bytes=-length. Other units and several ranges are ignored.",
+        schema: { type: "string" },
+      },
+    ],
+    responses: {
+      "200": {
+        description: "The whole derivative; private, no-store.",
+        content: {
+          "image/webp": { schema: { type: "string", format: "binary" } },
+          "video/mp4": { schema: { type: "string", format: "binary" } },
+        },
+      },
+      "206": {
+        description: "The requested byte range with Content-Range.",
+        content: {
+          "image/webp": { schema: { type: "string", format: "binary" } },
+          "video/mp4": { schema: { type: "string", format: "binary" } },
+        },
+      },
+      "401": failure("Invalid credential"),
+      "404": failure("Unavailable media"),
+      "416": {
+        description:
+          "The byte range is malformed or outside the derivative; Content-Range names its length.",
+      },
+      "422": failure("A query string was supplied"),
+      "503": failure("Service or media unavailable"),
     },
   },
 };

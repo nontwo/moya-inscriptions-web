@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { AuthorProfile } from "@moya/contracts";
 import { AuthorDialog } from "./author-dialog";
 import { authorClient } from "./author-data";
@@ -11,10 +11,16 @@ export const ProfileSettings = ({
   profile,
   onClose,
   onSaved,
+  onOpenEdit,
+  onOpenComments,
+  onOpenTrash,
 }: {
   profile: AuthorProfile | null;
   onClose: () => void;
   onSaved: () => void;
+  onOpenEdit?: () => void;
+  onOpenComments?: () => void;
+  onOpenTrash?: () => void;
 }) => {
   const initialPrivacy: AuthorProfile["privacy"] = profile?.privacy ?? {
     following: "private",
@@ -33,6 +39,8 @@ export const ProfileSettings = ({
   const author = useAuthors();
   const shell = useProductShell();
   const tabId = useId();
+  const nextAction = useRef<(() => void) | null>(null);
+  const [closing, setClosing] = useState(false);
   const load = (page = 1) =>
     !profile?.isOwner
       ? Promise.resolve()
@@ -56,12 +64,54 @@ export const ProfileSettings = ({
     favorites: "收藏列表",
     likes: "喜欢列表",
   } as const;
+  const navigate = (action: () => void) => {
+    if (closing || busy) return;
+    if (
+      JSON.stringify(saved) !== JSON.stringify(privacy) &&
+      !window.confirm("更改尚未保存，放弃这些更改？")
+    )
+      return;
+    nextAction.current = action;
+    setClosing(true);
+  };
   return (
     <AuthorDialog
       title="设置"
-      dirty={JSON.stringify(saved) !== JSON.stringify(privacy)}
-      onClose={onClose}
+      dirty={!closing && JSON.stringify(saved) !== JSON.stringify(privacy)}
+      closeRequested={closing}
+      onClose={() => (nextAction.current ?? onClose)()}
     >
+      {profile?.isOwner ? (
+        <nav className="phase4-actions" aria-label="个人管理">
+          {onOpenEdit ? (
+            <button
+              type="button"
+              disabled={closing || busy}
+              onClick={() => navigate(onOpenEdit)}
+            >
+              编辑资料
+            </button>
+          ) : null}
+          {onOpenComments ? (
+            <button
+              type="button"
+              disabled={closing || busy}
+              onClick={() => navigate(onOpenComments)}
+            >
+              我的评论
+            </button>
+          ) : null}
+          {onOpenTrash ? (
+            <button
+              type="button"
+              disabled={closing || busy}
+              onClick={() => navigate(onOpenTrash)}
+            >
+              回收站
+            </button>
+          ) : null}
+        </nav>
+      ) : null}
       <div
         className="phase4-settings-tabs"
         role="tablist"

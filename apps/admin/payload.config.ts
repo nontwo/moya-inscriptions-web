@@ -71,6 +71,23 @@ export default buildConfig({
           path: "/community-moderation/history",
           exact: true,
         },
+        // Work publishing (Development): explicit submission review, account
+        // capacity designation and content-free publishing job outcomes.
+        communityWorkSubmissions: {
+          Component: "/src/community/View#WorkSubmissionsView",
+          path: "/community-moderation/work-submissions",
+          exact: true,
+        },
+        communityAccountCapacity: {
+          Component: "/src/community/View#AccountCapacityView",
+          path: "/community-moderation/account-capacity",
+          exact: true,
+        },
+        communityPublishingJobs: {
+          Component: "/src/community/View#PublishingJobsView",
+          path: "/community-moderation/publishing-jobs",
+          exact: true,
+        },
       },
       // Work-oriented groups after the collection groups: 社区 and 自动化工具.
       afterNavLinks: [

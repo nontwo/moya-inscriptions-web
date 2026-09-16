@@ -1,19 +1,13 @@
 import { asCommunityOperationError } from "./availability.js";
 import { createHash, randomUUID } from "node:crypto";
 import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
-import {
-  authorProfileSchema,
-  workEditDraftSchema,
-  workSchema,
-} from "@moya/contracts/schemas";
+import { authorProfileSchema, workSchema } from "@moya/contracts/schemas";
 import type {
   AuthorCommunityPort,
   AuthorListItem,
   AuthorPage,
   OwnedMediaInput,
   OwnedMediaRead,
-  WorkApplyResult,
-  WorkDraftResult,
 } from "@moya/api";
 import type {
   AuthorListQuery,
@@ -27,11 +21,17 @@ import type {
   ProfileUpdate,
   RelationshipUpdate,
   UserWork,
-  WorkDraftApply,
-  WorkDraftSave,
-  WorkEditDraft,
 } from "@moya/contracts";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+
+import {
+  revisionCover,
+  revisionCoverColumns,
+  revisionCoverJoin,
+  revisionMedia,
+} from "./publishing/media-read.js";
+import type { RevisionCoverColumns } from "./publishing/media-read.js";
+import { revisionAuthorship } from "./publishing/authorship.js";
 
 interface UserRow extends QueryResultRow {
   id: string;
@@ -51,24 +51,34 @@ interface WorkRow extends QueryResultRow {
   display_name: string;
   title: string;
   text: string;
-  media_ids: string[];
-  first_published_at: Date;
+  first_published_at: Date | null;
+  edited_at: Date | null;
   version: number;
+  visibility: "public" | "self";
+  trashed_at: Date | null;
+  public_revision_id: string | null;
+  author_revision_id: string | null;
   operator_state: "visible" | "hidden" | "removed";
-  deleted_at: Date | null;
+  is_public: boolean;
 }
-interface DraftRow extends QueryResultRow {
-  id: string;
-  work_id: string;
-  version: number;
-  base_work_version: number;
-  base_draft_version: number;
+interface WorkRevisionRow extends RevisionCoverColumns {
   title: string;
-  text: string;
-  media_ids: string[];
-  created_at: Date;
-  conflicted: boolean;
+  body: string;
+  authorship_kind: string | null;
+  reference_title: string | null;
+  original_author: string | null;
+  source_note: string | null;
 }
+/**
+ * Effective third-party visibility (community.work_is_public) plus the
+ * author-active and block checks, or the author's own branch: not purged and
+ * not in the recycle bin. `$1` is the viewer, `w`/`u` the work and author.
+ */
+const workVisibleTo = (viewer: string) =>
+  `u.status='active' AND community.accounts_can_interact(${viewer},w.author_id)
+  AND (community.work_is_public(w) OR (w.author_id=${viewer} AND w.deleted_at IS NULL AND w.trashed_at IS NULL))`;
+const workColumns =
+  "w.id,w.author_id,w.title,w.text,w.first_published_at,w.edited_at,w.version,w.visibility,w.trashed_at,w.public_revision_id,w.author_revision_id,w.operator_state,community.work_is_public(w) AS is_public,u.display_name";
 const offset = (q: AuthorListQuery) => (q.page - 1) * q.pageSize;
 const opaque = (prefix: string) =>
   `${prefix}-${randomUUID().replaceAll("-", "")}`;
@@ -82,17 +92,6 @@ const mediaDto = (r: {
   height: r.height,
   src: `/api/community/media/${r.id}`,
 });
-const draftDto = (r: DraftRow): WorkEditDraft =>
-  workEditDraftSchema.parse({
-    id: r.id,
-    workId: r.work_id,
-    version: r.version,
-    baseWorkVersion: r.base_work_version,
-    baseDraftVersion: r.base_draft_version,
-    content: { title: r.title, text: r.text, mediaIds: r.media_ids },
-    savedAt: r.created_at.toISOString(),
-    conflicted: r.conflicted,
-  });
 
 export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
   constructor(private readonly pool: Pool) {}
@@ -215,36 +214,78 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
     db: PoolClient,
     id: string,
     viewer: string | null,
-    ownerOnly = false,
     lock = false,
   ): Promise<WorkRow> {
     const row = (
       await db.query<WorkRow>(
-        `SELECT w.*,u.display_name FROM community.works w JOIN community.public_users u ON u.id=w.author_id
-      WHERE w.id=$1 AND w.deleted_at IS NULL AND u.status='active' AND community.accounts_can_interact($2,w.author_id)
-      AND (w.operator_state='visible' OR w.author_id=$2) ${ownerOnly ? "AND w.author_id=$2 FOR UPDATE OF w" : lock ? "FOR SHARE OF w" : ""}`,
+        `SELECT ${workColumns} FROM community.works w JOIN community.public_users u ON u.id=w.author_id
+      WHERE w.id=$1 AND ${workVisibleTo("$2")}${lock ? " FOR SHARE OF w" : ""}`,
         [id, viewer],
       )
     ).rows[0];
     if (!row) throw new CommunityNotFoundError();
     return row;
   }
+  /**
+   * Third parties read the public revision; the author reads the author
+   * revision. `available` says whether this viewer may open the work's
+   * discussion and interaction surfaces (the rule the discussion store reads
+   * with): third parties only while the work is effectively public; the
+   * author on their own work outside the recycle bin unless an operator hid
+   * or removed it (self-only and pending works included, so no pending state
+   * is implied). Comments, likes and favorites are still only written on
+   * effectively public works. `coverMediaId` names the cover entry of the
+   * same revision and `coverSrc` its card cover still (the rule Home cards
+   * use); `authorship` is present only when that revision declares one. Only
+   * the author learns `publiclyVisible` (whether third parties can see the
+   * work now, community.work_is_public).
+   */
   private async workDto(
     db: PoolClient,
     row: WorkRow,
     viewer: string | null,
   ): Promise<UserWork> {
+    const owner = row.author_id === viewer;
+    const revisionId = owner ? row.author_revision_id : row.public_revision_id;
+    const revision =
+      revisionId === null
+        ? undefined
+        : (
+            await db.query<WorkRevisionRow>(
+              `SELECT r.title,r.body,r.authorship_kind,r.reference_title,r.original_author,r.source_note,${revisionCoverColumns("cov")}
+              FROM community.work_revisions r ${revisionCoverJoin("r", "cov")} WHERE r.id=$1`,
+              [revisionId],
+            )
+          ).rows[0];
+    const { media, coverMediaId } = await revisionMedia(
+      db,
+      revision === undefined ? null : revisionId,
+    );
+    const authorship =
+      revision === undefined ? null : revisionAuthorship(revision);
     return workSchema.parse({
       id: row.id,
       authorId: row.author_id,
       authorName: row.display_name,
-      title: row.title,
-      text: row.text,
-      media: await this.media(db, row.media_ids),
-      firstPublishedAt: row.first_published_at.toISOString(),
+      title: revision?.title ?? row.title,
+      text: revision?.body ?? row.text,
+      media,
+      coverMediaId,
+      coverSrc:
+        revision === undefined ? null : (revisionCover(revision)?.src ?? null),
+      firstPublishedAt: row.first_published_at?.toISOString() ?? null,
       version: row.version,
-      canEdit: row.author_id === viewer,
-      available: row.operator_state === "visible" && row.deleted_at === null,
+      canEdit: owner,
+      available: row.is_public || (owner && row.operator_state === "visible"),
+      editedAt: row.edited_at?.toISOString() ?? null,
+      ...(authorship === null ? {} : { authorship }),
+      ...(owner
+        ? {
+            visibility: row.visibility,
+            trashedAt: row.trashed_at?.toISOString() ?? null,
+            publiclyVisible: row.is_public,
+          }
+        : {}),
     });
   }
 
@@ -255,6 +296,22 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       const count = async (sql: string) =>
         Number(
           (await db.query<{ total: string }>(sql, [id])).rows[0]?.total ?? 0,
+        );
+      // Work relations count only while the work is effectively public for
+      // this viewer (the discovery collection rule; a relation to a self-only,
+      // pending, trashed, hidden or removed work is kept but never counted).
+      const relationCount = async (relation: "favorite" | "like") =>
+        Number(
+          (
+            await db.query<{ total: string }>(
+              `SELECT count(*) AS total FROM community.content_relations r
+              WHERE r.user_id=$1 AND r.relation=$2 AND (r.content_type<>'work' OR EXISTS (
+                SELECT 1 FROM community.works w JOIN community.public_users wu ON wu.id=w.author_id
+                WHERE w.id=r.content_id AND community.work_is_public(w) AND wu.status='active'
+                  AND community.accounts_can_interact($3::text,w.author_id)))`,
+              [id, relation, viewer],
+            )
+          ).rows[0]?.total ?? 0,
         );
       const following =
         viewer === null
@@ -283,7 +340,9 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
         },
         totals: {
           works: await count(
-            "SELECT count(*) AS total FROM community.works WHERE author_id=$1 AND deleted_at IS NULL AND operator_state='visible'",
+            owner
+              ? "SELECT count(*) AS total FROM community.works w WHERE w.author_id=$1 AND w.deleted_at IS NULL AND w.trashed_at IS NULL"
+              : "SELECT count(*) AS total FROM community.works w WHERE w.author_id=$1 AND community.work_is_public(w)",
           ),
           following:
             owner || u.following_privacy === "public"
@@ -299,15 +358,11 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
               : null,
           favorites:
             owner || u.favorites_privacy === "public"
-              ? await count(
-                  "SELECT count(*) AS total FROM community.content_relations WHERE user_id=$1 AND relation='favorite'",
-                )
+              ? await relationCount("favorite")
               : null,
           likes:
             owner || u.likes_privacy === "public"
-              ? await count(
-                  "SELECT count(*) AS total FROM community.content_relations WHERE user_id=$1 AND relation='like'",
-                )
+              ? await relationCount("like")
               : null,
         },
         nextAvatarChangeAt: owner
@@ -399,6 +454,14 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       },
     );
   }
+  /**
+   * A user media PNG: the owner always; others for an avatar, or while a
+   * legacy item of it is in the public revision of an effectively public work
+   * with its unedited form (edit key `base` without the cover crop). An edited
+   * legacy item is shown only through its derivatives, so a rotation or crop
+   * never leaves the uncut PNG readable under its old id; a cover crop alone
+   * keeps it (the card uses the cover derivative, the work its PNG).
+   */
   async readMedia(
     id: string,
     viewer: string | null,
@@ -409,7 +472,12 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
           `SELECT m.bytes,m.width,m.height FROM community.user_media m
         JOIN community.public_users u ON u.id=m.owner_id WHERE m.id=$1 AND u.status='active'
         AND community.accounts_can_interact($2,m.owner_id) AND (m.owner_id=$2 OR u.avatar_media_id=m.id OR EXISTS (
-          SELECT 1 FROM community.works w WHERE w.author_id=m.owner_id AND m.id=ANY(w.media_ids) AND w.deleted_at IS NULL AND w.operator_state='visible'))`,
+          SELECT 1 FROM community.media_items i
+          JOIN community.work_revision_items ri ON ri.item_id=i.id
+          JOIN community.work_revisions r ON r.id=ri.revision_id
+          JOIN community.works w ON w.id=r.work_id AND w.public_revision_id=r.id AND w.author_id=m.owner_id
+          WHERE i.legacy_media_id=m.id AND i.owner_id=m.owner_id AND community.work_is_public(w)
+            AND community.media_edit_key(ri.edit,NULL)='base'))`,
           [id, viewer],
         )
       ).rows[0];
@@ -540,200 +608,33 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
   ): Promise<AuthorPage<UserWork>> {
     return this.read(async (db) => {
       await this.accessible(db, viewer, id);
-      const where =
-        "w.author_id=$1 AND w.deleted_at IS NULL AND (w.operator_state='visible' OR w.author_id=$2)";
+      const where = `w.author_id=$1 AND ${workVisibleTo("$2")}`;
+      const from =
+        "FROM community.works w JOIN community.public_users u ON u.id=w.author_id";
       const total = Number(
         (
           await db.query<{ total: string }>(
-            `SELECT count(*) AS total FROM community.works w WHERE ${where}`,
+            `SELECT count(*) AS total ${from} WHERE ${where}`,
             [id, viewer],
           )
         ).rows[0]?.total ?? 0,
       );
       const rows = (
         await db.query<WorkRow>(
-          `SELECT w.*,u.display_name FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE ${where} ORDER BY first_published_at DESC,w.id DESC LIMIT $3 OFFSET $4`,
+          `SELECT ${workColumns} ${from} WHERE ${where} ORDER BY COALESCE(w.first_published_at,w.first_submitted_at) DESC NULLS LAST,w.id DESC LIMIT $3 OFFSET $4`,
           [id, viewer, q.pageSize, offset(q)],
         )
       ).rows;
+      // One client runs one query at a time: map the rows in order.
+      const items: UserWork[] = [];
+      for (const row of rows) items.push(await this.workDto(db, row, viewer));
       return {
-        items: await Promise.all(rows.map((r) => this.workDto(db, r, viewer))),
+        items,
         total,
         page: q.page,
         pageSize: q.pageSize,
       };
     });
-  }
-  async deleteWork(
-    actor: string,
-    id: string,
-    requestId: string,
-  ): Promise<void> {
-    await this.mutate(actor, requestId, "work.delete", id, {}, async (db) => {
-      await this.work(db, id, actor, true);
-      await db.query(
-        "UPDATE community.works SET deleted_at=CURRENT_TIMESTAMP WHERE id=$1",
-        [id],
-      );
-      await db.query(
-        "UPDATE community.work_edit_drafts SET discarded_at=CURRENT_TIMESTAMP WHERE work_id=$1 AND discarded_at IS NULL AND applied_at IS NULL",
-        [id],
-      );
-    });
-  }
-  async saveDraft(
-    actor: string,
-    id: string,
-    input: WorkDraftSave,
-  ): Promise<WorkDraftResult> {
-    return this.mutate(
-      actor,
-      input.requestId,
-      "draft.save",
-      id,
-      input,
-      async (db) => {
-        const work = await this.work(db, id, actor, true);
-        await this.ownedMedia(db, actor, input.content.mediaIds);
-        const latest = Number(
-          (
-            await db.query<{ version: number }>(
-              "SELECT coalesce(max(version),0) AS version FROM community.work_edit_drafts WHERE work_id=$1",
-              [id],
-            )
-          ).rows[0]?.version ?? 0,
-        );
-        const conflict =
-          input.baseDraftVersion !== latest ||
-          input.baseWorkVersion !== work.version;
-        const c = input.content;
-        const draft = (
-          await db.query<DraftRow>(
-            `INSERT INTO community.work_edit_drafts(id,work_id,author_id,version,base_work_version,base_draft_version,title,text,media_ids,conflicted)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-            [
-              opaque("draft"),
-              id,
-              actor,
-              latest + 1,
-              input.baseWorkVersion,
-              input.baseDraftVersion,
-              c.title,
-              c.text,
-              c.mediaIds,
-              conflict,
-            ],
-          )
-        ).rows[0]!;
-        return { draft: draftDto(draft), conflict, latestVersion: latest + 1 };
-      },
-    );
-  }
-  async listDrafts(
-    actor: string,
-    id: string,
-    q: AuthorListQuery,
-  ): Promise<AuthorPage<WorkEditDraft> & { readonly currentVersion: number }> {
-    return this.read(async (db) => {
-      const work = await this.work(db, id, actor);
-      if (work.author_id !== actor) throw new CommunityNotFoundError();
-      const where =
-        "work_id=$1 AND applied_at IS NULL AND discarded_at IS NULL";
-      const total = Number(
-        (
-          await db.query<{ total: string }>(
-            `SELECT count(*) AS total FROM community.work_edit_drafts WHERE ${where}`,
-            [id],
-          )
-        ).rows[0]?.total ?? 0,
-      );
-      const rows = (
-        await db.query<DraftRow>(
-          `SELECT * FROM community.work_edit_drafts WHERE ${where} ORDER BY version DESC LIMIT $2 OFFSET $3`,
-          [id, q.pageSize, offset(q)],
-        )
-      ).rows;
-      return {
-        items: rows.map(draftDto),
-        currentVersion: Number(
-          (
-            await db.query<{ version: number }>(
-              "SELECT coalesce(max(version),0) AS version FROM community.work_edit_drafts WHERE work_id=$1",
-              [id],
-            )
-          ).rows[0]?.version ?? 0,
-        ),
-        total,
-        page: q.page,
-        pageSize: q.pageSize,
-      };
-    });
-  }
-  async applyDraft(
-    actor: string,
-    id: string,
-    input: WorkDraftApply,
-  ): Promise<WorkApplyResult> {
-    return this.mutate(
-      actor,
-      input.requestId,
-      "draft.apply",
-      id,
-      input,
-      async (db) => {
-        const work = await this.work(db, id, actor, true);
-        const draft = (
-          await db.query<DraftRow>(
-            "SELECT * FROM community.work_edit_drafts WHERE id=$1 AND work_id=$2 AND applied_at IS NULL AND discarded_at IS NULL FOR UPDATE",
-            [input.draftId, id],
-          )
-        ).rows[0];
-        if (!draft) throw new CommunityNotFoundError();
-        if (draft.base_work_version !== work.version)
-          return { applied: false, conflict: true, workVersion: work.version };
-        if (work.operator_state !== "visible")
-          throw new CommunityConflictError(
-            "This work is unavailable; edits cannot restore it",
-          );
-        await this.ownedMedia(db, actor, draft.media_ids);
-        await db.query(
-          "UPDATE community.works SET title=$2,text=$3,media_ids=$4,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1",
-          [id, draft.title, draft.text, draft.media_ids],
-        );
-        // Consume exactly the chosen version. Newer and unchosen versions survive.
-        await db.query(
-          "UPDATE community.work_edit_drafts SET applied_at=CURRENT_TIMESTAMP WHERE id=$1",
-          [draft.id],
-        );
-        return {
-          applied: true,
-          conflict: false,
-          workVersion: work.version + 1,
-        };
-      },
-    );
-  }
-  async discardDraft(
-    actor: string,
-    id: string,
-    draftId: string,
-    requestId: string,
-  ): Promise<void> {
-    await this.mutate(
-      actor,
-      requestId,
-      "draft.discard",
-      id,
-      { draftId },
-      async (db) => {
-        await this.work(db, id, actor, true);
-        const r = await db.query(
-          "UPDATE community.work_edit_drafts SET discarded_at=CURRENT_TIMESTAMP WHERE id=$1 AND work_id=$2 AND author_id=$3 AND applied_at IS NULL",
-          [draftId, id, actor],
-        );
-        if (r.rowCount !== 1) throw new CommunityNotFoundError();
-      },
-    );
   }
   async changeRelation(
     actor: string,
@@ -748,9 +649,9 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       input,
       async (db) => {
         if (input.target.type === "work" && input.enabled) {
-          const work = await this.work(db, input.target.id, actor, false, true);
-          if (work.operator_state !== "visible")
-            throw new CommunityNotFoundError();
+          // Relations are public interactions: never on a work others cannot see.
+          const work = await this.work(db, input.target.id, actor, true);
+          if (!work.is_public) throw new CommunityNotFoundError();
           await this.lockPair(db, actor, work.author_id);
           await this.accessible(db, actor, work.author_id);
         }

@@ -1,5 +1,6 @@
 import {
   createBackendApplication,
+  createPublishingTransferRegistry,
   parseRuntimeConfig,
   startBackendProcess,
 } from "@moya/backend-runtime";
@@ -17,9 +18,17 @@ import {
   PostgresCommunityDiscoveryAdapter,
   PostgresCommunityCommentAdapter,
   PostgresCommunityIdentityAdapter,
+  PostgresPublishingOperatorAdapter,
+  PostgresWorkPublishingAdapter,
   verifyCommunityMigrationLedger,
 } from "@moya/community-postgres";
 import { loadPilotConfiguration, openPilotPool } from "./pilot-config.js";
+import {
+  openPublishingMedia,
+  parsePublishingMediaConfig,
+} from "./publishing/config.js";
+import { createPublishingJobHandlers } from "./publishing/job-handlers.js";
+import { PublishingWorker } from "./publishing/worker.js";
 import { createLocalStorageUrlResolver } from "./storage/local-media.js";
 import {
   ProductionCosStorageUrlResolver,
@@ -39,6 +48,12 @@ export interface PreparedProductionBackend {
   readonly readinessCheck: () => Promise<void>;
   readonly requestListener: RequestListener;
   readonly runtimeConfig: RuntimeConfig;
+  /**
+   * Starts background work once the listener is up: the Development
+   * publishing worker when publishing media is configured, otherwise nothing.
+   * `closeResources` stops it (bounded) before the pools close.
+   */
+  readonly startBackgroundWork: () => void;
 }
 
 const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
@@ -165,6 +180,19 @@ export const prepareProductionBackend = async (
     : runtimeConfig.nodeEnv === "development"
       ? createLocalStorageUrlResolver(environment)
       : new ProductionCosStorageUrlResolver(productionCosOptions(environment));
+  // Development work publishing media (design §9.6). Without its keys the
+  // Backend still starts and publishing uploads answer 503; a partial or
+  // unusable configuration fails here, before any pool opens. Production
+  // never reads these keys.
+  const publishingMediaConfig =
+    runtimeConfig.nodeEnv === "development"
+      ? parsePublishingMediaConfig(environment)
+      : null;
+  const publishingMedia = publishingMediaConfig
+    ? await openPublishingMedia(publishingMediaConfig, {
+        foreignDirectories: [environment.CMS_MEDIA_DIR],
+      })
+    : undefined;
   const onUnexpectedIdleError = () => {
     console.error("[backend-production] unexpected PostgreSQL pool error");
   };
@@ -184,7 +212,37 @@ export const prepareProductionBackend = async (
   const communityPool = createPostgresPool(communityPostgresConfig, {
     onUnexpectedIdleError,
   });
+  const workPublishingPort =
+    runtimeConfig.nodeEnv === "development"
+      ? new PostgresWorkPublishingAdapter(communityPool)
+      : undefined;
+  // One upload registry shared by the HTTP upload route and the worker: a
+  // session the worker expires stops its transfers still streaming here.
+  const publishingTransfers = workPublishingPort
+    ? createPublishingTransferRegistry()
+    : undefined;
+  const publishingWorker =
+    workPublishingPort &&
+    publishingTransfers &&
+    publishingMedia &&
+    publishingMediaConfig
+      ? new PublishingWorker({
+          port: workPublishingPort,
+          concurrency: publishingMediaConfig.workerConcurrency,
+          handlers: createPublishingJobHandlers({
+            port: workPublishingPort,
+            store: publishingMedia.store,
+            processor: publishingMedia.processor,
+            toolJobs: publishingMedia.runner,
+            onUploadsCancelled: (componentIds) => {
+              publishingTransfers.stop(componentIds);
+            },
+          }),
+        })
+      : undefined;
   const closeResources = async (): Promise<void> => {
+    // Running jobs finish or give their leases back before the pools close.
+    await publishingWorker?.stop();
     await Promise.all([
       closePostgresPool(pool),
       closePostgresPool(communityPool),
@@ -229,6 +287,18 @@ export const prepareProductionBackend = async (
             authorCommunityPort: new PostgresAuthorCommunityAdapter(
               communityPool,
             ),
+            ...(workPublishingPort && publishingTransfers
+              ? { workPublishingPort, publishingTransfers }
+              : {}),
+            publishingOperatorPort: new PostgresPublishingOperatorAdapter(
+              communityPool,
+            ),
+            ...(publishingMedia
+              ? {
+                  publishingMediaStore: publishingMedia.store,
+                  publishingMediaProcessor: publishingMedia.processor,
+                }
+              : {}),
           }
         : {}),
       // A comment attaches only to a currently published Catalog record; the
@@ -242,6 +312,9 @@ export const prepareProductionBackend = async (
       communityOperatorCredential: parseOperatorCredential(environment),
     }),
     closeResources,
+    startBackgroundWork: () => {
+      publishingWorker?.start();
+    },
   };
 };
 
@@ -249,9 +322,11 @@ export const startProductionBackend = async (
   environment: RuntimeEnvironment,
 ): Promise<BackendProcessHandle> => {
   const prepared = await prepareProductionBackend(environment);
-  return startBackendProcess({
+  const handle = await startBackendProcess({
     closeResources: prepared.closeResources,
     listen: prepared.runtimeConfig,
     requestListener: prepared.requestListener,
   });
+  prepared.startBackgroundWork();
+  return handle;
 };

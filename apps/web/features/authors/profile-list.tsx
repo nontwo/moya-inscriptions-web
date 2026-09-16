@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import type { ContentCard as Card } from "@moya/contracts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ContentCard as Card, UserWork } from "@moya/contracts";
 import { authorClient, AuthorRequestError } from "./author-data";
 import { useAuthors } from "./author-context";
 import { readLocalHistory } from "./local-library";
@@ -8,7 +8,67 @@ import { resolveLocalContent } from "./local-content-list";
 import { CatalogMasonry } from "../home/catalog-masonry";
 import { useProductShell } from "../product-shell/product-shell";
 import { ContentCard } from "./content-card";
+import { DraftsCard } from "../publishing/ui/drafts/drafts-card";
+import {
+  WORK_EXCERPT_MAXIMUM,
+  codePointLength,
+  normalizePublishingBody,
+} from "../publishing/publishing-data";
 import type { ProfileTab } from "../product-shell/product-history";
+
+/**
+ * The opening of a work body for its card: the shared normalization, then at
+ * most the excerpt maximum in code points, trimmed after cutting (the same
+ * excerpt the discovery feed builds).
+ */
+export const workCardExcerpt = (body: string): string => {
+  const normalized = normalizePublishingBody(body);
+  return codePointLength(normalized) <= WORK_EXCERPT_MAXIMUM
+    ? normalized
+    : [...normalized].slice(0, WORK_EXCERPT_MAXIMUM).join("").trim();
+};
+
+/**
+ * A Works tab card from the work itself, showing the same still the Home
+ * feed shows: `coverSrc` is the revision's card cover under its edit and
+ * cover crop (M03). Only a work record without the field at all falls back
+ * to the cover entry's display image; `null` is the account saying this
+ * revision has no presentable cover, and then the card is its text. The
+ * entry named by `coverMediaId` (else the first media) still supplies the
+ * card's identity, the LIVE indicator and the measurements — those are the
+ * display image's, not the cover crop's, so the box reserved before the
+ * image loads can still differ from Home's until a work record carries the
+ * cover's own size. The body's opening rides along so an untitled card
+ * shows real text instead of nothing (C07).
+ */
+export const workCard = (work: UserWork): Card => {
+  const cover =
+    work.media.find((media) => media.id === work.coverMediaId) ??
+    work.media[0] ??
+    null;
+  const src =
+    work.coverSrc === undefined ? (cover?.src ?? null) : work.coverSrc;
+  const excerpt = workCardExcerpt(work.text);
+  return {
+    target: { type: "work", id: work.id },
+    title: work.title,
+    ...(excerpt === "" ? {} : { excerpt }),
+    aliases: [],
+    kind: null,
+    authorId: work.authorId,
+    firstPublishedAt: work.firstPublishedAt,
+    live: cover?.kind === "live" && src !== null,
+    media:
+      cover === null || src === null
+        ? null
+        : {
+            id: cover.id,
+            src,
+            width: cover.width,
+            height: cover.height,
+          },
+  };
+};
 interface ListState {
   items: Card[];
   page: number;
@@ -17,6 +77,11 @@ interface ListState {
   kind: string;
   revision: number;
 }
+/** The owner's drafts card, placed before the works in the Works tab. */
+const draftsEntry = { drafts: true } as const;
+type ListEntry = Card | typeof draftsEntry;
+const isDraftsEntry = (entry: ListEntry): entry is typeof draftsEntry =>
+  "drafts" in entry;
 interface Read {
   page: number;
   replace: boolean;
@@ -71,17 +136,7 @@ export const ProfileList = ({
     if (tab === "works") {
       const result = await authorClient.works(authorId, q.page);
       return {
-        items: result.items
-          .filter((w) => w.available || owner)
-          .map((w) => ({
-            target: { type: "work" as const, id: w.id },
-            title: w.title,
-            aliases: [],
-            kind: null,
-            authorId: w.authorId,
-            firstPublishedAt: w.firstPublishedAt,
-            media: w.media[0] ?? null,
-          })),
+        items: result.items.filter((w) => w.available || owner).map(workCard),
         total: result.total,
       };
     }
@@ -183,8 +238,25 @@ export const ProfileList = ({
     () => () => {
       epoch.current++;
       loading.current = false;
+      // A replayed mount must replace the retired request even when cached
+      // pages already match the account revision (for example Back from Detail).
+      wasActive.current = false;
     },
     [],
+  );
+  // Drafts are private: only the signed-in account viewing its own Works tab
+  // gets the card; visitors and guests never do.
+  const draftsOwner =
+    tab === "works" &&
+    owner &&
+    authorId !== null &&
+    context.viewer !== null &&
+    context.viewer.id === authorId
+      ? authorId
+      : null;
+  const entries = useMemo<ListEntry[]>(
+    () => (draftsOwner === null ? list.items : [draftsEntry, ...list.items]),
+    [draftsOwner, list.items],
   );
   useEffect(() => {
     if (
@@ -213,15 +285,31 @@ export const ProfileList = ({
           收藏保存在此浏览器；登录后可合并到账户。清除浏览器数据可能移除本机收藏。
         </p>
       )}
-      <CatalogMasonry
-        items={list.items}
-        getKey={(i) => `${i.target.type}:${i.target.id}`}
-        isFullSpan={(i) => !!i.media && i.media.width / i.media.height >= 2.4}
+      <CatalogMasonry<ListEntry>
+        items={entries}
+        getKey={(i) =>
+          isDraftsEntry(i) ? "drafts" : `${i.target.type}:${i.target.id}`
+        }
+        isFullSpan={(i) =>
+          !isDraftsEntry(i) &&
+          !!i.media &&
+          i.media.width / i.media.height >= 2.4
+        }
         platform={shell.platform}
         feedLayout={shell.feedLayout}
-        renderItem={(item, onMediaSettled) => (
-          <ContentCard item={item} onMediaSettled={onMediaSettled} />
-        )}
+        renderItem={(item, onMediaSettled) =>
+          isDraftsEntry(item) ? (
+            draftsOwner === null ? null : (
+              <DraftsCard
+                accountId={draftsOwner}
+                active={active}
+                onSettled={onMediaSettled}
+              />
+            )
+          ) : (
+            <ContentCard item={item} onMediaSettled={onMediaSettled} />
+          )
+        }
       />
       {error ? (
         <div role="alert">

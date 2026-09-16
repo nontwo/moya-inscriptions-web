@@ -8,6 +8,7 @@ vi.mock("../product-shell/product-shell", () => ({
 }));
 import {
   CatalogSearch,
+  CatalogSearchHeaderAction,
   CatalogSearchNavigationAction,
   CatalogSearchProvider,
 } from "./catalog-search";
@@ -103,6 +104,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("real Catalog Search utility", () => {
+  it("dismisses keyboard focus on a valid search and keeps only the outer close control", async () => {
+    const container = renderSearch(vi.fn().mockResolvedValue(success()));
+    const input = element<HTMLInputElement>(container, 'input[type="search"]');
+    type(container, "测试");
+    input.focus();
+    await submit(container);
+    expect(document.activeElement).not.toBe(input);
+    expect(container.querySelector("[data-search-clear]")).toBeNull();
+    expect(container.querySelectorAll("[data-search-close]")).toHaveLength(1);
+  });
   it("opens with accepted focus/isolation and no QA, suggestions or fictional history", () => {
     const loader = vi.fn();
     const container = renderSearch(loader);
@@ -115,6 +126,76 @@ describe("real Catalog Search utility", () => {
     expect(container.textContent).toContain("搜索馆藏资料");
     expect(container.textContent).not.toMatch(/QA|最近搜索|搜索建议|龙门/);
     expect(loader).not.toHaveBeenCalled();
+  });
+  it("opens the same panel from a header trigger and returns focus to the one used", () => {
+    const frames: FrameRequestCallback[] = [];
+    const frameSpy = vi.spyOn(window, "requestAnimationFrame");
+    frameSpy.mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const flushFrames = () =>
+      act(() => {
+        for (const frame of frames.splice(0)) frame(0);
+      });
+    const loader = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    act(() =>
+      root.render(
+        <CatalogSearchProvider>
+          <div data-product-shell="" data-detail-open="false">
+            <div data-primary-navigation-pager="">
+              {(["home", "inscriptions", "calligraphy"] as const).map(
+                (destination) => (
+                  <section
+                    data-primary-destination={destination}
+                    hidden={destination !== "inscriptions"}
+                    key={destination}
+                  >
+                    <header data-author-bar="">
+                      <CatalogSearchHeaderAction />
+                    </header>
+                  </section>
+                ),
+              )}
+            </div>
+            <CatalogSearch loadPage={loader} />
+          </div>
+        </CatalogSearchProvider>,
+      ),
+    );
+    const triggers = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        '[data-search-trigger-placement="header"]',
+      ),
+    );
+    expect(triggers).toHaveLength(3);
+    expect(
+      triggers.every((t) => t.getAttribute("aria-label") === "打开搜索"),
+    ).toBe(true);
+    const visible = triggers[1]!;
+
+    act(() => visible.click());
+    expect(container.querySelector("[data-search-panel]")).not.toBeNull();
+    expect(document.activeElement).toBe(element(container, "input"));
+    expect(visible.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      element(container, "[data-primary-navigation-pager]").hasAttribute(
+        "inert",
+      ),
+    ).toBe(true);
+
+    act(() =>
+      element<HTMLButtonElement>(container, "[data-search-close]").click(),
+    );
+    flushFrames();
+    expect(container.querySelector("[data-search-panel]")).toBeNull();
+    expect(document.activeElement).toBe(visible);
+    expect(loader).not.toHaveBeenCalled();
+    frameSpy.mockRestore();
   });
   it("submits backend requests and opens the existing Detail with the real identity", async () => {
     const loader = vi.fn().mockResolvedValue(success());
@@ -204,9 +285,8 @@ describe("real Catalog Search utility", () => {
     );
     expect(container.textContent).toContain("新文结果");
     expect(container.textContent).not.toContain("旧文结果");
-    act(() =>
-      element<HTMLButtonElement>(container, "[data-search-clear]").click(),
-    );
+    // Owner r3 removes the duplicate clear icon; deleting input still fences stale reads.
+    type(container, "");
     expect(element<HTMLInputElement>(container, "input").value).toBe("");
     expect(container.querySelector("[data-search-result]")).toBeNull();
     expect(loader).toHaveBeenCalledTimes(2);
@@ -217,9 +297,8 @@ describe("real Catalog Search utility", () => {
     const container = renderSearch(loader);
     type(container, "待返回");
     await submit(container);
-    act(() =>
-      element<HTMLButtonElement>(container, "[data-search-clear]").click(),
-    );
+    // Owner r3 removes the duplicate clear icon; deleting input still fences stale reads.
+    type(container, "");
     expect(loader.mock.calls[0]?.[1].aborted).toBe(true);
     await act(async () => pending.resolve(success()));
     expect(container.querySelector("[data-search-result]")).toBeNull();

@@ -38,6 +38,7 @@ vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => ({ openProfile }),
 }));
 import { DiscussionSection } from "./discussion-section";
+import { resetOwnWorkAudiences, setOwnWorkAudience } from "./own-work-audience";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -126,6 +127,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  resetOwnWorkAudiences();
   document.body.replaceChildren();
 });
 
@@ -289,5 +291,147 @@ describe("Phase 4 comment avatar synchronization", () => {
     expect(src('[data-comment-id="root-0"]')).toBe(
       "/api/community/media/first",
     );
+  });
+});
+
+describe("Discussion composer on the author's own work", () => {
+  const work = { type: "work", id: `work-${"c".repeat(32)}` } as const;
+  const renderWork = () =>
+    act(async () => root.render(<DiscussionSection target={work} />));
+  const composer = () => node.querySelector("[data-comment-composer]");
+  const note = () =>
+    node.querySelector("[data-discussion-closed]")?.textContent ?? null;
+
+  it("gives way to a truthful note while only the author can see the work", async () => {
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: false,
+      visibility: "self",
+    });
+    await renderWork();
+    expect(composer()).toBeNull();
+    expect(note()).toBe("此作品当前仅你可见，暂时无法发表评论。");
+    // Said once, not repeated in the section's own notice line.
+    expect(node.querySelector("[data-comment-notice]")).toBeNull();
+    // Existing comments stay readable.
+    expect(node.querySelector('[data-comment-id="hot"]')).not.toBeNull();
+    expect(node.textContent).not.toMatch(/审核|待发布|等待/u);
+  });
+
+  it("uses neutral wording for a public work others cannot see yet", async () => {
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: false,
+      visibility: "public",
+    });
+    await renderWork();
+    expect(composer()).toBeNull();
+    expect(note()).toBe("此作品当前不对其他人显示，暂时无法发表评论。");
+    expect(node.textContent).not.toMatch(/审核|待发布|等待/u);
+  });
+
+  it("follows the record: closed without a claim while unknown, open once others can see the work", async () => {
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: null,
+      visibility: "public",
+    });
+    await renderWork();
+    expect(composer()).toBeNull();
+    expect(note()).toBeNull();
+    await act(async () =>
+      setOwnWorkAudience("owner", work.id, {
+        publiclyVisible: true,
+        visibility: "public",
+      }),
+    );
+    expect(composer()).not.toBeNull();
+    expect(note()).toBeNull();
+    await act(async () =>
+      setOwnWorkAudience("owner", work.id, {
+        publiclyVisible: false,
+        visibility: "self",
+      }),
+    );
+    expect(composer()).toBeNull();
+    expect(note()).toBe("此作品当前仅你可见，暂时无法发表评论。");
+  });
+
+  it("says only that it cannot tell once reading the work again failed", async () => {
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: null,
+      visibility: "public",
+      unconfirmed: true,
+    });
+    await renderWork();
+    expect(composer()).toBeNull();
+    expect(note()).toBe("暂时无法确认其他人能否看到此作品，暂时无法发表评论。");
+    expect(node.textContent).not.toMatch(/审核|待发布|等待/u);
+  });
+
+  it("keeps the note beside a comment loading error", async () => {
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: false,
+      visibility: "self",
+    });
+    discussion.mockReset();
+    discussion.mockRejectedValue(new Error("评论加载失败"));
+    await renderWork();
+    expect(
+      node.querySelector('[data-comment-notice="error"]')?.textContent,
+    ).toBe("评论加载失败");
+    expect(note()).toBe("此作品当前仅你可见，暂时无法发表评论。");
+    expect(composer()).toBeNull();
+  });
+
+  it("starts no reply while the comment box is closed, and does not reopen in reply mode", async () => {
+    // 回复 is still a control inside CommentSection, which has no prop for a
+    // closed box: the composer's place is empty, so nothing of a reply target
+    // is rendered and no reply can be started here.
+    setOwnWorkAudience("owner", work.id, {
+      publiclyVisible: false,
+      visibility: "self",
+    });
+    await renderWork();
+    const reply = node.querySelector<HTMLButtonElement>(
+      "[data-comment-reply-action]",
+    );
+    expect(reply).not.toBeNull();
+    await act(async () => reply!.click());
+    expect(composer()).toBeNull();
+    expect(node.querySelector("[data-comment-reply-mode]")).toBeNull();
+    expect(node.querySelector("textarea")).toBeNull();
+    expect(node.textContent).not.toContain("回复 ");
+    expect(note()).toBe("此作品当前仅你可见，暂时无法发表评论。");
+
+    // Others can see the work again: the box comes back empty, never already
+    // answering the comment the closed box could not reply to.
+    await act(async () =>
+      setOwnWorkAudience("owner", work.id, {
+        publiclyVisible: true,
+        visibility: "public",
+      }),
+    );
+    expect(composer()).not.toBeNull();
+    expect(note()).toBeNull();
+    expect(node.querySelector("[data-comment-reply-mode]")).toBeNull();
+    expect(node.querySelector("textarea")?.getAttribute("aria-label")).toBe(
+      "写下你的评论",
+    );
+  });
+
+  it("keeps the composer for other accounts, works without a record and catalog items", async () => {
+    setOwnWorkAudience("someone-else", work.id, {
+      publiclyVisible: false,
+      visibility: "self",
+    });
+    await renderWork();
+    expect(composer()).not.toBeNull();
+    expect(note()).toBeNull();
+    await act(async () => root.unmount());
+    root = createRoot(node);
+    setOwnWorkAudience("owner", target.id, {
+      publiclyVisible: false,
+      visibility: "self",
+    });
+    await render();
+    expect(composer()).not.toBeNull();
   });
 });

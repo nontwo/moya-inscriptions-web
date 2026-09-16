@@ -8,18 +8,31 @@ import styles from "./community.module.css";
 
 /**
  * Work-oriented navigation for the Owner: the Community group (queue,
- * publication setting, operation history) and the automation tools group
- * (the editorial batch workflow). Rendered inside Payload's own sidebar
- * through `afterNavLinks`, so the built-in collection groups stay intact.
+ * publication setting, operation history, and in Development the content and
+ * work publishing views) and the automation tools group (the editorial batch
+ * workflow). Rendered inside Payload's own sidebar through `afterNavLinks`,
+ * so the built-in collection groups stay intact.
  */
 const groups = [
   {
     label: "社区",
     links: [
       { href: "/admin/community-moderation", label: "评论审核队列" },
+      {
+        href: "/admin/community-moderation/work-submissions",
+        label: "作品提交审核",
+      },
       { href: "/admin/community-moderation/settings", label: "发布设置" },
       { href: "/admin/community-moderation/history", label: "操作历史" },
       { href: "/admin/community-moderation/content", label: "作品与推荐" },
+      {
+        href: "/admin/community-moderation/account-capacity",
+        label: "账号容量",
+      },
+      {
+        href: "/admin/community-moderation/publishing-jobs",
+        label: "发布任务",
+      },
     ],
   },
   {
@@ -27,6 +40,14 @@ const groups = [
     links: [{ href: "/admin/editorial-workflow", label: "编辑批处理工作流" }],
   },
 ] as const;
+
+/** Development-only surfaces, hidden from the sidebar everywhere else. */
+const developmentLinks: ReadonlySet<string> = new Set([
+  "/admin/community-moderation/content",
+  "/admin/community-moderation/work-submissions",
+  "/admin/community-moderation/account-capacity",
+  "/admin/community-moderation/publishing-jobs",
+]);
 
 export const CommunityNavGroups = ({
   phase4Enabled = false,
@@ -41,11 +62,7 @@ export const CommunityNavGroups = ({
       {groups.map((group) => (
         <NavGroup isOpen key={group.label} label={group.label}>
           {group.links
-            .filter(
-              (link) =>
-                phase4Enabled ||
-                link.href !== "/admin/community-moderation/content",
-            )
+            .filter((link) => phase4Enabled || !developmentLinks.has(link.href))
             .map((link) => {
               const active = pathname === link.href;
               return (

@@ -60,6 +60,8 @@
 
 .avatar {
   display: grid;
+  box-sizing: border-box;
+  padding: 0;
   width: 40px;
   height: 40px;
   overflow: hidden;
@@ -72,7 +74,19 @@
   font-weight: 650;
 }
 
+.avatarContent {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  place-items: center;
+  border-radius: inherit;
+}
+
 .avatar img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -223,6 +237,7 @@
 }
 
 .metaRow {
+  gap: var(--yoyi-space-2);
   justify-content: flex-start;
   margin-top: var(--yoyi-space-2);
   color: var(--yoyi-color-text-tertiary);
@@ -240,8 +255,38 @@
   color: var(--yoyi-color-seal-red);
 }
 
-.heart {
-  margin-right: var(--yoyi-space-2);
+.iconAction {
+  display: inline-flex;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.iconAction svg {
+  display: block;
+}
+
+.replyEntry {
+  cursor: pointer;
+  border-radius: var(--yoyi-radius-sm);
+}
+
+.replyEntry:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.metaRow time {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.metaRow > button,
+.metaRow .actions {
+  flex-shrink: 0;
 }
 
 .replies {

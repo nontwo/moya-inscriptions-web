@@ -1,0 +1,200 @@
+// @vitest-environment jsdom
+import { act, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  class AuthorRequestError extends Error {
+    constructor(
+      readonly status: number,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+  return {
+    AuthorRequestError,
+    author: {
+      cache: new Map<string, unknown>(),
+      viewer: { id: `user-${"a".repeat(32)}`, displayName: "作者" },
+      checking: false,
+      revision: 0,
+      notice: "",
+      notify: vi.fn(),
+    },
+    shell: {
+      activeContent: null,
+      activeProfile: null,
+      activeDestination: "home",
+      feedLayout: "single",
+      platform: "phone",
+    },
+    client: { discovery: vi.fn(), card: vi.fn(), filters: vi.fn() },
+  };
+});
+vi.mock("./author-context", () => ({ useAuthors: () => mocks.author }));
+vi.mock("../product-shell/product-shell", () => ({
+  useProductShell: () => mocks.shell,
+}));
+vi.mock("./author-data", () => ({
+  authorClient: mocks.client,
+  AuthorRequestError: mocks.AuthorRequestError,
+}));
+vi.mock("./content-card", () => ({
+  ContentCard: ({ item }: { item: { title: string } }) => (
+    <article data-card="">{item.title}</article>
+  ),
+}));
+vi.mock("../home/catalog-masonry", () => ({
+  CatalogMasonry: <T,>({
+    items,
+    getKey,
+    renderItem,
+  }: {
+    items: readonly T[];
+    getKey: (item: T) => string;
+    renderItem: (item: T, onSettled: () => void) => React.ReactNode;
+  }) => (
+    <div data-masonry="">
+      {items.map((item) => (
+        <div key={getKey(item)}>{renderItem(item, () => undefined)}</div>
+      ))}
+    </div>
+  ),
+}));
+
+import { DiscoveryFeed } from "./discovery-feed";
+
+import type { ContentCard, DiscoveryPage } from "@moya/contracts";
+import type { Root } from "react-dom/client";
+
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+const card = (n: number): ContentCard => ({
+  aliases: [],
+  target: { type: "work", id: `work-${String(n).padStart(32, "0")}` },
+  title: `作品 ${n}`,
+  kind: null,
+  authorId: null,
+  firstPublishedAt: null,
+  media: null,
+});
+
+const page = (from: number, hasMore: boolean): DiscoveryPage => ({
+  items: [card(from), card(from + 1)],
+  sequence: "6f8d8a7e-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+  nextAfter: from + 2,
+  hasMore,
+});
+
+/** The sentinel observers the feed creates; the test decides when they fire. */
+const observers: { callback: IntersectionObserverCallback }[] = [];
+
+let root: Root;
+let container: HTMLDivElement;
+let rerenderAbove: (() => void) | null = null;
+
+/** A parent that re-renders like the author or publishing providers do. */
+const Above = () => {
+  const [, bump] = useState(0);
+  rerenderAbove = () => bump((n) => n + 1);
+  return <DiscoveryFeed active kind="all" />;
+};
+
+const flush = async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
+
+const button = () =>
+  [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (candidate) => candidate.textContent === "加载更多",
+  ) ?? null;
+
+beforeEach(() => {
+  observers.length = 0;
+  Object.defineProperty(window, "IntersectionObserver", {
+    configurable: true,
+    value: class {
+      constructor(callback: IntersectionObserverCallback) {
+        observers.push({ callback });
+      }
+      observe() {}
+      disconnect() {}
+    },
+  });
+  mocks.author.cache.clear();
+  mocks.author.revision = 0;
+  mocks.author.notice = "";
+  mocks.client.discovery.mockReset();
+  mocks.client.card.mockReset();
+  mocks.client.card.mockImplementation(async (target: { id: string }) =>
+    card(Number(target.id.slice(-2))),
+  );
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  rerenderAbove = null;
+});
+
+describe("Discovery feed footer (D9)", () => {
+  it("keeps one 加载更多 element across provider re-renders and page loads", async () => {
+    mocks.client.discovery.mockResolvedValueOnce(page(1, true));
+    await act(async () => root.render(<Above />));
+    await flush();
+    const first = button();
+    expect(first).not.toBeNull();
+    expect(first!.disabled).toBe(false);
+
+    // Unrelated updates above the feed: an author revision (which
+    // revalidates the cards), a toast, a plain parent re-render.
+    mocks.author.revision += 1;
+    mocks.author.notice = "作品已提交";
+    await act(async () => rerenderAbove!());
+    await flush();
+    await act(async () => rerenderAbove!());
+    expect(button()).toBe(first);
+
+    // The sentinel fetches the next page: the button stays, busy and disabled.
+    let release: (value: DiscoveryPage) => void = () => undefined;
+    mocks.client.discovery.mockImplementationOnce(
+      () => new Promise<DiscoveryPage>((resolve) => (release = resolve)),
+    );
+    expect(observers.length).toBeGreaterThan(0);
+    await act(async () => {
+      observers
+        .at(-1)!
+        .callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+    });
+    expect(button()).toBe(first);
+    expect(first!.disabled).toBe(true);
+    expect(first!.getAttribute("aria-busy")).toBe("true");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "正在加载…",
+    );
+    await act(async () => release(page(3, true)));
+    await flush();
+    expect(button()).toBe(first);
+    expect(first!.disabled).toBe(false);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelectorAll("[data-card]")).toHaveLength(4);
+
+    // The last page removes the button; nothing else is recreated meanwhile.
+    mocks.client.discovery.mockResolvedValueOnce(page(5, false));
+    await act(async () => first!.click());
+    await flush();
+    expect(button()).toBeNull();
+    expect(container.querySelectorAll("[data-card]")).toHaveLength(6);
+  });
+});

@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { useCommentComposerPortalTarget } from "./comment-composer-portal";
+import { formatCommentCount, usePublishCommentCount } from "./comment-count";
 import styles from "./comment-section.module.css";
 
 import type { FormEvent, ReactNode } from "react";
@@ -79,7 +80,7 @@ export interface CommentSectionProps {
   readonly viewer?: CommentViewerState;
   readonly status?: "not-found" | "unavailable" | "unexpected-error" | null;
   readonly notice?: CommentSectionNotice | null;
-  /** Root comments the Backend counted; replaces the loaded-item count. */
+  /** Visible comments including replies across all pages, counted by Backend. */
   readonly totalCount?: number;
   readonly loadMore?: CommentLoadMore;
   readonly onLoadMoreReplies?: (commentId: string) => void;
@@ -119,10 +120,23 @@ const BodyDelete = ({
   return !deleted && actions.actor === userId && actions.remove ? (
     <button
       type="button"
-      className={styles.textAction}
+      aria-label="删除正文"
+      className={`${styles.textAction} ${styles.iconAction}`}
       onClick={() => actions.remove?.(id)}
     >
-      删除正文
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="20"
+        height="20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+      </svg>
     </button>
   ) : null;
 };
@@ -138,7 +152,7 @@ const Avatar = ({ user }: { readonly user: CommentUserPresentation }) => {
     >
       <span
         aria-label={`${user.name}的头像`}
-        className={styles.avatar}
+        className={styles.avatarContent}
         data-comment-avatar=""
         role="img"
       >
@@ -156,12 +170,32 @@ const CommentContent = ({
   media,
   replyToUser,
   text,
+  onReply,
+  authorName,
 }: {
+  readonly onReply: () => void;
+  readonly authorName: string;
   readonly media?: readonly CommentMediaPresentation[] | undefined;
   readonly replyToUser?: CommentUserPresentation | undefined;
   readonly text: string;
 }) => (
-  <>
+  <div
+    aria-label={`回复 ${authorName}`}
+    className={styles.replyEntry}
+    data-comment-reply-action=""
+    role="button"
+    tabIndex={0}
+    onClick={() => {
+      // Selecting text must not switch the current reply target.
+      if (window.getSelection()?.isCollapsed !== false) onReply();
+    }}
+    onKeyDown={(event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onReply();
+      }
+    }}
+  >
     <p className={styles.commentText}>
       {replyToUser === undefined ? null : (
         <span className={styles.replyTo}>回复 {replyToUser.name}：</span>
@@ -181,7 +215,7 @@ const CommentContent = ({
         ))}
       </ul>
     )}
-  </>
+  </div>
 );
 
 const LikeButton = ({
@@ -196,15 +230,26 @@ const LikeButton = ({
   <button
     aria-label={liked ? "取消喜欢评论" : "喜欢评论"}
     aria-pressed={liked}
-    className={styles.textAction}
+    aria-description={`${count} 人喜欢`}
+    className={`${styles.textAction} ${styles.iconAction}`}
     data-comment-like=""
     onClick={onClick}
     type="button"
   >
-    <span aria-hidden="true" className={styles.heart}>
-      {liked ? "♥" : "♡"}
-    </span>
-    {count > 0 ? count : "喜欢"}
+    <svg
+      aria-hidden="true"
+      className={styles.heart}
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill={liked ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />
+    </svg>
   </button>
 );
 
@@ -212,23 +257,13 @@ const CommentActions = ({
   likeCount,
   liked,
   onLike,
-  onReply,
 }: {
   readonly likeCount: number;
   readonly liked: boolean;
   /** Absent in the live composition: no like data exists, so no control. */
   readonly onLike?: (() => void) | undefined;
-  readonly onReply: () => void;
 }) => (
   <div className={styles.actions}>
-    <button
-      className={styles.textAction}
-      data-comment-reply-action=""
-      onClick={onReply}
-      type="button"
-    >
-      回复
-    </button>
     {onLike === undefined ? null : (
       <LikeButton count={likeCount} liked={liked} onClick={onLike} />
     )}
@@ -252,6 +287,14 @@ const ReplyRow = ({
     <div className={styles.commentBody}>
       <AuthorName user={reply.user} />
       <CommentContent
+        authorName={reply.user.name}
+        onReply={() =>
+          onReply({
+            replyId: reply.id,
+            rootCommentId: commentId,
+            user: reply.user,
+          })
+        }
         media={reply.media}
         replyToUser={reply.replyToUser}
         text={reply.text}
@@ -270,13 +313,6 @@ const ReplyRow = ({
             onToggleLike === undefined || reply.deleted
               ? undefined
               : () => onToggleLike(commentId, reply.id)
-          }
-          onReply={() =>
-            onReply({
-              replyId: reply.id,
-              rootCommentId: commentId,
-              user: reply.user,
-            })
           }
         />
       </div>
@@ -319,7 +355,14 @@ const CommentRow = ({
       <Avatar user={comment.user} />
       <div className={styles.commentBody}>
         <AuthorName user={comment.user} />
-        <CommentContent media={comment.media} text={comment.text} />
+        <CommentContent
+          authorName={comment.user.name}
+          onReply={() =>
+            onReply({ rootCommentId: comment.id, user: comment.user })
+          }
+          media={comment.media}
+          text={comment.text}
+        />
         <div className={styles.metaRow}>
           <time>{comment.createdAtLabel}</time>
           <BodyDelete
@@ -334,9 +377,6 @@ const CommentRow = ({
               onToggleLike === undefined || comment.deleted
                 ? undefined
                 : () => onToggleLike(comment.id)
-            }
-            onReply={() =>
-              onReply({ rootCommentId: comment.id, user: comment.user })
             }
           />
         </div>
@@ -447,6 +487,7 @@ export const CommentSection = ({
     null,
   );
   const editorRevision = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editorMounted = useRef(true);
   const editorScope = useRef<{ catalogId: string; actor: string | null }>({
     catalogId,
@@ -478,6 +519,7 @@ export const CommentSection = ({
     editorScope.current = { catalogId, actor: confirmedActor };
   }, [catalogId, currentUser.id, viewerState]);
   const changeReplyTarget = (target: CommentReplyTarget | null) => {
+    if (target !== null && textareaRef.current === null) return;
     const identity = (value: CommentReplyTarget | null) =>
       value === null
         ? null
@@ -488,6 +530,8 @@ export const CommentSection = ({
           ]);
     if (identity(target) !== identity(replyTarget)) editorRevision.current += 1;
     setReplyTarget(target);
+    // Focus inside the user's gesture so iPhone Safari can open the keyboard.
+    if (target !== null) textareaRef.current?.focus();
   };
   const [sort, setSort] = useState<CommentSort>("hot");
   const composerPortalTarget = useCommentComposerPortalTarget();
@@ -500,6 +544,7 @@ export const CommentSection = ({
       (total, comment) => total + 1 + comment.replies.length,
       0,
     );
+  usePublishCommentCount(loading || status != null ? null : count);
   const sortedItems = useMemo(() => {
     if (live) return items;
     const local = items.filter((item) => item.isQaGenerated);
@@ -565,6 +610,7 @@ export const CommentSection = ({
         )}
         <div className={styles.composerInputRow}>
           <textarea
+            ref={textareaRef}
             aria-label={
               replyTarget === null
                 ? "写下你的评论"
@@ -646,7 +692,10 @@ export const CommentSection = ({
           <h2 id={`comment-title-${catalogId}`}>
             评论
             {loading || status !== null ? null : (
-              <span aria-label={`${count} 条`}> {count}</span>
+              <span aria-label={`${count} 条`}>
+                {" "}
+                {formatCommentCount(count)}
+              </span>
             )}
           </h2>
           {loading || live ? null : (

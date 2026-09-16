@@ -1,9 +1,11 @@
 "use client";
 
+import { mediaDotWindow } from "./media-dot-window";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Icon } from "@moya/ui";
 
+import { LivePhotoFrame } from "../publishing/ui/live/live-photo";
 import styles from "./catalog-detail.module.css";
 
 import type {
@@ -67,6 +69,8 @@ export const shouldCommitCarouselSwipe = (
 export interface CatalogMediaCarouselProps {
   readonly activeIndex: number;
   readonly media: readonly DetailMediaPresentation[];
+  /** True while another layer (the Viewer) covers the carousel: Live motion stops. */
+  readonly motionSuspended?: boolean;
   readonly onActiveIndexChange: (index: number) => void;
   readonly onOpenViewer: (index: number, opener: HTMLElement) => void;
   readonly platform: PresentationPlatform;
@@ -75,6 +79,7 @@ export interface CatalogMediaCarouselProps {
 export const CatalogMediaCarousel = ({
   activeIndex,
   media,
+  motionSuspended = false,
   onActiveIndexChange,
   onOpenViewer,
   platform,
@@ -397,6 +402,9 @@ export const CatalogMediaCarousel = ({
       <div
         ref={stageRef}
         className={styles.mainStage}
+        data-active-live={
+          media[activeIndex]?.live === undefined ? undefined : "true"
+        }
         data-detail-main-stage=""
         data-dragging={dragging ? "true" : undefined}
         data-native-paging={nativePaging ? "true" : "false"}
@@ -566,6 +574,47 @@ export const CatalogMediaCarousel = ({
           {media.map((item, index) => {
             const failed = failedMediaIds.has(item.id);
             const active = index === activeIndex;
+            const imageButton = (
+              <button
+                aria-label={failed ? "图像无法加载" : `查看图像：${item.alt}`}
+                className={styles.mainImageButton}
+                data-detail-main-image={active ? "" : undefined}
+                disabled={failed}
+                onClick={(event) => {
+                  if (!suppressClickRef.current && active) {
+                    onOpenViewer(index, event.currentTarget);
+                  }
+                }}
+                tabIndex={active ? 0 : -1}
+                type="button"
+              >
+                {failed ? (
+                  <span
+                    className={styles.mediaError}
+                    data-detail-media-state="failed"
+                  >
+                    <Icon aria-hidden="true" name="error" />
+                    图像无法加载
+                  </span>
+                ) : (
+                  <img
+                    alt={item.alt}
+                    decoding="async"
+                    draggable={false}
+                    fetchPriority={active ? "high" : "auto"}
+                    height={item.height}
+                    loading={active ? "eager" : "lazy"}
+                    onError={() => {
+                      setFailedMediaIds((current) =>
+                        new Set(current).add(item.id),
+                      );
+                    }}
+                    src={item.src}
+                    width={item.width}
+                  />
+                )}
+              </button>
+            );
             return (
               <div
                 aria-hidden={!active}
@@ -574,45 +623,18 @@ export const CatalogMediaCarousel = ({
                 inert={!active || undefined}
                 key={item.id}
               >
-                <button
-                  aria-label={failed ? "图像无法加载" : `查看图像：${item.alt}`}
-                  className={styles.mainImageButton}
-                  data-detail-main-image={active ? "" : undefined}
-                  disabled={failed}
-                  onClick={(event) => {
-                    if (!suppressClickRef.current && active) {
-                      onOpenViewer(index, event.currentTarget);
-                    }
-                  }}
-                  tabIndex={active ? 0 : -1}
-                  type="button"
-                >
-                  {failed ? (
-                    <span
-                      className={styles.mediaError}
-                      data-detail-media-state="failed"
-                    >
-                      <Icon aria-hidden="true" name="error" />
-                      图像无法加载
-                    </span>
-                  ) : (
-                    <img
-                      alt={item.alt}
-                      decoding="async"
-                      draggable={false}
-                      fetchPriority={active ? "high" : "auto"}
-                      height={item.height}
-                      loading={active ? "eager" : "lazy"}
-                      onError={() => {
-                        setFailedMediaIds((current) =>
-                          new Set(current).add(item.id),
-                        );
-                      }}
-                      src={item.src}
-                      width={item.width}
-                    />
-                  )}
-                </button>
+                {item.live === undefined || failed ? (
+                  imageButton
+                ) : (
+                  <LivePhotoFrame
+                    active={active && !motionSuspended}
+                    className={styles.liveSlideFrame}
+                    controlAttributes={{ "data-detail-media-control": "" }}
+                    motion={item.live}
+                  >
+                    {imageButton}
+                  </LivePhotoFrame>
+                )}
               </div>
             );
           })}
@@ -638,34 +660,41 @@ export const CatalogMediaCarousel = ({
               onClick={() => selectIndex(activeIndex + 1)}
               type="button"
             />
-            <div
-              aria-label="选择图像"
-              className={styles.mediaDots}
-              data-detail-media-control=""
-              data-detail-media-dots=""
-              role="group"
-            >
-              {media.map((item, index) => (
+          </>
+        ) : null}
+      </div>
+      {media.length > 1 ? (
+        <>
+          <div
+            aria-label="选择图像"
+            className={styles.mediaDots}
+            data-detail-media-control=""
+            data-detail-media-dots=""
+            role="group"
+          >
+            {mediaDotWindow(media.length, activeIndex).map(
+              ({ index, edge }) => (
                 <button
                   aria-current={index === activeIndex ? "true" : undefined}
-                  aria-label={`第 ${index + 1} 张图像：${item.alt}`}
+                  aria-label={`第 ${index + 1} 张图像：${media[index]!.alt}`}
                   className={styles.mediaDotTarget}
                   data-active={index === activeIndex ? "true" : "false"}
                   data-detail-media-dot=""
-                  key={item.id}
+                  data-edge={edge ? "true" : undefined}
+                  key={media[index]!.id}
                   onClick={() => selectIndex(index)}
                   type="button"
                 >
                   <span aria-hidden="true" />
                 </button>
-              ))}
-            </div>
-            <span className={styles.mediaCounter} data-detail-media-index="">
-              {activeIndex + 1} / {media.length}
-            </span>
-          </>
-        ) : null}
-      </div>
+              ),
+            )}
+          </div>
+          <span className={styles.mediaCounter} data-detail-media-index="">
+            {activeIndex + 1} / {media.length}
+          </span>
+        </>
+      ) : null}
     </section>
   );
 };

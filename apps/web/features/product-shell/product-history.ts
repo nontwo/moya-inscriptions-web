@@ -52,7 +52,8 @@ export type ProductHistoryState =
   | ViewerProductHistoryState
   | SettingsProductHistoryState
   | TopicProductHistoryState
-  | ProfileProductHistoryState;
+  | ProfileProductHistoryState
+  | EditorProductHistoryState;
 
 export type ProfileTab =
   "works" | "favorites" | "likes" | "history" | "comments";
@@ -66,8 +67,22 @@ export interface ProfileProductHistoryState {
   readonly sourceDestination: PrimaryDestination;
   readonly sourceScrollTop: number;
 }
+
+/** A new work, an existing private draft, or an existing own work to edit. */
+export type EditorTarget =
+  | { readonly type: "new" }
+  | { readonly type: "draft"; readonly id: string }
+  | { readonly type: "work"; readonly id: string };
+export interface EditorProductHistoryState {
+  readonly kind: "editor";
+  readonly version: typeof PRODUCT_SHELL_HISTORY_VERSION;
+  readonly editorTarget: EditorTarget;
+  readonly sourceDestination: PrimaryDestination;
+  readonly sourceScrollTop: number;
+}
 const productHistoryKeys = new Set([
   "target",
+  "editorTarget",
   "authorId",
   "entryId",
   "tab",
@@ -238,6 +253,21 @@ export const parseProductHistoryState = (
       candidate.sourceScrollTop,
     );
 
+  if (candidate.kind === "editor") {
+    const editorTarget = parseEditorTarget(candidate.editorTarget);
+    return editorTarget !== null &&
+      isPrimaryDestination(candidate.sourceDestination) &&
+      typeof candidate.sourceScrollTop === "number" &&
+      Number.isFinite(candidate.sourceScrollTop) &&
+      candidate.sourceScrollTop >= 0
+      ? editorHistoryState(
+          editorTarget,
+          candidate.sourceDestination,
+          candidate.sourceScrollTop,
+        )
+      : null;
+  }
+
   if (
     candidate.kind === "primary" &&
     isPrimaryDestination(candidate.destination)
@@ -342,6 +372,7 @@ export const primaryLocation = (location: Location) => {
   parameters.delete("catalogId");
   parameters.delete("workId");
   parameters.delete("authorId");
+  parameters.delete("draftId");
   parameters.delete("image");
   const search = parameters.toString();
   return `${location.pathname}${search.length === 0 ? "" : `?${search}`}`;
@@ -362,7 +393,7 @@ const contentParameters = (
       ? { type: "catalog" as const, id: target }
       : target;
   const parameters = new URLSearchParams(location.search);
-  for (const key of ["catalogId", "workId", "authorId", "image"])
+  for (const key of ["catalogId", "workId", "authorId", "draftId", "image"])
     parameters.delete(key);
   parameters.set(t.type === "catalog" ? "catalogId" : "workId", t.id);
   return parameters;
@@ -404,6 +435,69 @@ export const profileLocation = (
   const url = new URL(primaryLocation(location), location.origin);
   if (authorId) url.searchParams.set("authorId", authorId);
   return `${url.pathname}${url.search}#profile`;
+};
+const draftIdPattern = /^work-draft-[0-9a-f]{32}$/u;
+const workIdPattern = /^work-[0-9a-f]{32}$/u;
+export const parseEditorTarget = (value: unknown): EditorTarget | null => {
+  if (!value || typeof value !== "object") return null;
+  const r = value as Record<string, unknown>;
+  if (r.type === "new") return { type: "new" };
+  if (typeof r.id !== "string") return null;
+  return r.type === "draft" && draftIdPattern.test(r.id)
+    ? { type: "draft", id: r.id }
+    : r.type === "work" && workIdPattern.test(r.id)
+      ? { type: "work", id: r.id }
+      : null;
+};
+export const sameEditorTarget = (left: EditorTarget, right: EditorTarget) =>
+  left.type === "new"
+    ? right.type === "new"
+    : right.type === left.type && right.id === left.id;
+export const editorHistoryState = (
+  editorTarget: EditorTarget,
+  sourceDestination: PrimaryDestination,
+  sourceScrollTop: number,
+): EditorProductHistoryState => ({
+  kind: "editor",
+  version: PRODUCT_SHELL_HISTORY_VERSION,
+  editorTarget,
+  sourceDestination,
+  sourceScrollTop: boundedScrollTop(sourceScrollTop),
+});
+/**
+ * A private draft's ID stays in history state only: its link is the plain
+ * `#editor`, so the address bar, a copied link and a reload's request line
+ * never carry it (P13: no draft share links). An own work keeps its existing
+ * public `workId`.
+ */
+export const editorLocation = (location: Location, target: EditorTarget) => {
+  const url = new URL(primaryLocation(location), location.origin);
+  if (target.type === "work") url.searchParams.set("workId", target.id);
+  return `${url.pathname}${url.search}#editor`;
+};
+/** Whether two targets share one visible `#editor` link. */
+export const sameEditorLink = (left: EditorTarget, right: EditorTarget) =>
+  left.type === "work" && right.type === "work"
+    ? left.id === right.id
+    : left.type !== "work" && right.type !== "work";
+/** Rebuilds only an exact `#editor` link; any other shape is not an editor. */
+export const directEditorTargetFromLocation = (
+  location: Pick<Location, "search" | "hash">,
+): EditorTarget | null => {
+  if (location.hash !== "#editor") return null;
+  const p = new URLSearchParams(location.search);
+  if (
+    p.has("catalogId") ||
+    p.has("authorId") ||
+    p.has("image") ||
+    p.has("draftId")
+  )
+    return null;
+  const works = p.getAll("workId");
+  if (works.length > 1) return null;
+  return works.length === 1
+    ? parseEditorTarget({ type: "work", id: works[0] })
+    : { type: "new" };
 };
 const parseTarget = (value: unknown): ContentIdentity | null => {
   if (!value || typeof value !== "object") return null;
