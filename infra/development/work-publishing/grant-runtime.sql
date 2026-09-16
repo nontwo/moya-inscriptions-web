@@ -172,10 +172,12 @@ GRANT EXECUTE ON FUNCTION
   community.work_content_sha256(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, TEXT, JSONB)
 TO :"app_role";
 
--- Agent administration (Issue #141 r3, Phase B): principals, delegations and
--- durable prepared operations. Targets are frozen at preparation (no UPDATE
--- on targets, kind, action, fingerprint or request_id); only lifecycle
--- columns change. Nothing is ever deleted.
+-- Agent administration (Issue #141 r3/r4): principals, delegations and durable
+-- prepared operations. A prepared operation is frozen: the App role receives no
+-- UPDATE on targets, criteria, kind, action, fingerprint or request_id, so
+-- neither the membership nor the keyword manifest it was built from can be
+-- rewritten after preparation. Only lifecycle columns change, and nothing is
+-- ever deleted.
 GRANT SELECT, INSERT ON TABLE
   community.agent_principals, community.agent_delegations, community.agent_operations
 TO :"app_role";

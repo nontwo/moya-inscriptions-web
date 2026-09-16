@@ -382,9 +382,6 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
       display_name: string;
       status: string;
       match_rank: number;
-      best: number;
-      total: string | number;
-      best_count: string | number;
     }>(
       `WITH ranked AS (
          SELECT u.id,u.handle,u.display_name,u.status,u.created_at,
@@ -403,11 +400,9 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
                 u.id = $1 OR lower(u.handle) = lower(ltrim($1,'@'))
                 OR lower(u.display_name) = lower($1)
                 OR position(lower($1) in lower(u.id||' '||u.handle||' '||u.display_name)) > 0)
-       ), agg AS (SELECT min(match_rank) AS best, count(*) AS total FROM ranked)
-       SELECT r.id,r.handle,r.display_name,r.status,r.match_rank,
-              a.best,a.total,
-              (SELECT count(*) FROM ranked x WHERE x.match_rank = a.best) AS best_count
-       FROM ranked r CROSS JOIN agg a
+       )
+       SELECT r.id,r.handle,r.display_name,r.status,r.match_rank
+       FROM ranked r
        ORDER BY r.match_rank, r.created_at DESC, r.id
        LIMIT $4 OFFSET $5`,
       [
@@ -418,6 +413,38 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
         (query.page - 1) * query.pageSize,
       ],
     );
+    // The resolution describes the WHOLE ranked set, so it is computed
+    // separately: a page past the last row must not read as "no such user".
+    const totals = (
+      await this.query<{
+        best: number | null;
+        total: string | number;
+        best_count: string | number;
+      }>(
+        `WITH ranked AS (
+           SELECT u.id,
+             CASE
+               WHEN $2::text IS NOT NULL THEN 0
+               WHEN $3::text IS NOT NULL THEN 1
+               WHEN $1 <> '' AND u.id = $1 THEN 0
+               WHEN $1 <> '' AND lower(u.handle) = lower(ltrim($1,'@')) THEN 1
+               WHEN $1 <> '' AND lower(u.display_name) = lower($1) THEN 2
+               ELSE 3
+             END AS match_rank
+           FROM community.public_users u
+           WHERE ($2::text IS NULL OR u.id = $2)
+             AND ($3::text IS NULL OR lower(u.handle) = lower(ltrim($3,'@')))
+             AND ($2::text IS NOT NULL OR $3::text IS NOT NULL OR $1 = '' OR
+                  u.id = $1 OR lower(u.handle) = lower(ltrim($1,'@'))
+                  OR lower(u.display_name) = lower($1)
+                  OR position(lower($1) in lower(u.id||' '||u.handle||' '||u.display_name)) > 0)
+         )
+         SELECT min(match_rank) AS best, count(*) AS total,
+                count(*) FILTER (WHERE match_rank = (SELECT min(match_rank) FROM ranked)) AS best_count
+         FROM ranked`,
+        [search, query.userId ?? null, query.handle ?? null],
+      )
+    )[0];
     const kinds: readonly AgentUserMatchKind[] = [
       "id",
       "handle",
@@ -431,9 +458,10 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
       status: row.status as "active" | "suspended",
       matchKind: kinds[row.match_rank] ?? "substring",
     }));
-    const total = rows[0] === undefined ? 0 : Number(rows[0].total);
-    const best = rows[0] === undefined ? null : Number(rows[0].best);
-    const bestCount = rows[0] === undefined ? 0 : Number(rows[0].best_count);
+    const total = totals === undefined ? 0 : Number(totals.total);
+    const best =
+      totals === undefined || totals.best === null ? null : Number(totals.best);
+    const bestCount = totals === undefined ? 0 : Number(totals.best_count);
     const bestKind = best === null ? null : (kinds[best] ?? "substring");
     // Only a unique id or handle hit is identity evidence. A single
     // display-name hit stays a candidate, because display names repeat.
@@ -503,6 +531,7 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
     const db = await this.pool.connect().catch((error) => {
       throw asCommunityOperationError(error, "connect");
     });
+    let committed = false;
     try {
       await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
       // A finite planning/execution budget: an exceedance is an explicit
@@ -528,6 +557,7 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
         ])
       ).rows;
       await db.query("COMMIT");
+      committed = true;
       if (rows.length > limit)
         throw new AgentManifestError("MANIFEST_LIMIT_EXCEEDED", limit);
       const targets = rows.map(
@@ -549,7 +579,7 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
       );
       return { targets, total: targets.length, sample };
     } catch (error) {
-      await db.query("ROLLBACK").catch(() => undefined);
+      if (!committed) await db.query("ROLLBACK").catch(() => undefined);
       if (error instanceof AgentManifestError) throw error;
       // 57014 is statement_timeout: the planner or the scan ran out of budget.
       if (
@@ -657,6 +687,19 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
       )[0]!;
       return { operation: detail(row, draft.createdAt), created: true };
     });
+  }
+
+  async findOperationByRequest(
+    principalLabel: string,
+    requestId: string,
+  ): Promise<AgentOperationDetail | null> {
+    const row = (
+      await this.query<OperationRow>(
+        `SELECT ${operationColumns} FROM community.agent_operations WHERE principal_label=$1 AND request_id=$2`,
+        [principalLabel, requestId],
+      )
+    )[0];
+    return row === undefined ? null : detail(row, new Date());
   }
 
   async findOperation(id: string): Promise<AgentOperationDetail | null> {

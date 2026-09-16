@@ -163,6 +163,16 @@ export interface AgentAdministrationPort {
     sampleSize: number,
   ): Promise<AgentManifestSelection>;
 
+  /**
+   * The operation a principal already created under this request key, if any.
+   * Consulted before an expensive manifest query so a replay is cheap and does
+   * not depend on the content still matching.
+   */
+  findOperationByRequest(
+    principal: string,
+    requestId: string,
+  ): Promise<AgentOperationDetail | null>;
+
   /** Protected paginated retrieval of an operation's frozen targets. */
   readOperationTargets(
     id: string,

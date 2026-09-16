@@ -253,6 +253,15 @@ class InMemoryAgentPort implements AgentAdministrationPort {
   async selectCommentManifest(): Promise<never> {
     throw new Error("selectCommentManifest is covered by the PostgreSQL suite");
   }
+  async findOperationByRequest(principal: string, requestId: string) {
+    const stored = [...this.operations.values()].find(
+      (operation) =>
+        operation.principal === principal && operation.requestId === requestId,
+    );
+    return stored === undefined
+      ? null
+      : (this.view(stored, new Date()) as never);
+  }
   async readOperationTargets(id: string, page: number, pageSize: number) {
     const stored = this.operations.get(id);
     if (stored === undefined) return null;

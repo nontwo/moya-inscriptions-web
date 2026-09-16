@@ -346,9 +346,12 @@ export class AgentAdministrationService {
     >,
   ): Promise<AgentOperationDetail> {
     const at = this.clock();
-    // A keyword manifest is always an Owner decision. A delegation may
-    // pre-approve an explicit, caller-named selection; it never pre-approves a
-    // server-built takedown, and splitting a manifest cannot evade that.
+    // A keyword manifest is always an Owner decision: a delegation may
+    // pre-approve an explicit, caller-named selection, never a server-built
+    // takedown. This is not a bypass proof. A caller that pages the frozen
+    // targets and resubmits them as an explicit id list under a delegation
+    // reaches the same effect; the Backend cannot tell those ids came from a
+    // manifest. The runtime skill states that as a rule the agent follows.
     const approval =
       draft.criteria === null
         ? await this.approvalFor(
@@ -446,6 +449,14 @@ export class AgentAdministrationService {
       createdTo:
         selector.createdTo === undefined ? null : new Date(selector.createdTo),
     };
+    // Replay before matching: the same principal and request key must return
+    // the operation that already exists, without paying for the query again and
+    // without failing when the content has shifted since.
+    const existing = await this.port.findOperationByRequest(
+      principal,
+      command.requestId,
+    );
+    if (existing !== null && existing.criteria !== null) return existing;
     const selection = await this.port.selectCommentManifest(
       query,
       AGENT_MANIFEST_TARGET_MAXIMUM,
@@ -960,11 +971,16 @@ export class AgentAdministrationService {
       const action = original.action;
       if (action !== "hide" && action !== "unhide")
         throw new CommunityConflictError("UNDO_NOT_AVAILABLE");
+      // The state the original operation left behind, derived from its own
+      // edge — never the free-text result detail, which is a human-readable
+      // note and not a moderation state.
+      const left = action === "hide" ? "hidden" : "visible";
       const targets: AgentCommentTarget[] = applied.map((result) => {
         const target = original.targets[result.index] as AgentCommentTarget;
         return {
           id: target.id,
-          prior: result.detail as AgentCommentTarget["prior"],
+          prior: left,
+          ...(target.kind === undefined ? {} : { kind: target.kind }),
         };
       });
       return this.create({
