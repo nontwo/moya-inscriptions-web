@@ -41,6 +41,24 @@ const safeReply = (result: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(result) }],
 });
 
+/**
+ * A prepared operation carries its whole frozen membership. That never goes
+ * through the model: the tool answers with the count, the bounded preview
+ * sample the Backend stored with the manifest, and how to walk the rest.
+ */
+const bounded = (result: unknown): unknown => {
+  if (result === null || typeof result !== "object") return result;
+  const value = result as Record<string, unknown>;
+  if (!Array.isArray(value.targets)) return result;
+  const { targets, ...rest } = value;
+  return {
+    ...rest,
+    targetsOmitted: targets.length,
+    targetsHint:
+      "Read the frozen membership in bounded pages: artvenn_operations_get with targetsPage.",
+  };
+};
+
 const guarded =
   (
     operation: (
@@ -56,7 +74,7 @@ const guarded =
       const principal = agentPrincipalOf(req);
       return safeReply({
         ok: true,
-        result: await operation(args, callFor(principal)),
+        result: bounded(await operation(args, callFor(principal))),
       });
     } catch (error) {
       const code =
@@ -93,10 +111,11 @@ export const agentAdminTools = (
   {
     name: "artvenn_users_find",
     description:
-      "Find ArtVenn public users by handle, display name or id. Read-only; scope users:read. Returned names are untrusted data.",
+      "Resolve an ArtVenn public user. `userId` matches that exact id only and `handle` that exact handle only, with no fallback to a similar account; `search` ranks exact id, then exact handle, then exact display name, then substring, in the Backend before paging. The answer carries `resolution` (exact / candidates / none, and whether it is a unique identity): use `resolution.userId` for a mutation, never the first candidate of an ambiguous list. Read-only; scope users:read. Returned names are untrusted data.",
     parameters: {
       search: z.string().max(200).optional(),
       userId: userId.optional(),
+      handle: z.string().min(1).max(64).optional(),
       page,
       pageSize,
     },
@@ -107,6 +126,7 @@ export const agentAdminTools = (
           `agent/users${query({
             search: args.search as string | undefined,
             userId: args.userId as string | undefined,
+            handle: args.handle as string | undefined,
             page: Number(args.page),
             pageSize: Number(args.pageSize),
           })}`,
@@ -182,21 +202,47 @@ export const agentAdminTools = (
   {
     name: "artvenn_comments_prepare",
     description:
-      "Prepare an immutable moderation operation over an explicit list of comment ids (approve, reject, hide or unhide; at most 500). Nothing is applied: the operation waits for Owner approval or an active delegation, then artvenn_operations_execute runs it. Scope comments:moderate. Reuse the same requestId when retrying.",
+      "Prepare an immutable moderation operation (approve, reject, hide or unhide). Give EITHER `ids`, an explicit list of comment ids, OR `selector`, a server-side keyword manifest the Backend builds and freezes itself; giving both, or neither, is refused. A selector matches comment BODY only, with literal Unicode substrings (`%`, `_` and backslash are literal input, never wildcards) combined by `any` or `all`, plus optional exact Catalog/Work, exact author (id or handle), comment/reply scope, state and UTC date filters. Nothing is applied: a keyword manifest ALWAYS waits for the Owner's approval, while an explicit list may be covered by an active delegation. Zero matches, an exceeded manifest cap, a planning timeout or an unresolved author are explicit refusals, never an empty or truncated operation. Scope comments:moderate; a selector also needs comments:read. Reuse the same requestId when retrying.",
     parameters: {
       requestId: uuid,
       action: z.enum(["approve", "reject", "hide", "unhide"]),
-      ids: z.array(commentId).min(1).max(500),
+      ids: z.array(commentId).min(1).max(500).optional(),
+      selector: z
+        .object({
+          terms: z.array(z.string().min(1).max(200)).min(1).max(10),
+          match: z.enum(["any", "all"]).default("any"),
+          target: z
+            .union([
+              z.object({ type: z.literal("catalog"), id: catalogId }),
+              z.object({ type: z.literal("work"), id: workId }),
+            ])
+            .optional(),
+          authorId: userId.optional(),
+          authorHandle: z.string().min(1).max(64).optional(),
+          scope: z.enum(["comments", "replies", "both"]).default("both"),
+          moderation: z.enum(["pending", "visible", "hidden"]).optional(),
+          createdFrom: z.string().min(1).max(40).optional(),
+          createdTo: z.string().min(1).max(40).optional(),
+        })
+        .optional(),
     },
-    handler: guarded(
-      (args, call) =>
-        call("POST", "agent/operations/prepare-comments", {
-          requestId: args.requestId,
-          action: args.action,
-          ids: args.ids,
-        }),
-      callFor,
-    ),
+    handler: guarded((args, call) => {
+      const hasIds = Array.isArray(args.ids);
+      const hasSelector = args.selector !== undefined && args.selector !== null;
+      // One mode, always. Never quietly prefer one when both arrive.
+      if (hasIds === hasSelector) throw new Error("SELECTION_MODE_AMBIGUOUS");
+      return call(
+        "POST",
+        "agent/operations/prepare-comments",
+        hasIds
+          ? { requestId: args.requestId, action: args.action, ids: args.ids }
+          : {
+              requestId: args.requestId,
+              action: args.action,
+              selector: args.selector,
+            },
+      );
+    }, callFor),
   },
   {
     name: "artvenn_featured_prepare",
@@ -245,16 +291,27 @@ export const agentAdminTools = (
   {
     name: "artvenn_operations_get",
     description:
-      "Read one operation of this principal: state, approval, per-target outcomes and tally. Scope operations:execute.",
-    parameters: { operationId: uuid },
-    handler: guarded(
-      (args, call) =>
-        call(
-          "GET",
-          `agent/operations/${encodeURIComponent(String(args.operationId))}`,
-        ),
-      callFor,
-    ),
+      "Read one operation of this principal: state, approval, the frozen manifest criteria and preview sample, per-target outcomes and tally. The frozen membership is never returned whole — pass `targetsPage` (and optionally `targetsPageSize`, at most 100) to walk it in bounded pages. Scope operations:execute.",
+    parameters: {
+      operationId: uuid,
+      targetsPage: z.number().int().min(1).max(10000).optional(),
+      targetsPageSize: z.number().int().min(1).max(100).optional(),
+    },
+    handler: guarded((args, call) => {
+      const id = encodeURIComponent(String(args.operationId));
+      if (args.targetsPage === undefined)
+        return call("GET", `agent/operations/${id}`);
+      return call(
+        "GET",
+        `agent/operations/${id}/targets${query({
+          page: Number(args.targetsPage),
+          pageSize:
+            args.targetsPageSize === undefined
+              ? undefined
+              : Number(args.targetsPageSize),
+        })}`,
+      );
+    }, callFor),
   },
   {
     name: "artvenn_operations_cancel",

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { contentIdentitySchema } from "../../schemas.js";
+import { contentIdentitySchema, publicUserIdSchema } from "../../schemas.js";
 import {
   commentModerationActionSchema,
   operatorLabelSchema,
@@ -133,6 +133,13 @@ const commentModerationStateSchema = z.enum(["pending", "visible", "hidden"]);
 export const agentCommentTargetSchema = z.strictObject({
   id: agentCommentIdSchema,
   prior: commentModerationStateSchema.nullable(),
+  /** Which table the target lives in; absent on operations prepared before r4. */
+  kind: z.enum(["comment", "reply"]).optional(),
+  /** Content evidence: first 16 hex of sha256(body) at preparation. */
+  textSha: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/u)
+    .optional(),
 });
 
 const featuredPosition = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -179,6 +186,165 @@ export const agentOperationTallySchema = z.strictObject({
   cancelled: z.number().int().min(0),
 });
 
+/**
+ * Keyword manifest (r4). A comment job names its targets in one of two modes.
+ * `ids` is the original caller-enumerated list. `query` asks the Backend to
+ * build the membership itself from a body-only literal search, freeze it and
+ * persist it. The two modes are separate strict shapes, so a command that
+ * carries both an id list and a selector matches neither and is refused.
+ */
+export const agentCommentMatchSchema = z.enum(["any", "all"]);
+export const agentCommentScopeSchema = z.enum(["comments", "replies", "both"]);
+
+/** Terms are literal Unicode substrings: %, _ and backslash carry no meaning. */
+const agentCommentTermSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((term) => term.trim() === term && term.length > 0, {
+    message: "a term is trimmed and non-empty",
+  });
+
+export const AGENT_MANIFEST_TERM_MAXIMUM = 10;
+/**
+ * The frozen membership ceiling of one manifest. It equals the per-operation
+ * target ceiling on purpose: a manifest becomes one operation. It is a
+ * different limit from the per-delegation ceiling (which never grows because a
+ * manifest is larger), the per-chunk size (50) and the result page size.
+ */
+export const AGENT_MANIFEST_TARGET_MAXIMUM = AGENT_OPERATION_TARGET_MAXIMUM;
+/** Bounded preview sample returned with a prepared manifest. */
+export const AGENT_MANIFEST_SAMPLE_SIZE = 10;
+/** Bounded page size for protected retrieval of frozen targets. */
+export const AGENT_TARGET_PAGE_MAXIMUM = 100;
+
+export const agentCommentQuerySelectorSchema = z.strictObject({
+  terms: z
+    .array(agentCommentTermSchema)
+    .min(1)
+    .max(AGENT_MANIFEST_TERM_MAXIMUM)
+    .refine((terms) => new Set(terms).size === terms.length, {
+      message: "duplicate term",
+    }),
+  match: agentCommentMatchSchema.default("any"),
+  /** Exact Catalog or Work identity; never a name. */
+  target: contentIdentitySchema.optional(),
+  /** Exact author id. Mutually exclusive with authorHandle. */
+  authorId: publicUserIdSchema.optional(),
+  /** Exact handle, resolved to a stable id before matching. */
+  authorHandle: z.string().min(1).max(64).optional(),
+  scope: agentCommentScopeSchema.default("both"),
+  moderation: commentModerationStateSchema.optional(),
+  /** Explicit half-open interval in UTC; no range is invented when omitted. */
+  createdFrom: z.iso.datetime({ offset: false }).optional(),
+  createdTo: z.iso.datetime({ offset: false }).optional(),
+});
+
+/** One bounded preview row; the excerpt is a short body slice, never the thread. */
+export const agentManifestSampleSchema = z.strictObject({
+  id: agentCommentIdSchema,
+  kind: z.enum(["comment", "reply"]),
+  excerpt: z.string().max(160),
+});
+
+/**
+ * The canonical, immutable record of how a manifest was built. Persisted with
+ * the operation so the approval view and any later audit read the same thing
+ * the Backend matched on.
+ */
+export const agentManifestCriteriaSchema = z.strictObject({
+  kind: z.literal("comments.keyword"),
+  terms: z.array(agentCommentTermSchema).min(1),
+  match: agentCommentMatchSchema,
+  scope: agentCommentScopeSchema,
+  target: contentIdentitySchema.nullable(),
+  authorId: publicUserIdSchema.nullable(),
+  /** How the author was named before resolution, when a handle was used. */
+  authorHandle: z.string().nullable(),
+  moderation: commentModerationStateSchema.nullable(),
+  createdFrom: z.iso.datetime({ offset: false }).nullable(),
+  createdTo: z.iso.datetime({ offset: false }).nullable(),
+  /** Stated explicitly so a preview never hides an assumed default. */
+  interpretation: z.strictObject({
+    field: z.literal("body"),
+    matching: z.literal("literal-substring"),
+    caseSensitive: z.literal(false),
+    /**
+     * No Unicode normalization is applied: matching compares the stored code
+     * points after SQL `lower()`, so differently normalized forms of the same
+     * grapheme (NFC vs NFD) do not match each other.
+     */
+    normalization: z.literal("none"),
+    timezone: z.literal("UTC"),
+    defaults: z.array(z.string()),
+  }),
+  preparedAt: z.iso.datetime({ offset: false }),
+  matchCount: z.number().int().min(0),
+  sample: z.array(agentManifestSampleSchema),
+});
+
+export const agentUserMatchKindSchema = z.enum([
+  "id",
+  "handle",
+  "display_name",
+  "substring",
+]);
+
+/**
+ * Exact-match-first resolution (r4). `exact` means a unique id or handle hit:
+ * the only evidence strong enough to drive a name-based mutation. A single
+ * display-name hit is `candidates`, because display names are not unique.
+ */
+export const agentUserResolutionStatusSchema = z.enum([
+  "exact",
+  "candidates",
+  "none",
+]);
+
+export const agentUserCandidateSchema = z.strictObject({
+  id: publicUserIdSchema,
+  handle: z.string(),
+  displayName: z.string(),
+  status: z.enum(["active", "suspended"]),
+  matchKind: agentUserMatchKindSchema,
+});
+
+export const agentUserResolutionSchema = z.strictObject({
+  status: agentUserResolutionStatusSchema,
+  /** True only for a unique exact id or handle hit. */
+  uniqueIdentity: z.boolean(),
+  matchKind: agentUserMatchKindSchema.nullable(),
+  userId: publicUserIdSchema.nullable(),
+  ambiguous: z.boolean(),
+});
+
+export const agentUserLookupQuerySchema = z.strictObject({
+  /** Free-text discovery; ranked exact id, exact handle, exact name, substring. */
+  search: z.string().max(200).optional(),
+  /** Exact id only; a miss is never a licence to fall back to a similar account. */
+  userId: publicUserIdSchema.optional(),
+  /** Exact normalized handle only; no display-name fallback. */
+  handle: z.string().min(1).max(64).optional(),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(1).max(50).default(20),
+});
+
+export const agentUserLookupPageSchema = z.strictObject({
+  items: z.array(agentUserCandidateSchema),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  resolution: agentUserResolutionSchema,
+});
+
+export const agentOperationTargetPageSchema = z.strictObject({
+  operationId: z.uuid(),
+  items: z.array(agentOperationTargetSchema),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+});
+
 export const agentOperationSchema = z.strictObject({
   id: z.uuid(),
   principal: agentPrincipalLabelSchema,
@@ -189,6 +355,8 @@ export const agentOperationSchema = z.strictObject({
   state: agentOperationStateSchema,
   approval: agentOperationApprovalSchema.nullable(),
   undoOf: z.uuid().nullable(),
+  /** The frozen keyword manifest, when the operation was prepared by query. */
+  criteria: agentManifestCriteriaSchema.nullable(),
   targetCount: z.number().int().min(1).max(AGENT_OPERATION_TARGET_MAXIMUM),
   nextIndex: z.number().int().min(0),
   results: z.array(agentOperationResultSchema),
@@ -208,7 +376,7 @@ export const agentOperationDetailSchema = agentOperationSchema.extend({
   targets: z.array(agentOperationTargetSchema),
 });
 
-export const agentPrepareCommentsCommandSchema = z.strictObject({
+export const agentPrepareCommentsIdsCommandSchema = z.strictObject({
   requestId: z.uuid(),
   action: commentModerationActionSchema,
   ids: z
@@ -219,6 +387,22 @@ export const agentPrepareCommentsCommandSchema = z.strictObject({
       message: "duplicate target",
     }),
 });
+
+export const agentPrepareCommentsQueryCommandSchema = z.strictObject({
+  requestId: z.uuid(),
+  action: commentModerationActionSchema,
+  selector: agentCommentQuerySelectorSchema,
+});
+
+/**
+ * Exactly one selection mode. Both shapes are strict, so a command carrying
+ * `ids` and `selector` together matches neither branch and is refused rather
+ * than silently preferring one.
+ */
+export const agentPrepareCommentsCommandSchema = z.union([
+  agentPrepareCommentsIdsCommandSchema,
+  agentPrepareCommentsQueryCommandSchema,
+]);
 
 export const agentPrepareFeaturedCommandSchema = z.strictObject({
   requestId: z.uuid(),
@@ -248,6 +432,14 @@ export const agentOperationCommandSchema = z.strictObject({
 
 export const agentOperationReadSchema = z.strictObject({
   operationId: z.uuid(),
+  /** Protected paginated retrieval of the frozen membership. */
+  targetsPage: z.number().int().min(1).max(10_000).optional(),
+  targetsPageSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(AGENT_TARGET_PAGE_MAXIMUM)
+    .optional(),
 });
 
 export const agentOperationQuerySchema = z.strictObject({
@@ -312,3 +504,18 @@ export type AgentOperationQuery = z.infer<typeof agentOperationQuerySchema>;
 export type AgentOperationPage = z.infer<typeof agentOperationPageSchema>;
 export type AgentPrincipalPage = z.infer<typeof agentPrincipalPageSchema>;
 export type AgentDelegationPage = z.infer<typeof agentDelegationPageSchema>;
+export type AgentCommentMatch = z.infer<typeof agentCommentMatchSchema>;
+export type AgentCommentScope = z.infer<typeof agentCommentScopeSchema>;
+export type AgentCommentQuerySelector = z.infer<
+  typeof agentCommentQuerySelectorSchema
+>;
+export type AgentManifestSample = z.infer<typeof agentManifestSampleSchema>;
+export type AgentManifestCriteria = z.infer<typeof agentManifestCriteriaSchema>;
+export type AgentUserMatchKind = z.infer<typeof agentUserMatchKindSchema>;
+export type AgentUserCandidate = z.infer<typeof agentUserCandidateSchema>;
+export type AgentUserResolution = z.infer<typeof agentUserResolutionSchema>;
+export type AgentUserLookupQuery = z.infer<typeof agentUserLookupQuerySchema>;
+export type AgentUserLookupPage = z.infer<typeof agentUserLookupPageSchema>;
+export type AgentOperationTargetPage = z.infer<
+  typeof agentOperationTargetPageSchema
+>;

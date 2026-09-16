@@ -116,12 +116,28 @@ const operatorCallWith =
       // Never surface the URL, the credential or a driver message.
       throw new CommunityOperatorError("OPERATOR_UNREACHABLE", 502);
     }
-    if (!response.ok)
+    if (!response.ok) {
+      // The agent boundary answers with its own final codes: a forbidden
+      // principal, an exceeded manifest cap, a planning timeout, zero matches
+      // or an unresolved author. Those survive the loopback hop unchanged;
+      // every other status keeps the existing narrowing.
+      let code = agentFailureCode(response.status);
+      if (code === null && response.status === 422) {
+        const reported = (
+          (await response.json().catch(() => null)) as {
+            error?: { code?: unknown };
+          } | null
+        )?.error?.code;
+        if (typeof reported === "string" && /^[A-Z_]{3,64}$/u.test(reported))
+          code = reported;
+      }
       throw new CommunityOperatorError(
-        agentFailureCode(response.status) ??
-          operatorFailureCode(response.status),
-        response.status === 403 ? 403 : statusCode(response.status),
+        code ?? operatorFailureCode(response.status),
+        response.status === 403 || response.status === 422
+          ? response.status
+          : statusCode(response.status),
       );
+    }
     return (await response.json()) as Result;
   };
 

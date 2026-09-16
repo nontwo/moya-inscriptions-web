@@ -10,6 +10,7 @@ import {
   agentOperationPageSchema,
   agentOperationQuerySchema,
   agentOperationReadSchema,
+  agentOperationTargetPageSchema,
   agentOperationSchema,
   agentPrincipalMutationSchema,
   agentPrincipalPageSchema,
@@ -67,6 +68,7 @@ export const agentAdminOperationNames = [
   "agent-delegation-revoke",
   "agent-operations-read",
   "agent-operation-read",
+  "agent-operation-targets",
   "agent-operation-approve",
   "agent-operation-cancel",
   "agent-operation-execute",
@@ -153,6 +155,21 @@ export const agentAdminOperations = (
     return checked(
       agentOperationDetailSchema,
       await call("GET", `agent/operations/${segment(operationId)}`),
+    );
+  },
+  // Protected paginated retrieval of a frozen manifest: the view never renders
+  // a 500-row membership in one go.
+  "agent-operation-targets": async (_req, input) => {
+    const parsed = parse(agentOperationReadSchema, input);
+    return checked(
+      agentOperationTargetPageSchema,
+      await call(
+        "GET",
+        `agent/operations/${segment(parsed.operationId)}/targets${query({
+          page: parsed.targetsPage,
+          pageSize: parsed.targetsPageSize,
+        })}`,
+      ),
     );
   },
   "agent-operation-approve": async (_req, input) => {

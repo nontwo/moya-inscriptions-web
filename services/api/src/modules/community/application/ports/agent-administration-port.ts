@@ -1,4 +1,10 @@
 import type {
+  AgentCommentTarget,
+  AgentManifestCriteria,
+  AgentManifestSample,
+  AgentOperationTargetPage,
+  AgentUserLookupPage,
+  AgentUserLookupQuery,
   AgentDelegation,
   AgentOperation,
   AgentOperationApproval,
@@ -24,9 +30,60 @@ export interface AgentOperationDraft {
   readonly fingerprint: string;
   readonly approval: AgentOperationApproval | null;
   readonly undoOf: string | null;
+  /** The frozen keyword manifest, or null for an explicit-id operation. */
+  readonly criteria: AgentManifestCriteria | null;
   readonly createdAt: Date;
   readonly expiresAt: Date;
 }
+
+/**
+ * A resolved keyword selection, ready for matching: the author is already a
+ * stable id (a handle was resolved before this point) and the dates are real
+ * instants, so the adapter never interprets a name or a string date.
+ */
+export interface AgentManifestQuery {
+  readonly terms: readonly string[];
+  readonly match: "any" | "all";
+  readonly scope: "comments" | "replies" | "both";
+  readonly target: {
+    readonly type: "catalog" | "work";
+    readonly id: string;
+  } | null;
+  readonly authorId: string | null;
+  readonly moderation: "pending" | "visible" | "hidden" | null;
+  readonly createdFrom: Date | null;
+  readonly createdTo: Date | null;
+}
+
+/** The frozen membership of one manifest plus its bounded preview. */
+export interface AgentManifestSelection {
+  readonly targets: readonly AgentCommentTarget[];
+  readonly total: number;
+  readonly sample: readonly AgentManifestSample[];
+}
+
+/**
+ * Why a manifest could not be built. Both are explicit refusals: neither is
+ * ever reported as zero matches or as a silently truncated list.
+ */
+export class AgentManifestError extends Error {
+  override readonly name = "AgentManifestError";
+
+  constructor(
+    readonly code:
+      | "MANIFEST_LIMIT_EXCEEDED"
+      | "MANIFEST_PLANNING_TIMEOUT"
+      | "MANIFEST_NO_MATCH"
+      | "AUTHOR_NOT_RESOLVED",
+    readonly limit: number | null = null,
+  ) {
+    super(code);
+  }
+}
+
+export const isAgentManifestError = (
+  error: unknown,
+): error is AgentManifestError => error instanceof AgentManifestError;
 
 export interface AgentFeaturedState {
   readonly enabled: boolean;
@@ -86,6 +143,32 @@ export interface AgentAdministrationPort {
     targetCount: number,
     at: Date,
   ): Promise<AgentDelegation | null>;
+
+  /**
+   * Exact-match-first identity resolution (r4). Ranking is applied before
+   * pagination, so an exact hit is never pushed off the first page, and the
+   * answer says whether the result is a unique exact identity or merely a
+   * candidate list.
+   */
+  resolveUsers(query: AgentUserLookupQuery): Promise<AgentUserLookupPage>;
+
+  /**
+   * Builds the frozen membership of a keyword manifest from one consistent
+   * snapshot. Throws {@link AgentManifestError} when the selection exceeds
+   * `limit` or the planner times out; never truncates.
+   */
+  selectCommentManifest(
+    query: AgentManifestQuery,
+    limit: number,
+    sampleSize: number,
+  ): Promise<AgentManifestSelection>;
+
+  /** Protected paginated retrieval of an operation's frozen targets. */
+  readOperationTargets(
+    id: string,
+    page: number,
+    pageSize: number,
+  ): Promise<AgentOperationTargetPage | null>;
 
   /** The current recommendation rows for these targets (missing: no row). */
   readFeaturedStates(

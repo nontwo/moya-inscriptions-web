@@ -1921,6 +1921,7 @@ describe("Agent administration Owner envelopes (Development)", () => {
     state: "prepared",
     approval: null,
     undoOf: null,
+    criteria: null,
     targetCount: 1,
     nextIndex: 0,
     results: [],

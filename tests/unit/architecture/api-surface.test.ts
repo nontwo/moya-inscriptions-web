@@ -51,6 +51,7 @@ describe("@moya/api server-only surface", () => {
     expect(Object.keys(await import("@moya/api")).sort()).toEqual([
       "AgentAdministrationService",
       "AgentForbiddenError",
+      "AgentManifestError",
       "AuthorCommunityService",
       "COMMENT_EMBEDDED_REPLY_LIMIT",
       "COMMENT_HOT_LIMIT",
@@ -73,6 +74,7 @@ describe("@moya/api server-only surface", () => {
       "WorkPublishingService",
       "deriveCatalogPeriodLabel",
       "isAgentForbiddenError",
+      "isAgentManifestError",
       "isCatalogMediaResolutionError",
       "isCatalogQueryUnavailableError",
       "isCommunityConflictError",

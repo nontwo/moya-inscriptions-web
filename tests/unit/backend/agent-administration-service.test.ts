@@ -184,6 +184,87 @@ class InMemoryAgentPort implements AgentAdministrationPort {
       ) ?? null
     );
   }
+  /** Exact-match-first over a tiny fixture; same ranking rule as the adapter. */
+  users: { id: string; handle: string; displayName: string }[] = [];
+  async resolveUsers(query: {
+    search?: string | undefined;
+    userId?: string | undefined;
+    handle?: string | undefined;
+    page: number;
+    pageSize: number;
+  }) {
+    const search = query.search ?? "";
+    const rank = (user: {
+      id: string;
+      handle: string;
+      displayName: string;
+    }) => {
+      if (query.userId !== undefined) return user.id === query.userId ? 0 : -1;
+      if (query.handle !== undefined)
+        return user.handle.toLowerCase() ===
+          query.handle.replace(/^@/, "").toLowerCase()
+          ? 1
+          : -1;
+      if (search === "") return 3;
+      if (user.id === search) return 0;
+      if (user.handle.toLowerCase() === search.replace(/^@/, "").toLowerCase())
+        return 1;
+      if (user.displayName.toLowerCase() === search.toLowerCase()) return 2;
+      return `${user.id} ${user.handle} ${user.displayName}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+        ? 3
+        : -1;
+    };
+    const kinds = ["id", "handle", "display_name", "substring"] as const;
+    const matched = this.users
+      .map((user) => ({ user, rank: rank(user) }))
+      .filter((row) => row.rank >= 0)
+      .sort((a, b) => a.rank - b.rank);
+    const best = matched[0]?.rank ?? null;
+    const bestCount = matched.filter((row) => row.rank === best).length;
+    const uniqueIdentity = bestCount === 1 && (best === 0 || best === 1);
+    return {
+      items: matched.map((row) => ({
+        id: row.user.id,
+        handle: row.user.handle,
+        displayName: row.user.displayName,
+        status: "active" as const,
+        matchKind: kinds[row.rank]!,
+      })),
+      total: matched.length,
+      page: query.page,
+      pageSize: query.pageSize,
+      resolution: {
+        status:
+          matched.length === 0
+            ? ("none" as const)
+            : uniqueIdentity
+              ? ("exact" as const)
+              : ("candidates" as const),
+        uniqueIdentity,
+        matchKind: best === null ? null : kinds[best]!,
+        userId: uniqueIdentity ? (matched[0]!.user.id as never) : null,
+        ambiguous: matched.length > 1 && !uniqueIdentity,
+      },
+    } as never;
+  }
+  /** The service never reaches this in the unit suite; PostgreSQL covers it. */
+  async selectCommentManifest(): Promise<never> {
+    throw new Error("selectCommentManifest is covered by the PostgreSQL suite");
+  }
+  async readOperationTargets(id: string, page: number, pageSize: number) {
+    const stored = this.operations.get(id);
+    if (stored === undefined) return null;
+    const start = (page - 1) * pageSize;
+    return {
+      operationId: id,
+      items: stored.targets.slice(start, start + pageSize),
+      total: stored.targetCount,
+      page,
+      pageSize,
+    } as never;
+  }
   async readFeaturedStates(targets: readonly { type: string; id: string }[]) {
     const states = new Map<string, AgentFeaturedState>();
     for (const target of targets) {
@@ -209,6 +290,7 @@ class InMemoryAgentPort implements AgentAdministrationPort {
       state: draft.approval === null ? "prepared" : "approved",
       approval: draft.approval,
       undoOf: draft.undoOf,
+      criteria: draft.criteria,
       targetCount: draft.targets.length,
       nextIndex: 0,
       results: [],

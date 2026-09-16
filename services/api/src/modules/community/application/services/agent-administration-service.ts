@@ -1,5 +1,8 @@
 import {
+  AGENT_MANIFEST_SAMPLE_SIZE,
+  AGENT_MANIFEST_TARGET_MAXIMUM,
   AGENT_OPERATION_CHUNK_SIZE,
+  AGENT_TARGET_PAGE_MAXIMUM,
   AGENT_OPERATION_PREPARED_LIFETIME_MS,
   agentDelegationCreateSchema,
   agentDelegationQuerySchema,
@@ -8,6 +11,7 @@ import {
   agentOperationQuerySchema,
   agentOperationReadSchema,
   agentPrepareCommentsCommandSchema,
+  agentUserLookupQuerySchema,
   agentPrepareFeaturedCommandSchema,
   agentPrincipalLabelSchema,
   agentPrincipalMutationSchema,
@@ -26,8 +30,11 @@ import { isCommunityStoreUnavailableError } from "../errors/community-store-unav
 import { CommunityContentOperatorService } from "./community-content-operator-service.js";
 import { CommunityModerationService } from "./community-moderation-service.js";
 
+import { AgentManifestError } from "../ports/agent-administration-port.js";
+
 import type {
   AgentAdministrationPort,
+  AgentManifestQuery,
   AgentOperationDraft,
 } from "../ports/agent-administration-port.js";
 import type { CatalogPublicationPort } from "../ports/catalog-publication-port.js";
@@ -36,6 +43,7 @@ import type { CommunityContentOperatorPort } from "../ports/community-content-op
 import type { CommunityIdentityPort } from "../ports/community-identity-port.js";
 import type { DiscussionPort } from "../ports/discussion-port.js";
 import type {
+  AgentManifestCriteria,
   AgentCommentTarget,
   AgentDelegation,
   AgentFeaturedTarget,
@@ -278,9 +286,16 @@ export class AgentAdministrationService {
 
   // ------------------------------------------------------------------ reads
 
+  /**
+   * Exact-match-first resolution, applied in the Backend before pagination.
+   * The answer names the match kind and says whether it is a unique exact
+   * identity; the Owner Admin's own user list keeps its existing behavior.
+   */
   async usersFind(principal: string, query: unknown) {
     await this.authorize(principal, "users:read");
-    return this.servicesFor(principal).content.readUsers(query);
+    return this.port.resolveUsers(
+      parse(agentUserLookupQuerySchema, query ?? {}),
+    );
   }
 
   async contentSearch(principal: string, query: unknown) {
@@ -331,12 +346,18 @@ export class AgentAdministrationService {
     >,
   ): Promise<AgentOperationDetail> {
     const at = this.clock();
-    const approval = await this.approvalFor(
-      draft.principal,
-      draft.kind,
-      draft.targets.length,
-      at,
-    );
+    // A keyword manifest is always an Owner decision. A delegation may
+    // pre-approve an explicit, caller-named selection; it never pre-approves a
+    // server-built takedown, and splitting a manifest cannot evade that.
+    const approval =
+      draft.criteria === null
+        ? await this.approvalFor(
+            draft.principal,
+            draft.kind,
+            draft.targets.length,
+            at,
+          )
+        : null;
     const created = await this.port.createOperation({
       ...draft,
       id: randomUUID(),
@@ -351,31 +372,140 @@ export class AgentAdministrationService {
     return created.operation;
   }
 
-  /** A frozen selection of comments and one transition; states observed now are recorded. */
+  /**
+   * A frozen selection of comments and one transition. Two modes, never mixed:
+   * an explicit caller-named id list, or a server-side keyword manifest the
+   * Backend builds, freezes and persists from one consistent snapshot.
+   */
   async prepareComments(
     principal: string,
     body: unknown,
   ): Promise<AgentOperationDetail> {
     await this.authorize(principal, "comments:moderate");
     const command = parse(agentPrepareCommentsCommandSchema, body);
-    const targets: AgentCommentTarget[] = [];
-    for (const id of command.ids) {
-      const current = await this.deps.commentPort.findOperatorComment(
-        id as Parameters<CommunityCommentPort["findOperatorComment"]>[0],
-      );
-      targets.push({ id, prior: current?.moderation ?? null });
+    if ("ids" in command) {
+      const targets: AgentCommentTarget[] = [];
+      for (const id of command.ids) {
+        const current = await this.deps.commentPort.findOperatorComment(
+          id as Parameters<CommunityCommentPort["findOperatorComment"]>[0],
+        );
+        targets.push({ id, prior: current?.moderation ?? null });
+      }
+      return this.create({
+        principal,
+        requestId: command.requestId,
+        kind: "comments.moderate",
+        action: command.action,
+        targets,
+        fingerprint: await fingerprintOf([
+          "comments.moderate",
+          command.action,
+          command.ids,
+        ]),
+        criteria: null,
+        undoOf: null,
+      });
     }
+    // Reading matched bodies is a read: the principal needs the read scope as
+    // well as the moderation scope before anything is matched, counted or
+    // sampled.
+    await this.authorize(principal, "comments:read");
+    const selector = command.selector;
+    if (selector.authorId !== undefined && selector.authorHandle !== undefined)
+      throw new CommunityInputError(
+        "Name the author by id or by handle, not both",
+      );
+    const at = this.clock();
+    // A handle becomes a stable id before matching, and only a unique exact
+    // identity is accepted; a near match never silently selects an account.
+    let authorId: string | null = selector.authorId ?? null;
+    if (selector.authorHandle !== undefined) {
+      const resolved = await this.port.resolveUsers({
+        handle: selector.authorHandle,
+        page: 1,
+        pageSize: 2,
+      });
+      if (
+        !resolved.resolution.uniqueIdentity ||
+        resolved.resolution.userId === null
+      )
+        throw new AgentManifestError("AUTHOR_NOT_RESOLVED");
+      authorId = resolved.resolution.userId;
+    }
+    const query: AgentManifestQuery = {
+      terms: selector.terms,
+      match: selector.match,
+      scope: selector.scope,
+      target: selector.target ?? null,
+      authorId,
+      moderation: selector.moderation ?? null,
+      createdFrom:
+        selector.createdFrom === undefined
+          ? null
+          : new Date(selector.createdFrom),
+      createdTo:
+        selector.createdTo === undefined ? null : new Date(selector.createdTo),
+    };
+    const selection = await this.port.selectCommentManifest(
+      query,
+      AGENT_MANIFEST_TARGET_MAXIMUM,
+      AGENT_MANIFEST_SAMPLE_SIZE,
+    );
+    // Zero matches is a truthful answer, not an empty operation to approve.
+    if (selection.total === 0)
+      throw new AgentManifestError("MANIFEST_NO_MATCH");
+    const defaults: string[] = [];
+    if (selector.moderation === undefined) defaults.push("state: any");
+    if (selector.createdFrom === undefined && selector.createdTo === undefined)
+      defaults.push("date: no interval, all history");
+    if (selector.target === undefined)
+      defaults.push("target: any Catalog or Work");
+    if (authorId === null) defaults.push("author: any");
+    const criteria = {
+      kind: "comments.keyword",
+      terms: [...selector.terms],
+      match: selector.match,
+      scope: selector.scope,
+      target: selector.target ?? null,
+      authorId,
+      authorHandle: selector.authorHandle ?? null,
+      moderation: selector.moderation ?? null,
+      createdFrom: selector.createdFrom ?? null,
+      createdTo: selector.createdTo ?? null,
+      interpretation: {
+        field: "body",
+        matching: "literal-substring",
+        caseSensitive: false,
+        normalization: "none",
+        timezone: "UTC",
+        defaults,
+      },
+      preparedAt: at.toISOString(),
+      matchCount: selection.total,
+      sample: [...selection.sample],
+    } as AgentManifestCriteria;
     return this.create({
       principal,
       requestId: command.requestId,
       kind: "comments.moderate",
       action: command.action,
-      targets,
+      targets: selection.targets,
+      // The canonical question, not the matched rows: the same question asked
+      // twice under one request key replays the first manifest even when new
+      // matching content arrived since.
       fingerprint: await fingerprintOf([
-        "comments.moderate",
+        "comments.keyword",
         command.action,
-        command.ids,
+        selector.terms,
+        selector.match,
+        selector.scope,
+        selector.target ?? null,
+        authorId,
+        selector.moderation ?? null,
+        selector.createdFrom ?? null,
+        selector.createdTo ?? null,
       ]),
+      criteria,
       undoOf: null,
     });
   }
@@ -403,6 +533,7 @@ export class AgentAdministrationService {
       action: null,
       targets,
       fingerprint: await fingerprintOf(["featured.set", command.items]),
+      criteria: null,
       undoOf: null,
     });
   }
@@ -423,6 +554,38 @@ export class AgentAdministrationService {
     await this.authorize(principal, "operations:execute");
     const { operationId } = parse(agentOperationReadSchema, body);
     return this.owned(principal, operationId);
+  }
+
+  /**
+   * Protected paginated retrieval of a frozen manifest. The full membership is
+   * never returned in one answer; this is the only way to walk it.
+   */
+  async getTargets(principal: string, body: unknown) {
+    await this.authorize(principal, "operations:execute");
+    const command = parse(agentOperationReadSchema, body);
+    await this.owned(principal, command.operationId);
+    return this.targetPage(command);
+  }
+
+  /** Owner-side paginated retrieval, without a principal header. */
+  async readOperationTargets(body: unknown) {
+    const command = parse(agentOperationReadSchema, body);
+    return this.targetPage(command);
+  }
+
+  private async targetPage(command: {
+    readonly operationId: string;
+    readonly targetsPage?: number | undefined;
+    readonly targetsPageSize?: number | undefined;
+  }) {
+    const page = await this.port.readOperationTargets(
+      command.operationId,
+      command.targetsPage ?? 1,
+      command.targetsPageSize ?? AGENT_TARGET_PAGE_MAXIMUM,
+    );
+    if (page === null)
+      throw new CommunityNotFoundError("Operation was not found");
+    return page;
   }
 
   /** Owner-side reads: every principal's operations. */
@@ -663,6 +826,38 @@ export class AgentAdministrationService {
     };
   }
 
+  /**
+   * Was this exact transition already committed by this run? Returns the
+   * recovered state when the audit trail proves it, otherwise null. Scoped to
+   * the operation's own principal, action and start time, so an Owner edit, a
+   * different principal, or the same principal's earlier operation is never
+   * mistaken for this run's work.
+   */
+  private async committedByThisRun(
+    operation: AgentOperationDetail,
+    target: AgentOperationTarget,
+  ): Promise<string | null> {
+    if (!isCommentTarget(target) || operation.action === null) return null;
+    if (operation.startedAt === null) return null;
+    const startedAt = new Date(operation.startedAt).getTime();
+    const events = await this.deps.commentPort.readModerationEvents({
+      subjectId: target.id,
+      page: 1,
+      pageSize: 20,
+    });
+    const ours = events.items.find(
+      (event) =>
+        event.operatorLabel === operation.principal &&
+        event.action === operation.action &&
+        event.occurredAt.getTime() >= startedAt,
+    );
+    if (ours === undefined) return null;
+    const current = await this.deps.commentPort.findOperatorComment(
+      target.id as Parameters<CommunityCommentPort["findOperatorComment"]>[0],
+    );
+    return current === null ? null : `${current.moderation} (recovered)`;
+  }
+
   /** One target through the existing services; the outcome classification mirrors bulk moderation. */
   private async apply(
     operation: AgentOperationDetail,
@@ -695,11 +890,25 @@ export class AgentAdministrationService {
         storeDown: false,
       };
     } catch (error) {
-      if (isCommunityConflictError(error))
+      if (isCommunityConflictError(error)) {
+        // The receipt seam. A chunk whose write was lost (a stalled executor,
+        // a lease handoff, a dropped response) is repeated by the next holder.
+        // A comment this run already committed now refuses the same edge and
+        // would otherwise be filed as a conflict, silently dropping a real
+        // change from the tally and from any later undo. The audit trail is
+        // the receipt: an event for this subject, by this principal, with this
+        // action, at or after this run started, means the effect is ours.
+        const recovered = await this.committedByThisRun(operation, target);
+        if (recovered !== null)
+          return {
+            result: this.result(index, target, "applied", recovered),
+            storeDown: false,
+          };
         return {
           result: this.result(index, target, "conflict", null),
           storeDown: false,
         };
+      }
       if (isCommunityNotFoundError(error))
         return {
           result: this.result(index, target, "not_found", null),
@@ -765,6 +974,7 @@ export class AgentAdministrationService {
         action: inverseAction[action],
         targets,
         fingerprint: await fingerprintOf(["undo", original.id]),
+        criteria: null,
         undoOf: original.id,
       });
     }
@@ -791,6 +1001,7 @@ export class AgentAdministrationService {
       action: null,
       targets,
       fingerprint: await fingerprintOf(["undo", original.id]),
+      criteria: null,
       undoOf: original.id,
     });
   }

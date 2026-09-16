@@ -246,8 +246,14 @@ export {
   targetRequestId,
 } from "./modules/community/application/services/agent-administration-service.js";
 export type { AgentAdministrationServiceOptions } from "./modules/community/application/services/agent-administration-service.js";
+export {
+  AgentManifestError,
+  isAgentManifestError,
+} from "./modules/community/application/ports/agent-administration-port.js";
 export type {
   AgentAdministrationPort,
   AgentFeaturedState,
+  AgentManifestQuery,
+  AgentManifestSelection,
   AgentOperationDraft,
 } from "./modules/community/application/ports/agent-administration-port.js";

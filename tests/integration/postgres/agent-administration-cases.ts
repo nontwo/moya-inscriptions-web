@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { AgentAdministrationService } from "@moya/api";
+import {
+  AgentAdministrationService,
+  CommunityModerationService,
+} from "@moya/api";
 import {
   PostgresAgentAdministrationAdapter,
   PostgresCommunityCommentAdapter,
@@ -65,6 +68,7 @@ export const registerAgentAdministrationTests = (
         label: PRINCIPAL,
         displayName: "PG 评审代理",
         scopes: [
+          "users:read",
           "comments:read",
           "comments:moderate",
           "operations:execute",
@@ -80,12 +84,531 @@ export const registerAgentAdministrationTests = (
       await pool.query("DELETE FROM community.agent_principals");
       await pool.query("DELETE FROM community.moderation_events");
       await pool.query(
+        "DELETE FROM community.catalog_comment_replies WHERE author_id=$1",
+        [author],
+      );
+      await pool.query(
         "DELETE FROM community.catalog_comments WHERE author_id=$1",
         [author],
       );
       await pool.query("DELETE FROM community.public_users WHERE id=$1", [
         author,
       ]);
+    });
+
+    /** Seeds one comment and returns its id. */
+    const seedComment = async (
+      text: string,
+      options: {
+        readonly author?: string;
+        readonly target?: string;
+        readonly targetType?: "catalog" | "work";
+        readonly moderation?: "pending" | "visible" | "hidden";
+        readonly createdAt?: string;
+      } = {},
+    ) => {
+      const commentId = id("comment");
+      await pool.query(
+        `INSERT INTO community.catalog_comments
+           (id,catalog_id,author_id,text,moderation,target_type,created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7::timestamptz,CURRENT_TIMESTAMP))`,
+        [
+          commentId,
+          options.target ?? "catalog-agent-01",
+          options.author ?? author,
+          text,
+          options.moderation ?? "visible",
+          options.targetType ?? "catalog",
+          options.createdAt ?? null,
+        ],
+      );
+      return commentId;
+    };
+    const seedReply = async (root: string, text: string) => {
+      const replyId = id("comment");
+      await pool.query(
+        `INSERT INTO community.catalog_comment_replies
+           (id,root_comment_id,author_id,text,moderation)
+         VALUES ($1,$2,$3,$4,'visible')`,
+        [replyId, root, author, text],
+      );
+      return replyId;
+    };
+    const prepareByQuery = (selector: Record<string, unknown>) =>
+      service.prepareComments(PRINCIPAL, {
+        requestId: randomUUID(),
+        action: "hide",
+        selector,
+      });
+
+    it("matches comment bodies literally: never the author's name, and %, _ and backslash are ordinary characters", async () => {
+      // The term appears only in the author's display name, never in a body.
+      const named = id("user");
+      await pool.query(
+        "INSERT INTO community.public_users(id,handle,display_name,status) VALUES($1,$2,'代购小铺','active')",
+        [named, `named-${randomUUID().slice(0, 8)}`],
+      );
+      await pool.query(
+        "INSERT INTO community.catalog_comments(id,catalog_id,author_id,text,moderation) VALUES($1,'catalog-agent-01',$2,'完全无关的正文','visible')",
+        [id("comment"), named],
+      );
+      await expect(prepareByQuery({ terms: ["代购"] })).rejects.toThrow(
+        "MANIFEST_NO_MATCH",
+      );
+
+      const chinese = await seedComment("这是代购广告，请删除");
+      const english = await seedComment("Please remove this SPAM listing");
+      const emoji = await seedComment("垃圾内容 🚫🚫 需要处理");
+      const percent = await seedComment("优惠 100% 保真，私聊");
+      const underscore = await seedComment("联系 a_b_c 下单");
+      const backslash = await seedComment("路径 C:\\temp\\ad 广告");
+
+      const byChinese = await prepareByQuery({ terms: ["代购"] });
+      expect(byChinese.targets.map((t) => (t as { id: string }).id)).toEqual([
+        chinese,
+      ]);
+      expect(byChinese.criteria?.matchCount).toBe(1);
+
+      // Case-insensitive literal substring, not a pattern.
+      expect(
+        (await prepareByQuery({ terms: ["spam"] })).targets.map(
+          (t) => (t as { id: string }).id,
+        ),
+      ).toEqual([english]);
+      expect(
+        (await prepareByQuery({ terms: ["🚫🚫"] })).targets.map(
+          (t) => (t as { id: string }).id,
+        ),
+      ).toEqual([emoji]);
+      // "100%" matches only the literal text; % never becomes a wildcard.
+      expect(
+        (await prepareByQuery({ terms: ["100%"] })).targets.map(
+          (t) => (t as { id: string }).id,
+        ),
+      ).toEqual([percent]);
+      await expect(prepareByQuery({ terms: ["%保真%"] })).rejects.toThrow(
+        "MANIFEST_NO_MATCH",
+      );
+      expect(
+        (await prepareByQuery({ terms: ["a_b_c"] })).targets.map(
+          (t) => (t as { id: string }).id,
+        ),
+      ).toEqual([underscore]);
+      // "_" is literal too: "a_b" must not match "axb".
+      await seedComment("联系 axbxc 下单");
+      expect(
+        (await prepareByQuery({ terms: ["a_b"] })).targets.map(
+          (t) => (t as { id: string }).id,
+        ),
+      ).toEqual([underscore]);
+      expect(
+        (await prepareByQuery({ terms: ["C:\\temp"] })).targets.map(
+          (t) => (t as { id: string }).id,
+        ),
+      ).toEqual([backslash]);
+
+      // any vs all over the same two terms.
+      const anyMatch = await prepareByQuery({
+        terms: ["代购", "SPAM"],
+        match: "any",
+      });
+      expect(anyMatch.targets).toHaveLength(2);
+      await expect(
+        prepareByQuery({ terms: ["代购", "SPAM"], match: "all" }),
+      ).rejects.toThrow("MANIFEST_NO_MATCH");
+      const both = await seedComment("代购 SPAM 同时出现");
+      const allMatch = await prepareByQuery({
+        terms: ["代购", "SPAM"],
+        match: "all",
+      });
+      expect(allMatch.targets.map((t) => (t as { id: string }).id)).toEqual([
+        both,
+      ]);
+      await pool.query(
+        "DELETE FROM community.catalog_comments WHERE author_id=$1",
+        [named],
+      );
+      await pool.query("DELETE FROM community.public_users WHERE id=$1", [
+        named,
+      ]);
+    });
+
+    it("scopes a manifest by target, author, roots/replies, state and date, and never widens through counts", async () => {
+      const other = id("user");
+      await pool.query(
+        "INSERT INTO community.public_users(id,handle,display_name,status) VALUES($1,$2,'另一位作者','active')",
+        [other, `other-${randomUUID().slice(0, 8)}`],
+      );
+      const onCatalog = await seedComment("范围词 catalog");
+      const onWork = await seedComment("范围词 work", {
+        target: "work-0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01",
+        targetType: "work",
+      });
+      const byOther = await seedComment("范围词 other", { author: other });
+      const hidden = await seedComment("范围词 hidden", {
+        moderation: "hidden",
+      });
+      const old = await seedComment("范围词 old", {
+        createdAt: "2020-01-01T00:00:00.000Z",
+      });
+      const root = await seedComment("范围词 root");
+      const reply = await seedReply(root, "范围词 reply");
+
+      const ids = (operation: { targets: readonly unknown[] }) =>
+        operation.targets.map((t) => (t as { id: string }).id).sort();
+      expect(
+        ids(
+          await prepareByQuery({
+            terms: ["范围词"],
+            target: {
+              type: "work",
+              id: "work-0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01",
+            },
+          }),
+        ),
+      ).toEqual([onWork]);
+      expect(
+        ids(await prepareByQuery({ terms: ["范围词"], authorId: other })),
+      ).toEqual([byOther]);
+      expect(
+        ids(await prepareByQuery({ terms: ["范围词"], moderation: "hidden" })),
+      ).toEqual([hidden]);
+      expect(
+        ids(
+          await prepareByQuery({
+            terms: ["范围词"],
+            createdTo: "2021-01-01T00:00:00.000Z",
+          }),
+        ),
+      ).toEqual([old]);
+      expect(
+        ids(await prepareByQuery({ terms: ["范围词"], scope: "replies" })),
+      ).toEqual([reply]);
+      const rootsOnly = ids(
+        await prepareByQuery({ terms: ["范围词"], scope: "comments" }),
+      );
+      expect(rootsOnly).not.toContain(reply);
+      expect(rootsOnly).toContain(onCatalog);
+      // The recorded criteria state what was assumed, so a preview never hides
+      // an invented default.
+      const prepared = await prepareByQuery({ terms: ["范围词"] });
+      expect(prepared.criteria?.interpretation).toMatchObject({
+        field: "body",
+        matching: "literal-substring",
+        caseSensitive: false,
+        timezone: "UTC",
+      });
+      expect(prepared.criteria?.interpretation.defaults).toContain(
+        "date: no interval, all history",
+      );
+      await pool.query(
+        "DELETE FROM community.catalog_comments WHERE author_id=$1",
+        [other],
+      );
+      await pool.query("DELETE FROM community.public_users WHERE id=$1", [
+        other,
+      ]);
+    });
+
+    it("refuses above the documented manifest cap and freezes a complete membership across several persisted chunks", async () => {
+      // 501 bodies carrying the same literal term: one past the ceiling.
+      await pool.query(
+        `INSERT INTO community.catalog_comments(id,catalog_id,author_id,text,moderation)
+         SELECT 'comment-' || lpad(to_hex(g), 32, '0'), 'catalog-agent-01', $1,
+                'capword ' || g, 'visible'
+         FROM generate_series(1, 501) AS g`,
+        [author],
+      );
+      await expect(prepareByQuery({ terms: ["capword"] })).rejects.toThrow(
+        "MANIFEST_LIMIT_EXCEEDED",
+      );
+      // One fewer row is accepted, proving the cap itself is the boundary.
+      await pool.query(
+        "DELETE FROM community.catalog_comments WHERE id = 'comment-' || lpad(to_hex(501), 32, '0')",
+      );
+      const atCap = await prepareByQuery({ terms: ["capword"] });
+      expect(atCap.targetCount).toBe(500);
+      expect(atCap.criteria?.matchCount).toBe(500);
+      expect(atCap.criteria?.sample).toHaveLength(10);
+      expect(
+        new Set(atCap.targets.map((t) => (t as { id: string }).id)).size,
+      ).toBe(500);
+      // Every frozen target carries its state and content evidence.
+      expect(atCap.targets[0]).toMatchObject({
+        prior: "visible",
+        kind: "comment",
+      });
+      expect((atCap.targets[0] as { textSha: string }).textSha).toMatch(
+        /^[0-9a-f]{16}$/u,
+      );
+      // The membership is retrievable only in bounded pages.
+      const firstPage = await service.getTargets(PRINCIPAL, {
+        operationId: atCap.id,
+        targetsPage: 1,
+        targetsPageSize: 100,
+      });
+      expect(firstPage.items).toHaveLength(100);
+      expect(firstPage.total).toBe(500);
+
+      // A keyword manifest is an Owner decision even with a delegation that
+      // would cover an explicit list of the same size.
+      await service.createDelegation({
+        requestId: randomUUID(),
+        principal: PRINCIPAL,
+        kind: "comments.moderate",
+        maxTargets: 500,
+        expiresAt: new Date(now.getTime() + 3_600_000).toISOString(),
+      });
+      const stillPrepared = await prepareByQuery({ terms: ["capword"] });
+      expect(stillPrepared.state).toBe("prepared");
+      expect(stillPrepared.approval).toBeNull();
+
+      await service.approve({
+        requestId: randomUUID(),
+        operationId: atCap.id,
+      });
+      // chunksPerCall is 1 in this suite, so each call persists one 50-target
+      // chunk: the membership is executed completely, across many chunks.
+      let progress = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: atCap.id,
+      });
+      expect(progress.nextIndex).toBe(50);
+      let rounds = 1;
+      while (progress.state === "executing" && rounds < 20) {
+        progress = await service.execute(PRINCIPAL, {
+          requestId: randomUUID(),
+          operationId: atCap.id,
+        });
+        rounds += 1;
+      }
+      expect(progress.state).toBe("completed");
+      expect(progress.tally.applied).toBe(500);
+      expect(rounds).toBe(10);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int AS n FROM community.catalog_comments WHERE text LIKE 'capword %' AND moderation='hidden'",
+          )
+        ).rows[0].n,
+      ).toBe(500);
+    });
+
+    it("replays one request key over the canonical question and never absorbs content that arrived after preparation", async () => {
+      await seedComment("replaytest 第一条");
+      const requestId = randomUUID();
+      const command = {
+        requestId,
+        action: "hide" as const,
+        selector: { terms: ["replaytest"] },
+      };
+      const first = await service.prepareComments(PRINCIPAL, command);
+      expect(first.targetCount).toBe(1);
+      // New matching content arrives, then the same request key is replayed.
+      await seedComment("replaytest 第二条");
+      const replay = await service.prepareComments(PRINCIPAL, command);
+      expect(replay.id).toBe(first.id);
+      expect(replay.targetCount).toBe(1);
+      // A different question under the same key is a conflict, not a silent
+      // second manifest.
+      await expect(
+        service.prepareComments(PRINCIPAL, {
+          requestId,
+          action: "hide",
+          selector: { terms: ["replaytest"], scope: "comments" },
+        }),
+      ).rejects.toThrow("Reused request identity");
+      // A fresh key sees the new row: the frozen membership never grew.
+      const second = await prepareByQuery({ terms: ["replaytest"] });
+      expect(second.targetCount).toBe(2);
+    });
+
+    it("resolves identity exact-match-first, before paging, and refuses to guess", async () => {
+      const exact = id("user");
+      await pool.query(
+        "INSERT INTO community.public_users(id,handle,display_name,status,created_at) VALUES($1,'moke','墨客','active',$2)",
+        [exact, new Date(now.getTime() - 86_400_000)],
+      );
+      const duplicates = [id("user"), id("user")];
+      for (const [index, duplicate] of duplicates.entries())
+        await pool.query(
+          "INSERT INTO community.public_users(id,handle,display_name,status) VALUES($1,$2,'墨客',$3)",
+          [
+            duplicate,
+            `moke-copy-${index}-${randomUUID().slice(0, 6)}`,
+            "active",
+          ],
+        );
+
+      // Exact id.
+      const byId = await service.usersFind(PRINCIPAL, { userId: exact });
+      expect(byId.resolution).toMatchObject({
+        status: "exact",
+        uniqueIdentity: true,
+        matchKind: "id",
+        userId: exact,
+      });
+      // Exact handle, case-normalized, with no display-name fallback.
+      const byHandle = await service.usersFind(PRINCIPAL, { handle: "moke" });
+      expect(byHandle.resolution).toMatchObject({
+        uniqueIdentity: true,
+        matchKind: "handle",
+        userId: exact,
+      });
+      expect(
+        (await service.usersFind(PRINCIPAL, { handle: "@MOKE" })).resolution
+          .userId,
+      ).toBe(exact);
+      // An explicit handle that misses resolves to nothing; it never falls back
+      // to the accounts whose display name matches.
+      const missing = await service.usersFind(PRINCIPAL, {
+        handle: "moke-does-not-exist",
+      });
+      expect(missing.resolution).toMatchObject({
+        status: "none",
+        uniqueIdentity: false,
+      });
+      expect(missing.items).toHaveLength(0);
+      // Free text: the exact handle outranks the three display-name rows even
+      // though it is the oldest account, and ranking happens before paging.
+      const search = await service.usersFind(PRINCIPAL, {
+        search: "MoKe",
+        page: 1,
+        pageSize: 1,
+      });
+      expect(search.items[0]?.id).toBe(exact);
+      expect(search.items[0]?.matchKind).toBe("handle");
+      expect(search.resolution).toMatchObject({
+        status: "exact",
+        uniqueIdentity: true,
+      });
+      // Duplicate display names are candidates, never a unique identity.
+      const ambiguous = await service.usersFind(PRINCIPAL, { search: "墨客" });
+      expect(ambiguous.resolution).toMatchObject({
+        status: "candidates",
+        uniqueIdentity: false,
+        ambiguous: true,
+        userId: null,
+      });
+      expect(ambiguous.total).toBeGreaterThanOrEqual(3);
+      // A name-based mutation refuses rather than picking a duplicate.
+      await seedComment("identity 关键词", { author: exact });
+      await expect(
+        prepareByQuery({ terms: ["identity"], authorHandle: "moke-copy" }),
+      ).rejects.toThrow("AUTHOR_NOT_RESOLVED");
+      const byAuthorHandle = await prepareByQuery({
+        terms: ["identity"],
+        authorHandle: "MoKe",
+      });
+      expect(byAuthorHandle.criteria?.authorId).toBe(exact);
+      expect(byAuthorHandle.criteria?.authorHandle).toBe("MoKe");
+      for (const extra of [exact, ...duplicates]) {
+        await pool.query(
+          "DELETE FROM community.catalog_comments WHERE author_id=$1",
+          [extra],
+        );
+        await pool.query("DELETE FROM community.public_users WHERE id=$1", [
+          extra,
+        ]);
+      }
+    });
+
+    it("recovers a moderation this run already committed after a lease handoff, instead of losing it from the tally and the undo", async () => {
+      const ids = [await seedComment("seam A"), await seedComment("seam B")];
+      const prepared = await service.prepareComments(PRINCIPAL, {
+        requestId: randomUUID(),
+        action: "hide",
+        ids,
+      });
+      await service.approve({
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      // An executor claims the operation and commits the first target, then
+      // stalls before it can persist the chunk: exactly the lost-response and
+      // lease-handoff window.
+      const claim = await agent.claimExecution(
+        prepared.id,
+        "lost.1",
+        now,
+        60_000,
+      );
+      expect(claim?.claimed).toBe(true);
+      const asPrincipal = new CommunityModerationService(
+        comments,
+        identity,
+        { isPublished: async () => true, readTitle: async () => null },
+        { operatorLabel: PRINCIPAL, clock: () => now },
+      );
+      await asPrincipal.moderateComment(ids[0] as never, { action: "hide" });
+      expect(
+        (
+          await pool.query(
+            "SELECT moderation FROM community.catalog_comments WHERE id=$1",
+            [ids[0]],
+          )
+        ).rows[0].moderation,
+      ).toBe("hidden");
+
+      // The lease expires and the next holder repeats the whole chunk.
+      now = new Date(now.getTime() + 61_000);
+      const done = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      expect(done.state).toBe("completed");
+      // The committed change is accounted as applied, not dropped as a
+      // conflict, and it is not applied a second time.
+      expect(done.tally).toMatchObject({ applied: 2, conflicts: 0 });
+      expect(done.results[0]?.detail).toContain("recovered");
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int AS n FROM community.moderation_events WHERE subject_id=$1 AND operator_label=$2",
+            [ids[0], PRINCIPAL],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+
+      // Because it counts as applied, the conditional undo covers it.
+      const undo = await service.prepareUndo(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      expect(undo.targetCount).toBe(2);
+      expect(undo.action).toBe("unhide");
+    });
+
+    it("does not mistake an Owner edit or an earlier operation for this run's own work", async () => {
+      const target = await seedComment("seam C");
+      // An earlier operation by the same principal hides it and finishes.
+      const first = await service.prepareComments(PRINCIPAL, {
+        requestId: randomUUID(),
+        action: "hide",
+        ids: [target],
+      });
+      await service.approve({ requestId: randomUUID(), operationId: first.id });
+      await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: first.id,
+      });
+      now = new Date(now.getTime() + 1_000);
+      // A later operation asks for the same edge again: already hidden, and the
+      // audit event predates this run, so it is a truthful conflict.
+      const second = await service.prepareComments(PRINCIPAL, {
+        requestId: randomUUID(),
+        action: "hide",
+        ids: [target],
+      });
+      await service.approve({
+        requestId: randomUUID(),
+        operationId: second.id,
+      });
+      const done = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: second.id,
+      });
+      expect(done.tally).toMatchObject({ applied: 0, conflicts: 1 });
     });
 
     it("stores principals and delegations with optimistic versions and revocation", async () => {

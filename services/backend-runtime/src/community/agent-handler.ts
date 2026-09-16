@@ -1,5 +1,6 @@
 import {
   isAgentForbiddenError,
+  isAgentManifestError,
   isCommunityConflictError,
   isCommunityInputError,
   isCommunityNotFoundError,
@@ -46,13 +47,17 @@ const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 const sendError = (
   response: ServerResponse,
-  status: 400 | 403 | 404 | 405 | 409 | 500 | 503,
+  status: 400 | 403 | 404 | 405 | 409 | 422 | 500 | 503,
   code: string,
 ): void => sendJson(response, status, { error: { status, code } });
 
 const sendFailure = (response: ServerResponse, error: unknown): void => {
   if (error instanceof JsonBodyError)
     sendError(response, 400, "INVALID_COMMAND");
+  // A manifest refusal carries its own code: an exceeded cap, a planning
+  // timeout, zero matches or an unresolved author are all explicit and final,
+  // never a silently truncated or empty selection.
+  else if (isAgentManifestError(error)) sendError(response, 422, error.code);
   else if (isAgentForbiddenError(error))
     sendError(response, 403, "AGENT_FORBIDDEN");
   else if (isCommunityNotFoundError(error))
@@ -163,6 +168,24 @@ export const handleAgentRequest = async (
         );
         return true;
       }
+      const targets = new RegExp(`^operations/(${uuid})/targets$`, "u").exec(
+        route,
+      );
+      if (targets && method === "GET") {
+        const query = queryOf(request);
+        sendJson(
+          response,
+          200,
+          await service.getTargets(principal, {
+            operationId: targets[1],
+            ...defined([
+              ["targetsPage", numeric(query.page)],
+              ["targetsPageSize", numeric(query.pageSize)],
+            ]),
+          }),
+        );
+        return true;
+      }
       const operation = new RegExp(
         `^operations/(${uuid})(?:/(execute|cancel|prepare-undo))?$`,
         "u",
@@ -264,6 +287,24 @@ export const handleAgentRequest = async (
             ["pageSize", numeric(query.pageSize)],
           ]),
         ),
+      );
+      return true;
+    }
+    const ownerTargets = new RegExp(`^operations/(${uuid})/targets$`, "u").exec(
+      route,
+    );
+    if (ownerTargets && method === "GET") {
+      const query = queryOf(request);
+      sendJson(
+        response,
+        200,
+        await service.readOperationTargets({
+          operationId: ownerTargets[1],
+          ...defined([
+            ["targetsPage", numeric(query.page)],
+            ["targetsPageSize", numeric(query.pageSize)],
+          ]),
+        }),
       );
       return true;
     }

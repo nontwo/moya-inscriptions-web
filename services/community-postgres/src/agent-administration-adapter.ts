@@ -1,10 +1,18 @@
 import type {
   AgentAdministrationPort,
   AgentFeaturedState,
+  AgentManifestQuery,
+  AgentManifestSelection,
   AgentOperationDraft,
 } from "@moya/api";
 import type { ContentIdentity } from "@moya/contracts";
 import type {
+  AgentCommentTarget,
+  AgentManifestSample,
+  AgentOperationTargetPage,
+  AgentUserLookupPage,
+  AgentUserLookupQuery,
+  AgentUserMatchKind,
   AgentDelegation,
   AgentDelegationQuery,
   AgentOperation,
@@ -18,6 +26,8 @@ import type {
   AgentPrincipal,
 } from "@moya/contracts/internal/community-operator";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+
+import { AgentManifestError } from "@moya/api";
 
 import { asCommunityOperationError } from "./availability.js";
 
@@ -56,6 +66,7 @@ interface OperationRow {
   fingerprint: string;
   approval: AgentOperationApproval | null;
   undo_of: string | null;
+  criteria: Record<string, unknown> | null;
   next_index: number;
   results: AgentOperationResult[];
   lease_owner: string | null;
@@ -124,6 +135,7 @@ const operation = (row: OperationRow, at: Date): AgentOperation => ({
   state: row.state,
   approval: row.approval,
   undoOf: row.undo_of,
+  criteria: (row.criteria ?? null) as AgentOperation["criteria"],
   targetCount: row.target_count,
   nextIndex: row.next_index,
   results: row.results,
@@ -147,7 +159,7 @@ const detail = (row: OperationRow, at: Date): AgentOperationDetail => ({
 });
 
 const operationColumns =
-  "id,principal_label,request_id,kind,action,state,targets,target_count,fingerprint,approval,undo_of,next_index,results,lease_owner,lease_expires_at,version,created_at,expires_at,approved_at,started_at,finished_at,cancel_requested_at";
+  "id,principal_label,request_id,kind,action,state,targets,target_count,fingerprint,approval,undo_of,criteria,next_index,results,lease_owner,lease_expires_at,version,created_at,expires_at,approved_at,started_at,finished_at,cancel_requested_at";
 
 /**
  * PostgreSQL persistence for Agent Administration V1. Every lifecycle write
@@ -357,6 +369,224 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
     return row === undefined ? null : delegation(row);
   }
 
+  async resolveUsers(
+    query: AgentUserLookupQuery,
+  ): Promise<AgentUserLookupPage> {
+    // One statement: the ranking CTE decides the order, and the aggregate
+    // columns describe the WHOLE ranked set, so resolution never depends on
+    // which page the caller asked for.
+    const search = query.search ?? "";
+    const rows = await this.query<{
+      id: string;
+      handle: string;
+      display_name: string;
+      status: string;
+      match_rank: number;
+      best: number;
+      total: string | number;
+      best_count: string | number;
+    }>(
+      `WITH ranked AS (
+         SELECT u.id,u.handle,u.display_name,u.status,u.created_at,
+           CASE
+             WHEN $2::text IS NOT NULL THEN 0
+             WHEN $3::text IS NOT NULL THEN 1
+             WHEN $1 <> '' AND u.id = $1 THEN 0
+             WHEN $1 <> '' AND lower(u.handle) = lower(ltrim($1,'@')) THEN 1
+             WHEN $1 <> '' AND lower(u.display_name) = lower($1) THEN 2
+             ELSE 3
+           END AS match_rank
+         FROM community.public_users u
+         WHERE ($2::text IS NULL OR u.id = $2)
+           AND ($3::text IS NULL OR lower(u.handle) = lower(ltrim($3,'@')))
+           AND ($2::text IS NOT NULL OR $3::text IS NOT NULL OR $1 = '' OR
+                u.id = $1 OR lower(u.handle) = lower(ltrim($1,'@'))
+                OR lower(u.display_name) = lower($1)
+                OR position(lower($1) in lower(u.id||' '||u.handle||' '||u.display_name)) > 0)
+       ), agg AS (SELECT min(match_rank) AS best, count(*) AS total FROM ranked)
+       SELECT r.id,r.handle,r.display_name,r.status,r.match_rank,
+              a.best,a.total,
+              (SELECT count(*) FROM ranked x WHERE x.match_rank = a.best) AS best_count
+       FROM ranked r CROSS JOIN agg a
+       ORDER BY r.match_rank, r.created_at DESC, r.id
+       LIMIT $4 OFFSET $5`,
+      [
+        search,
+        query.userId ?? null,
+        query.handle ?? null,
+        query.pageSize,
+        (query.page - 1) * query.pageSize,
+      ],
+    );
+    const kinds: readonly AgentUserMatchKind[] = [
+      "id",
+      "handle",
+      "display_name",
+      "substring",
+    ];
+    const items = rows.map((row) => ({
+      id: row.id,
+      handle: row.handle,
+      displayName: row.display_name,
+      status: row.status as "active" | "suspended",
+      matchKind: kinds[row.match_rank] ?? "substring",
+    }));
+    const total = rows[0] === undefined ? 0 : Number(rows[0].total);
+    const best = rows[0] === undefined ? null : Number(rows[0].best);
+    const bestCount = rows[0] === undefined ? 0 : Number(rows[0].best_count);
+    const bestKind = best === null ? null : (kinds[best] ?? "substring");
+    // Only a unique id or handle hit is identity evidence. A single
+    // display-name hit stays a candidate, because display names repeat.
+    const uniqueIdentity =
+      bestCount === 1 && (bestKind === "id" || bestKind === "handle");
+    return {
+      items,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      resolution: {
+        status: total === 0 ? "none" : uniqueIdentity ? "exact" : "candidates",
+        uniqueIdentity,
+        matchKind: bestKind,
+        userId: uniqueIdentity ? (items[0]?.id ?? null) : null,
+        ambiguous: total > 1 && !uniqueIdentity,
+      },
+    } as AgentUserLookupPage;
+  }
+
+  async selectCommentManifest(
+    query: AgentManifestQuery,
+    limit: number,
+    sampleSize: number,
+  ): Promise<AgentManifestSelection> {
+    // Body-only literal matching. The terms travel as a text[] parameter and
+    // are compared with position(), so %, _ and backslash carry no meaning and
+    // no value is ever concatenated into SQL. One UNION ALL statement inside a
+    // read-only repeatable-read transaction is the consistent snapshot: comment
+    // and reply membership cannot drift apart.
+    const anyTerm = (column: string) =>
+      `EXISTS (SELECT 1 FROM unnest($1::text[]) t WHERE position(lower(t) in lower(${column})) > 0)`;
+    const allTerms = (column: string) =>
+      `NOT EXISTS (SELECT 1 FROM unnest($1::text[]) t WHERE position(lower(t) in lower(${column})) = 0)`;
+    const match = query.match === "all" ? allTerms : anyTerm;
+    const filters = (text: string, created: string, author: string) =>
+      `${match(text)}
+         AND ($4::text IS NULL OR c.target_type = $4)
+         AND ($5::text IS NULL OR c.catalog_id = $5)
+         AND ($6::text IS NULL OR ${author} = $6)
+         AND ($7::text IS NULL OR ${text.replace(/\.text$/, ".moderation")} = $7)
+         AND ($8::timestamptz IS NULL OR ${created} >= $8)
+         AND ($9::timestamptz IS NULL OR ${created} < $9)`;
+    const comments = `SELECT c.id, 'comment' AS kind, c.moderation AS prior, c.created_at,
+         substr(encode(sha256(convert_to(c.text,'UTF8')),'hex'),1,16) AS text_sha,
+         left(c.text,160) AS excerpt
+       FROM community.catalog_comments c
+       WHERE ${filters("c.text", "c.created_at", "c.author_id")}`;
+    const replies = `SELECT r.id, 'reply' AS kind, r.moderation AS prior, r.created_at,
+         substr(encode(sha256(convert_to(r.text,'UTF8')),'hex'),1,16) AS text_sha,
+         left(r.text,160) AS excerpt
+       FROM community.catalog_comment_replies r
+       JOIN community.catalog_comments c ON c.id = r.root_comment_id
+       WHERE ${match("r.text")}
+         AND ($4::text IS NULL OR c.target_type = $4)
+         AND ($5::text IS NULL OR c.catalog_id = $5)
+         AND ($6::text IS NULL OR r.author_id = $6)
+         AND ($7::text IS NULL OR r.moderation = $7)
+         AND ($8::timestamptz IS NULL OR r.created_at >= $8)
+         AND ($9::timestamptz IS NULL OR r.created_at < $9)`;
+    const parts: string[] = [];
+    if (query.scope !== "replies") parts.push(comments);
+    if (query.scope !== "comments") parts.push(replies);
+    const sql = `${parts.join(" UNION ALL ")}
+       ORDER BY created_at ASC, id ASC
+       LIMIT $2 OFFSET $3`;
+    const db = await this.pool.connect().catch((error) => {
+      throw asCommunityOperationError(error, "connect");
+    });
+    try {
+      await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      // A finite planning/execution budget: an exceedance is an explicit
+      // failure below, never a partial list.
+      await db.query("SET LOCAL statement_timeout = '5000ms'");
+      const rows = (
+        await db.query<{
+          id: string;
+          kind: "comment" | "reply";
+          prior: "pending" | "visible" | "hidden";
+          text_sha: string;
+          excerpt: string;
+        }>(sql, [
+          [...query.terms],
+          limit + 1,
+          0,
+          query.target?.type ?? null,
+          query.target?.id ?? null,
+          query.authorId,
+          query.moderation,
+          query.createdFrom,
+          query.createdTo,
+        ])
+      ).rows;
+      await db.query("COMMIT");
+      if (rows.length > limit)
+        throw new AgentManifestError("MANIFEST_LIMIT_EXCEEDED", limit);
+      const targets = rows.map(
+        (row) =>
+          ({
+            id: row.id,
+            prior: row.prior,
+            kind: row.kind,
+            textSha: row.text_sha,
+          }) as AgentCommentTarget,
+      );
+      const sample = rows.slice(0, sampleSize).map(
+        (row) =>
+          ({
+            id: row.id,
+            kind: row.kind,
+            excerpt: row.excerpt,
+          }) as AgentManifestSample,
+      );
+      return { targets, total: targets.length, sample };
+    } catch (error) {
+      await db.query("ROLLBACK").catch(() => undefined);
+      if (error instanceof AgentManifestError) throw error;
+      // 57014 is statement_timeout: the planner or the scan ran out of budget.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: unknown }).code === "57014"
+      )
+        throw new AgentManifestError("MANIFEST_PLANNING_TIMEOUT");
+      throw asCommunityOperationError(error, "query");
+    } finally {
+      db.release();
+    }
+  }
+
+  async readOperationTargets(
+    id: string,
+    page: number,
+    pageSize: number,
+  ): Promise<AgentOperationTargetPage | null> {
+    const row = (
+      await this.query<{ targets: AgentCommentTarget[]; target_count: number }>(
+        "SELECT targets,target_count FROM community.agent_operations WHERE id=$1",
+        [id],
+      )
+    )[0];
+    if (row === undefined) return null;
+    const start = (page - 1) * pageSize;
+    return {
+      operationId: id,
+      items: row.targets.slice(start, start + pageSize),
+      total: row.target_count,
+      page,
+      pageSize,
+    } as AgentOperationTargetPage;
+  }
+
   async readFeaturedStates(
     targets: readonly ContentIdentity[],
   ): Promise<ReadonlyMap<string, AgentFeaturedState>> {
@@ -402,8 +632,8 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
       const row = (
         await this.query<OperationRow>(
           `INSERT INTO community.agent_operations
-             (id,principal_label,request_id,kind,action,state,targets,target_count,fingerprint,approval,undo_of,created_at,expires_at,approved_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11,$12,$13,$14)
+             (id,principal_label,request_id,kind,action,state,targets,target_count,fingerprint,approval,undo_of,created_at,expires_at,approved_at,criteria)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11,$12,$13,$14,$15::jsonb)
            RETURNING ${operationColumns}`,
           [
             draft.id,
@@ -420,6 +650,7 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
             draft.createdAt,
             draft.expiresAt,
             draft.approval === null ? null : draft.createdAt,
+            draft.criteria === null ? null : JSON.stringify(draft.criteria),
           ],
           db,
         )
