@@ -397,7 +397,25 @@ Active development tracks (independent of the parked cloud track):
    recognized by Photos. Web image/text/drafts and backend paired-media/playback
    evidence are assessed separately. Missing importer, hardware and complete
    motion samples remain pending dependencies, not waivers. This is a
-   Development milestone with no Production deployment or release authority.
+   Development milestone with no Production deployment or release authority. PR
+   #138 was merged as `30deb84` on 2026-09-16 after Owner acceptance; Issue #137
+   is closed. 3b. **Data and administration hardening
+   (`data-admin-hardening-v1`)** — Draft PR, Issue #141 (r2), from `30deb84`. An
+   independent audit of the community data model, grants, migrations, adapters
+   and the Payload Admin community workflow with reproduced defects repaired:
+   App-role privilege convergence (`grant-runtime.sql` now revokes the earlier
+   table-level grants before re-granting; `dev:migrate` applies it; a same-role
+   upgrade test), profile totals computed with the list predicates, discovery
+   page reads and expired-sequence cleanup bounded, three access indexes,
+   batched works / people / discussion / My Comments / Admin queue reads,
+   conflict copies of new-work drafts bound to their work so purges release
+   their media, atomic suspension and policy audits, receipt timestamps, and
+   targeted Admin usability fixes (pending bulk items kept across view changes,
+   truthful refusals, no-op skips, labels, small-screen detail focus). Findings,
+   Owner decisions, the extension note and the retained-target application plan
+   are in [data-admin-hardening-v1](community/data-admin-hardening-v1.md).
+   Retained databases were inspected read-only only; nothing was applied to
+   them. Owner visual acceptance of the Admin changes is pending.
 4. **Home Discover progressive loading** — NOT STARTED. Small product task using
    the established explicit “继续加载” pattern; not mixed into Community work
    and not begun by the Community V1 closure.
