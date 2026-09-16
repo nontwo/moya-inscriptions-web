@@ -87,9 +87,37 @@ a fresh remote comparison. CI PR classification uses merge-base..HEAD; a main
 push covers the complete before..after interval.
 
 `--mode lightweight` is for the bounded routing/documentation check phase; it
-does not replace applicable product validation. Pure Web work retains the
-existing `pnpm verify` entry with already prepared dependencies. Pure Apple work
-may use the standalone entry without installing the Web workspace:
+does not replace applicable product validation.
+
+`--mode feedback` is an intermediate revision preview after relevant delta
+checks. Use it from the task worktree as:
+
+```sh
+node scripts/verify-task.mjs --mode feedback --base origin/main --output <private-output>
+```
+
+Optional `--since <ref>` names the feedback checkpoint explicitly. Without
+`--since`, the last pushed upstream commit is used when it is an ancestor of
+HEAD; otherwise the merge-base with `--base` is used. The mode always unions
+applicable staged, unstaged and untracked content plus necessary dependency
+impact. It does not assume the last commit is the entire unchecked delta.
+Missing or ambiguous checkpoint or scope is reported and fails; it is never
+silently treated as checked. User-visible output and recorded evidence are
+labeled `FEEDBACK ONLY — NOT FULL ACCEPTANCE`. That preview is not formal Owner
+acceptance, not complete task validation, and not permission to merge. A failed
+full run is not a feedback PASS. Do not block every small preview on full CI,
+and do not push every tiny edit solely to obtain another full CI run. Commit,
+required CI, independent review and final delivery still use the default
+`verify-task` entry (committed, staged, unstaged and untracked union) and the
+cumulative PR plan. A tip-only or feedback plan cannot satisfy `assertTaskGate`
+/ `ci-task-gate` when a cumulative plan is required. Existing required CI checks
+and branch protections stay in force. Unchanged applicable evidence may be
+reused; changing HEAD or the implementing tool alone does not require a full
+historical rerun.
+
+Pure Web work retains the existing `pnpm verify` entry with already prepared
+dependencies. Pure Apple work may use the standalone entry without installing
+the Web workspace:
 
 ```sh
 node scripts/verify-apple.mjs --output <private-output>

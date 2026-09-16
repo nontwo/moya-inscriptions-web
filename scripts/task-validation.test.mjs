@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -150,6 +151,20 @@ describe("task routing follows the complete changed-path set", () => {
       { web: true, scope: "smoke" },
     ],
     [["scripts/verify.mjs"], { web: true, scope: "smoke" }],
+    [["scripts/ci-e2e-smoke.mjs"], { web: true, scope: "smoke" }],
+    [["scripts/ci-e2e-scope.mjs"], { web: true, scope: "smoke" }],
+    [
+      ["tests/unit/architecture/ci-e2e-policy.test.ts"],
+      { web: true, scope: "smoke" },
+    ],
+    [
+      ["tests/unit/architecture/workspace-scanner.ts"],
+      { web: true, scope: "smoke" },
+    ],
+    [[".editorconfig"], { web: true, scope: "smoke" }],
+    [[".prettierignore"], { web: true, scope: "smoke" }],
+    [["eslint.config.mjs"], { web: true, scope: "smoke" }],
+    [["prettier.config.mjs"], { web: true, scope: "smoke" }],
     [["scripts/confidentiality-scan.test.mjs"], {}],
     [["scripts/confidentiality-scan.mjs"], { web: true, scope: "smoke" }],
     [
@@ -162,7 +177,33 @@ describe("task routing follows the complete changed-path set", () => {
       { web: true, cms: true, scope: "smoke" },
     ],
     [["tests/cms/workflow.test.ts"], { web: true, cms: true, scope: "smoke" }],
-    [["packages/contracts/src/catalog.ts"], { contracts: true }],
+    [["packages/contracts/src/catalog.ts"], { contracts: true, cms: true }],
+    [["packages/contracts/package.json"], { contracts: true, cms: true }],
+    [
+      ["packages/contracts/src/internal/catalog-import/index.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["packages/search/src/index.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      ["packages/image/tsconfig.json"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [["services/api/package.json"], { web: true, cms: true, scope: "smoke" }],
+    [
+      ["services/catalog-postgres/src/adapter.ts"],
+      { web: true, cms: true, scope: "smoke" },
+    ],
+    [
+      [
+        "packages/search/scripts/native-runtime.mjs",
+        "services/community-postgres/src/index.ts",
+      ],
+      { web: true, scope: "smoke" },
+    ],
+    [["packages/search/README.md", "services/api/README.md"], {}],
     [["services/public-api/src/openapi.ts"], { contracts: true }],
     [
       ["services/backend-runtime/src/community/session.ts"],
@@ -193,7 +234,7 @@ describe("task routing follows the complete changed-path set", () => {
         "apps/web/app/page.tsx",
         "packages/contracts/src/catalog.ts",
       ],
-      { apple: true, web: true, contracts: true, scope: "smoke" },
+      { apple: true, web: true, cms: true, contracts: true, scope: "smoke" },
     ],
   ];
   for (const [paths, expected] of cases) {
@@ -329,7 +370,7 @@ describe("real temporary Git comparisons", () => {
     );
     assert.deepEqual(
       flags(classifyTask(pr)),
-      expectedFlags({ web: true, apple: true, scope: "smoke" }),
+      expectedFlags({ web: true, cms: true, apple: true, scope: "smoke" }),
     );
   });
 
@@ -364,6 +405,7 @@ describe("real temporary Git comparisons", () => {
       flags(classifyTask(paths, "local")),
       expectedFlags({
         web: true,
+        cms: true,
         contracts: true,
         apple: true,
         scope: "smoke",
@@ -450,6 +492,46 @@ describe("stable task and browser gates", () => {
       { ...plan, paths: ["apps/web/page.tsx"] },
     ])
       assert.throws(() => assertTaskGate(invalid, needs));
+  });
+
+  it("rejects tip-only and feedback-labeled plans when a cumulative plan is required", () => {
+    const tip = classifyTask(["README.md"]);
+    const cumulative = classifyTask([
+      "README.md",
+      "apps/web/page.tsx",
+      "packages/contracts/src/catalog.ts",
+    ]);
+    const tipNeeds = expectedNeeds(tip);
+    const cumulativeNeeds = expectedNeeds(cumulative);
+    assert.match(assertTaskGate(tip, tipNeeds), /N\/A \(not run\)/);
+    assert.throws(
+      () => assertTaskGate(tip, tipNeeds, { paths: cumulative.paths }),
+      /Tip-only or feedback plan cannot satisfy a required cumulative task gate/,
+    );
+    assert.throws(
+      () =>
+        assertTaskGate(
+          {
+            ...tip,
+            mode: "feedback",
+            label: "FEEDBACK ONLY — NOT FULL ACCEPTANCE",
+          },
+          tipNeeds,
+        ),
+      /Feedback results cannot satisfy a required cumulative task gate/,
+    );
+    assert.throws(
+      () =>
+        assertTaskGate(
+          { ...tip, acceptance: false, substitutesForTaskGate: false },
+          tipNeeds,
+        ),
+      /Feedback results cannot satisfy a required cumulative task gate/,
+    );
+    assert.match(
+      assertTaskGate(cumulative, cumulativeNeeds, { paths: cumulative.paths }),
+      /executed successfully/,
+    );
   });
 
   it("preserves browser N/A, explicit regression and actual native smoke evidence", () => {
@@ -687,6 +769,242 @@ describe("the real CI wiring preserves required-check closure", () => {
       flags(classifyTask(["scripts/verify.mjs"])),
       expectedFlags({ web: true, scope: "smoke" }),
     );
+  });
+
+  it("routes the packages the cms job builds and imports to the cms job", () => {
+    const { jobs } = workflowJobs();
+    const entry = "scripts/editorial/verify-cms.mjs";
+    const source = read(entry);
+    // The tsc -p projects it builds and the build output it imports itself.
+    const built = [
+      ...source.matchAll(/"((?:packages|services)\/[\w-]+)\/tsconfig\.json"/gu),
+    ].map((match) => match[1]);
+    const probed = [
+      ...source.matchAll(/\bimport\("(\.\.\/[^"]+?)\/dist\/[^"]+"\)/gu),
+    ].map((match) => relative(root, resolve(root, dirname(entry), match[1])));
+    const workspaces = new Map(
+      ["apps", "packages", "services"].flatMap((parent) =>
+        readdirSync(join(root, parent))
+          .filter((name) =>
+            existsSync(join(root, parent, name, "package.json")),
+          )
+          .map((name) => [
+            JSON.parse(read(`${parent}/${name}/package.json`)).name,
+            `${parent}/${name}`,
+          ]),
+      ),
+    );
+    // The job migrates and builds Admin and runs Vitest over tests/cms; the
+    // workspaces they import load their workspace runtime dependencies.
+    assert.match(jobs.get("cms"), /pnpm --filter admin build\n/);
+    const pending = [
+      "admin",
+      ...readdirSync(join(root, "tests/cms"))
+        .filter((file) => /\.[cm]?[jt]s$/u.test(file))
+        .flatMap((file) =>
+          [
+            ...read(`tests/cms/${file}`).matchAll(
+              /(?:\bfrom\s+|\bimport\()"([^".][^"]*)"/gu,
+            ),
+          ].map((match) => match[1]),
+        ),
+    ];
+    const loaded = new Set();
+    while (pending.length) {
+      const specifier = pending.pop();
+      const dir = workspaces.get(
+        specifier
+          .split("/")
+          .slice(0, specifier.startsWith("@") ? 2 : 1)
+          .join("/"),
+      );
+      if (!dir || loaded.has(dir)) continue;
+      loaded.add(dir);
+      pending.push(
+        ...Object.entries(
+          JSON.parse(read(`${dir}/package.json`)).dependencies ?? {},
+        )
+          .filter(([, version]) => version.startsWith("workspace:"))
+          .map(([name]) => name),
+      );
+    }
+    for (const dir of ["packages/image", "packages/search"])
+      assert.ok(built.includes(dir), dir);
+    assert.ok(probed.includes("services/catalog-postgres"));
+    for (const dir of [
+      "apps/admin",
+      "packages/contracts",
+      "packages/image",
+      "packages/search",
+      "services/api",
+      "services/catalog-postgres",
+    ])
+      assert.ok(loaded.has(dir), dir);
+    for (const dir of new Set([...built, ...probed, ...loaded]))
+      for (const file of ["src/index.ts", "package.json", "tsconfig.json"])
+        assert.equal(
+          classifyTask([`${dir}/${file}`]).cms,
+          true,
+          `${dir}/${file}`,
+        );
+  });
+
+  it("routes the E2E smoke and policy files to the Web jobs that run them", () => {
+    const { jobs } = workflowJobs();
+    // e2e_smoke runs verify.mjs e2e, whose only stage spawns the smoke script.
+    assert.match(jobs.get("e2e_smoke"), /run: node scripts\/verify\.mjs e2e\n/);
+    const verify = read("scripts/verify.mjs");
+    assert.match(verify, /\be2e: \[smoke\]/);
+    const smoke = verify.match(
+      /const smoke = \[process\.execPath, "([^"]+)"\]/u,
+    )?.[1];
+    assert.equal(smoke, "scripts/ci-e2e-smoke.mjs");
+    // The Web test job's @moya/tests Vitest run keeps the unit architecture
+    // tests; the policy test there loads the E2E scope module.
+    const policy = "tests/unit/architecture/ci-e2e-policy.test.ts";
+    assert.doesNotMatch(
+      JSON.parse(read("tests/package.json")).scripts.test,
+      /unit/,
+    );
+    assert.match(
+      read(policy),
+      /pathToFileURL\(root \+ "scripts\/ci-e2e-scope\.mjs"\)/,
+    );
+    for (const file of [smoke, policy, "scripts/ci-e2e-scope.mjs"]) {
+      const plan = classifyTask([file]);
+      assert.equal(plan.web, true, file);
+      assert.equal(plan.scope, "smoke", file);
+    }
+  });
+
+  it("routes the modules the architecture tests import to the Web jobs that run them", () => {
+    const { jobs } = workflowJobs();
+    // The Web test job runs verify.mjs test (the --ci-milestone flag only sets
+    // its CI budget), whose pnpm test reaches the @moya/tests Vitest run that
+    // keeps the unit architecture tests.
+    assert.match(
+      jobs.get("test"),
+      /run: node scripts\/verify\.mjs test --ci-milestone\n/,
+    );
+    assert.match(
+      read("scripts/verify.mjs"),
+      /\btest: \[.*pnpm\("test"\)\],\n/u,
+    );
+    assert.match(
+      JSON.parse(read("package.json")).scripts.test,
+      /turbo run test/,
+    );
+    const vitest = JSON.parse(read("tests/package.json")).scripts.test;
+    assert.match(vitest, /^vitest run /);
+    assert.doesNotMatch(vitest, /unit/);
+    // Follow top-level static imports and re-exports only: indented or quoted
+    // import text in the tests' fixtures is data, not a dependency.
+    const directory = "tests/unit/architecture";
+    const pending = readdirSync(join(root, directory))
+      .filter((file) => file.endsWith(".test.ts"))
+      .map((file) => `${directory}/${file}`);
+    const seen = new Set(pending);
+    const imported = new Set();
+    while (pending.length) {
+      const file = pending.pop();
+      for (const [, specifier] of read(file).matchAll(
+        /^(?:import|export)\s(?:[^;"'`]*?\sfrom\s+)?"(\.{1,2}\/[^"]+)"/gmu,
+      )) {
+        const target = relative(root, resolve(root, dirname(file), specifier));
+        const module = [target.replace(/\.js$/u, ".ts"), target].find(
+          (candidate) => existsSync(join(root, candidate)),
+        );
+        assert.ok(module, `${file} imports ${specifier}`);
+        if (seen.has(module)) continue;
+        seen.add(module);
+        imported.add(module);
+        pending.push(module);
+      }
+    }
+    // The lightweight script tests import the scanner too, so a scanner change
+    // keeps lightweight and adds the Web jobs.
+    assert.ok(imported.has(`${directory}/workspace-scanner.ts`));
+    for (const file of imported) {
+      const plan = classifyTask([file]);
+      assert.equal(plan.web, true, file);
+      assert.equal(plan.scope, "smoke", file);
+      assert.equal(plan.lightweight, true, file);
+    }
+  });
+
+  it("routes the configuration the Web lint job reads to the Web jobs", () => {
+    const { jobs } = workflowJobs();
+    // The Web lint job runs verify.mjs lint, whose stage runs root pnpm scripts.
+    assert.match(jobs.get("lint"), /run: node scripts\/verify\.mjs lint\n/);
+    const stage = read("scripts/verify.mjs").match(/\blint: \[(.*)\],\n/u)?.[1];
+    const scripts = [...(stage ?? "").matchAll(/\bpnpm\("([^"]+)"\)/gu)].map(
+      (match) => match[1],
+    );
+    const rootScripts = JSON.parse(read("package.json")).scripts;
+    // Prettier's CLI finds its config, reads .prettierignore and applies
+    // .editorconfig unless a flag narrows that; turbo runs workspace lint.
+    assert.deepEqual(
+      scripts.map((name) => rootScripts[name]),
+      ["prettier --check .", "turbo run lint"],
+    );
+    const extensions = ["js", "mjs", "cjs", "ts", "mts", "cts"];
+    const eslintConfigs = extensions.map((ext) => `eslint.config.${ext}`);
+    const packages = read("pnpm-workspace.yaml").match(
+      /^packages:\n((?: {2}- \S+\n)+)/mu,
+    )?.[1];
+    const workspaces = [...(packages ?? "").matchAll(/- (\S+)\n/gu)]
+      .flatMap(([, pattern]) =>
+        pattern.endsWith("/*")
+          ? readdirSync(join(root, pattern.slice(0, -2))).map(
+              (name) => `${pattern.slice(0, -2)}/${name}`,
+            )
+          : [pattern],
+      )
+      .filter((dir) => existsSync(join(root, dir, "package.json")));
+    const linted = workspaces.filter(
+      (dir) => JSON.parse(read(`${dir}/package.json`)).scripts?.lint,
+    );
+    assert.ok(linted.includes("tests") && linted.includes("apps/web"));
+    // Without a workspace config, each eslint . run uses the root flat config.
+    for (const dir of linted) {
+      assert.equal(
+        JSON.parse(read(`${dir}/package.json`)).scripts.lint,
+        "eslint .",
+        dir,
+      );
+      for (const name of eslintConfigs)
+        assert.ok(!existsSync(join(root, dir, name)), `${dir}/${name}`);
+    }
+    // Prettier also honours .gitignore, a Git file left to its existing routing.
+    const present = (names) =>
+      names.filter((name) => existsSync(join(root, name)));
+    const prettierConfigs = present([
+      ".prettierrc",
+      ...["json", "yaml", "yml", "json5", "toml"].map(
+        (e) => `.prettierrc.${e}`,
+      ),
+      ...extensions.flatMap((e) => [
+        `.prettierrc.${e}`,
+        `prettier.config.${e}`,
+      ]),
+    ]);
+    const rootEslintConfigs = present(eslintConfigs);
+    assert.ok(prettierConfigs.length > 0, "Prettier config");
+    assert.ok(rootEslintConfigs.length > 0, "ESLint config");
+    for (const file of [
+      ...prettierConfigs,
+      ".prettierignore",
+      ".editorconfig",
+      ...rootEslintConfigs,
+    ]) {
+      assert.ok(existsSync(join(root, file)), file);
+      for (const event of ["pull_request", "push", "local"])
+        assert.deepEqual(
+          flags(classifyTask([file], event)),
+          expectedFlags({ web: true, scope: "smoke" }),
+          `${file} (${event})`,
+        );
+    }
   });
 
   it("retains existing smoke/full jobs, five projects, native reports and the compatible Apple runner", () => {
