@@ -131,6 +131,74 @@ function add(f, content, filename = "fixture.txt") {
   f.good("add", "--", filename);
 }
 
+test("AWS_SECRET_ACCESS_KEY assignments are core credential names; identifiers and placeholders pass", () => {
+  const syntheticSecret = [
+    "wJalrXUtnFEMI",
+    "K7MDENG",
+    "bPxRfiCYEXAMPLEKEY",
+  ].join("/");
+  assert.ok(
+    categories(
+      ["AWS_", "SECRET_ACCESS_KEY", "=", syntheticSecret].join(""),
+      "fixture.env",
+    ).includes("CREDENTIAL_LITERAL"),
+  );
+  assert.ok(
+    categories(
+      ["secret", "_access_key", " = ", '"', syntheticSecret, '"'].join(""),
+      "fixture.ts",
+    ).includes("CREDENTIAL_LITERAL"),
+  );
+  const findings = inspect(
+    Buffer.from(
+      ["AWS_", "SECRET_ACCESS_KEY", "=", syntheticSecret, "\n"].join(""),
+    ),
+    "fixture.env",
+  );
+  assert.ok(
+    findings.some(
+      (f) => f.category === "CREDENTIAL_LITERAL" && f.severity === "BLOCK",
+    ),
+  );
+  assert.ok(!JSON.stringify(findings).includes(syntheticSecret));
+  assert.deepEqual(
+    categories("type ApiKey = { id: string }", "fixture.ts"),
+    [],
+  );
+  assert.deepEqual(
+    inspect(Buffer.from("type ApiKey = { id: string }\n"), "fixture.ts").filter(
+      (f) => f.severity === "BLOCK",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    categories("AWS_SECRET_ACCESS_KEY=EXAMPLE", "fixture.env"),
+    [],
+  );
+  assert.deepEqual(
+    categories("AWS_SECRET_ACCESS_KEY=EXAMPLE_AWS_SECRET", "fixture.env"),
+    [],
+  );
+  assert.deepEqual(
+    categories(
+      "const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;",
+      "fixture.ts",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    inspect(
+      Buffer.from(
+        "[user]\n\tname = Synthetic Developer\n\temail = " +
+          approvedEmail +
+          "\n",
+      ),
+      ".gitconfig",
+    ).filter((f) => f.severity === "BLOCK"),
+    [],
+  );
+});
+
 test("types, references, relative imports and versions are not credential literals", () => {
   const values = [
     "password:string",

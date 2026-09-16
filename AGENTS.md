@@ -87,11 +87,14 @@ authorized task. One mutable worktree has one writer at a time; the shared
 workflow explains how to transfer that role without discarding work.
 
 Use `node scripts/verify-task.mjs --base origin/main --output <private-output>`
-from the task worktree root to select applicable verification. The daily
-`pnpm verify` requirement in contributor guidance applies to Web work; it is not
-a prerequisite for Apple-only or instruction/documentation-only work. Do not run
-unrelated platform checks or expand a failed check into another task. Preserve
-real shared-contract and integration obligations.
+from the task worktree root to select applicable verification. An intermediate
+preview may use `--mode feedback`; that output is labeled
+`FEEDBACK ONLY — NOT FULL ACCEPTANCE` and does not replace the default
+cumulative entry, required CI, or delivery. The daily `pnpm verify` requirement
+in contributor guidance applies to Web work; it is not a prerequisite for
+Apple-only or instruction/documentation-only work. Do not run unrelated platform
+checks or expand a failed check into another task. Preserve real shared-contract
+and integration obligations.
 
 Honor an explicit task delivery stop, including a Draft PR stop. It takes
 precedence over the general amendment permitting routine agent-managed merges.
