@@ -128,25 +128,31 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       await db.query(
         "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",
       );
-      // After the lock wait, never before it: whoever waited here may have lost
-      // the right to execute while waiting. The operation row stays locked
-      // until this transaction ends, so a cancellation or a take-over arriving
-      // now waits for the outcome instead of concluding there is none.
-      if (fence !== undefined)
-        await assertExecutionFence(
-          async (sql, values) => (await db.query(sql, [...values])).rows,
-          fence,
-        );
       const fingerprint = commandFingerprint(action, target, input);
       const old = await db.query(
         "SELECT fingerprint,result FROM community.content_operator_receipts WHERE operator_label=$1 AND request_id=$2",
         [operator, requestId],
       );
+      // The replay comes first, and deliberately before the fence: returning a
+      // receipt creates no effect, so losing the right to execute must not stop
+      // a caller reading back what it already committed. Refusing here would
+      // turn a committed command into a reported conflict, which is the very
+      // confusion this work exists to remove.
       if (old.rows[0]) {
         if (old.rows[0].fingerprint !== fingerprint)
           throw new CommunityConflictError("Request identity already used");
         return old.rows[0].result as T;
       }
+      // Only a NEW effect needs the right to execute, and it is checked after
+      // the lock wait, never before it: whoever waited here may have lost that
+      // right while waiting. The operation row stays locked until this
+      // transaction ends, so a cancellation or a take-over arriving now waits
+      // for the outcome instead of concluding there is none.
+      if (fence !== undefined)
+        await assertExecutionFence(
+          async (sql, values) => (await db.query(sql, [...values])).rows,
+          fence,
+        );
       let audit = true;
       const result = await change(db, () => {
         audit = false;

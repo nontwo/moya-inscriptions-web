@@ -254,14 +254,6 @@ export class PostgresCommunityCommentAdapter
       audit === undefined && receipt === undefined
         ? await this.query<Changed>(applyCommentModerationSql, values)
         : await this.transaction(async (run) => {
-            // The right to execute is checked here, inside the transaction
-            // that is about to mutate, and the operation row stays locked
-            // until this transaction ends. An executor that lost its lease
-            // while it was stalled cannot commit a transition behind a
-            // cancellation's back, and a cancellation arriving mid-flight
-            // waits for this transaction instead of racing it.
-            if (receipt?.fence !== undefined)
-              await assertExecutionFence(run, receipt.fence);
             // The receipt is read, the transition applied, the audit row and
             // the receipt written, all on this one connection inside this one
             // transaction: a committed moderation always carries the receipt
@@ -280,8 +272,20 @@ export class PostgresCommunityCommentAdapter
                 );
               return [row.result as Changed];
             };
+            // The replay comes first: returning a receipt creates no effect, so
+            // an executor that lost its lease must still be able to read back
+            // what it already committed rather than have it reported as a
+            // conflict.
             const replay = await stored();
             if (replay !== null) return replay;
+            // Only a NEW transition needs the right to execute, and it is
+            // checked inside this transaction, which holds the operation row
+            // until it ends. An executor that lost its lease while stalled
+            // cannot commit behind a cancellation's back, and a cancellation
+            // arriving mid-flight waits for this transaction rather than
+            // racing it.
+            if (receipt?.fence !== undefined)
+              await assertExecutionFence(run, receipt.fence);
             const changed = await run<Changed>(
               applyCommentModerationSql,
               values,

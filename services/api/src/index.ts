@@ -28,8 +28,10 @@ export {
 export {
   CommunityInputError,
   CommunityConflictError,
+  ExecutionFenceLostError,
   CommunityNotFoundError,
   isCommunityConflictError,
+  isExecutionFenceLostError,
   isCommunityInputError,
   isCommunityNotFoundError,
 } from "./modules/community/application/errors/community-request-errors.js";

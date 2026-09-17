@@ -24,6 +24,7 @@ import {
   CommunityInputError,
   CommunityNotFoundError,
   isCommunityConflictError,
+  isExecutionFenceLostError,
   isCommunityNotFoundError,
 } from "../errors/community-request-errors.js";
 import { isCommunityStoreUnavailableError } from "../errors/community-store-unavailable-error.js";
@@ -821,6 +822,7 @@ export class AgentAdministrationService {
       );
       const results: AgentOperationResult[] = [];
       let storeDown = false;
+      let fenceLost = false;
       for (let index = operation.nextIndex; index < end; index += 1) {
         const target = operation.targets[index]!;
         if (storeDown) {
@@ -836,9 +838,25 @@ export class AgentAdministrationService {
           services,
           leaseOwner,
         );
-        results.push(outcome.result);
+        if (outcome.fenceLost === true) {
+          // This executor no longer owns the operation. It records the targets
+          // it did apply, hands the lease back and stops; whoever holds the
+          // operation now decides the rest, and a cancellation still reports
+          // its remainder per chunk through the branch above.
+          fenceLost = true;
+          break;
+        }
+        if (outcome.result !== null) results.push(outcome.result);
         storeDown = outcome.storeDown;
       }
+      if (fenceLost)
+        return this.record(
+          operation,
+          leaseOwner,
+          results,
+          operation.nextIndex + results.length,
+          { release: true },
+        );
       const finished = end >= operation.targetCount;
       const recorded = await this.record(operation, leaseOwner, results, end, {
         ...(storeDown
@@ -976,6 +994,33 @@ export class AgentAdministrationService {
           operation.targetCount,
           { finalState: "completed", release: true },
         );
+      // Losing the fence says nothing about whether an EARLIER attempt already
+      // committed, so it must never send the operation terminal on its own.
+      // The receipt decides, exactly as it does for a cancellation.
+      if (isExecutionFenceLostError(error)) {
+        const committed = await services.content
+          .findFeaturedOrder(command)
+          .catch(() => undefined);
+        if (committed === undefined)
+          return this.record(operation, leaseOwner, [], operation.nextIndex, {
+            release: true,
+          });
+        return committed === null
+          ? this.record(
+              operation,
+              leaseOwner,
+              all("cancelled", () => null),
+              operation.targetCount,
+              { finalState: "cancelled", release: true },
+            )
+          : this.record(
+              operation,
+              leaseOwner,
+              all("applied", (index) => versionOf(committed, index)),
+              operation.targetCount,
+              { finalState: "completed", release: true },
+            );
+      }
       if (isCommunityConflictError(error))
         return this.record(
           operation,
@@ -1106,7 +1151,11 @@ export class AgentAdministrationService {
     target: AgentOperationTarget,
     services: ReturnType<AgentAdministrationService["servicesFor"]>,
     leaseOwner?: string,
-  ): Promise<{ result: AgentOperationResult; storeDown: boolean }> {
+  ): Promise<{
+    result: AgentOperationResult | null;
+    storeDown: boolean;
+    fenceLost?: boolean;
+  }> {
     try {
       if (isCommentTarget(target)) {
         const moderated = await services.moderation.moderateComment(
@@ -1133,6 +1182,11 @@ export class AgentAdministrationService {
       // this command exists. A chunk whose progress write was lost replays
       // through the receipt inside the mutation itself, so nothing committed is
       // ever filed as a conflict.
+      // The chunk stops here rather than filing this target as a conflict: the
+      // right to execute is gone, so nothing after it may be attempted, and
+      // per-chunk cancellation stays the business of the cancel branch.
+      if (isExecutionFenceLostError(error))
+        return { result: null, storeDown: false, fenceLost: true };
       if (isCommunityConflictError(error))
         return {
           result: this.result(index, target, "conflict", null),

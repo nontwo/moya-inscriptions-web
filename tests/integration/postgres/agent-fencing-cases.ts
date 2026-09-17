@@ -374,6 +374,161 @@ export const registerAgentFencingTests = (
       expect(undo).toMatchObject({ kind: "featured.set", targetCount: 2 });
     });
 
+    it("cancels, rather than completing, when the fence is lost and nothing committed", async () => {
+      const operation = await approvedOperation(works);
+      // No pre-claim: the executor under test must take its own lease, or it
+      // never reaches the lock and the interleaving is not the one intended.
+      const holder = await otherClient();
+      await holder.query("BEGIN");
+      await holder.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",
+      );
+      // The executor is inside runOrdered, blocked on the shared lock, when the
+      // Owner cancels. Its fence will fail, and the operation must not go
+      // terminal as completed on the strength of that failure.
+      const attempt = service
+        .execute(PRINCIPAL, {
+          requestId: randomUUID(),
+          operationId: operation.id,
+        })
+        .catch((error: Error) => ({ error: error.message }));
+      expect(await pending(attempt)).toBe(true);
+      await service.cancel(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: operation.id,
+      });
+      await holder.query("COMMIT");
+      holder.release();
+      other = null;
+      const finished = await attempt;
+      expect(finished).toMatchObject({
+        state: "cancelled",
+        tally: { applied: 0, cancelled: 2, conflicts: 0 },
+      });
+      expect(await featured()).toEqual([]);
+      expect(await receipts()).toBe(0);
+    });
+
+    it("reports the earlier committed command when the fence is lost after it committed", async () => {
+      const operation = await approvedOperation(works);
+      const done = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: operation.id,
+      });
+      expect(done.tally.applied).toBe(2);
+      // The progress write was lost, so the operation looks unexecuted. A new
+      // attempt starts, blocks on the shared lock, and the Owner cancels while
+      // it waits. Its fence fails — but an earlier attempt's rows are live, and
+      // the receipt is the only thing that knows.
+      await pool.query(
+        `UPDATE community.agent_operations
+            SET next_index=0, results='[]'::jsonb, state='executing',
+                lease_owner=NULL, lease_expires_at=NULL
+          WHERE id=$1`,
+        [operation.id],
+      );
+      const holder = await otherClient();
+      await holder.query("BEGIN");
+      await holder.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",
+      );
+      const attempt = service
+        .execute(PRINCIPAL, {
+          requestId: randomUUID(),
+          operationId: operation.id,
+        })
+        .catch((error: Error) => ({ error: error.message }));
+      expect(await pending(attempt)).toBe(true);
+      await service.cancel(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: operation.id,
+      });
+      await holder.query("COMMIT");
+      holder.release();
+      other = null;
+      const finished = await attempt;
+      // Live rows the tally denies and the undo refuses to cover is the exact
+      // failure this work exists to remove; it must not come back through the
+      // fence's own error path.
+      expect(finished).toMatchObject({
+        state: "completed",
+        tally: { applied: 2, conflicts: 0, cancelled: 0 },
+      });
+      expect(await featured()).toEqual(works);
+      const undo = await service.prepareUndo(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: operation.id,
+      });
+      expect(undo).toMatchObject({ kind: "featured.set", targetCount: 2 });
+    });
+
+    it("lets a committed transition replay even after its executor lost the fence", async () => {
+      const commentId = id("comment");
+      await pool.query(
+        "INSERT INTO community.catalog_comments(id,catalog_id,author_id,text,moderation) VALUES($1,'catalog-fence-02',$2,'可重放评论','visible')",
+        [commentId, author],
+      );
+      const prepared = await service.prepareComments(PRINCIPAL, {
+        requestId: randomUUID(),
+        action: "hide",
+        ids: [commentId],
+      });
+      await service.approve({
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      await agent.claimExecution(prepared.id, "A.1", now, 60_000);
+      const command = {
+        requestId: randomUUID(),
+        fingerprint: "replay-after-fence-loss",
+        fence: { operationId: prepared.id, leaseOwner: "A.1", at: now },
+      };
+      const audit = () => ({
+        id: id("moderation"),
+        occurredAt: now,
+        operatorLabel: PRINCIPAL,
+        action: "hide" as const,
+      });
+      const applied = await comments.applyCommentModeration(
+        commentId as never,
+        "hidden",
+        ["visible"],
+        PRINCIPAL,
+        now,
+        audit(),
+        command,
+      );
+      expect(applied).toMatchObject({ moderation: "hidden" });
+      // The executor loses the operation, then repeats its own command. Reading
+      // back a committed fact creates no effect, so it must still replay rather
+      // than be reported as a conflict.
+      await service.cancel(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      const replay = await comments.applyCommentModeration(
+        commentId as never,
+        "hidden",
+        ["visible"],
+        PRINCIPAL,
+        now,
+        audit(),
+        command,
+      );
+      expect(replay).toMatchObject({ moderation: "hidden" });
+      expect(
+        (
+          await pool.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM community.moderation_events WHERE subject_id=$1",
+            [commentId],
+          )
+        ).rows[0]!.n,
+      ).toBe(1);
+      await pool.query("DELETE FROM community.catalog_comments WHERE id=$1", [
+        commentId,
+      ]);
+    });
+
     it("keeps the business identity stable across a lease take-over, so a legitimate retry replays", async () => {
       const operation = await approvedOperation(works);
       const first = await service.execute(PRINCIPAL, {

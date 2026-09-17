@@ -1,4 +1,4 @@
-import { CommunityConflictError } from "@moya/api";
+import { ExecutionFenceLostError } from "@moya/api";
 
 import type { ExecutionFence } from "@moya/api";
 
@@ -21,7 +21,7 @@ export const executionFenceSql = `
   SELECT 1 FROM community.agent_operations
    WHERE id = $1
      AND lease_owner = $2
-     AND lease_expires_at > $3::timestamptz
+     AND lease_expires_at > now()
      AND state = 'executing'
      AND cancel_requested_at IS NULL
    FOR UPDATE
@@ -39,13 +39,12 @@ export const assertExecutionFence = async (
   ) => Promise<{ length: number }>,
   fence: ExecutionFence,
 ): Promise<void> => {
+  // `now()`, not the caller's clock: an executor that stalled would otherwise
+  // present a stale reading of its own lease and be judged more leniently the
+  // longer it was gone.
   const held = await rows(executionFenceSql, [
     fence.operationId,
     fence.leaseOwner,
-    fence.at,
   ]);
-  if (held.length === 0)
-    throw new CommunityConflictError(
-      "Execution right was lost before this mutation could commit",
-    );
+  if (held.length === 0) throw new ExecutionFenceLostError();
 };

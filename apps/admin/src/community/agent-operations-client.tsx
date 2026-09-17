@@ -114,10 +114,12 @@ const lifecycleSummary = (operation: AgentOperation): string => {
     // committed is a request that did not take effect, not a cancellation.
     // Saying "已完成" alone would hide the request; saying "已取消" would
     // deny the work.
-    return operation.cancelRequestedAt !== null
-      ? `已完成 · ${operation.targetCount} 项全部应用；取消请求在命令提交之后到达，未能生效，也没有撤销已提交的顺序（如需反转请使用撤销操作）`
-      : operation.tally.applied === operation.targetCount
-        ? `已完成 · ${operation.targetCount} 项全部应用`
+    return operation.tally.applied === operation.targetCount
+      ? operation.cancelRequestedAt !== null
+        ? `已完成 · ${operation.targetCount} 项全部应用；取消请求在命令提交之后到达，未能生效，也没有撤销已提交的顺序（如需反转请使用撤销操作）`
+        : `已完成 · ${operation.targetCount} 项全部应用`
+      : operation.cancelRequestedAt !== null
+        ? `已完成（并非全部应用）· ${outcomeSummary(operation)}；期间收到过取消请求`
         : `已完成（并非全部应用）· ${outcomeSummary(operation)}`;
   if (operation.state === "cancelled")
     return operation.nextIndex === 0
