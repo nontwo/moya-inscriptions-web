@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  AgentAdministrationService,
-  CommunityModerationService,
-} from "@moya/api";
+import { AgentAdministrationService } from "@moya/api";
 import {
   PostgresAgentAdministrationAdapter,
   PostgresCommunityCommentAdapter,
