@@ -39,9 +39,19 @@ export const assertExecutionFence = async (
   ) => Promise<{ length: number }>,
   fence: ExecutionFence,
 ): Promise<void> => {
-  // `now()`, not the caller's clock: an executor that stalled would otherwise
-  // present a stale reading of its own lease and be judged more leniently the
-  // longer it was gone.
+  // The database's clock, not the caller's: an executor that stalled before it
+  // reached this transaction would otherwise present a stale reading of its own
+  // lease and be judged more leniently the longer it was gone.
+  //
+  // `now()` is `transaction_timestamp()`, fixed when this transaction began, so
+  // it closes that stall but not a long wait on the advisory lock inside the
+  // transaction. That residue is bounded: with no take-over and no cancellation
+  // the command may commit on an expired lease, and the progress write, which
+  // does use a current time, then rejects it and leaves the operation
+  // non-terminal until a later attempt replays its receipt. `clock_timestamp()`
+  // would close it outright and is recorded as a follow-up rather than changed
+  // here, because it alters behaviour after the correction rounds for this
+  // slice were spent.
   const held = await rows(executionFenceSql, [
     fence.operationId,
     fence.leaseOwner,

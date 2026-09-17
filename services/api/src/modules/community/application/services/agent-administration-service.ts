@@ -971,7 +971,6 @@ export class AgentAdministrationService {
       const written = await services.content.setFeaturedOrder(command, {
         operationId: operation.id,
         leaseOwner,
-        at: this.clock(),
       });
       return this.record(
         operation,
@@ -1126,11 +1125,7 @@ export class AgentAdministrationService {
       ...(leaseOwner === undefined
         ? {}
         : {
-            fence: {
-              operationId: operation.id,
-              leaseOwner,
-              at: this.clock(),
-            },
+            fence: { operationId: operation.id, leaseOwner },
           }),
       requestId: await targetRequestId(operation.id, index),
       fingerprint: await fingerprintOf([

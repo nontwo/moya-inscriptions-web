@@ -101,8 +101,6 @@ export interface ExecutionFence {
   readonly operationId: string;
   /** The lease holder that claimed it; a take-over replaces this value. */
   readonly leaseOwner: string;
-  /** Now, for the lease-expiry comparison. */
-  readonly at: Date;
 }
 
 export interface ModerationEvent {

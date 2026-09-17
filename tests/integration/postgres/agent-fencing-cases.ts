@@ -221,7 +221,6 @@ export const registerAgentFencingTests = (
         content.setFeaturedOrder(PRINCIPAL, commandFor(works), {
           operationId: operation.id,
           leaseOwner: "A.1",
-          at: now,
         }),
       ).rejects.toThrow("Execution right was lost");
       expect(await featured()).toEqual([]);
@@ -240,7 +239,6 @@ export const registerAgentFencingTests = (
         content.setFeaturedOrder(PRINCIPAL, commandFor(works), {
           operationId: operation.id,
           leaseOwner: "A.1",
-          at: now,
         }),
       ).rejects.toThrow("Execution right was lost");
       expect(await featured()).toEqual([]);
@@ -277,7 +275,6 @@ export const registerAgentFencingTests = (
         .setFeaturedOrder(PRINCIPAL, commandFor(works), {
           operationId: operation.id,
           leaseOwner: "A.1",
-          at: now,
         })
         .then(
           () => "committed" as const,
@@ -481,7 +478,7 @@ export const registerAgentFencingTests = (
       const command = {
         requestId: randomUUID(),
         fingerprint: "replay-after-fence-loss",
-        fence: { operationId: prepared.id, leaseOwner: "A.1", at: now },
+        fence: { operationId: prepared.id, leaseOwner: "A.1" },
       };
       const audit = () => ({
         id: id("moderation"),
@@ -593,11 +590,7 @@ export const registerAgentFencingTests = (
           {
             requestId: randomUUID(),
             fingerprint: "fence-test",
-            fence: {
-              operationId: prepared.id,
-              leaseOwner: "A.1",
-              at: now,
-            },
+            fence: { operationId: prepared.id, leaseOwner: "A.1" },
           },
         ),
       ).rejects.toThrow("Execution right was lost");
