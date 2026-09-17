@@ -14,9 +14,14 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { categories, inspect, digest } from "./confidentiality-scan.mjs";
+import {
+  categories,
+  inspect,
+  digest,
+  normalizeLedger,
+} from "./confidentiality-scan.mjs";
 
 const source = path.dirname(fileURLToPath(import.meta.url));
 // These intentionally invalid fixtures are assembled at runtime. No production
@@ -74,7 +79,8 @@ function fixture(t, installed = true) {
     if (
       /^GIT_(?:AUTHOR|COMMITTER|CONFIG_COUNT|CONFIG_KEY_|CONFIG_VALUE_|DIR$|WORK_TREE$|INDEX_FILE$|COMMON_DIR$)/.test(
         key,
-      )
+      ) ||
+      key === "CONFIDENTIALITY_BATCH_ID"
     )
       delete env[key];
   const repo = path.join(dir, "repo");
@@ -129,6 +135,59 @@ function blocked(result, expected) {
 function add(f, content, filename = "fixture.txt") {
   writeFileSync(path.join(f.repo, filename), content);
   f.good("add", "--", filename);
+}
+function ledgerFile(f) {
+  const common = f.good(
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  );
+  const admin = f.good("rev-parse", "--absolute-git-dir");
+  return path.join(
+    common,
+    "confidentiality-check-state",
+    digest(Buffer.from(admin)) + ".json",
+  );
+}
+const ledger = (f) => JSON.parse(readFileSync(ledgerFile(f), "utf8"));
+const scanned = (result) => JSON.parse(result.stdout);
+// A copy of the current hooks and scanner whose scanner bytes differ by one
+// comment: a genuine rule-version change without any rule difference.
+function syntheticRelease(f) {
+  const release = path.join(f.dir, "synthetic-release");
+  mkdirSync(path.join(release, "scripts"), { recursive: true });
+  mkdirSync(path.join(release, ".githooks"));
+  for (const filename of [
+    "confidentiality-scan.mjs",
+    "install-confidentiality-hooks.mjs",
+  ])
+    copyFileSync(
+      path.join(source, filename),
+      path.join(release, "scripts", filename),
+    );
+  for (const filename of ["pre-commit", "commit-msg", "pre-push"])
+    copyFileSync(
+      path.join(source, "..", ".githooks", filename),
+      path.join(release, ".githooks", filename),
+    );
+  const scanner = path.join(release, "scripts", "confidentiality-scan.mjs");
+  writeFileSync(
+    scanner,
+    readFileSync(scanner, "utf8") + "\n// Synthetic controlled update.\n",
+  );
+  return {
+    scanner,
+    installer: path.join(
+      release,
+      "scripts",
+      "install-confidentiality-hooks.mjs",
+    ),
+    scan: (mode, ...args) =>
+      run(process.execPath, [scanner, mode, ...args], {
+        cwd: f.repo,
+        env: f.env,
+      }),
+  };
 }
 
 test("AWS_SECRET_ACCESS_KEY assignments are core credential names; identifiers and placeholders pass", () => {
@@ -477,6 +536,10 @@ test("one delivery allowance spans stages and a real deadline kills child proces
     digest(Buffer.from(admin)) + ".json",
   );
   const state = JSON.parse(readFileSync(stateFile));
+  // The cycle ledger is authoritative; the top-level fields mirror it for
+  // older readers.
+  state.cycle.remainingMs = 800;
+  state.cycle.usedMs = 119200;
   state.remainingMs = 800;
   state.usedMs = 119200;
   writeFileSync(stateFile, JSON.stringify(state));
@@ -517,6 +580,32 @@ test("one delivery allowance spans stages and a real deadline kills child proces
   assert.equal(r.stdout.trim().split("\n").length, 1);
   assert.equal(existsSync(marker), false);
   assert.equal(f.scan("staged").status, 2);
+  // An exhausted, unfinished cycle is not repeated under a new batch label.
+  const relabeled = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "staged"],
+      {
+        cwd: f.repo,
+        env: { ...f.env, CONFIDENTIALITY_BATCH_ID: "synthetic-relabel" },
+      },
+    ),
+  );
+  assert.equal(relabeled.status, "INCOMPLETE");
+  assert.equal(relabeled.cycle.id, result.cycle.id);
+  assert.equal(relabeled.cycle.transition, "continue-open");
+  assert.equal(relabeled.cycle.hold.category, "BUDGET_EXHAUSTED");
+  assert.equal(relabeled.cycleRemainingMs, 0);
+  assert.equal(relabeled.cycle.exhausted, true, "the STOP condition is named");
+  assert.equal(relabeled.cycle.ledger, path.basename(stateFile));
+  // Health verifies the installation inside its own window: it is not bounded
+  // by the exhausted cycle and reports that cycle's STOP state instead.
+  const health = scanned(f.scan("health"));
+  assert.equal(health.status, "PASS");
+  assert.equal(health.cycle.id, result.cycle.id);
+  assert.equal(health.cycle.exhausted, true);
+  assert.equal(health.cycle.remainingMs, 0);
+  assert.equal(health.cycle.hold.category, "BUDGET_EXHAUSTED");
   assert.ok(existsSync(pidFile), "the slow related process actually started");
   await new Promise((resolve) => setTimeout(resolve, 2200));
   assert.equal(
@@ -524,6 +613,447 @@ test("one delivery allowance spans stages and a real deadline kills child proces
     false,
     "the helper cannot continue after the deadline",
   );
+});
+
+test("a completed publication cycle closes on recorded completion and new content reuses unchanged coverage", (t) => {
+  const f = fixture(t);
+  add(f, "Cycle one bytes\n");
+  f.good("commit", "-m", "Synthetic cycle one");
+  const committed = ledger(f);
+  assert.equal(committed.format, 2);
+  assert.equal(committed.cycle.checks.staged.status, "PASS");
+  assert.equal(committed.cycle.checks.message.status, "PASS");
+  assert.equal(committed.cycle.pendingPush, true);
+  assert.equal(committed.cycle.complete, false);
+  // A new label alone does not close the still-unpushed cycle.
+  const relabeled = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "staged"],
+      {
+        cwd: f.repo,
+        env: { ...f.env, CONFIDENTIALITY_BATCH_ID: "synthetic-relabel" },
+      },
+    ),
+  );
+  assert.equal(relabeled.cycle.id, committed.cycle.id);
+  assert.equal(relabeled.cycle.transition, "continue-open");
+  f.good("push", "origin", "main");
+  const pushed = ledger(f);
+  assert.equal(pushed.cycle.id, committed.cycle.id);
+  assert.equal(pushed.cycle.checks.push.status, "PASS");
+  assert.equal(pushed.cycle.complete, true);
+  assert.equal(pushed.cycle.pendingPush, false);
+  assert.equal(pushed.cycle.hold, null);
+  assert.ok(pushed.cycle.usedMs > relabeled.cycleUsedMs);
+  // Unchanged content after completion is an unchanged retry, not new content,
+  // whatever label it carries.
+  const retry = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "staged"],
+      {
+        cwd: f.repo,
+        env: { ...f.env, CONFIDENTIALITY_BATCH_ID: "synthetic-other-label" },
+      },
+    ),
+  );
+  assert.equal(retry.cycle.id, pushed.cycle.id);
+  assert.equal(retry.cycle.transition, "unchanged-retry");
+  assert.equal(retry.cycle.complete, true);
+  // Genuinely new outgoing content starts a new cycle; the archived cycle
+  // keeps its own accounting and unchanged blob coverage is reused.
+  add(f, "Cycle one bytes\n", "reused.txt");
+  const next = scanned(f.scan("staged"));
+  assert.equal(next.status, "PASS");
+  assert.equal(next.cycle.transition, "new-content");
+  assert.notEqual(next.cycle.id, pushed.cycle.id);
+  assert.equal(next.scanned, 0, "unchanged bytes are still-valid coverage");
+  assert.ok(next.reused > 0);
+  const started = ledger(f);
+  assert.equal(started.completed.length, 1);
+  assert.equal(started.completed[0].id, pushed.cycle.id);
+  assert.equal(started.completed[0].usedMs, retry.cycleUsedMs);
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(started.completed[0].checks).map(([m, c]) => [
+        m,
+        c.status,
+      ]),
+    ),
+    { staged: "PASS", message: "PASS", push: "PASS" },
+  );
+  assert.equal(started.cycle.usedMs + started.cycle.remainingMs, 120000);
+  assert.ok(started.cycle.usedMs >= next.elapsedMs);
+  assert.ok(started.cycle.usedMs < retry.cycleUsedMs);
+  assert.equal(started.remainingMs, started.cycle.remainingMs);
+  assert.equal(started.usedMs, started.cycle.usedMs);
+  // A completed, batch-less cycle never adopts an ID set afterwards: neither
+  // maintenance nor an unchanged retry may move its boundary, so later new
+  // content under that ID is new content with a fresh allowance, not a
+  // related publication of the leftover.
+  assert.equal(started.cycle.batch, null);
+  f.good("commit", "-m", "Synthetic cycle two");
+  f.good("push", "origin", "main");
+  const completedTwo = ledger(f);
+  assert.equal(completedTwo.cycle.id, started.cycle.id);
+  assert.equal(completedTwo.cycle.complete, true);
+  assert.equal(completedTwo.cycle.batch, null);
+  const late = { ...f.env, CONFIDENTIALITY_BATCH_ID: "synthetic-late-label" };
+  const health = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "health"],
+      {
+        cwd: f.repo,
+        env: late,
+      },
+    ),
+  );
+  assert.equal(health.status, "PASS");
+  assert.equal(health.cycle.id, completedTwo.cycle.id);
+  assert.equal(
+    health.cycle.batch,
+    null,
+    "health cannot label a completed cycle",
+  );
+  assert.equal(ledger(f).cycle.batch, null);
+  const lateRetry = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "staged"],
+      {
+        cwd: f.repo,
+        env: late,
+      },
+    ),
+  );
+  assert.equal(lateRetry.cycle.transition, "unchanged-retry");
+  assert.equal(lateRetry.cycle.batch, null, "a retry cannot label it either");
+  assert.equal(ledger(f).cycle.batch, null);
+  add(f, "Cycle three bytes\n", "third.txt");
+  const third = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "staged"],
+      {
+        cwd: f.repo,
+        env: late,
+      },
+    ),
+  );
+  assert.equal(third.status, "PASS");
+  assert.equal(third.cycle.transition, "new-content");
+  assert.notEqual(third.cycle.id, completedTwo.cycle.id);
+  assert.equal(
+    third.cycle.batch,
+    "synthetic-late-label",
+    "a fresh cycle carries its own ID",
+  );
+  assert.ok(third.cycleRemainingMs > 100000, "a fresh 120 s, not the leftover");
+  assert.equal(third.cycleUsedMs + third.cycleRemainingMs, 120000);
+  const archived = ledger(f);
+  assert.equal(archived.completed.length, 2);
+  assert.equal(archived.completed[1].id, completedTwo.cycle.id);
+  assert.equal(archived.completed[1].batch, null);
+});
+test("related publication under one declared batch shares the completed cycle until its own push", (t) => {
+  const f = fixture(t);
+  f.env.CONFIDENTIALITY_BATCH_ID = "synthetic-delivery";
+  add(f, "Delivery bytes\n");
+  f.good("commit", "-m", "Synthetic delivery");
+  f.good("push", "origin", "main");
+  const first = ledger(f);
+  assert.equal(first.cycle.complete, true);
+  assert.equal(first.cycle.batch, "synthetic-delivery");
+  const body = path.join(f.dir, "publication.md");
+  writeFileSync(body, "Ordinary publication text.\n");
+  const outbound = scanned(f.scan("outbound", body));
+  assert.equal(outbound.cycle.transition, "related-publication");
+  assert.equal(outbound.cycle.id, first.cycle.id);
+  assert.equal(outbound.cycle.complete, true);
+  add(f, "Follow-up bytes\n", "follow-up.txt");
+  const followUp = scanned(f.scan("staged"));
+  assert.equal(followUp.cycle.transition, "related-publication");
+  assert.equal(followUp.cycle.id, first.cycle.id);
+  assert.equal(followUp.cycle.complete, false, "a new commit needs its push");
+  assert.equal(followUp.cycle.pendingPush, true);
+  f.good("commit", "-m", "Synthetic follow-up");
+  assert.equal(ledger(f).cycle.complete, false);
+  f.good("push", "origin", "main");
+  const second = ledger(f);
+  assert.equal(second.cycle.id, first.cycle.id);
+  assert.equal(second.cycle.complete, true);
+  assert.ok(second.cycle.usedMs > first.cycle.usedMs);
+  assert.equal(second.completed.length, 0);
+});
+test("an unfinished cycle is not reset by a new batch ID, a new revision or a cosmetic edit", (t) => {
+  const f = fixture(t);
+  f.env.CONFIDENTIALITY_BATCH_ID = "synthetic-first";
+  add(f, secretContent);
+  const first = f.scan("staged");
+  blocked(first, "API_TOKEN");
+  const held = scanned(first);
+  assert.equal(held.cycle.hold.status, "BLOCK");
+  assert.equal(held.cycle.hold.mode, "staged");
+  f.env.CONFIDENTIALITY_BATCH_ID = "synthetic-second";
+  add(f, secretContent + "\n");
+  const cosmetic = f.scan("staged");
+  blocked(cosmetic, "API_TOKEN");
+  const stillHeld = scanned(cosmetic);
+  assert.equal(stillHeld.cycle.id, held.cycle.id);
+  assert.equal(stillHeld.cycle.transition, "continue-open");
+  assert.ok(stillHeld.cycleUsedMs > held.cycleUsedMs);
+  assert.ok(stillHeld.cycleRemainingMs < held.cycleRemainingMs);
+  f.env.CONFIDENTIALITY_BATCH_ID = "synthetic-third";
+  const body = path.join(f.dir, "note.md");
+  writeFileSync(body, "Unrelated ordinary text.\n");
+  const unrelated = scanned(f.scan("outbound", body));
+  assert.equal(unrelated.status, "PASS");
+  assert.equal(unrelated.cycle.id, held.cycle.id);
+  assert.equal(
+    unrelated.cycle.open,
+    true,
+    "another check cannot lift the hold",
+  );
+  assert.equal(unrelated.cycle.hold.mode, "staged");
+  assert.equal(
+    unrelated.cycle.complete,
+    false,
+    "a held cycle is never printed as complete",
+  );
+  add(f, "Safe revision\n");
+  const resolved = scanned(f.scan("staged"));
+  assert.equal(resolved.status, "PASS");
+  assert.equal(resolved.cycle.id, held.cycle.id);
+  assert.equal(resolved.cycle.hold, null);
+  assert.equal(resolved.cycle.complete, false);
+  f.good("commit", "-m", "Synthetic resolved revision");
+  f.good("push", "origin", "main");
+  const completed = ledger(f);
+  assert.equal(completed.cycle.id, held.cycle.id);
+  assert.equal(completed.cycle.complete, true);
+  assert.equal(completed.cycle.checks.staged.runs, 4);
+  add(f, "Next delivery\n", "next.txt");
+  assert.equal(scanned(f.scan("staged")).cycle.transition, "new-content");
+});
+test("an intermediate outgoing commit whose credential was later deleted blocks the push after clean staged checks", (t) => {
+  const f = fixture(t, false);
+  add(f, secretContent);
+  f.good("commit", "-m", "Synthetic intermediate");
+  f.good("rm", "fixture.txt");
+  f.good("commit", "-m", "Synthetic removal");
+  assert.equal(f.install().status, 0);
+  add(f, "Safe final bytes.\n", "final.txt");
+  f.good("commit", "-m", "Synthetic final");
+  const committed = ledger(f);
+  assert.equal(committed.cycle.checks.staged.status, "PASS");
+  assert.equal(committed.cycle.hold, null);
+  blocked(f.git("push", "origin", "main"), "API_TOKEN");
+  const held = ledger(f);
+  assert.equal(held.cycle.id, committed.cycle.id);
+  assert.equal(held.cycle.checks.push.status, "BLOCK");
+  assert.equal(held.cycle.hold.mode, "push");
+  assert.equal(held.cycle.complete, false);
+  const body = path.join(f.dir, "publication.md");
+  writeFileSync(body, "Ordinary text.\n");
+  const bypass = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "outbound", body],
+      {
+        cwd: f.repo,
+        env: { ...f.env, CONFIDENTIALITY_BATCH_ID: "synthetic-new-label" },
+      },
+    ),
+  );
+  assert.equal(bypass.cycle.id, held.cycle.id);
+  assert.equal(bypass.cycle.transition, "continue-open");
+  assert.equal(bypass.cycle.hold.mode, "push");
+  blocked(f.git("push", "origin", "main"), "API_TOKEN");
+});
+test("a rule change invalidates cached coverage without completing or replenishing an unfinished cycle", (t) => {
+  const f = fixture(t);
+  add(f, secretContent);
+  const held = scanned(f.scan("staged"));
+  assert.equal(held.status, "BLOCK");
+  const release = syntheticRelease(f);
+  assert.equal(
+    run(process.execPath, [release.installer, "--update"], {
+      cwd: f.repo,
+      env: f.env,
+    }).status,
+    0,
+  );
+  const rescanned = release.scan("staged");
+  blocked(rescanned, "API_TOKEN");
+  const after = scanned(rescanned);
+  assert.ok(after.scanned > 0, "the changed rule version rescans the bytes");
+  assert.equal(after.cycle.id, held.cycle.id);
+  assert.equal(after.cycle.transition, "continue-open");
+  assert.equal(after.cycle.complete, false);
+  assert.equal(after.cycle.hold.mode, "staged");
+  assert.ok(after.cycleUsedMs > held.cycleUsedMs);
+  assert.ok(after.cycleRemainingMs < held.cycleRemainingMs);
+  add(f, "Safe resolved bytes\n");
+  const resolved = scanned(release.scan("staged"));
+  assert.equal(resolved.status, "PASS");
+  assert.equal(resolved.cycle.id, held.cycle.id);
+  assert.equal(resolved.cycle.hold, null);
+});
+test("a legacy ledger migrates to the cycle format carrying its allowance unchanged", (t) => {
+  const f = fixture(t);
+  const file = ledgerFile(f);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(
+    file,
+    JSON.stringify({
+      rule: "synthetic-previous-rule",
+      batch: "synthetic-legacy",
+      remainingMs: 45000,
+      usedMs: 75000,
+    }),
+  );
+  add(f, "Safe migrated bytes\n");
+  const migrated = scanned(
+    run(
+      process.execPath,
+      [path.join(source, "confidentiality-scan.mjs"), "staged"],
+      {
+        cwd: f.repo,
+        env: { ...f.env, CONFIDENTIALITY_BATCH_ID: "synthetic-renamed" },
+      },
+    ),
+  );
+  assert.equal(migrated.status, "PASS");
+  assert.equal(migrated.cycle.legacy, true);
+  assert.equal(migrated.cycle.batch, "synthetic-legacy");
+  assert.equal(migrated.cycle.transition, "continue-open");
+  assert.ok(migrated.cycleRemainingMs < 45000);
+  assert.ok(migrated.cycleUsedMs > 75000);
+  assert.equal(migrated.cycleUsedMs + migrated.cycleRemainingMs, 120000);
+  assert.equal(migrated.batchRemainingMs, migrated.cycleRemainingMs);
+  assert.equal(migrated.batchUsedMs, migrated.cycleUsedMs);
+  const state = ledger(f);
+  assert.equal(state.format, 2);
+  assert.equal(state.cycle.legacy, true);
+  assert.equal(state.cycle.remainingMs, migrated.cycleRemainingMs);
+  assert.equal(state.remainingMs, state.cycle.remainingMs);
+  assert.equal(state.usedMs, state.cycle.usedMs);
+  assert.equal(state.batch, "synthetic-legacy");
+  assert.equal(state.completed.length, 0);
+  // The migrated cycle recorded no completion, so it must complete first.
+  f.good("commit", "-m", "Synthetic migrated commit");
+  assert.equal(ledger(f).cycle.legacy, true);
+  f.good("push", "origin", "main");
+  const completed = ledger(f);
+  assert.equal(completed.cycle.legacy, true);
+  assert.equal(completed.cycle.complete, true);
+  add(f, "Post-migration content\n", "post.txt");
+  const next = scanned(f.scan("staged"));
+  assert.equal(next.cycle.transition, "new-content");
+  assert.equal(next.cycle.legacy, false);
+  assert.equal(ledger(f).completed[0].id, completed.cycle.id);
+});
+test("a current-format ledger without a cycle is empty: an authorized reset reopens publication with a fresh cycle", (t) => {
+  // Pure shape checks: neither reset shape is a legacy cycle with nothing left.
+  assert.equal(normalizeLedger({ format: 2, cycle: null }).cycle, null);
+  assert.equal(normalizeLedger({ format: 2 }).cycle, null);
+  assert.equal(normalizeLedger({ format: 2, cycle: null }).completed.length, 0);
+  const f = fixture(t);
+  const file = ledgerFile(f);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const archived = { id: "synthetic-archived", usedMs: 120000, checks: {} };
+  writeFileSync(
+    file,
+    JSON.stringify({
+      format: 2,
+      rule: "synthetic-previous-rule",
+      cycle: null,
+      completed: [archived],
+    }),
+  );
+  const empty = scanned(f.scan("health"));
+  assert.equal(empty.status, "PASS");
+  assert.equal(empty.cycle, null);
+  assert.equal(
+    JSON.parse(readFileSync(file, "utf8")).cycle,
+    null,
+    "health leaves the reset ledger untouched",
+  );
+  add(f, "Bytes after an authorized reset\n");
+  const fresh = scanned(f.scan("staged"));
+  assert.equal(fresh.status, "PASS");
+  assert.equal(fresh.cycle.transition, "start");
+  assert.equal(fresh.cycle.legacy, false);
+  assert.equal(fresh.cycle.exhausted, false);
+  assert.ok(fresh.cycleRemainingMs > 100000, "a fresh cycle, not 0 ms");
+  assert.equal(fresh.cycleUsedMs + fresh.cycleRemainingMs, 120000);
+  const state = ledger(f);
+  assert.equal(state.cycle.id, fresh.cycle.id);
+  assert.deepEqual(state.completed, [archived], "history is preserved");
+});
+test("a pre-push stdin that never closes is bounded by the cycle deadline instead of hanging", async (t) => {
+  const f = fixture(t);
+  add(f, "Safe bytes for a bounded read\n");
+  assert.equal(f.scan("staged").status, 0);
+  const file = ledgerFile(f);
+  const state = JSON.parse(readFileSync(file, "utf8"));
+  state.cycle.remainingMs = 600;
+  state.cycle.usedMs = 119400;
+  state.remainingMs = 600;
+  state.usedMs = 119400;
+  writeFileSync(file, JSON.stringify(state));
+  const start = Date.now();
+  const child = spawn(
+    process.execPath,
+    [path.join(source, "confidentiality-scan.mjs"), "push", "origin", f.remote],
+    { cwd: f.repo, env: f.env, stdio: ["pipe", "pipe", "pipe"] },
+  );
+  let stdout = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  // Ref lines never arrive and stdin is never closed.
+  const code = await new Promise((resolve) => child.on("close", resolve));
+  assert.equal(code, 2);
+  assert.ok(Date.now() - start < 5000, "the parent did not hang");
+  const result = JSON.parse(stdout);
+  assert.equal(result.status, "INCOMPLETE");
+  assert.equal(result.findings[0].category, "BUDGET_EXHAUSTED");
+  assert.equal(result.cycle.transition, "continue-open");
+  assert.equal(result.cycle.exhausted, true);
+  assert.equal(result.cycleRemainingMs, 0);
+  assert.equal(result.cycle.ledger, path.basename(file));
+  child.stdin.destroy();
+});
+test("health is maintenance: it never starts a publication cycle and never holds or completes one", (t) => {
+  const f = fixture(t);
+  const empty = scanned(f.scan("health"));
+  assert.equal(empty.status, "PASS");
+  assert.equal(empty.cycle, null, "no cycle without an outgoing check");
+  assert.ok(!existsSync(ledgerFile(f)), "an empty ledger stays unwritten");
+  add(f, secretContent);
+  blocked(f.scan("staged"), "API_TOKEN");
+  const held = ledger(f);
+  assert.equal(held.cycle.hold.mode, "staged");
+  const checked = scanned(f.scan("health"));
+  assert.equal(checked.status, "PASS");
+  assert.equal(checked.cycle.id, held.cycle.id);
+  assert.equal(checked.cycle.transition, "continue-open");
+  assert.deepEqual(
+    checked.cycle.hold,
+    held.cycle.hold,
+    "health cannot clear a hold",
+  );
+  assert.equal(checked.cycle.complete, false);
+  const after = ledger(f);
+  assert.deepEqual(after.cycle.checks, held.cycle.checks);
+  assert.ok(
+    after.cycle.usedMs >= held.cycle.usedMs,
+    "maintenance time is charged, never granted",
+  );
+  assert.equal(after.cycle.usedMs + after.cycle.remainingMs, 120000);
 });
 
 test("installer freezes only local policy and health verifies same version", (t) => {
@@ -738,34 +1268,7 @@ test("controlled update preserves shared directory and requires explicit update"
   f.env.CONFIDENTIALITY_BATCH_ID = "synthetic-controlled-update";
   add(f, "Reusable content across a rule update\n");
   const prior = JSON.parse(f.scan("staged").stdout);
-  const release = path.join(f.dir, "synthetic-release");
-  mkdirSync(path.join(release, "scripts"), { recursive: true });
-  mkdirSync(path.join(release, ".githooks"));
-  for (const filename of [
-    "confidentiality-scan.mjs",
-    "install-confidentiality-hooks.mjs",
-  ]) {
-    copyFileSync(
-      path.join(source, filename),
-      path.join(release, "scripts", filename),
-    );
-  }
-  for (const filename of ["pre-commit", "commit-msg", "pre-push"]) {
-    copyFileSync(
-      path.join(source, "..", ".githooks", filename),
-      path.join(release, ".githooks", filename),
-    );
-  }
-  const nextScanner = path.join(release, "scripts", "confidentiality-scan.mjs");
-  writeFileSync(
-    nextScanner,
-    readFileSync(nextScanner, "utf8") + "\n// Synthetic controlled update.\n",
-  );
-  const installer = path.join(
-    release,
-    "scripts",
-    "install-confidentiality-hooks.mjs",
-  );
+  const { scanner: nextScanner, installer } = syntheticRelease(f);
   const hooks = f.good("config", "--local", "--get", "core.hooksPath");
   blocked(
     run(process.execPath, [installer], { cwd: f.repo, env: f.env }),

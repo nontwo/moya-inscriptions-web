@@ -29,11 +29,41 @@ import { assertTaskGate } from "./ci-task-gate.mjs";
 import { assertBrowserGate, assertSmokeReport } from "./ci-e2e-gate.mjs";
 import {
   contractCommands,
+  feedbackValidationBudget,
   freshOutput,
+  planFeedbackCommands,
+  sourceFingerprint,
+  taskChecks,
   taskCommands,
+  taskValidationBudget,
+  validate,
   validationEnvironment,
   workspaceFingerprint,
 } from "./verify-task.mjs";
+import {
+  VALIDATION_PROFILES,
+  REMAINING_MS_TOKEN,
+  effectiveCeiling,
+  takeProfileOptions,
+  withRemaining,
+} from "./validation-profiles.mjs";
+import {
+  GRACE_MS,
+  STARTUP_MARGIN_MS,
+  WEB_VERIFICATION_PROFILES,
+  verificationBudgetMs,
+  verificationPlan,
+  viableCeiling,
+} from "./verify.mjs";
+import { SMOKE_PROFILES, smokeBudget, smokeOptions } from "./ci-e2e-smoke.mjs";
+import {
+  CMS_FINALIZATION_MS,
+  CMS_PROFILES,
+  boundedChildLimit,
+  cmsBudget,
+  cmsOptions,
+  resolveCmsBudget,
+} from "./editorial/verify-cms.mjs";
 import {
   appleCommand,
   appleOptions,
@@ -756,7 +786,11 @@ describe("the real CI wiring preserves required-check closure", () => {
     const redirected = (job) =>
       [...jobs.get(job).matchAll(/\s<([\w./-]+)/gu)].map((match) => match[1]);
     const marker = "infra/test/disposable-test-target.sql";
-    assert.match(jobs.get("cms"), /run: pnpm test:cms\n/);
+    assert.match(jobs.get("cms"), /run: pnpm test:cms --profile complete\n/);
+    assert.match(
+      jobs.get("cms"),
+      /run: pnpm test:cms:browser --profile complete\n/,
+    );
     assert.ok(imported.includes("scripts/disposable-test-target.mjs"));
     assert.ok(
       imported.includes(
@@ -769,13 +803,14 @@ describe("the real CI wiring preserves required-check closure", () => {
       assert.equal(classifyTask([file]).cms, true, file);
     for (const file of redirected("test"))
       assert.equal(classifyTask([file]).web, true, file);
-    // Only the Web-selected jobs run the verify.mjs stage plans.
+    // Only the Web-selected jobs run the verify.mjs stage plans, each as its
+    // own explicit complete profile (the test job through its CI milestone).
     const stages = new Map([
-      ["lint", "lint"],
-      ["typecheck", "typecheck"],
+      ["lint", "lint --profile complete"],
+      ["typecheck", "typecheck --profile complete"],
       ["test", "test --ci-milestone"],
-      ["build", "build"],
-      ["e2e_smoke", "e2e"],
+      ["build", "build --profile complete"],
+      ["e2e_smoke", "e2e --profile complete"],
     ]);
     for (const [job, body] of jobs)
       if (stages.has(job))
@@ -871,10 +906,14 @@ describe("the real CI wiring preserves required-check closure", () => {
 
   it("routes the E2E smoke and policy files to the Web jobs that run them", () => {
     const { jobs } = workflowJobs();
-    // e2e_smoke runs verify.mjs e2e, whose only stage spawns the smoke script.
-    assert.match(jobs.get("e2e_smoke"), /run: node scripts\/verify\.mjs e2e\n/);
+    // e2e_smoke runs verify.mjs e2e as the cold complete smoke, whose only
+    // stage spawns the smoke script under this stage's remaining time.
+    assert.match(
+      jobs.get("e2e_smoke"),
+      /run: node scripts\/verify\.mjs e2e --profile complete\n/,
+    );
     const verify = read("scripts/verify.mjs");
-    assert.match(verify, /\be2e: \[smoke\]/);
+    assert.match(verify, /\be2e: \[bounded\(smoke\)\]/);
     const smoke = verify.match(
       /const smoke = \[process\.execPath, "([^"]+)"\]/u,
     )?.[1];
@@ -955,7 +994,10 @@ describe("the real CI wiring preserves required-check closure", () => {
   it("routes the configuration the Web lint job reads to the Web jobs", () => {
     const { jobs } = workflowJobs();
     // The Web lint job runs verify.mjs lint, whose stage runs root pnpm scripts.
-    assert.match(jobs.get("lint"), /run: node scripts\/verify\.mjs lint\n/);
+    assert.match(
+      jobs.get("lint"),
+      /run: node scripts\/verify\.mjs lint --profile complete\n/,
+    );
     const stage = read("scripts/verify.mjs").match(/\blint: \[(.*)\],\n/u)?.[1];
     const scripts = [...(stage ?? "").matchAll(/\bpnpm\("([^"]+)"\)/gu)].map(
       (match) => match[1],
@@ -2241,5 +2283,619 @@ describe("Apple real-child deadlines and lifetime", () => {
     assert.equal(summary.reason, "PREPARATION_UNAVAILABLE");
     assert.equal(summary.phases.execution.attempted, false);
     assert.equal(summary.acceptance, undefined);
+  });
+});
+
+describe("explicit validation profiles and nested deadlines", () => {
+  const joined = (checks) =>
+    checks
+      .flatMap((check) => check.commands ?? [check])
+      .map((command) => command.join(" "))
+      .join("\n");
+
+  it("keeps the frozen profile ceilings and lowers, never raises, them by a parent's remaining time", () => {
+    assert.equal(VALIDATION_PROFILES.feedback.totalMs, 120000);
+    // Neutral quick ceilings share the cap but never the feedback label.
+    for (const key of ["scriptTests", "webQuick", "cmsQuick"]) {
+      assert.equal(VALIDATION_PROFILES[key].totalMs, 120000);
+      assert.doesNotMatch(VALIDATION_PROFILES[key].name, /feedback/iu);
+    }
+    assert.equal(VALIDATION_PROFILES.scriptTests.name, "script-tests");
+    assert.equal(VALIDATION_PROFILES.webQuick.name, "web-quick");
+    assert.equal(VALIDATION_PROFILES.cmsQuick.name, "cms-quick");
+    assert.equal(VALIDATION_PROFILES.webComplete.totalMs, 300000);
+    assert.equal(VALIDATION_PROFILES.cmsComplete.totalMs, 300000);
+    assert.equal(VALIDATION_PROFILES.browserSmokeWarm.totalMs, 120000);
+    assert.equal(VALIDATION_PROFILES.browserSmokeCold.totalMs, 300000);
+    assert.equal(VALIDATION_PROFILES.appleFull.totalMs, 600000);
+    assert.equal(VALIDATION_PROFILES.appleFeedback.totalMs, 120000);
+    assert.equal(VALIDATION_PROFILES.localCombined.totalMs, 900000);
+    assert.equal(VALIDATION_PROFILES.credentialDelivery.totalMs, 120000);
+    assert.ok(Object.isFrozen(VALIDATION_PROFILES));
+    for (const profile of Object.values(VALIDATION_PROFILES))
+      assert.ok(Object.isFrozen(profile));
+    assert.deepEqual(effectiveCeiling(VALIDATION_PROFILES.webComplete), {
+      profile: "web-complete",
+      totalMs: 300000,
+      ceilingMs: 300000,
+      ceilingSource: "profile",
+      remainingMs: null,
+    });
+    const lowered = effectiveCeiling(VALIDATION_PROFILES.webComplete, 45000);
+    assert.equal(lowered.ceilingMs, 45000);
+    assert.equal(lowered.ceilingSource, "parent-remaining");
+    const generous = effectiveCeiling(
+      VALIDATION_PROFILES.webComplete,
+      10 * 60 * 1000,
+    );
+    assert.equal(generous.ceilingMs, 300000);
+    assert.equal(generous.ceilingSource, "profile");
+    assert.deepEqual(
+      takeProfileOptions(
+        ["--profile", "complete", "--remaining-ms", "5000", "--ci-milestone"],
+        { quick: true, complete: true },
+      ),
+      { profile: "complete", remainingMs: 5000, rest: ["--ci-milestone"] },
+    );
+    for (const argv of [
+      ["--profile"],
+      ["--profile", "--remaining-ms", "5"],
+      ["--profile", "unknown"],
+      ["--remaining-ms"],
+      ["--remaining-ms", "0"],
+      ["--remaining-ms", "12a"],
+      ["--remaining-ms", "-5"],
+      ["--remaining-ms", "1e3"],
+      ["--profile", "quick", "--profile", "quick"],
+      ["--remaining-ms", "5", "--remaining-ms", "6"],
+    ])
+      assert.throws(
+        () => takeProfileOptions(argv, { quick: true, complete: true }),
+        argv.join(" "),
+      );
+    const command = ["node", "child.mjs", "--remaining-ms", REMAINING_MS_TOKEN];
+    assert.deepEqual(withRemaining(command, 1234.9), [
+      "node",
+      "child.mjs",
+      "--remaining-ms",
+      "1234",
+    ]);
+    assert.equal(withRemaining(command, 0).at(-1), "1");
+    assert.deepEqual(withRemaining(["node", "plain.mjs"], 5), [
+      "node",
+      "plain.mjs",
+    ]);
+  });
+
+  it("gives each Web stage an explicit complete profile and keeps the CI test milestone at 300 seconds", () => {
+    for (const mode of ["lint", "typecheck", "test", "build"]) {
+      assert.equal(WEB_VERIFICATION_PROFILES[mode].complete.totalMs, 300000);
+      const quick = verificationPlan(mode);
+      assert.equal(quick.selection, "quick");
+      assert.equal(quick.ceilingMs, VALIDATION_PROFILES.webQuick.totalMs);
+      // An unflagged run is an ordinary acceptance check, never "feedback".
+      assert.equal(quick.profile, "web-quick");
+      assert.equal(verificationBudgetMs(mode), 120000);
+      const complete = verificationPlan(mode, ["--profile", "complete"]);
+      assert.equal(complete.selection, "complete");
+      assert.equal(complete.profile, "web-complete");
+      assert.equal(complete.ceilingMs, 300000);
+      assert.equal(complete.ceilingSource, "profile");
+    }
+    const all = verificationPlan("all", ["--profile", "complete"]);
+    assert.equal(all.profile, "local-combined");
+    assert.equal(all.ceilingMs, 900000);
+    assert.equal(verificationBudgetMs("all"), 120000);
+    assert.equal(verificationPlan("all").profile, "web-quick");
+    for (const [mode, plan] of Object.entries(WEB_VERIFICATION_PROFILES))
+      for (const selection of Object.values(plan))
+        assert.doesNotMatch(selection.name, /feedback/iu, mode);
+    assert.equal(verificationPlan("e2e").profile, "browser-smoke-warm");
+    const cold = verificationPlan("e2e", ["--profile", "complete"]);
+    assert.equal(cold.profile, "browser-smoke-cold");
+    assert.equal(cold.ceilingMs, 300000);
+    const ci = { GITHUB_ACTIONS: "true", TEST_DATABASE_URL: "postgresql://x" };
+    const milestone = verificationPlan("test", ["--ci-milestone"], ci);
+    assert.equal(milestone.milestone, true);
+    assert.equal(milestone.selection, "complete");
+    assert.equal(milestone.profile, "web-complete");
+    assert.equal(milestone.ceilingMs, 300000);
+    assert.throws(() => verificationPlan("test", ["--ci-milestone"], {}));
+    assert.throws(() =>
+      verificationPlan("test", ["--ci-milestone"], { GITHUB_ACTIONS: "true" }),
+    );
+    assert.throws(() => verificationPlan("lint", ["--ci-milestone"], ci));
+    assert.throws(() =>
+      verificationPlan("test", ["--ci-milestone", "--profile", "complete"], ci),
+    );
+    assert.throws(() =>
+      verificationPlan("test", ["--ci-milestone", "--ci-milestone"], ci),
+    );
+    assert.throws(() => verificationPlan("test", ["--unknown"]));
+    assert.throws(() => verificationPlan("unknown"));
+    const bounded = verificationPlan("build", [
+      "--profile",
+      "complete",
+      "--remaining-ms",
+      "75000",
+    ]);
+    assert.equal(bounded.totalMs, 300000);
+    assert.equal(bounded.ceilingMs, 75000);
+    assert.equal(bounded.ceilingSource, "parent-remaining");
+    const notRaised = verificationPlan("lint", ["--remaining-ms", "999999"]);
+    assert.equal(notRaised.ceilingMs, 120000);
+    assert.equal(notRaised.ceilingSource, "profile");
+    const source = read("scripts/verify.mjs");
+    assert.doesNotMatch(
+      source,
+      /retain 120 seconds|explicit CI test milestone only|Owner-authorized/iu,
+    );
+    for (const file of ["scripts/verify.mjs", "scripts/verify-task.mjs"])
+      assert.doesNotMatch(read(file), /\b1(?:20|18)_?000\b/u, file);
+    assert.match(source, /e2e: \[bounded\(smoke\)\]/u);
+    assert.match(source, /plan\.selection === "complete" \? "cold" : "warm"/u);
+  });
+
+  it("hands a child the real remaining time and never lets it outlive the parent's deadline", async (t) => {
+    const directory = temporary(t);
+    const received = join(directory, "received.json");
+    const child = [
+      process.execPath,
+      "-e",
+      "const fs=require('node:fs');const ms=Number(process.argv[2]);fs.writeFileSync(process.argv[1],JSON.stringify({ms}));process.on('SIGINT',()=>{});setTimeout(()=>fs.writeFileSync(process.argv[1]+'.late','late'),ms+1500);",
+      received,
+      REMAINING_MS_TOKEN,
+    ];
+    const started = performance.now();
+    const result = await runWithinBudget([child], {
+      budgetMs: 1500,
+      graceMs: 300,
+      stdio: "ignore",
+    });
+    const elapsed = performance.now() - started;
+    assert.equal(result.code, 124);
+    assert.ok(elapsed < 3500, `parent deadline not enforced: ${elapsed}ms`);
+    assert.equal(result.budgetMs, 1500);
+    const [recorded] = result.executed;
+    assert.equal(recorded.command.at(-1), String(recorded.remainingMs));
+    assert.ok(recorded.remainingMs > 0 && recorded.remainingMs <= 1200);
+    const { ms } = JSON.parse(readFileSync(received, "utf8"));
+    assert.equal(ms, recorded.remainingMs, "child saw the recorded value");
+    await new Promise((accept) =>
+      setTimeout(accept, Math.max(0, ms + 1500 - elapsed) + 400),
+    );
+    assert.ok(
+      !existsSync(received + ".late"),
+      "the child was stopped at the parent's deadline",
+    );
+  });
+
+  it("fails fast before spawning when a parent's remaining time leaves nothing beyond startup and cleanup grace", async () => {
+    // The minimum is the startup margin plus the cleanup grace: below it the
+    // runner cannot start a command and stop it cleanly, so it does not try.
+    assert.equal(GRACE_MS, 8000);
+    assert.equal(viableCeiling(STARTUP_MARGIN_MS + GRACE_MS), false);
+    assert.equal(viableCeiling(STARTUP_MARGIN_MS + GRACE_MS + 1), true);
+    for (const ms of [1, 1000, 5000, 9000])
+      assert.equal(viableCeiling(ms), false, String(ms));
+    assert.equal(viableCeiling(9001), true);
+    // A negative or grace-sized budget never arms a timer in the past: the
+    // runner clamps it, spawns nothing and reports the failed ceiling at once.
+    for (const budgetMs of [-999, 0, 10]) {
+      const clamped = await runWithinBudget(
+        [[process.execPath, "-e", "setTimeout(()=>{}, 500)"]],
+        { budgetMs, graceMs: 10, stdio: "ignore" },
+      );
+      assert.equal(clamped.code, 124, String(budgetMs));
+      assert.equal(clamped.budgetMs, Math.max(0, budgetMs));
+      assert.deepEqual(clamped.executed, [], "nothing spawned");
+    }
+    // Real entry point on the boundary band: the whole 1–9 s band and the
+    // sub-second case exit 124 without spawning any stage and without a stack.
+    for (const remaining of ["1", "999", "1000", "5000", "9000"]) {
+      const started = performance.now();
+      const child = spawnSync(
+        process.execPath,
+        [join(root, "scripts/verify.mjs"), "lint", "--remaining-ms", remaining],
+        { cwd: root, encoding: "utf8", timeout: 10000, killSignal: "SIGKILL" },
+      );
+      assert.equal(child.error, undefined, remaining);
+      assert.equal(child.status, 124, remaining + child.stderr);
+      assert.ok(performance.now() - started < 4000, remaining);
+      assert.equal(
+        child.stdout.trim(),
+        `Acceptance lint: INSUFFICIENT_REMAINING_TIME (${remaining}ms ceiling from parent remaining; profile web-quick 120000ms)`,
+      );
+      assert.doesNotMatch(child.stderr, /Warning|at |Error/u, remaining);
+      assert.doesNotMatch(child.stdout, /TIME BUDGET EXCEEDED|PASS|FAIL/u);
+    }
+  });
+
+  it("declares the plan profile from the selected checks and routes strictly by changed paths", () => {
+    const output = "/private/synthetic-output";
+    const apple = taskChecks(
+      classifyTask(["apps/apple/App.swift"], "local"),
+      output,
+    );
+    assert.deepEqual(
+      apple.map((check) => check.name),
+      ["script-tests", "apple"],
+    );
+    const appleBudget = taskValidationBudget(apple);
+    assert.equal(appleBudget.profile, "explicit-profile-sum");
+    assert.equal(appleBudget.totalMs, 720000);
+    assert.equal(appleBudget.serialCombination, false);
+    assert.equal(appleBudget.combinedCeilingMs, 900000);
+    assert.deepEqual(appleBudget.checks, [
+      {
+        name: "script-tests",
+        profile: "script-tests",
+        totalMs: 120000,
+        commands: 1,
+      },
+      { name: "apple", profile: "apple-full", totalMs: 600000, commands: 1 },
+    ]);
+    assert.equal(appleBudget.note, undefined, "an uncapped plan has no note");
+    const [appleCommand] = apple[1].commands;
+    assert.deepEqual(appleCommand.slice(0, 4), [
+      process.execPath,
+      "scripts/verify-apple.mjs",
+      "--profile",
+      "full",
+    ]);
+    assert.deepEqual(appleCommand.slice(-2), [
+      "--remaining-ms",
+      REMAINING_MS_TOKEN,
+    ]);
+    assert.doesNotMatch(
+      joined(apple),
+      /scripts\/verify\.mjs|test:cms|ci-e2e-smoke|playwright|pnpm/u,
+    );
+
+    const web = taskChecks(
+      classifyTask(["apps/web/app/page.tsx"], "local"),
+      output,
+    );
+    assert.deepEqual(
+      web.map((check) => check.name),
+      ["script-tests", "web"],
+    );
+    const webBudget = taskValidationBudget(web);
+    assert.equal(webBudget.profile, "local-combined");
+    assert.equal(webBudget.totalMs, 900000);
+    assert.equal(webBudget.serialCombination, true);
+    // The explicit sum (120 000 + 900 000) exceeds the combined ceiling, so
+    // the cap and its meaning are stated once in the plan.
+    assert.match(webBudget.note, /sum to 1020000 ms/u);
+    assert.match(webBudget.note, /capped at 900000 ms/u);
+    assert.match(webBudget.note, /truthful non-PASS, not acceptance/u);
+    assert.match(
+      webBudget.note,
+      /CI jobs run each check under its own profile/u,
+    );
+    assert.deepEqual(web[1].commands, [
+      [
+        process.execPath,
+        "scripts/verify.mjs",
+        "all",
+        "--profile",
+        "complete",
+        "--remaining-ms",
+        REMAINING_MS_TOKEN,
+      ],
+    ]);
+    assert.doesNotMatch(joined(web), /verify-apple|xcodebuild|test:cms/u);
+
+    const cms = taskChecks(
+      classifyTask(["apps/admin/src/fields/editorial-fields.ts"], "local"),
+      output,
+    );
+    assert.deepEqual(
+      cms.map((check) => check.name),
+      ["script-tests", "web", "cms", "cms-browser"],
+    );
+    for (const name of ["cms", "cms-browser"]) {
+      const check = cms.find((item) => item.name === name);
+      assert.equal(check.profile, "cms-complete");
+      assert.equal(check.totalMs, 300000);
+      assert.deepEqual(check.commands[0].slice(-4), [
+        "--profile",
+        "complete",
+        "--remaining-ms",
+        REMAINING_MS_TOKEN,
+      ]);
+    }
+    assert.equal(taskValidationBudget(cms).profile, "local-combined");
+    assert.equal(taskValidationBudget(cms).totalMs, 900000);
+    assert.doesNotMatch(joined(cms), /verify-apple/u);
+
+    const shared = taskChecks(
+      classifyTask(
+        [
+          "scripts/verify.mjs",
+          "scripts/validation-profiles.mjs",
+          "scripts/editorial/verify-cms.mjs",
+        ],
+        "local",
+      ),
+      output,
+    );
+    assert.deepEqual(
+      shared.map((check) => check.name),
+      ["script-tests", "web", "cms", "cms-browser"],
+    );
+    assert.doesNotMatch(joined(shared), /verify-apple/u);
+    const sharedBudget = taskValidationBudget(shared);
+    assert.equal(sharedBudget.totalMs, 900000);
+    assert.match(sharedBudget.note, /sum to 1620000 ms; .*capped at 900000/u);
+    // The feedback label belongs to `--mode feedback` only: no default plan,
+    // check or note may carry it.
+    for (const budget of [appleBudget, webBudget, sharedBudget])
+      assert.doesNotMatch(JSON.stringify(budget), /feedback/iu);
+
+    const lightweight = taskValidationBudget(
+      taskChecks({ lightweight: true }, output),
+    );
+    assert.equal(lightweight.profile, "explicit-profile-sum");
+    assert.equal(lightweight.totalMs, VALIDATION_PROFILES.scriptTests.totalMs);
+    assert.equal(lightweight.checks[0].profile, "script-tests");
+    assert.equal(lightweight.note, undefined);
+    const contracts = taskValidationBudget(
+      taskChecks({ lightweight: true, contracts: true }, output),
+    );
+    assert.equal(contracts.profile, "explicit-profile-sum");
+    assert.equal(contracts.totalMs, 420000);
+    const feedback = feedbackValidationBudget([["pnpm", "exec", "prettier"]]);
+    assert.equal(feedback.profile, "feedback");
+    assert.equal(feedback.totalMs, 120000);
+    assert.equal(feedback.combinedCeilingMs, 120000);
+  });
+
+  it("routes an Apple feedback delta to the build-only Apple feedback profile and nothing Web, CMS or browser", () => {
+    const output = "/private/synthetic-output";
+    const planned = planFeedbackCommands(
+      { feedbackPaths: ["apps/apple/Sources/App.swift"] },
+      output,
+      { root },
+    );
+    assert.equal(planned.unresolved, null);
+    assert.deepEqual(planned.commands, [
+      [
+        process.execPath,
+        "scripts/verify-apple.mjs",
+        "--profile",
+        "feedback",
+        "--output",
+        join(output, "apple"),
+        "--remaining-ms",
+        REMAINING_MS_TOKEN,
+      ],
+    ]);
+    assert.ok(
+      planned.uncheckedCoverage.some((item) =>
+        /Apple native unit\/UI tests \(feedback build is build-only\)/u.test(
+          item,
+        ),
+      ),
+    );
+    assert.doesNotMatch(
+      joined(planned.commands),
+      /scripts\/verify\.mjs|test:cms|ci-e2e-smoke|prettier|eslint|vitest|playwright/u,
+    );
+    const web = planFeedbackCommands(
+      { feedbackPaths: ["apps/web/features/home/home-screen.module.css"] },
+      output,
+      { root },
+    );
+    assert.doesNotMatch(joined(web.commands), /verify-apple|xcodebuild/u);
+  });
+
+  it("reports the effective profile, ceiling and per-check elapsed time, and repeats one fingerprint for identical content without erasing the prior result", async (t) => {
+    const directory = temporary(t);
+    const command = [
+      process.execPath,
+      "-e",
+      "process.exit(Number(process.argv[1]) > 0 ? 0 : 1)",
+      REMAINING_MS_TOKEN,
+    ];
+    const checks = [
+      {
+        name: "synthetic",
+        profile: VALIDATION_PROFILES.webComplete.name,
+        totalMs: VALIDATION_PROFILES.webComplete.totalMs,
+        commands: [command],
+      },
+    ];
+    const budget = taskValidationBudget(checks);
+    const first = freshOutput(join(directory, "run-1"), root);
+    assert.equal(
+      await validate([command], first, { mode: "actual-diff" }, budget),
+      0,
+    );
+    const summary = JSON.parse(
+      readFileSync(join(first, "summary.json"), "utf8"),
+    );
+    assert.equal(summary.result, "PASS");
+    assert.equal(summary.profile, "explicit-profile-sum");
+    assert.equal(summary.totalMs, 300000);
+    assert.equal(summary.ceilingMs, 300000 - STARTUP_MARGIN_MS);
+    assert.equal(summary.combinedCeilingMs, 900000);
+    assert.deepEqual(summary.checks, [
+      {
+        name: "synthetic",
+        profile: "web-complete",
+        totalMs: 300000,
+        commands: 1,
+      },
+    ]);
+    const [run] = summary.executed;
+    assert.equal(run.check, "synthetic");
+    assert.equal(run.command.at(-1), String(run.remainingMs));
+    assert.ok(run.remainingMs > 0 && run.remainingMs <= summary.ceilingMs);
+    assert.ok(Number.isInteger(run.durationMs) && run.durationMs >= 0);
+    assert.equal(run.code, 0);
+    assert.equal(summary.accounting.elapsedMs, summary.durationMs);
+    assert.match(summary.accounting.note, /reporting only/u);
+    assert.match(summary.sourceFingerprint, /^[a-f0-9]{64}$/u);
+    assert.equal(
+      summary.sourceFingerprint,
+      sourceFingerprint(summary.contentBefore),
+    );
+    assert.equal(summary.contentUnchanged, true);
+    const firstBytes = readFileSync(join(first, "summary.json"));
+    const second = freshOutput(join(directory, "run-2"), root);
+    assert.equal(
+      await validate([command], second, { mode: "actual-diff" }, budget),
+      0,
+    );
+    const retry = JSON.parse(
+      readFileSync(join(second, "summary.json"), "utf8"),
+    );
+    assert.equal(retry.sourceFingerprint, summary.sourceFingerprint);
+    assert.deepEqual(readFileSync(join(first, "summary.json")), firstBytes);
+    assert.throws(() => freshOutput(first, root));
+    assert.notEqual(
+      sourceFingerprint({ ...summary.contentBefore, head: "other" }),
+      summary.sourceFingerprint,
+    );
+  });
+
+  it("fits the browser smoke server timeout inside the global timeout and the parent's remaining time", () => {
+    assert.equal(SMOKE_PROFILES.warm.totalMs, 120000);
+    assert.equal(SMOKE_PROFILES.cold.totalMs, 300000);
+    assert.deepEqual(smokeOptions([]), { profile: "warm", remainingMs: null });
+    assert.deepEqual(
+      smokeOptions(["--profile", "cold", "--remaining-ms", "250000"]),
+      { profile: "cold", remainingMs: 250000 },
+    );
+    assert.throws(() => smokeOptions(["--profile", "full"]));
+    assert.throws(() => smokeOptions(["--list"]));
+    const warm = smokeBudget("warm");
+    assert.equal(warm.ceilingMs, 120000);
+    assert.equal(warm.globalTimeoutMs, 110000);
+    assert.equal(warm.webServerTimeoutMs, 60000);
+    assert.equal(warm.viable, true);
+    const cold = smokeBudget("cold");
+    assert.equal(cold.ceilingMs, 300000);
+    assert.equal(cold.globalTimeoutMs, 280000);
+    assert.equal(cold.webServerTimeoutMs, 120000);
+    const bounded = smokeBudget("warm", 50000);
+    assert.equal(bounded.ceilingSource, "parent-remaining");
+    assert.equal(bounded.globalTimeoutMs, 40000);
+    assert.equal(bounded.webServerTimeoutMs, 20000);
+    for (const budget of [
+      warm,
+      cold,
+      bounded,
+      smokeBudget("cold", 100000, 15000),
+    ]) {
+      assert.ok(budget.webServerTimeoutMs < budget.globalTimeoutMs);
+      assert.ok(budget.globalTimeoutMs + budget.reserveMs <= budget.ceilingMs);
+    }
+    assert.equal(smokeBudget("cold", null, 290000).globalTimeoutMs, 0);
+    assert.equal(smokeBudget("warm", 29999).viable, false);
+    assert.equal(smokeBudget("cold", 59999).viable, false);
+    assert.equal(smokeBudget("cold", 999999).ceilingMs, 300000);
+    const smoke = read("scripts/ci-e2e-smoke.mjs");
+    assert.match(smoke, /--global-timeout=\$\{current\.globalTimeoutMs\}/u);
+    assert.match(
+      smoke,
+      /MOYA_E2E_WEBSERVER_TIMEOUT_MS: String\(current\.webServerTimeoutMs\)/u,
+    );
+    assert.doesNotMatch(smoke, /--global-timeout=90000/u);
+    const config = read("tests/e2e/playwright.config.ts");
+    assert.match(config, /process\.env\.MOYA_E2E_WEBSERVER_TIMEOUT_MS/u);
+    assert.match(config, /timeout: webServerTimeoutMs,/u);
+    assert.match(
+      config,
+      /globalTimeout: process\.env\.CI \? 18 \* 60 \* 1000 : 0,/u,
+    );
+  });
+
+  it("gives CMS integration and native browser validation explicit complete profiles whose children receive the session's remaining time", () => {
+    assert.equal(CMS_PROFILES.quick.totalMs, 120000);
+    // The unflagged CMS run is an ordinary quick check, never "feedback".
+    assert.equal(CMS_PROFILES.quick.name, "cms-quick");
+    assert.equal(cmsBudget("quick").profile, "cms-quick");
+    assert.equal(CMS_PROFILES.complete.totalMs, 300000);
+    assert.deepEqual(cmsOptions([]), { profile: "quick", remainingMs: null });
+    assert.deepEqual(cmsOptions(["--profile", "complete"]), {
+      profile: "complete",
+      remainingMs: null,
+    });
+    assert.throws(() => cmsOptions(["--unknown"]));
+    const complete = cmsBudget("complete");
+    assert.equal(complete.ceilingMs, 300000);
+    assert.equal(complete.sessionBudgetMs, 300000 - CMS_FINALIZATION_MS);
+    assert.equal(complete.viable, true);
+    assert.equal(
+      cmsBudget("quick").sessionBudgetMs,
+      120000 - CMS_FINALIZATION_MS,
+    );
+    const bounded = cmsBudget("complete", 90000);
+    assert.equal(bounded.ceilingSource, "parent-remaining");
+    assert.equal(bounded.ceilingMs, 90000);
+    assert.equal(bounded.sessionBudgetMs, 90000 - CMS_FINALIZATION_MS);
+    assert.equal(cmsBudget("complete", 59999).viable, false);
+    assert.equal(cmsBudget("complete", 999999).ceilingMs, 300000);
+    assert.throws(
+      () =>
+        resolveCmsBudget(["--profile", "complete", "--remaining-ms", "5000"]),
+      /INSUFFICIENT_REMAINING_TIME/u,
+    );
+    assert.equal(boundedChildLimit(45000, 200000), 45000);
+    assert.equal(boundedChildLimit(45000, 30000), 22000);
+    assert.equal(boundedChildLimit(45000, 5000), 1);
+    const cms = read("scripts/editorial/verify-cms.mjs");
+    assert.match(
+      cms,
+      /--testTimeout=\$\{boundedChildLimit\(30_000, session\.remaining\(\)\)\}/u,
+    );
+    assert.match(
+      cms,
+      /--hookTimeout=\$\{boundedChildLimit\(60_000, session\.remaining\(\)\)\}/u,
+    );
+    assert.match(
+      read("scripts/editorial/verify-owner-browser.mjs"),
+      /boundedChildLimit\(NATIVE_SERVER_START_MS, session\.remaining\(\)\)/u,
+    );
+    // Both entries fail fast on an unusable remaining time or profile before
+    // any database, build or browser work; no CMS target is contacted.
+    const env = { ...process.env };
+    delete env.CMS_TEST_DATABASE_URL;
+    delete env.CMS_DATABASE_URL;
+    for (const script of [
+      "scripts/editorial/verify-cms.mjs",
+      "scripts/editorial/verify-owner-browser.mjs",
+    ]) {
+      const insufficient = spawnSync(
+        process.execPath,
+        [join(root, script), "--profile", "complete", "--remaining-ms", "5000"],
+        { cwd: root, env, encoding: "utf8", timeout: 20000 },
+      );
+      assert.equal(insufficient.status, 124, script + insufficient.stderr);
+      const lines = insufficient.stdout
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l));
+      assert.deepEqual(lines[0], {
+        profile: "cms-complete",
+        totalMs: 300000,
+        ceilingMs: 5000,
+        ceilingSource: "parent-remaining",
+        minimumMs: 60000,
+      });
+      assert.equal(lines.at(-1).category, "INSUFFICIENT_REMAINING_TIME");
+      const invalid = spawnSync(
+        process.execPath,
+        [join(root, script), "--profile", "full"],
+        { cwd: root, env, encoding: "utf8", timeout: 20000 },
+      );
+      assert.equal(invalid.status, 1, script);
+      assert.equal(
+        JSON.parse(invalid.stdout.trim()).category,
+        "INVALID_PROFILE",
+      );
+    }
   });
 });

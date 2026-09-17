@@ -296,6 +296,11 @@ const registered = () =>
   probe.store!.get().items.every((item) => item.itemId !== null);
 
 beforeEach(() => {
+  // Uppy schedules its initial online check for 3s and does not cancel it in
+  // destroy(). Fake timers that still advance with real time (every 1ms, so
+  // the settle/until polling keeps its pace) let afterEach flush that timer
+  // before jsdom goes away.
+  vi.useFakeTimers({ shouldAdvanceTime: true, advanceTimeDelta: 1 });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -323,6 +328,14 @@ afterEach(async () => {
   probe.upload = null;
   probe.setView = null;
   vi.restoreAllMocks();
+  // Execute pending library timers here, where the error would fail this
+  // file, instead of letting them leak into the worker's teardown.
+  try {
+    await vi.runAllTimersAsync();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 describe("MediaSection automatic photo selection", () => {
@@ -496,47 +509,42 @@ describe("MediaSection automatic photo selection", () => {
       ...container.querySelectorAll<HTMLElement>("[data-media-key]"),
     ];
     const target = cards[0]!.querySelector("p")!;
-    vi.useFakeTimers();
-    try {
-      const point: Touch = {
-        identifier: 1,
-        clientX: 180,
-        clientY: 80,
-        pageX: 180,
-        pageY: 80,
-        screenX: 180,
-        screenY: 80,
-        radiusX: 1,
-        radiusY: 1,
-        rotationAngle: 0,
-        force: 1,
-        target,
-      };
-      await act(async () => {
-        target.dispatchEvent(
-          new TouchEvent("touchstart", {
-            bubbles: true,
-            cancelable: true,
-            touches: [point],
-          }),
-        );
-        await vi.advanceTimersByTimeAsync(260);
-      });
-      expect(cards[0]!.dataset.selected).toBe("true");
-      expect(cards[0]!.dataset.dragging).toBe("true");
-      await act(async () => {
-        target.dispatchEvent(
-          new TouchEvent("touchend", {
-            bubbles: true,
-            changedTouches: [point],
-          }),
-        );
-        // dnd-kit briefly suppresses the release click after a drag.
-        await vi.advanceTimersByTimeAsync(60);
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    const point: Touch = {
+      identifier: 1,
+      clientX: 180,
+      clientY: 80,
+      pageX: 180,
+      pageY: 80,
+      screenX: 180,
+      screenY: 80,
+      radiusX: 1,
+      radiusY: 1,
+      rotationAngle: 0,
+      force: 1,
+      target,
+    };
+    await act(async () => {
+      target.dispatchEvent(
+        new TouchEvent("touchstart", {
+          bubbles: true,
+          cancelable: true,
+          touches: [point],
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(260);
+    });
+    expect(cards[0]!.dataset.selected).toBe("true");
+    expect(cards[0]!.dataset.dragging).toBe("true");
+    await act(async () => {
+      target.dispatchEvent(
+        new TouchEvent("touchend", {
+          bubbles: true,
+          changedTouches: [point],
+        }),
+      );
+      // dnd-kit briefly suppresses the release click after a drag.
+      await vi.advanceTimersByTimeAsync(60);
+    });
     await click(cards[1]!.querySelector("p")!);
     expect(cards[1]!.dataset.selected).toBe("true");
     expect(container.textContent).toContain("已选择 2 项");

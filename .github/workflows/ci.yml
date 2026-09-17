@@ -131,8 +131,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Formatting and lint within 120 seconds
-        run: node scripts/verify.mjs lint
+      # Independent CI job with its own explicit WEB COMPLETE profile.
+      - name: Complete formatting and lint
+        run: node scripts/verify.mjs lint --profile complete
 
   typecheck:
     needs: classify_e2e
@@ -157,7 +158,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: node scripts/verify.mjs typecheck
+        run: node scripts/verify.mjs typecheck --profile complete
 
   test:
     needs: classify_e2e
@@ -240,11 +241,12 @@ jobs:
           docker exec -i "${{ job.services.postgres.id }}" psql -v
           ON_ERROR_STOP=1 -U cms_qa -d cms_synthetic_test -f -
           <infra/test/disposable-test-target.sql
+      # Each CMS check is an independent explicit CMS COMPLETE profile.
       - name: Real Payload migrations and PostgreSQL integration
         env:
           # Explicitly fictional, isolated CI database; no cloud access.
           CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_synthetic_test
-        run: pnpm test:cms
+        run: pnpm test:cms --profile complete
       - name: Prepare native Admin browser validation
         run: |
           pnpm --filter @moya/tests exec playwright install --with-deps --only-shell chromium
@@ -252,7 +254,7 @@ jobs:
       - name: Native Owner create, publish, autosave, batch approval and restore
         env:
           CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_synthetic_test
-        run: pnpm test:cms:browser
+        run: pnpm test:cms:browser --profile complete
 
   build:
     needs: classify_e2e
@@ -277,7 +279,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: node scripts/verify.mjs build
+        run: node scripts/verify.mjs build --profile complete
 
   apple:
     needs: classify_e2e
@@ -383,10 +385,12 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @moya/tests exec playwright install --with-deps --only-shell chromium
-      - name: Daily browser smoke within 120 seconds
+      # Cold complete BROWSER SMOKE: server startup, checks and cleanup inside
+      # one explicit profile; the full cross-browser suite stays in e2e-shards.
+      - name: Cold browser smoke
         env:
           MOYA_E2E_ARTIFACT_DIR: ${{ github.workspace }}/.local/e2e-ci/smoke
-        run: node scripts/verify.mjs e2e
+        run: node scripts/verify.mjs e2e --profile complete
       - name: Preserve native smoke reports and failure diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

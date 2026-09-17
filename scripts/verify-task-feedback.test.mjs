@@ -24,6 +24,7 @@ import {
   selectTaskValidationCommands,
   taskCommands,
 } from "./verify-task.mjs";
+import { REMAINING_MS_TOKEN } from "./validation-profiles.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const script = join(root, "scripts/verify-task.mjs");
@@ -318,8 +319,13 @@ describe("feedback CLI user-visible label", () => {
 
 const joined = (commands) =>
   commands.map((command) => command.join(" ")).join("\n");
+// The default entry's Web check: the complete serial `verify.mjs all` plan
+// under the parent's remaining time, never an unflagged (quick) invocation.
 const isBareVerify = (command) =>
-  command[1] === "scripts/verify.mjs" && command.length === 2;
+  command[0] === process.execPath &&
+  command[1] === "scripts/verify.mjs" &&
+  command.slice(2).join(" ") ===
+    `all --profile complete --remaining-ms ${REMAINING_MS_TOKEN}`;
 const feedbackOptions = { root };
 
 describe("feedback command selection", () => {
