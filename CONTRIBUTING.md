@@ -55,9 +55,12 @@ the affected validation. Record each applicable command and result in the PR.
   `pnpm verify` is the existing Web entry, with dependencies and Chromium
   already installed; it is not an Apple-only or documentation-only prerequisite.
   Its formatting, lint, typecheck, ordinary tests, build and Formal browser
-  smoke share the 120-second daily budget. PostgreSQL runs when applicable to
-  the selected Web validation, locally when `TEST_DATABASE_URL` is set and in
-  its selected CI job.
+  smoke each run under an explicit validation profile from the
+  [validation profiles amendment](docs/governance/amendments/2026-09-16-validation-profiles.md)
+  (`--profile complete` selects the complete profile; an unflagged run keeps the
+  quick 120-second cap). PostgreSQL runs when applicable to the selected Web
+  validation, locally when `TEST_DATABASE_URL` is set and in its selected CI
+  job.
 - Browser-only daily check: `pnpm test:e2e:smoke`; five existing Formal cases,
   desktop Chromium, one worker, zero retries, first failure stops execution.
 - During implementation, run relevant unit files and targeted browser cases for
@@ -66,9 +69,10 @@ the affected validation. Record each applicable command and result in the PR.
 - Full cross-browser regression is explicit: `pnpm test:e2e`, or **CI → Run
   workflow** for the intended branch. It retains all five projects, three CI
   shards and the strict complete-report gate. It is not a daily prerequisite.
-- A timeout is a failed time budget, never a successful acceptance. Daily smoke
-  does not certify full cross-browser coverage or erase existing release
-  failures. Scoped feature tests and Owner visual/device gates still apply.
+- A timeout is a failed profile ceiling, never a successful acceptance; the
+  ceiling is not extended automatically. Daily smoke does not certify full
+  cross-browser coverage or erase existing release failures. Scoped feature
+  tests and Owner visual/device gates still apply.
 
 See [the browser validation guide](tests/e2e/README.md) for deadlines, setup
 exclusions, evidence locations, free test ports and the full regression policy.

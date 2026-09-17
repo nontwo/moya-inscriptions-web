@@ -600,13 +600,265 @@ function incomplete(error) {
     ],
   };
 }
-// One persisted allowance is shared by commit, push and exact publication.
-// Functional tests/review/idle time are excluded; each active invocation gets
-// an absolute deadline from the SAME remaining allowance, never a fresh 120s.
+// Publication-cycle ledger. One cycle is the commit, push and related
+// publication of one outgoing-content identity; its checks share one
+// allowance. The cycle boundary is recorded completion of the declared
+// outgoing checks plus genuinely new outgoing content, never
+// CONFIDENTIALITY_BATCH_ID, a revision label or a cosmetic edit alone.
+export const LEDGER_FORMAT = 2;
+const OUTGOING_MODES = new Set(["staged", "message", "push", "outbound"]);
+const COMPLETED_HISTORY = 8;
+const IDENTITY_HISTORY = 64;
+function clampMs(value, fallback) {
+  return Number.isFinite(value) && value >= 0
+    ? Math.min(BUDGET_MS, Math.floor(value))
+    : fallback;
+}
+function newCycle(batch, now, seed) {
+  return {
+    id: digest(Buffer.from(`${now}\0${seed ?? ""}\0${batch ?? ""}`)).slice(
+      0,
+      16,
+    ),
+    batch: batch ?? null,
+    startedAt: now,
+    remainingMs: BUDGET_MS,
+    usedMs: 0,
+    complete: false,
+    pendingPush: false,
+    hold: null,
+    checks: {},
+    identities: [],
+  };
+}
+// Transition from the pre-cycle ledger ({rule, batch, remainingMs, usedMs}):
+// its allowance carries over unchanged and, because that format recorded no
+// completion, the migrated cycle is open. Nothing is replenished by the
+// format change itself.
+export function normalizeLedger(previous) {
+  if (!previous || typeof previous !== "object")
+    return {
+      format: LEDGER_FORMAT,
+      rule: RULE_VERSION,
+      cycle: null,
+      completed: [],
+    };
+  if (previous.format === LEDGER_FORMAT) {
+    // A current-format ledger without a cycle (the shape an authorized reset
+    // leaves behind) is empty, never a legacy cycle with nothing left.
+    const cycle =
+      previous.cycle && typeof previous.cycle === "object"
+        ? previous.cycle
+        : null;
+    return {
+      format: LEDGER_FORMAT,
+      rule: RULE_VERSION,
+      cycle: cycle && {
+        ...cycle,
+        id: typeof cycle.id === "string" ? cycle.id : "unrecorded",
+        batch: typeof cycle.batch === "string" ? cycle.batch : null,
+        remainingMs: clampMs(cycle.remainingMs, 0),
+        usedMs: Number.isFinite(cycle.usedMs) ? cycle.usedMs : 0,
+        complete: cycle.complete === true,
+        pendingPush: cycle.pendingPush === true,
+        hold: cycle.hold && typeof cycle.hold === "object" ? cycle.hold : null,
+        checks:
+          cycle.checks && typeof cycle.checks === "object" ? cycle.checks : {},
+        identities: Array.isArray(cycle.identities) ? cycle.identities : [],
+      },
+      completed: Array.isArray(previous.completed) ? previous.completed : [],
+    };
+  }
+  const batch = typeof previous.batch === "string" ? previous.batch : null;
+  return {
+    format: LEDGER_FORMAT,
+    rule: RULE_VERSION,
+    cycle: {
+      ...newCycle(batch, 0, "legacy"),
+      startedAt: null,
+      remainingMs: clampMs(previous.remainingMs, 0),
+      usedMs: Number.isFinite(previous.usedMs) ? previous.usedMs : 0,
+      legacy: true,
+    },
+    completed: [],
+  };
+}
+export function cycleOpen(cycle) {
+  return !cycle.complete || cycle.hold !== null;
+}
+/**
+ * Decide which cycle this invocation belongs to. An open cycle (no recorded
+ * completion, or an unresolved BLOCK/INCOMPLETE) is always continued. After
+ * completion, the same outgoing content is an unchanged retry, the same
+ * declared batch is related publication of that delivery, and anything else
+ * is genuinely new outgoing content that starts a new cycle.
+ */
+export function selectCycle(ledger, identity, batch, now) {
+  const current = ledger.cycle;
+  // Only a declared outgoing check opens a cycle; health (identity null) is
+  // maintenance and never starts one.
+  if (!current)
+    return identity === null
+      ? { ledger, transition: null }
+      : {
+          ledger: { ...ledger, cycle: newCycle(batch, now, identity) },
+          transition: "start",
+        };
+  if (cycleOpen(current)) return { ledger, transition: "continue-open" };
+  if (identity === null) return { ledger, transition: "continue" };
+  if (current.identities.includes(identity))
+    return { ledger, transition: "unchanged-retry" };
+  if (batch && current.batch === batch)
+    return { ledger, transition: "related-publication" };
+  const archived = {
+    id: current.id,
+    batch: current.batch,
+    startedAt: current.startedAt,
+    completedAt: now,
+    usedMs: current.usedMs,
+    checks: Object.fromEntries(
+      Object.entries(current.checks).map(([mode, check]) => [
+        mode,
+        { status: check.status, runs: check.runs },
+      ]),
+    ),
+  };
+  return {
+    ledger: {
+      ...ledger,
+      cycle: newCycle(batch, now, identity),
+      completed: [...ledger.completed, archived].slice(-COMPLETED_HISTORY),
+    },
+    transition: "new-content",
+  };
+}
+/**
+ * Record one finished outgoing check and derive completion or hold. A
+ * finished staged/message check for content this cycle has not seen declares
+ * a push still to come; only a finished push clears it. A BLOCK or INCOMPLETE
+ * holds the cycle until the same check later finishes; an unchanged retry
+ * (same identity) never reopens a completed publication.
+ */
+export function recordCheck(cycle, mode, identity, status, category, now) {
+  if (!OUTGOING_MODES.has(mode) || identity === null) return cycle;
+  const previous = cycle.checks[mode];
+  const fresh = !cycle.identities.includes(identity);
+  const checks = {
+    ...cycle.checks,
+    [mode]: {
+      identity,
+      status,
+      ...(category ? { category } : {}),
+      at: now,
+      runs: (previous?.runs ?? 0) + 1,
+      retry: !fresh,
+    },
+  };
+  const identities = fresh
+    ? [...cycle.identities, identity].slice(-IDENTITY_HISTORY)
+    : cycle.identities;
+  const next = { ...cycle, checks, identities };
+  if (status === "PASS" || status === "WARN") {
+    if (next.hold?.mode === mode) next.hold = null;
+    if (mode === "push") next.pendingPush = false;
+    else if ((mode === "staged" || mode === "message") && fresh)
+      next.pendingPush = true;
+  } else next.hold = { status, mode, category: category ?? status };
+  // Complete means every declared outgoing check finished PASS/WARN: no push
+  // still owed and no unfinished check holding the cycle.
+  next.complete = !next.pendingPush && next.hold === null;
+  return next;
+}
+// Pre-push ref lines arrive on stdin from the hook, which always closes it. A
+// terminal never does, and a read that outlives the deadline is exhaustion,
+// never a hang: the read is raced against the current deadline.
+async function readAll(stream) {
+  if (stream.isTTY) throw new Stop("PUSH_INPUT_UNDETERMINED");
+  const chunks = [];
+  let timer;
+  const collect = (async () => {
+    for await (const chunk of stream) {
+      remaining();
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  })();
+  collect.catch(() => {});
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => {
+        stream.destroy();
+        reject(new Stop("BUDGET_EXHAUSTED"));
+      },
+      Math.max(1, deadline - Date.now()),
+    );
+  });
+  try {
+    return await Promise.race([collect, expiry]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function outgoingIdentity(mode, rest) {
+  if (mode === "staged" && !rest.length)
+    return {
+      identity: digest(Buffer.from("staged\0" + git(["write-tree"]).trim())),
+    };
+  if (mode === "message" && rest.length === 1)
+    return {
+      identity: digest(
+        Buffer.concat([
+          Buffer.from("message\0" + git(["write-tree"]).trim() + "\0"),
+          regularBytes(rest[0]),
+        ]),
+      ),
+    };
+  if (mode === "push" && rest.length === 2) {
+    const input = await readAll(process.stdin);
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(input);
+    } catch {
+      throw new Stop("PUSH_INPUT_UNDETERMINED");
+    }
+    return {
+      identity: digest(Buffer.concat([Buffer.from("push\0"), input])),
+      input,
+    };
+  }
+  if (mode === "outbound") {
+    if (!rest.length) throw new Stop("EXACT_OUTBOUND_FILE_REQUIRED");
+    return {
+      identity: digest(
+        Buffer.concat(
+          rest.flatMap((file) => [
+            Buffer.from("outbound\0" + path.basename(file) + "\0"),
+            Buffer.from(digest(regularBytes(file)) + "\0"),
+          ]),
+        ),
+      ),
+    };
+  }
+  if (mode === "health") return { identity: null };
+  throw new Stop("COMMAND_INVALID");
+}
+function compatMirror(ledger) {
+  return {
+    ...ledger,
+    batch: ledger.cycle?.batch ?? null,
+    remainingMs: ledger.cycle?.remainingMs ?? BUDGET_MS,
+    usedMs: ledger.cycle?.usedMs ?? 0,
+  };
+}
 export async function main(args = process.argv.slice(2)) {
   const started = Date.now();
   deadline = started + BUDGET_MS;
-  let stateFile, state, lock;
+  let stateFile, state, lock, mode, identity, transition;
+  const charge = () => {
+    if (!state.cycle) return;
+    const elapsed = Date.now() - started;
+    state.cycle.usedMs += elapsed;
+    state.cycle.remainingMs = Math.max(0, state.cycle.remainingMs - elapsed);
+  };
   try {
     const { common, gitDir } = currentRepository();
     const directory = path.join(common, "confidentiality-check-state");
@@ -619,33 +871,35 @@ export async function main(args = process.argv.slice(2)) {
       lock = undefined;
       throw new Stop("CHECK_ALREADY_RUNNING");
     }
-    const previous = readJSON(stateFile, null);
-    state = previous
-      ? { ...previous, rule: RULE_VERSION }
-      : {
-          rule: RULE_VERSION,
-          batch: null,
-          remainingMs: BUDGET_MS,
-          usedMs: 0,
-        };
-    if (
-      process.env.CONFIDENTIALITY_BATCH_ID &&
-      state.batch !== process.env.CONFIDENTIALITY_BATCH_ID
-    )
-      state = {
-        rule: RULE_VERSION,
-        batch: process.env.CONFIDENTIALITY_BATCH_ID,
-        remainingMs: BUDGET_MS,
-        usedMs: 0,
-      };
-    deadline = started + Math.max(0, state.remainingMs);
-    const batch =
-      process.env.CONFIDENTIALITY_BATCH_ID || git(["write-tree"]).trim();
-    state =
-      previous?.batch === batch
-        ? { ...previous, rule: RULE_VERSION }
-        : { rule: RULE_VERSION, batch, remainingMs: BUDGET_MS, usedMs: 0 };
-    deadline = started + state.remainingMs;
+    state = normalizeLedger(readJSON(stateFile, null));
+    mode = args[0];
+    const batch = process.env.CONFIDENTIALITY_BATCH_ID || null;
+    // Health is maintenance: it verifies the installation inside the plain
+    // window and is never bounded by a cycle it does not check.
+    const maintenance = mode === "health";
+    // An open cycle is continued whatever the identity turns out to be, so its
+    // remaining time already bounds identity preparation (including the
+    // pre-push stdin read); an exhausted cycle fails fast as BUDGET_EXHAUSTED.
+    if (!maintenance && state.cycle && cycleOpen(state.cycle)) {
+      transition = "continue-open";
+      deadline = started + Math.max(0, state.cycle.remainingMs);
+    }
+    const prepared = await outgoingIdentity(mode, args.slice(1));
+    identity = prepared.identity;
+    ({ ledger: state, transition } = selectCycle(
+      state,
+      identity,
+      batch,
+      started,
+    ));
+    if (state.cycle) {
+      // Only an open cycle adopts a late label; a completed cycle's boundary
+      // is recorded completion plus new content, never an ID set afterwards.
+      if (state.cycle.batch === null && batch && cycleOpen(state.cycle))
+        state.cycle.batch = batch;
+      if (!maintenance)
+        deadline = started + Math.max(0, state.cycle.remainingMs);
+    }
     const cacheFile = path.join(directory, RULE_VERSION + ".cache.json");
     const manifest = readJSON(
       path.join(common, INSTALL_DIR, "manifest.json"),
@@ -670,13 +924,17 @@ export async function main(args = process.argv.slice(2)) {
     const output = await new Promise((resolve) => {
       const child = spawn(process.execPath, [SELF, "--worker", ...args], {
         detached: process.platform !== "win32",
-        stdio: [args[0] === "push" ? "inherit" : "ignore", "pipe", "pipe"],
+        stdio: [prepared.input ? "pipe" : "ignore", "pipe", "pipe"],
         env: {
           ...process.env,
           CONFIDENTIALITY_WORKER_DEADLINE: String(deadline),
           CONFIDENTIALITY_CACHE_FILE: cacheFile,
         },
       });
+      if (prepared.input) {
+        child.stdin.on("error", () => {});
+        child.stdin.end(prepared.input);
+      }
       let bytes = "",
         finished = false;
       const finish = (value) => {
@@ -721,16 +979,31 @@ export async function main(args = process.argv.slice(2)) {
         }
       });
     });
-    const elapsedMs = Date.now() - started;
-    state.usedMs += elapsedMs;
-    state.remainingMs = Math.max(0, state.remainingMs - elapsedMs);
-    atomicJSON(stateFile, state);
+    const finished = Date.now();
+    if (state.cycle)
+      state.cycle = recordCheck(
+        state.cycle,
+        mode,
+        identity,
+        output.status,
+        output.findings?.find((f) => f.severity === output.status)?.category,
+        finished,
+      );
+    charge();
+    if (state.cycle) atomicJSON(stateFile, compatMirror(state));
     console.log(
       JSON.stringify({
         ...output,
-        elapsedMs,
-        batchUsedMs: state.usedMs,
-        batchRemainingMs: state.remainingMs,
+        elapsedMs: finished - started,
+        ...(state.cycle
+          ? {
+              cycle: cycleSummary(state.cycle, transition, stateFile),
+              cycleUsedMs: state.cycle.usedMs,
+              cycleRemainingMs: state.cycle.remainingMs,
+              batchUsedMs: state.cycle.usedMs,
+              batchRemainingMs: state.cycle.remainingMs,
+            }
+          : { cycle: null }),
       }),
     );
     return output.status === "BLOCK"
@@ -739,23 +1012,64 @@ export async function main(args = process.argv.slice(2)) {
         ? 2
         : 0;
   } catch (error) {
-    if (state && stateFile) {
-      const elapsed = Date.now() - started;
-      state.usedMs += elapsed;
-      state.remainingMs = Math.max(0, state.remainingMs - elapsed);
+    if (state?.cycle && stateFile) {
+      // A check that could not run is an unfinished check of this cycle: it
+      // holds the cycle open and consumes the elapsed preparation time.
+      if (identity !== undefined && identity !== null)
+        state.cycle = recordCheck(
+          state.cycle,
+          mode,
+          identity,
+          "INCOMPLETE",
+          error instanceof Stop ? error.category : "CHECK_FAILED",
+          Date.now(),
+        );
+      charge();
       try {
-        atomicJSON(stateFile, state);
+        atomicJSON(stateFile, compatMirror(state));
       } catch {
         /* Report once. */
       }
     }
     console.log(
-      JSON.stringify({ ...incomplete(error), elapsedMs: Date.now() - started }),
+      JSON.stringify({
+        ...incomplete(error),
+        elapsedMs: Date.now() - started,
+        ...(state?.cycle
+          ? {
+              cycle: cycleSummary(state.cycle, transition, stateFile),
+              cycleUsedMs: state.cycle.usedMs,
+              cycleRemainingMs: state.cycle.remainingMs,
+              batchUsedMs: state.cycle.usedMs,
+              batchRemainingMs: state.cycle.remainingMs,
+            }
+          : {}),
+      }),
     );
     return 2;
   } finally {
     if (lock) rmSync(lock, { recursive: true, force: true });
   }
+}
+function cycleSummary(cycle, transition, stateFile) {
+  return {
+    id: cycle.id,
+    batch: cycle.batch,
+    transition: transition ?? null,
+    complete: cycle.complete,
+    open: cycleOpen(cycle),
+    pendingPush: cycle.pendingPush,
+    hold: cycle.hold,
+    remainingMs: cycle.remainingMs,
+    // An open cycle with nothing left cannot continue: STOP and report this
+    // id and ledger file; only an explicitly authorized reset reopens it.
+    exhausted: cycleOpen(cycle) && cycle.remainingMs <= 0,
+    ledger: stateFile ? path.basename(stateFile) : null,
+    legacy: cycle.legacy === true,
+    checks: Object.fromEntries(
+      Object.entries(cycle.checks).map(([m, c]) => [m, c.status]),
+    ),
+  };
 }
 export function isEntryPoint(url) {
   if (!process.argv[1] || process.argv[1] === "-") return false;

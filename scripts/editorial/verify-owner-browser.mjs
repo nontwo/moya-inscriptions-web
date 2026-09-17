@@ -5,10 +5,17 @@ import path from "node:path";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import {
+  boundedChildLimit,
   createVerificationSession,
+  resolveCmsBudget,
   syntheticDatabase,
+  timeCategories,
   verificationRoot as root,
 } from "./verify-cms.mjs";
+
+// Existing native Admin server startup allowance; bounded by the session's
+// remaining time so it can never outlive the session.
+const NATIVE_SERVER_START_MS = 45_000;
 
 const expectedStages = [
   "login",
@@ -24,10 +31,15 @@ const expectedStages = [
 ];
 
 async function main() {
+  const budget = resolveCmsBudget(process.argv.slice(2));
   const database = syntheticDatabase(process.env.CMS_TEST_DATABASE_URL);
   const session = await createVerificationSession(
     database,
     "moya-owner-browser-",
+    budget.sessionBudgetMs,
+  );
+  console.log(
+    `CMS browser profile ${budget.profile}: ceiling ${budget.ceilingMs}ms (${budget.ceilingSource}); session ${budget.sessionBudgetMs}ms`,
   );
   const handoff = path.join(session.directory, "access.json");
   let summary;
@@ -82,7 +94,9 @@ async function main() {
       mode: 0o600,
     });
     const server = session.start(["server.js"], standalone, env, false);
-    const deadline = Date.now() + 45000;
+    const deadline =
+      Date.now() +
+      boundedChildLimit(NATIVE_SERVER_START_MS, session.remaining());
     for (;;) {
       session.assertActive();
       try {
@@ -186,6 +200,9 @@ async function main() {
     JSON.stringify({
       syntheticOwnerBrowser: "PASS",
       stages: summary.completed.length,
+      elapsedMs: session.elapsed(),
+      ceilingMs: budget.ceilingMs,
+      profile: budget.profile,
     }),
   );
 }
@@ -195,5 +212,5 @@ main().catch((error) => {
       ? error.message
       : "SYNTHETIC_BROWSER_CHECK_FAILED";
   console.log(JSON.stringify({ syntheticOwnerBrowser: "FAIL", category }));
-  process.exitCode = category === "TIME_BUDGET_EXCEEDED" ? 124 : 1;
+  process.exitCode = timeCategories.has(category) ? 124 : 1;
 });

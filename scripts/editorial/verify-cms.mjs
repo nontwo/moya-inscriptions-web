@@ -29,10 +29,74 @@ import {
   disposableTestTargetProbeSql,
   isTargetCategory,
 } from "../disposable-test-target.mjs";
+import {
+  VALIDATION_PROFILES,
+  effectiveCeiling,
+  takeProfileOptions,
+} from "../validation-profiles.mjs";
 
 export const verificationRoot = fileURLToPath(
   new URL("../../", import.meta.url),
 );
+
+// CMS validation profiles. `quick` keeps the existing 120 s cap for an
+// unflagged run in a prepared workspace (an ordinary check, not the FEEDBACK
+// plan); `complete` is the explicit CMS COMPLETE profile for integration or
+// native Admin browser validation. The session receives the ceiling minus a
+// finalization margin for the final summary write; every child receives the
+// session's remaining time, never a fresh allowance.
+export const CMS_PROFILES = Object.freeze({
+  quick: Object.freeze({ ...VALIDATION_PROFILES.cmsQuick, minimumMs: 30_000 }),
+  complete: Object.freeze({
+    ...VALIDATION_PROFILES.cmsComplete,
+    minimumMs: 60_000,
+  }),
+});
+export const CMS_FINALIZATION_MS = 2_000;
+
+export function cmsOptions(argv) {
+  const options = takeProfileOptions(argv, CMS_PROFILES);
+  if (options.rest.length) throw new Error("INVALID_CMS_ARGUMENTS");
+  return {
+    profile: options.profile ?? "quick",
+    remainingMs: options.remainingMs,
+  };
+}
+
+export function cmsBudget(profileName, remainingMs = null) {
+  const profile = CMS_PROFILES[profileName];
+  const ceiling = effectiveCeiling(profile, remainingMs);
+  return {
+    ...ceiling,
+    minimumMs: profile.minimumMs,
+    viable: ceiling.ceilingMs >= profile.minimumMs,
+    sessionBudgetMs: Math.max(1, ceiling.ceilingMs - CMS_FINALIZATION_MS),
+  };
+}
+
+/** Resolve the CLI profile or fail fast before any database or child work. */
+export function resolveCmsBudget(argv) {
+  const options = cmsOptions(argv);
+  const budget = cmsBudget(options.profile, options.remainingMs);
+  if (!budget.viable) {
+    console.log(
+      JSON.stringify({
+        profile: budget.profile,
+        totalMs: budget.totalMs,
+        ceilingMs: budget.ceilingMs,
+        ceilingSource: budget.ceilingSource,
+        minimumMs: budget.minimumMs,
+      }),
+    );
+    throw new Error("INSUFFICIENT_REMAINING_TIME");
+  }
+  return budget;
+}
+
+export const timeCategories = new Set([
+  "TIME_BUDGET_EXCEEDED",
+  "INSUFFICIENT_REMAINING_TIME",
+]);
 const remoteSettingNames = [
   "MOYA_CONTENT_SOURCE",
   "CMS_ENVIRONMENT",
@@ -266,7 +330,7 @@ const summaryLines = (output) =>
 export async function createVerificationSession(
   database,
   prefix,
-  budgetMs = 118000,
+  budgetMs = cmsBudget("quick").sessionBudgetMs,
 ) {
   database = syntheticDatabase(database);
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
@@ -445,6 +509,7 @@ export async function createVerificationSession(
   return {
     directory,
     env,
+    budgetMs,
     start,
     run,
     assertActive,
@@ -454,12 +519,28 @@ export async function createVerificationSession(
       return failure;
     },
     elapsed: () => Date.now() - started,
+    // Time left before this session's own deadline; children derive their
+    // limits from it instead of fixed values that could outlive the session.
+    remaining: () => Math.max(0, started + budgetMs - Date.now()),
   };
 }
 
+/** A child limit bounded by the session's remaining time and a soft margin. */
+export function boundedChildLimit(limitMs, remainingMs, marginMs = 8_000) {
+  return Math.max(1, Math.min(limitMs, remainingMs - marginMs));
+}
+
 async function main() {
+  const budget = resolveCmsBudget(process.argv.slice(2));
   const database = syntheticDatabase(process.env.CMS_TEST_DATABASE_URL);
-  const session = await createVerificationSession(database, "moya-cms-check-");
+  const session = await createVerificationSession(
+    database,
+    "moya-cms-check-",
+    budget.sessionBudgetMs,
+  );
+  console.log(
+    `CMS profile ${budget.profile}: ceiling ${budget.ceilingMs}ms (${budget.ceilingSource}); session ${budget.sessionBudgetMs}ms`,
+  );
   let operationError;
   try {
     for (const [name, cwd, args] of [
@@ -508,13 +589,15 @@ async function main() {
       [
         "integration",
         "tests",
-        [
+        // Vitest's per-test and hook limits are bounded by the session's
+        // remaining time so no child limit can outlive the session.
+        () => [
           "../node_modules/vitest/vitest.mjs",
           "run",
           "cms",
           "--no-file-parallelism",
-          "--testTimeout=30000",
-          "--hookTimeout=60000",
+          `--testTimeout=${boundedChildLimit(30_000, session.remaining())}`,
+          `--hookTimeout=${boundedChildLimit(60_000, session.remaining())}`,
         ],
       ],
     ]) {
@@ -524,7 +607,7 @@ async function main() {
         session.assertActive();
       }
       const result = await session.run(
-        args,
+        typeof args === "function" ? args() : args,
         path.join(verificationRoot, cwd),
         name,
       );
@@ -539,7 +622,7 @@ async function main() {
   if (session.failure) throw new Error(session.failure);
   if (operationError) throw operationError;
   console.log(
-    `CMS elapsed: ${session.elapsed()}ms; safe status summaries retained privately`,
+    `CMS elapsed: ${session.elapsed()}ms of ${budget.ceilingMs}ms (${budget.profile}); safe status summaries retained privately`,
   );
 }
 if (
@@ -552,5 +635,5 @@ if (
         ? error.message
         : "CMS_VERIFICATION_FAILED";
     console.log(JSON.stringify({ syntheticCMS: "FAIL", category }));
-    process.exitCode = category === "TIME_BUDGET_EXCEEDED" ? 124 : 1;
+    process.exitCode = timeCategories.has(category) ? 124 : 1;
   });

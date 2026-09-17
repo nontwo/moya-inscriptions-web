@@ -107,22 +107,24 @@ the feedback delta instead of the general `taskCommands()` plan. A supported
 routine Web presentation change is checked with those limited commands; it does
 not invoke bare `scripts/verify.mjs` and does not run the workspace-wide
 Web/browser/database/CMS path solely because Web is classified. A Web behavior
-change receives the matching focused behavior checks. Broader shared-contract
-impact uses the existing focused contract commands; database, CMS, Apple, and
-other unresolved coverage is reported explicitly and fails. Feedback never
-treats a silent skip or a pass with no relevant checks as successful
-verification. User-visible output and recorded evidence are labeled
-`FEEDBACK ONLY — NOT FULL ACCEPTANCE`. That preview is not formal Owner
-acceptance, not complete task validation, and not permission to merge. A failed
-full run is not a feedback PASS. Do not block every small preview on full CI,
-and do not push every tiny edit solely to obtain another full CI run. Commit,
-required CI, independent review and final delivery still use the default
-`verify-task` entry (committed, staged, unstaged and untracked union) and the
-cumulative PR plan. A tip-only or feedback plan cannot satisfy `assertTaskGate`
-/ `ci-task-gate` when a cumulative plan is required. Existing required CI checks
-and branch protections stay in force. Unchanged applicable evidence may be
-reused; changing HEAD or the implementing tool alone does not require a full
-historical rerun.
+change receives the matching focused behavior checks. An Apple delta is routed
+to `node scripts/verify-apple.mjs --profile feedback --output <private-output>`
+(build-only; the unrun unit and UI tests are listed as unchecked coverage) and
+selects no Web, CMS or browser command. Broader shared-contract impact uses the
+existing focused contract commands; database, CMS and other unresolved coverage
+is reported explicitly and fails. Feedback never treats a silent skip or a pass
+with no relevant checks as successful verification. User-visible output and
+recorded evidence are labeled `FEEDBACK ONLY — NOT FULL ACCEPTANCE`. That
+preview is not formal Owner acceptance, not complete task validation, and not
+permission to merge. A failed full run is not a feedback PASS. Do not block
+every small preview on full CI, and do not push every tiny edit solely to obtain
+another full CI run. Commit, required CI, independent review and final delivery
+still use the default `verify-task` entry (committed, staged, unstaged and
+untracked union) and the cumulative PR plan. A tip-only or feedback plan cannot
+satisfy `assertTaskGate` / `ci-task-gate` when a cumulative plan is required.
+Existing required CI checks and branch protections stay in force. Unchanged
+applicable evidence may be reused; changing HEAD or the implementing tool alone
+does not require a full historical rerun.
 
 Pure Web work retains the existing `pnpm verify` entry with already prepared
 dependencies. Pure Apple work may use the standalone entry without installing
@@ -150,11 +152,27 @@ applicable failure, loop unchanged retries, extend the deadline or split the
 same validation into new budgets. Full browser E2E and platform matrices are not
 daily defaults.
 
-The separate existing core-credential delivery check also retains one shared
-120-second security-work allowance, incremental content-aware reuse and the
-anonymous Git identity. Follow the active amendment; do not reinstall hooks,
-rescan unrelated history or waive a real credential finding. Functional checks
-do not consume that additional security allowance.
+The separate existing core-credential delivery check retains one shared
+120-second security-work allowance per genuine publication cycle (the commit,
+push and related metadata checks for one outgoing-content identity), incremental
+content-aware reuse and the anonymous Git identity. The cycle ends when every
+declared outgoing check has finished PASS or WARN; a new batch ID, revision or
+cosmetic edit does not restart the allowance, and an unfinished cycle or open
+finding is completed or resolved before new content starts another.
+`CONFIDENTIALITY_BATCH_ID` never grants time: it only lets a related publication
+(for example the PR text) of an already completed cycle share that cycle's
+remaining allowance. Use one ID per publication cycle (one commit, its push and
+their outbound text), not one per task; a task-long stable ID makes every later
+delivery share one cycle and so reduces, never extends, the allowance the
+2026-09-07 amendment describes. If a check reports `BUDGET_EXHAUSTED` with
+`cycleRemainingMs: 0` (the cycle summary prints `exhausted: true`), the cycle
+cannot continue: STOP and report the cycle id and ledger file; do not edit or
+delete the ledger, change the ID, re-stage a cosmetic edit or move to another
+worktree. Only an explicitly Owner-authorized ledger reset reopens publication,
+and unchanged content then reuses its cached coverage. Follow the active
+amendments; do not reinstall hooks, rescan unrelated history or waive a real
+credential finding. Functional checks do not consume that additional security
+allowance.
 
 CI keeps a stable required result and collects selected job outcomes. N/A means
 confirmed not applicable; it is not a test pass. Failure, cancellation, timeout,

@@ -15,6 +15,14 @@ const artifactRoot = resolve(
   process.env.MOYA_E2E_ARTIFACT_DIR ??
     resolve(repositoryRoot, ".local/e2e-ci/unsharded"),
 );
+// The daily smoke (scripts/ci-e2e-smoke.mjs) passes the fixture startup
+// timeout it derived from its BROWSER SMOKE ceiling and the parent's remaining
+// time, so no server timeout can outlive the run. The explicitly selected
+// full cross-browser regression keeps the existing 120 s default.
+const webServerTimeoutMs = (() => {
+  const value = process.env.MOYA_E2E_WEBSERVER_TIMEOUT_MS;
+  return value && /^[1-9]\d*$/u.test(value) ? Number(value) : 120_000;
+})();
 
 export default defineConfig({
   ...(process.env.CI ? { workers: 1 } : {}),
@@ -85,7 +93,7 @@ export default defineConfig({
       stdout: "pipe",
       stderr: "pipe",
       cwd: repositoryRoot,
-      timeout: 30_000,
+      timeout: Math.min(30_000, webServerTimeoutMs),
       url: `${publicApiBaseUrl}/health`,
     },
     {
@@ -103,7 +111,7 @@ export default defineConfig({
         MOYA_PUBLIC_API_BASE_URL: `${publicApiBaseUrl}/`,
       },
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-      timeout: 120_000,
+      timeout: webServerTimeoutMs,
       url: webBaseUrl,
     },
   ],

@@ -20,7 +20,11 @@ import {
 } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
-import { runWithinBudget } from "./verify.mjs";
+import { runWithinBudget, STARTUP_MARGIN_MS } from "./verify.mjs";
+import {
+  VALIDATION_PROFILES,
+  REMAINING_MS_TOKEN,
+} from "./validation-profiles.mjs";
 import {
   classifyTask,
   localPaths,
@@ -28,7 +32,8 @@ import {
   nulPaths,
 } from "./ci-task-scope.mjs";
 
-export function freshOutput(value, root = process.cwd()) {
+/** Validate and resolve a private output path without creating it. */
+export function resolveFreshOutput(value, root = process.cwd()) {
   if (!value || !isAbsolute(value))
     throw new Error(
       "An absolute, unique private --output directory is required",
@@ -39,6 +44,11 @@ export function freshOutput(value, root = process.cwd()) {
     throw new Error("Validation output must be outside this worktree");
   if (existsSync(output))
     throw new Error("Output already exists; do not overwrite another run");
+  return output;
+}
+
+export function freshOutput(value, root = process.cwd()) {
+  const output = resolveFreshOutput(value, root);
   mkdirSync(output, { mode: 0o700 });
   return output;
 }
@@ -81,26 +91,148 @@ export function scriptTests(root = process.cwd()) {
   return files;
 }
 
-export function taskCommands(plan, output) {
-  const commands = [
-    // Every dependency-free script test: routing, gates, the disposable
-    // test-target guard and the agent permission guard get behavioral checks
-    // even when a task touches only lightweight paths. The files are
-    // enumerated so a missing suite fails instead of passing vacuously.
-    [process.execPath, "--test", ...scriptTests()],
+const remainingArgs = ["--remaining-ms", REMAINING_MS_TOKEN];
+const declared = (profile) => ({
+  profile: profile.name,
+  totalMs: profile.totalMs,
+});
+
+/**
+ * The selected checks of the default cumulative entry, each with its declared
+ * profile. Selection follows the classified plan only: Apple-only work gets no
+ * Web, CMS or browser command; Web-only work launches no Xcode; shared tooling
+ * gets its genuinely affected routing regressions. Children that own a profile
+ * receive the parent's remaining time, never a renewed allowance.
+ */
+export function taskChecks(plan, output) {
+  const checks = [
+    {
+      // Every dependency-free script test: routing, gates, the disposable
+      // test-target guard and the agent permission guard get behavioral checks
+      // even when a task touches only lightweight paths. The files are
+      // enumerated so a missing suite fails instead of passing vacuously.
+      name: "script-tests",
+      ...declared(VALIDATION_PROFILES.scriptTests),
+      commands: [[process.execPath, "--test", ...scriptTests()]],
+    },
   ];
-  if (plan.contracts) commands.push(...contractCommands());
-  if (plan.web) commands.push([process.execPath, "scripts/verify.mjs"]);
+  if (plan.contracts)
+    checks.push({
+      name: "contracts",
+      ...declared(VALIDATION_PROFILES.webComplete),
+      commands: contractCommands(),
+    });
+  if (plan.web)
+    checks.push({
+      // `verify.mjs all` is itself a serial combination of the complete Web
+      // checks and the cold browser smoke, so it declares the combined ceiling.
+      name: "web",
+      ...declared(VALIDATION_PROFILES.localCombined),
+      serial: true,
+      commands: [
+        [
+          process.execPath,
+          "scripts/verify.mjs",
+          "all",
+          "--profile",
+          "complete",
+          ...remainingArgs,
+        ],
+      ],
+    });
   if (plan.cms)
-    commands.push(["pnpm", "test:cms"], ["pnpm", "test:cms:browser"]);
+    checks.push(
+      {
+        name: "cms",
+        ...declared(VALIDATION_PROFILES.cmsComplete),
+        commands: [
+          ["pnpm", "test:cms", "--profile", "complete", ...remainingArgs],
+        ],
+      },
+      {
+        name: "cms-browser",
+        ...declared(VALIDATION_PROFILES.cmsComplete),
+        commands: [
+          [
+            "pnpm",
+            "test:cms:browser",
+            "--profile",
+            "complete",
+            ...remainingArgs,
+          ],
+        ],
+      },
+    );
   if (plan.apple)
-    commands.push([
-      process.execPath,
-      "scripts/verify-apple.mjs",
-      "--output",
-      join(output, "apple"),
-    ]);
-  return commands;
+    checks.push({
+      name: "apple",
+      ...declared(VALIDATION_PROFILES.appleFull),
+      commands: [
+        [
+          process.execPath,
+          "scripts/verify-apple.mjs",
+          "--profile",
+          "full",
+          "--output",
+          join(output, "apple"),
+          ...remainingArgs,
+        ],
+      ],
+    });
+  return checks;
+}
+
+export function taskCommands(plan, output) {
+  return taskChecks(plan, output).flatMap((check) => check.commands);
+}
+
+/**
+ * The parent plan's declared profile: LOCAL FULL COMBINED when a selected
+ * check is itself a serial combination or the explicit profiles together
+ * exceed the combined ceiling; otherwise the sum of the selected explicit
+ * profiles. The total is always capped at the combined ceiling.
+ */
+export function taskValidationBudget(checks) {
+  const combined = VALIDATION_PROFILES.localCombined;
+  const sumMs = checks.reduce((total, check) => total + check.totalMs, 0);
+  const serialCombination =
+    checks.some((check) => check.serial) || sumMs > combined.totalMs;
+  return {
+    profile: serialCombination ? combined.name : "explicit-profile-sum",
+    totalMs: Math.min(combined.totalMs, sumMs),
+    combinedCeilingMs: combined.totalMs,
+    serialCombination,
+    checks: checks.map(({ name, profile, totalMs, commands }) => ({
+      name,
+      profile,
+      totalMs,
+      commands: commands.length,
+    })),
+    // Capping is visible: later checks get only the remaining time, and a
+    // child that fails fast on it is a truthful non-PASS, never acceptance.
+    ...(sumMs > combined.totalMs
+      ? {
+          note: `explicit profiles sum to ${sumMs} ms; the local combined plan is capped at ${combined.totalMs} ms, so later checks receive the remaining time and a check that fails fast on it is a truthful non-PASS, not acceptance. The CI jobs run each check under its own profile.`,
+        }
+      : {}),
+  };
+}
+
+export function feedbackValidationBudget(commands) {
+  return {
+    profile: VALIDATION_PROFILES.feedback.name,
+    totalMs: VALIDATION_PROFILES.feedback.totalMs,
+    combinedCeilingMs: VALIDATION_PROFILES.feedback.totalMs,
+    serialCombination: false,
+    checks: [
+      {
+        name: "feedback",
+        profile: VALIDATION_PROFILES.feedback.name,
+        totalMs: VALIDATION_PROFILES.feedback.totalMs,
+        commands: commands.length,
+      },
+    ],
+  };
 }
 
 const FEEDBACK_WEB_CONFIG =
@@ -237,7 +369,9 @@ function feedbackUncheckedCoverage(kinds) {
     "browser smoke",
     "PostgreSQL",
     "CMS",
-    "Apple",
+    kinds.has("apple")
+      ? "Apple native unit/UI tests (feedback build is build-only)"
+      : "Apple",
     "full acceptance / merge permission",
   ];
   if (!kinds.has("tooling"))
@@ -250,7 +384,6 @@ export function planFeedbackCommands(
   output = "",
   { root = process.cwd(), exists = existsSync } = {},
 ) {
-  void output;
   const paths = [...new Set(detail?.feedbackPaths ?? [])].sort();
   const groups = {
     presentation: [],
@@ -258,6 +391,7 @@ export function planFeedbackCommands(
     contracts: [],
     tooling: [],
     docs: [],
+    apple: [],
     unsupported: [],
   };
   const kinds = new Map();
@@ -313,6 +447,18 @@ export function planFeedbackCommands(
   if (scriptFiles.length)
     commands.push([process.execPath, "--test", ...scriptFiles]);
   if (groups.contracts.length) commands.push(...contractCommands());
+  // An Apple delta gets the build-only Apple feedback profile under this
+  // plan's remaining time. Native tests stay unchecked and are listed as such.
+  if (groups.apple.length)
+    commands.push([
+      process.execPath,
+      "scripts/verify-apple.mjs",
+      "--profile",
+      "feedback",
+      "--output",
+      join(output || "<output>", "apple"),
+      ...remainingArgs,
+    ]);
 
   let unresolved = null;
   if (paths.length === 0) {
@@ -418,6 +564,16 @@ export function workspaceFingerprint(git = runGit) {
     workingDiffSha256: hash(git("diff", "--binary", "--")),
     untracked,
   };
+}
+
+/**
+ * One value for the exact validated content (HEAD plus every dirty byte). A
+ * rerun on identical content repeats this value, so it is recognizable as an
+ * unchanged retry of the earlier result rather than new evidence; the earlier
+ * output directory is never overwritten (see freshOutput).
+ */
+export function sourceFingerprint(fingerprint) {
+  return createHash("sha256").update(JSON.stringify(fingerprint)).digest("hex");
 }
 
 export const FEEDBACK_LABEL = "FEEDBACK ONLY — NOT FULL ACCEPTANCE";
@@ -611,14 +767,23 @@ export function isFullAcceptance(summary) {
   );
 }
 
+/**
+ * Run the selected commands under the plan's declared profile. `budget` is the
+ * object from taskValidationBudget() or feedbackValidationBudget(); the runner
+ * receives its total minus the startup margin and hands each child the time
+ * actually left. The summary reports the effective profile, ceiling and
+ * per-command elapsed time; elapsed time is recorded for reporting only and
+ * is never deducted from any Issue-lifetime quota.
+ */
 export async function validate(
   commands,
   output,
   detail = {},
-  budgetMs = 119000,
+  budget = feedbackValidationBudget(commands),
 ) {
   const before = workspaceFingerprint();
   const fd = openSync(join(output, "validation.private.log"), "wx", 0o600);
+  const budgetMs = budget.totalMs - STARTUP_MARGIN_MS;
   let result;
   try {
     result = await runWithinBudget(commands, {
@@ -631,10 +796,29 @@ export async function validate(
   const after = workspaceFingerprint();
   const contentUnchanged = JSON.stringify(before) === JSON.stringify(after);
   if (!contentUnchanged) result.code = 1;
+  const checkNames = budget.checks.flatMap((check) =>
+    Array.from({ length: check.commands }, () => check.name),
+  );
+  const executed = result.executed.map((record, index) => ({
+    check: checkNames[index] ?? null,
+    ...record,
+  }));
   const summary = {
     ...detail,
-    ...result,
-    budgetMs: 120000,
+    code: result.code,
+    durationMs: result.durationMs,
+    profile: budget.profile,
+    totalMs: budget.totalMs,
+    ceilingMs: budgetMs,
+    combinedCeilingMs: budget.combinedCeilingMs,
+    serialCombination: budget.serialCombination,
+    checks: budget.checks,
+    ...(budget.note ? { planNote: budget.note } : {}),
+    executed,
+    accounting: {
+      elapsedMs: result.durationMs,
+      note: "Recorded for reporting only; a new substantive validation plan gets its declared profile, never an Issue-lifetime balance.",
+    },
     result:
       result.code === 0
         ? "PASS"
@@ -644,6 +828,7 @@ export async function validate(
     commands,
     head: runGit("rev-parse", "HEAD").trim(),
     checkoutTree: runGit("rev-parse", "HEAD^{tree}").trim(),
+    sourceFingerprint: sourceFingerprint(before),
     contentBefore: before,
     contentAfter: after,
     contentUnchanged,
@@ -657,7 +842,19 @@ export async function validate(
   const printed = {
     result: summary.result,
     durationMs: result.durationMs,
-    budgetMs: 120000,
+    profile: budget.profile,
+    totalMs: budget.totalMs,
+    ceilingMs: budgetMs,
+    sourceFingerprint: summary.sourceFingerprint,
+    checks: executed.map(
+      ({ check, command, durationMs, remainingMs, code }) => ({
+        check,
+        command: command.join(" "),
+        remainingMs,
+        durationMs,
+        code,
+      }),
+    ),
     output,
   };
   if (summary.mode === "feedback") {
@@ -681,6 +878,9 @@ if (
     const options = parseVerifyTaskArgs(process.argv.slice(2));
     const root = runGit("rev-parse", "--show-toplevel").trim();
     process.chdir(root);
+    // Resolve the private output path first so planned commands can name it;
+    // the directory is created only once the plan is resolved.
+    const outputPath = resolveFreshOutput(options["--output"], root);
     let plan;
     let detail;
     let feedbackSelection;
@@ -704,7 +904,7 @@ if (
         baseRef: options["--base"] ?? "origin/main",
       });
       plan = detail.feedbackPlan;
-      feedbackSelection = planFeedbackCommands(detail);
+      feedbackSelection = planFeedbackCommands(detail, outputPath);
       console.log(formatFeedbackBanner(detail));
       console.log(formatFeedbackCommandSelection(feedbackSelection));
       if (feedbackSelection.unresolved)
@@ -719,19 +919,31 @@ if (
         scopeNote: "Committed, staged, unstaged and untracked union",
       };
     }
-    const output = freshOutput(options["--output"], root);
+    const output = freshOutput(outputPath, root);
     // A resumed task must not reuse another session's smoke paths or identity.
     Object.assign(
       process.env,
       validationEnvironment(output, runGit("rev-parse", "HEAD").trim()),
     );
-    process.exitCode = await validate(
-      options["--mode"] === "feedback"
-        ? feedbackSelection.commands
-        : taskCommands(plan, output),
-      output,
-      detail,
+    let commands;
+    let budget;
+    if (options["--mode"] === "feedback") {
+      commands = feedbackSelection.commands;
+      budget = feedbackValidationBudget(commands);
+    } else {
+      const checks = taskChecks(plan, output);
+      commands = checks.flatMap((check) => check.commands);
+      budget = taskValidationBudget(checks);
+    }
+    console.log(
+      JSON.stringify({
+        plan: budget.profile,
+        totalMs: budget.totalMs,
+        checks: budget.checks,
+        ...(budget.note ? { note: budget.note } : {}),
+      }),
     );
+    process.exitCode = await validate(commands, output, detail, budget);
   } catch (error) {
     console.error(`Task validation unavailable: ${error.message}`);
     process.exitCode = 1;
