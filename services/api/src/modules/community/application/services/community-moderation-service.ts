@@ -58,7 +58,10 @@ import type {
 import type { CommunityIdentityPort } from "../ports/community-identity-port.js";
 import type { RandomBytes } from "../session-token.js";
 
-import type { CommandReceipt } from "../ports/community-comment-port.js";
+import type {
+  CommandReceipt,
+  ModeratedSubject,
+} from "../ports/community-comment-port.js";
 import type { CommunityContentOperatorPort } from "../ports/community-content-operator-port.js";
 export interface CommunityModerationServiceOptions {
   readonly contentOperatorPort?: CommunityContentOperatorPort;
@@ -250,19 +253,21 @@ export class CommunityModerationService {
   }
 
   /**
-   * One transition. A subject in a state the edge cannot leave is a conflict
-   * (409): nothing changes and nothing is recorded, so a stale queue can never
-   * produce a misleading audit entry.
-   */
-  /**
    * The authoritative result this exact command already committed, or null.
    * Read-only, so a caller deciding whether a target was applied can ask
    * without acting: a cancelled chunk must not mutate to find out.
    */
-  async findAppliedComment(receipt: CommandReceipt) {
+  async findAppliedComment(
+    receipt: CommandReceipt,
+  ): Promise<ModeratedSubject | null> {
     return this.commentPort.findCommandReceipt(this.operatorLabel, receipt);
   }
 
+  /**
+   * One transition. A subject in a state the edge cannot leave is a conflict
+   * (409): nothing changes and nothing is recorded, so a stale queue can never
+   * produce a misleading audit entry.
+   */
   async moderateComment(
     id: CatalogCommentId,
     body: unknown,

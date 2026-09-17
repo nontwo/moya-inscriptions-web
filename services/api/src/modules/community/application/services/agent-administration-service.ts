@@ -757,16 +757,27 @@ export class AgentAdministrationService {
         // an orphaned effect that the tally denies is exactly what the receipt
         // exists to prevent. Every remaining target is read first; only the
         // ones that committed nothing are cancelled.
+        // Only one chunk can be committed but unrecorded, because a chunk
+        // records before the next one starts, so the receipts are read over
+        // that window rather than over every remaining target: a 500-target
+        // operation must not spend its lease on 500 reads and then lose it.
+        // Featured targets keep no read path yet and are reported cancelled;
+        // §9 of the V1 document records that as an open limit.
+        const scanned = Math.min(
+          operation.nextIndex + AGENT_OPERATION_CHUNK_SIZE,
+          operation.targetCount,
+        );
         const remaining: AgentOperationResult[] = [];
         for (const [offset, target] of operation.targets
           .slice(operation.nextIndex)
           .entries()) {
           const index = operation.nextIndex + offset;
-          const committed = isCommentTarget(target)
-            ? await services.moderation.findAppliedComment(
-                await this.receiptFor(operation, index, target.id),
-              )
-            : null;
+          const committed =
+            index < scanned && isCommentTarget(target)
+              ? await services.moderation.findAppliedComment(
+                  await this.receiptFor(operation, index, target.id),
+                )
+              : null;
           remaining.push(
             committed === null
               ? this.result(index, target, "cancelled", null)

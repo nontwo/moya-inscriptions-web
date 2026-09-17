@@ -325,8 +325,21 @@ export const agentUserLookupQuerySchema = z.strictObject({
   userId: publicUserIdSchema.optional(),
   /** Exact normalized handle only; no display-name fallback. */
   handle: z.string().min(1).max(64).optional(),
-  page: z.number().int().min(1).max(10_000).default(1),
-  pageSize: z.number().int().min(1).max(50).default(20),
+  /**
+   * Paging arrives either as a number from a Backend caller or as text from a
+   * query string, exactly as the operator content query accepts it. Accepting
+   * both here keeps every refusal the strict object provides: a malformed,
+   * repeated or unknown parameter is still an invalid command rather than a
+   * silent default.
+   */
+  page: z
+    .union([z.number(), z.string().regex(/^[1-9]\d*$/u)])
+    .pipe(z.coerce.number<string | number>().int().min(1).max(10_000))
+    .default(1),
+  pageSize: z
+    .union([z.number(), z.string().regex(/^[1-9]\d*$/u)])
+    .pipe(z.coerce.number<string | number>().int().min(1).max(50))
+    .default(20),
 });
 
 export const agentUserLookupPageSchema = z.strictObject({

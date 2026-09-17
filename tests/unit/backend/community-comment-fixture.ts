@@ -298,7 +298,7 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     const reply = this.replies.get(id);
     if (reply !== undefined && from.includes(reply.moderation)) {
       this.replies.set(id, { ...reply, moderation });
-      return record({ id, kind: "reply", moderation });
+      return keep(record({ id, kind: "reply", moderation }));
     }
     return null;
   }

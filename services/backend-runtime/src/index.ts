@@ -2,6 +2,7 @@ export {
   createBackendApplication,
   createPublishingTransferRegistry,
 } from "./application.js";
+export { handleAgentRequest } from "./community/agent-handler.js";
 export { createDevelopmentCatalogFixtureQueryPort } from "./catalog/development-catalog-fixture.js";
 export { parseRuntimeConfig } from "./config.js";
 export {
