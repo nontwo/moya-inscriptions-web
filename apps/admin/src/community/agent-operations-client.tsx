@@ -110,9 +110,15 @@ const lifecycleSummary = (operation: AgentOperation): string => {
       ? `执行中 · 已处理 ${operation.nextIndex}/${operation.targetCount}`
       : `执行已中断，当前无执行者持有 · 已处理 ${operation.nextIndex}/${operation.targetCount}，可再次执行`;
   if (operation.state === "completed")
-    return operation.tally.applied === operation.targetCount
-      ? `已完成 · ${operation.targetCount} 项全部应用`
-      : `已完成（并非全部应用）· ${outcomeSummary(operation)}`;
+    // A cancellation that arrived after an atomic command had already
+    // committed is a request that did not take effect, not a cancellation.
+    // Saying "已完成" alone would hide the request; saying "已取消" would
+    // deny the work.
+    return operation.cancelRequestedAt !== null
+      ? `已完成 · ${operation.targetCount} 项全部应用；取消请求在命令提交之后到达，未能生效，也没有撤销已提交的顺序（如需反转请使用撤销操作）`
+      : operation.tally.applied === operation.targetCount
+        ? `已完成 · ${operation.targetCount} 项全部应用`
+        : `已完成（并非全部应用）· ${outcomeSummary(operation)}`;
   if (operation.state === "cancelled")
     return operation.nextIndex === 0
       ? `执行前已取消 · ${operation.targetCount} 项均未执行`

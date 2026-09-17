@@ -367,7 +367,7 @@ export const registerAgentRecommendationTests = (
       expect(await receipts()).toBe(0);
     });
 
-    it("reports a committed command as applied even though the operation is cancelled, and keeps it undoable", async () => {
+    it("completes an operation whose command had already committed, records the cancellation as requested, and keeps it undoable", async () => {
       const [a, b] = works as [string, string];
       const operation = await approved([
         { id: a, position: 0 },
@@ -382,13 +382,15 @@ export const registerAgentRecommendationTests = (
         operationId: operation.id,
       });
       const finished = await execute(operation.id);
-      // The operation's own lifecycle state stays `cancelled`, because the
-      // Owner did cancel it; what must never be mislabelled is the work. Every
-      // target reports applied, so the tally and the undo both see the truth.
+      // Issue #141 r7, the Owner's decision: a cancellation request that
+      // arrived after the command committed is a request that did not take
+      // effect. The operation is completed, the request stays on the row as
+      // history, and nothing presents the committed order as cancelled.
       expect(finished).toMatchObject({
-        state: "cancelled",
+        state: "completed",
         tally: { applied: 2, cancelled: 0 },
       });
+      expect(finished.cancelRequestedAt).not.toBeNull();
       expect(await order()).toEqual([a, b]);
       // Cancelling is not a rollback, so the real effects stay undoable.
       const undo = await service.prepareUndo(PRINCIPAL, {

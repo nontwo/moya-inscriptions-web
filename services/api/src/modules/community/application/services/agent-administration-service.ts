@@ -829,7 +829,13 @@ export class AgentAdministrationService {
           );
           continue;
         }
-        const outcome = await this.apply(operation, index, target, services);
+        const outcome = await this.apply(
+          operation,
+          index,
+          target,
+          services,
+          leaseOwner,
+        );
         results.push(outcome.result);
         storeDown = outcome.storeDown;
       }
@@ -923,18 +929,32 @@ export class AgentAdministrationService {
         return this.record(operation, leaseOwner, [], operation.nextIndex, {
           release: true,
         });
-      return this.record(
-        operation,
-        leaseOwner,
-        committed === null
-          ? all("cancelled", () => null)
-          : all("applied", (index) => versionOf(committed, index)),
-        operation.targetCount,
-        { finalState: "cancelled", release: true },
-      );
+      // A cancellation request and a successful cancellation are different
+      // facts. If the receipt proves the command committed, the operation is
+      // completed and the request stays on the row as requested-but-not-
+      // effective; only a command that committed nothing is cancelled.
+      return committed === null
+        ? this.record(
+            operation,
+            leaseOwner,
+            all("cancelled", () => null),
+            operation.targetCount,
+            { finalState: "cancelled", release: true },
+          )
+        : this.record(
+            operation,
+            leaseOwner,
+            all("applied", (index) => versionOf(committed, index)),
+            operation.targetCount,
+            { finalState: "completed", release: true },
+          );
     }
     try {
-      const written = await services.content.setFeaturedOrder(command);
+      const written = await services.content.setFeaturedOrder(command, {
+        operationId: operation.id,
+        leaseOwner,
+        at: this.clock(),
+      });
       return this.record(
         operation,
         leaseOwner,
@@ -1055,8 +1075,18 @@ export class AgentAdministrationService {
     operation: AgentOperationDetail,
     index: number,
     targetId: string,
+    leaseOwner?: string,
   ) {
     return {
+      ...(leaseOwner === undefined
+        ? {}
+        : {
+            fence: {
+              operationId: operation.id,
+              leaseOwner,
+              at: this.clock(),
+            },
+          }),
       requestId: await targetRequestId(operation.id, index),
       fingerprint: await fingerprintOf([
         "comments.moderate",
@@ -1075,6 +1105,7 @@ export class AgentAdministrationService {
     index: number,
     target: AgentOperationTarget,
     services: ReturnType<AgentAdministrationService["servicesFor"]>,
+    leaseOwner?: string,
   ): Promise<{ result: AgentOperationResult; storeDown: boolean }> {
     try {
       if (isCommentTarget(target)) {
@@ -1083,7 +1114,7 @@ export class AgentAdministrationService {
             CommunityModerationService["moderateComment"]
           >[0],
           { action: operation.action },
-          await this.receiptFor(operation, index, target.id),
+          await this.receiptFor(operation, index, target.id, leaseOwner),
         );
         return {
           result: this.result(index, target, "applied", moderated.moderation),

@@ -15,6 +15,7 @@ import {
   CommunityNotFoundError,
 } from "../errors/community-request-errors.js";
 import type { CommunityContentOperatorPort } from "../ports/community-content-operator-port.js";
+import type { ExecutionFence } from "../ports/community-comment-port.js";
 import type { DiscussionPort } from "../ports/discussion-port.js";
 const parse = <T>(
   schema: {
@@ -75,10 +76,11 @@ export class CommunityContentOperatorService {
    * none of it does. The order is the array order and the store re-checks
    * every frozen version inside the same transaction.
    */
-  setFeaturedOrder(input: unknown) {
+  setFeaturedOrder(input: unknown, fence?: ExecutionFence) {
     return this.contentPort().setFeaturedOrder(
       this.operator,
       parse(featuredOrderCommandSchema, input),
+      fence,
     );
   }
 

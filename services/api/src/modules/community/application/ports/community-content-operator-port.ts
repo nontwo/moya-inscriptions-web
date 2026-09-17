@@ -1,3 +1,4 @@
+import type { ExecutionFence } from "./community-comment-port.js";
 import type {
   OperatorWorksQuery,
   OperatorFeaturedQuery,
@@ -43,6 +44,7 @@ export interface CommunityContentOperatorPort {
   setFeaturedOrder(
     operator: string,
     input: FeaturedOrderCommand,
+    fence?: ExecutionFence,
   ): Promise<FeaturedOrderResult>;
 
   /**

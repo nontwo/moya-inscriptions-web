@@ -75,6 +75,34 @@ export type ModerationEventAction = ContractModerationEventAction;
 export interface CommandReceipt {
   readonly requestId: string;
   readonly fingerprint: string;
+  /**
+   * The execution attempt this command belongs to, when it belongs to one.
+   * Deliberately NOT part of `fingerprint`: the fingerprint is the business
+   * identity of the command and must survive a retry and a lease take-over, so
+   * a legitimate retry replays its own receipt instead of conflicting with it.
+   */
+  readonly fence?: ExecutionFence;
+}
+
+/**
+ * The right to execute, checked where it has to be checked: inside the very
+ * transaction that performs the mutation, after any lock wait, against current
+ * state.
+ *
+ * A pre-transaction check in JavaScript proves nothing — an executor can stall
+ * between claiming its lease and opening its transaction, lose the lease to a
+ * cancellation or a newer attempt, and still commit afterwards. Rejecting its
+ * later progress write does not help either, because by then the domain
+ * mutation has already committed. Holding this row until COMMIT is also what
+ * makes a concurrent cancellation wait rather than race.
+ */
+export interface ExecutionFence {
+  /** The operation whose lease authorises this mutation. */
+  readonly operationId: string;
+  /** The lease holder that claimed it; a take-over replaces this value. */
+  readonly leaseOwner: string;
+  /** Now, for the lease-expiry comparison. */
+  readonly at: Date;
 }
 
 export interface ModerationEvent {

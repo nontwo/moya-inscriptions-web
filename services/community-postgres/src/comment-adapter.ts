@@ -1,4 +1,5 @@
 import { PostgresDiscussionStore } from "./discussion-store.js";
+import { assertExecutionFence } from "./execution-fence.js";
 import { CommunityConflictError } from "@moya/api";
 
 import { asCommunityOperationError } from "./availability.js";
@@ -253,6 +254,14 @@ export class PostgresCommunityCommentAdapter
       audit === undefined && receipt === undefined
         ? await this.query<Changed>(applyCommentModerationSql, values)
         : await this.transaction(async (run) => {
+            // The right to execute is checked here, inside the transaction
+            // that is about to mutate, and the operation row stays locked
+            // until this transaction ends. An executor that lost its lease
+            // while it was stalled cannot commit a transition behind a
+            // cancellation's back, and a cancellation arriving mid-flight
+            // waits for this transaction instead of racing it.
+            if (receipt?.fence !== undefined)
+              await assertExecutionFence(run, receipt.fence);
             // The receipt is read, the transition applied, the audit row and
             // the receipt written, all on this one connection inside this one
             // transaction: a committed moderation always carries the receipt

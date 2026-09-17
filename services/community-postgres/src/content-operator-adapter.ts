@@ -3,9 +3,10 @@ import {
   INHERITED_FEATURED_POSITION,
 } from "./featured-content.js";
 import { asCommunityOperationError } from "./availability.js";
+import { assertExecutionFence } from "./execution-fence.js";
 import { createHash, randomUUID } from "node:crypto";
 import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
-import type { CommunityContentOperatorPort } from "@moya/api";
+import type { CommunityContentOperatorPort, ExecutionFence } from "@moya/api";
 import {
   operatorWorkSchema,
   operatorWorkPageSchema,
@@ -116,11 +117,26 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
     input: unknown,
     /** `unchanged()` tells the audit that the command found nothing to change; the receipt is still kept. */
     change: (db: PoolClient, unchanged: () => void) => Promise<T>,
+    /**
+     * The execution attempt this mutation belongs to, when it belongs to one.
+     * It is deliberately not part of `input`, so it never reaches the
+     * fingerprint and a legitimate retry keeps its own business identity.
+     */
+    fence?: ExecutionFence,
   ): Promise<T> {
     return this.transaction(async (db) => {
       await db.query(
         "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",
       );
+      // After the lock wait, never before it: whoever waited here may have lost
+      // the right to execute while waiting. The operation row stays locked
+      // until this transaction ends, so a cancellation or a take-over arriving
+      // now waits for the outcome instead of concluding there is none.
+      if (fence !== undefined)
+        await assertExecutionFence(
+          async (sql, values) => (await db.query(sql, [...values])).rows,
+          fence,
+        );
       const fingerprint = commandFingerprint(action, target, input);
       const old = await db.query(
         "SELECT fingerprint,result FROM community.content_operator_receipts WHERE operator_label=$1 AND request_id=$2",
@@ -425,6 +441,7 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
   async setFeaturedOrder(
     operator: string,
     input: FeaturedOrderCommand,
+    fence?: ExecutionFence,
   ): Promise<FeaturedOrderResult> {
     return this.mutate(
       operator,
@@ -509,6 +526,7 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
         }
         return { kind: "featured.order" as const, items };
       },
+      fence,
     );
   }
 

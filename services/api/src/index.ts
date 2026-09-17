@@ -76,6 +76,7 @@ export type {
   CommentInsert,
   CommentPageQuery,
   CommandReceipt,
+  ExecutionFence,
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,
