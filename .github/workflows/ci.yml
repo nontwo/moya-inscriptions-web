@@ -292,10 +292,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
+      # APPLE FULL profile: 600 s owned by the verifier. The step limit is
+      # emergency containment, not additional native execution allowance.
       - name: Validate the selected native Apple project
-        timeout-minutes: 2
+        timeout-minutes: 12
         run: >-
-          node scripts/verify-apple.mjs --output
+          node scripts/verify-apple.mjs --profile full --output
           "$RUNNER_TEMP/apple-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
       - name: Preserve native Apple validation evidence
         if: ${{ always() }}

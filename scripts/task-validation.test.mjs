@@ -37,6 +37,9 @@ import {
 import {
   appleCommand,
   appleOptions,
+  appleBudget,
+  APPLE_PROFILES,
+  APPLE_FINALIZATION_MS,
   remainingAppleBudget,
   assertCompatibleSdk,
   compatibleIphone,
@@ -1438,20 +1441,34 @@ describe("scoped validation commands and private output", () => {
     }
   });
 
-  it("retains the Apple daily budget and requires an explicit bounded milestone", () => {
+  it("selects the explicit Apple profile, defaults to full and retires ad-hoc budgets", () => {
     const output = ["--output", "/private/synthetic-apple-output"];
     assert.deepEqual(appleOptions(output), {
       output: output[1],
       buildOnly: false,
-      budgetMs: 120000,
-      validationKind: "DAILY",
+      profile: "full",
+      remainingMs: null,
     });
-    assert.equal(appleOptions(["--build-only", ...output]).budgetMs, 120000);
-    for (const value of ["1", "120000", "298765", "300000"]) {
-      const parsed = appleOptions([...output, "--milestone-budget-ms", value]);
-      assert.equal(parsed.budgetMs, Number(value));
-      assert.equal(parsed.validationKind, "AUTHORIZED_LOCAL_MILESTONE");
-    }
+    assert.deepEqual(appleOptions([...output, "--profile", "full"]), {
+      output: output[1],
+      buildOnly: false,
+      profile: "full",
+      remainingMs: null,
+    });
+    // Feedback is the build-only preview; it cannot be widened into tests.
+    assert.deepEqual(appleOptions(["--profile", "feedback", ...output]), {
+      output: output[1],
+      buildOnly: true,
+      profile: "feedback",
+      remainingMs: null,
+    });
+    assert.equal(appleOptions(["--build-only", ...output]).profile, "full");
+    assert.equal(appleOptions(["--build-only", ...output]).buildOnly, true);
+    for (const value of ["1", "119000", "600000", "900000"])
+      assert.equal(
+        appleOptions([...output, "--remaining-ms", value]).remainingMs,
+        Number(value),
+      );
     for (const value of [
       "",
       "0",
@@ -1459,61 +1476,99 @@ describe("scoped validation commands and private output", () => {
       "NaN",
       "Infinity",
       "1.5",
-      "300001",
       "1e5",
       " 1000",
       "9007199254740993",
-    ]) {
-      assert.throws(() =>
-        appleOptions([...output, "--milestone-budget-ms", value]),
+    ])
+      assert.throws(
+        () => appleOptions([...output, "--remaining-ms", value]),
+        /INVALID_REMAINING_MS|INVALID_APPLE_ARGUMENTS/u,
       );
-    }
+    for (const value of ["", "FULL", "daily", "milestone", "--full"])
+      assert.throws(
+        () => appleOptions([...output, "--profile", value]),
+        /INVALID_APPLE_PROFILE|INVALID_APPLE_ARGUMENTS/u,
+      );
     for (const args of [
-      [...output, "--milestone-budget-ms"],
-      [
-        ...output,
-        "--milestone-budget-ms",
-        "200000",
-        "--milestone-budget-ms",
-        "300000",
-      ],
+      [...output, "--milestone-budget-ms", "300000"],
+      [...output, "--remaining-ms"],
+      [...output, "--remaining-ms", "200000", "--remaining-ms", "300000"],
+      [...output, "--profile", "full", "--profile", "feedback"],
       [...output, "--output", "/private/duplicate"],
       [...output, "--unknown"],
-      ["--milestone-budget-ms", "300000"],
+      ["--profile", "full"],
     ])
       assert.throws(() => appleOptions(args));
+    assert.equal(APPLE_PROFILES.full.totalMs, 600000);
+    assert.equal(APPLE_PROFILES.full.preparationMs, 120000);
+    assert.equal(APPLE_PROFILES.full.reserveMs, 60000);
+    assert.equal(APPLE_PROFILES.feedback.totalMs, 120000);
+    assert.ok(Object.isFrozen(APPLE_PROFILES.full));
   });
 
-  it("subtracts preparation and reserves Apple cleanup within one deadline", () => {
-    const deadline =
-      1000 + appleOptions(["--output", "/private/output"]).budgetMs;
-    assert.equal(remainingAppleBudget(deadline, 8000, 1000), 112000);
-    assert.equal(remainingAppleBudget(deadline, 8000, 21000), 92000);
+  it("caps preparation inside the total and treats a parent's remaining time as a ceiling", () => {
+    const full = appleBudget(APPLE_PROFILES.full);
+    assert.deepEqual(full, {
+      profile: "full",
+      totalMs: 600000,
+      ceilingMs: 600000,
+      ceilingSource: "profile",
+      preparationMs: 120000,
+      reserveMs: 60000,
+      minimumMs: 240000,
+      viable: true,
+    });
+    // A larger parent allowance never raises the profile.
+    assert.equal(appleBudget(APPLE_PROFILES.full, 900000).ceilingMs, 600000);
+    assert.equal(
+      appleBudget(APPLE_PROFILES.full, 900000).ceilingSource,
+      "profile",
+    );
+    const bounded = appleBudget(APPLE_PROFILES.full, 300000);
+    assert.equal(bounded.ceilingMs, 300000);
+    assert.equal(bounded.ceilingSource, "parent-remaining");
+    assert.equal(bounded.preparationMs, 120000);
+    assert.equal(bounded.reserveMs, 60000);
+    assert.equal(bounded.viable, true);
+    // Below the minimum viable time the run must fail fast, never truncate.
+    for (const remaining of [1, 119000, 239999]) {
+      const short = appleBudget(APPLE_PROFILES.full, remaining);
+      assert.equal(short.viable, false);
+      assert.equal(short.ceilingMs, remaining);
+      assert.ok(short.preparationMs <= Math.max(0, remaining - 60000));
+    }
+    const feedback = appleBudget(APPLE_PROFILES.feedback);
+    assert.equal(feedback.ceilingMs, 120000);
+    assert.equal(feedback.preparationMs, 30000);
+    assert.equal(feedback.viable, true);
+    assert.equal(appleBudget(APPLE_PROFILES.feedback, 59999).viable, false);
+    // The same single deadline: preparation ≤ cap, native gets the rest minus
+    // the pooled reserve, and the pool is drawn by remaining time.
+    const start = 1000;
+    const deadline = start + full.ceilingMs;
+    const preparationDeadline = start + full.preparationMs;
+    assert.equal(preparationDeadline - start, 120000);
+    assert.equal(
+      remainingAppleBudget(deadline, full.reserveMs, start + 20000),
+      520000,
+    );
+    assert.equal(
+      remainingAppleBudget(deadline, full.reserveMs, preparationDeadline),
+      420000,
+    );
     assert.throws(
-      () => remainingAppleBudget(deadline, 8000, deadline - 8000),
+      () => remainingAppleBudget(deadline, full.reserveMs, deadline - 60000),
       /TIME_BUDGET_EXCEEDED/u,
     );
-    // Cleanup shares the original deadline and cannot gain a new minimum 1ms.
-    const cleanupDeadline = Math.min(deadline, deadline - 3000 + 6000);
-    assert.equal(
-      remainingAppleBudget(cleanupDeadline, 0, deadline - 2000),
-      2000,
-    );
-    for (const now of [deadline, deadline + 1])
+    const pool = deadline - APPLE_FINALIZATION_MS;
+    assert.equal(pool - (deadline - full.reserveMs), 58000);
+    assert.equal(remainingAppleBudget(pool, 0, deadline - 60000), 58000);
+    assert.equal(remainingAppleBudget(pool, 0, deadline - 30000), 28000);
+    for (const now of [pool, deadline])
       assert.throws(
-        () => remainingAppleBudget(cleanupDeadline, 0, now),
+        () => remainingAppleBudget(pool, 0, now),
         /TIME_BUDGET_EXCEEDED/u,
       );
-    const milestone = appleOptions([
-      "--output",
-      "/private/output",
-      "--milestone-budget-ms",
-      "298765",
-    ]);
-    assert.equal(
-      remainingAppleBudget(1000 + milestone.budgetMs, 8000, 21000),
-      270765,
-    );
   });
 
   it("rejects incompatible SDKs and uses unsigned simulator build/test commands", () => {
@@ -1871,7 +1926,7 @@ describe("Apple execution and cleanup evidence", () => {
     ]);
     assert.doesNotMatch(
       apple,
-      /\.private|\.xcresult|\*\*|continue-on-error|milestone-budget/u,
+      /\.private|\.xcresult|\*\*|continue-on-error|milestone-budget|--remaining-ms|--build-only/u,
     );
   });
 });
@@ -2017,6 +2072,13 @@ describe("Apple real-child deadlines and lifetime", () => {
     for (const mode of ["escaped", "native-escaped"]) {
       const escaped = realAppleFixture(t, mode);
       assert.equal(escaped.result.evidence.exitCode, 0);
+      // The wrapper Promise resolved, the direct child's exit was observed and
+      // its own group is gone, yet the captured pipe never closed: process
+      // exit, group absence and stream closure stay distinct, and teardown
+      // remains UNCONFIRMED.
+      assert.equal(escaped.result.evidence.exitObserved, true);
+      assert.equal(escaped.result.evidence.teardown.groupAbsent, true);
+      assert.equal(escaped.result.evidence.teardown.streamsClosed, false);
       assert.equal(escaped.result.evidence.teardown.status, "UNCONFIRMED");
       assert.notEqual(escaped.result.evidence.outcome, "success");
       assert.equal(escaped.result.evidence.outputComplete, false);
@@ -2065,17 +2127,119 @@ describe("Apple real-child deadlines and lifetime", () => {
     );
     assert.equal(unresolved.result, "FAIL");
   });
-  it("contains only the Apple validation step at 2 minutes and preserves the upload", () => {
+  it("runs the explicit Apple full profile under 12-minute containment and preserves the upload", () => {
     const apple = workflowJobs().jobs.get("apple");
     assert.match(apple, /timeout-minutes: 20/u);
     assert.match(
       apple,
-      /name: Validate the selected native Apple project\n\s+timeout-minutes: 2\n/u,
+      /name: Validate the selected native Apple project\n\s+timeout-minutes: 12\n/u,
+    );
+    // Containment must exceed the 600 s profile; the job limit is unchanged.
+    const step = Number(
+      /Validate the selected native Apple project\n\s+timeout-minutes: (\d+)/u.exec(
+        apple,
+      )[1],
+    );
+    assert.ok(step * 60000 > APPLE_PROFILES.full.totalMs);
+    assert.ok(step < 20);
+    assert.match(
+      apple,
+      /node scripts\/verify-apple\.mjs --profile full --output\n/u,
+    );
+    assert.equal(apple.match(/--profile/gu).length, 1);
+    assert.match(
+      apple,
+      /DEVELOPER_DIR: \/Applications\/Xcode_26\.6\.app\/Contents\/Developer/u,
     );
     assert.match(
       apple,
       /name: Preserve native Apple validation evidence\n\s+if: \$\{\{ always\(\) \}\}/u,
     );
     assert.match(apple, /phase-checkpoint\.json/u);
+  });
+  it("fails fast with the requested profile when a parent ceiling is not viable", (t) => {
+    // Real entry point, no xcodebuild: the budget check precedes every command.
+    // The output path is never created, so nothing is written outside tmp.
+    const directory = temporary(t);
+    for (const [profile, remaining] of [
+      ["full", "119000"],
+      ["feedback", "30000"],
+    ]) {
+      const started = performance.now();
+      const child = spawnSync(
+        nodeExecPath,
+        [
+          join(root, "scripts/verify-apple.mjs"),
+          "--profile",
+          profile,
+          "--remaining-ms",
+          remaining,
+          "--output",
+          join(directory, `never-created-${profile}`),
+        ],
+        { encoding: "utf8", timeout: 5000, killSignal: "SIGKILL" },
+      );
+      assert.equal(child.error, undefined);
+      assert.equal(child.status, 1, child.stderr);
+      assert.ok(performance.now() - started < 4000);
+      const summary = JSON.parse(child.stdout.trim().split("\n").at(-1));
+      assert.equal(summary.result, "NOT_TESTED");
+      assert.equal(summary.reason, "INSUFFICIENT_REMAINING_TIME");
+      assert.equal(summary.profile, profile);
+      assert.equal(summary.budget.ceilingMs, Number(remaining));
+      assert.equal(summary.budget.ceilingSource, "parent-remaining");
+      assert.equal(summary.budget.totalMs, APPLE_PROFILES[profile].totalMs);
+      assert.equal(summary.budgetMs, Number(remaining));
+      assert.notEqual(summary.budgetMs, 120000);
+      assert.equal(summary.phases.execution.attempted, false);
+      assert.equal(summary.phases.preparation.deadlineExpired, false);
+      assert.equal(summary.phases.cleanup.state, "not-required");
+      assert.equal(summary.resultBundle.status, "absent");
+      assert.equal(summary.timings.ceilingMs, Number(remaining));
+      assert.equal(
+        summary.timings.reserveMs,
+        APPLE_PROFILES[profile].reserveMs,
+      );
+      if (profile === "feedback") {
+        assert.equal(summary.label, "FEEDBACK ONLY — NOT FULL ACCEPTANCE");
+        assert.equal(summary.acceptance, false);
+        assert.ok(summary.feedback.unchecked.length > 0);
+      } else assert.equal(summary.label, undefined);
+      assert.equal(
+        existsSync(join(directory, `never-created-${profile}`)),
+        false,
+      );
+    }
+  });
+  it("reports the effective profile ceiling instead of a literal 120000", (t) => {
+    // Argument and budget resolution succeed; the pre-existing output path
+    // stops the run before any xcodebuild, so the printed budget is the
+    // profile's own, not a fixed daily constant.
+    const directory = temporary(t);
+    const existing = join(directory, "already-exists");
+    mkdirSync(existing);
+    const child = spawnSync(
+      nodeExecPath,
+      [
+        join(root, "scripts/verify-apple.mjs"),
+        "--output",
+        existing,
+        "--remaining-ms",
+        "480000",
+      ],
+      { encoding: "utf8", timeout: 5000, killSignal: "SIGKILL" },
+    );
+    assert.equal(child.error, undefined);
+    assert.equal(child.status, 1, child.stderr);
+    const summary = JSON.parse(child.stdout.trim().split("\n").at(-1));
+    assert.equal(summary.profile, "full");
+    assert.equal(summary.validationKind, "FULL");
+    assert.equal(summary.budget.totalMs, 600000);
+    assert.equal(summary.budgetMs, 480000);
+    assert.equal(summary.timings.preparationCapMs, 120000);
+    assert.equal(summary.result, "NOT_TESTED");
+    assert.equal(summary.reason, "PREPARATION_UNAVAILABLE");
+    assert.equal(summary.phases.execution.attempted, false);
+    assert.equal(summary.acceptance, undefined);
   });
 });

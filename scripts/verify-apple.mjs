@@ -18,7 +18,7 @@ import {
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
-import { freshOutput } from "./verify-task.mjs";
+import { freshOutput, FEEDBACK_LABEL } from "./verify-task.mjs";
 import { runGit } from "./ci-task-scope.mjs";
 
 export function appleCommand(output, destination, buildOnly = false) {
@@ -51,40 +51,83 @@ export function appleCommand(output, destination, buildOnly = false) {
   ];
 }
 
-// Explicit Owner-authorized local milestone only. Callers must pass their
-// remaining cumulative allowance; no environment variable changes the default.
-export function appleOptions(args) {
-  const options = {
+// Explicit validation profiles (docs/governance/amendments/2026-09-16-
+// validation-profiles.md). One invocation owns one absolute deadline: the
+// preparation cap and the pooled reserve for teardown, Simulator cleanup,
+// result extraction and evidence live inside `totalMs`. `minimumMs` is the
+// smallest ceiling worth starting native work for; below it the invocation
+// fails fast instead of silently truncating. No environment variable changes
+// a profile, and a parent's remaining allowance can only lower the ceiling.
+export const APPLE_PROFILES = Object.freeze({
+  full: Object.freeze({
+    name: "full",
+    totalMs: 600000,
+    preparationMs: 120000,
+    reserveMs: 60000,
+    minimumMs: 240000,
     buildOnly: false,
-    budgetMs: 120000,
-    validationKind: "DAILY",
-  };
+  }),
+  feedback: Object.freeze({
+    name: "feedback",
+    totalMs: 120000,
+    preparationMs: 30000,
+    reserveMs: 10000,
+    minimumMs: 60000,
+    buildOnly: true,
+  }),
+});
+// Final summary/diagnostic writes and console output after the last command.
+export const APPLE_FINALIZATION_MS = 2000;
+
+export function appleOptions(args) {
+  const options = { buildOnly: false, profile: "full", remainingMs: null };
   const seen = new Set();
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
     if (seen.has(flag)) throw new Error("INVALID_APPLE_ARGUMENTS");
     seen.add(flag);
     if (flag === "--build-only") options.buildOnly = true;
-    else if (flag === "--output" || flag === "--milestone-budget-ms") {
+    else if (["--output", "--profile", "--remaining-ms"].includes(flag)) {
       const value = args[++i];
       if (!value || value.startsWith("--"))
         throw new Error("INVALID_APPLE_ARGUMENTS");
       if (flag === "--output") options.output = value;
-      else {
-        const budgetMs = Number(value);
-        if (
-          !/^[1-9]\d*$/u.test(value) ||
-          !Number.isSafeInteger(budgetMs) ||
-          budgetMs > 300000
-        )
-          throw new Error("INVALID_MILESTONE_BUDGET");
-        options.budgetMs = budgetMs;
-        options.validationKind = "AUTHORIZED_LOCAL_MILESTONE";
+      else if (flag === "--profile") {
+        if (!Object.hasOwn(APPLE_PROFILES, value))
+          throw new Error("INVALID_APPLE_PROFILE");
+        options.profile = value;
+      } else {
+        if (!/^[1-9]\d*$/u.test(value) || !Number.isSafeInteger(Number(value)))
+          throw new Error("INVALID_REMAINING_MS");
+        options.remainingMs = Number(value);
       }
     } else throw new Error("INVALID_APPLE_ARGUMENTS");
   }
   if (!options.output) throw new Error("EXPECTED_OUTPUT_ARGUMENT");
+  if (APPLE_PROFILES[options.profile].buildOnly) options.buildOnly = true;
   return options;
+}
+
+// Effective ceiling = min(profile total, parent remaining). The result is
+// reported verbatim so no summary prints a profile total that was not used.
+export function appleBudget(profile, remainingMs = null) {
+  const ceilingMs =
+    remainingMs === null
+      ? profile.totalMs
+      : Math.min(profile.totalMs, remainingMs);
+  return {
+    profile: profile.name,
+    totalMs: profile.totalMs,
+    ceilingMs,
+    ceilingSource: ceilingMs < profile.totalMs ? "parent-remaining" : "profile",
+    preparationMs: Math.min(
+      profile.preparationMs,
+      Math.max(0, ceilingMs - profile.reserveMs),
+    ),
+    reserveMs: profile.reserveMs,
+    minimumMs: profile.minimumMs,
+    viable: ceilingMs >= profile.minimumMs,
+  };
 }
 
 export function remainingAppleBudget(
@@ -875,10 +918,14 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   const invocationStart = performance.now();
-  let deadline = invocationStart + 120000;
+  // Fallback for argument failures only; no command runs before the profile
+  // budget replaces it.
+  let deadline = invocationStart + APPLE_PROFILES.feedback.totalMs;
+  let budget = null;
   let output, simulator, cancelActiveCommand, executionStart;
   let interrupted = false,
     createAttempted = false,
+    buildOnly = false,
     processTeardownConfirmed = true;
   const simulatorName = `ArtVenn-task-${randomUUID()}`;
   const preparation = {
@@ -895,8 +942,10 @@ if (
     result: "NOT_TESTED",
     code: 1,
     reason: "PREPARATION_NOT_COMPLETED",
-    budgetMs: 120000,
-    validationKind: "DAILY",
+    profile: null,
+    budget: null,
+    budgetMs: null,
+    validationKind: null,
     phases: {
       preparation,
       execution: unknownExecution(),
@@ -920,9 +969,32 @@ if (
   process.on("SIGTERM", onSignal);
   try {
     const options = appleOptions(process.argv.slice(2));
-    const { buildOnly, budgetMs, validationKind } = options;
-    deadline = invocationStart + budgetMs;
-    Object.assign(summary, { budgetMs, validationKind });
+    buildOnly = options.buildOnly;
+    budget = appleBudget(APPLE_PROFILES[options.profile], options.remainingMs);
+    deadline = invocationStart + budget.ceilingMs;
+    Object.assign(summary, {
+      profile: budget.profile,
+      budget,
+      budgetMs: budget.ceilingMs,
+      validationKind: budget.profile === "feedback" ? "FEEDBACK" : "FULL",
+    });
+    if (budget.profile === "feedback")
+      Object.assign(summary, {
+        label: FEEDBACK_LABEL,
+        acceptance: false,
+        feedback: {
+          ran: "xcodebuild build only: Debug, iphonesimulator, generic destination, unsigned; cold DerivedData in the private output",
+          unchecked: [
+            "scheme unit/UI tests on one task-owned iOS Simulator",
+            "result-bundle test counts",
+            "hosted Apple CI job",
+            "independent exact-head review",
+          ],
+          fullAcceptance:
+            "node scripts/verify-apple.mjs --profile full --output <new private output>",
+        },
+      });
+    if (!budget.viable) throw new Error("INSUFFICIENT_REMAINING_TIME");
     const root = runGit("rev-parse", "--show-toplevel").trim();
     process.chdir(root);
     output = freshOutput(options.output, root);
@@ -944,15 +1016,21 @@ if (
     if (!existsSync(project))
       throw new Error("APPLE_PROJECT_ABSENT_BOOTSTRAP_PENDING");
     if (process.platform !== "darwin") throw new Error("MACOS_XCODE_REQUIRED");
+    // Preparation is capped inside the same total; it never borrows from the
+    // pooled reserve that teardown, cleanup and evidence draw on later.
+    const preparationDeadline = invocationStart + budget.preparationMs;
     const prepare = async (operation, command, args) => {
       if (interrupted) throw new Error("INTERRUPTED");
       const remaining = Math.min(
-        20000 - (performance.now() - invocationStart),
-        remainingAppleBudget(deadline, 14000),
+        preparationDeadline - performance.now(),
+        remainingAppleBudget(deadline, budget.reserveMs),
       );
       if (remaining <= 0) throw new Error("PREPARATION_BUDGET_EXCEEDED");
       const response = await runAppleCommand(command, args, {
-        deadline: Math.min(deadline - 14000, performance.now() + remaining),
+        deadline: Math.min(
+          deadline - budget.reserveMs,
+          performance.now() + remaining,
+        ),
         registerCancel: (cancel) => {
           cancelActiveCommand = cancel;
         },
@@ -1061,7 +1139,7 @@ if (
     ];
     checkpoint("phase-checkpoint.json");
     if (interrupted) throw new Error("INTERRUPTED");
-    const allowanceMs = remainingAppleBudget(deadline, 14000);
+    const allowanceMs = remainingAppleBudget(deadline, budget.reserveMs);
     const fd = openSync(join(output, "validation.private.log"), "wx", 0o600);
     executionStart = performance.now();
     summary.phases.execution = {
@@ -1075,7 +1153,7 @@ if (
     try {
       const [command, ...args] = appleCommand(output, destination, buildOnly);
       const response = await runAppleCommand(command, args, {
-        deadline: deadline - 14000,
+        deadline: deadline - budget.reserveMs,
         outputFd: fd,
         maxOutputBytes: 16 * 1024 * 1024,
         registerCancel: (cancel) => {
@@ -1137,11 +1215,14 @@ if (
       });
   } finally {
     summary.preparationMs = preparation.durationMs;
+    // One pooled reserve: cleanup, result extraction and evidence each draw
+    // the time still remaining before finalization, never a fresh small cap.
+    const poolDeadline = deadline - APPLE_FINALIZATION_MS;
     summary.phases.cleanup = await cleanupAppleSimulator({
       createAttempted,
       simulator,
       name: simulatorName,
-      deadline: Math.min(deadline - 4000, performance.now() + 10000),
+      deadline: poolDeadline,
       teardownConfirmed: processTeardownConfirmed,
     });
     processTeardownConfirmed &&=
@@ -1172,15 +1253,23 @@ if (
         reason: "PROCESS_TEARDOWN_UNCONFIRMED",
         extraction: { attempted: false },
       };
-    } else if (bundle && existsSync(bundle)) {
+    } else if (!bundle || !existsSync(bundle)) {
+      summary.resultBundle = {
+        status: "absent",
+        reason: "RESULT_BUNDLE_ABSENT",
+      };
+    } else if (buildOnly) {
+      summary.resultBundle = {
+        status: "not-applicable",
+        reason: "BUILD_ONLY_NO_TEST_RESULTS",
+        extraction: { attempted: false },
+      };
+    } else {
       summary.resultBundle = {
         status: "unreadable",
         reason: "NO_DIAGNOSTIC_BUDGET",
       };
-      const allowance = Math.min(
-        3000,
-        Math.floor(deadline - performance.now() - 1000),
-      );
+      const allowance = Math.floor(poolDeadline - performance.now());
       if (allowance > 0) {
         const response = await runAppleCommand(
           "xcrun",
@@ -1193,9 +1282,7 @@ if (
             bundle,
             "--compact",
           ],
-          {
-            deadline: Math.min(deadline - 1000, performance.now() + allowance),
-          },
+          { deadline: poolDeadline },
         );
         processTeardownConfirmed =
           response.evidence.teardown.status === "CONFIRMED";
@@ -1211,11 +1298,7 @@ if (
           }
         } else summary.resultBundle.reason = "SUMMARY_EXTRACTION_FAILED";
       }
-    } else
-      summary.resultBundle = {
-        status: "absent",
-        reason: "RESULT_BUNDLE_ABSENT",
-      };
+    }
     Object.assign(
       summary,
       appleOverall(
@@ -1256,6 +1339,17 @@ if (
         teardownConfirmed: processTeardownConfirmed,
       }),
     );
+    summary.executionMs = summary.phases.execution.durationMs;
+    summary.timings = {
+      preparationMs: summary.preparationMs,
+      executionMs: summary.executionMs,
+      cleanupMs: summary.cleanupMs,
+      diagnosticMs: summary.diagnosticMs,
+      totalMs: summary.durationMs,
+      ceilingMs: budget?.ceilingMs ?? null,
+      preparationCapMs: budget?.preparationMs ?? null,
+      reserveMs: budget?.reserveMs ?? null,
+    };
     checkpoint("summary.json");
     if (output)
       writeFileSync(

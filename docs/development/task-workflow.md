@@ -138,13 +138,17 @@ check and record that limitation. No project or compatible runtime means
 PENDING/NOT TESTED, not a fabricated pass. It does not block otherwise
 independent Web validation.
 
-Daily quick acceptance has one shared 120-second execution budget across the
-selected checks. Record preparation, dependency installation, queueing and first
-environment setup separately. A timeout fails the budget. Do not hide an
+Each validation plan owns one deadline from the explicit profiles in the
+[2026-09-16 validation-profiles amendment](../governance/amendments/2026-09-16-validation-profiles.md):
+feedback is capped at 120 seconds and stays labeled
+`FEEDBACK ONLY — NOT FULL ACCEPTANCE`; full profiles (Apple full 600 seconds,
+Web/CMS complete 300 seconds, local combined plan at most 900 seconds) are
+selected explicitly, and nested commands receive the remaining time, never a
+fresh budget. Record preparation, dependency installation, queueing and first
+environment setup separately. A timeout fails its profile. Do not hide an
 applicable failure, loop unchanged retries, extend the deadline or split the
-same validation into new budgets. A genuinely necessary longer milestone check
-needs explicit authority. Full browser E2E and platform matrices are not daily
-defaults.
+same validation into new budgets. Full browser E2E and platform matrices are not
+daily defaults.
 
 The separate existing core-credential delivery check also retains one shared
 120-second security-work allowance, incremental content-aware reuse and the
