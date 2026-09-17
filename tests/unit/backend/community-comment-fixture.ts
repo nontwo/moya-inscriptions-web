@@ -1,8 +1,12 @@
-import { CommunityStoreUnavailableError } from "@moya/api";
+import {
+  CommunityConflictError,
+  CommunityStoreUnavailableError,
+} from "@moya/api";
 
 import { fixtureUsers } from "./community-identity-fixture.js";
 
 import type {
+  CommandReceipt,
   CatalogCommentReplyRecord,
   CatalogCommentRecord,
   CatalogCommentWithReplies,
@@ -219,18 +223,56 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
   /** Ids whose next moderation write throws, to exercise the failed outcome. */
   failNextModeration = new Set<string>();
 
-  /** Mirrors the adapter: a row outside `from` matches nothing. */
+  /** Execution receipts, keyed exactly as the store keys them. */
+  private readonly receipts = new Map<
+    string,
+    { readonly fingerprint: string; readonly result: ModeratedSubject }
+  >();
+
+  /** Mirrors the adapter: the exact command's own result, or nothing. */
+  async findCommandReceipt(
+    operatorLabel: string,
+    receipt: CommandReceipt,
+  ): Promise<ModeratedSubject | null> {
+    const stored = this.receipts.get(
+      `${operatorLabel}\u0000${receipt.requestId}`,
+    );
+    return stored === undefined || stored.fingerprint !== receipt.fingerprint
+      ? null
+      : stored.result;
+  }
+
+  /**
+   * Mirrors the adapter: a row outside `from` matches nothing, and a command
+   * that carries a receipt replays its own stored result instead of acting
+   * twice, while the same identity carrying another command conflicts.
+   */
   async applyCommentModeration(
     id: CatalogCommentId,
     moderation: CommentModerationState,
     from: readonly CommentModerationState[],
-    _operatorLabel?: string,
+    operatorLabel?: string,
     _at?: Date,
     audit?: ModerationEventDraft,
+    receipt?: CommandReceipt,
   ): Promise<ModeratedSubject | null> {
     this.assertAvailable();
     if (this.failNextModeration.delete(id))
       throw new Error("Simulated moderation write failure");
+    const key =
+      receipt === undefined
+        ? null
+        : `${operatorLabel ?? ""}\u0000${receipt.requestId}`;
+    if (key !== null && receipt !== undefined) {
+      const stored = this.receipts.get(key);
+      if (stored !== undefined) {
+        if (stored.fingerprint !== receipt.fingerprint)
+          throw new CommunityConflictError(
+            "Reused command identity with other content",
+          );
+        return stored.result;
+      }
+    }
     const record = (subject: ModeratedSubject): ModeratedSubject => {
       if (audit !== undefined)
         this.events.push({
@@ -240,10 +282,18 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
         });
       return subject;
     };
+    const keep = (subject: ModeratedSubject): ModeratedSubject => {
+      if (key !== null && receipt !== undefined)
+        this.receipts.set(key, {
+          fingerprint: receipt.fingerprint,
+          result: subject,
+        });
+      return subject;
+    };
     const comment = this.comments.get(id);
     if (comment !== undefined && from.includes(comment.moderation)) {
       this.comments.set(id, { ...comment, moderation });
-      return record({ id, kind: "comment", moderation });
+      return keep(record({ id, kind: "comment", moderation }));
     }
     const reply = this.replies.get(id);
     if (reply !== undefined && from.includes(reply.moderation)) {

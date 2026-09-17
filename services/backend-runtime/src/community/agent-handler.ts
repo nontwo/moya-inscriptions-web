@@ -109,10 +109,25 @@ export const handleAgentRequest = async (
   try {
     if (principal !== null) {
       if (route === "users" && method === "GET") {
+        const query = queryOf(request);
+        // Paging arrives as text on the wire and the lookup command is a
+        // strict object of real numbers, so the two paging values are
+        // converted here exactly as the comment query converts them. Passing
+        // the raw strings refused every paged lookup as an invalid command,
+        // and the MCP tool always sends a page.
         sendJson(
           response,
           200,
-          await service.usersFind(principal, queryOf(request)),
+          await service.usersFind(
+            principal,
+            defined([
+              ["search", query.search],
+              ["userId", query.userId],
+              ["handle", query.handle],
+              ["page", numeric(query.page)],
+              ["pageSize", numeric(query.pageSize)],
+            ]),
+          ),
         );
         return true;
       }

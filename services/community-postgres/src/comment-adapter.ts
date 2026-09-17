@@ -320,6 +320,23 @@ export class PostgresCommunityCommentAdapter
     };
   }
 
+  async findCommandReceipt(
+    operatorLabel: string,
+    receipt: CommandReceipt,
+  ): Promise<ModeratedSubject | null> {
+    // A plain read of the exact key. The fingerprint decides whether the stored
+    // result belongs to this command: a different command under the same
+    // identity is not this one's result and is not reported as applied.
+    const rows = await this.query<{
+      fingerprint: string;
+      result: ModeratedSubject;
+    }>(findCommandReceiptSql, [operatorLabel, receipt.requestId]);
+    const row = rows[0];
+    if (row === undefined || row.fingerprint !== receipt.fingerprint)
+      return null;
+    return row.result;
+  }
+
   /**
    * The review listing and its status counts from one snapshot, so the tab
    * numbers always describe the page beside them. Search is a bounded

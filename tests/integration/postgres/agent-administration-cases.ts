@@ -586,6 +586,65 @@ export const registerAgentAdministrationTests = (
       ).toBe(2);
     });
 
+    it("cancels only what it did not already do, even when the progress write was lost", async () => {
+      const ids = [
+        await seedComment("cancel A"),
+        await seedComment("cancel B"),
+      ];
+      const prepared = await service.prepareComments(PRINCIPAL, {
+        requestId: randomUUID(),
+        action: "hide",
+        ids,
+      });
+      await service.approve({
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      // The chunk committed both transitions and their receipts; its progress
+      // write never landed, so the operation still looks untouched and still
+      // holds no lease. The Owner sees it stuck and cancels it.
+      await pool.query(
+        `UPDATE community.agent_operations
+           SET next_index=0, results='[]'::jsonb, state='executing',
+               lease_owner=NULL, lease_expires_at=NULL
+         WHERE id=$1`,
+        [prepared.id],
+      );
+      const cancelled = await service.cancel(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      expect(cancelled.cancelRequestedAt).not.toBeNull();
+      const finished = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      // The cancel is honoured, but the two committed transitions are reported
+      // as what they are. A cancelled tally over a real effect would orphan it.
+      expect(finished).toMatchObject({
+        state: "cancelled",
+        tally: { applied: 2, cancelled: 0 },
+      });
+      expect(
+        (
+          await pool.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM community.catalog_comments WHERE id=ANY($1::text[]) AND moderation='hidden'",
+            [ids],
+          )
+        ).rows[0]!.n,
+      ).toBe(2);
+      // And the effects stay undoable, because the record admits them.
+      const undo = await service.prepareUndo(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: prepared.id,
+      });
+      expect(undo).toMatchObject({ action: "unhide", targetCount: 2 });
+    });
+
     it("never lets one operation claim a different operation's transition, even for the same principal, target and action", async () => {
       const target = await seedComment("two operations");
       const first = await service.prepareComments(PRINCIPAL, {
@@ -698,6 +757,47 @@ export const registerAgentAdministrationTests = (
           )
         ).rows[0]!.moderation,
       ).toBe("hidden");
+    });
+
+    it("replays a keyword request key without re-running the query, even when the matching content has shifted", async () => {
+      const first = await seedComment("replayshift 第一条");
+      const requestId = randomUUID();
+      const command = {
+        requestId,
+        action: "hide" as const,
+        selector: { terms: ["replayshift"] },
+      };
+      const prepared = await service.prepareComments(PRINCIPAL, command);
+      expect(prepared.targetCount).toBe(1);
+      // Everything that matched is gone; a replay must still return the frozen
+      // operation rather than failing with MANIFEST_NO_MATCH.
+      await pool.query("DELETE FROM community.catalog_comments WHERE id=$1", [
+        first,
+      ]);
+      const replay = await service.prepareComments(PRINCIPAL, command);
+      expect(replay.id).toBe(prepared.id);
+      expect(replay.targetCount).toBe(1);
+    });
+
+    it("keeps identity resolution describing the whole ranked set on a page past the last row", async () => {
+      const only = id("user");
+      await pool.query(
+        "INSERT INTO community.public_users(id,handle,display_name,status) VALUES($1,$2,'唯一账号','active')",
+        [only, `solo-${randomUUID().slice(0, 8)}`],
+      );
+      const beyond = await service.usersFind(PRINCIPAL, {
+        search: "唯一账号",
+        page: 5,
+        pageSize: 10,
+      });
+      expect(beyond.items).toHaveLength(0);
+      // The page is empty, but the user exists: the resolution must not read
+      // as "no such user".
+      expect(beyond.total).toBe(1);
+      expect(beyond.resolution.status).not.toBe("none");
+      await pool.query("DELETE FROM community.public_users WHERE id=$1", [
+        only,
+      ]);
     });
 
     it("keeps an undo to its own operation's effects and refuses a later incompatible change", async () => {

@@ -751,16 +751,28 @@ export class AgentAdministrationService {
     const services = this.servicesFor(operation.principal);
     for (let chunk = 0; chunk < this.chunksPerCall; chunk += 1) {
       if (operation.cancelRequestedAt !== null) {
-        const remaining = operation.targets
+        // A cancel can arrive after a chunk committed its transitions but
+        // before its progress write landed. Those targets were applied, and
+        // their receipts say so, so the record must not call them cancelled:
+        // an orphaned effect that the tally denies is exactly what the receipt
+        // exists to prevent. Every remaining target is read first; only the
+        // ones that committed nothing are cancelled.
+        const remaining: AgentOperationResult[] = [];
+        for (const [offset, target] of operation.targets
           .slice(operation.nextIndex)
-          .map((target, offset) =>
-            this.result(
-              operation.nextIndex + offset,
-              target,
-              "cancelled",
-              null,
-            ),
+          .entries()) {
+          const index = operation.nextIndex + offset;
+          const committed = isCommentTarget(target)
+            ? await services.moderation.findAppliedComment(
+                await this.receiptFor(operation, index, target.id),
+              )
+            : null;
+          remaining.push(
+            committed === null
+              ? this.result(index, target, "cancelled", null)
+              : this.result(index, target, "applied", committed.moderation),
           );
+        }
         return this.record(
           operation,
           leaseOwner,

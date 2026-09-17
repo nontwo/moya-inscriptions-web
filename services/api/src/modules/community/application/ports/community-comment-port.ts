@@ -194,6 +194,19 @@ export interface CommunityCommentPort {
     receipt?: CommandReceipt,
   ): Promise<ModeratedSubject | null>;
 
+  /**
+   * The authoritative result this exact command already committed, or null when
+   * it committed nothing. Read-only: it never writes and never mutates the
+   * subject, so a caller that must not act (a cancelled chunk deciding whether
+   * a target was already applied) can still read the truth. A receipt stored
+   * under the same identity with a different command answers null, because it
+   * is not this command's result.
+   */
+  findCommandReceipt(
+    operatorLabel: string,
+    receipt: CommandReceipt,
+  ): Promise<ModeratedSubject | null>;
+
   /** Bounded operator listing with its status counts; V1 keeps no large review queue. */
   readOperatorComments(
     query: OperatorCommentQueryInput,

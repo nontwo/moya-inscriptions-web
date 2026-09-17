@@ -254,6 +254,15 @@ export class CommunityModerationService {
    * (409): nothing changes and nothing is recorded, so a stale queue can never
    * produce a misleading audit entry.
    */
+  /**
+   * The authoritative result this exact command already committed, or null.
+   * Read-only, so a caller deciding whether a target was applied can ask
+   * without acting: a cancelled chunk must not mutate to find out.
+   */
+  async findAppliedComment(receipt: CommandReceipt) {
+    return this.commentPort.findCommandReceipt(this.operatorLabel, receipt);
+  }
+
   async moderateComment(
     id: CatalogCommentId,
     body: unknown,
