@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execPath as nodeExecPath } from "node:process";
+import { execPath as nodeExecPath, kill as killProcess } from "node:process";
+import { performance } from "node:perf_hooks";
 import { execFileSync, spawnSync, spawn } from "node:child_process";
 import {
   existsSync,
@@ -16,7 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL as NodeURL } from "node:url";
 import {
   assertPath,
   changedPaths,
@@ -40,7 +41,9 @@ import {
   assertCompatibleSdk,
   compatibleIphone,
   appleToolEvidence,
-  observedAppleCommand,
+  runAppleCommand,
+  appleNativeResult,
+  appleInvocationResult,
   appleExecutionResult,
   appleOverall,
   safeAppleTestSummary,
@@ -1568,6 +1571,7 @@ describe("Apple execution and cleanup evidence", () => {
         runtime: [...(state ? [{ name, udid, state }] : []), ...extra],
       },
     });
+  // State-machine tests only; real-child deadlines are covered separately below.
   const harness = async (steps, overrides = {}) => {
     let clock = 0;
     const calls = [];
@@ -1589,12 +1593,15 @@ describe("Apple execution and cleanup evidence", () => {
         clock += durationMs;
         return {
           stdout: step.stdout ?? "",
-          evidence: appleToolEvidence({
-            error: step.error,
-            timedOut: !!step.timeout,
-            allowanceMs,
-            durationMs,
-          }),
+          evidence: {
+            ...appleToolEvidence({
+              error: step.error,
+              timedOut: !!step.timeout,
+              allowanceMs,
+              durationMs,
+            }),
+            teardown: { status: "CONFIRMED" },
+          },
         };
       },
       ...overrides,
@@ -1609,21 +1616,15 @@ describe("Apple execution and cleanup evidence", () => {
     assert.notEqual(result.code, 0);
   });
   it("records a missing native executable as unobserved exit, not xcodebuild exit -2", async (t) => {
-    const receipt = join(temporary(t), "execution.private.json");
-    const runner = await runWithinBudget(
-      [
-        observedAppleCommand(
-          [join(temporary(t), "absent-native-executable")],
-          receipt,
-        ),
-      ],
-      { budgetMs: 3000, graceMs: 100, stdio: "ignore" },
+    const response = await runAppleCommand(
+      join(temporary(t), "absent-native-executable"),
+      [],
+      { deadline: performance.now() + 500 },
     );
-    const observed = JSON.parse(readFileSync(receipt, "utf8"));
-    assert.equal(observed.state, "spawn-failed");
-    const result = appleExecutionResult(runner, observed);
+    const result = appleNativeResult(response.evidence, true);
     assert.equal(result.nativeExitCode, null);
     assert.equal(result.result, "FAIL");
+    assert.equal(response.evidence.teardown.status, "CONFIRMED");
   });
   it("retains execution PASS with cleanup failure and fails overall", () => {
     const execution = passed();
@@ -1685,22 +1686,17 @@ describe("Apple execution and cleanup evidence", () => {
     assert.equal(result.result, "NOT_TESTED");
     assert.equal(result.reason, "MATCHING_IOS_RUNTIME_UNAVAILABLE");
   });
-  it("observes native exit 124 independently from the deadline wrapper", async (t) => {
-    const receipt = join(temporary(t), "execution.private.json");
-    const runner = await runWithinBudget(
-      [
-        observedAppleCommand(
-          [nodeExecPath, "-e", "process.exitCode=124"],
-          receipt,
-        ),
-      ],
-      { budgetMs: 3000, graceMs: 100, stdio: "ignore" },
+  it("observes native exit 124 independently from the deadline wrapper", async () => {
+    const response = await runAppleCommand(
+      nodeExecPath,
+      ["-e", "process.exitCode=124"],
+      { deadline: performance.now() + 500 },
     );
-    const observation = JSON.parse(readFileSync(receipt, "utf8"));
-    const result = appleExecutionResult(runner, observation);
+    const result = appleNativeResult(response.evidence, true);
     assert.equal(result.runnerCode, 1);
     assert.equal(result.nativeExitCode, 124);
     assert.equal(result.deadlineExpired, false);
+    assert.equal(result.teardown.status, "CONFIRMED");
   });
   it("skips shutdown only for a confirmed stopped owned device and verifies deletion", async () => {
     const { result, calls } = await harness([
@@ -1804,7 +1800,7 @@ describe("Apple execution and cleanup evidence", () => {
       assert.equal(result.result, "FAIL");
       assert.equal(calls.length, 1);
     }
-    const { result, calls } = await harness([], { runnerSettled: false });
+    const { result, calls } = await harness([], { teardownConfirmed: false });
     assert.equal(result.result, "FAIL");
     assert.equal(calls.length, 0);
   });
@@ -1877,5 +1873,209 @@ describe("Apple execution and cleanup evidence", () => {
       apple,
       /\.private|\.xcresult|\*\*|continue-on-error|milestone-budget/u,
     );
+  });
+});
+
+// Every driver is observed by a separate process with a 2.5s watchdog. Its
+// private spawn receipts permit finally cleanup of fixture-owned groups only.
+function realAppleFixture(t, mode) {
+  const directory = temporary(t);
+  const receipt = join(directory, "owned-groups.jsonl");
+  const moduleUrl = new NodeURL("./verify-apple.mjs", import.meta.url).href;
+  const driver = `
+import {spawn,execFile} from 'node:child_process';
+import {writeFileSync,openSync,closeSync,readFileSync} from 'node:fs';
+import {once} from 'node:events';
+import {performance} from 'node:perf_hooks';
+import {setTimeout as delay} from 'node:timers/promises';
+import {runAppleCommand} from ${JSON.stringify(moduleUrl)};
+const mode=${JSON.stringify(mode)},receipt=${JSON.stringify(receipt)};
+const own=pid=>writeFileSync(receipt+'-'+pid,'owned',{mode:0o600});
+const sentinel=spawn(process.execPath,['-e',"process.send('ready');setInterval(()=>{},1000)"],{detached:true,stdio:['ignore','ignore','ignore','ipc']});
+own(sentinel.pid);await once(sentinel,'message');
+let fixture;
+if(mode==='normal') fixture="process.stdout.write(Buffer.from([0xe4]));setImmediate(()=>{process.stdout.write(Buffer.from([0xbd,0xa0]));process.exitCode=7})";
+else if(mode==='hung') fixture="process.on('SIGTERM',()=>{});console.log('READY');setInterval(()=>{},1000)";
+else if(mode==='output') fixture="process.stdout.write('x'.repeat(10000));setInterval(()=>{},1000)";
+else if(mode==='race') fixture="console.log('READY');setTimeout(()=>process.exit(0),375)";
+else {
+ const grandchild=mode==='old' ? "console.log('READY');process.send('ready');setTimeout(()=>process.exit(0),700)" :
+  (mode.includes('escaped') ? "require('node:fs').writeFileSync("+JSON.stringify(receipt)+"+'-'+process.pid,'owned',{mode:0o600});" : '')+
+  "console.log('READY');process.send('ready');setInterval(()=>{},1000)";
+ fixture="const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e',"+JSON.stringify(grandchild)+"],{detached:"+mode.includes('escaped')+",stdio:['ignore','inherit','inherit','ipc']});c.once('message',()=>process.exit(0));";
+}
+const log=receipt+'.log';const outputFd=mode==='native-escaped'?openSync(log,'wx',0o600):undefined;
+const started=performance.now();let result,notified=0,staleCancel;
+try {
+ if(mode==='old') {
+  // Exact faulty r2 mechanism: kill the child at timeout, then still await
+  // execFile's callback/pipe EOF. Short fixture, not a historical root-cause claim.
+  result=await new Promise(resolve=>{let timedOut=false;const child=execFile(process.execPath,['-e',fixture],{encoding:'utf8'},(error,stdout)=>{clearTimeout(timer);resolve({stdout,evidence:{deadlineExpired:timedOut,durationMs:performance.now()-started,callbackCode:error?.code??0}})});const timer=setTimeout(()=>{timedOut=true;child.kill('SIGKILL')},120)});
+ } else result=await runAppleCommand(process.execPath,['-e',fixture],{deadline:started+500,outputFd,maxOutputBytes:mode==='output'?128:4096,onSpawn:own,onOutcome:()=>{notified++},registerCancel:cancel=>{if(cancel)staleCancel=cancel}});
+ if(outputFd!==undefined){closeSync(outputFd);if(!readFileSync(log,'utf8').includes('READY'))throw Error('Missing private native output')}
+ const immutable=JSON.stringify(result);
+ if(mode==='race'){staleCancel();staleCancel();await delay(180)}
+ process.kill(sentinel.pid,0);
+ console.log(JSON.stringify({result,notified,immutable:immutable===JSON.stringify(result),sentinelAlive:true,elapsedMs:performance.now()-started}));
+} finally {
+ const exited=once(sentinel,'exit');process.kill(-sentinel.pid,'SIGKILL');await exited;
+}
+`;
+  let child;
+  const started = performance.now();
+  try {
+    child = spawnSync(nodeExecPath, ["--input-type=module", "-e", driver], {
+      encoding: "utf8",
+      timeout: 2500,
+      killSignal: "SIGKILL",
+      detached: true,
+    });
+    assert.equal(
+      child.error,
+      undefined,
+      "Independent watchdog must not have to stop the driver",
+    );
+    assert.equal(child.status, 0, child.stderr);
+    const measured = JSON.parse(child.stdout.trim());
+    assert.equal(measured.sentinelAlive, true);
+    assert.equal(measured.immutable, true);
+    t.diagnostic(
+      JSON.stringify({
+        fixture: mode,
+        driverMs: performance.now() - started,
+        commandMs: measured.result.evidence.durationMs,
+        outcome: measured.result.evidence.outcome,
+        teardown: measured.result.evidence.teardown?.status,
+      }),
+    );
+    if (!["old", "escaped", "native-escaped"].includes(mode)) {
+      const owned = readdirSync(directory)
+        .filter((file) => /^owned-groups\.jsonl-\d+$/u.test(file))
+        .map((file) => Number(file.split("-").at(-1)));
+      for (const group of owned)
+        assert.throws(() => killProcess(-group, 0), { code: "ESRCH" });
+    }
+    return measured;
+  } finally {
+    const groups = [child?.pid];
+    groups.push(
+      ...readdirSync(directory)
+        .filter((file) => /^owned-groups\.jsonl-\d+$/u.test(file))
+        .map((file) => Number(file.split("-").at(-1))),
+    );
+    for (const group of new Set(groups)) {
+      if (!Number.isSafeInteger(group) || group <= 1) continue;
+      try {
+        killProcess(-group, "SIGKILL");
+      } catch (error) {
+        assert.equal(error.code, "ESRCH", "Fixture-owned group cleanup failed");
+      }
+    }
+  }
+}
+
+describe("Apple real-child deadlines and lifetime", () => {
+  it("preserves an observed normal exit and complete split UTF-8 output", (t) => {
+    const { result, notified } = realAppleFixture(t, "normal");
+    assert.equal(result.stdout, "你");
+    assert.equal(result.evidence.exitCode, 7);
+    assert.equal(result.evidence.exitObserved, true);
+    assert.equal(result.evidence.outputComplete, true);
+    assert.equal(result.evidence.teardown.status, "CONFIRMED");
+    assert.equal(notified, 1);
+  });
+  it("bounds a real SIGTERM-resistant child, confirms group cleanup and preserves a sentinel", (t) => {
+    const { result, notified } = realAppleFixture(t, "hung");
+    assert.match(result.stdout, /READY/u);
+    assert.equal(result.evidence.deadlineExpired, true);
+    assert.equal(result.evidence.teardown.status, "CONFIRMED");
+    assert.equal(result.evidence.signal, "SIGKILL");
+    assert.ok(
+      result.evidence.teardown.signals.some(
+        (item) => item.signal === "SIGKILL" && item.sendResult === "SENT",
+      ),
+    );
+    assert.equal(notified, 1);
+    // Fixture scheduling tolerance only, never a production budget extension.
+    assert.ok(result.evidence.durationMs < 800);
+  });
+  it("reproduces the old pipe-EOF deadline failure and proves the repaired owned-group path", (t) => {
+    const old = realAppleFixture(t, "old");
+    assert.equal(old.result.evidence.deadlineExpired, true);
+    assert.ok(
+      old.result.evidence.durationMs > 500,
+      "r2 mechanism exceeds its 120ms timer",
+    );
+    const corrected = realAppleFixture(t, "pipes");
+    assert.match(corrected.result.stdout, /READY/u);
+    assert.equal(corrected.result.evidence.exitCode, 0);
+    assert.equal(corrected.result.evidence.teardown.status, "CONFIRMED");
+    assert.equal(corrected.result.evidence.outputComplete, true);
+    assert.ok(corrected.result.evidence.durationMs < 500);
+  });
+  it("returns bounded non-PASS for unconfirmed escaped-pipe teardown and bounded output overflow", (t) => {
+    for (const mode of ["escaped", "native-escaped"]) {
+      const escaped = realAppleFixture(t, mode);
+      assert.equal(escaped.result.evidence.exitCode, 0);
+      assert.equal(escaped.result.evidence.teardown.status, "UNCONFIRMED");
+      assert.notEqual(escaped.result.evidence.outcome, "success");
+      assert.equal(escaped.result.evidence.outputComplete, false);
+    }
+    const overflow = realAppleFixture(t, "output");
+    assert.equal(overflow.result.evidence.outputTruncated, true);
+    assert.equal(overflow.result.evidence.outputComplete, false);
+    assert.ok(overflow.result.stdout.length <= 128);
+    assert.notEqual(overflow.result.evidence.outcome, "success");
+  });
+  it("settles an exit/deadline race once and ignores stale cancellation after settlement", (t) => {
+    const measured = realAppleFixture(t, "race");
+    assert.equal(measured.notified, 1);
+    assert.equal(measured.immutable, true);
+    assert.equal(measured.result.evidence.teardown.status, "CONFIRMED");
+    assert.ok(measured.elapsedMs < 1000);
+  });
+  it("retains native PASS while unresolved teardown or invocation expiry fails overall", () => {
+    const evidence = {
+      executionOutcome: "success",
+      executionDeadlineExpired: false,
+      outcome: "unresolved",
+      exitObserved: true,
+      exitCode: 0,
+      teardown: { status: "UNCONFIRMED" },
+      durationMs: 20,
+    };
+    const execution = appleNativeResult(evidence, true);
+    assert.equal(execution.result, "PASS");
+    assert.equal(execution.wrapperSettled, true);
+    assert.equal(execution.wrapperCode, 1);
+    assert.equal(execution.teardown.status, "UNCONFIRMED");
+    assert.notEqual(
+      appleOverall({ result: "PASS" }, execution, { result: "PASS" }).result,
+      "PASS",
+    );
+    const late = appleInvocationResult(
+      { result: "PASS", code: 0 },
+      { started: 0, deadline: 120000, now: 120000.25, teardownConfirmed: true },
+    );
+    assert.equal(late.result, "TIME_BUDGET_EXCEEDED");
+    assert.equal(late.invocationOverrunMs, 0.25);
+    const unresolved = appleInvocationResult(
+      { result: "PASS", code: 0 },
+      { started: 0, deadline: 120000, now: 100, teardownConfirmed: false },
+    );
+    assert.equal(unresolved.result, "FAIL");
+  });
+  it("contains only the Apple validation step at 2 minutes and preserves the upload", () => {
+    const apple = workflowJobs().jobs.get("apple");
+    assert.match(apple, /timeout-minutes: 20/u);
+    assert.match(
+      apple,
+      /name: Validate the selected native Apple project\n\s+timeout-minutes: 2\n/u,
+    );
+    assert.match(
+      apple,
+      /name: Preserve native Apple validation evidence\n\s+if: \$\{\{ always\(\) \}\}/u,
+    );
+    assert.match(apple, /phase-checkpoint\.json/u);
   });
 });

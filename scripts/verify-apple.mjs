@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import console from "node:console";
@@ -8,6 +8,7 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
+  writeSync,
   openSync,
   closeSync,
   renameSync,
@@ -18,7 +19,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import { freshOutput } from "./verify-task.mjs";
-import { runWithinBudget } from "./verify.mjs";
 import { runGit } from "./ci-task-scope.mjs";
 
 export function appleCommand(output, destination, buildOnly = false) {
@@ -183,40 +183,309 @@ export function appleToolEvidence({
   };
 }
 
-function callAppleTool(
+// Each command owns the POSIX process group created by detached spawn. No
+// system-wide process discovery or shared service is involved. The deadline
+// includes termination; neither process exit nor stream EOF controls settlement.
+export function runAppleCommand(
   command,
   args,
-  allowanceMs,
-  { isInterrupted = () => false, track = () => {} } = {},
+  {
+    deadline,
+    outputFd,
+    onOutcome = () => {},
+    onSpawn = () => {},
+    registerCancel = () => {},
+    maxOutputBytes = 4 * 1024 * 1024,
+  } = {},
 ) {
   const started = performance.now();
-  return new Promise((resolve) => {
-    let timedOut = false;
-    const child = execFile(
-      command,
-      args,
-      { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        clearTimeout(timer);
-        track(undefined);
-        resolve({
-          stdout,
-          evidence: appleToolEvidence({
-            error,
-            stderr,
-            timedOut,
-            interrupted: isInterrupted(),
-            allowanceMs,
-            durationMs: Math.round(performance.now() - started),
-          }),
-        });
+  const allowanceMs = Math.max(0, deadline - started);
+  if (
+    !Number.isFinite(deadline) ||
+    allowanceMs < 50 ||
+    process.platform === "win32"
+  )
+    return Promise.resolve({
+      stdout: "",
+      evidence: {
+        attempted: false,
+        outcome: "unresolved",
+        allowanceMs,
+        durationMs: 0,
+        exitCode: null,
+        signal: null,
+        deadlineExpired: allowanceMs < 50,
+        errorCategory: "COMMAND_NOT_STARTED",
+        outputComplete: false,
+        teardown: {
+          status: "CONFIRMED",
+          scope: "not-started",
+          groupAbsent: true,
+        },
       },
+    });
+  const reserve = Math.min(1000, allowanceMs / 4);
+  const executionDeadline = deadline - reserve;
+  return new Promise((resolve) => {
+    let child,
+      group,
+      settled = false,
+      groupAbsent = false,
+      exitObserved = false;
+    let exitCode = null,
+      exitSignal = null,
+      closeObserved = false,
+      spawnFailed = false;
+    let timedOut = false,
+      interrupted = false,
+      outputTruncated = false,
+      cause,
+      outcomeAt;
+    let captured = 0,
+      checkpointFailed = false,
+      executionDeadlineExpired = false,
+      outputFailed = false;
+    const stdoutChunks = [],
+      stderrChunks = [];
+    let poll, softTimer, killTimer, finishTimer;
+    const signals = [];
+    const streamsClosed = () =>
+      spawnFailed ||
+      !child?.stdout ||
+      (child.stdout.readableEnded && child.stderr.readableEnded);
+    const probe = () => {
+      if (groupAbsent) return true; // Never revisit a dead/reusable group ID.
+      if (!group) return spawnFailed;
+      try {
+        process.kill(-group, 0);
+      } catch (error) {
+        if (error.code === "ESRCH") groupAbsent = true;
+      }
+      return groupAbsent;
+    };
+    const snapshot = () => {
+      const now = performance.now();
+      const teardownConfirmed =
+        (spawnFailed || exitObserved) && probe() && streamsClosed();
+      const evidence = appleToolEvidence({
+        error:
+          cause === "failure" ? { code: exitCode, signal: exitSignal } : null,
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        timedOut,
+        interrupted,
+        allowanceMs,
+        durationMs: now - started,
+      });
+      return {
+        ...evidence,
+        outcome: timedOut
+          ? "timeout"
+          : interrupted
+            ? "interrupted"
+            : outputTruncated || outputFailed || checkpointFailed
+              ? "failure"
+              : (cause ?? "unresolved"),
+        exitCode,
+        signal: exitSignal,
+        exitObserved,
+        closeObserved,
+        executionOutcome: cause,
+        executionDeadlineExpired,
+        executionMs: (outcomeAt ?? now) - started,
+        teardownMs: outcomeAt === undefined ? 0 : now - outcomeAt,
+        schedulingOverrunMs: Math.max(0, now - deadline),
+        outputTruncated,
+        outputComplete: !outputTruncated && !outputFailed && streamsClosed(),
+        errorCategory: outputFailed
+          ? "OUTPUT_IO_FAILED"
+          : outputTruncated
+            ? "OUTPUT_LIMIT_EXCEEDED"
+            : checkpointFailed
+              ? "CHECKPOINT_FAILED"
+              : evidence.errorCategory,
+        teardown: {
+          status: teardownConfirmed ? "CONFIRMED" : "UNCONFIRMED",
+          scope: "spawn-owned-process-group-and-captured-pipes",
+          groupAbsent: probe(),
+          streamsClosed: streamsClosed(),
+          signals: signals.map((item) => ({ ...item })),
+        },
+      };
+    };
+    const latch = (value) => {
+      if (cause) return;
+      if (performance.now() >= executionDeadline) timedOut = true;
+      cause = value;
+      executionDeadlineExpired = timedOut;
+      outcomeAt = performance.now();
+      try {
+        onOutcome(snapshot());
+      } catch {
+        checkpointFailed = true;
+      }
+    };
+    const signalGroup = (signal) => {
+      if (settled || !group || probe()) return;
+      const record = {
+        signal,
+        requestedAtMs: performance.now() - started,
+        sendResult: "UNCONFIRMED",
+      };
+      try {
+        process.kill(-group, signal);
+        record.sendResult = "SENT";
+      } catch (error) {
+        record.sendResult =
+          error.code === "ESRCH" ? "ALREADY_ABSENT" : "FAILED";
+        if (error.code === "ESRCH") groupAbsent = true;
+      }
+      signals.push(record);
+    };
+    const stop = () => {
+      signalGroup("SIGTERM");
+      if (!killTimer)
+        killTimer = setTimeout(
+          () => signalGroup("SIGKILL"),
+          Math.max(0, Math.min(100, (deadline - performance.now()) / 2)),
+        );
+    };
+    const finish = () => {
+      if (settled) return;
+      if (!cause) {
+        timedOut = true;
+        latch("timeout");
+      }
+      signalGroup("SIGKILL");
+      const evidence = snapshot();
+      if (
+        evidence.teardown.status !== "CONFIRMED" &&
+        evidence.outcome === "success"
+      ) {
+        evidence.outcome = "unresolved";
+        evidence.errorCategory = "PROCESS_TEARDOWN_UNCONFIRMED";
+      }
+      if (evidence.schedulingOverrunMs > 0 && evidence.outcome === "success") {
+        evidence.outcome = "timeout";
+        evidence.deadlineExpired = true;
+      }
+      settled = true;
+      for (const timer of [poll, softTimer, killTimer, finishTimer])
+        clearTimeout(timer);
+      registerCancel(undefined);
+      // Close only our read handles. This bounds Node lifetime; it is explicitly
+      // NOT used as evidence that the process or its descendants exited.
+      child?.stdout?.destroy();
+      child?.stderr?.destroy();
+      child?.unref();
+      resolve({
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        evidence,
+      });
+    };
+    const inspect = () => {
+      if (settled) return;
+      if ((spawnFailed || exitObserved) && probe() && streamsClosed()) {
+        finish();
+        return;
+      }
+      poll = setTimeout(
+        inspect,
+        Math.min(10, Math.max(1, deadline - performance.now())),
+      );
+    };
+    const capture = (which, chunk) => {
+      if (settled) return;
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const available = Math.max(0, maxOutputBytes - captured);
+      const value = bytes.subarray(0, available);
+      if (outputFd === undefined) {
+        if (which === "stdout") stdoutChunks.push(value);
+        else stderrChunks.push(value);
+      } else if (!outputFailed) {
+        try {
+          if (writeSync(outputFd, value) !== value.length)
+            throw new Error("INCOMPLETE_PRIVATE_OUTPUT_WRITE");
+        } catch {
+          outputFailed = true;
+          latch("failure");
+          stop();
+        }
+      }
+      captured += bytes.length;
+      if (captured > maxOutputBytes && !outputTruncated) {
+        outputTruncated = true;
+        latch("failure");
+        stop();
+      }
+    };
+    try {
+      child = spawn(command, args, {
+        detached: true,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      group = child.pid; // detached spawn establishes group ownership at creation.
+      if (group) onSpawn(group); // Private ownership receipt/fixture handshake only.
+      child.stdout?.on("data", (chunk) => capture("stdout", chunk));
+      child.stderr?.on("data", (chunk) => capture("stderr", chunk));
+      for (const stream of [child.stdout, child.stderr])
+        stream?.on("error", () => {
+          if (settled) return;
+          outputFailed = true;
+          latch("failure");
+          stop();
+        });
+      child.on("error", () => {
+        if (settled) return;
+        if (!group) {
+          spawnFailed = true;
+          groupAbsent = true;
+        }
+        latch("failure");
+        stop();
+      });
+      child.on("exit", (code, signal) => {
+        if (settled) return;
+        exitObserved = true;
+        exitCode = code;
+        exitSignal = signal;
+        latch(code === 0 && !signal ? "success" : "failure");
+        if (!probe()) stop(); // A pipe-holding descendant is still owned work.
+      });
+      child.on("close", () => {
+        if (!settled) closeObserved = true;
+      });
+    } catch {
+      if (!group) {
+        spawnFailed = true;
+        groupAbsent = true;
+      }
+      latch("failure");
+      stop();
+    }
+    registerCancel(() => {
+      if (settled) return;
+      interrupted = true;
+      latch("interrupted");
+      stop();
+    });
+    softTimer = setTimeout(
+      () => {
+        if (settled) return;
+        if (!cause) {
+          timedOut = true;
+          latch("timeout");
+        }
+        stop();
+      },
+      Math.max(0, executionDeadline - performance.now()),
     );
-    track(child);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, allowanceMs);
+    // Reserve scheduling/finalization margin; any actual overrun stays visible.
+    finishTimer = setTimeout(
+      finish,
+      Math.max(0, deadline - Math.min(25, reserve / 4) - performance.now()),
+    );
+    inspect();
   });
 }
 
@@ -232,28 +501,36 @@ const unknownExecution = () => ({
   reason: "EXECUTION_NOT_STARTED",
 });
 
-// The observer maps any native nonzero exit to runner code 1. Therefore runner
-// 124 unambiguously means the existing deadline wrapper expired, even when
-// xcodebuild itself exits 124. Native exit/signal are independent observations.
-export function observedAppleCommand(command, receipt) {
-  const observer = `import {spawn} from 'node:child_process';
-import {writeFileSync,renameSync} from 'node:fs';
-const [receipt,command,...args]=process.argv.slice(1);
-const save=(value)=>{writeFileSync(receipt+'.tmp',JSON.stringify(value),{mode:0o600});renameSync(receipt+'.tmp',receipt);};
-process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});
-const child=spawn(command,args,{stdio:'inherit'});
-let spawnFailed=false;
-save({state:'running'});
-child.once('error',()=>{spawnFailed=true;save({state:'spawn-failed'});process.exitCode=1;});
-child.once('close',(code,signal)=>{if(!spawnFailed)save({state:'closed',code,signal});process.exitCode=code===0?0:1;});`;
-  return [
-    process.execPath,
-    "--input-type=module",
-    "-e",
-    observer,
-    receipt,
-    ...command,
-  ];
+export function appleNativeResult(evidence, wrapperSettled) {
+  const wrapperCode = evidence.deadlineExpired
+    ? 124
+    : evidence.interrupted
+      ? 130
+      : evidence.outcome === "success"
+        ? 0
+        : 1;
+  const code = evidence.executionDeadlineExpired
+    ? 124
+    : evidence.interrupted
+      ? 130
+      : evidence.executionOutcome === "success"
+        ? 0
+        : 1;
+  return {
+    ...appleExecutionResult(
+      { code, durationMs: evidence.durationMs },
+      evidence.exitObserved
+        ? { state: "closed", code: evidence.exitCode, signal: evidence.signal }
+        : null,
+      evidence.interrupted,
+    ),
+    wrapperSettled,
+    wrapperCode,
+    teardown: evidence.teardown,
+    executionMs: evidence.executionMs,
+    teardownMs: evidence.teardownMs,
+    schedulingOverrunMs: evidence.schedulingOverrunMs,
+  };
 }
 
 export function appleExecutionResult(runner, observed, interrupted = false) {
@@ -290,6 +567,32 @@ export function appleExecutionResult(runner, observed, interrupted = false) {
   };
 }
 
+export function appleInvocationResult(
+  summary,
+  { started, deadline, teardownConfirmed, now = performance.now() },
+) {
+  const result = {
+    ...summary,
+    durationMs: now - started,
+    teardownConfirmed,
+    invocationDeadlineExpired: now >= deadline,
+    invocationOverrunMs: Math.max(0, now - deadline),
+  };
+  if (!teardownConfirmed && result.code === 0)
+    Object.assign(result, {
+      result: "FAIL",
+      code: 1,
+      reason: "PROCESS_TEARDOWN_UNCONFIRMED",
+    });
+  if (now >= deadline && result.code === 0)
+    Object.assign(result, {
+      result: "TIME_BUDGET_EXCEEDED",
+      code: 124,
+      reason: "INVOCATION_DEADLINE_EXPIRED",
+    });
+  return result;
+}
+
 export function appleOverall(
   preparation,
   execution,
@@ -303,6 +606,16 @@ export function appleOverall(
       reason: execution.reason,
     };
   if (interrupted) return { result: "FAIL", code: 130, reason: "INTERRUPTED" };
+  if (
+    execution.attempted &&
+    execution.wrapperCode &&
+    execution.result === "PASS"
+  )
+    return {
+      result: "FAIL",
+      code: execution.wrapperCode,
+      reason: "NATIVE_WRAPPER_FAILED",
+    };
   if (cleanup.result === "PENDING")
     return { result: "PENDING", code: 1, reason: "CLEANUP_PENDING" };
   if (cleanup.result !== "PASS")
@@ -401,10 +714,15 @@ export async function cleanupAppleSimulator({
   name,
   deadline,
   now = () => performance.now(),
-  call = callAppleTool,
-  runnerSettled = true,
+  call,
+  teardownConfirmed = true,
 }) {
   const started = now();
+  call ??= (command, args, allowanceMs) =>
+    runAppleCommand(command, args, {
+      deadline: Math.min(deadline, now() + allowanceMs),
+    });
+  let commandTeardownConfirmed = teardownConfirmed;
   const operations = [];
   const skip = (operation, outcome, errorCategory = null) =>
     operations.push({
@@ -419,25 +737,45 @@ export async function cleanupAppleSimulator({
       interrupted: false,
       errorCategory,
     });
-  const finish = (result, state) => ({
-    result,
-    state,
-    operations,
-    durationMs: Math.round(now() - started),
-  });
+  const finish = (result, state) => {
+    for (const operation of [
+      "reconcile",
+      "shutdown",
+      "delete",
+      "final-verification",
+    ])
+      if (!operations.some((item) => item.operation === operation))
+        skip(operation, "not-attempted");
+    return {
+      result,
+      state,
+      operations,
+      teardownConfirmed: commandTeardownConfirmed,
+      durationMs: now() - started,
+    };
+  };
   if (!createAttempted) return finish("PASS", "not-required");
-  if (!runnerSettled) {
+  if (!teardownConfirmed) {
     skip("reconcile", "unresolved", "EXECUTION_TEARDOWN_UNCONFIRMED");
     return finish("FAIL", "unresolved");
   }
   const invoke = async (operation, args, fraction = 1, reserve = 0) => {
     const allowanceMs = Math.floor((deadline - now() - reserve) * fraction);
-    if (allowanceMs <= 0) {
-      skip(operation, "unresolved", "NO_REMAINING_BUDGET");
+    if (allowanceMs <= 0 || !commandTeardownConfirmed) {
+      skip(
+        operation,
+        "unresolved",
+        commandTeardownConfirmed
+          ? "NO_REMAINING_BUDGET"
+          : "PROCESS_TEARDOWN_UNCONFIRMED",
+      );
       return null;
     }
     const response = await call("xcrun", args, allowanceMs);
     operations.push({ operation, ...response.evidence });
+    commandTeardownConfirmed =
+      response.evidence.teardown?.status === "CONFIRMED";
+    if (!commandTeardownConfirmed) return null;
     return response;
   };
   const reconcile = async (operation, fraction = 1, reserve = 0) => {
@@ -538,10 +876,10 @@ if (
 ) {
   const invocationStart = performance.now();
   let deadline = invocationStart + 120000;
-  let output, simulator, currentPreparation, executionStart;
+  let output, simulator, cancelActiveCommand, executionStart;
   let interrupted = false,
     createAttempted = false,
-    runnerSettled = true;
+    processTeardownConfirmed = true;
   const simulatorName = `ArtVenn-task-${randomUUID()}`;
   const preparation = {
     result: "NOT_COMPLETED",
@@ -576,7 +914,7 @@ if (
   };
   const onSignal = () => {
     interrupted = true;
-    currentPreparation?.kill("SIGKILL");
+    cancelActiveCommand?.();
   };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
@@ -613,15 +951,17 @@ if (
         remainingAppleBudget(deadline, 14000),
       );
       if (remaining <= 0) throw new Error("PREPARATION_BUDGET_EXCEEDED");
-      const response = await callAppleTool(command, args, remaining, {
-        isInterrupted: () => interrupted,
-        track: (child) => {
-          currentPreparation = child;
+      const response = await runAppleCommand(command, args, {
+        deadline: Math.min(deadline - 14000, performance.now() + remaining),
+        registerCancel: (cancel) => {
+          cancelActiveCommand = cancel;
         },
       });
+      processTeardownConfirmed =
+        response.evidence.teardown.status === "CONFIRMED";
       preparation.operations.push({ operation, ...response.evidence });
       preparation.deadlineExpired ||= response.evidence.deadlineExpired;
-      if (response.evidence.outcome !== "success")
+      if (!processTeardownConfirmed || response.evidence.outcome !== "success")
         throw new Error(response.evidence.errorCategory);
       return response.stdout.trim();
     };
@@ -722,9 +1062,7 @@ if (
     checkpoint("phase-checkpoint.json");
     if (interrupted) throw new Error("INTERRUPTED");
     const allowanceMs = remainingAppleBudget(deadline, 14000);
-    const receipt = join(output, "execution.private.json");
     const fd = openSync(join(output, "validation.private.log"), "wx", 0o600);
-    let runner;
     executionStart = performance.now();
     summary.phases.execution = {
       ...unknownExecution(),
@@ -733,34 +1071,33 @@ if (
       allowanceMs,
     };
     checkpoint("phase-checkpoint.json");
-    runnerSettled = false;
+    processTeardownConfirmed = false;
     try {
-      // Same existing shared runner and task-descendant SIGINT/SIGKILL teardown.
-      // Reserve 10s cleanup + 3s diagnostics + 1s finalization, inside the total.
-      runner = await runWithinBudget(
-        [
-          observedAppleCommand(
-            appleCommand(output, destination, buildOnly),
-            receipt,
-          ),
-        ],
-        { budgetMs: allowanceMs, graceMs: 1000, stdio: ["ignore", fd, fd] },
-      );
-      runnerSettled = true;
+      const [command, ...args] = appleCommand(output, destination, buildOnly);
+      const response = await runAppleCommand(command, args, {
+        deadline: deadline - 14000,
+        outputFd: fd,
+        maxOutputBytes: 16 * 1024 * 1024,
+        registerCancel: (cancel) => {
+          cancelActiveCommand = cancel;
+        },
+        onOutcome: (evidence) => {
+          summary.phases.execution = {
+            ...appleNativeResult(evidence, false),
+            allowanceMs,
+          };
+          checkpoint("phase-checkpoint.json");
+        },
+      });
+      summary.phases.execution = {
+        ...appleNativeResult(response.evidence, true),
+        allowanceMs,
+      };
+      processTeardownConfirmed =
+        response.evidence.teardown.status === "CONFIRMED";
     } finally {
       closeSync(fd);
     }
-    let observed;
-    try {
-      observed = JSON.parse(readFileSync(receipt, "utf8"));
-    } catch {
-      /* Missing native exit stays unknown. */
-    }
-    summary.phases.execution = {
-      ...appleExecutionResult(runner, observed, interrupted),
-      allowanceMs,
-      runnerSettled,
-    };
     Object.assign(
       summary,
       appleOverall(
@@ -786,7 +1123,8 @@ if (
         reason: "EXECUTION_OBSERVATION_FAILED",
         durationMs: Math.round(performance.now() - executionStart),
         interrupted,
-        runnerSettled,
+        wrapperSettled: false,
+        teardown: { status: "UNCONFIRMED" },
       });
     else
       Object.assign(preparation, {
@@ -804,8 +1142,10 @@ if (
       simulator,
       name: simulatorName,
       deadline: Math.min(deadline - 4000, performance.now() + 10000),
-      runnerSettled,
+      teardownConfirmed: processTeardownConfirmed,
     });
+    processTeardownConfirmed &&=
+      summary.phases.cleanup.teardownConfirmed !== false;
     summary.cleanup =
       summary.phases.cleanup.result === "PASS"
         ? "complete"
@@ -826,7 +1166,13 @@ if (
       ? appleLogEvidence(output)
       : { status: "absent" };
     const bundle = output && join(output, "Result.xcresult");
-    if (bundle && existsSync(bundle)) {
+    if (!processTeardownConfirmed) {
+      summary.resultBundle = {
+        status: "unreadable",
+        reason: "PROCESS_TEARDOWN_UNCONFIRMED",
+        extraction: { attempted: false },
+      };
+    } else if (bundle && existsSync(bundle)) {
       summary.resultBundle = {
         status: "unreadable",
         reason: "NO_DIAGNOSTIC_BUDGET",
@@ -836,7 +1182,7 @@ if (
         Math.floor(deadline - performance.now() - 1000),
       );
       if (allowance > 0) {
-        const response = await callAppleTool(
+        const response = await runAppleCommand(
           "xcrun",
           [
             "xcresulttool",
@@ -847,8 +1193,12 @@ if (
             bundle,
             "--compact",
           ],
-          allowance,
+          {
+            deadline: Math.min(deadline - 1000, performance.now() + allowance),
+          },
         );
+        processTeardownConfirmed =
+          response.evidence.teardown.status === "CONFIRMED";
         summary.resultBundle.extraction = response.evidence;
         if (response.evidence.outcome === "success") {
           try {
@@ -898,7 +1248,14 @@ if (
       });
     summary.diagnosticMs = Math.round(performance.now() - diagnosticStart);
     summary.interrupted = interrupted;
-    summary.durationMs = Math.round(performance.now() - invocationStart);
+    Object.assign(
+      summary,
+      appleInvocationResult(summary, {
+        started: invocationStart,
+        deadline,
+        teardownConfirmed: processTeardownConfirmed,
+      }),
+    );
     checkpoint("summary.json");
     if (output)
       writeFileSync(
