@@ -420,6 +420,7 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
         best: number | null;
         total: string | number;
         best_count: string | number;
+        best_id: string | null;
       }>(
         `WITH ranked AS (
            SELECT u.id,
@@ -440,7 +441,8 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
                   OR position(lower($1) in lower(u.id||' '||u.handle||' '||u.display_name)) > 0)
          )
          SELECT min(match_rank) AS best, count(*) AS total,
-                count(*) FILTER (WHERE match_rank = (SELECT min(match_rank) FROM ranked)) AS best_count
+                count(*) FILTER (WHERE match_rank = (SELECT min(match_rank) FROM ranked)) AS best_count,
+                (SELECT id FROM ranked WHERE match_rank = (SELECT min(match_rank) FROM ranked) LIMIT 1) AS best_id
          FROM ranked`,
         [search, query.userId ?? null, query.handle ?? null],
       )
@@ -476,7 +478,10 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
         status: total === 0 ? "none" : uniqueIdentity ? "exact" : "candidates",
         uniqueIdentity,
         matchKind: bestKind,
-        userId: uniqueIdentity ? (items[0]?.id ?? null) : null,
+        // Taken from the whole ranked set, not from the requested page: a
+        // unique exact identity must not become null just because the caller
+        // asked for a later page.
+        userId: uniqueIdentity ? (totals?.best_id ?? null) : null,
         ambiguous: total > 1 && !uniqueIdentity,
       },
     } as AgentUserLookupPage;
@@ -692,14 +697,19 @@ export class PostgresAgentAdministrationAdapter implements AgentAdministrationPo
   async findOperationByRequest(
     principalLabel: string,
     requestId: string,
-  ): Promise<AgentOperationDetail | null> {
+  ): Promise<{
+    readonly operation: AgentOperationDetail;
+    readonly fingerprint: string;
+  } | null> {
     const row = (
       await this.query<OperationRow>(
         `SELECT ${operationColumns} FROM community.agent_operations WHERE principal_label=$1 AND request_id=$2`,
         [principalLabel, requestId],
       )
     )[0];
-    return row === undefined ? null : detail(row, new Date());
+    return row === undefined
+      ? null
+      : { operation: detail(row, new Date()), fingerprint: row.fingerprint };
   }
 
   async findOperation(id: string): Promise<AgentOperationDetail | null> {

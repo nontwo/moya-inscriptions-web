@@ -930,6 +930,8 @@
    secondary sections keep their own stacking context. */
 .agentPanel {
   position: static;
+  max-height: none;
+  overflow: visible;
 }
 .agentSection {
   position: relative;

@@ -164,14 +164,19 @@ export interface AgentAdministrationPort {
   ): Promise<AgentManifestSelection>;
 
   /**
-   * The operation a principal already created under this request key, if any.
-   * Consulted before an expensive manifest query so a replay is cheap and does
-   * not depend on the content still matching.
+   * The operation a principal already created under this request key, with the
+   * fingerprint of the question it was created from. Consulted before an
+   * expensive manifest query so a replay is cheap and does not depend on the
+   * content still matching, while a different question under the same key is
+   * still a conflict.
    */
   findOperationByRequest(
     principal: string,
     requestId: string,
-  ): Promise<AgentOperationDetail | null>;
+  ): Promise<{
+    readonly operation: AgentOperationDetail;
+    readonly fingerprint: string;
+  } | null>;
 
   /** Protected paginated retrieval of an operation's frozen targets. */
   readOperationTargets(

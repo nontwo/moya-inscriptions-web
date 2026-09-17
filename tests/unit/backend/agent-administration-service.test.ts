@@ -260,7 +260,10 @@ class InMemoryAgentPort implements AgentAdministrationPort {
     );
     return stored === undefined
       ? null
-      : (this.view(stored, new Date()) as never);
+      : ({
+          operation: this.view(stored, new Date()),
+          fingerprint: stored.fingerprint,
+        } as never);
   }
   async readOperationTargets(id: string, page: number, pageSize: number) {
     const stored = this.operations.get(id);

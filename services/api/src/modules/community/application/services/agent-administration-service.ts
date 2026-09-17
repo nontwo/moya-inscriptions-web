@@ -449,14 +449,35 @@ export class AgentAdministrationService {
       createdTo:
         selector.createdTo === undefined ? null : new Date(selector.createdTo),
     };
-    // Replay before matching: the same principal and request key must return
-    // the operation that already exists, without paying for the query again and
-    // without failing when the content has shifted since.
+    // The canonical question, fixed before anything is matched: the same
+    // question asked twice under one request key replays the first manifest
+    // even when new matching content arrived since, and a DIFFERENT question
+    // under that key is a conflict rather than a second manifest.
+    const fingerprint = await fingerprintOf([
+      "comments.keyword",
+      command.action,
+      selector.terms,
+      selector.match,
+      selector.scope,
+      selector.target ?? null,
+      authorId,
+      selector.moderation ?? null,
+      selector.createdFrom ?? null,
+      selector.createdTo ?? null,
+    ]);
+    // Replay before matching: it costs one indexed lookup and does not depend
+    // on the content still matching.
     const existing = await this.port.findOperationByRequest(
       principal,
       command.requestId,
     );
-    if (existing !== null && existing.criteria !== null) return existing;
+    if (existing !== null) {
+      if (existing.fingerprint !== fingerprint)
+        throw new CommunityConflictError(
+          "Reused request identity with other content",
+        );
+      return existing.operation;
+    }
     const selection = await this.port.selectCommentManifest(
       query,
       AGENT_MANIFEST_TARGET_MAXIMUM,
@@ -501,21 +522,7 @@ export class AgentAdministrationService {
       kind: "comments.moderate",
       action: command.action,
       targets: selection.targets,
-      // The canonical question, not the matched rows: the same question asked
-      // twice under one request key replays the first manifest even when new
-      // matching content arrived since.
-      fingerprint: await fingerprintOf([
-        "comments.keyword",
-        command.action,
-        selector.terms,
-        selector.match,
-        selector.scope,
-        selector.target ?? null,
-        authorId,
-        selector.moderation ?? null,
-        selector.createdFrom ?? null,
-        selector.createdTo ?? null,
-      ]),
+      fingerprint,
       criteria,
       undoOf: null,
     });
