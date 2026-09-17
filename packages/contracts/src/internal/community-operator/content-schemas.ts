@@ -112,6 +112,56 @@ export const featuredMutationSchema = z.strictObject({
   position,
   expectedVersion: version,
 });
+/** The same ceiling a prepared operation uses for its frozen target set. */
+export const FEATURED_ORDER_MAXIMUM = 500;
+export const featuredOrderItemSchema = z.strictObject({
+  target: contentIdentitySchema,
+  enabled: z.boolean(),
+  position,
+  expectedVersion: version,
+});
+/**
+ * One ordered recommendation command (Issue #141 r6).
+ *
+ * "Recommend these works in this order" is a single business command, not a
+ * collection of per-target writes: the whole set commits or none of it does.
+ * This is the mechanism, so it applies exactly the positions it is given and
+ * says nothing about intent: that the positions rise along the requested order
+ * is checked where the order is requested, when the operation is prepared. An
+ * undo restores the exact prior positions through this same command and is not
+ * a new ordering request. Positions stay caller-chosen, which is the accepted
+ * behaviour today; rows this command does not name keep their own positions
+ * and therefore their own relative order.
+ *
+ * `expectedVersion` is the version the caller froze for that row (0 when it had
+ * no row), so a concurrent change to any one of them refuses the whole command.
+ */
+export const featuredOrderCommandSchema = z.strictObject({
+  requestId: z.uuid(),
+  items: z
+    .array(featuredOrderItemSchema)
+    .min(1)
+    .max(FEATURED_ORDER_MAXIMUM)
+    .refine(
+      (items) =>
+        new Set(items.map((item) => `${item.target.type}:${item.target.id}`))
+          .size === items.length,
+      { message: "duplicate target" },
+    ),
+});
+/** What the command actually committed, per target, in the requested order. */
+export const featuredOrderEntrySchema = z.strictObject({
+  target: contentIdentitySchema,
+  enabled: z.boolean(),
+  position,
+  version,
+  prior: z.strictObject({ enabled: z.boolean(), position, version }).nullable(),
+});
+export const featuredOrderResultSchema = z.strictObject({
+  kind: z.literal("featured.order"),
+  items: z.array(featuredOrderEntrySchema).min(1),
+});
+
 export const featuredSettingsMutationSchema = z.strictObject({
   requestId: z.uuid(),
   enabledQuantity: position.nullable(),
@@ -155,6 +205,10 @@ export type OperatorWork = z.infer<typeof operatorWorkSchema>;
 export type OperatorWorkPage = z.infer<typeof operatorWorkPageSchema>;
 export type ModerateWorkCommand = z.infer<typeof moderateWorkCommandSchema>;
 export type FeaturedMutation = z.infer<typeof featuredMutationSchema>;
+export type FeaturedOrderItem = z.infer<typeof featuredOrderItemSchema>;
+export type FeaturedOrderCommand = z.infer<typeof featuredOrderCommandSchema>;
+export type FeaturedOrderEntry = z.infer<typeof featuredOrderEntrySchema>;
+export type FeaturedOrderResult = z.infer<typeof featuredOrderResultSchema>;
 export type FeaturedSettingsMutation = z.infer<
   typeof featuredSettingsMutationSchema
 >;

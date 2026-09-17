@@ -91,6 +91,8 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
   policyUpdatedAt = new Date("2026-09-12T00:00:00.000Z");
   policyUpdatedBy = "platform";
   unavailable = false;
+  /** The store goes down when this subject's moderation is attempted. */
+  unavailableFrom: string | null = null;
   /** The next audited policy write fails at the audit insert, changing nothing. */
   failNextAudit = false;
 
@@ -257,6 +259,7 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     receipt?: CommandReceipt,
   ): Promise<ModeratedSubject | null> {
     this.assertAvailable();
+    if (this.unavailableFrom === id) throw new CommunityStoreUnavailableError();
     if (this.failNextModeration.delete(id))
       throw new Error("Simulated moderation write failure");
     const key =

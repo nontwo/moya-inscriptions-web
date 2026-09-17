@@ -748,6 +748,14 @@ export const AgentOperationsClient = () => {
             {targets === null ? null : (
               <>
                 <h4>冻结对象（分页查看）</h4>
+                {detail.kind === "featured.set" ? (
+                  <p className={styles.summaryLine}>
+                    这是一条有序推荐命令：下表的顺序就是请求的推荐顺序，整条命令
+                    要么全部提交、要么全部不提交，因此每个对象的结果相同。冲突表
+                    示没有写入任何一行；取消不等于回滚，已提交的命令需要撤销操作
+                    才能反转。命令未点名的推荐项保持原位。
+                  </p>
+                ) : null}
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <thead>
@@ -755,6 +763,7 @@ export const AgentOperationsClient = () => {
                         <th>#</th>
                         <th>对象</th>
                         <th>准备时状态</th>
+                        <th>请求</th>
                         <th>结果</th>
                       </tr>
                     </thead>
@@ -775,11 +784,16 @@ export const AgentOperationsClient = () => {
                             : target.prior === null
                               ? "无推荐行"
                               : `${target.prior.enabled ? "启用" : "停用"} @${target.prior.position}`;
+                        const requested =
+                          "id" in target
+                            ? "—"
+                            : `${target.enabled ? "启用" : "停用"} @${target.position}`;
                         return (
                           <tr key={id}>
                             <td>{absolute}</td>
                             <td className={styles.mono}>{id}</td>
                             <td>{prior}</td>
+                            <td>{requested}</td>
                             <td>
                               {result === undefined
                                 ? "未执行"

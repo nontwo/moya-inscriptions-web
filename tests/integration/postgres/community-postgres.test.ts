@@ -3,6 +3,7 @@ import { registerPhase4AuthorTests } from "./phase4-author-cases.js";
 import { registerWorkPublishingContentTests } from "./work-publishing-content-cases.js";
 import { registerWorkPublishingMediaTests } from "./work-publishing-media-cases.js";
 import { registerAgentAdministrationTests } from "./agent-administration-cases.js";
+import { registerAgentRecommendationTests } from "./agent-recommendation-cases.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1094,5 +1095,6 @@ registerPhase4DiscoveryTests(pool);
 
 registerWorkPublishingMediaTests(pool);
 registerAgentAdministrationTests(pool);
+registerAgentRecommendationTests(pool);
 
 registerWorkPublishingContentTests(pool);

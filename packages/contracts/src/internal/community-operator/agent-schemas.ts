@@ -436,6 +436,23 @@ export const agentPrepareFeaturedCommandSchema = z.strictObject({
         new Set(items.map((item) => `${item.target.type}:${item.target.id}`))
           .size === items.length,
       { message: "duplicate target" },
+    )
+    // The array order is the requested recommendation order, so the positions
+    // of the items being recommended must rise strictly along it. A command
+    // whose positions contradict its own order is refused at preparation
+    // rather than silently reordered at execution.
+    .refine(
+      (items) => {
+        const requested = items.filter((item) => item.enabled);
+        return requested.every(
+          (item, index) =>
+            index === 0 || requested[index - 1]!.position < item.position,
+        );
+      },
+      {
+        message:
+          "recommended positions must rise strictly along the requested order",
+      },
     ),
 });
 

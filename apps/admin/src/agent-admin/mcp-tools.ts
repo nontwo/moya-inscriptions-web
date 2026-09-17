@@ -247,7 +247,7 @@ export const agentAdminTools = (
   {
     name: "artvenn_featured_prepare",
     description:
-      "Prepare an immutable recommendation operation: enable or disable explicit Catalog records or works at a position (at most 500). Waits for approval like every operation. Scope featured:write.",
+      "Prepare ONE ordered recommendation command (at most 500 items): enable or disable explicit Catalog records or works. The array order IS the recommended order and the positions must rise strictly along it (0, 1, 2, ...), lowest first. Executing it is all-or-nothing: the whole set commits in one transaction or nothing does, and one authoritative receipt identifies the command, so there is never a per-item partial result. Items this command does not name keep their own positions. Recommending never publishes, approves or changes the visibility of anything; an item that is not already public is refused. Waits for approval like every operation. Scope featured:write.",
     parameters: {
       requestId: uuid,
       items: z

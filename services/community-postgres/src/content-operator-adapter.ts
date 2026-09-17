@@ -9,6 +9,7 @@ import type { CommunityContentOperatorPort } from "@moya/api";
 import {
   operatorWorkSchema,
   operatorWorkPageSchema,
+  featuredOrderResultSchema,
   featuredPageSchema,
   operatorUserPageSchema,
 } from "@moya/contracts/internal/community-operator";
@@ -22,6 +23,9 @@ import type {
   OperatorWorkPage,
   ModerateWorkCommand,
   FeaturedMutation,
+  FeaturedOrderCommand,
+  FeaturedOrderEntry,
+  FeaturedOrderResult,
   FeaturedSettingsMutation,
   FeaturedPage,
 } from "@moya/contracts/internal/community-operator";
@@ -71,6 +75,16 @@ const workDto = (w: WorkRow): OperatorWork =>
     publiclyVisible: w.publicly_visible,
     recommendation: w.recommendation,
   });
+/** The canonical fingerprint of one operator command; the receipt is keyed by it. */
+const commandFingerprint = (
+  action: string,
+  target: { type: string; id: string } | null,
+  input: unknown,
+): string =>
+  createHash("sha256")
+    .update(JSON.stringify([action, target, input]))
+    .digest("hex");
+
 export class PostgresCommunityContentOperatorAdapter implements CommunityContentOperatorPort {
   constructor(private readonly pool: Pool) {}
   private async transaction<T>(
@@ -107,9 +121,7 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       await db.query(
         "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",
       );
-      const fingerprint = createHash("sha256")
-        .update(JSON.stringify([action, target, input]))
-        .digest("hex");
+      const fingerprint = commandFingerprint(action, target, input);
       const old = await db.query(
         "SELECT fingerprint,result FROM community.content_operator_receipts WHERE operator_label=$1 AND request_id=$2",
         [operator, requestId],
@@ -397,6 +409,138 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       },
     );
   }
+  /**
+   * One ordered recommendation command. `mutate` already gives this the only
+   * three things atomicity needs: one pooled connection, one transaction, and
+   * the content-operator advisory lock that every other command on this
+   * surface also takes — so two overlapping ordered commands serialize against
+   * each other instead of interleaving, and the loser sees the winner's
+   * versions and refuses whole. Inside it every requested row is re-checked
+   * against the version the caller froze and against the same eligibility rule
+   * a single write uses, then written; one audit event per target keeps the
+   * existing per-target trail, and `mutate` adds the command's own
+   * `featured.order` event and its authoritative receipt. Any refusal throws
+   * before COMMIT, so a partial order cannot survive.
+   */
+  async setFeaturedOrder(
+    operator: string,
+    input: FeaturedOrderCommand,
+  ): Promise<FeaturedOrderResult> {
+    return this.mutate(
+      operator,
+      input.requestId,
+      "featured.order",
+      null,
+      input,
+      async (db) => {
+        const items: FeaturedOrderEntry[] = [];
+        for (const item of input.items) {
+          const row = (
+            await db.query<{
+              enabled: boolean;
+              position: string;
+              version: number;
+            }>(
+              "SELECT enabled,position,version FROM community.featured_content WHERE content_type=$1 AND content_id=$2 FOR UPDATE",
+              [item.target.type, item.target.id],
+            )
+          ).rows[0];
+          if ((row?.version ?? 0) !== item.expectedVersion)
+            throw new CommunityConflictError(
+              `Featured membership changed for ${item.target.type} ${item.target.id}`,
+            );
+          if (!row) {
+            const exists = await db.query(
+              item.target.type === "catalog"
+                ? "SELECT catalog_id FROM catalog_discovery WHERE catalog_id=$1"
+                : "SELECT id FROM community.works WHERE id=$1",
+              [item.target.id],
+            );
+            if (!exists.rows.length) throw new CommunityNotFoundError();
+          }
+          // Recommending is a public exposure and never a way to gain one: a
+          // work that is not effectively public cannot be enabled, and nothing
+          // here changes a work's publication or visibility to make it so.
+          if (
+            item.target.type === "work" &&
+            item.enabled &&
+            (
+              await db.query(
+                "SELECT 1 FROM community.works w JOIN community.public_users u ON u.id=w.author_id WHERE w.id=$1 AND community.work_is_public(w) AND u.status='active' FOR SHARE OF w",
+                [item.target.id],
+              )
+            ).rowCount !== 1
+          )
+            throw new CommunityConflictError(
+              `Only a public work can be featured: ${item.target.id}`,
+            );
+          const updated = await db.query<{ version: number }>(
+            "INSERT INTO community.featured_content(content_type,content_id,enabled,position) VALUES($1,$2,$3,$4) ON CONFLICT(content_type,content_id) DO UPDATE SET enabled=EXCLUDED.enabled,position=EXCLUDED.position,version=community.featured_content.version+1 RETURNING version",
+            [item.target.type, item.target.id, item.enabled, item.position],
+          );
+          await db.query(
+            "INSERT INTO community.content_operator_events(id,operator_label,action,content_type,content_id,detail) VALUES($1,$2,$3,$4,$5,$6)",
+            [
+              randomUUID(),
+              operator,
+              "featured.set",
+              item.target.type,
+              item.target.id,
+              JSON.stringify({
+                command: { ...item, requestId: input.requestId },
+                result: { version: updated.rows[0]!.version },
+              }),
+            ],
+          );
+          items.push({
+            target: item.target,
+            enabled: item.enabled,
+            position: item.position,
+            version: updated.rows[0]!.version,
+            prior:
+              row === undefined
+                ? null
+                : {
+                    enabled: row.enabled,
+                    position: Number(row.position),
+                    version: row.version,
+                  },
+          });
+        }
+        return { kind: "featured.order" as const, items };
+      },
+    );
+  }
+
+  /**
+   * The exact command's own receipt. It writes nothing, but it takes the same
+   * advisory lock the command takes, because the answer is only meaningful
+   * once no command is in flight: an unfenced read of an uncommitted
+   * transaction returns nothing, and a caller that treats nothing as proof
+   * that nothing committed would call a live command cancelled. Blocking here
+   * is the point.
+   */
+  async findFeaturedOrder(
+    operator: string,
+    input: FeaturedOrderCommand,
+  ): Promise<FeaturedOrderResult | null> {
+    const fingerprint = commandFingerprint("featured.order", null, input);
+    return this.transaction(async (db) => {
+      await db.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",
+      );
+      const row = (
+        await db.query<{ fingerprint: string; result: unknown }>(
+          "SELECT fingerprint,result FROM community.content_operator_receipts WHERE operator_label=$1 AND request_id=$2",
+          [operator, input.requestId],
+        )
+      ).rows[0];
+      return row === undefined || row.fingerprint !== fingerprint
+        ? null
+        : featuredOrderResultSchema.parse(row.result);
+    });
+  }
+
   async setFeaturedQuantity(
     operator: string,
     input: FeaturedSettingsMutation,

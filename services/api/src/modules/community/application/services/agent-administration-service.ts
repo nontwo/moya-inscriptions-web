@@ -55,6 +55,8 @@ import type {
   AgentOperationTarget,
   AgentPrincipal,
   AgentScope,
+  AgentTargetOutcome,
+  FeaturedOrderCommand,
 } from "@moya/contracts/internal/community-operator";
 
 /**
@@ -130,6 +132,18 @@ export const targetRequestId = async (
   index: number,
 ): Promise<string> => {
   const hex = (await sha256Hex(`${operationId}:${index}`)).slice(0, 32);
+  const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+};
+
+/**
+ * One deterministic request identity for a whole command. An ordered
+ * recommendation operation is a single command, so its receipt is keyed by the
+ * operation rather than by a target index, and a retry repeats exactly this
+ * identity. Same layout and same version nibble as the per-target identity.
+ */
+const commandRequestId = async (operationId: string): Promise<string> => {
+  const hex = (await sha256Hex(`${operationId}:command`)).slice(0, 32);
   const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
@@ -749,6 +763,11 @@ export class AgentAdministrationService {
     if (!claim.claimed) return claim.operation;
     let operation = claim.operation;
     const services = this.servicesFor(operation.principal);
+    // A recommendation operation is one ordered command, so it is never
+    // chunked: chunking is what made it a collection of unrelated per-target
+    // writes. It executes, or refuses, as a whole.
+    if (operation.kind === "featured.set")
+      return this.runOrdered(operation, leaseOwner, services);
     for (let chunk = 0; chunk < this.chunksPerCall; chunk += 1) {
       if (operation.cancelRequestedAt !== null) {
         // A cancel can arrive after a chunk committed its transitions but
@@ -761,8 +780,9 @@ export class AgentAdministrationService {
         // records before the next one starts, so the receipts are read over
         // that window rather than over every remaining target: a 500-target
         // operation must not spend its lease on 500 reads and then lose it.
-        // Featured targets keep no read path yet and are reported cancelled;
-        // §9 of the V1 document records that as an open limit.
+        // Only a comment operation reaches this loop; a recommendation
+        // operation is cancelled against its own command receipt in
+        // runOrdered.
         const scanned = Math.min(
           operation.nextIndex + AGENT_OPERATION_CHUNK_SIZE,
           operation.targetCount,
@@ -826,6 +846,163 @@ export class AgentAdministrationService {
       if (storeDown || finished) return operation;
     }
     return operation;
+  }
+
+  /** The frozen set as one command, with the identity a retry repeats exactly. */
+  private async orderCommand(
+    operation: AgentOperationDetail,
+  ): Promise<FeaturedOrderCommand> {
+    return {
+      requestId: await commandRequestId(operation.id),
+      items: operation.targets.map((target) => {
+        // A recommendation operation's frozen set only ever holds
+        // recommendation targets; the kind and the targets are written
+        // together and neither can be updated afterwards.
+        if (isCommentTarget(target))
+          throw new CommunityConflictError(
+            "Operation targets do not match its kind",
+          );
+        const featured: AgentFeaturedTarget = target;
+        return {
+          target: featured.target,
+          enabled: featured.enabled,
+          position: featured.position,
+          expectedVersion: featured.prior?.version ?? 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * One ordered recommendation command through the content-operator boundary.
+   *
+   * There is no per-target outcome to report: the store commits the whole set
+   * with its audit events and its receipt in one transaction, so every target
+   * carries the same verdict. A cancel asks the receipt first, because a
+   * command that already committed is not undone by cancelling the operation
+   * that carried it — it is reported for what it is, and reversing it needs an
+   * undo.
+   */
+  private async runOrdered(
+    operation: AgentOperationDetail,
+    leaseOwner: string,
+    services: ReturnType<AgentAdministrationService["servicesFor"]>,
+  ): Promise<AgentOperationDetail> {
+    const command = await this.orderCommand(operation);
+    // Results are written from the operation's own cursor, because recordChunk
+    // appends: an operation left mid-chunk by an earlier revision must not gain
+    // a second row for an index it already has.
+    const all = (
+      outcome: AgentTargetOutcome,
+      detail: (index: number) => string | null,
+    ): AgentOperationResult[] =>
+      operation.targets
+        .slice(operation.nextIndex)
+        .map((target, offset) =>
+          this.result(
+            operation.nextIndex + offset,
+            target,
+            outcome,
+            detail(operation.nextIndex + offset),
+          ),
+        );
+    const versionOf = (
+      result: { readonly items: readonly { readonly version: number }[] },
+      index: number,
+    ): string | null => {
+      const item = result.items[index];
+      return item === undefined ? null : String(item.version);
+    };
+    if (operation.cancelRequestedAt !== null) {
+      // The read is fenced against the command's own lock, so it can block and
+      // it can fail; a failure here must not escape and strand the lease.
+      const committed = await services.content
+        .findFeaturedOrder(command)
+        .catch(() => undefined);
+      if (committed === undefined)
+        return this.record(operation, leaseOwner, [], operation.nextIndex, {
+          release: true,
+        });
+      return this.record(
+        operation,
+        leaseOwner,
+        committed === null
+          ? all("cancelled", () => null)
+          : all("applied", (index) => versionOf(committed, index)),
+        operation.targetCount,
+        { finalState: "cancelled", release: true },
+      );
+    }
+    try {
+      const written = await services.content.setFeaturedOrder(command);
+      return this.record(
+        operation,
+        leaseOwner,
+        all("applied", (index) => versionOf(written, index)),
+        operation.targetCount,
+        { finalState: "completed", release: true },
+      );
+    } catch (error) {
+      // A refusal thrown inside the command means nothing was written, and the
+      // reason is carried on every target because it belongs to the command
+      // rather than to one row.
+      const reason =
+        error instanceof Error ? error.message.slice(0, 200) : null;
+      if (isCommunityNotFoundError(error))
+        return this.record(
+          operation,
+          leaseOwner,
+          all("not_found", () => reason),
+          operation.targetCount,
+          { finalState: "completed", release: true },
+        );
+      if (isCommunityConflictError(error))
+        return this.record(
+          operation,
+          leaseOwner,
+          all("conflict", () => reason),
+          operation.targetCount,
+          { finalState: "completed", release: true },
+        );
+      // Anything else may have been thrown at or after COMMIT: a connection
+      // lost while the answer was in flight is indistinguishable from one lost
+      // before the write. Declaring failure here would strand a live
+      // recommendation order that no retry and no undo could ever reach, so
+      // the receipt is asked before the operation is allowed to go terminal.
+      const committed = await services.content
+        .findFeaturedOrder(command)
+        .catch(() => undefined);
+      if (committed !== undefined && committed !== null)
+        return this.record(
+          operation,
+          leaseOwner,
+          all("applied", (index) => versionOf(committed, index)),
+          operation.targetCount,
+          { finalState: "completed", release: true },
+        );
+      if (committed === undefined)
+        // The store did not answer either, so nothing is known. The operation
+        // keeps its cursor and its lease is handed back: a later execute
+        // replays through the command receipt instead of burning it.
+        return this.record(operation, leaseOwner, [], operation.nextIndex, {
+          release: true,
+        });
+      if (isCommunityStoreUnavailableError(error))
+        return this.record(
+          operation,
+          leaseOwner,
+          all("failed", () => "STORE_UNAVAILABLE"),
+          operation.targetCount,
+          { finalState: "failed", release: true },
+        );
+      return this.record(
+        operation,
+        leaseOwner,
+        all("failed", () => reason),
+        operation.targetCount,
+        { finalState: "failed", release: true },
+      );
+    }
   }
 
   private async record(
@@ -913,15 +1090,11 @@ export class AgentAdministrationService {
           storeDown: false,
         };
       }
-      const written = await services.content.setFeatured({
-        requestId: await targetRequestId(operation.id, index),
-        target: target.target,
-        enabled: target.enabled,
-        position: target.position,
-        expectedVersion: target.prior?.version ?? 0,
-      });
+      // Unreachable: a recommendation operation never enters the chunk loop,
+      // because runOrdered owns it as one command. Reported rather than thrown
+      // so a future kind cannot silently look applied.
       return {
-        result: this.result(index, target, "applied", String(written.version)),
+        result: this.result(index, target, "failed", "ORDERED_COMMAND_ONLY"),
         storeDown: false,
       };
     } catch (error) {

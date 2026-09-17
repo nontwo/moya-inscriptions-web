@@ -40,6 +40,8 @@ import type {
   AgentOperationResult,
   AgentPrincipal,
   FeaturedMutation,
+  FeaturedOrderCommand,
+  FeaturedOrderResult,
 } from "@moya/contracts/internal/community-operator";
 
 /**
@@ -432,6 +434,9 @@ class InMemoryAgentPort implements AgentAdministrationPort {
   }
 }
 
+const orderFingerprint = (input: FeaturedOrderCommand): string =>
+  JSON.stringify(input.items);
+
 /** Records `setFeatured` receipts by request identity, like the real adapter. */
 class RecordingContentPort implements CommunityContentOperatorPort {
   readonly rows = new Map<
@@ -440,7 +445,14 @@ class RecordingContentPort implements CommunityContentOperatorPort {
   >();
   readonly receipts = new Map<string, { version: number }>();
   readonly calls: FeaturedMutation[] = [];
+  readonly orderCalls: FeaturedOrderCommand[] = [];
+  readonly orderReceipts = new Map<
+    string,
+    { fingerprint: string; result: FeaturedOrderResult }
+  >();
   unavailable = false;
+  /** One ordered command fails while the store stays readable. */
+  failNextOrder = false;
   async readWorkTitle() {
     return null;
   }
@@ -476,6 +488,57 @@ class RecordingContentPort implements CommunityContentOperatorPort {
     this.rows.set(key, written);
     this.receipts.set(input.requestId, { version: written.version });
     return { version: written.version };
+  }
+  /** One ordered command: the whole set, or nothing, exactly like the store. */
+  async setFeaturedOrder(_operator: string, input: FeaturedOrderCommand) {
+    if (this.unavailable) throw new CommunityStoreUnavailableError();
+    if (this.failNextOrder) {
+      this.failNextOrder = false;
+      throw new CommunityStoreUnavailableError();
+    }
+    const stored = this.orderReceipts.get(input.requestId);
+    if (stored) {
+      if (stored.fingerprint !== orderFingerprint(input))
+        throw new CommunityConflictError("Request identity already used");
+      return stored.result;
+    }
+    this.orderCalls.push(input);
+    const items = input.items.map((item) => {
+      const row = this.rows.get(`${item.target.type}:${item.target.id}`);
+      if ((row?.version ?? 0) !== item.expectedVersion)
+        throw new CommunityConflictError(
+          `Featured membership changed for ${item.target.type} ${item.target.id}`,
+        );
+      return {
+        target: item.target,
+        enabled: item.enabled,
+        position: item.position,
+        version: (row?.version ?? 0) + 1,
+        prior: row === undefined ? null : { ...row },
+      };
+    });
+    // Nothing above wrote, so a refusal leaves no partial order behind.
+    for (const item of items)
+      this.rows.set(`${item.target.type}:${item.target.id}`, {
+        enabled: item.enabled,
+        position: item.position,
+        version: item.version,
+      });
+    const result = { kind: "featured.order" as const, items };
+    this.orderReceipts.set(input.requestId, {
+      fingerprint: orderFingerprint(input),
+      result,
+    });
+    return result;
+  }
+  async findFeaturedOrder(_operator: string, input: FeaturedOrderCommand) {
+    // A store that cannot take the command cannot answer about it either.
+    if (this.unavailable) throw new CommunityStoreUnavailableError();
+    const stored = this.orderReceipts.get(input.requestId);
+    return stored === undefined ||
+      stored.fingerprint !== orderFingerprint(input)
+      ? null
+      : stored.result;
   }
   async setFeaturedQuantity() {
     return { version: 1 };
@@ -961,7 +1024,7 @@ describe("AgentAdministrationService", () => {
     ).rejects.toThrow("UNDO_NOT_AVAILABLE");
   });
 
-  it("writes recommendation rows with deterministic per-target request identities and restores prior rows on undo", async () => {
+  it("writes a recommendation set as one ordered command under a deterministic identity, and restores prior rows on undo", async () => {
     const h = createHarness();
     await h.principal();
     const work = "work-0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01";
@@ -1009,12 +1072,27 @@ describe("AgentAdministrationService", () => {
       operationId: prepared.id,
     });
     expect(done.tally).toMatchObject({ applied: 2 });
-    expect(h.contentPort.calls.map((c) => c.requestId)).toEqual([
+    // One command, not two writes: a single ordered call carrying both targets
+    // in the requested order, under one identity derived from the operation.
+    expect(h.contentPort.calls).toEqual([]);
+    expect(h.contentPort.orderCalls).toHaveLength(1);
+    expect(h.contentPort.orderCalls[0]!.requestId).not.toBe(
       await targetRequestId(prepared.id, 0),
-      await targetRequestId(prepared.id, 1),
+    );
+    expect(h.contentPort.orderCalls[0]!.items).toEqual([
+      {
+        target: { type: "work", id: work },
+        enabled: true,
+        position: 0,
+        expectedVersion: 2,
+      },
+      {
+        target: { type: "catalog", id: "catalog-new" },
+        enabled: true,
+        position: 1,
+        expectedVersion: 0,
+      },
     ]);
-    expect(h.contentPort.calls[0]).toMatchObject({ expectedVersion: 2 });
-    expect(h.contentPort.calls[1]).toMatchObject({ expectedVersion: 0 });
     const undo = await h.service.prepareUndo(PRINCIPAL, {
       requestId: requestId(93),
       operationId: prepared.id,
@@ -1046,42 +1124,137 @@ describe("AgentAdministrationService", () => {
     });
   });
 
-  it("marks the rest of a chunk failed and stops when the store becomes unavailable, keeping what was applied", async () => {
-    const h = createHarness();
-    await h.principal();
-    const work = (n: number) => `work-${n.toString(16).padStart(32, "0")}`;
+  const orderedWork = (n: number) => `work-${n.toString(16).padStart(32, "0")}`;
+
+  const preparedOrder = async (
+    h: ReturnType<typeof createHarness>,
+    base: number,
+  ) => {
     const prepared = await h.service.prepareFeatured(PRINCIPAL, {
-      requestId: requestId(100),
+      requestId: requestId(base),
       items: [1, 2, 3].map((n) => ({
-        target: { type: "work" as const, id: work(n) },
+        target: { type: "work" as const, id: orderedWork(n) },
         enabled: true,
         position: n,
       })),
     });
     await h.service.approve({
-      requestId: requestId(101),
+      requestId: requestId(base + 1),
       operationId: prepared.id,
     });
-    const original = h.contentPort.setFeatured.bind(h.contentPort);
-    let applied = 0;
-    h.contentPort.setFeatured = async (operator, input) => {
-      if (applied === 1) throw new CommunityStoreUnavailableError();
-      applied += 1;
-      return original(operator, input);
-    };
-    const failed = await h.service.execute(PRINCIPAL, {
+    return prepared;
+  };
+
+  it("does not burn an ordered command whose outcome the store cannot report, and replays it when the store returns", async () => {
+    const h = createHarness();
+    await h.principal();
+    const prepared = await preparedOrder(h, 100);
+    h.contentPort.unavailable = true;
+    const unknown = await h.service.execute(PRINCIPAL, {
       requestId: requestId(102),
       operationId: prepared.id,
     });
+    // A connection lost at COMMIT looks exactly like one lost before it, and
+    // the receipt could not be read either, so nothing is known: the operation
+    // must not go terminal, or a committed order would be stranded with no
+    // retry and no undo able to reach it.
+    expect(unknown).toMatchObject({
+      state: "executing",
+      tally: { applied: 0, failed: 0, conflicts: 0 },
+    });
+    expect(unknown.results).toEqual([]);
+    expect(unknown.leaseHeld).toBe(false);
+    expect(h.contentPort.rows.size).toBe(0);
+    h.contentPort.unavailable = false;
+    const done = await h.service.execute(PRINCIPAL, {
+      requestId: requestId(103),
+      operationId: prepared.id,
+    });
+    expect(done).toMatchObject({
+      state: "completed",
+      tally: { applied: 3 },
+    });
+    expect(h.contentPort.orderCalls).toHaveLength(1);
+  });
+
+  it("fails a whole ordered command when the store answers that nothing committed", async () => {
+    const h = createHarness();
+    await h.principal();
+    const prepared = await preparedOrder(h, 140);
+    // The command itself is refused, but the store is reachable, so the
+    // receipt can be read and truthfully says nothing was written.
+    h.contentPort.failNextOrder = true;
+    const failed = await h.service.execute(PRINCIPAL, {
+      requestId: requestId(142),
+      operationId: prepared.id,
+    });
+    // There is no "kept what was applied": the partial outcome this revision
+    // removes cannot be reported at all.
     expect(failed).toMatchObject({
       state: "failed",
-      tally: { applied: 1, failed: 2 },
+      tally: { applied: 0, failed: 3 },
     });
-    expect(failed.results.map((r) => r.detail)).toEqual([
-      "1",
-      "STORE_UNAVAILABLE",
-      "STORE_UNAVAILABLE",
-    ]);
+    expect(h.contentPort.rows.size).toBe(0);
+  });
+
+  it("refuses the whole ordered command when one frozen version went stale, with zero partial order", async () => {
+    const h = createHarness();
+    await h.principal();
+    const prepared = await preparedOrder(h, 110);
+    // Someone moves the middle row after preparation froze version 0 for it.
+    h.contentPort.rows.set(`work:${orderedWork(2)}`, {
+      enabled: true,
+      position: 42,
+      version: 9,
+    });
+    const refused = await h.service.execute(PRINCIPAL, {
+      requestId: requestId(112),
+      operationId: prepared.id,
+    });
+    expect(refused).toMatchObject({
+      state: "completed",
+      tally: { applied: 0, conflicts: 3 },
+    });
+    expect(refused.results[0]!.detail).toContain("Featured membership changed");
+    // Nothing else moved: the first and last targets were never written.
+    expect(h.contentPort.rows.get(`work:${orderedWork(1)}`)).toBeUndefined();
+    expect(h.contentPort.rows.get(`work:${orderedWork(3)}`)).toBeUndefined();
+    expect(h.contentPort.rows.get(`work:${orderedWork(2)}`)).toEqual({
+      enabled: true,
+      position: 42,
+      version: 9,
+    });
+  });
+
+  it("replays a committed ordered command after a lost response instead of applying it twice", async () => {
+    const h = createHarness();
+    await h.principal();
+    const prepared = await preparedOrder(h, 120);
+    const done = await h.service.execute(PRINCIPAL, {
+      requestId: requestId(122),
+      operationId: prepared.id,
+    });
+    expect(done.tally).toMatchObject({ applied: 3 });
+    const written = h.contentPort.orderCalls[0]!;
+    const versions = [1, 2, 3].map(
+      (n) => h.contentPort.rows.get(`work:${orderedWork(n)}`)?.version,
+    );
+    // The executor lost the response and repeats the identical command.
+    const replay = await h.contentPort.setFeaturedOrder(PRINCIPAL, written);
+    expect(replay.items.map((item) => item.version)).toEqual(versions);
+    expect(h.contentPort.orderCalls).toHaveLength(1);
+    expect(
+      [1, 2, 3].map(
+        (n) => h.contentPort.rows.get(`work:${orderedWork(n)}`)?.version,
+      ),
+    ).toEqual(versions);
+    // The same identity carrying a different command is a conflict.
+    await expect(
+      h.contentPort.setFeaturedOrder(PRINCIPAL, {
+        ...written,
+        items: written.items.slice(0, 2),
+      }),
+    ).rejects.toThrow("Request identity already used");
   });
 
   it("retracts a delegation-approved operation when the delegation is revoked, and refuses to run for a disabled principal", async () => {
@@ -1145,34 +1318,33 @@ describe("AgentAdministrationService", () => {
   });
 
   it("allows an undo of a failed operation's applied targets", async () => {
+    // Only a comment operation can still end partially applied: an ordered
+    // recommendation command is all-or-nothing by construction, which is what
+    // this revision changed. The undo of a partial failure is tested here,
+    // where partial failure still exists.
     const h = createHarness();
     await h.principal();
-    const work = (n: number) => `work-${n.toString(16).padStart(32, "0")}`;
-    const prepared = await h.service.prepareFeatured(PRINCIPAL, {
+    const ids = await h.seed(2, "visible");
+    const prepared = await h.service.prepareComments(PRINCIPAL, {
       requestId: requestId(130),
-      items: [1, 2].map((n) => ({
-        target: { type: "work" as const, id: work(n) },
-        enabled: true,
-        position: n,
-      })),
+      action: "hide",
+      ids,
     });
     await h.service.approve({
       requestId: requestId(131),
       operationId: prepared.id,
     });
-    const original = h.contentPort.setFeatured.bind(h.contentPort);
-    let applied = 0;
-    h.contentPort.setFeatured = async (operator, input) => {
-      if (applied === 1) throw new CommunityStoreUnavailableError();
-      applied += 1;
-      return original(operator, input);
-    };
+    // The store goes down on the second target; the first one is applied.
+    h.commentPort.unavailableFrom = ids[1]!;
     const failed = await h.service.execute(PRINCIPAL, {
       requestId: requestId(132),
       operationId: prepared.id,
     });
-    expect(failed.state).toBe("failed");
-    h.contentPort.setFeatured = original;
+    expect(failed).toMatchObject({
+      state: "failed",
+      tally: { applied: 1, failed: 1 },
+    });
+    h.commentPort.unavailableFrom = null;
     const undo = await h.service.prepareUndo(PRINCIPAL, {
       requestId: requestId(133),
       operationId: prepared.id,
