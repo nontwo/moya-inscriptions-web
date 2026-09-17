@@ -845,35 +845,28 @@ export class AgentAdministrationService {
   }
 
   /**
-   * Was this exact transition already committed by this run? Returns the
-   * recovered state when the audit trail proves it, otherwise null. Scoped to
-   * the operation's own principal, action and start time, so an Owner edit, a
-   * different principal, or the same principal's earlier operation is never
-   * mistaken for this run's work.
+   * The execution receipt of one target: a stable identity derived from the
+   * operation and the target's position, and a fingerprint binding the exact
+   * operation, target, action and canonical command. The store writes it with
+   * the mutation, so recovery reads this exact receipt rather than inferring
+   * ownership from the actor, the clock or the current state.
    */
-  private async committedByThisRun(
+  private async receiptFor(
     operation: AgentOperationDetail,
-    target: AgentOperationTarget,
-  ): Promise<string | null> {
-    if (!isCommentTarget(target) || operation.action === null) return null;
-    if (operation.startedAt === null) return null;
-    const startedAt = new Date(operation.startedAt).getTime();
-    const events = await this.deps.commentPort.readModerationEvents({
-      subjectId: target.id,
-      page: 1,
-      pageSize: 20,
-    });
-    const ours = events.items.find(
-      (event) =>
-        event.operatorLabel === operation.principal &&
-        event.action === operation.action &&
-        event.occurredAt.getTime() >= startedAt,
-    );
-    if (ours === undefined) return null;
-    const current = await this.deps.commentPort.findOperatorComment(
-      target.id as Parameters<CommunityCommentPort["findOperatorComment"]>[0],
-    );
-    return current === null ? null : `${current.moderation} (recovered)`;
+    index: number,
+    targetId: string,
+  ) {
+    return {
+      requestId: await targetRequestId(operation.id, index),
+      fingerprint: await fingerprintOf([
+        "comments.moderate",
+        operation.id,
+        index,
+        targetId,
+        operation.action,
+        operation.fingerprint,
+      ]),
+    };
   }
 
   /** One target through the existing services; the outcome classification mirrors bulk moderation. */
@@ -890,6 +883,7 @@ export class AgentAdministrationService {
             CommunityModerationService["moderateComment"]
           >[0],
           { action: operation.action },
+          await this.receiptFor(operation, index, target.id),
         );
         return {
           result: this.result(index, target, "applied", moderated.moderation),
@@ -908,25 +902,15 @@ export class AgentAdministrationService {
         storeDown: false,
       };
     } catch (error) {
-      if (isCommunityConflictError(error)) {
-        // The receipt seam. A chunk whose write was lost (a stalled executor,
-        // a lease handoff, a dropped response) is repeated by the next holder.
-        // A comment this run already committed now refuses the same edge and
-        // would otherwise be filed as a conflict, silently dropping a real
-        // change from the tally and from any later undo. The audit trail is
-        // the receipt: an event for this subject, by this principal, with this
-        // action, at or after this run started, means the effect is ours.
-        const recovered = await this.committedByThisRun(operation, target);
-        if (recovered !== null)
-          return {
-            result: this.result(index, target, "applied", recovered),
-            storeDown: false,
-          };
+      // A conflict is now exactly that: the subject moved on and no receipt of
+      // this command exists. A chunk whose progress write was lost replays
+      // through the receipt inside the mutation itself, so nothing committed is
+      // ever filed as a conflict.
+      if (isCommunityConflictError(error))
         return {
           result: this.result(index, target, "conflict", null),
           storeDown: false,
         };
-      }
       if (isCommunityNotFoundError(error))
         return {
           result: this.result(index, target, "not_found", null),

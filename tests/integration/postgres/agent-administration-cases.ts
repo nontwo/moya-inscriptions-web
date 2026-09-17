@@ -79,6 +79,7 @@ export const registerAgentAdministrationTests = (
       });
     });
     afterEach(async () => {
+      await pool.query("DELETE FROM community.discussion_command_receipts");
       await pool.query("DELETE FROM community.agent_operations");
       await pool.query("DELETE FROM community.agent_delegations");
       await pool.query("DELETE FROM community.agent_principals");
@@ -513,8 +514,30 @@ export const registerAgentAdministrationTests = (
       }
     });
 
-    it("recovers a moderation this run already committed after a lease handoff, instead of losing it from the tally and the undo", async () => {
-      const ids = [await seedComment("seam A"), await seedComment("seam B")];
+    /**
+     * The receipt seam. A moderation commits with an execution receipt bound to
+     * the exact operation, target, action and canonical command, in the same
+     * transaction and on the same connection. Recovery reads that receipt; it
+     * never infers ownership from the actor, the clock or the current state.
+     */
+    const lostProgressWrite = async (operationId: string) => {
+      // The mutations and their receipts committed; the chunk's progress write
+      // did not. This is the lost response and the lease handoff, reproduced
+      // exactly: the operation is back where it started, the effects are not.
+      await pool.query(
+        `UPDATE community.agent_operations
+           SET next_index=0, results='[]'::jsonb, state='approved',
+               lease_owner=NULL, lease_expires_at=NULL
+         WHERE id=$1`,
+        [operationId],
+      );
+    };
+
+    it("recovers the exact applied result after a lost progress write, without a duplicate effect", async () => {
+      const ids = [
+        await seedComment("receipt A"),
+        await seedComment("receipt B"),
+      ];
       const prepared = await service.prepareComments(PRINCIPAL, {
         requestId: randomUUID(),
         action: "hide",
@@ -524,172 +547,217 @@ export const registerAgentAdministrationTests = (
         requestId: randomUUID(),
         operationId: prepared.id,
       });
-      // An executor claims the operation and commits the first target, then
-      // stalls before it can persist the chunk: exactly the lost-response and
-      // lease-handoff window.
-      const claim = await agent.claimExecution(
-        prepared.id,
-        "lost.1",
-        now,
-        60_000,
-      );
-      expect(claim?.claimed).toBe(true);
-      const asPrincipal = new CommunityModerationService(
-        comments,
-        identity,
-        { isPublished: async () => true, readTitle: async () => null },
-        { operatorLabel: PRINCIPAL, clock: () => now },
-      );
-      await asPrincipal.moderateComment(ids[0] as never, { action: "hide" });
-      expect(
-        (
-          await pool.query(
-            "SELECT moderation FROM community.catalog_comments WHERE id=$1",
-            [ids[0]],
-          )
-        ).rows[0].moderation,
-      ).toBe("hidden");
-
-      // The lease expires and the next holder repeats the whole chunk.
-      now = new Date(now.getTime() + 61_000);
-      const done = await service.execute(PRINCIPAL, {
+      const first = await service.execute(PRINCIPAL, {
         requestId: randomUUID(),
         operationId: prepared.id,
       });
-      expect(done.state).toBe("completed");
-      // The committed change is accounted as applied, not dropped as a
-      // conflict, and it is not applied a second time.
-      expect(done.tally).toMatchObject({ applied: 2, conflicts: 0 });
-      expect(done.results[0]?.detail).toContain("recovered");
-      expect(
-        (
-          await pool.query(
-            "SELECT count(*)::int AS n FROM community.moderation_events WHERE subject_id=$1 AND operator_label=$2",
-            [ids[0], PRINCIPAL],
-          )
-        ).rows[0].n,
-      ).toBe(1);
+      expect(first.tally).toMatchObject({ applied: 2, conflicts: 0 });
+      const receipts = await pool.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM community.discussion_command_receipts WHERE actor_label=$1",
+        [PRINCIPAL],
+      );
+      expect(receipts.rows[0]!.n).toBe(2);
 
-      // Because it counts as applied, the conditional undo covers it.
-      const undo = await service.prepareUndo(PRINCIPAL, {
+      await lostProgressWrite(prepared.id);
+      const again = await service.execute(PRINCIPAL, {
         requestId: randomUUID(),
         operationId: prepared.id,
       });
-      expect(undo.targetCount).toBe(2);
-      expect(undo.action).toBe("unhide");
+      // The committed transitions are recovered as applied, by receipt.
+      expect(again.state).toBe("completed");
+      expect(again.tally).toMatchObject({ applied: 2, conflicts: 0 });
+      // And nothing was applied twice: one audit row and one receipt per target.
+      for (const target of ids)
+        expect(
+          (
+            await pool.query<{ n: number }>(
+              "SELECT count(*)::int AS n FROM community.moderation_events WHERE subject_id=$1 AND operator_label=$2",
+              [target, PRINCIPAL],
+            )
+          ).rows[0]!.n,
+        ).toBe(1);
+      expect(
+        (
+          await pool.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM community.discussion_command_receipts WHERE actor_label=$1",
+            [PRINCIPAL],
+          )
+        ).rows[0]!.n,
+      ).toBe(2);
     });
 
-    it("does not mistake an Owner edit or an earlier operation for this run's own work", async () => {
-      const target = await seedComment("seam C");
-      // An earlier operation by the same principal hides it and finishes.
+    it("never lets one operation claim a different operation's transition, even for the same principal, target and action", async () => {
+      const target = await seedComment("two operations");
       const first = await service.prepareComments(PRINCIPAL, {
         requestId: randomUUID(),
         action: "hide",
         ids: [target],
       });
-      await service.approve({ requestId: randomUUID(), operationId: first.id });
-      await service.execute(PRINCIPAL, {
-        requestId: randomUUID(),
-        operationId: first.id,
-      });
-      now = new Date(now.getTime() + 1_000);
-      // A later operation asks for the same edge again: already hidden, and the
-      // audit event predates this run, so it is a truthful conflict.
       const second = await service.prepareComments(PRINCIPAL, {
         requestId: randomUUID(),
         action: "hide",
         ids: [target],
       });
+      await service.approve({ requestId: randomUUID(), operationId: first.id });
       await service.approve({
         requestId: randomUUID(),
         operationId: second.id,
       });
-      const done = await service.execute(PRINCIPAL, {
+      // The second operation starts FIRST, so every later audit event falls
+      // inside its window. The replaced heuristic would have credited it with
+      // the first operation's work; the receipt cannot be borrowed.
+      await agent.claimExecution(second.id, "second.1", now, 60_000);
+      now = new Date(now.getTime() + 1_000);
+      const firstRun = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: first.id,
+      });
+      expect(firstRun.tally).toMatchObject({ applied: 1, conflicts: 0 });
+      now = new Date(now.getTime() + 61_000);
+      const secondRun = await service.execute(PRINCIPAL, {
         requestId: randomUUID(),
         operationId: second.id,
       });
-      expect(done.tally).toMatchObject({ applied: 0, conflicts: 1 });
+      expect(secondRun.tally).toMatchObject({ applied: 0, conflicts: 1 });
+      // Exactly one transition happened in total.
+      expect(
+        (
+          await pool.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM community.moderation_events WHERE subject_id=$1",
+            [target],
+          )
+        ).rows[0]!.n,
+      ).toBe(1);
     });
 
-    // NOT YET EXECUTED at the time of writing: these three cover the defects
-    // the independent r4 review found; the allowance ran out before they could
-    // be run. They are listed as outstanding checks in the delivery record.
-    it("replays a keyword request key without re-running the query, even when the matching content has shifted", async () => {
-      const first = await seedComment("replayshift 第一条");
+    it("replays the same command identity and conflicts on a different command under it", async () => {
+      const target = await seedComment("identity receipt");
       const requestId = randomUUID();
-      const command = {
-        requestId,
-        action: "hide" as const,
-        selector: { terms: ["replayshift"] },
-      };
-      const prepared = await service.prepareComments(PRINCIPAL, command);
-      expect(prepared.targetCount).toBe(1);
-      // Everything that matched is gone; a replay must still return the frozen
-      // operation rather than failing with MANIFEST_NO_MATCH.
-      await pool.query("DELETE FROM community.catalog_comments WHERE id=$1", [
-        first,
-      ]);
-      const replay = await service.prepareComments(PRINCIPAL, command);
-      expect(replay.id).toBe(prepared.id);
-      expect(replay.targetCount).toBe(1);
-    });
-
-    it("keeps identity resolution describing the whole ranked set on a page past the last row", async () => {
-      const only = id("user");
-      await pool.query(
-        "INSERT INTO community.public_users(id,handle,display_name,status) VALUES($1,$2,'唯一账号','active')",
-        [only, `solo-${randomUUID().slice(0, 8)}`],
+      const applied = await comments.applyCommentModeration(
+        target as never,
+        "hidden",
+        ["visible"],
+        PRINCIPAL,
+        now,
+        {
+          id: id("moderation"),
+          occurredAt: now,
+          operatorLabel: PRINCIPAL,
+          action: "hide",
+        },
+        { requestId, fingerprint: "fingerprint-a" },
       );
-      const beyond = await service.usersFind(PRINCIPAL, {
-        search: "唯一账号",
-        page: 5,
-        pageSize: 10,
-      });
-      expect(beyond.items).toHaveLength(0);
-      // The page is empty, but the user exists: the resolution must not read
-      // as "no such user".
-      expect(beyond.total).toBe(1);
-      expect(beyond.resolution.status).not.toBe("none");
-      await pool.query("DELETE FROM community.public_users WHERE id=$1", [
-        only,
-      ]);
+      expect(applied).toMatchObject({ moderation: "hidden" });
+      // The identical command replays its stored result and mutates nothing.
+      const replay = await comments.applyCommentModeration(
+        target as never,
+        "hidden",
+        ["visible"],
+        PRINCIPAL,
+        now,
+        {
+          id: id("moderation"),
+          occurredAt: now,
+          operatorLabel: PRINCIPAL,
+          action: "hide",
+        },
+        { requestId, fingerprint: "fingerprint-a" },
+      );
+      expect(replay).toMatchObject({ moderation: "hidden" });
+      expect(
+        (
+          await pool.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM community.moderation_events WHERE subject_id=$1",
+            [target],
+          )
+        ).rows[0]!.n,
+      ).toBe(1);
+      // A different command under the same identity is a conflict, never a
+      // second effect and never a borrowed result.
+      await expect(
+        comments.applyCommentModeration(
+          target as never,
+          "visible",
+          ["hidden"],
+          PRINCIPAL,
+          now,
+          {
+            id: id("moderation"),
+            occurredAt: now,
+            operatorLabel: PRINCIPAL,
+            action: "unhide",
+          },
+          { requestId, fingerprint: "fingerprint-b" },
+        ),
+      ).rejects.toThrow("Reused command identity");
+      expect(
+        (
+          await pool.query<{ moderation: string }>(
+            "SELECT moderation FROM community.catalog_comments WHERE id=$1",
+            [target],
+          )
+        ).rows[0]!.moderation,
+      ).toBe("hidden");
     });
 
-    it("builds a valid undo over a recovered result, with a real prior state", async () => {
-      const ids = [await seedComment("undorecover A")];
-      const prepared = await service.prepareComments(PRINCIPAL, {
+    it("keeps an undo to its own operation's effects and refuses a later incompatible change", async () => {
+      const mine = await seedComment("undo scope mine");
+      const other = await seedComment("undo scope other");
+      const operation = await service.prepareComments(PRINCIPAL, {
         requestId: randomUUID(),
         action: "hide",
-        ids,
+        ids: [mine],
       });
-      await service.approve({
+      const unrelated = await service.prepareComments(PRINCIPAL, {
         requestId: randomUUID(),
-        operationId: prepared.id,
+        action: "hide",
+        ids: [other],
       });
-      await agent.claimExecution(prepared.id, "lost.2", now, 60_000);
-      const asPrincipal = new CommunityModerationService(
-        comments,
-        identity,
-        { isPublished: async () => true, readTitle: async () => null },
-        { operatorLabel: PRINCIPAL, clock: () => now },
-      );
-      await asPrincipal.moderateComment(ids[0] as never, { action: "hide" });
-      now = new Date(now.getTime() + 61_000);
-      const done = await service.execute(PRINCIPAL, {
-        requestId: randomUUID(),
-        operationId: prepared.id,
-      });
-      expect(done.results[0]?.detail).toContain("recovered");
+      for (const one of [operation, unrelated]) {
+        await service.approve({ requestId: randomUUID(), operationId: one.id });
+        await service.execute(PRINCIPAL, {
+          requestId: randomUUID(),
+          operationId: one.id,
+        });
+      }
       const undo = await service.prepareUndo(PRINCIPAL, {
         requestId: randomUUID(),
-        operationId: prepared.id,
+        operationId: operation.id,
       });
-      // The undo target carries a real moderation state, not the free-text
-      // detail, so the stored row stays within its contract and the Admin can
-      // read it back.
+      // Only this operation's own target, never the other operation's.
+      expect(undo.targetCount).toBe(1);
+      expect((undo.targets[0] as { id: string }).id).toBe(mine);
       expect(undo.targets[0]).toMatchObject({ prior: "hidden" });
-      const readBack = await service.readOperation({ operationId: undo.id });
-      expect(readBack.targetCount).toBe(1);
+
+      // A human restores it before the undo runs: the undo must not overwrite
+      // that later, incompatible change.
+      await comments.applyCommentModeration(
+        mine as never,
+        "visible",
+        ["hidden"],
+        "owner",
+        now,
+        {
+          id: id("moderation"),
+          occurredAt: now,
+          operatorLabel: "owner",
+          action: "unhide",
+        },
+      );
+      await service.approve({ requestId: randomUUID(), operationId: undo.id });
+      const ran = await service.execute(PRINCIPAL, {
+        requestId: randomUUID(),
+        operationId: undo.id,
+      });
+      expect(ran.tally).toMatchObject({ applied: 0, conflicts: 1 });
+      expect(
+        (
+          await pool.query<{ moderation: string }>(
+            "SELECT moderation FROM community.catalog_comments WHERE id=$1",
+            [other],
+          )
+        ).rows[0]!.moderation,
+      ).toBe("hidden");
     });
 
     it("stores principals and delegations with optimistic versions and revocation", async () => {

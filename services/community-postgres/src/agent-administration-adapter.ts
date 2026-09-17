@@ -155,6 +155,7 @@ const operation = (row: OperationRow, at: Date): AgentOperation => ({
 
 const detail = (row: OperationRow, at: Date): AgentOperationDetail => ({
   ...operation(row, at),
+  fingerprint: row.fingerprint,
   targets: row.targets,
 });
 

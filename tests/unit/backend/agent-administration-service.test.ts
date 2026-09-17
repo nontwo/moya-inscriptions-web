@@ -75,8 +75,7 @@ class InMemoryAgentPort implements AgentAdministrationPort {
   readonly featured = new Map<string, AgentFeaturedState>();
 
   private view(stored: StoredOperation, at: Date): AgentOperationDetail {
-    const { fingerprint, leaseOwner, leaseExpiresAt, ...rest } = stored;
-    void fingerprint;
+    const { leaseOwner, leaseExpiresAt, ...rest } = stored;
     return {
       ...rest,
       tally: tally(stored.results),

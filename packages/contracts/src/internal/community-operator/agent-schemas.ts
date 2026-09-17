@@ -373,6 +373,8 @@ export const agentOperationSchema = z.strictObject({
 });
 
 export const agentOperationDetailSchema = agentOperationSchema.extend({
+  /** The canonical command fingerprint this operation was created from. */
+  fingerprint: z.string().min(1),
   targets: z.array(agentOperationTargetSchema),
 });
 

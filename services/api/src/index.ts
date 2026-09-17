@@ -75,6 +75,7 @@ export type { CatalogPublicationPort } from "./modules/community/application/por
 export type {
   CommentInsert,
   CommentPageQuery,
+  CommandReceipt,
   CommunityCommentPort,
   ModeratedSubject,
   ModerationEvent,

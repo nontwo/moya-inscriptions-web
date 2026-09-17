@@ -64,6 +64,19 @@ export interface ReplyInsert {
 /** Every comment action is also an audit action (the service's `record` relies on it). */
 export type ModerationEventAction = ContractModerationEventAction;
 
+/**
+ * The execution receipt of one command (Issue #141 r4). `requestId` is the
+ * stable identity of one operation target and `fingerprint` binds the exact
+ * command it stands for. The store writes it in the same transaction as the
+ * mutation and its audit row: a repeated identical command returns the stored
+ * result without mutating again, and the same identity carrying a different
+ * command is a conflict.
+ */
+export interface CommandReceipt {
+  readonly requestId: string;
+  readonly fingerprint: string;
+}
+
 export interface ModerationEvent {
   readonly id: string;
   readonly occurredAt: Date;
@@ -178,6 +191,7 @@ export interface CommunityCommentPort {
     operatorLabel: string,
     at: Date,
     audit?: ModerationEventDraft,
+    receipt?: CommandReceipt,
   ): Promise<ModeratedSubject | null>;
 
   /** Bounded operator listing with its status counts; V1 keeps no large review queue. */

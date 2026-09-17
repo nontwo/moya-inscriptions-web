@@ -352,3 +352,21 @@ export const revokeUserSessionsSql = `
     AND revoked_at IS NULL
     AND expires_at > $2::timestamptz
 `;
+
+/**
+ * The execution receipt of one agent-operation target (Issue #141 r4). It is
+ * written in the same transaction as the transition and its audit row, so a
+ * committed moderation is always recoverable by its exact identity instead of
+ * being inferred from the actor, the clock or the current state.
+ */
+export const findCommandReceiptSql = `
+  SELECT fingerprint, result
+  FROM community.discussion_command_receipts
+  WHERE actor_label = $1 AND request_id = $2
+`;
+
+export const insertCommandReceiptSql = `
+  INSERT INTO community.discussion_command_receipts
+    (actor_label, request_id, fingerprint, result, created_at)
+  VALUES ($1, $2, $3, $4::jsonb, $5)
+`;

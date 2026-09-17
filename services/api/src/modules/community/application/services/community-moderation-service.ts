@@ -58,6 +58,7 @@ import type {
 import type { CommunityIdentityPort } from "../ports/community-identity-port.js";
 import type { RandomBytes } from "../session-token.js";
 
+import type { CommandReceipt } from "../ports/community-comment-port.js";
 import type { CommunityContentOperatorPort } from "../ports/community-content-operator-port.js";
 export interface CommunityModerationServiceOptions {
   readonly contentOperatorPort?: CommunityContentOperatorPort;
@@ -256,6 +257,14 @@ export class CommunityModerationService {
   async moderateComment(
     id: CatalogCommentId,
     body: unknown,
+    /**
+     * Optional execution receipt (Issue #141 r4). When present the store
+     * writes it in the same transaction as the transition and its audit row,
+     * so a repeated identical command returns its original result instead of
+     * mutating again, and the same identity carrying a different command is a
+     * conflict. Ordinary Owner moderation passes none.
+     */
+    receipt?: CommandReceipt,
   ): Promise<ModerationResult> {
     const { action } = this.parse(moderateCommentCommandSchema, body);
     const at = this.clock();
@@ -269,6 +278,7 @@ export class CommunityModerationService {
       this.operatorLabel,
       at,
       this.draft(action, at),
+      receipt,
     );
     if (moderated === null) {
       const current = await this.commentPort.findOperatorComment(id);
