@@ -10,12 +10,21 @@ import { assertTaskGate } from "./ci-task-gate.mjs";
 import {
   FEEDBACK_LABEL,
   VERIFY_TASK_USAGE,
+  classifyFeedbackPath,
+  contractCommands,
+  feedbackCommands,
   formatFeedbackBanner,
+  formatFeedbackCommandSelection,
   isFullAcceptance,
   parseVerifyTaskArgs,
+  planFeedbackCommands,
   prepareFeedbackValidation,
   resolveFeedbackCheckpoint,
+  scriptTests,
+  selectTaskValidationCommands,
+  taskCommands,
 } from "./verify-task.mjs";
+import { REMAINING_MS_TOKEN } from "./validation-profiles.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const script = join(root, "scripts/verify-task.mjs");
@@ -305,5 +314,184 @@ describe("feedback CLI user-visible label", () => {
     assert.match(text, /not treated as checked/);
     assert.doesNotMatch(text, /"result":"PASS"/);
     assert.ok(!text.includes("FEEDBACK PASS"));
+  });
+});
+
+const joined = (commands) =>
+  commands.map((command) => command.join(" ")).join("\n");
+// The default entry's Web check: the complete serial `verify.mjs all` plan
+// under the parent's remaining time, never an unflagged (quick) invocation.
+const isBareVerify = (command) =>
+  command[0] === process.execPath &&
+  command[1] === "scripts/verify.mjs" &&
+  command.slice(2).join(" ") ===
+    `all --profile complete --remaining-ms ${REMAINING_MS_TOKEN}`;
+const feedbackOptions = { root };
+
+describe("feedback command selection", () => {
+  it("reproduces general over-selection and limits a Web presentation-only delta", () => {
+    const paths = ["apps/web/features/home/home-screen.module.css"];
+    const plan = classifyTask(paths);
+    assert.equal(plan.web, true);
+    assert.equal(plan.cms, false);
+    const general = taskCommands(plan, "/private/synthetic-output");
+    assert.ok(
+      general.some(isBareVerify),
+      "general taskCommands still selects bare scripts/verify.mjs for Web",
+    );
+    assert.match(joined(general), /--test /);
+    assert.doesNotMatch(
+      joined(
+        selectTaskValidationCommands({
+          mode: "feedback",
+          plan,
+          detail: { feedbackPaths: paths },
+          output: "/private/synthetic-output",
+          options: feedbackOptions,
+        }),
+      ),
+      /scripts\/verify\.mjs(?:\s|$)|test:cms|test:cms:browser|test:postgres|ci-e2e-smoke|verify-apple|turbo run |pnpm test(?:\s|$)/,
+    );
+    assert.deepEqual(
+      feedbackCommands({ feedbackPaths: paths }, "/private/synthetic-output", {
+        root,
+      }),
+      [["pnpm", "exec", "prettier", "--check", paths[0]]],
+    );
+    assert.equal(classifyFeedbackPath(paths[0]), "presentation");
+  });
+
+  it("selects focused Web behavior checks for a TSX change", () => {
+    const paths = ["apps/web/features/home/home-screen.tsx"];
+    const commands = feedbackCommands(
+      { feedbackPaths: paths },
+      "/private/synthetic-output",
+      feedbackOptions,
+    );
+    assert.deepEqual(commands, [
+      ["pnpm", "exec", "prettier", "--check", paths[0]],
+      ["pnpm", "exec", "eslint", paths[0]],
+      ["pnpm", "--filter", "web", "typecheck"],
+      [
+        "pnpm",
+        "--filter",
+        "web",
+        "exec",
+        "vitest",
+        "run",
+        "features/home/home-screen.integration.test.tsx",
+        "features/home/home-screen.test.tsx",
+      ],
+    ]);
+    assert.ok(!commands.some(isBareVerify));
+    assert.doesNotMatch(
+      joined(commands),
+      /test:cms|test:postgres|ci-e2e-smoke|verify-apple/,
+    );
+    assert.equal(classifyFeedbackPath(paths[0]), "behavior");
+  });
+
+  it("widens shared-contract checks and refuses a misleading database PASS", () => {
+    const contractPaths = ["packages/contracts/src/catalog.ts"];
+    const contractPlan = classifyTask(contractPaths);
+    assert.equal(contractPlan.contracts, true);
+    assert.equal(contractPlan.cms, true);
+    const general = taskCommands(contractPlan, "/private/synthetic-output");
+    assert.ok(general.some((command) => command.includes("test:cms")));
+    assert.ok(general.some((command) => command.includes("test:cms:browser")));
+    const contractCommandsSelected = feedbackCommands(
+      { feedbackPaths: contractPaths },
+      "/private/synthetic-output",
+      feedbackOptions,
+    );
+    assert.deepEqual(contractCommandsSelected, contractCommands());
+    assert.doesNotMatch(
+      joined(contractCommandsSelected),
+      /test:cms|scripts\/verify\.mjs(?:\s|$)|test:postgres|ci-e2e-smoke/,
+    );
+
+    const databaseDetail = { feedbackPaths: ["database/schema.sql"] };
+    const planned = planFeedbackCommands(
+      databaseDetail,
+      "/private/synthetic-output",
+      feedbackOptions,
+    );
+    assert.equal(planned.commands.length, 0);
+    assert.match(planned.unresolved, /unsupported/);
+    assert.match(planned.unresolved, /database\/schema\.sql \(database\)/);
+    assert.match(planned.unresolved, /not treated as checked/);
+    assert.throws(
+      () =>
+        feedbackCommands(
+          databaseDetail,
+          "/private/synthetic-output",
+          feedbackOptions,
+        ),
+      /not treated as checked/,
+    );
+    assert.doesNotMatch(JSON.stringify(planned), /"result":"PASS"/);
+    assert.equal(classifyFeedbackPath("packages/ui/src/button.tsx"), "shared");
+    assert.equal(classifyFeedbackPath("apps/web/next.config.ts"), "web-config");
+  });
+
+  it("keeps default, lightweight and contracts command selection unchanged", () => {
+    const output = "/private/synthetic-output";
+    const web = taskCommands(classifyTask(["apps/web/app/page.tsx"]), output);
+    assert.deepEqual(web[0], [process.execPath, "--test", ...scriptTests()]);
+    assert.ok(web.some(isBareVerify));
+    assert.equal(
+      web.filter((command) => command.includes("test:cms")).length,
+      0,
+    );
+    const lightweight = taskCommands({ lightweight: true }, output);
+    assert.deepEqual(lightweight, [
+      [process.execPath, "--test", ...scriptTests()],
+    ]);
+    const contracts = taskCommands(
+      { lightweight: true, contracts: true },
+      output,
+    );
+    assert.deepEqual(contracts, [
+      [process.execPath, "--test", ...scriptTests()],
+      ...contractCommands(),
+    ]);
+    assert.deepEqual(
+      selectTaskValidationCommands({
+        mode: "actual-diff",
+        plan: classifyTask(["apps/web/app/page.tsx"]),
+        output,
+      }),
+      web,
+    );
+  });
+
+  it("records unchecked coverage and still refuses full acceptance", () => {
+    const selection = planFeedbackCommands(
+      { feedbackPaths: ["apps/web/features/home/home-screen.module.css"] },
+      "/private/synthetic-output",
+      feedbackOptions,
+    );
+    assert.match(
+      formatFeedbackCommandSelection(selection),
+      /selected-commands: pnpm exec prettier --check /,
+    );
+    assert.match(formatFeedbackCommandSelection(selection), /browser smoke/);
+    assert.match(
+      formatFeedbackCommandSelection(selection),
+      /not full acceptance/,
+    );
+    assert.ok(
+      !isFullAcceptance({ ...selection, result: "PASS", mode: "feedback" }),
+    );
+    assert.ok(
+      !isFullAcceptance({
+        result: "PASS",
+        mode: "feedback",
+        label: FEEDBACK_LABEL,
+        acceptance: false,
+        substitutesForTaskGate: false,
+        commandSelection: selection,
+      }),
+    );
   });
 });

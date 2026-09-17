@@ -95,8 +95,9 @@ word selects the mode; an unknown or missing mode is a usage error, not a guess.
   Do not block every small preview on full CI or push every tiny edit solely to
   obtain another full CI run. Complete task validation still uses the default
   entry and the cumulative CI plan. A failed full run is not a feedback PASS.
-  One shared 120-second execution budget; a timeout is a failure. Record
-  preparation time separately.
+  Feedback is capped at 120 seconds; full profiles follow the 2026-09-16
+  validation-profiles amendment (each plan owns its deadline; children receive
+  remaining time). A timeout is a failure. Record preparation time separately.
 - Commit and push only through the task Git helper: stage the intended paths,
   then `node scripts/task-git.mjs commit --message-file <file>` (or
   `--message <text>`) and `node scripts/task-git.mjs push`. It checks the

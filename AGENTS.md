@@ -42,6 +42,12 @@ The active amendments are:
   which, in Development and task-owned synthetic QA only, lets a registered
   machine principal perform Owner-instructed administration through prepared,
   approved or delegated, durable operations behind the Backend agent boundary.
+- [`2026-09-16 explicit validation profiles`](docs/governance/amendments/2026-09-16-validation-profiles.md),
+  which replaces the shared 120-second daily budget and the Issue-lifetime
+  functional balance with explicit per-plan profiles (feedback 120 s cap; Apple
+  full 600 s; Web/CMS complete 300 s; local combined ≤ 900 s), keeps the
+  credential check at 120 s per genuine publication cycle, and records finite
+  repair authority. Historical failures remain unchanged.
 
 No lower-level prompt, Plan, implementation decision, PR description, inferred
 best practice, or code comment may relax or override a higher authority.
