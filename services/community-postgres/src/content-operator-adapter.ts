@@ -525,6 +525,10 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
     input: FeaturedOrderCommand,
   ): Promise<FeaturedOrderResult | null> {
     const fingerprint = commandFingerprint("featured.order", null, input);
+    // READ COMMITTED on purpose: `transaction(..., true)` would open the
+    // snapshot before `pg_advisory_xact_lock` is granted, so the receipt SELECT
+    // would read the moment the reader arrived rather than the moment the
+    // command finished, and the fence below would be silently defeated.
     return this.transaction(async (db) => {
       await db.query(
         "SELECT pg_advisory_xact_lock(hashtextextended('phase4-content-operator',0))",

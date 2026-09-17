@@ -258,7 +258,10 @@ export const agentAdminTools = (
               z.object({ type: z.literal("work"), id: workId }),
             ]),
             enabled: z.boolean(),
-            position: z.number().int().min(0).default(0),
+            // Required, not defaulted: the positions carry the requested order,
+            // so a defaulted set of zeros would be a command that contradicts
+            // its own order and is refused.
+            position: z.number().int().min(0),
           }),
         )
         .min(1)
@@ -276,7 +279,7 @@ export const agentAdminTools = (
   {
     name: "artvenn_operations_execute",
     description:
-      "Run an approved operation forward in chunks of 50 and return its progress; call again while state is executing. A lost response never re-applies a target. Scope operations:execute.",
+      "Run an approved operation and return its progress. A comment operation runs forward in chunks of 50; call again while state is executing. A recommendation operation is ONE ordered command and runs whole in a single call: every target carries the same verdict, and a refusal means nothing was written. A lost response never re-applies a target. Scope operations:execute.",
     parameters: { requestId: uuid, operationId: uuid },
     handler: guarded(
       (args, call) =>
@@ -316,7 +319,7 @@ export const agentAdminTools = (
   {
     name: "artvenn_operations_cancel",
     description:
-      "Cancel an operation of this principal: a prepared or approved operation stops at once; an executing one stops after its current chunk. Applied targets stay applied. Scope operations:execute.",
+      "Cancel an operation of this principal: a prepared or approved operation stops at once; an executing comment operation stops after its current chunk. Applied targets stay applied, and a recommendation command that already committed is reported applied rather than cancelled — cancelling is not an undo. Scope operations:execute.",
     parameters: { requestId: uuid, operationId: uuid },
     handler: guarded(
       (args, call) =>

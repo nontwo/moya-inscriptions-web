@@ -367,7 +367,7 @@ export const registerAgentRecommendationTests = (
       expect(await receipts()).toBe(0);
     });
 
-    it("never reports a committed command as cancelled, and keeps it undoable", async () => {
+    it("reports a committed command as applied even though the operation is cancelled, and keeps it undoable", async () => {
       const [a, b] = works as [string, string];
       const operation = await approved([
         { id: a, position: 0 },
@@ -382,6 +382,9 @@ export const registerAgentRecommendationTests = (
         operationId: operation.id,
       });
       const finished = await execute(operation.id);
+      // The operation's own lifecycle state stays `cancelled`, because the
+      // Owner did cancel it; what must never be mislabelled is the work. Every
+      // target reports applied, so the tally and the undo both see the truth.
       expect(finished).toMatchObject({
         state: "cancelled",
         tally: { applied: 2, cancelled: 0 },
