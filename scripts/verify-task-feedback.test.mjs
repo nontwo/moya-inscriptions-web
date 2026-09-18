@@ -432,6 +432,23 @@ describe("feedback command selection", () => {
     assert.doesNotMatch(JSON.stringify(planned), /"result":"PASS"/);
     assert.equal(classifyFeedbackPath("packages/ui/src/button.tsx"), "shared");
     assert.equal(classifyFeedbackPath("apps/web/next.config.ts"), "web-config");
+    assert.equal(classifyFeedbackPath("apps/harmony/README.md"), "docs");
+    assert.equal(
+      classifyFeedbackPath("apps/harmony/ArtVenn/entryability.ets"),
+      "harmony",
+    );
+    const harmonyDetail = {
+      feedbackPaths: ["apps/harmony/ArtVenn/entryability.ets"],
+    };
+    const harmonyPlanned = planFeedbackCommands(
+      harmonyDetail,
+      "/private/synthetic-output",
+      feedbackOptions,
+    );
+    assert.equal(harmonyPlanned.commands.length, 0);
+    assert.match(harmonyPlanned.unresolved, /harmony/);
+    assert.match(harmonyPlanned.unresolved, /not treated as checked/);
+    assert.doesNotMatch(JSON.stringify(harmonyPlanned), /"result":"PASS"/);
   });
 
   it("keeps default, lightweight and contracts command selection unchanged", () => {

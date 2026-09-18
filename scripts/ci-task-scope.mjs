@@ -120,6 +120,8 @@ export function classifyTask(paths, event = "pull_request") {
     cms: false,
     contracts: false,
     apple: false,
+    harmony: false,
+    harmonyNativeValidation: "none",
     scope: "none",
   };
   const unknown = [];
@@ -148,13 +150,17 @@ export function classifyTask(paths, event = "pull_request") {
       file === "scripts/README.md" ||
       /^scripts\/[a-z-]+\.test\.mjs$/u.test(file) ||
       (/\.md$/u.test(file) &&
-        /^(?:docs|apps\/apple|apps\/web|apps\/admin|packages|services)\//u.test(
+        /^(?:docs|apps\/apple|apps\/harmony|apps\/web|apps\/admin|packages|services)\//u.test(
           file,
         ))
     ) {
       // Documentation, instruction imports and workflow tooling have real lightweight checks.
     } else if (file.startsWith("apps/apple/")) {
       plan.apple = true;
+    } else if (file.startsWith("apps/harmony/")) {
+      plan.harmony = true;
+      plan.harmonyNativeValidation =
+        "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED";
     } else if (publicBoundary(file)) {
       plan.contracts = true;
       if (cmsBuiltPackage.test(file)) plan.cms = true;
@@ -284,7 +290,7 @@ if (
     if (process.env.GITHUB_OUTPUT) {
       appendFileSync(
         process.env.GITHUB_OUTPUT,
-        ["scope", "web", "cms", "contracts", "apple", "lightweight"]
+        ["scope", "web", "cms", "contracts", "apple", "harmony", "lightweight"]
           .map((key) => `${key}=${plan[key]}\n`)
           .join("") + `plan=${JSON.stringify(plan)}\n`,
       );

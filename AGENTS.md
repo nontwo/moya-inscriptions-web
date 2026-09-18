@@ -39,9 +39,7 @@ The active amendments are:
   Owner-controlled publication setting and moderation — through the Mission 2A →
   2B → 2C sequence, with the Owner's product decisions recorded.
 - [`2026-09-16 Agent Administration V1`](docs/governance/amendments/2026-09-16-agent-administration-v1.md),
-  which, in Development and task-owned synthetic QA only, lets a registered
-  machine principal perform Owner-instructed administration through prepared,
-  approved or delegated, durable operations behind the Backend agent boundary.
+  Development-only machine administration behind the Backend agent boundary.
 - [`2026-09-16 explicit validation profiles`](docs/governance/amendments/2026-09-16-validation-profiles.md),
   which replaces the shared 120-second daily budget and the Issue-lifetime
   functional balance with explicit per-plan profiles (feedback 120 s cap; Apple
@@ -86,9 +84,11 @@ Before planning or writing, read
 [`docs/development/task-workflow.md`](docs/development/task-workflow.md). It is
 the shared task, verification, review and handoff convention for every tool. For
 an Apple task, also read [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md), even
-when the session starts at the repository root. For other affected directories,
-read their applicable existing local instructions. Reading another platform's
-instructions or interfaces does not grant write authority there.
+when the session starts at the repository root. For a HarmonyOS task, also read
+[`apps/harmony/AGENTS.md`](apps/harmony/AGENTS.md), even when the session starts
+at the repository root. For other affected directories, read their applicable
+existing local instructions. Reading another platform's instructions or
+interfaces does not grant write authority there.
 
 Scope follows the current task, actual changed paths and necessary dependencies.
 It does not follow the model, tool, author account or branch prefix. Codex and
