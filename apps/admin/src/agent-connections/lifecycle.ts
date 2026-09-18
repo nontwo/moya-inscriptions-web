@@ -10,11 +10,28 @@ import type { AgentConnection, ConnectionPreset } from "./contracts";
  * transition arrives from the Admin view, an operator endpoint or a test.
  *
  * The invariant the whole disconnect story rests on: **generation only ever
- * increases, and every token carries the generation it was minted under.**
- * That is what makes a disconnect deny an unexpired access token, its refresh
- * token and an already-open MCP session, without any of them being found and
- * deleted, and without trusting a clock. Reconnecting increases it again, so
- * tokens from before a disconnect can never be resurrected by reconnecting.
+ * increases, and every token carries the generation it was FROZEN AT CONSENT
+ * under** — not the generation that happens to be current when a token is
+ * minted. That is what makes a disconnect deny an unexpired access token and
+ * an already-open MCP session, without finding and deleting either, and
+ * without trusting a clock.
+ *
+ * The refresh token is the exception, and the r11 version of this comment was
+ * wrong about it. A refresh token is redeemed AT THE PROVIDER, which knows
+ * nothing about this generation, so a disconnect does not deny it: the
+ * provider still issues from it (measured — see the r12 spike, check C2). Two
+ * things are therefore required and only the first is implemented here:
+ *
+ *  1. the generation must be anchored to the provider GRANT at consent, so a
+ *     token refreshed after a disconnect still carries the old generation and
+ *     is refused (spike C4). That is what makes reconnecting a fresh consent
+ *     rather than a resurrection;
+ *  2. `revokeConnection` must also destroy the provider-side grant, so the
+ *     refresh token stops being redeemable at all rather than merely minting
+ *     tokens this boundary then rejects. That needs the grant reference on the
+ *     connection record and is NOT built yet.
+ *
+ * Until (2) exists, do not describe a disconnect as denying the refresh token.
  */
 
 export interface ConsentRecord {

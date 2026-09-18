@@ -126,11 +126,18 @@ describe("disconnect", () => {
     );
   });
 
-  it("denies a refresh attempt by the same generation rule, so refresh cannot restore access", () => {
+  it("denies anything minted under the pre-disconnect generation, which is what a refresh still carries", () => {
+    // Narrower than the r11 version of this test, which was titled as though
+    // it proved the refresh token itself is denied. It is not: a refresh is
+    // redeemed at the provider, which knows nothing about this generation, and
+    // the r12 spike measured the provider still issuing from it (check C2).
+    // What this rule gives is that whatever the refresh mints still carries
+    // the consent-time generation and is refused here (spike C4). Stopping the
+    // refresh itself needs provider-side grant destruction, which is not built.
     const authorized = authorizeConnection(fresh(), consent());
-    const refreshGeneration = authorized.generation;
+    const consentGeneration = authorized.generation;
     const revoked = revokeConnection(authorized, AT);
-    expect(() => admitWrite(revoked, refreshGeneration)).toThrow(
+    expect(() => admitWrite(revoked, consentGeneration)).toThrow(
       "CONNECTION_REVOKED",
     );
   });
