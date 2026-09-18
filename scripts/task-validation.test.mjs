@@ -182,16 +182,14 @@ describe("task routing follows the complete changed-path set", () => {
       ["apps/harmony/.gitignore"],
       {
         harmony: true,
-        harmonyNativeValidation:
-          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+        harmonyNativeValidation: "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
       },
     ],
     [
       ["apps/harmony/ArtVenn/entryability.ets"],
       {
         harmony: true,
-        harmonyNativeValidation:
-          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+        harmonyNativeValidation: "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
       },
     ],
     [
@@ -199,8 +197,7 @@ describe("task routing follows the complete changed-path set", () => {
       {
         apple: true,
         harmony: true,
-        harmonyNativeValidation:
-          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+        harmonyNativeValidation: "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
       },
     ],
     [
@@ -212,8 +209,7 @@ describe("task routing follows the complete changed-path set", () => {
         contracts: true,
         cms: true,
         harmony: true,
-        harmonyNativeValidation:
-          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+        harmonyNativeValidation: "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
       },
     ],
     [[".github/workflows/ci.yml", "scripts/verify-task.mjs"], {}],

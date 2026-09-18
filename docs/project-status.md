@@ -283,12 +283,12 @@ has yet been implemented.
 
 HarmonyOS is authorized as an independent native ArtVenn client domain
 (`apps/harmony/**`). The repository foundation and partner handoff are delivered
-by this task. Native Harmony product implementation has not started. Real
-DevEco project generation remains for the partner bootstrap task (Harmony
-Multidevice Bootstrap V1). No AppGallery publication authority and no
-Production deployment authority have been granted. Apple and Harmony remain
-independently developed native clients. The existing Backend / Public API
-remains the intended shared service boundary. Hosted Harmony native CI is
+by this task. Native Harmony product implementation has not started. Real DevEco
+project generation remains for the partner bootstrap task (Harmony Multidevice
+Bootstrap V1). No AppGallery publication authority and no Production deployment
+authority have been granted. Apple and Harmony remain independently developed
+native clients. The existing Backend / Public API remains the intended shared
+service boundary. Hosted Harmony native CI is
 `HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED`.
 
 ## 下一步任务

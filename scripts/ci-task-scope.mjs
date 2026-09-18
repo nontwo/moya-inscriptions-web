@@ -290,15 +290,7 @@ if (
     if (process.env.GITHUB_OUTPUT) {
       appendFileSync(
         process.env.GITHUB_OUTPUT,
-        [
-          "scope",
-          "web",
-          "cms",
-          "contracts",
-          "apple",
-          "harmony",
-          "lightweight",
-        ]
+        ["scope", "web", "cms", "contracts", "apple", "harmony", "lightweight"]
           .map((key) => `${key}=${plan[key]}\n`)
           .join("") + `plan=${JSON.stringify(plan)}\n`,
       );
