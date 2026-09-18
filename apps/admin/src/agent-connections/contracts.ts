@@ -194,6 +194,67 @@ export const scopesMatchPreset = (
   );
 };
 
+/**
+ * r12 §4.1 — client identity, in two explicitly accepted forms.
+ *
+ * The r11 record claimed a "1024-byte" ceiling. That was false in the
+ * permissive direction: Zod's `.max()` counts UTF-16 code units, so
+ * `.max(1024)` accepts a 2048-byte value of accented characters. Bytes are
+ * now measured as bytes.
+ *
+ * Rejection, never truncation: a truncated client id is a DIFFERENT id, and
+ * silently matching a prefix of somebody's identity is the whole class of bug
+ * exact-client binding exists to prevent.
+ */
+export const CLIENT_ID_MAX_BYTES = 1024;
+
+const utf8Bytes = (value: string): number =>
+  new TextEncoder().encode(value).length;
+
+/** Control characters have no place in an identifier presented as a bearer claim. */
+const hasControlCharacters = (value: string): boolean =>
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f]/u.test(value);
+
+/** Form 1: a preregistered opaque identifier, matched exactly. */
+export const isPreregisteredClientId = (value: string): boolean =>
+  value.length > 0 &&
+  value === value.trim() &&
+  !hasControlCharacters(value) &&
+  !value.includes("://") &&
+  utf8Bytes(value) <= CLIENT_ID_MAX_BYTES;
+
+/**
+ * Form 2: a CIMD client id, which is a canonical HTTPS URL. No userinfo (it
+ * would carry a credential), no fragment (it is not part of the identity the
+ * provider recognizes), and canonical — the stored value must be exactly what
+ * the provider recognized, so a non-canonical spelling is refused rather than
+ * normalized into agreement.
+ */
+export const isCimdClientId = (value: string): boolean => {
+  if (hasControlCharacters(value)) return false;
+  if (utf8Bytes(value) > CLIENT_ID_MAX_BYTES) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  if (url.username !== "" || url.password !== "") return false;
+  if (url.hash !== "") return false;
+  // Canonical: what we were given must equal what the URL parser round-trips,
+  // so two spellings of one URL cannot become two identities.
+  return url.href === value;
+};
+
+export const oauthClientIdSchema = z
+  .string()
+  .refine((value) => isPreregisteredClientId(value) || isCimdClientId(value), {
+    message:
+      "a client id is a bounded opaque identifier or a canonical HTTPS CIMD URL",
+  });
+
 export const connectionStatusSchema = z.enum([
   "awaiting-consent",
   "authorized",
@@ -223,11 +284,11 @@ export const agentConnectionSchema = z.strictObject({
    * generation all agree.
    */
   /**
-   * A CIMD client id is an HTTPS URL, so the ceiling is 1024 bytes rather than
-   * an identifier-sized one — long enough for real client metadata URLs
-   * without truncation, and still finite.
+   * The exact provider-recognized client id, in one of two accepted forms.
+   * See `oauthClientIdSchema`: a bounded opaque preregistered identifier, or a
+   * canonical HTTPS CIMD metadata URL bounded by real UTF-8 BYTES.
    */
-  oauthClientId: z.string().min(1).max(1024),
+  oauthClientId: oauthClientIdSchema,
   environment: z.string().min(1).max(64),
   preset: connectionPresetSchema,
   status: connectionStatusSchema,
@@ -254,9 +315,10 @@ export type AgentConnection = z.infer<typeof agentConnectionSchema>;
 export const verifiedGrantSchema = z.strictObject({
   connectionId: z.string().min(1).max(128),
   subject: z.string().min(1).max(128),
-  // Same ceiling as the connection's `oauthClientId`: a client id that can
-  // be stored but never matched is a permanently dead registration.
-  clientId: z.string().min(1).max(1024),
+  // The same two accepted forms as the connection's `oauthClientId`: a client
+  // id that can be stored but never matched is a permanently dead
+  // registration, and the two sides must therefore agree exactly.
+  clientId: oauthClientIdSchema,
   /** RFC 8707 resource indicator: which ArtVenn resource this token is for. */
   resource: z.string().min(1).max(512),
   issuer: z.string().min(1).max(512),

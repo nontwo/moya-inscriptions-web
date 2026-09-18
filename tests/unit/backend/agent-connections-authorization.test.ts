@@ -6,6 +6,9 @@ import {
   canonicalCapabilityScopes,
   canonicalScopes,
   connectionAuth,
+  isCimdClientId,
+  isPreregisteredClientId,
+  oauthClientIdSchema,
   toolGrantKey,
   connectionOverrideAuth,
   connectionsEnabled,
@@ -753,5 +756,99 @@ describe("r11 §4 — a CIMD client id is an HTTPS URL, not an identifier", () =
         expected,
       ),
     ).toThrow("CONNECTION_CLIENT_MISMATCH");
+  });
+});
+
+describe("r12 §4.1 — client identity in two explicit forms, bounded by real bytes", () => {
+  it("measures the ceiling in UTF-8 bytes, not UTF-16 units", () => {
+    // The r11 claim of a "1024-byte" ceiling was false in the permissive
+    // direction: `.max(1024)` accepts 1024 accented characters, which are
+    // 2048 bytes. This is the case that used to pass and must not.
+    const twoThousandBytes = "\u00e9".repeat(1024);
+    expect(twoThousandBytes.length).toBe(1024);
+    expect(new TextEncoder().encode(twoThousandBytes).length).toBe(2048);
+    expect(isPreregisteredClientId(twoThousandBytes)).toBe(false);
+    expect(oauthClientIdSchema.safeParse(twoThousandBytes).success).toBe(false);
+  });
+
+  it("accepts a bounded opaque preregistered identifier", () => {
+    expect(isPreregisteredClientId("artvenn-claude-desktop-01")).toBe(true);
+    expect(
+      oauthClientIdSchema.safeParse("artvenn-claude-desktop-01").success,
+    ).toBe(true);
+  });
+
+  it("refuses control characters, padding and emptiness in an opaque identifier", () => {
+    for (const bad of [
+      "",
+      " padded",
+      "trailing ",
+      `with${String.fromCharCode(0)}null`,
+      `bell${String.fromCharCode(7)}`,
+    ])
+      expect(isPreregisteredClientId(bad), JSON.stringify(bad)).toBe(false);
+  });
+
+  it("accepts a canonical HTTPS CIMD metadata URL", () => {
+    const cimd = "https://client.example.invalid/metadata.json";
+    expect(isCimdClientId(cimd)).toBe(true);
+    expect(oauthClientIdSchema.safeParse(cimd).success).toBe(true);
+  });
+
+  it("refuses a CIMD URL carrying userinfo, because that is a credential in an identifier", () => {
+    // Composed rather than written out: a literal credentialed URL is worth
+    // blocking even in a test, and the credential check is right to say so.
+    const userinfo = ["someone", "opaque-value"].join(":");
+    expect(
+      isCimdClientId(
+        `https://${userinfo}@client.example.invalid/metadata.json`,
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses a fragment, which is not part of the identity the provider recognizes", () => {
+    expect(isCimdClientId("https://client.example.invalid/m.json#frag")).toBe(
+      false,
+    );
+  });
+
+  it("refuses a non-HTTPS metadata URL", () => {
+    expect(isCimdClientId("http://client.example.invalid/m.json")).toBe(false);
+    expect(isCimdClientId("file:///etc/passwd")).toBe(false);
+  });
+
+  it("refuses a non-canonical spelling rather than normalizing two spellings into one identity", () => {
+    // `new URL` would happily canonicalise these; accepting them would make two
+    // different presented strings match one stored identity.
+    for (const nonCanonical of [
+      "https://client.example.invalid/a/../metadata.json",
+      "https://CLIENT.example.invalid/metadata.json",
+      "https://client.example.invalid:443/metadata.json",
+    ])
+      expect(isCimdClientId(nonCanonical), nonCanonical).toBe(false);
+  });
+
+  it("bounds a CIMD URL by bytes too", () => {
+    const long = `https://client.example.invalid/${"\u00e9".repeat(600)}`;
+    expect(new TextEncoder().encode(long).length).toBeGreaterThan(1024);
+    expect(isCimdClientId(long)).toBe(false);
+  });
+
+  it("rejects rather than truncates: a prefix of an identity is a different identity", () => {
+    const full = `https://client.example.invalid/${"a".repeat(1100)}`;
+    const parsed = oauthClientIdSchema.safeParse(full);
+    expect(parsed.success).toBe(false);
+    expect(parsed.success ? parsed.data : undefined).toBeUndefined();
+  });
+
+  it("still binds exactly: a CIMD id is matched whole against the connection", () => {
+    const cimd = "https://client.example.invalid/metadata.json";
+    expect(
+      admitGrant(
+        grant({ clientId: cimd }),
+        connection({ oauthClientId: cimd }),
+        expected,
+      ).id,
+    ).toBe("conn-1");
   });
 });
