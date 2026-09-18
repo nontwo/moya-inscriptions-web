@@ -29,6 +29,12 @@ export interface ConsentRecord {
 /**
  * A new connection begins unconsented and powerless. It holds a principal
  * label and a client, and grants nothing until a human says so in a browser.
+ *
+ * Connection ids are never reused. This resets `generation` to 0, so
+ * re-opening an existing id would make a generation-1 token from that id's
+ * previous life valid again after the next consent. The authority owns no
+ * creation path today, which is why this is a trap rather than a bug — it is
+ * written down so it stays one.
  */
 export const openConnection = (fields: {
   readonly id: string;
@@ -52,6 +58,7 @@ export const openConnection = (fields: {
   status: "awaiting-consent",
   generation: 0,
   revokedAt: null,
+  consentedAt: null,
 });
 
 /**
@@ -76,6 +83,7 @@ export const authorizeConnection = (
     preset: consent.preset,
     status: "authorized",
     revokedAt: null,
+    consentedAt: canonicalInstant(consent.at),
     // A first authorization starts the first generation that can mint tokens.
     generation: connection.generation + 1,
   };
@@ -106,17 +114,20 @@ export const reconsentConnection = (
 export const revokeConnection = (
   connection: AgentConnection,
   at: string,
-): AgentConnection =>
-  connection.status === "revoked"
+): AgentConnection => {
+  // Validated before the idempotent branch, so a malformed timestamp is
+  // refused whatever the current state is rather than throwing on a live
+  // connection and passing silently on an already-revoked one.
+  const revokedAt = canonicalInstant(at);
+  return connection.status === "revoked"
     ? connection
     : {
         ...connection,
         status: "revoked",
-        // Normalized, so the stored value is one the connection schema accepts
-        // rather than whatever form the caller happened to pass.
-        revokedAt: canonicalInstant(at),
+        revokedAt,
         generation: connection.generation + 1,
       };
+};
 
 /**
  * Reconnect is a fresh consent, not a restoration. It produces a generation
@@ -137,6 +148,7 @@ export const reconnectConnection = (
     preset: consent.preset,
     status: "authorized",
     revokedAt: null,
+    consentedAt: canonicalInstant(consent.at),
     generation: connection.generation + 1,
   };
 };

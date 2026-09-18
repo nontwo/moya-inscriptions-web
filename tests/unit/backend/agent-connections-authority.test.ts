@@ -109,7 +109,7 @@ describe("compare-and-set transitions", () => {
 
     await expect(
       authority.reconsent("conn-1", consent("management")),
-    ).rejects.toThrow();
+    ).rejects.toThrow("CONNECTION_NOT_AUTHORIZED");
 
     const after = store.peek("conn-1")!.connection;
     expect(after.status).toBe("revoked");
@@ -330,5 +330,59 @@ describe("r10 review blocker 2 — every stored record satisfies its own schema"
       "CONNECTION_TIMESTAMP_INVALID",
     );
     expect(store.peek("conn-1")!.connection.status).toBe("authorized");
+  });
+});
+
+describe("r10 re-review — the consent instant is stored, canonically", () => {
+  it("records when consent was given, normalized", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({ store });
+    await authority.authorize("conn-1", {
+      humanAccountId: "user-owner",
+      preset: "read-only",
+      at: "2026-09-18T05:00:00+02:00",
+    });
+    const parsed = agentConnectionSchema.parse(
+      store.peek("conn-1")!.connection,
+    );
+    expect(parsed.consentedAt).toBe("2026-09-18T03:00:00.000Z");
+  });
+
+  it("refuses an offset-less consent instant rather than reading it as host local time", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({ store });
+    await expect(
+      authority.authorize("conn-1", {
+        humanAccountId: "user-owner",
+        preset: "read-only",
+        at: "2026-09-18T05:00:00",
+      }),
+    ).rejects.toThrow("CONNECTION_TIMESTAMP_INVALID");
+  });
+
+  it("refuses an offset-less revocation instant for the same reason", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({ store });
+    await authority.authorize("conn-1", consent());
+    await expect(
+      authority.revoke("conn-1", "2026-09-18T05:00:00"),
+    ).rejects.toThrow("CONNECTION_TIMESTAMP_INVALID");
+  });
+
+  it("surfaces a failing provider cleanup instead of swallowing it silently", async () => {
+    const codes: string[] = [];
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({
+      store,
+      cleanupProviderGrant: async () => {
+        throw new Error("provider unreachable");
+      },
+      recordFailure: (code) => codes.push(code),
+    });
+    await authority.authorize("conn-1", consent());
+    await expect(authority.revoke("conn-1", AT)).resolves.toMatchObject({
+      status: "revoked",
+    });
+    expect(codes).toEqual(["CONNECTION_CLEANUP_FAILED"]);
   });
 });

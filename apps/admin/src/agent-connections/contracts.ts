@@ -169,6 +169,8 @@ export const agentConnectionSchema = z.strictObject({
    * because no test parsed the schema.
    */
   revokedAt: z.iso.datetime({ offset: true }).nullable(),
+  /** When the current consent was given. Null until a human has consented. */
+  consentedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 export type AgentConnection = z.infer<typeof agentConnectionSchema>;
 
@@ -229,6 +231,9 @@ export const toolGrantKey = (toolName: string): string =>
 export const isConnectionToken = (presented: string): boolean =>
   presented.startsWith(CONNECTION_TOKEN_PREFIX);
 
+/** The one instant form this module accepts anywhere: explicit offset, no guessing. */
+export const instantSchema = z.iso.datetime({ offset: true });
+
 /** Refusals carry a bare stable code; they never echo the presented token. */
 export class ConnectionAuthError extends Error {
   constructor(readonly code: string) {
@@ -241,9 +246,13 @@ export class ConnectionAuthError extends Error {
  * Normalizes an instant to the canonical form `agentConnectionSchema` accepts.
  * Throws rather than storing a value the schema would later reject.
  */
-export const canonicalInstant = (value: string): string => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime()))
+export const canonicalInstant = (value: unknown): string => {
+  // Validated BEFORE it is interpreted. `new Date(value)` accepts far more
+  // than the schema's canonical form and reads an offset-less timestamp as
+  // HOST LOCAL TIME, so the same input would store a different instant
+  // depending on the server's TZ — the r10 review caught that as blocker 2
+  // moved one layer down. Only an explicit instant is accepted.
+  if (!instantSchema.safeParse(value).success)
     throw new ConnectionAuthError("CONNECTION_TIMESTAMP_INVALID");
-  return parsed.toISOString();
+  return new Date(value as string).toISOString();
 };

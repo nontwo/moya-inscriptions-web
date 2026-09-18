@@ -135,13 +135,23 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
    * service source rather than trusting the copy.
    */
   const SCOPE_BY_PATH_PREFIX: readonly (readonly [string, string])[] = [
+    // Order matters: the two specific operation paths are enforced under
+    // different scopes from the rest of the family, and the r10 review caught
+    // this table mapping all of `agent/operations` to `operations:execute`.
+    ["agent/operations/prepare-comments", "comments:moderate"],
     ["agent/users", "users:read"],
     ["agent/content", "content:read"],
     ["agent/comments", "comments:read"],
     ["agent/operations", "operations:execute"],
   ];
 
+  /** `prepare-undo` is a suffix, not a prefix, so it needs its own rule. */
+  const scopeOverride = (path: string): string | null =>
+    path.endsWith("/prepare-undo") ? "operations:undo" : null;
+
   const scopeForPath = (path: string): string => {
+    const override = scopeOverride(path);
+    if (override !== null) return override;
     for (const [prefix, scope] of SCOPE_BY_PATH_PREFIX)
       if (path.startsWith(prefix)) return scope;
     throw new Error(`no scope mapped for Backend path ${path}`);
@@ -194,9 +204,10 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
     expect(held.has(scopeForPath(calls[0]!.path))).toBe(false);
   });
 
-  it("keeps the path/scope table honest: every management tool's path maps to a scope management holds", async () => {
+  it("covers every management tool's Backend path in the scope table, and maps each to the scope the service really enforces", async () => {
     vi.stubEnv("NODE_ENV", "development");
     const held = new Set(canonicalScopes("management"));
+    const mapped: Record<string, string> = {};
     const fixtures: Record<string, Record<string, unknown>> = {
       artvenn_users_find: { handle: "someone", page: 1, pageSize: 20 },
       artvenn_content_search: { search: "ink", page: 1, pageSize: 20 },
@@ -243,12 +254,21 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
         undefined,
       );
       expect(calls.length, `${name} made no Backend call`).toBeGreaterThan(0);
-      for (const call of calls)
+      for (const call of calls) {
+        // `held` is every scope, because management holds all seven — so this
+        // alone cannot fail. The assertions that CAN fail are that the table
+        // covers the path at all (scopeForPath throws otherwise) and that the
+        // specific paths below map where the service actually enforces them.
         expect(
           held.has(scopeForPath(call.path)),
           `${name} calls ${call.path} under ${scopeForPath(call.path)}`,
         ).toBe(true);
+        mapped[name] = scopeForPath(call.path);
+      }
     }
+    expect(mapped.artvenn_comments_prepare).toBe("comments:moderate");
+    expect(mapped.artvenn_operations_prepare_undo).toBe("operations:undo");
+    expect(mapped.artvenn_operations_execute).toBe("operations:execute");
   });
 
   it("still finds each mapped scope enforced by the service under that exact name", async () => {

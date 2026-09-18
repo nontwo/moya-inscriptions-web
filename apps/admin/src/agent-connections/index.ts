@@ -5,6 +5,7 @@ export {
   PRESET_TOOLS,
   agentConnectionSchema,
   canonicalInstant,
+  instantSchema,
   toolGrantKey,
   canonicalScopes,
   normalizeScopes,

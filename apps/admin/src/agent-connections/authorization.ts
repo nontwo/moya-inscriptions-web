@@ -6,6 +6,7 @@ import {
   isConnectionToken,
   scopesMatchPreset,
   toolGrantKey,
+  verifiedGrantSchema,
 } from "./contracts";
 
 import type { AgentConnection, VerifiedGrant } from "./contracts";
@@ -144,7 +145,13 @@ export const admitGrant = (
   // happens to enforce is the easiest obligation for the next implementer to
   // miss, and an expired token that still works is indistinguishable from no
   // expiry at all.
-  if (Date.parse(grant.expiresAt) <= now.getTime())
+  // `Date.parse` answers NaN for anything it cannot read — including a JWT
+  // `exp`, which is a NumericDate and therefore a NUMBER — and every NaN
+  // comparison is false. Written as a bare `<=` this check silently admitted
+  // exactly the value a real verifier is most likely to hand it. An
+  // unreadable expiry is an expired token, not an absent constraint.
+  const expiresAt = Date.parse(grant.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime())
     throw new ConnectionAuthError("CONNECTION_TOKEN_EXPIRED");
   return connection;
 };
@@ -172,9 +179,17 @@ export const connectionAuth =
     // no path back to the legacy resolver, so a forged or expired connection
     // token cannot be retried as an API key.
     try {
-      const grant = await dependencies.verifyAccessToken(presented);
-      if (grant === null)
+      const verified = await dependencies.verifyAccessToken(presented);
+      if (verified === null)
         throw new ConnectionAuthError("CONNECTION_TOKEN_INVALID");
+      // The verifier's return is untrusted data: its fields come from a token
+      // a caller supplied, and the TypeScript type is erased at runtime. Parse
+      // it rather than assume it, so a malformed claim is a refusal here
+      // instead of a surprise inside a comparison.
+      const parsed = verifiedGrantSchema.safeParse(verified);
+      if (!parsed.success)
+        throw new ConnectionAuthError("CONNECTION_GRANT_MALFORMED");
+      const grant = parsed.data;
       const connection = admitGrant(
         grant,
         await dependencies.readConnection(grant.connectionId),
@@ -214,9 +229,17 @@ export const connectionAuth =
       // specific code is recorded server-side — a store outage, a forged
       // signature and a revoked connection must be distinguishable to the
       // operator even though they are identical on the wire. Never the token.
-      dependencies.recordRefusal?.(
-        error instanceof ConnectionAuthError ? error.code : "CONNECTION_ERROR",
-      );
+      try {
+        dependencies.recordRefusal?.(
+          error instanceof ConnectionAuthError
+            ? error.code
+            : "CONNECTION_ERROR",
+        );
+      } catch {
+        // A diagnostics sink that throws must not replace the refusal with its
+        // own error — that is exactly the probe-distinguishable outcome the
+        // single external shape exists to prevent.
+      }
       throw new UnauthorizedError();
     }
   };

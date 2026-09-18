@@ -56,6 +56,8 @@ export type ProviderCleanup = (connection: AgentConnection) => Promise<void>;
 export interface ConnectionAuthorityOptions {
   readonly store: ConnectionStore;
   readonly cleanupProviderGrant?: ProviderCleanup;
+  /** Server-side diagnostics. Receives a bare code, never a credential. */
+  readonly recordFailure?: (code: string) => void;
   /** Bounded retries for a genuine lost race. Not a retry of a refusal. */
   readonly maxAttempts?: number;
 }
@@ -65,11 +67,13 @@ const DEFAULT_ATTEMPTS = 5;
 export class ConnectionAuthority {
   private readonly store: ConnectionStore;
   private readonly cleanupProviderGrant: ProviderCleanup | undefined;
+  private readonly recordFailure: ((code: string) => void) | undefined;
   private readonly maxAttempts: number;
 
   constructor(options: ConnectionAuthorityOptions) {
     this.store = options.store;
     this.cleanupProviderGrant = options.cleanupProviderGrant;
+    this.recordFailure = options.recordFailure;
     this.maxAttempts = options.maxAttempts ?? DEFAULT_ATTEMPTS;
   }
 
@@ -163,7 +167,11 @@ export class ConnectionAuthority {
       revokeConnection(current, at),
     );
     if (this.cleanupProviderGrant !== undefined)
-      await this.cleanupProviderGrant(revoked).catch(() => undefined);
+      await this.cleanupProviderGrant(revoked).catch(() => {
+        // The revocation stands regardless; a cleanup that keeps failing is
+        // still something an operator needs to see rather than infer.
+        this.recordFailure?.("CONNECTION_CLEANUP_FAILED");
+      });
     return revoked;
   }
 

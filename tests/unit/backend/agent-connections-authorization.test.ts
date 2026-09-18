@@ -53,6 +53,7 @@ const connection = (
   client: "claude",
   environment: ENVIRONMENT,
   oauthClientId: CLIENT_ID,
+  consentedAt: "2026-09-18T00:00:00Z",
   preset: "read-only",
   status: "authorized",
   generation: 3,
@@ -559,5 +560,93 @@ describe("r10 review finding 6 — token freshness is checked here", () => {
         new Date("2026-09-18T00:00:00Z"),
       ).id,
     ).toBe("conn-1");
+  });
+});
+
+describe("r10 re-review blocker — an unreadable expiry is an expired token", () => {
+  it("refuses a JWT-style numeric exp, which Date.parse answers NaN for", async () => {
+    // The value a real verifier is most likely to produce: JWT `exp` is a
+    // NumericDate, i.e. a number. Written as a bare `<=`, the check was
+    // skipped entirely and the grant admitted.
+    await expect(
+      auth({
+        verify: async () =>
+          ({ ...grant(), expiresAt: 1789693200 }) as unknown as VerifiedGrant,
+      })(request(header(token())), async () => ({}) as never),
+    ).rejects.toThrow();
+  });
+
+  it("refuses an unparseable expiry string", () => {
+    expect(() =>
+      admitGrant(
+        { ...grant(), expiresAt: "not-a-date" } as VerifiedGrant,
+        connection(),
+        expected,
+      ),
+    ).toThrow("CONNECTION_TOKEN_EXPIRED");
+  });
+
+  it("refuses a missing expiry rather than treating it as no constraint", () => {
+    const withoutExpiry: Record<string, unknown> = { ...grant() };
+    delete withoutExpiry.expiresAt;
+    expect(() =>
+      admitGrant(
+        withoutExpiry as unknown as VerifiedGrant,
+        connection(),
+        expected,
+      ),
+    ).toThrow("CONNECTION_TOKEN_EXPIRED");
+  });
+
+  it("refuses a grant whose shape the verifier got wrong, before any comparison", async () => {
+    await expect(
+      auth({
+        verify: async () =>
+          ({ connectionId: "conn-1" }) as unknown as VerifiedGrant,
+      })(request(header(token())), async () => ({}) as never),
+    ).rejects.toThrow();
+  });
+});
+
+describe("r10 re-review — diagnostics never change the answer", () => {
+  it("records the refusal code, and never the presented credential", async () => {
+    const codes: string[] = [];
+    const settings = connectionAuth({
+      verifyAccessToken: async () => null,
+      readConnection: async () => connection(),
+      issuer: ISSUER,
+      resource: RESOURCE,
+      environment: ENVIRONMENT,
+      recordRefusal: (code) => codes.push(code),
+    });
+    await expect(
+      settings(
+        request(header(token("secret-value"))),
+        async () => ({}) as never,
+      ),
+    ).rejects.toThrow();
+    expect(codes).toEqual(["CONNECTION_TOKEN_INVALID"]);
+    expect(codes.join(" ")).not.toContain("secret-value");
+  });
+
+  it("still answers UnauthorizedError when the diagnostics sink itself throws", async () => {
+    const settings = connectionAuth({
+      verifyAccessToken: async () => null,
+      readConnection: async () => connection(),
+      issuer: ISSUER,
+      resource: RESOURCE,
+      environment: ENVIRONMENT,
+      recordRefusal: () => {
+        throw new Error("logger transport down");
+      },
+    });
+    const outcome = await settings(
+      request(header(token())),
+      async () => ({}) as never,
+    ).then(
+      () => "resolved",
+      (error: Error) => error.name,
+    );
+    expect(outcome).toBe("UnauthorizedError");
   });
 });
