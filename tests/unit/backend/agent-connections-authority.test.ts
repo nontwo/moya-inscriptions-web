@@ -386,3 +386,37 @@ describe("r10 re-review — the consent instant is stored, canonically", () => {
     expect(codes).toEqual(["CONNECTION_CLEANUP_FAILED"]);
   });
 });
+
+describe("r10 re-review — a landed revocation is never reported as failed", () => {
+  it("resolves even when cleanup rejects AND the diagnostics sink throws", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({
+      store,
+      cleanupProviderGrant: async () => {
+        throw new Error("provider unreachable");
+      },
+      recordFailure: () => {
+        throw new Error("logger transport down");
+      },
+    });
+    await authority.authorize("conn-1", consent());
+    await expect(authority.revoke("conn-1", AT)).resolves.toMatchObject({
+      status: "revoked",
+    });
+    expect(store.peek("conn-1")!.connection.status).toBe("revoked");
+  });
+
+  it("resolves when cleanup throws synchronously, before any promise exists", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({
+      store,
+      cleanupProviderGrant: (() => {
+        throw new Error("synchronous failure");
+      }) as never,
+    });
+    await authority.authorize("conn-1", consent());
+    await expect(authority.revoke("conn-1", AT)).resolves.toMatchObject({
+      status: "revoked",
+    });
+  });
+});

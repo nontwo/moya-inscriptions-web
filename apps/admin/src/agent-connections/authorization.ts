@@ -45,7 +45,16 @@ export type AccessTokenVerifier = (
   presented: string,
 ) => Promise<VerifiedGrant | null>;
 
-/** Reads the current connection record. Returns null when it does not exist. */
+/**
+ * Reads the current connection record. Returns null when it does not exist.
+ *
+ * The record it returns is TRUSTED: unlike a grant, it comes from ArtVenn's
+ * own store rather than from a caller-supplied token, so it is not parsed
+ * here. A corrupt `preset` still fails closed (the preset lookup yields
+ * undefined and the outer catch answers Unauthorized), and `principalLabel`
+ * is re-validated downstream by `agentPrincipalOf` and again by the Backend.
+ * When persistence lands, parse the row at the store boundary.
+ */
 export type ConnectionReader = (
   connectionId: string,
 ) => Promise<AgentConnection | null>;
@@ -103,6 +112,11 @@ const connectionUser = (connection: AgentConnection): TypedUser =>
  * Checks a verified token against its connection. Every mismatch is a refusal
  * with its own code, because "why was this refused" is the first question a
  * connection diagnostic has to answer.
+ *
+ * Expects an ALREADY-PARSED grant: the `verifiedGrantSchema` parse lives in
+ * `connectionAuth`, so this function does not re-validate its own input. It is
+ * exported for tests that construct grants deliberately; a production caller
+ * that has not parsed first is handing it untrusted data.
  */
 export const admitGrant = (
   grant: VerifiedGrant,

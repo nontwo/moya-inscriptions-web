@@ -166,12 +166,24 @@ export class ConnectionAuthority {
     const revoked = await this.transition(connectionId, (current) =>
       revokeConnection(current, at),
     );
-    if (this.cleanupProviderGrant !== undefined)
-      await this.cleanupProviderGrant(revoked).catch(() => {
+    if (this.cleanupProviderGrant !== undefined) {
+      // `try/await` rather than `.catch`, so a SYNCHRONOUS throw from the
+      // cleanup is caught too, and a throwing diagnostics sink cannot turn a
+      // revocation that has already been stored into a rejected `revoke()`.
+      // The Admin reporting "disconnect failed" for a connection that is in
+      // fact revoked is the worst direction for that message to be wrong in.
+      try {
+        await this.cleanupProviderGrant(revoked);
+      } catch {
         // The revocation stands regardless; a cleanup that keeps failing is
         // still something an operator needs to see rather than infer.
-        this.recordFailure?.("CONNECTION_CLEANUP_FAILED");
-      });
+        try {
+          this.recordFailure?.("CONNECTION_CLEANUP_FAILED");
+        } catch {
+          // Diagnostics never change the answer.
+        }
+      }
+    }
     return revoked;
   }
 

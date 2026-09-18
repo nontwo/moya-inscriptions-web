@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PRESET_TOOLS, canonicalScopes } from "admin/agent-connections";
+import {
+  PRESET_SCOPES,
+  PRESET_TOOLS,
+  canonicalScopes,
+} from "admin/agent-connections";
 import { agentAdminTools } from "admin/agent-admin-mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -139,6 +143,7 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
     // different scopes from the rest of the family, and the r10 review caught
     // this table mapping all of `agent/operations` to `operations:execute`.
     ["agent/operations/prepare-comments", "comments:moderate"],
+    ["agent/operations/prepare-featured", "featured:write"],
     ["agent/users", "users:read"],
     ["agent/content", "content:read"],
     ["agent/comments", "comments:read"],
@@ -267,6 +272,7 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
       }
     }
     expect(mapped.artvenn_comments_prepare).toBe("comments:moderate");
+    expect(mapped.artvenn_featured_prepare).toBe("featured:write");
     expect(mapped.artvenn_operations_prepare_undo).toBe("operations:undo");
     expect(mapped.artvenn_operations_execute).toBe("operations:execute");
   });
@@ -275,11 +281,30 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
     const source = read(
       "services/api/src/modules/community/application/services/agent-administration-service.ts",
     );
-    for (const [, scope] of SCOPE_BY_PATH_PREFIX)
+    const mappedScopes = [
+      ...SCOPE_BY_PATH_PREFIX.map(([, scope]) => scope),
+      // The suffix override's scope, which iterating the prefix table alone
+      // would silently leave uncovered.
+      "operations:undo",
+    ];
+    for (const scope of new Set(mappedScopes))
       expect(
         source.includes(`authorize(principal, "${scope}")`),
         `${scope} is no longer enforced by the service under that name`,
       ).toBe(true);
+  });
+
+  it("records that prepare-comments enforces a second scope the one-per-path table cannot express", () => {
+    // Selector mode additionally authorizes comments:read
+    // (agent-administration-service.ts). The fixture above uses `ids` mode, so
+    // that branch is never walked — written down rather than left implied.
+    const source = read(
+      "services/api/src/modules/community/application/services/agent-administration-service.ts",
+    );
+    expect(source).toContain('authorize(principal, "comments:moderate")');
+    expect(source).toContain('authorize(principal, "comments:read")');
+    expect(PRESET_SCOPES.management).toContain("comments:read");
+    expect(PRESET_SCOPES.management).toContain("comments:moderate");
   });
 
   it("keeps every management-only tool out of the read-only grant map, so it is absent from tools/list", () => {
