@@ -26,12 +26,14 @@ import type { Pool } from "pg";
  *    as keyed digests and payloads as authenticated ciphertext.
  *  - `find` receives one argument. The provider DOES ask for expired rows --
  *    `refresh_token.js` calls `RefreshToken.find(value, {ignoreExpiration:
- *    true})` -- but the option reaches a two-argument reference adapter, not
- *    this one-argument signature. An earlier version of this file read the
- *    missing option as permission to filter expiry here. That was backwards:
- *    the reference `MemoryAdapter.find` does not filter at all, because the
- *    provider checks expiry itself in `opaque.verify` -> `assertPayload` under
- *    `clockTolerance` (default 15s).
+ *    true})` -- but that option never reaches ANY adapter: `base_model.js:119`
+ *    calls `this.adapter.find(value)` with one argument and applies the option
+ *    itself at `:125`, in `verify`. The reference `MemoryAdapter.find(id)` is
+ *    one-parameter too. An earlier version of this file read the missing
+ *    option as permission to filter expiry here. That was backwards: the
+ *    reference adapter does not filter at all, because the model checks expiry
+ *    under `clockTolerance` (default 15s) before the adapter is ever consulted
+ *    about it.
  *
  *    Two corrections to the record, both made after being checked against the
  *    provider rather than argued. First, filtering here was never a security

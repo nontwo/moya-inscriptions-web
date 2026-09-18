@@ -420,6 +420,27 @@ export const registerAgentConnectionTests = (
         ).rejects.toMatchObject({ code: "23001" });
       });
 
+      it("refuses to backdate a destruction that already happened", async () => {
+        // The fact of destruction was terminal; WHEN it happened was not.
+        // Measured before the fix: `destroyed_at` moved ten years while
+        // `destroy_status` stayed 'done' -- and the App role holds that column,
+        // so the one field an auditor reads could be rewritten by the resource
+        // server.
+        await addGrant("grant-r1", 1);
+        await pool.query(
+          `UPDATE community.agent_connection_grants
+              SET destroy_status='done', destroyed_at=CURRENT_TIMESTAMP
+            WHERE grant_id='grant-r1'`,
+        );
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_grants
+                SET destroyed_at = destroyed_at - interval '10 years'
+              WHERE grant_id='grant-r1'`,
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+      });
+
       it("refuses a destruction timestamp on a grant nobody asked to destroy", async () => {
         await addGrant("grant-r1", 1);
         await expect(
