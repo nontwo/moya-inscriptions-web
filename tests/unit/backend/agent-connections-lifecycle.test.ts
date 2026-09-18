@@ -24,16 +24,8 @@ const ISSUER = "https://auth.artvenn.invalid";
 const RESOURCE = "https://admin.artvenn.invalid/api/mcp";
 const ENVIRONMENT = "development";
 const CLIENT_ID = "artvenn-claude-desktop-01";
-const READ_ONLY_SCOPES = ["comments:read", "content:read", "users:read"];
-const MANAGEMENT_SCOPES = [
-  "comments:moderate",
-  "comments:read",
-  "content:read",
-  "featured:write",
-  "operations:execute",
-  "operations:undo",
-  "users:read",
-];
+const READ_ONLY_SCOPES = ["artvenn:read"];
+const MANAGEMENT_SCOPES = ["artvenn:manage", "artvenn:read"];
 const AT = "2026-09-18T01:00:00Z";
 
 const expected = {

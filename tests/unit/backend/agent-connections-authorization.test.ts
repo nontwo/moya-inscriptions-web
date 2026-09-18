@@ -2,6 +2,8 @@ import {
   CONNECTION_TOKEN_PREFIX,
   PRESET_TOOLS,
   admitGrant,
+  admitScopeClaim,
+  canonicalCapabilityScopes,
   canonicalScopes,
   connectionAuth,
   toolGrantKey,
@@ -33,16 +35,11 @@ const RESOURCE = "https://admin.artvenn.invalid/api/mcp";
 const ENVIRONMENT = "development";
 const CLIENT_ID = "artvenn-claude-desktop-01";
 /** The canonical scope set a read-only token must carry. Nothing more, nothing less. */
-const READ_ONLY_SCOPES = ["comments:read", "content:read", "users:read"];
-const MANAGEMENT_SCOPES = [
-  "comments:moderate",
-  "comments:read",
-  "content:read",
-  "featured:write",
-  "operations:execute",
-  "operations:undo",
-  "users:read",
-];
+/** External capability scopes — the published OAuth contract, not the Backend's. */
+const READ_ONLY_SCOPES = ["artvenn:read"];
+const MANAGEMENT_SCOPES = ["artvenn:manage", "artvenn:read"];
+/** The Backend's internal seven, which a token must never name. */
+const INTERNAL_SCOPES = ["comments:read", "content:read", "users:read"];
 
 const connection = (
   overrides: Partial<AgentConnection> = {},
@@ -433,27 +430,27 @@ describe("r10 §3.3 — exact scope agreement", () => {
   it("accepts the canonical set in any order, because both sides normalize", () => {
     expect(
       admitGrant(
-        grant({ scopes: ["users:read", "comments:read", "content:read"] }),
-        connection(),
+        grant({ scopes: ["artvenn:manage", "artvenn:read"] }),
+        connection({ preset: "management" }),
         expected,
       ).id,
     ).toBe("conn-1");
   });
 
-  it("refuses an extra scope", () => {
-    refuse([...READ_ONLY_SCOPES, "featured:write"]);
+  it("refuses an extra capability scope", () => {
+    refuse([...READ_ONLY_SCOPES, "artvenn:manage"]);
   });
 
-  it("refuses a missing scope", () => {
-    refuse(["users:read", "content:read"]);
+  it("refuses a missing capability scope", () => {
+    refuse(["offline_access"]);
   });
 
   it("refuses a duplicated scope rather than collapsing it", () => {
-    refuse([...READ_ONLY_SCOPES, "users:read"]);
+    refuse([...READ_ONLY_SCOPES, "artvenn:read"]);
   });
 
   it("refuses an unknown scope", () => {
-    refuse(["users:read", "content:read", "comments:read", "admin:everything"]);
+    refuse([...READ_ONLY_SCOPES, "admin:everything"]);
   });
 
   it("refuses an empty claim: absent scopes never inherit the preset", () => {
@@ -462,12 +459,12 @@ describe("r10 §3.3 — exact scope agreement", () => {
 
   it("refuses a malformed claim", () => {
     refuse(undefined);
-    refuse("users:read content:read comments:read");
-    refuse([" users:read", "content:read", "comments:read"]);
+    refuse("artvenn:read");
+    refuse([" artvenn:read"]);
     refuse([1, 2, 3]);
   });
 
-  it("requires the management set for a management connection, and refuses the read-only set there", () => {
+  it("requires the management capabilities for a management connection, and refuses the read-only set there", () => {
     const managed = connection({ preset: "management" });
     expect(
       admitGrant(grant({ scopes: MANAGEMENT_SCOPES }), managed, expected).id,
@@ -497,12 +494,8 @@ describe("r10 §3.4 — the read-only preset advertises only what its scopes aut
     expect(canonicalScopes("management")).toContain("operations:execute");
   });
 
-  it("does not widen the read-only scope set to keep a tool: no operations scope is present", () => {
-    expect(canonicalScopes("read-only")).toEqual([
-      "comments:read",
-      "content:read",
-      "users:read",
-    ]);
+  it("does not widen the read-only Backend scope set to keep a tool: no operations scope is present", () => {
+    expect(canonicalScopes("read-only")).toEqual(INTERNAL_SCOPES);
   });
 });
 
@@ -648,5 +641,117 @@ describe("r10 re-review — diagnostics never change the answer", () => {
       (error: Error) => error.name,
     );
     expect(outcome).toBe("UnauthorizedError");
+  });
+});
+
+describe("r11 §3 — capability scopes, protocol scopes and Backend scopes are three vocabularies", () => {
+  const admit = (
+    scopes: unknown,
+    preset: AgentConnection["preset"] = "read-only",
+  ) =>
+    admitGrant(
+      grant({ scopes: scopes as string[] }),
+      connection({ preset }),
+      expected,
+    );
+
+  it("publishes a small external vocabulary, not the Backend's seven", () => {
+    expect(canonicalCapabilityScopes("read-only")).toEqual(["artvenn:read"]);
+    expect(canonicalCapabilityScopes("management")).toEqual([
+      "artvenn:manage",
+      "artvenn:read",
+    ]);
+  });
+
+  it("refuses a token naming an internal Backend scope: those are not the external contract", () => {
+    for (const internal of INTERNAL_SCOPES)
+      expect(() => admit([internal])).toThrow("CONNECTION_SCOPE_MISMATCH");
+    expect(() => admit([...READ_ONLY_SCOPES, "operations:execute"])).toThrow(
+      "CONNECTION_SCOPE_MISMATCH",
+    );
+  });
+
+  it("accepts offline_access alongside the capability set, for the refresh lifecycle", () => {
+    expect(admit(["artvenn:read", "offline_access"]).id).toBe("conn-1");
+    expect(
+      admit(["artvenn:read", "artvenn:manage", "offline_access"], "management")
+        .id,
+    ).toBe("conn-1");
+  });
+
+  it("grants nothing for offline_access: it cannot stand in for a capability", () => {
+    expect(() => admit(["offline_access"])).toThrow(
+      "CONNECTION_SCOPE_MISMATCH",
+    );
+  });
+
+  it("does not let a protocol scope change the tool map", async () => {
+    const withProtocol = await auth({
+      verify: async () => grant({ scopes: ["artvenn:read", "offline_access"] }),
+    })(request(header(token())), async () => ({}) as never);
+    const without = await auth()(
+      request(header(token())),
+      async () => ({}) as never,
+    );
+    expect(Object.keys(withProtocol["payload-mcp-tool"] ?? {}).sort()).toEqual(
+      Object.keys(without["payload-mcp-tool"] ?? {}).sort(),
+    );
+  });
+
+  it("refuses openid, which is not on the protocol allowlist", () => {
+    expect(() => admit(["artvenn:read", "openid"])).toThrow(
+      "CONNECTION_SCOPE_MISMATCH",
+    );
+    expect(() => admit(["artvenn:read", "profile"])).toThrow(
+      "CONNECTION_SCOPE_MISMATCH",
+    );
+  });
+
+  it("refuses a duplicated protocol scope on the same terms as a duplicated capability", () => {
+    expect(() =>
+      admit(["artvenn:read", "offline_access", "offline_access"]),
+    ).toThrow("CONNECTION_SCOPE_MISMATCH");
+  });
+
+  it("classifies a claim into its two vocabularies, or refuses it whole", () => {
+    expect(admitScopeClaim(["artvenn:read", "offline_access"])).toEqual({
+      capabilities: ["artvenn:read"],
+      protocol: ["offline_access"],
+    });
+    expect(admitScopeClaim(["artvenn:read", "users:read"])).toBeNull();
+    expect(admitScopeClaim([])).toBeNull();
+  });
+
+  it("keeps the Backend scopes derived from the preset, never read off the token", () => {
+    // A management token on a read-only connection is refused, so there is no
+    // path by which a claim could reach the Backend scope derivation at all.
+    expect(() => admit(MANAGEMENT_SCOPES)).toThrow("CONNECTION_SCOPE_MISMATCH");
+    expect(canonicalScopes("management")).toHaveLength(7);
+  });
+});
+
+describe("r11 §4 — a CIMD client id is an HTTPS URL, not an identifier", () => {
+  it("stores and matches a client id far longer than an identifier ceiling", () => {
+    const cimd = `https://client.example.invalid/${"a".repeat(400)}/metadata.json`;
+    expect(cimd.length).toBeGreaterThan(256);
+    expect(
+      admitGrant(
+        grant({ clientId: cimd }),
+        connection({ oauthClientId: cimd }),
+        expected,
+      ).id,
+    ).toBe("conn-1");
+  });
+
+  it("still refuses a different metadata URL from the same vendor", () => {
+    const mine = "https://client.example.invalid/a/metadata.json";
+    const theirs = "https://client.example.invalid/b/metadata.json";
+    expect(() =>
+      admitGrant(
+        grant({ clientId: theirs }),
+        connection({ oauthClientId: mine }),
+        expected,
+      ),
+    ).toThrow("CONNECTION_CLIENT_MISMATCH");
   });
 });

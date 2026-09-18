@@ -92,39 +92,105 @@ export const PRESET_TOOLS: Readonly<
  * issuing this connection's canonical set, and quietly accepting it would mean
  * the resource server and the provider disagree about what a token says.
  */
-export const normalizeScopes = (raw: unknown): readonly string[] | null => {
+/**
+ * r11 §3 — THREE scope vocabularies, deliberately not one.
+ *
+ * The r10 model compared a token's scope claim against the Backend's seven
+ * internal business scopes. That conflated two things that serve different
+ * purposes and must be free to move independently:
+ *
+ *  - **Capability scopes** are the external OAuth contract. MCP clients pick
+ *    these up from `WWW-Authenticate` and protected-resource metadata, so they
+ *    are a published interface and stay small and stable.
+ *  - **Protocol-only scopes** (`offline_access`) exist for the refresh
+ *    lifecycle. They are accepted from a fixed allowlist and grant no ArtVenn
+ *    capability whatsoever — a token holding only `offline_access` can call
+ *    nothing.
+ *  - **Internal Backend scopes** are the seven the Backend enforces. They are
+ *    derived from the connection's preset and never read off a token, so a
+ *    client cannot name them and cannot widen them.
+ *
+ * `openid` is deliberately absent from the allowlist: this is OAuth
+ * authorization for an MCP resource, not an identity-token product. Adding it
+ * would need a tested client integration that actually requires it.
+ */
+export const capabilityScopeSchema = z.enum(["artvenn:read", "artvenn:manage"]);
+export type CapabilityScope = z.infer<typeof capabilityScopeSchema>;
+
+/** Accepted for the refresh lifecycle; grants nothing. */
+export const PROTOCOL_ONLY_SCOPES: readonly string[] = ["offline_access"];
+
+/** The external capability scopes each preset consents to. */
+export const PRESET_CAPABILITY_SCOPES: Readonly<
+  Record<ConnectionPreset, readonly CapabilityScope[]>
+> = {
+  "read-only": ["artvenn:read"],
+  management: ["artvenn:read", "artvenn:manage"],
+};
+
+/** The exact capability set a token for this preset must carry. */
+export const canonicalCapabilityScopes = (
+  preset: ConnectionPreset,
+): readonly string[] => [...PRESET_CAPABILITY_SCOPES[preset]].sort();
+
+/** The internal Backend scopes a preset maps to. Never read off a token. */
+export const canonicalScopes = (preset: ConnectionPreset): readonly string[] =>
+  [...PRESET_SCOPES[preset]].sort();
+
+export interface ScopeAdmission {
+  readonly capabilities: readonly string[];
+  readonly protocol: readonly string[];
+}
+
+/**
+ * Splits a claim into capability and protocol scopes, or refuses it.
+ *
+ * Total: anything it cannot classify is `null`, which is a refusal rather than
+ * a lenient reading. Duplicates fail rather than collapse — a claim repeating
+ * a scope did not come from this connection's consent, and accepting it would
+ * mean the resource server and the provider disagree about what a token says.
+ * An internal Backend scope appearing in a claim is refused outright: those
+ * are never part of the external contract, so seeing one means the token was
+ * minted against a different model than this one.
+ */
+export const admitScopeClaim = (raw: unknown): ScopeAdmission | null => {
   if (!Array.isArray(raw) || raw.length === 0) return null;
+  const capabilities: string[] = [];
+  const protocol: string[] = [];
   const seen = new Set<string>();
   for (const scope of raw) {
     if (typeof scope !== "string") return null;
     if (scope !== scope.trim() || scope === "") return null;
-    if (!agentScopeSchema.safeParse(scope).success) return null;
     if (seen.has(scope)) return null;
     seen.add(scope);
+    if (capabilityScopeSchema.safeParse(scope).success)
+      capabilities.push(scope);
+    else if (PROTOCOL_ONLY_SCOPES.includes(scope)) protocol.push(scope);
+    // An internal Backend scope, `openid`, or anything unrecognised.
+    else return null;
   }
-  return [...seen].sort();
+  return {
+    capabilities: [...capabilities].sort(),
+    protocol: [...protocol].sort(),
+  };
 };
 
-/** The exact scope set a token for this preset must carry. Nothing more. */
-export const canonicalScopes = (preset: ConnectionPreset): readonly string[] =>
-  [...PRESET_SCOPES[preset]].sort();
-
 /**
- * Exact match, in both directions. A token with fewer scopes is not "safely
- * narrower": it did not come from this connection's consent, and letting it
- * through would mean an absent scope claim could inherit the preset by
- * default. Reordering is fine because both sides are sorted.
+ * Exact capability agreement, in both directions, with protocol-only scopes
+ * ignored for the comparison and unable to affect it. A token with fewer
+ * capabilities is not "safely narrower": it did not come from this
+ * connection's consent, and an absent claim must never inherit the preset.
  */
 export const scopesMatchPreset = (
   claimed: unknown,
   preset: ConnectionPreset,
 ): boolean => {
-  const normalized = normalizeScopes(claimed);
-  if (normalized === null) return false;
-  const expected = canonicalScopes(preset);
+  const admitted = admitScopeClaim(claimed);
+  if (admitted === null) return false;
+  const expected = canonicalCapabilityScopes(preset);
   return (
-    normalized.length === expected.length &&
-    normalized.every((scope, index) => scope === expected[index])
+    admitted.capabilities.length === expected.length &&
+    admitted.capabilities.every((scope, index) => scope === expected[index])
   );
 };
 
@@ -156,7 +222,12 @@ export const agentConnectionSchema = z.strictObject({
    * client fails even when the human, connection, issuer, resource and
    * generation all agree.
    */
-  oauthClientId: z.string().min(1).max(256),
+  /**
+   * A CIMD client id is an HTTPS URL, so the ceiling is 1024 bytes rather than
+   * an identifier-sized one — long enough for real client metadata URLs
+   * without truncation, and still finite.
+   */
+  oauthClientId: z.string().min(1).max(1024),
   environment: z.string().min(1).max(64),
   preset: connectionPresetSchema,
   status: connectionStatusSchema,
@@ -185,7 +256,7 @@ export const verifiedGrantSchema = z.strictObject({
   subject: z.string().min(1).max(128),
   // Same ceiling as the connection's `oauthClientId`: a client id that can
   // be stored but never matched is a permanently dead registration.
-  clientId: z.string().min(1).max(256),
+  clientId: z.string().min(1).max(1024),
   /** RFC 8707 resource indicator: which ArtVenn resource this token is for. */
   resource: z.string().min(1).max(512),
   issuer: z.string().min(1).max(512),

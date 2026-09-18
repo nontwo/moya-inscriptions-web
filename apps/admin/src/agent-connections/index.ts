@@ -1,14 +1,18 @@
 export {
   CONNECTION_TOKEN_PREFIX,
   ConnectionAuthError,
+  PRESET_CAPABILITY_SCOPES,
   PRESET_SCOPES,
+  PROTOCOL_ONLY_SCOPES,
   PRESET_TOOLS,
   agentConnectionSchema,
   canonicalInstant,
   instantSchema,
   toolGrantKey,
+  admitScopeClaim,
+  canonicalCapabilityScopes,
   canonicalScopes,
-  normalizeScopes,
+  capabilityScopeSchema,
   scopesMatchPreset,
   connectionClientSchema,
   connectionPresetSchema,
@@ -18,6 +22,8 @@ export {
 } from "./contracts";
 export type {
   AgentConnection,
+  CapabilityScope,
+  ScopeAdmission,
   ConnectionClient,
   ConnectionPreset,
   ConnectionStatus,
