@@ -29,3 +29,12 @@ export {
   connectionsEnabled,
 } from "./composition";
 export type { OverrideAuth } from "./composition";
+export {
+  admitWrite,
+  authorizeConnection,
+  openConnection,
+  reconnectConnection,
+  reconsentConnection,
+  revokeConnection,
+} from "./lifecycle";
+export type { ConsentRecord } from "./lifecycle";
