@@ -1,10 +1,14 @@
 # Agent Administration V1 — inert client configuration examples
 
 These examples contain no working credential and point at a loopback Development
-Admin. Nothing here activates access: a principal exists only when the Owner
-creates it in the operations view, and an MCP API key only works after the Owner
-creates it, binds its operator identity to that principal (`agentPrincipal`) and
-enables the `artvenn_*` tools on the key.
+Admin. The port is the **Admin's** (`3002`), which is what serves `/api/mcp`;
+`3001` is the Backend and has no MCP endpoint, so a client configured against it
+fails to connect rather than falling back.
+
+Nothing here activates access: a principal exists only when the Owner creates it
+in the operations view, and an MCP API key only works after the Owner creates
+it, binds its operator identity to that principal (`agentPrincipal`) and enables
+the `artvenn_*` tools on the key.
 
 The Authorization header value is the scheme word the Payload MCP plugin expects
 (`Bearer`), one space, and the MCP API key. Supply it through the client's own
@@ -19,7 +23,7 @@ real key, never paste it into chat.
   "servers": {
     "artvenn-admin-development": {
       "type": "http",
-      "url": "http://127.0.0.1:3001/api/mcp",
+      "url": "http://127.0.0.1:3002/api/mcp",
       "headers": {
         "Authorization": "REPLACE_WITH_AUTHORIZATION_HEADER"
       },
@@ -48,7 +52,7 @@ real key, never paste it into chat.
   "mcpServers": {
     "artvenn-admin-development": {
       "type": "http",
-      "url": "http://127.0.0.1:3001/api/mcp",
+      "url": "http://127.0.0.1:3002/api/mcp",
       "headers": {
         "Authorization": "REPLACE_WITH_AUTHORIZATION_HEADER"
       }
