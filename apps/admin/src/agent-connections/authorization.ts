@@ -5,6 +5,7 @@ import {
   PRESET_TOOLS,
   isConnectionToken,
   scopesMatchPreset,
+  toolGrantKey,
 } from "./contracts";
 
 import type { AgentConnection, VerifiedGrant } from "./contracts";
@@ -12,7 +13,7 @@ import type { MCPAccessSettings } from "@payloadcms/plugin-mcp";
 import type { PayloadRequest, TypedUser } from "payload";
 
 /**
- * Agent Connections V1 (Issue #141 r9) — authenticating one MCP request.
+ * Agent Connections V1 (Issue #141 r10) — authenticating one MCP request.
  *
  * This is the seam where a browser-consented connection becomes a restricted
  * principal. It runs on EVERY protected request, not only on initialize:
@@ -20,7 +21,7 @@ import type { PayloadRequest, TypedUser } from "payload";
  * revoked a second ago is refused on the next tool call rather than at the
  * next handshake.
  *
- * Three rules hold here and are each covered by a regression:
+ * Four rules hold here and are each covered by a regression:
  *
  *  1. A credential that claims to be ours succeeds on its own terms or is
  *     refused. It never falls back to the legacy API-key resolver, to an
@@ -57,12 +58,16 @@ export interface ConnectionAuthDependencies {
   readonly resource: string;
   /** Which ArtVenn environment this endpoint serves. */
   readonly environment: string;
+  /** Server-side refusal diagnostics. Receives a bare code, never a token. */
+  readonly recordRefusal?: (code: string) => void;
 }
+
+const BEARER = /^bearer[ \t]+/iu;
 
 const bearerOf = (req: PayloadRequest): string | null => {
   const header = req.headers.get("Authorization");
-  if (header === null || !header.startsWith("Bearer ")) return null;
-  const presented = header.slice("Bearer ".length).trim();
+  if (header === null || !BEARER.test(header)) return null;
+  const presented = header.replace(BEARER, "").trim();
   return presented === "" ? null : presented;
 };
 
@@ -73,7 +78,7 @@ const bearerOf = (req: PayloadRequest): string | null => {
  */
 const toolGrants = (connection: AgentConnection): Record<string, boolean> =>
   Object.fromEntries(
-    PRESET_TOOLS[connection.preset].map((tool) => [tool, true]),
+    PRESET_TOOLS[connection.preset].map((tool) => [toolGrantKey(tool), true]),
   );
 
 /**
@@ -102,6 +107,7 @@ export const admitGrant = (
   grant: VerifiedGrant,
   connection: AgentConnection | null,
   expected: { issuer: string; resource: string; environment: string },
+  now: Date = new Date(),
 ): AgentConnection => {
   if (grant.issuer !== expected.issuer)
     throw new ConnectionAuthError("CONNECTION_ISSUER_MISMATCH");
@@ -134,6 +140,12 @@ export const admitGrant = (
   // malformed claims all fail, and an absent claim never inherits the preset.
   if (!scopesMatchPreset(grant.scopes, connection.preset))
     throw new ConnectionAuthError("CONNECTION_SCOPE_MISMATCH");
+  // Freshness is this boundary's business. Leaving it to whatever the verifier
+  // happens to enforce is the easiest obligation for the next implementer to
+  // miss, and an expired token that still works is indistinguishable from no
+  // expiry at all.
+  if (Date.parse(grant.expiresAt) <= now.getTime())
+    throw new ConnectionAuthError("CONNECTION_TOKEN_EXPIRED");
   return connection;
 };
 
@@ -196,11 +208,15 @@ export const connectionAuth =
         },
         "payload-mcp-tool": toolGrants(connection),
       } satisfies MCPAccessSettings;
-    } catch {
+    } catch (error) {
       // One shape out, whatever went wrong, so a probe cannot tell a bad
       // signature from a revoked connection by watching the response. The
-      // specific `ConnectionAuthError` code belongs to the server-side
-      // connection diagnostics, not to the caller.
+      // specific code is recorded server-side — a store outage, a forged
+      // signature and a revoked connection must be distinguishable to the
+      // operator even though they are identical on the wire. Never the token.
+      dependencies.recordRefusal?.(
+        error instanceof ConnectionAuthError ? error.code : "CONNECTION_ERROR",
+      );
       throw new UnauthorizedError();
     }
   };

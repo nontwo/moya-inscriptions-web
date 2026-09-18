@@ -1,4 +1,9 @@
-import { ConnectionAuthority, openConnection } from "admin/agent-connections";
+import {
+  ConnectionAuthority,
+  agentConnectionSchema,
+  openConnection,
+  revokeConnection,
+} from "admin/agent-connections";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -16,7 +21,7 @@ import type {
  * how a disconnect stops being a disconnect.
  */
 
-const AT = "2026-09-18T03:00:00";
+const AT = "2026-09-18T03:00:00Z";
 const consent = (
   preset: AgentConnection["preset"] = "read-only",
   humanAccountId = "user-owner",
@@ -78,30 +83,38 @@ describe("compare-and-set transitions", () => {
     expect(store.peek("conn-1")?.version).toBe(2);
   });
 
-  it("re-decides against the winner rather than overwriting it", async () => {
+  it("re-decides against the winner: a revocation that lands mid-flight is not overwritten", async () => {
     const store = new MemoryStore(seed());
     const authority = new ConnectionAuthority({ store });
     await authority.authorize("conn-1", consent());
+    const authorizedGeneration = store.peek("conn-1")!.connection.generation;
 
-    // Force exactly one lost race: the first compare-and-set sees a version
-    // that somebody else has already moved past.
+    // The interferer REVOKES. A correct implementation recomputes the
+    // permission change against the revoked record and refuses it; an
+    // implementation that computed `next` once and blindly retried it would
+    // store `authorized` on top of the revocation and put the generation back.
     const real = store.compareAndSet.bind(store);
     let interfered = false;
     vi.spyOn(store, "compareAndSet").mockImplementation(
       async (id, expectedVersion, next) => {
         if (!interfered) {
           interfered = true;
-          // Another writer lands first.
-          await real(id, expectedVersion, next);
+          const row = store.peek(id)!;
+          await real(id, row.version, revokeConnection(row.connection, AT));
           return null;
         }
         return real(id, expectedVersion, next);
       },
     );
 
-    const after = await authority.reconsent("conn-1", consent("management"));
-    expect(after.preset).toBe("management");
-    expect(store.conflicts).toBe(0);
+    await expect(
+      authority.reconsent("conn-1", consent("management")),
+    ).rejects.toThrow();
+
+    const after = store.peek("conn-1")!.connection;
+    expect(after.status).toBe("revoked");
+    expect(after.preset).toBe("read-only");
+    expect(after.generation).toBeGreaterThan(authorizedGeneration);
     vi.restoreAllMocks();
   });
 });
@@ -202,7 +215,7 @@ describe("canonical deny lands before provider cleanup", () => {
     });
     await authority.authorize("conn-1", consent());
     const first = await authority.revoke("conn-1", AT);
-    const second = await authority.revoke("conn-1", "2026-09-18T04:00:00");
+    const second = await authority.revoke("conn-1", "2026-09-18T04:00:00Z");
     expect(second.generation).toBe(first.generation);
     expect(second.revokedAt).toBe(first.revokedAt);
     expect(cleanup).toHaveBeenCalledTimes(2);
@@ -277,5 +290,45 @@ describe("connections are isolated from one another", () => {
     await authority.revoke("conn-1", AT);
     expect(rows.get("conn-2")!.connection).toEqual(bBefore);
     expect(rows.get("conn-2")!.connection.status).toBe("authorized");
+  });
+});
+
+describe("r10 review blocker 2 — every stored record satisfies its own schema", () => {
+  it("parses the record after each transition, which nothing did before", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({ store });
+    const parse = () =>
+      agentConnectionSchema.parse(store.peek("conn-1")!.connection);
+
+    await authority.authorize("conn-1", consent());
+    expect(parse().status).toBe("authorized");
+    await authority.reconsent("conn-1", consent("management"));
+    expect(parse().preset).toBe("management");
+    await authority.revoke("conn-1", AT);
+    // The case that used to store a value its own schema rejects.
+    expect(parse().revokedAt).toBe("2026-09-18T03:00:00.000Z");
+    await authority.reconnect("conn-1", consent());
+    expect(parse().revokedAt).toBeNull();
+  });
+
+  it("normalizes a revocation timestamp given in another form", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({ store });
+    await authority.authorize("conn-1", consent());
+    await authority.revoke("conn-1", "2026-09-18T05:00:00+02:00");
+    const parsed = agentConnectionSchema.parse(
+      store.peek("conn-1")!.connection,
+    );
+    expect(parsed.revokedAt).toBe("2026-09-18T03:00:00.000Z");
+  });
+
+  it("refuses an unparseable revocation timestamp rather than storing it", async () => {
+    const store = new MemoryStore(seed());
+    const authority = new ConnectionAuthority({ store });
+    await authority.authorize("conn-1", consent());
+    await expect(authority.revoke("conn-1", "not-a-time")).rejects.toThrow(
+      "CONNECTION_TIMESTAMP_INVALID",
+    );
+    expect(store.peek("conn-1")!.connection.status).toBe("authorized");
   });
 });

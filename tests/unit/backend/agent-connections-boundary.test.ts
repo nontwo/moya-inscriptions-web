@@ -152,7 +152,7 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
     const held = new Set(canonicalScopes("read-only"));
     const fixtures: Record<string, Record<string, unknown>> = {
       artvenn_users_find: { handle: "someone", page: 1, pageSize: 20 },
-      artvenn_content_search: { query: "ink", page: 1, pageSize: 20 },
+      artvenn_content_search: { search: "ink", page: 1, pageSize: 20 },
       artvenn_comments_query: { page: 1, pageSize: 20 },
       artvenn_comments_read: { id: `comment-${"a".repeat(32)}` },
     };
@@ -194,7 +194,64 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
     expect(held.has(scopeForPath(calls[0]!.path))).toBe(false);
   });
 
-  it("keeps the path/scope table honest against the service's own authorize calls", async () => {
+  it("keeps the path/scope table honest: every management tool's path maps to a scope management holds", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const held = new Set(canonicalScopes("management"));
+    const fixtures: Record<string, Record<string, unknown>> = {
+      artvenn_users_find: { handle: "someone", page: 1, pageSize: 20 },
+      artvenn_content_search: { search: "ink", page: 1, pageSize: 20 },
+      artvenn_comments_query: { page: 1, pageSize: 20 },
+      artvenn_comments_read: { id: `comment-${"a".repeat(32)}` },
+      artvenn_operations_get: {
+        operationId: "11111111-1111-4111-8111-111111111111",
+      },
+      artvenn_comments_prepare: {
+        requestId: "11111111-1111-4111-8111-111111111111",
+        action: "hide",
+        ids: [`comment-${"a".repeat(32)}`],
+      },
+      artvenn_featured_prepare: {
+        requestId: "11111111-1111-4111-8111-111111111111",
+        items: [
+          {
+            target: { type: "work", id: `work-${"a".repeat(32)}` },
+            enabled: true,
+            position: 0,
+          },
+        ],
+      },
+      artvenn_operations_execute: {
+        requestId: "11111111-1111-4111-8111-111111111111",
+        operationId: "11111111-1111-4111-8111-111111111111",
+      },
+      artvenn_operations_cancel: {
+        requestId: "11111111-1111-4111-8111-111111111111",
+        operationId: "11111111-1111-4111-8111-111111111111",
+      },
+      artvenn_operations_prepare_undo: {
+        requestId: "11111111-1111-4111-8111-111111111111",
+        operationId: "11111111-1111-4111-8111-111111111111",
+      },
+    };
+    for (const name of PRESET_TOOLS.management) {
+      const { tool, calls } = await requestsOf(name);
+      await tool.handler(
+        fixtures[name] ?? {},
+        {
+          user: { collection: "users", agentPrincipal: "agent-phone" },
+        } as never,
+        undefined,
+      );
+      expect(calls.length, `${name} made no Backend call`).toBeGreaterThan(0);
+      for (const call of calls)
+        expect(
+          held.has(scopeForPath(call.path)),
+          `${name} calls ${call.path} under ${scopeForPath(call.path)}`,
+        ).toBe(true);
+    }
+  });
+
+  it("still finds each mapped scope enforced by the service under that exact name", async () => {
     const source = read(
       "services/api/src/modules/community/application/services/agent-administration-service.ts",
     );
@@ -211,7 +268,6 @@ describe("r10 §3.4: read-only advertises only genuinely read-only paths", () =>
       (name) => !readOnly.has(name),
     );
     expect(managementOnly.length).toBeGreaterThan(0);
-    for (const name of managementOnly) expect(readOnly.has(name)).toBe(false);
     // The specific r9 defect, pinned by name.
     expect(managementOnly).toContain("artvenn_operations_get");
   });

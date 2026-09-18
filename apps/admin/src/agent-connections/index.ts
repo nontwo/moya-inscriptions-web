@@ -4,6 +4,8 @@ export {
   PRESET_SCOPES,
   PRESET_TOOLS,
   agentConnectionSchema,
+  canonicalInstant,
+  toolGrantKey,
   canonicalScopes,
   normalizeScopes,
   scopesMatchPreset,

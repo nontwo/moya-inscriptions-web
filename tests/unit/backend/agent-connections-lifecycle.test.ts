@@ -34,7 +34,7 @@ const MANAGEMENT_SCOPES = [
   "operations:undo",
   "users:read",
 ];
-const AT = "2026-09-18T01:00:00";
+const AT = "2026-09-18T01:00:00Z";
 
 const expected = {
   issuer: ISSUER,
@@ -74,6 +74,7 @@ const tokenFor = (connection: AgentConnection): VerifiedGrant => ({
   scopes:
     connection.preset === "management" ? MANAGEMENT_SCOPES : READ_ONLY_SCOPES,
   generation: connection.generation,
+  expiresAt: "2099-01-01T00:00:00Z",
 });
 
 describe("opening and consenting", () => {
@@ -157,7 +158,7 @@ describe("disconnect", () => {
       authorizeConnection(fresh(), consent()),
       AT,
     );
-    const again = revokeConnection(revoked, "2026-09-18T02:00:00");
+    const again = revokeConnection(revoked, "2026-09-18T02:00:00Z");
     expect(again.generation).toBe(revoked.generation);
     expect(again.revokedAt).toBe(revoked.revokedAt);
   });

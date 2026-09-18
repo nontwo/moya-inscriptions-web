@@ -1,9 +1,9 @@
-import { ConnectionAuthError } from "./contracts";
+import { ConnectionAuthError, canonicalInstant } from "./contracts";
 
 import type { AgentConnection, ConnectionPreset } from "./contracts";
 
 /**
- * Agent Connections V1 (Issue #141 r9) — connect, disconnect, reconnect.
+ * Agent Connections V1 (Issue #141 r10) — connect, disconnect, reconnect.
  *
  * These are pure transitions over one connection record. Persistence is the
  * caller's; keeping the rules here means the same rules hold whether a
@@ -63,7 +63,11 @@ export const authorizeConnection = (
   connection: AgentConnection,
   consent: ConsentRecord,
 ): AgentConnection => {
-  if (connection.status === "revoked")
+  // Both, not just status: a record carrying `revokedAt` under a non-revoked
+  // status must not be laundered clean by a consent. `admitGrant` and
+  // `admitWrite` already check both, and the asymmetry is what turns into a
+  // resurrection later.
+  if (connection.status === "revoked" || connection.revokedAt !== null)
     throw new ConnectionAuthError("CONNECTION_REVOKED");
   if (connection.humanAccountId !== consent.humanAccountId)
     throw new ConnectionAuthError("CONNECTION_CONSENT_SUBJECT_MISMATCH");
@@ -108,7 +112,9 @@ export const revokeConnection = (
     : {
         ...connection,
         status: "revoked",
-        revokedAt: at,
+        // Normalized, so the stored value is one the connection schema accepts
+        // rather than whatever form the caller happened to pass.
+        revokedAt: canonicalInstant(at),
         generation: connection.generation + 1,
       };
 

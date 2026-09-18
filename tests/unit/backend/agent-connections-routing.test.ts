@@ -130,3 +130,39 @@ describe("r10 §4: the reserved token namespace removes credential-type guessing
     }
   });
 });
+
+describe("r10 review finding 7 — the auth scheme word is case-insensitive", () => {
+  const request = (authorization: string): PayloadRequest =>
+    ({
+      headers: new Headers({ Authorization: authorization }),
+    }) as unknown as PayloadRequest;
+
+  it("recognises a reserved credential whatever case the scheme word is in", async () => {
+    // RFC 7235 auth schemes are case-insensitive. The plugin's own resolver
+    // currently matches "Bearer " exactly, so a lowercase scheme would slip
+    // past it today — but if that is ever fixed, a reserved-namespace
+    // credential must not be the thing that reaches the API-key lookup.
+    for (const scheme of ["Bearer", "bearer", "BEARER", "BeArEr"]) {
+      const legacy = vi.fn(async () => ({ user: { id: "legacy" } }) as never);
+      await expect(
+        connectionOverrideAuth(null)(
+          request(`${scheme} ${CONNECTION_TOKEN_PREFIX}x`),
+          legacy,
+        ),
+        scheme,
+      ).rejects.toThrow();
+      expect(legacy, scheme).not.toHaveBeenCalled();
+    }
+  });
+
+  it("still hands a non-reserved credential to the legacy resolver in any case", async () => {
+    for (const scheme of ["Bearer", "bearer"]) {
+      const legacy = vi.fn(async () => ({ user: { id: "legacy" } }) as never);
+      await connectionOverrideAuth(null)(
+        request(`${scheme} ordinary-key`),
+        legacy,
+      );
+      expect(legacy, scheme).toHaveBeenCalledOnce();
+    }
+  });
+});

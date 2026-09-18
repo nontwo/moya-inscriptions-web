@@ -8,7 +8,7 @@ import type { MCPAccessSettings } from "@payloadcms/plugin-mcp";
 import type { PayloadRequest } from "payload";
 
 /**
- * Agent Connections V1 (Issue #141 r9) — when the connection surface exists
+ * Agent Connections V1 (Issue #141 r10) — when the connection surface exists
  * at all.
  *
  * The connection surface is composed only where the Agent Administration
@@ -44,10 +44,12 @@ export type OverrideAuth = (
   ) => Promise<MCPAccessSettings>,
 ) => Promise<MCPAccessSettings>;
 
+const BEARER = /^bearer[ \t]+/iu;
+
 const bearerOf = (req: PayloadRequest): string | null => {
   const header = req.headers.get("Authorization");
-  if (header === null || !header.startsWith("Bearer ")) return null;
-  const presented = header.slice("Bearer ".length).trim();
+  if (header === null || !BEARER.test(header)) return null;
+  const presented = header.replace(BEARER, "").trim();
   return presented === "" ? null : presented;
 };
 

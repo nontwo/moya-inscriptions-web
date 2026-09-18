@@ -2,7 +2,7 @@ import { agentScopeSchema } from "@moya/contracts/internal/community-operator";
 import { z } from "zod";
 
 /**
- * Agent Connections V1 (Issue #141 r9) — the shapes a browser-consented
+ * Agent Connections V1 (Issue #141 r10) — the shapes a browser-consented
  * connection is made of.
  *
  * A connection is NOT a credential. It is the record of one human's consent
@@ -161,7 +161,14 @@ export const agentConnectionSchema = z.strictObject({
   preset: connectionPresetSchema,
   status: connectionStatusSchema,
   generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  revokedAt: z.iso.datetime({ offset: false }).nullable(),
+  /**
+   * Canonical instant form, offset included. `z.iso.datetime({offset: false})`
+   * rejects a bare local-looking timestamp under the installed zod, so the
+   * lifecycle normalizes what it is given rather than storing a value its own
+   * schema would refuse — which is what the r10 review found, invisible
+   * because no test parsed the schema.
+   */
+  revokedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 export type AgentConnection = z.infer<typeof agentConnectionSchema>;
 
@@ -174,12 +181,20 @@ export type AgentConnection = z.infer<typeof agentConnectionSchema>;
 export const verifiedGrantSchema = z.strictObject({
   connectionId: z.string().min(1).max(128),
   subject: z.string().min(1).max(128),
-  clientId: z.string().min(1).max(128),
+  // Same ceiling as the connection's `oauthClientId`: a client id that can
+  // be stored but never matched is a permanently dead registration.
+  clientId: z.string().min(1).max(256),
   /** RFC 8707 resource indicator: which ArtVenn resource this token is for. */
   resource: z.string().min(1).max(512),
   issuer: z.string().min(1).max(512),
   scopes: z.array(z.string().min(1).max(64)).max(32),
   generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  /**
+   * When the token stops being valid. Carried here and checked in `admitGrant`
+   * so expiry is this boundary's business rather than an unstated assumption
+   * about what the verifier happens to enforce.
+   */
+  expiresAt: z.iso.datetime({ offset: true }),
 });
 export type VerifiedGrant = z.infer<typeof verifiedGrantSchema>;
 
@@ -193,6 +208,24 @@ export type VerifiedGrant = z.infer<typeof verifiedGrantSchema>;
  */
 export const CONNECTION_TOKEN_PREFIX = "artvenn_ct_";
 
+/**
+ * The plugin gates tools on a CAMEL-CASED key: `getMcpHandler` computes
+ * `toCamelCase(tool.name)` and looks that up in `payload-mcp-tool`, defaulting
+ * to `false` when it is absent. A grant map keyed by the raw snake_case tool
+ * name therefore disables every tool silently — the r10 review caught exactly
+ * that, after the map had been written, tested and shipped in the wrong shape.
+ *
+ * This mirrors the plugin's own conversion. The regression that guards it
+ * imports the plugin's `toCamelCase` and compares, rather than trusting this
+ * copy to stay in step.
+ */
+export const toolGrantKey = (toolName: string): string =>
+  toolName
+    .replace(/[-_\s]+(.)?/gu, (_, character: string | undefined) =>
+      character ? character.toUpperCase() : "",
+    )
+    .replace(/^(.)/u, (_, character: string) => character.toLowerCase());
+
 export const isConnectionToken = (presented: string): boolean =>
   presented.startsWith(CONNECTION_TOKEN_PREFIX);
 
@@ -203,3 +236,14 @@ export class ConnectionAuthError extends Error {
     this.name = "ConnectionAuthError";
   }
 }
+
+/**
+ * Normalizes an instant to the canonical form `agentConnectionSchema` accepts.
+ * Throws rather than storing a value the schema would later reject.
+ */
+export const canonicalInstant = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()))
+    throw new ConnectionAuthError("CONNECTION_TIMESTAMP_INVALID");
+  return parsed.toISOString();
+};

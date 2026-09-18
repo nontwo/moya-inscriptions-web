@@ -4,9 +4,14 @@ import {
   admitGrant,
   canonicalScopes,
   connectionAuth,
+  toolGrantKey,
   connectionOverrideAuth,
   connectionsEnabled,
 } from "admin/agent-connections";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { AgentConnection, VerifiedGrant } from "admin/agent-connections";
@@ -63,6 +68,7 @@ const grant = (overrides: Partial<VerifiedGrant> = {}): VerifiedGrant => ({
   issuer: ISSUER,
   scopes: READ_ONLY_SCOPES,
   generation: 3,
+  expiresAt: "2099-01-01T00:00:00Z",
   ...overrides,
 });
 
@@ -214,17 +220,17 @@ describe("connectionAuth", () => {
     expect(user._strategy).toBe("artvenn-connection");
   });
 
-  it("grants a read-only connection exactly the five read tools, so management tools are absent from tools/list", async () => {
+  it("grants a read-only connection exactly the four read tools, so management tools are absent from tools/list", async () => {
     const settings = await auth()(
       request(header(token())),
       async () => ({}) as never,
     );
     const tools = settings["payload-mcp-tool"] ?? {};
     expect(Object.keys(tools).sort()).toEqual(
-      [...PRESET_TOOLS["read-only"]].sort(),
+      [...PRESET_TOOLS["read-only"]].map(toolGrantKey).sort(),
     );
-    expect(tools.artvenn_featured_prepare).toBeUndefined();
-    expect(tools.artvenn_operations_execute).toBeUndefined();
+    expect(tools.artvennFeaturedPrepare).toBeUndefined();
+    expect(tools.artvennOperationsExecute).toBeUndefined();
   });
 
   it("grants a management connection the execute tools but still never an approval tool", async () => {
@@ -233,8 +239,8 @@ describe("connectionAuth", () => {
       verify: async () => grant({ scopes: MANAGEMENT_SCOPES }),
     })(request(header(token())), async () => ({}) as never);
     const tools = settings["payload-mcp-tool"] ?? {};
-    expect(tools.artvenn_operations_execute).toBe(true);
-    expect(tools.artvenn_featured_prepare).toBe(true);
+    expect(tools.artvennOperationsExecute).toBe(true);
+    expect(tools.artvennFeaturedPrepare).toBe(true);
     expect(Object.keys(tools).some((name) => /approve/iu.test(name))).toBe(
       false,
     );
@@ -261,7 +267,7 @@ describe("connectionAuth", () => {
       })(request(header(token())), async () => ({}) as never);
       const tools = settings["payload-mcp-tool"] ?? {};
       expect(
-        Object.keys(tools).filter((name) => name.startsWith("editorial_")),
+        Object.keys(tools).filter((name) => /^editorial/iu.test(name)),
       ).toEqual([]);
     }
   });
@@ -496,5 +502,62 @@ describe("r10 §3.4 — the read-only preset advertises only what its scopes aut
       "content:read",
       "users:read",
     ]);
+  });
+});
+
+describe("r10 review blocker 1 — the grant map must use the key the plugin reads", () => {
+  it("matches the plugin's own toCamelCase for every tool in the real registry", async () => {
+    // Compared against the plugin's function, not against a second copy of the
+    // conversion, so the two cannot drift apart silently.
+    const require_ = createRequire(
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "../../../apps/admin/package.json",
+      ),
+    );
+    const entry = require_.resolve("@payloadcms/plugin-mcp");
+    const camelCaseModule = (await import(
+      pathToFileURL(path.join(path.dirname(entry), "utils/camelCase.js")).href
+    )) as { toCamelCase: (value: string) => string };
+
+    for (const preset of ["read-only", "management"] as const)
+      for (const tool of PRESET_TOOLS[preset])
+        expect(toolGrantKey(tool), tool).toBe(
+          camelCaseModule.toCamelCase(tool),
+        );
+  });
+
+  it("emits keys a snake_case lookup would miss, which is the defect this guards", async () => {
+    const settings = await auth()(
+      request(header(token())),
+      async () => ({}) as never,
+    );
+    const tools = settings["payload-mcp-tool"] ?? {};
+    expect(tools.artvennUsersFind).toBe(true);
+    // The shape that silently disabled every tool.
+    expect(tools.artvenn_users_find).toBeUndefined();
+  });
+});
+
+describe("r10 review finding 6 — token freshness is checked here", () => {
+  it("refuses an expired token even when every other binding agrees", () => {
+    expect(() =>
+      admitGrant(
+        grant({ expiresAt: "2020-01-01T00:00:00Z" }),
+        connection(),
+        expected,
+      ),
+    ).toThrow("CONNECTION_TOKEN_EXPIRED");
+  });
+
+  it("admits a token that has not expired yet", () => {
+    expect(
+      admitGrant(
+        grant({ expiresAt: "2099-01-01T00:00:00Z" }),
+        connection(),
+        expected,
+        new Date("2026-09-18T00:00:00Z"),
+      ).id,
+    ).toBe("conn-1");
   });
 });
