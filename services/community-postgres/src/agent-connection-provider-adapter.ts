@@ -261,15 +261,12 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
     }
 
     /**
-     * Expiry is enforced here because the provider does not forward its own
-     * `{ignoreExpiration}` option to the adapter. A corrupt or unopenable row
-     * is a miss, not a throw: failing closed is the behaviour that keeps a
-     * tampered row from being treated as authority.
-     */
-    /**
      * Expiry is NOT filtered here. The provider owns that decision, applies
      * its own `clockTolerance`, and deliberately reads past-`exp` rows on the
      * reuse-detection path. Rows are reaped by `deleteExpired`, not hidden.
+     *
+     * A corrupt, unopenable or self-inconsistent row is a miss, not a throw:
+     * failing closed is what keeps a tampered row from becoming authority.
      */
     async find(id: string): Promise<Record<string, unknown> | undefined> {
       const digest = digestOf(keys, this.model, id);

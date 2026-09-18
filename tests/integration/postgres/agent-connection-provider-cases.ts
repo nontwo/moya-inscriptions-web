@@ -381,15 +381,47 @@ export const registerAgentConnectionProviderTests = (
       expect(await store.find("token-abc")).toBeUndefined();
     });
 
-    it("treats an expired row as a miss, because the provider does not forward ignoreExpiration", async () => {
+    // This test asserted the opposite until the r13 review: that an expired row
+    // is a miss. That inference from "the provider does not forward
+    // {ignoreExpiration}" was backwards, and a stale `dist` let it keep
+    // passing after the adapter was corrected. The provider applies its own
+    // clockTolerance, and `refresh_token.js` revokes a whole grant family only
+    // when `find` RETURNS a re-presented consumed token -- so hiding past-exp
+    // rows here fails OPEN for reuse detection.
+    it("still returns a past-expiry row, because reuse detection has to read one", async () => {
       const Adapter = createProviderAdapter({ pool, keys });
-      const store = new Adapter("AccessToken");
-      await store.upsert("token-exp", { jti: "token-exp" }, 300);
+      const store = new Adapter("RefreshToken");
+      await store.upsert("token-exp", { jti: "token-exp", grantId: "g-e" }, 300);
+      await store.consume("token-exp");
       await pool.query(
         `UPDATE community.agent_connection_provider_artifacts
             SET expires_at = CURRENT_TIMESTAMP - interval '1 second'`,
       );
-      expect(await store.find("token-exp")).toBeUndefined();
+      // Expired AND consumed: precisely the row the provider must see to know
+      // a revoked token was replayed.
+      const replayed = await store.find("token-exp");
+      expect(replayed).toMatchObject({ jti: "token-exp" });
+      // `consumed` is what tells the provider a replay from a miss.
+      expect(typeof replayed?.consumed).toBe("number");
+    });
+
+    it("reaps expired rows only when asked, and bounds how many", async () => {
+      const Adapter = createProviderAdapter({ pool, keys });
+      const store = new Adapter("AccessToken");
+      for (const id of ["reap-1", "reap-2", "reap-3"])
+        await store.upsert(id, { jti: id }, 300);
+      await pool.query(
+        `UPDATE community.agent_connection_provider_artifacts
+            SET expires_at = CURRENT_TIMESTAMP - interval '1 second'`,
+      );
+      // Written after the sweep-back, so this is the only live row.
+      await store.upsert("keep-1", { jti: "keep-1" }, 300);
+
+      expect(await store.deleteExpired(2)).toBe(2);
+      expect(await store.deleteExpired(10)).toBe(1);
+      expect(await store.deleteExpired(10)).toBe(0);
+      // The unexpired row is untouched: reaping is not revocation.
+      expect(await store.find("keep-1")).toMatchObject({ jti: "keep-1" });
     });
 
     it("sweeps every artifact of one grant, idempotently", async () => {
