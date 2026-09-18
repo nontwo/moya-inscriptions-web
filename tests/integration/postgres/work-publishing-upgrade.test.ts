@@ -48,11 +48,12 @@ const workPublishingMigrations = [
   "20260914094000",
   "20260915010000",
   // data-admin-hardening-v1 forward files (indexes, receipt timestamps,
-  // agent administration).
+  // agent administration, agent connections).
   "20260916010000",
   "20260916011000",
   "20260917010000",
   "20260917020000",
+  "20260918010000",
 ];
 const backfillMigration = "20260914092000";
 const bridgeMigration = "20260914093000";
@@ -1475,6 +1476,7 @@ describe("work publishing migrations on dedicated synthetic databases", () => {
         "20260916011000",
         "20260917010000",
         "20260917020000",
+        "20260918010000",
       ]);
 
       // Declared submissions: stored hashes unchanged and still exactly what

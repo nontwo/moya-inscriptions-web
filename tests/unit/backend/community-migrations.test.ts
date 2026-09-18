@@ -58,6 +58,7 @@ describe("community migration family", () => {
         "20260916011000_receipt_timestamps.sql",
         "20260917010000_agent_administration.sql",
         "20260917020000_agent_operation_criteria.sql",
+        "20260918010000_agent_connections.sql",
       ],
     );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);
