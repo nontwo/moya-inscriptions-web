@@ -382,23 +382,32 @@ export const registerAgentConnectionProviderTests = (
     });
 
     // This test asserted the opposite until the r13 review: that an expired row
-    // is a miss. That inference from "the provider does not forward
-    // {ignoreExpiration}" was backwards, and a stale `dist` let it keep
-    // passing after the adapter was corrected. The provider applies its own
-    // clockTolerance, and `refresh_token.js` revokes a whole grant family only
-    // when `find` RETURNS a re-presented consumed token -- so hiding past-exp
-    // rows here fails OPEN for reuse detection.
-    it("still returns a past-expiry row, because reuse detection has to read one", async () => {
+    // is a miss. That inference from the missing `{ignoreExpiration}` was
+    // backwards, and a stale `dist` let it keep passing after the adapter was
+    // corrected. `refresh_token.js` asks for expired rows explicitly and
+    // applies its own clockTolerance.
+    //
+    // The first version of this comment said filtering failed OPEN for reuse
+    // detection. It did not, and the re-review corrected me: the provider
+    // throws on `isExpired` BEFORE it reaches the `consumed` check that
+    // revokes the grant family, and an unexpired consumed row was never
+    // hidden. What the filter really cost was the 15s clock tolerance and the
+    // difference between "expired" and "not found".
+    it("still returns a past-expiry row, because the provider asks for one", async () => {
       const Adapter = createProviderAdapter({ pool, keys });
       const store = new Adapter("RefreshToken");
-      await store.upsert("token-exp", { jti: "token-exp", grantId: "g-e" }, 300);
+      await store.upsert(
+        "token-exp",
+        { jti: "token-exp", grantId: "g-e" },
+        300,
+      );
       await store.consume("token-exp");
       await pool.query(
         `UPDATE community.agent_connection_provider_artifacts
             SET expires_at = CURRENT_TIMESTAMP - interval '1 second'`,
       );
-      // Expired AND consumed: precisely the row the provider must see to know
-      // a revoked token was replayed.
+      // Expired AND consumed: the adapter hands both back and lets the
+      // provider decide, which is the whole of the contract here.
       const replayed = await store.find("token-exp");
       expect(replayed).toMatchObject({ jti: "token-exp" });
       // `consumed` is what tells the provider a replay from a miss.
@@ -454,6 +463,72 @@ export const registerAgentConnectionProviderTests = (
       expect(await access.find("shared-id")).toMatchObject({
         jti: "shared-id",
       });
+    });
+
+    // The r13 re-review verified the cross-check and the alarm by hand and
+    // observed that nothing in the repository did. A fix that exists only on a
+    // reviewer's word is a fix that silently disappears.
+    it("refuses a row whose plaintext grant_id disagrees with its sealed payload", async () => {
+      const alarms: { model: string; reason: string }[] = [];
+      const Adapter = createProviderAdapter({
+        pool,
+        keys,
+        onUnsealFailure: (model, _digest, reason) =>
+          alarms.push({ model, reason }),
+      });
+      const store = new Adapter("AccessToken");
+      await store.upsert(
+        "token-xc",
+        { jti: "token-xc", grantId: "g-true" },
+        300,
+      );
+      expect(await store.find("token-xc")).toMatchObject({ grantId: "g-true" });
+
+      // `grant_id` is the one part of the row kept in plaintext, because
+      // revokeByGrantId has to sweep without opening anything. Moving it is
+      // therefore the cheapest way to detach a token from the grant that would
+      // revoke it -- and it changes nothing inside the ciphertext.
+      await pool.query(
+        `UPDATE community.agent_connection_provider_artifacts
+            SET grant_id = 'g-attacker'`,
+      );
+      expect(await store.find("token-xc")).toBeUndefined();
+      expect(alarms).toEqual([
+        { model: "AccessToken", reason: "grant-id-mismatch" },
+      ]);
+    });
+
+    it("reports a tampered payload through the same alarm, with its own reason", async () => {
+      const alarms: string[] = [];
+      const Adapter = createProviderAdapter({
+        pool,
+        keys,
+        onUnsealFailure: (_model, _digest, reason) => alarms.push(reason),
+      });
+      const store = new Adapter("AccessToken");
+      await store.upsert("token-tm", { jti: "token-tm" }, 300);
+      await pool.query(
+        `UPDATE community.agent_connection_provider_artifacts
+            SET sealed_payload = sealed_payload || '\\x00'::bytea`,
+      );
+      expect(await store.find("token-tm")).toBeUndefined();
+      expect(alarms).toEqual(["unseal-failed"]);
+    });
+
+    it("stays silent when nothing is wrong, so the alarm means something", async () => {
+      const alarms: string[] = [];
+      const Adapter = createProviderAdapter({
+        pool,
+        keys,
+        onUnsealFailure: (_model, _digest, reason) => alarms.push(reason),
+      });
+      const store = new Adapter("AccessToken");
+      await store.upsert("token-ok", { jti: "token-ok", grantId: "g-ok" }, 300);
+      expect(await store.find("token-ok")).toMatchObject({ jti: "token-ok" });
+      // A plain miss is not a failure: an id that was never written must not
+      // raise the alarm that an altered row does.
+      expect(await store.find("token-absent")).toBeUndefined();
+      expect(alarms).toEqual([]);
     });
 
     it("refuses to start without its keys rather than inventing one", () => {

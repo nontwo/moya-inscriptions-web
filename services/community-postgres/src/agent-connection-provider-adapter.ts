@@ -24,16 +24,30 @@ import type { Pool } from "pg";
  *    cookie, the authorization code, the session cookie, the access token and
  *    the refresh token are each exactly their own row key. So ids are stored
  *    as keyed digests and payloads as authenticated ciphertext.
- *  - `find` receives one argument, and the provider's own `{ignoreExpiration}`
- *    is NOT forwarded. An earlier version of this file inferred from that that
- *    expiry was the adapter's business. The inference was BACKWARDS: the
- *    reference `MemoryAdapter.find` does not filter expiry at all, because the
- *    provider checks it itself in `opaque.verify` -> `assertPayload` using
- *    `clockTolerance` (default 15s) -- and, decisively, because reuse
- *    detection must be able to READ a consumed row. `refresh_token.js` revokes
- *    the WHOLE grant family when a consumed refresh token is re-presented, and
- *    it can only do that if `find` returns it. Filtering here failed closed
- *    for authorization and OPEN for detection.
+ *  - `find` receives one argument. The provider DOES ask for expired rows --
+ *    `refresh_token.js` calls `RefreshToken.find(value, {ignoreExpiration:
+ *    true})` -- but the option reaches a two-argument reference adapter, not
+ *    this one-argument signature. An earlier version of this file read the
+ *    missing option as permission to filter expiry here. That was backwards:
+ *    the reference `MemoryAdapter.find` does not filter at all, because the
+ *    provider checks expiry itself in `opaque.verify` -> `assertPayload` under
+ *    `clockTolerance` (default 15s).
+ *
+ *    Two corrections to the record, both made after being checked against the
+ *    provider rather than argued. First, filtering here was never a security
+ *    hole: `refresh_token.js` throws `InvalidGrant('refresh token is
+ *    expired')` at its `isExpired` check BEFORE it reaches the `consumed`
+ *    check that revokes the grant family, so an expired replay is refused
+ *    either way, and an UNexpired consumed token was never hidden by the
+ *    filter. That ordering is read directly from the provider source; the
+ *    end-to-end confirmation -- replaying a consumed refresh token with a past
+ *    `exp` yields `invalid_grant` and leaves the grant count unchanged -- was
+ *    the independent reviewer's measurement, not ours.
+ *    Second, what filtering actually cost is smaller and real --
+ *    the 15-second clock tolerance the provider is entitled to apply, and the
+ *    difference between "expired" and "not found" in the error the client
+ *    sees. The filter is gone because the contract says so, not because
+ *    keeping it was dangerous.
  *  - `revokeByGrantId` is called on AuthorizationCode, AccessToken and
  *    RefreshToken — never on Grant. Grant destruction arrives as
  *    `Grant.adapter.destroy(grantId)`, directly on the adapter.
@@ -353,6 +367,11 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
      * Bounded reaping, which is what removes expired rows now that `find` no
      * longer hides them. Deletes nothing that is still live and creates no
      * authority.
+     *
+     * NOTHING CALLS THIS YET. There is no authorization service in this slice,
+     * so no rows accumulate either -- but the moment one runs, expired
+     * artifacts stay findable until something schedules this, once per model,
+     * because the sweep is per-model by design.
      */
     async deleteExpired(limit = 1000): Promise<number> {
       const { rowCount } = await pool.query(

@@ -221,6 +221,12 @@ GRANT UPDATE (
 -- token store. That role does not exist yet because the service does not, and
 -- the day it lands this file stops being the whole grant plan. Until then the
 -- adapter is exercised only by tests connecting as the database owner.
+--
+-- The same decision covers community.agent_connection_wrappers, which the App
+-- role may SELECT and nothing more. A wrapper row is minted when a token is
+-- issued and reaped when it expires -- both of which happen on the
+-- authorization path, not the resource-server path -- so its writer is that
+-- same future role. This role only has to resolve a token somebody presents.
 GRANT SELECT ON TABLE
   community.agent_connections,
   community.agent_connection_grants,

@@ -133,4 +133,10 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "0129df8e9fbbbc34bc2b547e9a175439ea86e4028a297a3914373c91d7603202",
     }),
+    Object.freeze({
+      migrationId: "20260918040000",
+      filename: "20260918040000_agent_connection_ledger_integrity.sql",
+      checksum:
+        "d77c3ec55f486e4fe4a0824a8c66a6fc82a3143eafc2c355985a6e48e0de7a6a",
+    }),
   ]);

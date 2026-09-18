@@ -372,6 +372,64 @@ export const registerAgentConnectionTests = (
         ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
       });
 
+      it("freezes the two wrapper columns the first freeze predicate missed", async () => {
+        // The r13 re-review measured both of these as ACCEPTED while the
+        // migration that added the trigger said "rows are immutable except
+        // invalidation". `format_version` selects the AEAD layout a sealed
+        // value is opened with, so it is the column an attacker would most
+        // want to move; `issued_at` is the audit record.
+        await addGrant("grant-r1", 1);
+        await addWrapper("grant-r1", connection, 1);
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_wrappers SET format_version=99`,
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_wrappers
+                SET issued_at = issued_at + interval '100 years'`,
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+        // Invalidation is still the one thing that may move.
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_wrappers
+                SET invalidated_at=CURRENT_TIMESTAMP`,
+          ),
+        ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
+      });
+
+      it("refuses to walk a completed destruction back into looking un-attempted", async () => {
+        // `app_role` holds UPDATE on exactly these two columns, and the first
+        // CHECK constrained only one direction. Forging 'done' or erasing it
+        // lets an operator believe provider-side cleanup happened while the
+        // refresh token still redeems.
+        await addGrant("grant-r1", 1);
+        await pool.query(
+          `UPDATE community.agent_connection_grants
+              SET destroy_status='done', destroyed_at=CURRENT_TIMESTAMP
+            WHERE grant_id='grant-r1'`,
+        );
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_grants
+                SET destroy_status='not-requested', destroyed_at=NULL
+              WHERE grant_id='grant-r1'`,
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+      });
+
+      it("refuses a destruction timestamp on a grant nobody asked to destroy", async () => {
+        await addGrant("grant-r1", 1);
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_grants
+                SET destroyed_at=CURRENT_TIMESTAMP WHERE grant_id='grant-r1'`,
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+      });
+
       it("refuses to relocate a wrapper onto another grant", async () => {
         // The composite FK validates only the NEW tuple, so without a freeze a
         // wrapper could be moved from an old grant onto the current one and

@@ -61,6 +61,7 @@ describe("community migration family", () => {
         "20260918010000_agent_connections.sql",
         "20260918020000_agent_connection_provider_artifacts.sql",
         "20260918030000_agent_connection_invariants.sql",
+        "20260918040000_agent_connection_ledger_integrity.sql",
       ],
     );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);
