@@ -2,6 +2,7 @@ import {
   CONNECTION_TOKEN_PREFIX,
   PRESET_TOOLS,
   admitGrant,
+  canonicalScopes,
   connectionAuth,
   connectionOverrideAuth,
   connectionsEnabled,
@@ -25,6 +26,18 @@ import type { PayloadRequest } from "payload";
 const ISSUER = "https://auth.artvenn.invalid";
 const RESOURCE = "https://admin.artvenn.invalid/api/mcp";
 const ENVIRONMENT = "development";
+const CLIENT_ID = "artvenn-claude-desktop-01";
+/** The canonical scope set a read-only token must carry. Nothing more, nothing less. */
+const READ_ONLY_SCOPES = ["comments:read", "content:read", "users:read"];
+const MANAGEMENT_SCOPES = [
+  "comments:moderate",
+  "comments:read",
+  "content:read",
+  "featured:write",
+  "operations:execute",
+  "operations:undo",
+  "users:read",
+];
 
 const connection = (
   overrides: Partial<AgentConnection> = {},
@@ -34,6 +47,7 @@ const connection = (
   humanAccountId: "user-owner",
   client: "claude",
   environment: ENVIRONMENT,
+  oauthClientId: CLIENT_ID,
   preset: "read-only",
   status: "authorized",
   generation: 3,
@@ -44,10 +58,10 @@ const connection = (
 const grant = (overrides: Partial<VerifiedGrant> = {}): VerifiedGrant => ({
   connectionId: "conn-1",
   subject: "user-owner",
-  clientId: "client-claude",
+  clientId: CLIENT_ID,
   resource: RESOURCE,
   issuer: ISSUER,
-  scopes: ["users:read"],
+  scopes: READ_ONLY_SCOPES,
   generation: 3,
   ...overrides,
 });
@@ -216,6 +230,7 @@ describe("connectionAuth", () => {
   it("grants a management connection the execute tools but still never an approval tool", async () => {
     const settings = await auth({
       read: async () => connection({ preset: "management" }),
+      verify: async () => grant({ scopes: MANAGEMENT_SCOPES }),
     })(request(header(token())), async () => ({}) as never);
     const tools = settings["payload-mcp-tool"] ?? {};
     expect(tools.artvenn_operations_execute).toBe(true);
@@ -225,31 +240,25 @@ describe("connectionAuth", () => {
     );
   });
 
-  it("derives tools from the preset, not from the token's scope claim, so a widened token cannot widen the connection", async () => {
-    const settings = await auth({
-      verify: async () =>
-        grant({
-          scopes: [
-            "users:read",
-            "comments:moderate",
-            "featured:write",
-            "operations:execute",
-            "operations:undo",
-          ],
-        }),
-    })(request(header(token())), async () => ({}) as never);
-    const tools = settings["payload-mcp-tool"] ?? {};
-    expect(Object.keys(tools).sort()).toEqual(
-      [...PRESET_TOOLS["read-only"]].sort(),
-    );
+  it("refuses a token whose scope claim is wider than its connection's preset, instead of silently narrowing it", async () => {
+    await expect(
+      auth({ verify: async () => grant({ scopes: MANAGEMENT_SCOPES }) })(
+        request(header(token())),
+        async () => ({}) as never,
+      ),
+    ).rejects.toThrow();
   });
 
   it("grants no editorial tool to any connection: the editorial domain is not inherited", async () => {
     for (const preset of ["read-only", "management"] as const) {
-      const settings = await auth({ read: async () => connection({ preset }) })(
-        request(header(token())),
-        async () => ({}) as never,
-      );
+      const settings = await auth({
+        read: async () => connection({ preset }),
+        verify: async () =>
+          grant({
+            scopes:
+              preset === "management" ? MANAGEMENT_SCOPES : READ_ONLY_SCOPES,
+          }),
+      })(request(header(token())), async () => ({}) as never);
       const tools = settings["payload-mcp-tool"] ?? {};
       expect(
         Object.keys(tools).filter((name) => name.startsWith("editorial_")),
@@ -345,5 +354,147 @@ describe("connectionOverrideAuth composition gate", () => {
       connectionOverrideAuth(null)(request(), legacy as never),
     ).rejects.toThrow("UNAUTHORIZED");
     expect(legacy).toHaveBeenCalledOnce();
+  });
+});
+
+describe("r10 §3.1 — the token subject must be the consenting human", () => {
+  it("admits a grant whose subject is the connection's human", () => {
+    expect(
+      admitGrant(grant({ subject: "user-owner" }), connection(), expected).id,
+    ).toBe("conn-1");
+  });
+
+  it("refuses a validly signed token issued for a different human", () => {
+    expect(() =>
+      admitGrant(
+        grant({ subject: "user-someone-else" }),
+        connection(),
+        expected,
+      ),
+    ).toThrow("CONNECTION_SUBJECT_MISMATCH");
+  });
+
+  it("gives that refusal the same external shape as every other failure", async () => {
+    const outcome = await auth({
+      verify: async () => grant({ subject: "user-someone-else" }),
+    })(request(header(token())), async () => ({}) as never).then(
+      () => "resolved",
+      (error: Error) => error.name,
+    );
+    expect(outcome).not.toBe("resolved");
+    expect(outcome).toBe("UnauthorizedError");
+  });
+});
+
+describe("r10 §3.2 — the exact registered OAuth client, not the vendor family", () => {
+  it("admits a grant from the exact authorized client", () => {
+    expect(admitGrant(grant(), connection(), expected).oauthClientId).toBe(
+      CLIENT_ID,
+    );
+  });
+
+  it("refuses another registered client even when human, connection, issuer, resource and generation all match", () => {
+    expect(() =>
+      admitGrant(
+        grant({ clientId: "artvenn-claude-desktop-02" }),
+        connection(),
+        expected,
+      ),
+    ).toThrow("CONNECTION_CLIENT_MISMATCH");
+  });
+
+  it("does not accept the descriptive family label as a client identity", () => {
+    expect(() =>
+      admitGrant(grant({ clientId: "claude" }), connection(), expected),
+    ).toThrow("CONNECTION_CLIENT_MISMATCH");
+  });
+});
+
+describe("r10 §3.3 — exact scope agreement", () => {
+  const refuse = (scopes: unknown) =>
+    expect(() =>
+      admitGrant(grant({ scopes: scopes as string[] }), connection(), expected),
+    ).toThrow("CONNECTION_SCOPE_MISMATCH");
+
+  it("accepts the canonical set for the preset", () => {
+    expect(
+      admitGrant(grant({ scopes: READ_ONLY_SCOPES }), connection(), expected)
+        .id,
+    ).toBe("conn-1");
+  });
+
+  it("accepts the canonical set in any order, because both sides normalize", () => {
+    expect(
+      admitGrant(
+        grant({ scopes: ["users:read", "comments:read", "content:read"] }),
+        connection(),
+        expected,
+      ).id,
+    ).toBe("conn-1");
+  });
+
+  it("refuses an extra scope", () => {
+    refuse([...READ_ONLY_SCOPES, "featured:write"]);
+  });
+
+  it("refuses a missing scope", () => {
+    refuse(["users:read", "content:read"]);
+  });
+
+  it("refuses a duplicated scope rather than collapsing it", () => {
+    refuse([...READ_ONLY_SCOPES, "users:read"]);
+  });
+
+  it("refuses an unknown scope", () => {
+    refuse(["users:read", "content:read", "comments:read", "admin:everything"]);
+  });
+
+  it("refuses an empty claim: absent scopes never inherit the preset", () => {
+    refuse([]);
+  });
+
+  it("refuses a malformed claim", () => {
+    refuse(undefined);
+    refuse("users:read content:read comments:read");
+    refuse([" users:read", "content:read", "comments:read"]);
+    refuse([1, 2, 3]);
+  });
+
+  it("requires the management set for a management connection, and refuses the read-only set there", () => {
+    const managed = connection({ preset: "management" });
+    expect(
+      admitGrant(grant({ scopes: MANAGEMENT_SCOPES }), managed, expected).id,
+    ).toBe("conn-1");
+    expect(() =>
+      admitGrant(grant({ scopes: READ_ONLY_SCOPES }), managed, expected),
+    ).toThrow("CONNECTION_SCOPE_MISMATCH");
+  });
+});
+
+describe("r10 §3.4 — the read-only preset advertises only what its scopes authorize", () => {
+  it("does not advertise artvenn_operations_get, which the Backend gates on operations:execute", () => {
+    expect(PRESET_TOOLS["read-only"]).not.toContain("artvenn_operations_get");
+  });
+
+  it("advertises exactly the four tools covered by users:read, content:read and comments:read", () => {
+    expect([...PRESET_TOOLS["read-only"]].sort()).toEqual([
+      "artvenn_comments_query",
+      "artvenn_comments_read",
+      "artvenn_content_search",
+      "artvenn_users_find",
+    ]);
+  });
+
+  it("keeps artvenn_operations_get available to management, which does hold operations:execute", () => {
+    expect(PRESET_TOOLS.management).toContain("artvenn_operations_get");
+    expect(canonicalScopes("management")).toContain("operations:execute");
+  });
+
+  it("does not widen the read-only scope set to keep a tool: no operations scope is present", () => {
+    expect(canonicalScopes("read-only")).toEqual([
+      "comments:read",
+      "content:read",
+      "users:read",
+    ]);
   });
 });

@@ -4,6 +4,7 @@ import {
   ConnectionAuthError,
   PRESET_TOOLS,
   isConnectionToken,
+  scopesMatchPreset,
 } from "./contracts";
 
 import type { AgentConnection, VerifiedGrant } from "./contracts";
@@ -24,9 +25,15 @@ import type { PayloadRequest, TypedUser } from "payload";
  *  1. A credential that claims to be ours succeeds on its own terms or is
  *     refused. It never falls back to the legacy API-key resolver, to an
  *     Owner session cookie, or to anonymous access.
- *  2. What a connection may call is derived from its PRESET, never from the
- *     token's own scope claim. A token cannot widen its connection.
- *  3. The connection's `generation` must match the token's. That is what
+ *  2. Every binding on the token is checked against the connection: the
+ *     consenting human (`subject`), the exact registered OAuth client, the
+ *     issuer, the resource, the environment and the scope set. A valid
+ *     signature is not an authorization.
+ *  3. What a connection may CALL is derived from its preset, never from the
+ *     token's scope claim — the claim must equal the preset's canonical set,
+ *     and the preset then decides the tools. A token can neither widen its
+ *     connection nor silently narrow it.
+ *  4. The connection's `generation` must match the token's. That is what
  *     makes disconnect effective against an unexpired token and a live
  *     session, without depending on a clock.
  */
@@ -104,6 +111,14 @@ export const admitGrant = (
     throw new ConnectionAuthError("CONNECTION_NOT_FOUND");
   if (connection.id !== grant.connectionId)
     throw new ConnectionAuthError("CONNECTION_MISMATCH");
+  // The consenting human. A token minted for one person must never act on
+  // another person's connection, however well-formed it is.
+  if (connection.humanAccountId !== grant.subject)
+    throw new ConnectionAuthError("CONNECTION_SUBJECT_MISMATCH");
+  // The exact registered client, not the descriptive vendor family. Two
+  // clients of the same family are two different authorizations.
+  if (connection.oauthClientId !== grant.clientId)
+    throw new ConnectionAuthError("CONNECTION_CLIENT_MISMATCH");
   if (connection.environment !== expected.environment)
     throw new ConnectionAuthError("CONNECTION_ENVIRONMENT_MISMATCH");
   if (connection.status === "revoked" || connection.revokedAt !== null)
@@ -114,6 +129,11 @@ export const admitGrant = (
   // is refused here even though its own expiry has not arrived.
   if (connection.generation !== grant.generation)
     throw new ConnectionAuthError("CONNECTION_GENERATION_STALE");
+  // Exact scope agreement, checked LAST so a scope mismatch cannot be used to
+  // probe whether a connection exists. Extra, missing, unknown, duplicated or
+  // malformed claims all fail, and an absent claim never inherits the preset.
+  if (!scopesMatchPreset(grant.scopes, connection.preset))
+    throw new ConnectionAuthError("CONNECTION_SCOPE_MISMATCH");
   return connection;
 };
 

@@ -35,6 +35,8 @@ export const openConnection = (fields: {
   readonly principalLabel: string;
   readonly humanAccountId: string;
   readonly client: AgentConnection["client"];
+  /** The exact registered OAuth client this connection will authorize. */
+  readonly oauthClientId: string;
   readonly environment: string;
   readonly preset?: ConnectionPreset;
 }): AgentConnection => ({
@@ -42,6 +44,7 @@ export const openConnection = (fields: {
   principalLabel: fields.principalLabel,
   humanAccountId: fields.humanAccountId,
   client: fields.client,
+  oauthClientId: fields.oauthClientId,
   environment: fields.environment,
   // Read-only unless the human deliberately chose otherwise. A connection
   // never acquires management by default or by omission.

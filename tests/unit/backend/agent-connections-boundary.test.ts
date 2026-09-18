@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { PRESET_TOOLS, canonicalScopes } from "admin/agent-connections";
+import { agentAdminTools } from "admin/agent-admin-mcp";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Agent Connections V1 (Issue #141 r9) — F1, the access boundary, checked at
@@ -84,5 +86,142 @@ describe("F1: the NEW connection surface fails closed", () => {
     );
     // Both, never either.
     expect(composition).toMatch(/development"\s*&&/u);
+  });
+});
+
+/**
+ * r10 §3.4 — the read-only preset checked against the REAL tool registry and
+ * the REAL adapter handlers, not against a copy of the tool names.
+ *
+ * The r9 bug this exists to prevent: a preset advertising a tool whose
+ * complete Backend path needs a scope the preset does not hold, so the tool
+ * appears in `tools/list` and is then refused when called.
+ */
+describe("r10 §3.4: read-only advertises only genuinely read-only paths", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const registry = agentAdminTools(
+    (() => (async () => ({ ok: true })) as never) as never,
+  );
+
+  const requestsOf = async (toolName: string) => {
+    const calls: { method: string; path: string }[] = [];
+    const tools = agentAdminTools(
+      () =>
+        (async (method: string, path: string) => {
+          calls.push({ method, path });
+          return { ok: true, result: {} };
+        }) as never,
+    );
+    const tool = tools.find((candidate) => candidate.name === toolName);
+    if (tool === undefined) throw new Error(`no tool ${toolName}`);
+    return { tool, calls };
+  };
+
+  it("advertises only tools that actually exist in the real registry", () => {
+    const names = new Set(registry.map((tool) => tool.name));
+    for (const preset of ["read-only", "management"] as const)
+      for (const advertised of PRESET_TOOLS[preset])
+        expect(names.has(advertised)).toBe(true);
+  });
+
+  /**
+   * The discriminator is the SCOPE the Backend enforces on the path, not the
+   * HTTP method: `artvenn_operations_get` is a GET too, so a method-only
+   * assertion could not catch the r9 defect it is named for. This table is the
+   * Backend's own enforcement, and the test below keeps it honest against the
+   * service source rather than trusting the copy.
+   */
+  const SCOPE_BY_PATH_PREFIX: readonly (readonly [string, string])[] = [
+    ["agent/users", "users:read"],
+    ["agent/content", "content:read"],
+    ["agent/comments", "comments:read"],
+    ["agent/operations", "operations:execute"],
+  ];
+
+  const scopeForPath = (path: string): string => {
+    for (const [prefix, scope] of SCOPE_BY_PATH_PREFIX)
+      if (path.startsWith(prefix)) return scope;
+    throw new Error(`no scope mapped for Backend path ${path}`);
+  };
+
+  it("calls only Backend paths whose enforced scope the read-only preset actually holds", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const held = new Set(canonicalScopes("read-only"));
+    const fixtures: Record<string, Record<string, unknown>> = {
+      artvenn_users_find: { handle: "someone", page: 1, pageSize: 20 },
+      artvenn_content_search: { query: "ink", page: 1, pageSize: 20 },
+      artvenn_comments_query: { page: 1, pageSize: 20 },
+      artvenn_comments_read: { id: `comment-${"a".repeat(32)}` },
+    };
+    for (const name of PRESET_TOOLS["read-only"]) {
+      const { tool, calls } = await requestsOf(name);
+      await tool.handler(
+        fixtures[name] ?? {},
+        {
+          user: { collection: "users", agentPrincipal: "agent-phone" },
+        } as never,
+        undefined,
+      );
+      expect(calls.length, `${name} made no Backend call`).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call.method, `${name} mutates`).toBe("GET");
+        expect(
+          held.has(scopeForPath(call.path)),
+          `${name} calls ${call.path}, enforced under ${scopeForPath(call.path)}, which read-only does not hold`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("has teeth: the tool r9 wrongly advertised is caught by that same rule", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const held = new Set(canonicalScopes("read-only"));
+    const { tool, calls } = await requestsOf("artvenn_operations_get");
+    await tool.handler(
+      { operationId: "11111111-1111-4111-8111-111111111111" },
+      {
+        user: { collection: "users", agentPrincipal: "agent-phone" },
+      } as never,
+      undefined,
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    // A GET, like the four allowed tools — which is exactly why the method is
+    // not the discriminator. The scope is.
+    expect(calls[0]!.method).toBe("GET");
+    expect(held.has(scopeForPath(calls[0]!.path))).toBe(false);
+  });
+
+  it("keeps the path/scope table honest against the service's own authorize calls", async () => {
+    const source = read(
+      "services/api/src/modules/community/application/services/agent-administration-service.ts",
+    );
+    for (const [, scope] of SCOPE_BY_PATH_PREFIX)
+      expect(
+        source.includes(`authorize(principal, "${scope}")`),
+        `${scope} is no longer enforced by the service under that name`,
+      ).toBe(true);
+  });
+
+  it("keeps every management-only tool out of the read-only grant map, so it is absent from tools/list", () => {
+    const readOnly = new Set(PRESET_TOOLS["read-only"]);
+    const managementOnly = PRESET_TOOLS.management.filter(
+      (name) => !readOnly.has(name),
+    );
+    expect(managementOnly.length).toBeGreaterThan(0);
+    for (const name of managementOnly) expect(readOnly.has(name)).toBe(false);
+    // The specific r9 defect, pinned by name.
+    expect(managementOnly).toContain("artvenn_operations_get");
+  });
+
+  it("covers every tool in the real registry by exactly one preset decision", () => {
+    const names = registry.map((tool) => tool.name);
+    for (const name of names)
+      expect(
+        PRESET_TOOLS.management.includes(name),
+        `${name} is in the registry but no preset grants it`,
+      ).toBe(true);
   });
 });

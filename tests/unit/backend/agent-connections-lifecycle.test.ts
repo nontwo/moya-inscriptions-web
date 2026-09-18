@@ -23,6 +23,17 @@ import type { AgentConnection, VerifiedGrant } from "admin/agent-connections";
 const ISSUER = "https://auth.artvenn.invalid";
 const RESOURCE = "https://admin.artvenn.invalid/api/mcp";
 const ENVIRONMENT = "development";
+const CLIENT_ID = "artvenn-claude-desktop-01";
+const READ_ONLY_SCOPES = ["comments:read", "content:read", "users:read"];
+const MANAGEMENT_SCOPES = [
+  "comments:moderate",
+  "comments:read",
+  "content:read",
+  "featured:write",
+  "operations:execute",
+  "operations:undo",
+  "users:read",
+];
 const AT = "2026-09-18T01:00:00";
 
 const expected = {
@@ -37,6 +48,7 @@ const fresh = () =>
     principalLabel: "agent-phone",
     humanAccountId: "user-owner",
     client: "claude",
+    oauthClientId: CLIENT_ID,
     environment: ENVIRONMENT,
   });
 
@@ -56,10 +68,11 @@ const consent = (
 const tokenFor = (connection: AgentConnection): VerifiedGrant => ({
   connectionId: connection.id,
   subject: connection.humanAccountId,
-  clientId: "client-claude",
+  clientId: connection.oauthClientId,
   resource: RESOURCE,
   issuer: ISSUER,
-  scopes: ["users:read"],
+  scopes:
+    connection.preset === "management" ? MANAGEMENT_SCOPES : READ_ONLY_SCOPES,
   generation: connection.generation,
 });
 
@@ -157,6 +170,7 @@ describe("disconnect", () => {
         principalLabel: "agent-desk",
         humanAccountId: "user-owner",
         client: "codex",
+        oauthClientId: CLIENT_ID,
         environment: ENVIRONMENT,
       }),
       consent(),
