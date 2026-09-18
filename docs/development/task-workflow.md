@@ -17,6 +17,7 @@ prefixes do not select or waive checks.
 | Actual change                                                        | Applicable verification                                                                                                                                                      |
 | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Apple Swift, resources, project or native tests                      | One iOS Simulator build and relevant native tests                                                                                                                            |
+| HarmonyOS ArkTS, ArkUI, Stage project or native tests                | Local Harmony validation once the bootstrap task defines it; hosted native CI remains `HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED` and must not invoke Apple/Web/CMS       |
 | Web/Admin/backend/database implementation or its JS/TS configuration | Applicable existing Web verification and affected domain tests                                                                                                               |
 | Public contracts, OpenAPI or authentication protocol                 | Focused existing contract, public backend HTTP and Web public-API client tests; add other platform/runtime checks only when its changed paths or real consumers require them |
 | Platform documentation or instructions                               | Relevant lightweight checks, without unrelated product builds                                                                                                                |
@@ -224,6 +225,9 @@ The repository has two standard entry files:
 - Root `CLAUDE.md` imports it with `@AGENTS.md`.
 - `apps/apple/AGENTS.md` adds Apple-specific requirements;
   `apps/apple/CLAUDE.md` imports its sibling with `@AGENTS.md`.
+- `apps/harmony/AGENTS.md` adds HarmonyOS-specific requirements;
+  `apps/harmony/CLAUDE.md` imports root and local authority without a second
+  policy system.
 - Existing Web/Admin local guidance remains scoped to those directories. Do not
   create a third `AGENT.md` convention or duplicate these shared rules.
 
@@ -232,7 +236,8 @@ directory, with the documented `AGENTS.override.md` precedence. Starting at the
 root does not preload every descendant's instructions. Claude Code discovers
 `CLAUDE.md` and supports relative `@` imports; deeper instructions are loaded
 when that scope is accessed. Therefore a root-started Apple task must explicitly
-read the Apple rules before planning or writing.
+read the Apple rules before planning or writing, and a root-started HarmonyOS
+task must explicitly read the Harmony rules.
 
 Read the full applicable authority — the root entry, the Constitution, the
 active amendments, this workflow and the local rules for the task's paths — when
