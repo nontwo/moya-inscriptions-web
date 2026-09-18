@@ -1,5 +1,6 @@
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import path from "node:path";
+import path, { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
@@ -35,6 +36,13 @@ import type { PayloadRequest } from "payload";
  * namespace is the smallest safe option — and the reserved namespace is what
  * makes it safe, because it removes credential-type guessing entirely.
  */
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const read = (relative: string) =>
+  readFileSync(path.join(repoRoot, relative), "utf8");
 
 const require_ = createRequire(
   path.join(
@@ -163,6 +171,83 @@ describe("r10 review finding 7 — the auth scheme word is case-insensitive", ()
         legacy,
       );
       expect(legacy, scheme).toHaveBeenCalledOnce();
+    }
+  });
+});
+
+/**
+ * r12 §4.2 — where the authorization server's dependency actually belongs.
+ *
+ * `oidc-provider` is currently a devDependency of `apps/admin`. That is
+ * truthful only while nothing in the Admin's RUNTIME imports it — today only
+ * the private spike does, and a spike is not shipped. The moment a runtime
+ * module imports it, the declaration becomes a lie that a production-style
+ * install (`--prod`, which omits devDependencies) would turn into a missing
+ * module at boot rather than a failure at build time.
+ *
+ * The recorded decision is that the Development authorization server gets its
+ * own Development-only service workspace owning the exact pin as a runtime
+ * `dependency`, with explicit build and start entries. Creating that workspace
+ * is provider implementation and is gated on the independent review of the
+ * token-wrapper design, so it has not happened yet.
+ *
+ * This guard makes the intervening window safe: the day someone imports the
+ * provider from Admin runtime code without moving the dependency, this fails
+ * loudly instead of the packaging quietly becoming untrue.
+ */
+describe("r12 §4.2: the provider dependency is declared where it actually runs", () => {
+  const adminPackage = JSON.parse(read("apps/admin/package.json")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+
+  const adminRuntimeImportsProvider = (): boolean => {
+    const roots = ["apps/admin/src", "apps/admin/app"];
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      let entries: string[];
+      try {
+        entries = readdirSync(resolve(repoRoot, dir));
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const relative = `${dir}/${entry}`;
+        const full = resolve(repoRoot, relative);
+        if (statSync(full).isDirectory()) walk(relative);
+        else if (/\.(ts|tsx|mts|mjs|js)$/u.test(entry)) {
+          const source = readFileSync(full, "utf8");
+          if (
+            /from\s+["']oidc-provider|require\(\s*["']oidc-provider/u.test(
+              source,
+            )
+          )
+            hits.push(relative);
+        }
+      }
+    };
+    for (const root of roots) walk(root);
+    return hits.length > 0;
+  };
+
+  it("pins the provider to an exact version wherever it is declared", () => {
+    const declared =
+      adminPackage.dependencies?.["oidc-provider"] ??
+      adminPackage.devDependencies?.["oidc-provider"];
+    expect(declared).toBe("9.12.2");
+  });
+
+  it("keeps it out of the Admin's runtime dependencies while nothing there imports it", () => {
+    if (adminRuntimeImportsProvider()) {
+      // The window closed: a runtime module imports it, so the declaration
+      // must move to `dependencies` or the service must own it instead.
+      expect(
+        adminPackage.dependencies?.["oidc-provider"],
+        "apps/admin runtime now imports oidc-provider, so it must be a runtime dependency (or live in its own service workspace)",
+      ).toBe("9.12.2");
+    } else {
+      expect(adminPackage.devDependencies?.["oidc-provider"]).toBe("9.12.2");
+      expect(adminPackage.dependencies?.["oidc-provider"]).toBeUndefined();
     }
   });
 });
