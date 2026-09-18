@@ -1,9 +1,15 @@
 # Agent Administration V1 — inert client configuration examples
 
 These examples contain no working credential and point at a loopback Development
-Admin. The port is the **Admin's** (`3002`), which is what serves `/api/mcp`;
-`3001` is the Backend and has no MCP endpoint, so a client configured against it
-fails to connect rather than falling back.
+Admin.
+
+**Use the Admin's port, whichever one your Admin is actually listening on.** The
+Admin is what serves `/api/mcp`; the Backend does not, so a client pointed at
+the Backend fails to connect rather than falling back. In the ordinary
+development topology the Admin is `3002` and the Backend is `3001`. A task-owned
+QA environment usually runs its own Admin on its own port — this task's is
+`3442` — and there the QA port is the correct one. Check what is listening
+before copying a number out of this file.
 
 Nothing here activates access: a principal exists only when the Owner creates it
 in the operations view, and an MCP API key only works after the Owner creates

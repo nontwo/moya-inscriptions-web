@@ -1,0 +1,31 @@
+export {
+  CONNECTION_TOKEN_PREFIX,
+  ConnectionAuthError,
+  PRESET_SCOPES,
+  PRESET_TOOLS,
+  agentConnectionSchema,
+  connectionClientSchema,
+  connectionPresetSchema,
+  connectionStatusSchema,
+  isConnectionToken,
+  verifiedGrantSchema,
+} from "./contracts";
+export type {
+  AgentConnection,
+  ConnectionClient,
+  ConnectionPreset,
+  ConnectionStatus,
+  VerifiedGrant,
+} from "./contracts";
+export { admitGrant, connectionAuth } from "./authorization";
+export type {
+  AccessTokenVerifier,
+  ConnectionAuthDependencies,
+  ConnectionReader,
+} from "./authorization";
+export {
+  CONNECTIONS_ENABLED_SETTING,
+  connectionOverrideAuth,
+  connectionsEnabled,
+} from "./composition";
+export type { OverrideAuth } from "./composition";

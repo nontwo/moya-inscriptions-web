@@ -3,6 +3,7 @@ import type { MCPPluginConfig } from "@payloadcms/plugin-mcp";
 import type { Field, PayloadRequest } from "payload";
 import { z } from "zod3";
 import { agentAdminTools } from "./agent-admin/mcp-tools";
+import { connectionOverrideAuth } from "./agent-connections/composition";
 import { readDraft, saveDraft, publishApproved, isOwner } from "./editorial";
 
 const id = z.union([z.string().min(1).max(128), z.number().int().positive()]);
@@ -205,6 +206,12 @@ export const editorialMcp = () => {
       },
       fields: keyFields(collection.fields),
     }),
+    // Agent Connections V1 (Issue #141 r9). The connection surface is composed
+    // only where the Agent Administration amendment already allows the agent
+    // boundary, and then only on an explicit opt-in; `null` here is the closed
+    // door, which refuses a connection token outright rather than letting it
+    // fall through to the API-key resolver. Legacy callers are unaffected.
+    overrideAuth: connectionOverrideAuth(null),
     mcp: {
       handlerOptions: { disableSse: true, verboseLogs: false, maxDuration: 30 },
       serverOptions: {

@@ -888,6 +888,14 @@ export const isAuthorizedCmsServerFile = (
     ) ||
     // Agent Administration V1: the MCP tool adapter is a server module.
     relative === "src/agent-admin/mcp-tools.ts" ||
+    // Agent Connections V1: the connection authentication boundary. These are
+    // server modules by construction — they read request headers, resolve a
+    // restricted principal and answer the Payload MCP plugin — and they are
+    // named one by one rather than by directory, so a browser module added
+    // under the same folder later does not inherit the allowance.
+    /^src\/agent-connections\/(?:authorization|composition|contracts|index)\.ts$/.test(
+      relative,
+    ) ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
