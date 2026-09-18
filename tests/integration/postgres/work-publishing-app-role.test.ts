@@ -830,8 +830,45 @@ describe.each(["clean", "phase4-upgrade", "legacy-grants-upgrade"] as const)(
         "UPDATE community.catalog_comments SET text=text",
         "UPDATE community.catalog_comment_replies SET text=text",
         "UPDATE community.publication_setting SET id=id",
+        // Agent connections (Issue #141 r13). The App role authorizes requests
+        // with the connection authority; it does not MOVE it. A resource
+        // server that could open, consent, revoke or re-point a connection
+        // would be able to grant itself the authority it is meant to check.
+        "INSERT INTO community.agent_connections(id) VALUES ('conn-x')",
+        "UPDATE community.agent_connections SET status=status",
+        "UPDATE community.agent_connections SET generation=generation",
+        "UPDATE community.agent_connections SET preset=preset",
+        "UPDATE community.agent_connections SET principal_label=principal_label",
+        "UPDATE community.agent_connections SET current_grant_id=current_grant_id",
+        "DELETE FROM community.agent_connections",
+        // A grant is an immutable consent snapshot: the frozen generation and
+        // everything consented to are unwritable, so an old grant cannot be
+        // rewritten to resolve against a newer connection state.
+        "INSERT INTO community.agent_connection_grants(grant_id) VALUES ('g-x')",
+        "UPDATE community.agent_connection_grants SET generation_at_consent=generation_at_consent",
+        "UPDATE community.agent_connection_grants SET connection_id=connection_id",
+        "UPDATE community.agent_connection_grants SET capability_scopes=capability_scopes",
+        "UPDATE community.agent_connection_grants SET preset_at_consent=preset_at_consent",
+        "UPDATE community.agent_connection_grants SET issuer=issuer",
+        "DELETE FROM community.agent_connection_grants",
+        // Wrappers are written and reaped by the provider path. The App role
+        // resolves a presented token and nothing more.
+        "INSERT INTO community.agent_connection_wrappers(lookup_digest) VALUES ('d')",
+        "UPDATE community.agent_connection_wrappers SET sealed_jti=sealed_jti",
+        "UPDATE community.agent_connection_wrappers SET generation=generation",
+        "DELETE FROM community.agent_connection_wrappers",
       ])
         await expect(app.query(sql)).rejects.toMatchObject({ code: "42501" });
+
+      // The positive control: the two narrow grants the App role genuinely
+      // needs are present, so the denials above prove least privilege rather
+      // than a missing grant file.
+      for (const sql of [
+        "UPDATE community.agent_connections SET last_verified_at=last_verified_at",
+        "UPDATE community.agent_connection_grants SET destroy_status=destroy_status",
+        "SELECT 1 FROM community.agent_connection_wrappers LIMIT 1",
+      ])
+        await expect(app.query(sql)).resolves.toBeDefined();
     });
   },
 );

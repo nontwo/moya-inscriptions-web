@@ -43,7 +43,9 @@ REVOKE UPDATE ON TABLE
   community.publishing_jobs,
   community.agent_principals,
   community.agent_delegations,
-  community.agent_operations
+  community.agent_operations,
+  community.agent_connections,
+  community.agent_connection_grants
 FROM :"app_role";
 REVOKE INSERT ON TABLE
   community.author_events,
@@ -188,3 +190,30 @@ GRANT UPDATE (
   state, approval, next_index, results, lease_owner, lease_expires_at, version,
   approved_at, started_at, finished_at, cancel_requested_at
 ) ON TABLE community.agent_operations TO :"app_role";
+
+-- Agent connections (Issue #141 r13): the canonical connection authority.
+--
+-- The App role reads connections, grants and wrappers, and may record that a
+-- request was verified -- but it may NOT move a connection's lifecycle. Opening,
+-- consenting, revoking and reconnecting belong to the connection-management
+-- path, not to the resource server that merely authorizes a request with them.
+-- So no UPDATE on status, generation, preset, principal_label or
+-- current_grant_id, and no INSERT on connections at all.
+--
+-- A grant is an immutable consent snapshot. The App role receives no UPDATE on
+-- generation_at_consent, the client, the subject, the issuer, the resource, the
+-- scopes or the preset: the whole point is that an old grant keeps resolving to
+-- the generation its human consented at, so nothing that would let it be
+-- rewritten is granted. Only the provider-destruction columns move.
+--
+-- Wrappers are written and reaped by the provider path, not by the App role,
+-- which only needs to resolve a presented token. Nothing is ever deleted here
+-- by this role.
+GRANT SELECT ON TABLE
+  community.agent_connections,
+  community.agent_connection_grants,
+  community.agent_connection_wrappers
+TO :"app_role";
+GRANT UPDATE (last_verified_at) ON TABLE community.agent_connections TO :"app_role";
+GRANT UPDATE (destroy_status, destroyed_at)
+ON TABLE community.agent_connection_grants TO :"app_role";
