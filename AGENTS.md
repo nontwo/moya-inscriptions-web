@@ -82,9 +82,11 @@ Before planning or writing, read
 [`docs/development/task-workflow.md`](docs/development/task-workflow.md). It is
 the shared task, verification, review and handoff convention for every tool. For
 an Apple task, also read [`apps/apple/AGENTS.md`](apps/apple/AGENTS.md), even
-when the session starts at the repository root. For other affected directories,
-read their applicable existing local instructions. Reading another platform's
-instructions or interfaces does not grant write authority there.
+when the session starts at the repository root. For a HarmonyOS task, also read
+[`apps/harmony/AGENTS.md`](apps/harmony/AGENTS.md), even when the session starts
+at the repository root. For other affected directories, read their applicable
+existing local instructions. Reading another platform's instructions or
+interfaces does not grant write authority there.
 
 Scope follows the current task, actual changed paths and necessary dependencies.
 It does not follow the model, tool, author account or branch prefix. Codex and

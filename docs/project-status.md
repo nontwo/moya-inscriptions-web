@@ -277,6 +277,20 @@ feedback is separated from full acceptance for Apple, Web, and CMS. Hosted
 released-Xcode-27 CI remains pending and nonblocking. No native product feature
 has yet been implemented.
 
+## HarmonyOS repository foundation
+
+2026-09-18 limited factual update:
+
+HarmonyOS is authorized as an independent native ArtVenn client domain
+(`apps/harmony/**`). The repository foundation and partner handoff are delivered
+by this task. Native Harmony product implementation has not started. Real
+DevEco project generation remains for the partner bootstrap task (Harmony
+Multidevice Bootstrap V1). No AppGallery publication authority and no
+Production deployment authority have been granted. Apple and Harmony remain
+independently developed native clients. The existing Backend / Public API
+remains the intended shared service boundary. Hosted Harmony native CI is
+`HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED`.
+
 ## 下一步任务
 
 ```text
@@ -480,7 +494,9 @@ independent Community V1 track above, authorized by the active
 [Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md).
 The other items remain deferred unless separately authorized. The Apple
 Multiplatform bootstrap is on `main`; that delivery is not a native product
-feature.
+feature. The HarmonyOS repository foundation is also on `main`; native Harmony
+product implementation, AppGallery publication, and Production deployment have
+not been authorized.
 
 ## Branch and release policy
 

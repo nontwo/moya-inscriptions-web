@@ -92,16 +92,24 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 const sorted = (items) => [...items].sort();
 const flags = (plan) =>
   Object.fromEntries(
-    ["web", "cms", "contracts", "apple", "lightweight", "scope"].map((key) => [
-      key,
-      plan[key],
-    ]),
+    [
+      "web",
+      "cms",
+      "contracts",
+      "apple",
+      "harmony",
+      "harmonyNativeValidation",
+      "lightweight",
+      "scope",
+    ].map((key) => [key, plan[key]]),
   );
 const expectedFlags = (overrides = {}) => ({
   web: false,
   cms: false,
   contracts: false,
   apple: false,
+  harmony: false,
+  harmonyNativeValidation: "none",
   lightweight: true,
   scope: "none",
   ...overrides,
@@ -162,6 +170,52 @@ describe("task routing follows the complete changed-path set", () => {
   const cases = [
     [["README.md", "docs/development/task workflow.md"], {}],
     [["CLAUDE.md", "apps/apple/AGENTS.md", "apps/apple/README.md"], {}],
+    [
+      [
+        "apps/harmony/AGENTS.md",
+        "apps/harmony/CLAUDE.md",
+        "apps/harmony/README.md",
+      ],
+      {},
+    ],
+    [
+      ["apps/harmony/.gitignore"],
+      {
+        harmony: true,
+        harmonyNativeValidation:
+          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+      },
+    ],
+    [
+      ["apps/harmony/ArtVenn/entryability.ets"],
+      {
+        harmony: true,
+        harmonyNativeValidation:
+          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+      },
+    ],
+    [
+      ["apps/harmony/ArtVenn/entryability.ets", "apps/apple/ArtVenn/App.swift"],
+      {
+        apple: true,
+        harmony: true,
+        harmonyNativeValidation:
+          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+      },
+    ],
+    [
+      [
+        "apps/harmony/ArtVenn/entryability.ets",
+        "packages/contracts/src/catalog.ts",
+      ],
+      {
+        contracts: true,
+        cms: true,
+        harmony: true,
+        harmonyNativeValidation:
+          "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
+      },
+    ],
     [[".github/workflows/ci.yml", "scripts/verify-task.mjs"], {}],
     [[".github/workflows/ci.yml"], {}],
     [[".githooks/pre-commit", ".agents/skills/example/SKILL.md"], {}],
@@ -1120,11 +1174,13 @@ describe("the real CI wiring preserves required-check closure", () => {
     );
     for (const job of ["lightweight", "contracts", "apple"])
       assert.match(jobs.get(job), /if-no-files-found: error/);
+    assert.equal(jobs.has("harmony"), false);
+    assert.doesNotMatch(workflow, /Harmony build|verify-harmony|ohpm/);
   });
 });
 
 describe("instructions and JS workspace boundaries support either tool", () => {
-  it("resolves root and Apple instruction imports with no cycles or ownership split", () => {
+  it("resolves root, Apple and Harmony instruction imports with no cycles or ownership split", () => {
     const visited = new Set();
     const visit = (file, stack = new Set()) => {
       const absolute = resolve(root, file);
@@ -1142,13 +1198,19 @@ describe("instructions and JS workspace boundaries support either tool", () => {
     };
     visit("CLAUDE.md");
     visit("apps/apple/CLAUDE.md");
-    for (const file of ["AGENTS.md", "apps/apple/AGENTS.md"])
+    visit("apps/harmony/CLAUDE.md");
+    for (const file of [
+      "AGENTS.md",
+      "apps/apple/AGENTS.md",
+      "apps/harmony/AGENTS.md",
+    ])
       assert.ok(
         visited.has(resolve(root, file)),
         `missing shared authority ${file}`,
       );
     const authority = read("AGENTS.md");
     assert.match(authority, /apps\/apple\/AGENTS\.md/);
+    assert.match(authority, /apps\/harmony\/AGENTS\.md/);
     assert.match(authority, /Codex and\s+Claude Code may each implement/);
     assert.match(authority, /one writer at a time/);
     const instructions = [
@@ -1156,11 +1218,13 @@ describe("instructions and JS workspace boundaries support either tool", () => {
       read("CLAUDE.md"),
       read("apps/apple/AGENTS.md"),
       read("apps/apple/CLAUDE.md"),
+      read("apps/harmony/AGENTS.md"),
+      read("apps/harmony/CLAUDE.md"),
       read("docs/development/task-workflow.md"),
     ].join("\n");
     assert.doesNotMatch(
       instructions,
-      /(?:Codex|Claude(?: Code)?)\s+(?:must\s+|should\s+)?(?:only|exclusively)\s+(?:handle|own|implement|work on)\s+(?:Apple|Web)/i,
+      /(?:Codex|Claude(?: Code)?|Cursor)\s+(?:must\s+|should\s+)?(?:only|exclusively)\s+(?:handle|own|implement|work on)\s+(?:Apple|Web|Harmony)/i,
     );
     assert.match(
       read("apps/apple/AGENTS.md"),
@@ -1168,7 +1232,7 @@ describe("instructions and JS workspace boundaries support either tool", () => {
     );
   });
 
-  it("excludes native Apple formatting/lint but retains the Web roots", () => {
+  it("excludes native Apple and Harmony formatting/lint but retains the Web roots", () => {
     const ignored = read(".prettierignore")
       .split(/\r?\n/)
       .map((line) => line.trim());
@@ -1178,16 +1242,22 @@ describe("instructions and JS workspace boundaries support either tool", () => {
       ),
     );
     assert.ok(
+      ignored.some((line) =>
+        /^(?:\/|\*\*\/)?apps\/harmony(?:\/\*\*|\/)?$/.test(line),
+      ),
+    );
+    assert.ok(
       !ignored.some((line) => /^(?:\/)?apps(?:\/\*\*|\/)?$/.test(line)),
     );
     const globalIgnores = read("eslint.config.mjs").match(
       /ignores:\s*\[([\s\S]*?)\]/,
     )?.[1];
     assert.match(globalIgnores, /["'](?:\*\*\/)?apps\/apple\/\*\*["']/);
+    assert.match(globalIgnores, /["'](?:\*\*\/)?apps\/harmony\/\*\*["']/);
     assert.doesNotMatch(globalIgnores, /["']apps\/\*\*["']/);
   });
 
-  it("discovers JS workspaces with Apple absent or present, and retains other manifest failures", async (t) => {
+  it("discovers JS workspaces with Apple or Harmony absent or present, and retains other manifest failures", async (t) => {
     const directory = temporary(t);
     for (const workspace of [
       "tests",
@@ -1216,6 +1286,11 @@ describe("instructions and JS workspace boundaries support either tool", () => {
     put(
       directory,
       "apps/apple/package.json",
+      "Native project: not a JS manifest",
+    );
+    put(
+      directory,
+      "apps/harmony/package.json",
       "Native project: not a JS manifest",
     );
     const after = await discoverWorkspaces(directory);
@@ -1363,6 +1438,19 @@ describe("scoped validation commands and private output", () => {
     assert.doesNotMatch(
       apple.map((command) => command.join(" ")).join("\n"),
       /pnpm (?:verify|install)|scripts\/verify\.mjs|test:cms|test:postgres|playwright/,
+    );
+    const harmony = taskCommands(
+      classifyTask(["apps/harmony/ArtVenn/entryability.ets"]),
+      "/private/synthetic-output",
+    );
+    assert.doesNotMatch(
+      harmony.map((command) => command.join(" ")).join("\n"),
+      /scripts\/verify\.mjs|verify-apple|test:cms|test:postgres|playwright|turbo run (?:build|test)/,
+    );
+    assert.equal(
+      classifyTask(["apps/harmony/ArtVenn/entryability.ets"])
+        .harmonyNativeValidation,
+      "HARMONY_NATIVE_VALIDATION_NOT_YET_CONFIGURED",
     );
   });
 

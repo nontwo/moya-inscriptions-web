@@ -287,6 +287,8 @@ export function classifyFeedbackPath(file) {
   )
     return "cms";
   if (file.startsWith("apps/apple/")) return "apple";
+  if (file.startsWith("apps/harmony/"))
+    return file.endsWith(".md") ? "docs" : "harmony";
   if (
     file.startsWith("database/") ||
     file.startsWith("services/catalog-postgres/") ||
@@ -669,6 +671,8 @@ const emptyLocalPlan = {
   cms: false,
   contracts: false,
   apple: false,
+  harmony: false,
+  harmonyNativeValidation: "none",
   scope: "none",
 };
 

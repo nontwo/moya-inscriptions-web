@@ -1,0 +1,11 @@
+# Local DevEco / SDK state and signing material. Never commit secrets.
+.hvigor/
+oh_modules/
+local.properties
+material/
+*.p12
+*.p7b
+*.cer
+*.pem
+*.key
+.DS_Store

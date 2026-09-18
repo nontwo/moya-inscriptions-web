@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       "apps/apple/**",
+      "apps/harmony/**",
       "**/.local/**",
       "**/.next/**",
       "**/.turbo/**",

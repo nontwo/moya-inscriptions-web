@@ -88,9 +88,12 @@ export const discoverWorkspaces = async (
     const groupRoot = path.join(root, group);
     const entries = await readdir(groupRoot, { withFileTypes: true });
     for (const entry of entries) {
-      // The native Xcode project is not a JS workspace. Keep manifest errors
-      // visible for every other existing/future Web workspace.
-      if (entry.isDirectory() && !(group === "apps" && entry.name === "apple"))
+      // Native Apple and HarmonyOS clients are not JS workspaces. Keep
+      // manifest errors visible for every other existing/future Web workspace.
+      if (
+        entry.isDirectory() &&
+        !(group === "apps" && ["apple", "harmony"].includes(entry.name))
+      )
         roots.push(path.join(groupRoot, entry.name));
     }
   }
