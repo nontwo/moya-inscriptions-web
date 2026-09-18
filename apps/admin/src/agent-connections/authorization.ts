@@ -124,6 +124,15 @@ export const admitGrant = (
   expected: { issuer: string; resource: string; environment: string },
   now: Date = new Date(),
 ): AgentConnection => {
+  // NOTE: currently vacuous, and said here rather than only in a design doc,
+  // because this is where a future reader will decide whether to trust it. The
+  // provider's access token carries no `iss`, so the verifier fills
+  // `grant.issuer` from the same configuration `expected.issuer` reads — the
+  // comparison is `x !== x`. It is kept, not deleted, because a check removed
+  // for being unfalsifiable tends to be re-added wrongly for the multi-issuer
+  // case. Make it real by sourcing `grant.issuer` from the provider instance
+  // that actually resolved the token, so the two sides arrive by different
+  // routes and the comparison becomes a genuine consistency assertion.
   if (grant.issuer !== expected.issuer)
     throw new ConnectionAuthError("CONNECTION_ISSUER_MISMATCH");
   if (grant.resource !== expected.resource)

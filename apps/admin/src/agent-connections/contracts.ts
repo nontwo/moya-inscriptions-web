@@ -118,15 +118,17 @@ export const capabilityScopeSchema = z.enum(["artvenn:read", "artvenn:manage"]);
 export type CapabilityScope = z.infer<typeof capabilityScopeSchema>;
 
 /** Accepted for the refresh lifecycle; grants nothing. */
-export const PROTOCOL_ONLY_SCOPES: readonly string[] = ["offline_access"];
+export const PROTOCOL_ONLY_SCOPES: readonly string[] = Object.freeze([
+  "offline_access",
+]);
 
 /** The external capability scopes each preset consents to. */
 export const PRESET_CAPABILITY_SCOPES: Readonly<
   Record<ConnectionPreset, readonly CapabilityScope[]>
-> = {
-  "read-only": ["artvenn:read"],
-  management: ["artvenn:read", "artvenn:manage"],
-};
+> = Object.freeze({
+  "read-only": Object.freeze(["artvenn:read"] as const),
+  management: Object.freeze(["artvenn:read", "artvenn:manage"] as const),
+});
 
 /** The exact capability set a token for this preset must carry. */
 export const canonicalCapabilityScopes = (

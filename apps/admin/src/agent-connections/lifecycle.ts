@@ -20,7 +20,9 @@ import type { AgentConnection, ConnectionPreset } from "./contracts";
  * wrong about it. A refresh token is redeemed AT THE PROVIDER, which knows
  * nothing about this generation, so a disconnect does not deny it: the
  * provider still issues from it (measured — see the r12 spike, check C2). Two
- * things are therefore required and only the first is implemented here:
+ * things are therefore required. The first is decided and measured in the r12
+ * spike; NEITHER is built in the product yet, and this file holds only the
+ * generation arithmetic, not the anchoring:
  *
  *  1. the generation must be anchored to the provider GRANT at consent, so a
  *     token refreshed after a disconnect still carries the old generation and
@@ -148,9 +150,15 @@ export const revokeConnection = (
 
 /**
  * Reconnect is a fresh consent, not a restoration. It produces a generation
- * strictly greater than the one the revocation produced, so no token, refresh
- * token or session from before the disconnect is valid again — which is the
- * difference between reconnecting and undoing a disconnect.
+ * strictly greater than the one the revocation produced, so no token or
+ * session from before the disconnect is admitted, and anything the old refresh
+ * token mints still carries the pre-disconnect generation and is refused.
+ *
+ * The refresh token ITSELF remains redeemable at the provider until grant
+ * destruction exists. This is the resurrection path, so the standing rule
+ * applies here most of all: do not describe a disconnect OR a reconnect as
+ * denying the refresh token until that is built. The r11 wording made exactly
+ * that claim, here, and it was false.
  */
 export const reconnectConnection = (
   connection: AgentConnection,
