@@ -41,3 +41,10 @@ export {
   revokeConnection,
 } from "./lifecycle";
 export type { ConsentRecord } from "./lifecycle";
+export { ConnectionAuthority } from "./authority";
+export type {
+  ConnectionAuthorityOptions,
+  ConnectionStore,
+  ProviderCleanup,
+  VersionedConnection,
+} from "./authority";
