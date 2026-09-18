@@ -3,7 +3,6 @@ import {
   createDecipheriv,
   createHmac,
   randomBytes,
-  timingSafeEqual,
 } from "node:crypto";
 
 import type { Pool } from "pg";
@@ -25,8 +24,16 @@ import type { Pool } from "pg";
  *    cookie, the authorization code, the session cookie, the access token and
  *    the refresh token are each exactly their own row key. So ids are stored
  *    as keyed digests and payloads as authenticated ciphertext.
- *  - `find` receives one argument. The provider's own `{ignoreExpiration}` is
- *    NOT forwarded, so expiry is the adapter's business.
+ *  - `find` receives one argument, and the provider's own `{ignoreExpiration}`
+ *    is NOT forwarded. An earlier version of this file inferred from that that
+ *    expiry was the adapter's business. The inference was BACKWARDS: the
+ *    reference `MemoryAdapter.find` does not filter expiry at all, because the
+ *    provider checks it itself in `opaque.verify` -> `assertPayload` using
+ *    `clockTolerance` (default 15s) -- and, decisively, because reuse
+ *    detection must be able to READ a consumed row. `refresh_token.js` revokes
+ *    the WHOLE grant family when a consumed refresh token is re-presented, and
+ *    it can only do that if `find` returns it. Filtering here failed closed
+ *    for authorization and OPEN for detection.
  *  - `revokeByGrantId` is called on AuthorizationCode, AccessToken and
  *    RefreshToken — never on Grant. Grant destruction arrives as
  *    `Grant.adapter.destroy(grantId)`, directly on the adapter.
@@ -135,13 +142,6 @@ const open = (
   return JSON.parse(plaintext) as unknown;
 };
 
-/** Used where a comparison happens outside an indexed lookup. */
-export const digestsMatch = (a: string, b: string): boolean => {
-  const left = Buffer.from(a, "utf8");
-  const right = Buffer.from(b, "utf8");
-  return left.length === right.length && timingSafeEqual(left, right);
-};
-
 /**
  * A corrupt or tampered row is a MISS, not a throw: failing closed is what
  * keeps an altered row from being treated as authority.
@@ -152,6 +152,12 @@ const unseal = (
   lookupDigest: string,
   sealed: Buffer,
   consumedAt: Date | null,
+  storedGrantId: string | null,
+  onUnsealFailure?: (
+    model: string,
+    lookupDigest: string,
+    reason: string,
+  ) => void,
 ): Record<string, unknown> | undefined => {
   let payload: Record<string, unknown>;
   try {
@@ -160,6 +166,21 @@ const unseal = (
       unknown
     >;
   } catch {
+    // Still a miss rather than a throw, but no longer SILENT: a tampered row,
+    // a partial write and a key rotation otherwise all look exactly like an
+    // ordinary expiry, and users appear randomly logged out with no signal
+    // that it is an integrity problem.
+    onUnsealFailure?.(model, lookupDigest, "unseal-failed");
+    return undefined;
+  }
+  // `grant_id` is stored in plaintext so `revokeByGrantId` can sweep without
+  // opening anything -- which means it is OUTSIDE the authenticated payload
+  // and can be edited to point a row away from its own grant. The sealed
+  // payload is the authority; a disagreement is a tampered row.
+  const sealedGrantId =
+    typeof payload.grantId === "string" ? payload.grantId : null;
+  if (sealedGrantId !== storedGrantId) {
+    onUnsealFailure?.(model, lookupDigest, "grant-id-mismatch");
     return undefined;
   }
   // The provider reads `consumed` back to tell a replay from a miss.
@@ -174,6 +195,15 @@ export interface ProviderAdapterOptions {
   readonly pool: Pick<Pool, "query">;
   readonly keys: ProviderAdapterKeys;
   readonly now?: () => Date;
+  /**
+   * Called when a row cannot be opened or disagrees with its own payload.
+   * Receives no credential: the model, the row's digest and a bare reason.
+   */
+  readonly onUnsealFailure?: (
+    model: string,
+    lookupDigest: string,
+    reason: string,
+  ) => void;
 }
 
 /**
@@ -237,34 +267,40 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
      * tampered row from being treated as authority.
      */
     /**
-     * Expiry is enforced here because the provider does not forward its own
-     * `{ignoreExpiration}` option to the adapter.
+     * Expiry is NOT filtered here. The provider owns that decision, applies
+     * its own `clockTolerance`, and deliberately reads past-`exp` rows on the
+     * reuse-detection path. Rows are reaped by `deleteExpired`, not hidden.
      */
     async find(id: string): Promise<Record<string, unknown> | undefined> {
       const digest = digestOf(keys, this.model, id);
       const { rows } = await pool.query(
-        `SELECT sealed_payload, consumed_at, expires_at FROM ${TABLE}
+        `SELECT sealed_payload, consumed_at, grant_id FROM ${TABLE}
           WHERE lookup_digest=$1 AND model=$2`,
         [digest, this.model],
       );
       const row = rows[0] as
-        | { sealed_payload: Buffer; consumed_at: Date | null; expires_at: Date }
+        | {
+            sealed_payload: Buffer;
+            consumed_at: Date | null;
+            grant_id: string | null;
+          }
         | undefined;
       if (row === undefined) return undefined;
-      if (row.expires_at.getTime() <= now().getTime()) return undefined;
       return unseal(
         keys,
         this.model,
         digest,
         row.sealed_payload,
         row.consumed_at,
+        row.grant_id,
+        options.onUnsealFailure,
       );
     }
 
     /** Session only. The uid is a second identifier the provider looks up by. */
     async findByUid(uid: string): Promise<Record<string, unknown> | undefined> {
       const { rows } = await pool.query(
-        `SELECT lookup_digest, sealed_payload, consumed_at, expires_at
+        `SELECT lookup_digest, sealed_payload, consumed_at, grant_id
            FROM ${TABLE} WHERE uid_digest=$1 AND model='Session'`,
         [digestOf(keys, "Session:uid", uid)],
       );
@@ -273,17 +309,18 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
             lookup_digest: string;
             sealed_payload: Buffer;
             consumed_at: Date | null;
-            expires_at: Date;
+            grant_id: string | null;
           }
         | undefined;
       if (row === undefined) return undefined;
-      if (row.expires_at.getTime() <= now().getTime()) return undefined;
       return unseal(
         keys,
         this.model,
         row.lookup_digest,
         row.sealed_payload,
         row.consumed_at,
+        row.grant_id,
+        options.onUnsealFailure,
       );
     }
 
@@ -313,6 +350,21 @@ export const createProviderAdapter = (options: ProviderAdapterOptions) => {
         grantId,
         this.model,
       ]);
+    }
+
+    /**
+     * Bounded reaping, which is what removes expired rows now that `find` no
+     * longer hides them. Deletes nothing that is still live and creates no
+     * authority.
+     */
+    async deleteExpired(limit = 1000): Promise<number> {
+      const { rowCount } = await pool.query(
+        `DELETE FROM ${TABLE} WHERE lookup_digest IN (
+           SELECT lookup_digest FROM ${TABLE}
+            WHERE model=$1 AND expires_at <= $2 LIMIT $3)`,
+        [this.model, now(), limit],
+      );
+      return rowCount ?? 0;
     }
 
     /** Never called under this configuration. It refuses rather than pretending. */

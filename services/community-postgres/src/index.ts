@@ -31,7 +31,6 @@ export { PostgresAgentAdministrationAdapter } from "./agent-administration-adapt
 export {
   ProviderAdapterKeyError,
   createProviderAdapter,
-  digestsMatch,
   providerAdapterKeysFrom,
 } from "./agent-connection-provider-adapter.js";
 export type {

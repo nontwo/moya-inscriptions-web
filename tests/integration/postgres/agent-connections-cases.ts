@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -19,6 +19,17 @@ import type { createPostgresPool } from "@moya/catalog-postgres";
  * remember: a wrapper row carries `(grant_id, connection_id, generation)` and
  * a composite foreign key points it at the grant's frozen identity tuple, so a
  * disagreeing row cannot be inserted at all.
+ *
+ * The r13 review found that claim was only half true as first written. The
+ * foreign key restricts once a WRAPPER exists; a grant exists from consent,
+ * and in that window `generation_at_consent` could be rewritten (measured:
+ * 1 -> 99). The freeze is now a trigger, and the migration that added it says
+ * so. What is proven here is the PERSISTENCE link of the r12 property -- a
+ * wrapper cannot claim a generation its grant did not freeze, and neither row
+ * can be edited afterwards. The other links (a writer that records a grant at
+ * consent, a reader that refuses an old generation, provider-side grant
+ * destruction) do not exist yet, and nothing here should be read as proving
+ * them.
  */
 export const registerAgentConnectionTests = (
   pool: ReturnType<typeof createPostgresPool>,
@@ -97,9 +108,13 @@ export const registerAgentConnectionTests = (
     });
 
     afterEach(async () => {
-      // Own rows only, in foreign-key order. The shared suite cleans comments
-      // and sessions; these tables are this module's to tidy.
+      // Own tables only, in foreign-key order. `current_grant_id` is now a
+      // real foreign key, so the pointer is released before the grants it
+      // points at are removed.
       await pool.query("DELETE FROM community.agent_connection_wrappers");
+      await pool.query(
+        "UPDATE community.agent_connections SET current_grant_id=NULL",
+      );
       await pool.query("DELETE FROM community.agent_connection_grants");
       await pool.query("DELETE FROM community.agent_connections");
     });
@@ -163,18 +178,30 @@ export const registerAgentConnectionTests = (
         ]);
       });
 
-      it("points current_grant_id at a grant of the same connection", async () => {
+      it("refuses a current_grant_id belonging to another connection, or to nothing", async () => {
         const other = await openConnection();
         await addGrant("grant-elsewhere", 1, other);
-        // The pointer is not itself a foreign key, so the invariant that
-        // matters is the one the wrapper FK enforces below; this pins that a
-        // grant belongs to exactly one connection.
-        const { rows } = await pool.query(
-          `SELECT connection_id FROM community.agent_connection_grants
-            WHERE grant_id='grant-elsewhere'`,
-        );
-        expect(rows[0].connection_id).toBe(other);
-        expect(rows[0].connection_id).not.toBe(connection);
+        // Previously unconstrained, so cleanup could have been pointed at
+        // someone else's grant. Now a composite foreign key.
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections SET current_grant_id=$2 WHERE id=$1`,
+            [connection, "grant-elsewhere"],
+          ),
+        ).rejects.toMatchObject({ code: "23503" });
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections SET current_grant_id='nowhere' WHERE id=$1`,
+            [connection],
+          ),
+        ).rejects.toMatchObject({ code: "23503" });
+        await addGrant("grant-mine", 1);
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections SET current_grant_id='grant-mine' WHERE id=$1`,
+            [connection],
+          ),
+        ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
       });
 
       it("refuses a grant for a connection that does not exist", async () => {
@@ -245,19 +272,119 @@ export const registerAgentConnectionTests = (
         await expect(insert()).rejects.toMatchObject({ code: "23505" });
       });
 
-      it("stores no wrapper value and no plaintext provider identifier", async () => {
+      it("stores neither the wrapper value nor the provider identifier it stands for", async () => {
+        // The r13 review caught the previous version of this test asserting
+        // that `randomBytes(45)` does not contain a prefix — it could not
+        // fail, while being the headline privacy claim for this table. This
+        // seals a REAL identifier with the real primitives and then searches
+        // the whole row, in three renderings, for either secret.
+        const wrapperValue = `artvenn_ct_${randomBytes(32).toString("base64url")}`;
+        const providerJti = `jti-${randomBytes(16).toString("hex")}`;
+        const lookup = createHash("sha256").update(wrapperValue).digest("hex");
+        const key = createHash("sha256")
+          .update(`artvenn-wrap|${wrapperValue}`)
+          .digest();
+        const nonce = randomBytes(12);
+        const cipher = createCipheriv("aes-256-gcm", key, nonce);
+        const body = Buffer.concat([
+          cipher.update(providerJti, "utf8"),
+          cipher.final(),
+        ]);
+        const sealedJti = Buffer.concat([nonce, cipher.getAuthTag(), body]);
+
         await addGrant("grant-r1", 1);
-        await addWrapper("grant-r1", connection, 1);
+        await pool.query(
+          `INSERT INTO community.agent_connection_wrappers
+             (lookup_digest, sealed_jti, grant_id, connection_id, generation,
+              expires_at)
+           VALUES ($1,$2,'grant-r1',$3,1, CURRENT_TIMESTAMP + interval '5 minutes')`,
+          [lookup, sealedJti, connection],
+        );
+
         const { rows } = await pool.query(
-          `SELECT lookup_digest, sealed_jti FROM community.agent_connection_wrappers`,
+          `SELECT lookup_digest,
+                  encode(sealed_jti, 'escape') AS sealed_text,
+                  encode(sealed_jti, 'hex') AS sealed_hex
+             FROM community.agent_connection_wrappers`,
         );
-        // The digest is a digest, not a token: no reserved prefix survives.
-        expect(rows[0].lookup_digest).toMatch(/^[0-9a-f]{64}$/u);
-        expect(rows[0].lookup_digest).not.toContain("artvenn_ct_");
-        expect(Buffer.isBuffer(rows[0].sealed_jti)).toBe(true);
-        expect(rows[0].sealed_jti.toString("utf8")).not.toContain(
-          "artvenn_ct_",
+        const row = rows[0];
+        const haystack = `${row.lookup_digest}|${row.sealed_text}|${row.sealed_hex}`;
+        expect(haystack).not.toContain(wrapperValue);
+        expect(haystack).not.toContain(providerJti);
+        expect(haystack).not.toContain(
+          Buffer.from(providerJti, "utf8").toString("hex"),
         );
+        // And the digest really is of the wrapper, so the row stays findable.
+        expect(row.lookup_digest).toBe(lookup);
+      });
+    });
+
+    describe("the consent snapshot is genuinely immutable", () => {
+      it("refuses to rewrite the frozen generation, even before any wrapper exists", async () => {
+        // The composite foreign key only restricts once a wrapper references
+        // the tuple, and a grant exists from consent while the first wrapper
+        // exists only once a token is minted. In that window this rewrote
+        // 1 -> 99. Measured, then fixed with a trigger.
+        await addGrant("grant-r1", 1);
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_grants
+                SET generation_at_consent=99 WHERE grant_id='grant-r1'`,
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+        const { rows } = await pool.query(
+          `SELECT generation_at_consent FROM community.agent_connection_grants
+            WHERE grant_id='grant-r1'`,
+        );
+        expect(rows[0].generation_at_consent).toBe("1");
+      });
+
+      it("refuses to move a grant to another connection, or to rewrite what was consented to", async () => {
+        await addGrant("grant-r1", 1);
+        const other = await openConnection();
+        for (const sql of [
+          `UPDATE community.agent_connection_grants SET connection_id='${other}' WHERE grant_id='grant-r1'`,
+          "UPDATE community.agent_connection_grants SET oauth_client_id='other' WHERE grant_id='grant-r1'",
+          "UPDATE community.agent_connection_grants SET human_subject='someone-else' WHERE grant_id='grant-r1'",
+          "UPDATE community.agent_connection_grants SET capability_scopes='{artvenn:manage}' WHERE grant_id='grant-r1'",
+          "UPDATE community.agent_connection_grants SET preset_at_consent='management' WHERE grant_id='grant-r1'",
+          "UPDATE community.agent_connection_grants SET issuer='https://elsewhere' WHERE grant_id='grant-r1'",
+        ])
+          await expect(pool.query(sql), sql).rejects.toMatchObject({
+            code: "23001",
+          });
+      });
+
+      it("still lets the destruction columns move, which is the only mutable part", async () => {
+        await addGrant("grant-r1", 1);
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_grants
+                SET destroy_status='pending' WHERE grant_id='grant-r1'`,
+          ),
+        ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_grants
+                SET destroy_status='failed', destroyed_at=CURRENT_TIMESTAMP
+              WHERE grant_id='grant-r1'`,
+          ),
+        ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
+      });
+
+      it("refuses to relocate a wrapper onto another grant", async () => {
+        // The composite FK validates only the NEW tuple, so without a freeze a
+        // wrapper could be moved from an old grant onto the current one and
+        // thereby acquire the current generation.
+        await addGrant("grant-r1", 1);
+        await addGrant("grant-r2", 3);
+        await addWrapper("grant-r1", connection, 1);
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connection_wrappers
+                SET grant_id='grant-r2', generation=3`,
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
       });
     });
 
@@ -279,19 +406,26 @@ export const registerAgentConnectionTests = (
         ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
       });
 
-      it("refuses a negative generation or a zero version", async () => {
+      it("refuses a negative generation or a zero version — now via the monotonic trigger, which fires first", async () => {
+        // Both are refused, but by the BEFORE UPDATE trigger (23001) rather
+        // than the column CHECK (23514), because a decrease is caught before
+        // the row is written. The column CHECK remains the floor for INSERT.
         await expect(
           pool.query(
             `UPDATE community.agent_connections SET generation=-1 WHERE id=$1`,
             [connection],
           ),
-        ).rejects.toMatchObject({ code: "23514" });
+        ).rejects.toMatchObject({ code: "23001" });
         await expect(
           pool.query(
             `UPDATE community.agent_connections SET version=0 WHERE id=$1`,
             [connection],
           ),
-        ).rejects.toMatchObject({ code: "23514" });
+        ).rejects.toMatchObject({ code: "23001" });
+        // The INSERT floor is still the CHECK.
+        await expect(openConnection({ generation: -1 })).rejects.toMatchObject({
+          code: "23514",
+        });
       });
 
       it("refuses an unknown preset, status, client family or principal shape", async () => {
@@ -329,25 +463,62 @@ export const registerAgentConnectionTests = (
         expect((a.rowCount ?? 0) + (b.rowCount ?? 0)).toBe(1);
       });
 
-      it("never lets a generation move backwards through a compare-and-set", async () => {
+      it("refuses a generation that moves backwards, not merely one below zero", async () => {
+        // The previous version of this test set -1 and passed on the `>= 0`
+        // column CHECK, while 7 -> 1 was accepted. That is the move that would
+        // undo a revocation, and it is what this now pins.
         await pool.query(
           `UPDATE community.agent_connections
-              SET generation=5, version=version+1 WHERE id=$1`,
+              SET generation=7, version=version+1 WHERE id=$1`,
           [connection],
         );
-        // The guard belongs with the transition, so the store refuses it; the
-        // column check only bounds the floor. Pin both facts.
         await expect(
           pool.query(
-            `UPDATE community.agent_connections SET generation=-1 WHERE id=$1`,
+            `UPDATE community.agent_connections SET generation=1 WHERE id=$1`,
             [connection],
           ),
-        ).rejects.toMatchObject({ code: "23514" });
+        ).rejects.toMatchObject({ code: "23001" });
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections SET version=1 WHERE id=$1`,
+            [connection],
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
         const { rows } = await pool.query(
           `SELECT generation FROM community.agent_connections WHERE id=$1`,
           [connection],
         );
-        expect(rows[0].generation).toBe("5");
+        expect(rows[0].generation).toBe("7");
+      });
+
+      it("refuses un-revoking a connection at the same generation", async () => {
+        await pool.query(
+          `UPDATE community.agent_connections
+              SET status='revoked', revoked_at=CURRENT_TIMESTAMP WHERE id=$1`,
+          [connection],
+        );
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections
+                SET status='authorized', revoked_at=NULL WHERE id=$1`,
+            [connection],
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+      });
+
+      it("lets an abandoned consent be revoked, which the first CHECK forbade", async () => {
+        const pending = await openConnection({
+          status: "awaiting-consent",
+          generation: 0,
+          consentedAt: null,
+        });
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections
+                SET status='revoked', revoked_at=CURRENT_TIMESTAMP WHERE id=$1`,
+            [pending],
+          ),
+        ).resolves.toEqual(expect.objectContaining({ rowCount: 1 }));
       });
     });
   });

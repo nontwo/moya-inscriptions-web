@@ -209,6 +209,18 @@ GRANT UPDATE (
 -- Wrappers are written and reaped by the provider path, not by the App role,
 -- which only needs to resolve a presented token. Nothing is ever deleted here
 -- by this role.
+--
+-- DELIBERATELY ABSENT: community.agent_connection_provider_artifacts gets no
+-- grant at all in this file. The r13 review was right that this is a decision
+-- and not an oversight, so it is written down. That table holds the OAuth
+-- protocol's own bookkeeping, and its plaintext columns (grant_id,
+-- consumed_at) sit outside the authenticated payload -- so who may write it
+-- decides how exposed those columns are. The intent is a SECOND SQL role owned
+-- by the authorization service, not this shared App role, which would widen
+-- the blast radius of any injection in the resource-server path to the whole
+-- token store. That role does not exist yet because the service does not, and
+-- the day it lands this file stops being the whole grant plan. Until then the
+-- adapter is exercised only by tests connecting as the database owner.
 GRANT SELECT ON TABLE
   community.agent_connections,
   community.agent_connection_grants,
