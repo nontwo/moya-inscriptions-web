@@ -7,7 +7,7 @@
 
 # 当前项目状态
 
-能力基线审计：2026-09-04；本轮有限事实更新：2026-09-13
+能力基线审计：2026-09-04；本轮有限事实更新：2026-09-17
 
 本文件是 current project status、active Phase 2 work、Production
 gaps 与远端 lineage disposition 的唯一动态来源。历史实现过程保留在 PR、ADR 与
@@ -261,6 +261,22 @@ media custom domain and `COS_MEDIA_ORIGIN`, public protected HTTPS entry,
 Web/Backend Production start, real-device Production smoke, release tag, GitHub
 Release, ICP/domain work. Do not resume these without explicit instruction.
 
+## Apple bootstrap and validation profiles
+
+2026-09-17 limited factual update:
+
+Apple Multiplatform bootstrap is delivered to `main` (Issue #145 / PR #146,
+merge `20425a22a62a6bfec222f741f7c085b7367b9bd1`). Local released Xcode 27 / iOS
+27 Simulator and physical-iPhone bootstrap acceptance are complete. Issue #142
+remains the historical LOCAL-ONLY Apple baseline record and is not extended.
+
+Validation profiles are delivered (amendment
+[2026-09-16 validation profiles](governance/amendments/2026-09-16-validation-profiles.md);
+Issue #148 / PR #149, merge `81c819df782e5f83cf8761fe19a81468bf19e07c`): fast
+feedback is separated from full acceptance for Apple, Web, and CMS. Hosted
+released-Xcode-27 CI remains pending and nonblocking. No native product feature
+has yet been implemented.
+
 ## 下一步任务
 
 ```text
@@ -488,7 +504,9 @@ Phase 2 Production-release critical path excludes:
 Public-user identity and comments are no longer deferred: they form the
 independent Community V1 track above, authorized by the active
 [Community V1 scope amendment](governance/amendments/2026-09-11-community-v1-scope.md).
-The other items remain deferred unless separately authorized.
+The other items remain deferred unless separately authorized. The Apple
+Multiplatform bootstrap is on `main`; that delivery is not a native product
+feature.
 
 ## Branch and release policy
 
