@@ -14,14 +14,23 @@ import type { ContentIdentity } from "@moya/contracts";
 import {
   call,
   describeFailure,
+  describeFinalFailure,
   formatTime,
+  outcomeUnknown,
   submissionStateLabels,
   UNTITLED_WORK,
+  workActionPhrases,
+  workTitleOf,
 } from "./api";
 import type { OperatorWorkSubmission } from "./api";
 import { SubmissionDetail } from "./work-submissions-client";
 import styles from "./community.module.css";
-import { BulkActions } from "./bulk-actions";
+import {
+  BulkActions,
+  planWorkOperations,
+  workBulkConfirmText,
+} from "./bulk-actions";
+import type { WorkBulkAction } from "./bulk-actions";
 import { CommunityUsers } from "./users-client";
 
 type Tab = "works" | "featured" | "users";
@@ -103,6 +112,10 @@ export const CommunityContentClient = () => {
   const commandLock = useRef(false);
   const request = useRef(0);
   const [retry, setRetry] = useState<Operation | null>(null);
+  // Selected-item commands whose outcome is still unknown; they keep their
+  // request identity inside BulkActions, so navigation waits for them.
+  const [bulkPending, setBulkPending] = useState(0);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const [confirmation, setConfirmation] = useState<Operation | null>(null);
   const [quantity, setQuantity] = useState("");
   const settingsVersion = useRef<number | null>(null);
@@ -192,15 +205,15 @@ export const CommunityContentClient = () => {
       setNotice(`${op.label}已保存。`);
       await load();
     } catch (e) {
-      const failure = describeFailure(e);
-      setNotice(failure.text);
-      setRetry(
-        failure.code === "STATE_CONFLICT" ||
-          failure.code === "NOT_FOUND" ||
-          failure.code === "COMMAND_INVALID"
-          ? null
-          : op,
-      );
+      // Only an answer that never arrived may be re-sent with the same
+      // identity; a refusal, conflict or missing subject is final.
+      if (outcomeUnknown(e)) {
+        setNotice(describeFailure(e).text);
+        setRetry(op);
+      } else {
+        setNotice(describeFinalFailure(e));
+        setRetry(null);
+      }
     } finally {
       commandLock.current = false;
       setBusy(false);
@@ -216,7 +229,8 @@ export const CommunityContentClient = () => {
       input: { ...input, requestId: crypto.randomUUID() },
       label,
     });
-  const disabled = busy || retry !== null || loading || error !== null;
+  const bulkGate = busy || retry !== null || loading || error !== null;
+  const disabled = bulkGate || bulkPending > 0;
   const bulkBusy = (value: boolean) => {
     commandLock.current = value;
     setBusy(value);
@@ -226,6 +240,7 @@ export const CommunityContentClient = () => {
     setSelectedWork(null);
     setActiveUser(null);
     setSelectedIds(new Set());
+    setSkipped([]);
     setTab(next);
     setQuery({ page: 1, search: "" });
     setSearch("");
@@ -245,7 +260,7 @@ export const CommunityContentClient = () => {
         expectedVersion: item.version,
         requestId: crypto.randomUUID(),
       },
-      label: `${labels[state]}「${item.title}」`,
+      label: `${workActionPhrases[state]}「${workTitleOf(item)}」`,
     });
     openModal("community-work-confirm");
   };
@@ -290,11 +305,7 @@ export const CommunityContentClient = () => {
             disabled={disabled || item.authorDeleted}
             onClick={() => confirmWork(item, state)}
           >
-            {state === "visible"
-              ? "解除管理限制"
-              : state === "hidden"
-                ? "隐藏作品"
-                : "移除作品"}
+            {workActionPhrases[state]}
           </button>
         ))}
       <button
@@ -312,7 +323,12 @@ export const CommunityContentClient = () => {
             {
               target: { type: "work", id: item.id },
               enabled: !item.recommendation?.enabled,
-              position: item.recommendation?.position ?? 0,
+              // A new explicit recommendation starts at 0; only an existing
+              // explicit row keeps its own position.
+              position:
+                item.recommendation?.source === "work"
+                  ? item.recommendation.position
+                  : 0,
               expectedVersion: item.recommendation?.version ?? 0,
             },
             item.recommendation?.enabled ? "取消推荐" : "加入推荐",
@@ -345,7 +361,7 @@ export const CommunityContentClient = () => {
           className={styles.tab}
           type="button"
           aria-pressed={tab === "works"}
-          disabled={busy || retry !== null}
+          disabled={busy || retry !== null || bulkPending > 0}
           onClick={() => chooseTab("works")}
         >
           用户作品
@@ -354,7 +370,7 @@ export const CommunityContentClient = () => {
           className={styles.tab}
           type="button"
           aria-pressed={tab === "featured"}
-          disabled={busy || retry !== null}
+          disabled={busy || retry !== null || bulkPending > 0}
           onClick={() => chooseTab("featured")}
         >
           推荐内容
@@ -363,7 +379,7 @@ export const CommunityContentClient = () => {
           className={styles.tab}
           type="button"
           aria-pressed={tab === "users"}
-          disabled={busy || retry !== null}
+          disabled={busy || retry !== null || bulkPending > 0}
           onClick={() => chooseTab("users")}
         >
           用户管理
@@ -393,9 +409,10 @@ export const CommunityContentClient = () => {
       ) : null}
       {tab === "users" ? (
         <CommunityUsers
-          disabled={disabled}
+          disabled={bulkGate}
           reload={userReload}
           onBusy={bulkBusy}
+          onPending={setBulkPending}
           onOpen={(user) => {
             setActiveUser(user);
             setTab("works");
@@ -419,13 +436,26 @@ export const CommunityContentClient = () => {
         <div className={styles.notice} role="status">
           {notice}
           {retry ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void run(retry)}
-            >
-              重试同一操作
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(retry)}
+              >
+                重试同一操作
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setRetry(null);
+                  setNotice(null);
+                  void load();
+                }}
+              >
+                放弃并刷新
+              </button>
+            </>
           ) : null}
         </div>
       ) : null}
@@ -475,37 +505,36 @@ export const CommunityContentClient = () => {
         <>
           <BulkActions
             key={activeUser?.id ?? "all-works"}
+            view="works"
             count={selectedIds.size}
-            disabled={disabled}
+            disabled={bulkGate}
+            skipped={skipped}
             onBusy={bulkBusy}
+            onPending={setBulkPending}
             onComplete={load}
             choices={[
               { value: "feature", label: "批量推荐" },
               { value: "unfeature", label: "批量取消推荐" },
-              { value: "hidden", label: "批量隐藏", confirm: true },
-              { value: "removed", label: "批量移除", confirm: true },
+              {
+                value: "hidden",
+                label: "批量隐藏",
+                confirm: workBulkConfirmText.hidden,
+              },
+              {
+                value: "removed",
+                label: "批量移除",
+                confirm: workBulkConfirmText.removed,
+              },
             ]}
-            prepare={(action) =>
-              works.items
-                .filter((w) => !w.authorDeleted && selectedIds.has(w.id))
-                .map((w) => ({
-                  id: w.id,
-                  label: w.latestSubmission?.title || w.title || UNTITLED_WORK,
-                  name:
-                    action === "feature" || action === "unfeature"
-                      ? "set-featured"
-                      : "moderate-work",
-                  input:
-                    action === "feature" || action === "unfeature"
-                      ? {
-                          target: { type: "work", id: w.id },
-                          enabled: action === "feature",
-                          position: w.recommendation?.position ?? 0,
-                          expectedVersion: w.recommendation?.version ?? 0,
-                        }
-                      : { id: w.id, state: action, expectedVersion: w.version },
-                }))
-            }
+            prepare={(action) => {
+              const plan = planWorkOperations(
+                action as WorkBulkAction,
+                works.items,
+                selectedIds,
+              );
+              setSkipped(plan.skipped);
+              return plan.operations;
+            }}
           />
           <div className={styles.tableWrap}>
             <table className={styles.table}>
@@ -549,7 +578,7 @@ export const CommunityContentClient = () => {
                     <td>
                       <input
                         type="checkbox"
-                        aria-label={`选择作品：${item.latestSubmission?.title || item.title || UNTITLED_WORK}`}
+                        aria-label={`选择作品：${workTitleOf(item)}`}
                         disabled={disabled || item.authorDeleted}
                         checked={selectedIds.has(item.id)}
                         onChange={(e) =>
@@ -570,9 +599,7 @@ export const CommunityContentClient = () => {
                           void openWork(item.id, event.currentTarget, item)
                         }
                       >
-                        {item.latestSubmission
-                          ? item.latestSubmission.title || UNTITLED_WORK
-                          : item.title || UNTITLED_WORK}
+                        {workTitleOf(item)}
                       </button>
                       {item.latestSubmission ? (
                         <span className={styles.secondary}>
@@ -869,7 +896,8 @@ const FeaturedRow = ({
           <button
             className={styles.actionButton}
             type="submit"
-            disabled={disabled}
+            // An ineligible row cannot be enabled; disabling or keeping it disabled is allowed.
+            disabled={disabled || (!item.eligible && enabled)}
           >
             保存
           </button>

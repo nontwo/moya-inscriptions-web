@@ -178,7 +178,7 @@ export const applyCommentModerationSql = `
 `;
 
 const operatorCommentUnion = `
-  SELECT c.id, 'comment' AS kind, c.catalog_id,c.target_type,c.body_deleted_at,c.thread_removed_at,(1+(SELECT COUNT(*) FROM community.catalog_comment_replies siblings WHERE siblings.root_comment_id=c.id))::integer AS thread_affected_count, NULL::text AS root_comment_id,
+  SELECT c.id, 'comment' AS kind, c.catalog_id,c.target_type,c.body_deleted_at,c.thread_removed_at, NULL::text AS root_comment_id,
          NULL::text AS reply_to_reply_id,
          c.text, c.created_at, c.moderation,
          u.id AS author_id, u.handle AS author_handle,
@@ -186,7 +186,7 @@ const operatorCommentUnion = `
   FROM community.catalog_comments c
   JOIN community.public_users u ON u.id = c.author_id
   UNION ALL
-  SELECT r.id, 'reply' AS kind, c.catalog_id,c.target_type,r.body_deleted_at,c.thread_removed_at,(1+(SELECT COUNT(*) FROM community.catalog_comment_replies siblings WHERE siblings.root_comment_id=c.id))::integer AS thread_affected_count,r.root_comment_id,
+  SELECT r.id, 'reply' AS kind, c.catalog_id,c.target_type,r.body_deleted_at,c.thread_removed_at,r.root_comment_id,
          r.reply_to_reply_id,
          r.text, r.created_at, r.moderation,
          u.id AS author_id, u.handle AS author_handle,
@@ -194,6 +194,19 @@ const operatorCommentUnion = `
   FROM community.catalog_comment_replies r
   JOIN community.catalog_comments c ON c.id = r.root_comment_id
   JOIN community.public_users u ON u.id = r.author_id
+`;
+
+/**
+ * The thread size (root plus every reply) is added to the rows of one page
+ * only, after ORDER BY/LIMIT, so a queue page costs the ordered scan plus at
+ * most a page of sibling counts rather than one count per stored comment.
+ */
+const withThreadAffectedCount = (pageSql: string): string => `
+  SELECT page.*,
+         (1 + (SELECT COUNT(*) FROM community.catalog_comment_replies siblings
+               WHERE siblings.root_comment_id = COALESCE(page.root_comment_id, page.id)))::integer
+           AS thread_affected_count
+  FROM (${pageSql}) page
 `;
 
 /**
@@ -229,23 +242,29 @@ export const countOperatorCommentsByStateSql = `
 `;
 
 export const listOperatorCommentsNewestSql = `
-  SELECT * FROM (${operatorCommentUnion}) entries
-  ${operatorFilter}
-  ORDER BY entries.created_at DESC, entries.id DESC
-  LIMIT $5::integer OFFSET $6::bigint
+  ${withThreadAffectedCount(`
+    SELECT * FROM (${operatorCommentUnion}) entries
+    ${operatorFilter}
+    ORDER BY entries.created_at DESC, entries.id DESC
+    LIMIT $5::integer OFFSET $6::bigint
+  `)}
+  ORDER BY page.created_at DESC, page.id DESC
 `;
 
 export const listOperatorCommentsOldestSql = `
-  SELECT * FROM (${operatorCommentUnion}) entries
-  ${operatorFilter}
-  ORDER BY entries.created_at ASC, entries.id ASC
-  LIMIT $5::integer OFFSET $6::bigint
+  ${withThreadAffectedCount(`
+    SELECT * FROM (${operatorCommentUnion}) entries
+    ${operatorFilter}
+    ORDER BY entries.created_at ASC, entries.id ASC
+    LIMIT $5::integer OFFSET $6::bigint
+  `)}
+  ORDER BY page.created_at ASC, page.id ASC
 `;
 
-export const findOperatorCommentSql = `
+export const findOperatorCommentSql = withThreadAffectedCount(`
   SELECT * FROM (${operatorCommentUnion}) entries
   WHERE entries.id = $1::text
-`;
+`);
 
 /** Turns free text into a bounded substring pattern for ILIKE ... ESCAPE '\\'. */
 export const toSearchPattern = (search: string): string =>
@@ -291,10 +310,12 @@ export const readPublicationSettingSql = `
   WHERE id = 'publication'
 `;
 
+/** A switch to the mode already in force matches no row and records nothing. */
 export const writePublicationSettingSql = `
   UPDATE community.publication_setting
   SET policy = $1::text, updated_by = $2::text, updated_at = $3::timestamptz
-  WHERE id = 'publication'
+  WHERE id = 'publication' AND policy <> $1::text
+  RETURNING policy
 `;
 
 export const insertModerationEventSql = `
@@ -304,17 +325,24 @@ export const insertModerationEventSql = `
           $7::text)
 `;
 
-export const findUserByIdSql = `
-  SELECT id, handle, display_name, status
-  FROM community.public_users
-  WHERE id = $1::text
-`;
-
+/**
+ * Only a real transition updates the row (`status <> $2`), so the audit row a
+ * caller writes beside it exists exactly when the status changed. The second
+ * branch reads the table as of the statement start and yields the unchanged
+ * user when nothing was updated; an unknown id yields no row at all.
+ */
 export const setUserStatusSql = `
-  UPDATE community.public_users
-  SET status = $2::text, updated_at = $3::timestamptz
-  WHERE id = $1::text
-  RETURNING id, handle, display_name, status
+  WITH changed AS (
+    UPDATE community.public_users
+    SET status = $2::text, updated_at = $3::timestamptz
+    WHERE id = $1::text AND status <> $2::text
+    RETURNING id, handle, display_name, status
+  )
+  SELECT id, handle, display_name, status, TRUE AS changed FROM changed
+  UNION ALL
+  SELECT u.id, u.handle, u.display_name, u.status, FALSE AS changed
+  FROM community.public_users u
+  WHERE u.id = $1::text AND NOT EXISTS (SELECT 1 FROM changed)
 `;
 
 export const revokeUserSessionsSql = `
@@ -323,4 +351,22 @@ export const revokeUserSessionsSql = `
   WHERE user_id = $1::text
     AND revoked_at IS NULL
     AND expires_at > $2::timestamptz
+`;
+
+/**
+ * The execution receipt of one agent-operation target (Issue #141 r4). It is
+ * written in the same transaction as the transition and its audit row, so a
+ * committed moderation is always recoverable by its exact identity instead of
+ * being inferred from the actor, the clock or the current state.
+ */
+export const findCommandReceiptSql = `
+  SELECT fingerprint, result
+  FROM community.discussion_command_receipts
+  WHERE actor_label = $1 AND request_id = $2
+`;
+
+export const insertCommandReceiptSql = `
+  INSERT INTO community.discussion_command_receipts
+    (actor_label, request_id, fingerprint, result, created_at)
+  VALUES ($1, $2, $3, $4::jsonb, $5)
 `;

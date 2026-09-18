@@ -64,6 +64,45 @@ export interface ReplyInsert {
 /** Every comment action is also an audit action (the service's `record` relies on it). */
 export type ModerationEventAction = ContractModerationEventAction;
 
+/**
+ * The execution receipt of one command (Issue #141 r4). `requestId` is the
+ * stable identity of one operation target and `fingerprint` binds the exact
+ * command it stands for. The store writes it in the same transaction as the
+ * mutation and its audit row: a repeated identical command returns the stored
+ * result without mutating again, and the same identity carrying a different
+ * command is a conflict.
+ */
+export interface CommandReceipt {
+  readonly requestId: string;
+  readonly fingerprint: string;
+  /**
+   * The execution attempt this command belongs to, when it belongs to one.
+   * Deliberately NOT part of `fingerprint`: the fingerprint is the business
+   * identity of the command and must survive a retry and a lease take-over, so
+   * a legitimate retry replays its own receipt instead of conflicting with it.
+   */
+  readonly fence?: ExecutionFence;
+}
+
+/**
+ * The right to execute, checked where it has to be checked: inside the very
+ * transaction that performs the mutation, after any lock wait, against current
+ * state.
+ *
+ * A pre-transaction check in JavaScript proves nothing — an executor can stall
+ * between claiming its lease and opening its transaction, lose the lease to a
+ * cancellation or a newer attempt, and still commit afterwards. Rejecting its
+ * later progress write does not help either, because by then the domain
+ * mutation has already committed. Holding this row until COMMIT is also what
+ * makes a concurrent cancellation wait rather than race.
+ */
+export interface ExecutionFence {
+  /** The operation whose lease authorises this mutation. */
+  readonly operationId: string;
+  /** The lease holder that claimed it; a take-over replaces this value. */
+  readonly leaseOwner: string;
+}
+
 export interface ModerationEvent {
   readonly id: string;
   readonly occurredAt: Date;
@@ -178,6 +217,20 @@ export interface CommunityCommentPort {
     operatorLabel: string,
     at: Date,
     audit?: ModerationEventDraft,
+    receipt?: CommandReceipt,
+  ): Promise<ModeratedSubject | null>;
+
+  /**
+   * The authoritative result this exact command already committed, or null when
+   * it committed nothing. Read-only: it never writes and never mutates the
+   * subject, so a caller that must not act (a cancelled chunk deciding whether
+   * a target was already applied) can still read the truth. A receipt stored
+   * under the same identity with a different command answers null, because it
+   * is not this command's result.
+   */
+  findCommandReceipt(
+    operatorLabel: string,
+    receipt: CommandReceipt,
   ): Promise<ModeratedSubject | null>;
 
   /** Bounded operator listing with its status counts; V1 keeps no large review queue. */
@@ -207,10 +260,16 @@ export interface CommunityCommentPort {
     readonly updatedBy: string;
   }>;
 
+  /**
+   * Writes the mode; a write of the mode already in force changes nothing.
+   * When `audit` is given, the switch and its moderation event commit in one
+   * transaction, and nothing is recorded when no row changed.
+   */
   writePublicationPolicy(
     policy: PublicationPolicy,
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<void>;
 
   recordModerationEvent(event: ModerationEvent): Promise<void>;

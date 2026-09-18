@@ -5,6 +5,7 @@ import {
   recommendUserCommandSchema,
   moderateWorkCommandSchema,
   featuredMutationSchema,
+  featuredOrderCommandSchema,
   featuredSettingsMutationSchema,
   operatorDeleteBodySchema,
   operatorRemoveThreadSchema,
@@ -14,6 +15,7 @@ import {
   CommunityNotFoundError,
 } from "../errors/community-request-errors.js";
 import type { CommunityContentOperatorPort } from "../ports/community-content-operator-port.js";
+import type { ExecutionFence } from "../ports/community-comment-port.js";
 import type { DiscussionPort } from "../ports/discussion-port.js";
 const parse = <T>(
   schema: {
@@ -69,6 +71,27 @@ export class CommunityContentOperatorService {
       parse(featuredMutationSchema, input),
     );
   }
+  /**
+   * One ordered recommendation command: the whole requested set commits, or
+   * none of it does. The order is the array order and the store re-checks
+   * every frozen version inside the same transaction.
+   */
+  setFeaturedOrder(input: unknown, fence?: ExecutionFence) {
+    return this.contentPort().setFeaturedOrder(
+      this.operator,
+      parse(featuredOrderCommandSchema, input),
+      fence,
+    );
+  }
+
+  /** The authoritative result this exact ordered command committed, or null. */
+  findFeaturedOrder(input: unknown) {
+    return this.contentPort().findFeaturedOrder(
+      this.operator,
+      parse(featuredOrderCommandSchema, input),
+    );
+  }
+
   setFeaturedQuantity(input: unknown) {
     return this.contentPort().setFeaturedQuantity(
       this.operator,

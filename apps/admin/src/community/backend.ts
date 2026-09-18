@@ -85,37 +85,72 @@ const operatorFailureCode = (status: number): string =>
           ? "OPERATOR_UNAVAILABLE"
           : "OPERATION_FAILED";
 
-export const callCommunityOperator = async <Result>(
-  method: "GET" | "POST" | "PUT",
-  path: string,
-  body?: unknown,
-): Promise<Result> => {
-  const url = new URL(`internal/community/${path}`, operatorBaseUrl());
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method,
-      cache: "no-store",
-      redirect: "error",
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${operatorToken()}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-  } catch {
-    // Never surface the URL, the credential or a driver message.
-    throw new CommunityOperatorError("OPERATOR_UNREACHABLE", 502);
-  }
-  if (!response.ok)
-    throw new CommunityOperatorError(
-      operatorFailureCode(response.status),
-      statusCode(response.status),
-    );
-  return (await response.json()) as Result;
-};
+/** The agent boundary answers 403 for a principal without the scope: final, never re-sent. */
+const agentFailureCode = (status: number): string | null =>
+  status === 403 ? "AGENT_FORBIDDEN" : null;
+
+const operatorCallWith =
+  (extraHeaders: Readonly<Record<string, string>>) =>
+  async <Result>(
+    method: "GET" | "POST" | "PUT",
+    path: string,
+    body?: unknown,
+  ): Promise<Result> => {
+    const url = new URL(`internal/community/${path}`, operatorBaseUrl());
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(15_000),
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${operatorToken()}`,
+          ...extraHeaders,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch {
+      // Never surface the URL, the credential or a driver message.
+      throw new CommunityOperatorError("OPERATOR_UNREACHABLE", 502);
+    }
+    if (!response.ok) {
+      // The agent boundary answers with its own final codes: a forbidden
+      // principal, an exceeded manifest cap, a planning timeout, zero matches
+      // or an unresolved author. Those survive the loopback hop unchanged;
+      // every other status keeps the existing narrowing.
+      let code = agentFailureCode(response.status);
+      if (code === null && response.status === 422) {
+        const reported = (
+          (await response.json().catch(() => null)) as {
+            error?: { code?: unknown };
+          } | null
+        )?.error?.code;
+        if (typeof reported === "string" && /^[A-Z_]{3,64}$/u.test(reported))
+          code = reported;
+      }
+      throw new CommunityOperatorError(
+        code ?? operatorFailureCode(response.status),
+        response.status === 403 || response.status === 422
+          ? response.status
+          : statusCode(response.status),
+      );
+    }
+    return (await response.json()) as Result;
+  };
+
+export const callCommunityOperator = operatorCallWith({});
+
+/**
+ * The same loopback call, asserting a machine principal for the agent
+ * boundary (Issue #141 r3, Phase B). The label is a server-side value from
+ * the Payload operator identity, never a request field; the Backend checks
+ * the principal's scopes on every call.
+ */
+export const callAgentOperator = (principal: string) =>
+  operatorCallWith({ "x-agent-principal": principal });
 
 /**
  * Submission media reach the Owner only as Backend derivatives (thumb,

@@ -39,6 +39,23 @@ export const Users: CollectionConfig = {
       access: { create: ownerField, update: ownerField },
     },
     {
+      // Agent Administration V1 (Issue #141 r3): the machine principal this
+      // operator identity's MCP API key acts as. The Backend holds the
+      // principal's scopes and revocation; this is only the binding, and it
+      // is never a public identity. Owner-only.
+      name: "agentPrincipal",
+      type: "text",
+      label: "代理主体标签",
+      required: false,
+      access: { create: ownerField, update: ownerField },
+      validate: (value: unknown) =>
+        value === undefined ||
+        value === null ||
+        value === "" ||
+        (typeof value === "string" && /^agent-[a-z0-9-]{2,57}$/u.test(value)) ||
+        "代理主体标签形如 agent-xxx（小写字母、数字、连字符）",
+    },
+    {
       name: "scopeCatalogIds",
       type: "json",
       label: "获准内容范围",

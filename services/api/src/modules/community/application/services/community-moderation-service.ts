@@ -52,11 +52,16 @@ import type {
   CommunityCommentPort,
   ModerationEvent,
   ModerationEventAction,
+  ModerationEventDraft,
   OperatorCommentRecord,
 } from "../ports/community-comment-port.js";
 import type { CommunityIdentityPort } from "../ports/community-identity-port.js";
 import type { RandomBytes } from "../session-token.js";
 
+import type {
+  CommandReceipt,
+  ModeratedSubject,
+} from "../ports/community-comment-port.js";
 import type { CommunityContentOperatorPort } from "../ports/community-content-operator-port.js";
 export interface CommunityModerationServiceOptions {
   readonly contentOperatorPort?: CommunityContentOperatorPort;
@@ -162,14 +167,13 @@ export class CommunityModerationService {
     const current = await this.readPublicationPolicy();
     if (current.policy === command.policy) return current;
     const at = this.clock();
+    // The switch and its audit row commit in one transaction at the port.
     await this.commentPort.writePublicationPolicy(
       command.policy,
       this.operatorLabel,
       at,
+      this.draft("set_publication_policy", at, { detail: command.policy }),
     );
-    await this.record("set_publication_policy", "setting", "publication", at, {
-      detail: command.policy,
-    });
     return this.readPublicationPolicy();
   }
 
@@ -249,6 +253,17 @@ export class CommunityModerationService {
   }
 
   /**
+   * The authoritative result this exact command already committed, or null.
+   * Read-only, so a caller deciding whether a target was applied can ask
+   * without acting: a cancelled chunk must not mutate to find out.
+   */
+  async findAppliedComment(
+    receipt: CommandReceipt,
+  ): Promise<ModeratedSubject | null> {
+    return this.commentPort.findCommandReceipt(this.operatorLabel, receipt);
+  }
+
+  /**
    * One transition. A subject in a state the edge cannot leave is a conflict
    * (409): nothing changes and nothing is recorded, so a stale queue can never
    * produce a misleading audit entry.
@@ -256,6 +271,14 @@ export class CommunityModerationService {
   async moderateComment(
     id: CatalogCommentId,
     body: unknown,
+    /**
+     * Optional execution receipt (Issue #141 r4). When present the store
+     * writes it in the same transaction as the transition and its audit row,
+     * so a repeated identical command returns its original result instead of
+     * mutating again, and the same identity carrying a different command is a
+     * conflict. Ordinary Owner moderation passes none.
+     */
+    receipt?: CommandReceipt,
   ): Promise<ModerationResult> {
     const { action } = this.parse(moderateCommentCommandSchema, body);
     const at = this.clock();
@@ -268,12 +291,8 @@ export class CommunityModerationService {
       transition.from,
       this.operatorLabel,
       at,
-      {
-        id: generateOpaqueId("moderation", this.randomBytes),
-        occurredAt: at,
-        operatorLabel: this.operatorLabel,
-        action,
-      },
+      this.draft(action, at),
+      receipt,
     );
     if (moderated === null) {
       const current = await this.commentPort.findOperatorComment(id);
@@ -329,7 +348,11 @@ export class CommunityModerationService {
     return { action, results, ...tally };
   }
 
-  /** Suspension revokes sessions and refuses new writes; comments keep their state. */
+  /**
+   * Suspension revokes sessions and refuses new writes; comments keep their
+   * state. The audit row commits with the status change, and only when the
+   * status actually changed, so a retried command never records twice.
+   */
   async moderateUser(
     id: PublicUserId,
     body: unknown,
@@ -340,9 +363,9 @@ export class CommunityModerationService {
       id,
       action === "suspend" ? "suspended" : "active",
       at,
+      this.draft(action, at),
     );
     if (result === null) throw new CommunityNotFoundError("User was not found");
-    await this.record(action, "user", result.user.id, at);
     return {
       id: result.user.id,
       status: result.user.status,
@@ -443,21 +466,18 @@ export class CommunityModerationService {
     )) as (Item extends null ? null : OperatorComment)[];
   }
 
-  private async record(
+  /** The audit row a port writes beside a transition; the port fills the subject. */
+  private draft(
     action: ModerationEventAction,
-    subjectKind: "comment" | "reply" | "user" | "setting",
-    subjectId: string,
     occurredAt: Date,
     options: { readonly detail?: string } = {},
-  ): Promise<void> {
-    await this.commentPort.recordModerationEvent({
+  ): ModerationEventDraft {
+    return {
       id: generateOpaqueId("moderation", this.randomBytes),
       occurredAt,
       operatorLabel: this.operatorLabel,
       action,
-      subjectKind,
-      subjectId,
       ...(options.detail === undefined ? {} : { detail: options.detail }),
-    });
+    };
   }
 }

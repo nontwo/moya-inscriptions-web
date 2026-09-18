@@ -88,6 +88,13 @@ export default buildConfig({
           path: "/community-moderation/publishing-jobs",
           exact: true,
         },
+        // Agent Administration V1 (Development): principals, delegations and
+        // prepared operations awaiting the Owner's approval.
+        communityAgentOperations: {
+          Component: "/src/community/View#AgentOperationsView",
+          path: "/community-moderation/agent-operations",
+          exact: true,
+        },
       },
       // Work-oriented groups after the collection groups: 社区 and 自动化工具.
       afterNavLinks: [

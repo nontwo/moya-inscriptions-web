@@ -4,6 +4,7 @@ import * as migration_20260908_031500_published_views from "./20260908_031500_pu
 import * as migration_20260908_035348_p2_04_identity_claims from "./20260908_035348_p2_04_identity_claims";
 import * as migration_20260908_120000_published_search from "./20260908_120000_published_search";
 import * as migration_20260913_063830_phase4_discovery_metadata from "./20260913_063830_phase4_discovery_metadata";
+import * as migration_20260917_010000_agent_admin from "./20260917_010000_agent_admin";
 
 export const migrations = [
   {
@@ -35,5 +36,10 @@ export const migrations = [
     up: migration_phase4_publication.up,
     down: migration_phase4_publication.down,
     name: "20260913_064000_discovery_publication",
+  },
+  {
+    up: migration_20260917_010000_agent_admin.up,
+    down: migration_20260917_010000_agent_admin.down,
+    name: "20260917_010000_agent_admin",
   },
 ];

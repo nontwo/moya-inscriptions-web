@@ -27,3 +27,14 @@ export { PostgresCommunityDiscoveryAdapter } from "./discovery-adapter.js";
 export { PostgresCommunityContentOperatorAdapter } from "./content-operator-adapter.js";
 export { PostgresWorkPublishingAdapter } from "./work-publishing-adapter.js";
 export { PostgresPublishingOperatorAdapter } from "./publishing-operator-adapter.js";
+export { PostgresAgentAdministrationAdapter } from "./agent-administration-adapter.js";
+export {
+  ProviderAdapterKeyError,
+  createProviderAdapter,
+  providerAdapterKeysFrom,
+} from "./agent-connection-provider-adapter.js";
+export type {
+  ProviderAdapterKeys,
+  ProviderAdapterOptions,
+  ProviderModel,
+} from "./agent-connection-provider-adapter.js";

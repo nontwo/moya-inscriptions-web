@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { CommunityConflictError, CommunityNotFoundError } from "@moya/api";
+import {
+  AuthorCommunityService,
+  CommunityConflictError,
+  CommunityNotFoundError,
+} from "@moya/api";
 import {
   createBackendApplication,
   createDevelopmentCatalogFixtureQueryPort,
@@ -13,7 +17,15 @@ import {
 } from "@moya/community-postgres";
 import { UnconfiguredStorageUrlResolver } from "@moya/image";
 import sharp from "sharp";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import type { createPostgresPool } from "@moya/catalog-postgres";
 import type {
   AuthorListQuery,
@@ -43,6 +55,76 @@ export const registerPhase4AuthorTests = (
     const publishing = new PostgresWorkPublishingAdapter(pool);
     let process: BackendProcessHandle | undefined;
     const handles = new Map<string, string>();
+    // readProfile counts Catalog favorites/likes only for records present in
+    // the published projection `catalog_discovery`, resolved through
+    // search_path like the discovery adapter (the other suites put their own
+    // schema in front). The projection is whatever the
+    // disposable composition provides: the real Payload VIEW when the Payload
+    // family is installed (rows enter it only through the publication path,
+    // `catalogs._status='published'`), otherwise a plain table this suite
+    // creates and drops itself. Nothing is dropped or replaced when a view
+    // exists, and no case skips on the relation kind.
+    let projectionKind: "view" | "table" | null = null;
+    let createdProjection = false;
+    const projection = {
+      async publish(catalogId: string, title: string): Promise<void> {
+        if (projectionKind === "view")
+          await pool.query(
+            "INSERT INTO public.catalogs(catalog_id,source_id,kind,title,_status) VALUES($1,$2,'inscription',$3,'published')",
+            [catalogId, `source-${catalogId}`, title],
+          );
+        else
+          await pool.query(
+            "INSERT INTO public.catalog_discovery(catalog_id,kind,title) VALUES($1,'inscription',$2)",
+            [catalogId, title],
+          );
+      },
+      async withdraw(catalogId: string): Promise<void> {
+        if (projectionKind === "view")
+          await pool.query(
+            "UPDATE public.catalogs SET _status='draft' WHERE catalog_id=$1",
+            [catalogId],
+          );
+        else
+          await pool.query(
+            "DELETE FROM public.catalog_discovery WHERE catalog_id=$1",
+            [catalogId],
+          );
+      },
+      async remove(catalogId: string): Promise<void> {
+        if (projectionKind === "view")
+          await pool.query("DELETE FROM public.catalogs WHERE catalog_id=$1", [
+            catalogId,
+          ]);
+        else await this.withdraw(catalogId);
+      },
+    };
+    beforeAll(async () => {
+      const existing = await pool.query<{ kind: string | null }>(
+        "SELECT c.relkind::text AS kind FROM pg_class c WHERE c.oid=to_regclass('public.catalog_discovery')",
+      );
+      const kind = existing.rows[0]?.kind ?? null;
+      if (kind === "v") projectionKind = "view";
+      else if (kind === "r") projectionKind = "table";
+      else if (kind === null) {
+        await pool.query(
+          "CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb)",
+        );
+        projectionKind = "table";
+        createdProjection = true;
+      } else
+        throw new Error(
+          `unsupported catalog_discovery relkind ${kind}: the suite handles a view or a plain table only`,
+        );
+      // Evidence line: which projection branch this run exercised.
+      console.info(
+        `[phase4-author] catalog_discovery projectionKind=${projectionKind}`,
+      );
+    });
+    afterAll(async () => {
+      if (createdProjection)
+        await pool.query("DROP TABLE IF EXISTS public.catalog_discovery");
+    });
     beforeEach(async () => {
       a = id("user");
       b = id("user");
@@ -1242,6 +1324,320 @@ export const registerPhase4AuthorTests = (
         (await fetch(`${base}/v1/development/sign-in`, { method: "POST" }))
           .status,
       ).toBe(404);
+    });
+    /** A pool whose clients log every statement text, for statement-count assertions. */
+    const countingPool = (log: string[]) =>
+      ({
+        connect: async () => {
+          const client = await pool.connect();
+          return new Proxy(client, {
+            get(inner, property) {
+              if (property === "query")
+                return (...args: unknown[]) => {
+                  log.push(String(args[0]));
+                  return (inner.query as (...q: unknown[]) => unknown)(...args);
+                };
+              const value = Reflect.get(inner, property, inner);
+              return typeof value === "function" ? value.bind(inner) : value;
+            },
+          });
+        },
+      }) as unknown as typeof pool;
+    const insertUser = async (user: string, status = "active") => {
+      await pool.query(
+        "INSERT INTO community.public_users(id,handle,display_name,status) VALUES($1,$2,'额外账号',$3)",
+        [user, `p4x-${user.slice(-24)}`, status],
+      );
+    };
+    const removeUsers = async (users: readonly string[]) => {
+      await pool.query(
+        "DELETE FROM community.comment_likes WHERE user_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.catalog_comment_replies WHERE author_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.catalog_comments WHERE author_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.follows WHERE follower_id=ANY($1) OR followed_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.blocks WHERE blocker_id=ANY($1) OR blocked_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.content_relations WHERE user_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.author_events WHERE actor_id=ANY($1)",
+        [users],
+      );
+      await pool.query(
+        "DELETE FROM community.author_command_receipts WHERE actor_id=ANY($1)",
+        [users],
+      );
+      await pool.query("DELETE FROM community.public_users WHERE id=ANY($1)", [
+        users,
+      ]);
+    };
+    it("reads a discussion with a constant statement count whatever the root count and matches the single-root reply path", async () => {
+      await pool.query(
+        "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",
+      );
+      const c = id("user");
+      await insertUser(c);
+      try {
+        const few = { type: "catalog" as const, id: id("catalog") };
+        const many = { type: "catalog" as const, id: id("catalog") };
+        // Authored by the account nobody blocks, so every viewer sees one root.
+        await discussion.submitDiscussion(few, c, "唯一的根");
+        const roots: { id: string }[] = [];
+        for (let n = 0; n < 20; n++) {
+          const root = await discussion.submitDiscussion(
+            many,
+            n % 2 ? b : a,
+            `根 ${n}`,
+          );
+          roots.push(root);
+          await discussion.submitDiscussion(many, b, `乙的回复 ${n}`, root.id);
+          await discussion.submitDiscussion(many, a, `甲的回复 ${n}`, root.id);
+        }
+        // A liked root gives the listing a hot section for every viewer.
+        await discussion.setDiscussionLike(c, roots[2]!.id, true, randomUUID());
+        // A never-public own reply: visible to its author only.
+        await pool.query(
+          "UPDATE community.publication_setting SET policy='PRE_MODERATION' WHERE id='publication'",
+        );
+        const pending = await discussion.submitDiscussion(
+          many,
+          a,
+          "甲的待审回复",
+          roots[0]!.id,
+        );
+        await pool.query(
+          "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",
+        );
+        // A deleted public body stays as a tombstone for everyone.
+        const deleted = await discussion.submitDiscussion(
+          many,
+          a,
+          "将被删除的回复",
+          roots[1]!.id,
+        );
+        await discussion.deleteDiscussionBody(a, deleted.id, randomUUID());
+        // A blocked author: 甲 and 乙 no longer see each other's items.
+        await adapter.block(a, {
+          targetId: b,
+          enabled: true,
+          requestId: randomUUID(),
+        });
+
+        const log: string[] = [];
+        const counted = new PostgresCommunityCommentAdapter(countingPool(log));
+        const count = async (
+          target: typeof many,
+          viewer: string | null,
+        ): Promise<number> => {
+          log.length = 0;
+          await counted.readDiscussion(target, viewer, query);
+          return log.length;
+        };
+        for (const viewer of [null, a, b]) {
+          expect(await count(many, viewer)).toBe(await count(few, viewer));
+          const page = await counted.readDiscussion(many, viewer, query);
+          expect(page.hot.length + page.items.length).toBe(
+            viewer === null ? 20 : 10,
+          );
+          if (viewer === null)
+            expect(page.hot.map((r) => r.id)).toEqual([roots[2]!.id]);
+          for (const root of [...page.hot, ...page.items]) {
+            // The single-root path still runs its own per-root statements.
+            const single = await discussion.readDiscussionReplies(
+              many,
+              root.id,
+              viewer,
+              { page: 1, pageSize: 3 },
+            );
+            expect(root.replies).toEqual(single.items);
+            expect(root.replyTotal).toBe(single.visibleTotal);
+            expect(root.replyPageTotal).toBe(single.total);
+            for (const reply of root.replies)
+              expect(reply.author.id).not.toBe(
+                viewer === a ? b : viewer === b ? a : "",
+              );
+          }
+        }
+        const own = await counted.readDiscussion(many, a, query);
+        const first = [...own.hot, ...own.items].find(
+          (r) => r.id === roots[0]!.id,
+        );
+        expect(first?.replies.map((r) => r.id)).toContain(pending.id);
+        expect(first?.replyTotal).toBe(1);
+        expect(first?.replyPageTotal).toBe(2);
+        const anonymous = await counted.readDiscussion(many, null, query);
+        const second = [...anonymous.hot, ...anonymous.items].find(
+          (r) => r.id === roots[1]!.id,
+        );
+        expect(second?.replies.map((r) => r.id)).not.toContain(pending.id);
+        expect(second?.replies.find((r) => r.id === deleted.id)).toMatchObject({
+          deleted: true,
+          text: "This comment has been deleted",
+        });
+        expect(second).toMatchObject({ replyTotal: 2, replyPageTotal: 3 });
+      } finally {
+        await removeUsers([c]);
+      }
+    });
+    it("checks work availability for a page of own comments with one statement", async () => {
+      await pool.query(
+        "UPDATE community.publication_setting SET policy='DIRECT_PUBLICATION' WHERE id='publication'",
+      );
+      const works = [];
+      for (const author of [a, a, a, b, b]) {
+        const w = id("work");
+        works.push({ id: w, author });
+        await pool.query(
+          "INSERT INTO community.works(id,author_id,title,text,first_published_at,synthetic_provenance) VALUES($1,$2,'批量作品','内容','2026-01-01T00:00:00Z','phase4-unit-journey')",
+          [w, author],
+        );
+      }
+      for (const w of works)
+        for (let n = 0; n < 4; n++)
+          await discussion.submitDiscussion(
+            { type: "work", id: w.id },
+            b,
+            `作品评论 ${n}`,
+          );
+      await adapter.block(a, {
+        targetId: b,
+        enabled: true,
+        requestId: randomUUID(),
+      });
+      const log: string[] = [];
+      const counted = new PostgresCommunityCommentAdapter(countingPool(log));
+      const page = await counted.ownComments(b, query);
+      expect(page.items).toHaveLength(20);
+      const workChecks = log.filter((sql) =>
+        sql.includes("FROM community.works w"),
+      );
+      expect(workChecks).toHaveLength(1);
+      const statements = log.length;
+      const unavailable = new Set(
+        works.filter((w) => w.author === a).map((w) => w.id),
+      );
+      for (const item of page.items) {
+        const original = (
+          await pool.query<{ catalog_id: string }>(
+            "SELECT catalog_id FROM community.catalog_comments WHERE id=$1",
+            [item.id],
+          )
+        ).rows[0]!;
+        expect(item.target).toEqual(
+          unavailable.has(original.catalog_id)
+            ? null
+            : { type: "work", id: original.catalog_id },
+        );
+      }
+      expect(page.items.filter((item) => item.target === null)).toHaveLength(
+        12,
+      );
+      log.length = 0;
+      await counted.ownComments(b, { ...query, pageSize: 1 });
+      expect(log.length).toBe(statements);
+    });
+    it("reports profile totals with the lists' own eligibility rules through readProfile and a service without a discovery port", async () => {
+      const suspended = id("user"),
+        blocked = id("user"),
+        normal = id("user");
+      await insertUser(suspended);
+      await insertUser(blocked);
+      await insertUser(normal);
+      try {
+        for (const follower of [b, suspended, blocked, normal])
+          await adapter.follow(follower, {
+            targetId: a,
+            enabled: true,
+            requestId: randomUUID(),
+          });
+        await pool.query(
+          "UPDATE community.public_users SET status='suspended' WHERE id=$1",
+          [suspended],
+        );
+        await adapter.block(b, {
+          targetId: blocked,
+          enabled: true,
+          requestId: randomUUID(),
+        });
+        const service = new AuthorCommunityService(adapter, {
+          isPublished: async () => true,
+          readTitle: async () => null,
+        });
+        const viewerList = await adapter.listPeople(a, b, "followers", query);
+        expect(viewerList.total).toBe(2);
+        expect((await adapter.readProfile(a, b)).totals.followers).toBe(2);
+        expect((await service.profile(a, b)).totals.followers).toBe(2);
+        expect((await adapter.readProfile(a, null)).totals.followers).toBe(3);
+        expect((await service.profile(a, null)).totals.followers).toBe(3);
+        expect((await adapter.readProfile(a, null)).totals.followers).toBe(
+          (await adapter.listPeople(a, null, "followers", query)).total,
+        );
+
+        // Two published records, one later withdrawn through the projection's
+        // own publication path: the total follows the projection, never the
+        // retained relation rows.
+        const present = id("catalog"),
+          withdrawn = id("catalog");
+        await projection.publish(present, "仍在发布的资料");
+        await projection.publish(withdrawn, "随后撤回的资料");
+        try {
+          for (const catalog of [present, withdrawn])
+            await pool.query(
+              "INSERT INTO community.content_relations(user_id,content_type,content_id,relation) VALUES($1,'catalog',$2,'favorite')",
+              [b, catalog],
+            );
+          await adapter.updatePrivacy(b, {
+            requestId: randomUUID(),
+            privacy: {
+              following: "public",
+              followers: "public",
+              favorites: "public",
+              likes: "private",
+            },
+          });
+          for (const viewer of [b, null, a]) {
+            expect(
+              (await adapter.readProfile(b, viewer)).totals.favorites,
+            ).toBe(2);
+            expect((await service.profile(b, viewer)).totals.favorites).toBe(2);
+          }
+          await projection.withdraw(withdrawn);
+          for (const viewer of [b, null, a]) {
+            expect(
+              (await adapter.readProfile(b, viewer)).totals.favorites,
+            ).toBe(1);
+            expect((await service.profile(b, viewer)).totals.favorites).toBe(1);
+          }
+          expect(
+            (
+              await pool.query(
+                "SELECT count(*) AS n FROM community.content_relations WHERE user_id=$1 AND relation='favorite'",
+                [b],
+              )
+            ).rows[0].n,
+          ).toBe("2");
+        } finally {
+          await projection.remove(present);
+          await projection.remove(withdrawn);
+        }
+      } finally {
+        await removeUsers([suspended, blocked, normal]);
+      }
     });
   });
 };

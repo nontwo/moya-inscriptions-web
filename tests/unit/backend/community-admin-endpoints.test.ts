@@ -1900,3 +1900,197 @@ describe("Work submission media relay", () => {
     ]);
   });
 });
+
+describe("Agent administration Owner envelopes (Development)", () => {
+  const principal = {
+    label: "agent-reviewer",
+    displayName: "评审代理",
+    scopes: ["comments:read", "comments:moderate"],
+    enabled: true,
+    version: 1,
+    createdAt: "2026-09-16T20:00:00.000Z",
+    updatedAt: "2026-09-16T20:00:00.000Z",
+    revokedAt: null,
+  };
+  const operation = {
+    id: "10000000-0000-4000-8000-000000000001",
+    principal: "agent-reviewer",
+    requestId: "10000000-0000-4000-8000-000000000002",
+    kind: "comments.moderate",
+    action: "hide",
+    state: "prepared",
+    approval: null,
+    undoOf: null,
+    criteria: null,
+    targetCount: 1,
+    nextIndex: 0,
+    results: [],
+    tally: { applied: 0, conflicts: 0, notFound: 0, failed: 0, cancelled: 0 },
+    version: 1,
+    createdAt: "2026-09-16T20:00:00.000Z",
+    expiresAt: "2026-09-17T20:00:00.000Z",
+    approvedAt: null,
+    startedAt: null,
+    finishedAt: null,
+    cancelRequestedAt: null,
+    leaseHeld: false,
+  };
+  const answering = (answer: unknown) => {
+    const calls: { method: string; path: string; body?: unknown }[] = [];
+    const call = vi.fn(
+      async (
+        method: string,
+        path: string,
+        body?: unknown,
+      ): Promise<unknown> => {
+        calls.push({ method, path, ...(body === undefined ? {} : { body }) });
+        return answer;
+      },
+    ) as unknown as OperatorCall;
+    return { call, calls };
+  };
+
+  it("is Owner-only and Development-only like every phase 4 operation", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { call, calls } = answering({ items: [principal] });
+    const endpoints = createCommunityEndpoints(call);
+    for (const role of [null, "automation"] as const)
+      expect(
+        (await invoke(endpoints, "agent-principals-read", request({}, role)))
+          .status,
+      ).toBe(403);
+    expect(calls).toHaveLength(0);
+    expect(
+      (await invoke(endpoints, "agent-principals-read", request({}))).status,
+    ).toBe(200);
+    expect(calls).toEqual([{ method: "GET", path: "agent/principals" }]);
+    vi.stubEnv("NODE_ENV", "production");
+    expect(
+      (await invoke(endpoints, "agent-principals-read", request({}))).status,
+    ).toBe(404);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("validates the registry, delegation and operation envelopes strictly and maps them onto the agent routes", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { call, calls } = answering(operation);
+    const endpoints = createCommunityEndpoints(call);
+    const command = {
+      requestId: "10000000-0000-4000-8000-000000000003",
+      operationId: operation.id,
+    };
+    expect(
+      (
+        await invoke(
+          endpoints,
+          "agent-operation-approve",
+          request({ ...command, principal: "agent-x" }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke(
+          endpoints,
+          "agent-operation-approve",
+          request({ ...command, operationId: "not-a-uuid" }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(calls).toHaveLength(0);
+    for (const [name, path] of [
+      ["agent-operation-approve", "approve"],
+      ["agent-operation-cancel", "cancel"],
+    ] as const) {
+      expect((await invoke(endpoints, name, request(command))).status).toBe(
+        200,
+      );
+      expect(calls.at(-1)).toEqual({
+        method: "POST",
+        path: `agent/operations/${operation.id}/${path}`,
+        body: { requestId: command.requestId },
+      });
+    }
+    const { call: pageCall, calls: pageCalls } = answering({
+      items: [operation],
+      total: 1,
+      page: 2,
+      pageSize: 10,
+    });
+    const paged = createCommunityEndpoints(pageCall);
+    expect(
+      (
+        await invoke(
+          paged,
+          "agent-operations-read",
+          request({ state: "prepared", page: 2, pageSize: 10 }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(pageCalls).toEqual([
+      {
+        method: "GET",
+        path: "agent/operations?state=prepared&page=2&pageSize=10",
+      },
+    ]);
+    const { call: delegationCall, calls: delegationCalls } = answering({
+      id: "10000000-0000-4000-8000-000000000009",
+      principal: "agent-reviewer",
+      kind: "comments.moderate",
+      maxTargets: 50,
+      expiresAt: "2026-09-17T20:00:00.000Z",
+      createdBy: "owner",
+      createdAt: "2026-09-16T20:00:00.000Z",
+      revokedAt: null,
+      revokedBy: null,
+    });
+    const delegations = createCommunityEndpoints(delegationCall);
+    const create = {
+      requestId: "10000000-0000-4000-8000-000000000004",
+      principal: "agent-reviewer",
+      kind: "comments.moderate",
+      maxTargets: 50,
+      expiresAt: "2026-09-17T20:00:00.000Z",
+    };
+    expect(
+      (
+        await invoke(
+          delegations,
+          "agent-delegation-create",
+          request({ ...create, maxTargets: 501 }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await invoke(delegations, "agent-delegation-create", request(create)))
+        .status,
+    ).toBe(200);
+    expect(delegationCalls).toEqual([
+      { method: "POST", path: "agent/delegations", body: create },
+    ]);
+  });
+
+  it("passes the agent boundary's forbidden answer through as a final code", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const call = vi.fn(async () => {
+      throw new CommunityOperatorError("AGENT_FORBIDDEN", 403);
+    }) as unknown as OperatorCall;
+    const endpoints = createCommunityEndpoints(call);
+    const response = await invoke(
+      endpoints,
+      "agent-operation-execute",
+      request({
+        requestId: "10000000-0000-4000-8000-000000000005",
+        operationId: operation.id,
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      ok: false,
+      error: { code: "AGENT_FORBIDDEN" },
+    });
+    expect(
+      outcomeUnknown(new OperatorFailure("AGENT_FORBIDDEN", "x", 403)),
+    ).toBe(false);
+  });
+});

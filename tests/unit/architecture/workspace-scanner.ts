@@ -886,7 +886,19 @@ export const isAuthorizedCmsServerFile = (
     // Backend operator client; the browser modules are listed with the
     // type-only exceptions below.
     /^src\/community\/(?:View|DashboardCard)\.tsx$/.test(relative) ||
-    /^src\/community\/(?:backend|endpoints)\.ts$/.test(relative) ||
+    /^src\/community\/(?:backend|endpoints|agent-operations)\.ts$/.test(
+      relative,
+    ) ||
+    // Agent Administration V1: the MCP tool adapter is a server module.
+    relative === "src/agent-admin/mcp-tools.ts" ||
+    // Agent Connections V1: the connection authentication boundary. These are
+    // server modules by construction — they read request headers, resolve a
+    // restricted principal and answer the Payload MCP plugin — and they are
+    // named one by one rather than by directory, so a browser module added
+    // under the same folder later does not inherit the allowance.
+    /^src\/agent-connections\/(?:authority|authorization|composition|contracts|index|lifecycle)\.ts$/.test(
+      relative,
+    ) ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(
       relative,
     ) ||
@@ -917,6 +929,7 @@ const isOwnerWorkflowTypes = (
         "src/community/users-client.tsx",
         "src/community/settings-client.tsx",
         "src/community/history-client.tsx",
+        "src/community/agent-operations-client.tsx",
       ].includes(relative) &&
         reference.specifier ===
           "@moya/contracts/internal/community-operator") ||

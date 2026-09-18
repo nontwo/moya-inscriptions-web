@@ -25,7 +25,12 @@ const createHarness = (
   options: { readonly analysisPort?: CommentAnalysisPort } = {},
 ) => {
   const commentPort = new InMemoryCommunityCommentPort();
-  const identityPort = new InMemoryCommunityIdentityPort();
+  // User transitions audit into the same log the comment port reads back.
+  const identityPort = new InMemoryCommunityIdentityPort(
+    undefined,
+    undefined,
+    commentPort.events,
+  );
   const catalogPort = new FixtureCatalogPublicationPort();
   let now = new Date("2026-09-12T16:00:00.000Z");
   let counter = 0;
@@ -314,6 +319,73 @@ describe("CommunityModerationService", () => {
     await harness.moderation.setPublicationPolicy({ policy: "PRE_MODERATION" });
     expect(harness.commentPort.events.map((event) => event.action)).toEqual([
       "set_publication_policy",
+    ]);
+  });
+
+  it("records a user transition with its status change once, and never for a repeated command", async () => {
+    const harness = createHarness();
+    const id = fixtureUsers.active.id;
+    const first = await harness.moderation.moderateUser(id, {
+      action: "suspend",
+    });
+    expect(first.status).toBe("suspended");
+    // A retried suspend finds the user already suspended: same answer, no
+    // second audit row.
+    const again = await harness.moderation.moderateUser(id, {
+      action: "suspend",
+    });
+    expect(again).toMatchObject({ id, status: "suspended" });
+    expect(harness.commentPort.events.map((event) => event.action)).toEqual([
+      "suspend",
+    ]);
+    expect(harness.commentPort.events[0]).toMatchObject({
+      subjectKind: "user",
+      subjectId: id,
+      operatorLabel: "owner",
+    });
+    await harness.moderation.moderateUser(id, { action: "reinstate" });
+    expect(harness.commentPort.events.map((event) => event.action)).toEqual([
+      "suspend",
+      "reinstate",
+    ]);
+  });
+
+  it("leaves the user status unchanged when the audit row cannot be written", async () => {
+    const harness = createHarness();
+    const id = fixtureUsers.active.id;
+    harness.identityPort.failNextAudit = true;
+    await expect(
+      harness.moderation.moderateUser(id, { action: "suspend" }),
+    ).rejects.toThrow("Simulated audit insert failure");
+    expect(harness.identityPort.users.get(id)?.status).toBe("active");
+    expect(harness.commentPort.events).toHaveLength(0);
+    // The next attempt succeeds and records exactly once.
+    await harness.moderation.moderateUser(id, { action: "suspend" });
+    expect(harness.identityPort.users.get(id)?.status).toBe("suspended");
+    expect(harness.commentPort.events.map((event) => event.action)).toEqual([
+      "suspend",
+    ]);
+  });
+
+  it("leaves the publication policy unchanged when the audit row cannot be written", async () => {
+    const harness = createHarness();
+    harness.commentPort.failNextAudit = true;
+    await expect(
+      harness.moderation.setPublicationPolicy({ policy: "PRE_MODERATION" }),
+    ).rejects.toThrow("Simulated audit insert failure");
+    expect(harness.commentPort.policy).toBe("DIRECT_PUBLICATION");
+    expect(harness.commentPort.events).toHaveLength(0);
+    const switched = await harness.moderation.setPublicationPolicy({
+      policy: "PRE_MODERATION",
+    });
+    expect(switched.policy).toBe("PRE_MODERATION");
+    expect(harness.commentPort.events).toEqual([
+      expect.objectContaining({
+        action: "set_publication_policy",
+        subjectKind: "setting",
+        subjectId: "publication",
+        detail: "PRE_MODERATION",
+      }),
     ]);
   });
 

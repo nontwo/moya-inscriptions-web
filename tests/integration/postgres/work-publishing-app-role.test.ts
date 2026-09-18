@@ -73,6 +73,51 @@ const receipt = (result: WorkSubmissionResult) => {
     throw new Error("Expected a confirmed submission");
   return result;
 };
+// Table-level privileges held directly by a role on community tables, read from
+// the catalog ACLs (information_schema hides column-only grants but also depends
+// on the querying role), so a residue from an earlier broader grant path shows up
+// exactly. The runtime plan grants no table-level UPDATE anywhere.
+const tableLevelPrivileges = async (
+  pool: Pool,
+  grantee: string,
+  privilege: "UPDATE" | "INSERT" | "DELETE",
+) =>
+  (
+    await pool.query<{ relname: string }>(
+      `SELECT c.relname FROM pg_class c
+         JOIN pg_namespace n ON n.oid=c.relnamespace,
+         aclexplode(c.relacl) a JOIN pg_roles r ON r.oid=a.grantee
+        WHERE n.nspname='community' AND c.relkind='r' AND r.rolname=$1
+          AND a.privilege_type=$2
+        ORDER BY c.relname`,
+      [grantee, privilege],
+    )
+  ).rows.map((row) => row.relname);
+// The complete effective privilege set of one role in this database (relation,
+// column, schema and function ACL entries), sorted; the database CONNECT entry
+// is excluded because only the legacy bootstrap grants it.
+const privilegeSet = async (pool: Pool, grantee: string) =>
+  (
+    await pool.query<{ entry: string }>(
+      `WITH r AS (SELECT oid FROM pg_roles WHERE rolname=$1)
+       SELECT 'relation|'||n.nspname||'.'||c.relname||'|'||a.privilege_type AS entry
+         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace, aclexplode(c.relacl) a, r
+        WHERE a.grantee=r.oid
+       UNION ALL
+       SELECT 'column|'||n.nspname||'.'||c.relname||'.'||att.attname||'|'||a.privilege_type
+         FROM pg_attribute att JOIN pg_class c ON c.oid=att.attrelid
+         JOIN pg_namespace n ON n.oid=c.relnamespace, aclexplode(att.attacl) a, r
+        WHERE a.grantee=r.oid AND NOT att.attisdropped
+       UNION ALL
+       SELECT 'schema|'||n.nspname||'|'||a.privilege_type
+         FROM pg_namespace n, aclexplode(n.nspacl) a, r WHERE a.grantee=r.oid
+       UNION ALL
+       SELECT 'function|'||p.oid::regprocedure::text||'|'||a.privilege_type
+         FROM pg_proc p, aclexplode(p.proacl) a, r WHERE a.grantee=r.oid
+       ORDER BY 1`,
+      [grantee],
+    )
+  ).rows.map((row) => row.entry);
 
 afterAll(async () => {
   for (const resource of resources) {
@@ -87,7 +132,13 @@ afterAll(async () => {
   await administration.end();
 });
 
-describe.each(["clean", "phase4-upgrade"] as const)(
+// clean: fresh role, whole migration set. phase4-upgrade: Phase 4 data first,
+// then the publishing migrations. legacy-grants-upgrade: the SAME role first
+// receives the Mission 2A/2B grant set that `pnpm dev:migrate` applies
+// (infra/development/grant-community-app.sql, table-level UPDATE on sessions,
+// both comment tables and publication_setting) and must end with exactly the
+// runtime plan after grant-runtime.sql, because GRANT alone never narrows.
+describe.each(["clean", "phase4-upgrade", "legacy-grants-upgrade"] as const)(
   "publishing App-role %s",
   (kind) => {
     it("runs runtime commands with exact grants while denying ownership, identity and ledger writes", async () => {
@@ -191,8 +242,97 @@ describe.each(["clean", "phase4-upgrade"] as const)(
           "utf8",
         )
       ).replaceAll(':"app_role"', `"${role}"`);
+      let referenceRole: string | null = null;
+      if (kind === "legacy-grants-upgrade") {
+        // The documented `pnpm dev:migrate` path applies the Mission 2A/2B set
+        // first. Apply it to this same role (identifier and database
+        // substituted; the role exists, so its CREATE ROLE block is a no-op)
+        // and record the table-level residue that grant-runtime.sql must
+        // converge. A reference role that only ever receives grant-runtime.sql
+        // defines the expected effective set.
+        const legacyGrantSql = (
+          await readFile(
+            `${root}/infra/development/grant-community-app.sql`,
+            "utf8",
+          )
+        )
+          .replaceAll("yoyi_dev_app", role)
+          .replaceAll("ON DATABASE yoyi_dev", `ON DATABASE ${database}`);
+        await setup.query(legacyGrantSql);
+        expect(await tableLevelPrivileges(setup, role, "UPDATE")).toEqual([
+          "catalog_comment_replies",
+          "catalog_comments",
+          "publication_setting",
+          "sessions",
+        ]);
+        // Atomicity of the supported invocation: the script revokes the
+        // table-level privileges before it grants the column lists, so a
+        // failure between the two must leave the previous effective privileges
+        // untouched. The Node path sends the file as one multi-statement query
+        // (one implicit transaction, like `psql --single-transaction` on the
+        // documented path); inject a failure after the REVOKE block and read
+        // the ACLs back from a NEW connection.
+        const beforeFailure = await privilegeSet(setup, role);
+        const revokeEnd = grantSql.indexOf("-- Discovery and the featured");
+        expect(revokeEnd).toBeGreaterThan(0);
+        // The injection point must follow both REVOKE blocks and precede every
+        // GRANT of the plan (only the schema USAGE grant is allowed before it),
+        // otherwise a reordered script would make this regression vacuous.
+        const revokePrefix = grantSql.slice(0, revokeEnd);
+        expect(revokePrefix).toMatch(/REVOKE UPDATE ON TABLE/);
+        expect(revokePrefix).toMatch(/REVOKE INSERT ON TABLE/);
+        expect(
+          revokePrefix
+            .split("\n")
+            .filter((line) => !line.trim().startsWith("--"))
+            .join("\n")
+            .replace(/GRANT USAGE ON SCHEMA[^;]*;/, ""),
+        ).not.toMatch(/\bGRANT\b/);
+        const failingSql = `${grantSql.slice(0, revokeEnd)}SELECT 1/0;\n${grantSql.slice(revokeEnd)}`;
+        await expect(setup.query(failingSql)).rejects.toMatchObject({
+          code: "22012",
+        });
+        const fresh = poolFor(setupUrl.toString());
+        try {
+          expect(await privilegeSet(fresh, role)).toEqual(beforeFailure);
+          expect(await tableLevelPrivileges(fresh, role, "UPDATE")).toEqual([
+            "catalog_comment_replies",
+            "catalog_comments",
+            "publication_setting",
+            "sessions",
+          ]);
+        } finally {
+          await fresh.end();
+        }
+        referenceRole = `${role}_ref`;
+        const reference = {
+          database: "",
+          role: referenceRole,
+          createdDatabase: false,
+          createdRole: false,
+        } as (typeof resources)[number];
+        resources.push(reference);
+        await administration.query(
+          `CREATE ROLE ${referenceRole} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT`,
+        );
+        reference.createdRole = true;
+        await setup.query(
+          grantSql.replaceAll(`"${role}"`, `"${referenceRole}"`),
+        );
+      }
       await setup.query(grantSql);
       await setup.query(grantSql); // supported bootstrap is idempotent
+      // Effective privileges after the bootstrap: no table-level UPDATE remains
+      // on any community table (the plan is column-level everywhere), and an
+      // upgraded role holds exactly what a fresh role holds.
+      expect(await tableLevelPrivileges(setup, role, "UPDATE")).toEqual([]);
+      expect(await tableLevelPrivileges(setup, role, "INSERT")).not.toContain(
+        "author_events",
+      );
+      if (referenceRole !== null)
+        expect(await privilegeSet(setup, role)).toEqual(
+          await privilegeSet(setup, referenceRole),
+        );
       const appUrl = new URL(setupUrl);
       appUrl.username = role;
       appUrl.password = password;
@@ -683,8 +823,52 @@ describe.each(["clean", "phase4-upgrade"] as const)(
         "DELETE FROM community.author_events",
         "UPDATE community.public_users SET id=id",
         "DELETE FROM community.public_users",
+        // Columns the Mission 2A/2B table-level grants exposed; the converged
+        // plan grants only revoked_at / moderation columns / policy columns.
+        "UPDATE community.sessions SET user_id=user_id",
+        "UPDATE community.sessions SET token_hash=token_hash",
+        "UPDATE community.catalog_comments SET text=text",
+        "UPDATE community.catalog_comment_replies SET text=text",
+        "UPDATE community.publication_setting SET id=id",
+        // Agent connections (Issue #141 r13). The App role authorizes requests
+        // with the connection authority; it does not MOVE it. A resource
+        // server that could open, consent, revoke or re-point a connection
+        // would be able to grant itself the authority it is meant to check.
+        "INSERT INTO community.agent_connections(id) VALUES ('conn-x')",
+        "UPDATE community.agent_connections SET status=status",
+        "UPDATE community.agent_connections SET generation=generation",
+        "UPDATE community.agent_connections SET preset=preset",
+        "UPDATE community.agent_connections SET principal_label=principal_label",
+        "UPDATE community.agent_connections SET current_grant_id=current_grant_id",
+        "DELETE FROM community.agent_connections",
+        // A grant is an immutable consent snapshot: the frozen generation and
+        // everything consented to are unwritable, so an old grant cannot be
+        // rewritten to resolve against a newer connection state.
+        "INSERT INTO community.agent_connection_grants(grant_id) VALUES ('g-x')",
+        "UPDATE community.agent_connection_grants SET generation_at_consent=generation_at_consent",
+        "UPDATE community.agent_connection_grants SET connection_id=connection_id",
+        "UPDATE community.agent_connection_grants SET capability_scopes=capability_scopes",
+        "UPDATE community.agent_connection_grants SET preset_at_consent=preset_at_consent",
+        "UPDATE community.agent_connection_grants SET issuer=issuer",
+        "DELETE FROM community.agent_connection_grants",
+        // Wrappers are written and reaped by the provider path. The App role
+        // resolves a presented token and nothing more.
+        "INSERT INTO community.agent_connection_wrappers(lookup_digest) VALUES ('d')",
+        "UPDATE community.agent_connection_wrappers SET sealed_jti=sealed_jti",
+        "UPDATE community.agent_connection_wrappers SET generation=generation",
+        "DELETE FROM community.agent_connection_wrappers",
       ])
         await expect(app.query(sql)).rejects.toMatchObject({ code: "42501" });
+
+      // The positive control: the two narrow grants the App role genuinely
+      // needs are present, so the denials above prove least privilege rather
+      // than a missing grant file.
+      for (const sql of [
+        "UPDATE community.agent_connections SET last_verified_at=last_verified_at",
+        "UPDATE community.agent_connection_grants SET destroy_status=destroy_status",
+        "SELECT 1 FROM community.agent_connection_wrappers LIMIT 1",
+      ])
+        await expect(app.query(sql)).resolves.toBeDefined();
     });
   },
 );

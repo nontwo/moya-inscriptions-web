@@ -11,12 +11,14 @@ import {
   applicableActions,
   call,
   describeFailure,
+  describeFinalFailure,
   doneLabels,
   excerpt,
   formatPreciseTime,
   formatTime,
   kindLabels,
   moderationLabels,
+  outcomeUnknown,
   policyLabels,
   shortId,
   subjectKindLabels,
@@ -63,11 +65,12 @@ const statusLabels: Record<Status, string> = {
   hidden: "已隐藏",
   all: "全部",
 };
+// One wording per action, shared with the history timeline and the card.
 const bulkActionLabels: Record<CommentModerationAction, string> = {
-  approve: "通过并公开",
-  reject: "拒绝（不公开）",
-  hide: "隐藏",
-  unhide: "恢复公开",
+  approve: actionLabels.approve,
+  reject: actionLabels.reject,
+  hide: actionLabels.hide,
+  unhide: actionLabels.unhide,
 };
 const BULK_LIMIT = 50;
 
@@ -186,6 +189,13 @@ export const CommunityQueueClient = ({
   const detailSequence = useRef(0);
   // The item currently open, readable from callbacks created before it changed.
   const openItemRef = useRef<string | null>(null);
+  const panel = useRef<HTMLElement | null>(null);
+  // The open 更多 menu floats over the viewport so the table's scroll box never clips it.
+  const [menuAnchor, setMenuAnchor] = useState<{
+    key: string;
+    top: number;
+    right: number;
+  } | null>(null);
   // The list query excludes the open item, so opening detail never reloads.
   const listQuery = useMemo(
     () => ({
@@ -251,6 +261,13 @@ export const CommunityQueueClient = ({
       .then(setPolicy)
       .catch(() => setPolicy(null));
   }, []);
+
+  useEffect(() => {
+    if (query.item === null) return;
+    // Below the two-column width the panel follows the whole list.
+    panel.current?.focus();
+    panel.current?.scrollIntoView({ block: "start" });
+  }, [query.item]);
 
   useEffect(() => {
     openItemRef.current = query.item;
@@ -493,13 +510,16 @@ export const CommunityQueueClient = ({
       await load();
       refreshDetailIfOpen(command.item.id);
     } catch (error) {
-      const failure = describeFailure(error);
-      setReceipt({ tone: "error", text: failure.text });
-      setFailedDeletion(
-        failure.code === "STATE_CONFLICT" || failure.code === "NOT_FOUND"
-          ? null
-          : command,
-      );
+      // Only a lost answer keeps the command for a same-identity retry; a
+      // refusal, conflict or missing subject is final.
+      const unknown = outcomeUnknown(error);
+      setReceipt({
+        tone: "error",
+        text: unknown
+          ? describeFailure(error).text
+          : describeFinalFailure(error),
+      });
+      setFailedDeletion(unknown ? command : null);
     } finally {
       deletionLock.current = false;
       setBusy(command.item.id, false);
@@ -531,9 +551,40 @@ export const CommunityQueueClient = ({
             {busy ? "处理中…" : bulkActionLabels[action]}
           </button>
         ))}
-        <details className={styles.more}>
+        <details
+          className={styles.more}
+          onToggle={(event) => {
+            const details = event.currentTarget;
+            const key = `${compact ? "row" : "detail"}:${item.id}`;
+            if (!details.open) {
+              setMenuAnchor((current) =>
+                current?.key === key ? null : current,
+              );
+              return;
+            }
+            const rect = details.firstElementChild?.getBoundingClientRect();
+            if (rect)
+              setMenuAnchor({
+                key,
+                top: rect.bottom,
+                right: window.innerWidth - rect.right,
+              });
+          }}
+        >
           <summary aria-label={`更多操作：${shortId(item.id)}`}>更多</summary>
-          <div className={styles.moreMenu} role="menu">
+          <div
+            className={styles.moreMenu}
+            role="menu"
+            style={
+              menuAnchor?.key === `${compact ? "row" : "detail"}:${item.id}`
+                ? {
+                    position: "fixed",
+                    top: menuAnchor.top,
+                    right: menuAnchor.right,
+                  }
+                : undefined
+            }
+          >
             {phase4Enabled && !item.threadRemoved ? (
               <>
                 {!item.bodyDeleted ? (
@@ -995,6 +1046,8 @@ export const CommunityQueueClient = ({
             aria-labelledby="community-detail-title"
             className={styles.panel}
             data-queue-detail=""
+            ref={panel}
+            tabIndex={-1}
           >
             <div className={styles.panelHeader}>
               <h2 id="community-detail-title">评论详情</h2>
@@ -1032,6 +1085,18 @@ export const CommunityQueueClient = ({
             onClick={() => void deleteContent(failedDeletion)}
           >
             重试同一操作
+          </button>
+          <button
+            type="button"
+            disabled={busyIds.has(failedDeletion.item.id)}
+            onClick={() => {
+              const id = failedDeletion.item.id;
+              setFailedDeletion(null);
+              void load();
+              refreshDetailIfOpen(id);
+            }}
+          >
+            放弃并刷新
           </button>
         </p>
       ) : null}

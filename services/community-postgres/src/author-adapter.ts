@@ -28,9 +28,12 @@ import {
   revisionCover,
   revisionCoverColumns,
   revisionCoverJoin,
-  revisionMedia,
+  revisionsMedia,
 } from "./publishing/media-read.js";
-import type { RevisionCoverColumns } from "./publishing/media-read.js";
+import type {
+  RevisionCoverColumns,
+  RevisionMediaView,
+} from "./publishing/media-read.js";
 import { revisionAuthorship } from "./publishing/authorship.js";
 
 interface UserRow extends QueryResultRow {
@@ -245,22 +248,58 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
     row: WorkRow,
     viewer: string | null,
   ): Promise<UserWork> {
+    return (await this.workDtos(db, [row], viewer))[0]!;
+  }
+  /**
+   * A page of works in row order: the per-row revision choice (author
+   * revision for the owner, public revision for others) is kept, while the
+   * revisions and their media are read in two statements for the whole page.
+   */
+  private async workDtos(
+    db: PoolClient,
+    rows: readonly WorkRow[],
+    viewer: string | null,
+  ): Promise<UserWork[]> {
+    const revisionIdOf = (row: WorkRow) =>
+      row.author_id === viewer
+        ? row.author_revision_id
+        : row.public_revision_id;
+    const revisionIds = [
+      ...new Set(
+        rows.flatMap((row) => {
+          const id = revisionIdOf(row);
+          return id === null ? [] : [id];
+        }),
+      ),
+    ];
+    const revisions = new Map<string, WorkRevisionRow>();
+    if (revisionIds.length > 0)
+      for (const revision of (
+        await db.query<WorkRevisionRow & { id: string }>(
+          `SELECT r.id,r.title,r.body,r.authorship_kind,r.reference_title,r.original_author,r.source_note,${revisionCoverColumns("cov")}
+              FROM community.work_revisions r ${revisionCoverJoin("r", "cov")} WHERE r.id=ANY($1::text[])`,
+          [revisionIds],
+        )
+      ).rows)
+        revisions.set(revision.id, revision);
+    const mediaViews = await revisionsMedia(db, revisionIds);
+    return rows.map((row) =>
+      this.workDtoFrom(row, viewer, revisions, mediaViews),
+    );
+  }
+  private workDtoFrom(
+    row: WorkRow,
+    viewer: string | null,
+    revisions: ReadonlyMap<string, WorkRevisionRow>,
+    mediaViews: ReadonlyMap<string, RevisionMediaView>,
+  ): UserWork {
     const owner = row.author_id === viewer;
     const revisionId = owner ? row.author_revision_id : row.public_revision_id;
     const revision =
-      revisionId === null
-        ? undefined
-        : (
-            await db.query<WorkRevisionRow>(
-              `SELECT r.title,r.body,r.authorship_kind,r.reference_title,r.original_author,r.source_note,${revisionCoverColumns("cov")}
-              FROM community.work_revisions r ${revisionCoverJoin("r", "cov")} WHERE r.id=$1`,
-              [revisionId],
-            )
-          ).rows[0];
-    const { media, coverMediaId } = await revisionMedia(
-      db,
-      revision === undefined ? null : revisionId,
-    );
+      revisionId === null ? undefined : revisions.get(revisionId);
+    const { media, coverMediaId } = (revision === undefined
+      ? undefined
+      : mediaViews.get(revisionId!)) ?? { media: [], coverMediaId: null };
     const authorship =
       revision === undefined ? null : revisionAuthorship(revision);
     return workSchema.parse({
@@ -297,18 +336,36 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
         Number(
           (await db.query<{ total: string }>(sql, [id])).rows[0]?.total ?? 0,
         );
-      // Work relations count only while the work is effectively public for
-      // this viewer (the discovery collection rule; a relation to a self-only,
-      // pending, trashed, hidden or removed work is kept but never counted).
+      // Every total counts exactly what the corresponding list shows this
+      // viewer, in this one snapshot. People: active accounts the viewer may
+      // interact with (the listPeople rule; a suspended follower or one the
+      // viewer blocked is neither listed nor counted). Relations: the
+      // discovery collection rule; a Catalog relation counts only while the
+      // record is still published, a work relation only while the work is
+      // effectively public for this viewer. The relation rows themselves are
+      // kept whatever their target's state.
+      const peopleCount = async (list: "following" | "followers") =>
+        Number(
+          (
+            await db.query<{ total: string }>(
+              list === "following"
+                ? "SELECT count(*) AS total FROM community.follows r JOIN community.public_users u ON u.id=r.followed_id WHERE r.follower_id=$1 AND u.status='active' AND community.accounts_can_interact($2,u.id)"
+                : "SELECT count(*) AS total FROM community.follows r JOIN community.public_users u ON u.id=r.follower_id WHERE r.followed_id=$1 AND u.status='active' AND community.accounts_can_interact($2,u.id)",
+              [id, viewer],
+            )
+          ).rows[0]?.total ?? 0,
+        );
       const relationCount = async (relation: "favorite" | "like") =>
         Number(
           (
             await db.query<{ total: string }>(
               `SELECT count(*) AS total FROM community.content_relations r
-              WHERE r.user_id=$1 AND r.relation=$2 AND (r.content_type<>'work' OR EXISTS (
+              WHERE r.user_id=$1 AND r.relation=$2 AND (
+                (r.content_type='catalog' AND EXISTS (SELECT 1 FROM catalog_discovery c WHERE c.catalog_id=r.content_id))
+                OR (r.content_type='work' AND EXISTS (
                 SELECT 1 FROM community.works w JOIN community.public_users wu ON wu.id=w.author_id
                 WHERE w.id=r.content_id AND community.work_is_public(w) AND wu.status='active'
-                  AND community.accounts_can_interact($3::text,w.author_id)))`,
+                  AND community.accounts_can_interact($3::text,w.author_id))))`,
               [id, relation, viewer],
             )
           ).rows[0]?.total ?? 0,
@@ -346,15 +403,11 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
           ),
           following:
             owner || u.following_privacy === "public"
-              ? await count(
-                  "SELECT count(*) AS total FROM community.follows WHERE follower_id=$1",
-                )
+              ? await peopleCount("following")
               : null,
           followers:
             owner || u.followers_privacy === "public"
-              ? await count(
-                  "SELECT count(*) AS total FROM community.follows WHERE followed_id=$1",
-                )
+              ? await peopleCount("followers")
               : null,
           favorites:
             owner || u.favorites_privacy === "public"
@@ -583,16 +636,25 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
           [...values, q.pageSize, offset(q)],
         )
       ).rows;
-      const items = await Promise.all(
-        rows.map(async (row) => ({
-          id: row.id,
-          handle: row.handle,
-          displayName: row.display_name,
-          avatar: row.avatar_media_id
-            ? ((await this.media(db, [row.avatar_media_id]))[0] ?? null)
-            : null,
-        })),
+      // One statement resolves every avatar of the page; rows keep their order.
+      const avatars = new Map(
+        (
+          await this.media(
+            db,
+            rows.flatMap((row) =>
+              row.avatar_media_id ? [row.avatar_media_id] : [],
+            ),
+          )
+        ).map((m) => [m.id, m] as const),
       );
+      const items = rows.map((row) => ({
+        id: row.id,
+        handle: row.handle,
+        displayName: row.display_name,
+        avatar: row.avatar_media_id
+          ? (avatars.get(row.avatar_media_id) ?? null)
+          : null,
+      }));
       return { items, total, page: q.page, pageSize: q.pageSize };
     });
   }
@@ -625,9 +687,7 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
           [id, viewer, q.pageSize, offset(q)],
         )
       ).rows;
-      // One client runs one query at a time: map the rows in order.
-      const items: UserWork[] = [];
-      for (const row of rows) items.push(await this.workDto(db, row, viewer));
+      const items = await this.workDtos(db, rows, viewer);
       return {
         items,
         total,

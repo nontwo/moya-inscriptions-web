@@ -73,33 +73,9 @@ export class AuthorCommunityService {
     ]);
     return item!;
   }
+  /** The adapter computes every total in one snapshot with the lists' own rules. */
   async profile(id: string, viewer: string | null) {
-    const profile = await this.port.readProfile(id, viewer);
-    if (!this.discovery) return profile;
-    const q: AuthorListQuery = {
-      page: 1,
-      pageSize: 1,
-      kind: "all",
-      search: "",
-    };
-    const totals = { ...profile.totals };
-    if (totals.favorites !== null)
-      totals.favorites = (
-        await this.discovery.collection(id, viewer, "favorite", q)
-      ).total;
-    if (totals.likes !== null)
-      totals.likes = (
-        await this.discovery.collection(id, viewer, "like", q)
-      ).total;
-    if (totals.following !== null)
-      totals.following = (
-        await this.port.listPeople(id, viewer, "following", q)
-      ).total;
-    if (totals.followers !== null)
-      totals.followers = (
-        await this.port.listPeople(id, viewer, "followers", q)
-      ).total;
-    return { ...profile, totals };
+    return this.port.readProfile(id, viewer);
   }
   async assertTarget(
     target: ContentIdentity,
@@ -126,17 +102,35 @@ export class AuthorCommunityService {
   async ownComments(actor: string, query: DiscussionQuery) {
     if (!this.discussion) throw new CommunityNotFoundError();
     const page = await this.discussion.ownComments(actor, query);
-    const items = await Promise.all(
-      page.items.map(async (item) => {
-        if (
-          item.target?.type === "catalog" &&
-          !(await this.catalog.isPublished(item.target.id as CatalogId))
-        )
-          return { ...item, target: null };
-        return item;
-      }),
+    // Retained records keep their order; a Catalog target that is no longer
+    // published reads as null, answered for the whole page with one lookup.
+    const published = await this.publishedIds([
+      ...new Set(
+        page.items.flatMap((item) =>
+          item.target?.type === "catalog" ? [item.target.id as CatalogId] : [],
+        ),
+      ),
+    ]);
+    const items = page.items.map((item) =>
+      item.target?.type === "catalog" &&
+      !published.has(item.target.id as CatalogId)
+        ? { ...item, target: null }
+        : item,
     );
     return { ...page, items };
+  }
+  private async publishedIds(
+    ids: readonly CatalogId[],
+  ): Promise<ReadonlySet<CatalogId>> {
+    if (ids.length === 0) return new Set();
+    if (this.catalog.publishedIds) return this.catalog.publishedIds(ids);
+    const published = new Set<CatalogId>();
+    await Promise.all(
+      ids.map(async (id) => {
+        if (await this.catalog.isPublished(id)) published.add(id);
+      }),
+    );
+    return published;
   }
   async relation(
     actor: string,

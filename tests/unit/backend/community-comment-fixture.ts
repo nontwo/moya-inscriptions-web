@@ -1,8 +1,12 @@
-import { CommunityStoreUnavailableError } from "@moya/api";
+import {
+  CommunityConflictError,
+  CommunityStoreUnavailableError,
+} from "@moya/api";
 
 import { fixtureUsers } from "./community-identity-fixture.js";
 
 import type {
+  CommandReceipt,
   CatalogCommentReplyRecord,
   CatalogCommentRecord,
   CatalogCommentWithReplies,
@@ -40,8 +44,18 @@ export class FixtureCatalogPublicationPort implements CatalogPublicationPort {
     ]),
   ) {}
 
+  /** Every `publishedIds` call, so a service test can assert one lookup per page. */
+  readonly publishedIdsCalls: (readonly CatalogId[])[] = [];
+
   async isPublished(catalogId: CatalogId): Promise<boolean> {
     return this.published.has(catalogId);
+  }
+
+  async publishedIds(
+    ids: readonly CatalogId[],
+  ): Promise<ReadonlySet<CatalogId>> {
+    this.publishedIdsCalls.push(ids);
+    return new Set(ids.filter((id) => this.published.has(id)));
   }
 
   /** The fixture's published titles; unknown records read as unpublished. */
@@ -77,6 +91,10 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
   policyUpdatedAt = new Date("2026-09-12T00:00:00.000Z");
   policyUpdatedBy = "platform";
   unavailable = false;
+  /** The store goes down when this subject's moderation is attempted. */
+  unavailableFrom: string | null = null;
+  /** The next audited policy write fails at the audit insert, changing nothing. */
+  failNextAudit = false;
 
   private assertAvailable(): void {
     if (this.unavailable) throw new CommunityStoreUnavailableError();
@@ -207,18 +225,57 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
   /** Ids whose next moderation write throws, to exercise the failed outcome. */
   failNextModeration = new Set<string>();
 
-  /** Mirrors the adapter: a row outside `from` matches nothing. */
+  /** Execution receipts, keyed exactly as the store keys them. */
+  private readonly receipts = new Map<
+    string,
+    { readonly fingerprint: string; readonly result: ModeratedSubject }
+  >();
+
+  /** Mirrors the adapter: the exact command's own result, or nothing. */
+  async findCommandReceipt(
+    operatorLabel: string,
+    receipt: CommandReceipt,
+  ): Promise<ModeratedSubject | null> {
+    const stored = this.receipts.get(
+      `${operatorLabel}\u0000${receipt.requestId}`,
+    );
+    return stored === undefined || stored.fingerprint !== receipt.fingerprint
+      ? null
+      : stored.result;
+  }
+
+  /**
+   * Mirrors the adapter: a row outside `from` matches nothing, and a command
+   * that carries a receipt replays its own stored result instead of acting
+   * twice, while the same identity carrying another command conflicts.
+   */
   async applyCommentModeration(
     id: CatalogCommentId,
     moderation: CommentModerationState,
     from: readonly CommentModerationState[],
-    _operatorLabel?: string,
+    operatorLabel?: string,
     _at?: Date,
     audit?: ModerationEventDraft,
+    receipt?: CommandReceipt,
   ): Promise<ModeratedSubject | null> {
     this.assertAvailable();
+    if (this.unavailableFrom === id) throw new CommunityStoreUnavailableError();
     if (this.failNextModeration.delete(id))
       throw new Error("Simulated moderation write failure");
+    const key =
+      receipt === undefined
+        ? null
+        : `${operatorLabel ?? ""}\u0000${receipt.requestId}`;
+    if (key !== null && receipt !== undefined) {
+      const stored = this.receipts.get(key);
+      if (stored !== undefined) {
+        if (stored.fingerprint !== receipt.fingerprint)
+          throw new CommunityConflictError(
+            "Reused command identity with other content",
+          );
+        return stored.result;
+      }
+    }
     const record = (subject: ModeratedSubject): ModeratedSubject => {
       if (audit !== undefined)
         this.events.push({
@@ -228,15 +285,23 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
         });
       return subject;
     };
+    const keep = (subject: ModeratedSubject): ModeratedSubject => {
+      if (key !== null && receipt !== undefined)
+        this.receipts.set(key, {
+          fingerprint: receipt.fingerprint,
+          result: subject,
+        });
+      return subject;
+    };
     const comment = this.comments.get(id);
     if (comment !== undefined && from.includes(comment.moderation)) {
       this.comments.set(id, { ...comment, moderation });
-      return record({ id, kind: "comment", moderation });
+      return keep(record({ id, kind: "comment", moderation }));
     }
     const reply = this.replies.get(id);
     if (reply !== undefined && from.includes(reply.moderation)) {
       this.replies.set(id, { ...reply, moderation });
-      return record({ id, kind: "reply", moderation });
+      return keep(record({ id, kind: "reply", moderation }));
     }
     return null;
   }
@@ -413,12 +478,26 @@ export class InMemoryCommunityCommentPort implements CommunityCommentPort {
     };
   }
 
+  /** Mirrors the adapter: the switch and its audit row happen together, and only on a change. */
   async writePublicationPolicy(
     policy: PublicationPolicy,
     operatorLabel: string,
     at: Date,
+    audit?: ModerationEventDraft,
   ): Promise<void> {
     this.assertAvailable();
+    if (this.policy === policy) return;
+    if (audit !== undefined) {
+      if (this.failNextAudit) {
+        this.failNextAudit = false;
+        throw new Error("Simulated audit insert failure");
+      }
+      this.events.push({
+        ...audit,
+        subjectKind: "setting",
+        subjectId: "publication",
+      });
+    }
     this.policy = policy;
     this.policyUpdatedBy = operatorLabel;
     this.policyUpdatedAt = at;
