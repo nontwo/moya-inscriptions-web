@@ -143,7 +143,7 @@ describe("SVG assets", () => {
       "inscriptions.svg":
         "671209be8eeb555d45c39c202a0bc11b6104ee8a315211e0262e8b9fc7cc2b86",
       "calligraphy.svg":
-        "dc0b3d3a661c6da6623ad2d8ae6c33c8fec48a4cedda6d34c7536626e7254223",
+        "f6183bf0ac78d8d6544de1e5d627f93f7c08f2bb97bf3bf8bc8f3da30ea2acba",
       "search.svg":
         "81331e6be09b05b6c632cdda9fa9899de50e21586d5def182ba871bff72e7ed1",
       "back.svg":
