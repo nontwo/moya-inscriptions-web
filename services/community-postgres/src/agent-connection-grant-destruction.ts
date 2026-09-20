@@ -124,14 +124,18 @@ export const createGrantDestroyer = (options: GrantDestroyerOptions) => {
         [grantId],
       );
 
-      // Which step failed, so `recordFailure` can say. One try, three codes:
-      // collapsing them was not required by the fix and `recordFailure` exists
-      // precisely so an operator can tell a provider outage from a privilege
-      // error on the wrapper sweep.
-      // Which step failed, so `recordFailure` can say. Collapsing three codes
+      // Which step failed, so `recordFailure` can say. Collapsing the codes
       // into one was not required by the m6 fix, and `recordFailure` exists
       // precisely so an operator can tell a provider outage from a privilege
       // error on the wrapper sweep.
+      //
+      // Six codes are reachable from this function, not three: the four `step`
+      // values below, plus PROVIDER_GRANT_STILL_PRESENT from the verification
+      // and PROVIDER_DESTROY_UNRECORDED from the race recovery. An earlier
+      // draft of this note said "one try, three codes" while sitting above two
+      // try blocks — left here as a corrected count rather than a deleted one,
+      // because a comment that miscounts what it introduces is the same defect
+      // this slice keeps finding.
       let step = "PROVIDER_REVOKE_FAILED";
       try {
         // Order matters only in that both must happen. Tokens first, so a

@@ -1,10 +1,11 @@
 import { UnauthorizedError } from "payload";
 
-import { admitGrant, toolGrants } from "./admission";
+import { admitGrant } from "./admission";
 
 import {
   ConnectionAuthError,
   isConnectionToken,
+  toolGrants,
   verifiedGrantSchema,
 } from "./contracts";
 

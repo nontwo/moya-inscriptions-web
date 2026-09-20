@@ -83,6 +83,16 @@ export const PRESET_TOOLS: Readonly<
 };
 
 /**
+ * The tool map the plugin gates on. Absent means absent from `tools/list` as
+ * well as refused on call, so a read-only connection never even sees the
+ * management tools.
+ */
+export const toolGrants = (preset: ConnectionPreset): Record<string, boolean> =>
+  Object.fromEntries(
+    PRESET_TOOLS[preset].map((tool) => [toolGrantKey(tool), true]),
+  );
+
+/**
  * One canonical scope representation, so "the same scopes" never depends on
  * order, case or repetition. Normalization is total: anything it cannot
  * normalize is `null`, which is a refusal rather than a lenient reading.

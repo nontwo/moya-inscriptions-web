@@ -5,16 +5,10 @@ export type {
   VerifiedGrant,
 } from "./contracts";
 
-import {
-  ConnectionAuthError,
-  PRESET_TOOLS,
-  scopesMatchPreset,
-  toolGrantKey,
-} from "./contracts";
+import { ConnectionAuthError, scopesMatchPreset } from "./contracts";
 
 import type {
   AgentConnection,
-  ConnectionPreset,
   ConnectionRecord,
   ConsentSnapshot,
   VerifiedGrant,
@@ -36,16 +30,6 @@ import type {
  * The rule a resource server applies to a token should not depend on the
  * framework that happens to serve it. Now it does not.
  */
-
-/**
- * The tool map the plugin gates on. Absent means absent from `tools/list` as
- * well as refused on call, so a read-only connection never even sees the
- * management tools.
- */
-export const toolGrants = (preset: ConnectionPreset): Record<string, boolean> =>
-  Object.fromEntries(
-    PRESET_TOOLS[preset].map((tool) => [toolGrantKey(tool), true]),
-  );
 
 /**
  * What survives admission: the connection the request acts as, and the
