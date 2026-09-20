@@ -86,6 +86,7 @@ export const CatalogMediaCarousel = ({
 }: CatalogMediaCarouselProps) => {
   const [dragOffset, setDragOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [nativeProgress, setNativeProgress] = useState(activeIndex);
   const [failedMediaIds, setFailedMediaIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -172,6 +173,7 @@ export const CatalogMediaCarousel = ({
     const left = index * stage.clientWidth;
     if (behavior === "auto" || typeof stage.scrollTo !== "function") {
       stage.scrollLeft = left;
+      setNativeProgress(index);
       return;
     }
     stage.scrollTo({ behavior, left });
@@ -225,6 +227,7 @@ export const CatalogMediaCarousel = ({
       if (nativeUserScrollRef.current) return;
       const target = activeIndex * stage.clientWidth;
       if (Math.abs(stage.scrollLeft - target) > 1) stage.scrollLeft = target;
+      setNativeProgress(activeIndex);
     };
     synchronize();
     nativeViewportWidthRef.current = stage.clientWidth;
@@ -390,6 +393,20 @@ export const CatalogMediaCarousel = ({
     "--carousel-index": activeIndex,
     "--carousel-x": `${dragOffset}px`,
   };
+  // The indicators follow the actual image offset, including an unfinished
+  // drag. Business selection still commits only after the gesture settles.
+  const progress = Math.min(
+    media.length - 1,
+    Math.max(
+      0,
+      dragging
+        ? activeIndex - dragOffset / (gestureRef.current?.width || 1)
+        : nativePaging
+          ? nativeProgress
+          : activeIndex,
+    ),
+  );
+  const indicatedIndex = Math.round(progress);
 
   return (
     <section
@@ -500,6 +517,9 @@ export const CatalogMediaCarousel = ({
         }}
         onScroll={() => {
           if (!nativePaging) return;
+          const stage = stageRef.current;
+          if (stage !== null && stage.clientWidth > 0)
+            setNativeProgress(stage.scrollLeft / stage.clientWidth);
           if (
             nativeTouchActiveRef.current &&
             Math.abs(
@@ -670,22 +690,31 @@ export const CatalogMediaCarousel = ({
             className={styles.mediaDots}
             data-detail-media-control=""
             data-detail-media-dots=""
+            data-detail-media-progress={progress}
             role="group"
           >
-            {mediaDotWindow(media.length, activeIndex).map(
+            {mediaDotWindow(media.length, indicatedIndex).map(
               ({ index, edge }) => (
                 <button
                   aria-current={index === activeIndex ? "true" : undefined}
                   aria-label={`第 ${index + 1} 张图像：${media[index]!.alt}`}
                   className={styles.mediaDotTarget}
-                  data-active={index === activeIndex ? "true" : "false"}
+                  data-active={index === indicatedIndex ? "true" : "false"}
                   data-detail-media-dot=""
                   data-edge={edge ? "true" : undefined}
                   key={media[index]!.id}
                   onClick={() => selectIndex(index)}
                   type="button"
                 >
-                  <span aria-hidden="true" />
+                  <span
+                    aria-hidden="true"
+                    style={
+                      {
+                        "--media-dot-size": `${(edge ? 4 : 6) + (edge ? 4 : 2) * Math.max(0, 1 - Math.abs(progress - index))}px`,
+                        "--media-dot-weight": `${Math.max(0, 1 - Math.abs(progress - index)) * 100}%`,
+                      } as CSSProperties
+                    }
+                  />
                 </button>
               ),
             )}

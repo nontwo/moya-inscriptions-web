@@ -7,6 +7,7 @@ import { useContentQuickActions } from "../quick-actions/content-quick-actions";
 import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 
 import styles from "./home-screen.module.css";
+import { feedMediaAspectRatio } from "./catalog-card";
 
 import type { NearbyCard } from "./home-feed";
 import type { CSSProperties } from "react";
@@ -40,8 +41,8 @@ export const HomeContentCard = ({
           style={
             failed && media !== undefined
               ? ({
-                  aspectRatio: `${media.width} / ${media.height}`,
-                } satisfies CSSProperties)
+                  "--feed-media-ratio": feedMediaAspectRatio(media),
+                } as CSSProperties)
               : undefined
           }
         >
@@ -49,7 +50,14 @@ export const HomeContentCard = ({
           <span>{failed ? "图像无法加载" : "暂无图像"}</span>
         </div>
       ) : (
-        <div className={`${styles.media} ${styles.feedMedia}`}>
+        <div
+          className={`${styles.media} ${styles.feedMedia}`}
+          style={
+            {
+              "--feed-media-ratio": feedMediaAspectRatio(media),
+            } as CSSProperties
+          }
+        >
           <img
             alt={media.alt}
             decoding="async"

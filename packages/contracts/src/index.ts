@@ -42,6 +42,7 @@ export type {
   ProfileUpdate,
   PrivacyUpdate,
   AvatarUpdate,
+  BackgroundUpdate,
   RelationshipUpdate,
   ContentRelationUpdate,
   GuestFavoriteMerge,
@@ -55,6 +56,7 @@ export type {
 } from "./schemas.js";
 export type {
   ContentCard,
+  ContentState,
   DiscoveryQuery,
   DiscoveryPage,
   InscriptionFilters,
@@ -112,9 +114,6 @@ export type {
   ResolvePublishingConflictCommand,
   RestorePublishingSnapshotCommand,
   SavePublishingDraftCommand,
-  TrashRestoreResult,
-  TrashedWork,
-  TrashedWorkPage,
   WorkAuthorship,
   WorkAuthorshipKind,
   WorkDraftContent,

@@ -39,7 +39,7 @@ export interface SettingsProductHistoryState {
 
 export interface TopicProductHistoryState {
   readonly kind: "topic";
-  readonly sourceDestination: "home";
+  readonly sourceDestination: "discussion";
   readonly sourceHomeFeed: "topics";
   readonly sourceScrollTop: number;
   readonly topicId: string;
@@ -122,8 +122,8 @@ export const mergeProductHistoryState = (
 
 const primaryDestinations = new Set<PrimaryDestination>([
   "home",
-  "inscriptions",
-  "calligraphy",
+  "discussion",
+  "user",
 ]);
 
 export const isPrimaryDestination = (
@@ -142,7 +142,7 @@ export const primaryHistoryState = (
   ...(focusCatalogId !== undefined && focusCatalogId.length > 0
     ? { focusCatalogId }
     : {}),
-  ...(destination === "home" &&
+  ...(destination === "discussion" &&
   focusTopicId !== undefined &&
   focusTopicId.length > 0
     ? { focusTopicId }
@@ -202,7 +202,7 @@ export const topicHistoryState = (
   sourceScrollTop: number,
 ): TopicProductHistoryState => ({
   kind: "topic",
-  sourceDestination: "home",
+  sourceDestination: "discussion",
   sourceHomeFeed: "topics",
   sourceScrollTop: boundedScrollTop(sourceScrollTop),
   topicId,
@@ -282,7 +282,7 @@ export const parseProductHistoryState = (
     }
     if (
       candidate.focusTopicId !== undefined &&
-      (candidate.destination !== "home" ||
+      (candidate.destination !== "discussion" ||
         typeof candidate.focusTopicId !== "string" ||
         candidate.focusTopicId.length === 0)
     ) {
@@ -353,7 +353,7 @@ export const parseProductHistoryState = (
 
   if (
     candidate.kind === "topic" &&
-    candidate.sourceDestination === "home" &&
+    candidate.sourceDestination === "discussion" &&
     candidate.sourceHomeFeed === "topics" &&
     typeof candidate.topicId === "string" &&
     candidate.topicId.length > 0 &&

@@ -40,11 +40,11 @@ const renderHome = (platform: "phone" | "tablet" | "pc" = "phone") => {
   act(() => {
     root.render(
       <ProductShell
-        calligraphy={<p>Calligraphy panel</p>}
+        user={<p>Calligraphy panel</p>}
         developmentPlatformOverride={platform}
         home={<HomeScreen data={emptyHome} />}
         initialPlatform={platform}
-        inscriptions={<p>Inscriptions panel</p>}
+        discussion={<p>Inscriptions panel</p>}
       />,
     );
   });
@@ -52,7 +52,7 @@ const renderHome = (platform: "phone" | "tablet" | "pc" = "phone") => {
 };
 
 const feedTab = (container: ParentNode, feed: string) =>
-  container.querySelector<HTMLButtonElement>(`[data-home-feed-tab="${feed}"]`)!;
+  container.querySelector<HTMLButtonElement>(`[data-tab-key="${feed}"]`)!;
 
 describe("HomeScreen integration", () => {
   beforeEach(() => {
@@ -121,7 +121,14 @@ describe("HomeScreen integration", () => {
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
       function (this: HTMLElement) {
         const feed = this.dataset.homeFeedPanel;
-        return feed === "nearby" ? 390 : feed === "topics" ? 780 : 0;
+        return (
+          Math.max(
+            0,
+            ["discover", "nearby", "inscriptions", "calligraphy"].indexOf(
+              feed ?? "",
+            ),
+          ) * 390
+        );
       },
     );
   });
@@ -146,11 +153,11 @@ describe("HomeScreen integration", () => {
     vi.useRealTimers();
   });
 
-  it("renders exactly three related tabs and keeps every panel mounted but inert", async () => {
+  it("renders exactly four related tabs and keeps every panel mounted but inert", async () => {
     const container = renderHome();
     await act(async () => vi.runAllTimers());
     const tabs = Array.from(
-      container.querySelectorAll<HTMLButtonElement>("[data-home-feed-tab]"),
+      container.querySelectorAll<HTMLButtonElement>("[data-tab-key]"),
     );
     const panels = Array.from(
       container.querySelectorAll<HTMLElement>("[data-home-feed-panel]"),
@@ -159,15 +166,16 @@ describe("HomeScreen integration", () => {
     expect(tabs.map(({ textContent }) => textContent)).toEqual([
       "发现",
       "附近",
-      "专题",
+      "碑刻",
+      "书帖",
     ]);
     expect(
       tabs.filter((tab) => tab.getAttribute("aria-selected") === "true"),
     ).toHaveLength(1);
-    expect(panels).toHaveLength(3);
-    expect(
-      container.querySelectorAll("[data-home-feed-indicator]"),
-    ).toHaveLength(1);
+    expect(panels).toHaveLength(4);
+    expect(container.querySelectorAll("[data-top-tab-indicator]")).toHaveLength(
+      1,
+    );
     for (const tab of tabs) {
       const panel = container.querySelector<HTMLElement>(
         `#${tab.getAttribute("aria-controls")}`,
@@ -184,7 +192,7 @@ describe("HomeScreen integration", () => {
     );
   });
 
-  it("keeps three Phone feed scroll positions in their mounted native panels", async () => {
+  it("keeps four Phone feed scroll positions in their mounted native panels", async () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const container = renderHome();
     await act(async () => vi.runAllTimers());
@@ -200,8 +208,11 @@ describe("HomeScreen integration", () => {
       nearby: container.querySelector<HTMLElement>(
         '[data-home-feed-panel="nearby"]',
       )!,
-      topics: container.querySelector<HTMLElement>(
-        '[data-home-feed-panel="topics"]',
+      inscriptions: container.querySelector<HTMLElement>(
+        '[data-home-feed-panel="inscriptions"]',
+      )!,
+      calligraphy: container.querySelector<HTMLElement>(
+        '[data-home-feed-panel="calligraphy"]',
       )!,
     };
     const identities = { ...panels };
@@ -222,9 +233,12 @@ describe("HomeScreen integration", () => {
     expect(home.scrollTop).toBe(0);
     expect(panels.nearby.scrollTop).toBe(0);
     panels.nearby.scrollTop = 88;
-    act(() => feedTab(container, "topics").click());
+    act(() => feedTab(container, "calligraphy").click());
     await act(async () => vi.runAllTimers());
-    panels.topics.scrollTop = 44;
+    panels.calligraphy.scrollTop = 44;
+    act(() => feedTab(container, "inscriptions").click());
+    await act(async () => vi.runAllTimers());
+    panels.inscriptions.scrollTop = 212;
 
     act(() => feedTab(container, "discover").click());
     await act(async () => vi.runAllTimers());
@@ -232,9 +246,15 @@ describe("HomeScreen integration", () => {
     act(() => feedTab(container, "nearby").click());
     await act(async () => vi.runAllTimers());
     expect(panels.nearby.scrollTop).toBe(88);
-    act(() => feedTab(container, "topics").click());
+    act(() => feedTab(container, "inscriptions").click());
     await act(async () => vi.runAllTimers());
-    expect(panels.topics.scrollTop).toBe(44);
+    expect(panels.inscriptions.scrollTop).toBe(212);
+    act(() => feedTab(container, "calligraphy").click());
+    await act(async () => vi.runAllTimers());
+    expect(
+      feedTab(container, "calligraphy").getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(panels.calligraphy.scrollTop).toBe(44);
     expect(home.scrollTop).toBe(0);
     expect(
       Object.fromEntries(
@@ -244,7 +264,12 @@ describe("HomeScreen integration", () => {
             identities[feed as keyof typeof identities],
         ]),
       ),
-    ).toEqual({ discover: true, nearby: true, topics: true });
+    ).toEqual({
+      discover: true,
+      nearby: true,
+      inscriptions: true,
+      calligraphy: true,
+    });
     expect(shell.dataset.activeDestination).toBe("home");
     expect(replaceState).not.toHaveBeenCalled();
 
@@ -252,14 +277,17 @@ describe("HomeScreen integration", () => {
       Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
         (button) => button.getAttribute("aria-label") === label,
       )!;
-    act(() => primaryButton("碑刻").click());
+    act(() => primaryButton("讨论").click());
     await act(async () => vi.runAllTimers());
     act(() => primaryButton("首页").click());
     await act(async () => vi.runAllTimers());
-    expect(feedTab(container, "topics").getAttribute("aria-selected")).toBe(
-      "true",
-    );
-    expect(panels.topics.scrollTop).toBe(44);
+    expect(
+      feedTab(container, "calligraphy").getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      feedTab(container, "calligraphy").getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(panels.calligraphy.scrollTop).toBe(44);
     expect(home.scrollTop).toBe(0);
   });
 
@@ -318,7 +346,7 @@ describe("HomeScreen integration", () => {
       )!;
 
     discover.scrollTop = 180;
-    act(() => primaryButton("碑刻").click());
+    act(() => primaryButton("讨论").click());
     await act(async () => vi.runAllTimers());
     act(() => primaryButton("首页").click());
 

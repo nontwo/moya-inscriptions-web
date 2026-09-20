@@ -91,4 +91,10 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       checksum:
         "582b4c7f66cd8aec707ccaf89ff1969c567efc80640f89c5d3dcd5924e4143de",
     }),
+    Object.freeze({
+      migrationId: "20260920020000",
+      filename: "20260920020000_profile_background_and_permanent_media.sql",
+      checksum:
+        "231cfa57b254a7d8ad07246957d4a533018ab671fc1b0291c56b6d0115030d5a",
+    }),
   ]);

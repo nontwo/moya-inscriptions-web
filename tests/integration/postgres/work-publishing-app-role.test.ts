@@ -183,7 +183,7 @@ describe.each(["clean", "phase4-upgrade"] as const)(
       ).toEqual(before);
       // Empty, explicitly synthetic published Catalog projections for discovery.
       await setup.query(
-        "CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb); CREATE TABLE public.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)",
+        "CREATE TABLE public.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text); CREATE TABLE public.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb); CREATE TABLE public.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)",
       );
       const grantSql = (
         await readFile(
@@ -588,10 +588,34 @@ describe.each(["clean", "phase4-upgrade"] as const)(
         { ...commandId(), action: "approve", expectedVersion: review.version },
         now,
       );
-      await publishing.trashWork(actor, original.workId, commandId(), now);
+      // Narrow text-update grants support irreversible body deletion while
+      // retaining the visitor's reply and moderation/audit identities.
+      await comments.deleteDiscussionBody(actor, rootComment.id, randomUUID());
       expect(
-        await publishing.restoreWork(actor, original.workId, commandId(), now),
-      ).toMatchObject({ visibility: "self" });
+        (
+          await setup.query(
+            "SELECT text FROM community.catalog_comments WHERE id=$1",
+            [rootComment.id],
+          )
+        ).rows,
+      ).toEqual([{ text: "This comment has been deleted" }]);
+      await publishing.deleteWork(actor, original.workId, commandId(), now);
+      expect(
+        (
+          await setup.query(
+            "SELECT title,text,deleted_at IS NOT NULL AS deleted FROM community.works WHERE id=$1",
+            [original.workId],
+          )
+        ).rows,
+      ).toEqual([{ title: "", text: "", deleted: true }]);
+      expect(
+        (
+          await setup.query(
+            "SELECT 1 FROM community.work_revisions WHERE work_id=$1",
+            [original.workId],
+          )
+        ).rowCount,
+      ).toBe(0);
       await expect(
         authors.readWork(original.workId, other),
       ).rejects.toBeInstanceOf(CommunityNotFoundError);
@@ -681,6 +705,9 @@ describe.each(["clean", "phase4-upgrade"] as const)(
         "UPDATE community.work_draft_snapshots SET owner_id=owner_id",
         "UPDATE community.author_events SET action=action",
         "DELETE FROM community.author_events",
+        "UPDATE community.content_operator_events SET action=action",
+        "DELETE FROM community.content_operator_events",
+        "UPDATE community.author_command_receipts SET actor_id=actor_id",
         "UPDATE community.public_users SET id=id",
         "DELETE FROM community.public_users",
       ])

@@ -14,11 +14,12 @@ let time = 0,
   id = 0,
   width = 400,
   reduce = false;
-let offsets = [0, 400, 800];
+let offsets = [0, 400, 800, 1200];
 let heights: Record<HomeFeed, number> = {
   discover: 600,
   nearby: 900,
-  topics: 700,
+  inscriptions: 700,
+  calligraphy: 800,
 };
 const frames = new Map<number, FrameRequestCallback>();
 const cleanups: (() => void)[] = [];
@@ -106,7 +107,8 @@ const setup = (
           panels={{
             discover: <button type="button">Discover</button>,
             nearby: <button type="button">Nearby</button>,
-            topics: <button type="button">Topics</button>,
+            inscriptions: <button type="button">Inscriptions</button>,
+            calligraphy: <button type="button">Calligraphy</button>,
           }}
           {...(register ? { registerActiveScrollElement: register } : {})}
         />,
@@ -157,8 +159,13 @@ describe("HomeFeedPager category engine integration", () => {
     id = 0;
     width = 400;
     reduce = false;
-    offsets = [0, 400, 800];
-    heights = { discover: 600, nearby: 900, topics: 700 };
+    offsets = [0, 400, 800, 1200];
+    heights = {
+      discover: 600,
+      nearby: 900,
+      inscriptions: 700,
+      calligraphy: 800,
+    };
     frames.clear();
     observers.length = 0;
     vi.spyOn(performance, "now").mockImplementation(() => time);
@@ -229,10 +236,10 @@ describe("HomeFeedPager category engine integration", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the same three mounted panels, native vertical surfaces and selected accessibility", () => {
+  it("keeps the same four mounted panels, native vertical surfaces and selected accessibility", () => {
     const v = setup();
     expect(v.frame.dataset.categoryPagerEngine).toBe("embla");
-    expect(v.panels).toHaveLength(3);
+    expect(v.panels).toHaveLength(4);
     expect(
       v.panels.every(
         (p) => !p.hidden && p.hasAttribute("data-home-feed-scroll-surface"),
@@ -242,9 +249,11 @@ describe("HomeFeedPager category engine integration", () => {
       false,
       true,
       true,
+      true,
     ]);
     expect(v.panels.map((p) => p.getAttribute("aria-hidden"))).toEqual([
       "false",
+      "true",
       "true",
       "true",
     ]);
@@ -259,6 +268,7 @@ describe("HomeFeedPager category engine integration", () => {
     expect(v.panels.map((p) => p.hasAttribute("inert"))).toEqual([
       true,
       false,
+      true,
       true,
     ]);
     const releasePosition = v.track.style.transform;
@@ -331,12 +341,12 @@ describe("HomeFeedPager category engine integration", () => {
     v.render("nearby");
     expect(registered).toEqual([v.panels[0], v.panels[1]]);
     expect(release).toHaveBeenCalledOnce();
-    expect(v.panels.map((p) => p.scrollTop)).toEqual([137, 88, 0]);
+    expect(v.panels.map((p) => p.scrollTop)).toEqual([137, 88, 0, 0]);
     expect([...v.track.children]).toEqual(v.panels);
   });
   it("restores independent panel positions after a hidden ancestor removes their range", () => {
     const v = setup();
-    const positions = [137, 88, 44];
+    const positions = [137, 88, 44, 212];
     v.panels.forEach((p, i) => {
       v.render(homeFeeds[i]!);
       act(() => {
@@ -345,22 +355,22 @@ describe("HomeFeedPager category engine integration", () => {
       });
     });
     width = 0;
-    v.render("topics", false);
+    v.render("calligraphy", false);
     v.panels.forEach((p) => {
       p.scrollTop = 0;
       p.dispatchEvent(new Event("scroll"));
     });
     width = 400;
-    v.render("topics", true);
+    v.render("calligraphy", true);
     expect(v.panels.map((p) => p.scrollTop)).toEqual(positions);
     expect([...v.track.children]).toEqual(v.panels);
   });
   it("supports non-adjacent tab requests and immediate reduced-motion positioning", () => {
     const v = setup();
-    act(() => v.handle.current?.scrollToFeed("topics"));
-    expect(v.commits).toHaveBeenCalledExactlyOnceWith("topics");
+    act(() => v.handle.current?.scrollToFeed("calligraphy"));
+    expect(v.commits).toHaveBeenCalledExactlyOnceWith("calligraphy");
     advance(180);
-    expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(2, 2));
+    expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(3, 2));
     reduce = true;
     act(() => v.handle.current?.scrollToFeed("nearby"));
     expect(v.progress).toHaveBeenLastCalledWith(expect.closeTo(1, 4));

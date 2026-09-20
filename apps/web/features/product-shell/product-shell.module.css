@@ -46,19 +46,41 @@
 
 .productShell[data-platform="phone"]
   .primaryLayer
-  :global([data-primary-destination="home"]),
+  :global(
+    [data-primary-destination]:is(
+      [data-primary-destination="home"],
+      [data-primary-destination="discussion"]
+    )
+  ),
 .productShell[data-platform="tablet"]
   .primaryLayer
-  :global([data-primary-destination="home"]) {
+  :global(
+    [data-primary-destination]:is(
+      [data-primary-destination="home"],
+      [data-primary-destination="discussion"]
+    )
+  ) {
   overflow: hidden;
 }
 
 .productShell[data-platform="phone"]
   .primaryLayer
-  :global([data-primary-destination="home"] [data-product-panel="home"]),
+  :global(
+    [data-primary-destination]:is(
+        [data-primary-destination="home"],
+        [data-primary-destination="discussion"]
+      )
+      [data-product-panel]
+  ),
 .productShell[data-platform="tablet"]
   .primaryLayer
-  :global([data-primary-destination="home"] [data-product-panel="home"]) {
+  :global(
+    [data-primary-destination]:is(
+        [data-primary-destination="home"],
+        [data-primary-destination="discussion"]
+      )
+      [data-product-panel]
+  ) {
   height: 100%;
   min-height: 0;
 }

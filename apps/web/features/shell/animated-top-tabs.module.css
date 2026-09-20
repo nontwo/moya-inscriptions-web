@@ -1,0 +1,100 @@
+.viewport {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+.viewport::-webkit-scrollbar {
+  display: none;
+}
+.track {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+  gap: var(--yoyi-space-3);
+}
+.tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: var(--yoyi-space-3) var(--yoyi-space-4);
+  color: var(--yoyi-color-text-secondary);
+  background: transparent;
+  border: 0;
+  font-family: var(--yoyi-font-interface);
+  font-size: var(--yoyi-type-label-size);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] {
+  color: var(--yoyi-color-text-primary);
+}
+.tab:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: -3px;
+  border-radius: var(--yoyi-radius-md);
+}
+.iconSlot {
+  display: block;
+  flex: 0 0 auto;
+  width: calc((20px + var(--yoyi-space-2)) * var(--top-tab-activation));
+  height: 20px;
+  overflow: hidden;
+  opacity: var(--top-tab-activation);
+  transition:
+    width var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    opacity var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+.icon {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  transform: scale(var(--top-tab-activation));
+  transform-origin: left center;
+  transition: transform var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+.icon > * {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.label {
+  display: block;
+}
+.indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-seal-red);
+  pointer-events: none;
+  transition:
+    width var(--yoyi-duration-normal) var(--yoyi-easing-standard),
+    transform var(--yoyi-duration-normal) var(--yoyi-easing-standard);
+}
+.track[data-progress-driven="true"] .iconSlot,
+.track[data-progress-driven="true"] .icon,
+.track[data-progress-driven="true"] .indicator {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .iconSlot,
+  .icon,
+  .indicator {
+    transition: none;
+  }
+}

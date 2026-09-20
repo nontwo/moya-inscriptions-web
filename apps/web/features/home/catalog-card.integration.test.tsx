@@ -57,8 +57,10 @@ afterEach(() => {
 });
 
 describe("CatalogCard failed media geometry", () => {
-  it("preserves source geometry for R03 Home feed cards", () => {
-    expect(renderCard("feed").style.aspectRatio).toBe("900 / 300");
+  it("bounds failed panorama covers to the same cropped feed footprint", () => {
+    expect(
+      renderCard("feed").style.getPropertyValue("--feed-media-ratio"),
+    ).toBe("1.5");
   });
 
   it("does not override the deferred Inscriptions fallback geometry", () => {

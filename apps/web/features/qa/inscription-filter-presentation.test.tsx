@@ -4,11 +4,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type MockDestination = "home" | "inscriptions" | "calligraphy";
+type MockDestination = "home" | "discussion" | "user";
 
 const { shellState } = vi.hoisted(() => ({
   shellState: {
-    activeDestination: "inscriptions" as MockDestination,
+    activeDestination: "home" as MockDestination,
     platform: "pc" as "phone" | "tablet" | "pc",
     requestSettings: vi.fn(),
   },
@@ -26,6 +26,7 @@ import {
 } from "./inscription-filter-presentation";
 
 import type { Root } from "react-dom/client";
+import type { HomeFeed } from "../home/home-feed";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -83,7 +84,7 @@ describe("QaInscriptionFilter", () => {
   afterEach(() => {
     for (const root of roots.splice(0)) act(() => root.unmount());
     document.body.replaceChildren();
-    shellState.activeDestination = "inscriptions";
+    shellState.activeDestination = "home";
     shellState.platform = "pc";
     shellState.requestSettings.mockReset();
     vi.restoreAllMocks();
@@ -512,7 +513,7 @@ describe("QaProductUtilities", () => {
     for (const root of roots.splice(0)) act(() => root.unmount());
     document.body.replaceChildren();
     document.body.style.overflow = "";
-    shellState.activeDestination = "inscriptions";
+    shellState.activeDestination = "home";
     shellState.platform = "pc";
     shellState.requestSettings.mockReset();
     vi.restoreAllMocks();
@@ -539,6 +540,7 @@ describe("QaProductUtilities", () => {
             <QaNavigationSearchAction />
           </div>
           <QaProductUtilities
+            activeHomeFeed="inscriptions"
             catalogItems={[]}
             initialKeyword=""
             showEmptyState={false}
@@ -579,5 +581,55 @@ describe("QaProductUtilities", () => {
     click(container.querySelector("[data-user-close]"));
     expect(container.querySelector("[data-user-page]")).toBeNull();
     expect(container.querySelector("[data-filter-panel]")).toBeNull();
+  });
+
+  it("limits filters to the inscription feed and resets them after leaving", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const renderFeed = (feed: HomeFeed) => {
+      act(() =>
+        root.render(
+          <QaUtilitiesProvider initialSearchOpen={false} resetKey="default">
+            <QaProductUtilities
+              activeHomeFeed={feed}
+              catalogItems={[]}
+              initialKeyword=""
+              showEmptyState={false}
+              showRecentSearches={false}
+              userScenarioName="user-default-published"
+            />
+          </QaUtilitiesProvider>,
+        ),
+      );
+    };
+    for (const feed of ["discover", "nearby", "calligraphy"] as const) {
+      renderFeed(feed);
+      expect(container.querySelector("[data-filter-trigger]")).toBeNull();
+    }
+    renderFeed("inscriptions");
+    click(container.querySelector("[data-filter-trigger]"));
+    click(container.querySelector('[data-filter-category="dynasty"]'));
+    click(
+      buttonNamed(
+        element(container, '[data-filter-popover="dynasty"]'),
+        "隋唐",
+      ),
+    );
+    expect(container.textContent).toContain("隋唐 ×");
+
+    renderFeed("calligraphy");
+    expect(container.querySelector("[data-filter-trigger]")).toBeNull();
+    expect(container.querySelector("[data-filter-panel]")).toBeNull();
+    renderFeed("inscriptions");
+    expect(container.querySelector("[data-filter-panel]")).toBeNull();
+    click(container.querySelector("[data-filter-trigger]"));
+    expect(container.querySelector("[data-selected]")).toBeNull();
+    expect(
+      container
+        .querySelector("[data-filter-reset]")
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 });

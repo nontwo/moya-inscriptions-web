@@ -328,3 +328,111 @@
   font-weight: 650;
   background: transparent;
 }
+
+.phase4-people-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yoyi-space-2);
+}
+.phase4-people-list {
+  padding: 0;
+  list-style: none;
+}
+.phase4-people-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  padding-block: var(--yoyi-space-3);
+  border-bottom: 1px solid var(--yoyi-color-border-subtle);
+}
+.phase4-person-select {
+  display: grid;
+  min-width: 28px;
+  min-height: 44px;
+  place-items: center;
+}
+.phase4-person-select input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--yoyi-color-seal-red);
+}
+.phase4-person-identity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  padding: 0;
+  text-align: start;
+  color: var(--yoyi-color-text-primary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.phase4-person-identity > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: var(--yoyi-space-1);
+  overflow-wrap: anywhere;
+}
+.phase4-person-identity small {
+  color: var(--yoyi-color-text-secondary);
+}
+.phase4-person-avatar {
+  display: grid;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--yoyi-radius-full);
+  background: var(--yoyi-color-background-muted);
+}
+.phase4-person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phase4-person-action {
+  flex-shrink: 0;
+}
+.phase4-background-editor {
+  display: grid;
+  gap: var(--yoyi-space-3);
+}
+.phase4-background-crop,
+.phase4-background-preview {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--yoyi-color-background-muted);
+  border-radius: var(--yoyi-radius-lg);
+}
+.phase4-background-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phase4-background-editor > label {
+  display: flex;
+  align-items: center;
+  gap: var(--yoyi-space-3);
+  min-height: 44px;
+}
+.phase4-background-editor input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+.phase4-people-tools button:disabled,
+.phase4-person-action:disabled,
+.phase4-person-identity:disabled {
+  opacity: 0.5;
+}
+.phase4-person-identity:focus-visible,
+.phase4-person-select input:focus-visible {
+  outline: 2px solid var(--yoyi-color-focus-ring);
+  outline-offset: 2px;
+}

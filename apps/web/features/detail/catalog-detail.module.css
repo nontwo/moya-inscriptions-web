@@ -10,10 +10,13 @@
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  /* Detail restores its own per-tab position when panel heights change. */
+  overflow-anchor: none;
   -webkit-overflow-scrolling: touch;
 }
 
 .detail {
+  --detail-header-height: 56px;
   --detail-comment-composer-left: 16px;
   --detail-comment-composer-right: 16px;
 
@@ -28,10 +31,10 @@
   z-index: 6;
   top: 0;
   display: flex;
-  min-height: 56px;
+  min-height: var(--detail-header-height);
   align-items: center;
   justify-content: space-between;
-  padding: 6px clamp(12px, 3vw, 32px);
+  padding: 5px clamp(12px, 3vw, 32px);
   border-bottom: 1px solid var(--yoyi-color-border-subtle);
   background: var(--yoyi-color-background-page);
 }
@@ -183,6 +186,45 @@
   --detail-comment-composer-right: 0;
 }
 
+.detail[data-platform="phone"] .detailContent {
+  padding-top: 0;
+}
+
+.detail[data-platform="phone"] .carousel {
+  margin-inline: -16px;
+}
+
+.detail[data-platform="phone"] .mainStage {
+  /* Maximize the complete image inside a stable, edge-to-edge 3:4 frame.
+     Portrait and landscape images keep their original proportions. */
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  min-height: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.detail[data-platform="phone"] .mainImageButton img,
+.detail[data-platform="phone"] .liveSlideFrame video {
+  object-fit: contain;
+  object-position: center;
+}
+
+.detail[data-platform="phone"] .pagedDetail {
+  gap: var(--yoyi-space-1);
+}
+
+.detail[data-platform="phone"] .mediaDots {
+  min-height: 28px;
+  margin-top: 0;
+}
+
+.detail[data-platform="phone"] [data-detail-content-actions] {
+  padding-block: 0;
+}
+
 .detail[data-platform="phone"] .contentPagerTabs {
   margin: 0 -16px;
   padding: 0 calc(16px + var(--yoyi-space-3));
@@ -195,7 +237,7 @@
 .contentPagerTabs {
   position: sticky;
   z-index: 5;
-  top: 56px;
+  top: var(--detail-header-height);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0 var(--yoyi-space-3);
@@ -236,7 +278,8 @@
 }
 
 .contentPagerFrame {
-  margin-top: var(--yoyi-space-5);
+  isolation: isolate;
+  margin-top: var(--yoyi-space-3);
 }
 
 .contentPagerTrack {
@@ -244,6 +287,10 @@
 }
 
 .contentPagerPanel {
+  /* Even empty comments can scroll the media fully behind the sticky tabs. */
+  min-height: calc(
+    100dvh - var(--detail-header-height) - 49px - var(--yoyi-space-3)
+  );
   padding: 0;
 }
 
@@ -735,24 +782,14 @@
 }
 
 .mediaDotTarget > span {
-  width: 6px;
-  height: 6px;
+  width: var(--media-dot-size, 6px);
+  height: var(--media-dot-size, 6px);
   border-radius: var(--yoyi-radius-full);
-  background: var(--yoyi-color-border-strong);
-  transition:
-    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.mediaDotTarget[data-active="true"] > span {
-  width: 8px;
-  height: 8px;
-  background: var(--yoyi-color-text-primary);
-}
-.mediaDotTarget[data-edge="true"] > span {
-  width: 4px;
-  height: 4px;
+  background: color-mix(
+    in srgb,
+    var(--yoyi-color-text-primary) var(--media-dot-weight, 0%),
+    var(--yoyi-color-border-strong)
+  );
 }
 
 .mediaCounter {

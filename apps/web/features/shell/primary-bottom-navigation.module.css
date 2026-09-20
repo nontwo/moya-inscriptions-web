@@ -145,28 +145,15 @@
   overflow: visible;
 }
 
-.labelMark {
+.label {
   display: block;
   flex: 0 0 auto;
-  width: 44px;
-  height: 20px;
-  overflow: visible;
-}
-
-.labelMask {
-  mask-type: alpha;
-}
-
-:global(html[data-theme="dark"]) .entry[data-selected="true"] .labelMark {
-  color: var(--yoyi-color-text-primary);
-}
-
-@media (prefers-color-scheme: dark) {
-  :global(html:not([data-theme="light"]))
-    .entry[data-selected="true"]
-    .labelMark {
-    color: var(--yoyi-color-text-primary);
-  }
+  font-family: var(--yoyi-font-editorial);
+  font-size: var(--yoyi-type-body-size);
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .navigation[data-minimized="true"] {
@@ -195,7 +182,7 @@
   pointer-events: none;
 }
 
-.navigation[data-minimized="true"] .labelMark {
+.navigation[data-minimized="true"] .label {
   display: none;
 }
 

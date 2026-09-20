@@ -15,8 +15,8 @@ import type { PrimaryDestination } from "./primary-shell";
 
 const destinations = [
   ["home", "首页"],
-  ["inscriptions", "碑刻"],
-  ["calligraphy", "书帖"],
+  ["discussion", "讨论"],
+  ["user", "用户"],
 ] as const satisfies readonly (readonly [PrimaryDestination, string])[];
 
 const renderCoordination = (
@@ -30,8 +30,8 @@ const renderCoordination = (
       platform={platform}
       onDestinationChange={vi.fn()}
       home={<p>home content</p>}
-      inscriptions={<p>inscriptions content</p>}
-      calligraphy={<p>calligraphy content</p>}
+      discussion={<p>discussion content</p>}
+      user={<p>user content</p>}
       showDevelopmentPagerControls={showDevelopmentPagerControls}
     />,
   );
@@ -54,7 +54,7 @@ describe("PrimaryNavigationPager", () => {
   });
 
   it("can expose the existing bounded pager only for a Development harness", () => {
-    const markup = renderCoordination("inscriptions", "tablet", true);
+    const markup = renderCoordination("discussion", "tablet", true);
 
     expect(markup).toContain('aria-label="主要内容分页"');
     expect(markup).toContain("data-development-primary-pager");
@@ -81,28 +81,28 @@ describe("PrimaryNavigationPager", () => {
   );
 
   it("uses one controlled active destination for navigation, pager, and PrimaryShell", () => {
-    const markup = renderCoordination("inscriptions", "tablet", true);
+    const markup = renderCoordination("discussion", "tablet", true);
 
-    expect(
-      markup.match(/data-active-destination="inscriptions"/g),
-    ).toHaveLength(2);
+    expect(markup.match(/data-active-destination="discussion"/g)).toHaveLength(
+      2,
+    );
     expect(markup).toContain("data-primary-shell");
     expect(markup).toContain('data-platform="tablet"');
     expect(markup).toContain(
       'data-primary-pager-action="previous" data-target-destination="home"',
     );
     expect(markup).toContain(
-      'data-primary-pager-action="next" data-target-destination="calligraphy"',
+      'data-primary-pager-action="next" data-target-destination="user"',
     );
   });
 
   it.each([
     ["home", "previous", null],
-    ["home", "next", "inscriptions"],
-    ["inscriptions", "previous", "home"],
-    ["inscriptions", "next", "calligraphy"],
-    ["calligraphy", "previous", "inscriptions"],
-    ["calligraphy", "next", null],
+    ["home", "next", "discussion"],
+    ["discussion", "previous", "home"],
+    ["discussion", "next", "user"],
+    ["user", "previous", "discussion"],
+    ["user", "next", null],
   ] as const satisfies readonly (readonly [
     PrimaryDestination,
     PrimaryDestinationDirection,
@@ -118,18 +118,18 @@ describe("PrimaryNavigationPager", () => {
 
   it("disables only the unavailable edge action", () => {
     const homeMarkup = renderCoordination("home", "pc", true);
-    const calligraphyMarkup = renderCoordination("calligraphy", "pc", true);
+    const userMarkup = renderCoordination("user", "pc", true);
 
     expect(homeMarkup).toContain(
       'data-primary-pager-action="previous" disabled=""',
     );
     expect(homeMarkup).toContain(
-      'data-primary-pager-action="next" data-target-destination="inscriptions"',
+      'data-primary-pager-action="next" data-target-destination="discussion"',
     );
-    expect(calligraphyMarkup).toContain(
-      'data-primary-pager-action="previous" data-target-destination="inscriptions"',
+    expect(userMarkup).toContain(
+      'data-primary-pager-action="previous" data-target-destination="discussion"',
     );
-    expect(calligraphyMarkup).toContain(
+    expect(userMarkup).toContain(
       'data-primary-pager-action="next" disabled=""',
     );
   });
@@ -146,8 +146,8 @@ describe("PrimaryNavigationPager", () => {
       | "platform"
       | "onDestinationChange"
       | "home"
-      | "inscriptions"
-      | "calligraphy"
+      | "discussion"
+      | "user"
       | "navigationAction"
       | "navigationHidden"
       | "navigationMinimized"
@@ -160,9 +160,9 @@ describe("PrimaryNavigationPager", () => {
     const markup = renderToStaticMarkup(
       <PrimaryNavigationPager
         activeDestination="home"
-        calligraphy={<p>calligraphy content</p>}
+        user={<p>user content</p>}
         home={<p>home content</p>}
-        inscriptions={<p>inscriptions content</p>}
+        discussion={<p>discussion content</p>}
         navigationHidden
         onDestinationChange={vi.fn()}
         platform="phone"

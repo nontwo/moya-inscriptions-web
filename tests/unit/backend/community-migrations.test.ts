@@ -54,6 +54,7 @@ describe("community migration family", () => {
         "20260914093000_work_publishing_legacy_bridge.sql",
         "20260914094000_work_publishing_legacy_authorship.sql",
         "20260915010000_featured_users.sql",
+        "20260920020000_profile_background_and_permanent_media.sql",
       ],
     );
     expect(files.every((file) => file.sql.includes("community."))).toBe(true);

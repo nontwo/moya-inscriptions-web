@@ -76,10 +76,10 @@ const renderProductShell = (
   act(() =>
     root.render(
       <ProductShell
-        calligraphy={<p>calligraphy content</p>}
+        user={<p>user content</p>}
         home={home}
         initialPlatform="phone"
-        inscriptions={<p>inscriptions content</p>}
+        discussion={<p>discussion content</p>}
         primaryUtility={<SettingsRequester />}
         {...options}
       />,
@@ -116,11 +116,11 @@ const renderTopicShell = () => {
   act(() =>
     root.render(
       <ProductShell
-        calligraphy={<p>calligraphy content</p>}
-        home={<TopicOpener />}
+        user={<p>user content</p>}
+        home={<p>home content</p>}
         primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
-        inscriptions={<p>inscriptions content</p>}
+        discussion={<TopicOpener />}
         renderTopicOverlay={({ backButtonRef, onClose, topicId }) => (
           <section aria-label={`Topic ${topicId}`} role="dialog">
             <button
@@ -189,11 +189,11 @@ const renderDetailShell = () => {
   act(() =>
     root.render(
       <ProductShell
-        calligraphy={<p>calligraphy content</p>}
+        user={<p>user content</p>}
         home={<CatalogOpener />}
         primaryUtility={<SettingsRequester />}
         initialPlatform="phone"
-        inscriptions={<p>inscriptions content</p>}
+        discussion={<p>discussion content</p>}
         renderDetailOverlay={({
           backButtonRef,
           target,
@@ -253,8 +253,8 @@ const renderAuthorShell = (enabled = true) => {
             </button>
           </>
         }
-        inscriptions={<p>inscriptions</p>}
-        calligraphy={<p>calligraphy</p>}
+        discussion={<p>discussion</p>}
+        user={<p>user</p>}
         {...(enabled
           ? {
               renderProfileOverlay: (
@@ -365,8 +365,8 @@ const renderEditorShell = (enabled = true, withOverlays = false) => {
             </button>
           </>
         }
-        inscriptions={<p>inscriptions</p>}
-        calligraphy={
+        discussion={<p>discussion</p>}
+        user={
           <button
             aria-label="继续草稿"
             onClick={(e) =>
@@ -568,12 +568,12 @@ describe("ProductShell", () => {
     await act(async () => vi.runAllTimers());
     replaceState.mockClear();
 
-    click(buttonByLabel(container, "碑刻"));
+    click(buttonByLabel(container, "讨论"));
     await act(async () => vi.runAllTimers());
 
     expect(replaceState).toHaveBeenCalledOnce();
     expect(replaceState).toHaveBeenCalledWith(
-      withHistoryMarkers(primaryHistoryState("inscriptions")),
+      withHistoryMarkers(primaryHistoryState("discussion")),
       "",
       "/dev/t02p",
     );
@@ -587,7 +587,7 @@ describe("ProductShell", () => {
     ).toBe(true);
     expect(
       container
-        .querySelector('[data-primary-destination="inscriptions"]')
+        .querySelector('[data-primary-destination="discussion"]')
         ?.hasAttribute("hidden"),
     ).toBe(false);
   });
@@ -602,10 +602,11 @@ describe("ProductShell", () => {
       navigation.querySelectorAll("[data-primary-navigation-inline-icon]"),
     );
     const labels = Array.from(
-      navigation.querySelectorAll("[data-primary-navigation-inline-label]"),
+      navigation.querySelectorAll("[data-primary-navigation-text-label]"),
     );
+    expect(labels).toHaveLength(3);
 
-    click(buttonByLabel(container, "碑刻"));
+    click(buttonByLabel(container, "讨论"));
     await act(async () => vi.runAllTimers());
     expect(container.querySelector("[data-primary-navigation]")).toBe(
       navigation,
@@ -617,7 +618,7 @@ describe("ProductShell", () => {
     ).toEqual(icons);
     expect(
       Array.from(
-        navigation.querySelectorAll("[data-primary-navigation-inline-label]"),
+        navigation.querySelectorAll("[data-primary-navigation-text-label]"),
       ),
     ).toEqual(labels);
 
@@ -670,7 +671,7 @@ describe("ProductShell", () => {
     const home = container.querySelector<HTMLElement>(
       '[data-primary-destination="home"]',
     )!;
-    buttonByLabel(container, "碑刻").focus();
+    buttonByLabel(container, "讨论").focus();
 
     act(() => {
       home.scrollTop = 12;
@@ -990,6 +991,10 @@ describe("ProductShell", () => {
     async (ending) => {
       const { container } = renderProductShell(<ProductShellObserver />);
       await act(async () => vi.runAllTimers());
+      if (ending === "topic") {
+        act(() => observedProductShell!.navigatePrimary("discussion"));
+        await act(async () => vi.runAllTimers());
+      }
       const scroller = document.createElement("section");
       container.append(scroller);
       Object.defineProperties(scroller, {
@@ -1001,7 +1006,9 @@ describe("ProductShell", () => {
       addListener.mockClear();
       removeListener.mockClear();
       act(() => {
-        observedProductShell!.registerActiveHomeScrollElement(scroller);
+        if (ending === "topic")
+          observedProductShell!.registerActiveDiscussionScrollElement(scroller);
+        else observedProductShell!.registerActiveHomeScrollElement(scroller);
         observedProductShell!.restoreActiveScrollTop(175);
         vi.advanceTimersToNextTimer();
         vi.advanceTimersToNextTimer();
@@ -1269,7 +1276,7 @@ describe("ProductShell", () => {
           observedProductShell!.requestSettings(opener);
         } else if (ending === "detail") {
           observedProductShell!.openCatalog("catalog-one", opener);
-        } else click(buttonByLabel(container, "碑刻"));
+        } else click(buttonByLabel(container, "讨论"));
       });
       act(() => vi.runAllTimers());
       expect(focus).not.toHaveBeenCalled();
@@ -1343,19 +1350,21 @@ describe("ProductShell", () => {
     const replaceState = vi.spyOn(window.history, "replaceState");
     const { container } = renderTopicShell();
     await act(async () => vi.runAllTimers());
+    click(buttonByLabel(container, "讨论"));
+    await act(async () => vi.runAllTimers());
     replaceState.mockClear();
-    const home = container.querySelector<HTMLElement>(
-      '[data-primary-destination="home"]',
+    const discussion = container.querySelector<HTMLElement>(
+      '[data-primary-destination="discussion"]',
     )!;
-    Object.defineProperty(home, "scrollHeight", {
+    Object.defineProperty(discussion, "scrollHeight", {
       configurable: true,
       value: 1_000,
     });
-    Object.defineProperty(home, "clientHeight", {
+    Object.defineProperty(discussion, "clientHeight", {
       configurable: true,
       value: 400,
     });
-    home.scrollTop = 164;
+    discussion.scrollTop = 164;
     const opener = container.querySelector<HTMLButtonElement>(
       "[data-topic-test-opener]",
     )!;
@@ -1372,7 +1381,7 @@ describe("ProductShell", () => {
       "/dev/t02p#topic-topic-one",
     );
     expect(replaceState).toHaveBeenCalledWith(
-      withHistoryMarkers(primaryHistoryState("home", 164, "topic-one")),
+      withHistoryMarkers(primaryHistoryState("discussion", 164, "topic-one")),
       "",
       "/dev/t02p",
     );
@@ -1396,7 +1405,7 @@ describe("ProductShell", () => {
       window.dispatchEvent(
         new PopStateEvent("popstate", {
           state: {
-            ...primaryHistoryState("home", 164, "topic-one"),
+            ...primaryHistoryState("discussion", 164, "topic-one"),
             __artvennDocument: window.history.state.__artvennDocument,
           },
         }),
@@ -1405,7 +1414,7 @@ describe("ProductShell", () => {
     await act(async () => vi.runAllTimers());
 
     expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(home.scrollTop).toBe(164);
+    expect(discussion.scrollTop).toBe(164);
     expect(document.activeElement).toBe(opener);
     expect(container.querySelector("[data-primary-navigation]")).toBe(
       navigation,
@@ -1424,7 +1433,7 @@ describe("ProductShell", () => {
       container
         .querySelector("[data-product-shell]")
         ?.getAttribute("data-active-destination"),
-    ).toBe("home");
+    ).toBe("discussion");
   });
 
   it("resets Topic source scroll after a full reload and Back", async () => {
@@ -1435,31 +1444,32 @@ describe("ProductShell", () => {
     );
     const { container } = renderTopicShell();
     await act(async () => vi.runAllTimers());
-    const home = container.querySelector<HTMLElement>(
-      '[data-primary-destination="home"]',
+
+    const discussion = container.querySelector<HTMLElement>(
+      '[data-primary-destination="discussion"]',
     )!;
-    Object.defineProperty(home, "scrollHeight", {
+    Object.defineProperty(discussion, "scrollHeight", {
       configurable: true,
       value: 1_000,
     });
-    Object.defineProperty(home, "clientHeight", {
+    Object.defineProperty(discussion, "clientHeight", {
       configurable: true,
       value: 400,
     });
-    home.scrollTop = 0;
+    discussion.scrollTop = 0;
 
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
     act(() =>
       window.dispatchEvent(
         new PopStateEvent("popstate", {
-          state: primaryHistoryState("home", 164, "topic-one"),
+          state: primaryHistoryState("discussion", 164, "topic-one"),
         }),
       ),
     );
     await act(async () => vi.runAllTimers());
 
     expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(home.scrollTop).toBe(0);
+    expect(discussion.scrollTop).toBe(0);
     expect(document.activeElement).toBe(
       container.querySelector("[data-topic-test-opener]"),
     );
@@ -1674,7 +1684,7 @@ describe("ProductShell", () => {
     ).toBe("media-two");
   });
 
-  it.each(["home", "inscriptions", "calligraphy"] as const)(
+  it.each(["home", "discussion", "user"] as const)(
     "opens Settings from the committed %s destination",
     async (destination) => {
       const pushState = vi.spyOn(window.history, "pushState");
@@ -1685,7 +1695,7 @@ describe("ProductShell", () => {
         click(
           buttonByLabel(
             container,
-            destination === "inscriptions" ? "碑刻" : "书帖",
+            destination === "discussion" ? "讨论" : "用户",
           ),
         );
         await act(async () => vi.runAllTimers());
@@ -1769,10 +1779,10 @@ describe("ProductShell", () => {
     const home = container.querySelector<HTMLElement>(
       '[data-primary-destination="home"]',
     )!;
-    const inscriptions = container.querySelector<HTMLElement>(
-      '[data-primary-destination="inscriptions"]',
+    const discussion = container.querySelector<HTMLElement>(
+      '[data-primary-destination="discussion"]',
     )!;
-    for (const element of [home, inscriptions]) {
+    for (const element of [home, discussion]) {
       Object.defineProperty(element, "scrollHeight", {
         configurable: true,
         value: 1_000,
@@ -1784,14 +1794,14 @@ describe("ProductShell", () => {
     }
 
     home.scrollTop = 240;
-    click(buttonByLabel(container, "碑刻"));
+    click(buttonByLabel(container, "讨论"));
     await act(async () => vi.runAllTimers());
-    inscriptions.scrollTop = 130;
+    discussion.scrollTop = 130;
     click(buttonByLabel(container, "首页"));
     await act(async () => vi.runAllTimers());
 
     expect(home.scrollTop).toBe(240);
-    expect(inscriptions.scrollTop).toBe(130);
+    expect(discussion.scrollTop).toBe(130);
   });
   it("restores Profile tab and scroll through Work and Viewer history", async () => {
     const app = renderAuthorShell();
@@ -2000,32 +2010,32 @@ describe("ProductShell", () => {
     const pushState = vi.spyOn(window.history, "pushState");
     const app = renderEditorShell();
     await act(async () => vi.runAllTimers());
-    click(buttonByLabel(app.container, "书帖"));
+    click(buttonByLabel(app.container, "用户"));
     await act(async () => vi.runAllTimers());
-    const calligraphy = scrollable(
+    const user = scrollable(
       app.container.querySelector<HTMLElement>(
-        '[data-primary-destination="calligraphy"]',
+        '[data-primary-destination="user"]',
       )!,
     );
-    calligraphy.scrollTop = 212;
+    user.scrollTop = 212;
 
     click(buttonByLabel(app.container, "继续草稿"));
     await act(async () => vi.runAllTimers());
     // The private draft ID lives in history state, never in the address.
     expect(pushState).toHaveBeenLastCalledWith(
       withHistoryMarkers(
-        editorHistoryState({ type: "draft", id: draftId }, "calligraphy", 212),
+        editorHistoryState({ type: "draft", id: draftId }, "user", 212),
       ),
       "",
       "/dev/t02p#editor",
     );
     expect(window.location.search).toBe("");
 
-    calligraphy.scrollTop = 0;
-    traverse(sameDocument(primaryHistoryState("calligraphy", 212)));
+    user.scrollTop = 0;
+    traverse(sameDocument(primaryHistoryState("user", 212)));
     await act(async () => vi.runAllTimers());
-    expect(observedProductShell?.activeDestination).toBe("calligraphy");
-    expect(calligraphy.scrollTop).toBe(212);
+    expect(observedProductShell?.activeDestination).toBe("user");
+    expect(user.scrollTop).toBe(212);
     expect(editorDialog(app.container)).toBeNull();
   });
 
@@ -2241,7 +2251,7 @@ describe("ProductShell", () => {
       observedProductShell?.requestSettings(opener);
     });
     expect(opened).toBe(false);
-    click(buttonByLabel(app.container, "碑刻"));
+    click(buttonByLabel(app.container, "讨论"));
     await act(async () => vi.runAllTimers());
     expect(pushState).not.toHaveBeenCalled();
     expect(observedProductShell?.activeContent).toBeNull();
@@ -2534,11 +2544,7 @@ describe("ProductShell", () => {
     document.body.replaceChildren();
     window.history.replaceState(
       {
-        ...editorHistoryState(
-          { type: "draft", id: draftId },
-          "calligraphy",
-          212,
-        ),
+        ...editorHistoryState({ type: "draft", id: draftId }, "user", 212),
         __artvennDocument: "old-document",
       },
       "",
@@ -2547,7 +2553,7 @@ describe("ProductShell", () => {
     const restored = renderEditorShell();
     await act(async () => vi.runAllTimers());
     expect(restored.editor().target).toEqual({ type: "draft", id: draftId });
-    expect(observedProductShell?.activeDestination).toBe("calligraphy");
+    expect(observedProductShell?.activeDestination).toBe("user");
     expect(window.location.search).toBe("");
 
     for (const [enabled, url] of [

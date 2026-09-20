@@ -1,5 +1,6 @@
 import { registerPhase4DiscoveryTests } from "./phase4-discovery-cases.js";
 import { registerPhase4AuthorTests } from "./phase4-author-cases.js";
+import { registerProfileBackgroundTests } from "./profile-background-cases.js";
 import { registerWorkPublishingContentTests } from "./work-publishing-content-cases.js";
 import { registerWorkPublishingMediaTests } from "./work-publishing-media-cases.js";
 import { readFile } from "node:fs/promises";
@@ -1088,6 +1089,7 @@ describe("community PostgreSQL comments and moderation", () => {
 });
 
 registerPhase4AuthorTests(pool);
+registerProfileBackgroundTests(pool);
 
 registerPhase4DiscoveryTests(pool);
 

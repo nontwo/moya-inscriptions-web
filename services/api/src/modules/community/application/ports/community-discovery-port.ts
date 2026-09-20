@@ -2,6 +2,7 @@ import type {
   AuthorListQuery,
   ContentCard,
   ContentIdentity,
+  ContentState,
   DiscoveryQuery,
   InscriptionFilterOptions,
   MediaId,
@@ -56,9 +57,6 @@ export interface CommunityDiscoveryPort {
     target: ContentIdentity,
     viewer: string | null,
   ): Promise<DiscoveryCardRecord>;
-  state(
-    target: ContentIdentity,
-    actor: string,
-  ): Promise<{ favorite: boolean; liked: boolean }>;
+  state(target: ContentIdentity, actor: string | null): Promise<ContentState>;
   filterOptions(): Promise<InscriptionFilterOptions>;
 }

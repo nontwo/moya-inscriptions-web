@@ -178,11 +178,11 @@ export const CalligraphyCategoryScreen = ({
   }, [activeCategory, updateIndicator]);
 
   useEffect(() => {
-    if (activeDestination !== "calligraphy" || activeCatalogId !== null) {
+    if (activeDestination !== "home" || activeCatalogId !== null) {
       return undefined;
     }
     const destination = rootRef.current?.closest<HTMLElement>(
-      '[data-primary-destination="calligraphy"]',
+      '[data-primary-destination="home"]',
     );
     const scrollTarget: HTMLElement | Window | null =
       platform === "pc" ? window : (destination ?? null);
@@ -207,7 +207,7 @@ export const CalligraphyCategoryScreen = ({
   }, [activeCatalogId, activeDestination, platform, readActiveScrollTop]);
 
   useEffect(() => {
-    if (activeDestination !== "calligraphy" || activeCatalogId !== null) {
+    if (activeDestination !== "home" || activeCatalogId !== null) {
       return undefined;
     }
     const restoreAfterViewportChange = () => {
@@ -254,12 +254,12 @@ export const CalligraphyCategoryScreen = ({
     (category: CalligraphyCategory) => {
       const current = activeCategoryRef.current;
       if (category === current) return;
-      if (activeDestination === "calligraphy") {
+      if (activeDestination === "home") {
         scrollPositionsRef.current[current] = readActiveScrollTop();
       }
       activeCategoryRef.current = category;
       setActiveCategory(category);
-      if (activeDestination === "calligraphy") {
+      if (activeDestination === "home") {
         restoreActiveScrollTop(scrollPositionsRef.current[category]);
       }
     },
@@ -349,12 +349,41 @@ export const CalligraphyCategoryScreen = ({
           rubbing: data.categories.rubbing.state,
         }}
         platform={platform}
-        primaryVisible={activeDestination === "calligraphy"}
+        primaryVisible={activeDestination === "home"}
         readCurrentScrollTop={readActiveScrollTop}
         readSavedCategoryScrollTop={(category) =>
           scrollPositionsRef.current[category]
         }
       />
+    </div>
+  );
+};
+
+/** Calligraphy has one public all-items feed under Home. */
+export const AllCalligraphyFeed = ({
+  data,
+}: {
+  readonly data: CalligraphyCategorySurfaceData;
+}) => {
+  const { feedLayout, platform, openCatalog } = useProductShell();
+  const paging = useCatalogPaging({
+    initialState: data.categories.all,
+    kind: "calligraphy",
+  });
+  return (
+    <div data-calligraphy-all="">
+      {renderCategory(
+        "all",
+        data.categories.all,
+        paging.items,
+        <CatalogPagingControl
+          onLoadNextPage={() => void paging.loadNextPage()}
+          state={paging.requestState}
+        />,
+        feedLayout,
+        platform,
+        openCatalog,
+      )}
     </div>
   );
 };

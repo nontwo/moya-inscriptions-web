@@ -156,6 +156,25 @@ afterEach(() => {
 });
 
 describe("CatalogMediaCarousel", () => {
+  it("moves indicator weights with native drag before the selected image commits", () => {
+    vi.useFakeTimers();
+    const view = renderControlledCarousel();
+    act(() => view.stage.dispatchEvent(touchEvent("touchstart", 1)));
+    view.position(150);
+    const dots = view.container.querySelectorAll<HTMLElement>(
+      "[data-detail-media-dot] > span",
+    );
+    expect(dots[0]!.style.getPropertyValue("--media-dot-size")).toBe("7px");
+    expect(dots[1]!.style.getPropertyValue("--media-dot-size")).toBe("7px");
+    expect(dots[0]!.style.getPropertyValue("--media-dot-weight")).toBe("50%");
+    expect(view.changes).not.toHaveBeenCalled();
+    view.position(225);
+    expect(dots[0]!.style.getPropertyValue("--media-dot-size")).toBe("6.5px");
+    expect(dots[1]!.style.getPropertyValue("--media-dot-size")).toBe("7.5px");
+    act(() => view.stage.dispatchEvent(touchEvent("touchcancel", 0)));
+    expect(dots[0]!.style.getPropertyValue("--media-dot-weight")).toBe("100%");
+  });
+
   it("accepts normal smooth completion without corrective writes", () => {
     vi.useFakeTimers();
     const view = renderControlledCarousel();

@@ -3,15 +3,9 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 const destinationAcceptance = {
-  calligraphy: {
-    label: "书帖",
-    presentation: "calligraphy",
-  },
-  home: { label: "首页", presentation: "home" },
-  inscriptions: {
-    label: "碑刻",
-    presentation: "inscription",
-  },
+  home: { label: "首页" },
+  discussion: { label: "讨论" },
+  user: { label: "用户" },
 } as const;
 
 type AcceptanceDestination = keyof typeof destinationAcceptance;
@@ -80,7 +74,7 @@ const setFeedLayoutThroughSettings = async (
 
 const activeCatalogPresentation = (surface: Locator) =>
   surface.locator(
-    "[data-primary-destination]:not([hidden]) [data-catalog-presentation]",
+    '[data-primary-destination="home"]:not([hidden]) [data-home-feed-panel][aria-hidden="false"] :is([data-catalog-presentation], [data-calligraphy-all])',
   );
 
 const activeHomeSurface = (surface: Locator) =>
@@ -95,21 +89,27 @@ const activeHomeMasonry = (surface: Locator) =>
 
 const activateHomeFeed = async (
   home: Locator,
-  name: "发现" | "附近" | "专题",
+  name: "发现" | "附近" | "碑刻" | "书帖",
 ) => {
-  const feed = { 发现: "discover", 附近: "nearby", 专题: "topics" }[name];
+  const feed = {
+    发现: "discover",
+    附近: "nearby",
+    碑刻: "inscriptions",
+    书帖: "calligraphy",
+  }[name];
   await home
     .getByRole("tab", { name })
     .evaluate((button) => (button as HTMLButtonElement).click());
   await expect(home).toHaveAttribute("data-active-home-feed", feed);
 };
 
-type HomeFeedName = "discover" | "nearby" | "topics";
+type HomeFeedName = "discover" | "nearby" | "inscriptions" | "calligraphy";
 
 const homeFeedIndex: Record<HomeFeedName, number> = {
   discover: 0,
   nearby: 1,
-  topics: 2,
+  inscriptions: 2,
+  calligraphy: 3,
 };
 
 const touchSettleHomeFeed = async (home: Locator, feed: HomeFeedName) => {
@@ -365,15 +365,31 @@ const expectFeedCardGeometry = async ({
   readonly fullSpan: boolean;
   readonly normalCard: Locator;
 }) => {
-  await expect(fullCard).toHaveCSS("column-span", fullSpan ? "all" : "none");
+  if (fullSpan)
+    await expect(fullCard).toHaveAttribute("data-home-masonry-span", "full");
+  else
+    await expect(fullCard).not.toHaveAttribute(
+      "data-home-masonry-span",
+      "full",
+    );
   const [feedBox, fullCardBox, normalCardBox] = await Promise.all([
     requireBoundingBox(feed),
     requireBoundingBox(fullCard),
     requireBoundingBox(normalCard),
   ]);
-  const columnGap = await feed.evaluate((node) =>
-    Number.parseFloat(getComputedStyle(node).columnGap),
-  );
+  const columnGap = await feed
+    .locator('[data-home-masonry-item]:not([data-home-masonry-span="full"])')
+    .evaluateAll((nodes) => {
+      const boxes = nodes
+        .map((node) => node.getBoundingClientRect())
+        .sort((a, b) => a.x - b.x);
+      const left = boxes[0];
+      const right = boxes.find((box) => left && box.x > left.x + 2);
+      if (!left || !right)
+        throw new Error("Expected two populated Masonry columns");
+      return right.x - left.right;
+    });
+  expect(columnGap).toBeGreaterThan(0);
   const expectedColumnWidth =
     (feedBox.width - columnGap * Math.max(0, columnCount - 1)) / columnCount;
 
@@ -384,6 +400,44 @@ const expectFeedCardGeometry = async ({
   } else {
     expect(Math.abs(fullCardBox.width - expectedColumnWidth)).toBeLessThan(2);
   }
+};
+
+const expectAlignedHomeFeatures = async (masonry: Locator) => {
+  await expect(masonry).toHaveAttribute("data-layout-ready", "true");
+  const items = await masonry
+    .locator("[data-home-masonry-item]")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        return {
+          full: node.getAttribute("data-home-masonry-span") === "full",
+          x: box.x,
+          y: box.y,
+          width: box.width,
+          bottom: box.bottom,
+        };
+      }),
+    );
+  const box = await requireBoundingBox(masonry);
+  expect(items.length).toBeGreaterThan(2);
+  expect(items[0]!.full).toBe(true);
+  let leftBottom = 0,
+    rightBottom = 0;
+  for (const [index, item] of items.entries()) {
+    if (item.full) {
+      expect(Math.abs(item.x - box.x)).toBeLessThanOrEqual(2);
+      expect(Math.abs(item.width - box.width)).toBeLessThanOrEqual(2);
+      if (index > 0)
+        expect(Math.abs(leftBottom - rightBottom)).toBeLessThanOrEqual(2);
+      leftBottom = rightBottom = item.bottom;
+    } else if (item.x < box.x + box.width / 4) leftBottom = item.bottom;
+    else rightBottom = item.bottom;
+  }
+  expect(items[1]!.full).toBe(false);
+  expect(items[2]!.full).toBe(false);
+  expect(Math.abs(items[1]!.x - items[2]!.x)).toBeGreaterThan(
+    items[1]!.width / 2,
+  );
 };
 
 const expectCatalogCardsNotToOverlap = async (feed: Locator) => {
@@ -515,15 +569,19 @@ const expectActiveDestination = async (
     if (active) {
       await expect(section).not.toHaveAttribute("hidden", "");
       await expect(section).toBeVisible();
-      const panel = section.locator(`[data-product-panel="${candidate}"]`);
-      await expect(panel).toBeVisible();
       if (candidate === "home") {
-        await expect(panel.locator("[data-home-surface]")).toBeVisible();
+        await expect(
+          section.locator('[data-product-panel="home"] [data-home-surface]'),
+        ).toBeVisible();
+      } else if (candidate === "discussion") {
+        await expect(
+          section.locator(
+            '[data-product-panel="discussion"] [data-discussion-surface]',
+          ),
+        ).toBeVisible();
       } else {
         await expect(
-          panel.locator(
-            `[data-catalog-presentation="${destinationAcceptance[candidate].presentation}"]`,
-          ),
+          section.getByRole("heading", { name: "用户", exact: true }),
         ).toBeVisible();
       }
     } else {
@@ -531,6 +589,39 @@ const expectActiveDestination = async (
       await expect(section).toBeHidden();
     }
   }
+};
+
+const expectActiveHomeFeed = async (surface: Locator, feed: HomeFeedName) => {
+  await expectActiveDestination(surface, "home");
+  await expect(activeHomeSurface(surface)).toHaveAttribute(
+    "data-active-home-feed",
+    feed,
+  );
+  await expect(
+    activeHomeSurface(surface).locator(`[data-home-feed-panel="${feed}"]`),
+  ).toHaveAttribute("aria-hidden", "false");
+};
+const activeDiscussionSurface = (surface: Locator) =>
+  surface.locator(
+    '[data-primary-destination="discussion"]:not([hidden]) [data-discussion-surface]',
+  );
+const openDiscussionTopics = async (surface: Locator) => {
+  await surface
+    .getByRole("navigation", { name: "主要内容" })
+    .getByRole("button", { name: "讨论", exact: true })
+    .click();
+  await expectActiveDestination(surface, "discussion");
+  const discussion = activeDiscussionSurface(surface);
+  await discussion.getByRole("tab", { name: "专题", exact: true }).click();
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
+  await expect(discussion.locator("#discussion-panel-topics")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+  return discussion;
 };
 
 const pagerAction = (surface: Locator, action: "previous" | "next") =>
@@ -633,7 +724,11 @@ const writePrimaryScroll = async (
           ? section.querySelector<HTMLElement>(
               '[data-home-feed-panel][aria-hidden="false"]',
             )
-          : section;
+          : input.destination === "discussion"
+            ? section.querySelector<HTMLElement>(
+                '[role="tabpanel"][aria-hidden="false"]',
+              )
+            : section;
       if (scrollElement === null) throw new Error("Missing scroll element");
       scrollElement.scrollTop = input.top;
       return scrollElement.scrollTop;
@@ -658,7 +753,11 @@ const readPrimaryScroll = async (
       ? (section.querySelector<HTMLElement>(
           '[data-home-feed-panel][aria-hidden="false"]',
         )?.scrollTop ?? 0)
-      : section.scrollTop;
+      : targetDestination === "discussion"
+        ? (section.querySelector<HTMLElement>(
+            '[role="tabpanel"][aria-hidden="false"]',
+          )?.scrollTop ?? 0)
+        : section.scrollTop;
   }, destination);
 
 const confirmMouseNavigationReady = async (
@@ -668,12 +767,12 @@ const confirmMouseNavigationReady = async (
   await expect
     .poll(async () => {
       await navigation
-        .getByRole("button", { exact: true, name: "碑刻" })
+        .getByRole("button", { exact: true, name: "讨论" })
         .click();
       return productShell(surface).getAttribute("data-active-destination");
     })
-    .toBe("inscriptions");
-  await expectActiveDestination(surface, "inscriptions");
+    .toBe("discussion");
+  await expectActiveDestination(surface, "discussion");
   await expect
     .poll(async () => {
       await navigation
@@ -740,20 +839,13 @@ test("Clean Product Preview preserves shell state, scroll, and preferences set t
 
   const homeScroll = await writePrimaryScroll(shell, "home", 180);
   expect(homeScroll).toBeGreaterThanOrEqual(0);
-  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
-  await expect(shell).toHaveAttribute(
-    "data-active-destination",
-    "inscriptions",
-  );
-  const inscriptionsScroll = await writePrimaryScroll(
-    shell,
-    "inscriptions",
-    130,
-  );
-  expect(inscriptionsScroll).toBeGreaterThanOrEqual(0);
-  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
-  await expect(shell).toHaveAttribute("data-active-destination", "calligraphy");
-  await writePrimaryScroll(shell, "calligraphy", 60);
+  await navigation.getByRole("button", { exact: true, name: "讨论" }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "discussion");
+  const discussionScroll = await writePrimaryScroll(shell, "discussion", 130);
+  expect(discussionScroll).toBeGreaterThanOrEqual(0);
+  await navigation.getByRole("button", { exact: true, name: "用户" }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "user");
+  await writePrimaryScroll(shell, "user", 60);
   await navigation.getByRole("button", { exact: true, name: "首页" }).click();
   await expect(shell).toHaveAttribute("data-active-destination", "home");
   await expect
@@ -802,7 +894,9 @@ test("MIG-D1 opens one runtime Detail architecture from Home, Inscriptions, and 
 
   const openAndReturn = async (catalogId: string, title: string) => {
     const opener = shell
-      .locator("[data-primary-destination]:not([hidden])")
+      .locator(
+        '[data-primary-destination="home"] [data-home-feed-panel][aria-hidden="false"]',
+      )
       .locator(`[data-catalog-id="${catalogId}"] [data-open-catalog]`);
     await opener.click();
     await expect(detail).toBeVisible();
@@ -827,15 +921,12 @@ test("MIG-D1 opens one runtime Detail architecture from Home, Inscriptions, and 
 
   await openAndReturn("runtime-inscription-no-media", "运行时无图碑刻");
   await ensurePrimaryNavigationExpanded(navigation);
-  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
-  await expect(shell).toHaveAttribute(
-    "data-active-destination",
-    "inscriptions",
-  );
+  await activateHomeFeed(activeHomeSurface(preview), "碑刻");
+  await expectActiveHomeFeed(preview, "inscriptions");
   await openAndReturn("runtime-inscription-multi-media", "运行时多图碑刻");
   await ensurePrimaryNavigationExpanded(navigation);
-  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
-  await expect(shell).toHaveAttribute("data-active-destination", "calligraphy");
+  await activateHomeFeed(activeHomeSurface(preview), "书帖");
+  await expectActiveHomeFeed(preview, "calligraphy");
   await openAndReturn("runtime-calligraphy", "运行时书帖");
 
   await expect(shell.locator("[data-detail-experience]")).toHaveCount(0);
@@ -1093,7 +1184,7 @@ test("Development QA Harness observes the shared Product Shell without owning it
   ).toHaveCount(3);
   await expect(
     navigation.locator(
-      '[data-primary-navigation-destination="upload"], [data-primary-navigation-destination="profile"], [data-primary-navigation-destination="user"]',
+      '[data-primary-navigation-destination="upload"], [data-primary-navigation-destination="profile"]',
     ),
   ).toHaveCount(0);
   await expect(
@@ -1105,38 +1196,55 @@ test("Development QA Harness observes the shared Product Shell without owning it
   await expect(surface).toHaveAttribute("data-catalog-scenario", "visual");
   await expectActiveDestination(surface, "home");
   await expect(
-    activeHomeSurface(surface).locator("[data-catalog-card]"),
+    activeHomeSurface(surface).locator(
+      '[data-home-feed-panel="discover"] [data-catalog-card]',
+    ),
   ).toHaveCount(24);
   await expect(pagerAction(surface, "previous")).toBeDisabled();
+  for (const [label, feed] of [
+    ["碑刻", "inscriptions"],
+    ["书帖", "calligraphy"],
+  ] as const) {
+    await activateHomeFeed(activeHomeSurface(surface), label);
+    await expectActiveHomeFeed(surface, feed);
+    await expect(
+      activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+    ).toHaveCount(12);
+  }
+  await activateHomeFeed(activeHomeSurface(surface), "发现");
 
   await expect
     .poll(async () => {
       await navigation
-        .getByRole("button", { name: "碑刻", exact: true })
+        .getByRole("button", { name: "讨论", exact: true })
         .click();
       return productShell(surface).getAttribute("data-active-destination");
     })
-    .toBe("inscriptions");
-  await expectActiveDestination(surface, "inscriptions");
-  await expect(
-    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
-  ).toHaveCount(12);
+    .toBe("discussion");
+  await expectActiveDestination(surface, "discussion");
+  await expect(activeDiscussionSurface(surface).getByRole("tab")).toHaveText([
+    "近闻",
+    "话题",
+    "专题",
+  ]);
 
-  await navigation.getByRole("button", { name: "书帖", exact: true }).click();
-  await expectActiveDestination(surface, "calligraphy");
+  await navigation.getByRole("button", { name: "用户", exact: true }).click();
+  await expectActiveDestination(surface, "user");
   await expect(
-    activeCatalogPresentation(surface).locator("[data-catalog-card]"),
-  ).toHaveCount(12);
+    surface
+      .locator('[data-primary-destination="user"]')
+      .getByText("登录后查看个人主页。"),
+  ).toBeVisible();
   await expect(pagerAction(surface, "next")).toBeDisabled();
 
   await activatePagerAction(surface, "previous");
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
   await activatePagerAction(surface, "previous");
   await expectActiveDestination(surface, "home");
   await expect(pagerAction(surface, "previous")).toBeDisabled();
 
   await activatePagerAction(surface, "next");
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
 
   const qaPlatformSelector = platformSelector(surface);
   await expect(qaPlatformSelector).toHaveValue("auto");
@@ -1147,26 +1255,26 @@ test("Development QA Harness observes the shared Product Shell without owning it
   await qaPlatformSelector.selectOption("phone");
   await expectPresentationPlatform(surface, "phone");
   await expect(navigation).toBeVisible();
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
 
   await qaPlatformSelector.selectOption("tablet");
   await expectPresentationPlatform(surface, "tablet");
   await expect(navigation).toBeVisible();
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
 
   await qaPlatformSelector.selectOption("pc");
   await expectPresentationPlatform(surface, "pc");
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
 
   await qaPlatformSelector.selectOption("auto");
   await expectPresentationPlatform(
     surface,
     expectedInitialAutoPlatform(testInfo.project.name),
   );
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
 });
 
-test("Home tabs remain internal to Home and expose the bounded R03 feeds", async ({
+test("Home tabs remain internal to Home and expose the four R2 feeds", async ({
   page,
 }) => {
   const { surface } = await openDevelopmentSurface(page);
@@ -1175,12 +1283,12 @@ test("Home tabs remain internal to Home and expose the bounded R03 feeds", async
   const urlBefore = page.url();
   const tabs = home.getByRole("tab");
 
-  await expect(tabs).toHaveCount(3);
-  await expect(tabs).toHaveText(["发现", "附近", "专题"]);
+  await expect(tabs).toHaveCount(4);
+  await expect(tabs).toHaveText(["发现", "附近", "碑刻", "书帖"]);
   await expect(home.locator('[role="tab"][aria-selected="true"]')).toHaveCount(
     1,
   );
-  await expect(home.locator('[role="tabpanel"]')).toHaveCount(3);
+  await expect(home.locator('[role="tabpanel"]')).toHaveCount(4);
 
   await activateHomeFeed(home, "附近");
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
@@ -1194,11 +1302,20 @@ test("Home tabs remain internal to Home and expose the bounded R03 feeds", async
   await expect(shell).toHaveAttribute("data-active-destination", "home");
   expect(page.url()).toBe(urlBefore);
 
-  await activateHomeFeed(home, "专题");
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
-  await expect(home.locator("[data-topic-card]")).toHaveCount(7);
-  await expect(shell).toHaveAttribute("data-active-destination", "home");
-  expect(page.url()).toBe(urlBefore);
+  for (const [label, feed] of [
+    ["碑刻", "inscriptions"],
+    ["书帖", "calligraphy"],
+  ] as const) {
+    await activateHomeFeed(home, label);
+    await expectActiveHomeFeed(surface, feed);
+    await expect(
+      activeCatalogPresentation(surface).locator("[data-catalog-card]"),
+    ).toHaveCount(12);
+    expect(page.url()).toBe(urlBefore);
+  }
+  await expect(home.locator("[data-topic-card]")).toHaveCount(0);
+  const discussion = await openDiscussionTopics(surface);
+  await expect(discussion.locator("[data-topic-card]")).toHaveCount(7);
 });
 
 test("Home pager follows touch progress and hands interaction over on release", async ({
@@ -1213,7 +1330,7 @@ test("Home pager follows touch progress and hands interaction over on release", 
   const pager = home.locator("[data-home-feed-pager]");
   const discover = home.locator('[data-home-feed-panel="discover"]');
   const nearby = home.locator('[data-home-feed-panel="nearby"]');
-  const indicator = home.locator("[data-home-feed-indicator]");
+  const indicator = home.locator("[data-top-tab-indicator]");
 
   await expect(pager).toHaveAttribute("data-category-pager-engine", "embla");
   await expect(pager).toHaveCSS("scroll-snap-type", "none");
@@ -1221,7 +1338,7 @@ test("Home pager follows touch progress and hands interaction over on release", 
   await expect(pager).toHaveCSS("touch-action", "pan-y pinch-zoom");
   await expect(nearby).not.toHaveAttribute("hidden", "");
   await expect(
-    home.locator('[data-home-feed-panel="topics"]'),
+    home.locator('[data-home-feed-panel="calligraphy"]'),
   ).not.toHaveAttribute("hidden", "");
   const sourceHeight = await pager.evaluate(
     (node) => (node as HTMLElement).style.height,
@@ -1255,9 +1372,31 @@ test("Home pager follows touch progress and hands interaction over on release", 
   await expect(pager).toHaveAttribute("data-home-pager-scrolling", "true");
   await expect
     .poll(async () =>
-      Number(await indicator.getAttribute("data-home-feed-progress")),
+      home
+        .getByRole("tab", { name: "附近", exact: true })
+        .evaluate((node) =>
+          Number(
+            (node as HTMLElement).style.getPropertyValue(
+              "--top-tab-activation",
+            ),
+          ),
+        ),
     )
     .toBeCloseTo(0.5, 1);
+  await expect
+    .poll(async () => {
+      const [line, first, second] = await Promise.all([
+        requireBoundingBox(indicator),
+        requireBoundingBox(
+          home.getByRole("tab", { name: "发现", exact: true }),
+        ),
+        requireBoundingBox(
+          home.getByRole("tab", { name: "附近", exact: true }),
+        ),
+      ]);
+      return Math.abs(line.x - (first.x + second.x) / 2);
+    })
+    .toBeLessThanOrEqual(2);
   expect(
     await pager.evaluate((node) => (node as HTMLElement).style.height),
   ).toBe(sourceHeight);
@@ -1361,7 +1500,7 @@ test("Home touch release commits once without post-release programmatic drift", 
     });
   });
 
-  const feeds = ["discover", "nearby", "topics"] as const;
+  const feeds = ["discover", "nearby", "inscriptions", "calligraphy"] as const;
   const expectSettledFeed = async (feed: (typeof feeds)[number]) => {
     // Confirm the full visual tail before and after the short out-and-back
     // gesture; the preceding 30 releases intentionally exercise interruption.
@@ -1399,7 +1538,7 @@ test("Home touch release commits once without post-release programmatic drift", 
   let currentIndex = 0;
   for (let iteration = 0; iteration < 30; iteration += 1) {
     const direction =
-      currentIndex === 0 ? 1 : currentIndex === 2 ? -1 : iteration % 2 ? -1 : 1;
+      Math.floor(iteration / (feeds.length - 1)) % 2 === 0 ? 1 : -1;
     const targetIndex = currentIndex + direction;
     const targetFeed = feeds[targetIndex];
     if (targetFeed === undefined) throw new Error("Missing Home feed target");
@@ -1617,7 +1756,12 @@ test("Home PC feeds keep document scroll restoration without nested scrollers", 
   const { surface } = await openDevelopmentSurface(page);
   const shell = productShell(surface);
   const home = activeHomeSurface(surface);
-  for (const feed of ["discover", "nearby", "topics"] as const) {
+  for (const feed of [
+    "discover",
+    "nearby",
+    "inscriptions",
+    "calligraphy",
+  ] as const) {
     const panel = home.locator(`[data-home-feed-panel="${feed}"]`);
     await expect(panel).toHaveCSS("overflow-y", "visible");
     await expect(panel).not.toHaveAttribute(
@@ -1642,7 +1786,7 @@ test("Home PC feeds keep document scroll restoration without nested scrollers", 
   await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(nearbyTop);
 });
 
-test("Home preserves independent Discover, Nearby, and Topics scroll positions", async ({
+test("Home preserves independent Discover, Nearby, and Calligraphy scroll positions", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -1654,8 +1798,8 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   const home = activeHomeSurface(surface);
   const outerHome = shell.locator('[data-primary-destination="home"]');
   const pager = home.locator("[data-home-feed-pager]");
-  const feeds = ["discover", "nearby", "topics"] as const;
-  const desired = { discover: 900, nearby: 350, topics: 900 } as const;
+  const feeds = ["discover", "nearby", "calligraphy"] as const;
+  const desired = { discover: 900, nearby: 350, calligraphy: 900 } as const;
 
   for (const feed of feeds) {
     const panel = home.locator(`[data-home-feed-panel="${feed}"]`);
@@ -1672,11 +1816,15 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   const saved = {
     discover: await writeHomePanelScroll(home, "discover", desired.discover),
     nearby: await writeHomePanelScroll(home, "nearby", desired.nearby),
-    topics: await writeHomePanelScroll(home, "topics", desired.topics),
+    calligraphy: await writeHomePanelScroll(
+      home,
+      "calligraphy",
+      desired.calligraphy,
+    ),
   };
   expect(saved.discover).toBeGreaterThan(0);
   expect(saved.nearby).toBeGreaterThan(0);
-  expect(saved.topics).toBeGreaterThan(0);
+  expect(saved.calligraphy).toBeGreaterThan(0);
   expect(await pager.evaluate((node) => (node as HTMLElement).scrollLeft)).toBe(
     0,
   );
@@ -1684,7 +1832,7 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   const baseline = {
     discover: await settleHomeFeedAndReadStableEvidence(home, "discover"),
     nearby: await settleHomeFeedAndReadStableEvidence(home, "nearby"),
-    topics: await settleHomeFeedAndReadStableEvidence(home, "topics"),
+    calligraphy: await settleHomeFeedAndReadStableEvidence(home, "calligraphy"),
   };
   await touchSettleHomeFeed(home, "discover");
 
@@ -1737,7 +1885,12 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   });
   await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
 
-  for (const feed of ["topics", "nearby", "discover", "topics"] as const) {
+  for (const feed of [
+    "calligraphy",
+    "nearby",
+    "discover",
+    "calligraphy",
+  ] as const) {
     await touchSettleHomeFeed(home, feed);
     await expect
       .poll(() =>
@@ -1749,7 +1902,7 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
   const beforeRebound = {
     discover: (await readHomePanelEvidence(home, "discover")).scrollTop,
     nearby: (await readHomePanelEvidence(home, "nearby")).scrollTop,
-    topics: (await readHomePanelEvidence(home, "topics")).scrollTop,
+    calligraphy: (await readHomePanelEvidence(home, "calligraphy")).scrollTop,
   };
   await pager.evaluate((node) => {
     const frame = node as HTMLElement;
@@ -1776,38 +1929,40 @@ test("Home preserves independent Discover, Nearby, and Topics scroll positions",
       frame.dispatchEvent(event);
     }
   });
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(home).toHaveAttribute("data-active-home-feed", "calligraphy");
   expect({
     discover: (await readHomePanelEvidence(home, "discover")).scrollTop,
     nearby: (await readHomePanelEvidence(home, "nearby")).scrollTop,
-    topics: (await readHomePanelEvidence(home, "topics")).scrollTop,
+    calligraphy: (await readHomePanelEvidence(home, "calligraphy")).scrollTop,
   }).toEqual(beforeRebound);
 
   const { settings, userPage } =
     await openSettingsThroughAvailableEntry(surface);
   await closeSettingsAndUserPage(settings, userPage);
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
-  expect((await readHomePanelEvidence(home, "topics")).scrollTop).toBe(
-    saved.topics,
+  await expect(home).toHaveAttribute("data-active-home-feed", "calligraphy");
+  expect((await readHomePanelEvidence(home, "calligraphy")).scrollTop).toBe(
+    saved.calligraphy,
   );
 
   const navigation = surface.getByRole("navigation", { name: "主要内容" });
   await ensurePrimaryNavigationExpanded(navigation);
-  await navigation.getByRole("button", { name: "碑刻", exact: true }).click();
-  await expectActiveDestination(surface, "inscriptions");
+  await navigation.getByRole("button", { name: "讨论", exact: true }).click();
+  await expectActiveDestination(surface, "discussion");
   await navigation.getByRole("button", { name: "首页", exact: true }).click();
   await expectActiveDestination(surface, "home");
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(home).toHaveAttribute("data-active-home-feed", "calligraphy");
   await expect
     .poll(() =>
-      readHomePanelEvidence(home, "topics").then((state) => state.scrollTop),
+      readHomePanelEvidence(home, "calligraphy").then(
+        (state) => state.scrollTop,
+      ),
     )
-    .toBe(saved.topics);
+    .toBe(saved.calligraphy);
 
   const finalEvidence = {
     discover: await settleHomeFeedAndReadStableEvidence(home, "discover"),
     nearby: await settleHomeFeedAndReadStableEvidence(home, "nearby"),
-    topics: await settleHomeFeedAndReadStableEvidence(home, "topics"),
+    calligraphy: await settleHomeFeedAndReadStableEvidence(home, "calligraphy"),
   };
   for (const feed of feeds) {
     const masonryHeightDelta = Math.abs(
@@ -1850,10 +2005,13 @@ test("Topic Detail is a Product overlay with stable navigation, history, and foc
 }) => {
   const { surface } = await openDevelopmentSurface(page);
   await homeScenarioSelector(surface).selectOption("topics-editorial");
-  const home = activeHomeSurface(surface);
+  const discussion = await openDiscussionTopics(surface);
   const navigationNode = surface.locator("[data-primary-navigation]");
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
-  const opener = home.locator("[data-topic-card]").first();
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
+  const opener = discussion.locator("[data-topic-card]").first();
   await navigationNode.evaluate((node) => {
     (node as HTMLElement).dataset.r03Identity = "stable";
   });
@@ -1873,7 +2031,10 @@ test("Topic Detail is a Product overlay with stable navigation, history, and foc
 
   await detail.getByRole("button", { name: "返回专题" }).click();
   await expect(detail).toHaveCount(0);
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
   await expect(opener).toBeFocused();
   await expect(navigationNode).toHaveAttribute("data-r03-identity", "stable");
 
@@ -1890,22 +2051,23 @@ test("Topic Detail reload and Back preserve the recorded Topics source scroll", 
     testInfo.project.name !== "mobile-webkit",
     "The reload-to-Back scroll regression runs once in iPhone WebKit.",
   );
-  const response = await page.goto(
-    "/dev/t02p/qa?scenario=topics-editorial&feed=topics",
-  );
+  const response = await page.goto("/dev/t02p/qa?scenario=topics-editorial");
   expect(response?.status()).toBe(200);
   const surface = page.locator("[data-t02p-qa-harness]");
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
   const shell = productShell(surface);
-  const home = activeHomeSurface(surface);
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  const discussion = await openDiscussionTopics(surface);
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
   await expect(
-    home.locator('[data-home-feed-panel="topics"] [data-home-masonry]'),
+    discussion.locator("#discussion-panel-topics [data-home-masonry]"),
   ).toHaveAttribute("data-layout-ready", "true");
-  const sourceTop = await writePrimaryScroll(shell, "home", 180);
+  const sourceTop = await writePrimaryScroll(shell, "discussion", 180);
   expect(sourceTop).toBeGreaterThan(0);
 
-  await home
+  await discussion
     .locator("[data-topic-card]")
     .first()
     .evaluate((button) => (button as HTMLButtonElement).click());
@@ -1913,7 +2075,7 @@ test("Topic Detail reload and Back preserve the recorded Topics source scroll", 
   await page.reload();
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
   await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
-  const restoredOpener = activeHomeSurface(surface)
+  const restoredOpener = activeDiscussionSurface(surface)
     .locator("[data-topic-card]")
     .first();
   expect(await page.evaluate(() => window.history.state?.sourceScrollTop)).toBe(
@@ -1925,7 +2087,9 @@ test("Topic Detail reload and Back preserve the recorded Topics source scroll", 
   expect(await page.evaluate(() => window.history.state?.scrollTop)).toBe(
     sourceTop,
   );
-  await expect.poll(() => readPrimaryScroll(shell, "home")).toBe(sourceTop);
+  await expect
+    .poll(() => readPrimaryScroll(shell, "discussion"))
+    .toBe(sourceTop);
   await expect(restoredOpener).toBeFocused();
 });
 
@@ -1937,22 +2101,24 @@ test("Topic Back preserves Topics and Product Shell identity in Clean Preview", 
     "The Clean Preview history-identity regression runs once in iPhone WebKit.",
   );
   const { surface } = await openCleanProductSurface(page);
-  const home = activeHomeSurface(surface);
+  const discussion = await openDiscussionTopics(surface);
   const navigation = surface.locator("[data-primary-navigation]");
   await navigation.evaluate((node) => {
     (node as HTMLElement).dataset.r03TopicIdentity = "stable";
   });
-  await activateHomeFeed(home, "专题");
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
-  await home.locator("[data-topic-card]").first().click();
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
+  await discussion.locator("[data-topic-card]").first().click();
   const shell = productShell(surface);
   await expect(shell.getByRole("dialog", { name: /专题：/ })).toBeVisible();
 
   await page.goBack();
   await expect(shell.getByRole("dialog", { name: /专题：/ })).toHaveCount(0);
   await expect(navigation).toHaveAttribute("data-r03-topic-identity", "stable");
-  await expect(activeHomeSurface(surface)).toHaveAttribute(
-    "data-active-home-feed",
+  await expect(activeDiscussionSurface(surface)).toHaveAttribute(
+    "data-active-discussion-feed",
     "topics",
   );
   await expect(page).toHaveURL(/\?acceptance=r01-clean$/u);
@@ -1966,14 +2132,17 @@ test("Catalog Collection Topic resolves Catalog summaries without a fake Detail 
     "The collection content audit runs once in Desktop Chromium.",
   );
   const response = await page.goto(
-    "/dev/t02p/qa?scenario=topics-catalog-collection&feed=topics",
+    "/dev/t02p/qa?scenario=topics-catalog-collection",
   );
   expect(response?.status()).toBe(200);
   const surface = page.locator("[data-t02p-qa-harness]");
   await expect(surface.locator("[data-product-boot]")).toHaveCount(0);
-  const home = activeHomeSurface(surface);
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
-  await home
+  const discussion = await openDiscussionTopics(surface);
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
+  await discussion
     .locator("[data-topic-card]")
     .evaluate((button) => (button as HTMLButtonElement).click());
   const detail = productShell(surface).getByRole("dialog", { name: /专题：/ });
@@ -1992,7 +2161,9 @@ test("Visual Catalog covers valid, absent, and failed media with long-scroll nav
 
   const { navigation, surface } = await openDevelopmentSurface(page);
   const home = activeHomeSurface(surface);
-  const cards = home.locator("[data-catalog-card]");
+  const cards = home.locator(
+    '[data-home-feed-panel="discover"] [data-catalog-card]',
+  );
   await expect(catalogScenarioSelector(surface)).toHaveValue("visual");
   await expect(cards).toHaveCount(24);
 
@@ -2000,19 +2171,35 @@ test("Visual Catalog covers valid, absent, and failed media with long-scroll nav
     await cards.nth(index).scrollIntoViewIfNeeded();
   }
 
-  await expect(home.locator('[data-catalog-media-state="failed"]')).toHaveCount(
-    1,
-  );
   await expect(
-    home.locator('[data-catalog-media-state="missing"]'),
+    home.locator(
+      '[data-home-feed-panel="discover"] [data-catalog-media-state="failed"]',
+    ),
+  ).toHaveCount(1);
+  await expect(
+    home.locator(
+      '[data-home-feed-panel="discover"] [data-catalog-media-state="missing"]',
+    ),
   ).toHaveCount(6);
-  await expect(home.locator('[data-catalog-media-state="valid"]')).toHaveCount(
-    17,
-  );
-  await expect(home.getByText("图像无法加载", { exact: true })).toHaveCount(1);
-  await expect(home.getByText("暂无公开图像", { exact: true })).toHaveCount(6);
+  await expect(
+    home.locator(
+      '[data-home-feed-panel="discover"] [data-catalog-media-state="valid"]',
+    ),
+  ).toHaveCount(17);
+  await expect(
+    home
+      .locator('[data-home-feed-panel="discover"]')
+      .getByText("图像无法加载", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    home
+      .locator('[data-home-feed-panel="discover"]')
+      .getByText("暂无公开图像", { exact: true }),
+  ).toHaveCount(6);
 
-  const validImages = home.locator('[data-catalog-media-state="valid"] img');
+  const validImages = home.locator(
+    '[data-home-feed-panel="discover"] [data-catalog-media-state="valid"] img',
+  );
   await expect(validImages).toHaveCount(17);
   expect(
     await validImages.evaluateAll((images) =>
@@ -2060,12 +2247,12 @@ test("Catalog scenario selector maps every state without changing destination", 
     "The complete scenario matrix runs once in Desktop Chromium.",
   );
 
-  const { navigation, surface } = await openDevelopmentSurface(page);
+  const { surface } = await openDevelopmentSurface(page);
   const selector = catalogScenarioSelector(surface);
 
   await selector.selectOption("small-populated");
-  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
-  await expectActiveDestination(surface, "inscriptions");
+  await activateHomeFeed(activeHomeSurface(surface), "碑刻");
+  await expectActiveHomeFeed(surface, "inscriptions");
   const smallPopulatedImage = activeCatalogPresentation(surface).locator(
     '[data-catalog-media-state="valid"] img',
   );
@@ -2089,14 +2276,14 @@ test("Catalog scenario selector maps every state without changing destination", 
     "/docs/design-system/assets/demo/rubbing-fragment.svg",
   );
 
-  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
-  await expectActiveDestination(surface, "calligraphy");
+  await activateHomeFeed(activeHomeSurface(surface), "书帖");
+  await expectActiveHomeFeed(surface, "calligraphy");
 
   await expect(surface).toHaveAttribute(
     "data-catalog-scenario",
     "small-populated",
   );
-  await expectActiveDestination(surface, "calligraphy");
+  await expectActiveHomeFeed(surface, "calligraphy");
   await expect(
     activeCatalogPresentation(surface).locator("[data-catalog-card]"),
   ).toHaveCount(1);
@@ -2108,11 +2295,12 @@ test("Catalog scenario selector maps every state without changing destination", 
   ] as const) {
     await selector.selectOption(scenario);
     await expect(surface).toHaveAttribute("data-catalog-scenario", scenario);
-    await expectActiveDestination(surface, "calligraphy");
-    await expect(activeCatalogPresentation(surface)).toHaveAttribute(
-      "data-catalog-presentation-state",
-      state,
-    );
+    await expectActiveHomeFeed(surface, "calligraphy");
+    await expect(
+      activeCatalogPresentation(surface).locator(
+        "[data-calligraphy-category-state]",
+      ),
+    ).toHaveAttribute("data-calligraphy-category-state", state);
     await expect(
       activeCatalogPresentation(surface).getByText(text),
     ).toBeVisible();
@@ -2148,9 +2336,7 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
 
   await expect(masonry).toHaveAttribute("data-masonry-columns", "2");
   await expectActiveDestination(surface, "home");
-  await expect(masonry.locator('[data-home-masonry-span="full"]')).toHaveCount(
-    2,
-  );
+  await expectAlignedHomeFeatures(masonry);
 
   await setFeedLayoutThroughSettings(surface, "single");
   await expect(masonry).toHaveAttribute("data-masonry-columns", "1");
@@ -2165,7 +2351,7 @@ test("Feed layout remains bounded to phone/tablet while PC stays responsive", as
   expect(Math.abs(masonryBox.width - firstItemBox.width)).toBeLessThan(2);
 });
 
-test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct full-width rhythm", async ({
+test("Tablet Double gives Home aligned features and Calligraphy cards stable geometry", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -2186,46 +2372,27 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
   const homeFeed = activeHomeMasonry(surface);
   await expect(homeFeed).toHaveAttribute("data-layout-ready", "true");
   await expect(homeFeed).toHaveAttribute("data-masonry-columns", "2");
-  const homeUltraWideCard = home.locator(
+  const homeUltraWideCard = homeFeed.locator(
     '[data-catalog-id="qa-visual-inscription-04"]',
   );
   const homeUltraWide = masonryItemContaining(
     homeFeed,
     '[data-catalog-id="qa-visual-inscription-04"]',
   );
-  await expect(homeFeed.locator('[data-home-masonry-span="full"]')).toHaveCount(
-    2,
-  );
-  await expect(homeUltraWide).toHaveAttribute("data-home-masonry-span", "full");
-  const [homeFeedBox, homeUltraWideBox] = await Promise.all([
-    requireBoundingBox(homeFeed),
-    requireBoundingBox(homeUltraWide),
-  ]);
-  expect(Math.abs(homeFeedBox.x - homeUltraWideBox.x)).toBeLessThan(2);
-  expect(Math.abs(homeFeedBox.width - homeUltraWideBox.width)).toBeLessThan(2);
-
-  const beforeSpan = home.locator(
-    '[data-catalog-id="qa-visual-calligraphy-03"]',
-  );
-  const afterSpanLeft = home.locator(
-    '[data-catalog-id="qa-visual-calligraphy-04"]',
-  );
-  const afterSpanRight = home.locator(
-    '[data-catalog-id="qa-visual-inscription-05"]',
-  );
-  await expect(beforeSpan).toBeVisible();
-  await expect(afterSpanLeft).toBeVisible();
-  await expect(afterSpanRight).toBeVisible();
-  const [afterSpanLeftBox, afterSpanRightBox] = await Promise.all([
-    requireBoundingBox(afterSpanLeft),
-    requireBoundingBox(afterSpanRight),
-  ]);
-  expect(Math.abs(afterSpanLeftBox.x - afterSpanRightBox.x)).toBeGreaterThan(
-    afterSpanLeftBox.width / 2,
-  );
+  await expectAlignedHomeFeatures(homeFeed);
+  const beforeFailure = await requireBoundingBox(homeUltraWide);
+  const image = homeUltraWideCard.locator("img");
+  await expect(image).toHaveCSS("object-fit", "cover");
+  const imageBox = await requireBoundingBox(image);
+  expect(imageBox.width / imageBox.height).toBeLessThanOrEqual(1.8);
 
   await homeUltraWideCard.locator("img").dispatchEvent("error");
-  await expect(homeUltraWide).toHaveAttribute("data-home-masonry-span", "full");
+  expect(
+    Math.abs(
+      (await requireBoundingBox(homeUltraWide)).width - beforeFailure.width,
+    ),
+  ).toBeLessThanOrEqual(2);
+  await expectAlignedHomeFeatures(homeFeed);
   await expect(
     homeUltraWideCard.locator('[data-catalog-media-state="failed"]'),
   ).toBeVisible();
@@ -2233,41 +2400,54 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
   await expectNoHorizontalOverflow(page);
   await expectFeedToClearNavigation({ feed: homeFeed, navigation, page });
 
-  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
-  await expectActiveDestination(surface, "calligraphy");
+  await activateHomeFeed(activeHomeSurface(surface), "书帖");
+  await expectActiveHomeFeed(surface, "calligraphy");
   await page.setViewportSize({ height: 834, width: 1194 });
   await expect(platformSelector(surface)).toHaveValue("auto");
   await expectPresentationPlatform(surface, "tablet");
-  await expectActiveDestination(surface, "calligraphy");
+  await expectActiveHomeFeed(surface, "calligraphy");
 
   const calligraphy = activeCatalogPresentation(surface);
-  const calligraphyFeed = calligraphy.locator('[data-feed-layout="double"]');
+  const calligraphyFeed = calligraphy.locator("[data-home-masonry]");
+  await expect(calligraphyFeed).toHaveAttribute("data-layout-ready", "true");
   await expect(
     calligraphy.locator('[data-catalog-feed-span="full"]'),
   ).toHaveCount(1);
   await expectFeedCardGeometry({
     columnCount: 2,
     feed: calligraphyFeed,
-    fullCard: calligraphy.locator(
+    fullCard: masonryItemContaining(
+      calligraphyFeed,
       '[data-catalog-id="qa-visual-calligraphy-05"]',
     ),
-    fullSpan: true,
-    normalCard: calligraphy.locator(
+    fullSpan:
+      (await masonryItemContaining(
+        calligraphyFeed,
+        '[data-catalog-id="qa-visual-calligraphy-05"]',
+      ).getAttribute("data-home-masonry-span")) === "full",
+    normalCard: masonryItemContaining(
+      calligraphyFeed,
       '[data-catalog-id="qa-visual-calligraphy-01"]',
     ),
   });
+  const calligraphyPanorama = calligraphy.locator(
+    '[data-catalog-id="qa-visual-calligraphy-05"] img',
+  );
+  await expect(calligraphyPanorama).toHaveCSS("object-fit", "cover");
+  const calligraphyImageBox = await requireBoundingBox(calligraphyPanorama);
+  expect(
+    calligraphyImageBox.width / calligraphyImageBox.height,
+  ).toBeLessThanOrEqual(1.5 + 0.01);
   await expectCatalogCardsNotToOverlap(calligraphyFeed);
   await expectNoHorizontalOverflow(page);
 
-  await navigation.getByRole("button", { exact: true, name: "首页" }).click();
+  await activateHomeFeed(home, "发现");
   await expectActiveDestination(surface, "home");
   await expect(activeHomeMasonry(surface)).toHaveAttribute(
     "data-masonry-columns",
     "2",
   );
-  await expect(
-    activeHomeMasonry(surface).locator('[data-home-masonry-span="full"]'),
-  ).toHaveCount(2);
+  await expectAlignedHomeFeatures(activeHomeMasonry(surface));
 
   await setFeedLayoutThroughSettings(surface, "single");
   await expect(activeHomeMasonry(surface)).toHaveAttribute(
@@ -2278,8 +2458,8 @@ test("Tablet Double gives ultra-wide Home and Calligraphy feed cards a distinct 
     activeHomeMasonry(surface).locator('[data-home-masonry-span="full"]'),
   ).toHaveCount(0);
 
-  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
-  await expectActiveDestination(surface, "inscriptions");
+  await activateHomeFeed(activeHomeSurface(surface), "碑刻");
+  await expectActiveHomeFeed(surface, "inscriptions");
   const inscriptions = activeCatalogPresentation(surface);
   const inscriptionList = inscriptions.locator("[data-catalog-item-count]");
   await expect(inscriptions.locator("[data-catalog-feed-span]")).toHaveCount(0);
@@ -2303,8 +2483,8 @@ test("Auto mode applies desktop viewport boundaries without resetting the active
 
   const { navigation, surface } = await openDevelopmentSurface(page);
   await confirmMouseNavigationReady(surface, navigation);
-  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
-  await expectActiveDestination(surface, "inscriptions");
+  await navigation.getByRole("button", { exact: true, name: "讨论" }).click();
+  await expectActiveDestination(surface, "discussion");
   await expect(platformSelector(surface)).toHaveValue("auto");
 
   for (const [width, platform] of [
@@ -2315,7 +2495,7 @@ test("Auto mode applies desktop viewport boundaries without resetting the active
   ] as const satisfies readonly (readonly [number, AcceptancePlatform])[]) {
     await page.setViewportSize({ height: 900, width });
     await expectPresentationPlatform(surface, platform);
-    await expectActiveDestination(surface, "inscriptions");
+    await expectActiveDestination(surface, "discussion");
   }
 });
 
@@ -2367,25 +2547,25 @@ test("Auto mode applies iPad-like viewport caps in both directions", async ({
   await expectPresentationPlatform(surface, "tablet");
   const home = activeHomeSurface(surface);
   const discoverTop = await writeHomePanelScroll(home, "discover", 700);
-  const topicsTop = await writeHomePanelScroll(home, "topics", 500);
-  await touchSettleHomeFeed(home, "topics");
+  const calligraphyTop = await writeHomePanelScroll(home, "calligraphy", 500);
+  await touchSettleHomeFeed(home, "calligraphy");
 
   await page.setViewportSize({ height: 900, width: 600 });
   await expectPresentationPlatform(surface, "phone");
   expect((await readHomePanelEvidence(home, "discover")).scrollTop).toBe(
     discoverTop,
   );
-  expect((await readHomePanelEvidence(home, "topics")).scrollTop).toBe(
-    topicsTop,
+  expect((await readHomePanelEvidence(home, "calligraphy")).scrollTop).toBe(
+    calligraphyTop,
   );
   await page.setViewportSize({ height: 768, width: 1024 });
   await expectPresentationPlatform(surface, "tablet");
-  await expect(home).toHaveAttribute("data-active-home-feed", "topics");
+  await expect(home).toHaveAttribute("data-active-home-feed", "calligraphy");
   expect((await readHomePanelEvidence(home, "discover")).scrollTop).toBe(
     discoverTop,
   );
-  expect((await readHomePanelEvidence(home, "topics")).scrollTop).toBe(
-    topicsTop,
+  expect((await readHomePanelEvidence(home, "calligraphy")).scrollTop).toBe(
+    calligraphyTop,
   );
 });
 
@@ -2399,8 +2579,8 @@ test("Auto mode synchronizes from current runtime values on orientationchange", 
 
   const { navigation, surface } = await openDevelopmentSurface(page);
   await confirmMouseNavigationReady(surface, navigation);
-  await navigation.getByRole("button", { exact: true, name: "书帖" }).click();
-  await expectActiveDestination(surface, "calligraphy");
+  await navigation.getByRole("button", { exact: true, name: "用户" }).click();
+  await expectActiveDestination(surface, "user");
 
   await page.evaluate(() => {
     Object.defineProperty(window, "innerWidth", {
@@ -2411,7 +2591,7 @@ test("Auto mode synchronizes from current runtime values on orientationchange", 
   });
 
   await expectPresentationPlatform(surface, "tablet");
-  await expectActiveDestination(surface, "calligraphy");
+  await expectActiveDestination(surface, "user");
 });
 
 test("QA overrides survive runtime changes and returning Auto uses the current runtime", async ({
@@ -2425,8 +2605,8 @@ test("QA overrides survive runtime changes and returning Auto uses the current r
   const { navigation, surface } = await openDevelopmentSurface(page);
   const qaPlatformSelector = platformSelector(surface);
   await confirmMouseNavigationReady(surface, navigation);
-  await navigation.getByRole("button", { exact: true, name: "碑刻" }).click();
-  await expectActiveDestination(surface, "inscriptions");
+  await navigation.getByRole("button", { exact: true, name: "讨论" }).click();
+  await expectActiveDestination(surface, "discussion");
 
   for (const [mode, width] of [
     ["phone", 1000],
@@ -2439,12 +2619,12 @@ test("QA overrides survive runtime changes and returning Auto uses the current r
       window.dispatchEvent(new Event("orientationchange"));
     });
     await expectPresentationPlatform(surface, mode);
-    await expectActiveDestination(surface, "inscriptions");
+    await expectActiveDestination(surface, "discussion");
   }
 
   await qaPlatformSelector.selectOption("auto");
   await expectPresentationPlatform(surface, "tablet");
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
 
   await qaPlatformSelector.selectOption("phone");
   await page.reload();
@@ -2464,26 +2644,26 @@ test("Reduced motion preserves tap and release-only primary commits", async ({
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   const { navigation, surface } = await openCleanProductSurface(page);
-  const inscriptionsButton = navigation.getByRole("button", {
+  const discussionButton = navigation.getByRole("button", {
     exact: true,
-    name: "碑刻",
+    name: "讨论",
   });
-  const calligraphyButton = navigation.getByRole("button", {
+  const userButton = navigation.getByRole("button", {
     exact: true,
-    name: "书帖",
+    name: "用户",
   });
 
-  await inscriptionsButton.click();
-  await expectActiveDestination(surface, "inscriptions");
+  await discussionButton.click();
+  await expectActiveDestination(surface, "discussion");
 
-  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
-  const calligraphyCenter = await locatorCenter(calligraphyButton);
-  await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y);
+  const discussionCenter = await locatorCenter(discussionButton);
+  const userCenter = await locatorCenter(userButton);
+  await page.mouse.move(discussionCenter.x, discussionCenter.y);
   await page.mouse.down();
-  await page.mouse.move(calligraphyCenter.x, calligraphyCenter.y, { steps: 5 });
-  await expectActiveDestination(surface, "inscriptions");
+  await page.mouse.move(userCenter.x, userCenter.y, { steps: 5 });
+  await expectActiveDestination(surface, "discussion");
   await page.mouse.up();
-  await expectActiveDestination(surface, "calligraphy");
+  await expectActiveDestination(surface, "user");
 });
 
 test("Touchscreen tap commits each primary destination on touch WebKit", async ({
@@ -2498,7 +2678,7 @@ test("Touchscreen tap commits each primary destination on touch WebKit", async (
 
   const { navigation, surface } = await openDevelopmentSurface(page);
 
-  for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
+  for (const destination of ["discussion", "user", "home"] as const) {
     const targetButton = navigation.getByRole("button", {
       exact: true,
       name: destinationAcceptance[destination].label,
@@ -2529,7 +2709,7 @@ test("Mobile WebKit locator click commits each primary destination", async ({
 
   const { navigation, surface } = await openCleanProductSurface(page);
 
-  for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
+  for (const destination of ["discussion", "user", "home"] as const) {
     await navigation
       .getByRole("button", {
         exact: true,
@@ -2548,7 +2728,7 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
   const consoleErrors: string[] = [];
   page.on("response", (response) => {
     if (
-      /\/_next\/static\/media\/(?:home|inscriptions|calligraphy|nav-)/u.test(
+      /\/_next\/static\/media\/(?:home|discussion|user|nav-)/u.test(
         response.url(),
       )
     ) {
@@ -2560,7 +2740,7 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
   });
   page.on("requestfailed", (request) => {
     if (
-      /\/_next\/static\/media\/(?:home|inscriptions|calligraphy|nav-)/u.test(
+      /\/_next\/static\/media\/(?:home|discussion|user|nav-)/u.test(
         request.url(),
       )
     ) {
@@ -2581,11 +2761,16 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
     navigation.locator("[data-primary-navigation-inline-icon]"),
   ).toHaveCount(3);
   await expect(
-    navigation.locator("[data-primary-navigation-inline-label]"),
+    navigation.locator("[data-primary-navigation-text-label]"),
   ).toHaveCount(3);
   await expect(
-    navigation.locator("[data-primary-navigation-inline-label] image"),
-  ).toHaveCount(3);
+    navigation.locator("[data-primary-navigation-text-label]"),
+  ).toHaveText(["首页", "讨论", "用户"]);
+  await expect(
+    navigation.locator(
+      "[data-primary-navigation-text-label] image, [data-primary-navigation-text-label] img",
+    ),
+  ).toHaveCount(0);
 
   const initialRendering = await navigation.evaluate((node) => {
     const navigationElement = node as HTMLElement;
@@ -2596,7 +2781,7 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
     );
     const labels = Array.from(
       navigationElement.querySelectorAll(
-        "[data-primary-navigation-inline-label]",
+        "[data-primary-navigation-text-label]",
       ),
     );
     const glass = navigationElement.querySelector(
@@ -2620,6 +2805,15 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
           getComputedStyle(icon).maskImage ||
           "none",
       ),
+      labelFonts: labels.map((label) => getComputedStyle(label).fontFamily),
+      editorialFont: (() => {
+        const probe = document.createElement("span");
+        probe.style.fontFamily = "var(--yoyi-font-editorial)";
+        navigationElement.append(probe);
+        const value = getComputedStyle(probe).fontFamily;
+        probe.remove();
+        return value;
+      })(),
       labelMasks: labels.map(
         (label) =>
           getComputedStyle(label).webkitMaskImage ||
@@ -2639,8 +2833,13 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
   expect(initialRendering.glassBackdrop).not.toBe("missing");
   expect(initialRendering.iconMasks).toEqual(["none", "none", "none"]);
   expect(initialRendering.labelMasks).toEqual(["none", "none", "none"]);
+  expect(initialRendering.editorialFont).not.toBe("");
+  for (const font of initialRendering.labelFonts)
+    expect(font.replaceAll('"', "").replaceAll(" ", "")).toBe(
+      initialRendering.editorialFont.replaceAll('"', "").replaceAll(" ", ""),
+    );
 
-  for (const destination of ["inscriptions", "calligraphy", "home"] as const) {
+  for (const destination of ["discussion", "user", "home"] as const) {
     await navigation
       .getByRole("button", {
         exact: true,
@@ -2697,7 +2896,7 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
         identity.labels.every(
           (label, index) =>
             label ===
-            node.querySelectorAll("[data-primary-navigation-inline-label]")[
+            node.querySelectorAll("[data-primary-navigation-text-label]")[
               index
             ],
         )
@@ -2706,20 +2905,22 @@ test("R02 keeps one navigation tree and isolates accepted marks from the glass c
   ).toBe(true);
 
   expect(navigationAssetFailures).toEqual([]);
-  expect(
-    navigationAssetResponses.some(({ url }) =>
-      /\/(?:home|inscriptions|calligraphy)\.[^.]+\.svg/u.test(url),
+  await expect(
+    navigation.locator(
+      "[data-primary-navigation-inline-icon] image, [data-primary-navigation-inline-icon] use",
     ),
-  ).toBe(false);
+  ).toHaveCount(0);
   expect(
     new Set(
       navigationAssetResponses
         .filter(({ url }) =>
-          /\/nav-(?:home|inscriptions|calligraphy)\.[^.]+\.png/u.test(url),
+          /\/nav-(?:home|inscriptions|calligraphy|discussion|user)\.[^.]+\.png/u.test(
+            url,
+          ),
         )
         .map(({ url }) => new URL(url).pathname),
     ).size,
-  ).toBe(3);
+  ).toBe(0);
   expect(navigationAssetResponses.every(({ status }) => status < 400)).toBe(
     true,
   );
@@ -2779,7 +2980,7 @@ test("Mobile and Tablet navigation minimize with hysteresis, idle restore, and a
   ).toBeHidden();
   expect(
     await navigation
-      .locator("[data-primary-navigation-inline-label]")
+      .locator("[data-primary-navigation-text-label]")
       .evaluateAll((labels) =>
         labels.every((label) => label.getClientRects().length === 0),
       ),
@@ -2840,12 +3041,12 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
     exact: true,
     name: "首页",
   });
-  const inscriptionsButton = navigation.getByRole("button", {
+  const discussionButton = navigation.getByRole("button", {
     exact: true,
-    name: "碑刻",
+    name: "讨论",
   });
   const homeCenter = await locatorCenter(homeButton);
-  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+  const discussionCenter = await locatorCenter(discussionButton);
   const committedHomePanel = surface.locator(
     '[data-primary-destination="home"]',
   );
@@ -2917,7 +3118,7 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
     "data-test-set-pointer-capture-count",
     "0",
   );
-  await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y, {
+  await page.mouse.move(discussionCenter.x, discussionCenter.y, {
     steps: 5,
   });
 
@@ -2970,7 +3171,7 @@ test("Mouse regression: navigation drag previews only the bubble and commits on 
 
   await page.mouse.up();
 
-  await expectActiveDestination(surface, "inscriptions");
+  await expectActiveDestination(surface, "discussion");
   await expect(homeButton).toHaveAttribute(
     "data-test-release-pointer-capture-count",
     "1",
@@ -3000,16 +3201,16 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
     exact: true,
     name: "首页",
   });
-  const inscriptionsButton = navigation.getByRole("button", {
+  const discussionButton = navigation.getByRole("button", {
     exact: true,
-    name: "碑刻",
+    name: "讨论",
   });
-  const calligraphyButton = navigation.getByRole("button", {
+  const userButton = navigation.getByRole("button", {
     exact: true,
-    name: "书帖",
+    name: "用户",
   });
   const homeCenter = await locatorCenter(homeButton);
-  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+  const discussionCenter = await locatorCenter(discussionButton);
 
   await confirmMouseNavigationReady(surface, navigation);
   await trackPointerCaptureCalls(homeButton);
@@ -3054,8 +3255,8 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
     pointerId: 81,
     pointerType: "touch",
   });
-  await inscriptionsButton.click();
-  await expectActiveDestination(surface, "inscriptions");
+  await discussionButton.click();
+  await expectActiveDestination(surface, "discussion");
   await homeButton.click();
   await expectActiveDestination(surface, "home");
 
@@ -3105,8 +3306,8 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
   await homeButton.dispatchEvent("pointermove", {
     button: 0,
     buttons: 1,
-    clientX: inscriptionsCenter.x,
-    clientY: inscriptionsCenter.y,
+    clientX: discussionCenter.x,
+    clientY: discussionCenter.y,
     isPrimary: true,
     pointerId: 83,
     pointerType: "touch",
@@ -3137,11 +3338,11 @@ test("Synthetic touch pointer logic: passive candidate, intent threshold, and dr
         detail: 1,
       }),
     );
-  }, inscriptionsCenter);
-  await expectActiveDestination(surface, "inscriptions");
+  }, discussionCenter);
+  await expectActiveDestination(surface, "discussion");
   await expect(navigation).not.toHaveAttribute("data-dragging", "true");
-  await calligraphyButton.click();
-  await expectActiveDestination(surface, "calligraphy");
+  await userButton.click();
+  await expectActiveDestination(surface, "user");
 });
 
 test("Mouse and synthetic pointer regressions: current-item release and cancellation do not commit", async ({
@@ -3153,14 +3354,14 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
     exact: true,
     name: "首页",
   });
-  const inscriptionsButton = navigation.getByRole("button", {
+  const discussionButton = navigation.getByRole("button", {
     exact: true,
-    name: "碑刻",
+    name: "讨论",
   });
   const homeCenter = await locatorCenter(homeButton);
-  const inscriptionsCenter = await locatorCenter(inscriptionsButton);
+  const discussionCenter = await locatorCenter(discussionButton);
   const sameItemPreviewX =
-    homeCenter.x + (inscriptionsCenter.x - homeCenter.x) * 0.35;
+    homeCenter.x + (discussionCenter.x - homeCenter.x) * 0.35;
 
   await page.mouse.move(homeCenter.x, homeCenter.y);
   await page.mouse.down();
@@ -3182,8 +3383,8 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
   });
   await navigation.dispatchEvent("pointermove", {
     button: 0,
-    clientX: inscriptionsCenter.x,
-    clientY: inscriptionsCenter.y,
+    clientX: discussionCenter.x,
+    clientY: discussionCenter.y,
     isPrimary: true,
     pointerId,
     pointerType: "touch",
@@ -3191,8 +3392,8 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
   await expect(navigation).toHaveAttribute("data-dragging", "true");
   await navigation.dispatchEvent("pointercancel", {
     button: 0,
-    clientX: inscriptionsCenter.x,
-    clientY: inscriptionsCenter.y,
+    clientX: discussionCenter.x,
+    clientY: discussionCenter.y,
     isPrimary: true,
     pointerId,
     pointerType: "touch",
@@ -3217,8 +3418,8 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
   await navigation.dispatchEvent("pointermove", {
     button: 0,
     buttons: 1,
-    clientX: inscriptionsCenter.x,
-    clientY: inscriptionsCenter.y,
+    clientX: discussionCenter.x,
+    clientY: discussionCenter.y,
     isPrimary: true,
     pointerId: 72,
     pointerType: "touch",
@@ -3237,8 +3438,8 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
   await navigation.dispatchEvent("pointerup", {
     button: 0,
     buttons: 0,
-    clientX: inscriptionsCenter.x,
-    clientY: inscriptionsCenter.y,
+    clientX: discussionCenter.x,
+    clientY: discussionCenter.y,
     isPrimary: true,
     pointerId: 72,
     pointerType: "touch",
@@ -3258,7 +3459,7 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
   });
   await page.mouse.move(homeCenter.x, homeCenter.y);
   await page.mouse.down();
-  await page.mouse.move(inscriptionsCenter.x, inscriptionsCenter.y, {
+  await page.mouse.move(discussionCenter.x, discussionCenter.y, {
     steps: 5,
   });
   await expect(navigation).toHaveAttribute("data-dragging", "true");
@@ -3268,8 +3469,8 @@ test("Mouse and synthetic pointer regressions: current-item release and cancella
   expect(Number.isFinite(capturedPointerId)).toBe(true);
   await homeButton.dispatchEvent("lostpointercapture", {
     button: 0,
-    clientX: inscriptionsCenter.x,
-    clientY: inscriptionsCenter.y,
+    clientX: discussionCenter.x,
+    clientY: discussionCenter.y,
     isPrimary: true,
     pointerId: capturedPointerId,
     pointerType: "mouse",

@@ -28,13 +28,15 @@ const primaryNavigation = (page: Page) =>
 
 const activeCatalogOpener = (shell: Locator, catalogId: string) =>
   shell
-    .locator("[data-primary-destination]:not([hidden])")
+    .locator(
+      '[data-primary-destination="home"] [data-home-feed-panel][aria-hidden="false"]',
+    )
     .locator(`[data-catalog-id="${catalogId}"] [data-open-catalog]`);
 
 const selectPrimaryDestination = async (
   page: Page,
-  name: "书帖" | "碑刻" | "首页",
-  destination: "calligraphy" | "home" | "inscriptions",
+  name: "首页" | "讨论" | "用户",
+  destination: "home" | "discussion" | "user",
 ) => {
   await primaryNavigation(page)
     .getByRole("button", { exact: true, name })
@@ -43,6 +45,17 @@ const selectPrimaryDestination = async (
     "data-active-destination",
     destination,
   );
+};
+
+const selectHomeFeed = async (
+  page: Page,
+  name: "发现" | "附近" | "碑刻" | "书帖",
+  feed: "discover" | "nearby" | "inscriptions" | "calligraphy",
+) => {
+  await selectPrimaryDestination(page, "首页", "home");
+  const home = productShell(page).locator("[data-home-surface]");
+  await home.getByRole("tab", { exact: true, name }).click();
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
 };
 
 const openFormalRoot = async (page: Page, target = "/") => {
@@ -79,6 +92,21 @@ const isFormalViewerUrl = (url: URL, catalogId: string, mediaId: string) =>
   url.searchParams.get("catalogId") === catalogId &&
   url.searchParams.get("image") === mediaId &&
   url.hash === "#viewer";
+
+test("Retired phone diagnostics links render the normal application", async ({
+  page,
+  request,
+}) => {
+  await openFormalRoot(page, "/?phoneDiagnostics=1");
+  await expect(page.locator("[data-phone-diagnostics]")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "开始记录", exact: true }),
+  ).toHaveCount(0);
+  const response = await request.post("/api/dev/phone-diagnostics", {
+    data: {},
+  });
+  expect(response.status()).toBe(404);
+});
 
 test("Formal root serves only the request-rendered React Product Shell", async ({
   page,
@@ -170,34 +198,36 @@ test("Formal root composes truthful runtime list states", async ({ page }) => {
   await expect(home.locator('[data-home-feed-panel="nearby"]')).toContainText(
     "附近内容尚未接入",
   );
-  await expect(home.locator('[data-home-feed-panel="topics"]')).toContainText(
-    "专题内容尚未接入",
+  await selectPrimaryDestination(page, "讨论", "discussion");
+  const discussion = shell.locator("[data-discussion-surface]");
+  await discussion.getByRole("tab", { exact: true, name: "专题" }).click();
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
   );
-
-  // Phase 4 loads the inscription sequence when its page becomes active.
-  await selectPrimaryDestination(page, "碑刻", "inscriptions");
   await expect(
-    shell.locator(
-      `[data-primary-destination="inscriptions"] [data-catalog-id="${runtimeIds.noMedia}"]`,
+    discussion.getByRole("tabpanel", { name: "专题" }),
+  ).toContainText("专题暂时不可用");
+
+  // The existing inscription sequence loads when its Home tab becomes active.
+  await selectHomeFeed(page, "碑刻", "inscriptions");
+  await expect(
+    home.locator(
+      `[data-home-feed-panel="inscriptions"] [data-catalog-id="${runtimeIds.noMedia}"]`,
     ),
   ).toContainText("运行时无图碑刻");
 
-  const calligraphy = shell.locator("[data-calligraphy-category-surface]");
-  await expect(calligraphy).toHaveAttribute(
-    "data-calligraphy-classification-source",
-    "runtime-unclassified",
-  );
+  await selectHomeFeed(page, "书帖", "calligraphy");
+  const calligraphy = home.locator('[data-home-feed-panel="calligraphy"]');
   await expect(
     calligraphy.locator(
-      `[data-calligraphy-category-panel="all"] [data-catalog-id="${runtimeIds.calligraphy}"]`,
+      `[data-calligraphy-all] [data-catalog-id="${runtimeIds.calligraphy}"]`,
     ),
   ).toContainText("运行时书帖");
+  await expect(calligraphy.getByRole("tablist")).toHaveCount(0);
   await expect(
-    calligraphy.locator('[data-calligraphy-category-panel="ink"]'),
-  ).toContainText("墨迹分类数据尚未接入");
-  await expect(
-    calligraphy.locator('[data-calligraphy-category-panel="rubbing"]'),
-  ).toContainText("拓本分类数据尚未接入");
+    calligraphy.locator("[data-calligraphy-category-panel]"),
+  ).toHaveCount(0);
   await expect(calligraphy).not.toContainText("视觉 QA 合成");
 });
 
@@ -228,7 +258,7 @@ test("Formal Home, Inscriptions, and Calligraphy reuse one Detail and Viewer jou
 
   await openAndReturn(runtimeIds.noMedia, "运行时无图碑刻");
 
-  await selectPrimaryDestination(page, "碑刻", "inscriptions");
+  await selectHomeFeed(page, "碑刻", "inscriptions");
   const inscriptionsOpener = activeCatalogOpener(shell, runtimeIds.multiMedia);
   await Promise.all([
     page.waitForURL((url) => isFormalDetailUrl(url, runtimeIds.multiMedia), {
@@ -269,7 +299,7 @@ test("Formal Home, Inscriptions, and Calligraphy reuse one Detail and Viewer jou
   await expect(detail).toHaveCount(0);
   await expect(inscriptionsOpener).toBeFocused();
 
-  await selectPrimaryDestination(page, "书帖", "calligraphy");
+  await selectHomeFeed(page, "书帖", "calligraphy");
   await openAndReturn(runtimeIds.calligraphy, "运行时书帖");
 });
 

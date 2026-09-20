@@ -10,8 +10,8 @@ import type { PrimaryDestination } from "./primary-shell";
 
 const primaryPagerSequence = [
   "home",
-  "inscriptions",
-  "calligraphy",
+  "discussion",
+  "user",
 ] as const satisfies readonly PrimaryDestination[];
 
 export type PrimaryDestinationDirection = "previous" | "next";
@@ -31,8 +31,8 @@ export interface PrimaryNavigationPagerProps {
   readonly platform: PresentationPlatform;
   readonly onDestinationChange: (destination: PrimaryDestination) => void;
   readonly home: ReactNode;
-  readonly inscriptions: ReactNode;
-  readonly calligraphy: ReactNode;
+  readonly discussion: ReactNode;
+  readonly user: ReactNode;
   readonly navigationAction?: ReactNode;
   readonly navigationHidden?: boolean;
   readonly navigationMinimized?: boolean;
@@ -45,8 +45,8 @@ export const PrimaryNavigationPager = ({
   platform,
   onDestinationChange,
   home,
-  inscriptions,
-  calligraphy,
+  discussion,
+  user,
   navigationAction,
   navigationHidden = false,
   navigationMinimized = false,
@@ -71,8 +71,8 @@ export const PrimaryNavigationPager = ({
         activeDestination={activeDestination}
         platform={platform}
         home={home}
-        inscriptions={inscriptions}
-        calligraphy={calligraphy}
+        discussion={discussion}
+        user={user}
       />
 
       <div

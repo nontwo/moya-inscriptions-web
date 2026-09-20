@@ -34,7 +34,7 @@ const mocks = vi.hoisted(() => {
     },
     shell: { openProfile: vi.fn(), openContent: vi.fn() },
     entry: { checking: false, openEditor: vi.fn(() => true) },
-    publishing: { setVisibility: vi.fn(), trashWork: vi.fn() },
+    publishing: { setVisibility: vi.fn(), deleteWork: vi.fn() },
     work: vi.fn(),
     profile: vi.fn(async () => ({ avatar: null })),
   };
@@ -182,7 +182,7 @@ describe("Work detail actions for the author", () => {
       thirdParty.container.querySelector("[data-work-management]"),
     ).toBeNull();
     expect(thirdParty.button("编辑")).toBeUndefined();
-    expect(thirdParty.button("移到回收站")).toBeUndefined();
+    expect(thirdParty.button("永久删除")).toBeUndefined();
     expect(
       thirdParty.container.querySelector("[data-content-actions]"),
     ).not.toBeNull();
@@ -227,7 +227,7 @@ describe("Work detail actions for the author", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect([...toggle.parentElement!.querySelectorAll("button")]).toEqual([
       view.button("编辑"),
-      view.button("移到回收站"),
+      view.button("永久删除"),
       toggle,
     ]);
     await act(async () => toggle.click());
@@ -260,24 +260,24 @@ describe("Work detail actions for the author", () => {
     expect(view.container.textContent).not.toMatch(/审核|待|已发布给/u);
   });
 
-  it("moves the work to the recycle bin only after confirmation", async () => {
-    mocks.publishing.trashWork.mockResolvedValue({ deleted: true });
+  it("permanently deletes the work only after irreversible confirmation", async () => {
+    mocks.publishing.deleteWork.mockResolvedValue({ deleted: true });
     const view = render(detail({}));
-    act(() => view.button("移到回收站")!.click());
+    act(() => view.button("永久删除")!.click());
     const dialog = view.container.querySelector('[role="dialog"]');
-    expect(dialog?.getAttribute("aria-label")).toBe("移到回收站");
-    expect(dialog?.textContent).toContain("恢复后为仅自己可见");
-    expect(mocks.publishing.trashWork).not.toHaveBeenCalled();
+    expect(dialog?.getAttribute("aria-label")).toBe("永久删除");
+    expect(dialog?.textContent).toContain("无法恢复");
+    expect(mocks.publishing.deleteWork).not.toHaveBeenCalled();
 
     await act(async () =>
       view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-trash]")!
+        .querySelector<HTMLButtonElement>("[data-confirm-delete]")!
         .click(),
     );
-    expect(mocks.publishing.trashWork).toHaveBeenCalledExactlyOnceWith(WORK, {
+    expect(mocks.publishing.deleteWork).toHaveBeenCalledExactlyOnceWith(WORK, {
       requestId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
     });
-    expect(view.status()).toBe("作品已移到回收站");
+    expect(view.status()).toBe("作品已永久删除");
     expect(view.button("编辑")).toBeUndefined();
     expect(view.container.querySelector("[data-content-actions]")).toBeNull();
     expect(mocks.author.mutate).toHaveBeenCalledOnce();
@@ -301,7 +301,7 @@ describe("Work detail actions for the author", () => {
   });
 
   it("shows a field-neutral failure and repeats an unconfirmed command with the same request", async () => {
-    mocks.publishing.trashWork
+    mocks.publishing.deleteWork
       .mockRejectedValueOnce(
         new mocks.PublishingRequestError(
           0,
@@ -312,18 +312,18 @@ describe("Work detail actions for the author", () => {
       )
       .mockResolvedValueOnce({ deleted: true });
     const view = render(detail({}));
-    act(() => view.button("移到回收站")!.click());
+    act(() => view.button("永久删除")!.click());
     await act(async () =>
       view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-trash]")!
+        .querySelector<HTMLButtonElement>("[data-confirm-delete]")!
         .click(),
     );
     expect(view.status()).toBe("网络连接中断，结果尚未确认");
     expect(view.button("编辑")).toBeDefined();
     await act(async () => view.button("重试")!.click());
-    const [first, second] = mocks.publishing.trashWork.mock.calls;
+    const [first, second] = mocks.publishing.deleteWork.mock.calls;
     expect(second?.[1]).toEqual(first?.[1]);
-    expect(view.status()).toBe("作品已移到回收站");
+    expect(view.status()).toBe("作品已永久删除");
   });
 
   it("without the author's visibility record, never labels the author's own self-only or not yet public work, and offers public interactions only on a public work", () => {
@@ -408,7 +408,7 @@ describe("Work detail actions for the author", () => {
     expect(privateButton.getAttribute("aria-disabled")).toBe("true");
     expect(privateButton.disabled).toBe(false);
     // Nothing else starts meanwhile.
-    act(() => view.button("移到回收站")!.click());
+    act(() => view.button("永久删除")!.click());
     expect(view.container.querySelector('[role="dialog"]')).toBeNull();
     act(() => view.button("编辑")!.click());
     expect(mocks.entry.openEditor).not.toHaveBeenCalled();
@@ -455,19 +455,19 @@ describe("Work detail actions for the author", () => {
     );
   });
 
-  it("lets the Detail replace its content with the result after moving to the recycle bin", async () => {
-    mocks.publishing.trashWork.mockResolvedValue({});
+  it("lets the Detail replace its content with the result after permanent deletion", async () => {
+    mocks.publishing.deleteWork.mockResolvedValue({});
     const withdraw = vi.fn();
     const view = render(detail({}), withdraw);
-    act(() => view.button("移到回收站")!.click());
+    act(() => view.button("永久删除")!.click());
     await act(async () =>
       view.container
-        .querySelector<HTMLButtonElement>("[data-confirm-trash]")!
+        .querySelector<HTMLButtonElement>("[data-confirm-delete]")!
         .click(),
     );
     expect(withdraw).toHaveBeenCalledExactlyOnceWith(WORK, {
-      title: "作品已移到回收站",
-      description: "保留期内可以在回收站中恢复，恢复后为仅自己可见。",
+      title: "作品已永久删除",
+      description: "此操作无法撤销。",
     });
     expect(mocks.author.mutate).toHaveBeenCalledOnce();
   });

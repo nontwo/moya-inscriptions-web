@@ -140,6 +140,54 @@ describe("ContentCard for works", () => {
     expect(mediaOnly.textContent).toBe("");
   });
 
+  it("shows province only for official catalog cards, never user works", () => {
+    const catalog = render(
+      card({
+        target: { type: "catalog", id: "catalog-province" } as Card["target"],
+        kind: "inscription",
+        authorId: null,
+        province: "山东",
+      }),
+    );
+    expect(catalog.querySelector("[data-catalog-province]")?.textContent).toBe(
+      "山东",
+    );
+    expect(
+      render(card({ province: "山东" })).querySelector(
+        "[data-catalog-province]",
+      ),
+    ).toBeNull();
+    expect(
+      render(
+        card({
+          target: {
+            type: "catalog",
+            id: "catalog-no-province",
+          } as Card["target"],
+          kind: "inscription",
+          authorId: null,
+        }),
+      ).querySelector("[data-catalog-province]"),
+    ).toBeNull();
+  });
+
+  it("crops panoramas and scrolls in cards without changing original media dimensions", () => {
+    for (const [width, height, ratio] of [
+      [3000, 300, "1.5"],
+      [300, 3000, "0.75"],
+    ] as const) {
+      const view = render(card({ media: { ...cover, width, height } }));
+      const image = view.querySelector("img")!;
+      expect(image.getAttribute("width")).toBe(String(width));
+      expect(image.getAttribute("height")).toBe(String(height));
+      expect(
+        (image.parentElement as HTMLElement).style.getPropertyValue(
+          "--feed-media-ratio",
+        ),
+      ).toBe(ratio);
+    }
+  });
+
   it("keeps a titled media card and its activation unchanged", () => {
     const titled = render(card({ excerpt: "正文开头" }));
     expect(titled.querySelector("h3")?.textContent).toBe("春日临帖");

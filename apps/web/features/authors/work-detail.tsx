@@ -83,7 +83,7 @@ type WorkDetail = Extract<CatalogDetailPresentation, { contentType: "work" }>;
 
 type ManagementIntent =
   | { readonly kind: "visibility"; readonly visibility: WorkVisibility }
-  | { readonly kind: "trash" };
+  | { readonly kind: "delete" };
 
 interface PendingIntent {
   readonly intent: ManagementIntent;
@@ -106,44 +106,44 @@ const visibilityResultText = (
     ? `可见范围已改为${visibilityName(answered)}`
     : `可见范围：${visibilityName(answered)}`;
 
-const TRASHED_TEXT = "作品已移到回收站";
+const DELETED_TEXT = "作品已永久删除";
 
-const TRASHED_NOTICE = {
-  title: TRASHED_TEXT,
-  description: "保留期内可以在回收站中恢复，恢复后为仅自己可见。",
+const DELETED_NOTICE = {
+  title: DELETED_TEXT,
+  description: "此操作无法撤销。",
 } as const;
 
 /**
  * The author's own controls on a work (§11 item 11): edit, the requested
- * visibility and moving to the recycle bin. Wording states what was changed,
+ * visibility and permanent deletion. Wording states what was changed,
  * never a delivery or review state. Busy controls stay focusable
  * (aria-disabled), so a result never leaves the focus behind.
  */
 const WorkManagement = ({
   detail,
-  onTrashed,
+  onDeleted,
   onVisibility,
-  trashed,
+  deleted,
   visibility,
 }: {
   detail: WorkDetail;
-  onTrashed: () => void;
+  onDeleted: () => void;
   onVisibility: (visibility: WorkVisibility) => void;
   /** Without a Detail that can withdraw its content, only the result stays. */
-  trashed: boolean;
+  deleted: boolean;
   visibility: WorkVisibility | undefined;
 }) => {
   const author = useAuthors();
   const { openEditor } = usePublishingEntry();
   const withdraw = useCatalogDetailWithdrawal();
-  const [confirm, setConfirm] = useState<"trash" | null>(null);
+  const [confirm, setConfirm] = useState<"delete" | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{
     readonly tone: "status" | "error";
     readonly text: string;
   } | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<PendingIntent | null>(null);
-  const trashRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const busyRef = useRef(false);
   const mounted = useRef(true);
@@ -163,7 +163,7 @@ const WorkManagement = ({
     const focused = document.activeElement;
     if (focused === null || focused === document.body || !focused.isConnected)
       statusRef.current?.focus();
-  }, [busy, message, trashed, unconfirmed]);
+  }, [busy, message, deleted, unconfirmed]);
 
   const run = async (pending: PendingIntent) => {
     if (busyRef.current) return;
@@ -174,8 +174,8 @@ const WorkManagement = ({
     if (pending !== unconfirmed) setUnconfirmed(null);
     const { intent, requestId } = pending;
     try {
-      if (intent.kind === "trash") {
-        await publishingClient.trashWork(detail.id, { requestId });
+      if (intent.kind === "delete") {
+        await publishingClient.deleteWork(detail.id, { requestId });
         if (!mounted.current) return;
         setUnconfirmed(null);
         // A toast of an earlier action (作品已提交) no longer describes this work.
@@ -183,12 +183,12 @@ const WorkManagement = ({
         author.mutate();
         if (withdraw !== null) {
           // The Detail replaces media, actions and discussion with the result.
-          withdraw(detail.id, TRASHED_NOTICE);
+          withdraw(detail.id, DELETED_NOTICE);
           return;
         }
-        setMessage({ tone: "status", text: TRASHED_TEXT });
+        setMessage({ tone: "status", text: DELETED_TEXT });
         // The controls are gone; the result line takes the focus.
-        onTrashed();
+        onDeleted();
         return;
       }
       const result = await publishingClient.setVisibility(detail.id, {
@@ -241,7 +241,7 @@ const WorkManagement = ({
       className={detailStyles.workManagement}
       data-work-management=""
     >
-      {trashed ? null : (
+      {deleted ? null : (
         <div className={detailStyles.workManagementRow}>
           <button
             aria-disabled={unavailable}
@@ -271,12 +271,12 @@ const WorkManagement = ({
           </button>
           <button
             aria-disabled={unavailable}
-            aria-label="移到回收站"
+            aria-label="永久删除"
             className={detailStyles.workIcon}
             onClick={() => {
-              if (!busyRef.current) setConfirm("trash");
+              if (!busyRef.current) setConfirm("delete");
             }}
-            ref={trashRef}
+            ref={deleteRef}
             type="button"
           >
             <svg
@@ -336,7 +336,7 @@ const WorkManagement = ({
         {message?.text}
       </p>
       {unconfirmed !== null &&
-      !trashed &&
+      !deleted &&
       (busy || message?.tone === "error") ? (
         <div className={detailStyles.workManagementRow}>
           <button
@@ -348,27 +348,27 @@ const WorkManagement = ({
           </button>
         </div>
       ) : null}
-      {confirm === "trash" ? (
+      {confirm === "delete" ? (
         <AuthorDialog
-          onClose={() => closeConfirm(trashRef.current)}
-          title="移到回收站"
+          onClose={() => closeConfirm(deleteRef.current)}
+          title="永久删除"
         >
           <p className="phase4-muted">
-            作品将移到回收站，其他人将无法打开它。保留期内可以在回收站中恢复，恢复后为仅自己可见。
+            作品及其草稿、历史版本将永久删除，无法恢复。
           </p>
           <div className="phase4-actions">
             <button
-              data-confirm-trash=""
+              data-confirm-delete=""
               onClick={() => {
-                closeConfirm(trashRef.current);
-                start({ kind: "trash" });
+                closeConfirm(deleteRef.current);
+                start({ kind: "delete" });
               }}
               type="button"
             >
-              移到回收站
+              永久删除
             </button>
             <button
-              onClick={() => closeConfirm(trashRef.current)}
+              onClick={() => closeConfirm(deleteRef.current)}
               type="button"
             >
               取消
@@ -447,7 +447,7 @@ export const DetailActions = ({
   detail: CatalogDetailPresentation;
 }) => {
   const author = useAuthors();
-  const [trashedId, setTrashedId] = useState<string | null>(null);
+  const [deletedId, setDeletedId] = useState<string | null>(null);
   const [visibilityChange, setVisibilityChange] = useState<{
     readonly id: string;
     readonly value: WorkVisibility;
@@ -474,7 +474,7 @@ export const DetailActions = ({
   // What the author's own view says about others seeing the work; null when
   // it never said (the loaded fields below decide then).
   const audience = useOwnWorkAudience(ownerId, owner ? detail.id : null);
-  const trashed = trashedId === detail.id;
+  const deleted = deletedId === detail.id;
   const changedVisibility =
     visibilityChange?.id === detail.id ? visibilityChange.value : null;
   // Likes, favorites, sharing and the history record are public
@@ -491,7 +491,7 @@ export const DetailActions = ({
         detail.firstPublishedAt !== undefined;
   const recordable =
     detail.contentType !== "work" ||
-    (detail.available && !trashed && (!owner || ownerPublic));
+    (detail.available && !deleted && (!owner || ownerPublic));
   useEffect(() => {
     if (author.checking || author.sessionError || !recordable) return;
     try {
@@ -562,14 +562,14 @@ export const DetailActions = ({
     ? detail.available
       ? null
       : "此作品当前不可公开访问。"
-    : trashed
+    : deleted
       ? null
       : audience !== null
         ? ownWorkAudienceNote(audience)
         : detail.available
           ? null
           : "此作品当前不对其他人显示。";
-  const interactive = detail.available && !trashed && (!owner || ownerPublic);
+  const interactive = detail.available && !deleted && (!owner || ownerPublic);
   return (
     <div>
       <div className={detailStyles.workAuthorRow}>
@@ -579,9 +579,9 @@ export const DetailActions = ({
       {owner ? (
         <WorkManagement
           detail={detail}
-          onTrashed={() => setTrashedId(detail.id)}
+          onDeleted={() => setDeletedId(detail.id)}
           onVisibility={followVisibility}
-          trashed={trashed}
+          deleted={deleted}
           visibility={changedVisibility ?? detail.visibility}
         />
       ) : null}

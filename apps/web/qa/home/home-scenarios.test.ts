@@ -62,7 +62,7 @@ describe("Development Home sources", () => {
       "http://localhost:3100",
       [catalogRecord],
     );
-    expect(longBlocks.initialFeed).toBe("topics");
+    expect(longBlocks.initialFeed).toBe("discover");
     expect(longBlocks.initialTopicId).toBe("topic-cliff-paths");
     if (longBlocks.data.topics.state === "populated") {
       const topic = longBlocks.data.topics.items.find(

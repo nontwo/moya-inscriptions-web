@@ -19,8 +19,6 @@ import type {
   ResolvePublishingConflictCommand,
   RestorePublishingSnapshotCommand,
   SavePublishingDraftCommand,
-  TrashRestoreResult,
-  TrashedWorkPage,
   WorkSubmissionCommand,
   WorkSubmissionReceipt,
   WorkSubmissionResult,
@@ -361,28 +359,13 @@ export class PostgresWorkPublishingAdapter implements WorkPublishingPort {
   ): Promise<WorkVisibilityResult> {
     return works.setVisibility(this.pool, actorId, workId, command, now);
   }
-  trashWork(
+  deleteWork(
     actorId: string,
     workId: string,
     command: PublishingCommandIdentity,
     now: Date,
   ): Promise<{ readonly deleted: true }> {
-    return works.trashWork(this.pool, actorId, workId, command, now);
-  }
-  restoreWork(
-    actorId: string,
-    workId: string,
-    command: PublishingCommandIdentity,
-    now: Date,
-  ): Promise<TrashRestoreResult> {
-    return works.restoreWork(this.pool, actorId, workId, command, now);
-  }
-  listTrash(
-    actorId: string,
-    query: PublishingPageQuery,
-    now: Date,
-  ): Promise<TrashedWorkPage> {
-    return works.listTrash(this.pool, actorId, query, now);
+    return works.deleteWork(this.pool, actorId, workId, command, now);
   }
   purgeTrashedWork(workId: string, now: Date): Promise<PublishingTrashPurge> {
     return works.purgeTrashedWork(this.pool, workId, now);

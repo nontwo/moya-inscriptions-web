@@ -127,6 +127,14 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
         [catalogs],
       )
     ).rows;
+    const provinces = new Map(
+      (
+        await db.query<{ catalog_id: string; province: string }>(
+          "SELECT catalog_id,province FROM catalog_entries WHERE catalog_id=ANY($1::text[]) AND province_state='VALUE'",
+          [catalogs],
+        )
+      ).rows.map((row) => [row.catalog_id, row.province]),
+    );
     // Cards read the viewer's revision (the author revision for the work's
     // author, else the public revision): its excerpt and its cover (the chosen
     // cover item under its cover crop, else the first item), static even for
@@ -155,6 +163,9 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
       if (r.content_type === "catalog")
         return {
           ...card,
+          ...(provinces.has(r.content_id)
+            ? { province: provinces.get(r.content_id)! }
+            : {}),
           media: c
             ? {
                 type: "catalog",
@@ -327,17 +338,30 @@ export class PostgresCommunityDiscoveryAdapter implements CommunityDiscoveryPort
       return item;
     });
   }
-  async state(target: ContentIdentity, actor: string) {
+  async state(target: ContentIdentity, actor: string | null) {
     return this.run(false, async (db) => {
-      const rows = (
-        await db.query<{ relation: string }>(
-          "SELECT relation FROM community.content_relations WHERE user_id=$1 AND content_type=$2 AND content_id=$3",
+      const row = (
+        await db.query<{
+          favorite: boolean;
+          liked: boolean;
+          favorite_count: string;
+          like_count: string;
+        }>(
+          `SELECT COALESCE(bool_or(r.user_id=$1 AND r.relation='favorite'),false) AS favorite,
+           COALESCE(bool_or(r.user_id=$1 AND r.relation='like'),false) AS liked,
+           count(*) FILTER(WHERE r.relation='favorite') AS favorite_count,
+           count(*) FILTER(WHERE r.relation='like') AS like_count
+           FROM community.content_relations r
+           JOIN community.public_users u ON u.id=r.user_id AND u.status='active'
+           WHERE r.content_type=$2 AND r.content_id=$3`,
           [actor, target.type, target.id],
         )
-      ).rows;
+      ).rows[0]!;
       return {
-        favorite: rows.some((r) => r.relation === "favorite"),
-        liked: rows.some((r) => r.relation === "like"),
+        favorite: row.favorite,
+        liked: row.liked,
+        favoriteCount: Number(row.favorite_count),
+        likeCount: Number(row.like_count),
       };
     });
   }

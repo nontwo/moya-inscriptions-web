@@ -91,6 +91,62 @@ describe("layoutHomeMasonry", () => {
     expect(result.height).toBe(240);
   });
 
+  it("features the first Home card and the next item at each aligned pair", () => {
+    const result = layoutHomeMasonry(
+      [100, 80, 80, 110, 60, 61, 90].map((height) => ({ height })),
+      220,
+      2,
+      20,
+      true,
+    );
+    expect(result.positions.map(({ width }) => width)).toEqual([
+      220, 100, 100, 220, 100, 100, 220,
+    ]);
+    expect(result.positions.map(({ y }) => y)).toEqual([
+      0, 120, 120, 220, 350, 350, 431,
+    ]);
+    expect(result.height).toBe(521);
+  });
+
+  it("waits for accumulated bottoms to align without moving or duplicating items", () => {
+    const heights = [100, 100, 40, 40, 55, 55, 80];
+    const result = layoutHomeMasonry(
+      heights.map((height) => ({ height })),
+      220,
+      2,
+      20,
+      true,
+    );
+    expect(result.positions.map(({ height }) => height)).toEqual(heights);
+    expect(result.positions.map(({ width }) => width)).toEqual([
+      220, 100, 100, 100, 220, 100, 100,
+    ]);
+    expect(result.positions[4]?.y).toBe(240);
+  });
+
+  it("does not turn near-but-unequal rows or consecutive items into feature rows", () => {
+    const result = layoutHomeMasonry(
+      [100, 80, 83, 50].map((height) => ({ height })),
+      220,
+      2,
+      20,
+      true,
+    );
+    expect(result.positions.map(({ width }) => width)).toEqual([
+      220, 100, 100, 100,
+    ]);
+  });
+
+  it.each([1, 3, 5])(
+    "preserves non-paired layouts with %i columns",
+    (columns) => {
+      const items = [100, 80, 80, 50].map((height) => ({ height }));
+      expect(layoutHomeMasonry(items, 600, columns, 20, true)).toEqual(
+        layoutHomeMasonry(items, 600, columns, 20),
+      );
+    },
+  );
+
   it("never places a card outside the measured container", () => {
     const width = 760;
     const result = layoutHomeMasonry(

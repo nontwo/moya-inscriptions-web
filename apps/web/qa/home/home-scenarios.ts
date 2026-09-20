@@ -401,22 +401,22 @@ export const createDevelopmentHomeScenario = (
     case "topics-editorial":
       return {
         data: { ...baseline, topics: populated(editorial) },
-        initialFeed: "topics",
+        initialFeed: "discover",
       };
     case "topics-catalog-collection":
       return {
         data: { ...baseline, topics: populated([collection]) },
-        initialFeed: "topics",
+        initialFeed: "discover",
       };
     case "topics-empty":
       return {
         data: { ...baseline, topics: { state: "empty" } },
-        initialFeed: "topics",
+        initialFeed: "discover",
       };
     case "topic-long-blocks":
       return {
         data: { ...baseline, topics: populated(editorial) },
-        initialFeed: "topics",
+        initialFeed: "discover",
         initialTopicId: "topic-cliff-paths",
       };
     case "discover-visual":

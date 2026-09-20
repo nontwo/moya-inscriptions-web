@@ -2,7 +2,11 @@
 import { Icon } from "@moya/ui";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AuthorProfile, OwnComment } from "@moya/contracts";
+import type {
+  AuthorProfile,
+  ContentIdentity,
+  OwnComment,
+} from "@moya/contracts";
 import type { ProductShellProfileOverlayRenderProps } from "../product-shell/product-shell";
 import { useProductShell } from "../product-shell/product-shell";
 import { HorizontalPager } from "../shell/horizontal-pager";
@@ -14,22 +18,24 @@ import { ProfileEditor } from "./profile-editor";
 import { ProfileSettings } from "./profile-settings";
 import { ProfileList } from "./profile-list";
 import { PeopleList } from "./people-list";
-import { TrashPanel } from "../publishing/ui/drafts/trash-panel";
+import { ProfileBackgroundEditor } from "./profile-background-editor";
 import { requestIdentity } from "../shell/request-identity";
 import styles from "../user/user-presentation.module.css";
 const tabs = ["works", "favorites", "likes", "history"] as const;
+const publicTabs = tabs.slice(0, 3);
 const labels = {
   works: "作品",
   favorites: "收藏",
   likes: "喜欢",
   history: "历史",
 };
-const ScopedAuthorProfileOverlay = ({
+const ScopedAuthorProfile = ({
   state,
   backButtonRef,
   onClose,
   onViewChange,
-}: ProductShellProfileOverlayRenderProps) => {
+  embedded = false,
+}: ProductShellProfileOverlayRenderProps & { embedded?: boolean }) => {
   const author = useAuthors(),
     shell = useProductShell(),
     id = state.authorId ?? author.viewer?.id ?? null,
@@ -39,26 +45,30 @@ const ScopedAuthorProfileOverlay = ({
       () => (author.cache.get(cacheKey) as AuthorProfile | undefined) ?? null,
     ),
     [error, setError] = useState(""),
-    [modal, setModal] = useState<"edit" | "settings" | "trash" | null>(null),
+    [modal, setModal] = useState<"edit" | "settings" | "background" | null>(
+      null,
+    ),
     [people, setPeople] = useState<"following" | "followers" | null>(null),
     [revision, setRevision] = useState(0),
     [progress, setProgress] = useState(
       Math.max(0, tabs.indexOf(state.tab as (typeof tabs)[number])),
     );
   const root = useRef<HTMLElement>(null),
+    profileHeader = useRef<HTMLElement>(null),
+    pendingScrollTop = useRef<number | null>(null),
+    collapseHeight = useRef(0),
     pager = useRef<HorizontalPagerHandle<(typeof tabs)[number]>>(null),
     tabId = useId(),
     currentTab = state.tab === "comments" ? "works" : state.tab;
-  const visibleTabs = owner ? tabs : tabs.slice(0, 3),
+  const visibleTabs = owner ? tabs : publicTabs,
     viewTab = visibleTabs.includes(currentTab as (typeof tabs)[number])
       ? currentTab
       : "works";
-  // The recycle bin is the signed-in owner's own: the entry and the panel
-  // use this one check, and a panel whose viewer changed closes.
-  const trashAllowed = !!profile?.isOwner && profile.id === author.viewer?.id;
+  const ownProfile = !!profile?.isOwner && profile.id === author.viewer?.id;
   useEffect(() => {
-    if (modal === "trash" && !trashAllowed) setModal(null);
-  }, [modal, trashAllowed]);
+    if ((modal === "edit" || modal === "background") && !ownProfile)
+      setModal(null);
+  }, [modal, ownProfile]);
   useEffect(() => {
     let current = true;
     setError("");
@@ -99,22 +109,98 @@ const ScopedAuthorProfileOverlay = ({
     (author.cache.get(`profile-scroll:${state.entryId}`) as
       Record<string, number> | undefined) ?? {},
   );
-  const scrollTab = state.tab === "comments" ? "comments" : viewTab;
+  const scrollTab = viewTab;
+  const scrollElement = () =>
+    embedded
+      ? shell.platform === "pc"
+        ? ((document.scrollingElement ??
+            document.documentElement) as HTMLElement)
+        : root.current?.closest<HTMLElement>(
+            '[data-primary-destination="user"]',
+          )
+      : root.current;
+  const changeTab = (tab: (typeof tabs)[number]) => {
+    if (tab === viewTab) return;
+    // The pager sizes the destination before committing. Reading scrollTop
+    // here can observe browser clamping and lose the departing body offset.
+    const top = positions.current[viewTab] ?? scrollElement()?.scrollTop ?? 0;
+    const collapse = profileHeader.current?.getBoundingClientRect().height ?? 0;
+    // All collections share the cover expansion. Once pinned, each collection
+    // keeps its own body offset without bringing the cover back on a switch.
+    const next =
+      top < collapse - 1
+        ? top
+        : Math.max(collapse, positions.current[tab] ?? 0);
+    pendingScrollTop.current = next;
+    onViewChange(tab, next);
+  };
   useLayoutEffect(() => {
-    const node = root.current?.querySelector<HTMLElement>(
-      `[data-author-panel="${scrollTab}"]`,
-    );
+    if (embedded && shell.activeDestination !== "user") return;
+    const node = scrollElement();
     if (!node) return;
     node.scrollTop =
-      state.profileScrollTop || positions.current[scrollTab] || 0;
+      pendingScrollTop.current ??
+      (embedded
+        ? positions.current[scrollTab]
+        : state.profileScrollTop || positions.current[scrollTab]) ??
+      0;
+    pendingScrollTop.current = null;
+    positions.current[scrollTab] = node.scrollTop;
+    const target = embedded && shell.platform === "pc" ? window : node;
     const scroll = () => {
       positions.current[scrollTab] = node.scrollTop;
       author.cache.set(`profile-scroll:${state.entryId}`, positions.current);
-      onViewChange(scrollTab, node.scrollTop);
+      if (!embedded) onViewChange(scrollTab, node.scrollTop);
     };
-    node.addEventListener("scroll", scroll, { passive: true });
-    return () => node.removeEventListener("scroll", scroll);
-  }, [scrollTab, state.entryId, profile?.isOwner]);
+    target.addEventListener("scroll", scroll, { passive: true });
+    return () => target.removeEventListener("scroll", scroll);
+  }, [
+    embedded,
+    scrollTab,
+    state.entryId,
+    profile?.isOwner,
+    shell.activeDestination,
+    shell.platform,
+  ]);
+  useLayoutEffect(() => {
+    if (embedded && shell.activeDestination !== "user") return;
+    const header = profileHeader.current;
+    const node = scrollElement();
+    if (!header || !node) return;
+    const measure = () => {
+      const height = header.getBoundingClientRect().height;
+      const previous = collapseHeight.current;
+      collapseHeight.current = height;
+      if (previous <= 0 || Math.abs(height - previous) < 0.5) return;
+      const top = positions.current[scrollTab] ?? node.scrollTop;
+      // Loading a bio or changing viewport size must not reopen a collapsed
+      // cover. Offsets inside each collection remain relative to its content.
+      for (const tab of Object.keys(positions.current)) {
+        const saved = positions.current[tab]!;
+        if (saved >= previous - 1)
+          positions.current[tab] = Math.max(height, saved + height - previous);
+      }
+      if (top >= previous - 1) {
+        node.scrollTop = Math.max(height, top + height - previous);
+        positions.current[scrollTab] = node.scrollTop;
+        if (!embedded) onViewChange(scrollTab, node.scrollTop);
+      }
+      author.cache.set(`profile-scroll:${state.entryId}`, positions.current);
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    observer?.observe(header);
+    return () => observer?.disconnect();
+  }, [
+    embedded,
+    scrollTab,
+    state.entryId,
+    shell.activeDestination,
+    shell.platform,
+  ]);
   const panels = Object.fromEntries(
     tabs.map((tab) => [
       tab,
@@ -125,7 +211,7 @@ const ScopedAuthorProfileOverlay = ({
           tab={tab}
           entryId={state.entryId}
           owner={owner}
-          active={tab === viewTab && state.tab !== "comments"}
+          active={tab === viewTab}
         />
       </div>,
     ]),
@@ -134,10 +220,10 @@ const ScopedAuthorProfileOverlay = ({
   return (
     <section
       ref={root}
-      role="dialog"
-      aria-modal="true"
-      aria-label="作者主页"
-      className={styles.overlay}
+      role={embedded ? "region" : "dialog"}
+      aria-modal={embedded ? undefined : true}
+      aria-label={embedded ? "用户主页" : "作者主页"}
+      className={embedded ? styles.page : styles.overlay}
       data-author-profile={id ?? "guest"}
     >
       <header className={styles.header}>
@@ -150,252 +236,270 @@ const ScopedAuthorProfileOverlay = ({
         >
           <Icon name="back" />
         </button>
-        <strong>{owner ? "我的" : "作者主页"}</strong>
+        <span />
         {owner ? (
-          <button
-            type="button"
-            aria-label="设置"
-            className="yoyi-icon-button"
-            onClick={() => setModal("settings")}
-          >
-            <Icon name="settings" />
-          </button>
+          <nav className={styles.profileActions} aria-label="主页管理">
+            <button
+              type="button"
+              aria-label="设置"
+              className="yoyi-icon-button"
+              onClick={() => setModal("settings")}
+            >
+              <Icon name="settings" />
+            </button>
+          </nav>
         ) : (
           <span />
         )}
       </header>
       <section
+        ref={profileHeader}
         className={styles.profile}
         aria-label="用户资料"
         data-profile-background-slot=""
       >
-        {profile?.isOwner && profile.id === author.viewer?.id ? (
-          <AvatarEntry profile={profile} className={styles.avatar}>
-            {profile.avatar ? (
-              <img src={profile.avatar.src} alt="" width={80} height={80} />
-            ) : (
-              <span>{name.slice(0, 1)}</span>
-            )}
-          </AvatarEntry>
-        ) : (
-          <div
-            className={styles.avatar}
-            role="img"
-            aria-label={`${name}的头像`}
+        <div className={styles.profileCover} aria-label="主页背景">
+          {profile?.background && <img src={profile.background.src} alt="" />}
+        </div>
+        {ownProfile && (
+          <button
+            type="button"
+            aria-label="编辑主页背景"
+            className={styles.backgroundEdit}
+            onClick={() => setModal("background")}
           >
-            {profile?.avatar ? (
-              <img src={profile.avatar.src} alt="" width={80} height={80} />
-            ) : (
-              <span>{name.slice(0, 1)}</span>
-            )}
-          </div>
+            <Icon name="edit" />
+          </button>
         )}
-        <div className={styles.identity}>
-          <h1>{name}</h1>
-          {profile ? (
-            <>
-              <p>@{profile.handle}</p>
-              <p>{profile.bio}</p>
-              <div className="phase4-actions">
-                {profile.totals.following !== null && (
-                  <button
-                    type="button"
-                    className="phase4-inline-total"
-                    onClick={() =>
-                      setPeople(people === "following" ? null : "following")
-                    }
-                  >
-                    关注 {profile.totals.following}
-                  </button>
-                )}
-                {profile.totals.followers !== null && (
-                  <button
-                    type="button"
-                    className="phase4-inline-total"
-                    onClick={() =>
-                      setPeople(people === "followers" ? null : "followers")
-                    }
-                  >
-                    粉丝 {profile.totals.followers}
-                  </button>
-                )}
-                {!profile.isOwner && author.viewer ? (
-                  <>
+        <div className={styles.profileIdentity}>
+          {ownProfile && profile ? (
+            <AvatarEntry profile={profile} className={styles.avatar}>
+              {profile.avatar ? (
+                <img src={profile.avatar.src} alt="" width={80} height={80} />
+              ) : (
+                <span>{name.slice(0, 1)}</span>
+              )}
+            </AvatarEntry>
+          ) : (
+            <div
+              className={styles.avatar}
+              role="img"
+              aria-label={`${name}的头像`}
+            >
+              {profile?.avatar ? (
+                <img src={profile.avatar.src} alt="" width={80} height={80} />
+              ) : (
+                <span>{name.slice(0, 1)}</span>
+              )}
+            </div>
+          )}
+          <div className={styles.identity}>
+            <h1>{name}</h1>
+            {profile ? (
+              <>
+                <p>@{profile.handle}</p>
+                <p>{profile.bio}</p>
+                <div className="phase4-actions">
+                  {profile.totals.following !== null && (
                     <button
                       type="button"
-                      aria-pressed={profile.following}
-                      className="phase4-inline-total phase4-follow-toggle"
-                      onClick={async () => {
-                        try {
-                          await authorClient.command("relationships/follow", {
-                            requestId: requestIdentity(),
-                            targetId: profile.id,
-                            enabled: !profile.following,
-                          });
-                          save();
-                          author.mutate();
-                        } catch (e) {
-                          author.notify(
-                            e instanceof Error ? e.message : "关注未完成",
-                          );
-                        }
-                      }}
+                      className="phase4-inline-total"
+                      onClick={() => setPeople("following")}
                     >
-                      {profile.following ? "取消关注" : "关注"}
+                      关注{" "}
+                      <strong className={styles.relationshipCount}>
+                        {profile.totals.following}
+                      </strong>
                     </button>
+                  )}
+                  {profile.totals.followers !== null && (
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (
-                          !window.confirm(
-                            `屏蔽 ${profile.displayName}？双方的关注将移除。`,
+                      className="phase4-inline-total"
+                      onClick={() => setPeople("followers")}
+                    >
+                      粉丝{" "}
+                      <strong className={styles.relationshipCount}>
+                        {profile.totals.followers}
+                      </strong>
+                    </button>
+                  )}
+                  {!profile.isOwner && author.viewer ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-pressed={profile.following}
+                        className="phase4-inline-total phase4-follow-toggle"
+                        onClick={async () => {
+                          try {
+                            await authorClient.command("relationships/follow", {
+                              requestId: requestIdentity(),
+                              targetId: profile.id,
+                              enabled: !profile.following,
+                            });
+                            save();
+                            author.mutate();
+                          } catch (e) {
+                            author.notify(
+                              e instanceof Error ? e.message : "关注未完成",
+                            );
+                          }
+                        }}
+                      >
+                        {profile.following ? "取消关注" : "关注"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (
+                            !window.confirm(
+                              `屏蔽 ${profile.displayName}？双方的关注将移除。`,
+                            )
                           )
-                        )
-                          return;
-                        try {
-                          await authorClient.command("relationships/block", {
-                            requestId: requestIdentity(),
-                            targetId: profile.id,
-                            enabled: true,
-                          });
-                          author.mutate();
-                          onClose();
-                        } catch (e) {
-                          author.notify(
-                            e instanceof Error ? e.message : "屏蔽未完成",
-                          );
-                        }
-                      }}
-                    >
-                      屏蔽
-                    </button>
-                  </>
-                ) : !profile.isOwner ? (
-                  <a href={author.signInHref}>登录后关注</a>
-                ) : null}
-              </div>
-              {people &&
-                (profile.isOwner || profile.privacy[people] === "public") && (
-                  <PeopleList
-                    key={`${author.viewer?.id ?? "guest"}:${profile.id}:${people}`}
-                    id={profile.id}
-                    list={people}
-                    revision={author.revision}
-                  />
-                )}
-            </>
-          ) : !id ? (
-            <>
-              <p>无需登录即可浏览与搜索。登录后可跨设备收藏、喜欢、关注。</p>
-              <div className="phase4-actions">
-                <a href={author.signInHref}>使用开发测试账户登录</a>
-              </div>
-            </>
-          ) : null}
-          {error && <p role="alert">{error}</p>}
+                            return;
+                          try {
+                            await authorClient.command("relationships/block", {
+                              requestId: requestIdentity(),
+                              targetId: profile.id,
+                              enabled: true,
+                            });
+                            author.mutate();
+                            onClose();
+                          } catch (e) {
+                            author.notify(
+                              e instanceof Error ? e.message : "屏蔽未完成",
+                            );
+                          }
+                        }}
+                      >
+                        屏蔽
+                      </button>
+                    </>
+                  ) : !profile.isOwner ? (
+                    <a href={author.signInHref}>登录后关注</a>
+                  ) : null}
+                </div>
+              </>
+            ) : !id ? (
+              <>
+                <p>无需登录即可浏览与搜索。登录后可跨设备收藏、喜欢、关注。</p>
+                <div className="phase4-actions">
+                  <a href={author.signInHref}>使用开发测试账户登录</a>
+                </div>
+              </>
+            ) : null}
+            {error && <p role="alert">{error}</p>}
+          </div>
         </div>
       </section>
-      {state.tab === "comments" && profile?.isOwner ? (
-        <div
-          data-author-panel="comments"
-          style={{ overflow: "auto", minHeight: 0 }}
-          className={styles.panelContent}
-        >
-          <MyComments entryId={state.entryId} />
-        </div>
-      ) : (
-        <section className={styles.userContent} aria-label="用户内容">
-          <div className={styles.tabs} role="tablist" aria-label="用户内容分类">
-            {visibleTabs.map((tab) => (
-              <button
-                type="button"
-                key={tab}
-                role="tab"
-                id={`${tabId}-${tab}`}
-                aria-controls={`${tabId}-panel-${tab}`}
-                aria-selected={viewTab === tab}
-                tabIndex={viewTab === tab ? 0 : -1}
-                onClick={() => pager.current?.scrollToKey(tab)}
-                onKeyDown={(event) => {
-                  const index = visibleTabs.indexOf(tab);
-                  const next =
-                    event.key === "ArrowRight"
-                      ? visibleTabs[Math.min(index + 1, visibleTabs.length - 1)]
-                      : event.key === "ArrowLeft"
-                        ? visibleTabs[Math.max(0, index - 1)]
-                        : undefined;
-                  if (next) {
-                    event.preventDefault();
-                    pager.current?.scrollToKey(next);
-                    root.current
-                      ?.querySelector<HTMLElement>(`[id="${tabId}-${next}"]`)
-                      ?.focus();
-                  }
-                }}
-              >
-                {labels[tab]}
-              </button>
-            ))}
-            <span
-              aria-hidden
-              className={styles.tabIndicator}
-              style={{
-                width: `${100 / visibleTabs.length}%`,
-                transform: `translateX(${progress * 100}%)`,
+      <section className={styles.userContent} aria-label="用户内容">
+        <div className={styles.tabs} role="tablist" aria-label="用户内容分类">
+          {visibleTabs.map((tab) => (
+            <button
+              type="button"
+              key={tab}
+              role="tab"
+              id={`${tabId}-${tab}`}
+              aria-controls={`${tabId}-panel-${tab}`}
+              aria-selected={viewTab === tab}
+              tabIndex={viewTab === tab ? 0 : -1}
+              onClick={() => pager.current?.scrollToKey(tab)}
+              onKeyDown={(event) => {
+                const index = visibleTabs.indexOf(tab);
+                const next =
+                  event.key === "ArrowRight"
+                    ? visibleTabs[Math.min(index + 1, visibleTabs.length - 1)]
+                    : event.key === "ArrowLeft"
+                      ? visibleTabs[Math.max(0, index - 1)]
+                      : undefined;
+                if (next) {
+                  event.preventDefault();
+                  pager.current?.scrollToKey(next);
+                  root.current
+                    ?.querySelector<HTMLElement>(`[id="${tabId}-${next}"]`)
+                    ?.focus({ preventScroll: true });
+                }
               }}
-            />
-          </div>
-          <HorizontalPager
-            ref={pager}
-            keys={visibleTabs}
-            activeKey={viewTab as (typeof tabs)[number]}
-            onCommit={(tab) => onViewChange(tab, positions.current[tab] ?? 0)}
-            onProgress={setProgress}
-            panels={panels}
-            platform={shell.platform}
-            scrollOwner="panel"
-            visible={modal === null}
-            frameClassName={styles.pager}
-            panelClassName={styles.panel}
-            panelAttributes={(tab) => ({ "data-author-panel": tab })}
-            panelId={(tab) => `${tabId}-panel-${tab}`}
-            panelLabelledBy={(tab) => `${tabId}-${tab}`}
+            >
+              {labels[tab]}
+            </button>
+          ))}
+          <span
+            aria-hidden
+            className={styles.tabIndicator}
+            style={{
+              width: `${100 / visibleTabs.length}%`,
+              transform: `translateX(${progress * 100}%)`,
+            }}
           />
-        </section>
-      )}
-      {profile && modal === "edit" && (
+        </div>
+        <HorizontalPager
+          ref={pager}
+          keys={visibleTabs}
+          activeKey={viewTab as (typeof tabs)[number]}
+          onCommit={changeTab}
+          onProgress={setProgress}
+          panels={panels}
+          platform={shell.platform}
+          scrollOwner="document"
+          visible={
+            (!embedded || shell.activeDestination === "user") &&
+            modal === null &&
+            people === null
+          }
+          frameClassName={styles.pager}
+          panelClassName={styles.panel}
+          panelAttributes={(tab) => ({ "data-author-panel": tab })}
+          panelId={(tab) => `${tabId}-panel-${tab}`}
+          panelLabelledBy={(tab) => `${tabId}-${tab}`}
+        />
+      </section>
+      {ownProfile && profile && modal === "edit" && (
         <ProfileEditor
+          profile={profile}
+          onClose={() => setModal("settings")}
+          onSaved={save}
+        />
+      )}
+      {ownProfile && profile && modal === "background" && (
+        <ProfileBackgroundEditor
           profile={profile}
           onClose={() => setModal(null)}
           onSaved={save}
         />
-      )}{" "}
-      {profile && trashAllowed && modal === "trash" && (
-        <TrashPanel
-          key={profile.id}
-          onClose={() => setModal(null)}
-          // A restored work returns to the owner's lists as self-only.
-          onRestored={() => author.mutate()}
-        />
       )}
+      {people &&
+        profile &&
+        (ownProfile || profile.privacy[people] === "public") && (
+          <PeopleList
+            key={`${author.viewer?.id ?? "guest"}:${profile.id}:${people}`}
+            id={profile.id}
+            list={people}
+            owner={ownProfile}
+            revision={author.revision}
+            onClose={() => setPeople(null)}
+          />
+        )}
       {owner && modal === "settings" && (
         <ProfileSettings
           key={profile?.id ?? "guest"}
           profile={profile}
           onClose={() => setModal(null)}
           onSaved={save}
-          onOpenEdit={() => setModal("edit")}
-          onOpenComments={() => {
-            setModal(null);
-            onViewChange("comments", 0);
-          }}
-          {...(trashAllowed ? { onOpenTrash: () => setModal("trash") } : {})}
+          onEdit={ownProfile ? () => setModal("edit") : undefined}
         />
       )}
     </section>
   );
 };
-const MyComments = ({ entryId }: { entryId: string }) => {
+export const MyComments = ({
+  entryId,
+  onOpenContent,
+}: {
+  entryId: string;
+  onOpenContent?:
+    ((target: ContentIdentity, opener: HTMLElement) => void) | undefined;
+}) => {
   const author = useAuthors(),
     shell = useProductShell();
   const cacheKey = `own-comments:${author.viewer?.id}:${entryId}`;
@@ -485,7 +589,9 @@ const MyComments = ({ entryId }: { entryId: string }) => {
                       target: item.target,
                       id: item.id,
                     });
-                    shell.openContent(item.target!, event.currentTarget);
+                    if (onOpenContent)
+                      onOpenContent(item.target!, event.currentTarget);
+                    else shell.openContent(item.target!, event.currentTarget);
                   }}
                 >
                   前往评论位置
@@ -571,9 +677,66 @@ export const AuthorProfileOverlay = (
 ) => {
   const author = useAuthors();
   return (
-    <ScopedAuthorProfileOverlay
+    <ScopedAuthorProfile
       key={`${author.viewer?.id ?? "guest"}:${props.state.entryId}`}
       {...props}
+    />
+  );
+};
+
+/** An in-flow primary destination; the shell owns its vertical scroll and Back. */
+export const AuthorProfilePage = ({
+  onBack,
+  entryId = "primary-user",
+}: {
+  onBack: () => void;
+  entryId?: string;
+}) => {
+  const author = useAuthors();
+  return (
+    <ScopedAuthorProfilePage
+      key={`${author.viewer?.id ?? "guest"}:${entryId}`}
+      onBack={onBack}
+      entryId={entryId}
+    />
+  );
+};
+const ScopedAuthorProfilePage = ({
+  onBack,
+  entryId,
+}: {
+  onBack: () => void;
+  entryId: string;
+}) => {
+  const author = useAuthors();
+  const cacheKey = `primary-profile-tab:${author.viewer?.id ?? "guest"}:${entryId}`;
+  const [tab, setTab] = useState<(typeof tabs)[number]>(() => {
+    const saved = author.cache.get(cacheKey);
+    return tabs.includes(saved as (typeof tabs)[number])
+      ? (saved as (typeof tabs)[number])
+      : "works";
+  });
+  const backButtonRef = useRef<HTMLButtonElement>(null);
+  return (
+    <ScopedAuthorProfile
+      embedded
+      state={{
+        kind: "profile",
+        version: 2,
+        authorId: author.viewer?.id ?? null,
+        entryId,
+        tab,
+        profileScrollTop: 0,
+        sourceDestination: "home",
+        sourceScrollTop: 0,
+      }}
+      backButtonRef={backButtonRef}
+      onClose={onBack}
+      onViewChange={(next) => {
+        const selected = next === "comments" ? "works" : next;
+        author.cache.set(cacheKey, selected);
+        setTab(selected);
+      }}
     />
   );
 };

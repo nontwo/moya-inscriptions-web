@@ -79,10 +79,10 @@ describe("PreviewCatalogDetailOverlay", () => {
     const backButtonRef = { current: null };
     const renderOverlay = (catalogId: string) => (
       <ProductShell
-        calligraphy={<p>calligraphy</p>}
+        user={<p>calligraphy</p>}
         home={<OverlayHost />}
         initialPlatform="phone"
-        inscriptions={<p>inscriptions</p>}
+        discussion={<p>inscriptions</p>}
         renderDetailOverlay={() => (
           <PreviewCatalogDetailOverlay
             backButtonRef={backButtonRef}

@@ -95,6 +95,8 @@ export const mapCatalogSummary = (
   if (projection.periodLabel !== undefined) {
     summary.periodLabel = projection.periodLabel;
   }
+  const province = projectPublicText(projection.province);
+  if (province !== undefined) summary.province = province;
   if (projection.representativeMedia !== undefined) {
     summary.representativeMedia = mapPublicMedia(
       projection.representativeMedia,

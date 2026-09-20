@@ -66,6 +66,18 @@ describe("T02pQaPage", () => {
     );
   });
 
+  it("renders the QA filter for a direct Inscriptions feed entry", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const markup = renderToStaticMarkup(
+      await T02pQaPage({
+        searchParams: Promise.resolve({ feed: "inscriptions" }),
+      }),
+    );
+    expect(markup).toContain('data-active-home-feed="inscriptions"');
+    expect(markup).toContain("data-inscription-filter");
+    expect(markup).toContain("data-filter-trigger");
+  });
+
   it("supports direct QA links for phone and tablet presentation modes", async () => {
     vi.stubEnv("NODE_ENV", "development");
 
@@ -169,7 +181,7 @@ describe("T02pQaPage", () => {
     expect(hidden.type).toBe(T02pQaHarness);
     expect(visibleProps).toMatchObject({
       initialHomeScenario: "topic-long-blocks",
-      initialHomeFeed: "topics",
+      initialHomeFeed: "discover",
       initialTopicId: "qa-owner-topic",
       initialPlatform: "pc",
       qaChrome: "visible",

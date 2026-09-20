@@ -9,43 +9,26 @@ import type {
   ReactElement,
   ReactNode,
 } from "react";
-import type { StaticImageData } from "next/image";
-
-import navCalligraphyLabelAsset from "@moya/ui/assets/labels/nav-calligraphy.png";
-import navHomeLabelAsset from "@moya/ui/assets/labels/nav-home.png";
-import navInscriptionsLabelAsset from "@moya/ui/assets/labels/nav-inscriptions.png";
-
 import styles from "./primary-bottom-navigation.module.css";
 
 import type { PresentationPlatform } from "./device-platform";
 import type { PrimaryDestination } from "./primary-shell";
-import type { FixedLabelName, IconName } from "@moya/ui";
+import type { IconName } from "@moya/ui";
 
 interface PrimaryNavigationItem {
   readonly id: PrimaryDestination;
   readonly label: string;
-  readonly icon: Extract<IconName, "home" | "inscriptions" | "calligraphy">;
+  readonly icon: Extract<IconName, "home" | "discussion" | "user">;
   readonly iconPath: string;
   readonly iconUsesLinejoin: boolean;
-  readonly labelMark: FixedLabelName;
 }
 
 export const PRIMARY_NAVIGATION_ICON_PATHS = {
   home: "M3.5 11.2 12 4l8.5 7.2M6.2 9.7v9.5h11.6V9.7M9.5 19.2v-5.7h5v5.7",
-  inscriptions:
-    "M7 20h10M8.2 20V7.2c0-2.1 1.7-3.7 3.8-3.7s3.8 1.6 3.8 3.7V20M10.4 8.2h3.2M10.4 11.4h3.2M10.4 14.6h3.2",
-  calligraphy:
-    "M5 5.2c4.5-.7 9.1-.7 13.8 0v13.6c-4.7-.7-9.3-.7-13.8 0V5.2Zm7 0v13.6M8 8.6h2M14 8.6h2M8 12h2M14 12h2",
+  discussion:
+    "M18 14.5h1a2 2 0 0 1 2 2V21l-3.8-2.5H13a2 2 0 0 1-2-2V15M5.5 4h11A2.5 2.5 0 0 1 19 6.5v5a2.5 2.5 0 0 1-2.5 2.5H9l-5 3v-4A2.5 2.5 0 0 1 3 11V6.5A2.5 2.5 0 0 1 5.5 4Z",
+  user: "M12 13a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4ZM4.5 21v-1.2a7.5 5.8 0 0 1 15 0V21",
 } as const;
-
-const labelAssetUrl = (asset: StaticImageData | string) =>
-  typeof asset === "string" ? asset : asset.src;
-
-const primaryNavigationLabelAssetUrls = {
-  "nav-calligraphy": labelAssetUrl(navCalligraphyLabelAsset),
-  "nav-home": labelAssetUrl(navHomeLabelAsset),
-  "nav-inscriptions": labelAssetUrl(navInscriptionsLabelAsset),
-} as const satisfies Record<FixedLabelName, string>;
 
 const primaryNavigationItems = [
   {
@@ -54,23 +37,20 @@ const primaryNavigationItems = [
     icon: "home",
     iconPath: PRIMARY_NAVIGATION_ICON_PATHS.home,
     iconUsesLinejoin: true,
-    labelMark: "nav-home",
   },
   {
-    id: "inscriptions",
-    label: "碑刻",
-    icon: "inscriptions",
-    iconPath: PRIMARY_NAVIGATION_ICON_PATHS.inscriptions,
-    iconUsesLinejoin: false,
-    labelMark: "nav-inscriptions",
-  },
-  {
-    id: "calligraphy",
-    label: "书帖",
-    icon: "calligraphy",
-    iconPath: PRIMARY_NAVIGATION_ICON_PATHS.calligraphy,
+    id: "discussion",
+    label: "讨论",
+    icon: "discussion",
+    iconPath: PRIMARY_NAVIGATION_ICON_PATHS.discussion,
     iconUsesLinejoin: true,
-    labelMark: "nav-calligraphy",
+  },
+  {
+    id: "user",
+    label: "用户",
+    icon: "user",
+    iconPath: PRIMARY_NAVIGATION_ICON_PATHS.user,
+    iconUsesLinejoin: true,
   },
 ] as const satisfies readonly PrimaryNavigationItem[];
 
@@ -171,7 +151,7 @@ const PrimaryNavigationIcon = ({
   path,
   usesLinejoin,
 }: {
-  readonly icon: Extract<IconName, "home" | "inscriptions" | "calligraphy">;
+  readonly icon: Extract<IconName, "home" | "discussion" | "user">;
   readonly label: string;
   readonly path: string;
   readonly usesLinejoin: boolean;
@@ -197,60 +177,12 @@ const PrimaryNavigationIcon = ({
   </svg>
 );
 
-const PrimaryNavigationLabelMark = ({
-  label,
-  name,
-}: {
-  readonly label: string;
-  readonly name: FixedLabelName;
-}) => {
-  const maskId = `primary-navigation-label-${name}`;
-
-  return (
-    <svg
-      aria-hidden="true"
-      className={styles.labelMark}
-      data-label={name}
-      data-primary-navigation-inline-label=""
-      data-source-asset={`packages/ui/src/assets/labels/${name}.png`}
-      focusable="false"
-      viewBox="0 0 264 120"
-    >
-      <title>{label}</title>
-      <defs>
-        <mask
-          className={styles.labelMask}
-          height="120"
-          id={maskId}
-          maskUnits="userSpaceOnUse"
-          width="264"
-          x="0"
-          y="0"
-        >
-          <image
-            height="120"
-            href={primaryNavigationLabelAssetUrls[name]}
-            preserveAspectRatio="xMidYMid meet"
-            width="264"
-          />
-        </mask>
-      </defs>
-      <rect
-        fill="currentColor"
-        height="120"
-        mask={`url(#${maskId})`}
-        width="264"
-      />
-    </svg>
-  );
-};
-
 export const createPrimaryNavigationEntryElements = (
   activeDestination: PrimaryDestination,
   onDestinationChange: (destination: PrimaryDestination) => void,
 ): ReactElement[] =>
   primaryNavigationItems.map(
-    ({ id, icon, iconPath, iconUsesLinejoin, label, labelMark }) => {
+    ({ id, icon, iconPath, iconUsesLinejoin, label }) => {
       const selected = id === activeDestination;
 
       return (
@@ -274,7 +206,13 @@ export const createPrimaryNavigationEntryElements = (
               usesLinejoin={iconUsesLinejoin}
             />
           </span>
-          <PrimaryNavigationLabelMark label={label} name={labelMark} />
+          <span
+            aria-hidden="true"
+            className={styles.label}
+            data-primary-navigation-text-label=""
+          >
+            {label}
+          </span>
         </button>
       );
     },
@@ -546,15 +484,6 @@ export const PrimaryBottomNavigation = ({
 
   return (
     <>
-      {primaryNavigationItems.map(({ labelMark }) => (
-        <link
-          key={labelMark}
-          as="image"
-          href={primaryNavigationLabelAssetUrls[labelMark]}
-          rel="preload"
-          type="image/png"
-        />
-      ))}
       <div
         className={styles.dock}
         data-primary-navigation-dock=""

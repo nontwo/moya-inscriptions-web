@@ -23,7 +23,7 @@ import {
 } from "./product-history";
 
 describe("Product Shell history", () => {
-  it.each(["home", "inscriptions", "calligraphy"] as const)(
+  it.each(["home", "discussion", "user"] as const)(
     "accepts the bounded %s primary destination",
     (destination) => {
       expect(isPrimaryDestination(destination)).toBe(true);
@@ -33,14 +33,28 @@ describe("Product Shell history", () => {
     },
   );
 
+  it.each(["inscriptions", "calligraphy"])(
+    "rejects the retired %s primary destination",
+    (destination) => {
+      expect(isPrimaryDestination(destination)).toBe(false);
+      expect(
+        parseProductHistoryState({
+          destination,
+          kind: "primary",
+          version: PRODUCT_SHELL_HISTORY_VERSION,
+        }),
+      ).toBeNull();
+    },
+  );
+
   it("parses the explicit Settings layer", () => {
     expect(
-      parseProductHistoryState(settingsHistoryState("inscriptions")),
-    ).toEqual(settingsHistoryState("inscriptions"));
+      parseProductHistoryState(settingsHistoryState("discussion")),
+    ).toEqual(settingsHistoryState("discussion"));
   });
 
   it("parses the bounded Detail layer and preserves source/detail scroll", () => {
-    const state = detailHistoryState("catalog-one", "inscriptions", 147, 63);
+    const state = detailHistoryState("catalog-one", "discussion", 147, 63);
     expect(parseProductHistoryState(state)).toEqual(state);
     expect(detailHistoryState("catalog-one", "home", -1, -2)).toMatchObject({
       detailScrollTop: 0,
@@ -71,7 +85,7 @@ describe("Product Shell history", () => {
     const state = viewerHistoryState(
       "catalog-one",
       "media-two",
-      "inscriptions",
+      "discussion",
       147,
       63,
     );
@@ -110,7 +124,7 @@ describe("Product Shell history", () => {
       {
         __NA: true,
         __PRIVATE_NEXTJS_INTERNALS_TREE: ["existing"],
-        destination: "inscriptions",
+        destination: "discussion",
         kind: "primary",
         scrollTop: 44,
         version: PRODUCT_SHELL_HISTORY_VERSION,
@@ -131,8 +145,10 @@ describe("Product Shell history", () => {
 
   it("preserves a bounded primary scroll checkpoint for an overlay source entry", () => {
     expect(
-      parseProductHistoryState(primaryHistoryState("home", 147, "topic-one")),
-    ).toEqual(primaryHistoryState("home", 147, "topic-one"));
+      parseProductHistoryState(
+        primaryHistoryState("discussion", 147, "topic-one"),
+      ),
+    ).toEqual(primaryHistoryState("discussion", 147, "topic-one"));
     expect(primaryHistoryState("home", -10).scrollTop).toBe(0);
   });
 
@@ -140,7 +156,11 @@ describe("Product Shell history", () => {
     expect(
       parseProductHistoryState(topicHistoryState("topic-one", 147)),
     ).toEqual(topicHistoryState("topic-one", 147));
-    expect(topicHistoryState("topic-one", -10).sourceScrollTop).toBe(0);
+    expect(topicHistoryState("topic-one", -10)).toMatchObject({
+      sourceDestination: "discussion",
+      sourceHomeFeed: "topics",
+      sourceScrollTop: 0,
+    });
     expect(
       topicLocation(
         { pathname: "/dev/t02p", search: "?cb=exact-head" } as Location,
@@ -157,7 +177,7 @@ describe("Product Shell history", () => {
       { type: "draft", id: draftId },
       { type: "work", id: workId },
     ] as const) {
-      const state = editorHistoryState(target, "calligraphy", 147);
+      const state = editorHistoryState(target, "user", 147);
       expect(parseProductHistoryState(state)).toEqual(state);
     }
     expect(
@@ -261,7 +281,7 @@ describe("Product Shell history", () => {
       version: PRODUCT_SHELL_HISTORY_VERSION,
     },
     {
-      destination: "inscriptions",
+      destination: "user",
       focusTopicId: "topic-one",
       kind: "primary",
       version: PRODUCT_SHELL_HISTORY_VERSION,
@@ -313,7 +333,7 @@ describe("Product Shell history", () => {
     },
     {
       kind: "topic",
-      sourceDestination: "home",
+      sourceDestination: "discussion",
       sourceHomeFeed: "topics",
       sourceScrollTop: -1,
       topicId: "topic-invalid-scroll",
@@ -321,7 +341,7 @@ describe("Product Shell history", () => {
     },
     {
       kind: "topic",
-      sourceDestination: "home",
+      sourceDestination: "discussion",
       sourceHomeFeed: "topics",
       sourceScrollTop: 0,
       topicId: "",

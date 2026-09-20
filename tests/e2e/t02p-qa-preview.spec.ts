@@ -54,8 +54,8 @@ const expectChrome = async (surface: Locator, mode: "visible" | "hidden") => {
 
 const navigateTo = async (
   shell: Locator,
-  name: "首页" | "碑刻" | "书帖",
-  destination: "home" | "inscriptions" | "calligraphy",
+  name: "首页" | "讨论" | "用户",
+  destination: "home" | "discussion" | "user",
 ) => {
   const navigation = shell.locator("[data-primary-navigation]");
   if ((await navigation.getAttribute("data-minimized")) === "true") {
@@ -68,9 +68,29 @@ const navigateTo = async (
   await expect(shell).toHaveAttribute("data-active-destination", destination);
 };
 
+const selectHomeFeed = async (
+  shell: Locator,
+  name: "发现" | "附近" | "碑刻" | "书帖",
+  feed: "discover" | "nearby" | "inscriptions" | "calligraphy",
+) => {
+  await navigateTo(shell, "首页", "home");
+  const home = shell.locator("[data-home-surface]");
+  const tab = home.getByRole("tab", { exact: true, name });
+  if (await shell.page().locator("[data-qa-controls]").count()) {
+    // Normal QA chrome intentionally covers the top tabs on narrow screens.
+    // Use their real keyboard activation without altering or hiding that chrome.
+    await tab.focus();
+    await tab.press("Enter");
+  } else await tab.click();
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
+  await expect(
+    home.locator(`[data-home-feed-panel="${feed}"]`),
+  ).toHaveAttribute("aria-hidden", "false");
+};
+
 const activeCatalogCards = (shell: Locator) =>
   shell.locator(
-    '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card], [data-primary-destination="calligraphy"]:not([hidden]) [data-calligraphy-category-panel][aria-hidden="false"] [data-catalog-card]',
+    '[data-primary-destination="home"]:not([hidden]) [data-home-feed-panel][aria-hidden="false"] [data-catalog-card]',
   );
 
 const catalogSnapshot = async (shell: Locator, settleMedia = true) => {
@@ -113,19 +133,22 @@ const catalogSnapshot = async (shell: Locator, settleMedia = true) => {
 };
 
 const qaCatalogs = async (shell: Locator) => {
-  await navigateTo(shell, "碑刻", "inscriptions");
+  await selectHomeFeed(shell, "碑刻", "inscriptions");
   const inscriptions = await catalogSnapshot(shell);
   expect(
     inscriptions.find(({ id }) => id === "qa-visual-inscription-12")
       ?.mediaState,
   ).toBe("failed");
-  await navigateTo(shell, "书帖", "calligraphy");
+  await selectHomeFeed(shell, "书帖", "calligraphy");
+  const allCalligraphy = shell.locator('[data-home-feed-panel="calligraphy"]');
+  await expect(allCalligraphy.locator("[data-calligraphy-all]")).toBeVisible();
+  await expect(allCalligraphy.getByRole("tablist")).toHaveCount(0);
   await expect(
-    shell.locator("[data-calligraphy-category-surface]"),
-  ).toHaveAttribute("data-calligraphy-classification-source", "qa-synthetic");
+    allCalligraphy.locator("[data-calligraphy-category-panel]"),
+  ).toHaveCount(0);
   const calligraphy = await catalogSnapshot(shell);
   expect(calligraphy).toHaveLength(12);
-  await navigateTo(shell, "碑刻", "inscriptions");
+  await selectHomeFeed(shell, "碑刻", "inscriptions");
   return { inscriptions, calligraphy };
 };
 
@@ -192,7 +215,7 @@ test("hidden QA keeps Catalog identity and the existing Search Filter User Setti
   expect(await qaCatalogs(hidden.shell)).toEqual(normalCatalogs);
   const { shell } = hidden;
   const originalCards = await catalogSnapshot(shell, false);
-  const source = shell.locator('[data-primary-destination="inscriptions"]');
+  const source = shell.locator('[data-home-feed-panel="inscriptions"]');
   // ProductShell restores a destination over two animation frames. The initial
   // WebKit probe captured 225 before that existing restore reached 990, before
   // any Filter click in all three controls. Measure a settled pre-action source.
@@ -275,8 +298,9 @@ test("hidden QA keeps Catalog identity and the existing Search Filter User Setti
   await userPage.getByRole("button", { name: "关闭用户页" }).click();
   await expect(userPage).toHaveCount(0);
   await expect(userTrigger).toBeFocused();
-  await expect(shell).toHaveAttribute(
-    "data-active-destination",
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  await expect(shell.locator("[data-home-surface]")).toHaveAttribute(
+    "data-active-home-feed",
     "inscriptions",
   );
   await expect
@@ -323,12 +347,21 @@ test("hidden QA preserves existing scenario feed and topic entry parameters", as
     );
     await expect(shell.locator("[data-home-surface]")).toHaveAttribute(
       "data-active-home-feed",
+      "discover",
+    );
+    await expect(shell).toHaveAttribute(
+      "data-active-destination",
+      "discussion",
+    );
+    const discussion = shell.locator("[data-discussion-surface]");
+    await expect(discussion).toHaveAttribute(
+      "data-active-discussion-feed",
       "topics",
     );
-    // Original 5d5 and current normal/hidden all share an existing development
-    // initial-topic limitation. This QA-chrome regression compares their entry
-    // semantics; it neither requires that bug nor claims to repair deep links.
-    // Page unit tests independently assert exact initialTopicId forwarding.
+    const topic = shell.getByRole("dialog", { name: "专题：摩崖之路" });
+    await expect(topic).toBeVisible();
+    // The legacy feed=topics parameter falls back to Home Discover; the explicit
+    // topic parameter opens its Discussion owner in both QA chrome modes.
     topicEntries.push(
       await shell.evaluate(async (node) => {
         for (let frame = 0; frame < 12; frame += 1) {
@@ -349,14 +382,13 @@ test("hidden QA preserves existing scenario feed and topic entry parameters", as
         };
       }),
     );
-    const topic = shell.getByRole("dialog", { name: "专题：摩崖之路" });
-    if (await topic.count()) {
-      await topic.getByRole("button", { name: "返回专题" }).click();
-      await expect(topic).toHaveCount(0);
-    }
+    await topic.getByRole("button", { name: "返回专题" }).click();
+    await expect(topic).toHaveCount(0);
     // Keyboard activation is a real existing action and is not blocked by the
     // normal QA aside covering the first card's pointer coordinates.
-    const card = shell.locator('[data-topic-id="topic-cliff-paths"]');
+    const card = discussion.locator(
+      '[role="tabpanel"][aria-hidden="false"] [data-topic-id="topic-cliff-paths"]',
+    );
     await expect(card).toHaveCount(1);
     await card.focus();
     await card.press("Enter");
@@ -364,8 +396,12 @@ test("hidden QA preserves existing scenario feed and topic entry parameters", as
     await topic.getByRole("button", { name: "返回专题" }).click();
     await expect(topic).toHaveCount(0);
     await expect(card).toBeFocused();
-    await expect(shell.locator("[data-home-surface]")).toHaveAttribute(
-      "data-active-home-feed",
+    await expect(shell).toHaveAttribute(
+      "data-active-destination",
+      "discussion",
+    );
+    await expect(discussion).toHaveAttribute(
+      "data-active-discussion-feed",
       "topics",
     );
     expect(new URL(page.url()).searchParams.get("topic")).toBe(
@@ -415,7 +451,7 @@ test("Formal and clean Development do not consume the QA chrome parameter", asyn
       );
       const shell = page.locator("[data-product-shell]");
       await expect(shell).toHaveCount(1);
-      await navigateTo(shell, "碑刻", "inscriptions");
+      await selectHomeFeed(shell, "碑刻", "inscriptions");
       snapshots.push(await catalogSnapshot(shell));
     }
     expect(snapshots[1]).toEqual(snapshots[0]);

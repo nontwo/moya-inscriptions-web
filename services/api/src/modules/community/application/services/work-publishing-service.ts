@@ -32,8 +32,6 @@ import type {
   ResolvePublishingConflictCommand,
   RestorePublishingSnapshotCommand,
   SavePublishingDraftCommand,
-  TrashRestoreResult,
-  TrashedWorkPage,
   WorkSubmissionCommand,
   WorkSubmissionReceipt,
   WorkSubmissionResult,
@@ -828,26 +826,11 @@ export class WorkPublishingService {
     return receipt;
   }
 
-  trashWork(
+  deleteWork(
     actorId: string,
     workId: string,
     command: PublishingCommandIdentity,
   ): Promise<{ readonly deleted: true }> {
-    return this.port.trashWork(actorId, workId, command, this.clock());
-  }
-
-  listTrash(
-    actorId: string,
-    query: PublishingPageQuery,
-  ): Promise<TrashedWorkPage> {
-    return this.port.listTrash(actorId, query, this.clock());
-  }
-
-  restoreWork(
-    actorId: string,
-    workId: string,
-    command: PublishingCommandIdentity,
-  ): Promise<TrashRestoreResult> {
-    return this.port.restoreWork(actorId, workId, command, this.clock());
+    return this.port.deleteWork(actorId, workId, command, this.clock());
   }
 }

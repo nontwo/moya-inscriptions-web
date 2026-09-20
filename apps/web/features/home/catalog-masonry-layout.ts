@@ -1,4 +1,5 @@
 export const HOME_ULTRA_WIDE_RATIO = 2.4;
+export const HOME_ALIGNED_ROW_TOLERANCE = 2;
 export const HOME_PC_MIN_COLUMNS = 3;
 export const HOME_PC_MAX_COLUMNS = 8;
 export const HOME_PC_MIN_CARD_WIDTH = 220;
@@ -55,6 +56,7 @@ export const layoutHomeMasonry = (
   availableWidth: number,
   columns: number,
   gap: number,
+  spanAtAlignedRows = false,
 ): MasonryLayoutResult => {
   const safeColumns = Math.max(1, Math.floor(columns));
   const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 0;
@@ -65,20 +67,30 @@ export const layoutHomeMasonry = (
     (safeWidth - safeGap * Math.max(0, safeColumns - 1)) / safeColumns;
   const heights = Array.from({ length: safeColumns }, () => 0);
   const positions: MasonryPosition[] = [];
+  let columnCardsSinceSpan = 0;
 
   for (const item of items) {
     const height = Number.isFinite(item.height) ? Math.max(0, item.height) : 0;
-    // A panorama spans only an approximately level row. Otherwise it fills
-    // the shortest column, without reordering items or leaving a tall hole.
-    if (
+    const heightDifference = Math.max(...heights) - Math.min(...heights);
+    // Home starts with a feature card. A later feature uses the next item only
+    // after ordinary cards have brought both column bottoms back into line.
+    // Resetting a full row never makes the very next card another feature.
+    const alignedFeature =
+      spanAtAlignedRows &&
+      safeColumns === 2 &&
+      (positions.length === 0 ||
+        (columnCardsSinceSpan >= safeColumns &&
+          heightDifference <= HOME_ALIGNED_ROW_TOLERANCE));
+    const requestedSpan =
+      !spanAtAlignedRows &&
       item.spanAll === true &&
-      safeColumns > 1 &&
-      Math.max(...heights) - Math.min(...heights) <= safeGap
-    ) {
+      heightDifference <= safeGap;
+    if (safeColumns > 1 && (alignedFeature || requestedSpan)) {
       const y = Math.max(...heights);
       positions.push({ height, width: safeWidth, x: 0, y });
       const nextHeight = y + height + safeGap;
       heights.fill(nextHeight);
+      columnCardsSinceSpan = 0;
       continue;
     }
 
@@ -87,6 +99,7 @@ export const layoutHomeMasonry = (
     const x = column * (columnWidth + safeGap);
     positions.push({ height, width: columnWidth, x, y: shortest });
     heights[column] = shortest + height + safeGap;
+    columnCardsSinceSpan += 1;
   }
 
   const tallest = Math.max(0, ...heights);

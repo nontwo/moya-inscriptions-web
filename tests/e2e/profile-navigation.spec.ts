@@ -1,0 +1,588 @@
+import { expect, test } from "@playwright/test";
+import sharp from "sharp";
+import type { Page } from "@playwright/test";
+
+const ownerId = `user-${"7".repeat(32)}`;
+const identity = {
+  id: ownerId,
+  handle: "synthetic-scroll",
+  displayName: "滚动测试作者",
+};
+const profile = {
+  ...identity,
+  bio: "用于检查用户资料加载后的共同吸顶位置。".repeat(12),
+  avatar: null,
+  isOwner: true,
+  following: false,
+  privacy: {
+    following: "public",
+    followers: "public",
+    favorites: "public",
+    likes: "public",
+  },
+  totals: { works: 12, following: 0, followers: 0, favorites: 0, likes: 0 },
+  nextAvatarChangeAt: null,
+};
+async function fixture(page: Page, delayed = false) {
+  let resolveProfile = () => {};
+  const ready = new Promise<void>((resolve) => {
+    resolveProfile = resolve;
+  });
+  if (!delayed) resolveProfile();
+  await page.route("**/api/community/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/community/me") return route.fulfill({ json: identity });
+    if (path === `/api/community/authors/${ownerId}`) {
+      await ready;
+      return route.fulfill({
+        json: { ...profile, bio: delayed ? profile.bio : "滚动回归合成资料。" },
+      });
+    }
+    if (path === `/api/community/authors/${ownerId}/works`)
+      return route.fulfill({
+        json: {
+          items: Array.from({ length: 12 }, (_, index) => ({
+            id: `work-${String(index + 1).padStart(32, "0")}`,
+            authorId: ownerId,
+            authorName: identity.displayName,
+            title: `滚动测试作品 ${index + 1}`,
+            text: "保留正文阅读位置。".repeat(28),
+            media: [],
+            firstPublishedAt: "2026-09-20T00:00:00.000Z",
+            version: 1,
+            canEdit: true,
+            available: true,
+          })),
+          total: 12,
+          page: 1,
+          pageSize: 12,
+        },
+      });
+    if (/\/(favorites|likes)$/.test(path))
+      return route.fulfill({
+        json: { items: [], total: 0, page: 1, pageSize: 12 },
+      });
+    return route.continue();
+  });
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "主要内容" })
+    .getByRole("button", { name: "用户", exact: true })
+    .click();
+  await expect(
+    page.locator(`[data-author-profile="${ownerId}"]`),
+  ).toBeVisible();
+  if (!delayed)
+    await expect(
+      page.getByRole("heading", { name: identity.displayName, exact: true }),
+    ).toBeVisible();
+  // Primary navigation restores its saved scroll in two animation frames.
+  // Wait for that existing handoff before starting a separate user scroll.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+      ),
+  );
+  return resolveProfile;
+}
+async function geometry(page: Page) {
+  return page.evaluate(() => {
+    const profile = document.querySelector<HTMLElement>(
+      "[data-author-profile]",
+    )!;
+    const primary = profile.closest<HTMLElement>("[data-primary-destination]")!;
+    const scroll =
+      document
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-platform") === "pc"
+        ? document.documentElement
+        : primary;
+    return {
+      top: scroll.scrollTop,
+      max: scroll.scrollHeight - scroll.clientHeight,
+      tabsTop: profile
+        .querySelector('[role="tablist"]')!
+        .getBoundingClientRect().top,
+      headerBottom: profile.querySelector("header")!.getBoundingClientRect()
+        .bottom,
+      collapse: profile
+        .querySelector('[aria-label="用户资料"]')!
+        .getBoundingClientRect().height,
+    };
+  });
+}
+async function scrollTo(page: Page, top: number) {
+  await page.evaluate((value) => {
+    const pc =
+      document
+        .querySelector("[data-product-shell]")
+        ?.getAttribute("data-platform") === "pc";
+    const target = pc
+      ? document.documentElement
+      : document.querySelector<HTMLElement>(
+          '[data-primary-destination="user"]',
+        )!;
+    target.scrollTop = value;
+    (pc ? window : target).dispatchEvent(new Event("scroll"));
+  }, top);
+}
+async function tab(page: Page, name: string) {
+  const target = page.getByRole("tab", { name, exact: true });
+  const box = await target.boundingBox();
+  if (!box) throw new Error("Missing visible profile tab");
+  // Click its visible sticky position, without scrolling its original flow box.
+  await expect
+    .poll(() =>
+      target.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return (
+          document
+            .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+            ?.closest('[role="tab"]') === node
+        );
+      }),
+    )
+    .toBe(true);
+  if (test.info().project.use.hasTouch)
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  else await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(target).toHaveAttribute("aria-selected", "true");
+}
+async function pinned(page: Page) {
+  await expect
+    .poll(async () => {
+      const g = await geometry(page);
+      return Math.abs(g.tabsTop - g.headerBottom);
+    })
+    .toBeLessThanOrEqual(1);
+}
+
+test("Profile empty collections share collapse and preserve long body offsets", async ({
+  page,
+}) => {
+  await fixture(page);
+  await expect(
+    page.getByRole("button", { name: "打开滚动测试作品 12", exact: true }),
+  ).toBeAttached();
+  const initial = await geometry(page);
+  const longTop = initial.collapse + 420;
+  await expect
+    .poll(async () => (await geometry(page)).max)
+    .toBeGreaterThan(longTop);
+  await scrollTo(page, longTop);
+  await pinned(page);
+  await tab(page, "收藏");
+  await expect(
+    page.getByRole("tabpanel", { name: "收藏", exact: true }),
+  ).toContainText("暂无可显示的内容");
+  await pinned(page);
+  await tab(page, "作品");
+  await expect
+    .poll(async () => Math.abs((await geometry(page)).top - longTop))
+    .toBeLessThanOrEqual(1);
+  await tab(page, "喜欢");
+  await pinned(page);
+  const pager = page.locator("[data-author-profile] [data-horizontal-pager]");
+  if ((await pager.getAttribute("data-category-pager-engine")) === "embla") {
+    await expect
+      .poll(async () =>
+        Number(await pager.getAttribute("data-horizontal-pager-progress")),
+      )
+      .toBeCloseTo(2, 3);
+    await pager.evaluate((element) => {
+      const frame = element as HTMLElement;
+      for (const [type, fraction] of [
+        ["touchstart", 0],
+        ["touchmove", 0.3],
+        ["touchmove", 0.7],
+        ["touchmove", 1],
+        ["touchend", 1],
+      ] as const) {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "touches", {
+          value:
+            type === "touchend"
+              ? []
+              : [
+                  {
+                    identifier: 1,
+                    target: frame,
+                    clientX: frame.clientWidth * (0.8 - fraction),
+                    clientY: 300,
+                  },
+                ],
+        });
+        frame.dispatchEvent(event);
+      }
+    });
+    await expect(
+      page.getByRole("tab", { name: "历史", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+  } else await tab(page, "历史");
+  await pinned(page);
+  await scrollTo(page, 0);
+  await expect.poll(async () => (await geometry(page)).top).toBe(0);
+  await tab(page, "收藏");
+  expect((await geometry(page)).top).toBe(0);
+  await scrollTo(page, 100000);
+  await pinned(page);
+  const g = await geometry(page);
+  expect(Math.abs(g.top - g.collapse)).toBeLessThanOrEqual(1);
+});
+
+test("Profile remains pinned after delayed identity and bio load", async ({
+  page,
+}) => {
+  const release = await fixture(page, true);
+  await scrollTo(page, (await geometry(page)).collapse);
+  await pinned(page);
+  await tab(page, "收藏");
+  await pinned(page);
+  release();
+  await expect(
+    page.getByRole("heading", { name: identity.displayName, exact: true }),
+  ).toBeAttached();
+  await pinned(page);
+  await scrollTo(page, 0);
+  expect((await geometry(page)).top).toBe(0);
+});
+
+for (const surface of ["home", "discussion"] as const) {
+  for (const width of [320, 390]) {
+    test(`${surface} icons follow continuous forward and reversed swipes at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/");
+      await expect(page.locator("[data-product-boot]")).toHaveCount(0);
+      if (surface === "discussion") {
+        await page
+          .getByRole("navigation", { name: "主要内容" })
+          .getByRole("button", { name: "讨论", exact: true })
+          .click();
+      }
+      const home = page.locator(`[data-${surface}-surface]`);
+      const incomingKey = surface === "home" ? "nearby" : "threads";
+      const incomingLabel = surface === "home" ? "附近" : "话题";
+      const pager = home.locator("[data-horizontal-pager-scroll-owner]");
+      await expect(pager).toHaveAttribute(
+        "data-category-pager-engine",
+        "embla",
+      );
+      const samples = await pager.evaluate(async (element, incomingKey) => {
+        const frame = element as HTMLElement;
+        const home = frame.closest(
+          "[data-home-surface], [data-discussion-surface]",
+        )!;
+        const samples: {
+          progress: number;
+          previousProgress: number;
+          underline: string;
+          activation: number;
+          opacity: number;
+          scale: number;
+          clipped: boolean;
+          transitions: string;
+          scroll: number;
+        }[] = [];
+        const touch = (type: string, fraction: number) => {
+          const event = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperty(event, "touches", {
+            value:
+              type === "touchend"
+                ? []
+                : [
+                    {
+                      identifier: 1,
+                      target: frame,
+                      clientX: frame.clientWidth * (0.85 - fraction),
+                      clientY: 300,
+                    },
+                  ],
+          });
+          frame.dispatchEvent(event);
+        };
+        touch("touchstart", 0);
+        for (const fraction of [0.08, 0.2, 0.4, 0.6, 0.8, 0.6, 0.4, 0.2, 0]) {
+          touch("touchmove", fraction);
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+          const previousProgress = Number(
+            frame.dataset.horizontalPagerProgress,
+          );
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+          const button = home.querySelector<HTMLElement>(
+            `[data-tab-key="${incomingKey}"]`,
+          )!;
+          const slot = button.querySelector<HTMLElement>(
+            '[aria-hidden="true"]',
+          )!;
+          const icon = slot.firstElementChild!;
+          const box = icon.getBoundingClientRect(),
+            bound = slot.getBoundingClientRect();
+          const style = getComputedStyle(icon);
+          samples.push({
+            progress: Number(frame.dataset.horizontalPagerProgress),
+            previousProgress,
+            underline: (
+              home.querySelector("[data-top-tab-indicator]") as HTMLElement
+            ).style.transform,
+            activation: Number(
+              getComputedStyle(button).getPropertyValue("--top-tab-activation"),
+            ),
+            opacity: Number(getComputedStyle(slot).opacity),
+            scale: new DOMMatrixReadOnly(style.transform).a,
+            clipped:
+              box.left < bound.left - 0.2 || box.right > bound.right + 0.2,
+            transitions: style.transitionDuration,
+            scroll: home.querySelector<HTMLElement>("[data-animated-top-tabs]")!
+              .scrollLeft,
+          });
+        }
+        touch("touchend", 0);
+        return samples;
+      }, incomingKey);
+      expect(samples.some((sample) => sample.progress > 0.25)).toBe(true);
+      expect(
+        new Set(samples.map((sample) => sample.underline)).size,
+      ).toBeGreaterThan(3);
+      for (const sample of samples) {
+        // Embla writes its frame before React commits the header. Accept only
+        // the current or immediately preceding frame, never arbitrary lag.
+        expect(
+          Math.min(
+            ...[sample.progress, sample.previousProgress].map((progress) =>
+              Math.abs(sample.activation - progress),
+            ),
+          ),
+        ).toBeLessThan(0.00005);
+        expect(sample.opacity).toBeCloseTo(sample.activation, 4);
+        expect(sample.scale).toBeCloseTo(sample.activation, 4);
+        expect(sample.clipped).toBe(false);
+        expect(sample.transitions).toBe("0s");
+      }
+      expect(new Set(samples.map((sample) => sample.scroll)).size).toBe(1);
+      await expect(home).toHaveAttribute(
+        `data-active-${surface}-feed`,
+        surface === "home" ? "discover" : "news",
+      );
+      await expect
+        .poll(async () =>
+          Number(await pager.getAttribute("data-horizontal-pager-progress")),
+        )
+        .toBeCloseTo(0, 5);
+      await home.getByRole("tab", { name: incomingLabel, exact: true }).click();
+      await expect(home).toHaveAttribute(
+        `data-active-${surface}-feed`,
+        incomingKey,
+      );
+      await expect
+        .poll(async () =>
+          Number(
+            await home
+              .locator(`[data-tab-key="${incomingKey}"]`)
+              .evaluate((node) =>
+                getComputedStyle(node).getPropertyValue("--top-tab-activation"),
+              ),
+          ),
+        )
+        .toBeCloseTo(1, 4);
+    });
+  }
+}
+
+for (const width of [320, 390]) {
+  test(`Home category icons track pager motion through repeated transitions at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    await expect(page.locator("[data-product-boot]")).toHaveCount(0);
+    const home = page.locator("[data-home-surface]");
+    await home.getByRole("tab", { name: "附近", exact: true }).click();
+    await expect(home).toHaveAttribute("data-active-home-feed", "nearby");
+    await expect
+      .poll(async () =>
+        home
+          .locator('[data-tab-key="nearby"] [aria-hidden="true"]')
+          .first()
+          .evaluate((node) => Number(getComputedStyle(node).opacity)),
+      )
+      .toBeCloseTo(1, 5);
+    for (const [key, label, index] of [
+      ["inscriptions", "碑刻", 2],
+      ["calligraphy", "书帖", 3],
+      ["nearby", "附近", 1],
+    ] as const) {
+      const capture = home.evaluate(async (element, target) => {
+        const button = element.querySelector<HTMLElement>(
+          `[data-tab-key="${target}"]`,
+        )!;
+        const slot = button.querySelector<HTMLElement>('[aria-hidden="true"]')!;
+        const glyph = button.querySelector<HTMLElement>("[data-icon]")!;
+        const samples: {
+          opacity: number;
+          activation: number;
+          sameNode: boolean;
+          labelGap: number;
+          mask: string;
+          scale: number;
+          progress: number;
+          previousProgress: number;
+          transitions: string;
+        }[] = [];
+        const pager = element.querySelector<HTMLElement>(
+          "[data-horizontal-pager]",
+        )!;
+        let previousProgress = Number(pager.dataset.horizontalPagerProgress);
+        // A fixed frame count can stop before the click and spring settle.
+        // Capture through actual completion under a bounded wall-clock deadline.
+        const deadline = performance.now() + 5000;
+        while (performance.now() < deadline) {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+          samples.push({
+            opacity: Number(getComputedStyle(slot).opacity),
+            activation: Number(
+              button.style.getPropertyValue("--top-tab-activation"),
+            ),
+            sameNode: button.querySelector("[data-icon]") === glyph,
+            labelGap:
+              button.lastElementChild!.getBoundingClientRect().left -
+              glyph.getBoundingClientRect().right,
+            mask: getComputedStyle(glyph).maskImage,
+            scale: new DOMMatrixReadOnly(
+              getComputedStyle(slot.firstElementChild!).transform,
+            ).a,
+            progress: Number(
+              element.querySelector<HTMLElement>("[data-horizontal-pager]")!
+                .dataset.horizontalPagerProgress,
+            ),
+            previousProgress,
+            transitions: getComputedStyle(slot).transitionDuration,
+          });
+          previousProgress = Number(pager.dataset.horizontalPagerProgress);
+          if (
+            button.getAttribute("aria-selected") === "true" &&
+            pager.dataset.horizontalPagerScrolling === "false" &&
+            Math.abs(samples.at(-1)!.opacity - 1) < 0.000005
+          )
+            break;
+        }
+        return samples;
+      }, key);
+      await home.getByRole("tab", { name: label, exact: true }).click();
+      const samples = await capture;
+      expect(samples.at(-1)?.opacity).toBeCloseTo(1, 5);
+      expect(
+        samples.some(
+          (sample) => sample.opacity > 0.05 && sample.opacity < 0.95,
+        ),
+      ).toBe(true);
+      expect(
+        samples
+          .filter((sample) => sample.opacity > 0)
+          .every((sample) => sample.labelGap >= 4 * sample.activation - 0.5),
+      ).toBe(true);
+      expect(
+        samples.every(
+          (sample) => sample.sameNode && sample.transitions === "0s",
+        ),
+      ).toBe(true);
+      expect(new Set(samples.map((sample) => sample.mask))).toEqual(
+        new Set(["none"]),
+      );
+      const glyph = home.locator(`[data-tab-key="${key}"] [data-icon]`);
+      await expect(glyph).toHaveAttribute("data-icon-renderer", "svg");
+      expect(
+        await glyph.evaluate((node) => node instanceof SVGSVGElement),
+      ).toBe(true);
+      await expect(glyph.locator("path")).toHaveAttribute(
+        "stroke",
+        "currentColor",
+      );
+      // DOM/CSS consistency alone missed the phone symptom. Also exercise
+      // the actual vector paint in both themes; device acceptance stays separate.
+      for (const theme of ["light", "dark"] as const) {
+        await page.locator("html").evaluate((node, theme) => {
+          node.dataset.theme = theme;
+        }, theme);
+        const { data, info } = await sharp(await glyph.screenshot())
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        let ink = 0;
+        for (let offset = 0; offset < data.length; offset += info.channels) {
+          if (
+            Math.max(
+              ...[0, 1, 2].map((channel) =>
+                Math.abs(data[offset + channel]! - data[channel]!),
+              ),
+            ) > 40
+          )
+            ink++;
+        }
+        expect(
+          ink,
+          `${key} vector has visible strokes in ${theme}`,
+        ).toBeGreaterThan(8);
+      }
+      await page.locator("html").evaluate((node) => {
+        delete node.dataset.theme;
+      });
+      for (const sample of samples) {
+        const expected = [sample.progress, sample.previousProgress].map(
+          (progress) => Math.max(0, 1 - Math.abs(index - progress)),
+        );
+        expect(
+          Math.min(
+            ...expected.map((activation) =>
+              Math.abs(sample.activation - activation),
+            ),
+          ),
+        ).toBeLessThan(0.00005);
+        expect(sample.opacity).toBeCloseTo(sample.activation, 4);
+        expect(sample.scale).toBeCloseTo(sample.activation, 4);
+      }
+      for (let i = 1; i < samples.length; i++)
+        expect(samples[i]!.opacity + 0.001).toBeGreaterThanOrEqual(
+          samples[i - 1]!.opacity,
+        );
+      await expect(home).toHaveAttribute("data-active-home-feed", key);
+      await expect
+        .poll(async () =>
+          Number(
+            await home
+              .locator("[data-horizontal-pager]")
+              .getAttribute("data-horizontal-pager-progress"),
+          ),
+        )
+        .toBeCloseTo(index, 3);
+      const bounds = await home
+        .locator(`[data-tab-key="${key}"] [data-icon]`)
+        .evaluate((node) => {
+          const icon = node.getBoundingClientRect();
+          const viewport = node
+            .closest("[data-animated-top-tabs]")!
+            .getBoundingClientRect();
+          return {
+            left: icon.left - viewport.left,
+            right: viewport.right - icon.right,
+            width: icon.width,
+            height: icon.height,
+          };
+        });
+      expect(bounds.left).toBeGreaterThanOrEqual(-1);
+      expect(bounds.right).toBeGreaterThanOrEqual(-1);
+      expect(bounds.width).toBeCloseTo(20, 3);
+      expect(bounds.height).toBeCloseTo(20, 3);
+    }
+  });
+}

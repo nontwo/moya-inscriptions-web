@@ -1,21 +1,23 @@
 "use client";
 
 import {
+  forwardRef,
   useCallback,
   useEffect,
-  useLayoutEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from "react";
 
-import { CatalogCard, isUltraWideCatalogMedia } from "./catalog-card";
+import { CatalogCard } from "./catalog-card";
 import { CatalogMasonry } from "./catalog-masonry";
 import { HomeContentCard } from "./home-content-card";
 import { HomeFeedPager } from "./home-feed-pager";
 import { homeFeeds, parseHomeFeed } from "./home-feed";
 import styles from "./home-screen.module.css";
 import { useProductShell } from "../product-shell/product-shell";
-import { TopicCard } from "../topics/topic-card";
+import { AnimatedCategoryIcon } from "@moya/ui";
+import { AnimatedTopTabs } from "../shell/animated-top-tabs";
 
 import type { ReactNode } from "react";
 import type { CatalogSummary } from "@moya/contracts";
@@ -26,13 +28,46 @@ import type {
   HomeSurfaceData,
   NearbyCard,
 } from "./home-feed";
-import type { Topic } from "../topics/topic";
 
 const feedLabels = {
   discover: "发现",
   nearby: "附近",
-  topics: "专题",
+  inscriptions: "碑刻",
+  calligraphy: "书帖",
 } as const satisfies Record<HomeFeed, string>;
+
+const homeTabItems = homeFeeds.map((id) => ({
+  id,
+  label: feedLabels[id],
+  ...(id === "discover" ? {} : { icon: <AnimatedCategoryIcon name={id} /> }),
+}));
+
+interface HomeTabMotion {
+  readonly setProgress: (progress: number) => void;
+}
+
+// Pager frames update only the header. Populated Home feeds must not rerender
+// or remeasure their masonry for every fractional position of a swipe.
+const HomeTabs = forwardRef<
+  HomeTabMotion,
+  {
+    activeFeed: HomeFeed;
+    onSelect: (feed: HomeFeed) => void;
+  }
+>(function HomeTabs({ activeFeed, onSelect }, ref) {
+  const [progress, setProgress] = useState(homeFeeds.indexOf(activeFeed));
+  useImperativeHandle(ref, () => ({ setProgress }), []);
+  return (
+    <AnimatedTopTabs
+      items={homeTabItems}
+      activeKey={activeFeed}
+      progress={progress}
+      onSelect={onSelect}
+      ariaLabel="首页内容范围"
+      idPrefix="home"
+    />
+  );
+});
 
 const feedMessages = {
   discover: {
@@ -56,7 +91,7 @@ const FeedMessage = ({
   feed,
   state,
 }: {
-  readonly feed: HomeFeed;
+  readonly feed: "discover" | "nearby" | "topics";
   readonly state: "empty" | "loading" | "unavailable" | "unexpected-error";
 }) => {
   if (state === "loading") {
@@ -92,7 +127,7 @@ const FeedMessage = ({
 };
 
 const renderFeedState = <T,>(
-  feed: HomeFeed,
+  feed: "discover" | "nearby" | "topics",
   state: HomeFeedState<T>,
   populated: (items: readonly T[]) => ReactNode,
 ) => {
@@ -106,7 +141,9 @@ export interface HomeScreenProps {
   readonly headerEnd?: ReactNode;
   readonly data: HomeSurfaceData;
   readonly initialFeed?: HomeFeed;
-  readonly initialTopicId?: string | null;
+  readonly onFeedChange?: (feed: HomeFeed) => void;
+  readonly renderInscriptions?: (active: boolean) => ReactNode;
+  readonly calligraphy?: ReactNode;
 }
 
 export const HomeScreen = ({
@@ -115,49 +152,37 @@ export const HomeScreen = ({
   headerEnd,
   data,
   initialFeed = "discover",
-  initialTopicId = null,
+  onFeedChange,
+  renderInscriptions,
+  calligraphy,
 }: HomeScreenProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const pagerRef = useRef<HomeFeedPagerHandle>(null);
-  const tabsRef = useRef<HTMLDivElement>(null);
-  const tabIndicatorRef = useRef<HTMLSpanElement>(null);
-  const initializedTopicRef = useRef(false);
-  const initialTopicFrameRef = useRef<number | null>(null);
+  const tabMotion = useRef<HomeTabMotion>(null);
+  const updateTabProgress = useCallback((progress: number) => {
+    tabMotion.current?.setProgress(progress);
+  }, []);
   const activeFeedRef = useRef<HomeFeed>(parseHomeFeed(initialFeed));
   const scrollPositionsRef = useRef<Record<HomeFeed, number>>({
     discover: 0,
     nearby: 0,
-    topics: 0,
+    inscriptions: 0,
+    calligraphy: 0,
   });
   const {
     activeDestination,
-    activeTopicId,
     feedLayout,
     openCatalog,
-    openTopic,
     platform,
     readActiveScrollTop,
     registerActiveHomeScrollElement,
-    registerTopicOpener,
     restoreActiveScrollTop,
   } = useProductShell();
   const [activeFeed, setActiveFeed] = useState<HomeFeed>(() =>
     parseHomeFeed(initialFeed),
   );
   activeFeedRef.current = activeFeed;
-
-  const updateTabIndicator = useCallback((progress: number) => {
-    const tabs = tabsRef.current;
-    const indicator = tabIndicatorRef.current;
-    if (tabs === null || indicator === null) return;
-    const tabWidth = tabs.getBoundingClientRect().width / homeFeeds.length;
-    indicator.style.transform = `translate3d(${progress * tabWidth}px, 0, 0)`;
-    indicator.dataset.homeFeedProgress = String(progress);
-  }, []);
-
-  useLayoutEffect(() => {
-    updateTabIndicator(homeFeeds.indexOf(activeFeed));
-  }, [activeFeed, updateTabIndicator]);
+  useEffect(() => onFeedChange?.(activeFeed), [activeFeed, onFeedChange]);
 
   const commitFeed = useCallback(
     (feed: HomeFeed) => {
@@ -173,62 +198,6 @@ export const HomeScreen = ({
     [activeFeed, platform, readActiveScrollTop, restoreActiveScrollTop],
   );
 
-  const openTopicFromCard = useCallback(
-    (topic: Topic, opener: HTMLButtonElement) => {
-      const scrollTop = readActiveScrollTop();
-      scrollPositionsRef.current.topics = scrollTop;
-      openTopic(topic.id, opener, scrollTop);
-    },
-    [openTopic, readActiveScrollTop],
-  );
-
-  useEffect(() => {
-    if (activeTopicId !== null && activeFeed !== "topics") {
-      pagerRef.current?.scrollToFeed("topics");
-    }
-  }, [activeFeed, activeTopicId]);
-
-  useEffect(() => {
-    if (activeTopicId === null) return;
-    const opener = Array.from(
-      rootRef.current?.querySelectorAll<HTMLButtonElement>("[data-topic-id]") ??
-        [],
-    ).find((button) => button.dataset.topicId === activeTopicId);
-    if (opener !== undefined) registerTopicOpener(activeTopicId, opener);
-  }, [activeTopicId, registerTopicOpener]);
-
-  useEffect(() => {
-    if (initialTopicId === null || initializedTopicRef.current) return;
-    if (activeFeed !== "topics") {
-      pagerRef.current?.scrollToFeed("topics");
-      return;
-    }
-    initializedTopicRef.current = true;
-    initialTopicFrameRef.current = window.requestAnimationFrame(() => {
-      initialTopicFrameRef.current = null;
-      const opener =
-        Array.from(
-          rootRef.current?.querySelectorAll<HTMLButtonElement>(
-            "[data-topic-id]",
-          ) ?? [],
-        ).find((button) => button.dataset.topicId === initialTopicId) ??
-        rootRef.current;
-      if (opener !== null) {
-        const scrollTop = scrollPositionsRef.current.topics;
-        openTopic(initialTopicId, opener, scrollTop);
-      }
-    });
-  }, [activeFeed, initialTopicId, openTopic]);
-
-  useEffect(
-    () => () => {
-      if (initialTopicFrameRef.current !== null) {
-        window.cancelAnimationFrame(initialTopicFrameRef.current);
-      }
-    },
-    [],
-  );
-
   const panels = {
     discover:
       renderDiscover?.(
@@ -241,9 +210,7 @@ export const HomeScreen = ({
           <CatalogMasonry
             feedLayout={feedLayout}
             getKey={(item) => item.id}
-            isFullSpan={(item) =>
-              isUltraWideCatalogMedia(item.representativeMedia)
-            }
+            spanAtAlignedRows
             items={items}
             platform={platform}
             renderItem={(item, onMediaSettled) => (
@@ -266,7 +233,7 @@ export const HomeScreen = ({
         <CatalogMasonry
           feedLayout={feedLayout}
           getKey={(item) => item.id}
-          isFullSpan={(item) => isUltraWideCatalogMedia(item.media)}
+          spanAtAlignedRows
           items={items}
           platform={platform}
           renderItem={(item, onMediaSettled) => (
@@ -275,26 +242,10 @@ export const HomeScreen = ({
         />
       ),
     ),
-    topics: renderFeedState(
-      "topics",
-      data.topics,
-      (items: readonly Topic[]) => (
-        <CatalogMasonry
-          feedLayout={feedLayout}
-          getKey={(topic) => topic.id}
-          isFullSpan={(topic) => isUltraWideCatalogMedia(topic.cover)}
-          items={items}
-          platform={platform}
-          renderItem={(topic, onMediaSettled) => (
-            <TopicCard
-              onMediaSettled={onMediaSettled}
-              onOpen={openTopicFromCard}
-              topic={topic}
-            />
-          )}
-        />
-      ),
-    ),
+    inscriptions: renderInscriptions?.(
+      activeFeed === "inscriptions" && activeDestination === "home",
+    ) ?? <FeedMessage feed="discover" state="empty" />,
+    calligraphy: calligraphy ?? <FeedMessage feed="discover" state="empty" />,
   } satisfies Readonly<Record<HomeFeed, ReactNode>>;
 
   return (
@@ -311,37 +262,11 @@ export const HomeScreen = ({
         data-author-bar={headerEnd ? "" : undefined}
       >
         {headerStart}
-        <div
-          ref={tabsRef}
-          aria-label="首页内容范围"
-          className={styles.tabs}
-          role="tablist"
-        >
-          <span
-            ref={tabIndicatorRef}
-            aria-hidden="true"
-            className={styles.tabIndicator}
-            data-home-feed-indicator=""
-          />
-          {homeFeeds.map((feed) => {
-            const selected = activeFeed === feed;
-            return (
-              <button
-                key={feed}
-                type="button"
-                aria-controls={`home-panel-${feed}`}
-                aria-selected={selected}
-                className={selected ? styles.selectedTab : styles.tab}
-                data-home-feed-tab={feed}
-                id={`home-tab-${feed}`}
-                onClick={() => pagerRef.current?.scrollToFeed(feed)}
-                role="tab"
-              >
-                {feedLabels[feed]}
-              </button>
-            );
-          })}
-        </div>
+        <HomeTabs
+          ref={tabMotion}
+          activeFeed={activeFeed}
+          onSelect={(feed) => pagerRef.current?.scrollToFeed(feed)}
+        />
         {headerEnd ?? (
           <span aria-hidden="true" className={styles.settingsClearance} />
         )}
@@ -350,7 +275,7 @@ export const HomeScreen = ({
         ref={pagerRef}
         activeFeed={activeFeed}
         onCommit={commitFeed}
-        onProgress={updateTabIndicator}
+        onProgress={updateTabProgress}
         panels={panels}
         platform={platform}
         primaryVisible={activeDestination === "home"}

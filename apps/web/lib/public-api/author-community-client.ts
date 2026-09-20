@@ -149,6 +149,9 @@ export const authorClient = {
     }),
   avatar: (body: unknown) =>
     request("me/avatar", avatarUpdateResultSchema, { method: "POST", body }),
+  background: async (body: unknown): Promise<void> => {
+    await request("me/background", savedResultSchema, { method: "POST", body });
+  },
   merge: (body: unknown) =>
     request("favorites/merge", guestFavoriteMergeResultSchema, {
       method: "POST",

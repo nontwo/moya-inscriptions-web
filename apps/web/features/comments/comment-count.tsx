@@ -32,5 +32,10 @@ export const usePublishCommentCount = (count: number | null) => {
 
 export const CommentCountLabel = () => {
   const count = useContext(CommentCountContext)?.count;
-  return <>评论{count == null ? null : ` ${formatCommentCount(count)}`}</>;
+  return (
+    <>
+      评论
+      {count == null || count === 0 ? null : ` ${formatCommentCount(count)}`}
+    </>
+  );
 };

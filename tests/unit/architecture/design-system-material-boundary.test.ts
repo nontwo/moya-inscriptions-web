@@ -78,7 +78,7 @@ describe("design-system material boundary", () => {
     );
   });
 
-  it("freezes the three primary navigation destinations", async () => {
+  it("preserves the archived prototype navigation reference", async () => {
     const prototypeHtml = await readFile(
       new URL("docs/prototypes/mobile-preview/index.html", repoRoot),
       "utf8",
@@ -89,7 +89,7 @@ describe("design-system material boundary", () => {
     expect(ids).toEqual(["home", "inscriptions", "calligraphy"]);
   });
 
-  it("keeps R02 navigation contours tied to the accepted repository assets", async () => {
+  it("keeps current navigation contours tied to shared SVG assets and uses Song text", async () => {
     const navigationSource = await readFile(
       new URL(
         "apps/web/features/shell/primary-bottom-navigation.tsx",
@@ -98,7 +98,7 @@ describe("design-system material boundary", () => {
       "utf8",
     );
 
-    for (const name of ["home", "inscriptions", "calligraphy"] as const) {
+    for (const name of ["home", "discussion", "user"] as const) {
       const iconSource = await readFile(
         new URL(`packages/ui/src/assets/icons/${name}.svg`, repoRoot),
         "utf8",
@@ -106,12 +106,19 @@ describe("design-system material boundary", () => {
       const iconPath = iconSource.match(/<path d="([^"]+)"/u)?.[1];
       if (iconPath === undefined) throw new Error(`Missing ${name} icon path`);
       expect(navigationSource).toContain(JSON.stringify(iconPath));
-      expect(navigationSource).toContain(
-        `@moya/ui/assets/labels/nav-${name}.png`,
-      );
     }
 
     expect(navigationSource).not.toContain("<Icon name={icon}");
     expect(navigationSource).not.toContain("<FixedLabelMark");
+    expect(navigationSource).not.toContain("@moya/ui/assets/labels/");
+    const navigationCss = await readFile(
+      new URL(
+        "apps/web/features/shell/primary-bottom-navigation.module.css",
+        repoRoot,
+      ),
+      "utf8",
+    );
+    expect(navigationCss).toContain("var(--yoyi-font-editorial)");
+    expect(navigationSource).toContain("data-primary-navigation-text-label");
   });
 });

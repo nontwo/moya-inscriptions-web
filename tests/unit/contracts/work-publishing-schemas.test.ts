@@ -23,7 +23,6 @@ import {
   publishingSnapshotPageSchema,
   registerMediaItemCommandSchema,
   savePublishingDraftCommandSchema,
-  trashedWorkPageSchema,
   workDraftContentSchema,
   workCoverSrcSchema,
   workDraftIdSchema,
@@ -1451,43 +1450,6 @@ describe("read shapes for stored and legacy content", () => {
         items: Array.from({ length: 51 }, () => snapshot),
       }).success,
     ).toBe(false);
-  });
-
-  it("lists trashed works with stored text, either cover path and restorability", () => {
-    const trashed = {
-      workId,
-      title: legacyTitle,
-      excerpt: "第一行\r\n第二行",
-      coverSrc: legacySrc,
-      itemCount: 1,
-      trashedAt: at,
-      purgeAfter: "2026-10-13T10:00:00.000Z",
-      restorable: false,
-    };
-    const page = (item: Record<string, unknown>) => ({
-      items: [item],
-      total: 1,
-      page: 1,
-      pageSize: 20,
-      totalPages: 1,
-    });
-    expect(trashedWorkPageSchema.safeParse(page(trashed)).success).toBe(true);
-    expect(
-      trashedWorkPageSchema.safeParse(
-        page({ ...trashed, title: "", coverSrc: src("cover") }),
-      ).success,
-    ).toBe(true);
-    for (const invalid of [
-      { title: " 标题" },
-      { excerpt: "字".repeat(161) },
-      { coverSrc: "/api/community/media/../x" },
-      { itemCount: 501 },
-      { restorable: undefined },
-    ])
-      expect(
-        trashedWorkPageSchema.safeParse(page({ ...trashed, ...invalid }))
-          .success,
-      ).toBe(false);
   });
 
   it("describes no-save sessions with a lease and client limits", () => {

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { AuthorProfile } from "@moya/contracts";
 import { AuthorDialog } from "./author-dialog";
 import { authorClient } from "./author-data";
@@ -11,16 +11,12 @@ export const ProfileSettings = ({
   profile,
   onClose,
   onSaved,
-  onOpenEdit,
-  onOpenComments,
-  onOpenTrash,
+  onEdit,
 }: {
   profile: AuthorProfile | null;
   onClose: () => void;
   onSaved: () => void;
-  onOpenEdit?: () => void;
-  onOpenComments?: () => void;
-  onOpenTrash?: () => void;
+  onEdit?: (() => void) | undefined;
 }) => {
   const initialPrivacy: AuthorProfile["privacy"] = profile?.privacy ?? {
     following: "private",
@@ -35,14 +31,15 @@ export const ProfileSettings = ({
       ReturnType<typeof authorClient.people>
     > | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [editRequested, setEditRequested] = useState(false);
   const author = useAuthors();
   const shell = useProductShell();
   const tabId = useId();
-  const nextAction = useRef<(() => void) | null>(null);
-  const [closing, setClosing] = useState(false);
+  const ownProfile = !!profile?.isOwner && profile.id === author.viewer?.id;
+  const dirty = JSON.stringify(saved) !== JSON.stringify(privacy);
   const load = (page = 1) =>
-    !profile?.isOwner
+    !ownProfile
       ? Promise.resolve()
       : authorClient.people(profile.id, "blocks", page).then((result) =>
           setBlocks((old) =>
@@ -55,63 +52,40 @@ export const ProfileSettings = ({
           ),
         );
   useEffect(() => {
-    if (tab === "account" && profile?.isOwner)
+    if (tab === "account" && ownProfile)
       void load().catch((e) => setError(e.message));
-  }, [profile?.id, tab]);
+  }, [profile?.id, ownProfile, tab]);
   const labels = {
     following: "关注列表",
     followers: "粉丝列表",
     favorites: "收藏列表",
     likes: "喜欢列表",
   } as const;
-  const navigate = (action: () => void) => {
-    if (closing || busy) return;
-    if (
-      JSON.stringify(saved) !== JSON.stringify(privacy) &&
-      !window.confirm("更改尚未保存，放弃这些更改？")
-    )
-      return;
-    nextAction.current = action;
-    setClosing(true);
-  };
   return (
     <AuthorDialog
       title="设置"
-      dirty={!closing && JSON.stringify(saved) !== JSON.stringify(privacy)}
-      closeRequested={closing}
-      onClose={() => (nextAction.current ?? onClose)()}
+      dirty={!editRequested && dirty}
+      closeRequested={editRequested}
+      onClose={() => {
+        if (editRequested && ownProfile && onEdit) onEdit();
+        else onClose();
+      }}
     >
-      {profile?.isOwner ? (
-        <nav className="phase4-actions" aria-label="个人管理">
-          {onOpenEdit ? (
-            <button
-              type="button"
-              disabled={closing || busy}
-              onClick={() => navigate(onOpenEdit)}
-            >
-              编辑资料
-            </button>
-          ) : null}
-          {onOpenComments ? (
-            <button
-              type="button"
-              disabled={closing || busy}
-              onClick={() => navigate(onOpenComments)}
-            >
-              我的评论
-            </button>
-          ) : null}
-          {onOpenTrash ? (
-            <button
-              type="button"
-              disabled={closing || busy}
-              onClick={() => navigate(onOpenTrash)}
-            >
-              回收站
-            </button>
-          ) : null}
-        </nav>
-      ) : null}
+      {ownProfile && onEdit && (
+        <div className="phase4-actions">
+          <button
+            type="button"
+            disabled={busy || editRequested}
+            onClick={() => {
+              if (dirty && !window.confirm("更改尚未保存，放弃这些更改？"))
+                return;
+              setEditRequested(true);
+            }}
+          >
+            编辑信息
+          </button>
+        </div>
+      )}
       <div
         className="phase4-settings-tabs"
         role="tablist"
@@ -167,7 +141,7 @@ export const ProfileSettings = ({
         aria-labelledby={`${tabId}-account`}
         hidden={tab !== "account"}
       >
-        {profile?.isOwner ? (
+        {ownProfile ? (
           <div className="phase4-form">
             <h3>列表隐私</h3>
             {(Object.keys(labels) as (keyof typeof labels)[]).map((key) => (

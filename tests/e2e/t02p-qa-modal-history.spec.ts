@@ -44,21 +44,38 @@ for (const query of ["", "?qaChrome=hidden"] as const) {
       expect((await page.goto(`/dev/t02p/qa${query}`))?.status()).toBe(200);
       const shell = page.locator("[data-product-shell]");
       await expect(shell.locator("[data-product-boot]")).toHaveCount(0);
-      await shell
-        .getByRole("navigation", { name: "主要内容" })
-        .getByRole("button", { name: "书帖", exact: true })
-        .click();
-      // Destinations are pre-mounted. Attached cards do not prove that the
-      // asynchronous primary navigation has committed and released isolation.
-      await expect(shell).toHaveAttribute(
-        "data-active-destination",
+      const home = shell.locator("[data-home-surface]");
+      if (query === "") {
+        // The normal QA aside covers top tabs. Reach the selected tab through
+        // native traversal, then use its End shortcut to select Calligraphy.
+        const selectedTab = home.getByRole("tab", {
+          name: "发现",
+          exact: true,
+        });
+        for (let step = 0; step < 80; step += 1) {
+          if (
+            await selectedTab.evaluate(
+              (node) => node === document.activeElement,
+            )
+          )
+            break;
+          await page.keyboard.press(tabAll);
+        }
+        await expect(selectedTab).toBeFocused();
+        await page.keyboard.press("End");
+      } else await home.getByRole("tab", { name: "书帖", exact: true }).click();
+      // Home feeds are pre-mounted. Attached cards do not prove that the
+      // asynchronous feed navigation has committed and released isolation.
+      await expect(shell).toHaveAttribute("data-active-destination", "home");
+      await expect(home).toHaveAttribute(
+        "data-active-home-feed",
         "calligraphy",
       );
-      await expect(
-        shell.locator('[data-primary-destination="calligraphy"]'),
-      ).not.toHaveAttribute("inert", "");
-      const opener = shell.locator(
-        '[data-calligraphy-category-panel="all"] [data-catalog-id="qa-visual-calligraphy-01"] [data-open-catalog]',
+      const calligraphy = home.locator('[data-home-feed-panel="calligraphy"]');
+      await expect(calligraphy).toHaveAttribute("aria-hidden", "false");
+      await expect(calligraphy).not.toHaveAttribute("inert", "");
+      const opener = calligraphy.locator(
+        '[data-calligraphy-all] [data-catalog-id="qa-visual-calligraphy-01"] [data-open-catalog]',
       );
       // Masonry cards are attached before their first measured layout, with
       // visibility:hidden. Keyboard traversal must start after that real UI

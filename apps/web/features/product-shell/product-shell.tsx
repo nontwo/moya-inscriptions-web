@@ -169,6 +169,10 @@ export interface ProductShellContextValue {
   /** False when the editor is disabled or another layer refuses it. */
   readonly openEditor: (target: EditorTarget, opener: HTMLElement) => boolean;
   readonly activeDestination: PrimaryDestination;
+  readonly navigatePrimary: (destination: PrimaryDestination) => void;
+  readonly registerActiveDiscussionScrollElement: (
+    element: HTMLElement,
+  ) => () => void;
   readonly activeTopicId: string | null;
   readonly activeViewerMediaId: string | null;
   readonly closeTopic: () => void;
@@ -213,11 +217,11 @@ export const useProductShell = (): ProductShellContextValue => {
 };
 
 export interface ProductShellProps {
-  readonly calligraphy: ReactNode;
+  readonly user: ReactNode;
   readonly developmentPlatformOverride?: PresentationPlatform | null;
   readonly home: ReactNode;
   readonly initialPlatform: PresentationPlatform;
-  readonly inscriptions: ReactNode;
+  readonly discussion: ReactNode;
   readonly primaryUtility?: ReactNode;
   readonly navigationAction?: ReactNode;
   readonly renderProfileOverlay?: (
@@ -313,11 +317,11 @@ const clampScrollTop = (element: Element, desired: number) => {
 };
 
 export const ProductShell = ({
-  calligraphy,
+  user,
   developmentPlatformOverride = null,
   home,
   initialPlatform,
-  inscriptions,
+  discussion,
   primaryUtility,
   navigationAction,
   renderDetailOverlay,
@@ -343,6 +347,9 @@ export const ProductShell = ({
   const settingsFocusFrameRef = useRef<number | null>(null);
   const settingsFocusCleanupRef = useRef<(() => void) | null>(null);
   const activeHomeScrollElementRef = useRef<HTMLElement | null>(null);
+  const activeDiscussionScrollElementRef = useRef<HTMLElement | null>(null);
+  const [activeDiscussionScrollElement, setActiveDiscussionScrollElement] =
+    useState<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const restoreInputCleanupRef = useRef<(() => void) | null>(null);
   const topicFocusFrameRef = useRef<number | null>(null);
@@ -382,9 +389,9 @@ export const ProductShell = ({
   const viewerMediaIdRef = useRef<string | null>(null);
   const topicIdRef = useRef<string | null>(null);
   const scrollPositionsRef = useRef<ScrollPositions>({
-    calligraphy: 0,
+    user: 0,
     home: 0,
-    inscriptions: 0,
+    discussion: 0,
   });
   const [activeDestination, setActiveDestination] =
     useState<PrimaryDestination>("home");
@@ -445,12 +452,30 @@ export const ProductShell = ({
     [],
   );
 
+  const registerActiveDiscussionScrollElement = useCallback(
+    (element: HTMLElement) => {
+      activeDiscussionScrollElementRef.current = element;
+      setActiveDiscussionScrollElement(element);
+      return () => {
+        if (activeDiscussionScrollElementRef.current !== element) return;
+        activeDiscussionScrollElementRef.current = null;
+        setActiveDiscussionScrollElement(null);
+      };
+    },
+    [],
+  );
+
   const scrollElementFor = useCallback(
     (
       destination: PrimaryDestination,
       presentationPlatform: PresentationPlatform,
     ): Element | null => {
       if (presentationPlatform === "pc") return documentScrollElement();
+      if (
+        destination === "discussion" &&
+        activeDiscussionScrollElementRef.current !== null
+      )
+        return activeDiscussionScrollElementRef.current;
       if (
         destination === "home" &&
         activeHomeScrollElementRef.current !== null
@@ -501,9 +526,11 @@ export const ProductShell = ({
       // During document-to-panel layout changes, Home registers its first
       // panel in the upcoming layout effect. Bind it when it becomes available.
       let targetElement =
-        destination === "home" &&
         presentationPlatform !== "pc" &&
-        activeHomeScrollElementRef.current === null
+        ((destination === "home" &&
+          activeHomeScrollElementRef.current === null) ||
+          (destination === "discussion" &&
+            activeDiscussionScrollElementRef.current === null))
           ? null
           : scrollElementFor(destination, presentationPlatform);
       let retryFrames = SCROLL_RESTORE_RETRY_FRAMES;
@@ -883,7 +910,7 @@ export const ProductShell = ({
     (topicId: string, opener: HTMLElement, sourceScrollTop: number) => {
       if (
         topicId.length === 0 ||
-        activeDestinationRef.current !== "home" ||
+        activeDestinationRef.current !== "discussion" ||
         settingsOpenRef.current ||
         contentRef.current !== null ||
         profileRef.current !== null ||
@@ -892,17 +919,17 @@ export const ProductShell = ({
       ) {
         return;
       }
-      saveScroll("home", platformRef.current);
+      saveScroll("discussion", platformRef.current);
       const boundedScrollTop = Number.isFinite(sourceScrollTop)
         ? Math.max(0, sourceScrollTop)
         : readActiveScrollTop();
       topicSourceScrollTopRef.current = boundedScrollTop;
-      scrollPositionsRef.current.home = boundedScrollTop;
+      scrollPositionsRef.current.discussion = boundedScrollTop;
       topicOpenerRef.current = opener;
       topicOpenerIdRef.current = topicId;
       window.history.replaceState(
         currentProductHistoryState(
-          primaryHistoryState("home", boundedScrollTop, topicId),
+          primaryHistoryState("discussion", boundedScrollTop, topicId),
         ),
         "",
         primaryLocation(window.location),
@@ -927,11 +954,11 @@ export const ProductShell = ({
     }
     setTopicVisibility(null);
     window.history.replaceState(
-      currentProductHistoryState(primaryHistoryState("home")),
+      currentProductHistoryState(primaryHistoryState("discussion")),
       "",
       primaryLocation(window.location),
     );
-    restoreScroll("home", platformRef.current);
+    restoreScroll("discussion", platformRef.current);
   }, [restoreScroll, setTopicVisibility]);
 
   const updateDetailScrollTop = useCallback((top: number) => {
@@ -1670,7 +1697,10 @@ export const ProductShell = ({
     const scrollElement =
       activeDestination === "home" && activeHomeScrollElement !== null
         ? activeHomeScrollElement
-        : scrollElementFor(activeDestination, platform);
+        : activeDestination === "discussion" &&
+            activeDiscussionScrollElement !== null
+          ? activeDiscussionScrollElement
+          : scrollElementFor(activeDestination, platform);
     if (!(scrollElement instanceof HTMLElement)) return undefined;
 
     navigationScrollStateRef.current = createPrimaryNavigationScrollState(
@@ -1717,6 +1747,7 @@ export const ProductShell = ({
   }, [
     activeDestination,
     activeHomeScrollElement,
+    activeDiscussionScrollElement,
     activeProfile,
     activeContent,
     activeTopicId,
@@ -1756,7 +1787,8 @@ export const ProductShell = ({
       initialState?.kind === "detail" ||
       initialState?.kind === "viewer" ||
       initialState?.kind === "profile" ||
-      initialState?.kind === "editor"
+      initialState?.kind === "editor" ||
+      initialState?.kind === "topic"
     ) {
       destination = initialState.sourceDestination;
     }
@@ -1852,7 +1884,7 @@ export const ProductShell = ({
       );
     } else if (initialState?.kind === "topic") {
       topicSourceScrollTopRef.current = initialState.sourceScrollTop;
-      scrollPositionsRef.current.home = initialState.sourceScrollTop;
+      scrollPositionsRef.current.discussion = initialState.sourceScrollTop;
       setSettingsVisibility(false);
       setDetailVisibility(null);
       setViewerVisibility(null);
@@ -2112,10 +2144,10 @@ export const ProductShell = ({
       }
 
       if (state?.kind === "topic") {
-        activeDestinationRef.current = "home";
-        setActiveDestination("home");
+        activeDestinationRef.current = "discussion";
+        setActiveDestination("discussion");
         topicSourceScrollTopRef.current = state.sourceScrollTop;
-        scrollPositionsRef.current.home = state.sourceScrollTop;
+        scrollPositionsRef.current.discussion = state.sourceScrollTop;
         setSettingsVisibility(false);
         setDetailVisibility(null);
         setViewerVisibility(null);
@@ -2144,7 +2176,7 @@ export const ProductShell = ({
         scrollPositionsRef.current[detailSourceDestinationRef.current] =
           detailSourceScrollTopRef.current;
       } else if (wasTopicOpen) {
-        scrollPositionsRef.current.home = topicSourceScrollTopRef.current;
+        scrollPositionsRef.current.discussion = topicSourceScrollTopRef.current;
       }
       restoreScroll(nextDestination, platformRef.current);
 
@@ -2296,6 +2328,8 @@ export const ProductShell = ({
     platform,
     readActiveScrollTop,
     registerActiveHomeScrollElement,
+    registerActiveDiscussionScrollElement,
+    navigatePrimary: commitDestination,
     registerTopicOpener,
     requestSettings,
     restoreActiveScrollTop,
@@ -2337,9 +2371,9 @@ export const ProductShell = ({
         >
           <PrimaryNavigationPager
             activeDestination={activeDestination}
-            calligraphy={calligraphy}
+            user={user}
             home={home}
-            inscriptions={inscriptions}
+            discussion={discussion}
             navigationAction={navigationAction}
             navigationHidden={ownedOverlayOpen}
             navigationMinimized={navigationMinimized}
