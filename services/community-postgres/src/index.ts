@@ -33,6 +33,24 @@ export {
   createProviderAdapter,
   providerAdapterKeysFrom,
 } from "./agent-connection-provider-adapter.js";
+export {
+  AgentConnectionInvariantError,
+  AgentConnectionRowError,
+  createAgentConnectionStore,
+  parseConnectionRow,
+  parseGrantRow,
+} from "./agent-connection-store.js";
+export type {
+  AgentConnectionStore,
+  AgentConnectionStoreOptions,
+  ConnectionForAuthorization,
+  StoredConnection,
+  StoredConnectionClient,
+  StoredConnectionPreset,
+  StoredConnectionStatus,
+  StoredConsentGrant,
+  VersionedStoredConnection,
+} from "./agent-connection-store.js";
 export type {
   ProviderAdapterKeys,
   ProviderAdapterOptions,

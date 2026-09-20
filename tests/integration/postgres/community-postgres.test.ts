@@ -4,6 +4,7 @@ import { registerWorkPublishingContentTests } from "./work-publishing-content-ca
 import { registerWorkPublishingMediaTests } from "./work-publishing-media-cases.js";
 import { registerAgentAdministrationTests } from "./agent-administration-cases.js";
 import { registerAgentConnectionProviderTests } from "./agent-connection-provider-cases.js";
+import { registerAgentConnectionStoreTests } from "./agent-connection-store-cases.js";
 import { registerAgentConnectionTests } from "./agent-connections-cases.js";
 import { registerAgentFencingTests } from "./agent-fencing-cases.js";
 import { registerAgentRecommendationTests } from "./agent-recommendation-cases.js";
@@ -1101,6 +1102,7 @@ registerAgentAdministrationTests(pool);
 registerAgentRecommendationTests(pool);
 registerAgentFencingTests(pool);
 registerAgentConnectionTests(pool);
+registerAgentConnectionStoreTests(pool);
 registerAgentConnectionProviderTests(pool);
 
 registerWorkPublishingContentTests(pool);
