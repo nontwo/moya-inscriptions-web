@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import {
   WRAPPER_PREFIX,
   WrapperGrantMissingError,
+  createGrantDestroyer,
   createWrapperStore,
   wrapperKeysFrom,
 } from "@moya/community-postgres";
@@ -231,6 +232,111 @@ export const registerAgentConnectionWrapperTests = (
             Buffer.from(secret, "utf8").toString("hex"),
           );
         }
+      });
+    });
+
+    describe("a destruction that fails says so, and never says done", () => {
+      const destroyerWith = (
+        overrides: Partial<{
+          destroyGrant: () => Promise<void>;
+          revokeIssued: () => Promise<void>;
+          isAbsent: () => Promise<boolean>;
+          invalidateWrappers: () => Promise<number>;
+        }> = {},
+      ) =>
+        createGrantDestroyer({
+          pool,
+          provider: {
+            destroyGrant: overrides.destroyGrant ?? (async () => undefined),
+            revokeIssued: overrides.revokeIssued ?? (async () => undefined),
+            isAbsent: overrides.isAbsent ?? (async () => true),
+          },
+          invalidateWrappers:
+            overrides.invalidateWrappers ??
+            ((grantId, at) => store.invalidateByGrant(grantId, at)),
+        });
+
+      const aGrant = async (grantId: string) => {
+        const connectionId = await newConnection(1);
+        await newGrant(grantId, connectionId, 1);
+        return connectionId;
+      };
+
+      it("records done only after the provider work succeeded", async () => {
+        await aGrant("g-done");
+        expect((await destroyerWith().destroy("g-done")).status).toBe("done");
+        expect(
+          (
+            await pool.query(
+              "SELECT destroy_status, destroyed_at FROM community.agent_connection_grants WHERE grant_id=$1",
+              ["g-done"],
+            )
+          ).rows[0],
+        ).toMatchObject({ destroy_status: "done" });
+      });
+
+      it("lands on failed when wrapper invalidation throws, not on a permanent pending", async () => {
+        // The r14 review's m6, and it is reachable rather than theoretical:
+        // the App role holds UPDATE on the grant ledger but only SELECT on
+        // wrappers, so this call is 42501 for exactly the role that can run
+        // the rest. Before the fix this rejected without recording anything
+        // and left the row `pending` forever, with every retry throwing at
+        // the same point.
+        await aGrant("g-wrapfail");
+        const outcome = await destroyerWith({
+          invalidateWrappers: () => Promise.reject(new Error("42501")),
+        }).destroy("g-wrapfail");
+        expect(outcome).toMatchObject({ status: "failed" });
+        const { rows } = await pool.query(
+          "SELECT destroy_status FROM community.agent_connection_grants WHERE grant_id=$1",
+          ["g-wrapfail"],
+        );
+        expect(rows[0]).toMatchObject({ destroy_status: "failed" });
+        // Still retryable, which is what `failed` is for.
+        expect(await destroyerWith().pending()).toContain("g-wrapfail");
+      });
+
+      it("refuses to record done when the grant is still present at the provider", async () => {
+        await aGrant("g-present");
+        expect(
+          await destroyerWith({ isAbsent: async () => false }).destroy(
+            "g-present",
+          ),
+        ).toMatchObject({
+          status: "failed",
+          reason: "PROVIDER_GRANT_STILL_PRESENT",
+        });
+      });
+
+      it("is idempotent, and a second call never restates when it happened", async () => {
+        await aGrant("g-twice-destroy");
+        const first = await destroyerWith().destroy("g-twice-destroy");
+        const second = await destroyerWith().destroy("g-twice-destroy");
+        expect(second).toEqual(first);
+      });
+
+      it("reports the timestamp that is actually stored, not one it invented", async () => {
+        // If another worker completes between the read and the write, the
+        // guarded UPDATE matches nothing and the trigger would refuse a second
+        // timestamp anyway. Returning `at` there would report a time that
+        // exists nowhere in the database.
+        await aGrant("g-raced");
+        const winner = await destroyerWith().destroy("g-raced");
+        const loser = await destroyerWith().destroy("g-raced");
+        expect(loser).toEqual(winner);
+        const { rows } = await pool.query(
+          "SELECT destroyed_at FROM community.agent_connection_grants WHERE grant_id=$1",
+          ["g-raced"],
+        );
+        expect(
+          (rows[0] as { destroyed_at: Date }).destroyed_at.toISOString(),
+        ).toBe((winner as { destroyedAt: string }).destroyedAt);
+      });
+
+      it("answers unknown-grant rather than inventing a ledger row", async () => {
+        expect(await destroyerWith().destroy("g-never-existed")).toEqual({
+          status: "unknown-grant",
+        });
       });
     });
 

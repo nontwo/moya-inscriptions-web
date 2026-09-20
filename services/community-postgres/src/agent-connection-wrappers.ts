@@ -35,6 +35,12 @@ import {
  * even if this code were wrong.
  */
 
+/** Domain separation for the fixed-length comparison helper below. */
+const FIXED_LENGTH_DOMAIN = Buffer.from(
+  "artvenn-agent-connection-wrapper-compare-v1",
+  "utf8",
+);
+
 /** The reserved namespace. Dispatch, never authentication. */
 export const WRAPPER_PREFIX = "artvenn_ct_";
 
@@ -101,6 +107,12 @@ const lookupDigestOf = (keys: WrapperKeys, presented: string): string =>
  * subject, the client and the consented preset all live on the grant row, and
  * every one of them is frozen by trigger. Copying them into the AAD would add
  * bytes, not binding.
+ *
+ * `expires_at` is deliberately NOT in here, and that is a one-layer defence
+ * rather than the two the provenance gets: only the freeze trigger holds it.
+ * Adding it would mean the AAD could not be recomputed without also trusting
+ * the column it is meant to protect, which is circular. Named rather than left
+ * for someone to discover.
  */
 const aadFor = (
   formatVersion: number,
@@ -389,7 +401,11 @@ export type WrapperStore = ReturnType<typeof createWrapperStore>;
  * compares two presented values must not do it with `===`.
  */
 export const wrapperValuesEqual = (a: string, b: string): boolean => {
-  const left = Buffer.from(a, "utf8");
-  const right = Buffer.from(b, "utf8");
-  return left.length === right.length && timingSafeEqual(left, right);
+  // Hashing first makes the compared buffers a fixed length, so the early
+  // length check that `timingSafeEqual` otherwise forces cannot leak how long
+  // the presented value was. Cheap, and it removes the one asymmetry a
+  // constant-time helper should not have.
+  const left = createHmac("sha256", FIXED_LENGTH_DOMAIN).update(a).digest();
+  const right = createHmac("sha256", FIXED_LENGTH_DOMAIN).update(b).digest();
+  return timingSafeEqual(left, right);
 };

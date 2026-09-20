@@ -210,6 +210,35 @@ export const registerAgentConnectionStoreTests = (
         ).rejects.toMatchObject({ sqlState: "23001" });
       });
 
+      it("freezes the acting principal, which the consent grant cannot hold", async () => {
+        // The r14 review's deepest finding. `principal_label` becomes
+        // `req.user.agentPrincipal`, and the Backend derives scopes,
+        // delegations and fencing from it — but it is not on the grant, so
+        // moving r14's identity checks to the frozen snapshot did not cover
+        // it. Rewriting it re-points an existing unexpired token at a
+        // different, possibly more privileged principal, with no generation
+        // bump and no new consent.
+        const fields = connectionFields({
+          status: "authorized",
+          generation: 1,
+          consentedAt: new Date().toISOString(),
+        });
+        await store.create(fields);
+        await expect(
+          store.compareAndSet(fields.id, 1, {
+            ...fields,
+            principalLabel: "agent-privileged",
+          }),
+        ).rejects.toMatchObject({ sqlState: "23001" });
+        // Everything else about the row still moves; only the identity is held.
+        expect(
+          await store.compareAndSet(fields.id, 1, {
+            ...fields,
+            environment: "qa",
+          }),
+        ).not.toBeNull();
+      });
+
       it("refuses to write one connection's state onto another's id", async () => {
         const fields = connectionFields();
         await store.create(fields);
@@ -306,7 +335,7 @@ export const registerAgentConnectionStoreTests = (
         expect(() =>
           parseConnectionRow({
             id: "conn-x",
-            principal_label: "agent-x",
+            principal_label: "agent-probe",
             human_account_id: "u",
             client_family: "claude",
             oauth_client_id: "c",
@@ -327,7 +356,7 @@ export const registerAgentConnectionStoreTests = (
         expect(() =>
           parseConnectionRow({
             id: "conn-x",
-            principal_label: "agent-x",
+            principal_label: "agent-probe",
             human_account_id: "u",
             client_family: "copilot",
             oauth_client_id: "c",

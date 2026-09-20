@@ -507,12 +507,11 @@ export const registerAgentConnectionTests = (
         });
       });
 
-      it("refuses an unknown preset, status, client family or principal shape", async () => {
+      it("refuses an unknown preset, status or client family", async () => {
         for (const [column, value] of [
           ["preset", "superuser"],
           ["status", "half-authorized"],
           ["client_family", "some-other-vendor"],
-          ["principal_label", "not-an-agent-label"],
         ] as const)
           await expect(
             pool.query(
@@ -521,6 +520,33 @@ export const registerAgentConnectionTests = (
             ),
             `${column} accepted ${value}`,
           ).rejects.toMatchObject({ code: "23514" });
+      });
+
+      it("refuses a bad principal shape on INSERT, and any principal change at all on UPDATE", async () => {
+        // `principal_label` used to sit in the list above, checked by its
+        // CHECK constraint on UPDATE. r14 froze the column, so an UPDATE now
+        // meets the trigger FIRST and never reaches the CHECK — a different
+        // SQLSTATE for a strictly stronger refusal. The CHECK still guards the
+        // only path that can still set the column, which is the INSERT.
+        await expect(
+          pool.query(
+            `INSERT INTO community.agent_connections
+               (id, human_account_id, client_family, oauth_client_id,
+                environment, principal_label, preset, status)
+             VALUES ($1,'user-owner','claude','c1','development',
+                     'not-an-agent-label','read-only','awaiting-consent')`,
+            [connectionId()],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+
+        // And a WELL-shaped rename is refused too, which is the point: this is
+        // not shape validation, it is identity.
+        await expect(
+          pool.query(
+            `UPDATE community.agent_connections SET principal_label=$2 WHERE id=$1`,
+            [connection, "agent-somebody-else"],
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
       });
     });
 

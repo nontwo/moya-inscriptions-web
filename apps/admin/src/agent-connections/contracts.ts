@@ -334,6 +334,14 @@ export interface ConsentSnapshot {
   readonly issuer: string;
   readonly resource: string;
   readonly presetAtConsent: ConnectionPreset;
+  /**
+   * The capability scopes the human actually approved at the provider, frozen
+   * with the rest of the snapshot. Until r14 this column existed and was never
+   * read, so the one record of what was approved was decorative: authorization
+   * derived the expected set from the preset alone, and a grant whose stored
+   * scopes disagreed with its preset would never have been noticed.
+   */
+  readonly capabilityScopes: readonly string[];
   readonly consentedAt: string;
 }
 

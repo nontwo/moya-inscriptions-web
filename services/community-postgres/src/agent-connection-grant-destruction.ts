@@ -10,8 +10,10 @@
  *
  * Two things it deliberately does NOT do.
  *
- * It does not un-revoke. A failure here leaves `destroy_status='failed'` and
- * the connection revoked, because cleanup failing is not consent returning.
+ * It does not un-revoke. EVERY failing path leaves `destroy_status='failed'`
+ * and the connection revoked, because cleanup failing is not consent
+ * returning. "Every" is load-bearing and was not true of the first version:
+ * one step sat outside the try and could reject without recording anything.
  * The ledger stays visible and retryable, and `done` is terminal in both
  * directions by trigger — including its timestamp.
  *
@@ -72,7 +74,10 @@ const GRANTS = "community.agent_connection_grants";
 export const createGrantDestroyer = (options: GrantDestroyerOptions) => {
   const { pool, provider } = options;
 
-  const markFailed = async (grantId: string, reason: string) => {
+  const markFailed = async (
+    grantId: string,
+    reason: string,
+  ): Promise<GrantDestructionOutcome> => {
     // `failed` may carry a timestamp or not; what it may never do is look
     // un-attempted. It stays retryable and stays visible.
     await pool.query(
@@ -115,43 +120,61 @@ export const createGrantDestroyer = (options: GrantDestroyerOptions) => {
         [grantId],
       );
 
+      const at = new Date();
+      // ONE try around every step that can fail. The r14 review found
+      // `invalidateWrappers` sitting outside it: a throw there — and it is
+      // reachable, since the App role holds UPDATE on the grant ledger but
+      // only SELECT on wrappers, so that call is 42501 for exactly the role
+      // that can run the rest — rejected `destroy` without recording
+      // anything, leaving the row `pending` forever while a retry re-ran and
+      // threw at the same point each time. The header claimed a failure
+      // always lands on `failed`. It did not.
       try {
         // Order matters only in that both must happen. Tokens first, so a
         // failure between the two leaves the Grant object present and the
         // ledger honest rather than the reverse.
         await provider.revokeIssued(grantId);
         await provider.destroyGrant(grantId);
-      } catch (error) {
-        return markFailed(
-          grantId,
-          error instanceof Error
-            ? "PROVIDER_DESTROY_FAILED"
-            : "PROVIDER_DESTROY_FAILED",
-        );
-      }
-
-      if (provider.isAbsent !== undefined) {
-        // Trust, then verify. `revokeByGrantId` returning without throwing is
-        // not evidence the Grant is gone; this is the only check that is.
-        let absent: boolean;
-        try {
-          absent = await provider.isAbsent(grantId);
-        } catch {
-          return markFailed(grantId, "PROVIDER_DESTROY_UNVERIFIED");
+        if (provider.isAbsent !== undefined) {
+          // Trust, then verify. `revokeByGrantId` returning without throwing
+          // is not evidence the Grant is gone; this is the only check that is.
+          // It verifies the Grant OBJECT only — issued tokens are covered by
+          // `revokeIssued` not throwing, which is weaker, and saying so here
+          // is better than letting the word "verified" cover both.
+          if (!(await provider.isAbsent(grantId)))
+            return markFailed(grantId, "PROVIDER_GRANT_STILL_PRESENT");
         }
-        if (!absent) return markFailed(grantId, "PROVIDER_GRANT_STILL_PRESENT");
+        if (options.invalidateWrappers !== undefined)
+          await options.invalidateWrappers(grantId, at);
+      } catch {
+        return markFailed(grantId, "PROVIDER_DESTROY_FAILED");
       }
 
-      const at = new Date();
-      if (options.invalidateWrappers !== undefined)
-        await options.invalidateWrappers(grantId, at);
-
-      await pool.query(
+      const completed = await pool.query(
         `UPDATE ${GRANTS} SET destroy_status='done', destroyed_at=$2
-          WHERE grant_id=$1 AND destroy_status <> 'done'`,
+          WHERE grant_id=$1 AND destroy_status <> 'done'
+      RETURNING destroyed_at`,
         [grantId, at],
       );
-      return { status: "done", destroyedAt: at.toISOString() };
+      const stored = (completed.rows[0] as { destroyed_at: Date } | undefined)
+        ?.destroyed_at;
+      if (stored !== undefined)
+        return { status: "done", destroyedAt: stored.toISOString() };
+
+      // Nothing matched: another worker completed it between the read and the
+      // write. Report ITS timestamp, never the one this call invented — the
+      // trigger refuses to store a second one, so returning `at` would be
+      // reporting a time that exists nowhere in the database.
+      const current = await pool.query(
+        `SELECT destroyed_at FROM ${GRANTS} WHERE grant_id=$1`,
+        [grantId],
+      );
+      const raced = (
+        current.rows[0] as { destroyed_at: Date | null } | undefined
+      )?.destroyed_at;
+      return raced === null || raced === undefined
+        ? markFailed(grantId, "PROVIDER_DESTROY_UNRECORDED")
+        : { status: "done", destroyedAt: raced.toISOString() };
     },
 
     /**

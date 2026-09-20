@@ -55,6 +55,10 @@ const asRecord = (connection: AgentConnection): ConnectionRecord => ({
     issuer: ISSUER,
     resource: RESOURCE,
     presetAtConsent: connection.preset,
+    capabilityScopes:
+      connection.preset === "management"
+        ? ["artvenn:manage", "artvenn:read"]
+        : ["artvenn:read"],
     consentedAt: connection.consentedAt ?? AT,
   },
 });

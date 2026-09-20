@@ -1,5 +1,6 @@
 import {
   CONNECTION_TOKEN_PREFIX,
+  PRESET_CAPABILITY_SCOPES,
   PRESET_TOOLS,
   admitGrant,
   admitScopeClaim,
@@ -87,6 +88,9 @@ const consent = (
   issuer: ISSUER,
   resource: RESOURCE,
   presetAtConsent: from.preset,
+  // Defaults to the canonical set for the preset, so a test wanting an
+  // incoherent consent has to say so deliberately.
+  capabilityScopes: PRESET_CAPABILITY_SCOPES[from.preset],
   consentedAt: from.consentedAt ?? "2026-09-18T00:00:00Z",
   ...overrides,
 });
@@ -754,6 +758,23 @@ describe("r14 §4 — identity comes off the frozen consent, never off the conne
     expect(() =>
       admitGrant(grant(), { connection: connection(), grant: null }, expected),
     ).toThrow("CONNECTION_CONSENT_MISSING");
+  });
+
+  it("refuses a consent whose frozen scopes disagree with its own preset", () => {
+    // `capability_scopes` is the one column recording what the human actually
+    // approved at the provider, and until r14 authorization never read it —
+    // the expected set was derived from the preset alone, so a grant that
+    // disagreed with itself would have been admitted without comment.
+    expect(() =>
+      admitGrant(
+        grant(),
+        {
+          connection: connection(),
+          grant: consent({ capabilityScopes: ["artvenn:manage"] }),
+        },
+        expected,
+      ),
+    ).toThrow("CONNECTION_CONSENT_INCOHERENT");
   });
 
   it("refuses a consent snapshot belonging to another connection", () => {

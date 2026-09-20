@@ -896,7 +896,7 @@ export const isAuthorizedCmsServerFile = (
     // restricted principal and answer the Payload MCP plugin — and they are
     // named one by one rather than by directory, so a browser module added
     // under the same folder later does not inherit the allowance.
-    /^src\/agent-connections\/(?:authority|authorization|composition|contracts|index|lifecycle)\.ts$/.test(
+    /^src\/agent-connections\/(?:admission|authority|authorization|composition|contracts|index|lifecycle)\.ts$/.test(
       relative,
     ) ||
     /^src\/(?:editorial|media|fields|published|migration|migrations|preview)\/[^.].*\.tsx?$/.test(

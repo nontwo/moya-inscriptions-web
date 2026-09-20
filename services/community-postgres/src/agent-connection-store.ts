@@ -112,6 +112,15 @@ export class AgentConnectionRowError extends Error {
  * lost a race and as opposed to an outage. The triggers raise
  * `restrict_violation` (23001); the CHECK constraints raise 23514. Both are
  * the database saying no, and neither means the authority is unavailable.
+ *
+ * Worth being exact about what this buys TODAY, because the r14 review was
+ * right that it is less than it looks: `ConnectionAuthority.transition`
+ * catches ANY throw from `compareAndSet` and reports
+ * CONNECTION_AUTHORITY_UNAVAILABLE, so to that one consumer this is currently
+ * indistinguishable from an outage. The distinction is carried here so a
+ * consumer CAN tell them apart, and the authority's port is the thing that
+ * would have to change for it to matter. That is a port change, not a store
+ * change, and it is not made here.
  */
 export class AgentConnectionInvariantError extends Error {
   readonly sqlState: string;
@@ -207,6 +216,32 @@ const text = (value: unknown, column: string): string => {
   return value;
 };
 
+/**
+ * `principal_label` and `oauth_client_id` were the two fields where this
+ * parse was LAXER than `agentConnectionSchema`, which the r14 review found
+ * while the header claimed the boundary parse was total. The database CHECK
+ * on `oauth_client_id` counts characters, not the UTF-8 bytes the consented
+ * schema bounds, so a row can be storable and still be refused on read-back.
+ * Refusing it here is the honest place: a value the consented shape will not
+ * accept is not a connection, whatever the column allows.
+ */
+const PRINCIPAL_LABEL = /^agent-[a-z0-9-]{2,57}$/u;
+const CLIENT_ID_MAX_BYTES = 1024;
+
+const shaped = (value: unknown, pattern: RegExp, column: string): string => {
+  const parsed = text(value, column);
+  if (!pattern.test(parsed))
+    throw new AgentConnectionRowError("MALFORMED", column);
+  return parsed;
+};
+
+const boundedBytes = (value: unknown, max: number, column: string): string => {
+  const parsed = text(value, column);
+  if (new TextEncoder().encode(parsed).length > max)
+    throw new AgentConnectionRowError("TOO_MANY_BYTES", column);
+  return parsed;
+};
+
 const member = <T extends string>(
   value: unknown,
   allowed: ReadonlySet<string>,
@@ -233,14 +268,22 @@ export const parseConnectionRow = (
 ): VersionedStoredConnection => ({
   connection: {
     id: text(row.id, "id"),
-    principalLabel: text(row.principal_label, "principal_label"),
+    principalLabel: shaped(
+      row.principal_label,
+      PRINCIPAL_LABEL,
+      "principal_label",
+    ),
     humanAccountId: text(row.human_account_id, "human_account_id"),
     client: member<StoredConnectionClient>(
       row.client_family,
       CLIENTS,
       "client_family",
     ),
-    oauthClientId: text(row.oauth_client_id, "oauth_client_id"),
+    oauthClientId: boundedBytes(
+      row.oauth_client_id,
+      CLIENT_ID_MAX_BYTES,
+      "oauth_client_id",
+    ),
     environment: text(row.environment, "environment"),
     preset: member<StoredConnectionPreset>(row.preset, PRESETS, "preset"),
     status: member<StoredConnectionStatus>(row.status, STATUSES, "status"),
@@ -316,8 +359,11 @@ const SQLSTATE_INVARIANT = new Set([
   "23001",
   // CHECK constraints: the id and label shapes, the enums, the CASE couplings.
   "23514",
-  // Composite foreign keys: a wrapper disagreeing with its grant, and the
-  // current-grant pointer leaving its own connection.
+  // Composite foreign keys. No statement in THIS file can raise one today —
+  // the r14 review checked and was right — but `create` and `compareAndSet`
+  // both write `agent_connections`, which carries the `current_grant_id`
+  // foreign key the moment a caller sets that column through a widened port.
+  // Listed so the mapping does not have to be remembered later.
   "23503",
 ]);
 

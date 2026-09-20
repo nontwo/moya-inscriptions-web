@@ -35,10 +35,11 @@ export type {
   ConnectionStatus,
   VerifiedGrant,
 } from "./contracts";
-export { admitGrant, connectionAuth } from "./authorization";
+export { admitGrant } from "./admission";
+export type { AdmittedConnection } from "./admission";
+export { connectionAuth } from "./authorization";
 export type {
   AccessTokenVerifier,
-  AdmittedConnection,
   ConnectionAuthDependencies,
   ConnectionReader,
 } from "./authorization";

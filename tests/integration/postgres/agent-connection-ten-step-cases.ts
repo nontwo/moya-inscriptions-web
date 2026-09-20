@@ -12,7 +12,16 @@ import {
   providerAdapterKeysFrom,
   wrapperKeysFrom,
 } from "@moya/community-postgres";
+import {
+  ConnectionAuthError,
+  admitGrant,
+} from "admin/agent-connections-admission";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type {
+  ConnectionRecord,
+  VerifiedGrant,
+} from "admin/agent-connections-admission";
 
 import type { createPostgresPool } from "@moya/catalog-postgres";
 
@@ -31,9 +40,9 @@ import type { createPostgresPool } from "@moya/catalog-postgres";
  *
  * What this drives: a real `oidc-provider@9.12.2` over loopback, against the
  * real PostgreSQL provider adapter, with Design B wrapper minting on the token
- * response, the canonical connection store, and the real grant-to-wrapper
- * binding. The resource-side admission is exercised through the production
- * binding function rather than an assertion about what it would do.
+ * response, the canonical connection store, the real grant-to-wrapper binding,
+ * and — since the review caught an earlier draft claiming this falsely — the
+ * production `admitGrant` from `apps/admin/src/agent-connections`.
  *
  * What it does NOT drive, stated plainly: there is no HTTP Admin, no Payload
  * MCP endpoint and no browser here. Steps that say "denied on its next
@@ -421,32 +430,107 @@ export const registerAgentConnectionTenStepTests = (
       };
 
     /**
-     * The resource server's admission decision, exercised through the real
-     * binding rather than described. Returns the refusal code, or null when
-     * the request would be admitted.
+     * The resource server's admission decision, exercised through the
+     * PRODUCTION function.
+     *
+     * An earlier draft of this file reimplemented the comparison here and its
+     * header claimed to be exercising the production binding. It was not, and
+     * the review proved it the only way that settles such a claim: gutting
+     * three checks inside `admitGrant` left all 402 postgres tests green while
+     * turning 11 unit tests red. A second implementation of one rule, with
+     * nothing proving they cannot drift, is worse than no test at all — it
+     * reads like coverage.
+     *
+     * What stays outside `admitGrant` is what genuinely belongs to the
+     * resource server rather than to the connection boundary: whether the
+     * wrapper resolves, whether it has been invalidated, and whether the
+     * provider still knows the token it stands for.
      */
+    /** The adapter the product will need too: store row shape -> boundary record. */
+    const toRecord = (
+      stored: {
+        connection: ConnectionRecord["connection"];
+        grant: {
+          grantId: string;
+          connectionId: string;
+          generationAtConsent: number;
+          oauthClientId: string;
+          humanSubject: string;
+          issuer: string;
+          resource: string;
+          presetAtConsent: "read-only" | "management";
+          capabilityScopes: readonly string[];
+          consentedAt: string;
+        } | null;
+      } | null,
+    ): ConnectionRecord | null =>
+      stored === null
+        ? null
+        : {
+            connection: stored.connection,
+            grant:
+              stored.grant === null
+                ? null
+                : {
+                    grantId: stored.grant.grantId,
+                    connectionId: stored.grant.connectionId,
+                    generationAtConsent: stored.grant.generationAtConsent,
+                    oauthClientId: stored.grant.oauthClientId,
+                    humanSubject: stored.grant.humanSubject,
+                    issuer: stored.grant.issuer,
+                    resource: stored.grant.resource,
+                    presetAtConsent: stored.grant.presetAtConsent,
+                    capabilityScopes: stored.grant.capabilityScopes,
+                    consentedAt: stored.grant.consentedAt,
+                  },
+          };
+
+    const toVerifiedGrant = (
+      resolved: { connectionId: string; generation: number },
+      token: Record<string, unknown>,
+    ): VerifiedGrant => ({
+      connectionId: resolved.connectionId,
+      // The FROZEN consent generation, off the wrapper — never re-read from
+      // the connection. This is the field the whole revision is about.
+      generation: resolved.generation,
+      subject: String(token.accountId),
+      clientId: String(token.clientId),
+      // `aud`, NOT `resourceServer.audience` — the trap the r12 spike
+      // recorded after being caught by it.
+      resource: String(token.aud),
+      // The provider's opaque access token carries no `iss`, so this comes
+      // from configuration. `admitGrant` compares it against the same
+      // configured value, which the r10 comment already records as vacuous:
+      // wiring this helper does not make that check real.
+      issuer: ISSUER,
+      scopes: String(token.scope ?? "")
+        .split(" ")
+        .filter(Boolean),
+      expiresAt: new Date(Number(token.exp) * 1000).toISOString(),
+    });
+
     const admit = async (presented: string): Promise<string | null> => {
       const resolved = await wrappers.resolve(presented);
       if (resolved === undefined) return "WRAPPER_UNKNOWN";
       if (resolved.invalidatedAt !== null) return "WRAPPER_INVALIDATED";
       const token = await provider.AccessToken.find(resolved.jti);
       if (token === undefined) return "PROVIDER_TOKEN_GONE";
-      const record = await connections.readForAuthorization(
+      const stored = await connections.readForAuthorization(
         resolved.connectionId,
       );
-      if (record === null) return "CONNECTION_NOT_FOUND";
-      if (record.grant === null) return "CONNECTION_CONSENT_MISSING";
-      const { connection } = record;
-      if (connection.status === "revoked" || connection.revokedAt !== null)
-        return "CONNECTION_REVOKED";
-      if (connection.status !== "authorized")
-        return "CONNECTION_NOT_AUTHORIZED";
-      // THE POINT. The wrapper carries the generation its GRANT froze at
-      // consent. A token refreshed from an old grant still carries the old
-      // one, so this comparison refuses it.
-      if (connection.generation !== resolved.generation)
-        return "CONNECTION_GENERATION_STALE";
-      return null;
+      if (stored === null) return "CONNECTION_NOT_FOUND";
+      const record = toRecord(stored);
+      try {
+        admitGrant(toVerifiedGrant(resolved, token), record, {
+          issuer: ISSUER,
+          resource: RESOURCE,
+          environment: "development",
+        });
+        return null;
+      } catch (error) {
+        if (error instanceof ConnectionAuthError) return error.code;
+        throw error;
+      }
     };
 
     it("runs the ten steps end to end", async () => {
@@ -553,9 +637,17 @@ export const registerAgentConnectionTenStepTests = (
       expect(await connections.readGrant(G1)).toMatchObject({
         destroyStatus: "done",
       });
-      expect(await admit(A1)).not.toBeNull();
+      // Specific, not merely "some refusal". And the specific answer is not
+      // the one first written here: cleanup invalidates the WRAPPER before
+      // admission ever reaches the provider, so this is the earlier refusal.
+      // The assertion was wrong; the code was right.
+      expect(await admit(A1)).toBe("WRAPPER_INVALIDATED");
 
-      // 9 — a restart re-reads the same persistent store with the same keys.
+      // 9 — new store objects over the same pool and the same keys. Calling
+      //     this a "restart" would overstate it, and the review said so: it
+      //     shows the constructors hold no state that matters, not survival
+      //     across a process boundary. Proving THAT needs a service to
+      //     restart, and there is no service.
       const restarted = createAgentConnectionStore({ pool });
       const restartedWrappers = createWrapperStore({
         pool,
@@ -595,44 +687,58 @@ export const registerAgentConnectionTenStepTests = (
     }, 60000);
 
     it("fails when the binding reads the connection instead of the grant", async () => {
-      // The negative control §7 asks for, kept in the test build and never in
-      // a running service. It restores the erroneous "use the current
-      // connection at refresh" binding and shows the regression notices.
+      // The §7 negative control. The first version of this was a tautology --
+      // it compared one expression to itself and asserted that `x !== x` is
+      // false, so it PASSED while the r12 defect was live, under a name that
+      // said the opposite. The review caught it by reintroducing the defect
+      // and watching the control stay green.
+      //
+      // This version runs the same PRODUCTION `admitGrant` twice over the
+      // same token and record, changing exactly one thing: where the grant's
+      // `generation` came from. That is the defect, isolated.
       connectionId = await openConnection();
       await recordConsent(connectionId);
       const first = await authorizeAndExchange();
       const A1 = first.access_token ?? "";
       const resolved = await wrappers.resolve(A1);
       expect(resolved).toBeDefined();
+      const token = await provider.AccessToken.find(resolved?.jti ?? "");
+      expect(token).toBeDefined();
 
+      // A disconnect-and-reconnect, so the connection has moved on.
       const live = await connections.read(connectionId);
       await connections.compareAndSet(connectionId, live?.version ?? 1, {
         ...(live?.connection ?? ({} as never)),
         generation: (live?.connection.generation ?? 0) + 5,
       });
 
-      // The correct binding: the wrapper still carries the consent generation,
-      // so admission refuses it.
-      expect(await admit(A1)).toBe("CONNECTION_GENERATION_STALE");
-
-      // The mutant binding: take the generation from the connection at check
-      // time. It admits the very token the disconnect was supposed to kill.
-      const mutantAdmit = async (presented: string) => {
-        const r = await wrappers.resolve(presented);
-        const record = await connections.readForAuthorization(
-          r?.connectionId ?? "",
-        );
-        // THE MUTANT, written plainly: take the token's generation from the
-        // connection at check time instead of from the wrapper's frozen
-        // anchor. Both sides then come from the same mutable row, so the
-        // comparison can never fail and a disconnect stops meaning anything.
-        const tokenGeneration = record?.connection.generation ?? -1;
-        const current = record?.connection.generation ?? -2;
-        return current !== tokenGeneration
-          ? "CONNECTION_GENERATION_STALE"
-          : null;
+      const stored = await connections.readForAuthorization(connectionId);
+      const record = toRecord(stored);
+      const expected = {
+        issuer: ISSUER,
+        resource: RESOURCE,
+        environment: "development",
       };
-      expect(await mutantAdmit(A1)).toBeNull();
+      const correct = toVerifiedGrant(resolved ?? ({} as never), token ?? {});
+
+      // CORRECT: generation off the wrapper's frozen anchor -> refused.
+      expect(() => admitGrant(correct, record, expected)).toThrow(
+        "CONNECTION_GENERATION_STALE",
+      );
+
+      // MUTANT: generation read from the connection at check time. Both sides
+      // now come from the same mutable row, so the comparison can never fail
+      // and the disconnect stops meaning anything.
+      const mutant = {
+        ...correct,
+        generation: record?.connection.generation ?? -1,
+      };
+      expect(admitGrant(mutant, record, expected).connection.id).toBe(
+        connectionId,
+      );
+      // And the two really did differ, so the control is not comparing a
+      // value to itself a second time.
+      expect(mutant.generation).not.toBe(correct.generation);
     }, 60000);
 
     it("disabled no constraint, trigger or auth check to get there", async () => {
