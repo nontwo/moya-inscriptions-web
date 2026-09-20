@@ -22,6 +22,7 @@
     },
     "@moya/tests#test": {
       "dependsOn": [
+        "@moya/agent-authorization#build",
         "@moya/api#build",
         "@moya/backend-production#build",
         "@moya/backend-runtime#build",

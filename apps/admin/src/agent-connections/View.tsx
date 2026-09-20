@@ -6,7 +6,7 @@ import { AgentConnectionsClient } from "./connections-client";
 import { AgentConsentClient } from "./consent-client";
 import { ConsentError, describeConsent, mintConsentTicket } from "./consent";
 import { connectionsEnabled } from "./composition";
-import { resolveConnection } from "./endpoints";
+import { resolveConnection } from "./resolve";
 import { consentRuntime } from "./runtime";
 
 /**

@@ -83,7 +83,10 @@ export type {
   ConsentDisplay,
   RegisteredClient,
 } from "./consent";
-export { agentConnectionEndpoints, resolveConnection } from "./endpoints";
+export { agentConnectionEndpoints } from "./endpoints";
+export { decideConsent } from "./decide";
+export type { ConsentOutcome } from "./decide";
+export { resolveConnection } from "./resolve";
 export {
   AUTHORIZATION_CLIENTS_SETTING,
   AUTHORIZATION_ISSUER_SETTING,

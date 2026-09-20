@@ -11,9 +11,31 @@ import { z } from "zod";
  * revoked by bumping its generation; the connection outlives them.
  */
 
-/** Client surfaces the Owner connects from. Descriptive, never authenticated. */
-export const connectionClientSchema = z.enum(["claude", "codex", "cursor"]);
-export type ConnectionClient = z.infer<typeof connectionClientSchema>;
+/**
+ * Client identity moved to `@moya/contracts/internal/agent-connections` in
+ * r15, so the authorization service reads the SAME rules rather than a second
+ * copy that agrees until the day one of them is edited. Re-exported here
+ * because everything in the Admin already imports it from this module.
+ */
+export {
+  CLIENT_ID_MAX_BYTES,
+  CONNECTION_CLIENTS,
+  isCimdClientId,
+  isPreregisteredClientId,
+} from "@moya/community-postgres";
+export type { ConnectionClient } from "@moya/community-postgres";
+
+import { CONNECTION_CLIENTS, isOauthClientId } from "@moya/community-postgres";
+
+/**
+ * The zod spellings the Admin's schemas compose with, built FROM the shared
+ * predicates rather than beside them. One rule, two shapes.
+ */
+export const connectionClientSchema = z.enum(CONNECTION_CLIENTS);
+export const oauthClientIdSchema = z.string().refine(isOauthClientId, {
+  message:
+    "a client id is a bounded opaque identifier or a canonical HTTPS CIMD URL",
+});
 
 /**
  * Two presets, and no third. `read-only` is the default for a new connection;
@@ -218,55 +240,6 @@ export const scopesMatchPreset = (
  * silently matching a prefix of somebody's identity is the whole class of bug
  * exact-client binding exists to prevent.
  */
-export const CLIENT_ID_MAX_BYTES = 1024;
-
-const utf8Bytes = (value: string): number =>
-  new TextEncoder().encode(value).length;
-
-/** Control characters have no place in an identifier presented as a bearer claim. */
-const hasControlCharacters = (value: string): boolean =>
-  // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001f\u007f]/u.test(value);
-
-/** Form 1: a preregistered opaque identifier, matched exactly. */
-export const isPreregisteredClientId = (value: string): boolean =>
-  value.length > 0 &&
-  value === value.trim() &&
-  !hasControlCharacters(value) &&
-  !value.includes("://") &&
-  utf8Bytes(value) <= CLIENT_ID_MAX_BYTES;
-
-/**
- * Form 2: a CIMD client id, which is a canonical HTTPS URL. No userinfo (it
- * would carry a credential), no fragment (it is not part of the identity the
- * provider recognizes), and canonical — the stored value must be exactly what
- * the provider recognized, so a non-canonical spelling is refused rather than
- * normalized into agreement.
- */
-export const isCimdClientId = (value: string): boolean => {
-  if (hasControlCharacters(value)) return false;
-  if (utf8Bytes(value) > CLIENT_ID_MAX_BYTES) return false;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== "https:") return false;
-  if (url.username !== "" || url.password !== "") return false;
-  if (url.hash !== "") return false;
-  // Canonical: what we were given must equal what the URL parser round-trips,
-  // so two spellings of one URL cannot become two identities.
-  return url.href === value;
-};
-
-export const oauthClientIdSchema = z
-  .string()
-  .refine((value) => isPreregisteredClientId(value) || isCimdClientId(value), {
-    message:
-      "a client id is a bounded opaque identifier or a canonical HTTPS CIMD URL",
-  });
-
 export const connectionStatusSchema = z.enum([
   "awaiting-consent",
   "authorized",

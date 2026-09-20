@@ -4,11 +4,10 @@ import { z } from "zod";
 import {
   PRESET_CAPABILITY_SCOPES,
   PROTOCOL_ONLY_SCOPES,
-  connectionClientSchema,
   oauthClientIdSchema,
 } from "./contracts";
 
-import type { ConnectionClient, ConnectionPreset } from "./contracts";
+import type { ConnectionPreset } from "./contracts";
 
 /**
  * Agent Connections V1 (Issue #141 r15 §5) — the consent transaction, without
@@ -266,56 +265,13 @@ export const providerResumeUrl = (
  * one client while the provider authorizes another. Nothing in it is secret:
  * a public client's id is public by construction.
  */
-export interface RegisteredClient {
-  readonly clientId: string;
-  readonly family: ConnectionClient;
-  readonly label: string;
-}
-
 /**
- * Parses the registry, refusing anything it cannot read exactly.
- *
- * A malformed entry is a startup refusal rather than a skipped row: a registry
- * that silently drops a client would make the Admin show nothing where the
- * provider will happily authorize something, and the Owner would be consenting
- * to a screen that had quietly omitted it.
+ * The client registry is ONE setting both the Admin and the authorization
+ * service read, so its rules live in the shared contract rather than here.
+ * Re-exported for the callers that already import it from this module.
  */
-export const parseRegisteredClients = (
-  value: string,
-): ReadonlyMap<string, RegisteredClient> => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new ConsentError("CLIENTS_MALFORMED");
-  }
-  if (!Array.isArray(parsed) || parsed.length === 0)
-    throw new ConsentError("CLIENTS_REQUIRED");
-  const clients = new Map<string, RegisteredClient>();
-  for (const entry of parsed) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
-      throw new ConsentError("CLIENTS_MALFORMED");
-    const record = entry as Record<string, unknown>;
-    if (
-      Object.keys(record).sort().join(",") !== "clientId,family,label" ||
-      typeof record.label !== "string" ||
-      record.label.trim() !== record.label ||
-      record.label.length === 0 ||
-      record.label.length > 64
-    )
-      throw new ConsentError("CLIENTS_MALFORMED");
-    const clientId = oauthClientIdSchema.safeParse(record.clientId);
-    const family = connectionClientSchema.safeParse(record.family);
-    if (!clientId.success || !family.success)
-      throw new ConsentError("CLIENTS_MALFORMED");
-    // Two entries for one client id is an ambiguity, not a later-wins rule.
-    if (clients.has(clientId.data))
-      throw new ConsentError("CLIENTS_DUPLICATED");
-    clients.set(clientId.data, {
-      clientId: clientId.data,
-      family: family.data,
-      label: record.label,
-    });
-  }
-  return clients;
-};
+export {
+  RegisteredClientError,
+  parseRegisteredClients,
+} from "@moya/community-postgres";
+export type { RegisteredClient } from "@moya/community-postgres";

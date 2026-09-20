@@ -1,6 +1,7 @@
 import http from "node:http";
 
 import { createAuthorizationProvider } from "./provider.js";
+import { RESUME_PATH, resumeInteraction } from "./resume.js";
 import { installAccessTokenWrapper } from "./wrap.js";
 
 import type { AuthorizationConfig } from "./config.js";
@@ -33,6 +34,8 @@ export interface StartOptions {
   /** Build identity, so evidence can name what actually ran. */
   readonly buildId: string;
   readonly recordFailure?: (code: string) => void;
+  /** Server-side diagnostics for resumes. A bare code, never a credential. */
+  readonly recordResume?: (code: string) => void;
 }
 
 export const startAuthorizationServer = async (
@@ -59,6 +62,28 @@ export const startAuthorizationServer = async (
       response.setHeader("content-type", "application/json");
       // Liveness and identity. Nothing that describes the configuration.
       response.end(JSON.stringify({ status: "ok", buildId }));
+      return;
+    }
+    // Where the browser comes back after the Owner decided in the Admin. It
+    // carries only the uid; the authority is this provider's own interaction
+    // cookie plus the decision row the control plane wrote.
+    const resume = RESUME_PATH.exec(
+      new URL(request.url ?? "/", "http://127.0.0.1").pathname,
+    );
+    if (resume !== null && request.method === "GET") {
+      void resumeInteraction(bundle, request, response, resume[1]!)
+        .then((outcome) => {
+          options.recordResume?.(outcome.code);
+        })
+        .catch(() => {
+          // A resume that throws must not leave a socket open and must not
+          // report a reason: every refusal here looks the same from outside.
+          options.recordFailure?.("RESUME_FAILED");
+          if (!response.headersSent) {
+            response.statusCode = 500;
+            response.end();
+          }
+        });
       return;
     }
     callback(request, response);

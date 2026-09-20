@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 
 import {
   createAgentConnectionStore,
+  createConsentStore,
   createProviderAdapter,
   createWrapperStore,
   providerAdapterKeysFrom,
@@ -37,6 +38,8 @@ export interface ProviderBundle {
   readonly provider: OidcProvider;
   readonly connections: ReturnType<typeof createAgentConnectionStore>;
   readonly wrappers: ReturnType<typeof createWrapperStore>;
+  readonly consents: ReturnType<typeof createConsentStore>;
+  readonly config: AuthorizationConfig;
 }
 
 /**
@@ -98,6 +101,12 @@ export interface ProviderContext {
   body?: { access_token?: string; expires_in?: number } | undefined;
 }
 
+/**
+ * How long a human has to decide. Short, because an abandoned tab is not a
+ * standing permission, and long enough that reading the screen is not a race.
+ */
+export const INTERACTION_TTL_MS = 10 * 60 * 1000;
+
 /** Loaded through the workspace's own dependency, never a deep import. */
 const loadProvider = async (): Promise<
   new (issuer: string, configuration: unknown) => OidcProvider
@@ -126,19 +135,18 @@ export const createAuthorizationProvider = async (options: {
 
   const connections = createAgentConnectionStore({ pool });
   const wrappers = createWrapperStore({ pool, keys: wrapperKeys });
+  const consents = createConsentStore({ pool });
 
   const provider = new Provider(config.issuer, {
     adapter: createProviderAdapter({ pool, keys: providerKeys }),
-    clients: [
-      {
-        client_id: config.clientId,
-        token_endpoint_auth_method: "none",
-        grant_types: ["authorization_code", "refresh_token"],
-        response_types: ["code"],
-        redirect_uris: [config.redirectUri],
-        application_type: "native",
-      },
-    ],
+    clients: [...config.clients.values()].map((client) => ({
+      client_id: client.clientId,
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      redirect_uris: [...client.redirectUris],
+      application_type: "native",
+    })),
     pkce: { required: () => true, methods: ["S256"] },
     scopes: ["artvenn:read", "artvenn:manage", "offline_access"],
     features: {
@@ -163,12 +171,46 @@ export const createAuthorizationProvider = async (options: {
       claims: async () => ({ sub: id }),
     }),
     interactions: {
-      // The consent page lives on the ADMIN's host, not this one. That is the
-      // cookie boundary, and `config` refuses to start if the two share a host.
-      url: (_ctx: unknown, interaction: { uid: string }) =>
-        `${config.consentBaseUrl}/admin/agent-connections/consent/${interaction.uid}`,
+      /**
+       * Where the browser goes, and where this interaction becomes a row the
+       * Admin can decide from.
+       *
+       * The target is the LANDING page, which lives outside `/admin`: on this
+       * navigation the browser withholds the Owner's `SameSite=Strict`
+       * session, so anything inside the admin shell would bounce a signed-in
+       * Owner to a login they do not need. The landing authenticates nobody
+       * and offers one same-origin step, which is the navigation the cookie
+       * does survive.
+       *
+       * The row written here carries ONLY what this provider will enforce.
+       * There is deliberately no field for who is consenting: this service
+       * never authenticates a human, and it holds no privilege on the decision
+       * columns, so it could not record one even if it tried.
+       */
+      url: async (_ctx: unknown, interaction: ProviderInteraction) => {
+        const requested = (interaction.params.scope ?? "")
+          .split(" ")
+          .filter((scope) => scope.length > 0);
+        await consents.open({
+          interactionUid: interaction.uid,
+          oauthClientId: interaction.params.client_id ?? "",
+          resource: interaction.params.resource ?? config.resource,
+          // Recorded as ASKED FOR, not as narrowed. The Admin refuses a
+          // management request rather than quietly handing back a read-only
+          // token the client never asked for.
+          capabilityScopes: requested.filter((scope) =>
+            scope.startsWith("artvenn:"),
+          ),
+          protocolScopes: requested.filter(
+            (scope) => scope === "offline_access",
+          ),
+          preset: "read-only",
+          expiresAt: new Date(Date.now() + INTERACTION_TTL_MS).toISOString(),
+        });
+        return `${config.consentBaseUrl}/agent-connections/consent/${encodeURIComponent(interaction.uid)}`;
+      },
     },
   });
 
-  return { provider, connections, wrappers };
+  return { provider, connections, wrappers, consents, config };
 };

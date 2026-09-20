@@ -1,3 +1,4 @@
+import { RegisteredClientError } from "@moya/community-postgres";
 import {
   ConsentError,
   admitReadOnlyCapabilities,
@@ -232,14 +233,39 @@ describe("consent rules", () => {
   });
 
   describe("the registry is shared configuration, not a second copy", () => {
-    const one = JSON.stringify([
-      { clientId: "artvenn-claude-01", family: "claude", label: "Claude" },
-    ]);
+    const entry = {
+      clientId: "artvenn-claude-01",
+      family: "claude",
+      label: "Claude",
+      redirectUris: ["http://127.0.0.1:34699/callback"],
+    };
+    const one = JSON.stringify([entry]);
 
     it("reads exactly what it is given", () => {
-      expect([...parseRegisteredClients(one).values()]).toEqual([
-        { clientId: "artvenn-claude-01", family: "claude", label: "Claude" },
-      ]);
+      expect([...parseRegisteredClients(one).values()]).toEqual([entry]);
+    });
+
+    it("refuses a redirect target that is not loopback", () => {
+      // A redirect target is where an authorization code is delivered, so a
+      // registry that accepted a remote host would be the weakest link in the
+      // whole flow.
+      for (const redirect of [
+        "https://elsewhere.invalid/callback",
+        "http://192.168.1.10:8080/callback",
+        "http://127.0.0.1:34699/callback#fragment",
+        "http://user@127.0.0.1:34699/callback",
+        "not a url",
+      ])
+        expect(() =>
+          parseRegisteredClients(
+            JSON.stringify([{ ...entry, redirectUris: [redirect] }]),
+          ),
+        ).toThrow(RegisteredClientError);
+      expect(() =>
+        parseRegisteredClients(
+          JSON.stringify([{ ...entry, redirectUris: [] }]),
+        ),
+      ).toThrow(RegisteredClientError);
     });
 
     it("refuses rather than skipping, because a dropped client is a blank screen the provider will still authorize", () => {
@@ -248,25 +274,25 @@ describe("consent rules", () => {
         "[]",
         "{}",
         JSON.stringify([{ clientId: "a", family: "claude" }]),
-        JSON.stringify([
-          { clientId: "a", family: "claude", label: "x", extra: 1 },
-        ]),
-        JSON.stringify([{ clientId: "a", family: "nokia", label: "x" }]),
-        JSON.stringify([{ clientId: "a", family: "claude", label: " x" }]),
-        JSON.stringify([{ clientId: "", family: "claude", label: "x" }]),
+        JSON.stringify([{ ...entry, extra: 1 }]),
+        JSON.stringify([{ ...entry, family: "nokia" }]),
+        JSON.stringify([{ ...entry, label: " x" }]),
+        JSON.stringify([{ ...entry, clientId: "" }]),
       ])
-        expect(() => parseRegisteredClients(value)).toThrow(ConsentError);
+        expect(() => parseRegisteredClients(value)).toThrow(
+          RegisteredClientError,
+        );
     });
 
     it("refuses a duplicated client id instead of letting the last entry win", () => {
       expect(() =>
         parseRegisteredClients(
           JSON.stringify([
-            { clientId: "a", family: "claude", label: "First" },
-            { clientId: "a", family: "codex", label: "Second" },
+            { ...entry, label: "First" },
+            { ...entry, family: "codex", label: "Second" },
           ]),
         ),
-      ).toThrow(ConsentError);
+      ).toThrow(RegisteredClientError);
     });
   });
 

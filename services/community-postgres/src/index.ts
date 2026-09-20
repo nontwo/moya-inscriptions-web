@@ -41,6 +41,20 @@ export {
   parseGrantRow,
 } from "./agent-connection-store.js";
 export {
+  CLIENT_ID_MAX_BYTES,
+  CONNECTION_CLIENTS,
+  RegisteredClientError,
+  isCimdClientId,
+  isConnectionClient,
+  isOauthClientId,
+  isPreregisteredClientId,
+  parseRegisteredClients,
+} from "./agent-connection-identity.js";
+export type {
+  ConnectionClient,
+  RegisteredClient,
+} from "./agent-connection-identity.js";
+export {
   createConsentStore,
   parseConsentRow,
 } from "./agent-connection-consents.js";

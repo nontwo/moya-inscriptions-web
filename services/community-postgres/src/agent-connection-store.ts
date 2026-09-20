@@ -563,6 +563,86 @@ export const createAgentConnectionStore = (
     },
 
     /**
+     * Writes the immutable consent snapshot for a grant the provider just
+     * created. The PROVIDER role's method.
+     *
+     * `generationAtConsent` is FROZEN here and nothing may ever move it: the
+     * provider role holds no UPDATE on the column, and the freeze trigger
+     * refuses it even for the table owner. That triple is the whole defence
+     * against the r12 defect, where a token refreshed from an old grant
+     * resolved against the CURRENT generation and was admitted.
+     *
+     * The generation is passed IN, by a caller that read it from the consent
+     * the human decided. It is deliberately not read from the connection
+     * here: reading it at grant time would be the defect, spelled differently.
+     */
+    async createGrant(
+      grant: Omit<
+        StoredConsentGrant,
+        "consentedAt" | "destroyStatus" | "destroyedAt"
+      >,
+    ): Promise<boolean> {
+      let result;
+      try {
+        result = await pool.query(
+          `INSERT INTO community.agent_connection_grants
+             (grant_id, connection_id, generation_at_consent, oauth_client_id,
+              human_subject, issuer, resource, capability_scopes,
+              protocol_scopes, preset_at_consent)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (grant_id) DO NOTHING`,
+          [
+            grant.grantId,
+            grant.connectionId,
+            grant.generationAtConsent,
+            grant.oauthClientId,
+            grant.humanSubject,
+            grant.issuer,
+            grant.resource,
+            [...grant.capabilityScopes],
+            [...grant.protocolScopes],
+            grant.presetAtConsent,
+          ],
+        );
+      } catch (error) {
+        return asInvariant(error);
+      }
+      return result.rowCount === 1;
+    },
+
+    /**
+     * Points a connection at the grant that was just created for it. The
+     * PROVIDER role's only write on the connection table.
+     *
+     * Conditional on the generation the grant froze, so a connection that was
+     * revoked or re-consented while the browser was away is NOT re-pointed at
+     * a grant that no longer matches it. A zero rowCount is that refusal, not
+     * an error: the caller destroys the grant it just made rather than leaving
+     * a connection pointing somewhere its generation disagrees with.
+     */
+    async setCurrentGrant(
+      connectionId: string,
+      grantId: string,
+      expectedGeneration: number,
+    ): Promise<boolean> {
+      let result;
+      try {
+        result = await pool.query(
+          `UPDATE community.agent_connections
+              SET current_grant_id=$2
+            WHERE id=$1
+              AND generation=$3
+              AND status='authorized'
+              AND revoked_at IS NULL`,
+          [connectionId, grantId, expectedGeneration],
+        );
+      } catch (error) {
+        return asInvariant(error);
+      }
+      return result.rowCount === 1;
+    },
+
+    /**
      * The connections one human holds, newest first. What the `AI 连接` page
      * lists, and nothing more: `last_verified_at` is the last time a request
      * actually authenticated against this connection, which is an OBSERVATION

@@ -241,6 +241,9 @@ importers:
       '@moya/community-postgres':
         specifier: workspace:*
         version: link:../community-postgres
+      '@moya/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       oidc-provider:
         specifier: 9.12.2
         version: 9.12.2
@@ -394,6 +397,9 @@ importers:
 
   tests:
     devDependencies:
+      '@moya/agent-authorization':
+        specifier: workspace:*
+        version: link:../services/agent-authorization
       '@moya/api':
         specifier: workspace:*
         version: link:../services/api

@@ -1,21 +1,18 @@
-import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import { isOwner } from "../editorial/access";
 import {
   ConsentError,
   consentDecisionSchema,
-  digestConsentTicket,
   interactionUidSchema,
-  providerResumeUrl,
 } from "./consent";
+import { decideConsent } from "./decide";
+import { resolveConnection } from "./resolve";
 import { connectionsEnabled } from "./composition";
 import { oauthClientIdSchema } from "./contracts";
 import { consentRuntime } from "./runtime";
-import { authorizeConnection, reconnectConnection } from "./lifecycle";
 
 import type { ConsentRuntime } from "./runtime";
-import type { StoredConnection } from "@moya/community-postgres";
 import type { Endpoint, PayloadRequest } from "payload";
 
 /**
@@ -85,72 +82,6 @@ const runtimeOrRefuse = (): ConsentRuntime => {
   return runtime;
 };
 
-const newConnectionId = (): string => `conn-${randomBytes(16).toString("hex")}`;
-
-/**
- * The machine principal label. Derived from the client family and a random
- * suffix, never supplied by a caller: a request that could name a principal
- * could name one that already exists and inherit its authority.
- */
-const principalLabelFor = (family: string): string =>
-  `agent-${family}-${randomBytes(6).toString("hex")}`;
-
-/**
- * Finds the connection this human holds for this exact client, creating one
- * that grants nothing if there is none.
- *
- * A new connection is `awaiting-consent` at generation 0 — powerless until a
- * human says otherwise in a browser. Creating it here is not consent and does
- * not authorize anything; it is the record consent will later attach to.
- */
-export const resolveConnection = async (
-  runtime: ConsentRuntime,
-  humanAccountId: string,
-  oauthClientId: string,
-): Promise<StoredConnection> => {
-  const client = runtime.clients.get(oauthClientId);
-  if (client === undefined) throw new ConsentError("CLIENT_NOT_REGISTERED");
-  const existing = await runtime.connections.findForClient(
-    humanAccountId,
-    oauthClientId,
-  );
-  if (existing !== null) return existing.connection;
-  const created = await runtime.connections.create({
-    id: newConnectionId(),
-    principalLabel: principalLabelFor(client.family),
-    humanAccountId,
-    client: client.family,
-    oauthClientId,
-    environment: runtime.environment,
-    preset: "read-only",
-    status: "awaiting-consent",
-    generation: 0,
-    revokedAt: null,
-    consentedAt: null,
-  });
-  if (created === null) throw new ConsentError("CONNECTION_NOT_CREATED", 500);
-  return created.connection;
-};
-
-/**
- * The decision.
- *
- * The order of the three writes is the whole safety argument:
- *
- *  1. the pure transition is computed from the connection READ AT A VERSION,
- *     so the generation the consent will record is the one this decision
- *     would produce;
- *  2. `decide` is the gate — the ticket, the human and the deadline are all
- *     in its WHERE clause, and a wrong ticket writes NOTHING. It runs before
- *     any connection change, because a failed decision that had already
- *     bumped a generation would have silently revoked live tokens;
- *  3. the connection is stored under compare-and-set at that version.
- *
- * If (3) loses a race the consent stands with a generation the connection
- * never reached, and the provider refuses to build a grant on it. That is the
- * fail-closed direction: an approval that grants nothing, never a grant
- * nobody approved.
- */
 const decideEndpoint: Endpoint = {
   path: "/agent-connections/consent",
   method: "post",
@@ -158,69 +89,12 @@ const decideEndpoint: Endpoint = {
     try {
       const humanAccountId = requireOwner(req);
       const runtime = runtimeOrRefuse();
-      const body = parse(consentDecisionSchema, await readJson(req));
-      const digest = digestConsentTicket(body.ticket);
-
-      if (body.decision === "deny") {
-        const denied = await runtime.consents.decide({
-          interactionUid: body.interaction,
-          ticketDigest: digest,
-          humanAccountId,
-          decision: "denied",
-          grantedGeneration: null,
-        });
-        if (denied === null) throw new ConsentError("CONSENT_NOT_DECIDABLE");
-        return ok({
-          decision: "denied",
-          resume: providerResumeUrl(runtime.issuer, body.interaction),
-        });
-      }
-
-      const consent = await runtime.consents.read(body.interaction);
-      if (consent === null || consent.connectionId === null)
-        throw new ConsentError("CONSENT_NOT_DECIDABLE");
-      // The resource the human was shown must be the resource this Admin is
-      // the server for. A mismatch is refused, never rewritten to agree.
-      if (consent.resource !== runtime.resource)
-        throw new ConsentError("RESOURCE_NOT_AVAILABLE");
-      if (consent.preset !== "read-only")
-        throw new ConsentError("PRESET_NOT_AVAILABLE");
-
-      const stored = await runtime.connections.read(consent.connectionId);
-      if (stored === null) throw new ConsentError("CONNECTION_NOT_FOUND", 404);
-      const record = {
+      const decided = await decideConsent(
+        runtime,
         humanAccountId,
-        preset: "read-only" as const,
-        at: new Date().toISOString(),
-      };
-      // Reconnecting a revoked connection is a FRESH consent, never a
-      // restoration; both paths raise the generation, which is what stops a
-      // token from before the disconnect being admitted afterwards.
-      const next =
-        stored.connection.status === "revoked"
-          ? reconnectConnection(stored.connection, record)
-          : authorizeConnection(stored.connection, record);
-
-      const decided = await runtime.consents.decide({
-        interactionUid: body.interaction,
-        ticketDigest: digest,
-        humanAccountId,
-        decision: "approved",
-        grantedGeneration: next.generation,
-      });
-      if (decided === null) throw new ConsentError("CONSENT_NOT_DECIDABLE");
-
-      const written = await runtime.connections.compareAndSet(
-        consent.connectionId,
-        stored.version,
-        next,
+        parse(consentDecisionSchema, await readJson(req)),
       );
-      if (written === null) throw new ConsentError("CONNECTION_CHANGED", 409);
-
-      return ok({
-        decision: "approved",
-        resume: providerResumeUrl(runtime.issuer, body.interaction),
-      });
+      return ok(decided);
     } catch (error) {
       return failure(error);
     }

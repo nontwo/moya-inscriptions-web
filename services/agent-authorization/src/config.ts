@@ -13,6 +13,10 @@
  * surface ends up somewhere else.
  */
 
+import { parseRegisteredClients } from "@moya/community-postgres";
+
+import type { RegisteredClient } from "@moya/community-postgres";
+
 export class AuthorizationConfigError extends Error {
   readonly code: string;
   constructor(code: string, detail: string) {
@@ -33,9 +37,12 @@ export interface AuthorizationConfig {
   readonly consentBaseUrl: string;
   readonly host: string;
   readonly port: number;
-  /** The one registered client this milestone admits. */
-  readonly clientId: string;
-  readonly redirectUri: string;
+  /**
+   * The registered clients, read from the SAME setting the Admin reads. Two
+   * registries would drift, and a drift means the Admin shows the Owner one
+   * client while this provider authorizes another.
+   */
+  readonly clients: ReadonlyMap<string, RegisteredClient>;
   readonly environment: string;
   readonly databaseUrl: string;
 }
@@ -72,6 +79,31 @@ export const authorizationEnabled = (
   environment.NODE_ENV === "development" &&
   environment[AUTHORIZATION_ENABLED_SETTING] === "true";
 
+/**
+ * The shared registry, with this service's refusals wrapped around the shared
+ * parser's. The parser is the contract; the wrapping keeps one error type
+ * coming out of startup so a misconfiguration reads the same whichever setting
+ * caused it.
+ */
+const registeredClients = (
+  environment: NodeJS.ProcessEnv,
+): ReadonlyMap<string, RegisteredClient> => {
+  const raw = required(
+    environment.AGENT_AUTHORIZATION_CLIENTS,
+    "AGENT_AUTHORIZATION_CLIENTS",
+  );
+  try {
+    return parseRegisteredClients(raw);
+  } catch (error) {
+    throw new AuthorizationConfigError(
+      error instanceof Error && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "CLIENTS_MALFORMED",
+      "AGENT_AUTHORIZATION_CLIENTS",
+    );
+  }
+};
+
 export const authorizationConfigFrom = (
   environment: NodeJS.ProcessEnv,
 ): AuthorizationConfig => {
@@ -107,11 +139,6 @@ export const authorizationConfigFrom = (
       `${issuer.hostname}`,
     );
 
-  const redirect = origin(
-    environment.AGENT_AUTHORIZATION_REDIRECT_URI,
-    "AGENT_AUTHORIZATION_REDIRECT_URI",
-  );
-
   const port = Number(
     required(environment.AGENT_AUTHORIZATION_PORT, "AGENT_AUTHORIZATION_PORT"),
   );
@@ -135,11 +162,7 @@ export const authorizationConfigFrom = (
     // assumed.
     host: "127.0.0.1",
     port,
-    clientId: required(
-      environment.AGENT_AUTHORIZATION_CLIENT_ID,
-      "AGENT_AUTHORIZATION_CLIENT_ID",
-    ),
-    redirectUri: redirect.href,
+    clients: registeredClients(environment),
     environment: required(
       environment.AGENT_AUTHORIZATION_ENVIRONMENT,
       "AGENT_AUTHORIZATION_ENVIRONMENT",

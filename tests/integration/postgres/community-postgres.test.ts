@@ -3,6 +3,7 @@ import { registerPhase4AuthorTests } from "./phase4-author-cases.js";
 import { registerWorkPublishingContentTests } from "./work-publishing-content-cases.js";
 import { registerWorkPublishingMediaTests } from "./work-publishing-media-cases.js";
 import { registerAgentAdministrationTests } from "./agent-administration-cases.js";
+import { registerAgentAuthorizationFlowTests } from "./agent-authorization-flow-cases.js";
 import { registerAgentConnectionConsentTests } from "./agent-connection-consent-cases.js";
 import { registerAgentConnectionProviderTests } from "./agent-connection-provider-cases.js";
 import { registerAgentConnectionStoreTests } from "./agent-connection-store-cases.js";
@@ -1110,5 +1111,6 @@ registerAgentConnectionWrapperTests(pool);
 registerAgentConnectionTenStepTests(pool);
 registerAgentConnectionProviderTests(pool);
 registerAgentConnectionConsentTests(pool);
+registerAgentAuthorizationFlowTests(pool);
 
 registerWorkPublishingContentTests(pool);
