@@ -301,6 +301,12 @@ async function main() {
     for (const [name, project] of [
       ["contracts-build", "packages/contracts"],
       ["search-build", "packages/search"],
+      // `backend-runtime` imports `@moya/public-api` for its health handler.
+      // Missing it is what made CI fail with ERR_MODULE_NOT_FOUND while every
+      // local run passed: a `dist` an earlier build had left behind is
+      // indistinguishable from one this harness produced, right up until the
+      // tree is genuinely clean.
+      ["public-api-build", "services/public-api"],
       ["api-build", "services/api"],
       ["catalog-postgres-build", "services/catalog-postgres"],
       ["image-build", "packages/image"],

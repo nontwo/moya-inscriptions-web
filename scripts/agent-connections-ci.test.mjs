@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { URL, fileURLToPath } from "node:url";
 
@@ -163,6 +164,63 @@ describe("the agent-connections acceptance runs in CI", () => {
     );
     assert.match(production, /assertLocalDevelopmentDatabase/u);
     assert.match(production, /yoyi_dev/u);
+  });
+
+  it("builds every workspace the services it starts depend on", () => {
+    // The harness starts three processes out of `dist`. CI failed with
+    // ERR_MODULE_NOT_FOUND because one workspace in that dependency
+    // closure -- `@moya/public-api`, reached through `backend-runtime`'s
+    // health handler -- was not in the build list, and locally an older
+    // build had left its `dist` behind so nothing noticed.
+    //
+    // So the closure is COMPUTED from the manifests rather than restated:
+    // adding a dependency to any of these services now fails this test
+    // instead of failing CI a commit later.
+    const manifests = new Map();
+    for (const base of ["packages", "services", "apps"])
+      for (const name of readdirSync(join(root, base))) {
+        const file = join(root, base, name, "package.json");
+        if (!existsSync(file)) continue;
+        const pkg = JSON.parse(readFileSync(file, "utf8"));
+        manifests.set(pkg.name, {
+          directory: `${base}/${name}`,
+          dependencies: Object.keys(pkg.dependencies ?? {}).filter((entry) =>
+            entry.startsWith("@moya/"),
+          ),
+        });
+      }
+    const required = new Set();
+    const visit = (name) => {
+      const manifest = manifests.get(name);
+      if (!manifest || required.has(name)) return;
+      required.add(name);
+      for (const dependency of manifest.dependencies) visit(dependency);
+    };
+    // The three processes the harness starts from `dist`, by the packages
+    // their entry points resolve.
+    for (const entry of [
+      "@moya/agent-authorization",
+      "@moya/catalog-postgres",
+      "@moya/community-postgres",
+      "@moya/backend-runtime",
+    ])
+      visit(entry);
+
+    const harness = read("scripts/editorial/verify-agent-connections.mjs");
+    const built = new Set(
+      [...harness.matchAll(/\["[a-z-]+-build", "([a-z-]+\/[a-z-]+)"\]/gu)].map(
+        (match) => match[1],
+      ),
+    );
+    const expected = new Set(
+      [...required].map((name) => manifests.get(name).directory),
+    );
+    assert.ok(expected.size > 1, "the closure must not be empty");
+    assert.deepEqual(
+      [...built].sort(),
+      [...expected].sort(),
+      "the harness must build exactly its services' workspace closure",
+    );
   });
 
   it("gives the acceptance Backend a read-only role", () => {
