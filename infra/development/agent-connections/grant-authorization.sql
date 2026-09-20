@@ -96,12 +96,17 @@ BEGIN
     'GRANT UPDATE (current_grant_id) ON TABLE community.agent_connections TO %I',
     provider_role);
 
-  -- It reads the decision somebody else made, and may only mark it spent.
-  -- DELIBERATELY ABSENT: INSERT, and UPDATE on decision/decided_at/
-  -- granted_generation. A provider that could write those could approve on
-  -- the human's behalf.
+  -- The provider OPENS the interaction, writing only what it will enforce,
+  -- and later marks it spent. It reads the decision somebody else made.
+  --
+  -- DELIBERATELY ABSENT: UPDATE on decision, decided_at, granted_generation,
+  -- ticket_digest, human_account_id and connection_id. The provider never
+  -- authenticates a human, so it must not be able to say who consented, to
+  -- know the browser's single-use secret, or to record a decision. INSERT
+  -- alone cannot approve: `decision` starts NULL and the provider holds no
+  -- privilege that could move it.
   EXECUTE format(
-    'GRANT SELECT ON TABLE community.agent_connection_consents TO %I',
+    'GRANT SELECT, INSERT ON TABLE community.agent_connection_consents TO %I',
     provider_role);
   EXECUTE format(
     'GRANT UPDATE (resumed_at, grant_id)
@@ -113,13 +118,16 @@ BEGIN
 
   -- -------------------------------------------------------------- consent --
   --
-  -- The Admin control plane. It opens an interaction and records what the
-  -- human decided.
+  -- The Admin control plane. It says WHO is deciding and about WHICH
+  -- connection, then records the decision. It cannot create an interaction,
+  -- so it cannot conjure an authorization request nobody made, and it cannot
+  -- alter what the provider will enforce.
   EXECUTE format(
-    'GRANT SELECT, INSERT ON TABLE community.agent_connection_consents TO %I',
+    'GRANT SELECT ON TABLE community.agent_connection_consents TO %I',
     consent_role);
   EXECUTE format(
-    'GRANT UPDATE (decision, decided_at, granted_generation)
+    'GRANT UPDATE (ticket_digest, human_account_id, connection_id,
+                   decision, decided_at, granted_generation)
        ON TABLE community.agent_connection_consents TO %I', consent_role);
 
   -- The connection authority: status, generation and the consent timestamp

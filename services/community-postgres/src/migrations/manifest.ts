@@ -155,6 +155,6 @@ export const requiredCommunityMigrations: readonly RequiredCommunityMigration[] 
       migrationId: "20260920020000",
       filename: "20260920020000_agent_connection_consent.sql",
       checksum:
-        "146ef62d2569fd7a8ae54ded6e09c9846a18ef14f5f1d51d1f97f3259c96c395",
+        "275c00b664f741e509271a3c0eddefb4005b1287906fba121c4383ab56cdab8e",
     }),
   ]);

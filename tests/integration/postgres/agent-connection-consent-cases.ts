@@ -8,10 +8,7 @@ import {
 } from "@moya/community-postgres";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import type {
-  ConsentOpening,
-  StoredConnection,
-} from "@moya/community-postgres";
+import type { StoredConnection } from "@moya/community-postgres";
 import type { createPostgresPool } from "@moya/catalog-postgres";
 
 /**
@@ -21,9 +18,11 @@ import type { createPostgresPool } from "@moya/catalog-postgres";
  * uid, which travels in a URL and proves nothing, only becomes a grant after
  * an authenticated human produced a secret this server rendered to THEM.
  *
- * The role cases at the end are the ones worth reading twice. They apply the
- * REAL grant file rather than a re-typed copy of it, because a grant plan that
- * is only ever tested in a paraphrase is a grant plan nobody has tested.
+ * The row has two writers and they are deliberately incapable of each other's
+ * half: the provider states what it will enforce, the control plane states who
+ * decided. The role cases at the end apply the REAL grant file rather than a
+ * re-typed copy, because a grant plan only ever tested in paraphrase is a
+ * grant plan nobody has tested.
  */
 export const registerAgentConnectionConsentTests = (
   pool: ReturnType<typeof createPostgresPool>,
@@ -41,43 +40,53 @@ export const registerAgentConnectionConsentTests = (
     const uid = () => `int-${randomBytes(12).toString("hex")}`;
     const later = (ms: number) => new Date(Date.now() + ms).toISOString();
 
-    const connectionFields = (): StoredConnection => ({
-      id: `conn-${randomBytes(16).toString("hex")}`,
-      principalLabel: "agent-consent-case",
-      humanAccountId: "user-owner",
-      client: "claude",
-      oauthClientId: "artvenn-consent-case",
-      environment: "development",
-      preset: "read-only",
-      status: "awaiting-consent",
-      generation: 0,
-      revokedAt: null,
-      consentedAt: null,
-    });
-
     const openConnection = async (): Promise<StoredConnection> => {
-      const fields = connectionFields();
+      const fields: StoredConnection = {
+        id: `conn-${randomBytes(16).toString("hex")}`,
+        principalLabel: "agent-consent-case",
+        humanAccountId: "user-owner",
+        client: "claude",
+        oauthClientId: "artvenn-consent-case",
+        environment: "development",
+        preset: "read-only",
+        status: "awaiting-consent",
+        generation: 0,
+        revokedAt: null,
+        consentedAt: null,
+      };
       await connections.create(fields);
       return fields;
     };
 
-    const opening = async (
-      overrides: Partial<ConsentOpening> = {},
-    ): Promise<ConsentOpening> => {
-      const connection = overrides.connectionId ? null : await openConnection();
-      return {
-        interactionUid: uid(),
-        ticketDigest: digestOf(ticket()),
-        connectionId: overrides.connectionId ?? connection!.id,
+    /** What the PROVIDER writes: the facts it will enforce, and no human. */
+    const providerFacts = (overrides: Record<string, unknown> = {}) => ({
+      interactionUid: uid(),
+      oauthClientId: "artvenn-consent-case",
+      resource: "https://resource.invalid/mcp",
+      capabilityScopes: ["artvenn:read"],
+      protocolScopes: ["offline_access"],
+      preset: "read-only" as const,
+      expiresAt: later(5 * 60_000),
+      ...overrides,
+    });
+
+    /**
+     * The whole pre-decision sequence: the provider opens an interaction, then
+     * the review page arms it with the human it authenticated, the connection,
+     * and the digest of the ticket it handed that browser.
+     */
+    const armed = async (overrides: Record<string, unknown> = {}) => {
+      const secret = ticket();
+      const facts = providerFacts(overrides);
+      const connection = await openConnection();
+      expect(await consents.open(facts)).not.toBeNull();
+      const row = await consents.arm({
+        interactionUid: facts.interactionUid,
+        ticketDigest: digestOf(secret),
+        connectionId: connection.id,
         humanAccountId: "user-owner",
-        oauthClientId: "artvenn-consent-case",
-        resource: "https://resource.invalid/mcp",
-        capabilityScopes: ["artvenn:read"],
-        protocolScopes: ["offline_access"],
-        preset: "read-only",
-        expiresAt: later(5 * 60_000),
-        ...overrides,
-      };
+      });
+      return { secret, facts, connection, row };
     };
 
     beforeAll(async () => {
@@ -129,18 +138,36 @@ export const registerAgentConnectionConsentTests = (
       }
     };
 
+    it("opens an interaction that names nobody, because the provider knows nobody", async () => {
+      const facts = providerFacts();
+      const opened = await consents.open(facts);
+      expect(opened).toMatchObject({
+        interactionUid: facts.interactionUid,
+        oauthClientId: facts.oauthClientId,
+        resource: facts.resource,
+        // The provider cannot say who is consenting or about what, and the
+        // row starts unable to express it.
+        humanAccountId: null,
+        connectionId: null,
+        ticketArmed: false,
+        decision: null,
+      });
+      // One set of enforced facts per uid: a second open changes nothing.
+      expect(
+        await consents.open({ ...facts, resource: "https://other.invalid" }),
+      ).toBeNull();
+      expect((await consents.read(facts.interactionUid))?.resource).toBe(
+        facts.resource,
+      );
+    });
+
     it("turns an interaction into a decision only for the secret it rendered", async () => {
-      const secret = ticket();
-      const fields = await opening({ ticketDigest: digestOf(secret) });
-      const opened = await consents.open(fields);
-      expect(opened?.interactionUid).toBe(fields.interactionUid);
-      expect(opened?.decision).toBeNull();
-      expect(opened?.grantedGeneration).toBeNull();
+      const { secret, facts } = await armed();
 
       // A POST that cannot produce the ticket writes nothing at all.
       expect(
         await consents.decide({
-          interactionUid: fields.interactionUid,
+          interactionUid: facts.interactionUid,
           ticketDigest: digestOf(ticket()),
           humanAccountId: "user-owner",
           decision: "approved",
@@ -151,7 +178,7 @@ export const registerAgentConnectionConsentTests = (
       // Nor does the right ticket in somebody else's hands.
       expect(
         await consents.decide({
-          interactionUid: fields.interactionUid,
+          interactionUid: facts.interactionUid,
           ticketDigest: digestOf(secret),
           humanAccountId: "user-someone-else",
           decision: "approved",
@@ -160,7 +187,7 @@ export const registerAgentConnectionConsentTests = (
       ).toBeNull();
 
       const decided = await consents.decide({
-        interactionUid: fields.interactionUid,
+        interactionUid: facts.interactionUid,
         ticketDigest: digestOf(secret),
         humanAccountId: "user-owner",
         decision: "approved",
@@ -173,7 +200,7 @@ export const registerAgentConnectionConsentTests = (
       // Single use. The second approval finds a decided row and writes nothing.
       expect(
         await consents.decide({
-          interactionUid: fields.interactionUid,
+          interactionUid: facts.interactionUid,
           ticketDigest: digestOf(secret),
           humanAccountId: "user-owner",
           decision: "approved",
@@ -181,22 +208,69 @@ export const registerAgentConnectionConsentTests = (
         }),
       ).toBeNull();
       expect(
-        (await consents.read(fields.interactionUid))?.grantedGeneration,
+        (await consents.read(facts.interactionUid))?.grantedGeneration,
       ).toBe(1);
     });
 
-    it("mints one ticket per interaction, so a second review cannot re-arm it", async () => {
-      const fields = await opening();
-      expect(await consents.open(fields)).not.toBeNull();
-      const second = await consents.open({
-        ...fields,
-        ticketDigest: digestOf(ticket()),
-      });
-      expect(second).toBeNull();
+    it("cannot be decided at all while it is unarmed", async () => {
+      const facts = providerFacts();
+      await consents.open(facts);
+      expect(
+        await consents.decide({
+          interactionUid: facts.interactionUid,
+          ticketDigest: digestOf(ticket()),
+          humanAccountId: "user-owner",
+          decision: "approved",
+          grantedGeneration: 1,
+        }),
+      ).toBeNull();
+      expect((await consents.read(facts.interactionUid))?.decision).toBeNull();
+    });
+
+    it("re-arms an undecided interaction, which kills the ticket it replaced", async () => {
+      const { secret, facts, connection } = await armed();
+      const second = ticket();
+      expect(
+        await consents.arm({
+          interactionUid: facts.interactionUid,
+          ticketDigest: digestOf(second),
+          connectionId: connection.id,
+          humanAccountId: "user-owner",
+        }),
+      ).not.toBeNull();
+
+      // The page that was open first can no longer decide anything.
+      expect(
+        await consents.decide({
+          interactionUid: facts.interactionUid,
+          ticketDigest: digestOf(secret),
+          humanAccountId: "user-owner",
+          decision: "approved",
+          grantedGeneration: 1,
+        }),
+      ).toBeNull();
+      expect(
+        await consents.decide({
+          interactionUid: facts.interactionUid,
+          ticketDigest: digestOf(second),
+          humanAccountId: "user-owner",
+          decision: "approved",
+          grantedGeneration: 1,
+        }),
+      ).not.toBeNull();
+
+      // And a decided interaction can never be re-armed.
+      expect(
+        await consents.arm({
+          interactionUid: facts.interactionUid,
+          ticketDigest: digestOf(ticket()),
+          connectionId: connection.id,
+          humanAccountId: "user-owner",
+        }),
+      ).toBeNull();
     });
 
     it("refuses an expired interaction, so an abandoned tab is not a standing permission", async () => {
-      const secret = ticket();
       // Expiry is measured against the DATABASE clock, so the deadline is read
       // from it rather than from this process: a host whose clocks disagree
       // would otherwise make this pass or fail for the wrong reason. The
@@ -205,57 +279,51 @@ export const registerAgentConnectionConsentTests = (
       const { rows } = await pool.query(
         "SELECT CURRENT_TIMESTAMP + interval '300 milliseconds' AS deadline",
       );
-      const fields = await opening({
-        ticketDigest: digestOf(secret),
+      const { secret, facts } = await armed({
         expiresAt: (rows[0] as { deadline: Date }).deadline.toISOString(),
       });
-      expect(await consents.open(fields)).not.toBeNull();
       await new Promise((resolve) => setTimeout(resolve, 600));
       expect(
         await consents.decide({
-          interactionUid: fields.interactionUid,
+          interactionUid: facts.interactionUid,
           ticketDigest: digestOf(secret),
           humanAccountId: "user-owner",
           decision: "approved",
           grantedGeneration: 1,
         }),
       ).toBeNull();
+      // Nor can it be re-armed back to life.
+      expect(
+        await consents.arm({
+          interactionUid: facts.interactionUid,
+          ticketDigest: digestOf(ticket()),
+          connectionId: (await openConnection()).id,
+          humanAccountId: "user-owner",
+        }),
+      ).toBeNull();
     });
 
     it("spends an approved interaction exactly once and never resumes a denial", async () => {
-      const approvedSecret = ticket();
-      const approved = await opening({
-        ticketDigest: digestOf(approvedSecret),
-      });
-      await consents.open(approved);
+      const approved = await armed();
       await consents.decide({
-        interactionUid: approved.interactionUid,
-        ticketDigest: digestOf(approvedSecret),
+        interactionUid: approved.facts.interactionUid,
+        ticketDigest: digestOf(approved.secret),
         humanAccountId: "user-owner",
         decision: "approved",
         grantedGeneration: 1,
       });
+      const grantId = `grant-${randomBytes(8).toString("hex")}`;
       await pool.query(
         `INSERT INTO community.agent_connection_grants
            (grant_id, connection_id, generation_at_consent, oauth_client_id,
             human_subject, issuer, resource, preset_at_consent)
          VALUES ($1,$2,1,$3,'user-owner','https://auth.invalid',
                  'https://resource.invalid/mcp','read-only')`,
-        [
-          `grant-${randomBytes(8).toString("hex")}`,
-          approved.connectionId,
-          approved.oauthClientId,
-        ],
+        [grantId, approved.connection.id, approved.facts.oauthClientId],
       );
-      const { rows } = await pool.query(
-        `SELECT grant_id FROM community.agent_connection_grants
-          WHERE connection_id=$1`,
-        [approved.connectionId],
-      );
-      const grantId = (rows[0] as { grant_id: string }).grant_id;
 
       const resumed = await consents.resume({
-        interactionUid: approved.interactionUid,
+        interactionUid: approved.facts.interactionUid,
         grantId,
       });
       expect(resumed?.grantId).toBe(grantId);
@@ -263,45 +331,61 @@ export const registerAgentConnectionConsentTests = (
       // A replayed resume cannot produce a second grant from one consent.
       expect(
         await consents.resume({
-          interactionUid: approved.interactionUid,
+          interactionUid: approved.facts.interactionUid,
           grantId,
         }),
       ).toBeNull();
 
-      const deniedSecret = ticket();
-      const denied = await opening({ ticketDigest: digestOf(deniedSecret) });
-      await consents.open(denied);
+      const denied = await armed();
       await consents.decide({
-        interactionUid: denied.interactionUid,
-        ticketDigest: digestOf(deniedSecret),
+        interactionUid: denied.facts.interactionUid,
+        ticketDigest: digestOf(denied.secret),
         humanAccountId: "user-owner",
         decision: "denied",
         grantedGeneration: null,
       });
       expect(
         await consents.resume({
-          interactionUid: denied.interactionUid,
+          interactionUid: denied.facts.interactionUid,
           grantId,
         }),
       ).toBeNull();
     });
 
     it("refuses a management consent at the database, not in a branch a UI could skip", async () => {
-      const fields = await opening({ preset: "management" });
-      await expect(consents.open(fields)).rejects.toBeInstanceOf(
-        AgentConnectionInvariantError,
-      );
+      await expect(
+        consents.open(providerFacts({ preset: "management" })),
+      ).rejects.toBeInstanceOf(AgentConnectionInvariantError);
     });
 
-    it("freezes what the human was shown, even against the table owner", async () => {
-      const fields = await opening();
-      await consents.open(fields);
+    it("freezes what the provider will enforce, even against the table owner", async () => {
+      const facts = providerFacts();
+      await consents.open(facts);
       await expect(
         pool.query(
           `UPDATE community.agent_connection_consents
               SET oauth_client_id='a-different-client'
             WHERE interaction_uid=$1`,
-          [fields.interactionUid],
+          [facts.interactionUid],
+        ),
+      ).rejects.toMatchObject({ code: "23001" });
+    });
+
+    it("keeps a decided consent attributed to the identity it was decided under", async () => {
+      const { secret, facts } = await armed();
+      await consents.decide({
+        interactionUid: facts.interactionUid,
+        ticketDigest: digestOf(secret),
+        humanAccountId: "user-owner",
+        decision: "approved",
+        grantedGeneration: 1,
+      });
+      await expect(
+        pool.query(
+          `UPDATE community.agent_connection_consents
+              SET human_account_id='user-somebody-else'
+            WHERE interaction_uid=$1`,
+          [facts.interactionUid],
         ),
       ).rejects.toMatchObject({ code: "23001" });
     });
@@ -310,75 +394,64 @@ export const registerAgentConnectionConsentTests = (
       // 42501 is insufficient_privilege: PostgreSQL refusing, not this code.
       const denied = { ok: false, sqlState: "42501" };
 
-      it("denies the provider role any way to record a decision", async () => {
-        expect(
-          await asRole(
-            providerRole,
-            `UPDATE community.agent_connection_consents
-                SET decision='approved', decided_at=CURRENT_TIMESTAMP,
-                    granted_generation=1`,
-          ),
-        ).toEqual(denied);
-        expect(
-          await asRole(
-            providerRole,
-            `INSERT INTO community.agent_connection_consents
-               (interaction_uid, ticket_digest, connection_id, human_account_id,
-                oauth_client_id, resource, preset, expires_at)
-             VALUES ('forged', $1, 'conn-x', 'user-owner', 'c',
-                     'https://r.invalid', 'read-only',
-                     CURRENT_TIMESTAMP + interval '5 min')`,
-            [digestOf(ticket())],
-          ),
-        ).toEqual(denied);
+      it("denies the provider role any way to say who consented", async () => {
+        for (const statement of [
+          `UPDATE community.agent_connection_consents
+              SET decision='approved', decided_at=CURRENT_TIMESTAMP,
+                  granted_generation=1`,
+          `UPDATE community.agent_connection_consents
+              SET human_account_id='user-owner'`,
+          `UPDATE community.agent_connection_consents SET connection_id=NULL`,
+          `UPDATE community.agent_connection_consents SET ticket_digest=NULL`,
+        ])
+          expect(await asRole(providerRole, statement)).toEqual(denied);
       });
 
-      it("denies the consent role any way to mint a grant or move a token", async () => {
-        expect(
-          await asRole(
-            consentRole,
-            `UPDATE community.agent_connections SET current_grant_id='forged'`,
-          ),
-        ).toEqual(denied);
-        expect(
-          await asRole(
-            consentRole,
-            `INSERT INTO community.agent_connection_grants
-               (grant_id, connection_id, generation_at_consent, oauth_client_id,
-                human_subject, issuer, resource, preset_at_consent)
-             VALUES ('forged','conn-x',1,'c','user-owner','https://a.invalid',
-                     'https://r.invalid','read-only')`,
-          ),
-        ).toEqual(denied);
-        expect(
-          await asRole(
-            consentRole,
-            `SELECT lookup_digest FROM community.agent_connection_wrappers LIMIT 1`,
-          ),
-        ).toEqual(denied);
-        expect(
-          await asRole(
-            consentRole,
-            `UPDATE community.agent_connection_consents
-                SET resumed_at=CURRENT_TIMESTAMP`,
-          ),
-        ).toEqual(denied);
+      it("denies the consent role any way to mint a grant, a token or an interaction", async () => {
+        for (const statement of [
+          `UPDATE community.agent_connections SET current_grant_id='forged'`,
+          `INSERT INTO community.agent_connection_grants
+             (grant_id, connection_id, generation_at_consent, oauth_client_id,
+              human_subject, issuer, resource, preset_at_consent)
+           VALUES ('forged','conn-x',1,'c','user-owner','https://a.invalid',
+                   'https://r.invalid','read-only')`,
+          `SELECT lookup_digest FROM community.agent_connection_wrappers LIMIT 1`,
+          `UPDATE community.agent_connection_consents
+              SET resumed_at=CURRENT_TIMESTAMP`,
+          // It cannot conjure an authorization request nobody made.
+          `INSERT INTO community.agent_connection_consents
+             (interaction_uid, oauth_client_id, resource, preset, expires_at)
+           VALUES ('forged','c','https://r.invalid','read-only',
+                   CURRENT_TIMESTAMP + interval '5 min')`,
+        ])
+          expect(await asRole(consentRole, statement)).toEqual(denied);
       });
 
       it("grants each role exactly the half it needs, so neither is merely locked out", async () => {
         // The negative controls above are only meaningful if the positives
         // work: a role denied everything would pass all of them.
-        const secret = ticket();
-        const fields = await opening({ ticketDigest: digestOf(secret) });
-        await consents.open(fields);
+        const connection = await openConnection();
+        const facts = providerFacts();
+        expect(
+          await asRole(
+            providerRole,
+            `INSERT INTO community.agent_connection_consents
+               (interaction_uid, oauth_client_id, resource, preset, expires_at)
+             VALUES ($1,$2,$3,'read-only',
+                     CURRENT_TIMESTAMP + interval '5 min')`,
+            [facts.interactionUid, facts.oauthClientId, facts.resource],
+          ),
+        ).toEqual({ ok: true });
+
+        await consents.open(facts);
         expect(
           await asRole(
             consentRole,
             `UPDATE community.agent_connection_consents
-                SET decision='approved', decided_at=CURRENT_TIMESTAMP,
-                    granted_generation=1
+                SET ticket_digest=$2, human_account_id='user-owner',
+                    connection_id=$3
               WHERE interaction_uid=$1`,
-            [fields.interactionUid],
+            [facts.interactionUid, digestOf(ticket()), connection.id],
           ),
         ).toEqual({ ok: true });
         expect(
@@ -386,7 +459,7 @@ export const registerAgentConnectionConsentTests = (
             providerRole,
             `SELECT interaction_uid FROM community.agent_connection_consents
               WHERE interaction_uid=$1`,
-            [fields.interactionUid],
+            [facts.interactionUid],
           ),
         ).toEqual({ ok: true });
         expect(
@@ -394,7 +467,7 @@ export const registerAgentConnectionConsentTests = (
             providerRole,
             `UPDATE community.agent_connections SET current_grant_id=NULL
               WHERE id=$1`,
-            [fields.connectionId],
+            [connection.id],
           ),
         ).toEqual({ ok: true });
       });

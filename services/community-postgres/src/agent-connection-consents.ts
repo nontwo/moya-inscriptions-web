@@ -40,6 +40,21 @@ import {
  * to this human, which is the CSRF property — obtained without touching a
  * cookie attribute and without a same-site bounce nobody tested.
  *
+ * The four methods below are TWO roles' halves, and the split is the design:
+ *
+ *   `open`   PROVIDER. Writes only what the provider will enforce — the exact
+ *            client, resource, scopes and deadline of a live interaction. It
+ *            never authenticates a human, so it cannot say who consented, and
+ *            it holds no privilege on `decision`.
+ *   `arm`    CONTROL PLANE. Writes who is deciding, about which connection,
+ *            and the digest of the secret it just handed that browser.
+ *   `decide` CONTROL PLANE. The decision, once.
+ *   `resume` PROVIDER. Marks the interaction spent and records its grant.
+ *
+ * So there is no shared secret between the Admin and the provider and no HTTP
+ * hop where one asserts the other's facts: the row IS the integration, and
+ * each half is bounded by a column grant rather than by trust.
+ *
  * Three refusals are the database's, not this module's, and that is on
  * purpose (probed on the live schema, r15):
  *
@@ -64,13 +79,17 @@ export type ConsentPreset = "read-only" | "management";
  */
 export interface StoredConsent {
   readonly interactionUid: string;
-  readonly connectionId: string;
-  readonly humanAccountId: string;
+  /** Null until the review page says which connection this is about. */
+  readonly connectionId: string | null;
+  /** Null until the review page authenticates somebody. */
+  readonly humanAccountId: string | null;
   readonly oauthClientId: string;
   readonly resource: string;
   readonly capabilityScopes: readonly string[];
   readonly protocolScopes: readonly string[];
   readonly preset: ConsentPreset;
+  /** Null until the review page mints one. The provider never sees it. */
+  readonly ticketArmed: boolean;
   readonly grantedGeneration: number | null;
   readonly issuedAt: string;
   readonly expiresAt: string;
@@ -80,19 +99,32 @@ export interface StoredConsent {
   readonly grantId: string | null;
 }
 
-/** What the review page stores when it renders the decision to a human. */
+/**
+ * What the PROVIDER writes when an interaction starts: the facts it will
+ * enforce, and nothing about any human. There is deliberately no field here
+ * for who is consenting, because the provider does not know and must not say.
+ */
 export interface ConsentOpening {
   readonly interactionUid: string;
-  /** SHA-256 of the ticket, lowercase hex. The ticket itself is never stored. */
-  readonly ticketDigest: string;
-  readonly connectionId: string;
-  readonly humanAccountId: string;
   readonly oauthClientId: string;
   readonly resource: string;
   readonly capabilityScopes: readonly string[];
   readonly protocolScopes: readonly string[];
   readonly preset: ConsentPreset;
   readonly expiresAt: string;
+}
+
+/**
+ * What the CONTROL PLANE writes when the review page renders: who is
+ * deciding, about which connection, and the digest of the single-use secret
+ * handed to that browser.
+ */
+export interface ConsentArming {
+  readonly interactionUid: string;
+  /** SHA-256 of the ticket, lowercase hex. The ticket itself is never stored. */
+  readonly ticketDigest: string;
+  readonly connectionId: string;
+  readonly humanAccountId: string;
 }
 
 const DECISIONS = new Set<string>(["approved", "denied"]);
@@ -106,6 +138,9 @@ const ACCOUNT_MAX_BYTES = 128;
 
 const CONSENT_COLUMNS = [
   "interaction_uid",
+  // Presence, never the value: a digest is not a credential, but there is no
+  // reason for one to travel further than the WHERE clause that checks it.
+  "(ticket_digest IS NOT NULL) AS ticket_armed",
   "connection_id",
   "human_account_id",
   "oauth_client_id",
@@ -160,18 +195,33 @@ export const parseConsentRow = (
       : boundedBytes(row.grant_id, 256, "grant_id");
   if (grantId !== null && resumedAt === null)
     throw new AgentConnectionRowError("GRANT_WITHOUT_RESUME", "grant_id");
+  const ticketArmed = row.ticket_armed;
+  if (typeof ticketArmed !== "boolean")
+    throw new AgentConnectionRowError("NOT_A_BOOLEAN", "ticket_armed");
+  // The three columns the CHECK constraint couples to a decision. A decided
+  // row that reads back unattributed would be a decision nobody made.
+  if (
+    decision !== null &&
+    (!ticketArmed ||
+      row.human_account_id === null ||
+      row.connection_id === null)
+  )
+    throw new AgentConnectionRowError("DECISION_NOT_ATTRIBUTED", "decision");
   return {
     interactionUid: boundedBytes(
       row.interaction_uid,
       UID_MAX_BYTES,
       "interaction_uid",
     ),
-    connectionId: text(row.connection_id, "connection_id"),
-    humanAccountId: boundedBytes(
-      row.human_account_id,
-      ACCOUNT_MAX_BYTES,
-      "human_account_id",
-    ),
+    ticketArmed,
+    connectionId:
+      row.connection_id === null || row.connection_id === undefined
+        ? null
+        : text(row.connection_id, "connection_id"),
+    humanAccountId:
+      row.human_account_id === null || row.human_account_id === undefined
+        ? null
+        : boundedBytes(row.human_account_id, ACCOUNT_MAX_BYTES, "human_account_id"),
     oauthClientId: boundedBytes(
       row.oauth_client_id,
       CLIENT_ID_MAX_BYTES,
@@ -222,38 +272,72 @@ export const createConsentStore = (options: ConsentStoreOptions) => {
 
   return {
     /**
-     * Opens an interaction for decision. Called by the REVIEW page, after it
-     * has authenticated the Owner — never by the landing page, which has no
-     * session to authenticate.
+     * Opens an interaction. The PROVIDER's method, called once when the
+     * authorization request produces an interaction, writing only the facts
+     * the provider itself will enforce.
      *
-     * `ON CONFLICT DO NOTHING` plus a zero rowCount is how a second review of
-     * the same interaction is reported: the first ticket stands, and this
-     * returns null rather than minting a second ticket for one interaction.
+     * `ON CONFLICT DO NOTHING` plus a zero rowCount reports a uid that already
+     * exists: the first interaction stands and this returns null, rather than
+     * a second set of enforced facts quietly replacing the first.
      */
     async open(opening: ConsentOpening): Promise<StoredConsent | null> {
-      if (!DIGEST.test(opening.ticketDigest))
-        throw new AgentConnectionRowError("MALFORMED", "ticket_digest");
       let result;
       try {
         result = await pool.query(
           `INSERT INTO community.agent_connection_consents
-             (interaction_uid, ticket_digest, connection_id, human_account_id,
-              oauth_client_id, resource, capability_scopes, protocol_scopes,
-              preset, expires_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             (interaction_uid, oauth_client_id, resource, capability_scopes,
+              protocol_scopes, preset, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
            ON CONFLICT (interaction_uid) DO NOTHING
            RETURNING ${CONSENT_SELECT}`,
           [
             opening.interactionUid,
-            opening.ticketDigest,
-            opening.connectionId,
-            opening.humanAccountId,
             opening.oauthClientId,
             opening.resource,
             [...opening.capabilityScopes],
             [...opening.protocolScopes],
             opening.preset,
             opening.expiresAt,
+          ],
+        );
+      } catch (error) {
+        return asInvariant(error);
+      }
+      const row = result.rows[0] as Record<string, unknown> | undefined;
+      return row === undefined ? null : parseConsentRow(row);
+    },
+
+    /**
+     * Arms an undecided interaction with the identity it will be decided
+     * under. The CONTROL PLANE's method, called by the review page AFTER it
+     * has authenticated the Owner session.
+     *
+     * Re-arming an undecided interaction is deliberately allowed and
+     * deliberately destructive: reloading the review page mints a fresh
+     * ticket and kills the previous one, which is what single-use means for a
+     * page somebody opened twice. `decided_at IS NULL` and the live deadline
+     * are in the WHERE clause, so a decided or expired interaction cannot be
+     * re-armed at all.
+     */
+    async arm(arming: ConsentArming): Promise<StoredConsent | null> {
+      if (!DIGEST.test(arming.ticketDigest))
+        throw new AgentConnectionRowError("MALFORMED", "ticket_digest");
+      let result;
+      try {
+        result = await pool.query(
+          `UPDATE community.agent_connection_consents
+              SET ticket_digest=$2,
+                  human_account_id=$3,
+                  connection_id=$4
+            WHERE interaction_uid=$1
+              AND decided_at IS NULL
+              AND expires_at > CURRENT_TIMESTAMP
+          RETURNING ${CONSENT_SELECT}`,
+          [
+            arming.interactionUid,
+            arming.ticketDigest,
+            arming.humanAccountId,
+            arming.connectionId,
           ],
         );
       } catch (error) {
@@ -286,7 +370,7 @@ export const createConsentStore = (options: ConsentStoreOptions) => {
      * there is no window between the check and the write:
      *
      *   * `ticket_digest` — the POST produced the ticket this server rendered;
-     *   * `human_account_id` — the SAME human the review page authenticated,
+     *   * `human_account_id` — the SAME human the review page armed it for,
      *      so a foreign session holding a leaked ticket still writes nothing;
      *   * `decided_at IS NULL` — single use;
      *   * `expires_at > now()` — an abandoned tab is not a standing permission.

@@ -45,6 +45,7 @@ export {
   parseConsentRow,
 } from "./agent-connection-consents.js";
 export type {
+  ConsentArming,
   ConsentDecision,
   ConsentOpening,
   ConsentPreset,
