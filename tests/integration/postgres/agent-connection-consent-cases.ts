@@ -31,6 +31,29 @@ export const registerAgentConnectionConsentTests = (
     const connections = createAgentConnectionStore({ pool });
     const consents = createConsentStore({ pool });
 
+    /**
+     * Three FIXED names, reused on every run, and deliberately not dropped.
+     *
+     * The review that found the acceptance harness leaking roles was right
+     * about the harness, which generated a NEW pair per run and accumulated
+     * thirty. This suite is the other case: `grant-authorization.sql` creates
+     * them `IF NOT EXISTS`, so the cluster holds exactly three however often
+     * this runs.
+     *
+     * Dropping them from an `afterAll` was tried and reverted, for a reason
+     * worth stating precisely because I first got it wrong: `DROP OWNED BY`
+     * revokes privileges and takes locks across the WHOLE database while
+     * vitest is still running other files against it, which is cluster-wide
+     * surgery from inside one concurrent suite for no benefit here.
+     *
+     * I originally justified the revert by saying it had broken
+     * `community-postgres.test.ts`'s setup. It had not. Running the suite
+     * three times unchanged afterwards gave FAIL, PASS, PASS — that
+     * foreign-key collision between one file's `public_users` delete and
+     * another's receipts is an intermittent pre-existing race on this local
+     * disposable database, and I had attributed it to my own change from a
+     * single sample.
+     */
     const providerRole = "moya_consent_case_provider";
     const consentRole = "moya_consent_case_consent";
     const resourceRole = "moya_consent_case_resource";
