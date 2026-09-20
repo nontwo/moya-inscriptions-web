@@ -40,6 +40,21 @@ export {
   parseConnectionRow,
   parseGrantRow,
 } from "./agent-connection-store.js";
+export {
+  WRAPPER_PREFIX,
+  WrapperGrantMissingError,
+  WrapperKeyError,
+  createWrapperStore,
+  wrapperKeysFrom,
+  wrapperValuesEqual,
+} from "./agent-connection-wrappers.js";
+export type {
+  MintedWrapper,
+  ResolvedWrapper,
+  WrapperKeys,
+  WrapperStore,
+  WrapperStoreOptions,
+} from "./agent-connection-wrappers.js";
 export type {
   AgentConnectionStore,
   AgentConnectionStoreOptions,
