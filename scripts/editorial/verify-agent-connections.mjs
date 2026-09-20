@@ -255,6 +255,37 @@ async function main() {
   let nextEnvPath;
   let nextEnvBefore;
   try {
+    // The workspaces this harness STARTS, built before it starts them.
+    //
+    // Every one of these is loaded from `dist` at runtime -- the
+    // authorization listener, the Backend, and the adapters both of them and
+    // the Admin's Payload config reach through. A stale or missing `dist` is
+    // the single failure this task has hit most often: the source is right,
+    // the run is green locally on an already-built tree, and CI fails on a
+    // module that was never compiled. Building them here makes the local run
+    // and the CI run the same run. Measured at 6 s from a cold tree.
+    for (const [name, project] of [
+      ["contracts-build", "packages/contracts"],
+      ["search-build", "packages/search"],
+      ["api-build", "services/api"],
+      ["catalog-postgres-build", "services/catalog-postgres"],
+      ["image-build", "packages/image"],
+      ["community-postgres-build", "services/community-postgres"],
+      ["backend-runtime-build", "services/backend-runtime"],
+      ["agent-authorization-build", "services/agent-authorization"],
+    ]) {
+      // `session.run` throws VERIFICATION_CHILD_FAILED on a non-zero exit,
+      // so a failed compile stops the harness here. An added `if (!ok)` check
+      // would have been dead code reading a field `run` never returns.
+      await session.run(
+        ["node_modules/typescript/bin/tsc", "-p", `${project}/tsconfig.json`],
+        root,
+        name,
+        session.env,
+      );
+      session.assertActive();
+    }
+
     const pool = createPostgresPool(
       parsePostgresConfig({ DATABASE_URL: target.href }),
     );

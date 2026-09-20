@@ -255,6 +255,17 @@ jobs:
         env:
           CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_synthetic_test
         run: pnpm test:cms:browser --profile complete
+      # Mandatory, and last so the Production Admin browser check above runs
+      # against a tree this harness has not touched. The harness owns
+      # everything it uses: a database it creates beside the one named below,
+      # its own SQL roles, its own authorization listener, its own Backend,
+      # its own Admin dist directory and its own browser -- and it drops all
+      # of them. It writes no artifact: the tokens and the Owner handoff stay
+      # in a mode-restricted session directory that is removed on the way out.
+      - name: Development OAuth consent, revocation and a real Backend tool read
+        env:
+          CMS_TEST_DATABASE_URL: postgresql://cms_qa@127.0.0.1:5432/cms_synthetic_test
+        run: pnpm test:cms:agent-connections --profile complete
 
   build:
     needs: classify_e2e
