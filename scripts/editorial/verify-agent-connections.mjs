@@ -90,7 +90,7 @@ const freePort = () =>
  * never follows a redirect and never reads a body: readiness is a status code
  * on a route this harness chose, not whatever a server decided to say.
  */
-const waitForListener = async (session, url, limitMs, child) => {
+const waitForListener = async (session, name, url, limitMs, child) => {
   const deadline = Date.now() + boundedChildLimit(limitMs, session.remaining());
   for (;;) {
     session.assertActive();
@@ -114,9 +114,32 @@ const waitForListener = async (session, url, limitMs, child) => {
           child.child.exitCode !== null ||
           child.child.signalCode !== null))
     )
-      throw new Error("HARNESS_SERVICE_START_FAILED");
+      // Which service, and — when it refused rather than crashed — which
+      // rule. Both are fixed vocabularies: a service name this file chose,
+      // and a BARE CODE the service printed, matched against a pattern that
+      // admits nothing but upper-case letters, digits and underscores. A
+      // value, a URL or a credential cannot travel through either.
+      //
+      // The first CI run of this step failed with a bare
+      // HARNESS_SERVICE_START_FAILED, which named neither the service nor
+      // the reason and left nothing to do but guess. That is the whole point
+      // of this block.
+      throw new Error(`HARNESS_${name}_START_FAILED${refusalOf(child)}`);
     await delay(250, undefined, { signal: session.signal });
   }
+};
+
+/** A child's own bare refusal code, or nothing. Never its raw output. */
+const refusalOf = (child) => {
+  if (!child) return "";
+  let output = "";
+  try {
+    output = child.output();
+  } catch {
+    return "";
+  }
+  const match = /refused:\s*([A-Z][A-Z0-9_]{2,63})\b/u.exec(output);
+  return match ? `_${match[1]}` : "";
 };
 
 /**
@@ -184,46 +207,33 @@ async function main() {
     throw new Error("HARNESS_DATABASE_NAME_INVALID");
   const admin = new URL(parent.href);
   admin.pathname = "/postgres";
-
-  const { createPostgresPool, parsePostgresConfig, closePostgresPool } =
-    await import(path.join(root, "services/catalog-postgres/dist/index.js"));
-  const control = createPostgresPool(
-    parsePostgresConfig({ DATABASE_URL: admin.href }),
-  );
-  let created = false;
-  try {
-    await control.query(`CREATE DATABASE "${owned}"`);
-    created = true;
-  } catch (error) {
-    await closePostgresPool(control);
-    throw error;
-  }
-
   const target = new URL(parent.href);
   target.pathname = `/${owned}`;
-  // Between `CREATE DATABASE` and the try/finally below there used to be an
-  // unguarded await, so a throw there leaked the database and never closed
-  // the control pool. An independent review pointed out that roles were safe
-  // (they are created inside the inner try) and the database was not.
-  let session;
-  try {
-    session = await createVerificationSession(
-      target.href,
-      "moya-agent-connections-",
-      budget.sessionBudgetMs,
-    );
-  } catch (error) {
-    try {
-      await control.query(`DROP DATABASE IF EXISTS "${owned}" WITH (FORCE)`);
-    } catch {
-      // The original error is the one worth reporting.
-    }
-    await closePostgresPool(control);
-    throw error;
-  }
+
+  // THE SESSION COMES FIRST, and the order is load-bearing. It validates the
+  // URL and makes its own temporary directory; it opens no connection, so it
+  // can exist before the database does -- and it has to, because the builds
+  // below run through it and everything after them needs their output.
+  //
+  // An earlier arrangement imported `catalog-postgres/dist` at the top of
+  // this function, before the build stages that produce it. On a tree where
+  // the cms job had already built that package it worked; on a genuinely
+  // cold one the harness could not start at all, which is precisely the
+  // property the build stages exist to provide. Caught by running against a
+  // container matching CI's PostgreSQL with every dist removed.
+  const session = await createVerificationSession(
+    target.href,
+    "moya-agent-connections-",
+    budget.sessionBudgetMs,
+  );
   console.log(
     `Agent connections profile ${budget.profile}: ceiling ${budget.ceilingMs}ms (${budget.ceilingSource}); session ${budget.sessionBudgetMs}ms`,
   );
+  let created = false;
+  let control;
+  let createPostgresPool;
+  let parsePostgresConfig;
+  let closePostgresPool;
 
   /**
    * The three roles this harness creates, uses and drops. Names carry the
@@ -283,8 +293,19 @@ async function main() {
         name,
         session.env,
       );
+      console.log(`Agent connections ${name}: PASS`);
       session.assertActive();
     }
+
+    // Only now does anything resolve from `dist`, and only now is there a
+    // database to put anything in.
+    ({ createPostgresPool, parsePostgresConfig, closePostgresPool } =
+      await import(path.join(root, "services/catalog-postgres/dist/index.js")));
+    control = createPostgresPool(
+      parsePostgresConfig({ DATABASE_URL: admin.href }),
+    );
+    await control.query(`CREATE DATABASE "${owned}"`);
+    created = true;
 
     const pool = createPostgresPool(
       parsePostgresConfig({ DATABASE_URL: target.href }),
@@ -362,12 +383,14 @@ async function main() {
       "payload-migrate",
       session.env,
     );
+    console.log("Agent connections payload-migrate: PASS");
     await session.run(
       ["node_modules/payload/bin.js", "run", "scripts/bootstrap-synthetic.ts"],
       adminRoot,
       "bootstrap",
       { ...session.env, CMS_QA_HANDOFF_FILE: handoff },
     );
+    console.log("Agent connections bootstrap: PASS");
 
     // The fixture the acceptance read asks for, by an exact handle nothing
     // else uses. Seeded through the same synthetic account path the community
@@ -523,6 +546,7 @@ async function main() {
       );
       await waitForListener(
         session,
+        "BACKEND",
         `${backendOrigin}/health`,
         BACKEND_START_MS,
         backend,
@@ -532,7 +556,13 @@ async function main() {
         root,
         shared,
       );
-      await waitForListener(session, `${issuer}/healthz`, AUTH_START_MS, auth);
+      await waitForListener(
+        session,
+        "AUTHORIZATION",
+        `${issuer}/healthz`,
+        AUTH_START_MS,
+        auth,
+      );
       const admin_ = session.start(
         [
           "node_modules/next/dist/bin/next",
@@ -554,6 +584,7 @@ async function main() {
       );
       await waitForListener(
         session,
+        "ADMIN",
         `${adminOrigin}/admin/login`,
         startMs,
         admin_,
@@ -748,8 +779,10 @@ async function main() {
   } finally {
     await session.dispose();
     // Only what this harness made. The database is dropped last, after every
-    // child is gone, so nothing is holding a connection to it.
-    if (created) {
+    // child is gone, so nothing is holding a connection to it. `created` is
+    // false and `control` undefined when a build failed before either
+    // existed, which is why both are checked rather than assumed.
+    if (created && control) {
       // Roles are CLUSTER-wide, not per-database: dropping the database frees
       // their grants and leaves the LOGIN accounts behind. An independent
       // review caught an earlier version accumulating two of them per run,
@@ -796,7 +829,7 @@ async function main() {
         }
       }
     }
-    await closePostgresPool(control);
+    if (control) await closePostgresPool(control);
     // The handoff and the tokens go first, then the directory that held them.
     for (const file of [handoff, tokenFile])
       if (file) await rm(file, { force: true });
@@ -833,8 +866,11 @@ async function main() {
 }
 
 main().catch((error) => {
+  // Digits allowed: a named stage failure can carry a service's bare refusal
+  // code, and those are not restricted to letters. Still a fixed vocabulary —
+  // anything else becomes the generic category rather than travelling out.
   const category =
-    error instanceof Error && /^[A-Z_]+$/.test(error.message)
+    error instanceof Error && /^[A-Z][A-Z0-9_]{2,127}$/u.test(error.message)
       ? error.message
       : "SYNTHETIC_AGENT_CONNECTIONS_FAILED";
   console.log(JSON.stringify({ syntheticAgentConnections: "FAIL", category }));
