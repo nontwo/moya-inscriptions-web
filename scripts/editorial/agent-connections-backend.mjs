@@ -24,15 +24,19 @@ import { fileURLToPath, URL } from "node:url";
  *   1. NODE_ENV must be development, and an explicit opt-in must be present.
  *      A name or a flag alone is never authorization.
  *   2. The listener binds 127.0.0.1 and nothing else.
- *   3. The database URL must be loopback.
+ *   3. The database URL must be loopback AND carry no override — the
+ *      hostname is not where `pg` connects if a query parameter says
+ *      otherwise.
  *   4. The database name must be one this harness owns, by pattern.
  *   5. The disposable marker is verified ON THE DATABASE ACTUALLY CONNECTED
  *      TO, not on the name in the URL — `assertDisposableTestTarget` compares
  *      `current_database()` with the expected name and refuses `yoyi_dev` by
  *      name whatever else is true.
- *   6. The role it connects as must NOT be the one the resource server or the
- *      control plane uses. The split is the point; sharing one superuser-ish
- *      connection would make the grant plan decorative.
+ *   6. The role it connects as must NOT be the one the provider, the resource
+ *      server or the control plane uses, and all three of those must be
+ *      named. The split is the point; sharing one superuser-ish connection
+ *      would make the grant plan decorative, and a check that is skipped
+ *      because a variable is absent is not a check.
  *
  * Any of those failing is a refusal to start, never a warning.
  */
@@ -71,6 +75,25 @@ const main = async () => {
   );
   if (!guard.isLoopbackHostname(url.hostname))
     return refuse("DATABASE_NOT_LOOPBACK");
+  // THE HOSTNAME IS NOT WHERE `pg` CONNECTS. `pg-connection-string` treats
+  // every query parameter as a config key and lets `?host=`, `?port=` and
+  // `?user=` OVERRIDE the URL's own authority -- so a URL whose hostname
+  // reads 127.0.0.1 can open a socket to an arbitrary host as an arbitrary
+  // role, with the loopback check above answering true the whole way.
+  // Measured, not inferred: parsing
+  // `…@127.0.0.1:5432/x?host=203.0.113.9&port=6543&user=postgres` yields
+  // host 203.0.113.9, port 6543, user postgres.
+  //
+  // `services/backend-production/src/composition.ts` already closes this with
+  // a whitelist (`isLocalYoyiDevUrl`); this file was written without
+  // inheriting it. An independent review found the gap.
+  if (
+    url.hash !== "" ||
+    ![...url.searchParams].every(
+      ([key, value]) => key === "sslmode" && value === "disable",
+    )
+  )
+    return refuse("DATABASE_URL_CARRIES_OVERRIDES");
   // `databaseNameFromUrl` answers a DESCRIPTOR, not a string. Testing the
   // object against the pattern silently compared "[object Object]" and
   // refused every legitimate database -- a gate that fails closed, but for
@@ -123,23 +146,52 @@ const main = async () => {
     );
   }
 
-  // The role must be its own. Sharing the resource server's or the control
-  // plane's connection here would defeat the split those roles exist for.
-  const actingRole = (await pool.query("SELECT current_user AS role")).rows[0]
-    ?.role;
+  // The role must be its own, and the check must be capable of failing.
+  //
+  // Two corrections from an independent review, both of which made this weaker
+  // than the comment above it claimed:
+  //
+  //   * the PROVIDER role was not compared at all, and it is the most
+  //     privileged of the three -- it is the only one that writes the token
+  //     store and the wrappers. Starting this Backend as the provider was
+  //     therefore permitted.
+  //   * a missing peer variable was skipped with `continue`, so running this
+  //     script without them ran NO check while still printing that it had
+  //     started. A gate that is silently absent is not a gate, so all three
+  //     are now REQUIRED.
+  //
+  // The comparison is against `current_user`, which is what the server says
+  // this connection actually authenticated as -- not the username in the URL,
+  // which `?user=` can override (refused above in any case).
+  let actingRole;
+  try {
+    actingRole = (await pool.query("SELECT current_user AS role")).rows[0]
+      ?.role;
+  } catch {
+    await pool.end().catch(() => undefined);
+    return refuse("ACTING_ROLE_UNREADABLE");
+  }
+  if (typeof actingRole !== "string" || actingRole === "") {
+    await pool.end().catch(() => undefined);
+    return refuse("ACTING_ROLE_UNREADABLE");
+  }
   for (const other of [
+    "AGENT_AUTHORIZATION_DATABASE_URL",
     "AGENT_RESOURCE_DATABASE_URL",
     "AGENT_CONSENT_DATABASE_URL",
   ]) {
     const value = process.env[other];
-    if (!value) continue;
+    if (!value) {
+      await pool.end().catch(() => undefined);
+      return refuse("PEER_ROLE_URLS_REQUIRED");
+    }
     let theirs;
     try {
       theirs = decodeURIComponent(new URL(value).username);
     } catch {
       theirs = "";
     }
-    if (theirs !== "" && theirs === actingRole) {
+    if (theirs === "" || theirs === actingRole) {
       await pool.end().catch(() => undefined);
       return refuse("BACKEND_ROLE_SHARED_WITH_ANOTHER_SERVICE");
     }
@@ -184,4 +236,13 @@ const main = async () => {
   return handle;
 };
 
-void main();
+// A bare `void main()` turned any unexpected throw into an unhandled
+// rejection with a stack on stderr and no code, which is exactly the
+// diagnosis problem the harness's refusal extractor exists to solve.
+void main().catch((error) => {
+  refuse(
+    error instanceof Error && /^[A-Z][A-Z0-9_]{2,63}$/u.test(error.message)
+      ? error.message
+      : "ACCEPTANCE_BACKEND_FAILED",
+  );
+});

@@ -57,6 +57,18 @@ BEGIN
     RAISE EXCEPTION 'the provider, consent and resource roles must be distinct; splitting them IS the control';
   END IF;
 
+  -- The backend role, when one is named, is the fourth in that split and is
+  -- held to the same rule. An independent review pointed out that the check
+  -- above predates it: naming the backend role as one of the other three
+  -- would simply have added the backend's SELECT grants to that role, which
+  -- is the opposite of what a split is for.
+  IF backend_role IS NOT NULL AND backend_role <> ''
+     AND (backend_role = provider_role
+          OR backend_role = consent_role
+          OR backend_role = resource_role) THEN
+    RAISE EXCEPTION 'the backend role must be distinct from the provider, consent and resource roles';
+  END IF;
+
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = provider_role) THEN
     EXECUTE format(
       'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',

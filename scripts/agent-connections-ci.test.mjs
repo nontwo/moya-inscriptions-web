@@ -62,13 +62,39 @@ describe("the agent-connections acceptance runs in CI", () => {
     const tail = job.slice(at);
     // No soft failure, no condition, and no `|| true` shell escape. Each is a
     // way to keep a green job while the acceptance never ran or never passed.
-    assert.doesNotMatch(tail, /continue-on-error/u);
-    assert.doesNotMatch(tail, /^\s+if:/mu);
-    assert.doesNotMatch(tail, /\|\|\s*true/u);
+    assert.doesNotMatch(tail, /continue-on-error/u, "step must not soft-fail");
+    assert.doesNotMatch(tail, /^\s+if:/mu, "step must not be conditional");
+    assert.doesNotMatch(tail, /\|\|\s*true/u, "step must not swallow failure");
     // Nothing from this step is uploaded. The harness holds two access tokens
     // and a synthetic Owner credential in its session directory, and an
     // artifact upload here would carry them out of the runner.
-    assert.doesNotMatch(tail, /upload-artifact/u);
+    assert.doesNotMatch(tail, /upload-artifact/u, "step must upload nothing");
+
+    // THE JOB, NOT ONLY THE STEP. Slicing from the step leaves every
+    // job-level key outside the checks above, and an independent review
+    // showed three mutations that broke the property while every assertion
+    // stayed green: `continue-on-error: true` on the job, `if: false` on the
+    // job, and deleting the Playwright preparation step the harness needs.
+    // All three are measured, not hypothetical.
+    assert.doesNotMatch(job, /continue-on-error/u, "job must not soft-fail");
+    // The job's own condition is the classifier's, exactly. Anything else --
+    // `false`, a narrower expression, a different output -- means the
+    // acceptance can be skipped on a pull request that changed it.
+    const conditions = [...job.matchAll(/^\s{4}if:\s*(.+)$/gmu)].map((match) =>
+      match[1].trim(),
+    );
+    assert.deepEqual(conditions, ["needs.classify_e2e.outputs.cms == 'true'"]);
+    // And the preparation the step depends on still exists. Without it the
+    // harness has no Chromium, and the ordering assertion above would be
+    // comparing against -1.
+    assert.ok(
+      job.includes("- name: Prepare native Admin browser validation"),
+      "the browser preparation step must exist",
+    );
+    assert.ok(
+      job.includes("playwright install --with-deps"),
+      "the browser preparation step must install Chromium",
+    );
   });
 
   it("keeps the Production Admin browser coverage it was added beside", () => {
@@ -128,6 +154,17 @@ describe("the agent-connections acceptance runs in CI", () => {
       harness,
       /summary\.backendToolRead !== "VERIFIED"\)\s*\n?\s*throw new Error\("BACKEND_TOOL_READ_NOT_VERIFIED"\)/u,
     );
+    // The target is asserted disposable before the first DDL, like every
+    // other entry point that issues DDL.
+    assert.ok(
+      harness.includes("await verifyLoopbackDisposableTarget(process.env)"),
+      "the harness must assert its target is disposable before any DDL",
+    );
+    assert.ok(
+      harness.indexOf("verifyLoopbackDisposableTarget") <
+        harness.indexOf("CREATE DATABASE"),
+      "that assertion must precede CREATE DATABASE",
+    );
     // And the three read stages are part of the exact expected sequence.
     for (const stage of [
       "backend-read-returns-the-seeded-record",
@@ -150,10 +187,47 @@ describe("the agent-connections acceptance runs in CI", () => {
       "OWNED_DATABASE.test(name)",
       // The marker verified on the database actually connected to.
       "guard.assertDisposableTestTarget(probe.rows, name)",
-      // And a role that is not another service's.
+      // The URL carries no `?host=` / `?port=` / `?user=` override, because
+      // the hostname is not where `pg` connects when one is present.
+      "DATABASE_URL_CARRIES_OVERRIDES",
+      // And a role that is not another service's -- with all three peers
+      // required, so the check cannot be silently skipped.
       "BACKEND_ROLE_SHARED_WITH_ANOTHER_SERVICE",
+      "PEER_ROLE_URLS_REQUIRED",
+      "AGENT_AUTHORIZATION_DATABASE_URL",
     ])
       assert.ok(backend.includes(gate), gate);
+    // Every named gate is REACHED THROUGH `refuse(`, so one downgraded to a
+    // warning fails here. Presence alone could not tell the difference:
+    // rewriting a check as `console.warn(...)` keeps every substring above
+    // intact while the gate stops gating.
+    //
+    // The codes are listed rather than swept out of the file, because a sweep
+    // cannot tell a refusal code from an environment variable name and would
+    // fail on the peer-role list above -- measured, and the reason this is a
+    // list.
+    const refusals = new Set(
+      [...backend.matchAll(/refuse\(\s*"([A-Z][A-Z0-9_]{2,63})"/gu)].map(
+        (match) => match[1],
+      ),
+    );
+    for (const code of [
+      "NOT_DEVELOPMENT",
+      "NOT_ENABLED",
+      "DATABASE_NOT_LOOPBACK",
+      "DATABASE_URL_CARRIES_OVERRIDES",
+      "DATABASE_NOT_HARNESS_OWNED",
+      "OPERATOR_CREDENTIAL_REQUIRED",
+      "PORT_INVALID",
+      "PEER_ROLE_URLS_REQUIRED",
+      "BACKEND_ROLE_SHARED_WITH_ANOTHER_SERVICE",
+    ])
+      assert.ok(refusals.has(code), `${code} must be reached through refuse()`);
+    assert.doesNotMatch(
+      backend,
+      /console\.warn|console\.log/u,
+      "a refusal is never a warning",
+    );
     // The production composition's own database-name condition is untouched.
     const production = readFileSync(
       new URL(

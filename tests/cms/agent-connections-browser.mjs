@@ -462,7 +462,10 @@ try {
   // The access that just worked, asked for the same record it just returned.
   // Stated as the loss of a capability the client DEMONSTRABLY had, which is
   // the only way a revocation claim means anything.
-  assert.equal(await readSeededUser(firstToken, session), null);
+  // `strictEqual`, not `equal`: the loose form is `==`, and `undefined == null`
+  // is true -- so an answer that came back successful but carried no result
+  // would have satisfied a DENIAL assertion.
+  assert.strictEqual(await readSeededUser(firstToken, session), null);
   completed.push(stage);
 
   stage = "reconnect-issues-new-access";
@@ -515,7 +518,10 @@ try {
   // The revoked access is still revoked. A reconnect must not resurrect it,
   // which is what the generation bump is for -- status alone stopped being
   // enough the moment the connection became authorized again.
-  assert.equal(await readSeededUser(firstToken, reconnectedSession), null);
+  assert.strictEqual(
+    await readSeededUser(firstToken, reconnectedSession),
+    null,
+  );
   completed.push(stage);
 
   // Handed across the restart in a mode-restricted file, never on stdout.

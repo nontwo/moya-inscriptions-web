@@ -12,6 +12,7 @@ import {
   resolveCmsBudget,
   syntheticDatabase,
   timeCategories,
+  verifyLoopbackDisposableTarget,
   verificationRoot as root,
 } from "./verify-cms.mjs";
 
@@ -331,6 +332,19 @@ async function main() {
     // database to put anything in.
     ({ createPostgresPool, parsePostgresConfig, closePostgresPool } =
       await import(path.join(root, "services/catalog-postgres/dist/index.js")));
+
+    // The TARGET this harness was pointed at must itself be a marked
+    // disposable one, checked before the first DDL touches the cluster.
+    //
+    // `syntheticDatabase` validated a NAME, and the whole premise of the
+    // marker is that a name proves nothing. Every other entry point that
+    // issues DDL asserts this; an independent review pointed out that this
+    // one -- a new entry point that runs CREATE DATABASE, CREATE ROLE, DROP
+    // OWNED BY, DROP DATABASE and DROP ROLE -- did not. The objects it drops
+    // all carry its own random suffix, so nothing else was ever reachable;
+    // that makes this an invariant it was relying on rather than asserting.
+    await verifyLoopbackDisposableTarget(process.env);
+
     control = createPostgresPool(
       parsePostgresConfig({ DATABASE_URL: admin.href }),
     );
