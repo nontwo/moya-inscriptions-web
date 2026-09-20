@@ -215,3 +215,21 @@ The final Home Calligraphy (书帖) icon uses a brush-tip silhouette instead of
 the former book glyph, retaining the shared currentColor, 1.7-unit rounded
 stroke, 24-unit viewport and direct SVG renderer. Update its canonical artwork
 and animated copy together; keep all Home paging and animation logic intact.
+
+## Traditional brush correction round 11 (2026-09-20)
+
+After round 10 was merged, the Owner clarified that the Calligraphy glyph
+resembles a fountain pen. Replace its angular handle and central nib-like line
+with a rounded short bamboo handle, one bamboo joint and a curved, full bristle
+body tapering into a flexible tip. Keep the canonical shared asset and direct
+animated SVG identical, preserving their 24-unit viewport, 1.7-unit currentColor
+stroke, rounded line joins and existing animation. Only the two artwork copies,
+the existing artwork fingerprint assertion and this task record change. The
+Owner's task-closure and remote-merge instruction continues to apply; use the
+existing bounded checks and independent exact-head protected-delivery workflow.
+
+The Owner additionally requested an ink-dipped tip: fill approximately half of
+the bristle area nearest the tip with the inherited ink color, retaining the
+upper bristle outline. The fill follows the original bristle boundary and is
+rendered before its outline. Extend the existing canonical/animated artwork
+parity regression to cover both layers; retain theme inheritance.
