@@ -40,6 +40,13 @@ export {
   parseConnectionRow,
   parseGrantRow,
 } from "./agent-connection-store.js";
+export { createGrantDestroyer } from "./agent-connection-grant-destruction.js";
+export type {
+  GrantDestroyer,
+  GrantDestroyerOptions,
+  GrantDestructionOutcome,
+  ProviderGrantLifecycle,
+} from "./agent-connection-grant-destruction.js";
 export {
   WRAPPER_PREFIX,
   WrapperGrantMissingError,
