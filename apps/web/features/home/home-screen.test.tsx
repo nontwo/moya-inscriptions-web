@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { CatalogCard, isUltraWideCatalogMedia } from "./catalog-card";
+import {
+  CatalogCard,
+  feedMediaAspectRatio,
+  isUltraWideCatalogMedia,
+} from "./catalog-card";
 import { CatalogBrowseScreen } from "./catalog-screen";
 import { HomeScreen } from "./home-screen";
 import { ProductShell } from "../product-shell/product-shell";
@@ -55,6 +59,21 @@ describe("isUltraWideCatalogMedia", () => {
   });
 });
 
+describe("feedMediaAspectRatio", () => {
+  it.each([
+    [{ width: 3000, height: 300 }, 1.5],
+    [{ width: 300, height: 3000 }, 0.75],
+    [{ width: 900, height: 900 }, 1],
+    [{ width: 1200, height: 900 }, 4 / 3],
+    [{ width: 0, height: 0 }, 4 / 3],
+  ])(
+    "bounds extreme covers while preserving ordinary geometry: %o",
+    (media, expected) => {
+      expect(feedMediaAspectRatio(media)).toBe(expected);
+    },
+  );
+});
+
 describe("CatalogCard", () => {
   const ultraWideMedia = {
     alt: "合成超宽媒体",
@@ -97,6 +116,17 @@ describe("CatalogCard", () => {
     ).not.toContain("data-catalog-feed-span");
   });
 
+  it("shows the authoritative province without inventing missing metadata", () => {
+    const withProvince = renderToStaticMarkup(
+      <CatalogCard item={catalogItem({ province: "山东" })} variant="feed" />,
+    );
+    expect(withProvince).toContain('data-catalog-province=""');
+    expect(withProvince).toContain("山东");
+    expect(
+      renderToStaticMarkup(<CatalogCard item={catalogItem()} variant="feed" />),
+    ).not.toContain("data-catalog-province");
+  });
+
   it("uses one whole-card action only when a real callback is composed", () => {
     const withoutAction = renderToStaticMarkup(
       <CatalogCard item={catalogItem()} variant="feed" />,
@@ -127,7 +157,7 @@ describe("HomeScreen", () => {
   ) =>
     renderToStaticMarkup(
       <ProductShell
-        calligraphy={<div>书帖测试面板</div>}
+        user={<div>书帖测试面板</div>}
         home={
           <HomeScreen
             data={{
@@ -138,7 +168,7 @@ describe("HomeScreen", () => {
           />
         }
         initialPlatform="phone"
-        inscriptions={<div>碑刻测试面板</div>}
+        discussion={<div>碑刻测试面板</div>}
       />,
     );
 
@@ -160,10 +190,12 @@ describe("HomeScreen", () => {
     });
 
     expect(markup).toContain('data-home-surface=""');
-    expect(markup.match(/data-home-feed-tab=/g)).toHaveLength(3);
+    expect(markup.match(/data-tab-key=/g)).toHaveLength(4);
     expect(markup).toContain(">发现<");
     expect(markup).toContain(">附近<");
-    expect(markup).toContain(">专题<");
+    expect(markup).toContain(">碑刻<");
+    expect(markup).toContain(">书帖<");
+    expect(markup).not.toContain(">专题<");
     expect(markup).toContain("云峰山刻石");
     expect(markup).toContain(
       'src="https://media.example.invalid/catalog-001.jpg"',

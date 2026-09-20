@@ -32,7 +32,7 @@ export default async function T02pDevelopmentPage({
   return (
     <ProductApplication
       comments={{ signInHref: developmentSignInPath }}
-      initialHomeFeed={initialTopicId === null ? initialHomeFeed : "topics"}
+      initialHomeFeed={initialHomeFeed}
       initialPlatform={initialPlatform}
       initialTopicId={initialTopicId}
       states={states}

@@ -16,6 +16,23 @@ import {
 
 const id = catalogIdSchema.parse("catalog-mapper-001");
 
+it("projects only a known province into summary cards", () => {
+  const base = { id, kind: "inscription" as const, title: "资料", aliases: [] };
+  expect(
+    mapCatalogSummary({ ...base, province: { state: "VALUE", value: "陕西" } })
+      .province,
+  ).toBe("陕西");
+  for (const state of [
+    "UNKNOWN",
+    "UNSUPPLIED",
+    "NOT_APPLICABLE",
+    "CLEAR",
+  ] as const)
+    expect(
+      mapCatalogSummary({ ...base, province: { state } }),
+    ).not.toHaveProperty("province");
+});
+
 const internalListItem = {
   id,
   kind: "calligraphy" as const,

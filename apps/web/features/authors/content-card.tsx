@@ -1,7 +1,7 @@
 "use client";
 import { localCatalogMediaSrc } from "../detail/local-catalog-media";
 import type { ContentCard as Card } from "@moya/contracts";
-import { CatalogCardMedia } from "../home/catalog-card";
+import { CatalogCardMedia, CatalogProvinceBadge } from "../home/catalog-card";
 import type { CatalogCardVariant } from "../home/catalog-card";
 import { QuickActionCardAction } from "../quick-actions/quick-action-card-action";
 import { useProductShell } from "../product-shell/product-shell";
@@ -102,6 +102,9 @@ export const ContentCard = ({
             )}
           </>
         )}
+        {item.target.type === "catalog" ? (
+          <CatalogProvinceBadge province={item.province} />
+        ) : null}
         <QuickActionCardAction
           className={styles.cardAction}
           content={{

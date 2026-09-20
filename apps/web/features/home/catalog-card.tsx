@@ -40,6 +40,27 @@ export const isUltraWideCatalogMedia = (
   );
 };
 
+/** Keep cover crops legible without letting panoramas or scrolls dictate card size. */
+export const feedMediaAspectRatio = (media: CatalogMediaDimensions): number => {
+  const ratio = media.width / media.height;
+  return Number.isFinite(ratio) && ratio > 0
+    ? Math.min(3 / 2, Math.max(3 / 4, ratio))
+    : 4 / 3;
+};
+
+export const CatalogProvinceBadge = ({
+  province,
+}: {
+  province: string | undefined;
+}) => {
+  const label = province?.trim();
+  return label ? (
+    <span className={styles.provinceBadge} data-catalog-province="">
+      {label}
+    </span>
+  ) : null;
+};
+
 const catalogKindLabels = {
   calligraphy: "书帖",
   inscription: "碑刻",
@@ -62,7 +83,7 @@ const MediaFallback = ({
     style={
       aspectRatio === undefined
         ? undefined
-        : ({ aspectRatio } satisfies CSSProperties)
+        : ({ "--feed-media-ratio": aspectRatio } as CSSProperties)
     }
   >
     <Icon aria-hidden="true" name={state === "failed" ? "error" : "image"} />
@@ -115,7 +136,7 @@ export const CatalogCardMedia = ({
     return (
       <MediaFallback
         {...(variant === "feed"
-          ? { aspectRatio: `${media.width} / ${media.height}` }
+          ? { aspectRatio: String(feedMediaAspectRatio(media)) }
           : {})}
         label={`图像无法加载：${title}`}
         state="failed"
@@ -129,6 +150,13 @@ export const CatalogCardMedia = ({
         variant === "inscription" ? styles.inscriptionMedia : styles.feedMedia
       }`}
       data-catalog-media-state="valid"
+      style={
+        variant === "feed"
+          ? ({
+              "--feed-media-ratio": feedMediaAspectRatio(media),
+            } as CSSProperties)
+          : undefined
+      }
     >
       <img
         ref={imageRef}
@@ -195,6 +223,7 @@ export const CatalogCardPresentation = ({
         title={item.title}
         variant={variant}
       />
+      <CatalogProvinceBadge province={item.province} />
       <div className={styles.cardBody}>
         <h3 className={styles.cardTitle}>{item.title}</h3>
         <p className={styles.cardMetadata}>{metadata}</p>

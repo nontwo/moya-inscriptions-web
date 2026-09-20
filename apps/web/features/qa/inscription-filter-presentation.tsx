@@ -18,6 +18,7 @@ import styles from "./inscription-filter-presentation.module.css";
 
 import type { CatalogSummary } from "@moya/contracts";
 import type { ReactNode, RefObject } from "react";
+import type { HomeFeed } from "../home/home-feed";
 import type { QaUserScenarioName } from "./user-scenarios";
 
 type FilterKey = "dynasty" | "script" | "inscriptionType" | "region";
@@ -140,12 +141,14 @@ const withoutSelection = (state: QaFilterPresentationState, key: FilterKey) => {
 };
 
 export const QaProductUtilities = ({
+  activeHomeFeed,
   catalogItems,
   initialKeyword,
   showEmptyState,
   showRecentSearches,
   userScenarioName,
 }: {
+  readonly activeHomeFeed: HomeFeed;
   readonly catalogItems: readonly CatalogSummary[];
   readonly initialKeyword: string;
   readonly showEmptyState: boolean;
@@ -157,10 +160,10 @@ export const QaProductUtilities = ({
     useQaUtilities();
 
   useEffect(() => {
-    if (activeDestination !== "inscriptions") {
+    if (activeDestination !== "home" || activeHomeFeed !== "inscriptions") {
       updateUtility("filter", false);
     }
-  }, [activeDestination, updateUtility]);
+  }, [activeDestination, activeHomeFeed, updateUtility]);
 
   return (
     <>
@@ -173,7 +176,7 @@ export const QaProductUtilities = ({
         showEmptyState={showEmptyState}
         showRecentSearches={showRecentSearches}
       />
-      {activeDestination === "inscriptions" ? (
+      {activeDestination === "home" && activeHomeFeed === "inscriptions" ? (
         <QaInscriptionFilter
           onOpenChange={(open) => updateUtility("filter", open)}
           open={activeUtility === "filter"}

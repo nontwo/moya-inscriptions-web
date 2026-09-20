@@ -10,18 +10,10 @@ import {
   missingLocalText,
   newestEditedFirst,
   relativeTime,
-  remainingTrashDays,
   snapshotKindLabels,
   textExcerpt,
-  trashRowState,
 } from "./drafts-format";
-import {
-  NOW,
-  content,
-  daysFromNow,
-  minutesAgo,
-  summary,
-} from "./drafts.test-support";
+import { NOW, content, minutesAgo, summary } from "./drafts.test-support";
 
 describe("drafts wording", () => {
   it("labels new drafts and edits, with the UI-only unnamed placeholder", () => {
@@ -91,43 +83,6 @@ describe("drafts wording", () => {
       authorshipLabel({ kind: "copy_practice", referenceTitle: "兰亭序" }),
     ).toBe("临摹或练习");
     expect(authorshipDetails(null)).toEqual([]);
-  });
-});
-
-describe("recycle bin remaining days (fixed clock)", () => {
-  it("rounds partial days up and never goes below zero", () => {
-    expect(remainingTrashDays(daysFromNow(30), NOW)).toBe(30);
-    expect(remainingTrashDays(daysFromNow(29.01), NOW)).toBe(30);
-    expect(remainingTrashDays(daysFromNow(29), NOW)).toBe(29);
-    expect(remainingTrashDays(daysFromNow(0.2), NOW)).toBe(1);
-    expect(remainingTrashDays(NOW.toISOString(), NOW)).toBe(0);
-    expect(remainingTrashDays(daysFromNow(-2), NOW)).toBe(0);
-    expect(remainingTrashDays("not a time", NOW)).toBe(0);
-  });
-
-  it("tells restorable, removed, unconfirmable and expiring rows apart", () => {
-    expect(
-      trashRowState({ restorable: true, purgeAfter: daysFromNow(5) }, NOW),
-    ).toEqual({ kind: "restorable", days: 5 });
-    expect(
-      trashRowState({ restorable: true, purgeAfter: daysFromNow(0.5) }, NOW),
-    ).toEqual({ kind: "restorable", days: 1 });
-    expect(
-      trashRowState({ restorable: false, purgeAfter: daysFromNow(5) }, NOW),
-    ).toEqual({ kind: "removed" });
-    expect(
-      trashRowState({ restorable: false, purgeAfter: daysFromNow(1.01) }, NOW),
-    ).toEqual({ kind: "removed" });
-    // Within the last day the Backend's clock may already have passed the purge time.
-    expect(
-      trashRowState({ restorable: false, purgeAfter: daysFromNow(1) }, NOW),
-    ).toEqual({ kind: "unavailable" });
-    expect(
-      trashRowState({ restorable: false, purgeAfter: daysFromNow(0.3) }, NOW),
-    ).toEqual({ kind: "unavailable" });
-    expect(
-      trashRowState({ restorable: false, purgeAfter: daysFromNow(-1) }, NOW),
-    ).toEqual({ kind: "expiring" });
   });
 });
 

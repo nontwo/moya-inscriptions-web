@@ -3,18 +3,12 @@ import {
   CommunityInputError,
   CommunityNotFoundError,
 } from "@moya/api";
-import {
-  editableWorkSchema,
-  trashedWorkPageSchema,
-} from "@moya/contracts/schemas";
+import { editableWorkSchema } from "@moya/contracts/schemas";
 import type {
   EditableWork,
   MediaCrop,
   MediaEdit,
   PublishingMediaItem,
-  PublishingPageQuery,
-  TrashRestoreResult,
-  TrashedWorkPage,
   WorkVisibilityCommand,
   WorkVisibilityResult,
 } from "@moya/contracts";
@@ -28,8 +22,6 @@ import {
   authorCommand,
   isoOrNull,
   nowParam,
-  pageBounds,
-  pageOf,
   publishingAuthorActions,
   readTransaction,
   selectSettings,
@@ -39,15 +31,9 @@ import type { PublishingDb } from "./db.js";
 import { revisionAuthorship } from "./authorship.js";
 import type { RevisionAuthorshipColumns } from "./authorship.js";
 import { insertJob } from "./jobs.js";
+import { eraseUnreferencedLegacyMedia } from "./permanent-media.js";
 import { cancelItems, releaseHolderRefs, selectMediaItems } from "./media.js";
-import {
-  clipboardOriginSql,
-  revisionCover,
-  revisionCoverColumns,
-  revisionCoverJoin,
-  workExcerpt,
-} from "./media-read.js";
-import type { RevisionCoverColumns } from "./media-read.js";
+import { clipboardOriginSql } from "./media-read.js";
 import {
   applyPublicRevision,
   closePendingRevisions,
@@ -56,8 +42,8 @@ import {
 } from "./submissions.js";
 
 /*
- * Author work reads for editing, visibility changes (P10), the recycle bin
- * (T01-T03) and the retention purge. Every author command runs under the
+ * Author work reads, visibility changes, permanent deletion and legacy
+ * retention cleanup. Every author command runs under the
  * actor lock with its receipt and audit row (./db.ts authorCommand).
  */
 
@@ -312,8 +298,12 @@ export const setVisibility = async (
     },
   );
 
-/** WorkPublishingPort.trashWork */
-export const trashWork = async (
+/**
+ * Permanently deletes only the authenticated author's work. The remaining work
+ * identity is a content-free tombstone for discussions and audit references;
+ * there is no restore operation. Byte deletion runs through the existing worker.
+ */
+export const deleteWork = async (
   pool: Pool,
   actorId: string,
   workId: string,
@@ -325,155 +315,127 @@ export const trashWork = async (
     {
       actorId,
       requestId: command.requestId,
-      action: publishingAuthorActions.trashWork,
+      action: publishingAuthorActions.deleteWork,
       subjectId: workId,
       input: command,
       now,
     },
     async (db) => {
-      const work = await lockOwnWork(db, actorId, workId);
-      if (work.trashed_at === null) {
-        const settings = await selectSettings(db, "share");
-        const purgeAfter = (
-          await db.query<{ purge_after: Date }>(
-            `UPDATE community.works SET trashed_at=$2::timestamptz,
-              trash_purge_after=$2::timestamptz+make_interval(days=>$3::integer)
-            WHERE id=$1 RETURNING trash_purge_after AS purge_after`,
-            [workId, nowParam(now), settings.trashRetentionDays],
-          )
-        ).rows[0]!.purge_after;
-        await closePendingRevisions(db, workId, "withdrawn");
-        await touchWork(db, workId, now);
-        const job = await insertJob(
-          db,
-          {
-            kind: "purge_trashed_work",
-            subjectId: workId,
-            runAfter: purgeAfter,
-          },
-          now,
-        );
-        // A queued purge left from an earlier stay in the bin runs at this
-        // stay's purge time instead.
-        if (!job.created)
-          await db.query(
-            "UPDATE community.publishing_jobs SET run_after=$2::timestamptz,updated_at=$3::timestamptz WHERE id=$1 AND state='queued'",
-            [job.id, nowParam(purgeAfter), nowParam(now)],
-          );
-      }
-      return { deleted: true } as const;
-    },
-  );
-
-/** WorkPublishingPort.restoreWork */
-export const restoreWork = async (
-  pool: Pool,
-  actorId: string,
-  workId: string,
-  command: PublishingCommandIdentity,
-  now: Date,
-): Promise<TrashRestoreResult> =>
-  authorCommand(
-    pool,
-    {
-      actorId,
-      requestId: command.requestId,
-      action: publishingAuthorActions.restoreWork,
-      subjectId: workId,
-      input: command,
-      now,
-    },
-    async (db) => {
-      const work = await lockOwnWork(db, actorId, workId);
-      if (work.trashed_at === null)
-        throw new CommunityConflictError("The work is not in the recycle bin");
-      // Past its retention time a work belongs to the purge, whenever the
-      // worker runs it; a removed work is never self-restorable (T03).
-      if (
-        work.operator_state === "removed" ||
-        (work.trash_purge_after !== null &&
-          work.trash_purge_after.getTime() <= now.getTime())
-      )
-        workUnavailable();
+      // Same lock order as submission and the legacy retention worker: holders
+      // before work, then media. The account lock serializes the author's writes.
       await db.query(
-        "UPDATE community.works SET trashed_at=NULL,trash_purge_after=NULL,visibility='self' WHERE id=$1",
+        "SELECT id FROM community.publishing_sessions WHERE work_id=$1 AND owner_id=$2 ORDER BY id FOR UPDATE",
+        [workId, actorId],
+      );
+      const drafts = (
+        await db.query<{ id: string }>(
+          "SELECT id FROM community.work_drafts WHERE work_id=$1 AND owner_id=$2 ORDER BY id FOR UPDATE",
+          [workId, actorId],
+        )
+      ).rows.map((row) => row.id);
+      await lockOwnWork(db, actorId, workId);
+      // Finished legacy drafts were never backfilled into media_items. Capture
+      // their native media IDs before erasing the only remaining content rows.
+      const legacyMediaIds = (
+        await db.query<{ id: string }>(
+          `SELECT unnest(media_ids) AS id FROM community.works WHERE id=$1
+           UNION SELECT unnest(media_ids) FROM community.work_edit_drafts WHERE work_id=$1`,
+          [workId],
+        )
+      ).rows.map((row) => row.id);
+      const holders = (
+        await db.query<{
+          kind: "revision" | "draft" | "snapshot" | "session";
+          id: string;
+        }>(
+          `SELECT 'revision'::text AS kind,id FROM community.work_revisions WHERE work_id=$1
+           UNION ALL SELECT 'draft',id FROM community.work_drafts WHERE work_id=$1
+           UNION ALL SELECT 'snapshot',id FROM community.work_draft_snapshots WHERE work_id=$1 OR draft_id=ANY($2::text[])
+           UNION ALL SELECT 'session',id FROM community.publishing_sessions WHERE work_id=$1`,
+          [workId, drafts],
+        )
+      ).rows;
+      const released = await releaseHolderRefs(
+        db,
+        (["revision", "draft", "snapshot", "session"] as const).map((kind) => ({
+          holderKind: kind,
+          holderIds: holders
+            .filter((holder) => holder.kind === kind)
+            .map((holder) => holder.id),
+        })),
+        now,
+      );
+      const at = nowParam(now);
+      await db.query(
+        `UPDATE community.works SET title='',text='',media_ids='{}',
+          public_revision_id=NULL,author_revision_id=NULL,visibility='self',
+          trashed_at=NULL,trash_purge_after=NULL,deleted_at=$2::timestamptz,
+          updated_at=$2::timestamptz,version=version+1 WHERE id=$1`,
+        [workId, at],
+      );
+      await db.query(
+        "DELETE FROM community.work_draft_snapshots WHERE work_id=$1 OR draft_id=ANY($2::text[])",
+        [workId, drafts],
+      );
+      await db.query(
+        `UPDATE community.publishing_sessions SET state=CASE WHEN state='active' THEN 'discarded' ELSE state END,
+          ended_at=CASE WHEN state='active' THEN $2::timestamptz ELSE ended_at END,draft_id=NULL
+         WHERE work_id=$1 OR draft_id=ANY($3::text[])`,
+        [workId, at, drafts],
+      );
+      await db.query(
+        "DELETE FROM community.work_drafts WHERE work_id=$1 OR conflict_of=ANY($2::text[])",
+        [workId, drafts],
+      );
+      await db.query(
+        "DELETE FROM community.work_edit_drafts WHERE work_id=$1",
         [workId],
       );
-      await closePendingRevisions(db, workId, "withdrawn");
-      // The purge queued for this stay in the bin is not needed any more.
+      await db.query(
+        "DELETE FROM community.work_revision_items WHERE revision_id IN (SELECT id FROM community.work_revisions WHERE work_id=$1)",
+        [workId],
+      );
+      await db.query("DELETE FROM community.work_revisions WHERE work_id=$1", [
+        workId,
+      ]);
+      // Earlier Phase 4 edit receipts could contain a full draft. Preserve the
+      // receipt identity/fingerprint but erase its payload and refuse replay.
+      await db.query(
+        `UPDATE community.author_command_receipts SET result='{"permanentlyDeleted":true}'::jsonb
+         WHERE actor_id=$1 AND (result->>'workId'=$2 OR result->>'work_id'=$2)
+           AND (result ? 'content' OR result ? 'title' OR result ? 'text' OR result ? 'body')`,
+        [actorId, workId],
+      );
+      await db.query(
+        `UPDATE community.content_operator_receipts SET result='{"permanentlyDeleted":true}'::jsonb
+         WHERE (result->>'id'=$1 OR result->>'workId'=$1)
+           AND (result ? 'title' OR result ? 'text' OR result ? 'body' OR result ? 'content')`,
+        [workId],
+      );
+      await db.query(
+        `UPDATE community.content_operator_events
+         SET detail=jsonb_set(detail,'{result}','{"permanentlyDeleted":true}'::jsonb)
+         WHERE content_type='work' AND content_id=$1
+           AND (detail->'result' ? 'title' OR detail->'result' ? 'text'
+             OR detail->'result' ? 'body' OR detail->'result' ? 'content')`,
+        [workId],
+      );
+      await cancelItems(db, released, now, { onlyUnreferenced: true });
+      await eraseUnreferencedLegacyMedia(
+        db,
+        actorId,
+        released,
+        now,
+        legacyMediaIds,
+      );
+      // Superseded queued retention work must not keep an unnecessary timer.
       await db.query(
         "DELETE FROM community.publishing_jobs WHERE kind='purge_trashed_work' AND subject_id=$1 AND state='queued'",
         [workId],
       );
-      await touchWork(db, workId, now);
-      return { workId, visibility: "self" } as const;
+      return { deleted: true } as const;
     },
   );
-
-interface TrashRow extends RevisionCoverColumns {
-  id: string;
-  title: string | null;
-  body: string | null;
-  item_count: number;
-  trashed_at: Date;
-  trash_purge_after: Date;
-  operator_state: string;
-}
-
-/** WorkPublishingPort.listTrash */
-export const listTrash = async (
-  pool: Pool,
-  actorId: string,
-  query: PublishingPageQuery,
-  now: Date,
-): Promise<TrashedWorkPage> =>
-  readTransaction(pool, async (db) => {
-    await activeActor(db, actorId);
-    const where =
-      "w.author_id=$1 AND w.trashed_at IS NOT NULL AND w.deleted_at IS NULL";
-    const total = Number(
-      (
-        await db.query<{ total: string }>(
-          `SELECT count(*) AS total FROM community.works w WHERE ${where}`,
-          [actorId],
-        )
-      ).rows[0]?.total ?? 0,
-    );
-    const { limit, offset } = pageBounds(query);
-    const rows = (
-      await db.query<TrashRow>(
-        `SELECT w.id,r.title,r.body,w.trashed_at,w.trash_purge_after,w.operator_state,
-          (SELECT count(*)::integer FROM community.work_revision_items ri WHERE ri.revision_id=r.id) AS item_count,
-          ${revisionCoverColumns("cov")}
-        FROM community.works w
-        LEFT JOIN community.work_revisions r ON r.id=w.author_revision_id
-        ${revisionCoverJoin("r", "cov")}
-        WHERE ${where}
-        ORDER BY w.trashed_at DESC,w.id DESC LIMIT $2 OFFSET $3`,
-        [actorId, limit, offset],
-      )
-    ).rows;
-    return trashedWorkPageSchema.parse(
-      pageOf(
-        rows.map((row) => ({
-          workId: row.id,
-          title: row.title ?? "",
-          excerpt: workExcerpt(row.body ?? ""),
-          coverSrc: revisionCover(row)?.src ?? null,
-          itemCount: row.item_count ?? 0,
-          trashedAt: row.trashed_at.toISOString(),
-          purgeAfter: row.trash_purge_after.toISOString(),
-          // The same rule restoreWork applies: never a removed work, and
-          // never once the retention purge is due.
-          restorable:
-            row.operator_state !== "removed" &&
-            row.trash_purge_after.getTime() > now.getTime(),
-        })),
-        total,
-        query,
-      ),
-    );
-  });
 
 /** WorkPublishingPort.purgeTrashedWork */
 export const purgeTrashedWork = async (

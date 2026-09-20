@@ -7,43 +7,57 @@ import { useAuthors, shareContent, contentKey } from "./author-context";
 import { authorClient } from "./author-data";
 import { QuickActionIcon } from "../quick-actions/quick-action-card-action";
 import type { QuickActionName } from "../quick-actions/quick-action-types";
-export const useContentActions = (target: ContentIdentity, title: string) => {
+import styles from "./content-actions.module.css";
+
+const unknownState = (key: string) => ({
+  key,
+  favorite: false,
+  liked: false,
+  known: false,
+  favoriteCount: null as number | null,
+  likeCount: null as number | null,
+});
+export const useContentActions = (
+  target: ContentIdentity,
+  title: string,
+  includeGuestCounts = false,
+) => {
   const author = useAuthors(),
     key = `${author.viewer?.id ?? "guest"}:${contentKey(target)}`;
-  const [snapshot, setSnapshot] = useState({
-      key,
-      favorite: false,
-      liked: false,
-      known: false,
-    }),
+  const [snapshot, setSnapshot] = useState(() => unknownState(key)),
     [busy, setBusy] = useState(false),
     [pendingAction, setPendingAction] = useState<QuickActionName | null>(null),
     scope = useRef(key),
-    inFlight = useRef(false);
+    inFlight = useRef(false),
+    readEpoch = useRef(0);
   scope.current = key;
-  const state =
-    snapshot.key === key
-      ? snapshot
-      : { key, favorite: false, liked: false, known: false };
+  const state = snapshot.key === key ? snapshot : unknownState(key);
   useEffect(() => {
     let current = true;
     if (author.checking) return;
+    const read = ++readEpoch.current;
+    const guestFavorite = author.guestFavorites.some(
+      (x) => contentKey(x) === contentKey(target),
+    );
     if (!author.viewer) {
-      setSnapshot({
-        key,
-        favorite: author.guestFavorites.some(
-          (x) => contentKey(x) === contentKey(target),
-        ),
+      setSnapshot((old) => ({
+        ...(old.key === key ? old : unknownState(key)),
+        favorite: guestFavorite,
         liked: false,
         known: true,
-      });
-      return;
+      }));
+      if (!includeGuestCounts) return;
     }
     void authorClient
       .state(target)
       .then((value) => {
-        if (current && scope.current === key)
-          setSnapshot({ key, ...value, known: true });
+        if (current && scope.current === key && read === readEpoch.current)
+          setSnapshot({
+            key,
+            ...value,
+            favorite: author.viewer ? value.favorite : guestFavorite,
+            known: true,
+          });
       })
       .catch(() => {
         /* Same-scope failures preserve known state; another account starts unknown. */
@@ -51,7 +65,13 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
     return () => {
       current = false;
     };
-  }, [key, author.checking, author.revision, author.guestFavorites]);
+  }, [
+    key,
+    author.checking,
+    author.revision,
+    author.guestFavorites,
+    includeGuestCounts,
+  ]);
   const execute: ContentQuickActionEnvironment["onAction"] = async (action) => {
     if (inFlight.current) return false;
     if (action !== "share" && !state.known) {
@@ -59,6 +79,7 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
       return false;
     }
     inFlight.current = true;
+    if (action !== "share") readEpoch.current++;
     setBusy(true);
     setPendingAction(action);
     const run = key;
@@ -78,6 +99,26 @@ export const useContentActions = (target: ContentIdentity, title: string) => {
         setSnapshot((old) =>
           old.key === run ? { ...old, [field]: value } : old,
         );
+      if (saved && author.viewer && scope.current === run) {
+        const read = ++readEpoch.current;
+        try {
+          const confirmed = await authorClient.state(target);
+          if (scope.current === run && read === readEpoch.current)
+            setSnapshot({ key: run, ...confirmed, known: true });
+        } catch {
+          // The toggle is committed, but an unknown aggregate is not a guessed +1.
+          if (scope.current === run && read === readEpoch.current)
+            setSnapshot((old) =>
+              old.key === run
+                ? {
+                    ...old,
+                    [action === "favorite" ? "favoriteCount" : "likeCount"]:
+                      null,
+                  }
+                : old,
+            );
+        }
+      }
       return saved && scope.current === run;
     } catch (error) {
       if (scope.current === run)
@@ -118,7 +159,7 @@ export const ContentActionsView = ({
   const { viewer, signInHref, checking } = useAuthors();
   return (
     <div
-      className="phase4-detail-actions"
+      className={`phase4-detail-actions ${styles.actions}`}
       role="group"
       aria-label="内容操作"
       data-detail-content-actions=""
@@ -130,9 +171,16 @@ export const ContentActionsView = ({
             : action === "like"
               ? actions.state.liked
               : actions.pendingAction === "share";
+        const count =
+          action === "favorite"
+            ? actions.state.favoriteCount
+            : action === "like"
+              ? actions.state.likeCount
+              : null;
         return (
           <button
             key={action}
+            className={styles.action}
             type="button"
             aria-label={
               action === "favorite"
@@ -165,6 +213,14 @@ export const ContentActionsView = ({
               action={action}
               filled={action !== "share" && active}
             />
+            {count !== null && count > 0 ? (
+              <span
+                className={styles.count}
+                data-detail-reaction-count={action}
+              >
+                {count}
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -179,6 +235,6 @@ export const ContentActions = ({
   target: ContentIdentity;
   title: string;
 }) => {
-  const actions = useContentActions(target, title);
+  const actions = useContentActions(target, title, true);
   return <ContentActionsView target={target} title={title} actions={actions} />;
 };

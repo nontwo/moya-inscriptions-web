@@ -174,6 +174,17 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
     );
     reads.options.options = `-c search_path=${schema},public`;
     const adapter = new PostgresWorkPublishingAdapter(pool);
+    const legacyTrashFixture = async (
+      actor: string,
+      workId: string,
+      _command: { requestId: string },
+      now: Date,
+    ) => {
+      await pool.query(
+        "UPDATE community.works SET trashed_at=$3::timestamptz,trash_purge_after=$3::timestamptz+interval '30 days' WHERE id=$1 AND author_id=$2",
+        [workId, actor, now.toISOString()],
+      );
+    };
     const operators = new PostgresPublishingOperatorAdapter(pool);
     const authors = new PostgresAuthorCommunityAdapter(pool);
     const comments = new PostgresCommunityCommentAdapter(pool);
@@ -185,7 +196,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
     beforeAll(async () => {
       await pool.query(`CREATE SCHEMA ${schema}`);
       await pool.query(
-        `CREATE TABLE ${schema}.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb);CREATE TABLE ${schema}.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)`,
+        `CREATE TABLE ${schema}.catalog_entries(catalog_id text PRIMARY KEY,province text,province_state text);CREATE TABLE ${schema}.catalog_discovery(catalog_id text PRIMARY KEY,kind text,title text,aliases varchar[],first_published_at timestamptz,filter_metadata jsonb);CREATE TABLE ${schema}.catalog_media(catalog_id text,media_id text,object_key text,width integer,height integer,is_representative boolean)`,
       );
     });
     afterAll(async () => {
@@ -257,6 +268,10 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       await run("DELETE FROM community.works WHERE author_id=ANY($1::text[])", [
         users,
       ]);
+      await run(
+        "UPDATE community.public_users SET avatar_media_id=NULL,background_media_id=NULL WHERE id=ANY($1::text[])",
+        [users],
+      );
       await run(
         "DELETE FROM community.user_media WHERE owner_id=ANY($1::text[])",
         [users],
@@ -942,7 +957,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       ]);
     });
 
-    it("never counts edits, visibility changes, restores or retries, and never refunds a trashed work", async () => {
+    it("never counts edits, visibility changes or retries, and never refunds a permanently deleted work", async () => {
       await pool.query(
         "UPDATE community.work_publishing_settings SET daily_new_work_limit=1 WHERE id='settings'",
       );
@@ -961,15 +976,12 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
           { requestId: randomUUID(), visibility },
           now,
         );
-      await adapter.trashWork(a, work.workId, { requestId: randomUUID() }, now);
-      await adapter.restoreWork(
+      await adapter.deleteWork(
         a,
         work.workId,
         { requestId: randomUUID() },
         now,
       );
-      confirmed(await editWork(a, work.workId, { title: "恢复后编辑" }, now));
-      await adapter.trashWork(a, work.workId, { requestId: randomUUID() }, now);
       await expectRejection(
         adapter.submit(
           a,
@@ -1641,33 +1653,14 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         CommunityInputError,
         "work_unavailable",
       );
-      await adapter.trashWork(
+      await adapter.deleteWork(
         a,
         removed.workId,
         { requestId: randomUUID() },
         now,
       );
-      expect(
-        (await adapter.listTrash(a, { page: 1, pageSize: 20 }, now)).items,
-      ).toEqual([
-        expect.objectContaining({
-          workId: removed.workId,
-          title: "被移除",
-          restorable: false,
-        }),
-      ]);
       await expectRejection(
-        adapter.restoreWork(
-          a,
-          removed.workId,
-          { requestId: randomUUID() },
-          now,
-        ),
-        CommunityInputError,
-        "work_unavailable",
-      );
-      await expectRejection(
-        editWork(a, removed.workId, { title: "回收站中的编辑" }, now),
+        editWork(a, removed.workId, { title: "删除后的编辑" }, now),
         CommunityInputError,
         "work_unavailable",
       );
@@ -1677,147 +1670,242 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       );
     });
 
-    it("moves a work to the recycle bin and restores it as self-only with its identity, relations and comments", async () => {
+    it("permanently erases owned content and history, preserves others' replies and replays deletion", async () => {
       const { itemId } = await mediaItem(a);
+      const exclusive = await mediaItem(a);
       const now = at("2026-07-08T08:00:00.000Z");
       const work = await publish(
         a,
-        { title: "回收站", body: "回收站里的正文", items: [entry(itemId)] },
+        {
+          title: "待删除标题",
+          body: "待删除正文",
+          items: [entry(itemId), entry(exclusive.itemId)],
+        },
+        now,
+      );
+      const kept = await publish(
+        a,
+        { title: "共享图片保留", items: [entry(itemId)] },
+        now,
+      );
+      const edit = await adapter.openEditDraft(
+        a,
+        work.workId,
+        { requestId: randomUUID(), deviceClass: "phone" },
         now,
       );
       const target = { type: "work" as const, id: work.workId };
-      for (const relation of ["favorite", "like"] as const)
-        await authors.changeRelation(b, relation, {
-          requestId: randomUUID(),
-          target,
-          enabled: true,
-        });
-      const comment = await comments.submitDiscussion(target, b, "保留的评论");
-      const before = await workRow(work.workId);
-
-      const trashedAt = at("2026-07-08T09:00:00.000Z");
-      const trashRequest = { requestId: randomUUID() };
-      expect(
-        await adapter.trashWork(a, work.workId, trashRequest, trashedAt),
-      ).toEqual({ deleted: true });
-      expect(
-        await adapter.trashWork(a, work.workId, trashRequest, trashedAt),
-      ).toEqual({ deleted: true });
-      expect(await workRow(work.workId)).toMatchObject({
-        trashed_at: trashedAt,
-        trash_purge_after: at("2026-08-07T09:00:00.000Z"),
-        deleted_at: null,
+      const comment = await comments.submitDiscussion(
+        target,
+        b,
+        "他人评论保留",
+      );
+      await pool.query(
+        "INSERT INTO community.author_command_receipts(actor_id,request_id,fingerprint,result) VALUES($1,$2,$3,$4::jsonb)",
+        [
+          a,
+          randomUUID(),
+          "a".repeat(64),
+          JSON.stringify({
+            workId: work.workId,
+            title: "历史标题",
+            text: "历史原文",
+          }),
+        ],
+      );
+      const moderationRequest = {
+        requestId: randomUUID(),
+        state: "hidden" as const,
+        expectedVersion: (await authors.readWork(work.workId, a)).version,
+      };
+      await contentOperator.moderateWork(
+        work.workId,
+        operator,
+        moderationRequest,
+      );
+      const request = { requestId: randomUUID() };
+      await expectRejection(
+        adapter.deleteWork(b, work.workId, request, now),
+        CommunityNotFoundError,
+      );
+      expect((await workRow(work.workId)).title).toBe("待删除标题");
+      expect(await adapter.deleteWork(a, work.workId, request, now)).toEqual({
+        deleted: true,
       });
-      expect(
-        (
-          await pool.query(
-            "SELECT kind,state,run_after FROM community.publishing_jobs WHERE subject_id=$1",
+      expect(await adapter.deleteWork(a, work.workId, request, now)).toEqual({
+        deleted: true,
+      });
+      expect(await workRow(work.workId)).toMatchObject({
+        title: "",
+        text: "",
+        deleted_at: now,
+        public_revision_id: null,
+        author_revision_id: null,
+        trashed_at: null,
+        trash_purge_after: null,
+      });
+      for (const table of [
+        "work_revisions",
+        "work_drafts",
+        "work_draft_snapshots",
+        "work_edit_drafts",
+      ])
+        expect(
+          await count(
+            `SELECT count(*) AS n FROM community.${table} WHERE work_id=$1`,
             [work.workId],
-          )
-        ).rows,
-      ).toEqual([
-        {
-          kind: "purge_trashed_work",
-          state: "queued",
-          run_after: at("2026-08-07T09:00:00.000Z"),
-        },
-      ]);
+          ),
+        ).toBe(0);
       for (const viewer of [a, b])
         await expectRejection(
           authors.readWork(work.workId, viewer),
           CommunityNotFoundError,
         );
       await expectRejection(
-        comments.readDiscussion(target, a, { page: 1, pageSize: 10 }),
-        CommunityNotFoundError,
-      );
-      expect((await authors.readProfile(a, a)).totals.works).toBe(0);
-      await expectRejection(
         adapter.readEditableWork(a, work.workId),
         CommunityNotFoundError,
       );
-      expect(
-        await adapter.listTrash(a, { page: 1, pageSize: 20 }, trashedAt),
-      ).toEqual({
-        items: [
-          {
-            workId: work.workId,
-            title: "回收站",
-            excerpt: "回收站里的正文",
-            coverSrc: `/api/community/publishing/media/${itemId}/cover/base`,
-            itemCount: 1,
-            trashedAt: trashedAt.toISOString(),
-            purgeAfter: "2026-08-07T09:00:00.000Z",
-            restorable: true,
-          },
-        ],
-        total: 1,
-        page: 1,
-        pageSize: 20,
-        totalPages: 1,
-      });
-      expect(
-        await adapter.listTrash(b, { page: 1, pageSize: 20 }, trashedAt),
-      ).toMatchObject({ items: [], total: 0 });
       await expectRejection(
-        adapter.restoreWork(b, work.workId, { requestId: randomUUID() }, now),
+        adapter.readDraft(a, edit.draft.id),
         CommunityNotFoundError,
       );
-
-      expect(
-        await adapter.restoreWork(
-          a,
-          work.workId,
-          { requestId: randomUUID() },
-          at("2026-07-09T08:00:00.000Z"),
-        ),
-      ).toEqual({ workId: work.workId, visibility: "self" });
       await expectRejection(
-        adapter.restoreWork(a, work.workId, { requestId: randomUUID() }, now),
-        CommunityConflictError,
+        adapter.deleteWork(a, work.workId, { requestId: randomUUID() }, now),
+        CommunityNotFoundError,
       );
-      expect(await authors.readWork(work.workId, a)).toMatchObject({
-        id: work.workId,
-        visibility: "self",
-        trashedAt: null,
-        firstPublishedAt: now.toISOString(),
-      });
-      expect((await workRow(work.workId)).version).toBeGreaterThan(
-        before.version,
+      expect((await authors.readWork(kept.workId, b)).title).toBe(
+        "共享图片保留",
       );
       await expectRejection(
-        authors.readWork(work.workId, b),
+        contentOperator.moderateWork(work.workId, operator, moderationRequest),
         CommunityNotFoundError,
       );
       expect(
-        await adapter.purgeTrashedWork(
-          work.workId,
-          at("2026-08-08T00:00:00.000Z"),
+        JSON.stringify(
+          (
+            await pool.query(
+              "SELECT result FROM community.content_operator_receipts WHERE operator_label=$1",
+              [operator],
+            )
+          ).rows,
         ),
-      ).toBe("not_due");
-
-      await adapter.setVisibility(
-        a,
-        work.workId,
-        { requestId: randomUUID(), visibility: "public" },
-        at("2026-07-09T09:00:00.000Z"),
+      ).not.toMatch(/待删除标题|待删除正文/);
+      expect(
+        JSON.stringify(
+          (
+            await pool.query(
+              "SELECT detail FROM community.content_operator_events WHERE content_type='work' AND content_id=$1",
+              [work.workId],
+            )
+          ).rows,
+        ),
+      ).not.toMatch(/待删除标题|待删除正文/);
+      expect((await adapter.readItem(a, itemId)).state).toBe("ready");
+      expect((await adapter.readItem(a, exclusive.itemId)).state).toBe(
+        "cancelled",
       );
-      expect(await authors.readWork(work.workId, b)).toMatchObject({
-        title: "回收站",
-        firstPublishedAt: now.toISOString(),
-        editedAt: null,
-      });
+      // Cancellation revokes the deleted work's bytes before the purge worker runs.
+      expect(
+        await adapter.resolveMediaRead(a, exclusive.itemId, "display", "base"),
+      ).toBeNull();
+      expect(
+        await adapter.resolveMediaRead(a, itemId, "display", "base"),
+      ).not.toBeNull();
       expect(
         (
-          await comments.readDiscussion(target, b, { page: 1, pageSize: 10 })
-        ).items.map((item) => item.id),
-      ).toEqual([comment.id]);
+          await pool.query(
+            "SELECT run_after FROM community.publishing_jobs WHERE kind='purge_item' AND subject_id=$1",
+            [exclusive.itemId],
+          )
+        ).rows,
+      ).toEqual([{ run_after: now }]);
       expect(
-        await count(
-          "SELECT count(*) AS n FROM community.content_relations WHERE user_id=$1 AND content_id=$2",
-          [b, work.workId],
+        JSON.stringify(
+          (
+            await pool.query(
+              "SELECT result FROM community.author_command_receipts WHERE actor_id=$1",
+              [a],
+            )
+          ).rows,
         ),
-      ).toBe(2);
+      ).not.toMatch(/待删除标题|待删除正文|历史标题|历史原文/);
+      expect(
+        (
+          await pool.query(
+            "SELECT text,body_deleted_at FROM community.catalog_comments WHERE id=$1",
+            [comment.id],
+          )
+        ).rows,
+      ).toEqual([{ text: "他人评论保留", body_deleted_at: null }]);
+    });
+
+    it("erases exclusive legacy work and finished draft bytes while preserving other work and profile images", async () => {
+      const media = [
+        id("user-media"),
+        id("user-media"),
+        id("user-media"),
+        id("user-media"),
+      ];
+      for (const mediaId of media)
+        await pool.query(
+          "INSERT INTO community.user_media(id,owner_id,mime_type,width,height,sha256,bytes) VALUES($1,$2,'image/png',1,1,$3,$4)",
+          [mediaId, a, "b".repeat(64), Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+        );
+      const workId = id("work"),
+        keptId = id("work");
+      await pool.query(
+        "INSERT INTO community.works(id,author_id,title,text,media_ids,first_published_at) VALUES($1,$2,'待删除','原文',$3,CURRENT_TIMESTAMP),($4,$2,'保留','共享',$5,CURRENT_TIMESTAMP)",
+        [workId, a, media, keptId, [media[1]]],
+      );
+      await pool.query(
+        "UPDATE community.public_users SET avatar_media_id=$2,background_media_id=$3 WHERE id=$1",
+        [a, media[2], media[3]],
+      );
+      const now = at("2026-09-20T12:00:00.000Z");
+      const finishedDraftMedia = [id("user-media"), id("user-media")];
+      for (const [index, mediaId] of finishedDraftMedia.entries()) {
+        await pool.query(
+          "INSERT INTO community.user_media(id,owner_id,mime_type,width,height,sha256,bytes) VALUES($1,$2,'image/png',1,1,$3,$4)",
+          [mediaId, a, "c".repeat(64), Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+        );
+        await pool.query(
+          `INSERT INTO community.work_edit_drafts
+           (id,work_id,author_id,version,base_work_version,base_draft_version,title,text,media_ids,applied_at,discarded_at)
+           VALUES($1,$2,$3,$4,1,0,'旧草稿','待删除的旧正文',$5,$6,$7)`,
+          [
+            id("draft"),
+            workId,
+            a,
+            index + 1,
+            [mediaId],
+            index === 0 ? now : null,
+            index === 1 ? now : null,
+          ],
+        );
+      }
+      await adapter.deleteWork(a, workId, { requestId: randomUUID() }, now);
+      const rows = (
+        await pool.query<{ id: string; size: number; deleted_at: Date | null }>(
+          "SELECT id,octet_length(bytes) AS size,deleted_at FROM community.user_media WHERE id=ANY($1::text[])",
+          [[...media, ...finishedDraftMedia]],
+        )
+      ).rows;
+      expect(rows.find((row) => row.id === media[0])).toMatchObject({
+        size: 0,
+        deleted_at: now,
+      });
+      for (const mediaId of finishedDraftMedia) {
+        expect(rows.find((row) => row.id === mediaId)).toMatchObject({
+          size: 0,
+          deleted_at: now,
+        });
+        expect(await authors.readMedia(mediaId, a)).toBeNull();
+      }
+      for (const mediaId of media.slice(1))
+        expect(rows.find((row) => row.id === mediaId)).toMatchObject({
+          size: 4,
+          deleted_at: null,
+        });
     });
 
     it("purges a trashed work only after retention and keeps media another work still references", async () => {
@@ -1878,7 +1966,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         exclusive.itemId,
         sessionOnly.itemId,
       ]);
-      await adapter.trashWork(
+      await legacyTrashFixture(
         a,
         trashed.workId,
         { requestId: randomUUID() },
@@ -1969,18 +2057,6 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       expect(
         (await authors.readWork(kept.workId, b)).media.map((m) => m.id),
       ).toEqual([shared.itemId]);
-      expect(
-        await adapter.listTrash(a, { page: 1, pageSize: 20 }, purgedAt),
-      ).toMatchObject({ total: 0 });
-      await expectRejection(
-        adapter.restoreWork(
-          a,
-          trashed.workId,
-          { requestId: randomUUID() },
-          purgedAt,
-        ),
-        CommunityNotFoundError,
-      );
     });
 
     it("authorizes derivative reads for owners in any state and for others only through an effectively public revision", async () => {
@@ -3325,57 +3401,6 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       ).toMatchObject({ items: [], total: 0 });
     });
 
-    it("reschedules the retention purge when a restored work returns to the recycle bin and refuses a restore once the purge is due", async () => {
-      const now = at("2026-07-18T08:00:00.000Z");
-      const work = await publish(a, { title: "反复回收" }, now);
-      const purgeJobs = async () =>
-        (
-          await pool.query(
-            "SELECT state,run_after FROM community.publishing_jobs WHERE kind='purge_trashed_work' AND subject_id=$1 ORDER BY run_after",
-            [work.workId],
-          )
-        ).rows;
-      await adapter.trashWork(a, work.workId, { requestId: randomUUID() }, now);
-      expect(await purgeJobs()).toEqual([
-        { state: "queued", run_after: at("2026-08-17T08:00:00.000Z") },
-      ]);
-      await adapter.restoreWork(
-        a,
-        work.workId,
-        { requestId: randomUUID() },
-        at("2026-07-19T08:00:00.000Z"),
-      );
-      expect(await purgeJobs()).toEqual([]);
-      const again = at("2026-07-25T08:00:00.000Z");
-      // A queued purge from elsewhere (an operator retry) moves to this stay.
-      await pool.query(
-        "INSERT INTO community.publishing_jobs(id,kind,subject_id,state,attempts,run_after,created_at,updated_at) VALUES($1,'purge_trashed_work',$2,'queued',0,$3,$3,$3)",
-        [id("publishing-job"), work.workId, now],
-      );
-      await adapter.trashWork(
-        a,
-        work.workId,
-        { requestId: randomUUID() },
-        again,
-      );
-      expect(await purgeJobs()).toEqual([
-        { state: "queued", run_after: at("2026-08-24T08:00:00.000Z") },
-      ]);
-      const due = at("2026-08-24T08:00:00.000Z");
-      expect(
-        await adapter.purgeTrashedWork(
-          work.workId,
-          at("2026-08-17T08:00:00.000Z"),
-        ),
-      ).toBe("not_due");
-      await expectRejection(
-        adapter.restoreWork(a, work.workId, { requestId: randomUUID() }, due),
-        CommunityInputError,
-        "work_unavailable",
-      );
-      expect(await adapter.purgeTrashedWork(work.workId, due)).toBe("purged");
-    });
-
     it("sets versioned settings and account capacity with audit, and retries or abandons content-free jobs", async () => {
       const now = at("2026-07-14T08:00:00.000Z");
       const settings = await operators.readSettings();
@@ -4139,7 +4164,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         { requestId: randomUUID(), visibility: "self" },
         now,
       );
-      await adapter.trashWork(
+      await legacyTrashFixture(
         a,
         trashed.workId,
         { requestId: randomUUID() },
@@ -4324,46 +4349,6 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
       ).toBe(5);
     });
 
-    it("reports a trashed work restorable only before its purge time on the injected clock", async () => {
-      const trashedAt = at("2026-07-22T08:00:00.000Z");
-      const work = await publish(a, { title: "倒计时" }, trashedAt);
-      await adapter.trashWork(
-        a,
-        work.workId,
-        { requestId: randomUUID() },
-        trashedAt,
-      );
-      const purgeAfter = (await workRow(work.workId)).trash_purge_after!;
-      expect(purgeAfter).toEqual(at("2026-08-21T08:00:00.000Z"));
-      const restorableAt = async (now: Date) =>
-        (await adapter.listTrash(a, { page: 1, pageSize: 20 }, now)).items.map(
-          (item) => item.restorable,
-        );
-      expect(await restorableAt(trashedAt)).toEqual([true]);
-      expect(await restorableAt(new Date(purgeAfter.getTime() - 1))).toEqual([
-        true,
-      ]);
-      expect(await restorableAt(purgeAfter)).toEqual([false]);
-      await expectRejection(
-        adapter.restoreWork(
-          a,
-          work.workId,
-          { requestId: randomUUID() },
-          purgeAfter,
-        ),
-        CommunityInputError,
-        "work_unavailable",
-      );
-      expect(
-        await adapter.restoreWork(
-          a,
-          work.workId,
-          { requestId: randomUUID() },
-          new Date(purgeAfter.getTime() - 1),
-        ),
-      ).toEqual({ workId: work.workId, visibility: "self" });
-    });
-
     it("starts the orphan grace when a submission or a trash purge releases an item", async () => {
       const grace = 7 * 24 * 60 * 60 * 1000;
       const old = at("2026-01-01T00:00:00.000Z");
@@ -4524,7 +4509,7 @@ export const registerWorkPublishingContentTests = (pool: Pool) => {
         [cancelled.itemId, snapshotId],
       );
       await makeOld(exclusive.itemId);
-      await adapter.trashWork(
+      await legacyTrashFixture(
         a,
         work.workId,
         { requestId: randomUUID() },

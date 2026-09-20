@@ -14,6 +14,7 @@ import type {
   AuthorMedia,
   AuthorProfile,
   AvatarUpdate,
+  BackgroundUpdate,
   ContentIdentity,
   ContentRelationUpdate,
   GuestFavoriteMerge,
@@ -43,6 +44,7 @@ interface UserRow extends QueryResultRow {
   favorites_privacy: "public" | "private";
   likes_privacy: "public" | "private";
   avatar_media_id: string | null;
+  background_media_id: string | null;
   next_avatar_at: Date | null;
 }
 interface WorkRow extends QueryResultRow {
@@ -193,7 +195,7 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
   }
   private async media(db: PoolClient, ids: string[]): Promise<AuthorMedia[]> {
     const r = await db.query<{ id: string; width: number; height: number }>(
-      "SELECT m.id,m.width,m.height FROM unnest($1::text[]) WITH ORDINALITY a(id,n) JOIN community.user_media m ON m.id=a.id ORDER BY a.n",
+      "SELECT m.id,m.width,m.height FROM unnest($1::text[]) WITH ORDINALITY a(id,n) JOIN community.user_media m ON m.id=a.id WHERE m.deleted_at IS NULL ORDER BY a.n",
       [ids],
     );
     return r.rows.map(mediaDto);
@@ -204,7 +206,7 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
     ids: string[],
   ): Promise<void> {
     const r = await db.query(
-      "SELECT id FROM community.user_media WHERE owner_id=$1 AND id=ANY($2::text[])",
+      "SELECT id FROM community.user_media WHERE owner_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL FOR SHARE",
       [actor, ids],
     );
     if (r.rowCount !== ids.length || new Set(ids).size !== ids.length)
@@ -330,6 +332,9 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
         avatar: u.avatar_media_id
           ? ((await this.media(db, [u.avatar_media_id]))[0] ?? null)
           : null,
+        background: u.background_media_id
+          ? ((await this.media(db, [u.background_media_id]))[0] ?? null)
+          : null,
         isOwner: owner,
         following,
         privacy: {
@@ -402,6 +407,26 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       },
     );
   }
+  async updateBackground(
+    actor: string,
+    input: BackgroundUpdate,
+  ): Promise<void> {
+    await this.mutate(
+      actor,
+      input.requestId,
+      "background.update",
+      actor,
+      input,
+      async (db) => {
+        if (input.mediaId !== null)
+          await this.ownedMedia(db, actor, [input.mediaId]);
+        await db.query(
+          "UPDATE community.public_users SET background_media_id=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1",
+          [actor, input.mediaId],
+        );
+      },
+    );
+  }
   async updateAvatar(
     actor: string,
     input: AvatarUpdate,
@@ -470,8 +495,8 @@ export class PostgresAuthorCommunityAdapter implements AuthorCommunityPort {
       const row = (
         await db.query<{ bytes: Buffer; width: number; height: number }>(
           `SELECT m.bytes,m.width,m.height FROM community.user_media m
-        JOIN community.public_users u ON u.id=m.owner_id WHERE m.id=$1 AND u.status='active'
-        AND community.accounts_can_interact($2,m.owner_id) AND (m.owner_id=$2 OR u.avatar_media_id=m.id OR EXISTS (
+        JOIN community.public_users u ON u.id=m.owner_id WHERE m.id=$1 AND u.status='active' AND m.deleted_at IS NULL
+        AND community.accounts_can_interact($2,m.owner_id) AND (m.owner_id=$2 OR u.avatar_media_id=m.id OR u.background_media_id=m.id OR EXISTS (
           SELECT 1 FROM community.media_items i
           JOIN community.work_revision_items ri ON ri.item_id=i.id
           JOIN community.work_revisions r ON r.id=ri.revision_id

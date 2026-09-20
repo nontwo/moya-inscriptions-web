@@ -237,7 +237,7 @@ const routes: readonly [
     "readOwnContentState",
     "ContentState",
     null,
-    true,
+    false,
   ],
   [
     "/v1/community/authors/{authorId}/favorites",
@@ -395,6 +395,14 @@ const routes: readonly [
     true,
   ],
   [
+    "/v1/community/me/background",
+    "post",
+    "changeOwnBackground",
+    "SavedResult",
+    "BackgroundUpdate",
+    true,
+  ],
+  [
     "/v1/community/relationships/follow",
     "post",
     "setFollowing",
@@ -445,7 +453,7 @@ const routes: readonly [
   [
     "/v1/community/works/{workId}",
     "delete",
-    "moveOwnWorkToTrash",
+    "deleteOwnWorkPermanently",
     "DeletedResult",
     "RequestIdentity",
     true,
@@ -772,29 +780,14 @@ const publishingRoutes: readonly [
     "WorkSubmissionReceipt",
     null,
   ],
-  [
-    "/v1/community/publishing/trash",
-    "get",
-    "listTrashedWorks",
-    "TrashedWorkPage",
-    null,
-    { list: true },
-  ],
-  [
-    "/v1/community/publishing/trash/{workId}/restore",
-    "post",
-    "restoreTrashedWork",
-    "TrashRestoreResult",
-    "RequestIdentity",
-  ],
 ];
-// Moving an own work to the recycle bin is a publishing command: the account
+// Permanently deleting an own work is a publishing command: the account
 // assertion is required like on every other publishing command.
-const trashOperation = authorCommunityPaths["/v1/community/works/{workId}"]!
+const deleteOperation = authorCommunityPaths["/v1/community/works/{workId}"]!
   .delete as { readonly parameters: readonly { readonly name?: string }[] };
 authorCommunityPaths["/v1/community/works/{workId}"]!.delete = {
-  ...trashOperation,
-  parameters: trashOperation.parameters.map((parameter) =>
+  ...deleteOperation,
+  parameters: deleteOperation.parameters.map((parameter) =>
     parameter.name === "x-author-account" ? accountAssertion : parameter,
   ),
 };

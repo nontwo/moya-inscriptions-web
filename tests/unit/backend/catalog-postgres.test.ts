@@ -189,6 +189,7 @@ describe("PostgreSQL Catalog mapping and pagination", () => {
       aliases: ["Alias"],
       summary: row.summary,
       periodLabel: "唐贞观十年（636）",
+      province: { state: "VALUE", value: "陕西" },
     });
     const detail = mapCatalogDetailRow(
       row,

@@ -104,7 +104,7 @@ describe("CommentSection", () => {
         ),
       );
     for (const [count, label] of [
-      [0, "0"],
+      [0, ""],
       [3, "3"],
       [99, "99"],
       [100, "99+"],
@@ -112,14 +112,16 @@ describe("CommentSection", () => {
     ] as const) {
       renderCount(count);
       expect(container.querySelector('[role="tab"]')?.textContent).toBe(
-        `评论 ${label}`,
+        `评论${label ? ` ${label}` : ""}`,
       );
-      expect(container.querySelector("h2")?.textContent).toBe(`评论 ${label}`);
+      expect(container.querySelector("h2")?.textContent).toBe(
+        `评论${label ? ` ${label}` : ""}`,
+      );
     }
     renderCount(1234, true);
     expect(container.querySelector('[role="tab"]')?.textContent).toBe("评论");
     renderCount(0, false, "next-work");
-    expect(container.querySelector('[role="tab"]')?.textContent).toBe("评论 0");
+    expect(container.querySelector('[role="tab"]')?.textContent).toBe("评论");
   });
 
   it("sends trimmed comments, updates the total count and keeps blank input disabled", () => {

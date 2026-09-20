@@ -16,6 +16,7 @@ import {
   createCatalogCommentReplyRequestSchema,
   catalogCommentIdSchema,
   avatarUpdateSchema,
+  backgroundUpdateSchema,
   contentRelationUpdateSchema,
   guestFavoriteMergeSchema,
   privacyUpdateSchema,
@@ -195,10 +196,9 @@ export const handleAuthorRequest = async (
         reply(await service.card(target, viewer));
         return;
       }
-      const actor = requireActor();
-      await service.assertTarget(target, actor);
+      await service.assertTarget(target, viewer);
       if (!service.discovery) throw new InvalidInput();
-      reply(await service.discovery.state(target, actor));
+      reply(await service.discovery.state(target, viewer));
       return;
     }
     if (
@@ -360,6 +360,14 @@ export const handleAuthorRequest = async (
           reply({ saved: true });
           return;
         }
+        if (path[1] === "background") {
+          await service.port.updateBackground(
+            actor,
+            parsed(backgroundUpdateSchema, value),
+          );
+          reply({ saved: true });
+          return;
+        }
         if (path[1] === "avatar") {
           reply(
             await service.port.updateAvatar(
@@ -417,7 +425,7 @@ export const handleAuthorRequest = async (
         reply(await service.port.readWork(id, viewer));
         return;
       }
-      // Moves the work to the recycle bin (design §2.4, §9.3); the retired
+      // Permanently deletes the author's work; the retired
       // Phase 4 draft routes under works/:id/drafts no longer exist. Like
       // every publishing command it requires the account assertion.
       if (path.length === 2 && method === "DELETE" && publishing) {
@@ -426,7 +434,7 @@ export const handleAuthorRequest = async (
           throw new Unauthorized();
         const workId = parseWorkPublishingSegment("workId", id);
         reply(
-          await publishing.trashWork(
+          await publishing.deleteWork(
             actor,
             workId,
             parseWorkPublishingCommand("requestIdentity", await body()),

@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
 import { CatalogDetailScreen } from "./catalog-detail-screen";
+import { CatalogDetailScrollContext } from "./catalog-detail-scroll";
 import { CatalogDetailWithdrawalContext } from "./catalog-detail-withdrawal";
 import { CatalogViewer } from "./catalog-viewer";
 import styles from "./catalog-detail.module.css";
@@ -117,6 +119,13 @@ export const CatalogDetailExperience = ({
   }, []);
 
   const markUserScrollIntent = useCallback(() => {
+    // Verified vertical input takes over immediately, including the two frames
+    // after a tab restore. Automatic layout clamps still keep the desired top.
+    suppressScrollRef.current = false;
+    if (scrollSuppressionFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollSuppressionFrameRef.current);
+      scrollSuppressionFrameRef.current = null;
+    }
     userScrollIntentRef.current = true;
     if (scrollIntentTimerRef.current !== null) {
       window.clearTimeout(scrollIntentTimerRef.current);
@@ -142,6 +151,31 @@ export const CatalogDetailExperience = ({
       });
     });
   }, []);
+
+  const contentScroll = useMemo(
+    () => ({
+      read: () => desiredScrollTopRef.current,
+      restore: (top: number) => {
+        clearUserScrollIntent();
+        desiredScrollTopRef.current = Math.max(0, top);
+        restoreDesiredScroll();
+        onScrollTopChange(desiredScrollTopRef.current);
+      },
+      collapseTop: (section: HTMLElement) => {
+        const scroller = scrollRef.current;
+        if (scroller === null) return 0;
+        const header = scroller.querySelector("header");
+        return Math.max(
+          0,
+          scroller.scrollTop +
+            section.getBoundingClientRect().top -
+            scroller.getBoundingClientRect().top -
+            (header?.getBoundingClientRect().height ?? 0),
+        );
+      },
+    }),
+    [clearUserScrollIntent, onScrollTopChange, restoreDesiredScroll],
+  );
 
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
@@ -328,36 +362,38 @@ export const CatalogDetailExperience = ({
         ref={scrollRef}
       >
         <CatalogDetailWithdrawalContext.Provider value={withdraw}>
-          <CatalogDetailScreen
-            activeMediaIndex={activeMediaIndex}
-            backButtonRef={backButtonRef}
-            commentSection={commentSection}
-            detailActions={detailActions}
-            mediaMotionSuspended={viewerOpen}
-            onActiveMediaIndexChange={setActiveMediaIndex}
-            onBack={onBack}
-            onOpenViewer={(index, opener) => {
-              const item = media[index];
-              if (
-                item === undefined ||
-                performance.now() < viewerOpenSuppressedUntilRef.current
-              ) {
-                return;
-              }
-              const scroller = scrollRef.current;
-              if (scroller !== null) {
-                desiredScrollTopRef.current = scroller.scrollTop;
-                onScrollTopChange(scroller.scrollTop);
-              }
-              viewerOpenerRef.current = opener;
-              setActiveMediaIndex(index);
-              onOpenViewer(item.id);
-            }}
-            orientation={orientation}
-            platform={platform}
-            state={state}
-            withdrawn={withdrawn}
-          />
+          <CatalogDetailScrollContext.Provider value={contentScroll}>
+            <CatalogDetailScreen
+              activeMediaIndex={activeMediaIndex}
+              backButtonRef={backButtonRef}
+              commentSection={commentSection}
+              detailActions={detailActions}
+              mediaMotionSuspended={viewerOpen}
+              onActiveMediaIndexChange={setActiveMediaIndex}
+              onBack={onBack}
+              onOpenViewer={(index, opener) => {
+                const item = media[index];
+                if (
+                  item === undefined ||
+                  performance.now() < viewerOpenSuppressedUntilRef.current
+                ) {
+                  return;
+                }
+                const scroller = scrollRef.current;
+                if (scroller !== null) {
+                  desiredScrollTopRef.current = scroller.scrollTop;
+                  onScrollTopChange(scroller.scrollTop);
+                }
+                viewerOpenerRef.current = opener;
+                setActiveMediaIndex(index);
+                onOpenViewer(item.id);
+              }}
+              orientation={orientation}
+              platform={platform}
+              state={state}
+              withdrawn={withdrawn}
+            />
+          </CatalogDetailScrollContext.Provider>
         </CatalogDetailWithdrawalContext.Provider>
       </div>
       <CatalogViewer

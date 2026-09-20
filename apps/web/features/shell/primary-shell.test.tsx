@@ -8,8 +8,8 @@ import type { PrimaryDestination, PrimaryShellProps } from "./primary-shell";
 
 const destinations = [
   "home",
-  "inscriptions",
-  "calligraphy",
+  "discussion",
+  "user",
 ] as const satisfies readonly PrimaryDestination[];
 
 const renderShell = (
@@ -21,8 +21,8 @@ const renderShell = (
       activeDestination={activeDestination}
       platform={platform}
       home={<p>home content</p>}
-      inscriptions={<p>inscriptions content</p>}
-      calligraphy={<p>calligraphy content</p>}
+      discussion={<p>discussion content</p>}
+      user={<p>user content</p>}
     />,
   );
 
@@ -87,7 +87,7 @@ describe("PrimaryShell", () => {
 
   it("accepts only structural inputs and no Catalog source", () => {
     expectTypeOf<keyof PrimaryShellProps>().toEqualTypeOf<
-      "activeDestination" | "platform" | "home" | "inscriptions" | "calligraphy"
+      "activeDestination" | "platform" | "home" | "discussion" | "user"
     >();
   });
 

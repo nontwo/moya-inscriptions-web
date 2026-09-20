@@ -1311,27 +1311,6 @@ export const workVisibilityResultSchema = z.strictObject({
   visibility: workVisibilitySchema,
 });
 
-export const trashedWorkSchema = z.strictObject({
-  workId: workIdSchema,
-  title: storedPublishingTextSchema(WORK_TITLE_MAXIMUM),
-  excerpt: storedPublishingTextSchema(WORK_EXCERPT_MAXIMUM),
-  coverSrc: stillSrcSchema.nullable(),
-  itemCount: itemCountSchema,
-  trashedAt: timestampSchema,
-  purgeAfter: timestampSchema,
-  restorable: z.boolean(),
-});
-
-export const trashedWorkPageSchema = z.strictObject(
-  pageShape(trashedWorkSchema),
-);
-
-/** A restored work is self-only; publishing again follows the current policy. */
-export const trashRestoreResultSchema = z.strictObject({
-  workId: workIdSchema,
-  visibility: z.literal("self"),
-});
-
 /** What the client needs for honest counters and early feedback; the Backend still enforces. */
 export const publishingLimitsSchema = z.strictObject({
   maxItems: z.number().int().min(1).max(WORK_ITEMS_CONFIGURABLE_MAXIMUM),
@@ -1457,7 +1436,4 @@ export type PublishingReadiness = z.infer<typeof publishingReadinessSchema>;
 export type EditableWork = z.infer<typeof editableWorkSchema>;
 export type WorkVisibilityCommand = z.infer<typeof workVisibilityCommandSchema>;
 export type WorkVisibilityResult = z.infer<typeof workVisibilityResultSchema>;
-export type TrashedWork = z.infer<typeof trashedWorkSchema>;
-export type TrashedWorkPage = z.infer<typeof trashedWorkPageSchema>;
-export type TrashRestoreResult = z.infer<typeof trashRestoreResultSchema>;
 export type PublishingLimits = z.infer<typeof publishingLimitsSchema>;

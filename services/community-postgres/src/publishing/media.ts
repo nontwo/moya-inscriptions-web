@@ -410,8 +410,19 @@ export const cancelItems = async (
     "DELETE FROM community.media_item_refs WHERE item_id=ANY($1::text[]) AND holder_kind IN ('draft','session')",
     [targets],
   );
-  for (const itemId of targets)
-    await insertJob(db, { kind: "purge_item", subjectId: itemId }, now);
+  for (const itemId of targets) {
+    const job = await insertJob(
+      db,
+      { kind: "purge_item", subjectId: itemId },
+      now,
+    );
+    // A prior orphan-grace job must not defer an explicit permanent deletion.
+    if (!job.created)
+      await db.query(
+        "UPDATE community.publishing_jobs SET run_after=LEAST(run_after,$2::timestamptz),updated_at=$2::timestamptz WHERE id=$1 AND state='queued'",
+        [job.id, at],
+      );
+  }
   return {
     itemIds: targets,
     cancelledComponentIds: receiving.rows.map((row) => row.id),

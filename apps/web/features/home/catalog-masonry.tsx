@@ -27,6 +27,7 @@ export interface CatalogMasonryProps<T> {
   readonly feedLayout: FeedLayoutPreference;
   readonly getKey: (item: T) => string;
   readonly isFullSpan?: (item: T) => boolean;
+  readonly spanAtAlignedRows?: boolean;
   readonly items: readonly T[];
   readonly platform: PresentationPlatform;
   readonly renderItem: (item: T, onMediaSettled: () => void) => ReactNode;
@@ -37,12 +38,15 @@ const layoutSignature = (
   columns: number,
   heights: readonly number[],
   spans: readonly boolean[],
-) => `${width}:${columns}:${heights.join(",")}:${spans.join(",")}`;
+  spanAtAlignedRows: boolean,
+) =>
+  `${width}:${columns}:${heights.join(",")}:${spans.join(",")}:${spanAtAlignedRows}`;
 
 export const CatalogMasonry = <T,>({
   feedLayout,
   getKey,
   isFullSpan = () => false,
+  spanAtAlignedRows = false,
   items,
   platform,
   renderItem,
@@ -118,7 +122,13 @@ export const CatalogMasonry = <T,>({
       const element = itemRefs.current.get(getKey(item));
       return element?.getBoundingClientRect().height ?? 0;
     });
-    const signature = layoutSignature(width, columns, heights, spans);
+    const signature = layoutSignature(
+      width,
+      columns,
+      heights,
+      spans,
+      spanAtAlignedRows,
+    );
     const result = layoutHomeMasonry(
       heights.map((height, index) => ({
         height,
@@ -127,11 +137,22 @@ export const CatalogMasonry = <T,>({
       width,
       columns,
       gap,
+      spanAtAlignedRows,
     );
     setRenderedLayout((current) =>
       current?.signature === signature ? current : { ...result, signature },
     );
-  }, [columnWidth, columns, gap, getKey, items, revision, spans, width]);
+  }, [
+    columnWidth,
+    columns,
+    gap,
+    getKey,
+    items,
+    revision,
+    spans,
+    spanAtAlignedRows,
+    width,
+  ]);
 
   const onMediaSettled = useCallback(() => {
     if (settleFrameRef.current !== null) {
@@ -173,6 +194,7 @@ export const CatalogMasonry = <T,>({
       ref={containerRef}
       className={styles.masonry}
       data-home-masonry=""
+      data-span-aligned-rows={spanAtAlignedRows ? "" : undefined}
       data-layout-ready={ready ? "true" : "false"}
       data-layout-retained={!ready && retainedLayout !== null ? "" : undefined}
       data-masonry-columns={columns}
@@ -182,7 +204,8 @@ export const CatalogMasonry = <T,>({
       {items.map((item, index) => {
         const key = getKey(item);
         const position = retainedLayout?.positions[index];
-        const itemWidth = spans[index] ? width : columnWidth;
+        const startsFull = spanAtAlignedRows && columns === 2 && index === 0;
+        const itemWidth = startsFull || spans[index] ? width : columnWidth;
         const style = {
           left: position?.x ?? 0,
           top: position?.y ?? 0,

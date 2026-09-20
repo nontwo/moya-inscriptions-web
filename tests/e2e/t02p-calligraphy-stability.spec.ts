@@ -50,7 +50,7 @@ test.beforeEach(async ({ page }) => {
         const owner =
           shell?.dataset.platform === "pc"
             ? document
-            : shell?.querySelector('[data-primary-destination="calligraphy"]');
+            : shell?.querySelector('[data-home-feed-panel="calligraphy"]');
         if (event.target === owner) observations.ownerScrollEnds += 1;
       },
       { capture: true, passive: true },
@@ -80,18 +80,37 @@ test.afterEach(async ({ page }, testInfo) => {
   ).toEqual([]);
 });
 
-const navigateTo = async (
+const selectFeed = async (
   shell: Locator,
-  name: "首页" | "碑刻" | "书帖",
-  destination: "home" | "inscriptions" | "calligraphy",
+  feed: "discover" | "nearby" | "inscriptions" | "calligraphy",
 ) => {
-  const navigation = shell.locator("[data-primary-navigation]");
-  if ((await navigation.getAttribute("data-minimized")) === "true") {
-    await navigation.locator('[data-selected="true"]').click();
-    await expect(navigation).toHaveAttribute("data-minimized", "false");
-  }
-  await navigation.getByRole("button", { exact: true, name }).click();
-  await expect(shell).toHaveAttribute("data-active-destination", destination);
+  const home = shell.locator("[data-home-surface]");
+  // This setup selection must also work beneath visible QA overlay controls;
+  // the gesture tests below deliver trusted input to exposed product content.
+  await home
+    .locator(`[data-tab-key="${feed}"]`)
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
+  await expect(home.locator("[data-home-feed-pager]")).toHaveAttribute(
+    "data-home-pager-scrolling",
+    "false",
+  );
+  await expect
+    .poll(() =>
+      home.evaluate((node, target) => {
+        const pager = node.querySelector<HTMLElement>(
+          "[data-home-feed-pager]",
+        )!;
+        const panel = pager.querySelector<HTMLElement>(
+          `[data-home-feed-panel="${target}"]`,
+        )!;
+        return Math.abs(
+          panel.getBoundingClientRect().left -
+            pager.getBoundingClientRect().left,
+        );
+      }, feed),
+    )
+    .toBeLessThanOrEqual(2);
 };
 
 const enterCalligraphy = async (page: Page, hidden: boolean) => {
@@ -111,34 +130,42 @@ const enterCalligraphy = async (page: Page, hidden: boolean) => {
   );
   await expect(shell).toHaveAttribute("data-active-destination", "home");
   // This is the original reveal path, with no eager-image or scroll mutation.
-  await navigateTo(shell, "碑刻", "inscriptions");
-  await navigateTo(shell, "书帖", "calligraphy");
+  await selectFeed(shell, "inscriptions");
+  await selectFeed(shell, "calligraphy");
   await expect(
-    shell.locator("[data-calligraphy-category-surface]"),
-  ).toHaveAttribute("data-calligraphy-classification-source", "qa-synthetic");
+    shell.locator(
+      '[data-home-feed-panel="calligraphy"] [data-calligraphy-all]',
+    ),
+  ).toBeVisible();
+  await expect(
+    shell.locator(
+      "[data-calligraphy-category-tab], [data-calligraphy-category-pager]",
+    ),
+  ).toHaveCount(0);
   return shell;
 };
 
 const activePanel = (shell: Locator) =>
-  shell.locator('[data-calligraphy-category-panel][aria-hidden="false"]');
+  shell.locator('[data-home-feed-panel][aria-hidden="false"]');
 
-const expectCategory = async (
-  shell: Locator,
-  category: "all" | "ink" | "rubbing",
-) => {
-  await expect(
-    shell.locator("[data-calligraphy-category-surface]"),
-  ).toHaveAttribute("data-active-calligraphy-category", category);
-  await expect(
-    shell.locator(`[data-calligraphy-category-tab="${category}"]`),
-  ).toHaveAttribute("aria-selected", "true");
-  await expect(activePanel(shell)).toHaveAttribute(
-    "data-calligraphy-category-panel",
-    category,
+const expectCalligraphy = async (shell: Locator) => {
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  await expect(shell.locator("[data-home-surface]")).toHaveAttribute(
+    "data-active-home-feed",
+    "calligraphy",
   );
-  await expect(
-    shell.locator("[data-calligraphy-category-pager]"),
-  ).toHaveAttribute("data-calligraphy-pager-scrolling", "false");
+  await expect(shell.locator('[data-tab-key="calligraphy"]')).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(activePanel(shell)).toHaveAttribute(
+    "data-home-feed-panel",
+    "calligraphy",
+  );
+  await expect(shell.locator("[data-home-feed-pager]")).toHaveAttribute(
+    "data-home-pager-scrolling",
+    "false",
+  );
   await expect(
     activePanel(shell).locator("[data-home-masonry]"),
   ).toHaveAttribute("data-layout-ready", "true");
@@ -155,11 +182,9 @@ const observeConvergence = async (
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => resolve()),
       );
-      const frame = node.querySelector<HTMLElement>(
-        "[data-calligraphy-category-pager]",
-      )!;
+      const frame = node.querySelector<HTMLElement>("[data-home-feed-pager]")!;
       const panel = node.querySelector<HTMLElement>(
-        '[data-calligraphy-category-panel][aria-hidden="false"]',
+        '[data-home-feed-panel][aria-hidden="false"]',
       )!;
       const masonry = panel.querySelector<HTMLElement>("[data-home-masonry]")!;
       frames.push({
@@ -167,9 +192,9 @@ const observeConvergence = async (
         frameWidth: frame.getBoundingClientRect().width,
         panelHeight: panel.getBoundingClientRect().height,
         masonryHeight: masonry.getBoundingClientRect().height,
-        category: panel.dataset.calligraphyCategoryPanel,
+        feed: panel.dataset.homeFeedPanel,
         ready: masonry.dataset.layoutReady,
-        scrolling: frame.dataset.calligraphyPagerScrolling,
+        scrolling: frame.dataset.homePagerScrolling,
       });
     }
     return frames;
@@ -181,7 +206,7 @@ const observeConvergence = async (
   expect(samples).toHaveLength(12);
   const last = samples.at(-1)!;
   for (const sample of samples.slice(-3)) {
-    expect(sample.category).toBe(last.category);
+    expect(sample.feed).toBe(last.feed);
     expect(sample.ready).toBe("true");
     expect(sample.scrolling).toBe("false");
     for (const key of [
@@ -241,12 +266,12 @@ const readScroll = (shell: Locator) =>
   shell.evaluate((node) => {
     const platform = (node as HTMLElement).dataset.platform;
     const destination = node.querySelector(
-      '[data-primary-destination="calligraphy"]',
+      '[data-home-feed-panel="calligraphy"]',
     )!;
     const owner = platform === "pc" ? document.scrollingElement! : destination;
     return {
       platform,
-      owner: platform === "pc" ? "document" : "calligraphy-destination",
+      owner: platform === "pc" ? "document" : "home-calligraphy-panel",
       maximum: Math.max(0, owner.scrollHeight - owner.clientHeight),
       top: owner.scrollTop,
       ownerScrollEnds: (window as ObservationWindow).__calligraphyStability!
@@ -267,25 +292,25 @@ const expectScroll = async (shell: Locator, desired: number) => {
     .toBeLessThanOrEqual(2);
 };
 
-test("ordinary QA original Calligraphy reveal converges without any raw browser error", async ({
+test("ordinary QA Home Calligraphy reveal converges without any raw browser error", async ({
   page,
 }, testInfo) => {
   const shell = await enterCalligraphy(page, false);
-  await expectCategory(shell, "all");
+  await expectCalligraphy(shell);
   await expect(activePanel(shell).locator("[data-catalog-card]")).toHaveCount(
     12,
   );
   await observeConvergence(shell, testInfo, "original-reveal");
 });
 
-test("hidden QA Calligraphy categories survive native reading resize and reveal without raw errors", async ({
+test("hidden QA all-Calligraphy survives native reading resize and reveal without raw errors", async ({
   page,
 }, testInfo) => {
   const shell = await enterCalligraphy(page, true);
   const viewport = page.viewportSize();
   if (viewport === null) throw new Error("This matrix requires a viewport");
   const platform = await shell.getAttribute("data-platform");
-  await expectCategory(shell, "all");
+  await expectCalligraphy(shell);
   const all = await settledMediaSnapshot(shell);
   expect(all.map(({ id }) => id)).toEqual(
     Array.from(
@@ -296,25 +321,18 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
   );
   expect(all.every(({ kind }) => kind === "calligraphy")).toBe(true);
 
-  for (const [category, first, last] of [
-    ["ink", 0, 6],
-    ["rubbing", 6, 12],
-  ] as const) {
-    await shell
-      .locator(`[data-calligraphy-category-tab="${category}"]`)
-      .click();
-    await expectCategory(shell, category);
-    expect(await settledMediaSnapshot(shell)).toEqual(all.slice(first, last));
-    await observeConvergence(shell, testInfo, category);
+  // Both neighboring feeds can be visited without filtering or replacing the
+  // all-items Calligraphy feed or creating a second reading owner.
+  for (const feed of ["inscriptions", "nearby", "discover"] as const) {
+    const before = await readScroll(shell);
+    await selectFeed(shell, feed);
+    await selectFeed(shell, "calligraphy");
+    await expectCalligraphy(shell);
+    await expectScroll(shell, before.top);
+    expect(await settledMediaSnapshot(shell)).toEqual(all);
+    await observeConvergence(shell, testInfo, `returned-from-${feed}`);
   }
-  const rubbingScroll = await readScroll(shell);
-  await navigateTo(shell, "首页", "home");
-  await navigateTo(shell, "书帖", "calligraphy");
-  await expectCategory(shell, "rubbing");
-  await expectScroll(shell, rubbingScroll.top);
 
-  await shell.locator('[data-calligraphy-category-tab="all"]').click();
-  await expectCategory(shell, "all");
   // A bounded reading viewport ensures the twelve-card fixture actually overflows
   // in every configured project without changing the product's platform selector.
   const readingViewport = {
@@ -323,7 +341,7 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
   };
   await page.setViewportSize(readingViewport);
   await expect(shell).toHaveAttribute("data-platform", platform ?? "");
-  await expectCategory(shell, "all");
+  await expectCalligraphy(shell);
   await observeConvergence(shell, testInfo, "reading-resize");
   const panel = activePanel(shell);
   await expect(panel).toHaveAttribute("tabindex", "0");
@@ -348,7 +366,7 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
   });
   expect(before.maximum).toBeGreaterThan(before.top);
   expect(before.owner).toBe(
-    platform === "pc" ? "document" : "calligraphy-destination",
+    platform === "pc" ? "document" : "home-calligraphy-panel",
   );
   const scrollEnds = before.ownerScrollEnds;
 
@@ -395,7 +413,7 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
       ),
     )
     .toBeGreaterThan(scrollEnds);
-  await expectCategory(shell, "all");
+  await expectCalligraphy(shell);
   // WebKit can deliver scrollend while native PageDown motion is still running.
   // Record stable reading before resize; this does not test rotation mid-scroll.
   const readingSamples = await shell.evaluate(
@@ -404,7 +422,7 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
         const owner =
           (node as HTMLElement).dataset.platform === "pc"
             ? document.scrollingElement!
-            : node.querySelector('[data-primary-destination="calligraphy"]')!;
+            : node.querySelector('[data-home-feed-panel="calligraphy"]')!;
         let previous = owner.scrollTop;
         const samples = [previous];
         let stableFrames = 0;
@@ -438,16 +456,16 @@ test("hidden QA Calligraphy categories survive native reading resize and reveal 
       "Browser viewport resize; compact projects swap portrait/landscape dimensions, not a physical-device rotation.",
   });
   await page.setViewportSize(changedViewport);
-  await expectCategory(shell, "all");
+  await expectCalligraphy(shell);
   await observeConvergence(shell, testInfo, "changed-viewport");
   await expectScroll(shell, read.top);
   await page.setViewportSize(readingViewport);
-  await expectCategory(shell, "all");
+  await expectCalligraphy(shell);
   await observeConvergence(shell, testInfo, "restored-viewport");
   await expectScroll(shell, read.top);
-  await navigateTo(shell, "首页", "home");
-  await navigateTo(shell, "书帖", "calligraphy");
-  await expectCategory(shell, "all");
+  await selectFeed(shell, "discover");
+  await selectFeed(shell, "calligraphy");
+  await expectCalligraphy(shell);
   await expectScroll(shell, read.top);
   expect(await settledMediaSnapshot(shell)).toEqual(all);
   await observeConvergence(shell, testInfo, "restored-media");

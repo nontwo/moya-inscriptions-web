@@ -69,6 +69,7 @@ import {
 } from "./media.js";
 import { clipboardOriginSql, workExcerpt } from "./media-read.js";
 import { revisionAuthorship } from "./authorship.js";
+import { eraseUnreferencedLegacyMedia } from "./permanent-media.js";
 
 /*
  * Persistent drafts: creation, conditional saves with conflict copies,
@@ -905,6 +906,7 @@ export const deleteDraft = async (
         now,
         { onlyUnreferenced: true },
       );
+      await eraseUnreferencedLegacyMedia(db, actorId, owned, now);
       return {
         result: {
           deleted: true,

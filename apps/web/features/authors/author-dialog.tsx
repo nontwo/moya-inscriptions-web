@@ -7,6 +7,7 @@ import { requestIdentity } from "../shell/request-identity";
 /** A native modal owns one temporary history entry, including browser Back. */
 export const AuthorDialog = ({
   title,
+  className,
   dirty = false,
   dismissible = true,
   closeRequested = false,
@@ -14,6 +15,7 @@ export const AuthorDialog = ({
   children,
 }: {
   title: string;
+  className?: string | undefined;
   dirty?: boolean;
   dismissible?: boolean;
   /** Finish this modal's Back transition before a caller changes the parent view. */
@@ -104,7 +106,7 @@ export const AuthorDialog = ({
   return (
     <dialog
       ref={ref}
-      className="phase4-dialog"
+      className={`phase4-dialog ${className ?? ""}`}
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();

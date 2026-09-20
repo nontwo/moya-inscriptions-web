@@ -116,6 +116,8 @@ export class PostgresCommunityContentOperatorAdapter implements CommunityContent
       if (old.rows[0]) {
         if (old.rows[0].fingerprint !== fingerprint)
           throw new CommunityConflictError("Request identity already used");
+        if (old.rows[0].result?.permanentlyDeleted === true)
+          throw new CommunityNotFoundError();
         return old.rows[0].result as T;
       }
       const result = await change(db);

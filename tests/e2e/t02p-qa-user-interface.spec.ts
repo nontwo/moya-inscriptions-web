@@ -123,12 +123,14 @@ test("User traps focus and restores only its nearest QA harness exactly", async 
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-chromium");
   const { shell, surface, trigger } = await openQa(page);
-  await surface
-    .getByRole("navigation", { name: "主要内容" })
-    .getByRole("button", { exact: true, name: "碑刻" })
-    .click();
-  await expect(shell).toHaveAttribute(
-    "data-active-destination",
+  const inscriptionsTab = surface
+    .locator("[data-home-surface]")
+    .getByRole("tab", { exact: true, name: "碑刻" });
+  await inscriptionsTab.focus();
+  await inscriptionsTab.press("Enter");
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  await expect(shell.locator("[data-home-surface]")).toHaveAttribute(
+    "data-active-home-feed",
     "inscriptions",
   );
 

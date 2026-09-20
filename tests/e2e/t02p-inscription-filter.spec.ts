@@ -20,22 +20,28 @@ const openQa = async (page: Page) => {
   return { shell, surface };
 };
 
-const navigateTo = async (
+const selectHomeFeed = async (
   surface: Locator,
   shell: Locator,
-  label: "首页" | "碑刻" | "书帖",
-  destination: "home" | "inscriptions" | "calligraphy",
+  label: "发现" | "附近" | "碑刻" | "书帖",
+  feed: "discover" | "nearby" | "inscriptions" | "calligraphy",
 ) => {
-  await surface
-    .getByRole("navigation", { name: "主要内容" })
-    .getByRole("button", { exact: true, name: label })
-    .click();
-  await expect(shell).toHaveAttribute("data-active-destination", destination);
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  const home = surface.locator("[data-home-surface]");
+  const tab = home.getByRole("tab", { exact: true, name: label });
+  if (await surface.locator("[data-qa-controls]").count()) {
+    await tab.focus();
+    await tab.press("Enter");
+  } else await tab.click();
+  await expect(home).toHaveAttribute("data-active-home-feed", feed);
+  await expect(
+    home.locator(`[data-home-feed-panel="${feed}"]`),
+  ).toHaveAttribute("aria-hidden", "false");
 };
 
 const visibleCatalogCards = (shell: Locator) =>
   shell.locator(
-    '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-card]',
+    '[data-primary-destination="home"]:not([hidden]) [data-home-feed-panel="inscriptions"][aria-hidden="false"] [data-catalog-card]',
   );
 
 const waitForVisibleCatalogMedia = async (shell: Locator) => {
@@ -61,7 +67,7 @@ const waitForVisibleCatalogMedia = async (shell: Locator) => {
     .toBe(true);
   await expect(
     shell.locator(
-      '[data-primary-destination="inscriptions"]:not([hidden]) [data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
+      '[data-primary-destination="home"]:not([hidden]) [data-home-feed-panel="inscriptions"][aria-hidden="false"] [data-catalog-id="qa-visual-inscription-12"] [data-catalog-media-state="failed"]',
     ),
   ).toHaveCount(1);
 };
@@ -83,7 +89,7 @@ const visibleCatalogSnapshot = async (shell: Locator) => {
 
 const openQaInscriptions = async (page: Page) => {
   const { shell, surface } = await openQa(page);
-  await navigateTo(surface, shell, "碑刻", "inscriptions");
+  await selectHomeFeed(surface, shell, "碑刻", "inscriptions");
   const filter = shell.locator("[data-inscription-filter]");
   await expect(filter).toBeVisible();
   return { filter, shell, surface };
@@ -172,14 +178,16 @@ const expectOwnTextContrast = async (control: Locator) => {
   ).toBeGreaterThanOrEqual(4.5);
 };
 
-test("QA filter is isolated and exists only while Inscriptions is active", async ({
+test("QA filter is isolated and exists only while the Home Inscriptions feed is active", async ({
   page,
 }, testInfo) => {
   if (testInfo.project.name === "desktop-chromium") {
     for (const path of ["/dev/t02p", "/"] as const) {
       const response = await page.goto(path);
       expect(response?.status()).toBe(200);
-      await expect(page.locator("[data-inscription-filter]")).toHaveCount(0);
+      await expect(
+        page.locator("[data-inscription-filter] [data-filter-trigger]"),
+      ).toHaveCount(0);
     }
   }
 
@@ -189,7 +197,7 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
-  await navigateTo(surface, shell, "碑刻", "inscriptions");
+  await selectHomeFeed(surface, shell, "碑刻", "inscriptions");
   const initialSnapshot = await visibleCatalogSnapshot(shell);
   expect(initialSnapshot.length).toBeGreaterThan(0);
   const filter = shell.locator("[data-inscription-filter]");
@@ -203,7 +211,7 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   );
   expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
 
-  await navigateTo(surface, shell, "书帖", "calligraphy");
+  await selectHomeFeed(surface, shell, "书帖", "calligraphy");
   await expect(
     shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
   ).toBeVisible();
@@ -212,15 +220,42 @@ test("QA filter is isolated and exists only while Inscriptions is active", async
   await expect(page.locator("[data-filter-popover]")).toHaveCount(0);
   await expect(page.locator("[data-filter-sheet]")).toHaveCount(0);
 
-  await navigateTo(surface, shell, "首页", "home");
+  await selectHomeFeed(surface, shell, "发现", "discover");
   await expect(
     shell.locator("[data-primary-navigation-dock] [data-search-trigger]"),
   ).toBeVisible();
   await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
 
-  await navigateTo(surface, shell, "碑刻", "inscriptions");
+  await selectHomeFeed(surface, shell, "碑刻", "inscriptions");
   const resetFilter = shell.locator("[data-inscription-filter]");
   await expect(resetFilter).toBeVisible();
+  await openFilter(resetFilter);
+  await expect(
+    resetFilter.locator('[data-filter-category="dynasty"]'),
+  ).toContainText("朝代⌄");
+  await expect(resetFilter.locator("[data-filter-reset]")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await visibleCatalogSnapshot(shell)).toEqual(initialSnapshot);
+
+  await chooseFilterOption(
+    resetFilter,
+    expectedPlatform(testInfo.project.name),
+    "dynasty",
+    "隋唐",
+  );
+  const navigation = surface.getByRole("navigation", { name: "主要内容" });
+  await navigation.getByRole("button", { name: "讨论", exact: true }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "discussion");
+  await expect(shell.locator("[data-inscription-filter]")).toHaveCount(0);
+  await expect(shell.locator("[data-filter-panel]")).toHaveCount(0);
+  await navigation.getByRole("button", { name: "首页", exact: true }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "home");
+  await expect(shell.locator("[data-home-surface]")).toHaveAttribute(
+    "data-active-home-feed",
+    "inscriptions",
+  );
   await openFilter(resetFilter);
   await expect(
     resetFilter.locator('[data-filter-category="dynasty"]'),

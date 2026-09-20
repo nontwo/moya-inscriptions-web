@@ -32,7 +32,7 @@ export default async function FormalPage({
       <ProductApplication
         authorCommunity={resolveCommunityCommentSurface() !== null}
         comments={resolveCommunityCommentSurface()}
-        initialHomeFeed={initialTopicId === null ? initialHomeFeed : "topics"}
+        initialHomeFeed={initialHomeFeed}
         initialPlatform={initialPlatform}
         initialTopicId={initialTopicId}
         navigationAction={<CatalogSearchNavigationAction />}

@@ -250,7 +250,7 @@ const renderReadingPager = ({
     },
     (element) => {
       owner = element;
-      owner.dataset.primaryDestination = "calligraphy";
+      owner.dataset.primaryDestination = "home";
       Object.defineProperties(owner, {
         clientHeight: { configurable: true, get: () => 400 },
         scrollHeight: {

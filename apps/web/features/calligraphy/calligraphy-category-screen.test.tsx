@@ -28,7 +28,7 @@ const restoreActiveScrollTop = vi.fn();
 vi.mock("../product-shell/product-shell", () => ({
   useProductShell: () => ({
     activeCatalogId: null,
-    activeDestination: "calligraphy",
+    activeDestination: "home",
     feedLayout: "double",
     openCatalog,
     platform: "phone",
@@ -115,7 +115,7 @@ const renderScreen = (
   roots.push(root);
   act(() =>
     root.render(
-      <section data-primary-destination="calligraphy">
+      <section data-primary-destination="home">
         <CalligraphyCategoryScreen data={data} />
       </section>,
     ),
@@ -124,7 +124,7 @@ const renderScreen = (
     "[data-calligraphy-category-pager]",
   )!;
   const destination = container.querySelector<HTMLElement>(
-    '[data-primary-destination="calligraphy"]',
+    '[data-primary-destination="home"]',
   )!;
   let top = initialScrollTop ?? 0;
   const scrollWrites: number[] = [];
@@ -545,7 +545,7 @@ describe("CalligraphyCategoryScreen", () => {
     });
     const { container } = renderScreen(data);
     const destination = container.querySelector<HTMLElement>(
-      '[data-primary-destination="calligraphy"]',
+      '[data-primary-destination="home"]',
     )!;
 
     act(() => destination.dispatchEvent(new Event("scroll")));

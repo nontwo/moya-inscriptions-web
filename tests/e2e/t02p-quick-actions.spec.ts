@@ -16,10 +16,51 @@ const ready = async (page: Page, path = "/dev/t02p/qa?qaChrome=hidden") => {
   expect(response?.status()).toBe(200);
   await expect(page.locator("[data-product-boot]")).toHaveCount(0);
 };
-const homeCard = (page: Page) =>
-  page
-    .locator('[data-product-panel="home"] [data-quick-actions="enabled"]')
-    .first();
+const homeFeed = (page: Page, surface: "home" | "calligraphy") =>
+  page.locator(
+    `[data-home-feed-panel="${surface === "home" ? "discover" : "calligraphy"}"]`,
+  );
+const feedCards = (page: Page, surface: "home" | "calligraphy") =>
+  homeFeed(page, surface).locator('[data-quick-actions="enabled"]');
+const homeCard = (page: Page) => feedCards(page, "home").first();
+const selectCalligraphy = async (page: Page) => {
+  const home = page.locator("[data-home-surface]");
+  const tab = home.getByRole("tab", { exact: true, name: "书帖" });
+  if (await page.locator("[data-qa-controls]").count()) {
+    // QA chrome intentionally covers the top tabs; preserve it and activate
+    // through the existing keyboard path before injecting native gestures.
+    await tab.focus();
+    await tab.press("Enter");
+  } else await tab.click();
+  await expect(home).toHaveAttribute("data-active-home-feed", "calligraphy");
+  await expect(homeFeed(page, "calligraphy")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+};
+const selectDiscussionTopics = async (page: Page) => {
+  const shell = page.locator("[data-product-shell]");
+  const navigation = shell.locator("[data-primary-navigation]");
+  if ((await navigation.getAttribute("data-minimized")) === "true") {
+    await navigation.locator('[data-selected="true"]').click();
+    await expect(navigation).toHaveAttribute("data-minimized", "false");
+  }
+  await navigation.getByRole("button", { exact: true, name: "讨论" }).click();
+  await expect(shell).toHaveAttribute("data-active-destination", "discussion");
+  const discussion = shell.locator("[data-discussion-surface]");
+  const tab = discussion.getByRole("tab", { exact: true, name: "专题" });
+  if (await page.locator("[data-qa-controls]").count()) {
+    await tab.focus();
+    await tab.press("Enter");
+  } else await tab.click();
+  await expect(discussion).toHaveAttribute(
+    "data-active-discussion-feed",
+    "topics",
+  );
+  await expect(
+    discussion.getByRole("tabpanel", { name: "专题" }),
+  ).toHaveAttribute("aria-hidden", "false");
+};
 const anchorFor = async (button: Locator) => {
   const box = await button.boundingBox();
   if (!box) throw new Error("Missing card geometry");
@@ -33,9 +74,7 @@ const nativeCard = async (
   surface: "home" | "calligraphy",
   rightColumn = false,
 ) => {
-  const cards = page.locator(
-    `[data-product-panel="${surface}"] [data-quick-actions="enabled"]`,
-  );
+  const cards = feedCards(page, surface);
   const hit = await cards.evaluateAll((buttons, preferRight) => {
     for (const [index, button] of buttons.entries()) {
       const box = button.getBoundingClientRect();
@@ -151,12 +190,10 @@ for (const path of [
   test(`QA scope and pager permission on ${path}`, async ({ page }) => {
     await ready(page, path);
     const enabled = path.startsWith("/dev/t02p/qa");
-    const pager = page.locator(
-      '[data-product-panel="calligraphy"] [data-calligraphy-pager-platform]',
-    );
+    const pager = page.locator("[data-home-surface] [data-home-feed-pager]");
     await expect(pager).toHaveCSS(
       "touch-action",
-      (await pager.getAttribute("data-calligraphy-pager-platform")) === "pc"
+      (await pager.getAttribute("data-home-pager-platform")) === "pc"
         ? /^(?:manipulation|pan-x pan-y pinch-zoom)$/u
         : "pan-y pinch-zoom",
     );
@@ -165,17 +202,19 @@ for (const path of [
       await expect(page.locator("[data-quick-action-feedback]")).toHaveCount(0);
       return;
     }
-    for (const surface of ["home", "calligraphy"]) {
-      expect(
-        await page
-          .locator(
-            `[data-product-panel="${surface}"] [data-quick-actions="enabled"]`,
-          )
-          .count(),
-      ).toBeGreaterThan(0);
+    for (const surface of ["home", "calligraphy"] as const) {
+      expect(await feedCards(page, surface).count()).toBeGreaterThan(0);
     }
+    await expect(page.locator("[data-calligraphy-all]")).toHaveCount(1);
     await expect(
-      page.locator('[data-product-panel="inscriptions"] [data-quick-actions]'),
+      homeFeed(page, "calligraphy").getByRole("tablist", {
+        includeHidden: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-home-feed-panel="inscriptions"] [data-quick-actions]',
+      ),
     ).toHaveCount(0);
     await expect(page.locator("[data-quick-action-qa-log]")).toHaveCount(0);
   });
@@ -206,10 +245,7 @@ for (const chrome of ["default", "hidden"] as const) {
               ? "/dev/t02p/qa?qaChrome=hidden"
               : "/dev/t02p/qa",
           );
-          if (surface === "calligraphy")
-            await page
-              .getByRole("button", { exact: true, name: "书帖" })
-              .click();
+          if (surface === "calligraphy") await selectCalligraphy(page);
           const { button, point: initialPoint } = await nativeCard(
             page,
             surface,
@@ -370,11 +406,7 @@ for (const chrome of ["default", "hidden"] as const) {
             .click();
           await expect(detail).toHaveCount(0);
           await expect(button).toBeFocused();
-          const scrollOwner = page.locator(
-            surface === "home"
-              ? '[data-home-feed-panel="discover"]'
-              : '[data-primary-destination="calligraphy"]',
-          );
+          const scrollOwner = homeFeed(page, surface);
           const beforeTop = await scrollOwner.evaluate(
             (node) => node.scrollTop,
           );
@@ -388,20 +420,23 @@ for (const chrome of ["default", "hidden"] as const) {
           await expect
             .poll(() => scrollOwner.evaluate((node) => node.scrollTop))
             .toBeGreaterThan(beforeTop + 20);
-          const { point: pageStart } = await nativeCard(page, surface, true);
+          const { point: pageStart } = await nativeCard(
+            page,
+            surface,
+            surface === "home",
+          );
           await touch(session, "touchStart", [{ ...pageStart, id: 1 }]);
-          await drag(page, session, pageStart, { x: 5, y: pageStart.y });
+          // Discover advances to Nearby; the last Home tab, Calligraphy, returns
+          // to Inscriptions with a rightward swipe instead of a removed category.
+          await drag(page, session, pageStart, {
+            x: surface === "home" ? 5 : page.viewportSize()!.width - 5,
+            y: pageStart.y,
+          });
           await touch(session, "touchEnd", []);
-          if (surface === "home")
-            await expect(
-              page.locator(
-                '[data-product-panel="home"] [data-home-feed-pager]',
-              ),
-            ).toHaveAttribute("data-horizontal-pager-active-key", "nearby");
-          else
-            await expect(
-              page.locator("[data-calligraphy-category-surface]"),
-            ).toHaveAttribute("data-active-calligraphy-category", "ink");
+          await expect(page.locator("[data-home-feed-pager]")).toHaveAttribute(
+            "data-horizontal-pager-active-key",
+            surface === "home" ? "nearby" : "inscriptions",
+          );
           await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
         } finally {
           await context.close();
@@ -430,18 +465,10 @@ for (const surface of ["home", "calligraphy"] as const) {
       const session = await context.newCDPSession(page);
       await ready(page);
       const activate = async () => {
-        if (surface === "calligraphy")
-          await page.getByRole("button", { exact: true, name: "书帖" }).click();
+        if (surface === "calligraphy") await selectCalligraphy(page);
       };
-      const activeCards = () =>
-        page.locator(
-          `[data-product-panel="${surface}"] [data-quick-actions="enabled"]`,
-        );
-      const scrollOwner = page.locator(
-        surface === "home"
-          ? '[data-home-feed-panel="discover"]'
-          : '[data-primary-destination="calligraphy"]',
-      );
+      const activeCards = () => feedCards(page, surface);
+      const scrollOwner = homeFeed(page, surface);
       await activate();
       const button = activeCards().first();
       const start = await anchorFor(button);
@@ -454,24 +481,22 @@ for (const surface of ["home", "calligraphy"] as const) {
       await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
       await ready(page);
       await activate();
-      const pager = page.locator(
-        surface === "home"
-          ? '[data-product-panel="home"] [data-home-feed-pager]'
-          : "[data-calligraphy-category-pager]",
+      const pager = page.locator("[data-home-feed-pager]");
+      const { point: origin } = await nativeCard(
+        page,
+        surface,
+        surface === "home",
       );
-      const origin = await anchorFor(activeCards().nth(1));
       await touch(session, "touchStart", [{ ...origin, id: 1 }]);
-      await drag(page, session, origin, { x: 5, y: origin.y });
+      await drag(page, session, origin, {
+        x: surface === "home" ? 5 : page.viewportSize()!.width - 5,
+        y: origin.y,
+      });
       await touch(session, "touchEnd", []);
-      if (surface === "home")
-        await expect(pager).toHaveAttribute(
-          "data-horizontal-pager-active-key",
-          "nearby",
-        );
-      else
-        await expect(
-          page.locator("[data-calligraphy-category-surface]"),
-        ).toHaveAttribute("data-active-calligraphy-category", "ink");
+      await expect(pager).toHaveAttribute(
+        "data-horizontal-pager-active-key",
+        surface === "home" ? "nearby" : "inscriptions",
+      );
       await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
       await ready(page);
       await activate();
@@ -567,9 +592,14 @@ test("Topic Detail feed cards remain ordinary cards and Detail return preserves 
 }) => {
   await ready(
     page,
-    "/dev/t02p/qa?qaChrome=hidden&scenario=topics-catalog-collection&feed=topics",
+    "/dev/t02p/qa?qaChrome=hidden&scenario=topics-catalog-collection",
   );
-  await page.locator('[data-product-panel="home"] [data-topic-card]').click();
+  await selectDiscussionTopics(page);
+  await page
+    .locator(
+      '[data-discussion-surface] [aria-hidden="false"] [data-topic-card]',
+    )
+    .click();
   const topic = page.locator("[data-topic-detail]");
   await expect(topic).toBeVisible();
   await expect(topic.locator("[data-catalog-card]")).toHaveCount(6);
@@ -605,8 +635,7 @@ for (const surface of ["home", "calligraphy"] as const) {
       const page = await context.newPage();
       const session = await context.newCDPSession(page);
       await ready(page);
-      if (surface === "calligraphy")
-        await page.getByRole("button", { exact: true, name: "书帖" }).click();
+      if (surface === "calligraphy") await selectCalligraphy(page);
       const { point } = await nativeCard(page, surface);
       await touch(session, "touchStart", [
         { ...point, id: 1 },
@@ -780,15 +809,16 @@ for (const chrome of ["default", "hidden"] as const) {
       page,
       chrome === "hidden" ? "/dev/t02p/qa?qaChrome=hidden" : "/dev/t02p/qa",
     );
-    // Deep links keep both QA chrome variants visible while selecting each feed.
+    // Nearby retains its Home deep link; topics use their Discussion tab in both QA chrome modes.
     for (const [feed, kind] of [
       ["附近", "nearby"],
       ["专题", "topic"],
     ] as const) {
       await ready(
         page,
-        `/dev/t02p/qa?feed=${kind === "nearby" ? "nearby" : "topics"}${chrome === "hidden" ? "&qaChrome=hidden" : ""}`,
+        `/dev/t02p/qa?feed=${kind === "nearby" ? "nearby" : "discover"}${chrome === "hidden" ? "&qaChrome=hidden" : ""}`,
       );
+      if (kind === "topic") await selectDiscussionTopics(page);
       await expect(
         page.getByRole("tab", { name: feed, exact: true }),
       ).toHaveAttribute("aria-selected", "true");
@@ -927,8 +957,9 @@ for (const chrome of ["default", "hidden"] as const) {
         for (const phase of ["pending", "open"] as const) {
           await ready(
             page,
-            `/dev/t02p/qa?feed=${kind === "nearby" ? "nearby" : "topics"}${chrome === "hidden" ? "&qaChrome=hidden" : ""}`,
+            `/dev/t02p/qa?feed=${kind === "nearby" ? "nearby" : "discover"}${chrome === "hidden" ? "&qaChrome=hidden" : ""}`,
           );
+          if (kind === "topic") await selectDiscussionTopics(page);
           const buttons = page.locator(
             `[data-quick-action-content-kind="${kind}"]`,
           );
@@ -974,9 +1005,18 @@ for (const chrome of ["default", "hidden"] as const) {
             { id: 2, x: first.x + 80, y: first.y },
           ]);
           await expect(page.locator("[data-quick-action-menu]")).toHaveCount(0);
-          await expect(page.locator("[data-home-feed-pager]")).toHaveAttribute(
+          const pager = page.locator(
+            kind === "nearby"
+              ? "[data-home-feed-pager]"
+              : "[data-discussion-surface] [data-horizontal-pager]",
+          );
+          await expect(pager).toHaveAttribute(
             "data-horizontal-pager-scrolling",
             "false",
+          );
+          await expect(pager).toHaveAttribute(
+            "data-horizontal-pager-active-key",
+            kind === "nearby" ? "nearby" : "topics",
           );
           for (let step = 1; step <= 12; step++) {
             await touch(session, "touchMove", [

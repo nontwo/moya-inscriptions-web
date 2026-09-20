@@ -129,6 +129,52 @@ describe("CatalogDetailExperience", () => {
     expect(onScrollTopChange).toHaveBeenLastCalledWith(120);
   });
 
+  it("accepts upward input before the restoration suppression frames finish", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    const cancel = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    const onScrollTopChange = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(root);
+    act(() =>
+      root.render(
+        <CatalogDetailExperience
+          activeViewerMediaId={null}
+          backButtonRef={createRef<HTMLButtonElement>()}
+          catalogId="catalog-detail"
+          initialScrollTop={180}
+          onBack={vi.fn()}
+          onCloseViewer={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onScrollTopChange={onScrollTopChange}
+          onViewerMediaChange={vi.fn()}
+          platform="phone"
+          orientation="portrait"
+          state={{ state: "loading" }}
+        />,
+      ),
+    );
+    const scroller = container.querySelector<HTMLElement>(
+      "[data-detail-scroll]",
+    )!;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, value: 844 },
+      scrollHeight: { configurable: true, value: 2000 },
+    });
+    act(() => {
+      scroller.dispatchEvent(
+        new WheelEvent("wheel", { bubbles: true, deltaY: -180 }),
+      );
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(cancel).toHaveBeenCalled();
+    expect(onScrollTopChange).toHaveBeenLastCalledWith(0);
+  });
+
   it("opens the exact media and restores Detail scroll and current image focus", () => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());

@@ -22,8 +22,6 @@ import type {
   ResolvePublishingConflictCommand,
   RestorePublishingSnapshotCommand,
   SavePublishingDraftCommand,
-  TrashRestoreResult,
-  TrashedWorkPage,
   WorkDraftContent,
   WorkSubmissionCommand,
   WorkSubmissionReceipt,
@@ -830,37 +828,17 @@ export interface PublishingWorkOperations {
     now: Date,
   ): Promise<WorkVisibilityResult>;
   /**
-   * Author command; `DELETE works/:workId`. Moves the actor's work (hidden
-   * and removed works included) to the recycle bin: `trashed_at` = `now`,
-   * purge after `now` + `trash_retention_days`. Already trashed: unchanged.
+   * Author command; `DELETE works/:workId`. Permanently erases the actor's
+   * work content, revisions, drafts and snapshots. A minimal identity remains
+   * for relational/audit integrity; unshared media is cancelled for cleanup.
+   * The exact request can replay; later distinct requests find no work.
    */
-  trashWork(
+  deleteWork(
     actorId: string,
     workId: string,
     command: PublishingCommandIdentity,
     now: Date,
   ): Promise<{ readonly deleted: true }>;
-  /**
-   * Author command (T03). Restores a trashed, not yet purged work as
-   * self-only. A removed work throws `work_unavailable`.
-   */
-  restoreWork(
-    actorId: string,
-    workId: string,
-    command: PublishingCommandIdentity,
-    now: Date,
-  ): Promise<TrashRestoreResult>;
-  /**
-   * The actor's trashed works, most recently trashed first. `restorable` is
-   * false for a removed work and for a work whose `trash_purge_after` ≤ `now`
-   * (the purge owns it, whenever the worker runs); the service passes its
-   * clock.
-   */
-  listTrash(
-    actorId: string,
-    query: PublishingPageQuery,
-    now: Date,
-  ): Promise<TrashedWorkPage>;
   /**
    * Job `purge_trashed_work`: a work still trashed with `trash_purge_after`
    * ≤ `now` gets `deleted_at` = `now`; the refs of its revisions, drafts,

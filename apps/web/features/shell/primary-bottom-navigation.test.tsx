@@ -23,25 +23,21 @@ const destinations = [
     id: "home",
     icon: "home",
     label: "首页",
-    labelMark: "nav-home",
   },
   {
-    id: "inscriptions",
-    icon: "inscriptions",
-    label: "碑刻",
-    labelMark: "nav-inscriptions",
+    id: "discussion",
+    icon: "discussion",
+    label: "讨论",
   },
   {
-    id: "calligraphy",
-    icon: "calligraphy",
-    label: "书帖",
-    labelMark: "nav-calligraphy",
+    id: "user",
+    icon: "user",
+    label: "用户",
   },
 ] as const satisfies readonly {
   readonly id: PrimaryDestination;
   readonly icon: string;
   readonly label: string;
-  readonly labelMark: string;
 }[];
 
 const renderNavigation = (
@@ -72,7 +68,7 @@ const navigationButtons = (
   );
 
 describe("PrimaryBottomNavigation", () => {
-  it("renders exactly the current ordered destinations and formal marks", () => {
+  it("renders exactly the ordered home, discussion and user destinations with text labels", () => {
     const markup = renderNavigation();
 
     expect(markup.match(/data-primary-navigation-destination=/g)).toHaveLength(
@@ -81,7 +77,7 @@ describe("PrimaryBottomNavigation", () => {
     expect(markup).toContain(`data-item-count="${destinations.length}"`);
 
     let lastIndex = -1;
-    for (const { id, icon, label, labelMark } of destinations) {
+    for (const { id, icon, label } of destinations) {
       const itemIndex = markup.indexOf(
         `data-primary-navigation-destination="${id}"`,
       );
@@ -89,11 +85,11 @@ describe("PrimaryBottomNavigation", () => {
       lastIndex = itemIndex;
       expect(markup).toContain(`aria-label="${label}"`);
       expect(markup).toContain(`data-icon="${icon}"`);
-      expect(markup).toContain(`data-label="${labelMark}"`);
+      expect(markup).toContain(`>${label}</span>`);
     }
 
     expect(markup).not.toMatch(
-      /data-primary-navigation-destination="(?:upload|profile|user)"|上传|个人中心/i,
+      /data-primary-navigation-destination="(?:upload|profile|inscriptions|calligraphy)"|上传|个人中心/i,
     );
   });
 
@@ -208,24 +204,24 @@ describe("PrimaryBottomNavigation", () => {
     expect(canArmPrimaryNavigationPointer(false, "touch", 0)).toBe(false);
   });
 
-  it("renders inline marks with original asset provenance", () => {
-    for (const { labelMark } of destinations) {
-      expect(renderNavigation()).toContain(
-        `data-source-asset="packages/ui/src/assets/labels/${labelMark}.png"`,
+  it("uses inline icons and real text without raster labels or masks", () => {
+    const markup = renderNavigation();
+    for (const { icon } of destinations) {
+      expect(markup).toContain(
+        `data-source-asset="packages/ui/src/assets/icons/${icon}.svg"`,
       );
     }
-    expect(renderNavigation()).toContain("data-primary-navigation-inline-icon");
-    expect(renderNavigation()).toContain(
-      "data-primary-navigation-inline-label",
+    expect(markup.match(/data-primary-navigation-text-label=/g)).toHaveLength(
+      3,
     );
-    expect(renderNavigation()).not.toContain("yoyi-icon");
-    expect(renderNavigation()).not.toContain("yoyi-fixed-label");
+    expect(markup).toContain("data-primary-navigation-inline-icon");
+    expect(markup).not.toMatch(/<image|<mask|\.png|yoyi-fixed-label/);
   });
 
   it("renders only the active icon as an inert 44px minimized control", () => {
     const markup = renderToStaticMarkup(
       <PrimaryBottomNavigation
-        activeDestination="inscriptions"
+        activeDestination="discussion"
         minimized
         onDestinationChange={vi.fn()}
         onExpand={vi.fn()}
@@ -264,9 +260,9 @@ describe("PrimaryBottomNavigation", () => {
 
     expect(
       commitPrimaryNavigationDragRelease("home", 1, onDestinationChange),
-    ).toBe("inscriptions");
+    ).toBe("discussion");
     expect(onDestinationChange).toHaveBeenCalledOnce();
-    expect(onDestinationChange).toHaveBeenCalledWith("inscriptions");
+    expect(onDestinationChange).toHaveBeenCalledWith("discussion");
 
     onDestinationChange.mockClear();
     expect(

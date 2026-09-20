@@ -351,7 +351,7 @@ describe("work publishing client", () => {
 
   it("reports a network failure as status 0 and rethrows a caller abort", async () => {
     upstream.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const error = await refused(publishingClient.listTrash());
+    const error = await refused(publishingClient.listDrafts());
     expect(error).toMatchObject({
       status: 0,
       code: null,
@@ -617,18 +617,11 @@ describe("work publishing client", () => {
       { deleted: true, snapshots: 2, conflictCopies: 0, mediaItems: 1 },
     ],
     [
-      "trashWork",
-      () => publishingClient.trashWork(workId, { requestId }),
+      "deleteWork",
+      () => publishingClient.deleteWork(workId, { requestId }),
       `works/${workId}`,
       "DELETE",
       { deleted: true },
-    ],
-    [
-      "restoreWork",
-      () => publishingClient.restoreWork(workId, { requestId }),
-      `publishing/trash/${workId}/restore`,
-      "POST",
-      { workId, visibility: "self" },
     ],
     [
       "discardSession",
@@ -860,22 +853,19 @@ describe("work publishing client", () => {
     ).toEqual(["empty_work"]);
   });
 
-  it("builds bounded page queries for drafts, history and trash", async () => {
+  it("builds bounded page queries for drafts and history", async () => {
     const empty = { items: [], total: 0, page: 2, pageSize: 10, totalPages: 0 };
-    answer(empty);
     answer(empty);
     answer(empty);
     await publishingClient.listDrafts({ page: 2, pageSize: 10 });
     await publishingClient.draftHistory(draftId, { page: 2, pageSize: 10 });
-    await publishingClient.listTrash({ page: 2, pageSize: 10 });
     expect(upstream.mock.calls.map(([path]) => path)).toEqual([
       "/api/community/publishing/drafts?page=2&pageSize=10",
       `/api/community/publishing/drafts/${draftId}/history?page=2&pageSize=10`,
-      "/api/community/publishing/trash?page=2&pageSize=10",
     ]);
     const error = await refused(publishingClient.listDrafts({ pageSize: 51 }));
     expect(error.status).toBe(422);
-    expect(upstream).toHaveBeenCalledTimes(3);
+    expect(upstream).toHaveBeenCalledTimes(2);
   });
 
   it.each<() => Promise<unknown>>([

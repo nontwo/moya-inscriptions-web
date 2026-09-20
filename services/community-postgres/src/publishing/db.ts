@@ -59,8 +59,7 @@ export const publishingAuthorActions = {
   resetComponent: "publishing.component.reset",
   submit: "publishing.submit",
   setVisibility: "publishing.work.visibility",
-  trashWork: "publishing.work.trash",
-  restoreWork: "publishing.work.restore",
+  deleteWork: "publishing.work.delete",
 } as const;
 
 /** Operator command actions (`content_operator_events.action`). */
@@ -265,6 +264,12 @@ export const authorCommand = async <T>(
         throw new CommunityConflictError(
           "Request identity was already used for different content",
         );
+      if (
+        receipt.result !== null &&
+        typeof receipt.result === "object" &&
+        "permanentlyDeleted" in receipt.result
+      )
+        throw new CommunityNotFoundError();
       await db.query("COMMIT");
       return receipt.result;
     }
