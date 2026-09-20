@@ -107,6 +107,23 @@ export interface ProviderContext {
  */
 export const INTERACTION_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * The path both hosts share, and the reason they must.
+ *
+ * oidc-provider scopes its `_interaction` cookie to the PATHNAME of whatever
+ * `interactions.url` returns (lib/actions/authorization/interactions.js:137,
+ * `path: new URL(destination, ctx.oidc.issuer).pathname`) — on the ISSUER's
+ * host, using the destination's path. So the route that resumes the
+ * interaction has to live under that same pathname, or the browser never
+ * sends the cookie and the resume cannot find its own interaction.
+ *
+ * This cost a real failure to learn: the Node-level regression passed because
+ * it replayed every cookie in its jar regardless of path, and only a real
+ * browser refused. The resume route is therefore a descendant of this prefix
+ * on the authorization host, mirroring the Admin path the human sees.
+ */
+export const CONSENT_PATH_PREFIX = "/agent-connections/consent";
+
 /** Loaded through the workspace's own dependency, never a deep import. */
 const loadProvider = async (): Promise<
   new (issuer: string, configuration: unknown) => OidcProvider
@@ -207,7 +224,7 @@ export const createAuthorizationProvider = async (options: {
           preset: "read-only",
           expiresAt: new Date(Date.now() + INTERACTION_TTL_MS).toISOString(),
         });
-        return `${config.consentBaseUrl}/agent-connections/consent/${encodeURIComponent(interaction.uid)}`;
+        return `${config.consentBaseUrl}${CONSENT_PATH_PREFIX}/${encodeURIComponent(interaction.uid)}`;
       },
     },
   });

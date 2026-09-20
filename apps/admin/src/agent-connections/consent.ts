@@ -220,6 +220,13 @@ const resourceOf = (value: string): string => {
  * origin. A return URL taken from the request is exactly the
  * arbitrary-return-URL attempt §5 refuses, so no request field reaches it.
  */
+/**
+ * The path the provider redirects the browser to, and the prefix its
+ * interaction cookie is scoped to. Shared by the landing route, the review
+ * link and the resume URL so the three cannot drift apart.
+ */
+export const CONSENT_LANDING_PREFIX = "/agent-connections/consent";
+
 export const consentReviewPath = (interactionUid: string): string => {
   const interaction = interactionUidSchema.safeParse(interactionUid);
   if (!interaction.success) throw new ConsentError("INTERACTION_MALFORMED");
@@ -248,8 +255,12 @@ export const providerResumeUrl = (
   }
   if (!["http:", "https:"].includes(base.protocol) || base.search || base.hash)
     throw new ConsentError("ISSUER_MALFORMED", 500);
+  // The same pathname the human's landing page uses, because oidc-provider
+  // scopes its interaction cookie to exactly that path on the issuer's host.
+  // A tidier `/interaction/<uid>/resume` is a route the browser reaches
+  // without the cookie, and the resume then cannot find its interaction.
   const resume = new URL(
-    `${base.pathname.replace(/\/$/u, "")}/interaction/${encodeURIComponent(interaction.data)}/resume`,
+    `${base.pathname.replace(/\/$/u, "")}${CONSENT_LANDING_PREFIX}/${encodeURIComponent(interaction.data)}/resume`,
     base,
   );
   return resume.href;

@@ -1,0 +1,525 @@
+import process from "node:process";
+import console from "node:console";
+import { randomBytes } from "node:crypto";
+import { readFile as readSource, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { createServer } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
+
+import {
+  boundedChildLimit,
+  createVerificationSession,
+  resolveCmsBudget,
+  syntheticDatabase,
+  timeCategories,
+  verificationRoot as root,
+} from "./verify-cms.mjs";
+
+/**
+ * Agent Connections V1 (Issue #141 r15 §6, §10) — the Development-mode
+ * acceptance harness.
+ *
+ * WHY THIS EXISTS SEPARATELY, and why it does not replace anything: the
+ * committed production harness boots
+ * `apps/admin/.next/standalone/apps/admin/server.js`, which hard-sets
+ * `process.env.NODE_ENV = 'production'` before anything else runs. By then the
+ * production compile has already folded away every `NODE_ENV === "development"`
+ * branch, so a Development-gated surface is not "disabled" there — it is
+ * ABSENT FROM THE EMITTED JAVASCRIPT. No environment variable can bring it
+ * back, and forcing one would only make the harness lie.
+ *
+ * So this boots a real `next dev`, and the production harness stays exactly as
+ * it is: it remains the evidence that these surfaces are not reachable in
+ * Production. Two harnesses, two claims, neither standing in for the other.
+ *
+ * Everything it owns, it makes and removes: its own synthetic database, its
+ * own authorization listener, its own Admin, its own browser. It never touches
+ * the retained Development database, another task's container, or the shared
+ * browser runner's configuration.
+ */
+
+/** Cold `next dev` compiles on demand; bounded by the session regardless. */
+const ADMIN_START_MS = 120_000;
+const AUTH_START_MS = 20_000;
+
+const expectedStages = [
+  "landing-is-unauthenticated",
+  "owner-continues-same-origin",
+  "review-shows-the-request",
+  "consent-approved",
+  "token-issued",
+  "mcp-initialize",
+  "mcp-tools-list-is-read-only",
+  "mcp-forbidden-tool-denied",
+  "revoked-token-denied",
+  "reconnect-issues-new-access",
+  "old-token-still-denied",
+];
+
+/**
+ * The restart check is the ORCHESTRATOR's, not the browser's: only the
+ * process that started the services can stop and start them. The two tokens
+ * cross that boundary in a mode-restricted file, never on stdout.
+ */
+const RESTART_STAGE = "restart-preserves-the-result";
+
+const freePort = () =>
+  new Promise((resolve, reject) => {
+    const socket = createServer();
+    socket.once("error", reject);
+    socket.listen(0, "127.0.0.1", () => {
+      const address = socket.address();
+      if (!address || typeof address === "string") {
+        socket.close();
+        reject(new Error("LOCAL_PORT_UNAVAILABLE"));
+        return;
+      }
+      socket.close((error) => (error ? reject(error) : resolve(address.port)));
+    });
+  });
+
+/**
+ * Waits for a listener, bounded by the session and by its own deadline. It
+ * never follows a redirect and never reads a body: readiness is a status code
+ * on a route this harness chose, not whatever a server decided to say.
+ */
+const waitForListener = async (session, url, limitMs, child) => {
+  const deadline = Date.now() + boundedChildLimit(limitMs, session.remaining());
+  for (;;) {
+    session.assertActive();
+    try {
+      const response = await globalThis.fetch(url, {
+        redirect: "manual",
+        cache: "no-store",
+        signal: globalThis.AbortSignal.any([
+          session.signal,
+          globalThis.AbortSignal.timeout(3000),
+        ]),
+      });
+      if (response.status < 500) return;
+    } catch {
+      /* bounded startup; never follow another target */
+    }
+    if (
+      Date.now() >= deadline ||
+      (child &&
+        (!child.child.pid ||
+          child.child.exitCode !== null ||
+          child.child.signalCode !== null))
+    )
+      throw new Error("HARNESS_SERVICE_START_FAILED");
+    await delay(250, undefined, { signal: session.signal });
+  }
+};
+
+/**
+ * A real stop, not a hopeful one. Children are detached, so the negative pid
+ * is their process group and the whole tree goes with it. A "restart" that
+ * left the old process listening would be testing the same processes twice,
+ * which is exactly the reassurance this check exists to refuse.
+ */
+const stopService = async (session, managed) => {
+  const pid = managed?.child?.pid;
+  if (!pid) return;
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    /* already gone */
+  }
+  const hard = setTimeout(() => {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
+  }, 5000);
+  try {
+    await managed.closed;
+  } finally {
+    clearTimeout(hard);
+  }
+};
+
+/** Waits until a listener stops answering, so a restart cannot reuse it. */
+const waitForSilence = async (session, url, limitMs) => {
+  const deadline = Date.now() + boundedChildLimit(limitMs, session.remaining());
+  for (;;) {
+    session.assertActive();
+    try {
+      await globalThis.fetch(url, {
+        redirect: "manual",
+        cache: "no-store",
+        signal: globalThis.AbortSignal.any([
+          session.signal,
+          globalThis.AbortSignal.timeout(1000),
+        ]),
+      });
+    } catch {
+      return;
+    }
+    if (Date.now() >= deadline) throw new Error("HARNESS_SERVICE_STOP_FAILED");
+    await delay(200, undefined, { signal: session.signal });
+  }
+};
+
+async function main() {
+  const budget = resolveCmsBudget(process.argv.slice(2));
+  // The harness owns a database of its own rather than sharing the cms job's.
+  // Sharing it would leave a synthetic Owner behind, and the production
+  // browser harness that runs afterwards bootstraps one itself and refuses
+  // when it already exists.
+  const parent = new URL(syntheticDatabase(process.env.CMS_TEST_DATABASE_URL));
+  const owned = `${parent.pathname.slice(1)}_agent_conn_${randomBytes(4).toString("hex")}`;
+  const admin = new URL(parent.href);
+  admin.pathname = "/postgres";
+
+  const { createPostgresPool, parsePostgresConfig, closePostgresPool } =
+    await import(path.join(root, "services/catalog-postgres/dist/index.js"));
+  const control = createPostgresPool(
+    parsePostgresConfig({ DATABASE_URL: admin.href }),
+  );
+  let created = false;
+  try {
+    await control.query(`CREATE DATABASE "${owned}"`);
+    created = true;
+  } catch (error) {
+    await closePostgresPool(control);
+    throw error;
+  }
+
+  const target = new URL(parent.href);
+  target.pathname = `/${owned}`;
+  const session = await createVerificationSession(
+    target.href,
+    "moya-agent-connections-",
+    budget.sessionBudgetMs,
+  );
+  console.log(
+    `Agent connections profile ${budget.profile}: ceiling ${budget.ceilingMs}ms (${budget.ceilingSource}); session ${budget.sessionBudgetMs}ms`,
+  );
+
+  let summary;
+  let operationError;
+  let handoff;
+  let tokenFile;
+  let ownedDistDir;
+  let nextEnvPath;
+  let nextEnvBefore;
+  try {
+    const pool = createPostgresPool(
+      parsePostgresConfig({ DATABASE_URL: target.href }),
+    );
+    try {
+      // The disposable marker, on a database this harness just made. The
+      // guard refuses the live Development database by name and any name
+      // without a whole "test" or "synthetic" segment.
+      const { readFile } = await import("node:fs/promises");
+      await pool.query(
+        await readFile(
+          path.join(root, "infra/test/disposable-test-target.sql"),
+          "utf8",
+        ),
+      );
+      const { runCommunityMigrations } = await import(
+        path.join(root, "services/community-postgres/dist/index.js")
+      );
+      await runCommunityMigrations(
+        pool,
+        path.join(root, "database/community-migrations"),
+      );
+      // The two narrow roles, from the file that ships rather than a copy.
+      const client = await pool.connect();
+      try {
+        for (const [key, value] of [
+          ["provider_role", `${owned}_provider`.slice(0, 63)],
+          ["consent_role", `${owned}_consent`.slice(0, 63)],
+        ])
+          await client.query("SELECT set_config($1,$2,false)", [
+            `agent_connections.${key}`,
+            value,
+          ]);
+        await client.query(
+          await readFile(
+            path.join(
+              root,
+              "infra/development/agent-connections/grant-authorization.sql",
+            ),
+            "utf8",
+          ),
+        );
+      } finally {
+        client.release();
+      }
+    } finally {
+      await closePostgresPool(pool);
+    }
+
+    session.assertActive();
+    const adminRoot = path.join(root, "apps/admin");
+    handoff = path.join(session.directory, "access.json");
+    tokenFile = path.join(session.directory, "tokens.json");
+    // The Payload schema, then the synthetic Owner. A fresh database has the
+    // community migrations from above and nothing Payload owns, so the
+    // bootstrap would otherwise fail on a missing `users` relation.
+    await session.run(
+      ["node_modules/payload/bin.js", "migrate"],
+      adminRoot,
+      "payload-migrate",
+      session.env,
+    );
+    await session.run(
+      ["node_modules/payload/bin.js", "run", "scripts/bootstrap-synthetic.ts"],
+      adminRoot,
+      "bootstrap",
+      { ...session.env, CMS_QA_HANDOFF_FILE: handoff },
+    );
+
+    const distDir = `.next-acceptance-${randomBytes(4).toString("hex")}`;
+    ownedDistDir = distDir;
+    // `next dev` rewrites `next-env.d.ts` to point at ITS dist directory.
+    // That is a source file, and a harness that left it rewritten would break
+    // everyone else's type-check while looking like a passing run. Kept
+    // verbatim and put back, whatever happens after this line.
+    nextEnvPath = path.join(adminRoot, "next-env.d.ts");
+    nextEnvBefore = await readSource(nextEnvPath, "utf8");
+    const [authPort, adminPort, redirectPort] = await Promise.all([
+      freePort(),
+      freePort(),
+      freePort(),
+    ]);
+    // Two DIFFERENT hostnames, both universally resolvable. Cookies are
+    // host-scoped and not port-scoped, so an issuer and a consent page sharing
+    // a host would share a cookie jar — which is the one thing this whole
+    // design cannot tolerate. `localhost` and `127.0.0.1` are also different
+    // sites to the browser, which is what makes the SameSite behaviour real
+    // rather than simulated.
+    const issuer = `http://127.0.0.1:${authPort}`;
+    const adminOrigin = `http://localhost:${adminPort}`;
+    const resource = `${adminOrigin}/api/mcp`;
+    const redirectUri = `http://127.0.0.1:${redirectPort}/callback`;
+    const clientId = "artvenn-acceptance-client";
+    const clients = JSON.stringify([
+      {
+        clientId,
+        family: "claude",
+        label: "Acceptance client",
+        redirectUris: [redirectUri],
+      },
+    ]);
+    // Task-private synthetic keys, generated per run, never printed and never
+    // written anywhere but this session's own environment.
+    const keys = {
+      AGENT_CONNECTION_PROVIDER_INDEX_KEY: randomBytes(32).toString("base64"),
+      AGENT_CONNECTION_PROVIDER_SEAL_KEY: randomBytes(32).toString("base64"),
+      AGENT_CONNECTION_WRAPPER_INDEX_KEY: randomBytes(32).toString("base64"),
+      AGENT_CONNECTION_WRAPPER_SEAL_KEY: randomBytes(32).toString("base64"),
+    };
+    const shared = {
+      ...session.env,
+      ...keys,
+      CMS_QA_HANDOFF_FILE: handoff,
+      CMS_QA_ACCESS_FILE: handoff,
+      AGENT_ACCEPTANCE_TOKEN_FILE: tokenFile,
+      NODE_ENV: "development",
+      AGENT_CONNECTIONS_ENABLED: "true",
+      AGENT_AUTHORIZATION_ENABLED: "true",
+      AGENT_AUTHORIZATION_ISSUER: issuer,
+      AGENT_AUTHORIZATION_RESOURCE: resource,
+      AGENT_AUTHORIZATION_CONSENT_URL: adminOrigin,
+      AGENT_AUTHORIZATION_PORT: String(authPort),
+      AGENT_AUTHORIZATION_CLIENTS: clients,
+      AGENT_AUTHORIZATION_ENVIRONMENT: "development",
+      AGENT_AUTHORIZATION_DATABASE_URL: target.href,
+      AGENT_CONSENT_DATABASE_URL: target.href,
+      AGENT_RESOURCE_DATABASE_URL: target.href,
+    };
+
+    /** Starts both services and waits for each to answer. */
+    const startServices = async (startMs) => {
+      const auth = session.start(
+        ["services/agent-authorization/dist/main.js"],
+        root,
+        shared,
+      );
+      await waitForListener(session, `${issuer}/healthz`, AUTH_START_MS, auth);
+      const admin_ = session.start(
+        [
+          "node_modules/next/dist/bin/next",
+          "dev",
+          "--hostname",
+          "127.0.0.1",
+          "--port",
+          String(adminPort),
+        ],
+        adminRoot,
+        {
+          ...shared,
+          PORT: String(adminPort),
+          HOSTNAME: "127.0.0.1",
+          // Its own build directory, so the harness never contends with a
+          // dev server somebody else is running and never has to stop one.
+          MOYA_ADMIN_DIST_DIR: distDir,
+        },
+      );
+      await waitForListener(
+        session,
+        `${adminOrigin}/admin/login`,
+        startMs,
+        admin_,
+      );
+      return { auth, admin: admin_ };
+    };
+
+    let services = await startServices(ADMIN_START_MS);
+
+    const browser = session.start(
+      ["tests/cms/agent-connections-browser.mjs"],
+      root,
+      {
+        ...shared,
+        AGENT_ACCEPTANCE_ADMIN_ORIGIN: adminOrigin,
+        AGENT_ACCEPTANCE_ISSUER: issuer,
+        AGENT_ACCEPTANCE_RESOURCE: resource,
+        AGENT_ACCEPTANCE_CLIENT_ID: clientId,
+        AGENT_ACCEPTANCE_REDIRECT_URI: redirectUri,
+      },
+    );
+    const browserCode = await browser.closed;
+    const frames = browser
+      .output()
+      .trim()
+      .split("\n")
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    const results = frames.filter((item) => typeof item.ok === "boolean");
+    summary = results.length === 1 ? results[0] : null;
+    if (browserCode !== 0 || summary?.ok !== true) {
+      // Fixed stage names only. No child diagnostics, no response bodies, no
+      // URLs, no token, no cookie and no arbitrary exception message.
+      console.log(
+        JSON.stringify({
+          syntheticAgentConnections: "FAIL",
+          stage: /^[a-z][a-z-]{0,95}$/.test(summary?.stage ?? "")
+            ? summary.stage
+            : "unrecognized-browser-result",
+          completed: expectedStages.filter((stage) =>
+            summary?.completed?.includes(stage),
+          ),
+          // A bare refusal code names a rule, never a value.
+          refusalCode: /^[A-Z][A-Z0-9_]{2,63}$/.test(summary?.refusalCode ?? "")
+            ? summary.refusalCode
+            : undefined,
+        }),
+      );
+      throw new Error("AGENT_CONNECTIONS_CHECK_FAILED");
+    }
+    if (
+      !Array.isArray(summary.completed) ||
+      JSON.stringify(summary.completed) !== JSON.stringify(expectedStages)
+    )
+      throw new Error("AGENT_CONNECTIONS_RESULT_INCOMPLETE");
+    session.assertActive();
+
+    // Restart both services against the SAME stores and the SAME keys. The
+    // question is whether the result survives a process, not whether it
+    // survives a request: a revocation that lived only in memory would come
+    // back to life here, and a wrapper sealed under a regenerated key would
+    // stop resolving for everyone at once.
+    await stopService(session, services.admin);
+    await stopService(session, services.auth);
+    await waitForSilence(session, `${issuer}/healthz`, 15_000);
+    await waitForSilence(session, `${adminOrigin}/admin/login`, 15_000);
+    services = await startServices(ADMIN_START_MS);
+    const { readFile: readTokens } = await import("node:fs/promises");
+    const tokens = JSON.parse(await readTokens(tokenFile, "utf8"));
+    const probe = async (token) => {
+      const response = await globalThis.fetch(`${adminOrigin}/api/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            clientInfo: { name: "artvenn-restart", version: "0" },
+          },
+        }),
+        signal: globalThis.AbortSignal.any([
+          session.signal,
+          globalThis.AbortSignal.timeout(30_000),
+        ]),
+      });
+      return response.status;
+    };
+    if ((await probe(tokens.live)) !== 200)
+      throw new Error("RESTART_LOST_LIVE_ACCESS");
+    if ((await probe(tokens.stale)) === 200)
+      throw new Error("RESTART_RESTORED_REVOKED_ACCESS");
+    summary.completed.push(RESTART_STAGE);
+  } catch (error) {
+    operationError = error;
+  } finally {
+    await session.dispose();
+    // Only what this harness made. The database is dropped last, after every
+    // child is gone, so nothing is holding a connection to it.
+    if (created) {
+      try {
+        await control.query(`DROP DATABASE IF EXISTS "${owned}" WITH (FORCE)`);
+      } catch {
+        operationError ??= new Error("HARNESS_DATABASE_CLEANUP_FAILED");
+      }
+    }
+    await closePostgresPool(control);
+    // The handoff and the tokens go first, then the directory that held them.
+    for (const file of [handoff, tokenFile])
+      if (file) await rm(file, { force: true });
+    if (nextEnvPath && nextEnvBefore !== undefined) {
+      try {
+        if ((await readSource(nextEnvPath, "utf8")) !== nextEnvBefore)
+          await writeFile(nextEnvPath, nextEnvBefore);
+      } catch {
+        operationError ??= new Error("HARNESS_SOURCE_RESTORE_FAILED");
+      }
+    }
+    if (ownedDistDir)
+      await rm(path.join(root, "apps/admin", ownedDistDir), {
+        recursive: true,
+        force: true,
+      });
+    await rm(session.directory, { recursive: true, force: true });
+  }
+  if (session.failure) throw new Error(session.failure);
+  if (operationError) throw operationError;
+  console.log(
+    JSON.stringify({
+      syntheticAgentConnections: "PASS",
+      stages: summary.completed.length,
+      elapsedMs: session.elapsed(),
+      ceilingMs: budget.ceilingMs,
+      profile: budget.profile,
+      // Recorded so the evidence cannot be read as more than it is.
+      backendToolRead: summary.backendToolRead ?? "NOT_RUN",
+    }),
+  );
+}
+
+main().catch((error) => {
+  const category =
+    error instanceof Error && /^[A-Z_]+$/.test(error.message)
+      ? error.message
+      : "SYNTHETIC_AGENT_CONNECTIONS_FAILED";
+  console.log(JSON.stringify({ syntheticAgentConnections: "FAIL", category }));
+  process.exitCode = timeCategories.has(category) ? 124 : 1;
+});

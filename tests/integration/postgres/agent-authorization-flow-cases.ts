@@ -84,6 +84,9 @@ export const registerAgentAuthorizationFlowTests = (
 
     const consents = createConsentStore({ pool });
 
+    /** The pathname oidc-provider scopes its interaction cookie to. */
+    const landingPrefix = "/agent-connections/consent";
+
     /**
      * The RESOURCE server's boundary, composed exactly as `mcp.ts` composes
      * it. This is `overrideAuth` — the function the Payload MCP plugin calls
@@ -305,7 +308,17 @@ export const registerAgentAuthorizationFlowTests = (
       const account = owner("flow");
       const { outcome, connection } = await approve(uid, account);
       expect(outcome.decision).toBe("approved");
-      expect(outcome.resume).toBe(`${ISSUER}/interaction/${uid}/resume`);
+      // A descendant of the path the provider scopes its interaction cookie
+      // to. This equality is the regression for a failure a cookie-jar test
+      // could not see: replaying every cookie regardless of path passed while
+      // a real browser refused, because the cookie is scoped to the consent
+      // destination's pathname on the issuer's host.
+      expect(outcome.resume).toBe(
+        `${ISSUER}/agent-connections/consent/${uid}/resume`,
+      );
+      expect(new URL(outcome.resume).pathname.startsWith(landingPrefix)).toBe(
+        true,
+      );
 
       const back = await resume(jar, outcome.resume);
       expect(back?.searchParams.get("error")).toBeNull();
@@ -551,7 +564,7 @@ export const registerAgentAuthorizationFlowTests = (
       ).toThrow(ConsentError);
       // And an undecided interaction resumes to a denial, so the client gets
       // an answer rather than a browser parked on a dead page.
-      const back = await resume(jar, `${ISSUER}/interaction/${uid}/resume`);
+      const back = await resume(jar, `${ISSUER}${landingPrefix}/${uid}/resume`);
       expect(back?.searchParams.get("error")).toBe("access_denied");
       expect(back?.searchParams.get("code") ?? null).toBeNull();
     });
@@ -561,7 +574,7 @@ export const registerAgentAuthorizationFlowTests = (
       await approve(uid, owner("no-cookie"));
       // A uid is a name. Without the provider's own cookie it resumes nothing,
       // and nothing is granted.
-      const response = await fetch(`${ISSUER}/interaction/${uid}/resume`, {
+      const response = await fetch(`${ISSUER}${landingPrefix}/${uid}/resume`, {
         redirect: "manual",
       });
       expect(response.status).toBe(400);

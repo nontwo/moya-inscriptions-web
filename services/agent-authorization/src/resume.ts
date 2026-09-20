@@ -32,7 +32,14 @@ import type { ProviderBundle } from "./provider.js";
  * the current generation and be admitted.
  */
 
-export const RESUME_PATH = /^\/interaction\/([A-Za-z0-9_-]{1,256})\/resume$/u;
+/**
+ * A descendant of the interaction cookie's own path. See `CONSENT_PATH_PREFIX`
+ * in provider.ts: oidc-provider scopes `_interaction` to the pathname of the
+ * consent destination, so a resume route anywhere else is a route the browser
+ * will visit without the cookie that identifies the interaction.
+ */
+export const RESUME_PATH =
+  /^\/agent-connections\/consent\/([A-Za-z0-9_-]{1,256})\/resume$/u;
 
 export interface ResumeOutcome {
   readonly handled: boolean;

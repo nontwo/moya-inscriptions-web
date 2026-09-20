@@ -1,5 +1,6 @@
 import { RegisteredClientError } from "@moya/community-postgres";
 import {
+  CONSENT_LANDING_PREFIX,
   ConsentError,
   admitReadOnlyCapabilities,
   consentDecisionSchema,
@@ -155,12 +156,20 @@ describe("consent rules", () => {
     });
 
     it("builds the resume from the CONFIGURED issuer, never from a caller", () => {
+      // Under the consent prefix, not a tidier /interaction/<uid>/resume:
+      // oidc-provider scopes its interaction cookie to the pathname of the
+      // consent destination, so a route outside that prefix is one the
+      // browser reaches without the cookie that names the interaction.
       expect(providerResumeUrl("https://auth.localhost:34620", "abc123")).toBe(
-        "https://auth.localhost:34620/interaction/abc123/resume",
+        "https://auth.localhost:34620/agent-connections/consent/abc123/resume",
       );
       expect(providerResumeUrl("https://auth.localhost:34620/", "abc123")).toBe(
-        "https://auth.localhost:34620/interaction/abc123/resume",
+        "https://auth.localhost:34620/agent-connections/consent/abc123/resume",
       );
+      expect(
+        providerResumeUrl("https://auth.localhost:34620", "abc123"),
+      ).toContain(`${CONSENT_LANDING_PREFIX}/abc123/resume`);
+      expect(consentReviewPath("abc123")).toContain(CONSENT_LANDING_PREFIX);
       for (const issuer of [
         "https://auth.localhost:34620?x=1",
         "https://auth.localhost:34620#x",
