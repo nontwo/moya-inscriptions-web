@@ -233,6 +233,25 @@ importers:
         specifier: '>=19.2.8 <20'
         version: 19.2.8(react@19.2.8)
 
+  services/agent-authorization:
+    dependencies:
+      '@moya/community-postgres':
+        specifier: workspace:*
+        version: link:../community-postgres
+      oidc-provider:
+        specifier: 9.12.2
+        version: 9.12.2
+      pg:
+        specifier: 8.22.0
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
+
   services/api:
     dependencies:
       '@moya/contracts':
