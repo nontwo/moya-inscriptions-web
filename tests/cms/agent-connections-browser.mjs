@@ -44,6 +44,20 @@ const issuer = process.env.AGENT_ACCEPTANCE_ISSUER ?? "";
 const resource = process.env.AGENT_ACCEPTANCE_RESOURCE ?? "";
 const clientId = process.env.AGENT_ACCEPTANCE_CLIENT_ID ?? "";
 const redirectUri = process.env.AGENT_ACCEPTANCE_REDIRECT_URI ?? "";
+// The one synthetic record this acceptance reads, seeded by the orchestrator
+// into its own disposable database before any service started.
+const seededHandle = process.env.AGENT_ACCEPTANCE_SEEDED_HANDLE ?? "";
+const seededUserId = process.env.AGENT_ACCEPTANCE_SEEDED_USER_ID ?? "";
+const seededDisplayName =
+  process.env.AGENT_ACCEPTANCE_SEEDED_DISPLAY_NAME ?? "";
+
+/**
+ * The fields a read-only connection may see of a public user, and no others.
+ * Asserted as an exact set rather than a subset: a lookup that started
+ * returning an email, an IP or a moderation note would still satisfy every
+ * "expected value is present" check ever written.
+ */
+const SAFE_USER_FIELDS = ["displayName", "handle", "id", "matchKind", "status"];
 
 /** One JSON-RPC call to the Payload MCP endpoint. */
 const mcp = async (token, body, sessionId) => {
@@ -75,6 +89,59 @@ const mcp = async (token, body, sessionId) => {
     sessionId: response.headers.get("mcp-session-id") ?? sessionId,
     payload,
   };
+};
+
+/**
+ * The acceptance READ: one real `tools/call` to `artvenn_users_find` for an
+ * exact handle, travelling OAuth -> Payload MCP -> the loopback operator
+ * channel -> the running Backend -> `community.public_users` in PostgreSQL.
+ *
+ * Returns the parsed tool answer, or `null` when the call was denied at any
+ * layer, so a caller can assert either direction without inspecting shapes.
+ */
+const readSeededUser = async (token, sessionId) => {
+  const answer = await mcp(
+    token,
+    {
+      method: "tools/call",
+      params: {
+        name: "artvenn_users_find",
+        arguments: { handle: seededHandle, page: 1, pageSize: 20 },
+      },
+    },
+    sessionId,
+  );
+  if (
+    answer.status !== 200 ||
+    answer.payload.error !== undefined ||
+    answer.payload.result?.isError === true
+  )
+    return null;
+  const text = answer.payload.result?.content?.[0]?.text;
+  if (typeof text !== "string") return null;
+  const parsed = JSON.parse(text);
+  // The adapter answers `{ok:false, code}` for a refusal WITH HTTP 200 and no
+  // `isError`, so a check that stopped at the transport would read a
+  // forbidden principal as a successful business read.
+  return parsed?.ok === true ? parsed.result : null;
+};
+
+/** Asserts the answer IS the seeded record, and carries nothing else. */
+const assertSeededUser = (result) => {
+  assert.ok(result, "the read returned no result");
+  assert.equal(result.total, 1);
+  assert.equal(result.resolution?.status, "exact");
+  assert.equal(result.resolution?.uniqueIdentity, true);
+  assert.equal(result.resolution?.matchKind, "handle");
+  assert.equal(result.resolution?.userId, seededUserId);
+  assert.equal(result.items?.length, 1);
+  const [user] = result.items;
+  assert.equal(user.id, seededUserId);
+  assert.equal(user.handle, seededHandle);
+  assert.equal(user.displayName, seededDisplayName);
+  assert.equal(user.status, "active");
+  assert.equal(user.matchKind, "handle");
+  assert.deepEqual(Object.keys(user).sort(), SAFE_USER_FIELDS);
 };
 
 /**
@@ -130,7 +197,16 @@ const exchange = async (code, verifier) =>
 
 try {
   assert.equal(process.env.CMS_ENVIRONMENT, "synthetic");
-  for (const value of [origin, issuer, resource, clientId, redirectUri])
+  for (const value of [
+    origin,
+    issuer,
+    resource,
+    clientId,
+    redirectUri,
+    seededHandle,
+    seededUserId,
+    seededDisplayName,
+  ])
     assert.ok(value.length > 0);
   for (const value of [origin, issuer])
     assert.ok(
@@ -294,6 +370,19 @@ try {
   assert.deepEqual(names, READ_ONLY_TOOLS);
   completed.push(stage);
 
+  stage = "backend-read-returns-the-seeded-record";
+  // THE point of this milestone. Everything before it proves the client was
+  // authorized; only this proves the authorization is worth holding.
+  //
+  // A successful `tools/list` was never evidence of a business read: the tool
+  // list is assembled by the Admin's MCP adapter from the connection's preset
+  // and never touches the Backend at all. Until the Backend was composed here
+  // this call answered OPERATOR_UNREACHABLE with HTTP 200, which is precisely
+  // why the summary carried `backendToolRead: NOT_RUN` rather than a pass.
+  assertSeededUser(await readSeededUser(firstToken, session));
+  backendToolRead = "VERIFIED";
+  completed.push(stage);
+
   stage = "mcp-forbidden-tool-denied";
   // The real management tools of the OTHER preset, plus an editorial tool
   // from the separate policy domain. A read-only connection must reach none
@@ -369,6 +458,13 @@ try {
   );
   completed.push(stage);
 
+  stage = "backend-read-denied-after-disconnect";
+  // The access that just worked, asked for the same record it just returned.
+  // Stated as the loss of a capability the client DEMONSTRABLY had, which is
+  // the only way a revocation claim means anything.
+  assert.equal(await readSeededUser(firstToken, session), null);
+  completed.push(stage);
+
   stage = "reconnect-issues-new-access";
   const secondToken = await connect(false);
   assert.notEqual(secondToken, firstToken);
@@ -411,6 +507,17 @@ try {
   assert.equal(live.status, 200);
   completed.push(stage);
 
+  stage = "backend-read-restored-by-fresh-consent";
+  // Regained, and ONLY through a second trip through the browser: the human
+  // approved again, and that is what put the record back within reach.
+  const reconnectedSession = reconnected.sessionId;
+  assertSeededUser(await readSeededUser(secondToken, reconnectedSession));
+  // The revoked access is still revoked. A reconnect must not resurrect it,
+  // which is what the generation bump is for -- status alone stopped being
+  // enough the moment the connection became authorized again.
+  assert.equal(await readSeededUser(firstToken, reconnectedSession), null);
+  completed.push(stage);
+
   // Handed across the restart in a mode-restricted file, never on stdout.
   await writeFile(
     process.env.AGENT_ACCEPTANCE_TOKEN_FILE,
@@ -426,6 +533,10 @@ try {
       stage,
       completed,
       refusalCode,
+      // Reported on the failure path too. The orchestrator would otherwise
+      // have to infer NOT_RUN from an absent field, and an inferred negative
+      // is exactly the kind of evidence this milestone refuses to accept.
+      backendToolRead,
       category:
         error instanceof Error ? error.constructor.name : "UnknownError",
     }),

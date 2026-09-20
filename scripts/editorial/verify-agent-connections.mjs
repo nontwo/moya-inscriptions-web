@@ -41,6 +41,7 @@ import {
 /** Cold `next dev` compiles on demand; bounded by the session regardless. */
 const ADMIN_START_MS = 120_000;
 const AUTH_START_MS = 20_000;
+const BACKEND_START_MS = 20_000;
 
 const expectedStages = [
   "landing-is-unauthenticated",
@@ -50,10 +51,16 @@ const expectedStages = [
   "token-issued",
   "mcp-initialize",
   "mcp-tools-list-is-read-only",
+  // The three business-read stages. The list is compared EXACTLY, so a run
+  // that skipped one -- or that reordered the revocation around it -- fails
+  // here rather than reporting a shorter success.
+  "backend-read-returns-the-seeded-record",
   "mcp-forbidden-tool-denied",
   "revoked-token-denied",
+  "backend-read-denied-after-disconnect",
   "reconnect-issues-new-access",
   "old-token-still-denied",
+  "backend-read-restored-by-fresh-consent",
 ];
 
 /**
@@ -227,6 +234,7 @@ async function main() {
     provider_role: `${owned}_provider`.slice(0, 63),
     consent_role: `${owned}_consent`.slice(0, 63),
     resource_role: `${owned}_resource`.slice(0, 63),
+    backend_role: `${owned}_backend`.slice(0, 63),
   };
   const rolePasswords = Object.fromEntries(
     Object.keys(roleNames).map((key) => [key, randomBytes(24).toString("hex")]),
@@ -330,6 +338,15 @@ async function main() {
       { ...session.env, CMS_QA_HANDOFF_FILE: handoff },
     );
 
+    // The fixture the acceptance read asks for, by an exact handle nothing
+    // else uses. Seeded through the same synthetic account path the community
+    // suites use, in the harness's own database.
+    const seededHandle = `acc-${randomBytes(6).toString("hex")}`;
+    const seededUserId = `user-${randomBytes(16).toString("hex")}`;
+    const seededDisplayName = `Acceptance ${seededHandle}`;
+    const principalLabel = `agent-acceptance-${randomBytes(6).toString("hex")}`;
+    const operatorToken = randomBytes(32).toString("hex");
+
     const distDir = `.next-acceptance-${randomBytes(4).toString("hex")}`;
     ownedDistDir = distDir;
     // `next dev` rewrites `next-env.d.ts` to point at ITS dist directory.
@@ -338,7 +355,8 @@ async function main() {
     // verbatim and put back, whatever happens after this line.
     nextEnvPath = path.join(adminRoot, "next-env.d.ts");
     nextEnvBefore = await readSource(nextEnvPath, "utf8");
-    const [authPort, adminPort, redirectPort] = await Promise.all([
+    const [authPort, adminPort, redirectPort, backendPort] = await Promise.all([
+      freePort(),
       freePort(),
       freePort(),
       freePort(),
@@ -353,6 +371,9 @@ async function main() {
     const adminOrigin = `http://localhost:${adminPort}`;
     const resource = `${adminOrigin}/api/mcp`;
     const redirectUri = `http://127.0.0.1:${redirectPort}/callback`;
+    // Loopback only, and its own port. The Admin reaches the Backend over
+    // this and nothing else reaches it at all.
+    const backendOrigin = `http://127.0.0.1:${backendPort}`;
     const clientId = "artvenn-acceptance-client";
     const clients = JSON.stringify([
       {
@@ -370,6 +391,62 @@ async function main() {
       AGENT_CONNECTION_WRAPPER_INDEX_KEY: randomBytes(32).toString("base64"),
       AGENT_CONNECTION_WRAPPER_SEAL_KEY: randomBytes(32).toString("base64"),
     };
+    // Seeding, all of it through this harness's own database and the
+    // supported adapters, before any service starts.
+    const seedPool = createPostgresPool(
+      parsePostgresConfig({ DATABASE_URL: target.href }),
+    );
+    let connectionId;
+    try {
+      const { PostgresAgentAdministrationAdapter } = await import(
+        path.join(root, "services/community-postgres/dist/index.js")
+      );
+      // One synthetic public user, by an exact handle nothing else uses.
+      await seedPool.query(
+        `INSERT INTO community.public_users (id, handle, display_name, status)
+         VALUES ($1,$2,$3,'active')`,
+        [seededUserId, seededHandle, seededDisplayName],
+      );
+      // The principal the agent boundary checks scopes against, written
+      // through the real adapter rather than by hand. READ-ONLY scopes only:
+      // this milestone grants no management anywhere, including here.
+      await new PostgresAgentAdministrationAdapter(seedPool).writePrincipal(
+        {
+          label: principalLabel,
+          displayName: "Acceptance read-only agent",
+          scopes: ["users:read", "content:read", "comments:read"],
+          enabled: true,
+          expectedVersion: 0,
+        },
+        new Date(),
+      );
+      // The connection the consent will attach to, created up front so its
+      // principal label is KNOWN and can be registered above. `resolveConnection`
+      // finds this row for the same Owner and client and reuses it, label and
+      // all, instead of generating a new one the Backend would not recognise.
+      const owner = (
+        await seedPool.query("SELECT id FROM users WHERE email=$1 LIMIT 1", [
+          "owner@editorial.example.invalid",
+        ])
+      ).rows[0];
+      if (!owner) throw new Error("HARNESS_OWNER_NOT_BOOTSTRAPPED");
+      connectionId = `conn-${randomBytes(16).toString("hex")}`;
+      await seedPool.query(
+        `INSERT INTO community.agent_connections
+           (id, human_account_id, client_family, oauth_client_id, environment,
+            principal_label, preset, status)
+         VALUES ($1,$2,'claude',$3,'synthetic',$4,'read-only','awaiting-consent')`,
+        [
+          connectionId,
+          `payload-user-${String(owner.id)}`,
+          clientId,
+          principalLabel,
+        ],
+      );
+    } finally {
+      await closePostgresPool(seedPool);
+    }
+
     const shared = {
       ...session.env,
       ...keys,
@@ -390,10 +467,35 @@ async function main() {
       AGENT_AUTHORIZATION_DATABASE_URL: asRole("provider_role"),
       AGENT_CONSENT_DATABASE_URL: asRole("consent_role"),
       AGENT_RESOURCE_DATABASE_URL: asRole("resource_role"),
+      // The loopback operator channel the Admin's MCP tools forward over.
+      // Without these the tools answer OPERATOR_NOT_CONFIGURED and the
+      // acceptance read cannot happen, which is exactly the state this
+      // milestone's earlier `backendToolRead: NOT_RUN` recorded.
+      COMMUNITY_OPERATOR_BASE_URL: backendOrigin,
+      COMMUNITY_OPERATOR_TOKEN: operatorToken,
     };
 
-    /** Starts both services and waits for each to answer. */
+    /** Starts all three services and waits for each to answer. */
     const startServices = async (startMs) => {
+      // The Backend first: the Admin's tools forward to it, and a restart
+      // that brought the Admin back without it would report a transport
+      // failure as a revocation.
+      const backend = session.start(
+        ["scripts/editorial/agent-connections-backend.mjs"],
+        root,
+        {
+          ...shared,
+          AGENT_ACCEPTANCE_BACKEND_ENABLED: "true",
+          AGENT_ACCEPTANCE_BACKEND_DATABASE_URL: asRole("backend_role"),
+          AGENT_ACCEPTANCE_BACKEND_PORT: String(backendPort),
+        },
+      );
+      await waitForListener(
+        session,
+        `${backendOrigin}/health`,
+        BACKEND_START_MS,
+        backend,
+      );
       const auth = session.start(
         ["services/agent-authorization/dist/main.js"],
         root,
@@ -425,7 +527,7 @@ async function main() {
         startMs,
         admin_,
       );
-      return { auth, admin: admin_ };
+      return { backend, auth, admin: admin_ };
     };
 
     let services = await startServices(ADMIN_START_MS);
@@ -440,6 +542,9 @@ async function main() {
         AGENT_ACCEPTANCE_RESOURCE: resource,
         AGENT_ACCEPTANCE_CLIENT_ID: clientId,
         AGENT_ACCEPTANCE_REDIRECT_URI: redirectUri,
+        AGENT_ACCEPTANCE_SEEDED_HANDLE: seededHandle,
+        AGENT_ACCEPTANCE_SEEDED_USER_ID: seededUserId,
+        AGENT_ACCEPTANCE_SEEDED_DISPLAY_NAME: seededDisplayName,
       },
     );
     const browserCode = await browser.closed;
@@ -473,6 +578,11 @@ async function main() {
           refusalCode: /^[A-Z][A-Z0-9_]{2,63}$/.test(summary?.refusalCode ?? "")
             ? summary.refusalCode
             : undefined,
+          // One of two fixed words. Without it a failing run says which stage
+          // stopped but not whether the business read ever happened, which is
+          // the single fact this milestone is judged on.
+          backendToolRead:
+            summary?.backendToolRead === "VERIFIED" ? "VERIFIED" : "NOT_RUN",
         }),
       );
       throw new Error("AGENT_CONNECTIONS_CHECK_FAILED");
@@ -482,6 +592,13 @@ async function main() {
       JSON.stringify(summary.completed) !== JSON.stringify(expectedStages)
     )
       throw new Error("AGENT_CONNECTIONS_RESULT_INCOMPLETE");
+    // The acceptance gate for this milestone, checked BEFORE the restart work
+    // so no later success can stand in for it. A missing Backend, a skipped
+    // positive read or a setup refusal all arrive here as something other
+    // than VERIFIED, and all of them fail — the earlier authentication stages
+    // passing is exactly the situation this refuses to accept as evidence.
+    if (summary.backendToolRead !== "VERIFIED")
+      throw new Error("BACKEND_TOOL_READ_NOT_VERIFIED");
     session.assertActive();
 
     // Restart both services against the SAME stores and the SAME keys. The
@@ -491,40 +608,109 @@ async function main() {
     // stop resolving for everyone at once.
     await stopService(session, services.admin);
     await stopService(session, services.auth);
+    await stopService(session, services.backend);
     await waitForSilence(session, `${issuer}/healthz`, 15_000);
     await waitForSilence(session, `${adminOrigin}/admin/login`, 15_000);
+    await waitForSilence(session, `${backendOrigin}/health`, 15_000);
     services = await startServices(ADMIN_START_MS);
     const { readFile: readTokens } = await import("node:fs/promises");
     const tokens = JSON.parse(await readTokens(tokenFile, "utf8"));
-    const probe = async (token) => {
+    /** One JSON-RPC call against the restarted Admin. */
+    const call = async (token, body, sessionId) => {
       const response = await globalThis.fetch(`${adminOrigin}/api/mcp`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           accept: "application/json, text/event-stream",
           authorization: `Bearer ${token}`,
+          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: "2025-06-18",
-            capabilities: {},
-            clientInfo: { name: "artvenn-restart", version: "0" },
-          },
-        }),
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, ...body }),
         signal: globalThis.AbortSignal.any([
           session.signal,
           globalThis.AbortSignal.timeout(30_000),
         ]),
       });
-      return response.status;
+      const text = await response.text();
+      const payload = text.startsWith("event:")
+        ? JSON.parse(
+            text
+              .split("\n")
+              .find((line) => line.startsWith("data:"))
+              ?.slice(5) ?? "{}",
+          )
+        : text
+          ? JSON.parse(text)
+          : {};
+      return {
+        status: response.status,
+        sessionId: response.headers.get("mcp-session-id") ?? sessionId,
+        payload,
+      };
     };
-    if ((await probe(tokens.live)) !== 200)
-      throw new Error("RESTART_LOST_LIVE_ACCESS");
-    if ((await probe(tokens.stale)) === 200)
+    const probe = async (token) =>
+      call(token, {
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "artvenn-restart", version: "0" },
+        },
+      });
+    /**
+     * The restart's own business read. Answers whether the EXACT seeded
+     * record came back, never merely whether the endpoint replied: the MCP
+     * adapter answers a forbidden principal and an unreachable Backend alike
+     * with HTTP 200 and `{ok:false, code}`, so a status check here would have
+     * called a dead operator channel a surviving authorization.
+     */
+    const readsSeededUser = async (token, sessionId) => {
+      const answer = await call(
+        token,
+        {
+          method: "tools/call",
+          params: {
+            name: "artvenn_users_find",
+            arguments: { handle: seededHandle, page: 1, pageSize: 20 },
+          },
+        },
+        sessionId,
+      );
+      if (
+        answer.status !== 200 ||
+        answer.payload.error !== undefined ||
+        answer.payload.result?.isError === true
+      )
+        return false;
+      const text = answer.payload.result?.content?.[0]?.text;
+      if (typeof text !== "string") return false;
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return false;
+      }
+      if (parsed?.ok !== true) return false;
+      const user = parsed.result?.items?.[0];
+      return (
+        parsed.result?.total === 1 &&
+        parsed.result?.resolution?.userId === seededUserId &&
+        user?.id === seededUserId &&
+        user?.handle === seededHandle
+      );
+    };
+
+    const live = await probe(tokens.live);
+    if (live.status !== 200) throw new Error("RESTART_LOST_LIVE_ACCESS");
+    // Authentication surviving a restart is not the claim; READING survives.
+    if (!(await readsSeededUser(tokens.live, live.sessionId)))
+      throw new Error("RESTART_LOST_BACKEND_READ");
+    const stale = await probe(tokens.stale);
+    if (stale.status === 200)
       throw new Error("RESTART_RESTORED_REVOKED_ACCESS");
+    // And the revoked token cannot read either, whatever the transport did.
+    if (await readsSeededUser(tokens.stale, live.sessionId))
+      throw new Error("RESTART_RESTORED_REVOKED_READ");
     summary.completed.push(RESTART_STAGE);
   } catch (error) {
     operationError = error;
@@ -607,7 +793,9 @@ async function main() {
       elapsedMs: session.elapsed(),
       ceilingMs: budget.ceilingMs,
       profile: budget.profile,
-      // Recorded so the evidence cannot be read as more than it is.
+      // Recorded so the evidence cannot be read as more than it is. A PASS
+      // can only ever print VERIFIED here now; the value stays in the summary
+      // because a reader should not have to know that to trust it.
       backendToolRead: summary.backendToolRead ?? "NOT_RUN",
     }),
   );

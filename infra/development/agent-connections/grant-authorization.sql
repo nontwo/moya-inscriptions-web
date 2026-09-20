@@ -20,6 +20,9 @@
 --   resource role  -- the Admin's MCP boundary. May only READ a connection,
 --                     its grant and a wrapper, and stamp when a request last
 --                     authenticated. Cannot consent, mint or revoke.
+--   backend role   -- the Backend that answers the agent tools. Reads public
+--                     users and keeps the principal registry. Knows nothing
+--                     about connections, grants, wrappers or consents.
 --
 -- None is a superuser and none is the migration account.
 --
@@ -43,6 +46,10 @@ DECLARE
   provider_role text := current_setting('agent_connections.provider_role');
   consent_role  text := current_setting('agent_connections.consent_role');
   resource_role text := current_setting('agent_connections.resource_role');
+  -- Optional: only the acceptance harness needs a Backend role, and the
+  -- Development runbook does not. `missing_ok` keeps this file usable by
+  -- both rather than forcing every caller to name a role it will not use.
+  backend_role  text := current_setting('agent_connections.backend_role', true);
 BEGIN
   IF provider_role = consent_role
      OR provider_role = resource_role
@@ -64,6 +71,12 @@ BEGIN
     EXECUTE format(
       'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
       resource_role, 'synthetic-local-resource-only');
+  END IF;
+  IF backend_role IS NOT NULL AND backend_role <> ''
+     AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = backend_role) THEN
+    EXECUTE format(
+      'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
+      backend_role, 'synthetic-local-backend-only');
   END IF;
 
   EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I, %I',
@@ -219,6 +232,39 @@ BEGIN
      TO %I', resource_role);
   EXECUTE format(
     'GRANT SELECT ON TABLE community.schema_migrations TO %I', resource_role);
+
+  -- -------------------------------------------------------------- backend --
+  --
+  -- The Backend that answers the agent tools for the READ-ONLY milestone. It
+  -- reads public users and reads the principal registry the agent boundary
+  -- checks scopes against.
+  --
+  -- SELECT AND NOTHING ELSE. The read-only preset reaches `usersFind`,
+  -- `contentSearch` and `commentsQuery`, and none of those writes; the
+  -- principal itself is registered by the harness that owns the database,
+  -- through the database owner, before this role's process starts. An earlier
+  -- version granted INSERT and UPDATE on `agent_principals` "because the
+  -- boundary also has Owner-mode routes", which would have let the read-only
+  -- acceptance Backend widen its own scopes -- the exact thing the split
+  -- exists to prevent. A management milestone that needs writes adds them
+  -- then, with its own evidence.
+  --
+  -- DELIBERATELY ABSENT: every agent_connection* table. The Backend must not
+  -- be able to read a wrapper, a grant, a consent or a connection -- it never
+  -- sees a token, only the principal label the Admin's MCP adapter asserts
+  -- after IT has authenticated the request.
+  IF backend_role IS NOT NULL AND backend_role <> '' THEN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I',
+      current_database(), backend_role);
+    EXECUTE format('GRANT USAGE ON SCHEMA community TO %I', backend_role);
+    EXECUTE format(
+      'GRANT SELECT ON TABLE
+         community.public_users,
+         community.agent_principals,
+         community.agent_delegations,
+         community.agent_operations
+       TO %I', backend_role);
+  END IF;
 
   -- DELIBERATELY ABSENT for the consent role:
   --   * current_grant_id -- the provider's column. The control plane must not
