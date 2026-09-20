@@ -42,7 +42,7 @@ import type {
  * well as refused on call, so a read-only connection never even sees the
  * management tools.
  */
-const toolGrants = (preset: ConnectionPreset): Record<string, boolean> =>
+export const toolGrants = (preset: ConnectionPreset): Record<string, boolean> =>
   Object.fromEntries(
     PRESET_TOOLS[preset].map((tool) => [toolGrantKey(tool), true]),
   );
@@ -60,6 +60,23 @@ export interface AdmittedConnection {
   readonly consent: ConsentSnapshot;
 }
 
+/**
+ * Checks a verified token against its connection. Every mismatch is a refusal
+ * with its own code, because "why was this refused" is the first question a
+ * connection diagnostic has to answer.
+ *
+ * Expects an ALREADY-PARSED grant: the `verifiedGrantSchema` parse lives in
+ * `connectionAuth`, so this function does not re-validate its own input. A
+ * caller that has not parsed first is handing it untrusted data.
+ *
+ * That warning matters more now than it did, because r14 put this function on
+ * a PUBLIC export subpath (`admin/agent-connections-admission`) so the
+ * PostgreSQL test lane could reach it without dragging in the web framework.
+ * Anything arriving that way must parse through `verifiedGrantSchema` itself.
+ * The r14 ten-step witness hands over a hand-built grant assembled from the
+ * provider's own AccessToken record — which is the deliberate-construction
+ * case this paragraph allows, and it is worth knowing that is what it is.
+ */
 export const admitGrant = (
   grant: VerifiedGrant,
   record: ConnectionRecord | null,
@@ -142,5 +159,3 @@ export const admitGrant = (
     throw new ConnectionAuthError("CONNECTION_TOKEN_EXPIRED");
   return { connection, consent };
 };
-
-export { toolGrants };

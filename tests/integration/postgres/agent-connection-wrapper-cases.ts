@@ -315,22 +315,80 @@ export const registerAgentConnectionWrapperTests = (
         expect(second).toEqual(first);
       });
 
-      it("reports the timestamp that is actually stored, not one it invented", async () => {
-        // If another worker completes between the read and the write, the
-        // guarded UPDATE matches nothing and the trigger would refuse a second
-        // timestamp anyway. Returning `at` there would report a time that
-        // exists nowhere in the database.
+      it("reports the timestamp that is actually stored when another worker wins mid-flight", async () => {
+        // The r14 re-review replaced this whole recovery branch with the bug
+        // it exists to prevent and watched all 401 tests stay green: the
+        // earlier version of this test could not reach the branch at all,
+        // because its second `destroy()` returned from the already-done
+        // short-circuit that predates the fix.
+        //
+        // Reaching it needs the row to become `done` BETWEEN this call's read
+        // and its write, which is what a second worker finishing first looks
+        // like. The provider hook is where that interleaving is staged.
         await aGrant("g-raced");
-        const winner = await destroyerWith().destroy("g-raced");
-        const loser = await destroyerWith().destroy("g-raced");
-        expect(loser).toEqual(winner);
+        const other = new Date(Date.now() - 120_000);
+        const outcome = await destroyerWith({
+          destroyGrant: async () => {
+            await pool.query(
+              `UPDATE community.agent_connection_grants
+                  SET destroy_status='done', destroyed_at=$2
+                WHERE grant_id=$1`,
+              ["g-raced", other],
+            );
+          },
+        }).destroy("g-raced");
+
         const { rows } = await pool.query(
           "SELECT destroyed_at FROM community.agent_connection_grants WHERE grant_id=$1",
           ["g-raced"],
         );
-        expect(
-          (rows[0] as { destroyed_at: Date }).destroyed_at.toISOString(),
-        ).toBe((winner as { destroyedAt: string }).destroyedAt);
+        const stored = (
+          rows[0] as { destroyed_at: Date }
+        ).destroyed_at.toISOString();
+        // The other worker's timestamp, not one this call invented. The
+        // trigger would refuse to store a second one, so returning its own
+        // `at` here would report a time that exists nowhere in the database.
+        expect(stored).toBe(other.toISOString());
+        expect(outcome).toEqual({ status: "done", destroyedAt: stored });
+      });
+
+      it("is idempotent through the short-circuit as well", async () => {
+        await aGrant("g-idem");
+        const first = await destroyerWith().destroy("g-idem");
+        expect(await destroyerWith().destroy("g-idem")).toEqual(first);
+      });
+
+      it("names which step failed, so a provider outage and a privilege error are not one code", async () => {
+        await aGrant("g-steps");
+        const seen: string[] = [];
+        const withFailure = (overrides: Parameters<typeof destroyerWith>[0]) =>
+          createGrantDestroyer({
+            pool,
+            provider: {
+              destroyGrant: overrides?.destroyGrant ?? (async () => undefined),
+              revokeIssued: overrides?.revokeIssued ?? (async () => undefined),
+              isAbsent: overrides?.isAbsent ?? (async () => true),
+            },
+            invalidateWrappers:
+              overrides?.invalidateWrappers ??
+              ((grantId, at) => store.invalidateByGrant(grantId, at)),
+            recordFailure: (code) => seen.push(code),
+          });
+
+        await withFailure({
+          revokeIssued: () => Promise.reject(new Error("down")),
+        }).destroy("g-steps");
+        await withFailure({
+          destroyGrant: () => Promise.reject(new Error("down")),
+        }).destroy("g-steps");
+        await withFailure({
+          invalidateWrappers: () => Promise.reject(new Error("42501")),
+        }).destroy("g-steps");
+        expect(seen).toEqual([
+          "PROVIDER_REVOKE_FAILED",
+          "PROVIDER_DESTROY_FAILED",
+          "WRAPPER_INVALIDATION_FAILED",
+        ]);
       });
 
       it("answers unknown-grant rather than inventing a ledger row", async () => {

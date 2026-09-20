@@ -103,16 +103,6 @@ const connectionUser = (connection: AgentConnection): TypedUser =>
   }) as unknown as TypedUser;
 
 /**
- * Checks a verified token against its connection. Every mismatch is a refusal
- * with its own code, because "why was this refused" is the first question a
- * connection diagnostic has to answer.
- *
- * Expects an ALREADY-PARSED grant: the `verifiedGrantSchema` parse lives in
- * `connectionAuth`, so this function does not re-validate its own input. It is
- * exported for tests that construct grants deliberately; a production caller
- * that has not parsed first is handing it untrusted data.
- */
-/**
  * Builds the plugin's `overrideAuth`. Legacy API-key callers are untouched:
  * a request with no bearer, or a bearer that is not one of ours, goes to the
  * plugin's own resolver exactly as before.

@@ -239,6 +239,13 @@ const boundedBytes = (value: unknown, max: number, column: string): string => {
   const parsed = text(value, column);
   if (new TextEncoder().encode(parsed).length > max)
     throw new AgentConnectionRowError("TOO_MANY_BYTES", column);
+  // Untrimmed input and control characters are never a legitimate stored
+  // identity, and both are ways for two spellings of one value to exist.
+  if (parsed !== parsed.trim())
+    throw new AgentConnectionRowError("UNTRIMMED", column);
+  // eslint-disable-next-line no-control-regex -- refusing control characters is the point
+  if (/[\u0000-\u001f\u007f]/u.test(parsed))
+    throw new AgentConnectionRowError("CONTROL_CHARACTER", column);
   return parsed;
 };
 
@@ -294,6 +301,22 @@ export const parseConnectionRow = (
   version: bigintToNumber(row.version, "version"),
 });
 
+/**
+ * The frozen snapshot, and the SHARPER half of the parse.
+ *
+ * r14's first tightening landed on `agent_connections` — the copy authorization
+ * stopped reading — while these fields, the ones `admitGrant` now compares a
+ * token against, stayed unbounded `text()`. The re-review said so plainly and
+ * it was right.
+ *
+ * What is NOT done here, deliberately: the two accepted client-id FORMS (a
+ * bounded opaque identifier, or a canonical HTTPS CIMD URL that round-trips
+ * exactly) live in `oauthClientIdSchema` in `apps/admin`, which this package
+ * cannot import without inverting the dependency direction. Duplicating that
+ * rule here would create a second spelling of an identity check, which is the
+ * failure this slice has already paid for twice. The bounds below are what
+ * this layer can honestly enforce; the form is enforced where the schema is.
+ */
 export const parseGrantRow = (
   row: Record<string, unknown>,
 ): StoredConsentGrant => ({
@@ -303,10 +326,14 @@ export const parseGrantRow = (
     row.generation_at_consent,
     "generation_at_consent",
   ),
-  oauthClientId: text(row.oauth_client_id, "oauth_client_id"),
-  humanSubject: text(row.human_subject, "human_subject"),
-  issuer: text(row.issuer, "issuer"),
-  resource: text(row.resource, "resource"),
+  oauthClientId: boundedBytes(
+    row.oauth_client_id,
+    CLIENT_ID_MAX_BYTES,
+    "oauth_client_id",
+  ),
+  humanSubject: boundedBytes(row.human_subject, 128, "human_subject"),
+  issuer: boundedBytes(row.issuer, 512, "issuer"),
+  resource: boundedBytes(row.resource, 512, "resource"),
   capabilityScopes: textArray(row.capability_scopes, "capability_scopes"),
   protocolScopes: textArray(row.protocol_scopes, "protocol_scopes"),
   presetAtConsent: member<StoredConnectionPreset>(

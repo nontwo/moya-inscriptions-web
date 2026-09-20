@@ -10,10 +10,14 @@
  *
  * Two things it deliberately does NOT do.
  *
- * It does not un-revoke. EVERY failing path leaves `destroy_status='failed'`
- * and the connection revoked, because cleanup failing is not consent
- * returning. "Every" is load-bearing and was not true of the first version:
- * one step sat outside the try and could reject without recording anything.
+ * It does not un-revoke. Every failing path that CAN record does record:
+ * `destroy_status='failed'`, connection still revoked, because cleanup failing
+ * is not consent returning. The first version did not manage that — a step sat
+ * outside the try and could reject having written nothing — and a later
+ * version claimed "every", which is an absolute and is not one. The ledger
+ * writes themselves sit outside the try, so a database that cannot be written
+ * to leaves the row on `pending`. That is unavoidable rather than overlooked:
+ * you cannot record a failure when the recorder is what failed.
  * The ledger stays visible and retryable, and `done` is terminal in both
  * directions by trigger — including its timestamp.
  *
@@ -120,21 +124,23 @@ export const createGrantDestroyer = (options: GrantDestroyerOptions) => {
         [grantId],
       );
 
-      const at = new Date();
-      // ONE try around every step that can fail. The r14 review found
-      // `invalidateWrappers` sitting outside it: a throw there — and it is
-      // reachable, since the App role holds UPDATE on the grant ledger but
-      // only SELECT on wrappers, so that call is 42501 for exactly the role
-      // that can run the rest — rejected `destroy` without recording
-      // anything, leaving the row `pending` forever while a retry re-ran and
-      // threw at the same point each time. The header claimed a failure
-      // always lands on `failed`. It did not.
+      // Which step failed, so `recordFailure` can say. One try, three codes:
+      // collapsing them was not required by the fix and `recordFailure` exists
+      // precisely so an operator can tell a provider outage from a privilege
+      // error on the wrapper sweep.
+      // Which step failed, so `recordFailure` can say. Collapsing three codes
+      // into one was not required by the m6 fix, and `recordFailure` exists
+      // precisely so an operator can tell a provider outage from a privilege
+      // error on the wrapper sweep.
+      let step = "PROVIDER_REVOKE_FAILED";
       try {
         // Order matters only in that both must happen. Tokens first, so a
         // failure between the two leaves the Grant object present and the
         // ledger honest rather than the reverse.
         await provider.revokeIssued(grantId);
+        step = "PROVIDER_DESTROY_FAILED";
         await provider.destroyGrant(grantId);
+        step = "PROVIDER_DESTROY_UNVERIFIED";
         if (provider.isAbsent !== undefined) {
           // Trust, then verify. `revokeByGrantId` returning without throwing
           // is not evidence the Grant is gone; this is the only check that is.
@@ -144,10 +150,23 @@ export const createGrantDestroyer = (options: GrantDestroyerOptions) => {
           if (!(await provider.isAbsent(grantId)))
             return markFailed(grantId, "PROVIDER_GRANT_STILL_PRESENT");
         }
+      } catch {
+        return markFailed(grantId, step);
+      }
+
+      // Stamped only now, so `destroyed_at` records when destruction
+      // COMPLETED rather than when it was attempted.
+      const at = new Date();
+
+      // A second try, not a second chance to skip recording: this step is the
+      // one the r14 review found OUTSIDE the guard entirely, where a throw —
+      // reachable, since the App role holds UPDATE on the grant ledger but
+      // only SELECT on wrappers — left the row `pending` forever.
+      try {
         if (options.invalidateWrappers !== undefined)
           await options.invalidateWrappers(grantId, at);
       } catch {
-        return markFailed(grantId, "PROVIDER_DESTROY_FAILED");
+        return markFailed(grantId, "WRAPPER_INVALIDATION_FAILED");
       }
 
       const completed = await pool.query(

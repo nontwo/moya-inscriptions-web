@@ -82,6 +82,31 @@ describe("F1: the NEW connection surface fails closed", () => {
     expect(mcp).toContain("connectionOverrideAuth(null)");
   });
 
+  it("keeps the admission rule free of the web framework, which is the whole point of the split", () => {
+    // r14 split `admitGrant` out of `authorization.ts` for a MEASURED reason,
+    // not a tidy one: `authorization.ts` imports `payload` at module scope for
+    // one `catch`, so importing the admission rule dragged the framework into
+    // the PostgreSQL test lane — 5.78s -> 7.52s of module loading, and 3/3
+    // green became 1 failure in 3 as load-sensitive hooks tipped.
+    //
+    // Until this test existed, the only thing preventing that regression was
+    // the comment explaining it. The re-review added a live `payload` import
+    // back into `admission.ts` and nothing in 130 architecture tests or 401
+    // postgres tests noticed.
+    const admission = read("apps/admin/src/agent-connections/admission.ts");
+    expect(admission).not.toMatch(/from\s+"payload"/u);
+    expect(admission).not.toMatch(/from\s+"@payloadcms\//u);
+    expect(admission).not.toMatch(/from\s+"next/u);
+    // And it must stay reachable without going through the index, which does
+    // import the framework.
+    const manifest = JSON.parse(read("apps/admin/package.json")) as {
+      exports: Record<string, string>;
+    };
+    expect(manifest.exports["./agent-connections-admission"]).toBe(
+      "./src/agent-connections/admission.ts",
+    );
+  });
+
   it("requires development AND an explicit opt-in in the composition gate", () => {
     const composition = read("apps/admin/src/agent-connections/composition.ts");
     expect(composition).toContain('environment.NODE_ENV === "development"');
