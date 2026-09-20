@@ -124,22 +124,46 @@ const waitForListener = async (session, name, url, limitMs, child) => {
       // HARNESS_SERVICE_START_FAILED, which named neither the service nor
       // the reason and left nothing to do but guess. That is the whole point
       // of this block.
-      throw new Error(`HARNESS_${name}_START_FAILED${refusalOf(child)}`);
+      throw new Error(
+        `HARNESS_${name}_START_FAILED${await refusalOf(session, child)}`,
+      );
     await delay(250, undefined, { signal: session.signal });
   }
 };
 
-/** A child's own bare refusal code, or nothing. Never its raw output. */
-const refusalOf = (child) => {
+/**
+ * A child's own bare code, or nothing. Never its raw output.
+ *
+ * WAITS FOR `close` FIRST, and that is the whole reason this exists as a
+ * function. `exitCode` is set on the child's `exit` event, which fires BEFORE
+ * its stdout and stderr are drained, so reading the captured output the
+ * moment the exit is noticed can — and on CI did — return an empty string for
+ * a process that had already printed its refusal. The first instrumented run
+ * reported HARNESS_BACKEND_START_FAILED with no code for exactly that reason.
+ *
+ * Two fixed vocabularies are admitted and nothing else: this repository's own
+ * `refused: CODE` line, and Node's own error codes (`ERR_MODULE_NOT_FOUND`,
+ * `EADDRINUSE`, and the rest), which are identifiers rather than values. A
+ * path, a URL, a credential or a message cannot travel out through either.
+ */
+const refusalOf = async (session, child) => {
   if (!child) return "";
   let output = "";
   try {
+    await Promise.race([
+      child.closed,
+      delay(2000, undefined, { signal: session.signal }),
+    ]);
     output = child.output();
   } catch {
     return "";
   }
-  const match = /refused:\s*([A-Z][A-Z0-9_]{2,63})\b/u.exec(output);
-  return match ? `_${match[1]}` : "";
+  const refused = /refused:\s*([A-Z][A-Z0-9_]{2,63})\b/u.exec(output);
+  if (refused) return `_${refused[1]}`;
+  const node =
+    /\b(ERR_[A-Z0-9_]{2,48})\b/u.exec(output) ??
+    /code:\s*'([A-Z][A-Z0-9_]{2,48})'/u.exec(output);
+  return node ? `_${node[1]}` : "";
 };
 
 /**
